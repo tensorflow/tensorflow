@@ -1,14 +1,7 @@
-#include <iostream>
-
-#include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-
-// extern "C" {
-//     #include "lib_nn/api/nn_operator.h"
-//     #include "lib_nn/api/nn_types.h"
-// }
+#include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 
 #include "lib_ops/api/pooling.h"
 
@@ -25,29 +18,6 @@ T unpack(const uint8_t* buffer) {
   return retval;
 }
 
-static void parse_options(const char* buffer, size_t length,
-                          ::xcore::pooling::PoolingOptions* options) {
-  const uint8_t* buffer_t = reinterpret_cast<const uint8_t*>(buffer);
-  auto map = flexbuffers::GetRoot(buffer_t, length).AsMap();
-
-  auto keys = map.Keys();
-  auto values = map.Values();
-  for (int i = 0; i < map.size(); ++i) {
-    std::string key(keys[i].ToString());
-
-    if (key.compare("pool") == 0) {
-      auto vec = values[i].AsVector();  // values represent [pool_h, pool_w]
-      options->pool_h = vec[0].AsInt32();
-      options->pool_w = vec[1].AsInt32();
-    } else if (key.compare("stride") == 0) {
-      auto vec = values[i].AsVector();  // values represent [stride_h, stride_w]
-      options->stride_h = vec[0].AsInt32();
-      options->stride_w = vec[1].AsInt32();
-    }
-  }
-  std::cout << std::endl;
-}
-
 //**************************************
 //**************************************
 //**************************************
@@ -58,15 +28,16 @@ static void parse_options(const char* buffer, size_t length,
 namespace maxpool {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  ::xcore::pooling::MaxPool* op = new ::xcore::pooling::MaxPool();
+  ::xcore::pooling::PoolingParams pooling_params;
+  if (buffer) parse_custom_options(buffer, length, pooling_params);
 
-  if (buffer) parse_options(buffer, length, &op->options);
+  void* data = nullptr;
+  context->AllocatePersistentBuffer(context, sizeof(::xcore::pooling::MaxPool),
+                                    &data);
+  ::xcore::pooling::MaxPool* op =
+      new (data)::xcore::pooling::MaxPool(pooling_params);
+
   return op;
-}
-
-void Free(TfLiteContext* context, void* buffer) {
-  auto* op = reinterpret_cast<::xcore::pooling::MaxPool*>(buffer);
-  delete op;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -111,15 +82,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 namespace avgpool {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  ::xcore::pooling::AvgPool* op = new ::xcore::pooling::AvgPool();
+  ::xcore::pooling::PoolingParams pooling_params;
+  if (buffer) parse_custom_options(buffer, length, pooling_params);
 
-  if (buffer) parse_options(buffer, length, &op->options);
+  void* data = nullptr;
+  context->AllocatePersistentBuffer(context, sizeof(::xcore::pooling::AvgPool),
+                                    &data);
+  ::xcore::pooling::AvgPool* op =
+      new (data)::xcore::pooling::AvgPool(pooling_params);
+
   return op;
-}
-
-void Free(TfLiteContext* context, void* buffer) {
-  auto* op = reinterpret_cast<::xcore::pooling::AvgPool*>(buffer);
-  delete op;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -164,14 +136,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 namespace avgpool_global {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  ::xcore::pooling::AvgPool_Global* op = new ::xcore::pooling::AvgPool_Global();
+  void* data = nullptr;
+  context->AllocatePersistentBuffer(
+      context, sizeof(::xcore::pooling::AvgPool_Global), &data);
+  ::xcore::pooling::AvgPool_Global* op =
+      new (data)::xcore::pooling::AvgPool_Global();
 
   return op;
-}
-
-void Free(TfLiteContext* context, void* buffer) {
-  auto* op = reinterpret_cast<::xcore::pooling::AvgPool_Global*>(buffer);
-  delete op;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -212,23 +183,23 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace pooling
 
 TfLiteRegistration* Register_MaxPool2D() {
-  static TfLiteRegistration r = {pooling::maxpool::Init, pooling::maxpool::Free,
+  static TfLiteRegistration r = {pooling::maxpool::Init, nullptr,
                                  pooling::maxpool::Prepare,
                                  pooling::maxpool::Eval};
   return &r;
 }
 
 TfLiteRegistration* Register_AvgPool2D() {
-  static TfLiteRegistration r = {pooling::avgpool::Init, pooling::avgpool::Free,
+  static TfLiteRegistration r = {pooling::avgpool::Init, nullptr,
                                  pooling::avgpool::Prepare,
                                  pooling::avgpool::Eval};
   return &r;
 }
 
 TfLiteRegistration* Register_AvgPool2D_Global() {
-  static TfLiteRegistration r = {
-      pooling::avgpool_global::Init, pooling::avgpool_global::Free,
-      pooling::avgpool_global::Prepare, pooling::avgpool_global::Eval};
+  static TfLiteRegistration r = {pooling::avgpool_global::Init, nullptr,
+                                 pooling::avgpool_global::Prepare,
+                                 pooling::avgpool_global::Eval};
   return &r;
 }
 

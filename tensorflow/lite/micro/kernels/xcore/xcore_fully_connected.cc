@@ -11,15 +11,13 @@ namespace xcore {
 namespace fully_connected {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  void* data = nullptr;
+  context->AllocatePersistentBuffer(
+      context, sizeof(::xcore::fully_connected::FullyConnected_16), &data);
   ::xcore::fully_connected::FullyConnected_16* op =
-      new ::xcore::fully_connected::FullyConnected_16();
-  return op;
-}
+      new (data)::xcore::fully_connected::FullyConnected_16();
 
-void Free(TfLiteContext* context, void* buffer) {
-  auto* op =
-      reinterpret_cast<::xcore::fully_connected::FullyConnected_16*>(buffer);
-  delete op;
+  return op;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -56,7 +54,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace fully_connected
 
 TfLiteRegistration* Register_FullyConnected_16() {
-  static TfLiteRegistration r = {fully_connected::Init, fully_connected::Free,
+  static TfLiteRegistration r = {fully_connected::Init, nullptr,
                                  fully_connected::Prepare,
                                  fully_connected::Eval};
   return &r;

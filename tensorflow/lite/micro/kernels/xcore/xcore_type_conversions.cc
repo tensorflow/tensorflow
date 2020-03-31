@@ -1,3 +1,4 @@
+#include <iostream>
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -11,16 +12,12 @@ namespace xcore {
 namespace type_conversions {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  ::xcore::type_conversions::Requantize_16_to_8* op =
-      new ::xcore::type_conversions::Requantize_16_to_8();
-
+  void *data = nullptr;
+  context->AllocatePersistentBuffer(context, sizeof(::xcore::type_conversions::Requantize_16_to_8), &data);
+    ::xcore::type_conversions::Requantize_16_to_8* op =
+      new (data) ::xcore::type_conversions::Requantize_16_to_8();
+  
   return op;
-}
-
-void Free(TfLiteContext* context, void* buffer) {
-  auto* op =
-      reinterpret_cast<::xcore::type_conversions::Requantize_16_to_8*>(buffer);
-  delete op;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -37,6 +34,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   auto* op = reinterpret_cast<::xcore::type_conversions::Requantize_16_to_8*>(
       node->user_data);
+  std::cout << "Eval " << (long)op << std::endl;
+
   op->Eval(output->data.int8, input->data.i16, length);
 
   return kTfLiteOk;
@@ -45,7 +44,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace type_conversions
 
 TfLiteRegistration* Register_Requantize_16_to_8() {
-  static TfLiteRegistration r = {type_conversions::Init, type_conversions::Free,
+  static TfLiteRegistration r = {type_conversions::Init, nullptr,
                                  type_conversions::Prepare,
                                  type_conversions::Eval};
   return &r;

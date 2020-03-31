@@ -11,14 +11,13 @@ namespace xcore {
 namespace argmax {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  ::xcore::arg_min_max::ArgMax16* op = new ::xcore::arg_min_max::ArgMax16();
+  void* data = nullptr;
+  context->AllocatePersistentBuffer(
+      context, sizeof(::xcore::arg_min_max::ArgMax16), &data);
+  ::xcore::arg_min_max::ArgMax16* op =
+      new (data)::xcore::arg_min_max::ArgMax16();
 
   return op;
-}
-
-void Free(TfLiteContext* context, void* buffer) {
-  auto* op = reinterpret_cast<::xcore::arg_min_max::ArgMax16*>(buffer);
-  delete op;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -43,7 +42,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace argmax
 
 TfLiteRegistration* Register_ArgMax_16() {
-  static TfLiteRegistration r = {argmax::Init, argmax::Free, argmax::Prepare,
+  static TfLiteRegistration r = {argmax::Init, nullptr, argmax::Prepare,
                                  argmax::Eval};
   return &r;
 }

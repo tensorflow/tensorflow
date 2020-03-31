@@ -1,9 +1,7 @@
-#include <iostream>
-
-#include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 
 #include "lib_ops/api/conv2d.h"
 
@@ -12,60 +10,6 @@ namespace ops {
 namespace micro {
 namespace xcore {
 namespace conv {
-
-static void parse_options(const char *buffer, size_t length,
-                          ::xcore::conv::Conv2DOptions *options,
-                          ::xcore::ParPlan *par = nullptr,
-                          ::xcore::conv::Conv2DUnpaddedShape *us = nullptr) {
-  const uint8_t *buffer_t = reinterpret_cast<const uint8_t *>(buffer);
-  // std::cout << flexbuffers::GetRoot(buffer_t, length).ToString() <<
-  // std::endl;
-  auto map = flexbuffers::GetRoot(buffer_t, length).AsMap();
-
-  auto keys = map.Keys();
-  auto values = map.Values();
-  for (int i = 0; i < map.size(); ++i) {
-    std::string key(keys[i].ToString());
-
-    if (key.compare("padding") == 0) {
-      std::string padding_mode_str = values[i].ToString();
-      if (padding_mode_str.compare("VALID") == 0)
-        options->padding.mode = PADDING_VALID;
-      else
-        options->padding.mode = PADDING_SAME;
-    } else if (key.compare("pad") == 0) {
-      auto vec =
-          values[i].AsVector();  // values represent [top, left, zero_point]
-      options->padding.data.top = vec[0].AsInt32();
-      options->padding.data.left = vec[1].AsInt32();
-      options->padding.data.zero_point = vec[2].AsInt32();
-    } else if (key.compare("unpadded_shape") == 0) {
-      assert(us);
-      auto vec =
-          values[i].AsVector();  // values represent [C_out, K_h, K_w, C_in]
-      us->C_out = vec[0].AsInt32();
-      options->K_h = vec[1].AsInt32();
-      options->K_w = vec[2].AsInt32();
-      us->C_in = vec[3].AsInt32();
-    } else if (key.compare("stride_h") == 0)
-      options->stride_h = values[i].AsInt32();
-    else if (key.compare("stride_w") == 0)
-      options->stride_w = values[i].AsInt32();
-    else if (key.compare("stride") == 0) {
-      auto vec = values[i].AsVector();  // values represent [stride_h, stride_w]
-      options->stride_h = vec[0].AsInt32();
-      options->stride_w = vec[1].AsInt32();
-    } else if (key.compare("par_plan") == 0) {
-      assert(par);
-      auto jobs = values[i].AsVector();
-      for (int i = 0; i < jobs.size(); ++i) {
-        auto region = jobs[i].AsVector();
-        par->emplace_back(region[0].AsInt32(), region[1].AsInt32(),
-                          region[2].AsInt32(), region[3].AsInt32());
-      }
-    }
-  }
-}
 
 //**************************************
 //**************************************
@@ -77,16 +21,20 @@ static void parse_options(const char *buffer, size_t length,
 namespace sido {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  ::xcore::conv::Conv2D_SIDO *op = new ::xcore::conv::Conv2D_SIDO();
-
+  ::xcore::conv::Conv2DParams conv2d_legacy_params;
+  ::xcore::conv::Conv2DUnpaddedShape unpadded_shape;
+  padding_mode_t padding_mode;
   if (buffer)
-    parse_options(buffer, length, &op->options, nullptr, &op->unpadded_shape);
-  return op;
-}
+    parse_custom_options(buffer, length, conv2d_legacy_params, &unpadded_shape,
+                         nullptr, &padding_mode);
 
-void Free(TfLiteContext *context, void *buffer) {
-  auto *op = reinterpret_cast<::xcore::conv::Conv2D_SIDO *>(buffer);
-  delete op;
+  void *data = nullptr;
+  context->AllocatePersistentBuffer(context, sizeof(::xcore::conv::Conv2D_SIDO),
+                                    &data);
+  ::xcore::conv::Conv2D_SIDO *op = new (data)::xcore::conv::Conv2D_SIDO(
+      conv2d_legacy_params, unpadded_shape, padding_mode);
+
+  return op;
 }
 
 TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
@@ -99,9 +47,6 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *output = GetOutput(context, node, 0);
 
   auto *op = reinterpret_cast<::xcore::conv::Conv2D_SIDO *>(node->user_data);
-
-  // op->options.C_in = input->dims->data[3];  // number of channels after
-  // padding
 
   op->Init(input->dims->data[1],      // X_h
            input->dims->data[2],      // X_w
@@ -143,15 +88,21 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 namespace dido {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  ::xcore::conv::Conv2D_DIDO *op = new ::xcore::conv::Conv2D_DIDO();
+  ::xcore::conv::Conv2DParams conv2d_legacy_params;
+  ::xcore::ParPlan par_plan;
+  padding_mode_t padding_mode;
 
-  if (buffer) parse_options(buffer, length, &op->options, &op->par);
+  if (buffer)
+    parse_custom_options(buffer, length, conv2d_legacy_params, nullptr,
+                         &par_plan, &padding_mode);
+
+  void *data = nullptr;
+  context->AllocatePersistentBuffer(context, sizeof(::xcore::conv::Conv2D_DIDO),
+                                    &data);
+  ::xcore::conv::Conv2D_DIDO *op = new (data)::xcore::conv::Conv2D_DIDO(
+      conv2d_legacy_params, par_plan, padding_mode);
+
   return op;
-}
-
-void Free(TfLiteContext *context, void *buffer) {
-  auto *op = reinterpret_cast<::xcore::conv::Conv2D_DIDO *>(buffer);
-  delete op;
 }
 
 TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
@@ -166,8 +117,8 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   auto *op = reinterpret_cast<::xcore::conv::Conv2D_DIDO *>(node->user_data);
 
   // set param values not parsed from custom options
-  op->options.K_h = weights->dims->data[1];
-  op->options.K_w = weights->dims->data[2];
+  op->params.K_h = weights->dims->data[1];
+  op->params.K_w = weights->dims->data[2];
 
   op->Init(input->dims->data[1],                             // X_h
            input->dims->data[2],                             // X_w
@@ -199,15 +150,20 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 namespace n1x1 {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  ::xcore::conv::Conv2D_1x1 *op = new ::xcore::conv::Conv2D_1x1();
+  ::xcore::conv::Conv2DParams conv2d_legacy_params;
+  padding_mode_t padding_mode;
 
-  if (buffer) parse_options(buffer, length, &op->options);
+  if (buffer)
+    parse_custom_options(buffer, length, conv2d_legacy_params, nullptr, nullptr,
+                         &padding_mode);
+
+  void *data = nullptr;
+  context->AllocatePersistentBuffer(context, sizeof(::xcore::conv::Conv2D_1x1),
+                                    &data);
+  ::xcore::conv::Conv2D_1x1 *op =
+      new (data)::xcore::conv::Conv2D_1x1(conv2d_legacy_params, padding_mode);
+
   return op;
-}
-
-void Free(TfLiteContext *context, void *buffer) {
-  auto *op = reinterpret_cast<::xcore::conv::Conv2D_1x1 *>(buffer);
-  delete op;
 }
 
 TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
@@ -262,15 +218,16 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 namespace depthwise {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  ::xcore::conv::Conv2D_Depthwise *op = new ::xcore::conv::Conv2D_Depthwise();
+  ::xcore::conv::Conv2DParams conv2d_params;
+  if (buffer) parse_custom_options(buffer, length, conv2d_params);
 
-  if (buffer) parse_options(buffer, length, &op->options);
+  void *data = nullptr;
+  context->AllocatePersistentBuffer(
+      context, sizeof(::xcore::conv::Conv2D_Depthwise), &data);
+  ::xcore::conv::Conv2D_Depthwise *op =
+      new (data)::xcore::conv::Conv2D_Depthwise(conv2d_params);
+
   return op;
-}
-
-void Free(TfLiteContext *context, void *buffer) {
-  auto *op = reinterpret_cast<::xcore::conv::Conv2D_Depthwise *>(buffer);
-  delete op;
 }
 
 TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
@@ -285,8 +242,8 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
       reinterpret_cast<::xcore::conv::Conv2D_Depthwise *>(node->user_data);
 
   // set param values not parsed from custom options
-  op->options.K_h = weights->dims->data[0];
-  op->options.K_w = weights->dims->data[1];
+  op->params.K_h = weights->dims->data[0];
+  op->params.K_w = weights->dims->data[1];
 
   op->Init(input->dims->data[1],   // X_h
            input->dims->data[2],   // X_w
@@ -322,25 +279,25 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 }  // namespace conv
 
 TfLiteRegistration *Register_Conv2D_DIDO() {
-  static TfLiteRegistration r = {conv::dido::Init, conv::dido::Free,
-                                 conv::dido::Prepare, conv::dido::Eval};
+  static TfLiteRegistration r = {conv::dido::Init, nullptr, conv::dido::Prepare,
+                                 conv::dido::Eval};
   return &r;
 }
 
 TfLiteRegistration *Register_Conv2D_SIDO() {
-  static TfLiteRegistration r = {conv::sido::Init, conv::sido::Free,
-                                 conv::sido::Prepare, conv::sido::Eval};
+  static TfLiteRegistration r = {conv::sido::Init, nullptr, conv::sido::Prepare,
+                                 conv::sido::Eval};
   return &r;
 }
 
 TfLiteRegistration *Register_Conv2D_1x1() {
-  static TfLiteRegistration r = {conv::n1x1::Init, conv::n1x1::Free,
-                                 conv::n1x1::Prepare, conv::n1x1::Eval};
+  static TfLiteRegistration r = {conv::n1x1::Init, nullptr, conv::n1x1::Prepare,
+                                 conv::n1x1::Eval};
   return &r;
 }
 
 TfLiteRegistration *Register_Conv2D_depthwise() {
-  static TfLiteRegistration r = {conv::depthwise::Init, conv::depthwise::Free,
+  static TfLiteRegistration r = {conv::depthwise::Init, nullptr,
                                  conv::depthwise::Prepare,
                                  conv::depthwise::Eval};
   return &r;

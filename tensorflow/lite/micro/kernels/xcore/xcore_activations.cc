@@ -11,14 +11,12 @@ namespace xcore {
 namespace activations {
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  ::xcore::activations::Lookup8* op = new ::xcore::activations::Lookup8();
+  void* data = nullptr;
+  context->AllocatePersistentBuffer(
+      context, sizeof(::xcore::activations::Lookup8), &data);
+  ::xcore::activations::Lookup8* op = new (data)::xcore::activations::Lookup8();
 
   return op;
-}
-
-void Free(TfLiteContext* context, void* buffer) {
-  auto* op = reinterpret_cast<::xcore::activations::Lookup8*>(buffer);
-  delete op;
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -43,7 +41,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration* Register_Lookup_8() {
-  static TfLiteRegistration r = {activations::Init, activations::Free,
+  static TfLiteRegistration r = {activations::Init, nullptr,
                                  activations::Prepare, activations::Eval};
   return &r;
 }
