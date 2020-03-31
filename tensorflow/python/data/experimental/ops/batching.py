@@ -122,8 +122,8 @@ def dense_to_sparse_batch(batch_size, row_shape):
     row_shape: A `tf.TensorShape` or `tf.int64` vector tensor-like object
       representing the equivalent dense shape of a row in the resulting
       `tf.sparse.SparseTensor`. Each element of this dataset must have the same
-       rank as `row_shape`, and must have size less than or equal to
-        `row_shape` in each dimension.
+      rank as `row_shape`, and must have size less than or equal to
+      `row_shape` in each dimension.
 
   Returns:
     A `Dataset` transformation function, which can be passed to

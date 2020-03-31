@@ -66,7 +66,7 @@ def as_dense_types(types, classes):
   Returns:
     a structure matching the nested structure of `types`, containing
     `dtypes.variant` at positions where `classes` contains
-     `tf.sparse.SparseTensor` and matching contents of `types` otherwise
+    `tf.sparse.SparseTensor` and matching contents of `types` otherwise
   """
   ret = nest.pack_sequence_as(types, [
       dtypes.variant if c is sparse_tensor.SparseTensor else ty
@@ -107,7 +107,7 @@ def get_classes(tensors):
   Returns:
     a structure matching the nested structure of `tensors`, containing
     `tf.sparse.SparseTensor` at positions where `tensors` contains a sparse
-     tensor and `tf.Tensor` otherwise.
+    tensor and `tf.Tensor` otherwise.
   """
   return nest.pack_sequence_as(tensors, [
       sparse_tensor.SparseTensor

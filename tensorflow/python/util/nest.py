@@ -311,7 +311,7 @@ def flatten(structure, expand_composites=False):
     structure: an arbitrarily nested structure. Note, numpy arrays are
       considered atoms and are not flattened.
     expand_composites: If true, then composite tensors such as
-     tf.sparse.SparseTensor and tf.RaggedTensor are expanded into their
+      `tf.sparse.SparseTensor` and `tf.RaggedTensor` are expanded into their
       component tensors.
 
   Returns:
@@ -358,15 +358,15 @@ def assert_same_structure(nest1, nest2, check_types=True,
     nest1: an arbitrarily nested structure.
     nest2: an arbitrarily nested structure.
     check_types: if `True` (default) types of sequences are checked as well,
-        including the keys of dictionaries. If set to `False`, for example a
-        list and a tuple of objects will look the same if they have the same
-        size. Note that namedtuples with identical name and fields are always
-        considered to have the same shallow structure. Two types will also be
-        considered the same if they are both list subtypes (which allows "list"
-        and "_ListWrapper" from trackable dependency tracking to compare
-        equal).
+      including the keys of dictionaries. If set to `False`, for example a
+      list and a tuple of objects will look the same if they have the same
+      size. Note that namedtuples with identical name and fields are always
+      considered to have the same shallow structure. Two types will also be
+      considered the same if they are both list subtypes (which allows "list"
+      and "_ListWrapper" from trackable dependency tracking to compare
+      equal).
     expand_composites: If true, then composite tensors such as
-     `tf.sparse.SparseTensor` and `tf.RaggedTensor` are expanded into their
+      `tf.sparse.SparseTensor` and `tf.RaggedTensor` are expanded into their
       component tensors.
 
   Raises:
@@ -536,11 +536,11 @@ def pack_sequence_as(structure, flat_sequence, expand_composites=False):
 
   Args:
     structure: Nested structure, whose structure is given by nested lists,
-        tuples, and dicts. Note: numpy arrays and strings are considered
-        scalars.
+      tuples, and dicts. Note: numpy arrays and strings are considered
+      scalars.
     flat_sequence: flat sequence to pack.
     expand_composites: If true, then composite tensors such as
-     `tf.sparse.SparseTensor` and `tf.RaggedTensor` are expanded into their
+      `tf.sparse.SparseTensor` and `tf.RaggedTensor` are expanded into their
       component tensors.
 
   Returns:
@@ -578,8 +578,8 @@ def map_structure(func, *structure, **kwargs):
         considered to have the same shallow structure.
       * `expand_composites`: If set to `True`, then composite tensors such
         as `tf.sparse.SparseTensor` and `tf.RaggedTensor` are expanded into
-         their component tensors.  If `False` (the default), then composite
-          tensors are not expanded.
+        their component tensors.  If `False` (the default), then composite
+        tensors are not expanded.
 
   Returns:
     A new structure with the same arity as `structure`, whose values correspond
@@ -766,7 +766,7 @@ def assert_shallow_structure(shallow_tree,
       this function will consider two different namedtuple classes with the same
       name and _fields attribute to be the same class.
     expand_composites: If true, then composite tensors such as
-     tf.sparse.SparseTensor and tf.RaggedTensor are expanded into their
+      `tf.sparse.SparseTensor` and `tf.RaggedTensor` are expanded into their
       component tensors.
   Raises:
     TypeError: If `shallow_tree` is a sequence but `input_tree` is not.
@@ -916,7 +916,7 @@ def flatten_up_to(shallow_tree, input_tree, check_types=True,
     check_types: bool. If True, check that each node in shallow_tree has the
       same type as the corresponding node in input_tree.
     expand_composites: If true, then composite tensors such as
-     tf.sparse.SparseTensor and tf.RaggedTensor are expanded into their
+      `tf.sparse.SparseTensor` and `tf.RaggedTensor` are expanded into their
       component tensors.
 
   Returns:
@@ -1021,7 +1021,7 @@ def flatten_with_tuple_paths_up_to(shallow_tree,
     check_types: bool. If True, check that each node in shallow_tree has the
       same type as the corresponding node in input_tree.
     expand_composites: If true, then composite tensors such as
-     tf.sparse.SparseTensor and tf.RaggedTensor are expanded into their
+      `tf.sparse.SparseTensor` and `tf.RaggedTensor` are expanded into their
       component tensors.
 
   Returns:
@@ -1240,7 +1240,7 @@ def get_traverse_shallow_structure(traverse_fn, structure,
       substructure to traverse.
     structure: The structure to traverse.
     expand_composites: If true, then composite tensors such as
-     tf.sparse.SparseTensor and tf.RaggedTensor are expanded into their
+      `tf.sparse.SparseTensor` and `tf.RaggedTensor` are expanded into their
       component tensors.
 
   Returns:
@@ -1321,12 +1321,12 @@ def yield_flat_paths(nest, expand_composites=False):
   Args:
     nest: the value to produce a flattened paths list for.
     expand_composites: If true, then composite tensors such as
-     tf.sparse.SparseTensor and tf.RaggedTensor are expanded into their
+      `tf.sparse.SparseTensor` and `tf.RaggedTensor` are expanded into their
       component tensors.
 
   Yields:
     Tuples containing index or key values which form the path to a specific
-      leaf value in the nested structure.
+    leaf value in the nested structure.
   """
   is_seq = is_sequence_or_composite if expand_composites else is_sequence
   for k, _ in _yield_flat_up_to(nest, nest, is_seq):
@@ -1347,7 +1347,7 @@ def flatten_with_joined_string_paths(structure, separator="/",
     separator: string to separate levels of hierarchy in the results, defaults
       to '/'.
     expand_composites: If true, then composite tensors such as
-     tf.sparse.SparseTensor and tf.RaggedTensor are expanded into their
+      `tf.sparse.SparseTensor` and `tf.RaggedTensor` are expanded into their
       component tensors.
 
   Returns:
@@ -1372,7 +1372,7 @@ def flatten_with_tuple_paths(structure, expand_composites=False):
   Args:
     structure: the nested structure to flatten.
     expand_composites: If true, then composite tensors such as
-     tf.sparse.SparseTensor and tf.RaggedTensor are expanded into their
+      `tf.sparse.SparseTensor` and `tf.RaggedTensor` are expanded into their
       component tensors.
 
   Returns:
