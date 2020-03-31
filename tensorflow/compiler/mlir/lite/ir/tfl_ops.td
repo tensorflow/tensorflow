@@ -1657,7 +1657,11 @@ def TFL_MaxUnpooling2DOp :
 }
 
 def TFL_MaximumOp : TFL_Op<"maximum", [
-    ResultsBroadcastableShape, NoSideEffect, Commutative, SameOperandsAndResultsScale]> {
+    ResultsBroadcastableShape,
+    NoSideEffect,
+    Commutative,
+    SameOperandsAndResultsScale,
+    TFL_GpuTargetOp]> {
   let summary = "Max operator";
   let description = [{
     Element-wise max operation.
@@ -1855,7 +1859,11 @@ def TFL_ReduceProdOp: TFL_Op<"reduce_prod", [NoSideEffect]> {
 }
 
 def TFL_MinimumOp : TFL_Op<"minimum", [
-    ResultsBroadcastableShape, NoSideEffect, Commutative, SameOperandsAndResultsScale]> {
+    ResultsBroadcastableShape,
+    NoSideEffect,
+    Commutative,
+    SameOperandsAndResultsScale,
+    TFL_GpuTargetOp]> {
   let summary = "Min operator";
   let description = [{
     Element-wise min operation.
@@ -2127,7 +2135,8 @@ def TFL_ReluOp: TFL_Op<"relu", [NoSideEffect,
 
 def TFL_Relu6Op: TFL_Op<"relu6", [NoSideEffect,
                                   SameOperandsAndResultShape,
-                                  SameOperandsAndResultsScale]> {
+                                  SameOperandsAndResultsScale,
+                                  TFL_GpuTargetOp]> {
   let summary = "Relu6 operator";
 
   let description = [{
