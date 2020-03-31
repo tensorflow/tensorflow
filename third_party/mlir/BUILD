@@ -139,11 +139,15 @@ filegroup(
     ],
 )
 
+##---------------------------------------------------------------------------##
+# Affine dialect.
+##---------------------------------------------------------------------------##
+
 filegroup(
     name = "AffineOpsTdFiles",
     srcs = [
-        "include/mlir/Dialect/AffineOps/AffineOps.td",
-        "include/mlir/Dialect/AffineOps/AffineOpsBase.td",
+        "include/mlir/Dialect/Affine/IR/AffineOps.td",
+        "include/mlir/Dialect/Affine/IR/AffineOpsBase.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
         "include/mlir/Interfaces/SideEffects.td",
         ":OpBaseTdFiles",
@@ -156,21 +160,109 @@ gentbl(
     tbl_outs = [
         (
             "-gen-op-decls",
-            "include/mlir/Dialect/AffineOps/AffineOps.h.inc",
+            "include/mlir/Dialect/Affine/IR/AffineOps.h.inc",
         ),
         (
             "-gen-op-defs",
-            "include/mlir/Dialect/AffineOps/AffineOps.cpp.inc",
+            "include/mlir/Dialect/Affine/IR/AffineOps.cpp.inc",
         ),
         (
             "-gen-dialect-decls",
-            "include/mlir/Dialect/AffineOps/AffineOpsDialect.h.inc",
+            "include/mlir/Dialect/Affine/IR/AffineOpsDialect.h.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/AffineOps/AffineOps.td",
+    td_file = "include/mlir/Dialect/Affine/IR/AffineOps.td",
     td_srcs = [
         ":AffineOpsTdFiles",
+    ],
+)
+
+##---------------------------------------------------------------------------##
+# AVX512 dialect.
+##---------------------------------------------------------------------------##
+
+filegroup(
+    name = "AVX512TdFiles",
+    srcs = [
+        "include/mlir/Dialect/AVX512/AVX512.td",
+        "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
+        "include/mlir/IR/OpBase.td",
+        "include/mlir/Interfaces/SideEffects.td",
+    ],
+)
+
+gentbl(
+    name = "AVX512IncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-dialect-decls -dialect=avx512",
+            "include/mlir/Dialect/AVX512/AVX512Dialect.h.inc",
+        ),
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/AVX512/AVX512.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/AVX512/AVX512.cpp.inc",
+        ),
+        (
+            "-gen-op-doc",
+            "g3doc/Dialects/AVX512/AVX512.md",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/AVX512/AVX512.td",
+    td_srcs = [
+        ":AVX512TdFiles",
+    ],
+)
+
+cc_library(
+    name = "AVX512",
+    srcs = [
+        "lib/Dialect/AVX512/IR/AVX512Dialect.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Dialect/AVX512/AVX512Dialect.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":AVX512IncGen",
+        ":IR",
+        ":SideEffects",
+        ":VectorOps",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
+    ],
+)
+
+cc_library(
+    name = "AVX512ToLLVM",
+    srcs = glob([
+        "lib/Conversion/AVX512ToLLVM/*.cpp",
+    ]),
+    hdrs = glob([
+        "include/mlir/Conversion/AVX512ToLLVM/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":AVX512",
+        ":EDSC",
+        ":IR",
+        ":LLVMAVX512",
+        ":LLVMDialect",
+        ":LLVMTransforms",
+        ":Pass",
+        ":StandardOps",
+        ":Support",
+        ":Transforms",
+        ":VectorOps",
+        ":VectorToLLVM",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -214,7 +306,7 @@ cc_library(
     hdrs = ["include/mlir/Dialect/LoopOps/Passes.h"],
     includes = ["include"],
     deps = [
-        ":AffineOps",
+        ":Affine",
         ":IR",
         ":LoopOps",
         ":Pass",
@@ -303,19 +395,19 @@ cc_library(
 )
 
 cc_library(
-    name = "AffineOps",
+    name = "Affine",
     srcs = glob(
         [
-            "lib/Dialect/AffineOps/*.cpp",
-            "lib/Dialect/AffineOps/*.h",
-            "lib/Dialect/AffineOps/EDSC/*.cpp",
+            "lib/Dialect/Affine/IR/*.cpp",
+            "lib/Dialect/Affine/IR/*.h",
+            "lib/Dialect/Affine/EDSC/*.cpp",
         ],
     ) + [
         "include/mlir/Transforms/InliningUtils.h",
     ],
     hdrs = glob([
-        "include/mlir/Dialect/AffineOps/*.h",
-        "include/mlir/Dialect/AffineOps/EDSC/*.h",
+        "include/mlir/Dialect/Affine/IR/*.h",
+        "include/mlir/Dialect/Affine/EDSC/*.h",
     ]),
     includes = ["include"],
     deps = [
@@ -331,6 +423,29 @@ cc_library(
 )
 
 cc_library(
+    name = "AffineTransforms",
+    srcs = glob([
+        "lib/Dialect/Affine/Transforms/*.cpp",
+    ]),
+    hdrs = [
+        "include/mlir/Dialect/Affine/Passes.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":Affine",
+        ":Analysis",
+        ":IR",
+        ":LoopOps",
+        ":Pass",
+        ":StandardOps",
+        ":Support",
+        ":Transforms",
+        ":VectorOps",
+        "@llvm-project//llvm:support",
+    ],
+)
+
+cc_library(
     name = "AffineToStandardTransforms",
     srcs = glob([
         "lib/Conversion/AffineToStandard/*.cpp",
@@ -339,7 +454,7 @@ cc_library(
     hdrs = glob(["include/mlir/Conversion/AffineToStandard/*.h"]),
     includes = ["include"],
     deps = [
-        ":AffineOps",
+        ":Affine",
         ":IR",
         ":LoopOps",
         ":Pass",
@@ -427,6 +542,7 @@ gentbl(
     td_file = "include/mlir/Dialect/Shape/IR/ShapeOps.td",
     td_srcs = [
         ":StdOpsTdFiles",
+        "include/mlir/Interfaces/InferTypeOpInterface.td",
     ],
 )
 
@@ -445,6 +561,7 @@ cc_library(
         ":CallOpInterfaces",
         ":CommonFolders",
         ":IR",
+        ":InferTypeOpInterface",
         ":ShapeOpsIncGen",
         ":SideEffects",
         ":Support",
@@ -482,6 +599,28 @@ cc_library(
 )
 
 cc_library(
+    name = "StandardOpsTransforms",
+    srcs = glob(
+        [
+            "lib/Dialect/StandardOps/Transforms/*.cpp",
+            "lib/Dialect/StandardOps/Transforms/*.h",
+        ],
+    ),
+    hdrs = glob([
+        "include/mlir/Dialect/StandardOps/Transforms/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":Analysis",
+        ":ControlFlowInterfaces",
+        ":IR",
+        ":StandardOps",
+        ":Support",
+        "@llvm-project//llvm:support",
+    ],
+)
+
+cc_library(
     name = "VectorOps",
     srcs = glob(
         [
@@ -497,7 +636,7 @@ cc_library(
     ]),
     includes = ["include"],
     deps = [
-        ":AffineOps",
+        ":Affine",
         ":Analysis",
         ":DialectUtils",
         ":EDSC",
@@ -567,6 +706,94 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "LLVMAVX512TdFiles",
+    srcs = [
+        "include/mlir/Dialect/LLVMIR/LLVMAVX512.td",
+        ":LLVMOpsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "LLVMAVX512IncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-dialect-decls -dialect=llvm_avx512",
+            "include/mlir/Dialect/LLVMIR/LLVMAVX512Dialect.h.inc",
+        ),
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/LLVMIR/LLVMAVX512.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/LLVMIR/LLVMAVX512.cpp.inc",
+        ),
+        (
+            "-gen-op-doc",
+            "g3doc/Dialects/LLVMIR/LLVMAVX512.md",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/LLVMIR/LLVMAVX512.td",
+    td_srcs = [
+        ":LLVMAVX512TdFiles",
+    ],
+)
+
+cc_library(
+    name = "LLVMAVX512",
+    srcs = [
+        "lib/Dialect/LLVMIR/IR/LLVMAVX512Dialect.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Dialect/LLVMIR/LLVMAVX512Dialect.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":LLVMAVX512IncGen",
+        ":LLVMDialect",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
+    ],
+)
+
+gentbl(
+    name = "LLVMAVX512ConversionIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-llvmir-conversions",
+            "include/mlir/Dialect/LLVMIR/LLVMAVX512Conversions.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/LLVMIR/LLVMAVX512.td",
+    td_srcs = [
+        ":LLVMAVX512TdFiles",
+    ],
+)
+
+cc_library(
+    name = "TargetLLVMAVX512Intr",
+    srcs = [
+        "lib/Target/LLVMIR/LLVMAVX512Intr.cpp",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":LLVMAVX512",
+        ":LLVMAVX512ConversionIncGen",
+        ":LLVMIRModuleTranslation",
+        ":Translation",
+        "@llvm-project//llvm:core",
+        "@llvm-project//llvm:support",
+    ],
+    alwayslink = 1,
+)
+
 cc_library(
     name = "LLVMDialect",
     srcs = glob(
@@ -575,6 +802,8 @@ cc_library(
             "lib/Dialect/LLVMIR/IR/*.h",
         ],
         exclude = [
+            "lib/Dialect/LLVMIR/IR/*AVX512*.cpp",
+            "lib/Dialect/LLVMIR/IR/*AVX512*.h",
             "lib/Dialect/LLVMIR/IR/NVVM*.cpp",
             "lib/Dialect/LLVMIR/IR/NVVM*.h",
             "lib/Dialect/LLVMIR/IR/ROCDL*.cpp",
@@ -586,6 +815,7 @@ cc_library(
             "include/mlir/Dialect/LLVMIR/*.h",
         ],
         exclude = [
+            "include/mlir/Dialect/LLVMIR/*AVX512*.h",
             "include/mlir/Dialect/LLVMIR/NVVM*.h",
             "include/mlir/Dialect/LLVMIR/ROCDL*.h",
         ],
@@ -618,10 +848,40 @@ cc_library(
 filegroup(
     name = "GPUOpsTdFiles",
     srcs = [
+        "include/mlir/Dialect/GPU/GPUBase.td",
         "include/mlir/Dialect/GPU/GPUOps.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Interfaces/SideEffects.td",
         ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
+    name = "ParallelLoopMapperAttrGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-struct-attr-decls",
+            "include/mlir/Dialect/GPU/ParallelLoopMapperAttr.h.inc",
+        ),
+        (
+            "-gen-struct-attr-defs",
+            "include/mlir/Dialect/GPU/ParallelLoopMapperAttr.cpp.inc",
+        ),
+        (
+            "-gen-enum-decls",
+            "include/mlir/Dialect/GPU/ParallelLoopMapperEnums.h.inc",
+        ),
+        (
+            "-gen-enum-defs",
+            "include/mlir/Dialect/GPU/ParallelLoopMapperEnums.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/GPU/ParallelLoopMapperAttr.td",
+    td_srcs = [
+        ":GPUOpsTdFiles",
+        ":AffineOpsTdFiles",
     ],
 )
 
@@ -658,7 +918,7 @@ cc_library(
         ],
     ),
     hdrs = glob([
-        "include/mlir/Dialect/GPU/*.h",
+        "include/mlir/Dialect/GPU/GPUDialect.h",
     ]),
     includes = ["include"],
     deps = [
@@ -680,6 +940,8 @@ cc_library(
         ],
     ),
     hdrs = [
+        "include/mlir/Dialect/GPU/MemoryPromotion.h",
+        "include/mlir/Dialect/GPU/ParallelLoopMapper.h",
         "include/mlir/Dialect/GPU/Passes.h",
         "include/mlir/Dialect/GPU/Utils.h",
     ],
@@ -689,10 +951,12 @@ cc_library(
         ":GPUDialect",
         ":IR",
         ":LoopOps",
+        ":ParallelLoopMapperAttrGen",
         ":Pass",
         ":StandardOps",
         ":Support",
         ":Transforms",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -754,6 +1018,7 @@ cc_library(
         ":GPUCommonTransforms",
         ":GPUDialect",
         ":GPUToNVVMGen",
+        ":GPUTransforms",
         ":IR",
         ":LLVMTransforms",
         ":NVVMDialect",
@@ -1393,7 +1658,7 @@ cc_library(
     ]),
     includes = ["include"],
     deps = [
-        ":AffineOps",
+        ":Affine",
         ":Analysis",
         ":ControlFlowInterfaces",
         ":IR",
@@ -1474,7 +1739,7 @@ cc_library(
     ]),
     includes = ["include"],
     deps = [
-        ":AffineOps",
+        ":Affine",
         ":Analysis",
         ":IR",
         ":LoopLikeInterface",
@@ -1505,17 +1770,14 @@ cc_library(
 
 cc_library(
     name = "LoopsToGPU",
-    srcs = [
-        "lib/Conversion/LoopsToGPU/LoopsToGPU.cpp",
-    ],
-    hdrs = [
-        "include/mlir/Conversion/LoopsToGPU/LoopsToGPU.h",
-    ],
+    srcs = ["lib/Conversion/LoopsToGPU/LoopsToGPU.cpp"],
+    hdrs = ["include/mlir/Conversion/LoopsToGPU/LoopsToGPU.h"],
     includes = ["include"],
     deps = [
-        ":AffineOps",
+        ":Affine",
         ":AffineToStandardTransforms",
         ":GPUDialect",
+        ":GPUTransforms",
         ":IR",
         ":LoopOps",
         ":Pass",
@@ -1537,7 +1799,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
-        ":AffineOps",
+        ":Affine",
         ":GPUDialect",
         ":LoopOps",
         ":LoopsToGPU",
@@ -1552,7 +1814,7 @@ cc_library(
 cc_library(
     name = "CFGTransforms",
     srcs = [
-        "lib/Conversion/LoopToStandard/ConvertLoopToStandard.cpp",
+        "lib/Conversion/LoopToStandard/LoopToStandard.cpp",
     ],
     hdrs = [
         "include/mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h",
@@ -1573,7 +1835,7 @@ cc_library(
 cc_library(
     name = "LLVMTransforms",
     srcs = [
-        "lib/Conversion/StandardToLLVM/ConvertStandardToLLVM.cpp",
+        "lib/Conversion/StandardToLLVM/StandardToLLVM.cpp",
     ],
     hdrs = [
         "include/mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h",
@@ -1763,7 +2025,7 @@ cc_library(
     ),
     includes = ["include"],
     deps = [
-        ":AffineOps",
+        ":Affine",
         ":CallOpInterfaces",
         ":IR",
         ":LoopOps",
@@ -1833,6 +2095,7 @@ cc_library(
         ":LLVMDialect",
         ":LLVMIRModuleTranslation",
         ":Support",
+        ":TargetLLVMAVX512Intr",
         ":Translation",
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:ir_reader",
@@ -1943,9 +2206,6 @@ cc_library(
     srcs = [
         "lib/Support/MlirOptMain.cpp",
     ],
-    hdrs = [
-        "include/mlir/Analysis/Passes.h",
-    ],
     includes = ["include"],
     deps = [
         ":Analysis",
@@ -1970,6 +2230,7 @@ cc_library(
         ":VectorToLLVM",
         ":VectorToLoops",
         "@llvm-project//llvm:support",
+        "@llvm-project//mlir/test:TestAffine",
         "@llvm-project//mlir/test:TestDialect",
         "@llvm-project//mlir/test:TestIR",
         "@llvm-project//mlir/test:TestPass",
@@ -2026,7 +2287,10 @@ cc_library(
     ],
     defines = ["MLIR_CUDA_CONVERSIONS_ENABLED"],
     deps = [
-        ":AffineOps",
+        ":AVX512",
+        ":AVX512ToLLVM",
+        ":Affine",
+        ":AffineTransforms",
         ":Analysis",
         ":FxpMathOps",
         ":GPUDialect",
@@ -2037,6 +2301,7 @@ cc_library(
         ":GPUToVulkanTransforms",
         ":GPUTransforms",
         ":IR",
+        ":LLVMAVX512",
         ":LLVMDialect",
         ":LLVMIRTransforms",
         ":LinalgOps",
@@ -2103,6 +2368,7 @@ cc_binary(
         ":Transforms",
         "@llvm-project//llvm:all_targets",
         "@llvm-project//llvm:support",
+        "@llvm-project//mlir/test:TestAffine",
         "@llvm-project//mlir/test:TestDialect",
         "@llvm-project//mlir/test:TestIR",
         "@llvm-project//mlir/test:TestPass",
@@ -2661,7 +2927,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
-        ":AffineOps",
+        ":Affine",
         ":AffineToStandardTransforms",
         ":Analysis",
         ":CFGTransforms",
@@ -2832,7 +3098,7 @@ cc_library(
     ]),
     includes = ["include"],
     deps = [
-        ":AffineOps",
+        ":Affine",
         ":EDSC",
         ":IR",
         ":LLVMDialect",
@@ -2867,7 +3133,7 @@ exports_files(
         "include/mlir/IR/OpBase.td",
         "include/mlir/Transforms/InliningUtils.h",
     ],
-    visibility = ["@llvm-project//mlir:friends"],
+    visibility = [":friends"],
 )
 
 exports_files(
@@ -2875,5 +3141,5 @@ exports_files(
         "include/mlir/Interfaces/InferTypeOpInterface.td",
         "include/mlir/Interfaces/LoopLikeInterface.td",
     ],
-    visibility = ["@llvm-project//mlir:friends"],
+    visibility = [":friends"],
 )

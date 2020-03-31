@@ -184,9 +184,7 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote) {
 
   // TODO(gjn): Add support for waiting on async local mirrors
   if (!async) {
-    auto remote_arg = tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
-                          h1_task2->handle.get())
-                          ->Handle();
+    auto remote_arg = tensorflow::TensorHandleFromInterface(h1_task2->handle);
     auto op = tensorflow::down_cast<tensorflow::OperationInterface*>(
         matmul->operation.get());
     // The input handles should never change since they have been mirrored.

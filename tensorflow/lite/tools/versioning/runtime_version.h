@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <string>
 
-#include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 
 namespace tflite {
 // Update minimum runtime version of the given TFL flatbuffer model.

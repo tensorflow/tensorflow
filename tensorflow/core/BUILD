@@ -204,7 +204,6 @@ COMMON_PROTO_SRCS = [
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
     "protobuf/verifier_config.proto",
-    "protobuf/trace_events.proto",
 ]
 
 EXAMPLE_PROTO_SRCS = [
@@ -1397,7 +1396,7 @@ cc_library(
         full = [],
         lite = ["TENSORFLOW_LITE_PROTOS"],
     ) + if_chromiumos(["IS_MOBILE_PLATFORM"]) + tf_defines_nortti_if_lite_protos(),
-    linkopts = if_android(["-lz"]),
+    linkopts = if_android(["-lz"]) + if_ios(["-lz"]),
     tags = [
         "manual",
         "notap",
@@ -1450,7 +1449,7 @@ cc_library(
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
     ]),
-    copts = tf_copts() + ["-Os"],
+    copts = tf_copts() + tf_opts_nortti_if_lite_protos() + ["-Os"],
     visibility = ["//visibility:public"],
     deps = [
         ":portable_tensorflow_lib_lite",
@@ -2559,6 +2558,7 @@ filegroup(
         "common_runtime/executor_factory.h",
         "common_runtime/function_optimization_registry.h",
         "common_runtime/graph_optimizer.h",
+        "common_runtime/graph_view.h",
         "common_runtime/input_colocation_exemption_registry.h",
         "common_runtime/isolate_placer_inspection_required_ops_pass.h",
         "common_runtime/local_device.h",
@@ -2622,6 +2622,7 @@ tf_cuda_library(
         "common_runtime/function_optimization_registry.cc",
         "common_runtime/graph_optimizer.cc",
         "common_runtime/graph_runner.cc",
+        "common_runtime/graph_view.cc",
         "common_runtime/hierarchical_tree_broadcaster.cc",
         "common_runtime/input_colocation_exemption_registry.cc",
         "common_runtime/inspecting_placer.cc",
@@ -2682,6 +2683,7 @@ tf_cuda_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:variant",
         "//third_party/eigen3",
         "//tensorflow/core/public:version",
         "//tensorflow/core/grappler/utils:functions",

@@ -912,6 +912,7 @@ class KerasSequenceAdapter(GeneratorDataAdapter):
     self._size = len(x)
     self._shuffle_sequence = shuffle
     self._keras_sequence = x
+    self._enqueuer = None
     super(KerasSequenceAdapter, self).__init__(
         x,
         shuffle=False,  # Shuffle is handed in the _make_callable override.
@@ -929,11 +930,11 @@ class KerasSequenceAdapter(GeneratorDataAdapter):
                               max_queue_size):
     if workers > 1 or (workers > 0 and use_multiprocessing):
       def generator_fn():
-        enqueuer = data_utils.OrderedEnqueuer(
+        self._enqueuer = data_utils.OrderedEnqueuer(
             x, use_multiprocessing=use_multiprocessing,
             shuffle=self._shuffle_sequence)
-        enqueuer.start(workers=workers, max_queue_size=max_queue_size)
-        return enqueuer.get()
+        self._enqueuer.start(workers=workers, max_queue_size=max_queue_size)
+        return self._enqueuer.get()
     else:
       def generator_fn():
         order = range(len(x))
@@ -954,6 +955,8 @@ class KerasSequenceAdapter(GeneratorDataAdapter):
     return True
 
   def on_epoch_end(self):
+    if self._enqueuer:
+      self._enqueuer.stop()
     self._keras_sequence.on_epoch_end()
 
 
@@ -1152,19 +1155,37 @@ class DataHandler(object):
 
   def enumerate_epochs(self):
     """Yields `(epoch, tf.data.Iterator)`."""
-    data_iterator = iter(self._dataset)
-    for epoch in range(self._initial_epoch, self._epochs):
-      if self._insufficient_data:  # Set by `catch_stop_iteration`.
-        break
-      if self._adapter.should_recreate_iterator():
-        if ds_context.has_strategy():
-          # TODO(b/138326910): remove this when MultiDeviceIterator is a
-          # CompositeTensor (unless this is more efficient)
-          data_iterator._initializer  # pylint: disable=pointless-statement, protected-access
-        else:
-          data_iterator = iter(self._dataset)
-      yield epoch, data_iterator
-      self._adapter.on_epoch_end()
+    with self._truncate_execution_to_epoch():
+      data_iterator = iter(self._dataset)
+      for epoch in range(self._initial_epoch, self._epochs):
+        if self._insufficient_data:  # Set by `catch_stop_iteration`.
+          break
+        if self._adapter.should_recreate_iterator():
+          if ds_context.has_strategy():
+            # TODO(b/138326910): remove this when MultiDeviceIterator is a
+            # CompositeTensor (unless this is more efficient)
+            data_iterator._initializer  # pylint: disable=pointless-statement, protected-access
+          else:
+            data_iterator = iter(self._dataset)
+        yield epoch, data_iterator
+        self._adapter.on_epoch_end()
+
+  @contextlib.contextmanager
+  def _truncate_execution_to_epoch(self):
+    """Truncates steps per execution to at most one epoch."""
+    should_truncate = (
+        self._inferred_steps is not None and
+        self._steps_per_execution_value > self._inferred_steps)
+    original_value = self._steps_per_execution_value
+    try:
+      if should_truncate:
+        self._steps_per_execution.assign(self._inferred_steps)
+        self._steps_per_execution_value = self._inferred_steps
+      yield
+    finally:
+      if should_truncate:
+        self._steps_per_execution.assign(original_value)
+        self._steps_per_execution_value = original_value
 
   @contextlib.contextmanager
   def catch_stop_iteration(self):
@@ -1173,14 +1194,8 @@ class DataHandler(object):
       yield
       context.async_wait()
     except (StopIteration, errors.OutOfRangeError):
-      context.async_clear_error()
       if self._inferred_steps is None:
-        # The input passed by the user ran out of batches.
-        # Now we know the cardinality of the input(dataset or generator).
-        if self._model is not None:
-          self._inferred_steps = self._model._train_counter.numpy().item()  # pylint: disable=protected-access
-        else:
-          self._inferred_steps = self._current_step
+        self._inferred_steps = self._current_step
       else:
         self._insufficient_data = True
         total_epochs = self._epochs - self._initial_epoch
@@ -1312,7 +1327,7 @@ def _make_class_weight_map_fn(class_weight):
     raise ValueError(error_msg)
 
   class_weight_tensor = ops.convert_to_tensor_v2(
-      [int(class_weight[c]) for c in class_ids], dtype="int64")
+      [class_weight[int(c)] for c in class_ids])
 
   def _class_weights_map_fn(*data):
     """Convert `class_weight` to `sample_weight`."""

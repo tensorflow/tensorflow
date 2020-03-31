@@ -321,7 +321,10 @@ Status DatasetOpsTestBase::CreateDatasetContext(
     gtl::InlinedVector<TensorValue, 4>* const inputs,
     std::unique_ptr<OpKernelContext::Params>* dataset_context_params,
     std::unique_ptr<OpKernelContext>* dataset_context) {
-  TF_RETURN_IF_ERROR(CheckOpKernelInput(*dateset_kernel, *inputs));
+  Status status = CheckOpKernelInput(*dateset_kernel, *inputs);
+  if (!status.ok()) {
+    VLOG(0) << "WARNING: " << status.ToString();
+  }
   TF_RETURN_IF_ERROR(CreateOpKernelContext(
       dateset_kernel, inputs, dataset_context_params, dataset_context));
   return Status::OK();
@@ -402,10 +405,11 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
       TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, thread_pool_.get(),
       /*parent=*/nullptr, /*custom_kernel_creator=*/nullptr,
       /*session_metadata=*/nullptr,
-      [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
-        *r = new IntraProcessRendezvous(device_mgr);
-        return Status::OK();
-      });
+      Rendezvous::Factory{
+          [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+            *r = new IntraProcessRendezvous(device_mgr);
+            return Status::OK();
+          }});
   flr_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   if (thread_pool_ == nullptr) {
     runner_ = [](const std::function<void()>& fn) { fn(); };
@@ -529,10 +533,10 @@ Status DatasetOpsTestBase::CreateSerializationContext(
 
 Status DatasetOpsTestBase::CheckOpKernelInput(
     const OpKernel& kernel, const gtl::InlinedVector<TensorValue, 4>& inputs) {
-  if (kernel.input_types().size() != inputs.size()) {
-    return errors::Internal("The number of input elements should be ",
-                            kernel.input_types().size(),
-                            ", but got: ", inputs.size());
+  if (kernel.num_inputs() != inputs.size()) {
+    return errors::InvalidArgument("The number of input elements should be ",
+                                   kernel.num_inputs(),
+                                   ", but got: ", inputs.size());
   }
   return Status::OK();
 }
@@ -545,8 +549,7 @@ Status DatasetOpsTestBase::AddDatasetInput(
                                    inputs->size(), " vs. ", input_types.size());
   }
   bool is_ref = IsRefType(input_types[inputs->size()]);
-  std::unique_ptr<Tensor> input =
-      absl::make_unique<Tensor>(allocator_, dtype, shape);
+  auto input = absl::make_unique<Tensor>(allocator_, dtype, shape);
 
   if (is_ref) {
     DataType expected_dtype = RemoveRefType(input_types[inputs->size()]);

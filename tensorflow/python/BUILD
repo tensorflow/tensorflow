@@ -3,6 +3,7 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
+load("//tensorflow:tensorflow.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
@@ -18,6 +19,8 @@ load(
     "//third_party/ngraph:build_defs.bzl",
     "if_ngraph",
 )
+
+# TODO(mdan): Break into per-directory files.
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
@@ -636,6 +639,7 @@ tf_python_pybind_extension(
             "//tensorflow/core:eager_service_proto_cc",
             "//tensorflow/core:master_proto_cc",
             "//tensorflow/core:worker_proto_cc",
+            "//tensorflow/core:version_lib",
         ],
         otherwise = [
             "//tensorflow/core:eager_service_proto_cc_headers_only",
@@ -1057,17 +1061,6 @@ tf_py_test(
 tf_py_test(
     name = "decorator_utils_test",
     srcs = ["util/decorator_utils_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":platform",
-        ":util",
-    ],
-)
-
-tf_py_test(
-    name = "tf_export_test",
-    srcs = ["util/tf_export_test.py"],
     python_version = "PY3",
     deps = [
         ":client_testlib",
@@ -1823,19 +1816,6 @@ tf_py_test(
     ],
 )
 
-# This target is maintained separately from :util to provide separate visibility
-# for legacy users who were granted visibility when the functions were private
-# members of ops.Graph.
-py_library(
-    name = "tf_stack",
-    srcs = ["util/tf_stack.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":_tf_stack",
-    ],
-)
-
 py_library(
     name = "tensor_shape",
     srcs = ["framework/tensor_shape.py"],
@@ -1884,6 +1864,7 @@ py_library(
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -3199,6 +3180,7 @@ tf_py_test(
     size = "small",
     srcs = ["ops/collective_ops_test.py"],
     python_version = "PY3",
+    tags = ["no_rocm"],
     deps = [
         ":client_testlib",
         ":collective_ops",
@@ -4065,7 +4047,6 @@ py_library(
         ":nn_ops",
         ":nn_ops_gen",
         ":platform_device_context",
-        ":rnn",
         ":sparse_ops",
         ":util",
         ":variables",
@@ -4267,6 +4248,8 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_impl",
+        "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_wrapper_impl",
     ],
 )
 
@@ -5225,7 +5208,7 @@ py_library(
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras/optimizer_v2:learning_rate_schedule",
+        "//tensorflow/python/keras/optimizer_v2:legacy_learning_rate_decay",
         "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -5400,6 +5383,63 @@ py_library(
     ],
 )
 
+# Leaf library: may not depend on anything else inside TensorFlow.
+py_strict_library(
+    name = "tf_export",
+    srcs = ["util/tf_export.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":tf_decorator",
+    ],
+)
+
+tf_py_test(
+    name = "tf_export_test",
+    srcs = ["util/tf_export_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":client_testlib",
+        ":platform",
+        ":util",
+    ],
+)
+
+# Leaf library: may not depend on anything else inside TensorFlow.
+# TODO(mdan): Move this utility outside of TF.
+py_strict_library(
+    name = "tf_decorator",
+    srcs = [
+        "util/tf_contextlib.py",
+        "util/tf_decorator.py",
+        "util/tf_inspect.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:__subpackages__",
+        # TODO(mdan): Remove these dependencies.
+        "//third_party/py/tf_slim:__subpackages__",
+        "//learning/deepmind/research/language/translation/lm:__subpackages__",
+    ],
+    deps = [
+        ":tf_stack",
+        "@six_archive//:six",
+    ],
+)
+
+# Leaf library: may not depend on anything else inside TensorFlow.
+py_strict_library(
+    name = "tf_stack",
+    srcs = ["util/tf_stack.py"],
+    srcs_version = "PY2AND3",
+    # TODO(mdan): Remove public visibility.
+    visibility = ["//visibility:public"],
+    deps = [
+        ":_tf_stack",
+        "@six_archive//:six",
+    ],
+)
+
 pybind_extension(
     name = "_tf_stack",
     srcs = ["util/tf_stack.cc"],
@@ -5411,13 +5451,28 @@ pybind_extension(
     ],
 )
 
+tf_py_test(
+    name = "tf_stack_test",
+    srcs = ["util/tf_stack_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":client_testlib",
+        ":tf_export",
+        ":tf_stack",
+    ],
+)
+
 py_library(
     name = "util",
     srcs = glob(
         ["util/**/*.py"],
         exclude = [
             "util/example_parser*",
+            "util/tf_contextlib.py",
             "util/tf_should_use.py",
+            "util/tf_export.py",
+            "util/tf_stack.py",
+            "util/tf_decorator.py",
             "util/**/*_test.py",
         ],
     ),
@@ -5428,7 +5483,9 @@ py_library(
         "//third_party/py/tf_agents:__subpackages__",
     ],
     deps = [
-        ":_tf_stack",
+        ":tf_decorator",
+        ":tf_export",
+        ":tf_stack",
         "@org_python_pypi_backports_weakref",
         "@com_google_protobuf//:protobuf_python",
         "//third_party/py/numpy",
@@ -5436,16 +5493,6 @@ py_library(
         "@wrapt",
         "//tensorflow/tools/compatibility:all_renames_v2",
     ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration"]),
-)
-
-tf_py_test(
-    name = "tf_stack_test",
-    srcs = ["util/tf_stack_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":util",
-    ],
 )
 
 tf_py_test(
@@ -5800,6 +5847,7 @@ tf_py_wrap_cc(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_rpc_factory_registration",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
@@ -5817,6 +5865,7 @@ tf_py_wrap_cc(
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:stacktrace_handler",
         "//tensorflow/core/profiler/internal:print_model_analysis",
+        "//tensorflow/core/profiler/internal/cpu:python_tracer",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/eager:pywrap_tfe_lib",
@@ -5854,6 +5903,7 @@ filegroup(
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
         "//tensorflow/core:core_cpu_base_no_ops",  # tf_session
         "//tensorflow/core:core_cpu_impl",  # device_lib
+        "//tensorflow/core/data/service:server_lib",  # server_lib
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
         "//tensorflow/core:lib_internal_impl",  # device_lib
         "//tensorflow/core:op_gen_lib",  # tf_session
@@ -6363,6 +6413,9 @@ cuda_py_test(
     size = "small",
     srcs = ["client/timeline_test.py"],
     python_version = "PY3",
+    tags = [
+        "gpu_cupti",
+    ],
     xla_enable_strict_auto_jit = False,  # Graph structure is different with autojit
     deps = [
         ":client",
@@ -6426,7 +6479,11 @@ tf_py_test(
     size = "small",
     srcs = ["framework/convert_to_constants_test.py"],
     python_version = "PY3",
+<<<<<<< HEAD
     tags = ["no_rocm"], # flaky on CI nodes
+=======
+    tags = ["no_rocm"],
+>>>>>>> upstream/master
     deps = [
         "client_testlib",
         "framework_test_lib",
@@ -6451,7 +6508,10 @@ tf_py_test(
     size = "small",
     srcs = ["lib/io/file_io_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_rocm",
+        "no_windows",
+    ],
     deps = [
         ":client_testlib",
         ":errors",
@@ -6546,7 +6606,6 @@ cuda_py_tests(
         "training/device_setter_test.py",
         "training/ftrl_test.py",
         "training/gradient_descent_test.py",
-        "training/learning_rate_decay_test.py",
         "training/momentum_test.py",
         "training/optimizer_test.py",
         "training/proximal_adagrad_test.py",
@@ -7045,7 +7104,6 @@ py_library(
     deps = [
         ":control_flow_ops",
         ":smart_cond",
-        ":util",
         ":variables",
     ],
 )
@@ -7062,7 +7120,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":layers_base",
-        "//tensorflow/python/keras/engine:input_spec",
         "//tensorflow/python/keras/legacy_tf_layers:convolutional",
         "//tensorflow/python/keras/legacy_tf_layers:core",
         "//tensorflow/python/keras/legacy_tf_layers:normalization",
@@ -7555,6 +7612,7 @@ tf_py_test(
     ],
 )
 
+<<<<<<< HEAD
 py_library(
     name = "graph_placer",
     srcs = [
@@ -7585,6 +7643,8 @@ tf_py_test(
     ],
 )
 
+=======
+>>>>>>> upstream/master
 tf_py_test(
     name = "memory_optimizer_test",
     size = "medium",

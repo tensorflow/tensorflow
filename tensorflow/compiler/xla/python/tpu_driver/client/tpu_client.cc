@@ -503,9 +503,10 @@ static std::shared_ptr<Device> LookupDevice(const PyTpuClient& client,
 PyTpuExecutable::PyTpuExecutable(
     std::unique_ptr<tpu_driver::CompiledProgramHandle> compiled_program,
     DeviceAssignment device_assignment, std::shared_ptr<PyTpuClient> client,
-    xla::Shape result_shape)
+    xla::Shape result_shape, bool tuple_arguments)
     : client_(std::move(client)),
       device_assignment_(std::move(device_assignment)),
+      tuple_arguments_(tuple_arguments),
       result_shape_(std::move(result_shape)) {
   VLOG(1) << "DeviceAssignment. " << device_assignment_.ToString();
   const int num_replicas = device_assignment_.replica_count();
@@ -627,7 +628,7 @@ StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> PyTpuExecutable::Execute(
   std::vector<PyTpuBuffer*> all_core_arguments;
 
   std::unique_ptr<PyTpuBuffer> tupled_arguments;
-  if (tuple_arguments) {
+  if (tuple_arguments_ || tuple_arguments) {
     TF_ASSIGN_OR_RETURN(tupled_arguments,
                         PyTpuBuffer::MakeTuple(argument_handles, client_,
                                                local_devices_.front()));
@@ -679,7 +680,7 @@ PyTpuExecutable::ExecuteOnLocalDevices(
 
   std::vector<std::unique_ptr<PyTpuBuffer>> tupled_arguments;
   std::vector<std::vector<PyTpuBuffer*>> tupled_argument_pointers;
-  if (tuple_arguments) {
+  if (tuple_arguments_ || tuple_arguments) {
     tupled_arguments.resize(argument_handles.size());
     tupled_argument_pointers.resize(argument_handles.size());
     for (int i = 0; i < num_local_devices; ++i) {
@@ -750,7 +751,7 @@ PyTpuExecutable::ExecuteOnLocalDevices(
     absl::optional<std::vector<Shape>> argument_layouts,
     const ExecutableBuildOptions* build_options,
     std::shared_ptr<PyTpuClient> client,
-    absl::optional<DeviceAssignment> device_assignment) {
+    absl::optional<DeviceAssignment> device_assignment, bool tuple_arguments) {
   tensorflow::profiler::TraceMe traceme("PyTpuExecutable::Compile");
 
   VLOG(1) << "Compile: "
@@ -814,7 +815,7 @@ PyTpuExecutable::ExecuteOnLocalDevices(
 
   return absl::make_unique<PyTpuExecutable>(
       std::move(compiled_program), std::move(*device_assignment),
-      std::move(client), std::move(result_layout));
+      std::move(client), std::move(result_layout), tuple_arguments);
 }
 
 }  // namespace xla

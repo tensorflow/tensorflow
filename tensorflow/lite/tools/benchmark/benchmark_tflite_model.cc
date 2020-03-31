@@ -28,7 +28,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
-#include "tensorflow/lite/experimental/ruy/profiler/profiler.h"
+#include "tensorflow/lite/experimental/ruy/ruy/profiler/profiler.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
@@ -284,7 +284,9 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
 
 BenchmarkTfLiteModel::BenchmarkTfLiteModel(BenchmarkParams params)
     : BenchmarkModel(std::move(params)),
-      random_engine_(std::random_device()()) {}
+      random_engine_(std::random_device()()) {
+  AddListener(&log_output_);
+}
 
 void BenchmarkTfLiteModel::CleanUp() {
   // Free up any pre-allocated tensor data during PrepareInputData.

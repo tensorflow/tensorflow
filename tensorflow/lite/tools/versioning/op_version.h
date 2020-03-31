@@ -58,7 +58,7 @@ typedef struct {
     struct {
       int32_t num_dims;
       bool need_broadcast;
-    } sub;
+    } broadcast;
   } options;
 } OpSignature;
 

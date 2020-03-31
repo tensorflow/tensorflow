@@ -30,9 +30,13 @@ from tensorflow.python.feature_column import feature_column_lib
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
+from tensorflow.python.keras import losses
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import save
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader_impl
@@ -249,6 +253,26 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
     new_batch_loss = new_model.train_on_batch(x, y)
 
     self.assertAllClose(batch_loss, new_batch_loss)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_saving_model_with_custom_object(self):
+    with generic_utils.custom_object_scope():
+
+      @generic_utils.register_keras_serializable()
+      class CustomLoss(losses.MeanSquaredError):
+        pass
+
+      model = sequential.Sequential(
+          [core.Dense(units=1, input_shape=(1,))])
+      model.compile(optimizer='sgd', loss=CustomLoss())
+      model.fit(np.zeros([10, 1]), np.zeros([10, 1]))
+
+      temp_dir = self.get_temp_dir()
+      filepath = os.path.join(temp_dir, 'saving')
+      model.save(filepath)
+
+      # Make sure the model can be correctly load back.
+      _ = save.load_model(filepath, compile=True)
 
 
 if __name__ == '__main__':

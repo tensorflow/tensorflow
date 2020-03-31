@@ -71,7 +71,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
       ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
   """
 
-  _HAS_ALL_REDUCE_SUM_GRAD = True
+  _HAS_AGGREGATE_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,

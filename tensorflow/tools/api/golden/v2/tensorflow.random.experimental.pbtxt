@@ -20,4 +20,12 @@ tf_module {
     name: "set_global_generator"
     argspec: "args=[\'generator\'], varargs=None, keywords=None, defaults=None"
   }
+  member_method {
+    name: "stateless_fold_in"
+    argspec: "args=[\'seed\', \'data\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "stateless_split"
+    argspec: "args=[\'seed\', \'num\'], varargs=None, keywords=None, defaults=[\'2\'], "
+  }
 }

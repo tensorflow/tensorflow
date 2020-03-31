@@ -106,40 +106,36 @@ Status TensorHandle::GetResourceAllowedDevices(std::vector<string>* result) {
   return GetResourceHandleInfoImpl(get_resource_info);
 }
 
-Status TensorHandle::CreateLocalHandle(const tensorflow::Tensor& t,
-                                       TensorHandle** h) {
+TensorHandle* TensorHandle::CreateLocalHandle(const tensorflow::Tensor& t) {
   // TODO(b/136608821): Move away from nullptr
   tensorflow::Tensor tensor = t;
   return CreateLocalHandle(std::move(tensor),
                            /*d=*/nullptr,
                            /*op_device=*/nullptr,
-                           /*ctx=*/nullptr, h);
+                           /*ctx=*/nullptr);
 }
 
-Status TensorHandle::CreateLocalHandle(tensorflow::Tensor&& t, Device* d,
-                                       Device* op_device, EagerContext* ctx,
-                                       TensorHandle** h) {
-  return CreateLocalHandle(std::move(t), d, op_device, nullptr, ctx, h);
+TensorHandle* TensorHandle::CreateLocalHandle(tensorflow::Tensor&& t, Device* d,
+                                              Device* op_device,
+                                              EagerContext* ctx) {
+  return CreateLocalHandle(std::move(t), d, op_device, nullptr, ctx);
 }
 
-Status TensorHandle::CreateLocalHandle(tensorflow::Tensor&& t, Device* d,
-                                       Device* op_device,
-                                       Device* resource_device,
-                                       EagerContext* ctx, TensorHandle** h) {
+TensorHandle* TensorHandle::CreateLocalHandle(tensorflow::Tensor&& t, Device* d,
+                                              Device* op_device,
+                                              Device* resource_device,
+                                              EagerContext* ctx) {
   if (t.dtype() == DT_RESOURCE && t.NumElements() > 0) {
-    *h = new TensorHandle(std::move(t), d, op_device, ctx);
+    return new TensorHandle(std::move(t), d, op_device, ctx);
   } else {
-    *h = new TensorHandle(std::move(t), d, op_device, resource_device, ctx);
+    return new TensorHandle(std::move(t), d, op_device, resource_device, ctx);
   }
-
-  return Status::OK();
 }
 
-Status TensorHandle::CreateLocalHandle(tensorflow::Tensor&& t, CustomDevice* d,
-                                       EagerContext* ctx, TensorHandle** h) {
-  *h = new TensorHandle(std::move(t), d, ctx);
-
-  return Status::OK();
+TensorHandle* TensorHandle::CreateLocalHandle(tensorflow::Tensor&& t,
+                                              CustomDevice* d,
+                                              EagerContext* ctx) {
+  return new TensorHandle(std::move(t), d, ctx);
 }
 
 TensorHandle::TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
@@ -190,13 +186,11 @@ TensorHandle::TensorHandle(tensorflow::Tensor&& t, CustomDevice* d,
            << " tensor: " << t.DeviceSafeDebugString();
 }
 
-Status TensorHandle::CreateEmptyLocalHandle(Device* d, Device* op_device,
-                                            Device* resource_device,
-                                            DataType dtype, EagerContext* ctx,
-                                            TensorHandle** h) {
-  *h = new TensorHandle(d, op_device, resource_device, dtype, ctx);
-
-  return Status::OK();
+TensorHandle* TensorHandle::CreateEmptyLocalHandle(Device* d, Device* op_device,
+                                                   Device* resource_device,
+                                                   DataType dtype,
+                                                   EagerContext* ctx) {
+  return new TensorHandle(d, op_device, resource_device, dtype, ctx);
 }
 
 TensorHandle::TensorHandle(Device* d, Device* op_device,
@@ -214,14 +208,10 @@ TensorHandle::TensorHandle(Device* d, Device* op_device,
 }
 
 #if !defined(IS_MOBILE_PLATFORM)
-Status TensorHandle::CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
-                                                const string& remote_task,
-                                                DataType dtype, Device* d,
-                                                EagerContext* ctx,
-                                                TensorHandle** h) {
-  *h = new TensorHandle(op_id, output_num, remote_task, dtype, d, ctx);
-
-  return Status::OK();
+TensorHandle* TensorHandle::CreateUnshapedRemoteHandle(
+    int64 op_id, int32 output_num, const string& remote_task, DataType dtype,
+    Device* d, EagerContext* ctx) {
+  return new TensorHandle(op_id, output_num, remote_task, dtype, d, ctx);
 }
 
 TensorHandle::TensorHandle(int64 op_id, int32 output_num,
@@ -239,13 +229,11 @@ TensorHandle::TensorHandle(int64 op_id, int32 output_num,
            << " device: " << VariantDeviceDebugString(device_);
 }
 
-Status TensorHandle::CreateLazyRemoteHandle(int64 op_id, int32 output_num,
-                                            DataType dtype, Device* d,
-                                            EagerContext* ctx,
-                                            TensorHandle** h) {
-  *h = new TensorHandle(op_id, output_num, dtype, d, ctx);
-
-  return Status::OK();
+TensorHandle* TensorHandle::CreateLazyRemoteHandle(int64 op_id,
+                                                   int32 output_num,
+                                                   DataType dtype, Device* d,
+                                                   EagerContext* ctx) {
+  return new TensorHandle(op_id, output_num, dtype, d, ctx);
 }
 
 TensorHandle::TensorHandle(int64 op_id, int32 output_num, DataType dtype,

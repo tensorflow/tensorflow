@@ -327,6 +327,13 @@ Status EagerServiceImpl::CreateMasterContext(
   return Status::OK();
 }
 
+Status TensorHandleProto(TensorHandle* handle, TensorProto* proto) {
+  const tensorflow::Tensor* t = nullptr;
+  TF_RETURN_IF_ERROR(handle->Tensor(&t));
+  t->AsProtoTensorContent(proto);
+  return Status::OK();
+}
+
 Status TensorHandleShape(TensorHandle* handle, TensorShapeProto* proto) {
   const tensorflow::Tensor* t = nullptr;
 
@@ -378,8 +385,8 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
           return errors::InvalidArgument("Invalid TensorProto: ",
                                          input.tensor().DebugString());
         } else {
-          TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
-              std::move(tensor), nullptr, nullptr, eager_context, &handle));
+          handle = TensorHandle::CreateLocalHandle(std::move(tensor), nullptr,
+                                                   nullptr, eager_context);
           op->AddInput(handle);
         }
       }
@@ -412,12 +419,21 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
   VLOG(3) << "ServerContext: Calling EagerExecute for op " << operation.id();
   TF_RETURN_IF_ERROR(EagerExecute(op.get(), retvals.data(), &num_retvals));
 
-  eager_context->RemoteMgr()->AddOperationOutputs(
-      absl::MakeSpan(retvals.data(), num_retvals), operation.id());
-
-  for (int i = 0; i < num_retvals; i++) {
-    TF_RETURN_IF_ERROR(
-        TensorHandleShape(retvals[i], queue_response->add_shape()));
+  if (operation.id() == kInvalidRemoteOpId) {
+    // Copy the output tensors back along with the response, since the op id
+    // is invalid which cannot be added to RemoteMgr.
+    for (int i = 0; i < num_retvals; i++) {
+      TF_RETURN_IF_ERROR(
+          TensorHandleProto(retvals[i], queue_response->add_tensor()));
+      retvals[i]->Unref();
+    }
+  } else {
+    eager_context->RemoteMgr()->AddOperationOutputs(
+        absl::MakeSpan(retvals.data(), num_retvals), operation.id());
+    for (int i = 0; i < num_retvals; i++) {
+      TF_RETURN_IF_ERROR(
+          TensorHandleShape(retvals[i], queue_response->add_shape()));
+    }
   }
 
   return Status::OK();
@@ -558,9 +574,8 @@ Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,
       return errors::InvalidArgument("Unable to parse tensor proto");
     }
 
-    TensorHandle* tensor_handle = nullptr;
-    TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
-        std::move(tensor), nullptr, nullptr, eager_context, &tensor_handle));
+    TensorHandle* tensor_handle = TensorHandle::CreateLocalHandle(
+        std::move(tensor), nullptr, nullptr, eager_context);
     TensorHandle* copied_handle = nullptr;
     Device* device;
     TF_RETURN_IF_ERROR(eager_context->FindDeviceFromName(

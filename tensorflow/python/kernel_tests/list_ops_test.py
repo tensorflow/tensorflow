@@ -1665,6 +1665,26 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     self.assertAllEqual(f(), [b"A", b"B", b"C"])
 
+  def testPopBackGrad(self):
+    # https://github.com/tensorflow/tensorflow/issues/37230
+
+    @def_function.function
+    def g(x):
+      x_prod = constant_op.constant([1.])
+      for unused_i in math_ops.range(3):
+        x_prod = x_prod * x
+      return x_prod
+
+    x = constant_op.constant(1.)
+    with backprop.GradientTape() as t:
+      t.watch(x)
+      with backprop.GradientTape() as tt:
+        tt.watch(x)
+        loss = g(x)
+      jac = tt.gradient(loss, x)
+    hess = t.gradient(jac, x)
+    self.assertAllEqual(hess, 6.)
+
 
 if __name__ == "__main__":
   test.main()

@@ -1502,6 +1502,74 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
 
 // -----
 
+// Tests that outputs are correctly merged and fed from TPU computation for
+// tiled output sharding.
+
+// The following OpSharding is used for TPU computation outputs in below test:
+// Proto debug string:
+//  output 0
+//   type: OTHER
+//   tile_assignment_dimensions: 1
+//   tile_assignment_dimensions: 2
+//   tile_assignment_devices: 0
+//   tile_assignment_devices: 1
+// Serialized string:
+//  "\08\03\1A\02\01\02\22\02\00\01"
+//
+// output 1
+//  type: MAXIMAL
+//  tile_assignment_dimensions: 1
+//  tile_assignment_devices: 0
+// Serialized string:
+//  "\08\01\1A\01\01\22\01\01"
+
+// -----
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0", "/job:localhost/replica:0/task:1/device:CPU:0", "/job:localhost/replica:0/task:1/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU_SYSTEM:0"]} {
+  // CHECK-LABEL: func @parallel_execute_with_tiled_output
+  func @parallel_execute_with_tiled_output(%arg0: tensor<128x10xf32>, %arg1: tensor<128x10xf32>, %arg2: tensor<*xi32>, %arg3: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
+    // CHECK: tf_device.replicate
+    // CHECK-SAME: [%[[ARG_0]], %[[ARG_1]]] as %[[RI_0:[a-z0-9]*]]: tensor<128x10xf32>
+    // CHECK-SAME: [%[[ARG_2]], %[[ARG_3]]] as %[[RI_1:[a-z0-9]*]]: tensor<*xi32>
+    // CHECK-SAME: devices =
+    // CHECK-SAME: TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"]
+    // CHECK-SAME: TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"]
+    %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri_1: tensor<128x10xf32>, [%arg2, %arg3] as %ri_2: tensor<*xi32>) {n = 2 : i32} {
+      // CHECK:      %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
+      // CHECK-NEXT:   "tf._TPUCompileMlir"
+      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      "tf_device.launch"
+      // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
+      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      //
+      // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:3 = "tf_device.parallel_execute"
+      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_0_OUTPUT:[0-9]*]]:2 = "tf.TPUExecute"
+      // CHECK-NEXT:     tf_device.return %[[EXECUTE_0_OUTPUT]]
+      // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_0"
+      // CHECK:        %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_1_OUTPUT:[0-9]*]] = "tf.TPUExecute"
+      // CHECK-NEXT:     tf_device.return %[[EXECUTE_1_OUTPUT]]
+      // CHECK:        device = "TPU_REPLICATED_CORE_1"
+      //
+      // CHECK:     %[[CONST_CONCAT_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:     %[[CONCAT_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT_DIM]], %[[PARALLEL_EXECUTE_OUTPUT]]#0, %[[PARALLEL_EXECUTE_OUTPUT]]#2
+
+      %1, %2 = "tf_device.launch_func"(%ri_1, %ri_2) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "", padding_map = [""], topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\03\1A\02\01\02\22\02\00\01", "\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\03\1A\02\01\02\22\02\00\01", "\08\01\1A\01\01\22\01\00"]} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
+      tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
+    }
+    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+  }
+  func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
+    %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
+    %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    return %4, %3 : tensor<*xi32>, tensor<*xi1>
+  }
+}
+
+// -----
+
 // The following OpSharding is used for TPU computation inputs in below test:
 // Proto debug string:
 //  input 0
@@ -1510,6 +1578,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
 //   tile_assignment_dimensions: 4
 //   tile_assignment_devices: 0
 //   tile_assignment_devices: 1
+//  Serialized string:
+//   "\08\03\12\12\10\0b\1a\02\01\04\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\01\04\22\04\00\01\02\03"
 //
 // input 1
 //  type: MAXIMAL
@@ -1538,6 +1608,46 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
     %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
     return %4, %3 : tensor<*xi32>, tensor<*xi1>
+  }
+}
+
+// The following OpSharding is used for TPU computation outputs in below test:
+// Proto debug string:
+//  output 0
+//   type: OTHER
+//   tile_assignment_dimensions: 1
+//   tile_assignment_dimensions: 4
+//   tile_assignment_devices: 0
+//   tile_assignment_devices: 1
+// Serialized string:
+//  "\08\03\12\12\10\0b\1a\02\01\04\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\01\04\22\04\00\01\02\03"
+//
+// output 1
+//  type: MAXIMAL
+//  tile_assignment_dimensions: 1
+//  tile_assignment_devices: 1
+// Serialized string:
+//  "\08\01\1A\01\01\22\01\01"
+//
+// -----
+
+// Tests tile sharding of outputs with number of splits that exeed number
+// of logical devices is not allowed.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0", "/job:localhost/replica:0/task:1/device:CPU:0", "/job:localhost/replica:0/task:1/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU_SYSTEM:0"]} {
+  func @uneven_output_sharding_disallowed(%arg0: tensor<128x10xf32>, %arg1: tensor<128x10xf32>, %arg2: tensor<*xi32>, %arg3: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
+    %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri_1: tensor<128x10xf32>, [%arg2, %arg3] as %ri_2: tensor<*xi32>) {n = 2 : i32} {
+    // expected-error@+1 {{incorrect sharding format for outputs. Number of tiled outputs(4) must match the number of logical devices(2)}}
+    %1, %2 = "tf_device.launch_func"(%ri_1, %ri_2) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [""], topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["", ""], output_sharding_configuration = ["\08\03\12\12\10\0b\1a\02\01\04\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\01\04\22\04\00\01\02\03", ""]} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
+      tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
+    }
+    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+  }
+  func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi1>, tensor<*xi32>) {
+    %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
+    %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    return %3, %4 : tensor<*xi1>, tensor<*xi32>
   }
 }
 
@@ -1650,6 +1760,196 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
 
 // -----
 
+// The following topology is used in subsequent test cases:
+// Proto debug string:
+//  mesh_shape: 2
+//  mesh_shape: 1
+//  mesh_shape: 2
+//  num_tasks: 2
+//  num_tpu_devices_per_task: 2
+//  device_coordinates: 0
+//  device_coordinates: 0
+//  device_coordinates: 0
+//  device_coordinates: 0
+//  device_coordinates: 0
+//  device_coordinates: 0
+//  device_coordinates: 0
+//  device_coordinates: 1
+//  device_coordinates: 0
+//  device_coordinates: 1
+//  device_coordinates: 0
+//  device_coordinates: 0
+//  device_coordinates: 0
+//  device_coordinates: 1
+//  device_coordinates: 0
+//  device_coordinates: 1
+
+// The following OpSharding is used for TPU computation inputs in below test:
+// Proto debug string:
+//  input 0
+//   type: OTHER
+//   tile_shape {
+//    element_type: F32
+//    dimensions: 2
+//    dimensions: 2
+//    layout {
+//     minor_to_major: 1
+//     minor_to_major: 0
+//     format: DENSE
+//    }
+//    is_dynamic_dimension: false
+//    is_dynamic_dimension: false
+//   }
+//   tile_assignment_dimensions: 2
+//   tile_assignment_dimensions: 2
+//   tile_assignment_devices: 0
+//   tile_assignment_devices: 1
+//   tile_assignment_devices: 2
+//   tile_assignment_devices: 3
+// Serialized string:
+//  "\08\03\12\12\10\0b\1a\02\02\02\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\02\02\22\04\00\01\02\03"
+//
+// input 1
+//  type: MAXIMAL
+//  tile_assignment_dimensions: 1
+//  tile_assignment_devices: 1
+// Serialized string:
+//  "\08\01\1A\01\01\22\01\01"
+
+// Tests inputs to TPUComputation that are tiled in multiple dimensions.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"]} {
+  // CHECK-LABEL: func @parallel_execute_with_multi_dimension_tiled_input
+  // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<128x10xf32>, %[[ARG_1:[a-z0-9]*]]: tensor<128x10xf32>, %[[ARG_2:[a-z0-9]*]]: tensor<*xi32>, %[[ARG_3:[a-z0-9]*]]: tensor<*xi32>)
+  func @parallel_execute_with_multi_dimension_tiled_input(%arg0: tensor<128x10xf32>, %arg1: tensor<128x10xf32>, %arg2: tensor<*xi32>, %arg3: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
+    // CHECK: tf_device.replicate
+    // CHECK-SAME: [%[[ARG_0]], %[[ARG_1]]] as %[[RI_0:[a-z0-9]*]]: tensor<128x10xf32>
+    // CHECK-SAME: [%[[ARG_2]], %[[ARG_3]]] as %[[RI_1:[a-z0-9]*]]: tensor<*xi32>
+    %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri_1: tensor<128x10xf32>, [%arg2, %arg3] as %ri_2: tensor<*xi32>) {n = 2 : i32} {
+      // CHECK:      %[[COMPILE:[a-z0-9]+]]:5 = "tf_device.launch"
+      // CHECK-NEXT:   "tf._TPUCompileMlir"
+      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      "tf_device.launch"
+      // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
+      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      %[[CONST_SPLIT_0_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:      %[[SPLIT_0_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_0_DIM]], %[[RI_0]])
+      // CHECK:      %[[CONST_SPLIT_1_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:      %[[SPLIT_1_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_1_DIM]], %[[SPLIT_0_OUT]]#0)
+      // CHECK:      %[[CONST_SPLIT_2_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:      %[[SPLIT_2_OUT:[a-z0-9]+]]:2 = "tf.Split"(%[[CONST_SPLIT_2_DIM]], %[[SPLIT_0_OUT]]#1)
+      // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:5 = "tf_device.parallel_execute"
+      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_0_OUTPUT:[0-9]*]]:2 = "tf.TPUExecute"(%[[SPLIT_1_OUT]]#0, %[[COMPILE]]#1)
+      // CHECK:          tf_device.return %[[EXECUTE_0_OUTPUT]]
+      // CHECK:        %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_1_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[SPLIT_1_OUT]]#1, %[[RI_1]], %[[COMPILE]]#2)
+      // CHECK:          tf_device.return %[[EXECUTE_1_OUTPUT]]
+      // CHECK:        %[[LAUNCH_2_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_2_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[SPLIT_2_OUT]]#0, %[[COMPILE]]#3)
+      // CHECK:          tf_device.return %[[EXECUTE_2_OUTPUT]]
+      // CHECK:        %[[LAUNCH_3_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_3_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[SPLIT_2_OUT]]#1, %[[COMPILE]]#4)
+      // CHECK:          tf_device.return %[[EXECUTE_3_OUTPUT]]
+      %1, %2 = "tf_device.launch_func"(%ri_1, %ri_2) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 4, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "\0A\04\02\02\01\02\10\01\18\08\22 \00\00\00\00\00\00\00\01\01\00\00\00\01\00\00\01\00\01\00\00\00\01\00\01\01\01\00\00\01\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1], input_sharding_configuration = ["\08\03\12\12\10\0b\1a\02\02\02\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\02\02\22\04\00\01\02\03", "\08\01\1A\01\01\22\01\01"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00", ""]} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
+      tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
+    }
+    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+  }
+  func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
+    %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
+    %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    return %4, %3 : tensor<*xi32>, tensor<*xi1>
+  }
+}
+
+// -----
+
+// Tests that tiled output with multiple dimension sharding works properly.
+
+// The following OpSharding is used for TPU computation outputs in below test:
+// output 0
+//  Proto debug string:
+//   type: OTHER
+//   tile_shape {
+//    element_type: F32
+//    dimensions: 2
+//    dimensions: 2
+//    layout {
+//     minor_to_major: 1
+//     minor_to_major: 0
+//     format: DENSE
+//    }
+//    is_dynamic_dimension: false
+//    is_dynamic_dimension: false
+//   }
+//   tile_assignment_dimensions: 2
+//   tile_assignment_dimensions: 2
+//   tile_assignment_devices: 0
+//   tile_assignment_devices: 1
+//   tile_assignment_devices: 2
+//   tile_assignment_devices: 3
+// Serialized string:
+//  "\08\03\12\12\10\0b\1a\02\02\02\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\02\02\22\04\00\01\02\03"
+//
+// output 1
+//  Proto debug string:
+//  type: MAXIMAL
+//  tile_assignment_dimensions: 1
+//  tile_assignment_devices: 0
+// Serialized string:
+//  "\08\01\1A\01\01\22\01\01"
+
+// -----
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"]} {
+  // CHECK-LABEL: func @multiple_dimension_output_sharding
+  func @multiple_dimension_output_sharding(%arg0: tensor<128x10xf32>, %arg1: tensor<128x10xf32>, %arg2: tensor<*xi32>, %arg3: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
+    // CHECK: tf_device.replicate
+    // CHECK-SAME: [%[[ARG_0]], %[[ARG_1]]] as %[[RI_0:[a-z0-9]*]]: tensor<128x10xf32>
+    // CHECK-SAME: [%[[ARG_2]], %[[ARG_3]]] as %[[RI_1:[a-z0-9]*]]: tensor<*xi32>
+    %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri_1: tensor<128x10xf32>, [%arg2, %arg3] as %ri_2: tensor<*xi32>) {n = 2 : i32} {
+      // CHECK:      %[[COMPILE:[a-z0-9]+]]:5 = "tf_device.launch"
+      // CHECK-NEXT:   "tf._TPUCompileMlir"
+      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      "tf_device.launch"
+      // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
+      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:5 = "tf_device.parallel_execute"
+      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_0_OUTPUT:[0-9]*]]:2 = "tf.TPUExecute"
+      // CHECK:          tf_device.return %[[EXECUTE_0_OUTPUT]]
+      // CHECK:        %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_1_OUTPUT:[0-9]*]] = "tf.TPUExecute"
+      // CHECK:          tf_device.return %[[EXECUTE_1_OUTPUT]]
+      // CHECK:        %[[LAUNCH_2_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_2_OUTPUT:[0-9]*]] = "tf.TPUExecute"(
+      // CHECK:          tf_device.return %[[EXECUTE_2_OUTPUT]]
+      // CHECK:        %[[LAUNCH_3_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_3_OUTPUT:[0-9]*]] = "tf.TPUExecute"(
+      // CHECK:          tf_device.return %[[EXECUTE_3_OUTPUT]]
+      // CHECK:     %[[CONST_CONCAT_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:     %[[CONCAT_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT_DIM]], %[[PARALLEL_EXECUTE_OUTPUT]]#0, %[[PARALLEL_EXECUTE_OUTPUT]]#2
+      // CHECK:     %[[CONST_CONCAT2_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:     %[[CONCAT2_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT2_DIM]], %[[PARALLEL_EXECUTE_OUTPUT]]#3, %[[PARALLEL_EXECUTE_OUTPUT]]#4
+      // CHECK:     %[[CONST_CONCAT3_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:     %[[CONCAT3_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT3_DIM]], %[[CONCAT_OUTPUT]], %[[CONCAT2_OUTPUT]]
+      %1, %2 = "tf_device.launch_func"(%ri_1, %ri_2) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 4, step_marker_location = "", padding_map = [""], topology = "\0A\04\02\02\01\02\10\01\18\08\22 \00\00\00\00\00\00\00\01\01\00\00\00\01\00\00\01\00\01\00\00\00\01\00\01\01\01\00\00\01\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00", "\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\03\12\12\10\0b\1a\02\02\02\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\02\02\22\04\00\01\02\03", "\08\01\1A\01\01\22\01\00"]} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
+      tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
+    }
+    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+  }
+  func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
+    %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
+    %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    return %4, %3 : tensor<*xi32>, tensor<*xi1>
+  }
+}
+
+// -----
+
 // Tests inputs device assignment order is well preserved for tiled input sharding.
 
 // The following OpSharding is used for TPU computation inputs in below test:
@@ -1732,3 +2032,88 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     return %4, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }
+
+// -----
+
+// Tests device assignment is well preserved for tile sharded outputs.
+
+// The following OpSharding is used for TPU computation outputs in below test:
+// output 0
+//  Proto debug string:
+//   type: OTHER
+//   tile_shape {
+//    element_type: F32
+//    dimensions: 2
+//    dimensions: 2
+//    layout {
+//     minor_to_major: 1
+//     minor_to_major: 0
+//     format: DENSE
+//    }
+//    is_dynamic_dimension: false
+//    is_dynamic_dimension: false
+//   }
+//   tile_assignment_dimensions: 2
+//   tile_assignment_dimensions: 2
+//   tile_assignment_devices: 3
+//   tile_assignment_devices: 2
+//   tile_assignment_devices: 1
+//   tile_assignment_devices: 0
+// Serialized string:
+//  "\08\03\12\12\10\0b\1a\02\02\02\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\02\02\22\04\03\02\01\00"
+//
+// output 1
+//  Proto debug string:
+//  type: MAXIMAL
+//  tile_assignment_dimensions: 1
+//  tile_assignment_devices: 0
+// Serialized string:
+//  "\08\01\1A\01\01\22\01\01"
+
+// -----
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"]} {
+  // CHECK-LABEL: func @device_order_preserved_for_tiled_output
+  func @device_order_preserved_for_tiled_output(%arg0: tensor<128x10xf32>, %arg1: tensor<128x10xf32>, %arg2: tensor<*xi32>, %arg3: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
+    // CHECK: tf_device.replicate
+    // CHECK-SAME: [%[[ARG_0]], %[[ARG_1]]] as %[[RI_0:[a-z0-9]*]]: tensor<128x10xf32>
+    // CHECK-SAME: [%[[ARG_2]], %[[ARG_3]]] as %[[RI_1:[a-z0-9]*]]: tensor<*xi32>
+    %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri_1: tensor<128x10xf32>, [%arg2, %arg3] as %ri_2: tensor<*xi32>) {n = 2 : i32} {
+      // CHECK:      %[[COMPILE:[a-z0-9]+]]:5 = "tf_device.launch"
+      // CHECK-NEXT:   "tf._TPUCompileMlir"
+      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      "tf_device.launch"
+      // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
+      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:5 = "tf_device.parallel_execute"
+      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_0_OUTPUT:[0-9]*]]:2 = "tf.TPUExecute"
+      // CHECK:          tf_device.return %[[EXECUTE_0_OUTPUT]]
+      // CHECK:        %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_1_OUTPUT:[0-9]*]] = "tf.TPUExecute"
+      // CHECK:          tf_device.return %[[EXECUTE_1_OUTPUT]]
+      // CHECK:        %[[LAUNCH_2_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_2_OUTPUT:[0-9]*]] = "tf.TPUExecute"(
+      // CHECK:          tf_device.return %[[EXECUTE_2_OUTPUT]]
+      // CHECK:        %[[LAUNCH_3_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_3_OUTPUT:[0-9]*]] = "tf.TPUExecute"(
+      // CHECK:          tf_device.return %[[EXECUTE_3_OUTPUT]]
+      // CHECK:     %[[CONST_CONCAT_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:     %[[CONCAT_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT_DIM]], %[[PARALLEL_EXECUTE_OUTPUT]]#4, %[[PARALLEL_EXECUTE_OUTPUT]]#3
+      // CHECK:     %[[CONST_CONCAT2_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:     %[[CONCAT2_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT2_DIM]], %[[PARALLEL_EXECUTE_OUTPUT]]#2, %[[PARALLEL_EXECUTE_OUTPUT]]#0
+      // CHECK:     %[[CONST_CONCAT3_DIM:[0-9]*]] = "tf.Const"()
+      // CHECK:     %[[CONCAT3_OUTPUT:[0-9]*]] = "tf.Concat"(%[[CONST_CONCAT3_DIM]], %[[CONCAT_OUTPUT]], %[[CONCAT2_OUTPUT]]
+      %1, %2 = "tf_device.launch_func"(%ri_1, %ri_2) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 4, step_marker_location = "", padding_map = [""], topology = "\0A\04\02\02\01\02\10\01\18\08\22 \00\00\00\00\00\00\00\01\01\00\00\00\01\00\00\01\00\01\00\00\00\01\00\01\01\01\00\00\01\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00", "\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\03\12\12\10\0b\1a\02\02\02\2a\06\0a\02\01\00\20\01\32\02\00\00\1a\02\02\02\22\04\03\02\01\00", "\08\01\1A\01\01\22\01\00"]} : (tensor<128x10xf32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>)
+      tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
+    }
+    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+  }
+  func @tpu0_func(%arg0: tensor<128x10xf32>, %arg1: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
+    %1, %2 = "tf.A"(%arg0) : (tensor<128x10xf32>) -> (tensor<*xi32>, tensor<*xi1>)
+    %4 = "tf.B"(%1, %arg1) : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>)
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    return %4, %3 : tensor<*xi32>, tensor<*xi1>
+  }
+}
+

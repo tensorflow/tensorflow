@@ -443,6 +443,25 @@ Shape HloSharding::TileShape(const Shape& shape) const {
   return result_shape;
 }
 
+Shape HloSharding::TileShape(const Shape& shape, int64 device) const {
+  if (IsTileMaximal()) {
+    return shape;
+  }
+
+  std::vector<int64> index = TileIndexForDevice(device);
+  Shape result_shape = shape;
+  for (int64 i = 0; i < index.size(); ++i) {
+    const int64 shape_dim = shape.dimensions(i);
+    int64 offset = std::min(
+        index[i] * CeilOfRatio(shape_dim, tile_assignment_.dim(i)), shape_dim);
+    int64 limit = std::min(
+        (index[i] + 1) * CeilOfRatio(shape_dim, tile_assignment_.dim(i)),
+        shape_dim);
+    result_shape.set_dimensions(i, limit - offset);
+  }
+  return result_shape;
+}
+
 HloSharding HloSharding::GetSubSharding(const Shape& shape,
                                         const ShapeIndex& index) const {
   CHECK(IsTuple());

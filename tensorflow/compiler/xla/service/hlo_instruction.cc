@@ -3525,17 +3525,6 @@ bool HloPtrComparator::operator()(const HloInstruction* const& lhs,
   return lhs->unique_id() < rhs->unique_id();
 }
 
-bool HloInstruction::CouldBeBitcast() const {
-  switch (opcode_) {
-    case HloOpcode::kTranspose:
-      return true;
-    case HloOpcode::kReshape:
-      return std::get<0>(ReshapeMerelyInsertsOrDeletes1SizedDimensions());
-    default:
-      return false;
-  }
-}
-
 Status HloInstruction::GetBackendConfigInternal(
     tensorflow::protobuf::Message* proto) const {
   proto->Clear();

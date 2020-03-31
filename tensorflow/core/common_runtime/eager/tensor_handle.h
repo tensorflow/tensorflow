@@ -77,27 +77,27 @@ class TensorHandle : public core::RefCounted {
 
  public:
   // TensorHandle with no assigned device
-  static Status CreateLocalHandle(const tensorflow::Tensor& t,
-                                  TensorHandle** h);
-  static Status CreateLocalHandle(tensorflow::Tensor&& t, Device* d,
-                                  Device* op_device, EagerContext* ctx,
-                                  TensorHandle** h);
-  static Status CreateLocalHandle(tensorflow::Tensor&& t, Device* d,
-                                  Device* op_device, Device* resource_device,
-                                  EagerContext* ctx, TensorHandle** h);
-  static Status CreateLocalHandle(tensorflow::Tensor&& t, CustomDevice* d,
-                                  EagerContext* ctx, TensorHandle** h);
-  static Status CreateEmptyLocalHandle(Device* d, Device* op_device,
-                                       Device* resource_device, DataType dtype,
-                                       EagerContext* ctx, TensorHandle** h);
+  static TensorHandle* CreateLocalHandle(const tensorflow::Tensor& t);
+  static TensorHandle* CreateLocalHandle(tensorflow::Tensor&& t, Device* d,
+                                         Device* op_device, EagerContext* ctx);
+  static TensorHandle* CreateLocalHandle(tensorflow::Tensor&& t, Device* d,
+                                         Device* op_device,
+                                         Device* resource_device,
+                                         EagerContext* ctx);
+  static TensorHandle* CreateLocalHandle(tensorflow::Tensor&& t,
+                                         CustomDevice* d, EagerContext* ctx);
+  static TensorHandle* CreateEmptyLocalHandle(Device* d, Device* op_device,
+                                              Device* resource_device,
+                                              DataType dtype,
+                                              EagerContext* ctx);
 #if !defined(IS_MOBILE_PLATFORM)
-  static Status CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
-                                           const string& remote_task,
-                                           DataType dtype, Device* d,
-                                           EagerContext* ctx, TensorHandle** h);
-  static Status CreateLazyRemoteHandle(int64 op_id, int32 output_num,
-                                       DataType dtype, Device* d,
-                                       EagerContext* ctx, TensorHandle** h);
+  static TensorHandle* CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
+                                                  const string& remote_task,
+                                                  DataType dtype, Device* d,
+                                                  EagerContext* ctx);
+  static TensorHandle* CreateLazyRemoteHandle(int64 op_id, int32 output_num,
+                                              DataType dtype, Device* d,
+                                              EagerContext* ctx);
 #endif  // IS_MOBILE_PLATFORM
 
   ~TensorHandle() override { DVLOG(3) << "Deleting TensorHandle " << this; }

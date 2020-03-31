@@ -667,10 +667,11 @@ static Device* LookupDevice(const PyLocalClient& client, int device_id) {
 
 PyLocalExecutable::PyLocalExecutable(
     std::vector<std::unique_ptr<LocalExecutable>> executables,
-    DeviceAssignment device_assignment, PyLocalClient* client)
+    bool tuple_arguments, DeviceAssignment device_assignment,
+    PyLocalClient* client)
     : client_(client),
-      device_assignment_(
-          std::make_shared<DeviceAssignment>(device_assignment)) {
+      device_assignment_(std::make_shared<DeviceAssignment>(device_assignment)),
+      tuple_arguments_(tuple_arguments) {
   executables_.reserve(executables.size());
   for (auto& executable : executables) {
     executables_.emplace_back(std::move(executable));
@@ -727,7 +728,7 @@ PyLocalExecutable::ExecuteHelper(
 
   std::unique_ptr<PyLocalBuffer> tuple_buffer;
   std::vector<PyLocalBuffer*> tupled_arguments;
-  if (options.tuple_arguments) {
+  if (options.tuple_arguments || tuple_arguments_) {
     TF_ASSIGN_OR_RETURN(tuple_buffer, PyLocalBuffer::MakeTuple(
                                           argument_handles, client_, device));
     tupled_arguments = {tuple_buffer.get()};
@@ -1037,7 +1038,8 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
                                 build_options));
 
   return absl::make_unique<PyLocalExecutable>(
-      std::move(local_executables), build_options.device_assignment(), client);
+      std::move(local_executables), options.tuple_arguments,
+      build_options.device_assignment(), client);
 }
 
 }  // namespace xla

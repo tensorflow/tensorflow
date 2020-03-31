@@ -6,6 +6,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "cc_header_only_library",
     "tf_cc_test",
 )
 
@@ -247,6 +248,16 @@ cc_library(
     ],
 )
 
+# This needs to be cc_header_only_library - tf_pybind_cc_library_wrapper
+# does not pull in the server_lib.h header.
+cc_header_only_library(
+    name = "server_lib_headers_lib",
+    features = ["-parse_headers"],
+    deps = [
+        ":server_lib",
+    ],
+)
+
 cc_library(
     name = "server_lib",
     srcs = ["server_lib.cc"],
@@ -264,6 +275,7 @@ cc_library(
 tf_cc_test(
     name = "data_service_test",
     srcs = ["data_service_test.cc"],
+    tags = ["no_windows"],
     deps = [
         ":compression_utils",
         ":grpc_master_impl",

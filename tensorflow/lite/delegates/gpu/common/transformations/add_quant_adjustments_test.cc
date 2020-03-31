@@ -141,13 +141,15 @@ TEST(AddQuantAdjustments, GeneralCase) {
   EXPECT_EQ(4, graph.nodes().size());
   EXPECT_EQ(5, graph.values().size());
   EXPECT_EQ(ToString(OperationType::ADD), graph.nodes()[0]->operation.type);
+  // The new node should be inserted at index 1, just after add1.
   EXPECT_EQ(ToString(OperationType::QUANTIZE_AND_DEQUANTIZE),
             graph.nodes()[1]->operation.type);
-  EXPECT_EQ(ToString(OperationType::ADD), graph.nodes()[2]->operation.type);
   EXPECT_EQ(ToString(OperationType::QUANTIZE_AND_DEQUANTIZE),
-            graph.nodes()[3]->operation.type);
+            graph.nodes()[2]->operation.type);
+  EXPECT_EQ(quant_node->id, graph.nodes()[2]->id);
+  EXPECT_EQ(ToString(OperationType::ADD), graph.nodes()[3]->operation.type);
   auto new_quant_attr = absl::any_cast<QuantizeAndDequantizeAttributes>(
-      graph.nodes()[3]->operation.attributes);
+      graph.nodes()[1]->operation.attributes);
   EXPECT_EQ(0.0, new_quant_attr.min);
   EXPECT_EQ(2.0, new_quant_attr.max);
   const auto& new_quant_consumers = graph.FindConsumers(graph.values()[4]->id);

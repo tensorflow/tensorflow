@@ -42,19 +42,20 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Analysis/Verifier.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Identifier.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/Analysis/Verifier.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
@@ -110,8 +111,17 @@ using stream_executor::port::StatusOr;
 
 namespace {
 
-const char* disable_call_shape_inference_attribute_name =
-    "_disable_call_shape_inference";
+bool IsDisableCallShapeInferenceAttribute(const AttrValue& attr_value,
+                                          llvm::StringRef attr_name) {
+  return attr_name.compare("_disable_call_shape_inference") == 0 &&
+         attr_value.value_case() == AttrValue::kB;
+}
+
+bool IsOutputShapesAttribute(const AttrValue& attr_value,
+                             llvm::StringRef attr_name) {
+  return attr_name.compare("_output_shapes") == 0 &&
+         attr_value.value_case() == AttrValue::kList;
+}
 
 // This class is used to generate new MLIR function name strings that are both
 // unique in the TF function library `flib_` and unique among the name strings
@@ -570,6 +580,13 @@ StatusOr<std::pair<Node*, bool>> ImporterBase::CreatePlaceholderNodeForFeed(
                                           edge->dst_input()));
   }
 
+  // TODO(lyandy): Preserve control dependencies properly by not forwarding
+  // control dependencies to data outputs and not removing single output nodes.
+  // When a data output is replaced as a feed, unless there is another non feed
+  // data output or an explicit control output used by the same node, transitive
+  // control dependencies are not to be executed. For single output nodes,
+  // Placeholders can be converted to a NoOp if there are no uses, and
+  // PlaceholderWithDefault can be converted to an Identity.
   for (const auto* edge : control_edges) {
     graph_->AddControlEdge(placeholder_node, edge->dst());
     graph_->RemoveControlEdge(edge);
@@ -616,6 +633,9 @@ Status ImporterBase::GetInputOutputNodes(
     }
   }
 
+  for (const auto& control_output : specs_.control_outputs)
+    TF_RETURN_IF_ERROR(add_node(control_output));
+
   return Status::OK();
 }
 
@@ -658,7 +678,7 @@ Status ImporterBase::AddNodesToShapeRefiner() {
           DataType dtype = array_info.imported_dtype;
           // Uses the existing output type if it isn't specified by the user.
           if (dtype == DT_INVALID) {
-            dtype = node->output_type(0);
+            dtype = node->output_type(index);
           }
 
           TF_ASSIGN_OR_RETURN(
@@ -1441,9 +1461,7 @@ mlir::Operation* ImporterBase::createOperation(
     for (const auto& name_and_value : node.attrs()) {
       const auto& attr_name = name_and_value.first;
       const AttrValue& attr_value = name_and_value.second;
-      if (strcmp(attr_name.c_str(),
-                 disable_call_shape_inference_attribute_name) == 0 &&
-          attr_value.value_case() == AttrValue::kB) {
+      if (IsDisableCallShapeInferenceAttribute(attr_value, attr_name)) {
         disable_call_shape_inference = attr_value.b();
       }
     }
@@ -1586,15 +1604,25 @@ Status ImporterBase::ConvertNode(const Node& node) {
   using FuncPairType = std::pair<const std::string*, const AttrValue*>;
   std::vector<FuncPairType> funcs;
   result.attributes.reserve(node.attrs().size() + 2);
+  auto abstract_op = result.name.getAbstractOperation();
+  auto derived_op =
+      abstract_op
+          ? abstract_op->getInterface<mlir::DerivedAttributeOpInterface>()
+          : nullptr;
   for (const auto& name_and_value : node.attrs()) {
     const auto& attr_name = name_and_value.first;
+    // Skip adding derived attributes to the generated op.
+    if (derived_op && derived_op->isDerivedAttribute(attr_name)) continue;
     const AttrValue& attr_value = name_and_value.second;
-    // LegacyCall can only represent _diable_call_shape_inference attribute.
-    // If a call has other attributes, can't convert it to LegacyCall.
+
+    // Remove _output_shapes attribute that will be added by the exporter.
+    if (IsOutputShapesAttribute(attr_value, attr_name)) continue;
+
+    // We represent the _diable_call_shape_inference attribute and remove
+    // the _output_shapes attribute for LegacyCall. If a call has other
+    // attributes, we can't convert it to LegacyCall.
     if (convert_to_legacy_call &&
-        (strcmp(attr_name.c_str(),
-                disable_call_shape_inference_attribute_name) ||
-         attr_value.value_case() != AttrValue::kB)) {
+        !IsDisableCallShapeInferenceAttribute(attr_value, attr_name)) {
       convert_to_legacy_call = false;
     }
     if (attr_value.value_case() == AttrValue::kFunc) {
@@ -1787,10 +1815,10 @@ class GraphDefImporter : public ImporterBase {
       absl::InlinedVector<std::pair<int64_t, int64_t>, 4>*
           resource_arg_unique_ids);
 
-  // Finds the function's control ret nodes based on supplied node names in
-  // `control_outputs`. If `control_outputs` are not unique or a control ret
-  // node is missing, an error will be returned.
-  Status GetControlRetsFromFunctionGraph(
+  // Finds the graph's target nodes/function's control ret nodes based on
+  // supplied node names in `control_outputs`. If `control_outputs` are not
+  // unique or a control ret node is missing, an error will be returned.
+  Status GetControlRetsFromGraph(
       llvm::ArrayRef<std::string> control_outputs,
       absl::InlinedVector<Node*, 4>* control_ret_nodes);
 };
@@ -1827,8 +1855,8 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
         importer.GetArgsRetsAndTypesFromFunctionGraph(
             context, &arg_nodes, &ret_nodes, &resource_arg_unique_ids));
 
-    TF_RETURN_IF_ERROR(importer.GetControlRetsFromFunctionGraph(
-        specs.control_outputs, &control_ret_nodes));
+    TF_RETURN_IF_ERROR(importer.GetControlRetsFromGraph(specs.control_outputs,
+                                                        &control_ret_nodes));
 
     if (!arg_nodes.empty() || !ret_nodes.empty() ||
         !control_ret_nodes.empty()) {
@@ -1858,10 +1886,14 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
     TF_ASSIGN_OR_RETURN(func_type, importer.InferMainFunctionType(
                                        specs, context, &arg_nodes, &ret_nodes));
 
+    TF_RETURN_IF_ERROR(importer.GetControlRetsFromGraph(specs.control_outputs,
+                                                        &control_ret_nodes));
+
     // TODO(prakalps): Refactor to keep tf.entry_function attribute encoding and
     // decoding in a centralized place.
     // Record the input and output mapping.
-    if (!specs.inputs.empty() || !specs.outputs.empty()) {
+    if (!specs.inputs.empty() || !specs.outputs.empty() ||
+        !specs.control_outputs.empty()) {
       mlir::Builder b(context);
       std::string s;
       llvm::raw_string_ostream ss(s);
@@ -1873,9 +1905,14 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
       s.clear();
       mlir::interleave(specs.outputs, ss, ",");
       auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
+      s.clear();
+      mlir::interleave(specs.control_outputs, ss, ",");
+      auto control_outputs =
+          b.getNamedAttr("control_outputs", b.getStringAttr(ss.str()));
 
-      attrs.push_back(b.getNamedAttr("tf.entry_function",
-                                     b.getDictionaryAttr({inputs, outputs})));
+      attrs.push_back(b.getNamedAttr(
+          "tf.entry_function",
+          b.getDictionaryAttr({inputs, outputs, control_outputs})));
     }
   }
 
@@ -2064,7 +2101,7 @@ GraphDefImporter::GetArgsRetsAndTypesFromFunctionGraph(
   return builder.getFunctionType(arg_types, ret_types);
 }
 
-Status GraphDefImporter::GetControlRetsFromFunctionGraph(
+Status GraphDefImporter::GetControlRetsFromGraph(
     llvm::ArrayRef<std::string> control_outputs,
     absl::InlinedVector<Node*, 4>* control_ret_nodes) {
   if (control_outputs.empty()) return Status::OK();

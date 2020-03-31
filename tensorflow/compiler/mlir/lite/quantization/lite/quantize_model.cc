@@ -17,14 +17,14 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
-#include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
@@ -34,11 +34,11 @@ limitations under the License.
 namespace mlir {
 namespace lite {
 
-// TODO(fengliuai): check the result for `allow_float` flag.
+// TODO(fengliuai): check the result for `fully_quantize` flag.
 TfLiteStatus QuantizeModel(
     const tflite::ModelT& input_model, const tflite::TensorType& input_type,
     const tflite::TensorType& output_type,
-    const std::unordered_set<std::string>& operator_names, bool allow_float,
+    const std::unordered_set<std::string>& operator_names, bool fully_quantize,
     flatbuffers::FlatBufferBuilder* builder,
     tflite::ErrorReporter* error_reporter) {
   // TODO(b/142502494): remove this restriction by improving the `emit_adaptor`

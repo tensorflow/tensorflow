@@ -180,10 +180,16 @@ void BuildFusableChains(const std::vector<ValueId>& input_ids,
         bool fused = false;
         for (auto& chain : *chains) {
           // We can fuse only single output for now.
-          if (Contains(task_descriptor->input_buffers,
-                       chain.back()->output_buffer.id) &&
-              CanFuseOperations(chain.back(), task_descriptor, output_ids,
-                                *descriptors, chains)) {
+          bool can_link = false;
+          if (task_descriptor->is_associative_op) {
+            can_link = Contains(task_descriptor->input_buffers,
+                                chain.back()->output_buffer.id);
+          } else {
+            can_link = task_descriptor->input_buffers[0].id ==
+                       chain.back()->output_buffer.id;
+          }
+          if (can_link && CanFuseOperations(chain.back(), task_descriptor,
+                                            output_ids, *descriptors, chains)) {
             chain.push_back(task_descriptor);
             fused = true;
             break;
@@ -558,10 +564,10 @@ ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
 
 }  // namespace
 
-Status ValidateOptimizeModel(const std::vector<ValueId>& input_buffers,
-                             const std::vector<ValueId>& output_buffers,
-                             const CompiledModel& input_vector,
-                             CompiledModel* output) {
+absl::Status ValidateOptimizeModel(const std::vector<ValueId>& input_buffers,
+                                   const std::vector<ValueId>& output_buffers,
+                                   const CompiledModel& input_vector,
+                                   CompiledModel* output) {
   std::list<ComputeTaskDescriptorPtr> input;
   input.insert(input.end(), input_vector.begin(), input_vector.end());
   OptimizationInfo info;
@@ -600,10 +606,10 @@ Status ValidateOptimizeModel(const std::vector<ValueId>& input_buffers,
         std::to_string(info.unused_input_buffer_ids.size()) +
         "\nMissing output buffers " +
         std::to_string(info.missing_output_buffer_ids.size());
-    return InternalError(message);
+    return absl::InternalError(message);
   }
   for (const auto& chain : sorted_chains) output->push_back(FuseChain(chain));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace metal

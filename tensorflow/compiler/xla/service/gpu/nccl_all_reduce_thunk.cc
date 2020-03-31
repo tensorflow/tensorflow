@@ -173,6 +173,7 @@ absl::optional<ncclDataType_t> DatatypeToNccl(PrimitiveType element_type) {
   switch (element_type) {
     case S8:
       return ncclInt8;
+    case PRED:
     case U8:
       return ncclUint8;
     case S32:

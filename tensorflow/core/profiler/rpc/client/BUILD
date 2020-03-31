@@ -26,8 +26,8 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],

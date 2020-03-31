@@ -99,7 +99,7 @@ python generate_validation_labels.py \
 
 ```
 bazel build -c opt \
-  --config=android_arm \
+  --config=android_arm64 \
   //tensorflow/lite/tools/accuracy/ilsvrc:imagenet_accuracy_eval
 ```
 
