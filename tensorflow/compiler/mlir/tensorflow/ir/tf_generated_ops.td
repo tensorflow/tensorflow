@@ -2648,7 +2648,7 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
   TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<3>;
 }
 
-def TF_FusedBatchNormV3Op : TF_Op<"FusedBatchNormV3", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
+def TF_FusedBatchNormV3Op : TF_Op<"FusedBatchNormV3", [NoSideEffect, TF_FoldOperandsTransposeInterface, TF_LayoutSensitiveInterface]> {
   let summary = "Batch normalization.";
 
   let description = [{
@@ -2685,6 +2685,10 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
     SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
     SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
     LogicalResult FoldOperandsPermutation(ArrayRef<int64_t> permutation);
+
+    // TF_LayoutSensitiveInterface:
+    StringRef GetOptimalLayout(const RuntimeDevices& devices);
+    LogicalResult UpdateDataFormat(StringRef data_format);
   }];
 }
 
