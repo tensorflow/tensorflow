@@ -135,7 +135,7 @@ mlir::AffineForOp TileLoop(mlir::AffineForOp loop, int64_t size,
   return inner_loop;
 }
 
-void SinkPerfectlyNestedLoops(absl::Span<const mlir::AffineForOp> loops,
+void SinkPerfectlyNestedLoops(llvm::MutableArrayRef<mlir::AffineForOp> loops,
                               int rotate_amount) {
   CHECK_GE(rotate_amount, 0);
   std::vector<unsigned> permutation(loops.size());
@@ -143,9 +143,7 @@ void SinkPerfectlyNestedLoops(absl::Span<const mlir::AffineForOp> loops,
   std::rotate(permutation.begin(),
               permutation.begin() + loops.size() - rotate_amount,
               permutation.end());
-  mlir::permuteLoops(
-      llvm::ArrayRef<mlir::AffineForOp>(loops.begin(), loops.end()),
-      permutation);
+  mlir::permuteLoops(loops, permutation);
 }
 
 }  // namespace mlir_gpu
