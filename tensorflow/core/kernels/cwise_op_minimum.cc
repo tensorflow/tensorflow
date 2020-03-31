@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_common.h"
 
 namespace tensorflow {
-REGISTER6(BinaryOp, CPU, "Minimum", functor::minimum, float, Eigen::half,
-          bfloat16, double, int32, int64);
+REGISTER7(BinaryOp, CPU, "Minimum", functor::minimum, float, Eigen::half,
+          bfloat16, double, int16, int32, int64);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER4(BinaryOp, GPU, "Minimum", functor::minimum, float, Eigen::half,
           double, int64);
