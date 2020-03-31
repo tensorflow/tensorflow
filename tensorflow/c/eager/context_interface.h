@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_interface.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
 
 namespace tensorflow {

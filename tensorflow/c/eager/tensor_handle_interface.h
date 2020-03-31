@@ -15,11 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_TENSOR_HANDLE_INTERFACE_H_
 #define TENSORFLOW_C_EAGER_TENSOR_HANDLE_INTERFACE_H_
 
-#include "tensorflow/c/c_api.h"
-#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/framework/tensor_interface.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -52,9 +52,7 @@ class AbstractTensorHandleInterface {
   // Returns the device where the tensor was placed.
   virtual const char* BackingDeviceName(Status* status) const = 0;
   // Returns a tensor for the handle. If tensor is remote, it will be copied.
-  virtual TF_Tensor* Resolve(Status* status) = 0;
-  // Returns debug information about the tensor.
-  virtual TFE_TensorDebugInfo* TensorDebugInfo(Status* status) = 0;
+  virtual std::unique_ptr<AbstractTensorInterface> Resolve(Status* status) = 0;
 
   // Return a copy of the handle.
   virtual AbstractTensorHandleInterface* Copy() = 0;
@@ -84,8 +82,7 @@ class TensorHandleInterface : public AbstractTensorHandleInterface {
 
   const char* DeviceName(Status* status) const override;
   const char* BackingDeviceName(Status* status) const override;
-  TF_Tensor* Resolve(Status* status) override;
-  TFE_TensorDebugInfo* TensorDebugInfo(Status* status) override;
+  std::unique_ptr<AbstractTensorInterface> Resolve(Status* status) override;
 
   AbstractTensorHandleInterface* Copy() override;
 

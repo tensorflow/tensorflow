@@ -141,7 +141,10 @@ class Calibrator(object):
     Args:
       dataset_gen: A generator that generates calibration samples.
     """
-    self._calibrator.Prepare()
-    for calibration_sample in dataset_gen():
-      self._calibrator.FeedTensor(calibration_sample)
-    return self._calibrator.calibrate()
+    initialized = False
+    for sample in dataset_gen():
+      if not initialized:
+        initialized = True
+        self._calibrator.Prepare([list(s.shape) for s in sample])
+      self._calibrator.FeedTensor(sample)
+    return self._calibrator.Calibrate()

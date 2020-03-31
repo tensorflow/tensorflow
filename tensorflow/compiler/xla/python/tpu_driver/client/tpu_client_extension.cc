@@ -167,7 +167,8 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                      const ExecutableBuildOptions* build_options,
                      std::shared_ptr<PyTpuClient> client,
                      absl::optional<std::vector<std::vector<Device*>>>
-                         device_assignment)
+                         device_assignment,
+                     bool tuple_arguments)
                       -> StatusOr<std::unique_ptr<PyTpuExecutable>> {
                     py::gil_scoped_release gil_release;
                     absl::optional<DeviceAssignment> xla_device_assignment;
@@ -178,7 +179,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                     }
                     return PyTpuExecutable::Compile(
                         computation, argument_layouts, build_options, client,
-                        std::move(xla_device_assignment));
+                        std::move(xla_device_assignment), tuple_arguments);
                   })
       .def("local_logical_device_ids",
            &PyTpuExecutable::local_logical_device_ids)
@@ -188,10 +189,10 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("Delete", &PyTpuExecutable::Delete)
       .def("Execute", &PyTpuExecutable::Execute,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"),
-           py::arg("tuple_arguments"))
+           py::arg("tuple_arguments") = false)
       .def("ExecuteOnLocalDevices", &PyTpuExecutable::ExecuteOnLocalDevices,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"),
-           py::arg("tuple_arguments"));
+           py::arg("tuple_arguments") = false);
 
   py::class_<TpuDevice, Device, std::shared_ptr<TpuDevice>>(m, "TpuDevice")
       .def_property_readonly("coords", &TpuDevice::coords)

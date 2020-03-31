@@ -286,7 +286,8 @@ void* TFE_HandleToDLPack(TFE_TensorHandle* h, TF_Status* status) {
   return static_cast<void*>(dlm_tensor);
 }
 
-TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status) {
+TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status,
+                                       TFE_Context* ctx) {
   DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(dlm);
   DLTensor* dl_tensor = &dlmt->dl_tensor;
   absl::optional<std::string> device_name =
@@ -319,15 +320,9 @@ TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status) {
     return nullptr;
   }
 
-  TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_Context* ctx = TFE_NewContext(opts, status);
-  TFE_DeleteContextOptions(opts);
-
   TFE_TensorHandle* handle = TFE_NewTensorHandleFromDeviceMemory(
       ctx, device_name.value().c_str(), dtype, dims, num_dims, data,
       total_bytes, &DeallocatorWrapperFunc, &dlmt, status);
-
-  TFE_DeleteContext(ctx);
 
   return handle;
 }

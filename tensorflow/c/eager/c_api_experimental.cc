@@ -526,7 +526,11 @@ void TFE_DeleteCancellationManager(
 void TFE_OpSetCancellationManager(TFE_Op* op,
                                   TFE_CancellationManager* cancellation_manager,
                                   TF_Status* status) {
-  status->status = op->operation->SetCancellationManager(cancellation_manager);
+  tensorflow::EagerOperation* operation =
+      tensorflow::OperationFromInterface(op->operation);
+  operation->SetCancellationManager(
+      &cancellation_manager->cancellation_manager);
+  status->status = tensorflow::Status::OK();
 }
 
 TFE_Executor* TFE_NewExecutor(bool is_async) {

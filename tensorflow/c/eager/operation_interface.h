@@ -19,9 +19,12 @@ limitations under the License.
 
 #include "absl/container/fixed_array.h"
 #include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
+#include "tensorflow/core/framework/tensor_interface.h"
+#include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
@@ -60,7 +63,9 @@ class AbstractOperationInterface {
       const std::unique_ptr<AbstractOperationInterface>& value) = 0;
   virtual Status SetAttrFunctionName(const char* attr_name, const char* value,
                                      size_t length) = 0;
-  virtual Status SetAttrTensor(const char* attr_name, TF_Tensor* tensor) = 0;
+  virtual Status SetAttrTensor(
+      const char* attr_name,
+      std::unique_ptr<AbstractTensorInterface> tensor) = 0;
   virtual Status SetAttrStringList(const char* attr_name,
                                    const void* const* values,
                                    const size_t* lengths, int num_values) = 0;
@@ -82,14 +87,7 @@ class AbstractOperationInterface {
   virtual Status OutputLength(const char* output_name, int* length) = 0;
 
   // Experimental
-  virtual Status SetUseXla(bool enable) {
-    return errors::Unimplemented("SetUseXla not implemented");
-  }
-
-  virtual Status SetCancellationManager(
-      TFE_CancellationManager* cancellation_manager) {
-    return errors::Unimplemented("SetCancellationManager not implemented");
-  }
+  virtual Status SetUseXla(bool enable) = 0;
 };
 
 class OpDef;
@@ -133,7 +131,9 @@ class OperationInterface : public AbstractOperationInterface {
       const std::unique_ptr<AbstractOperationInterface>& value) override;
   Status SetAttrFunctionName(const char* attr_name, const char* data,
                              size_t length) override;
-  Status SetAttrTensor(const char* attr_name, TF_Tensor* tensor) override;
+  Status SetAttrTensor(
+      const char* attr_name,
+      std::unique_ptr<AbstractTensorInterface> tensor) override;
   Status SetAttrStringList(const char* attr_name, const void* const* values,
                            const size_t* lengths, int num_values) override;
   Status SetAttrFloatList(const char* attr_name, const float* values,
@@ -153,8 +153,6 @@ class OperationInterface : public AbstractOperationInterface {
   Status OutputLength(const char* output_name, int* length) override;
 
   Status SetUseXla(bool enable) override;
-  Status SetCancellationManager(
-      TFE_CancellationManager* cancellation_manager) override;
 
   // TODO(gjn): Remove once TFE_InferShapes is removed
   const AttrBuilder& Attrs() const { return operation_.Attrs(); }
@@ -162,10 +160,17 @@ class OperationInterface : public AbstractOperationInterface {
 
   const TensorHandle* GetInput(int i) const { return operation_.Inputs()[i]; }
 
+  EagerOperation* Operation() { return &operation_; }
+
  private:
   const tensorflow::OpDef* GetOpDef(Status* status);
   EagerOperation operation_;
 };
+
+inline EagerOperation* OperationFromInterface(
+    const std::unique_ptr<AbstractOperationInterface>& operation) {
+  return down_cast<OperationInterface*>(operation.get())->Operation();
+}
 
 }  // namespace tensorflow
 

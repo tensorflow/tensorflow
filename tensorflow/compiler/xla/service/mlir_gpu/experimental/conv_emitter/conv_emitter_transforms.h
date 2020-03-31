@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_TRANSFORMS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_EXPERIMENTAL_CONV_EMITTER_CONV_EMITTER_TRANSFORMS_H_
 
-#include "absl/base/integral_types.h"
 #include "absl/types/span.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace mlir_gpu {
@@ -93,7 +93,7 @@ mlir::AffineForOp TileLoop(mlir::AffineForOp loop, int64_t size,
 
 // Sinks a segment of perfectly nested loops to the bottom. It implements this
 // by rotating the loop nest by rotate_amount.
-void SinkPerfectlyNestedLoops(absl::Span<const mlir::AffineForOp> loops,
+void SinkPerfectlyNestedLoops(llvm::MutableArrayRef<mlir::AffineForOp> loops,
                               int rotate_amount);
 
 }  // namespace mlir_gpu

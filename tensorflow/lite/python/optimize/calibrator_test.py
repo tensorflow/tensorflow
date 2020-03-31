@@ -147,6 +147,19 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       quantizer.calibrate_and_quantize(input_gen, constants.FLOAT,
                                        constants.FLOAT, False)
 
+  def test_calibration(self):
+    model_path = resource_loader.get_path_to_datafile(
+        'test_data/mobilenet_like_model.bin')
+    float_model = open(model_path, 'rb').read()
+    quantizer = _calibrator.Calibrator(float_model)
+
+    # Input generator for the model.
+    def input_gen():
+      for _ in range(10):
+        yield [np.ones(shape=(1, 5, 5, 3), dtype=np.float32)]
+
+    quantized_model = quantizer.calibrate(input_gen)
+    self.assertIsNotNone(quantized_model)
 
 if __name__ == '__main__':
   test.main()
