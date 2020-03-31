@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv_3x3.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/depthwise_conv.h"
 
 #include <vector>
 
@@ -31,19 +31,18 @@ namespace gpu {
 namespace cl {
 namespace {
 
-TEST_F(OpenCLOperationTest, DepthWiseConv3x3SimpleWeights) {
+TEST_F(OpenCLOperationTest, DepthWiseConvSimpleWeights) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 2, 2, 2);
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
 
   DepthwiseConvolution2DAttributes attr;
-  attr.padding.prepended = HW(1, 1);
-  attr.padding.appended = HW(1, 1);
+  attr.padding.prepended = HW(1, 0);
+  attr.padding.appended = HW(1, 0);
   attr.strides = HW(1, 1);
   attr.dilations = HW(1, 1);
-  attr.weights.shape = OHWI(1, 3, 3, 2);
-  attr.weights.data = {0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
-                       1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f};
+  attr.weights.shape = OHWI(1, 3, 1, 2);
+  attr.weights.data = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
   attr.bias.shape = Linear(2);
   attr.bias.data = {0.0f, 0.0f};
 
@@ -56,31 +55,30 @@ TEST_F(OpenCLOperationTest, DepthWiseConv3x3SimpleWeights) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      DepthWiseConv3x3 operation;
-      ASSERT_OK(
-          CreateDepthWiseConv3x3(creation_context_, op_def, attr, &operation));
+      DepthWiseConvolution operation;
+      ASSERT_OK(CreateDepthWiseConvolution(creation_context_, op_def, attr,
+                                           &operation));
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 2, 2, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
-                  Pointwise(FloatNear(eps), {6.0f, 16.0f, 8.0f, 16.0f, 10.0f,
-                                             16.0f, 12.0f, 16.0f}));
+                  Pointwise(FloatNear(eps), {4.0f, 6.0f, 8.0f, 10.0f, 4.0f,
+                                             6.0f, 8.0f, 10.0f}));
     }
   }
 }
 
-TEST_F(OpenCLOperationTest, DepthWiseConv3x3) {
+TEST_F(OpenCLOperationTest, DepthWiseConvNoMultiplier) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 2, 2, 2);
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
 
   DepthwiseConvolution2DAttributes attr;
-  attr.padding.prepended = HW(1, 1);
-  attr.padding.appended = HW(1, 1);
+  attr.padding.prepended = HW(1, 0);
+  attr.padding.appended = HW(1, 0);
   attr.strides = HW(1, 1);
   attr.dilations = HW(1, 1);
-  attr.weights.shape = OHWI(1, 3, 3, 2);
-  attr.weights.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 0.0f, 1.0f, 2.0f,
-                       3.0f, 4.0f, 5.0f, 0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+  attr.weights.shape = OHWI(1, 3, 1, 2);
+  attr.weights.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
   attr.bias.shape = Linear(2);
   attr.bias.data = {0.5f, -0.5f};
 
@@ -93,14 +91,53 @@ TEST_F(OpenCLOperationTest, DepthWiseConv3x3) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      DepthWiseConv3x3 operation;
-      ASSERT_OK(
-          CreateDepthWiseConv3x3(creation_context_, op_def, attr, &operation));
+      DepthWiseConvolution operation;
+      ASSERT_OK(CreateDepthWiseConvolution(creation_context_, op_def, attr,
+                                           &operation));
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 2, 2, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
-                  Pointwise(FloatNear(eps), {40.5f, 67.5f, 16.5f, 35.5f, 40.5f,
-                                             67.5f, 16.5f, 35.5f}));
+                  Pointwise(FloatNear(eps), {16.5f, 27.5f, 28.5f, 43.5f, 8.5f,
+                                             15.5f, 12.5f, 23.5f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, DepthWiseConvMultiplier2) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(1, 2, 2, 2);
+  src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
+
+  DepthwiseConvolution2DAttributes attr;
+  attr.padding.prepended = HW(1, 0);
+  attr.padding.appended = HW(1, 0);
+  attr.strides = HW(1, 1);
+  attr.dilations = HW(1, 1);
+  attr.weights.shape = OHWI(2, 3, 1, 2);
+  attr.weights.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f,  5.0f,
+                       6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f};
+  attr.bias.shape = Linear(4);
+  attr.bias.data = {0.5f, -0.5f, 1.0f, -1.0f};
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
+      OperationDef op_def;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
+      TensorFloat32 dst_tensor;
+      DepthWiseConvolution operation;
+      ASSERT_OK(CreateDepthWiseConvolution(creation_context_, op_def, attr,
+                                           &operation));
+      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
+                                    BHWC(1, 2, 2, 4), &dst_tensor));
+      EXPECT_THAT(
+          dst_tensor.data,
+          Pointwise(FloatNear(eps),
+                    {16.5f, 39.5f, 29.0f, 63.0f, 28.5f, 75.5f, 45.0f, 103.0f,
+                     8.5f, 31.5f, 17.0f, 51.0f, 12.5f, 59.5f, 25.0f, 83.0f}));
     }
   }
 }
