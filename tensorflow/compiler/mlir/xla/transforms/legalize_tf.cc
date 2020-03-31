@@ -2132,13 +2132,23 @@ class ConvertLinSpaceOp : public OpRewritePattern<TF::LinSpaceOp> {
       return failure();
     }
 
+    DenseIntElementsAttr num_attr;
+    if (!matchPattern(op.num(), m_Constant(&num_attr))) {
+      return rewriter.notifyMatchFailure(op, "Num must be a constant scalar");
+    }
+
+    if (num_attr.begin() == num_attr.end()) {
+      return rewriter.notifyMatchFailure(op, "Num must not be empty");
+    }
+    int64_t num = (*num_attr.begin()).getSExtValue();
+
     // Calculate the scaling that needs to be applied to the iota.
     auto step_numerator = rewriter.create<SubOp>(
         op.getLoc(), op.start().getType(), op.stop(), op.start(),
         xla::getBroadcastDimensionsAttr(&rewriter, op.stop(), op.start()));
     Value step_denominator = rewriter.create<ConvertOp>(
         op.getLoc(), op.num(), result_type.getElementType());
-    if (op.num() > 1) {
+    if (num > 1) {
       Value one = GetScalarConstOfType(result_type.getElementType(),
                                        op.getLoc(), 1, &rewriter);
       step_denominator = rewriter.create<SubOp>(
