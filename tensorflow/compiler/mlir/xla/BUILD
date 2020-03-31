@@ -285,6 +285,22 @@ cc_library(
 )
 
 cc_library(
+    name = "tensor_linalg_to_buffer_linalg",
+    srcs = ["transforms/tensor_linalg_to_buffer_linalg.cc"],
+    deps = [
+        ":buffer_assignment",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "lhlo_fuse_linalg",
     srcs = ["transforms/lhlo_fuse_linalg.cc"],
     deps = [
