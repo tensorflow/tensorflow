@@ -438,16 +438,16 @@ DOC = """
   features = model.predict(x)
   ```
 
-  >>>model = DenseNet121(weights = None)
-  >>>model.name
+  >>> model = DenseNet121(weights = None)
+  >>> model.name
   'densenet121'
 
-  >>>model = DenseNet169(weights = None)
-  >>>model.name
+  >>> model = DenseNet169(weights = None)
+  >>> model.name
   'densenet169'
 
-  >>>model = DenseNet201(weights = None)
-  >>>model.name
+  >>> model = DenseNet201(weights = None)
+  >>> model.name
   'densenet201'
 
   Raises:

@@ -112,8 +112,8 @@ def InceptionResNetV2(include_top=True,
   features = model.predict(x)
   ```
 
-  >>>model = InceptionResNetV2(weights = None)
-  >>>model.name
+  >>> model = InceptionResNetV2(weights = None)
+  >>> model.name
   'inception_resnet_v2'
 
   Raises:

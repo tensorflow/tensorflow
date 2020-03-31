@@ -196,16 +196,16 @@ DOC = """
   features = model.predict(x)
   ```
 
-  >>>model = ResNet101V2(weights = None)
-  >>>model.name
+  >>> model = ResNet101V2(weights = None)
+  >>> model.name
   'resnet101v2'
 
-  >>>model = ResNet152V2(weights = None)
-  >>>model.name
+  >>> model = ResNet152V2(weights = None)
+  >>> model.name
   'resnet152v2'
 
-  >>>model = ResNet50V2(weights = None)
-  >>>model.name
+  >>> model = ResNet50V2(weights = None)
+  >>> model.name
   'resnet50v2'
 
   Raises:

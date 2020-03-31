@@ -178,8 +178,8 @@ def MobileNetV2(input_shape=None,
   features = model.predict(x)
   ```
 
-  >>>model = MobileNetV2(weights = None, input_shape=[224,224,3])
-  >>>model.name
+  >>> model = MobileNetV2(weights = None, input_shape=[224,224,3])
+  >>> model.name
   'mobilenetv2_1.00_224'
 
   Raises:

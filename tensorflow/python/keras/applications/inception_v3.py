@@ -120,8 +120,8 @@ def InceptionV3(
   features = model.predict(x)
   ```
 
-  >>>model = InceptionV3(weights = None)
-  >>>model.name
+  >>> model = InceptionV3(weights = None)
+  >>> model.name
   'inception_v3'
 
   Raises:

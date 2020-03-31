@@ -119,8 +119,8 @@ def VGG19(
   features = model.predict(x)
   ```
 
-  >>>model = VGG19(weights = None)
-  >>>model.name
+  >>> model = VGG19(weights = None)
+  >>> model.name
   'vgg19'
 
   Raises:

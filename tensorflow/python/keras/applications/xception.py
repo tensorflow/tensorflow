@@ -119,8 +119,8 @@ def Xception(
   features = model.predict(x)
   ```
 
-  >>>model = Xception(weights = None)
-  >>>model.name
+  >>> model = Xception(weights = None)
+  >>> model.name
   'xception'
 
   Raises:

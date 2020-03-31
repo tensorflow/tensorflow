@@ -114,8 +114,8 @@ def VGG16(
   features = model.predict(x)
   ```
 
-  >>>model = VGG16(weights = None)
-  >>>model.name
+  >>> model = VGG16(weights = None)
+  >>> model.name
   'vgg16'
 
   Raises:
