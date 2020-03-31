@@ -34,7 +34,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   auto* op = reinterpret_cast<::xcore::type_conversions::Requantize_16_to_8*>(
       node->user_data);
-  std::cout << "Eval " << (long)op << std::endl;
 
   op->Eval(output->data.int8, input->data.i16, length);
 
