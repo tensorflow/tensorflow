@@ -52,23 +52,28 @@ from tensorflow.python.training.tracking import graph_view as graph_view_lib
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
 
-# Loaded lazily due to a circular dependency.
-keras_backend = lazy_loader.LazyLoader(
-    "keras_backend", globals(),
-    "tensorflow.python.keras.backend")
+# The callable that provide Keras default session that is needed for saving.
+_SESSION_PROVIDER = None
+
+
+def register_session_provider(session_provider):
+  global _SESSION_PROVIDER
+  if _SESSION_PROVIDER is None:
+    _SESSION_PROVIDER = session_provider
 
 
 def get_session():
   # Prefer TF's default session since get_session from Keras has side-effects.
   session = ops.get_default_session()
   if session is None:
-    session = keras_backend.get_session()
+    global _SESSION_PROVIDER
+    if _SESSION_PROVIDER is not None:
+      session = _SESSION_PROVIDER()  # pylint: disable=not-callable
   return session
 
 
@@ -1847,6 +1852,8 @@ class Checkpoint(tracking.AutoTrackable):
     use by higher level checkpoint management utilities. `save` provides a very
     basic implementation of these features.
 
+    Checkpoints written with `write` must be read with `read`.
+
     Args:
       file_prefix: A prefix to use for the checkpoint filenames
         (/path/to/directory/and_a_prefix).
@@ -1888,7 +1895,7 @@ class Checkpoint(tracking.AutoTrackable):
     sequentially numbering checkpoints using `save_counter` and updating the
     metadata used by `tf.train.latest_checkpoint`. More advanced checkpoint
     management, for example garbage collection and custom numbering, may be
-    provided by other utilities which also wrap `write`
+    provided by other utilities which also wrap `write` and `read`.
     (`tf.train.CheckpointManager` for example).
 
     Args:
@@ -1932,20 +1939,58 @@ class Checkpoint(tracking.AutoTrackable):
         save_relative_paths=True)
     return file_path
 
+  def read(self, save_path):
+    """Read a training checkpoint written with `write`.
+
+    Reads this `Checkpoint` and any objects it depends on.
+
+    This method is just like `restore()` but does not expect the `save_counter`
+    variable in the checkpoint. It only restores the objects that the checkpoint
+    already depends on.
+
+    The method is primarily intended for use by higher level checkpoint
+    management utilities that use `write()` instead of `save()` and have their
+    own mechanisms to number and track checkpoints.
+
+    Example usage:
+
+    ```python
+    # Create a checkpoint with write()
+    ckpt = tf.train.Checkpoint(v=tf.Variable(1.))
+    path = ckpt.write('/tmp/my_checkpoint')
+
+    # Later, load the checkpoint with read()
+    # With restore() assert_consumed() would have failed.
+    checkpoint.read(path).assert_consumed()
+    ```
+
+    Args:
+      save_path: The path to the checkpoint as returned by `write`.
+
+    Returns:
+      A load status object, which can be used to make assertions about the
+      status of a checkpoint restoration.  See `restore` for details.
+    """
+    return self._saver.restore(save_path=save_path)
+
   def restore(self, save_path):
     """Restore a training checkpoint.
 
     Restores this `Checkpoint` and any objects it depends on.
 
-    Either assigns values immediately if variables to restore have been created
-    already, or defers restoration until the variables are created. Dependencies
-    added after this call will be matched if they have a corresponding object in
-    the checkpoint (the restore request will queue in any trackable object
-    waiting for the expected dependency to be added).
+    This method is intended to be used to load checkpoints created by `save()`.
+    For checkpoints created by `write()` use the `read()` method which does not
+    expect the `save_counter` variable added by `save()`.
+
+    `restore()` either assigns values immediately if variables to restore have
+    been created already, or defers restoration until the variables are
+    created. Dependencies added after this call will be matched if they have a
+    corresponding object in the checkpoint (the restore request will queue in
+    any trackable object waiting for the expected dependency to be added).
 
     To ensure that loading is complete and no more assignments will take place,
     use the `assert_consumed()` method of the status object returned by
-    `restore`:
+    `restore()`:
 
     ```python
     checkpoint = tf.train.Checkpoint( ... )
@@ -2006,7 +2051,7 @@ class Checkpoint(tracking.AutoTrackable):
           checkpoint file or object when the `Checkpoint` object is deleted
           (often at program shutdown).
     """
-    status = self._saver.restore(save_path=save_path)
+    status = self.read(save_path)
     # Create the save counter now so it gets initialized with other variables
     # when graph building. Creating it earlier would lead to errors when using,
     # say, train.Saver() to save the model before initializing it.

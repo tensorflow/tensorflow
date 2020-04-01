@@ -310,7 +310,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     pass.AddPass<HloConstantFolding>();
     pass.AddPass<ConditionalSimplifier>();
   }
-  pipeline.AddPass<DotDecomposer>();
   pipeline.AddPass<IndexedArrayAnalysisPrinterPass>();
   pipeline.AddPass<TransposeFolding>(
       [&](const HloInstruction& dot,

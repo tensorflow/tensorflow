@@ -37,6 +37,33 @@ class CategoryCrossing(Layer):
   (`num_bins=None`) the output dtype is string, with hashing the output dtype
   is int64.
 
+  For each input, the hash function uses a specific fingerprint method, i.e.,
+  [FarmHash64](https://github.com/google/farmhash) to compute the hashed output,
+  that provides a consistent hashed output across different platforms.
+  For multiple inputs, the final output is calculated by first computing the
+  fingerprint of `hash_key`, and concatenate it with the fingerprints of
+  each input. The user can also obfuscate the output with customized `hash_key`.
+
+  If [SipHash64[(https://github.com/google/highwayhash) is desired instead, the
+  user can set `num_bins=None` to get string outputs, and use Hashing layer to
+  get hashed output with SipHash64.
+
+  Usage:
+
+  Use with string output.
+  >>> inp_1 = tf.constant([['a'], ['b'], ['c']])
+  >>> inp_2 = tf.constant([['d'], ['e'], ['f']])
+  >>> layer = categorical_crossing.CategoryCrossing()
+  >>> output = layer([inp_1, inp_2])
+
+  Use with hashed output.
+  >>> layer = categorical_crossing.CategoryCrossing(num_bins=2)
+  >>> output = layer([inp_1, inp_2])
+
+  Use with customized hashed output.
+  >>> layer = categorical_crossing.CategoryCrossing(num_bins=2, hash_key=133)
+  >>> output = layer([inp_1, inp_2])
+
   Arguments:
     depth: depth of input crossing. By default None, all inputs are crossed into
       one output. It can also be an int or tuple/list of ints. Passing an
@@ -48,6 +75,9 @@ class CategoryCrossing(Layer):
       inputs. For example, with inputs `a`, `b` and `c`, `depth=2` means the
       output will be [a;b;c;cross(a, b);cross(bc);cross(ca)].
     num_bins: Number of hash bins. By default None, no hashing is performed.
+    hash_key: Integer hash_key that will be used by the concatenate
+      fingerprints. If not given, will use a default key from
+      `tf.sparse.cross_hashed`. This is only valid when `num_bins` is not None.
     name: Name to give to the layer.
     **kwargs: Keyword arguments to construct a layer.
 
@@ -57,13 +87,16 @@ class CategoryCrossing(Layer):
   Output shape: a single string or int tensor or sparse tensor of shape
     `[batch_size, d1, ..., dm]`
 
+  Below 'hash' stands for tf.fingerprint, and cat stands for 'FingerprintCat'.
+
   Example: (`depth`=None)
     If the layer receives three inputs:
     `a=[[1], [4]]`, `b=[[2], [5]]`, `c=[[3], [6]]`
     the output will be a string tensor if not hashed:
     `[[b'1_X_2_X_3'], [b'4_X_5_X_6']]`
     the output will be an int64 tensor if hashed:
-    `[[hash(b'1_X_2_X_3')], [hash(b'4_X_5_X_6')]]`
+    `[[cat(hash(3), cat(hash(2), cat(hash(1), hash(hash_key))))],
+     [[cat(hash(6), cat(hash(5), cat(hash(4), hash(hash_key))))]`
 
   Example: (`depth` is an integer)
     With the same input above, and if `depth`=2,
@@ -78,9 +111,12 @@ class CategoryCrossing(Layer):
     `[[hash(b'1')], [hash(b'4')]]`
     `[[hash(b'2')], [hash(b'5')]]`
     `[[hash(b'3')], [hash(b'6')]]`
-    `[[hash(b'1_X_2')], [hash(b'4_X_5')]]`,
-    `[[hash(b'2_X_3')], [hash(b'5_X_6')]]`,
-    `[[hash(b'3_X_1')], [hash(b'6_X_4')]]`
+    `[[cat(hash(2), cat(hash(1), hash(hash_key)))],
+      [cat(hash(5), cat(hash(4), hash(hash_key)))]`,
+    `[[cat(hash(3), cat(hash(1), hash(hash_key)))],
+      [cat(hash(6), cat(hash(4), hash(hash_key)))]`,
+    `[[cat(hash(3), cat(hash(2), hash(hash_key)))],
+      [cat(hash(6), cat(hash(5), hash(hash_key)))]`,
 
   Example: (`depth` is a tuple/list of integers)
     With the same input above, and if `depth`=(2, 3)
@@ -90,17 +126,37 @@ class CategoryCrossing(Layer):
     `[[b'3_X_1'], [b'6_X_4']]`,
     `[[b'1_X_2_X_3'], [b'4_X_5_X_6']]`
     the output will be a list of 4 int64 tensors if hashed:
-    `[[hash(b'1_X_2')], [hash(b'4_X_5')]]`,
-    `[[hash(b'2_X_3')], [hash(b'5_X_6')]]`,
-    `[[hash(b'3_X_1')], [hash(b'6_X_4')]]`,
-    `[[hash(b'1_X_2_X_3')], [hash(b'4_X_5_X_6')]]`
+    `[
+      [cat(hash(2), cat(hash(1), hash(hash_key)))],
+      [cat(hash(5), cat(hash(4), hash(hash_key)))]
+     ]`,
+    `[
+      [cat(hash(3), cat(hash(1), hash(hash_key)))],
+      [cat(hash(6), cat(hash(4), hash(hash_key)))]
+     ]`,
+    `[
+      [cat(hash(3), cat(hash(2), hash(hash_key)))],
+      [cat(hash(6), cat(hash(5), hash(hash_key)))]
+     ]`,
+    `[
+      [cat(hash(3), cat(hash(2), cat(hash(1), hash(hash_key))))],
+      [cat(hash(6), cat(hash(5), cat(hash(4), hash(hash_key))))]
+     ]`
   """
 
-  def __init__(self, depth=None, num_bins=None, name=None, **kwargs):
+  def __init__(self,
+               depth=None,
+               num_bins=None,
+               hash_key=None,
+               name=None,
+               **kwargs):
     # TODO(tanzheny): Consider making seperator configurable.
+    if num_bins is None and hash_key is not None:
+      raise ValueError('`hash_key` is only valid when `num_bins` is not None')
     super(CategoryCrossing, self).__init__(name=name, **kwargs)
-    self.num_bins = num_bins
     self.depth = depth
+    self.num_bins = num_bins
+    self.hash_key = hash_key
     if isinstance(depth, (tuple, list)):
       self._depth_tuple = depth
     elif depth is not None:
@@ -111,7 +167,7 @@ class CategoryCrossing(Layer):
     """Gets the crossed output from a partial list/tuple of inputs."""
     if self.num_bins is not None:
       partial_output = sparse_ops.sparse_cross_hashed(
-          partial_inputs, num_buckets=self.num_bins)
+          partial_inputs, num_buckets=self.num_bins, hash_key=self.hash_key)
     else:
       partial_output = sparse_ops.sparse_cross(partial_inputs)
 
@@ -124,7 +180,6 @@ class CategoryCrossing(Layer):
       return sparse_ops.sparse_tensor_to_dense(partial_output)
 
   def call(self, inputs):
-
     depth_tuple = self._depth_tuple if self.depth else (len(inputs),)
     ragged_out = sparse_out = False
     if all([ragged_tensor.is_ragged(inp) for inp in inputs]):
@@ -180,6 +235,10 @@ class CategoryCrossing(Layer):
         shape=output_shape, dtype=output_dtype)
 
   def get_config(self):
-    config = {'depth': self.depth, 'num_bins': self.num_bins}
+    config = {
+        'depth': self.depth,
+        'num_bins': self.num_bins,
+        'hash_key': self.hash_key
+    }
     base_config = super(CategoryCrossing, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))

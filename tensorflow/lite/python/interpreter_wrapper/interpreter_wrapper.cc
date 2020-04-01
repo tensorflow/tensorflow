@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/util.h"
 
 #define TFLITE_PY_CHECK(x)               \
   if ((x) != kTfLiteOk) {                \
@@ -107,6 +108,38 @@ PyObject* PyTupleFromQuantizationParam(const TfLiteQuantizationParams& param) {
   PyObject* result = PyTuple_New(2);
   PyTuple_SET_ITEM(result, 0, PyFloat_FromDouble(param.scale));
   PyTuple_SET_ITEM(result, 1, PyLong_FromLong(param.zero_point));
+  return result;
+}
+
+PyObject* PyDictFromSparsityParam(const TfLiteSparsity& param) {
+  PyObject* result = PyDict_New();
+  PyDict_SetItemString(result, "traversal_order",
+                       PyArrayFromIntVector(param.traversal_order->data,
+                                            param.traversal_order->size));
+  PyDict_SetItemString(
+      result, "block_map",
+      PyArrayFromIntVector(param.block_map->data, param.block_map->size));
+  PyObject* dim_metadata = PyList_New(param.dim_metadata_size);
+  for (int i = 0; i < param.dim_metadata_size; i++) {
+    PyObject* dim_metadata_i = PyDict_New();
+    if (param.dim_metadata[i].format == kTfLiteDimDense) {
+      PyDict_SetItemString(dim_metadata_i, "format", PyLong_FromSize_t(0));
+      PyDict_SetItemString(dim_metadata_i, "dense_size",
+                           PyLong_FromSize_t(param.dim_metadata[i].dense_size));
+    } else {
+      PyDict_SetItemString(dim_metadata_i, "format", PyLong_FromSize_t(1));
+      const auto* array_segments = param.dim_metadata[i].array_segments;
+      const auto* array_indices = param.dim_metadata[i].array_indices;
+      PyDict_SetItemString(
+          dim_metadata_i, "array_segments",
+          PyArrayFromIntVector(array_segments->data, array_segments->size));
+      PyDict_SetItemString(
+          dim_metadata_i, "array_indices",
+          PyArrayFromIntVector(array_indices->data, array_indices->size));
+    }
+    PyList_SetItem(dim_metadata, i, dim_metadata_i);
+  }
+  PyDict_SetItemString(result, "dim_metadata", dim_metadata);
   return result;
 }
 
@@ -312,14 +345,28 @@ PyObject* InterpreterWrapper::TensorSizeSignature(int i) const {
   const TfLiteTensor* tensor = interpreter_->tensor(i);
   const int32_t* size_signature_data = nullptr;
   int32_t size_signature_size = 0;
-  if (tensor->dims_signature != nullptr) {
+  if (tensor->dims_signature != nullptr && tensor->dims_signature->size != 0) {
     size_signature_data = tensor->dims_signature->data;
     size_signature_size = tensor->dims_signature->size;
+  } else {
+    size_signature_data = tensor->dims->data;
+    size_signature_size = tensor->dims->size;
   }
   PyObject* np_array =
       PyArrayFromIntVector(size_signature_data, size_signature_size);
 
   return PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));
+}
+
+PyObject* InterpreterWrapper::TensorSparsityParameters(int i) const {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
+  const TfLiteTensor* tensor = interpreter_->tensor(i);
+  if (tensor->sparsity == nullptr) {
+    return PyDict_New();
+  }
+
+  return PyDictFromSparsityParam(*tensor->sparsity);
 }
 
 PyObject* InterpreterWrapper::TensorQuantization(int i) const {
@@ -536,8 +583,21 @@ PyObject* InterpreterWrapper::GetTensor(int i) const {
       return nullptr;
     }
     memcpy(data, tensor->data.raw, tensor->bytes);
-    PyObject* np_array =
-        PyArray_SimpleNewFromData(dims.size(), dims.data(), type_num, data);
+    PyObject* np_array;
+    if (tensor->sparsity == nullptr) {
+      np_array =
+          PyArray_SimpleNewFromData(dims.size(), dims.data(), type_num, data);
+    } else {
+      std::vector<npy_intp> sparse_buffer_dims(1);
+      size_t size_of_type;
+      if (GetSizeOfType(nullptr, tensor->type, &size_of_type) != kTfLiteOk) {
+        PyErr_SetString(PyExc_ValueError, "Unknown tensor type.");
+        return nullptr;
+      }
+      sparse_buffer_dims[0] = tensor->bytes / size_of_type;
+      np_array = PyArray_SimpleNewFromData(
+          sparse_buffer_dims.size(), sparse_buffer_dims.data(), type_num, data);
+    }
     PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(np_array),
                         NPY_ARRAY_OWNDATA);
     return PyArray_Return(reinterpret_cast<PyArrayObject*>(np_array));

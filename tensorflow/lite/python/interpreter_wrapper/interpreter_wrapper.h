@@ -27,6 +27,7 @@ limitations under the License.
 #include <Python.h>
 
 #include "tensorflow/lite/experimental/tflite_api_dispatcher/tflite_api_dispatcher.h"
+#include "tensorflow/lite/interpreter.h"
 
 struct TfLiteDelegate;
 
@@ -39,7 +40,6 @@ class BuiltinOpResolver;
 }  // namespace ops
 
 class FlatBufferModel;
-class Interpreter;
 
 namespace interpreter_wrapper {
 
@@ -70,6 +70,7 @@ class InterpreterWrapper {
   PyObject* TensorType(int i) const;
   PyObject* TensorSize(int i) const;
   PyObject* TensorSizeSignature(int i) const;
+  PyObject* TensorSparsityParameters(int i) const;
   // Deprecated in favor of TensorQuantizationScales, below.
   PyObject* TensorQuantization(int i) const;
   PyObject* TensorQuantizationParameters(int i) const;

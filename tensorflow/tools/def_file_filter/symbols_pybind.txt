@@ -5,6 +5,7 @@ tensorflow::swig::IsCompositeTensor
 tensorflow::swig::IsTypeSpec
 tensorflow::swig::IsNamedtuple
 tensorflow::swig::IsMapping
+tensorflow::swig::IsMutableMapping
 tensorflow::swig::IsMappingView
 tensorflow::swig::IsAttrs
 tensorflow::swig::IsTensor
@@ -82,6 +83,13 @@ tensorflow::SessionOptions::SessionOptions
 tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 tensorflow::DeviceFactory::ListAllPhysicalDevices
 tensorflow::SessionState::kTensorHandleResourceTypeName
+
+[server_lib] # server_lib
+tensorflow::data::GrpcDataServer::Start
+tensorflow::data::GrpcDataServer::Stop
+tensorflow::data::GrpcDataServer::Target
+tensorflow::data::NewMasterServer
+tensorflow::data::NewWorkerServer
 
 [protos_all]  # device_lib, dtypes
 tensorflow::DataType_IsValid
@@ -304,6 +312,7 @@ tensorflow::profiler::AnnotationStack::ThreadAnnotationStack
 
 [profiler_session_impl] # profiler
 tensorflow::ProfilerSession::Create
+tensorflow::ProfilerSession::CollectData
 tensorflow::ProfilerSession::SerializeToString
 tensorflow::ProfilerSession::Status
 tensorflow::ProfilerSession::~ProfilerSession
@@ -338,3 +347,6 @@ tensorflow::grappler::AnalyticalCostEstimator::PredictCosts
 [cost_analyzer_lib] # cost_analyzer
 tensorflow::grappler::CostAnalyzer::CostAnalyzer
 tensorflow::grappler::CostAnalyzer::GenerateReport
+
+[flags] # tfe
+tensorflow::IsXlaEnabled

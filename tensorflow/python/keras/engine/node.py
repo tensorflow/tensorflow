@@ -76,6 +76,12 @@ class Node(object):
       raise ValueError('`outbound_layer` should be a layer instance, '
                        'not a list, tuple, or, dict.')
 
+    # These arguments are user-provided. Copy them here so that future
+    # user modifications do not affect the node's metadata.
+    input_tensors = nest.map_structure(lambda t: t, input_tensors)
+    output_tensors = nest.map_structure(lambda t: t, output_tensors)
+    arguments = nest.map_structure(lambda t: t, arguments)
+
     # this is the layer that takes a nested structure of input tensors
     # and turns them into a nested structure of output tensors.
     # the current node will be added to

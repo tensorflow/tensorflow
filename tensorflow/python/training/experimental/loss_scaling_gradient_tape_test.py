@@ -54,7 +54,7 @@ class LossScaleGradientTapeTest(test.TestCase, parameterized.TestCase):
   def _run_with_strategy(self, run_fn, strategy, use_tf_function=False):
     """Runs `run_fn` under the DistributionStrategy `strategy`.
 
-    Runs `run_fn` with `strategy.experimental_run_v2`. Returns a list of the
+    Runs `run_fn` with `strategy.run`. Returns a list of the
     return values of `run_fn`, one per replica.
 
     Args:
@@ -67,7 +67,7 @@ class LossScaleGradientTapeTest(test.TestCase, parameterized.TestCase):
       replica. If a nested structure is returned from `run_fn`, returns a
       nested structure, where each element is a list of tensors.
     """
-    strategy_fn = lambda: strategy.experimental_run_v2(run_fn)
+    strategy_fn = lambda: strategy.run(run_fn)
     if use_tf_function:
       strategy_fn = def_function.function(strategy_fn)
 
@@ -75,7 +75,7 @@ class LossScaleGradientTapeTest(test.TestCase, parameterized.TestCase):
 
     def convert_tensor_to_list(tensor):
       if isinstance(tensor, values.DistributedValues):
-        return tensor.values
+        return strategy.experimental_local_results(tensor)
       else:
         return [tensor]
     return nest.map_structure(convert_tensor_to_list, results)

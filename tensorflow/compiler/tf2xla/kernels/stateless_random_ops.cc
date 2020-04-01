@@ -111,6 +111,35 @@ xla::XlaOp StatelessRngUniform(absl::string_view device_type_string,
   }
 }
 
+xla::XlaOp StatelessRngUniformFullInt(absl::string_view device_type_string,
+                                      xla::XlaOp seeds,
+                                      const xla::Shape& shape) {
+  xla::XlaBuilder* builder = seeds.builder();
+
+  xla::XlaOp seed0 = xla::Reshape(xla::Slice(seeds, {0}, {1}, {1}), {});
+  xla::XlaOp seed1 = xla::Reshape(xla::Slice(seeds, {1}, {2}, {1}), {});
+  xla::XlaOp key = ConvertElementType(seed0, xla::U64) |
+                   ShiftLeft(ConvertElementType(seed1, xla::U64),
+                             ConstantR0WithType(builder, xla::U64, 32));
+  xla::XlaOp initial_state = xla::ConstantR0WithType(builder, xla::U64, 0);
+  xla::PrimitiveType type = shape.element_type();
+  xla::RngOutput output =
+      GetBitGeneratorForDevice(device_type_string)(key, initial_state, shape);
+  switch (type) {
+    case xla::U32:
+    case xla::U64:
+      return output.value;
+    case xla::S32:
+    case xla::S64:
+      return BitcastConvertType(output.value, type);
+    default:
+      return builder->ReportError(xla::Unimplemented(
+          "Types other than U32, S32, U64 and S64 are not implemented by "
+          "StatelessRngUniformFullInt; got: %s",
+          xla::primitive_util::LowercasePrimitiveTypeName(type)));
+  }
+}
+
 namespace {
 
 class StatelessRandomUniformOp : public XlaOpKernel {
@@ -210,6 +239,47 @@ REGISTER_XLA_OP(Name("StatelessRandomUniformInt")
                     .TypeConstraint("dtype", {DT_INT32, DT_INT64})
                     .TypeConstraint("Tseed", DT_INT32),
                 StatelessRandomUniformIntOp);
+
+class StatelessRandomUniformFullIntOp : public XlaOpKernel {
+ public:
+  explicit StatelessRandomUniformFullIntOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx),
+        device_type_string_(ctx->device_type().type_string()) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
+
+    TensorShape seed_shape = ctx->InputShape(1);
+    OP_REQUIRES(ctx, seed_shape.dims() == 1 && seed_shape.dim_size(0) == 2,
+                errors::InvalidArgument("seed must have shape [2], not ",
+                                        seed_shape.DebugString()));
+
+    xla::XlaOp seed = ctx->Input(1);
+
+    xla::Shape xla_shape;
+    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape, &xla_shape));
+    xla::XlaOp uniform =
+        StatelessRngUniformFullInt(device_type_string_, seed, xla_shape);
+
+    ctx->SetOutput(0, uniform);
+  }
+
+ private:
+  DataType dtype_;
+  string device_type_string_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomUniformFullIntOp);
+};
+
+// TODO(phawkins): generalize to non-int32 seed types.
+REGISTER_XLA_OP(Name("StatelessRandomUniformFullInt")
+                    .CompileTimeConstantInput("shape")
+                    .TypeConstraint("dtype", {DT_INT32, DT_INT64})
+                    .TypeConstraint("Tseed", DT_INT32),
+                StatelessRandomUniformFullIntOp);
 
 class StatelessRandomNormalOp : public XlaOpKernel {
  public:

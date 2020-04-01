@@ -480,7 +480,11 @@ class HloInstruction {
     kCustom,
   };
 
-  virtual ~HloInstruction();
+  virtual ~HloInstruction() { DetachFromOperandsAndUsers(); }
+
+  // Detaches an instruction from its operands and users. That is, remove the
+  // instruction from each operand's user set and user's operand set.
+  void DetachFromOperandsAndUsers();
 
   // Creates an instruction from the given proto. Arguments:
   //
@@ -631,7 +635,7 @@ class HloInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
-      const absl::optional<int64>& channel_id);
+      const absl::optional<int64>& channel_id, bool use_global_device_ids);
 
   // An all-to-all op takes N array operands of the same shape and scatters them
   // to N replicas.  Each replica gathers the results into a tuple.
@@ -1558,10 +1562,6 @@ class HloInstruction {
   // Returns the module for this instruction.
   HloModule* GetModule() const;
 
-  // Returns whether we could assign input and output layouts to this
-  // instruction to make it a bitcast.
-  bool CouldBeBitcast() const;
-
   // Get/Set the number of partitions per outer dimension (in order, starting
   // with outer-most dimension first). Currently used by the parallel cpu
   // backend to partition HLOs into parallel tasks.
@@ -1616,14 +1616,17 @@ class HloInstruction {
   // Delegates to HloSliceInstruction::slice_start.
   int64 slice_starts(int64 dimension) const;
   const std::vector<int64>& slice_starts() const;
+  std::vector<int64>* mutable_slice_starts();
 
   // Delegates to HloSliceInstruction::slice_limits.
   int64 slice_limits(int64 dimension) const;
   const std::vector<int64>& slice_limits() const;
+  std::vector<int64>* mutable_slice_limits();
 
   // Delegates to HloSliceInstruction::slice_strides.
   int64 slice_strides(int64 dimension) const;
   const std::vector<int64>& slice_strides() const;
+  std::vector<int64>* mutable_slice_strides();
 
   // Returns the literal associated with this instruction.
   const Literal& literal() const;
@@ -2024,6 +2027,10 @@ class HloInstruction {
   // This field is assigned to true when backend_config_ is assigned to
   // a default configuration.
   bool is_default_config_ = false;
+
+  // True if this instruction has already been detached from its user and
+  // operands.
+  bool cleaned_up_ = false;
 
   // String identifier for instruction.
   string name_;

@@ -15,66 +15,94 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_TENSOR_HANDLE_DATA_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_TENSOR_HANDLE_DATA_H_
 
+#include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
-class TensorHandleData {
- public:
-  virtual ~TensorHandleData() {}
-
-  // Different tensor handles support a set of these calls. In some cases these
-  // are resolved with a Tensor or TensorShape. Typically if the handle is not
-  // ready, none of these are supported operations.
-  virtual Status Tensor(const tensorflow::Tensor** t) const = 0;
-  virtual Status TensorValue(tensorflow::TensorValue* t) = 0;
-  virtual Status Shape(TensorShape* shape) const = 0;
-  virtual Status NumDims(int* num_dims) const = 0;
-  virtual Status Dim(int dim_index, int64* dim) const = 0;
-  virtual Status NumElements(int64* num_elements) const = 0;
-
-  virtual string DebugString() const = 0;
-};
-
 // Local Tensor Handle: Handle to a Tensor present on the local host.
-class LocalTensorHandleData : public TensorHandleData {
+class LocalTensorHandleData {
  public:
-  explicit LocalTensorHandleData(const tensorflow::Tensor& t) : tensor_(t) {}
-  ~LocalTensorHandleData() override {}
+  LocalTensorHandleData() : ctrl_(absl::in_place_type<BlockingControl>) {}
+  explicit LocalTensorHandleData(tensorflow::Tensor&& t)
+      : tensor_(std::move(t)),
+        forwarding_protection_tensor_(tensor_),
+        ctrl_(absl::in_place_type<NonBlockingControl>) {}
 
   // A local tensor handle should be able to satisfy all of these requests.
-  Status Tensor(const tensorflow::Tensor** t) const override;
-  Status TensorValue(tensorflow::TensorValue* t) override;
-  Status Shape(TensorShape* shape) const override;
-  Status NumDims(int* num_dims) const override;
-  Status Dim(int dim_index, int64* dim) const override;
-  Status NumElements(int64* num_elements) const override;
+  Status Tensor(const tensorflow::Tensor** t) const;
+  Status TensorValue(tensorflow::TensorValue* t);
+  Status Shape(TensorShape* shape) const;
+  Status NumDims(int* num_dims) const;
+  Status Dim(int dim_index, int64* dim) const;
+  Status NumElements(int64* num_elements) const;
+  Status Unprotect();
 
-  string DebugString() const override { return tensor_.DebugString(); }
+  bool IsReady() const {
+    return absl::visit([](auto& data) { return data.IsReady(); }, ctrl_);
+  }
+
+  Status WaitReady(const char* caller) const {
+    return absl::visit([caller](auto& data) { return data.WaitReady(caller); },
+                       ctrl_);
+  }
+  void Poison(Status status) {
+    return absl::visit([status](auto& data) { data.Poison(status); }, ctrl_);
+  }
+  Status IsPoisoned() const {
+    return absl::visit([](auto& data) { return data.IsPoisoned(); }, ctrl_);
+  }
+
+  Status SetTensor(tensorflow::Tensor&& t);
+
+  string DebugString() const;
 
  private:
   tensorflow::Tensor tensor_;
-};
+  // TensorHandle has its own reference counting which is distinct from the
+  // backing Tensor. As a result, if the Tensor reference count is 1 while
+  // executing an op, the TensorBuffer could be reused for the output. We avoid
+  // this behavior maintaining another reference count with the
+  // forwarding_protection_tensor_ Tensor. When Unprotect() is called, we
+  // release this Tensor to allow forwarding.
+  tensorflow::Tensor forwarding_protection_tensor_;
 
-// Empty Local Tensor Handle: Once the execution is complete this is replaced by
-// a local tensor handle.
-class EmptyLocalTensorHandleData : public TensorHandleData {
- public:
-  EmptyLocalTensorHandleData() {}
-  ~EmptyLocalTensorHandleData() override {}
+  // We distinguish between ready and empty tensors with the ctrl_ variant.
+  // which contains 2 implementations of the waiting logic. The
+  // NonBlockingControl is a simple no-op class whereas the BlockingControl
+  // actually uses a mutex. By using a variant we avoid the overhead of
+  // constructing and destructing the mutex for ready local tensors.
+  class NonBlockingControl {
+   public:
+    bool IsReady() const { return true; }
+    Status WaitReady(const char* caller) const { return Status::OK(); }
+    void Poison(Status status) {}
+    Status IsPoisoned() const { return Status::OK(); }
+  };
 
-  // Empty tensor handles are not ready and hence cannot satisfy any of these
-  // requests.
-  Status Tensor(const tensorflow::Tensor** t) const override;
-  Status TensorValue(tensorflow::TensorValue* t) override;
-  Status Shape(TensorShape* shape) const override;
-  Status NumDims(int* num_dims) const override;
-  Status Dim(int dim_index, int64* dim) const override;
-  Status NumElements(int64* num_elements) const override;
+  class BlockingControl {
+   public:
+    bool IsReady() const {
+      tf_shared_lock l(mu_);
+      return is_ready_;
+    }
+    void SetReady();
+    Status WaitReady(const char* caller) const;
+    void Poison(Status status);
+    Status IsPoisoned() const {
+      tf_shared_lock l(mu_);
+      return is_poisoned_;
+    }
 
-  string DebugString() const override;
+   private:
+    mutable mutex mu_;
+    bool is_ready_ TF_GUARDED_BY(mu_);
+    Status is_poisoned_ TF_GUARDED_BY(mu_);
+  };
+
+  absl::variant<NonBlockingControl, BlockingControl> ctrl_;
 };
 
 }  // namespace tensorflow

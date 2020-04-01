@@ -48,7 +48,7 @@ template <typename Int>
 PHILOX_DEVICE_INLINE Int SignedAdd(Int a,
                                    typename std::make_unsigned<Int>::type b) {
   // Implementation note: both b_div_2 and b - b_div_2 are positive and
-  // representatble as Int.
+  // representable as Int.
   auto b_div_2 = b >> 1;
   return a + static_cast<Int>(b_div_2) + static_cast<Int>(b - b_div_2);
 }

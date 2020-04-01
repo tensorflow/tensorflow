@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_CLUSTER_FUNCTION_LIBRARY_RUNTIME_H_
 
+#include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 #include "tensorflow/core/framework/function.h"
 
@@ -68,21 +69,26 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
   struct FunctionData {
     const string graph_handle;
     const string target;
+    // Hold a shared pointer to the underlying worker cache to avoid it being
+    // deleted in potential cluster update.
+    const std::shared_ptr<WorkerCacheInterface> worker_cache;
     WorkerInterface* wi = nullptr;
     const std::vector<string> send_keys;
     const std::vector<string> recv_keys;
 
     FunctionData(const string& graph_handle, const string& target,
+                 std::shared_ptr<WorkerCacheInterface> worker_cache,
                  WorkerInterface* wi, const std::vector<string>& send_keys,
                  const std::vector<string>& recv_keys)
         : graph_handle(graph_handle),
           target(target),
+          worker_cache(std::move(worker_cache)),
           wi(wi),
           send_keys(send_keys),
           recv_keys(recv_keys) {}
   };
 
-  std::vector<FunctionData> function_data_ GUARDED_BY(mu_);
+  std::vector<FunctionData> function_data_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

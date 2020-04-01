@@ -18,47 +18,37 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_
 
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
 
 StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
-    const Literal& literal, mlir::Builder builder);
+    const LiteralBase& literal, mlir::Builder builder);
 
+// Creates an DenseIntElementsAttr using the elements of the vector and the
+// optional shape.
 mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
-    const llvm::ArrayRef<int64> vector, mlir::Builder builder);
+    const llvm::ArrayRef<int64> vector, mlir::Builder builder,
+    llvm::ArrayRef<int64_t> shape = {});
+
+StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
+                                                    mlir::Builder builder);
 
 template <typename TypeT>
 static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& shape,
                                                 mlir::Builder builder) {
+  auto element_type_or =
+      ConvertPrimitiveTypeToMLIRType(shape.element_type(), builder);
+  if (!element_type_or.ok()) return element_type_or.status();
+
   auto dimensions = shape.dimensions();
   llvm::SmallVector<int64_t, 4> array(dimensions.begin(), dimensions.end());
-
-  switch (shape.element_type()) {
-    case PrimitiveType::PRED:
-      return TypeT::get(array, builder.getI1Type());
-    case PrimitiveType::F16:
-      return TypeT::get(array, builder.getF16Type());
-    case PrimitiveType::F32:
-      return TypeT::get(array, builder.getF32Type());
-    case PrimitiveType::F64:
-      return TypeT::get(array, builder.getF64Type());
-    case PrimitiveType::S8:
-      return TypeT::get(array, builder.getIntegerType(8));
-    case PrimitiveType::S16:
-      return TypeT::get(array, builder.getIntegerType(16));
-    case PrimitiveType::S32:
-      return TypeT::get(array, builder.getIntegerType(32));
-    case PrimitiveType::S64:
-      return TypeT::get(array, builder.getIntegerType(64));
-    default:
-      return tensorflow::errors::Internal(absl::StrCat(
-          "Unsupported type: ", PrimitiveType_Name(shape.element_type())));
-  }
+  return TypeT::get(array, element_type_or.ValueOrDie());
 }
 
 StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
@@ -82,6 +72,9 @@ static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
       contents.push_back(mlir_subtype);
     }
     return builder.getTupleType(contents);
+  }
+  if (shape.IsToken()) {
+    return mlir::xla_hlo::TokenType::get(builder.getContext());
   }
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }

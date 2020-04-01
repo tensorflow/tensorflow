@@ -63,10 +63,29 @@ REGISTER_OP("StatelessRandomUniformInt")
     .Attr("Tseed: {int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      Status s = c->WithRank(c->input(2), 0, &unused);
+      if (!s.ok()) {
+        return errors::InvalidArgument(
+            "minval must be a scalar; got a tensor of shape ",
+            c->DebugString(c->input(2)));
+      }
+      s = c->WithRank(c->input(3), 0, &unused);
+      if (!s.ok()) {
+        return errors::InvalidArgument(
+            "maxval must be a scalar; got a tensor of shape ",
+            c->DebugString(c->input(3)));
+      }
       return StatelessShape(c);
     });
+
+REGISTER_OP("StatelessRandomUniformFullInt")
+    .Input("shape: T")
+    .Input("seed: Tseed")
+    .Output("output: dtype")
+    .Attr("dtype: {int32, int64, uint32, uint64} = DT_UINT64")
+    .Attr("T: {int32, int64} = DT_INT32")
+    .Attr("Tseed: {int32, int64, uint32, uint64} = DT_INT64")
+    .SetShapeFn(StatelessShape);
 
 REGISTER_OP("StatelessMultinomial")
     .Input("logits: T")

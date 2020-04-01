@@ -46,17 +46,31 @@ class XStatsBuilder {
   void AddStatValue(const XStatMetadata& metadata, double value) {
     AddStat(metadata)->set_double_value(value);
   }
-  void AddStatValue(const XStatMetadata& metadata, absl::string_view value) {
-    AddStat(metadata)->set_str_value(string(value));
+  void AddStatValue(const XStatMetadata& metadata, absl::string_view value,
+                    bool is_bytes = false) {
+    if (is_bytes) {
+      AddStat(metadata)->set_bytes_value(string(value));
+    } else {
+      AddStat(metadata)->set_str_value(string(value));
+    }
   }
-  void AddStatValue(const XStatMetadata& metadata, string&& value) {
-    AddStat(metadata)->set_str_value(std::move(value));
+  void AddStatValue(const XStatMetadata& metadata, string&& value,
+                    bool is_bytes = false) {
+    if (is_bytes) {
+      AddStat(metadata)->set_bytes_value(std::move(value));
+    } else {
+      AddStat(metadata)->set_str_value(std::move(value));
+    }
   }
 
   void AddStat(const XStatMetadata& metadata, const XStat& stat) {
     XStat* new_stat = stats_owner_->add_stats();
     *new_stat = stat;
     new_stat->set_metadata_id(metadata.id());
+  }
+  void AddStat(const XStat& stat) {
+    XStat* new_stat = stats_owner_->add_stats();
+    *new_stat = stat;
   }
 
   XStat* FindOrAddMutableStat(int64 metadata_id) {
@@ -173,6 +187,7 @@ class XLineBuilder {
   }
 
   XEventBuilder AddEvent(const XEventMetadata& metadata);
+  XEventBuilder AddEvent(const XEvent& event);
 
  private:
   XLine* line_;
@@ -204,6 +219,10 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
 
   XEventMetadata* GetOrCreateEventMetadata(int64 metadata_id);
   XEventMetadata* GetOrCreateEventMetadata(absl::string_view name);
+  XEventMetadata* GetOrCreateEventMetadata(string&& name);
+  inline XEventMetadata* GetOrCreateEventMetadata(const char* name) {
+    return GetOrCreateEventMetadata(absl::string_view(name));
+  }
 
   XStatMetadata* GetOrCreateStatMetadata(int64 metadata_id);
   XStatMetadata* GetOrCreateStatMetadata(absl::string_view name);

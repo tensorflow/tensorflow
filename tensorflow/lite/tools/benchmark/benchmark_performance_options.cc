@@ -240,6 +240,8 @@ void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
   single_option_run_params_->Set<bool>("gpu_precision_loss_allowed", true);
   single_option_run_params_->Set<bool>("use_nnapi", false);
   single_option_run_params_->Set<std::string>("nnapi_accelerator_name", "");
+  single_option_run_params_->Set<bool>("disable_nnapi_cpu", false);
+  single_option_run_params_->Set<int>("max_delegated_partitions", 0);
 #endif
 #if defined(TFLITE_ENABLE_HEXAGON)
   single_option_run_params_->Set<bool>("use_hexagon", false);
@@ -305,6 +307,10 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
         params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(true));
         params.AddParam("nnapi_accelerator_name",
                         BenchmarkParam::Create<std::string>(name));
+        params.AddParam("disable_nnapi_cpu",
+                        BenchmarkParam::Create<bool>(false));
+        params.AddParam("max_delegated_partitions",
+                        BenchmarkParam::Create<int>(0));
         all_run_params_.emplace_back(std::move(params));
       }
     }

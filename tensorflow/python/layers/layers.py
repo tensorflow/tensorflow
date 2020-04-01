@@ -24,7 +24,6 @@ from __future__ import print_function
 
 # Base objects.
 from tensorflow.python.layers.base import Layer
-from tensorflow.python.keras.engine.input_spec import InputSpec
 
 # Core layers.
 from tensorflow.python.layers.core import Dense

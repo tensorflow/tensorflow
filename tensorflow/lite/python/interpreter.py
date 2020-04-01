@@ -37,13 +37,13 @@ if not __file__.endswith('tflite_runtime/interpreter.py'):
   _interpreter_wrapper = LazyLoader(
       "_interpreter_wrapper", globals(),
       "tensorflow.lite.python.interpreter_wrapper."
-      "tensorflow_wrap_interpreter_wrapper")
+      '_pywrap_tensorflow_interpreter_wrapper')
   # pylint: enable=g-inconsistent-quotes
 
   del LazyLoader
 else:
   # This file is part of tflite_runtime package.
-  from tflite_runtime import interpreter_wrapper as _interpreter_wrapper
+  from tflite_runtime import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
 
   def _tf_export(*x, **kwargs):
     del x, kwargs
@@ -77,6 +77,7 @@ class Delegate(object):
         keys and values in the dictionary should be serializable. Consult the
         documentation of the specific delegate for required and legal options.
         (default None)
+
     Raises:
       RuntimeError: This is raised if the Python implementation is not CPython.
     """
@@ -192,7 +193,7 @@ class Interpreter(object):
       model_content: Content of model.
       experimental_delegates: Experimental. Subject to change. List of
         [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
-        objects returned by lite.load_delegate().
+          objects returned by lite.load_delegate().
       num_threads: Set the number of threads used by TFLite kernels.
         If not set, kernels are running single-threaded. Note that currently,
         only some kernels, such as conv, are multithreaded.
@@ -204,7 +205,7 @@ class Interpreter(object):
       self._custom_op_registerers = []
     if model_path and not model_content:
       self._interpreter = (
-          _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromFile(
+          _interpreter_wrapper.CreateWrapperFromFile(
               model_path, self._custom_op_registerers))
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
@@ -214,9 +215,9 @@ class Interpreter(object):
       # will always return the same pointer.
       self._model_content = model_content
       self._interpreter = (
-          _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromBuffer(
+          _interpreter_wrapper.CreateWrapperFromBuffer(
               model_content, self._custom_op_registerers))
-    elif not model_path and not model_path:
+    elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
       raise ValueError('Can\'t both provide `model_path` and `model_content`')
@@ -334,6 +335,8 @@ class Interpreter(object):
     tensor_quantization = self._interpreter.TensorQuantization(tensor_index)
     tensor_quantization_params = self._interpreter.TensorQuantizationParameters(
         tensor_index)
+    tensor_sparsity_params = self._interpreter.TensorSparsityParameters(
+        tensor_index)
 
     if not tensor_name or not tensor_type:
       raise ValueError('Could not get tensor details')
@@ -349,7 +352,8 @@ class Interpreter(object):
             'scales': tensor_quantization_params[0],
             'zero_points': tensor_quantization_params[1],
             'quantized_dimension': tensor_quantization_params[2],
-        }
+        },
+        'sparsity_parameters': tensor_sparsity_params
     }
 
     return details
@@ -394,14 +398,16 @@ class Interpreter(object):
     ]
 
   def set_tensor(self, tensor_index, value):
-    """Sets the value of the input tensor. Note this copies data in `value`.
+    """Sets the value of the input tensor.
+
+    Note this copies data in `value`.
 
     If you want to avoid copying, you can use the `tensor()` function to get a
     numpy buffer pointing to the input buffer in the tflite interpreter.
 
     Args:
       tensor_index: Tensor index of tensor to set. This value can be gotten from
-                    the 'index' field in get_input_details.
+        the 'index' field in get_input_details.
       value: Value of tensor to set.
 
     Raises:
@@ -414,7 +420,7 @@ class Interpreter(object):
 
     Args:
       input_index: Tensor index of input to set. This value can be gotten from
-                   the 'index' field in get_input_details.
+        the 'index' field in get_input_details.
       tensor_size: The tensor_shape to resize the input to.
 
     Raises:
@@ -444,7 +450,7 @@ class Interpreter(object):
 
     Args:
       tensor_index: Tensor index of tensor to get. This value can be gotten from
-                    the 'index' field in get_output_details.
+        the 'index' field in get_output_details.
 
     Returns:
       a numpy array.
@@ -492,7 +498,7 @@ class Interpreter(object):
 
     Args:
       tensor_index: Tensor index of tensor to get. This value can be gotten from
-                    the 'index' field in get_output_details.
+        the 'index' field in get_output_details.
 
     Returns:
       A function that can return a new numpy array pointing to the internal
@@ -522,7 +528,7 @@ class Interpreter(object):
 class InterpreterWithCustomOps(Interpreter):
   """Interpreter interface for TensorFlow Lite Models that accepts custom ops.
 
-  The interface provided by this class is experimenal and therefore not exposed
+  The interface provided by this class is experimental and therefore not exposed
   as part of the public API.
 
   Wraps the tf.lite.Interpreter class and adds the ability to load custom ops

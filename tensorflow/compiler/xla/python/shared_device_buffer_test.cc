@@ -28,10 +28,10 @@ TEST(SharedDeviceBufferTest, MakeArray) {
   LocalClient* client = ClientLibrary::LocalClientOrDie();
 
   Shape shape = ShapeUtil::MakeShape(F32, {3, 101, 4});
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, SharedDeviceBuffer::MakeArray(
-                       shape, client->backend().transfer_manager(),
-                       client->backend().memory_allocator(), 0, nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(auto buffer,
+                          SharedDeviceBuffer::MakeArray(
+                              shape, client->backend().transfer_manager(),
+                              client->backend().memory_allocator(), 0, {}));
   EXPECT_EQ(buffer->children().size(), 0);
   EXPECT_EQ(buffer->device_ordinal(), 0);
   EXPECT_EQ(buffer->allocator(), client->backend().memory_allocator());
@@ -45,19 +45,19 @@ TEST(SharedDeviceBufferTest, MakeTuple) {
   Shape a_shape = ShapeUtil::MakeShape(F32, {3, 101, 4});
   Shape b_shape = ShapeUtil::MakeShape(S8, {77});
   Shape tuple_shape = ShapeUtil::MakeTupleShape({a_shape, b_shape});
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto a_buffer, SharedDeviceBuffer::MakeArray(
-                         a_shape, client->backend().transfer_manager(),
-                         client->backend().memory_allocator(), 0, nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto b_buffer, SharedDeviceBuffer::MakeArray(
-                         b_shape, client->backend().transfer_manager(),
-                         client->backend().memory_allocator(), 0, nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto tuple_buffer, SharedDeviceBuffer::MakeTuple(
-                             {a_buffer, b_buffer}, tuple_shape,
-                             client->backend().transfer_manager(),
-                             client->backend().memory_allocator(), 0, nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(auto a_buffer,
+                          SharedDeviceBuffer::MakeArray(
+                              a_shape, client->backend().transfer_manager(),
+                              client->backend().memory_allocator(), 0, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto b_buffer,
+                          SharedDeviceBuffer::MakeArray(
+                              b_shape, client->backend().transfer_manager(),
+                              client->backend().memory_allocator(), 0, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto tuple_buffer,
+                          SharedDeviceBuffer::MakeTuple(
+                              {a_buffer, b_buffer}, tuple_shape,
+                              client->backend().transfer_manager(),
+                              client->backend().memory_allocator(), 0, {}));
   ASSERT_EQ(tuple_buffer->children().size(), 2);
   EXPECT_EQ(tuple_buffer->children()[0], a_buffer);
   EXPECT_EQ(tuple_buffer->children()[1], b_buffer);
@@ -75,30 +75,28 @@ TEST(SharedDeviceBufferTest, AsShapedBuffer) {
   Shape ab_tuple_shape = ShapeUtil::MakeTupleShape({a_shape, b_shape});
   Shape c_shape = ShapeUtil::MakeShape(S64, {});
   Shape abc_tuple_shape = ShapeUtil::MakeTupleShape({c_shape, ab_tuple_shape});
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto a_buffer, SharedDeviceBuffer::MakeArray(
-                         a_shape, client->backend().transfer_manager(),
-                         client->backend().memory_allocator(), 0, nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto b_buffer, SharedDeviceBuffer::MakeArray(
-                         b_shape, client->backend().transfer_manager(),
-                         client->backend().memory_allocator(), 0, nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto ab_tuple_buffer,
-      SharedDeviceBuffer::MakeTuple({a_buffer, b_buffer}, ab_tuple_shape,
-                                    client->backend().transfer_manager(),
-                                    client->backend().memory_allocator(), 0,
-                                    nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto c_buffer, SharedDeviceBuffer::MakeArray(
-                         c_shape, client->backend().transfer_manager(),
-                         client->backend().memory_allocator(), 0, nullptr));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto abc_tuple_buffer,
-      SharedDeviceBuffer::MakeTuple(
-          {c_buffer, ab_tuple_buffer}, abc_tuple_shape,
-          client->backend().transfer_manager(),
-          client->backend().memory_allocator(), 0, nullptr));
+  TF_ASSERT_OK_AND_ASSIGN(auto a_buffer,
+                          SharedDeviceBuffer::MakeArray(
+                              a_shape, client->backend().transfer_manager(),
+                              client->backend().memory_allocator(), 0, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto b_buffer,
+                          SharedDeviceBuffer::MakeArray(
+                              b_shape, client->backend().transfer_manager(),
+                              client->backend().memory_allocator(), 0, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto ab_tuple_buffer,
+                          SharedDeviceBuffer::MakeTuple(
+                              {a_buffer, b_buffer}, ab_tuple_shape,
+                              client->backend().transfer_manager(),
+                              client->backend().memory_allocator(), 0, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto c_buffer,
+                          SharedDeviceBuffer::MakeArray(
+                              c_shape, client->backend().transfer_manager(),
+                              client->backend().memory_allocator(), 0, {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto abc_tuple_buffer,
+                          SharedDeviceBuffer::MakeTuple(
+                              {c_buffer, ab_tuple_buffer}, abc_tuple_shape,
+                              client->backend().transfer_manager(),
+                              client->backend().memory_allocator(), 0, {}));
   Shape abc_tuple_device_shape =
       client->backend().transfer_manager()->HostShapeToDeviceShape(
           abc_tuple_shape);
@@ -140,7 +138,7 @@ TEST(SharedDeviceBufferTest, FromScopedShapedBuffer) {
       ScopedShapedBuffer shaped_buffer,
       client->LiteralToShapedBuffer(literal, /*device_ordinal=*/0));
   std::shared_ptr<SharedDeviceBuffer> device_buffer =
-      SharedDeviceBuffer::FromScopedShapedBuffer(&shaped_buffer, nullptr);
+      SharedDeviceBuffer::FromScopedShapedBuffer(&shaped_buffer, {});
 
   ASSERT_EQ(device_buffer->device_memory().size(), 1);
   ASSERT_EQ(device_buffer->children().size(), 2);

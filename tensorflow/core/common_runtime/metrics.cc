@@ -45,13 +45,13 @@ auto* graph_run_time_usecs_histogram = monitoring::Sampler<0>::New(
 auto* graph_run_input_tensor_bytes = monitoring::Sampler<0>::New(
     {"/tensorflow/core/graph_run_input_tensor_bytes",
      "The size of input tensors in bytes."},
-    // Power of 2 with bucket count 14 (256G)
-    {monitoring::Buckets::Exponential(1, 4, 20)});
+    // Power of 2 with bucket count 14 (256MB)
+    {monitoring::Buckets::Exponential(1, 4, 14)});
 
 auto* graph_run_output_tensor_bytes = monitoring::Sampler<0>::New(
     {"/tensorflow/core/graph_run_output_tensor_bytes",
      "The size of output tensors in bytes."},
-    // Power of 2 with bucket count 14 (256G)
+    // Power of 2 with bucket count 14 (256MB)
     {monitoring::Buckets::Exponential(1, 4, 14)});
 
 auto* graph_unused_outputs = monitoring::Counter<1>::New(
@@ -68,6 +68,12 @@ auto* tf_data_bytes_read_counter = monitoring::Counter<1>::New(
 auto* tf_data_bytes_fetched_counter = monitoring::Counter<0>::New(
     "/tensorflow/data/bytes_fetched",
     "The number of bytes fetched from tf.data Dataset iterator.");
+
+auto* tf_data_getnext_duration_counter = monitoring::Sampler<0>::New(
+    {"/tensorflow/data/getnext_duration",
+     "Microseconds spent fetching an element from tf.data Dataset iterator."},
+    // Power of 2 with bucket count 10 (1024 ms)
+    {monitoring::Buckets::Exponential(1, 2, 10)});
 
 auto* tf_data_elements_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/elements", "tf.data elements", "name");
@@ -126,12 +132,18 @@ void RecordTFDataAutotune(const string& name) {
   tf_data_autotune_counter->GetCell(name)->IncrementBy(1);
 }
 
-void RecordTFDataBytesRead(const string& name, int64 num_bytes) {
-  tf_data_bytes_read_counter->GetCell(name)->IncrementBy(num_bytes);
+monitoring::CounterCell* GetTFDataBytesReadCounter(const string& name) {
+  return tf_data_bytes_read_counter->GetCell(name);
 }
 
 void RecordTFDataBytesFetched(int64 num_bytes) {
   tf_data_bytes_fetched_counter->GetCell()->IncrementBy(num_bytes);
+}
+
+void RecordTFDataGetNextDuration(uint64 duration_us) {
+  static auto* tfdata_getnext_duration_cell =
+      tf_data_getnext_duration_counter->GetCell();
+  tfdata_getnext_duration_cell->Add(duration_us);
 }
 
 void RecordTFDataElements(const string& name, int64 num_elements) {

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 
 #include <memory>
+#include <vector>
 
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/coding.h"
+#include "tensorflow/core/platform/casts.h"
 
 using tensorflow::Status;
 using tensorflow::Tensor;
@@ -64,25 +66,41 @@ void deallocate_buffer(void* data, size_t len, void* arg) {
 }
 }  // namespace tensorflow
 
+namespace {
+TF_Tensor* CreateTensor(TF_ManagedBuffer* buf, TF_DataType dtype,
+                        const int64_t* dims, int num_dims, size_t len) {
+  std::vector<tensorflow::int64> dimvec(num_dims);
+  for (int i = 0; i < num_dims; ++i) {
+    dimvec[i] = static_cast<tensorflow::int64>(dims[i]);
+  }
+
+  // TODO(gjn): Make the choice of interface a compile-time configuration.
+  tensorflow::TensorInterface ret(
+      Tensor(static_cast<tensorflow::DataType>(dtype),
+             tensorflow::TensorShape(dimvec), buf));
+  buf->Unref();
+  size_t elem_size = TF_DataTypeSize(dtype);
+  if (elem_size > 0 && len < (elem_size * ret.NumElements())) {
+    return nullptr;
+  }
+  return new TF_Tensor{new tensorflow::TensorInterface(ret)};
+}
+}  // namespace
 
 TF_Tensor* TF_AllocateTensor(TF_DataType dtype, const int64_t* dims,
                              int num_dims, size_t len) {
   void* data = tensorflow::allocate_tensor("TF_AllocateTensor", len,
                                            tensorflow::cpu_allocator());
-  return TF_NewTensor(dtype, dims, num_dims, data, len,
-                      tensorflow::deallocate_buffer,
-                      tensorflow::cpu_allocator());
+  TF_ManagedBuffer* buf =
+      new TF_ManagedBuffer(data, len, tensorflow::deallocate_buffer,
+                           tensorflow::cpu_allocator(), /*owns_memory=*/true);
+  return CreateTensor(buf, dtype, dims, num_dims, len);
 }
 
 TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
                         void* data, size_t len,
                         void (*deallocator)(void* data, size_t len, void* arg),
                         void* deallocator_arg) {
-  std::vector<tensorflow::int64> dimvec(num_dims);
-  for (int i = 0; i < num_dims; ++i) {
-    dimvec[i] = static_cast<tensorflow::int64>(dims[i]);
-  }
-
   TF_ManagedBuffer* buf = nullptr;
   if (dtype != TF_STRING && dtype != TF_RESOURCE &&
       tensorflow::DataTypeCanUseMemcpy(
@@ -97,33 +115,38 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
     // Other types have the same representation, so copy only if it is safe to
     // do so.
     buf = new TF_ManagedBuffer(tensorflow::allocate_tensor("TF_NewTensor", len),
-                               len, tensorflow::deallocate_buffer, nullptr);
+                               len, tensorflow::deallocate_buffer, nullptr,
+                               /*owns_memory=*/true);
     std::memcpy(buf->data(), data, len);
     // Free the original buffer.
     deallocator(data, len, deallocator_arg);
   } else {
-    buf = new TF_ManagedBuffer(data, len, deallocator, deallocator_arg);
+    buf = new TF_ManagedBuffer(data, len, deallocator, deallocator_arg,
+                               /*owns_memory=*/false);
   }
 
-  // TODO(gjn): Make the choice of interface a compile-time configuration.
-  tensorflow::TensorInterface ret(
-      Tensor(static_cast<tensorflow::DataType>(dtype),
-             tensorflow::TensorShape(dimvec), buf));
-  buf->Unref();
-  size_t elem_size = TF_DataTypeSize(dtype);
-  if (elem_size > 0 && len < (elem_size * ret.NumElements())) {
-    return nullptr;
-  }
-  return new TF_Tensor{std::make_unique<tensorflow::TensorInterface>(ret)};
+  return CreateTensor(buf, dtype, dims, num_dims, len);
 }
 
 TF_Tensor* TF_TensorMaybeMove(TF_Tensor* t) {
   return t->tensor->CanMove() ? t : nullptr;
 }
 
-void TF_DeleteTensor(TF_Tensor* t) { delete t; }
+void TF_DeleteTensor(TF_Tensor* t) {
+  if (t == nullptr) {
+    return;
+  }
 
-TF_DataType TF_TensorType(const TF_Tensor* t) { return t->tensor->Type(); }
+  if (t->tensor) {
+    t->tensor->Release();
+  }
+
+  delete t;
+}
+
+TF_DataType TF_TensorType(const TF_Tensor* t) {
+  return static_cast<TF_DataType>(t->tensor->Type());
+}
 
 int TF_NumDims(const TF_Tensor* t) { return t->tensor->NumDims(); }
 
@@ -149,14 +172,17 @@ void TF_TensorBitcastFrom(const TF_Tensor* from, TF_DataType type,
                           int num_new_dims, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   Status cc_status(
-      static_cast<tensorflow::TensorInterface*>(to->tensor.get())
-          ->BitcastFrom(*static_cast<const tensorflow::TensorInterface*>(
-                            from->tensor.get()),
-                        type, new_dims, num_new_dims));
+      tensorflow::down_cast<tensorflow::TensorInterface*>(to->tensor)
+          ->BitcastFrom(
+              *tensorflow::down_cast<const tensorflow::TensorInterface*>(
+                  from->tensor),
+              static_cast<tensorflow::DataType>(type), new_dims, num_new_dims));
   Set_TF_Status_from_Status(status, cc_status);
 }
 
 namespace tensorflow {
+
+void TensorInterface::Release() { delete this; }
 
 bool TensorInterface::CanMove() const {
   // It is safe to move the Tensor if and only if we own the unique reference to
@@ -170,9 +196,7 @@ bool TensorInterface::CanMove() const {
   return false;
 }
 
-TF_DataType TensorInterface::Type() const {
-  return static_cast<TF_DataType>(tensor_.dtype());
-}
+DataType TensorInterface::Type() const { return tensor_.dtype(); }
 
 int TensorInterface::NumDims() const { return tensor_.dims(); }
 
@@ -192,15 +216,13 @@ void* TensorInterface::Data() const {
   return tensorflow::TensorCApi::Buffer(tensor_)->data();
 }
 
-Status TensorInterface::BitcastFrom(const TensorInterface& from,
-                                    TF_DataType type, const int64_t* new_dims,
-                                    int num_new_dims) {
+Status TensorInterface::BitcastFrom(const TensorInterface& from, DataType type,
+                                    const int64_t* new_dims, int num_new_dims) {
   tensorflow::TensorShape s;
   for (int i = 0; i < num_new_dims; ++i) {
     s.AddDim(new_dims[i]);
   }
-  return tensor_.BitcastFrom(from.tensor_,
-                             static_cast<tensorflow::DataType>(type), s);
+  return tensor_.BitcastFrom(from.tensor_, type, s);
 }
 
 }  // namespace tensorflow
@@ -317,7 +339,7 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
     if (!tensor.CopyFrom(src, src.shape())) {
       return nullptr;
     }
-    return new TF_Tensor{std::make_unique<tensorflow::TensorInterface>(tensor)};
+    return new TF_Tensor{new tensorflow::TensorInterface(tensor)};
   }
   // DT_STRING tensors require a copying since TF_Tensor.buffer expects a flatly
   // encoded sequence of strings.
@@ -367,11 +389,11 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src, Status* status) {
 }
 
 Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
-  return static_cast<const tensorflow::TensorInterface*>(src->tensor.get())
+  return tensorflow::down_cast<const tensorflow::TensorInterface*>(src->tensor)
       ->ToTensor(dst);
 }
 
-Status TensorInterface::ToTensor(Tensor* dst) const {
+Status TensorInterface::ToTensor(tensorflow::Tensor* dst) const {
   if (tensor_.dtype() == DT_RESOURCE) {
     if (tensor_.dims() != 0) {
       return InvalidArgument(
@@ -379,7 +401,7 @@ Status TensorInterface::ToTensor(Tensor* dst) const {
           "shape ",
           tensor_.shape().DebugString());
     }
-    *dst = Tensor(tensorflow::DT_RESOURCE, tensor_.shape());
+    *dst = tensorflow::Tensor(tensorflow::DT_RESOURCE, tensor_.shape());
     if (!dst->scalar<tensorflow::ResourceHandle>()().ParseFromString(
             string(static_cast<const char*>(Data()), ByteSize()))) {
       return InvalidArgument(
@@ -404,7 +426,7 @@ Status TensorInterface::ToTensor(Tensor* dst) const {
   const char* data_start = input + sizeof(tensorflow::uint64) * num_elements;
   const char* limit = input + src_size;
 
-  *dst = Tensor(tensor_.dtype(), tensor_.shape());
+  *dst = tensorflow::Tensor(tensor_.dtype(), tensor_.shape());
   auto dstarray = dst->flat<tstring>();
   for (tensorflow::int64 i = 0; i < num_elements; ++i) {
     tensorflow::uint64 offset =

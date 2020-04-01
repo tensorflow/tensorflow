@@ -74,6 +74,8 @@ class SGD(optimizer_v2.OptimizerV2):
         http://jmlr.org/proceedings/papers/v28/sutskever13.pdf).
   """
 
+  _HAS_AGGREGATE_GRAD = True
+
   def __init__(self,
                learning_rate=0.01,
                momentum=0.0,

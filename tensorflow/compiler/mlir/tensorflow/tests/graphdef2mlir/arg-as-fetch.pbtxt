@@ -20,8 +20,11 @@ versions {
   producer: 27
 }
 
-# CHECK: func @main(%[[ARG_0:[a-z0-9]+]]: tensor<8xi32>) -> tensor<8xi32>
-# CHECK: attributes {tf.entry_function = {inputs = "arg", outputs = "arg"}} {
-# CHECK:   %[[GRAPH:[0-9]+]] = tf_executor.graph
-# CHECK:     tf_executor.fetch %[[ARG_0]]
-# CHECK:   return %[[GRAPH]]
+# CHECK-LABEL: func @main
+# CHECK-SAME:  (%[[ARG_0:[a-z0-9]+]]: tensor<8xi32>) -> tensor<8xi32>
+# CHECK-SAME:  control_outputs = ""
+# CHECK-SAME:  inputs = "arg"
+# CHECK-SAME:  outputs = "arg"
+# CHECK:         %[[GRAPH:[0-9]+]] = tf_executor.graph
+# CHECK:           tf_executor.fetch %[[ARG_0]]
+# CHECK:         return %[[GRAPH]]

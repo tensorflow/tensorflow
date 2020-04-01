@@ -105,7 +105,13 @@ The following optional parameters can be used to modify the inference runtime:
 
 *   `delegate`: `string` \
     If provided, tries to use the specified delegate for accuracy evaluation.
-    Valid values: "nnapi", "gpu".
+    Valid values: "nnapi", "gpu", "hexagon".
+
+    NOTE: Please refer to the
+    [Hexagon delegate documentation](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/hexagon_delegate.md)
+    for instructions on how to set it up for the Hexagon delegate. The tool
+    assumes that `libhexagon_interface.so` and Qualcomm libraries lie in
+    `/data/local/tmp`.
 
 ## Downloading ILSVRC
 
@@ -151,7 +157,7 @@ bazel build -c opt \
 directory if required):
 
 ```
-adb push bazel-bin/third_party/tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification/run_eval /data/local/tmp
+adb push bazel-bin/tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification/run_eval /data/local/tmp
 ```
 
 (3) Make the binary executable.
@@ -204,7 +210,6 @@ adb shell /data/local/tmp/run_eval \
 
 ```
 bazel run -c opt \
-  --cxxopt='--std=c++11' \
   -- \
   //tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification:run_eval \
   --model_file=mobilenet_quant_v1_224.tflite \

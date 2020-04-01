@@ -28,5 +28,4 @@ else
   NO_JOB=1
 fi
 
-make -j ${NO_JOB} TARGET=rpi -C "${TENSORFLOW_DIR}" -f tensorflow/lite/tools/make/Makefile
-
+make -j ${NO_JOB} TARGET=rpi -C "${TENSORFLOW_DIR}" -f tensorflow/lite/tools/make/Makefile $@

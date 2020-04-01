@@ -94,7 +94,6 @@ _api_usage_gauge = monitoring.BoolGauge(
 
 
 # pylint: disable=protected-access
-_TensorLike = tensor_like._TensorLike
 _DTYPES_INTERN_TABLE = dtypes._INTERN_TABLE
 # pylint: enable=protected-access
 
@@ -290,23 +289,26 @@ def disable_tensor_equality():
 
 
 @tf_export("Tensor")
-class Tensor(_TensorLike):
-  """A tensor represents a rectangular array of data.
+class Tensor(tensor_like.TensorLike):
+  """A tensor is a multidimensional array of elements represented by a
 
-  When writing a TensorFlow program, the main object you manipulate and pass
-  around is the `tf.Tensor`. A `tf.Tensor` object represents a rectangular array
-  of arbitrary dimension, filled with data of a specific data type.
+  `tf.Tensor` object.  All elements are of a single known data type.
+
+  When writing a TensorFlow program, the main object that is
+  manipulated and passed around is the `tf.Tensor`.
 
   A `tf.Tensor` has the following properties:
 
-  * a data type (float32, int32, or string, for example)
+  * a single data type (float32, int32, or string, for example)
   * a shape
 
-  Each element in the Tensor has the same data type, and the data type is always
-  known.
+  TensorFlow supports eager execution and graph execution.  In eager
+  execution, operations are evaluated immediately.  In graph
+  execution, a computational graph is constructed for later
+  evaluation.
 
-  In eager execution, which is the default mode in TensorFlow, results are
-  calculated immediately.
+  TensorFlow defaults to eager execution.  In the example below, the
+  matrix multiplication results are calculated immediately.
 
   >>> # Compute some values using a Tensor
   >>> c = tf.constant([[1.0, 2.0], [3.0, 4.0]])
@@ -316,7 +318,6 @@ class Tensor(_TensorLike):
   tf.Tensor(
   [[1. 3.]
    [3. 7.]], shape=(2, 2), dtype=float32)
-
 
   Note that during eager execution, you may discover your `Tensors` are actually
   of type `EagerTensor`.  This is an internal detail, but it does give you
@@ -328,19 +329,22 @@ class Tensor(_TensorLike):
     [[1. 3.]
      [3. 7.]]
 
-  TensorFlow can define computations without immediately executing them, most
-  commonly inside `tf.function`s, as well as in (legacy) Graph mode. In those
-  cases, the shape (that is, the rank of the Tensor and the size of
-  each dimension) might be only partially known.
+  In TensorFlow, `tf.function`s are a common way to define graph execution.
+
+  A Tensor's shape (that is, the rank of the Tensor and the size of
+  each dimension) may not always be fully known.  In `tf.function`
+  definitions, the shape may only be partially known.
 
   Most operations produce tensors of fully-known shapes if the shapes of their
   inputs are also fully known, but in some cases it's only possible to find the
   shape of a tensor at execution time.
 
-  There are specialized tensors; for these, see `tf.Variable`, `tf.constant`,
-  `tf.placeholder`, `tf.SparseTensor`, and `tf.RaggedTensor`.
+  A number of specialized tensors are available: see `tf.Variable`,
+  `tf.constant`, `tf.placeholder`, `tf.SparseTensor`, and
+  `tf.RaggedTensor`.
 
-  For more on Tensors, see the [guide](https://tensorflow.org/guide/tensor`).
+  For more on Tensors, see the [guide](https://tensorflow.org/guide/tensor).
+
   """
 
   # List of Python operators that we allow to override.
@@ -450,50 +454,22 @@ class Tensor(_TensorLike):
 
   @property
   def shape(self):
-    """Returns the `TensorShape` that represents the shape of this tensor.
+    """Returns a `tf.TensorShape` that represents the shape of this tensor.
 
-    The shape is computed using shape inference functions that are
-    registered in the Op for each `Operation`.  See
-    `tf.TensorShape`
-    for more details of what a shape represents.
+    >>> t = tf.constant([1,2,3,4,5])
+    >>> t.shape
+    TensorShape([5])
 
-    The inferred shape of a tensor is used to provide shape
-    information without having to execute the underlying kernel. This
-    can be used for debugging and providing early error messages. For
-    example:
+    `tf.Tensor.shape` is equivalent to `tf.Tensor.get_shape()`.
 
-    ```python
-    >>> c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-    >>> print(c.shape) # will be TensorShape([2, 3])
-    (2, 3)
+    In a `tf.function` or when building a model using
+    `tf.keras.Input`, they return the build-time shape of the
+    tensor, which may be partially unknown.
 
-    >>> d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
-    >>> print(d.shape)
-    (4, 2)
+    A `tf.TensorShape` is not a tensor. Use `tf.shape(t)` to get a tensor
+    containing the shape, calculated at runtime.
 
-    # Raises a ValueError, because `c` and `d` do not have compatible
-    # inner dimensions.
-    >>> e = tf.matmul(c, d)
-    Traceback (most recent call last):
-        ...
-    tensorflow.python.framework.errors_impl.InvalidArgumentError: Matrix
-    size-incompatible: In[0]: [2,3], In[1]: [4,2] [Op:MatMul] name: MatMul/
-
-    # This works because we have compatible shapes.
-    >>> f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
-    >>> print(f.shape)
-    (3, 4)
-
-    ```
-
-    In some cases, the inferred shape may have unknown dimensions. If
-    the caller has additional information about the values of these
-    dimensions, `Tensor.set_shape()` can be used to augment the
-    inferred shape.
-
-    Returns:
-      A `tf.TensorShape` representing the shape of this tensor.
-
+    See `tf.Tensor.get_shape()`, and `tf.TensorShape` for details and examples.
     """
     if self._shape_val is None:
       self._shape_val = self._c_api_shape()
@@ -591,37 +567,192 @@ class Tensor(_TensorLike):
     return self.shape.ndims
 
   def get_shape(self):
-    """Alias of `tf.Tensor.shape`."""
+    """Returns a `tf.TensorShape` that represents the shape of this tensor.
+
+    In eager execution the shape is always fully-known.
+
+    >>> a = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    >>> print(a.shape)
+    (2, 3)
+
+    `tf.Tensor.get_shape()` is equivalent to `tf.Tensor.shape`.
+
+
+    When executing in a `tf.function` or building a model using
+    `tf.keras.Input`, `Tensor.shape` may return a partial shape (including
+    `None` for unknown dimensions). See `tf.TensorShape` for more details.
+
+    >>> inputs = tf.keras.Input(shape = [10])
+    >>> # Unknown batch size
+    >>> print(inputs.shape)
+    (None, 10)
+
+    The shape is computed using shape inference functions that are
+    registered for each `tf.Operation`.
+
+    The returned `tf.TensorShape` is determined at *build* time, without
+    executing the underlying kernel. It is not a `tf.Tensor`. If you need a
+    shape *tensor*, either convert the `tf.TensorShape` to a `tf.constant`, or
+    use the `tf.shape(tensor)` function, which returns the tensor's shape at
+    *execution* time.
+
+    This is useful for debugging and providing early errors. For
+    example, when tracing a `tf.function`, no ops are being executed, shapes
+    may be unknown (See the [Concrete Functions
+    Guide](https://www.tensorflow.org/guide/concrete_function) for details).
+
+    >>> @tf.function
+    ... def my_matmul(a, b):
+    ...   result = a@b
+    ...   # the `print` executes during tracing.
+    ...   print("Result shape: ", result.shape)
+    ...   return result
+
+    The shape inference functions propagate shapes to the extent possible:
+
+    >>> _ = my_matmul.get_concrete_function(
+    ...   tf.TensorSpec([None,3]),
+    ...   tf.TensorSpec([3,5]))
+    Result shape: (None, 5)
+
+    Tracing may fail if a shape missmatch can be detected:
+
+    >>> _ = my_matmul.get_concrete_function(
+    ...   tf.TensorSpec([None,3]),
+    ...   tf.TensorSpec([4,5]))
+    Traceback (most recent call last):
+    ...
+    ValueError: Dimensions must be equal, but are 3 and 4 for 'matmul' (op:
+    'MatMul') with input shapes: [?,3], [4,5].
+
+    In some cases, the inferred shape may have unknown dimensions. If
+    the caller has additional information about the values of these
+    dimensions, `Tensor.set_shape()` can be used to augment the
+    inferred shape.
+
+    >>> @tf.function
+    ... def my_fun(a):
+    ...   a.set_shape([5, 5])
+    ...   # the `print` executes during tracing.
+    ...   print("Result shape: ", a.shape)
+    ...   return a
+
+    >>> _ = my_fun.get_concrete_function(
+    ...   tf.TensorSpec([None, None]))
+    Result shape: (5, 5)
+
+    Returns:
+      A `tf.TensorShape` representing the shape of this tensor.
+
+    """
     return self.shape
 
   def set_shape(self, shape):
     """Updates the shape of this tensor.
 
-    This method can be called multiple times, and will merge the given
-    `shape` with the current shape of this tensor. It can be used to
-    provide additional information about the shape of this tensor that
-    cannot be inferred from the graph alone. For example, this can be used
-    to provide additional information about the shapes of images:
+    With eager execution this operates as a shape assertion.
+    Here the shapes match:
 
-    ```python
-    _, image_data = tf.compat.v1.TFRecordReader(...).read(...)
-    image = tf.image.decode_png(image_data, channels=3)
+    >>> t = tf.constant([[1,2,3]])
+    >>> t.set_shape([1, 3])
 
-    # The height and width dimensions of `image` are data dependent, and
-    # cannot be computed without executing the op.
-    print(image.shape)
-    ==> TensorShape([Dimension(None), Dimension(None), Dimension(3)])
+    Passing a `None` in the new shape allows any value for that axis:
 
-    # We know that each image in this dataset is 28 x 28 pixels.
-    image.set_shape([28, 28, 3])
-    print(image.shape)
-    ==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
-    ```
+    >>> t.set_shape([1,None])
 
-    NOTE: This shape is not enforced at runtime. Setting incorrect shapes can
-    result in inconsistencies between the statically-known graph and the runtime
-    value of tensors. For runtime validation of the shape, use `tf.ensure_shape`
-    instead.
+    An error is raised if an incompatible shape is passed.
+
+    >>> t.set_shape([1,5])
+    Traceback (most recent call last):
+    ...
+    ValueError: Tensor's shape (1, 3) is not compatible with supplied
+    shape [1, 5]
+
+    When executing in a `tf.function`, or building a model using
+    `tf.keras.Input`, `Tensor.set_shape` will *merge* the given `shape` with
+    the current shape of this tensor, and set the tensor's shape to the
+    merged value (see `tf.TensorShape.merge_with` for details):
+
+    >>> t = tf.keras.Input(shape=[None, None, 3])
+    >>> print(t.shape)
+    (None, None, None, 3)
+
+    Dimensions set to `None` are not updated:
+
+    >>> t.set_shape([None, 224, 224, None])
+    >>> print(t.shape)
+    (None, 224, 224, 3)
+
+    The main use case for this is to provide additional shape information
+    that cannot be inferred from the graph alone.
+
+    For example if you know all the images in a dataset have shape [28,28,3] you
+    can set it with `tf.set_shape`:
+
+    >>> @tf.function
+    ... def load_image(filename):
+    ...   raw = tf.io.read_file(filename)
+    ...   image = tf.image.decode_png(raw, channels=3)
+    ...   # the `print` executes during tracing.
+    ...   print("Initial shape: ", image.shape)
+    ...   image.set_shape([28, 28, 3])
+    ...   print("Final shape: ", image.shape)
+    ...   return image
+
+    Trace the function, see the [Concrete Functions
+    Guide](https://www.tensorflow.org/guide/concrete_function) for details.
+
+    >>> _ = load_image.get_concrete_function(
+    ...     tf.TensorSpec([], dtype=tf.string))
+    Initial shape:  (None, None, 3)
+    Final shape: (28, 28, 3)
+
+    Similarly the `tf.io.parse_tensor` function could return a tensor with
+    any shape, even the `tf.rank` is unknown. If you know that all your
+    serialized tensors will be 2d, set it with `set_shape`:
+
+    >>> @tf.function
+    ... def my_parse(string_tensor):
+    ...   result = tf.io.parse_tensor(string_tensor, out_type=tf.float32)
+    ...   # the `print` executes during tracing.
+    ...   print("Initial shape: ", result.shape)
+    ...   result.set_shape([None, None])
+    ...   print("Final shape: ", result.shape)
+    ...   return result
+
+    Trace the function
+
+    >>> concrete_parse = my_parse.get_concrete_function(
+    ...     tf.TensorSpec([], dtype=tf.string))
+    Initial shape:  <unknown>
+    Final shape:  (None, None)
+
+    Make sure it works:
+
+    >>> t = tf.ones([5,3], dtype=tf.float32)
+    >>> serialized = tf.io.serialize_tensor(t)
+    >>> print(serialized.dtype)
+    <dtype: 'string'>
+    >>> print(serialized.shape)
+    ()
+    >>> t2 = concrete_parse(serialized)
+    >>> print(t2.shape)
+    (5, 3)
+
+    Caution: `set_shape` ensures that the applied shape is compatible with
+    the existing shape, but it does not check at runtime. Setting
+    incorrect shapes can result in inconsistencies between the
+    statically-known graph and the runtime value of tensors. For runtime
+    validation of the shape, use `tf.ensure_shape` instead. It also modifies
+    the `shape` of the tensor.
+
+    >>> # Serialize a rank-3 tensor
+    >>> t = tf.ones([5,5,5], dtype=tf.float32)
+    >>> serialized = tf.io.serialize_tensor(t)
+    >>> # The function still runs, even though it `set_shape([None,None])`
+    >>> t2 = concrete_parse(serialized)
+    >>> print(t2.shape)
+    (5, 5, 5)
 
     Args:
       shape: A `TensorShape` representing the shape of this tensor, a
@@ -3171,6 +3302,8 @@ class Graph(object):
     Raises:
       ValueError: if another function is defined with the same name.
     """
+    self._check_not_finalized()
+
     name = function.name
     # Sanity checks on gradient definition.
     if (function.grad_func_name is not None) and (function.python_grad_func is
@@ -3455,6 +3588,8 @@ class Graph(object):
     Returns:
       A list of the new `Operation` objects.
     """
+    self._check_not_finalized()
+
     # Create all Operation objects before accessing their inputs since an op may
     # be created before its inputs.
     new_ops = [
@@ -5548,8 +5683,31 @@ def init_scope():
         outer_graph._device_function_stack = outer_device_stack  # pylint: disable=protected-access
 
 
+@tf_export(v1=["executing_eagerly_outside_functions"])
 def executing_eagerly_outside_functions():
-  """Returns True if executing eagerly, even if inside a graph function."""
+  """Returns True if executing eagerly, even if inside a graph function.
+
+  This function will check the outermost context for the program and see if
+  it is in eager mode. It is useful comparing to `tf.executing_eagerly()`,
+  which checks the current context and will return `False` within a
+  `tf.function` body. It can be used to build library that behave differently
+  in eager runtime and v1 session runtime (deprecated).
+
+  Example:
+
+  >>> tf.compat.v1.enable_eager_execution()
+  >>> @tf.function
+  ... def func():
+  ...   # A function constructs TensorFlow graphs, it does not execute eagerly,
+  ...   # but the outer most context is still eager.
+  ...   assert not tf.executing_eagerly()
+  ...   return tf.compat.v1.executing_eagerly_outside_functions()
+  >>> func()
+  <tf.Tensor: shape=(), dtype=bool, numpy=True>
+
+  Returns:
+    boolean, whether the outermost context is in eager mode.
+  """
   if context.executing_eagerly():
     return True
   else:
@@ -5824,9 +5982,12 @@ def _assert_same_graph(original_item, item):
   Raises:
     ValueError: if graphs do not match.
   """
-  if original_item.graph is not item.graph:
-    raise ValueError("%s must be from the same graph as %s." %
-                     (item, original_item))
+  original_graph = getattr(original_item, "graph", None)
+  graph = getattr(item, "graph", None)
+  if original_graph and graph and original_graph is not graph:
+    raise ValueError(
+        "%s must be from the same graph as %s (graphs are %s and %s)." %
+        (item, original_item, graph, original_graph))
 
 
 def _get_graph_from_inputs(op_input_list, graph=None):
@@ -5880,7 +6041,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
     # TODO(josh11b): Note that we exclude subclasses of Tensor. Need to clean this
     # up.
     graph_element = None
-    if (isinstance(op_input, (Operation, _TensorLike)) and
+    if (isinstance(op_input, (Operation, tensor_like.TensorLike)) and
         ((not isinstance(op_input, Tensor)) or type(op_input) == Tensor)):  # pylint: disable=unidiomatic-typecheck
       graph_element = op_input
     else:
@@ -5889,7 +6050,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
     if graph_element is not None:
       if not graph:
         original_graph_element = graph_element
-        graph = graph_element.graph
+        graph = getattr(graph_element, "graph", None)
       elif original_graph_element is not None:
         _assert_same_graph(original_graph_element, graph_element)
       elif graph_element.graph is not graph:
@@ -6715,3 +6876,9 @@ class _TensorIterator(object):
     return result
 
   next = __next__  # python2.x compatibility.
+
+
+def set_int_list_attr(op, attr_name, ints):
+  """TF internal method used to set a list(int) attribute in the node_def."""
+  ints_list = attr_value_pb2.AttrValue.ListValue(i=ints)
+  op._set_attr(attr_name, attr_value_pb2.AttrValue(list=ints_list))  # pylint:disable=protected-access

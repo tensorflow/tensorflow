@@ -304,11 +304,11 @@ class RandomUniformTest(RandomOpTestCommon):
   def testUniformIntsWithInvalidShape(self):
     for dtype in dtypes.int32, dtypes.int64:
       with self.assertRaisesRegexp(
-          ValueError, "Shape must be rank 0 but is rank 1"):
+          ValueError, "minval must be a scalar; got a tensor of shape"):
         random_ops.random_uniform(
             [1000], minval=[1, 2], maxval=3, dtype=dtype)
       with self.assertRaisesRegexp(
-          ValueError, "Shape must be rank 0 but is rank 1"):
+          ValueError, "maxval must be a scalar; got a tensor of shape"):
         random_ops.random_uniform(
             [1000], minval=1, maxval=[2, 3], dtype=dtype)
 

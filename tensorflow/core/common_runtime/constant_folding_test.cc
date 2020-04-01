@@ -704,7 +704,7 @@ class TestTFFileSystem : public ::tensorflow::NullFileSystem {
   ::tensorflow::Tensor data_tensor_;
 };
 
-// A test TF environent that checks that the environment was used.
+// A test TF environment that checks that the environment was used.
 class TestTFEnvironment : public ::tensorflow::EnvWrapper {
  public:
   using tf_base = ::tensorflow::EnvWrapper;

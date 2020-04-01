@@ -58,6 +58,7 @@ cc_library(
     deps = [
         ":op_factory",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/delegates/hexagon:hexagon_implementation",
         "//tensorflow/lite/experimental/delegates/hexagon/hexagon_nn:hexagon_nn_header",

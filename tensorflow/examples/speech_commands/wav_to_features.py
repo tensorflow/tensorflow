@@ -37,8 +37,8 @@ import sys
 
 import tensorflow as tf
 
-import tensorflow.examples.speech_commands.input_data as input_data
-import tensorflow.examples.speech_commands.models as models
+import input_data
+import models
 from tensorflow.python.platform import gfile
 
 FLAGS = None
@@ -117,7 +117,7 @@ def wav_to_features(sample_rate, clip_duration_ms, window_size_ms,
       for value in features.flatten():
         if i == 0:
           f.write('\n  ')
-        f.write(' ,%f' % value)
+        f.write('%f, ' % value)
         i = (i + 1) % 10
     f.write('\n};\n')
 

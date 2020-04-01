@@ -1,5 +1,10 @@
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
-load("//tensorflow/lite:special_rules.bzl", "tflite_ios_per_kernel_test", "tflite_portable_test_suite")
+load(
+    "//tensorflow/lite:special_rules.bzl",
+    "tflite_ios_lab_runner",
+    "tflite_ios_per_kernel_test",
+    "tflite_portable_test_suite",
+)
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
@@ -27,6 +32,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal/kernels",
         "//tensorflow/lite/delegates/gpu/metal/kernels:custom_registry",
     ],
@@ -75,6 +81,7 @@ ios_unit_test(
     name = "common_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -111,6 +118,7 @@ ios_unit_test(
     name = "compiled_model_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -156,34 +164,13 @@ objc_library(
     srcs = ["environment.mm"],
     hdrs = ["environment.h"],
     copts = DEFAULT_COPTS,
-    sdk_frameworks = [
-        "Metal",
-    ],
+    sdk_frameworks = ["Metal"],
     deps = [
         ":common",
+        # TODO(b/152322289): The following dependency is not needed, but a Bazel
+        # bug causes a build failure without an additional dummy dependency.
+        "//tensorflow/lite/delegates/gpu/common:convert",
     ],
-)
-
-objc_library(
-    name = "environment_test_lib",
-    testonly = 1,
-    srcs = ["environment_test.mm"],
-    sdk_frameworks = ["XCTest"],
-    deps = [
-        ":environment",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",
-    ],
-)
-
-ios_unit_test(
-    name = "environment_test",
-    testonly = 1,
-    minimum_os_version = "10.0",
-    tags = tf_gpu_tests_tags() + [
-        "notap",
-        "tflite_not_portable_android",
-    ],
-    deps = [":environment_test_lib"],
 )
 
 objc_library(
@@ -219,6 +206,7 @@ ios_unit_test(
     name = "inference_context_test",
     testonly = 1,
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
@@ -262,7 +250,6 @@ objc_library(
     srcs = [
         "//tensorflow/lite/delegates/gpu/metal:common_test.mm",
         "//tensorflow/lite/delegates/gpu/metal:compiled_model_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal:environment_test.mm",
         "//tensorflow/lite/delegates/gpu/metal:inference_context_test.mm",
     ],
     hdrs = [
@@ -281,6 +268,7 @@ objc_library(
 ios_unit_test(
     name = "ComponentsTests",
     minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = tf_gpu_tests_tags() + ["notap"],
     test_host = ":TestApplication",
     deps = [

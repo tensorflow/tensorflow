@@ -97,6 +97,16 @@ class ScopedTFFunction(object):
       self.func = None
 
 
+class ScopedTFBuffer(object):
+  """An internal class to help manage the TF_Buffer lifetime."""
+
+  def __init__(self, buf_string):
+    self.buffer = c_api.TF_NewBufferFromString(compat.as_bytes(buf_string))
+
+  def __del__(self):
+    c_api.TF_DeleteBuffer(self.buffer)
+
+
 class ApiDefMap(object):
   """Wrapper around Tf_ApiDefMap that handles querying and deletion.
 

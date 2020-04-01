@@ -13,5 +13,4 @@ py_binary(
     srcs = ["gen_git_source.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    deps = ["@six_archive//:six"],
 )

@@ -46,12 +46,13 @@ using se::rocm::ScopedActivateExecutorContext;
 int NcclManager::instance_count = 0;
 #endif
 
-#define NCCL_RETURN_IF_ERROR(...)                                         \
-  do {                                                                    \
-    ncclResult_t nccl_status = (__VA_ARGS__);                             \
-    if (nccl_status != ncclSuccess) {                                     \
-      return errors::Internal("NCCL: ", ncclGetErrorString(nccl_status)); \
-    }                                                                     \
+#define NCCL_RETURN_IF_ERROR(...)                                        \
+  do {                                                                   \
+    ncclResult_t nccl_status = (__VA_ARGS__);                            \
+    if (nccl_status != ncclSuccess) {                                    \
+      return errors::Internal("NCCL: ", ncclGetErrorString(nccl_status), \
+                              ". Set NCCL_DEBUG=WARN for detail.");      \
+    }                                                                    \
   } while (0)
 
 #define CUDA_RETURN_IF_ERROR(...)                                         \
@@ -87,8 +88,8 @@ struct NcclManager::NcclStream : public core::RefCounted {
   mutex mu;
   condition_variable cv;
   // Has (collective, participant_idx) pairs.
-  std::deque<std::pair<Collective*, int>> pending_launches_ GUARDED_BY(mu);
-  bool shutdown_requested GUARDED_BY(mu) = false;
+  std::deque<std::pair<Collective*, int>> pending_launches_ TF_GUARDED_BY(mu);
+  bool shutdown_requested TF_GUARDED_BY(mu) = false;
 };
 
 struct NcclManager::CommunicatorMember {

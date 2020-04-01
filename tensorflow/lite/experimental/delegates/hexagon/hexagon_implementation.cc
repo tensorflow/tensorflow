@@ -76,6 +76,8 @@ HexagonNN CreateNewHexagonInterface() {
   LOAD_FUNCTION(libhexagon_interface, hexagon_nn_is_device_supported,
                 hexagon_nn);
   LOAD_FUNCTION(libhexagon_interface, hexagon_nn_version, hexagon_nn);
+  LOAD_FUNCTION(libhexagon_interface, hexagon_nn_hexagon_interface_version,
+                hexagon_nn);
   hexagon_nn.interface_loaded = successfully_loaded;
   return hexagon_nn;
 }

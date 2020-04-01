@@ -55,13 +55,13 @@ class GrapplerTest : public ::testing::Test {
   // with the same inputs and attributes. Nodes can be in different order.
   //
   // NOTE: This function uses EXPECT/ASSERT macros to check node properties
-  // equality, and adds all failuires to the current test.
+  // equality, and adds all failures to the current test.
   void CompareGraphs(GraphDef want, GraphDef got) const;
 
   // Checks if two nodes have the same name, op, inputs and attributes.
   //
   // NOTE: This function uses EXPECT/ASSERT macros to check node properties
-  // equality, and adds all failuires to the current test.
+  // equality, and adds all failures to the current test.
   void CompareNodes(const NodeDef& want, const NodeDef& got) const;
 
   // Checks if two functions are equal. Both functions must have the same set of

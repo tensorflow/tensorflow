@@ -18,7 +18,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
-#include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/experimental/resource/lookup_interfaces.h"
 #include "tensorflow/lite/interpreter.h"
@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace tflite {
 
-// Forward declaraction for op kernels.
+// Forward declaration for op kernels.
 namespace ops {
 namespace custom {
 
@@ -505,7 +505,7 @@ class HashtableGraph {
   TestErrorReporter error_reporter_;
 };
 
-// HashtableDefaultGraphTest tests hash table feautres on a basic graph, created
+// HashtableDefaultGraphTest tests hash table features on a basic graph, created
 // by the HashtableGraph class.
 template <typename KeyType, typename ValueType>
 class HashtableDefaultGraphTest {

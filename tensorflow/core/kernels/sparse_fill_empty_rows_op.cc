@@ -78,16 +78,23 @@ class SparseFillEmptyRowsOp : public OpKernel {
     const int64 N = indices_t.shape().dim_size(0);
     const int64 dense_rows = dense_shape(0);
 
-    Tensor* empty_row_indicator_t;
-    OP_REQUIRES_OK(context, context->allocate_output(kEmptyRowIndicatorOutput,
-                                                     TensorShape({dense_rows}),
-                                                     &empty_row_indicator_t));
-    auto empty_row_indicator = empty_row_indicator_t->vec<bool>();
-    Tensor* reverse_index_map_t;
-    OP_REQUIRES_OK(context, context->allocate_output(kReverseIndexMapOutput,
-                                                     TensorShape({N}),
-                                                     &reverse_index_map_t));
-    auto reverse_index_map = reverse_index_map_t->vec<int64>();
+    bool* empty_row_indicator = nullptr;
+    if (context->output_required(kEmptyRowIndicatorOutput)) {
+      Tensor* empty_row_indicator_t = nullptr;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(kEmptyRowIndicatorOutput,
+                                              TensorShape({dense_rows}),
+                                              &empty_row_indicator_t));
+      empty_row_indicator = empty_row_indicator_t->vec<bool>().data();
+    }
+    int64* reverse_index_map = nullptr;
+    if (context->output_required(kReverseIndexMapOutput)) {
+      Tensor* reverse_index_map_t = nullptr;
+      OP_REQUIRES_OK(context, context->allocate_output(kReverseIndexMapOutput,
+                                                       TensorShape({N}),
+                                                       &reverse_index_map_t));
+      reverse_index_map = reverse_index_map_t->vec<int64>().data();
+    }
 
     int rank = indices_t.shape().dim_size(1);
 
@@ -122,8 +129,11 @@ class SparseFillEmptyRowsOp : public OpKernel {
     bool all_rows_full = true;
     for (int row = 0; row < dense_rows; ++row) {
       // csr_offset here describes the number of elements in this dense row
-      empty_row_indicator(row) = (csr_offset[row] == 0);
-      all_rows_full = all_rows_full & !empty_row_indicator(row);
+      bool row_empty = (csr_offset[row] == 0);
+      if (empty_row_indicator) {
+        empty_row_indicator[row] = row_empty;
+      }
+      all_rows_full = all_rows_full & !row_empty;
       // In filled version, each row has at least one element.
       csr_offset[row] = std::max(csr_offset[row], int64{1});
       // Update csr_offset to represent the number of elements up to and
@@ -140,8 +150,10 @@ class SparseFillEmptyRowsOp : public OpKernel {
     if (all_rows_full) {
       context->set_output(kOutputIndicesOutput, indices_t);
       context->set_output(kOutputValuesOutput, values_t);
-      for (int64 i = 0; i < N; ++i) {
-        reverse_index_map(i) = i;
+      if (reverse_index_map) {
+        for (int64 i = 0; i < N; ++i) {
+          reverse_index_map[i] = i;
+        }
       }
     } else {
       Tensor* output_indices_t;
@@ -169,7 +181,9 @@ class SparseFillEmptyRowsOp : public OpKernel {
         std::copy_n(&indices(i, 0), rank, &output_indices(output_i, 0));
         output_values(output_i) = values(i);
         // We'll need this reverse index map to backprop correctly.
-        reverse_index_map(i) = output_i;
+        if (reverse_index_map) {
+          reverse_index_map[i] = output_i;
+        }
       }
 
       // Fill in values for rows that are missing

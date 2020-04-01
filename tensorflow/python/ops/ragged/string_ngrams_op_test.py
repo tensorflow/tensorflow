@@ -18,16 +18,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
 
 
-class StringNgramsTest(test_util.TensorFlowTestCase):
+class StringNgramsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def test_unpadded_ngrams(self):
     data = [[b"aa", b"bb", b"cc", b"dd"], [b"ee", b"ff"]]
@@ -281,6 +285,66 @@ class StringNgramsTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([0, 0, 0, 0], result.row_splits)
     self.assertAllEqual(constant_op.constant([], dtype=dtypes.string),
                         result.values)
+
+  @parameterized.parameters([
+      dict(
+          data=[b"a", b"z"],
+          ngram_width=2,
+          pad_values=5,
+          exception=TypeError,
+          error="pad_values must be a string, tuple of strings, or None."),
+      dict(
+          data=[b"a", b"z"],
+          ngram_width=2,
+          pad_values=[5, 3],
+          exception=TypeError,
+          error="pad_values must be a string, tuple of strings, or None."),
+      dict(
+          data=[b"a", b"z"],
+          ngram_width=2,
+          padding_width=0,
+          pad_values="X",
+          error="padding_width must be greater than 0."),
+      dict(
+          data=[b"a", b"z"],
+          ngram_width=2,
+          padding_width=1,
+          error="pad_values must be provided if padding_width is set."),
+      dict(
+          data=b"hello",
+          ngram_width=2,
+          padding_width=1,
+          pad_values="X",
+          error="Data must have rank>0"),
+      dict(
+          data=[b"hello", b"world"],
+          ngram_width=[1, 2, -1],
+          padding_width=1,
+          pad_values="X",
+          error="All ngram_widths must be greater than 0. Got .*"),
+  ])
+  def test_error(self,
+                 data,
+                 ngram_width,
+                 separator=" ",
+                 pad_values=None,
+                 padding_width=None,
+                 preserve_short_sequences=False,
+                 error=None,
+                 exception=ValueError):
+    with self.assertRaisesRegexp(exception, error):
+      ragged_string_ops.ngrams(data, ngram_width, separator, pad_values,
+                               padding_width, preserve_short_sequences)
+
+  def test_unknown_rank_error(self):
+    # Use a tf.function that erases shape information.
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.string)])
+    def f(v):
+      return ragged_string_ops.ngrams(v, 2)
+
+    with self.assertRaisesRegexp(ValueError, "Rank of data must be known."):
+      f([b"foo", b"bar"])
 
 
 if __name__ == "__main__":

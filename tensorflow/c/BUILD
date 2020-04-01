@@ -23,6 +23,7 @@ filegroup(
     srcs = [
         "c_api.h",
         "c_api_experimental.h",
+        "tensor_interface.h",
         "tf_attrtype.h",
         "tf_datatype.h",
         "tf_file_statistics.h",
@@ -58,6 +59,7 @@ filegroup(
     srcs = [
         "c_api_internal.h",
         "python_api.h",
+        "tensor_interface.h",
         "tf_status_helper.h",
         "tf_status_internal.h",
         "tf_tensor_internal.h",
@@ -154,7 +156,10 @@ tf_cuda_library(
         "c_api.h",
     ],
     copts = tf_copts(),
-    visibility = ["//tensorflow/c:__subpackages__"],
+    visibility = [
+        "//tensorflow/c:__subpackages__",
+        "//third_party/llvm/llvm-project:__subpackages__",
+    ],
     deps = [
         ":c_api_internal",
         ":tf_attrtype",
@@ -236,13 +241,23 @@ cc_library(
 )
 
 cc_library(
+    name = "tensor_interface",
+    hdrs = ["tensor_interface.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "tf_datatype",
     srcs = ["tf_datatype.cc"],
     hdrs = ["tf_datatype.h"],
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
@@ -261,6 +276,7 @@ cc_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            ":tensor_interface",
             ":tf_datatype",
             ":tf_status",
             ":tf_status_helper",
@@ -268,6 +284,7 @@ cc_library(
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
             "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core/platform:casts",
         ],
     }),
 )
@@ -278,16 +295,18 @@ tf_cuda_library(
         "tf_tensor.h",
         "tf_tensor_internal.h",
     ],
-    visibility = ["//tensorflow/c:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            ":tensor_interface",
             ":tf_datatype",
             ":tf_status",
             "//tensorflow/core:framework",
             "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core/platform:casts",
         ],
     }),
 )
@@ -315,6 +334,8 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:attr_builder",
         "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:core",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/platform",
         "@com_google_absl//absl/strings",
@@ -536,6 +557,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:math",
+        "//tensorflow/core/platform:resource_loader",
     ],
 )
 
@@ -697,4 +719,5 @@ tf_cuda_library(
         # TODO(b/74620627): remove when _USE_C_SHAPES is removed
         "//tensorflow/python:cpp_shape_inference_proto_cc",
     ],
+    alwayslink = 1,
 )

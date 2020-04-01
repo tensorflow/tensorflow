@@ -268,18 +268,24 @@ versions {
 # function. Rets that happen to coincide with a feed should have its value be
 # of the feed.
 #
-# CHECK: func @main(%[[ARG_0:.*]]: tensor<f32>, %[[ARG_1:.*]]: tensor<f32>) -> (tensor<f32>, tensor<f32>, tensor<f32>)
-# CHECK: attributes {tf.entry_function = {inputs = "z:1,z:2", outputs = "z:2,z:1,a:0"}}
-# CHECK:     %{{.*}}, %[[ASSIGN_ADD_CTRL:.*]] = tf_executor.island wraps "tf.AssignAdd"
-# CHECK:     %{{.*}}, %{{.*}} = tf_executor.island(%[[ASSIGN_ADD_CTRL]]) wraps "tf.IdentityN"
-# CHECK:     %[[ADD:.*]], %{{.*}} = tf_executor.island wraps "tf.Add"(%[[ARG_0]], %[[ARG_1]])
-# CHECK:     tf_executor.fetch %[[ARG_1]], %[[ARG_0]], %[[ADD]]
+# CHECK-LABEL: func @main
+# CHECK-SAME:  (%[[ARG_0:.*]]: tensor<f32>, %[[ARG_1:.*]]: tensor<f32>) -> (tensor<f32>, tensor<f32>, tensor<f32>)
+# CHECK-SAME:  control_outputs = ""
+# CHECK-SAME:  inputs = "z:1,z:2"
+# CHECK-SAME:  outputs = "z:2,z:1,a:0"
+# CHECK:           %{{.*}}, %[[ASSIGN_ADD_CTRL:.*]] = tf_executor.island wraps "tf.AssignAdd"
+# CHECK:           %{{.*}}, %{{.*}} = tf_executor.island(%[[ASSIGN_ADD_CTRL]]) wraps "tf.IdentityN"
+# CHECK:           %[[ADD:.*]], %{{.*}} = tf_executor.island wraps "tf.Add"(%[[ARG_0]], %[[ARG_1]])
+# CHECK:           tf_executor.fetch %[[ARG_1]], %[[ARG_0]], %[[ADD]]
 
 # Test when non zero index output tensors are feeds, remaining ops that are
 # unreachable are pruned if pruning is enabled.
 #
-# PRUNE:       func @main(%[[ARG_0:.*]]: tensor<f32>, %[[ARG_1:.*]]: tensor<f32>) -> (tensor<f32>, tensor<f32>, tensor<f32>)
-# PRUNE:       attributes {tf.entry_function = {inputs = "z:1,z:2", outputs = "z:2,z:1,a:0"}}
+# PRUNE-LABEL: func @main
+# PRUNE-SAME:  (%[[ARG_0:.*]]: tensor<f32>, %[[ARG_1:.*]]: tensor<f32>) -> (tensor<f32>, tensor<f32>, tensor<f32>)
+# PRUNE-SAME:  control_outputs = ""
+# PRUNE-SAME:  inputs = "z:1,z:2"
+# PRUNE-SAME:  outputs = "z:2,z:1,a:0"
 # PRUNE-NOT:       "tf.Const"
 # PRUNE-NOT:       "tf.VariableV2"
 # PRUNE-NOT:       "tf.Assign"
@@ -292,9 +298,12 @@ versions {
 # Test when non zero index output tensors are feeds, remaining ops that are
 # unreachable are preserved if pruning is not enabled.
 #
-# PRESERVE: func @main(%[[ARG_0:.*]]: tensor<f32>, %[[ARG_1:.*]]: tensor<f32>) -> (tensor<f32>, tensor<f32>)
-# PRESERVE: attributes {tf.entry_function = {inputs = "z:1,z:2", outputs = "z:0,a:0"}}
-# PRESERVE:     %{{.*}}, %[[ASSIGN_ADD_CTRL:.*]] = tf_executor.island wraps "tf.AssignAdd"
-# PRESERVE:     %[[IDENTITY_N:.*]]:3, %{{.*}} = tf_executor.island(%[[ASSIGN_ADD_CTRL]]) wraps "tf.IdentityN"
-# PRESERVE:     %[[ADD:.*]], %{{.*}} = tf_executor.island wraps "tf.Add"(%[[ARG_0]], %[[ARG_1]])
-# PRESERVE:     tf_executor.fetch %[[IDENTITY_N]]#0, %[[ADD]]
+# PRESERVE-LABEL: func @main
+# PRESERVE-SAME:  (%[[ARG_0:.*]]: tensor<f32>, %[[ARG_1:.*]]: tensor<f32>) -> (tensor<f32>, tensor<f32>)
+# PRESERVE-SAME:  control_outputs = ""
+# PRESERVE-SAME:  inputs = "z:1,z:2"
+# PRESERVE-SAME:  outputs = "z:0,a:0"
+# PRESERVE:           %{{.*}}, %[[ASSIGN_ADD_CTRL:.*]] = tf_executor.island wraps "tf.AssignAdd"
+# PRESERVE:           %[[IDENTITY_N:.*]]:3, %{{.*}} = tf_executor.island(%[[ASSIGN_ADD_CTRL]]) wraps "tf.IdentityN"
+# PRESERVE:           %[[ADD:.*]], %{{.*}} = tf_executor.island wraps "tf.Add"(%[[ARG_0]], %[[ARG_1]])
+# PRESERVE:           tf_executor.fetch %[[IDENTITY_N]]#0, %[[ADD]]

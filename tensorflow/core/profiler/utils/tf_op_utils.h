@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TF_OP_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TF_OP_UTILS_H_
 
+#include <vector>
+
+#include "absl/base/attributes.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 
@@ -32,12 +35,17 @@ ABSL_CONST_INIT extern const absl::string_view kMemcpyDToHOp;
 struct TfOp {
   absl::string_view name;
   absl::string_view type;
+  bool is_tf_op;
 };
 
 TfOp ParseTfOpFullname(absl::string_view tf_op_fullname);
 
+// Returns a vector of TF name scopes extracted from tf_op_full_name.
+std::vector<absl::string_view> ParseTfNameScopes(const TfOp& tf_op);
+
 // Trace event name for TF ops is the op type so they have the same color in
 // trace viewer.
+std::string TfOpEventName(const TfOp& tf_op);
 std::string TfOpEventName(absl::string_view tf_op_fullname);
 
 // Returns true if the given name is not a TensorFlow op.

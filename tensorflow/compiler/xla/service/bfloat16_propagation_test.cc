@@ -212,7 +212,7 @@ TEST_F(BFloat16PropagationTest, DoNotChangeAllReduce) {
       builder.AddInstruction(HloInstruction::CreateAllReduce(
           ShapeUtil::MakeTupleShape({shape, shape}), {a, b}, reduction,
           /*replica_groups=*/{}, /*constrain_layout=*/false,
-          /*channel_id=*/1));
+          /*channel_id=*/1, /*use_global_device_ids=*/false));
   HloInstruction* gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(shape, all_reduce, 0));
   HloInstruction* gte1 = builder.AddInstruction(

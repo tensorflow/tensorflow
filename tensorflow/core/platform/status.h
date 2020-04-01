@@ -62,7 +62,7 @@ class Status {
     return ok() ? tensorflow::error::OK : state_->code;
   }
 
-  const string& error_message() const {
+  const std::string& error_message() const {
     return ok() ? empty_string() : state_->msg;
   }
 
@@ -82,7 +82,7 @@ class Status {
 
   /// \brief Return a string representation of this status suitable for
   /// printing. Returns the string `"OK"` for success.
-  string ToString() const;
+  std::string ToString() const;
 
   // Ignores any errors. This method does nothing except potentially suppress
   // complaints from any tools that are checking that errors are not dropped on
@@ -90,10 +90,10 @@ class Status {
   void IgnoreError() const;
 
  private:
-  static const string& empty_string();
+  static const std::string& empty_string();
   struct State {
     tensorflow::error::Code code;
-    string msg;
+    std::string msg;
   };
   // OK status has a `NULL` state_.  Otherwise, `state_` points to
   // a `State` structure containing the error code and message(s)

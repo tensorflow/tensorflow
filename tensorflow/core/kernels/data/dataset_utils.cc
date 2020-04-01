@@ -153,10 +153,11 @@ Status ParseInputNodeName(const std::string& input_name, std::string* node_name,
 // https://stackoverflow.com/questions/11338746/directed-graphs-with-a-given-root-node-match-another-directed-graph-for-equali
 class GraphHasher {
  public:
-  explicit GraphHasher(const GraphDef& graph_def, const NodeDef* root_node)
-      : graph_def_(graph_def),
-        root_node_(root_node),
-        flib_def_(OpRegistry::Global(), graph_def.library()) {}
+  // `GraphHasher` does not take ownership of `graph_def`, `root_node`, or
+  // `flib_def`.
+  explicit GraphHasher(const GraphDef* graph_def, const NodeDef* root_node,
+                       const FunctionLibraryDefinition* flib_def)
+      : graph_def_(graph_def), root_node_(root_node), flib_def_(flib_def) {}
 
   Status ComputeHash(uint64* hash) {
     TF_RETURN_IF_ERROR(Init());
@@ -189,7 +190,7 @@ class GraphHasher {
         TF_RETURN_IF_ERROR(ParseInputNodeName(node->input(i), &node_name,
                                               &suffix, &is_control_input));
         const NodeDef* input_node;
-        TF_RETURN_IF_ERROR(FindNode(graph_def_, node_name, &input_node));
+        TF_RETURN_IF_ERROR(FindNode(*graph_def_, node_name, &input_node));
 
         // If we've already seen this node before, skip it and don't add it to
         // the queue.
@@ -308,20 +309,19 @@ class GraphHasher {
   }
 
   Status HashFunction(const NameAttrList& func, uint64* hash) {
-    const FunctionDef* fdef = flib_def_.Find(func.name());
+    const FunctionDef* fdef = flib_def_->Find(func.name());
 
     // Convert to a GraphDef.
     std::unique_ptr<FunctionBody> fbody;
     TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, AttrSlice(&func.attr()),
-                                               &flib_def_, &fbody));
+                                               flib_def_, &fbody));
     GraphDef graph_def = fbody->graph->ToGraphDefDebug();
-    graph_def.mutable_library()->MergeFrom(flib_def_.ToProto());
 
     // For each return node, we create a new GraphHasher to compute a hash.
     // We then combine these hashes to produce the hash ordered.
     uint64 ret_nodes_hash = 0;
     for (const auto& ret_node : fbody->ret_nodes) {
-      GraphHasher ret_node_hasher(graph_def, &ret_node->def());
+      GraphHasher ret_node_hasher(&graph_def, &ret_node->def(), flib_def_);
       uint64 ret_node_hash = 0;
       TF_RETURN_IF_ERROR(ret_node_hasher.ComputeHash(&ret_node_hash));
       ret_nodes_hash = Hash64Combine(ret_nodes_hash, ret_node_hash);
@@ -359,9 +359,9 @@ class GraphHasher {
     }
   };
 
-  const GraphDef graph_def_;
-  const NodeDef* root_node_;
-  const FunctionLibraryDefinition flib_def_;
+  const GraphDef* const graph_def_;                  // Not owned.
+  const NodeDef* const root_node_;                   // Not owned.
+  const FunctionLibraryDefinition* const flib_def_;  // Not owned.
   // Edges that need to be pruned as their presence will cause cycles.
   absl::flat_hash_set<uint64> cycle_forming_edges_;
   absl::flat_hash_map<const NodeDef*, NodeRep> nodes_;
@@ -397,7 +397,14 @@ Status HashTensor(const Tensor& tensor, uint64* hash) {
 }
 
 Status HashNode(const GraphDef& graph, const NodeDef& node, uint64* hash) {
-  GraphHasher graph_hasher(graph, &node);
+  const FunctionLibraryDefinition flib_def(OpRegistry::Global(),
+                                           graph.library());
+  return HashNode(graph, node, flib_def, hash);
+}
+
+Status HashNode(const GraphDef& graph, const NodeDef& node,
+                const FunctionLibraryDefinition& flib_def, uint64* hash) {
+  GraphHasher graph_hasher(&graph, &node, &flib_def);
   return graph_hasher.ComputeHash(hash);
 }
 
@@ -414,9 +421,18 @@ Status HashGraph(const GraphDef& graph_def, uint64* hash) {
     return errors::Internal("Cannot find sink node for dataset graph.");
   }
 
-  GraphHasher graph_hasher(graph_def, sink);
+  const FunctionLibraryDefinition flib_def(OpRegistry::Global(),
+                                           graph_def.library());
+  GraphHasher graph_hasher(&graph_def, sink, &flib_def);
   TF_RETURN_IF_ERROR(graph_hasher.ComputeHash(hash));
   return Status::OK();
+}
+
+std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds) {
+  if (seeds.first == 0 && seeds.second == 0) {
+    return {random::New64(), random::New64()};
+  }
+  return seeds;
 }
 
 Status RegisterCancellationCallback(CancellationManager* cancellation_manager,

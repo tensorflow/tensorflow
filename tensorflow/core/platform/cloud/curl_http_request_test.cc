@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 
 #include <fstream>
+#include <string>
 
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/mem.h"
@@ -93,6 +94,9 @@ class FakeLibCurl : public LibCurl {
         break;
       case CURLOPT_ERRORBUFFER:
         error_buffer_ = reinterpret_cast<char*>(param);
+        break;
+      case CURLOPT_CAINFO:
+        ca_info_ = reinterpret_cast<char*>(param);
         break;
       case CURLOPT_WRITEDATA:
         write_data_ = reinterpret_cast<FILE*>(param);
@@ -234,6 +238,7 @@ class FakeLibCurl : public LibCurl {
   string url_;
   string range_;
   string custom_request_;
+  string ca_info_;
   char* error_buffer_ = nullptr;
   bool is_initialized_ = false;
   bool is_cleaned_up_ = false;
@@ -283,6 +288,7 @@ TEST(CurlHttpRequestTest, GetRequest) {
   EXPECT_EQ("http://www.testuri.com", libcurl.url_);
   EXPECT_EQ("100-199", libcurl.range_);
   EXPECT_EQ("", libcurl.custom_request_);
+  EXPECT_EQ("", libcurl.ca_info_);
   EXPECT_EQ(1, libcurl.headers_->size());
   EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl.headers_)[0]);
   EXPECT_FALSE(libcurl.is_post_);
@@ -314,6 +320,37 @@ TEST(CurlHttpRequestTest, GetRequest_Direct) {
   EXPECT_EQ("http://www.testuri.com", libcurl.url_);
   EXPECT_EQ("100-199", libcurl.range_);
   EXPECT_EQ("", libcurl.custom_request_);
+  EXPECT_EQ("", libcurl.ca_info_);
+  EXPECT_EQ(1, libcurl.headers_->size());
+  EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl.headers_)[0]);
+  EXPECT_FALSE(libcurl.is_post_);
+  EXPECT_EQ(200, http_request.GetResponseCode());
+}
+
+TEST(CurlHttpRequestTest, GetRequest_CustomCaInfoFlag) {
+  static char set_var[] = "CURL_CA_BUNDLE=test";
+  putenv(set_var);
+  FakeLibCurl libcurl("get response", 200);
+  CurlHttpRequest http_request(&libcurl);
+
+  std::vector<char> scratch;
+  scratch.insert(scratch.begin(), kTestContent.begin(), kTestContent.end());
+  scratch.reserve(100);
+
+  http_request.SetUri("http://www.testuri.com");
+  http_request.AddAuthBearerHeader("fake-bearer");
+  http_request.SetRange(100, 199);
+  http_request.SetResultBuffer(&scratch);
+  TF_EXPECT_OK(http_request.Send());
+
+  EXPECT_EQ("get response", string(scratch.begin(), scratch.end()));
+
+  // Check interactions with libcurl.
+  EXPECT_TRUE(libcurl.is_initialized_);
+  EXPECT_EQ("http://www.testuri.com", libcurl.url_);
+  EXPECT_EQ("100-199", libcurl.range_);
+  EXPECT_EQ("", libcurl.custom_request_);
+  EXPECT_EQ("test", libcurl.ca_info_);
   EXPECT_EQ(1, libcurl.headers_->size());
   EXPECT_EQ("Authorization: Bearer fake-bearer", (*libcurl.headers_)[0]);
   EXPECT_FALSE(libcurl.is_post_);

@@ -367,7 +367,8 @@ class CTCLossTestV2(test.TestCase):
       batch_size = 8
       num_labels = 6
       label_length = 5
-      num_frames = 12
+      minimum_logits_length = 10
+      num_frames = minimum_logits_length + batch_size
       logits = random_ops.random_uniform([num_frames, batch_size, num_labels])
       labels = random_ops.random_uniform(
           [batch_size, label_length], minval=1, maxval=num_labels,
@@ -379,7 +380,7 @@ class CTCLossTestV2(test.TestCase):
           label_lengths, maxlen=label_length, dtype=label_lengths.dtype)
       labels *= label_mask
 
-      logit_lengths = [num_frames] * batch_size
+      logit_lengths = math_ops.range(batch_size) + minimum_logits_length
 
       ctc_loss = ctc_ops.ctc_loss_dense(
           labels=labels,
@@ -410,8 +411,8 @@ class CTCLossTestV2(test.TestCase):
           self.assertAllClose(*self.evaluate([ctc_loss, tf_nn_ctc_loss]))
           self.assertAllClose(
               *self.evaluate([ctc_loss_grads, tf_nn_ctc_grads]),
-              rtol=2e-06,
-              atol=2e-06)
+              rtol=4e-06,
+              atol=4e-06)
 
   @test_util.run_v1_only("b/120545219")
   def testCtcLossDenseUniqueFastPathIsSameAsCtcLoss(self):
@@ -458,6 +459,69 @@ class CTCLossTestV2(test.TestCase):
         sequence_length=logit_lengths,
         time_major=True)
     tf_nn_ctc_grads = gradients_impl.gradients(tf_nn_ctc_loss, [logits])[0]
+
+    with self.cached_session():
+      for _ in range(32):
+        self.assertAllClose(*self.evaluate([ctc_loss, tf_nn_ctc_loss]))
+        self.assertAllClose(
+            *self.evaluate([ctc_loss_grads, tf_nn_ctc_grads]),
+            rtol=2e-06,
+            atol=2e-06)
+
+  @test_util.run_v1_only("b/120545219")
+  def testCtcLossDenseUniqueFastPathWithBlankIndexIsSameAsCtcLoss(self):
+    random_seed.set_random_seed(5)
+
+    batch_size = 8
+    num_labels = 6
+    label_length = 5
+    num_frames = 12
+    logits = random_ops.random_uniform([num_frames, batch_size, num_labels])
+    labels = random_ops.random_uniform([batch_size, label_length],
+                                       minval=0,
+                                       maxval=num_labels - 1,
+                                       dtype=dtypes.int64)
+
+    label_lengths = random_ops.random_uniform([batch_size],
+                                              minval=2,
+                                              maxval=label_length,
+                                              dtype=dtypes.int64)
+    label_mask = array_ops.sequence_mask(
+        label_lengths, maxlen=label_length, dtype=label_lengths.dtype)
+    labels *= label_mask
+
+    logit_lengths = [num_frames] * batch_size
+
+    tf_ctc_loss_labels = math_ops.cast(labels, dtypes.int32)
+    tf_ctc_loss_labels = ctc_ops.dense_labels_to_sparse(tf_ctc_loss_labels,
+                                                        label_lengths)
+
+    tf_nn_ctc_loss = ctc_ops.ctc_loss(
+        labels=tf_ctc_loss_labels,
+        inputs=logits,
+        sequence_length=logit_lengths,
+        time_major=True)
+    tf_nn_ctc_grads = gradients_impl.gradients(tf_nn_ctc_loss, [logits])[0]
+
+    # Shift the blank logits/labels to be somewhere in the middle.
+    blank_index = 2
+    shifted_logits = array_ops.concat([
+        logits[:, :, :blank_index],
+        logits[:, :, -1:],
+        logits[:, :, blank_index:-1],
+    ],
+                                      axis=2)
+    shifted_labels = array_ops.where_v2(labels < blank_index, labels,
+                                        labels + 1)
+
+    ctc_loss = ctc_ops.ctc_loss_dense(
+        labels=shifted_labels,
+        logits=shifted_logits,
+        label_length=label_lengths,
+        logit_length=logit_lengths,
+        blank_index=blank_index,
+        unique=ctc_ops.ctc_unique_labels(shifted_labels))
+    ctc_loss_grads = gradients_impl.gradients(ctc_loss, [logits])[0]
 
     with self.cached_session() as sess:
       for _ in range(32):
@@ -771,6 +835,41 @@ class CTCLossTestV2(test.TestCase):
         [[0.0, 0.0, 12.0 + 14.0, 13.0 + 15.0, 0.0, 0.0, 0.0],
          [22.0 + 23.0 + 24.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
     ])
+
+  def testStateToOlabelUniqueSinglePath(self):
+    labels = [
+        [3, 4, 3],
+        [1, 0, 0],
+    ]
+    num_labels = 8
+
+    # 3 frames, 2 batch, 8 states (4 label, 4 blank).
+    #
+    # There is only single valid path for each sequence because the frame
+    # lengths and the label lengths are the same.
+    states = [[[0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+               [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
+              [[0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+               [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
+              [[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+               [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]]
+    labels = ops.convert_to_tensor(labels)
+    states = math_ops.log(states)
+    olabel = ctc_ops._state_to_olabel_unique(labels, num_labels, states,
+                                             ctc_ops.ctc_unique_labels(labels))
+    olabel = math_ops.exp(olabel)
+    blank = olabel[:, :, 0]
+
+    self.assertAllClose(blank, [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]])
+    self.assertAllClose(olabel[:, :, 1:],
+                        [
+                            [[0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                             [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
+                            [[0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+                             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
+                            [[0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
+                        ])
 
   @test_util.run_deprecated_v1
   def testScan(self):

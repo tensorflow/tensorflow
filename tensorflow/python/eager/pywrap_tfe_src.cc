@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -74,10 +75,9 @@ TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
               const char* raw_device_name, TF_Status* status) {
   std::unique_ptr<TFE_Op> op = ReleaseThreadLocalOp(ctx);
   if (!op) {
-    op.reset(new TFE_Op{tensorflow::EagerOperation(ctx->context)});
+    op.reset(new TFE_Op{ctx->context->CreateOperation()});
   }
-  status->status =
-      op->operation.Reset(op_or_function_name, raw_device_name, false, nullptr);
+  status->status = op->operation->Reset(op_or_function_name, raw_device_name);
   if (!status->status.ok()) {
     op.reset();
   }
@@ -86,7 +86,7 @@ TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
 
 void ReturnOp(TFE_Context* ctx, TFE_Op* op) {
   if (op) {
-    op->operation.Clear();
+    op->operation->Clear();
     thread_local_eager_operation_map[ctx].reset(op);
   }
 }
@@ -114,17 +114,19 @@ using AttrToInputsMap =
     tensorflow::gtl::FlatMap<string,
                              tensorflow::gtl::InlinedVector<InputInfo, 4>>;
 
-tensorflow::mutex all_attr_to_input_maps_lock(tensorflow::LINKER_INITIALIZED);
 tensorflow::gtl::FlatMap<string, AttrToInputsMap*>* GetAllAttrToInputsMaps() {
   static auto* all_attr_to_input_maps =
       new tensorflow::gtl::FlatMap<string, AttrToInputsMap*>;
   return all_attr_to_input_maps;
 }
 
-AttrToInputsMap* GetAttrToInputsMap(const tensorflow::OpDef& op_def) {
-  tensorflow::mutex_lock l(all_attr_to_input_maps_lock);
+// This function doesn't use a lock, since we depend on the GIL directly.
+AttrToInputsMap* GetAttrToInputsMapHoldingGIL(const tensorflow::OpDef& op_def) {
+#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 4
+  DCHECK(PyGILState_Check())
+      << "This function needs to hold the GIL when called.";
+#endif
   auto* all_attr_to_input_maps = GetAllAttrToInputsMaps();
-
   auto* output =
       tensorflow::gtl::FindPtrOrNull(*all_attr_to_input_maps, op_def.name());
   if (output != nullptr) {
@@ -150,8 +152,7 @@ AttrToInputsMap* GetAttrToInputsMap(const tensorflow::OpDef& op_def) {
   return retval;
 }
 
-tensorflow::mutex all_attr_to_defaults_maps_lock(
-    tensorflow::LINKER_INITIALIZED);
+// This function doesn't use a lock, since we depend on the GIL directly.
 tensorflow::gtl::FlatMap<
     string, tensorflow::gtl::FlatMap<string, tensorflow::DataType>*>*
 GetAllAttrToDefaultsMaps() {
@@ -160,11 +161,13 @@ GetAllAttrToDefaultsMaps() {
   return all_attr_to_defaults_maps;
 }
 
-tensorflow::gtl::FlatMap<string, tensorflow::DataType>* GetAttrToDefaultsMap(
-    const tensorflow::OpDef& op_def) {
-  tensorflow::mutex_lock l(all_attr_to_defaults_maps_lock);
+tensorflow::gtl::FlatMap<string, tensorflow::DataType>*
+GetAttrToDefaultsMapHoldingGIL(const tensorflow::OpDef& op_def) {
+#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 4
+  DCHECK(PyGILState_Check())
+      << "This function needs to hold the GIL when called.";
+#endif
   auto* all_attr_to_defaults_maps = GetAllAttrToDefaultsMaps();
-
   auto* output =
       tensorflow::gtl::FindPtrOrNull(*all_attr_to_defaults_maps, op_def.name());
   if (output != nullptr) {
@@ -795,7 +798,7 @@ PyObject* GetPythonObjectFromInt(int num) {
 
 // Python subclass of Exception that is created on not ok Status.
 tensorflow::mutex exception_class_mutex(tensorflow::LINKER_INITIALIZED);
-PyObject* exception_class GUARDED_BY(exception_class_mutex) = nullptr;
+PyObject* exception_class TF_GUARDED_BY(exception_class_mutex) = nullptr;
 
 // Python subclass of Exception that is created to signal fallback.
 PyObject* fallback_exception_class = nullptr;
@@ -1440,7 +1443,7 @@ class GradientTape
   bool watch_accessed_variables_;
   tensorflow::mutex watched_variables_mu_;
   std::set<IdAndVariable, CompareById> watched_variables_
-      GUARDED_BY(watched_variables_mu_);
+      TF_GUARDED_BY(watched_variables_mu_);
 };
 
 typedef tensorflow::eager::ForwardAccumulator<PyObject, PyBackwardFunction,
@@ -1912,12 +1915,13 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
       return PyTapeTensor(id, dtype, tensor);
     }
 
-    tensorflow::Status status;
     tensorflow::TensorShape tensor_shape;
-    int num_dims = t->handle->NumDims(&status);
+    int num_dims;
+    tensorflow::Status status = t->handle->NumDims(&num_dims);
     if (status.ok()) {
       for (int i = 0; i < num_dims; ++i) {
-        tensorflow::int64 dim_size = t->handle->Dim(i, &status);
+        tensorflow::int64 dim_size;
+        status = t->handle->Dim(i, &dim_size);
         if (!status.ok()) break;
         tensor_shape.AddDim(dim_size);
       }
@@ -2944,15 +2948,15 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
 
   PyObject* op_outputs;
   bool op_outputs_tuple_created = false;
-  std::pair<bool, tensorflow::gtl::FlatSet<int>>* outputs_not_required;
 
-  if (OpGradientDoesntRequireOutputIndices(c_op_name, &outputs_not_required)) {
-    if (outputs_not_required->first) {
+  if (const auto unused_output_indices =
+          OpGradientUnusedOutputIndices(c_op_name)) {
+    if (unused_output_indices->empty()) {
       op_outputs = Py_None;
     } else {
       op_outputs_tuple_created = true;
-      op_outputs = CopySequenceSettingIndicesToNull(
-          results, outputs_not_required->second);
+      op_outputs =
+          CopySequenceSettingIndicesToNull(results, *unused_output_indices);
     }
   } else {
     op_outputs = results;
@@ -2960,15 +2964,15 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
 
   PyObject* op_inputs;
   bool op_inputs_tuple_created = false;
-  std::pair<bool, tensorflow::gtl::FlatSet<int>>* inputs_not_required;
 
-  if (OpGradientDoesntRequireInputIndices(c_op_name, &inputs_not_required)) {
-    if (inputs_not_required->first) {
+  if (const auto unused_input_indices =
+          OpGradientUnusedInputIndices(c_op_name)) {
+    if (unused_input_indices->empty()) {
       op_inputs = Py_None;
     } else {
       op_inputs_tuple_created = true;
       op_inputs =
-          CopySequenceSettingIndicesToNull(inputs, inputs_not_required->second);
+          CopySequenceSettingIndicesToNull(inputs, *unused_input_indices);
     }
   } else {
     op_inputs = inputs;
@@ -3393,7 +3397,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     return nullptr;
   }
 
-  const tensorflow::OpDef* op_def = op->operation.OpDef();
+  const tensorflow::OpDef* op_def = op->operation->OpDef();
   if (op_def == nullptr) return nullptr;
 
   if (args_size < kFastPathExecuteInputStartIndex + op_def->input_arg_size()) {
@@ -3414,8 +3418,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     return nullptr;
   }
 
-  op_exec_info.attr_to_inputs_map = GetAttrToInputsMap(*op_def);
-  op_exec_info.default_dtypes = GetAttrToDefaultsMap(*op_def);
+  op_exec_info.attr_to_inputs_map = GetAttrToInputsMapHoldingGIL(*op_def);
+  op_exec_info.default_dtypes = GetAttrToDefaultsMapHoldingGIL(*op_def);
 
   // Mapping of attr name to size - used to calculate the number of values
   // to be expected by the TFE_Execute run.
@@ -3738,15 +3742,16 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
                     static_cast<tensorflow::DataType>(t->handle->DataType()));
     absl::StrAppend(&result->str, kShape);
 
-    tensorflow::Status status;
-    int num_dims = t->handle->NumDims(&status);
+    int num_dims;
+    tensorflow::Status status = t->handle->NumDims(&num_dims);
     if (!status.ok()) return status;
 
     if (include_tensor_ranks_only) {
       absl::StrAppend(&result->str, num_dims);
     } else {
       for (int i = 0; i < num_dims; ++i) {
-        tensorflow::int64 dim_size = t->handle->Dim(i, &status);
+        tensorflow::int64 dim_size;
+        status = t->handle->Dim(i, &dim_size);
         if (!status.ok()) return status;
         absl::StrAppend(&result->str, dim_size, kShapeDelim);
       }
@@ -3924,8 +3929,6 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
 // `include_tensor_ranks_only` allows caching on arguments excluding shape info,
 // so that a slow path using relaxed shape can rely on a cache key that excludes
 // shapes.
-//
-// TODO(nareshmodi): Add support for sparse tensors.
 PyObject* TFE_Py_EncodeArg(PyObject* arg, bool include_tensor_ranks_only) {
   EncodeResult result;
   const auto status =

@@ -197,7 +197,7 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
                     tensorflow::OpRegistry::Global(), dev_type, node,
                     &inp_mtypes, &out_mtypes);
                 if (s.ok()) {
-                  for (int i = 0; i < inp_mtypes.size(); ++i) {
+                  for (size_t i = 0; i < inp_mtypes.size(); ++i) {
                     if (inp_mtypes[i] == tensorflow::HOST_MEMORY) {
                       device_restrictions[tensorflow::grappler::NodeName(
                                               node.input(i))]
@@ -318,7 +318,7 @@ PYBIND11_MODULE(_pywrap_tf_cluster, m) {
           const tensorflow::grappler::GraphMemory::MemoryUsage& usage =
               memory.GetPeakMemoryUsage(device.first);
           std::vector<MemoryUsage> per_device;
-          for (int i = 0; i < usage.live_tensors.size(); ++i) {
+          for (size_t i = 0; i < usage.live_tensors.size(); ++i) {
             const auto& live_tensor = usage.live_tensors[i];
             per_device.push_back(std::make_tuple(
                 live_tensor.node, live_tensor.output_id,

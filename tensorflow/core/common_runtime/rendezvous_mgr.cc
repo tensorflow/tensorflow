@@ -74,7 +74,7 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
     return;
   }
 
-  MEMDEBUG_CACHE_OP("SameWorkerRecvDone");
+  auto op_annotation = ScopedMemoryDebugAnnotation("SameWorkerRecvDone");
   AllocatorAttributes attr = recv_args.alloc_attrs;
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
@@ -112,7 +112,7 @@ void IntraProcessRecvAsyncImpl(const DeviceMgr* device_mgr,
                                RendezvousInterface::DoneCallback done) {
   VLOG(1) << "IntraProcessRendezvous Recv " << local << " " << parsed.FullKey();
 
-  MEMDEBUG_CACHE_OP("RecvAsync");
+  auto op_annotation = ScopedMemoryDebugAnnotation("RecvAsync");
   // Recv the tensor from local_.
   local->RecvAsync(
       parsed, recv_args,

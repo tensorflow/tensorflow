@@ -23,9 +23,10 @@ namespace xla {
 
 // This class contains pre-set assignments determined by memory space
 // assignment. It contains two data structures: (1) a chunks vector that maps a
-// defining HloPosition to a Chunk (offset and size), and (2) a sizes vector
-// that maps the memory space to its size. If there is only one alternate memory
-// space like there is currently, there will be one entry in sizes.
+// defining HloPosition to a Chunk (offset and size), and (2) an assignment_info
+// vector that maps the memory space to information like its allocated size and
+// heap memory trace. If there is only one alternate memory space like there is
+// currently, there will be one entry in assignment_info.
 class PresetAssignments {
  public:
   // Contains per-memory-space information like the allocated size and heap
@@ -318,6 +319,14 @@ class MemorySpaceAssignment {
     // If true, verifies the memory space assignment against overlapping
     // buffers.
     bool verify = false;
+
+    // Enable prefetching buffers into preferred memory across program
+    // boundaries
+    bool enable_cross_program_prefetch = true;
+
+    // If true, use buffer_interval_compare to determine which buffers to
+    // prefetch across program boundaries.
+    bool default_cross_program_prefetch_heuristic = false;
   };
 
   // This class represents an allocation that might either be in the default or
@@ -580,6 +589,9 @@ class AsynchronousCopyOrdering {
   // Adds an asynchronous copy.
   void AddCopy(const AsynchronousCopy& copy);
 
+  // Removes an asynchronous copy. CHECKs that it is removed.
+  void RemoveCopy(const AsynchronousCopy& copy);
+
   // Returns true if the addition of an asynchronous copy in the the given time
   // interval would violate the asynchronous copy ordering. E.g., consider the
   // following scenario:
@@ -619,9 +631,43 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
     }
   }
 
+  // Allocates a buffer in preferred memory with whole program lifetime and
+  // enables prefetching prefech_candidate from default memory across program
+  // boundaries.
+  void AllocateCrossProgramPrefetchBuffer(
+      HloModule* module, absl::optional<BufferInterval> prefetch_candidate);
+
   HeapSimulator::Result Finish() override;
 
  private:
+  // An allocation request for a use segment. A use segment is the time segment
+  // between the definition and the first use, and the time segment between the
+  // uses of a buffer. For example, the time between the definition and Use1, is
+  // the first segment, and the time between Use1 and Use2 is the second segment
+  // and so on:
+  //
+  //        +------+----------+-------+
+  //       /        \          \       \
+  //      /          v          v       v
+  //    Def         Use1       Use2    Use3
+  //     <----------> <--------> <----->
+  //        Segment    Segment   Segment
+  //
+  // start_time and end_time are the start and end logical times of the segment.
+  // use_times is a sorted sequence of the times of all uses.
+  // latest_prefetch_time is the latest time we can schedule the CopyDone for a
+  // prefetch.
+  struct AllocationRequest {
+    int64 start_time;
+    int64 end_time;
+    const std::vector<int64>* use_times;
+    int64 latest_prefetch_time;
+    int64 size;
+    HloUse use;
+    const HloValue* buffer;
+    MemorySpaceAssignment::AllocationSequence* allocations;
+  };
+
   // Given an allocation sequence, returns the live allocation at time with a
   // preference towards allocations in alternate memory. Returns nullptr if no
   // allocation is alive at that time.
@@ -637,29 +683,39 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // memory.
   bool IsIntervalAllowedInAlternateMemory(const BufferInterval& interval) const;
 
-  // Finds an allocation for the given interval. Internally, it will attempt to
-  // find a suitable chunk candidate within the heap size and prefetch interval
-  // limits, and append the new allocation(s) to allocations. The new
-  // allocations can be in default or alternate memory spaces, or can be
-  // prefetches or evictions. Returns true if successful.
-  bool FindAllocation(int64 start_time, int64 end_time, int64 last_use_time,
-                      int64 latest_prefetch_time, HloPosition defining_position,
-                      HloUse use, const HloValue* buffer, int64 size,
-                      MemorySpaceAssignment::AllocationSequence* allocations);
+  // Finds an allocation for the given interval.
+  //
+  // It performs three things in the following order:
+  //  1- Allocate the allocation request entirely in the alternate memory, if
+  //     there is enough space and if the prefetch interval picker allows.
+  //  2- If (1) was unsuccessful, and the only allocation for
+  //     this buffer was in the alternate memory, we try to perform a prefetch.
+  //  3- If (1) was unsuccessful, prefetch the buffer into the alternate memory,
+  //     if there is enough space and if the prefetch interval picker allows.
+  //
+  // If an eviction (2) was requested and was unsuccessful, this method returns
+  // false. This means we could not find a suitable allocation, so all previous
+  // allocations for this buffer must be removed and allocated in the default
+  // memory. Otherwise, this method returns true.
+  bool FindAllocation(const AllocationRequest& request);
 
   // Try allocating in alternate memory without any copies. Returns true if
   // successful.
-  bool TryAllocatingInAlternateMemoryNoCopy(
-      int64 start_time, int64 end_time, int64 last_use_time,
-      HloPosition defining_position, HloUse use,
-      BufferInterval alternate_mem_interval,
-      MemorySpaceAssignment::AllocationSequence* allocations);
+  bool AllocateInAlternateMemoryNoCopy(const AllocationRequest& request);
 
-  // For a no-copy allocation, find the best possible chunk candidate, where it
-  // has the longest possible availability if no preferred offset is given, or
-  // at the preferred_offset if it is given.
-  absl::optional<ChunkCandidate> FindBestNoCopyChunkCandidate(
-      int64 end_time, int64 last_use_time,
+  // Try evicting to default memory space. Returns true if successful.
+  bool Evict(const AllocationRequest& request);
+
+  // Try prefetching to alternate memory space. Returns true if successful.
+  bool Prefetch(
+      const AllocationRequest& request,
+      const MemorySpaceAssignment::Allocation& prev_allocation_in_default_mem);
+
+  // Find the best possible chunk candidate, where it has the longest possible
+  // availability if no preferred offset is given, or at the preferred_offset if
+  // it is given.
+  absl::optional<ChunkCandidate> FindBestChunkCandidate(
+      int64 end_time, const std::vector<int64>& use_times,
       absl::optional<int64> preferred_offset,
       BufferInterval* alternate_mem_interval) const;
 
@@ -697,11 +753,15 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
                     int64 end_time, int64 copy_done_schedule_before_time,
                     MemorySpaceAssignment::AllocationSequence* allocations);
 
-  // These methods are used for delaying committing the chunk candidate until
-  // the entire live range of the buffer has been considered.
+  // This method is used for committing the chunk candidate but adding it to
+  // pending_chunks_ so that we can "uncommit" them in case we need to roll back
+  // this allocation sequence.
   void AddToPendingChunks(const BufferInterval& buffer_interval,
                           const ChunkCandidate& chunk_candidate);
-  void CommitPendingChunks();
+  // If we need to remove the allocations for this allocation sequence, this
+  // removes pending chunks and asynchronous copies in the respective pending
+  // buffers from the interval trees.
+  void UncommitPendingChunks();
 
   // Returns the available heap size in the alternate memory.
   int64 available_heap_size() const {

@@ -30,8 +30,25 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.module import module
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
+
+
+class CustomModel(module.Module):
+
+  def __init__(self, name=None):
+    super(CustomModel, self).__init__(name=name)
+    with self.name_scope:
+      self._layers = [
+          keras.layers.Dense(4, name="dense"),
+      ]
+
+  @module.Module.with_name_scope
+  def __call__(self, x):
+    for layer in self._layers:
+      x = layer(x)
+    return x
 
 
 class KerasModelsTest(test.TestCase, parameterized.TestCase):
@@ -58,7 +75,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         grads = tape.gradient(loss, model.variables)
         return grads
 
-      outputs = distribution.experimental_run_v2(
+      outputs = distribution.run(
           step_fn, args=(next(iterator),))
       return nest.map_structure(distribution.experimental_local_results,
                                 outputs)
@@ -87,7 +104,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         grads = tape.gradient(loss, model.variables)
         return grads
 
-      outputs = distribution.experimental_run_v2(
+      outputs = distribution.run(
           step_fn, args=(next(iterator),))
       return nest.map_structure(distribution.experimental_local_results,
                                 outputs)
@@ -118,7 +135,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         optimizer.apply_gradients(zip(grads, model.variables))
         return loss
 
-      outputs = distribution.experimental_run_v2(
+      outputs = distribution.run(
           step_fn, args=(next(iterator),))
       return nest.map_structure(distribution.experimental_local_results,
                                 outputs)
@@ -161,7 +178,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         optimizer.apply_gradients(zip(grads, model.variables))
         return loss
 
-      outputs = distribution.experimental_run_v2(
+      outputs = distribution.run(
           step_fn, args=(next(iterator),))
       return nest.map_structure(distribution.experimental_local_results,
                                 outputs)
@@ -193,7 +210,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         return loss
 
       for _ in range(5):
-        distribution.experimental_run_v2(step_fn, args=(next(iterator),))
+        distribution.run(step_fn, args=(next(iterator),))
 
     train_step(input_iterator)
 
@@ -244,7 +261,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         optimizer.apply_gradients(zip(grads, model.variables))
         return loss
 
-      outputs = distribution.experimental_run_v2(
+      outputs = distribution.run(
           step_fn, args=(next(input_iterator),))
       return distribution.experimental_local_results(outputs)
 
@@ -297,7 +314,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         grads = tape.gradient(loss, model.variables)
         optimizer.apply_gradients(zip(grads, model.variables))
 
-      distribution.experimental_run_v2(step_fn, args=(inputs,))
+      distribution.run(step_fn, args=(inputs,))
 
     @def_function.function
     def compute_loss2(images, targets):
@@ -314,7 +331,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         grads = tape.gradient(loss, model2.variables)
         optimizer.apply_gradients(zip(grads, model2.variables))
 
-      distribution.experimental_run_v2(step_fn, args=(inputs,))
+      distribution.run(step_fn, args=(inputs,))
 
     inputs = next(input_iterator)
 
@@ -324,6 +341,79 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
     # Make sure model and model2 variables are still in sync.
     for model_v, model2_v in zip(model.variables, model2.variables):
       self.assertAllClose(model_v.numpy(), model2_v.numpy())
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def test_customized_tf_module_experimental_run(self, distribution):
+    dataset = self._get_dataset()
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with distribution.scope():
+      model = CustomModel()
+
+    @def_function.function
+    def train_step(iterator):
+
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          outputs = model(images)
+          loss = math_ops.reduce_sum(outputs - targets)
+        grads = tape.gradient(loss, model.variables)
+        return grads
+
+      outputs = distribution.run(
+          step_fn, args=(next(iterator),))
+      return nest.map_structure(distribution.experimental_local_results,
+                                outputs)
+
+    train_step(input_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.tpu_strategies, mode=["eager"]))
+  def test_tf_function_experimental_compile(self, distribution):
+    dataset = self._get_dataset()
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    class CustomDense(keras.layers.Layer):
+
+      def __init__(self, num_outputs):
+        super(CustomDense, self).__init__()
+        self.num_outputs = num_outputs
+
+      def build(self, input_shape):
+        self.kernel = self.add_variable(
+            "kernel", shape=[int(input_shape[-1]), self.num_outputs])
+
+      @def_function.function(experimental_compile=True)
+      def call(self, inputs):
+        return math_ops.matmul(inputs, self.kernel)
+
+    with distribution.scope():
+      x = keras.layers.Input(shape=(3,))
+      y = CustomDense(4)(x)
+      model = keras.Model(x, y)
+
+    @def_function.function
+    def train_step(iterator):
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          outputs = model(images)
+          loss = math_ops.reduce_sum(outputs - targets)
+        grads = tape.gradient(loss, model.variables)
+        return grads
+
+      outputs = distribution.run(
+          step_fn, args=(next(iterator),))
+      return nest.map_structure(distribution.experimental_local_results,
+                                outputs)
+
+    train_step(input_iterator)
 
   def _get_dataset(self):
     inputs = np.zeros((10, 3), dtype=np.float32)

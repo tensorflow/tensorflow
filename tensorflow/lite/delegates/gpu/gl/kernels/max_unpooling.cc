@@ -33,8 +33,8 @@ namespace {
 
 class MaxUnpooling : public NodeShader {
  public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     auto attr = absl::any_cast<MaxUnpooling2DAttributes>(
         ctx.node->operation.attributes);
     std::vector<Variable> parameters = {
@@ -66,7 +66,7 @@ class MaxUnpooling : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

@@ -56,6 +56,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -1010,8 +1011,8 @@ def standardize_weights(y,
           'an appropriate class weight could not be determined.')
       class_sample_weight = math_ops.cast(class_sample_weight, K.floatx())
       if sample_weight is not None:
-        sample_weight = math_ops.cast(ops.convert_to_tensor(sample_weight),
-                                      K.floatx())
+        sample_weight = math_ops.cast(
+            ops.convert_to_tensor_v2(sample_weight), K.floatx())
     else:
       y_classes = y
       if len(y.shape) == 2:
@@ -1049,11 +1050,21 @@ def has_symbolic_tensors(ls):
 
 
 def has_tensors(ls):
+  """Returns true if `ls` contains tensors."""
+  # Note: at some point in time ragged tensors didn't count as tensors, so this
+  # returned false for ragged tensors. Making this return true fails some tests
+  # which would then require a steps_per_epoch argument.
   if isinstance(ls, (list, tuple)):
-    return any(tensor_util.is_tensor(v) for v in ls)
+    return any(
+        tensor_util.is_tensor(v) and
+        not isinstance(v, ragged_tensor.RaggedTensor) for v in ls)
   if isinstance(ls, dict):
-    return any(tensor_util.is_tensor(v) for _, v in six.iteritems(ls))
-  return tensor_util.is_tensor(ls)
+    return any(
+        tensor_util.is_tensor(v) and
+        not isinstance(v, ragged_tensor.RaggedTensor)
+        for _, v in six.iteritems(ls))
+  return tensor_util.is_tensor(ls) and not isinstance(
+      ls, ragged_tensor.RaggedTensor)
 
 
 def get_metric_name(metric, weighted=False):
@@ -1357,7 +1368,7 @@ def check_steps_argument(input_data, steps, steps_name):
 
 def cast_single_tensor(x, dtype=None):
   if isinstance(x, np.ndarray):
-    x = ops.convert_to_tensor(x)
+    x = ops.convert_to_tensor_v2(x)
   dtype = dtype or K.floatx()
   if x.dtype.is_floating:
     return math_ops.cast(x, dtype=dtype)
@@ -1383,7 +1394,7 @@ def cast_if_floating_dtype_and_mismatch(targets, outputs):
   new_targets = []
   for target, out in zip(targets, outputs):
     if isinstance(target, np.ndarray):
-      target = ops.convert_to_tensor(target)
+      target = ops.convert_to_tensor_v2(target)
     if target.dtype != out.dtype:
       new_targets.append(cast_single_tensor(target, dtype=out.dtype))
     else:

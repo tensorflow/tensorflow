@@ -163,6 +163,26 @@ class StatelessRandomUniformIntOp : public StatelessRandomOpBase {
   }
 };
 
+template <typename Device, typename IntType>
+class StatelessRandomUniformFullIntOp : public StatelessRandomOpBase {
+ public:
+  using StatelessRandomOpBase::StatelessRandomOpBase;
+
+  void Fill(OpKernelContext* context, random::PhiloxRandom random,
+            Tensor* output) override {
+    // Build distribution
+    typedef random::UniformFullIntDistribution<random::PhiloxRandom, IntType>
+        Distribution;
+    Distribution dist;
+
+    auto flat = output->flat<IntType>();
+    // Reuse the compute kernels from the stateful random ops
+    functor::FillPhiloxRandom<Device, Distribution>()(
+        context, context->eigen_device<Device>(), random, flat.data(),
+        flat.size(), dist);
+  }
+};
+
 // Samples from one or more Poisson distributions.
 template <typename T, typename U>
 class StatelessRandomPoissonOp : public StatelessRandomOpBase {
@@ -376,7 +396,17 @@ class StatelessRandomGammaOp : public StatelessRandomOpBase {
           random::TruncatedNormalDistribution<                              \
               random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >)
 
+#define REGISTER_FULL_INT(DEVICE, TYPE)     \
+  REGISTER_KERNEL_BUILDER(                  \
+      Name("StatelessRandomUniformFullInt") \
+          .Device(DEVICE_##DEVICE)          \
+          .HostMemory("shape")              \
+          .HostMemory("seed")               \
+          .TypeConstraint<TYPE>("dtype"),   \
+      StatelessRandomUniformFullIntOp<DEVICE##Device, TYPE>)
+
 #define REGISTER_INT(DEVICE, TYPE)                            \
+  REGISTER_FULL_INT(DEVICE, TYPE);                            \
   REGISTER_KERNEL_BUILDER(Name("StatelessRandomUniformInt")   \
                               .Device(DEVICE_##DEVICE)        \
                               .HostMemory("shape")            \
@@ -390,6 +420,8 @@ class StatelessRandomGammaOp : public StatelessRandomOpBase {
 #define REGISTER_GPU(TYPE) REGISTER(GPU, TYPE)
 #define REGISTER_INT_CPU(TYPE) REGISTER_INT(CPU, TYPE)
 #define REGISTER_INT_GPU(TYPE) REGISTER_INT(GPU, TYPE)
+#define REGISTER_FULL_INT_CPU(TYPE) REGISTER_FULL_INT(CPU, TYPE)
+#define REGISTER_FULL_INT_GPU(TYPE) REGISTER_FULL_INT(GPU, TYPE)
 
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_bfloat16(REGISTER_CPU);
@@ -397,6 +429,8 @@ TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
 TF_CALL_int32(REGISTER_INT_CPU);
 TF_CALL_int64(REGISTER_INT_CPU);
+TF_CALL_uint32(REGISTER_FULL_INT_CPU);
+TF_CALL_uint64(REGISTER_FULL_INT_CPU);
 
 #define REGISTER_POISSON(RATE_TYPE, OUT_TYPE)                     \
   REGISTER_KERNEL_BUILDER(Name("StatelessRandomPoisson")          \
@@ -447,6 +481,8 @@ TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 TF_CALL_int32(REGISTER_INT_GPU);
 TF_CALL_int64(REGISTER_INT_GPU);
+TF_CALL_uint32(REGISTER_FULL_INT_GPU);
+TF_CALL_uint64(REGISTER_FULL_INT_GPU);
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -456,6 +492,8 @@ TF_CALL_int64(REGISTER_INT_GPU);
 #undef REGISTER_GPU
 #undef REGISTER_INT_CPU
 #undef REGISTER_INT_GPU
+#undef REGISTER_FULL_INT_CPU
+#undef REGISTER_FULL_INT_GPU
 
 }  // namespace
 

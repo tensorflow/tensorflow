@@ -116,6 +116,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return PackImpl<int8_t>(context, node, output, data->values_count,
                               data->axis);
     }
+    case kTfLiteInt16: {
+      return PackImpl<int16_t>(context, node, output, data->values_count,
+                               data->axis);
+    }
     case kTfLiteInt32: {
       return PackImpl<int32_t>(context, node, output, data->values_count,
                                data->axis);

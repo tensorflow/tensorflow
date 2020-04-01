@@ -15,10 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SOFTMAX_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SOFTMAX_H_
 
+#include <limits>
+
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/round.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
@@ -43,27 +45,27 @@ inline void Softmax(const SoftmaxParams& params,
       max = std::max(max, input_data[i * depth + c]);
     }
 
-    // TODO(b/148114827): Improve this code.
     // Compute sum.
     float sum = 0.f;
     for (int c = 0; c < depth; ++c) {
-      sum += std::exp(static_cast<double>(input_data[i * depth + c] - max) *
-                      params.beta);
+      sum += std::exp((input_data[i * depth + c] - max) *
+                      static_cast<float>(params.beta));
     }
 
     // Compute result.
     for (int c = 0; c < depth; ++c) {
-      output_data[i * depth + c] =
-          std::exp(static_cast<double>(input_data[i * depth + c] - max) *
-                   params.beta) /
-          static_cast<double>(sum);
+      output_data[i * depth + c] = std::exp((input_data[i * depth + c] - max) *
+                                            static_cast<float>(params.beta)) /
+                                   sum;
     }
   }
 }
 
+// Quantized softmax with int8/uint8 input and int8/uint8/int16 output.
+template <typename InputT, typename OutputT>
 inline void Softmax(const SoftmaxParams& params,
-                    const RuntimeShape& input_shape, const uint8* input_data,
-                    const RuntimeShape& output_shape, uint8* output_data) {
+                    const RuntimeShape& input_shape, const InputT* input_data,
+                    const RuntimeShape& output_shape, OutputT* output_data) {
   const int32 input_beta_multiplier = params.input_multiplier;
   const int32 input_beta_left_shift = params.input_left_shift;
   const int diff_min = params.diff_min;
@@ -86,7 +88,7 @@ inline void Softmax(const SoftmaxParams& params,
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
   for (int i = 0; i < outer_size; ++i) {
-    uint8 max_in_row = 0;
+    InputT max_in_row = std::numeric_limits<InputT>::min();
     for (int c = 0; c < depth; ++c) {
       max_in_row = std::max(max_in_row, input_data[i * depth + c]);
     }
@@ -122,48 +124,21 @@ inline void Softmax(const SoftmaxParams& params,
 
         FixedPoint0 exp_in_0 = exp_on_negative_values(scaled_diff_f8);
         int32 unsat_output = gemmlowp::RoundingDivideByPOT(
-            (shifted_scale * exp_in_0).raw(), num_bits_over_unit + 31 - 8);
+            (shifted_scale * exp_in_0).raw(),
+            num_bits_over_unit + 31 - (sizeof(OutputT) * 8));
 
-        output_data[i * depth + c] = static_cast<uint8>(
-            std::max(std::min(unsat_output, static_cast<int32>(255)),
-                     static_cast<int32>(0)));
+        const int32 shifted_output =
+            unsat_output +
+            static_cast<int32>(std::numeric_limits<OutputT>::min());
 
+        output_data[i * depth + c] = static_cast<OutputT>(std::max(
+            std::min(shifted_output,
+                     static_cast<int32>(std::numeric_limits<OutputT>::max())),
+            static_cast<int32>(std::numeric_limits<OutputT>::min())));
       } else {
-        output_data[i * depth + c] = 0;
+        output_data[i * depth + c] = std::numeric_limits<OutputT>::min();
       }
     }
-  }
-}
-
-// Performs softmax along the input of size (input_size * batch_size).
-inline void Softmax(const float* in, const int input_size, const int batch_size,
-                    const float beta, float* out) {
-  //  TF_LITE_ASSERT(input_size > 0);
-
-  // For each batch
-  for (int b = 0; b < batch_size; b++) {
-    // Find the max coeff.
-    float max_coeff = in[0];
-    for (int i = 1; i < input_size; i++) {
-      if (in[i] > max_coeff) max_coeff = in[i];
-    }
-
-    // Compute the normalized sum of exps.
-    float exp_sum = 0.0;
-    for (int i = 0; i < input_size; i++) {
-      out[i] = std::exp((in[i] - max_coeff) * beta);
-      exp_sum += out[i];
-    }
-
-    // Divide by the sum of exps.
-    float reciprocal_sum_exp = 1.f / exp_sum;
-    for (int i = 0; i < input_size; i++) {
-      out[i] *= reciprocal_sum_exp;
-    }
-
-    // Advance in and out pointers for the next batch.
-    in += input_size;
-    out += input_size;
   }
 }
 

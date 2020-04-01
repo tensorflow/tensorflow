@@ -411,7 +411,7 @@ def _unicode_decode(input, input_encoding, errors, replacement_char,
       input = input.with_flat_values(
           ragged_tensor.RaggedTensor.from_tensor(
               input.flat_values,
-              ragged_rank=input_ndims - input.ragged_rank + 1))
+              ragged_rank=input_ndims - input.ragged_rank - 1))
 
   # Reshape the input to a flat vector, and apply the gen_string_ops op.
   if ragged_tensor.is_ragged(input):
@@ -457,8 +457,8 @@ def string_split_v2(input, sep=None, maxsplit=-1, name=None):  # pylint: disable
   """Split elements of `input` based on `sep` into a `RaggedTensor`.
 
   Let N be the size of `input` (typically N will be the batch size). Split each
-  element of `input` based on `sep` and return a `SparseTensor` or
-  `RaggedTensor` containing the split tokens. Empty tokens are ignored.
+  element of `input` based on `sep` and return a `RaggedTensor` containing the 
+  split tokens. Empty tokens are ignored.
 
   Example:
 

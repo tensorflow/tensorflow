@@ -855,6 +855,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<int64>> replica_group_ids;
       optional<int64> channel_id;
       optional<bool> constrain_layout;
+      optional<bool> use_global_device_ids;
       attrs["to_apply"] = {/*required=*/true, AttrTy::kHloComputation,
                            &to_apply};
       attrs["replica_groups"] = {/*required=*/false,
@@ -862,6 +863,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
       attrs["constrain_layout"] = {/*required=*/false, AttrTy::kBool,
                                    &constrain_layout};
+      attrs["use_global_device_ids"] = {/*required=*/false, AttrTy::kBool,
+                                        &use_global_device_ids};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -871,7 +874,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       instruction = builder->AddInstruction(HloInstruction::CreateAllReduce(
           shape, operands, *to_apply, replica_groups,
-          constrain_layout ? *constrain_layout : false, channel_id));
+          constrain_layout ? *constrain_layout : false, channel_id,
+          use_global_device_ids ? *use_global_device_ids : false));
       break;
     }
     case HloOpcode::kAllToAll: {
