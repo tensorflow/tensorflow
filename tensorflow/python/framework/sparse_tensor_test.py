@@ -59,6 +59,13 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(sess_run_value.values, value.values)
         self.assertAllEqual(sess_run_value.dense_shape, value.dense_shape)
 
+  @test_util.run_all_in_graph_and_eager_modes
+  def testShape(self):
+    tensor = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]], values=[1., 2], dense_shape=[3, 4])
+    tensor = sparse_ops.sparse_transpose(tensor)
+    self.assertTrue(tensor.shape.rank == 2)
+
   def testIsSparse(self):
     self.assertFalse(sparse_tensor.is_sparse(3))
     self.assertFalse(sparse_tensor.is_sparse("foo"))
