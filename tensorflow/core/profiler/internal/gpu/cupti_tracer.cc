@@ -106,6 +106,11 @@ const char *getActivityUnifiedMemoryKindString(
   return "<UNKNOWN>";
 }
 
+// CUPTI_ERROR_INSUFFICIENT_PRIVILEGES is introduced at CUDA 10.1.
+#if CUDA_VERSION <= 10000
+#define CUPTI_ERROR_INSUFFICIENT_PRIVILEGES 35
+#endif
+
 #define RETURN_IF_CUPTI_ERROR(expr)                                         \
   do {                                                                      \
     CUptiResult status = expr;                                              \
