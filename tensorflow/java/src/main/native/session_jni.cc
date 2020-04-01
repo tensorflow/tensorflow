@@ -290,7 +290,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_runCallable(
     TF_Status* status = TF_NewStatus();
 
     for (int i = 0; i < noutputs; ++i) {
-        output_values[i] = TF_TensorFromTensor(outputs[i], status);
+        output_values[i] = TF_TensorFromTensor(outputs[i], &status->status);
         t[i] = reinterpret_cast<jlong>(output_values[i]);
     }
     env->ReleaseLongArrayElements(output_tensor_handles, t, 0);

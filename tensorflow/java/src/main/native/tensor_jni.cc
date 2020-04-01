@@ -726,7 +726,7 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateGPU(JNIEnv* env,
     Tensor t_gpu = Tensor(allocator, dt_dtype, ts_shape);
 
     TF_Status* status = TF_NewStatus();
-    TF_Tensor* t = TF_TensorFromTensor(t_gpu,status);
+    TF_Tensor* t = TF_TensorFromTensor(t_gpu, &status->status);
     return reinterpret_cast<jlong>(t);
 }
 
