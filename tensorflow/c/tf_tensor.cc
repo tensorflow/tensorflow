@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/coding.h"
+#include "tensorflow/core/platform/coding.h"
 
 using tensorflow::Status;
 using tensorflow::Tensor;
