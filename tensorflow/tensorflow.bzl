@@ -2797,3 +2797,6 @@ def filegroup_as_file(name, dep, visibility = []):
         srcs = [name],
         visibility = visibility,
     )
+
+def tf_grpc_cc_dependency():
+    return "//tensorflow:grpc++"

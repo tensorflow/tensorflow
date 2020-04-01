@@ -1,6 +1,7 @@
 # Description:
 #   Contains experimental kernels for datasets and iterators.
 
+load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -117,6 +118,25 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
+    name = "data_service_ops",
+    srcs = ["data_service_ops.cc"],
+    hdrs = ["data_service_ops.h"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data/service:credentials_factory",
+        "//tensorflow/core/data/service:grpc_util",
+        "//tensorflow/core/data/service:master_cc_grpc_proto",
+        "//tensorflow/core/data/service:master_proto_cc",
+        "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:iterator_ops",
+        tf_grpc_cc_dependency(),
     ],
 )
 
