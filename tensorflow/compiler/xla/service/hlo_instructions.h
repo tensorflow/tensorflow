@@ -700,17 +700,20 @@ class HloSliceInstruction : public HloInstruction {
   // Returns the start index in the given dimension for a slice node.
   int64 slice_starts(int64 dimension) const { return slice_starts_[dimension]; }
   const std::vector<int64>& slice_starts() const { return slice_starts_; }
+  std::vector<int64>* mutable_slice_starts() { return &slice_starts_; }
 
   // Returns the (exclusive) limit index in the given dimension for a slice
   // node.
   int64 slice_limits(int64 dimension) const { return slice_limits_[dimension]; }
   const std::vector<int64>& slice_limits() const { return slice_limits_; }
+  std::vector<int64>* mutable_slice_limits() { return &slice_limits_; }
 
   // Returns the stride in the given dimension for a slice node.
   int64 slice_strides(int64 dimension) const {
     return slice_strides_[dimension];
   }
   const std::vector<int64>& slice_strides() const { return slice_strides_; }
+  std::vector<int64>* mutable_slice_strides() { return &slice_strides_; }
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(
@@ -738,6 +741,8 @@ class HloConstantInstruction : public HloInstruction {
   explicit HloConstantInstruction(const Shape& shape);
   // Returns the literal associated with this instruction.
   const Literal& literal() const { return *literal_; }
+  // Returns the (mutable) literal associated with this instruction.
+  Literal* mutable_literal() { return &literal_.value(); }
   // Returns whether there is literal associated with this instruction.
   bool HasLiteral() const { return literal_.has_value(); }
   // Returns a serialized representation of this instruction.

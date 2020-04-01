@@ -2340,7 +2340,7 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
         def bias_initializer(_, *args, **kwargs):
           return K.concatenate([
               self.bias_initializer((self.units,), *args, **kwargs),
-              initializers.Ones()((self.units,), *args, **kwargs),
+              initializers.get('ones')((self.units,), *args, **kwargs),
               self.bias_initializer((self.units * 2,), *args, **kwargs),
           ])
       else:

@@ -27,6 +27,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
 
@@ -38,16 +39,16 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/kernels/internal/round.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -1127,6 +1128,48 @@ inline void Mean(const tflite::MeanParams& op_params,
     cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
                                     cpu_backend_context);
   }
+}
+
+template <typename T, typename U>
+inline bool MeanGeneral(const T* input_data, const int* input_dims,
+                        const int input_num_dims, T* output_data,
+                        const int* output_dims, const int output_num_dims,
+                        const int* axis, const int num_axis_dimensions,
+                        bool keep_dims, int* temp_index, int* resolved_axis,
+                        U* temp_sum) {
+  return reference_ops::Mean(input_data, input_dims, input_num_dims,
+                             output_data, output_dims, output_num_dims, axis,
+                             num_axis_dimensions, keep_dims, temp_index,
+                             resolved_axis, temp_sum);
+}
+
+template <>
+inline bool MeanGeneral<float, float>(
+    const float* input_data, const int* input_dims, const int input_num_dims,
+    float* output_data, const int* output_dims, const int output_num_dims,
+    const int* axis, const int num_axis_dimensions, bool keep_dims,
+    int* temp_index, int* resolved_axis, float* temp_sum) {
+  // Handle reduce_mean for the last dimensions.
+  if (num_axis_dimensions == 1 && axis[0] == (input_num_dims - 1)) {
+    ruy::profiler::ScopeLabel label("MeanLastDim/Float");
+    int output_size = 1;
+    for (int i = 0; i < input_num_dims - 1; ++i) {
+      output_size *= input_dims[i];
+    }
+    const int last_input_dim = input_dims[axis[0]];
+
+    // TODO(b/152563685): Consider use eigen to cover more general cases.
+    const MatrixMap<const float> in_mat(input_data, last_input_dim,
+                                        output_size);
+    VectorMap<float> out(output_data, output_size, 1);
+    out = (in_mat.array().colwise().sum()) / static_cast<float>(last_input_dim);
+    return true;
+  }
+
+  return reference_ops::Mean(input_data, input_dims, input_num_dims,
+                             output_data, output_dims, output_num_dims, axis,
+                             num_axis_dimensions, keep_dims, temp_index,
+                             resolved_axis, temp_sum);
 }
 
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
@@ -4080,20 +4123,20 @@ inline void PopulateSoftmaxLookupTable(SoftmaxParams* data, float input_scale,
   }
 }
 
-template <typename T>
+template <typename In, typename Out>
 inline void Softmax(const SoftmaxParams& params,
-                    const RuntimeShape& input_shape, const T* input_data,
-                    const RuntimeShape& output_shape, T* output_data) {
+                    const RuntimeShape& input_shape, const In* input_data,
+                    const RuntimeShape& output_shape, Out* output_data) {
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int excluding_last_dim =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
   const int last_dim =
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
-  const int32_t clamp_max = std::numeric_limits<T>::max();
-  const int32_t clamp_min = std::numeric_limits<T>::min();
+  const int32_t clamp_max = std::numeric_limits<Out>::max();
+  const int32_t clamp_min = std::numeric_limits<Out>::min();
   for (int i = 0; i < excluding_last_dim; ++i) {
-    int32_t max_val = std::numeric_limits<T>::min();
+    int32_t max_val = std::numeric_limits<In>::min();
     // Find max quantized value.
     for (int j = 0; j < last_dim; ++j) {
       max_val = std::max(max_val, static_cast<int32_t>(input_data[j]));
@@ -4112,8 +4155,8 @@ inline void Softmax(const SoftmaxParams& params,
     for (int j = 0; j < last_dim; ++j) {
       const float prob_rescaled = table_offset[input_data[j]] * inv_sum_exp;
       const int32_t prob_quantized =
-          QuantizeSoftmaxOutput<T>(prob_rescaled, params.zero_point);
-      output_data[j] = static_cast<T>(
+          QuantizeSoftmaxOutput<Out>(prob_rescaled, params.zero_point);
+      output_data[j] = static_cast<Out>(
           std::max(std::min(clamp_max, prob_quantized), clamp_min));
     }
     input_data += last_dim;

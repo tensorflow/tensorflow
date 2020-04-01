@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
@@ -393,6 +394,9 @@ def call_context():
   if getattr(_call_context, 'call_context', None) is None:
     _call_context.call_context = CallContext()
   return _call_context.call_context
+
+
+control_flow_util_v2._register_keras_layer_context_function(call_context)  # pylint: disable=protected-access
 
 
 class CallContext(object):

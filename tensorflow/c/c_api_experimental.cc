@@ -683,7 +683,11 @@ TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
 
   tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
-  return TFE_TensorHandle::CreateLocalHandle(tensor, status);
+
+  status->status = tensorflow::Status::OK();
+  return new TFE_TensorHandle{
+      std::make_unique<tensorflow::TensorHandleInterface>(
+          tensorflow::TensorHandle::CreateLocalHandle(tensor))};
 }
 
 namespace {
@@ -703,7 +707,8 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
   } while (0);
 
   // New server created for new server_def. Unused if updating server_def.
-  tensorflow::EagerContext* context = ctx->context;
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(ctx->context);
   tensorflow::GrpcServer* grpc_server =
       dynamic_cast<tensorflow::GrpcServer*>(context->GetServer());
   if (grpc_server == nullptr) {
@@ -822,8 +827,7 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
   for (int i = 0; i < num_inputs; ++i) {
     node_def.add_input("dummy_input");
   }
-  tensorflow::down_cast<tensorflow::OperationInterface*>(
-      tfe_op->operation.get())
+  OperationFromInterface(tfe_op->operation)
       ->Attrs()
       .FillAttrValueMap(node_def.mutable_attr());
 

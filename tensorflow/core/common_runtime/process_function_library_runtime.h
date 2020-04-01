@@ -71,7 +71,7 @@ class ProcessFunctionLibraryRuntime {
       DistributedFunctionLibraryRuntime* parent = nullptr,
       const CustomKernelCreator* custom_kernel_creator = nullptr,
       const SessionMetadata* session_metadata = nullptr,
-      Rendezvous::Factory rendezvous_factory = nullptr);
+      Rendezvous::Factory rendezvous_factory = Rendezvous::Factory());
 
   virtual ~ProcessFunctionLibraryRuntime() {
     // Deleting the FunctionLibraryRuntime map will delete the function handles
@@ -191,7 +191,10 @@ class ProcessFunctionLibraryRuntime {
 
   const DeviceMgr* device_mgr() { return device_mgr_; }
 
-  const DeviceSet* device_set() { return &device_set_; }
+  const DeviceSet* device_set() { return device_set_.get(); }
+
+  // Initialize the set of local and remote devices for op device selection.
+  void InitializeDeviceSet();
 
   const ConfigProto* config() const { return config_ ? &(*config_) : nullptr; }
 
@@ -294,7 +297,7 @@ class ProcessFunctionLibraryRuntime {
 
   FunctionLibraryRuntime::DoneCallback ApplyCleanUpToDoneCallback(
       std::vector<std::unique_ptr<CleanUpItem>>* items,
-      FunctionLibraryRuntime::DoneCallback done,
+      FunctionLibraryRuntime::DoneCallback done, const int64 step_id,
       const Rendezvous* rendezvous) const;
 
   DistributedFunctionLibraryRuntime* const parent_;
@@ -422,7 +425,7 @@ class ProcessFunctionLibraryRuntime {
   Env* const env_;
   const absl::optional<const ConfigProto> config_;
   const DeviceMgr* const device_mgr_;
-  DeviceSet device_set_;
+  std::unique_ptr<DeviceSet> device_set_;
   const FunctionLibraryDefinition* lib_def_;
   thread::ThreadPool* default_thread_pool_;
 

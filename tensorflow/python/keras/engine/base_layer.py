@@ -104,6 +104,38 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   Users will just instantiate a layer and then treat it as a callable.
 
+  Arguments:
+    trainable: Boolean, whether the layer's variables should be trainable.
+    name: String name of the layer.
+    dtype: The dtype of the layer's computations and weights (default of
+      `None` means use `tf.keras.backend.floatx` in TensorFlow 2, or the type
+      of the first input in TensorFlow 1).
+    dynamic: Set this to `True` if your layer should only be run eagerly, and
+      should not be used to generate a static computation graph.
+      This would be the case for a Tree-RNN or a recursive network,
+      for example, or generally for any layer that manipulates tensors
+      using Python control flow. If `False`, we assume that the layer can
+      safely be used to generate a static computation graph.
+
+  Attributes:
+    name: The name of the layer (string).
+    dtype: The dtype of the layer's computations and weights. If mixed
+      precision is used with a `tf.keras.mixed_precision.experimental.Policy`,
+      this is instead just the dtype of the layer's weights, as the computations
+      are done in a different dtype.
+    losses: List of losses added to this layer (via `self.add_loss()`).
+    metrics: List of metrics added to this layer (via `self.add_metric()`)..
+    trainable_weights: List of variables to be included in backprop.
+    non_trainable_weights: List of variables that should not be
+      included in backprop.
+    weights: The concatenation of the lists trainable_weights and
+      non_trainable_weights (in this order).
+    trainable: Whether the layer should be trained (boolean), i.e. whether
+      its potentially-trainable weights should be returned as part of
+      `layer.trainable_weights`.
+    input_spec: Optional (list of) `InputSpec` object(s) specifying the
+      constraints on inputs that can be accepted by the layer.
+
   We recommend that descendants of `Layer` implement the following methods:
 
   * `__init__()`: Defines custom layer attributes, and creates layer state
@@ -223,35 +255,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   [Writing custom layers and models with Keras](
     https://www.tensorflow.org/guide/keras/custom_layers_and_models)
 
-  Arguments:
-    trainable: Boolean, whether the layer's variables should be trainable.
-    name: String name of the layer.
-    dtype: The dtype of the layer's computations and weights (default of
-      `None` means use `tf.keras.backend.floatx` in TensorFlow 2, or the type
-      of the first input in TensorFlow 1).
-    dynamic: Set this to `True` if your layer should only be run eagerly, and
-      should not be used to generate a static computation graph.
-      This would be the case for a Tree-RNN or a recursive network,
-      for example, or generally for any layer that manipulates tensors
-      using Python control flow. If `False`, we assume that the layer can
-      safely be used to generate a static computation graph.
-
-  Attributes:
-    name: The name of the layer (string).
-    dtype: The dtype of the layer's computations and weights. If mixed
-      precision is used with a `tf.keras.mixed_precision.experimental.Policy`,
-      this is instead just the dtype of the layer's weights, as the computations
-      are done in a different dtype.
-    updates: List of update ops of this layer.
-    losses: List of losses added by this layer.
-    trainable_weights: List of variables to be included in backprop.
-    non_trainable_weights: List of variables that should not be
-      included in backprop.
-    weights: The concatenation of the lists trainable_weights and
-      non_trainable_weights (in this order).
-    trainable: Whether the layer should be trained (boolean).
-    input_spec: Optional (list of) `InputSpec` object(s) specifying the
-      constraints on inputs that can be accepted by the layer.
+  About the layer's `dtype` attribute:
 
   Each layer has a dtype, which is typically the dtype of the layer's
   computations and variables. A layer's dtype can be queried via the
@@ -400,7 +404,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         `TensorShape` if the layer expects a list of inputs
         (one instance per input).
     """
-    # Only record the build input shapes of overridden the build methods.
+    # Only record the build input shapes of overridden build methods.
     if not hasattr(self.build, '_is_default'):
       self._build_input_shape = input_shape
     self.built = True
@@ -538,11 +542,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     if initializer is None:
       # If dtype is DT_FLOAT, provide a uniform unit scaling initializer
       if dtype.is_floating:
-        initializer = initializers.glorot_uniform()
+        initializer = initializers.get('glorot_uniform')
       # If dtype is DT_INT/DT_UINT, provide a default value `zero`
       # If dtype is DT_BOOL, provide a default value `FALSE`
       elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
-        initializer = initializers.zeros()
+        initializer = initializers.get('zeros')
       # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
       else:
         raise ValueError('An initializer for variable %s of type %s is required'

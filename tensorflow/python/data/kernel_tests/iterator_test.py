@@ -946,9 +946,7 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     @def_function.function
     def fn():
-      output_spec = tensor_spec.TensorSpec((), dtypes.int64)
-      dataset = dataset_ops._GeneratorDataset(1, init_fn, next_fn, finalize_fn,
-                                              output_spec)
+      dataset = dataset_ops._GeneratorDataset(1, init_fn, next_fn, finalize_fn)
       iterator = iter(dataset)
       next(iterator)
 

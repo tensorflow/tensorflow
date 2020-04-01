@@ -75,7 +75,7 @@ TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
               const char* raw_device_name, TF_Status* status) {
   std::unique_ptr<TFE_Op> op = ReleaseThreadLocalOp(ctx);
   if (!op) {
-    op.reset(new TFE_Op{std::make_unique<tensorflow::OperationInterface>(ctx)});
+    op.reset(new TFE_Op{ctx->context->CreateOperation()});
   }
   status->status = op->operation->Reset(op_or_function_name, raw_device_name);
   if (!status->status.ok()) {

@@ -57,10 +57,16 @@ Status EagerOperation::Reset(
   cancellation_manager_ = nullptr;
   executor_ = executor ? executor : &ctx_.Executor();
   remote_func_params_ = remote_func_params;
-#ifdef TENSORFLOW_MEM_DEBUG
   op_name_ = op;
-#endif
-  return SetDeviceName(raw_device_name, true);
+  if (raw_device_name != nullptr && strlen(raw_device_name) > 0) {
+    return SetDeviceName(raw_device_name);
+  } else {
+    raw_device_name_.clear();
+    device_name_.clear();
+    device_parsed_name_.Clear();
+    device_ = kVariantDeviceNull;
+    return Status::OK();
+  }
 }
 
 Status EagerOperation::MaybeInferSingleInputAttrs(TensorHandle* handle) {
@@ -130,7 +136,7 @@ Status EagerOperation::InferInputListAttrs(int num_inputs) {
   return Status::OK();
 }
 
-Status EagerOperation::SetDeviceName(const char* device, const bool reset) {
+Status EagerOperation::SetDeviceName(const char* device) {
   if (device != nullptr && strlen(device) > 0) {
     if (device != raw_device_name_) {
       if (!DeviceNameUtils::ParseFullName(device, &device_parsed_name_)) {
@@ -152,11 +158,6 @@ Status EagerOperation::SetDeviceName(const char* device, const bool reset) {
         device_ = kVariantDeviceNull;
       }
     }
-  } else if (reset) {
-    raw_device_name_.clear();
-    device_name_.clear();
-    device_parsed_name_.Clear();
-    device_ = kVariantDeviceNull;
   }
   return Status::OK();
 }

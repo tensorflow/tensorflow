@@ -21,13 +21,6 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
     THIRD_PARTY_CC_HDRS += \
       $(call recursive_find,$(CMSIS_PATH)/CMSIS/Core/Include,*.h)
 
-    # todo: remove the two lines below once context->AllocateTemporaryTensor()
-    # is implemented.
-    MICROLITE_CC_HDRS += \
-      tensorflow/lite/micro/kernels/cmsis-nn/scratch_buffer.h
-    MICROLITE_CC_SRCS += \
-      tensorflow/lite/micro/kernels/cmsis-nn/scratch_buffer.cc
-
     INCLUDES += -I$(CMSIS_PATH)/CMSIS/Core/Include \
                 -I$(CMSIS_PATH)/CMSIS/NN/Include \
                 -I$(CMSIS_PATH)/CMSIS/DSP/Include

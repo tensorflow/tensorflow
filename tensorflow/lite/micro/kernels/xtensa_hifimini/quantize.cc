@@ -126,14 +126,15 @@ void Free(TfLiteContext* context, void* buffer) {}
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
 
   // TODO(b/132070898): Use statically slotted OpData structures until a
   // scratch memory API is ready.
   OpData* op_data = &kStaticOpData[kStaticOpDataCounter++];
   node->user_data = op_data;
 
-  op_data->scale_multiplier =
-      xtensa::hifimini::CreateQConstantForInt24(0, 1.f / output->params.scale);
+  op_data->scale_multiplier = xtensa::hifimini::CreateQConstantForInt24(
+      0, input->params.scale / output->params.scale);
 
   return kTfLiteOk;
 }
@@ -146,7 +147,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   tflite::QuantizationParams op_params;
   op_params.zero_point = output->params.zero_point;
-  op_params.scale = static_cast<double>(output->params.scale);
 
   if (input->type != kTfLiteInt16 && output->type != kTfLiteInt8) {
     TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",

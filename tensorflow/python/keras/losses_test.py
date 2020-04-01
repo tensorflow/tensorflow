@@ -36,8 +36,8 @@ ALL_LOSSES = [
     losses.mean_absolute_percentage_error,
     losses.mean_squared_logarithmic_error, losses.squared_hinge, losses.hinge,
     losses.categorical_crossentropy, losses.binary_crossentropy,
-    losses.kullback_leibler_divergence, losses.poisson,
-    losses.cosine_similarity, losses.logcosh, losses.categorical_hinge
+    losses.kl_divergence, losses.poisson,
+    losses.cosine_similarity, losses.log_cosh, losses.categorical_hinge
 ]
 
 

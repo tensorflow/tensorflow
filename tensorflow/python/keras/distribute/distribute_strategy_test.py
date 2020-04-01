@@ -1812,6 +1812,27 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     self.assertEqual(bc.test_end_batches, [19, 39, 49])
 
   @combinations.generate(
+      combinations.combine(distribution=all_strategies, mode=['eager']))
+  def test_host_training_loop_truncate_to_epoch(self, distribution):
+    with distribution.scope():
+      inputs = keras.Input(10)
+      outputs = keras.layers.Dense(1)(inputs)
+      model = keras.Model(inputs, outputs)
+
+    model.compile('sgd', 'mse', experimental_steps_per_execution=500)
+
+    x, y = np.ones((100, 10)), np.ones((100, 1))
+    bc = BatchCountingCB()
+    model.fit(x, y, batch_size=2, epochs=2, callbacks=[bc])
+    self.assertEqual(bc.train_begin_batches, [0, 0])
+    self.assertEqual(bc.train_end_batches, [49, 49])
+
+    x, y = np.ones((50, 10)), np.ones((50, 1))
+    model.evaluate(x, y, batch_size=2, callbacks=[bc])
+    self.assertEqual(bc.test_begin_batches, [0])
+    self.assertEqual(bc.test_end_batches, [24])
+
+  @combinations.generate(
       combinations.times(
           all_strategy_combinations_minus_default()))
   def test_distribution_strategy_one_dimensional(self, distribution):

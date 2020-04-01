@@ -199,7 +199,6 @@ COMMON_PROTO_SRCS = [
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
     "protobuf/verifier_config.proto",
-    "protobuf/trace_events.proto",
 ]
 
 EXAMPLE_PROTO_SRCS = [
@@ -2551,6 +2550,8 @@ filegroup(
         "common_runtime/executor_factory.h",
         "common_runtime/function_optimization_registry.h",
         "common_runtime/graph_optimizer.h",
+        "common_runtime/graph_view.h",
+        "common_runtime/immutable_executor_state.h",
         "common_runtime/input_colocation_exemption_registry.h",
         "common_runtime/isolate_placer_inspection_required_ops_pass.h",
         "common_runtime/local_device.h",
@@ -2614,7 +2615,9 @@ tf_cuda_library(
         "common_runtime/function_optimization_registry.cc",
         "common_runtime/graph_optimizer.cc",
         "common_runtime/graph_runner.cc",
+        "common_runtime/graph_view.cc",
         "common_runtime/hierarchical_tree_broadcaster.cc",
+        "common_runtime/immutable_executor_state.cc",
         "common_runtime/input_colocation_exemption_registry.cc",
         "common_runtime/inspecting_placer.cc",
         "common_runtime/isolate_placer_inspection_required_ops_pass.cc",

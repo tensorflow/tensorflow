@@ -5,12 +5,26 @@
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_proto_library_py", "tf_protos_grappler")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_plugin_deps", "tf_additional_xla_deps_py")
@@ -1864,6 +1878,7 @@ py_library(
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -3178,6 +3193,7 @@ tf_py_test(
     size = "small",
     srcs = ["ops/collective_ops_test.py"],
     python_version = "PY3",
+    tags = ["no_rocm"],
     deps = [
         ":client_testlib",
         ":collective_ops",
@@ -5204,7 +5220,7 @@ py_library(
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras/optimizer_v2:learning_rate_schedule",
+        "//tensorflow/python/keras/optimizer_v2:legacy_learning_rate_decay",
         "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -5843,6 +5859,7 @@ tf_py_wrap_cc(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_rpc_factory_registration",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
@@ -5898,6 +5915,7 @@ filegroup(
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
         "//tensorflow/core:core_cpu_base_no_ops",  # tf_session
         "//tensorflow/core:core_cpu_impl",  # device_lib
+        "//tensorflow/core/data/service:server_lib",  # server_lib
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
         "//tensorflow/core:lib_internal_impl",  # device_lib
         "//tensorflow/core:op_gen_lib",  # tf_session
@@ -6409,6 +6427,9 @@ cuda_py_test(
     size = "small",
     srcs = ["client/timeline_test.py"],
     python_version = "PY3",
+    tags = [
+        "gpu_cupti",
+    ],
     xla_enable_strict_auto_jit = False,  # Graph structure is different with autojit
     deps = [
         ":client",
@@ -6472,6 +6493,7 @@ tf_py_test(
     size = "small",
     srcs = ["framework/convert_to_constants_test.py"],
     python_version = "PY3",
+    tags = ["no_rocm"],
     deps = [
         "client_testlib",
         "framework_test_lib",
@@ -6496,7 +6518,10 @@ tf_py_test(
     size = "small",
     srcs = ["lib/io/file_io_test.py"],
     python_version = "PY3",
-    tags = ["no_windows"],
+    tags = [
+        "no_rocm",
+        "no_windows",
+    ],
     deps = [
         ":client_testlib",
         ":errors",
@@ -6591,7 +6616,6 @@ cuda_py_tests(
         "training/device_setter_test.py",
         "training/ftrl_test.py",
         "training/gradient_descent_test.py",
-        "training/learning_rate_decay_test.py",
         "training/momentum_test.py",
         "training/optimizer_test.py",
         "training/proximal_adagrad_test.py",
@@ -7598,35 +7622,6 @@ tf_py_test(
     ],
 )
 
-py_library(
-    name = "graph_placer",
-    srcs = [
-        "grappler/controller.py",
-        "grappler/graph_placer.py",
-        "grappler/hierarchical_controller.py",
-    ],
-    deps = [
-        ":python",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "graph_placer_test",
-    size = "large",
-    srcs = ["grappler/graph_placer_test.py"],
-    python_version = "PY3",
-    tags = [
-        "grappler",
-        "no_pip",  # graph_placer is not available in pip.
-    ],
-    deps = [
-        ":client_testlib",
-        ":graph_placer",
-        ":math_ops",
-    ],
-)
-
 tf_py_test(
     name = "memory_optimizer_test",
     size = "medium",
@@ -7825,10 +7820,7 @@ cuda_py_test(
         "grappler/auto_mixed_precision_test.py",
     ],
     python_version = "PY3",
-    tags = [
-        "grappler",
-        "no_rocm",
-    ],
+    tags = ["grappler"],
     # This test analyzes the graph, but XLA changes the names of nodes.
     xla_enable_strict_auto_jit = False,
     deps = [

@@ -618,7 +618,10 @@ cc_library(
         ":hlo",
         ":type_to_shape",
         ":xla_dialect_registration",
+        "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -629,6 +632,8 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:quantize",
         "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
@@ -727,6 +732,7 @@ genrule(
     outs = ["operator_writers.inc"],
     cmd = ("$(location :operator_writer_gen) " +
            "-I external/llvm-project/mlir/include " +
+           "-I external/org_tensorflow " +
            "$(location //tensorflow/compiler/mlir/xla:ir/hlo_ops.td) " +
            " -o $@"),
     tools = [":operator_writer_gen"],

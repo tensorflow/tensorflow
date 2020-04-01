@@ -6,7 +6,7 @@ func @main() {
 // CHECK-NEXT:   name: "predicate"
 // CHECK-NEXT:   op: "Const"
 // CHECK-NEXT:   attr {
-// CHECK-NEXT:     key: "dtype"
+// CHECK:          key: "dtype"
 // CHECK-NEXT:     value {
 // CHECK-NEXT:       type: DT_INT32
 // CHECK-NEXT:     }

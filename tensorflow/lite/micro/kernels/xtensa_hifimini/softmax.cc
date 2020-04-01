@@ -117,21 +117,14 @@ inline void Softmax(const SoftmaxParams& params,
 namespace activations {
 namespace {
 
-struct OpData {
-  int32_t input_multiplier = 0;
-  int input_left_shift = 0;
-  int32_t input_range_radius = 0;
-  int diff_min = 0;
-};
-
 // This size will work for both the hotword (1) and ambient music (0):
-static OpData kStaticOpData;
+static SoftmaxParams kStaticOpData;
 
 TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
                                     const TfLiteTensor* input,
                                     TfLiteTensor* output,
                                     const TfLiteSoftmaxParams* params,
-                                    OpData* data) {
+                                    SoftmaxParams* op_data) {
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
     if (input->type == kTfLiteUInt8) {
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
@@ -148,12 +141,14 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
 
     static const int kScaledDiffIntegerBits = 5;
 
+    int input_left_shift;
     tflite::PreprocessSoftmaxScaling(
-        static_cast<double>(params->beta),
-        static_cast<double>(input->params.scale), kScaledDiffIntegerBits,
-        &data->input_multiplier, &data->input_left_shift);
-    data->diff_min = -1.0 * tflite::CalculateInputRadius(
-                                kScaledDiffIntegerBits, data->input_left_shift);
+        params->beta, input->params.scale, kScaledDiffIntegerBits,
+        &op_data->input_multiplier, &input_left_shift);
+    op_data->input_left_shift = input_left_shift;
+    op_data->diff_min =
+        -1.0 * tflite::CalculateInputRadius(kScaledDiffIntegerBits,
+                                            op_data->input_left_shift);
   }
   return kTfLiteOk;
 }
@@ -161,12 +156,7 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
 }  // namespace
 
 void SoftmaxQuantized(const TfLiteTensor* input, TfLiteTensor* output,
-                      TfLiteSoftmaxParams* params, OpData* data) {
-  SoftmaxParams op_params;
-  op_params.input_multiplier = data->input_multiplier;
-  op_params.input_left_shift = data->input_left_shift;
-  op_params.diff_min = data->diff_min;
-
+                      const SoftmaxParams& op_params) {
   if (output->type == kTfLiteInt16) {
     xtensa::hifimini::Softmax(
         op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
@@ -186,7 +176,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 void Free(TfLiteContext* context, void* buffer) {}
 
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
-  auto* params = reinterpret_cast<TfLiteSoftmaxParams*>(node->builtin_data);
+  auto* params = static_cast<TfLiteSoftmaxParams*>(node->builtin_data);
 
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -194,27 +184,26 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
 
-  // TODO(b/132070898): Use statically slotted OpData structures until a
+  // TODO(b/132070898): Use statically slotted SoftmaxParams structures until a
   // scratch memory API is ready.
-  OpData* op_data = &kStaticOpData;
-  node->user_data = op_data;
+  SoftmaxParams* op_params = &kStaticOpData;
+  node->user_data = op_params;
 
   TF_LITE_ENSURE_STATUS(
-      CalculateSoftmaxOpData(context, input, output, params, op_data));
+      CalculateSoftmaxOpData(context, input, output, params, op_params));
 
   return kTfLiteOk;
 }
 
 TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
-  auto* params = reinterpret_cast<TfLiteSoftmaxParams*>(node->builtin_data);
-  auto* op_data = reinterpret_cast<OpData*>(node->user_data);
+  auto* op_params = static_cast<SoftmaxParams*>(node->user_data);
 
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
 
   switch (input->type) {
     case kTfLiteInt8: {
-      SoftmaxQuantized(input, output, params, op_data);
+      SoftmaxQuantized(input, output, *op_params);
       return kTfLiteOk;
     }
     default:

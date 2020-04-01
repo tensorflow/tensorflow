@@ -455,6 +455,7 @@ TEST(CAPI, TensorHandleOnDeviceMemory) {
     TFE_DeleteTensorHandle(copy_aliased);  // Note that this will delete copy.
     TFE_DeleteTensorHandle(on_host);
   }
+  TF_DeleteDeviceList(devices);
   TF_DeleteTensor(m_data);
   TFE_DeleteTensorHandle(m);
   TFE_DeleteContext(ctx);

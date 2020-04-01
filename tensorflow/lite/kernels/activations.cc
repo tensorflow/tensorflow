@@ -542,7 +542,12 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  if (output->type == kTfLiteInt16) {
+    TF_LITE_ENSURE(context,
+                   input->type == kTfLiteInt8 || input->type == kTfLiteUInt8);
+  } else {
+    TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  }
 
   TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
 
@@ -923,12 +928,12 @@ TfLiteStatus SoftmaxFloat(TfLiteContext* context, const TfLiteTensor* input,
   return kTfLiteOk;
 }
 
-template <typename T>
+template <typename In, typename Out>
 TfLiteStatus SoftmaxQuantized(TfLiteContext* context, const TfLiteTensor* input,
                               TfLiteTensor* output, SoftmaxOpData* data) {
   optimized_ops::Softmax(data->params, GetTensorShape(input),
-                         GetTensorData<T>(input), GetTensorShape(output),
-                         GetTensorData<T>(output));
+                         GetTensorData<In>(input), GetTensorShape(output),
+                         GetTensorData<Out>(output));
   return kTfLiteOk;
 }
 
@@ -944,16 +949,41 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       return SoftmaxFloat(context, input, output, params);
     }
     case kTfLiteUInt8: {
-      return SoftmaxQuantized<uint8_t>(context, input, output, data);
+      switch (output->type) {
+        case kTfLiteUInt8:
+          return SoftmaxQuantized<uint8_t, uint8_t>(context, input, output,
+                                                    data);
+        case kTfLiteInt16:
+          return SoftmaxQuantized<uint8_t, int16_t>(context, input, output,
+                                                    data);
+        default:
+          TF_LITE_KERNEL_LOG(context,
+                             "Only uint8_t and int16_t outputs are supported "
+                             "with uint8_t inputs currently, got %s.",
+                             TfLiteTypeGetName(output->type));
+          return kTfLiteError;
+      }
     }
     case kTfLiteInt8: {
-      return SoftmaxQuantized<int8_t>(context, input, output, data);
+      switch (output->type) {
+        case kTfLiteInt8:
+          return SoftmaxQuantized<int8_t, int8_t>(context, input, output, data);
+        case kTfLiteInt16:
+          return SoftmaxQuantized<int8_t, int16_t>(context, input, output,
+                                                   data);
+        default:
+          TF_LITE_KERNEL_LOG(context,
+                             "Only int8_t and int16_t outputs are supported "
+                             "with int8_t inputs currently, got %s.",
+                             TfLiteTypeGetName(output->type));
+          return kTfLiteError;
+      }
     }
 
     default:
       TF_LITE_KERNEL_LOG(
           context,
-          "Only float32, uint8_t and Int8_t are supported currently, got %s.",
+          "Only float32, uint8_t and int8_t are supported currently, got %s.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }

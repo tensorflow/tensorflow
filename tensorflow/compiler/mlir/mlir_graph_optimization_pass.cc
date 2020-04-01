@@ -21,6 +21,10 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_os_ostream.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -86,6 +90,17 @@ MlirOptimizationPassRegistry& MlirOptimizationPassRegistry::Global() {
   return *global;
 }
 
+static void RegisterDialects() {
+  static bool init_once = []() {
+    mlir::registerDialect<mlir::StandardOpsDialect>();
+    mlir::registerDialect<mlir::tf_device::TensorFlowDeviceDialect>();
+    mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
+    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
+    return true;
+  }();
+  (void)init_once;
+}
+
 Status MlirFunctionOptimizationPass::Run(
     const DeviceSet& device_set, const ConfigProto& config_proto,
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
@@ -107,6 +122,7 @@ Status MlirFunctionOptimizationPass::Run(
           << "(registered " << registry_->passes().size() << " passes)";
 
   GraphDebugInfo debug_info;
+  RegisterDialects();
   mlir::MLIRContext context;
   GraphImportConfig import_config;
   import_config.graph_as_function = true;
@@ -178,9 +194,12 @@ Status MlirV1CompatGraphOptimizationPass::Run(
           << "(registered" << registry_->passes().size() << " passes)";
 
   GraphDebugInfo debug_info;
+  RegisterDialects();
   mlir::MLIRContext context;
   GraphImportConfig import_config;
-  import_config.upgrade_legacy = true;
+  // TODO(b/150959075): Running functionalization before TPU cluster formation
+  // is not semantics preserving and should be disabled for now.
+  import_config.upgrade_legacy = false;
   TF_ASSIGN_OR_RETURN(
       auto module_ref,
       ConvertGraphToMlir(**options.graph, debug_info, *options.flib_def,

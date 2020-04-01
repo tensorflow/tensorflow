@@ -932,3 +932,29 @@ func @reshape_invalid_shapes(%operand: tensor<2x4xf32>) -> tensor<3x3xf32> {
   %0 = "xla_hlo.reshape"(%operand) : (tensor<2x4xf32>) -> tensor<3x3xf32>
   return %0 : tensor<3x3xf32>
 }
+
+// -----
+
+func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
+  // expected-error @+1 {{lhs and rhs should have the same number of batching dimensions}}
+  %0 = "xla_hlo.dot_general"(%arg0, %arg1) { dot_dimension_numbers = {
+    lhs_batching_dimensions = dense<0> : tensor<1xi64>,
+    lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
+    rhs_batching_dimensions = dense<[]> : tensor<0xi64>,
+    rhs_contracting_dimensions = dense<1> : tensor<1xi64>
+  }} : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  return
+}
+
+// -----
+
+func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
+  // expected-error @+1 {{lhs and rhs should have the same number of contracting dimensions}}
+  %0 = "xla_hlo.dot_general"(%arg0, %arg1) { dot_dimension_numbers = {
+    lhs_batching_dimensions = dense<0> : tensor<1xi64>,
+    lhs_contracting_dimensions = dense<[]> : tensor<0xi64>,
+    rhs_batching_dimensions = dense<0> : tensor<1xi64>,
+    rhs_contracting_dimensions = dense<1> : tensor<1xi64>
+  }} : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  return
+}
