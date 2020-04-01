@@ -96,10 +96,8 @@ void GpuExecutable::ComputeThunkAnnotations() {
     const HloInstruction* hlo = thunk->hlo_instruction();
     CHECK(hlo);
     thunk_annotations_[thunk] =
-        absl::StrFormat("%s:#hlo_op=%s,hlo_module=%s#",
-                        hlo->ToStringWithCanonicalNameMap(
-                            HloPrintOptions::Canonical(), &canonical_name_map),
-                        hlo->name(), hlo->GetModule()->name());
+        absl::StrFormat("Thunk#hlo_op=%s,hlo_module=%s#", hlo->name(),
+                        hlo->GetModule()->name());
   }
 }
 
