@@ -22,6 +22,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -59,12 +60,15 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(sess_run_value.values, value.values)
         self.assertAllEqual(sess_run_value.dense_shape, value.dense_shape)
 
-  @test_util.run_all_in_graph_and_eager_modes
   def testShape(self):
+    @def_function.function
+    def test_fn(tensor):
+      tensor = sparse_ops.sparse_transpose(tensor)
+      self.assertEqual(tensor.shape.rank, 2)
+      return tensor
     tensor = sparse_tensor.SparseTensor(
         indices=[[0, 0], [1, 2]], values=[1., 2], dense_shape=[3, 4])
-    tensor = sparse_ops.sparse_transpose(tensor)
-    self.assertTrue(tensor.shape.rank == 2)
+    test_fn(tensor)
 
   def testIsSparse(self):
     self.assertFalse(sparse_tensor.is_sparse(3))
