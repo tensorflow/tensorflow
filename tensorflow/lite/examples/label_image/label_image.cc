@@ -103,11 +103,7 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
   }
 
   if (s->xnnpack_delegate) {
-    TfLiteXNNPackDelegateOptions xnnpack_options =
-        TfLiteXNNPackDelegateOptionsDefault();
-    xnnpack_options.num_threads = s->number_of_threads;
-
-    auto delegate = evaluation::CreateXNNPACKDelegate(&xnnpack_options);
+    auto delegate = evaluation::CreateXNNPACKDelegate(s->number_of_threads);
     if (!delegate) {
       LOG(INFO) << "XNNPACK acceleration is unsupported on this platform.";
     } else {
