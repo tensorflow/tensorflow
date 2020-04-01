@@ -109,11 +109,15 @@ const char *getActivityUnifiedMemoryKindString(
 #define RETURN_IF_CUPTI_ERROR(expr)                                         \
   do {                                                                      \
     CUptiResult status = expr;                                              \
-    if (status != CUPTI_SUCCESS) {                                          \
+    if (ABSL_PREDICT_FALSE(status != CUPTI_SUCCESS)) {                      \
       const char *errstr = "";                                              \
       cupti_interface_->GetResultString(status, &errstr);                   \
       LOG(ERROR) << "function " << #expr << "failed with error " << errstr; \
-      return errors::Internal(absl::StrCat("cutpi call error", errstr));    \
+      if (status == CUPTI_ERROR_INSUFFICIENT_PRIVILEGES) {                  \
+        return errors::PermissionDenied("CUPTI need root access!");         \
+      } else {                                                              \
+        return errors::Internal(absl::StrCat("CUPTI call error", errstr));  \
+      }                                                                     \
     }                                                                       \
   } while (false)
 
@@ -1379,7 +1383,9 @@ void CuptiTracer::Enable(const CuptiTracerOptions &option,
         option, cupti_interface_, collector));
   }
 
-  EnableApiTracing().IgnoreError();
+  Status status = EnableApiTracing();
+  need_root_access_ |= status.code() == error::PERMISSION_DENIED;
+
   if (option_->enable_activity_api) {
     EnableActivityTracing().IgnoreError();
   }
