@@ -1681,13 +1681,14 @@ def poisson(y_true, y_pred):
 def cosine_similarity(y_true, y_pred, axis=-1):
   """Computes the cosine similarity between labels and predictions.
 
-  Note that it is a number between -1 and 1. When it is a negative number between
-  -1 and 0, 0 indicates orthogonality and values closer to -1 indicate greater
-  similarity. The values closer to 1 indicate greater dissimilarity. This makes
-  it usable as a loss function in a setting where you try to maximize the
-  proximity between predictions and targets. If either `y_true` or `y_pred` is
-  a zero vector, cosine similarity will be 0 regardless of the proximity between
-  predictions and targets.
+  Note that it is a number between -1 and 1. When it is a negative number
+  between -1 and 0, 0 indicates orthogonality and values closer to -1
+  indicate greater similarity. The values closer to 1 indicate greater
+  dissimilarity. This makes it usable as a loss function in a setting
+  where you try to maximize the proximity between predictions and
+  targets. If either `y_true` or `y_pred` is a zero vector, cosine
+  similarity will be 0 regardless of the proximity between predictions
+  and targets.
 
   `loss = -sum(l2_norm(y_true) * l2_norm(y_pred))`
 
