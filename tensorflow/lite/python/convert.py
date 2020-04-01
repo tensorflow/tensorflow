@@ -257,7 +257,11 @@ def build_toco_convert_protos(input_tensors,
                               target_ops=None,
                               allow_nonexistent_arrays=False,
                               debug_info=None,
-                              conversion_summary_dir=None):
+                              conversion_summary_dir=None,
+                              saved_model_dir=None,
+                              saved_model_version=0,
+                              saved_model_tags=None,
+                              saved_model_exported_names=None):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -323,6 +327,18 @@ def build_toco_convert_protos(input_tensors,
     debug_info: `GraphDebugInfo` proto containing the stack traces for the
       original nodes referred by the converted graph.
     conversion_summary_dir: A string, the path to the generated conversion logs.
+    saved_model_dir: Filepath of the saved model to be converted. This value
+      will be non-empty only when the saved model import path will be used.
+      Otherwises, the graph def-based conversion will be processed.
+    saved_model_version: SavedModel file format version of The saved model file
+      to be converted. This value will be set only when the SavedModel import
+      path will be used.
+    saved_model_tags: Set of string saved model tags, formatted in the
+      comma-separated value. This value will be set only when the SavedModel
+      import path will be used.
+    saved_model_exported_names: Names to be exported (default: export all) when
+      the saved model import path is on. This value will be set only when the
+      SavedModel import path will be used.
 
   Returns:
     model_flags, toco_flags, debug_info: three protocol buffers describing the
@@ -396,6 +412,14 @@ def build_toco_convert_protos(input_tensors,
     model.output_arrays.append(util.get_tensor_name(output_tensor))
 
   model.allow_nonexistent_arrays = allow_nonexistent_arrays
+
+  if saved_model_dir:
+    model.saved_model_dir = saved_model_dir
+  model.saved_model_version = saved_model_version
+  if saved_model_tags:
+    model.saved_model_tags.extend(saved_model_tags)
+  if saved_model_exported_names:
+    model.saved_model_exported_names.extend(saved_model_exported_names)
 
   return model, toco, debug_info
 
