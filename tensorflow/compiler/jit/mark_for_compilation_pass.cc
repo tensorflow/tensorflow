@@ -1043,7 +1043,8 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
 
     bool is_xla_compile_attr_true =
         GetNodeOrFuncAttr(node, flib_def_, kXlaCompileAttr) ||
-        GetNodeOrFuncAttr(node, flib_def_, kXlaMustCompileAttr);
+        (global_jit_level_ != OptimizerOptions::OFF &&
+         GetNodeOrFuncAttr(node, flib_def_, kXlaMustCompileAttr));
 
     DeviceSet devices;
     devices.Insert(device);
