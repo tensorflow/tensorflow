@@ -2107,7 +2107,7 @@ static IrArray::Index GetUnnormalizedIndex(
       unnormalized_shape.dimensions()[0] == normalized_shape_index.dims()[1] &&
       unnormalized_shape.dimensions()[1] == normalized_shape_index.dims()[2] &&
       unnormalized_shape.layout().minor_to_major(1) == 0) {
-    DCHECK_EQ(normalized_shape_index.dims()[0], 0);
+    CHECK_EQ(normalized_shape_index.dims()[0], 1);
     auto multidim = normalized_shape_index.multidim();
     return IrArray::Index({multidim[1], multidim[2]}, unnormalized_shape,
                           normalized_shape_index.GetType());
