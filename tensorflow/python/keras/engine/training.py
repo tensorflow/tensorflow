@@ -921,6 +921,10 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           `batch_size` if your data is in the form of a dataset, generators,
           or `keras.utils.Sequence` instances (since they generate batches).
         verbose: 0 or 1. Verbosity mode. 0 = silent, 1 = progress bar.
+        class_weight: Optional dictionary mapping class indices (integers)
+            to a weight (float) value, used for weighting the loss function
+            This can be useful to tell the model to
+            "pay more attention" to samples from an under-represented class.
         sample_weight: Optional Numpy array of weights for the test samples,
           used for weighting the loss function. You can either pass a flat (1D)
           Numpy array with the same length as the input samples
