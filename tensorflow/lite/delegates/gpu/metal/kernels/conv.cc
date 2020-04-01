@@ -45,6 +45,11 @@ enum class WeightsUploadType {
   CONSTANT_MEM,
 };
 
+enum class WeightsInnerBlockLayout {
+  O4I4,
+  I4O4,
+};
+
 struct ConvParams {
   int3 block_size;
   int3 work_group_size;
@@ -55,6 +60,7 @@ struct ConvParams {
   bool linear_wh;
   bool linear_whs;
   WeightsUploadType weights_upload_type;
+  WeightsInnerBlockLayout weight_layout;
   bool different_weights_for_height = false;
   bool x_kernel_is_1;
   bool y_kernel_is_1;
@@ -410,8 +416,17 @@ kernel void ComputeFunction(
             std::string s_id = std::to_string(y) + std::to_string(x);
             std::string r_id =
                 std::to_string(z) + std::to_string(y) + std::to_string(x);
-            c += "    r" + r_id + "." + channels[ch] + " += dot(" + name + "[" +
-                 std::to_string(z * 4 + ch + offset) + "], src" + s_id + ");\n";
+            std::string f_val =
+                name + "[" + std::to_string(z * 4 + ch + offset) + "]";
+            std::string s_val = "src" + s_id;
+            std::string r_val = "r" + r_id;
+            if (params.weight_layout == WeightsInnerBlockLayout::O4I4) {
+              c += "    " + r_val + "." + channels[ch] + " += dot(" + f_val +
+                   ", " + s_val + ");\n";
+            } else {  // WeightsInnerBlockLayout::I404
+              c += "    " + r_val + " += " + f_val + " * " + s_val + "." +
+                   channels[ch] + ";\n";
+            }
           }
         }
       }
@@ -509,22 +524,34 @@ kernel void ComputeFunction(
 }
 
 std::vector<float> ReorderWeightsForConv(
-    const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights, int z_out) {
+    const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights,
+    const ConvParams& params) {
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
-  std::vector<float> weights_reordered(weights.shape.w * weights.shape.h *
-                                       AlignByN(dst_depth, z_out) * 4 *
-                                       src_depth * 4);
+  std::vector<float> weights_reordered(
+      weights.shape.w * weights.shape.h *
+      AlignByN(dst_depth, params.block_size.z) * 4 * src_depth * 4);
+
+  bool isO4I4 = params.weight_layout == WeightsInnerBlockLayout::O4I4;
+
   int counter = 0;
-  for (int d = 0; d < IntegralDivideRoundUp(dst_depth, z_out); ++d) {
+  for (int d = 0; d < IntegralDivideRoundUp(dst_depth, params.block_size.z);
+       ++d) {
     for (int y = 0; y < weights.shape.h; ++y) {
       for (int x = 0; x < weights.shape.w; ++x) {
         for (int s = 0; s < src_depth; ++s) {
-          for (int k = 0; k < z_out; ++k) {
+          for (int k = 0; k < params.block_size.z; ++k) {
             for (int j = 0; j < 4; ++j) {
               for (int i = 0; i < 4; ++i) {
-                int src_ch = s * 4 + i;
-                int dst_ch = (d * z_out + k) * 4 + j;
+                int src_ch;
+                int dst_ch;
+                if (isO4I4) {
+                  src_ch = s * 4 + i;
+                  dst_ch = (d * params.block_size.z + k) * 4 + j;
+                } else {
+                  src_ch = s * 4 + j;
+                  dst_ch = (d * params.block_size.z + k) * 4 + i;
+                }
                 if (src_ch >= weights.shape.i || dst_ch >= weights.shape.o) {
                   weights_reordered[counter++] = 0.0f;
                 } else {
@@ -698,6 +725,7 @@ ConvParams GetConvParamsForA7A8(const AppleGPUInfo& apple_info,
   params.linear_wh = false;
   params.linear_whs = false;
   params.work_group_launch_order = int3(0, 1, 2);
+  params.weight_layout = WeightsInnerBlockLayout::O4I4;
 
   int blk_total_size = GetRecommendedBlockSize(apple_info, dst_shape);
 
@@ -796,6 +824,7 @@ ConvParams GetConvParamsForA9AndHigher(const AppleGPUInfo& apple_info,
   params.linear_whs = false;
   params.work_group_size = int3(8, 4, 1);
   params.work_group_launch_order = int3(2, 0, 1);
+  params.weight_layout = WeightsInnerBlockLayout::O4I4;
   int g1 = GetGroupsCount(dst_shape, {8, 4, 1}, block_size);
   int g2 = GetGroupsCountForLinearWH(dst_shape, {32, 1, 1}, block_size);
   int g3 = GetGroupsCountForLinearWHS(dst_shape, {32, 1, 1}, block_size);
@@ -841,6 +870,7 @@ ConvParams GetConvParamsForA9AndHigher(const AppleGPUInfo& apple_info,
 }
 
 ConvParams GetConvParamsForIntel(const Convolution2DAttributes& attr,
+                                 const RuntimeOptions& options,
                                  const BHWC& dst_shape) {
   ConvParams params;
   params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
@@ -852,6 +882,12 @@ ConvParams GetConvParamsForIntel(const Convolution2DAttributes& attr,
   params.work_group_launch_order = int3(2, 0, 1);
   params.block_size = int3(1, 2, 4);
   params.work_group_size = int3(8, 2, 1);
+  if (options.storage_precision == RuntimeOptions::Precision::FP16 &&
+      options.accumulator_precision == RuntimeOptions::Precision::FP32) {
+    params.weight_layout = WeightsInnerBlockLayout::O4I4;
+  } else {
+    params.weight_layout = WeightsInnerBlockLayout::I4O4;
+  }
 
   int g1 = GetGroupsCount(dst_shape, params.work_group_size, params.block_size);
   int g2 = GetGroupsCountForLinearWH(dst_shape, {16, 1, 1}, params.block_size);
@@ -876,6 +912,7 @@ ConvParams GetConvParamsForIntel(const Convolution2DAttributes& attr,
 }
 
 ConvParams GetConvParamsForAMD(const Convolution2DAttributes& attr,
+                               const RuntimeOptions& options,
                                const BHWC& dst_shape) {
   ConvParams params;
   params.block_size = int3(1, 1, 4);
@@ -890,12 +927,18 @@ ConvParams GetConvParamsForAMD(const Convolution2DAttributes& attr,
   params.different_weights_for_height = false;
   params.x_kernel_is_1 = IsKernelXIs1(attr);
   params.y_kernel_is_1 = IsKernelYIs1(attr);
+  if (options.storage_precision == RuntimeOptions::Precision::FP16 &&
+      options.accumulator_precision == RuntimeOptions::Precision::FP32) {
+    params.weight_layout = WeightsInnerBlockLayout::O4I4;
+  } else {
+    params.weight_layout = WeightsInnerBlockLayout::I4O4;
+  }
   return params;
 }
 
 ConvParams GetConvParams(const DeviceInfo& device_info,
                          const Convolution2DAttributes& attr,
-                         const BHWC& dst_shape) {
+                         const RuntimeOptions& options, const BHWC& dst_shape) {
   if (device_info.IsAppleGPU()) {
     if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
       return GetConvParamsForA7A8(device_info.apple_info, attr, dst_shape);
@@ -904,9 +947,9 @@ ConvParams GetConvParams(const DeviceInfo& device_info,
                                          dst_shape);
     }
   } else if (device_info.IsIntelGPU()) {
-    return GetConvParamsForIntel(attr, dst_shape);
+    return GetConvParamsForIntel(attr, options, dst_shape);
   } else if (device_info.IsAMDGPU()) {
-    return GetConvParamsForAMD(attr, dst_shape);
+    return GetConvParamsForAMD(attr, options, dst_shape);
   } else {
     ConvParams params;
     params.block_size = int3(1, 1, 4);
@@ -921,6 +964,7 @@ ConvParams GetConvParams(const DeviceInfo& device_info,
     params.different_weights_for_height = false;
     params.x_kernel_is_1 = IsKernelXIs1(attr);
     params.y_kernel_is_1 = IsKernelYIs1(attr);
+    params.weight_layout = WeightsInnerBlockLayout::O4I4;
     return params;
   }
 }
@@ -963,7 +1007,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
     int id, ValueId input_id, ValueId output_id, const BHWC& dst_shape,
     const Convolution2DAttributes& attr, const DeviceInfo& device_info,
     const metal::RuntimeOptions& options) {
-  ConvParams params = GetConvParams(device_info, attr, dst_shape);
+  ConvParams params = GetConvParams(device_info, attr, options, dst_shape);
 
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
@@ -982,8 +1026,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
         return out_shape;
       }};
 
-  auto weights_reordered =
-      ReorderWeightsForConv(attr.weights, params.block_size.z);
+  auto weights_reordered = ReorderWeightsForConv(attr.weights, params);
   std::string addr_space =
       params.weights_upload_type == WeightsUploadType::CONSTANT_MEM ? "constant"
                                                                     : "device";
@@ -1030,6 +1073,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
   params.different_weights_for_height = true;
   params.x_kernel_is_1 = true;
   params.y_kernel_is_1 = true;
+  params.weight_layout = WeightsInnerBlockLayout::O4I4;
   if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
     params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
     params.work_group_size = int3(32, 1, 1);
@@ -1059,8 +1103,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
 
   ::tflite::gpu::Tensor<OHWI, DataType::FLOAT32> wino_weights;
   RearrangeWeightsToWinograd4x4To6x6Weights(attr.weights, &wino_weights);
-  auto weights_reordered =
-      ReorderWeightsForConv(wino_weights, params.block_size.z);
+  auto weights_reordered = ReorderWeightsForConv(wino_weights, params);
   std::vector<float> dummy_biases(AlignByN(dst_slices, params.block_size.z) * 4,
                                   0.0f);
   desc->immutable_buffers = {
