@@ -69,10 +69,18 @@ class MPIClusterResolver(SlurmClusterResolver):
       RuntimeError: If requested more GPUs per node then available or
         requested more tasks then assigned tasks.
     """
-    from mpi4py import MPI # pylint: disable=import-outside-toplevel
-    self._comm = MPI.COMM_WORLD # pylint: disable=c-extension-no-member
-    super().__init__(jobs, port_base, gpus_per_node, gpus_per_task,
-                     tasks_per_node=None, auto_set_gpu=auto_set_gpu,
+    try:
+      from mpi4py import MPI  # pylint: disable=import-outside-toplevel
+    except ImportError:
+      raise ImportError(
+          "mpi4py could not be imported. Run 'pip install mpi4py' to install")
+    self._comm = MPI.COMM_WORLD  # pylint: disable=c-extension-no-member
+    super().__init__(jobs,
+                     port_base,
+                     gpus_per_node,
+                     gpus_per_task,
+                     tasks_per_node=None,
+                     auto_set_gpu=auto_set_gpu,
                      rpc_layer=rpc_layer)
 
   def _resolve_own_rank(self):
