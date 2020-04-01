@@ -1632,6 +1632,10 @@ name=None))
     >>> list(d.as_numpy_iterator())
     [b'HELLO', b'WORLD']
 
+    Note the fact that the use of `tf.numpy_function` and `tf.py_function`
+    in general precludes the possibility of executing user-defined
+    transformations in parallel (because of Python GIL).
+
     Performance can often be improved by setting `num_parallel_calls` so that
     `map` will use multiple threads to process elements. If deterministic order
     isn't required, it can also improve performance to set
