@@ -49,7 +49,6 @@ cc_library(
         "//tensorflow/lite/toco:tooling_util",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/compiler/mlir/lite/python:graphdef_to_tfl_flatbuffer",
-        "//tensorflow/compiler/mlir/lite/python:saved_model_to_tfl_flatbuffer",
     ] + select({
         # This is required when running `tflite_convert` from `bazel`.
         # It requires to link with TensorFlow Ops to get the op definitions.

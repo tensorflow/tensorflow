@@ -43,6 +43,8 @@ namespace tensorflow {
 
 Status ConvertSavedModelToTFLiteFlatBuffer(
     const toco::ModelFlags& model_flags, const toco::TocoFlags& toco_flags,
+    const string& saved_model_dir, bool saved_model_v1,
+    const string& saved_model_tags, const string& saved_model_exported_names,
     string* result) {
   mlir::MLIRContext context;
   mlir::TFL::QuantizationSpecs quant_specs;
@@ -64,28 +66,13 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   // Register all custom ops, including user-specified custom ops.
   TF_RETURN_IF_ERROR(internal::RegisterAllCustomOps(toco_flags));
 
-  auto& saved_model_tags = model_flags.saved_model_tags();
-  auto& saved_model_exported_names = model_flags.saved_model_exported_names();
-  std::unordered_set<std::string> tags(saved_model_tags.begin(),
-                                       saved_model_tags.end());
-  auto exported_names_in_vector = std::vector<std::string>(
-      saved_model_exported_names.begin(), saved_model_exported_names.end());
-  absl::Span<std::string> exported_names(exported_names_in_vector);
-
-  TF_ASSIGN_OR_RETURN(auto module,
-                      ImportSavedModel(model_flags.saved_model_dir(),
-                                       model_flags.saved_model_version(), tags,
-                                       exported_names, &context));
-
-  mlir::TFL::PassConfig pass_config(quant_specs);
-  bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
-  pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
-  pass_config.lower_tensor_list_ops = true;
-  pass_config.shape_inference = true;
-
-  auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
-      toco_flags, std::move(module), pass_config, result);
-  return status;
+  const bool import_saved_model = !saved_model_v1;
+  TF_ASSIGN_OR_RETURN(
+      auto module,
+      ImportSavedModel(import_saved_model, saved_model_v1, saved_model_dir,
+                       saved_model_tags, saved_model_exported_names, &context));
+  return internal::ConvertMLIRToTFLiteFlatBuffer(toco_flags, std::move(module),
+                                                 quant_specs, result);
 }
 
 }  // namespace tensorflow

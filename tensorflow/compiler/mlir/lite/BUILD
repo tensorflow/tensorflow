@@ -771,7 +771,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/tools/optimize:quantize_weights",
         "//tensorflow/stream_executor/lib",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
