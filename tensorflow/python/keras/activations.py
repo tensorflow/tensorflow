@@ -165,7 +165,8 @@ def softplus(x):
   >>> a = tf.constant([-20, -1.0, 0.0, 1.0, 20], dtype = tf.float32)
   >>> b = tf.keras.activations.softplus(a) 
   >>> b.numpy()
-  [2.0611537e-09, 3.1326166e-01, 6.9314718e-01, 1.3132616e+00, 2.0000000e+01]
+  array([2.0611537e-09, 3.1326166e-01, 6.9314718e-01, 1.3132616e+00,
+           2.0000000e+01], dtype=float32)
   
 
   Arguments:
@@ -186,7 +187,7 @@ def softsign(x):
   >>> a = tf.constant([-1.0, 0.0, 1.0], dtype = tf.float32)
   >>> b = tf.keras.activations.softsign(a)
   >>> b.numpy()
-  [-0.5,  0.,  0.5]
+  array([-0.5,  0. ,  0.5], dtype=float32)
 
   Arguments:
       x: Input tensor.
@@ -212,7 +213,8 @@ def swish(x):
   >>> a = tf.constant([-20, -1.0, 0.0, 1.0, 20], dtype = tf.float32)
   >>> b = tf.keras.activations.swish(a)
   >>> b.numpy()
-  [-4.1223075e-08, -2.6894143e-01,  0.0000000e+00,  7.3105860e-01, 2.0000000e+01]
+  array([-4.1223075e-08, -2.6894143e-01,  0.0000000e+00,  7.3105860e-01,
+            2.0000000e+01], dtype=float32)
   
   Arguments:
       x: Input tensor.
@@ -303,7 +305,8 @@ def sigmoid(x):
   >>> a = tf.constant([-20, -1.0, 0.0, 1.0, 20], dtype = tf.float32)
   >>> b = tf.keras.activations.sigmoid(a)
   >>> b.numpy()
-  [2.0611537e-09, 2.6894143e-01, 5.0000000e-01, 7.3105860e-01, 1.0000000e+00]
+  array([2.0611537e-09, 2.6894143e-01, 5.0000000e-01, 7.3105860e-01,
+           1.0000000e+00], dtype=float32)
 
   Arguments:
       x: Input tensor.
