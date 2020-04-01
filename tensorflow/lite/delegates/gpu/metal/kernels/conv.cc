@@ -40,6 +40,9 @@ namespace gpu {
 namespace metal {
 
 enum class WeightsUploadType {
+  PRIVATE_MEM_SIMD8_BROADCAST,
+  PRIVATE_MEM_SIMD16_BROADCAST,
+  PRIVATE_MEM_SIMD32_BROADCAST,
   LOCAL_MEM_BY_THREADS,
   GLOBAL_MEM,
   CONSTANT_MEM,
@@ -206,6 +209,25 @@ std::string GenerateConvolution(const ConvParams& params) {
   const int local_mem_size =
       params.block_size.z * 4 * params.src_depth_loop_size;
 
+  const bool use_simd_broadcast =
+      params.weights_upload_type ==
+          WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST ||
+      params.weights_upload_type ==
+          WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST ||
+      params.weights_upload_type ==
+          WeightsUploadType::PRIVATE_MEM_SIMD32_BROADCAST;
+  int simd_size = 1;
+  if (params.weights_upload_type ==
+      WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST) {
+    simd_size = 8;
+  } else if (params.weights_upload_type ==
+             WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST) {
+    simd_size = 16;
+  } else if (params.weights_upload_type ==
+             WeightsUploadType::PRIVATE_MEM_SIMD32_BROADCAST) {
+    simd_size = 32;
+  }
+
   const bool use_filters_constants =
       !params.need_dst_loop && !params.need_src_loop && params.x_kernel_is_1 &&
       params.y_kernel_is_1;
@@ -228,16 +250,19 @@ struct uniforms {
 $0
 
 kernel void ComputeFunction(
-                            $1
-                            uint tid[[thread_index_in_threadgroup]],
-                            uint3 group_id[[threadgroup_position_in_grid]],
-                            uint3 tid3d[[thread_position_in_threadgroup]],
-                            uint3 ugid[[thread_position_in_grid]])
-{
+    $1
+    uint tid[[thread_index_in_threadgroup]],
+    uint3 group_id[[threadgroup_position_in_grid]],
+    uint3 tid3d[[thread_position_in_threadgroup]],
 )";
+  if (use_simd_broadcast) {
+    c += "    uint simd_id[[thread_index_in_simdgroup]],\n";
+  }
+  c += "    uint3 ugid[[thread_position_in_grid]]){\n";
   c += GlobalIdsGen(ids_params);
   c += "  if (Z >= params.dst_size.w) return;\n";
-  if (!use_local_mem && !params.linear_whs) {
+  bool late_xy_check = use_local_mem || use_simd_broadcast;
+  if (!late_xy_check && !params.linear_whs) {
     c += "  if (X >= params.dst_size.x || Y >= params.dst_size.y) return;\n";
   }
   for (int z = 0; z < params.block_size.z; ++z) {
@@ -377,6 +402,20 @@ kernel void ComputeFunction(
                                  /*global_offset_name*/ "", "tid",
                                  total_work_items, local_mem_size);
     c += "    BARRIER(mem_flags::mem_threadgroup);\n";
+  } else if (use_simd_broadcast) {
+    int parts = local_mem_size / simd_size;
+    int reminder = local_mem_size % simd_size;
+    for (int i = 0; i < parts; ++i) {
+      c += "    FLT4 simd_w" + std::to_string(i) + " = tmp[simd_id + " +
+           std::to_string(i * simd_size) + "];\n";
+    }
+    if (reminder) {
+      c += "    FLT4 simd_w" + std::to_string(parts) + ";\n";
+      c += "    if (simd_id < " + std::to_string(reminder) + ") {\n";
+      c += "      simd_w" + std::to_string(parts) + " = tmp[simd_id + " +
+           std::to_string(parts * simd_size) + "];\n";
+      c += "    }\n";
+    }
   }
   auto declare_src = [&]() {
     for (int y = 0; y < params.block_size.y; ++y) {
@@ -418,6 +457,12 @@ kernel void ComputeFunction(
                 std::to_string(z) + std::to_string(y) + std::to_string(x);
             std::string f_val =
                 name + "[" + std::to_string(z * 4 + ch + offset) + "]";
+            if (use_simd_broadcast) {
+              int simd_id = (z * 4 + ch + offset) / simd_size;
+              int thread_id = (z * 4 + ch + offset) % simd_size;
+              f_val = "simd_broadcast(simd_w" + std::to_string(simd_id) + ", " +
+                      std::to_string(thread_id) + "u)";
+            }
             std::string s_val = "src" + s_id;
             std::string r_val = "r" + r_id;
             if (params.weight_layout == WeightsInnerBlockLayout::O4I4) {
@@ -458,7 +503,7 @@ kernel void ComputeFunction(
     c += "  } while (y < params.kernel_dilation.y);\n";
   }
 
-  if (use_local_mem && !params.linear_whs) {
+  if (late_xy_check && !params.linear_whs) {
     c += "  if (X >= params.dst_size.x || Y >= params.dst_size.y) return;\n";
   }
 
@@ -872,15 +917,22 @@ ConvParams GetConvParamsForA9AndHigher(const AppleGPUInfo& apple_info,
 ConvParams GetConvParamsForIntel(const Convolution2DAttributes& attr,
                                  const RuntimeOptions& options,
                                  const BHWC& dst_shape) {
+  const int dst_slices = IntegralDivideRoundUp(dst_shape.c, 4);
+  const int src_slices = IntegralDivideRoundUp(attr.weights.shape.i, 4);
   ConvParams params;
-  params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+  params.weights_upload_type = WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST;
   params.x_kernel_is_1 = IsKernelXIs1(attr);
   params.y_kernel_is_1 = IsKernelYIs1(attr);
   params.src_depth_loop_size = 1;
   params.linear_wh = false;
   params.linear_whs = false;
   params.work_group_launch_order = int3(2, 0, 1);
-  params.block_size = int3(1, 2, 4);
+  params.block_size = int3(1, 1, 1);
+  if (dst_slices % 4 == 0 || dst_slices >= 8) {
+    params.block_size.z = 4;
+  } else if (dst_slices % 2 == 0 || dst_slices >= 4) {
+    params.block_size.z = 2;
+  }
   params.work_group_size = int3(8, 2, 1);
   if (options.storage_precision == RuntimeOptions::Precision::FP16 &&
       options.accumulator_precision == RuntimeOptions::Precision::FP32) {
@@ -889,23 +941,17 @@ ConvParams GetConvParamsForIntel(const Convolution2DAttributes& attr,
     params.weight_layout = WeightsInnerBlockLayout::I4O4;
   }
 
+  if (src_slices % 2 == 0) {
+    params.src_depth_loop_size = 2;
+  }
+
   int g1 = GetGroupsCount(dst_shape, params.work_group_size, params.block_size);
   int g2 = GetGroupsCountForLinearWH(dst_shape, {16, 1, 1}, params.block_size);
-  int g3 = GetGroupsCountForLinearWHS(dst_shape, {16, 1, 1}, params.block_size);
 
   if (g2 < g1) {
     params.linear_wh = true;
     params.work_group_size = int3(16, 1, 1);
     params.work_group_launch_order = int3(1, 0, 2);
-  }
-
-  float precise_threshold = 2.0f;
-  float precise_ratio = static_cast<float>(g2) / static_cast<float>(g3);
-  if (precise_ratio > precise_threshold) {
-    params.linear_wh = false;
-    params.linear_whs = true;
-    params.work_group_size = int3(16, 1, 1);
-    params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
   }
 
   return params;
@@ -1073,15 +1119,33 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
   params.different_weights_for_height = true;
   params.x_kernel_is_1 = true;
   params.y_kernel_is_1 = true;
-  params.weight_layout = WeightsInnerBlockLayout::O4I4;
-  if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
-    params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
-    params.work_group_size = int3(32, 1, 1);
-    params.block_size = int3(4, 1, 4);
-  } else {
+  if (device_info.IsAppleGPU()) {
+    params.weight_layout = WeightsInnerBlockLayout::O4I4;
+    if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
+      params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+      params.work_group_size = int3(32, 1, 1);
+      params.block_size = int3(4, 1, 4);
+    } else {
+      params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+      params.work_group_size = int3(8, 4, 1);
+      params.block_size = int3(4, 1, 4);
+    }
+  } else if (device_info.IsIntelGPU()) {
+    params.weight_layout = WeightsInnerBlockLayout::I4O4;
+    params.weights_upload_type =
+        WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST;
+    params.work_group_size = int3(16, 1, 1);
+    params.block_size = int3(1, 1, 4);
+  } else if (device_info.IsAMDGPU()) {
+    params.weight_layout = WeightsInnerBlockLayout::I4O4;
     params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
-    params.work_group_size = int3(8, 4, 1);
-    params.block_size = int3(4, 1, 4);
+    params.work_group_size = int3(32, 1, 1);
+    params.block_size = int3(2, 1, 4);
+  } else {
+    params.weight_layout = WeightsInnerBlockLayout::I4O4;
+    params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+    params.work_group_size = int3(32, 1, 1);
+    params.block_size = int3(2, 1, 4);
   }
 
   auto desc = std::make_shared<ComputeTaskDescriptor>();
