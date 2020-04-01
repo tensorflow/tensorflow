@@ -148,31 +148,6 @@ class BatchMatMulMkl : public OpKernel {
     std::vector<MKL_INT> ldb_array(batch_size, adj_y_ ? K : N);
     std::vector<MKL_INT> ldc_array(batch_size, N);
     std::vector<MKL_INT> group_size(1, batch_size);
-    std::vector<const Scalar*> a_array;
-    std::vector<const Scalar*> b_array;
-    std::vector<Scalar*> c_array;
-    a_array.reserve(batch_size);
-    b_array.reserve(batch_size);
-    c_array.reserve(batch_size);
-
-    if (!bcast.IsBroadcastingRequired()) {
-      for (int64 i = 0; i < batch_size; i++) {
-        a_array.push_back(&lhs_reshaped(i, 0, 0));
-        b_array.push_back(&rhs_reshaped(i, 0, 0));
-        c_array.push_back(&out_reshaped(i, 0, 0));
-      }
-    } else {
-      // Broadcasting is needed, so get the mapping from flattened output batch
-      // indices to x's and y's flattened batch indices.
-      const std::vector<int64>& a_batch_indices = bcast.x_batch_indices();
-      const std::vector<int64>& b_batch_indices = bcast.y_batch_indices();
-
-      for (int64 i = 0; i < batch_size; i++) {
-        a_array.push_back(&lhs_reshaped(a_batch_indices[i], 0, 0));
-        b_array.push_back(&rhs_reshaped(b_batch_indices[i], 0, 0));
-        c_array.push_back(&out_reshaped(i, 0, 0));
-      }
-    }
 
     if (std::is_same<Scalar, bfloat16>::value) {
       // DNNL bfloat16 API requires a, b, and c as pointers to tensors
@@ -191,6 +166,32 @@ class BatchMatMulMkl : public OpKernel {
                         k_array, &a, lda_array, &b, ldb_array, &c, ldc_array, 1,
                         group_size);
     } else {
+      std::vector<const Scalar*> a_array;
+      std::vector<const Scalar*> b_array;
+      std::vector<Scalar*> c_array;
+      a_array.reserve(batch_size);
+      b_array.reserve(batch_size);
+      c_array.reserve(batch_size);
+
+      if (!bcast.IsBroadcastingRequired()) {
+        for (int64 i = 0; i < batch_size; i++) {
+          a_array.push_back(&lhs_reshaped(i, 0, 0));
+          b_array.push_back(&rhs_reshaped(i, 0, 0));
+          c_array.push_back(&out_reshaped(i, 0, 0));
+        }
+      } else {
+        // Broadcasting is needed, so get the mapping from flattened output batch
+        // indices to x's and y's flattened batch indices.
+        const std::vector<int64>& a_batch_indices = bcast.x_batch_indices();
+        const std::vector<int64>& b_batch_indices = bcast.y_batch_indices();
+
+        for (int64 i = 0; i < batch_size; i++) {
+          a_array.push_back(&lhs_reshaped(a_batch_indices[i], 0, 0));
+          b_array.push_back(&rhs_reshaped(b_batch_indices[i], 0, 0));
+          c_array.push_back(&out_reshaped(i, 0, 0));
+        }
+      }
+
       // MKL CBLAS API requires a, b, and c as array of pointers, where each
       // pointer is to 2D matrix.
       MklCblasGemmBatch(CblasRowMajor, adj_x_, adj_y_, m_array, n_array,
@@ -326,7 +327,7 @@ TF_CALL_complex128(REGISTER_BATCH_MATMUL_MKL_V2);
 #if defined(ENABLE_MKLDNN_V1) && defined(ENABLE_INTEL_MKL_BFLOAT16)
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL_V2);
-#endif  // ENABLE_INTEL_MKLDNN_V1 && ENABLE_INTEL_MKL_BFLOAT16
+#endif  // ENABLE_MKLDNN_V1 && ENABLE_INTEL_MKL_BFLOAT16
 #endif  // ENABLE_MKL
 
 }  // end namespace tensorflow
