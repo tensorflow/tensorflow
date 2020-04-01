@@ -173,6 +173,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_TRANSPOSE:
+      if (op_sig.options.single_input_op.num_dims > 4) {
+        return 4;
+      }
       // If the op takes bool input, it is version 3.
       if (op_sig.input_types.at(0) == TensorType_BOOL) {
         return 3;
@@ -293,7 +296,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_STRIDED_SLICE:
-      if (op_sig.options.strided_slice.num_dims > 4) {
+      if (op_sig.options.single_input_op.num_dims > 4) {
         return 4;
       }
       // If the op takes bool input, it is version 3.
@@ -352,7 +355,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_BATCH_TO_SPACE_ND:
-      if (op_sig.options.space_batch.num_dims != 4) {
+      if (op_sig.options.single_input_op.num_dims != 4) {
         return 3;
       }
       if (op_sig.input_types.at(0) == TensorType_INT8) {
@@ -504,13 +507,11 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       }
     } break;
     // TODO(b/150176627): Add tests for GetOpSignature.
-    case BuiltinOperator_STRIDED_SLICE: {
-      op_sig.options.strided_slice.num_dims = GetNumDims(subgraph, op, 0);
-    } break;
-
+    case BuiltinOperator_STRIDED_SLICE:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
-    case BuiltinOperator_BATCH_TO_SPACE_ND: {
-      op_sig.options.space_batch.num_dims = GetNumDims(subgraph, op, 0);
+    case BuiltinOperator_BATCH_TO_SPACE_ND:
+    case BuiltinOperator_TRANSPOSE: {
+      op_sig.options.single_input_op.num_dims = GetNumDims(subgraph, op, 0);
     } break;
 
     case BuiltinOperator_SUB:

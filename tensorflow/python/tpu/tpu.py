@@ -1154,8 +1154,13 @@ def split_compile_and_replicate(computation,
     }
     metadata_kwargs["num_cores_per_replica"] = (
         device_assignment.num_cores_per_replica)
+
   # This entry is used for enabling automatic outside compilation.
   metadata_kwargs["allow_soft_placement"] = config.get_soft_device_placement()
+  if config.get_soft_device_placement():
+    logging.info("Automatic outside compilation is enabled. "
+                 "Ops without XLA kernels will be automatically "
+                 "placed on CPU.")
 
   if ((not isinstance(inputs, list)) or
       any(not isinstance(inp, (list, tuple)) for inp in inputs)):

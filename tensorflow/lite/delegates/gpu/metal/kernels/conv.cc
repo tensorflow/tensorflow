@@ -840,13 +840,88 @@ ConvParams GetConvParamsForA9AndHigher(const AppleGPUInfo& apple_info,
   return params;
 }
 
+ConvParams GetConvParamsForIntel(const Convolution2DAttributes& attr,
+                                 const BHWC& dst_shape) {
+  ConvParams params;
+  params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+  params.x_kernel_is_1 = IsKernelXIs1(attr);
+  params.y_kernel_is_1 = IsKernelYIs1(attr);
+  params.src_depth_loop_size = 1;
+  params.linear_wh = false;
+  params.linear_whs = false;
+  params.work_group_launch_order = int3(2, 0, 1);
+  params.block_size = int3(1, 2, 4);
+  params.work_group_size = int3(8, 2, 1);
+
+  int g1 = GetGroupsCount(dst_shape, params.work_group_size, params.block_size);
+  int g2 = GetGroupsCountForLinearWH(dst_shape, {16, 1, 1}, params.block_size);
+  int g3 = GetGroupsCountForLinearWHS(dst_shape, {16, 1, 1}, params.block_size);
+
+  if (g2 < g1) {
+    params.linear_wh = true;
+    params.work_group_size = int3(16, 1, 1);
+    params.work_group_launch_order = int3(1, 0, 2);
+  }
+
+  float precise_threshold = 2.0f;
+  float precise_ratio = static_cast<float>(g2) / static_cast<float>(g3);
+  if (precise_ratio > precise_threshold) {
+    params.linear_wh = false;
+    params.linear_whs = true;
+    params.work_group_size = int3(16, 1, 1);
+    params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+  }
+
+  return params;
+}
+
+ConvParams GetConvParamsForAMD(const Convolution2DAttributes& attr,
+                               const BHWC& dst_shape) {
+  ConvParams params;
+  params.block_size = int3(1, 1, 4);
+  params.work_group_size = int3(8, 4, 1);
+  params.work_group_launch_order = int3(2, 0, 1);
+  params.src_depth_loop_size = 1;
+  params.need_src_loop = true;
+  params.need_dst_loop = true;
+  params.linear_wh = false;
+  params.linear_whs = false;
+  params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+  params.different_weights_for_height = false;
+  params.x_kernel_is_1 = IsKernelXIs1(attr);
+  params.y_kernel_is_1 = IsKernelYIs1(attr);
+  return params;
+}
+
 ConvParams GetConvParams(const DeviceInfo& device_info,
                          const Convolution2DAttributes& attr,
                          const BHWC& dst_shape) {
-  if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
-    return GetConvParamsForA7A8(device_info.apple_info, attr, dst_shape);
+  if (device_info.IsAppleGPU()) {
+    if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
+      return GetConvParamsForA7A8(device_info.apple_info, attr, dst_shape);
+    } else {
+      return GetConvParamsForA9AndHigher(device_info.apple_info, attr,
+                                         dst_shape);
+    }
+  } else if (device_info.IsIntelGPU()) {
+    return GetConvParamsForIntel(attr, dst_shape);
+  } else if (device_info.IsAMDGPU()) {
+    return GetConvParamsForAMD(attr, dst_shape);
   } else {
-    return GetConvParamsForA9AndHigher(device_info.apple_info, attr, dst_shape);
+    ConvParams params;
+    params.block_size = int3(1, 1, 4);
+    params.work_group_size = int3(8, 4, 1);
+    params.work_group_launch_order = int3(2, 0, 1);
+    params.src_depth_loop_size = 1;
+    params.need_src_loop = true;
+    params.need_dst_loop = true;
+    params.linear_wh = false;
+    params.linear_whs = false;
+    params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+    params.different_weights_for_height = false;
+    params.x_kernel_is_1 = IsKernelXIs1(attr);
+    params.y_kernel_is_1 = IsKernelYIs1(attr);
+    return params;
   }
 }
 

@@ -60,7 +60,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
-
 namespace tflite {
 
 namespace reference_ops {
@@ -1991,60 +1990,54 @@ inline void ArgMax(const RuntimeShape& input1_shape, const T1* input1_data,
   ArgMax(input1_shape, input1_data, input2_data, output_shape, output_data);
 }
 
-template <typename T>
+template <typename T, int N>
 void TransposeImpl(const TransposeParams& params,
                    const RuntimeShape& unextended_input_shape,
                    const T* input_data,
                    const RuntimeShape& unextended_output_shape,
                    T* output_data) {
+  const int unextended_input_size = unextended_input_shape.DimensionsCount();
   const int unextended_output_size = unextended_output_shape.DimensionsCount();
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_size, 4);
+  TFLITE_DCHECK_LE(unextended_input_size, N);
+  TFLITE_DCHECK_LE(unextended_output_size, N);
   TFLITE_DCHECK_EQ(unextended_output_size, params.perm_count);
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-  const int input_ext_size = 4 - unextended_input_shape.DimensionsCount();
-  const int output_ext_size = 4 - unextended_output_size;
+  const int input_ext_size = N - unextended_input_size;
+  const int output_ext_size = N - unextended_output_size;
+  NdArrayDesc<N> input_desc;
+  NdArrayDesc<N> output_desc;
+  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_input_shape),
+                 &input_desc);
+  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_output_shape),
+                 &output_desc);
 
   // The perm data is extended to match the output, each index incremented by
   // the amount of front padding of the input shape.
-  int extended_perm[4];
-  for (int i = 0; i < output_ext_size; ++i) {
-    extended_perm[i] = i;
-  }
-  for (int i = 0; i < unextended_output_size; ++i) {
-    extended_perm[i + output_ext_size] = params.perm[i] + input_ext_size;
+  int extended_perm[N];
+  for (int i = 0; i < N; ++i) {
+    extended_perm[i] = i < output_ext_size
+                           ? i
+                           : params.perm[i - output_ext_size] + input_ext_size;
   }
 
-  int out_sizes[4];
-  // Compute the inverse permutation array so we can do an output centered
-  // transpose. Also, check to make sure output_dims is matching input_dims.
-  for (int k = 0; k < 4; k++) {
-    out_sizes[k] = MatchingDim(input_shape, extended_perm[k], output_shape, k);
+  // Permutes the input shape so we don't need to permute the indexes inside
+  // the loop. Check to make sure output_dims is matching input_dims.
+  NdArrayDesc<N> perm_input_desc;
+  for (int k = 0; k < N; ++k) {
+    TFLITE_DCHECK_EQ(input_desc.extents[extended_perm[k]],
+                     output_desc.extents[k]);
+    perm_input_desc.extents[k] = input_desc.extents[extended_perm[k]];
+    perm_input_desc.strides[k] = input_desc.strides[extended_perm[k]];
   }
 
   // Naive transpose loop (iterate on output index and compute input index).
-  int o[4];  // loop index (on output).
-  int i[4];
-  for (o[3] = 0; o[3] < out_sizes[3]; o[3]++) {
-    i[extended_perm[3]] = o[3];
-    for (o[2] = 0; o[2] < out_sizes[2]; o[2]++) {
-      i[extended_perm[2]] = o[2];
-      for (o[1] = 0; o[1] < out_sizes[1]; o[1]++) {
-        i[extended_perm[1]] = o[1];
-        for (o[0] = 0; o[0] < out_sizes[0]; o[0]++) {
-          i[extended_perm[0]] = o[0];
-          output_data[Offset(output_shape, o)] =
-              input_data[Offset(input_shape, i)];
-        }
-      }
-    }
-  }
+  auto tranpose_func = [&](int indexes[N]) {
+    output_data[SubscriptToIndex(output_desc, indexes)] =
+        input_data[SubscriptToIndex(perm_input_desc, indexes)];
+  };
+  NDOpsHelper<N>(output_desc, tranpose_func);
 }
 
-template <typename T>
+template <typename T, int N = 5>
 void Transpose(const TransposeParams& params,
                const RuntimeShape& unextended_input_shape, const T* input_data,
                const RuntimeShape& unextended_output_shape, T* output_data) {
@@ -2053,29 +2046,29 @@ void Transpose(const TransposeParams& params,
   // keeps the total code size in a reasonable range.
   switch (sizeof(T)) {
     case 1:
-      TransposeImpl<int8_t>(params, unextended_input_shape,
-                            reinterpret_cast<const int8_t*>(input_data),
-                            unextended_output_shape,
-                            reinterpret_cast<int8_t*>(output_data));
+      TransposeImpl<int8_t, N>(params, unextended_input_shape,
+                               reinterpret_cast<const int8_t*>(input_data),
+                               unextended_output_shape,
+                               reinterpret_cast<int8_t*>(output_data));
       break;
     case 2:
-      TransposeImpl<int16_t>(params, unextended_input_shape,
-                             reinterpret_cast<const int16_t*>(input_data),
-                             unextended_output_shape,
-                             reinterpret_cast<int16_t*>(output_data));
+      TransposeImpl<int16_t, N>(params, unextended_input_shape,
+                                reinterpret_cast<const int16_t*>(input_data),
+                                unextended_output_shape,
+                                reinterpret_cast<int16_t*>(output_data));
       break;
 
     case 4:
-      TransposeImpl<int32_t>(params, unextended_input_shape,
-                             reinterpret_cast<const int32_t*>(input_data),
-                             unextended_output_shape,
-                             reinterpret_cast<int32_t*>(output_data));
+      TransposeImpl<int32_t, N>(params, unextended_input_shape,
+                                reinterpret_cast<const int32_t*>(input_data),
+                                unextended_output_shape,
+                                reinterpret_cast<int32_t*>(output_data));
       break;
     case 8:
-      TransposeImpl<int64_t>(params, unextended_input_shape,
-                             reinterpret_cast<const int64_t*>(input_data),
-                             unextended_output_shape,
-                             reinterpret_cast<int64_t*>(output_data));
+      TransposeImpl<int64_t, N>(params, unextended_input_shape,
+                                reinterpret_cast<const int64_t*>(input_data),
+                                unextended_output_shape,
+                                reinterpret_cast<int64_t*>(output_data));
       break;
   }
 }

@@ -357,7 +357,9 @@ TopKV2OpTest/TopKV2OpTest/.+/0,29
 
 # transpose_test
 # death test
--TransposeTest/Test5DInputTensor
+-TransposeTest/Test6DInputTensor
+-TransposeTest/5DDividedIntoTwo2Ds.*
+-TransposeTest/Complex5DTest.*
 -TransposeTest/.+DynamicTensor
 TransposeTest/.+
 

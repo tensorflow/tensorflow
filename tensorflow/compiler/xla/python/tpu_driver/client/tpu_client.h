@@ -309,7 +309,7 @@ class PyTpuExecutable {
   // inside for computation to finish. Coordinate with JAX code change to see if
   // we can make both Execute and ExecutePerReplica non-blocking.
   StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> Execute(
-      absl::Span<PyTpuBuffer* const> argument_handles, bool tuple_arguments);
+      absl::Span<PyTpuBuffer* const> argument_handles);
 
   // Execute on local devices. Takes a sequence of argument lists (one argument
   // list per local device) and returns a tuple of results (one result per local
@@ -317,8 +317,7 @@ class PyTpuExecutable {
   // count.
   StatusOr<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>>
   ExecuteOnLocalDevices(
-      absl::Span<const std::vector<PyTpuBuffer*>> argument_handles,
-      bool tuple_arguments);
+      absl::Span<const std::vector<PyTpuBuffer*>> argument_handles);
 
   void Delete() { executables_.clear(); }
 

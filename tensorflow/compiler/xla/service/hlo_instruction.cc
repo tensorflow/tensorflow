@@ -3637,6 +3637,10 @@ const std::vector<int64>& HloInstruction::slice_starts() const {
   return Cast<HloSliceInstruction>(this)->slice_starts();
 }
 
+std::vector<int64>* HloInstruction::mutable_slice_starts() {
+  return Cast<HloSliceInstruction>(this)->mutable_slice_starts();
+}
+
 int64 HloInstruction::slice_limits(int64 dimension) const {
   return Cast<HloSliceInstruction>(this)->slice_limits(dimension);
 }
@@ -3645,12 +3649,20 @@ const std::vector<int64>& HloInstruction::slice_limits() const {
   return Cast<HloSliceInstruction>(this)->slice_limits();
 }
 
+std::vector<int64>* HloInstruction::mutable_slice_limits() {
+  return Cast<HloSliceInstruction>(this)->mutable_slice_limits();
+}
+
 int64 HloInstruction::slice_strides(int64 dimension) const {
   return Cast<HloSliceInstruction>(this)->slice_strides(dimension);
 }
 
 const std::vector<int64>& HloInstruction::slice_strides() const {
   return Cast<HloSliceInstruction>(this)->slice_strides();
+}
+
+std::vector<int64>* HloInstruction::mutable_slice_strides() {
+  return Cast<HloSliceInstruction>(this)->mutable_slice_strides();
 }
 
 const Literal& HloInstruction::literal() const {

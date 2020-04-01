@@ -1616,14 +1616,17 @@ class HloInstruction {
   // Delegates to HloSliceInstruction::slice_start.
   int64 slice_starts(int64 dimension) const;
   const std::vector<int64>& slice_starts() const;
+  std::vector<int64>* mutable_slice_starts();
 
   // Delegates to HloSliceInstruction::slice_limits.
   int64 slice_limits(int64 dimension) const;
   const std::vector<int64>& slice_limits() const;
+  std::vector<int64>* mutable_slice_limits();
 
   // Delegates to HloSliceInstruction::slice_strides.
   int64 slice_strides(int64 dimension) const;
   const std::vector<int64>& slice_strides() const;
+  std::vector<int64>* mutable_slice_strides();
 
   // Returns the literal associated with this instruction.
   const Literal& literal() const;

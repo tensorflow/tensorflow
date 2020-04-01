@@ -613,7 +613,7 @@ Status WaitForExecuteEvent(tpu_driver::Event* event) {
 }
 
 StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> PyTpuExecutable::Execute(
-    absl::Span<PyTpuBuffer* const> argument_handles, bool tuple_arguments) {
+    absl::Span<PyTpuBuffer* const> argument_handles) {
   if (num_replicas() != 1) {
     return InvalidArgument(
         "Attempted to execute computation with %d replicas using Execute().",
@@ -628,7 +628,7 @@ StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> PyTpuExecutable::Execute(
   std::vector<PyTpuBuffer*> all_core_arguments;
 
   std::unique_ptr<PyTpuBuffer> tupled_arguments;
-  if (tuple_arguments_ || tuple_arguments) {
+  if (tuple_arguments_) {
     TF_ASSIGN_OR_RETURN(tupled_arguments,
                         PyTpuBuffer::MakeTuple(argument_handles, client_,
                                                local_devices_.front()));
@@ -659,8 +659,7 @@ StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> PyTpuExecutable::Execute(
 
 StatusOr<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>>
 PyTpuExecutable::ExecuteOnLocalDevices(
-    absl::Span<const std::vector<PyTpuBuffer*>> argument_handles,
-    bool tuple_arguments) {
+    absl::Span<const std::vector<PyTpuBuffer*>> argument_handles) {
   tensorflow::profiler::TraceMe traceme(
       "PyTpuExecutable::ExecuteOnLocalDevices");
 
@@ -680,7 +679,7 @@ PyTpuExecutable::ExecuteOnLocalDevices(
 
   std::vector<std::unique_ptr<PyTpuBuffer>> tupled_arguments;
   std::vector<std::vector<PyTpuBuffer*>> tupled_argument_pointers;
-  if (tuple_arguments_ || tuple_arguments) {
+  if (tuple_arguments_) {
     tupled_arguments.resize(argument_handles.size());
     tupled_argument_pointers.resize(argument_handles.size());
     for (int i = 0; i < num_local_devices; ++i) {

@@ -165,18 +165,18 @@ TEST(OpVersionTest, VersioningBatchToSpaceNDTest) {
       .op = BuiltinOperator_BATCH_TO_SPACE_ND,
       .input_types = std::vector<TensorType>{TensorType_INT8},
   };
-  fake_op_sig.options.space_batch.num_dims = 3;
+  fake_op_sig.options.single_input_op.num_dims = 3;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
-  fake_op_sig.options.space_batch.num_dims = 4;
+  fake_op_sig.options.single_input_op.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 
   fake_op_sig = {
       .op = BuiltinOperator_BATCH_TO_SPACE_ND,
       .input_types = std::vector<TensorType>{TensorType_UINT8},
   };
-  fake_op_sig.options.space_batch.num_dims = 3;
+  fake_op_sig.options.single_input_op.num_dims = 3;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
-  fake_op_sig.options.space_batch.num_dims = 4;
+  fake_op_sig.options.single_input_op.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
@@ -502,5 +502,27 @@ TEST(OpVersionTest, VersioningTileOperatorTest) {
       .input_types = std::vector<TensorType>{TensorType_STRING},
   };
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
+TEST(OpVersionTest, VersioningTransposeTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE,
+      .input_types = std::vector<TensorType>{TensorType_BOOL},
+  };
+  fake_op_sig.options.single_input_op.num_dims = 5;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+  fake_op_sig.options.single_input_op.num_dims = 4;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE,
+      .input_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE,
+      .input_types = std::vector<TensorType>{TensorType_UINT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 }  // namespace tflite

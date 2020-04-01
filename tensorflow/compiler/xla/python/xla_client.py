@@ -615,7 +615,7 @@ def execute_with_python_values(executable, arguments=(), backend=None):
         arg, device=executable.local_devices()[0], backend=backend)
 
   arguments = [put(arg) for arg in arguments]
-  outputs = executable.Execute(arguments, tuple_arguments=False)
+  outputs = executable.Execute(arguments)
   return [x.to_py() for x in outputs]
 
 
@@ -644,8 +644,9 @@ def execute_with_python_values_replicated(executable, arguments, backend=None):
   for replica_args in arguments:
     arg_buffers.append(flat_arg_buffers[:len(replica_args)])
     flat_arg_buffers = flat_arg_buffers[len(replica_args):]
-  return [[x.to_py() for x in xs] for xs in executable.ExecuteOnLocalDevices(
-      arg_buffers, tuple_arguments=False)]
+  return [[x.to_py()
+           for x in xs]
+          for xs in executable.ExecuteOnLocalDevices(arg_buffers)]
 
 
 class PaddingType(enum.Enum):

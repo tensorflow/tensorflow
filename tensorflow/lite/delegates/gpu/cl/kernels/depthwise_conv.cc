@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/depthwise_conv.h"
 
 #include <string>
 #include <utility>
