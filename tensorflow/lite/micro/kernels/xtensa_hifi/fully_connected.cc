@@ -92,16 +92,6 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
 
 }  // namespace
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
-
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  return kTfLiteOk;
-}
-
 TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                                TfLiteFullyConnectedParams* params, OpData* data,
                                const TfLiteTensor* input,
@@ -264,9 +254,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace fully_connected
 
 TfLiteRegistration* Register_FULLY_CONNECTED() {
-  static TfLiteRegistration r = {/*init=*/fully_connected::Init,
-                                 /*free=*/fully_connected::Free,
-                                 /*prepare=*/fully_connected::Prepare,
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
                                  /*invoke=*/fully_connected::Eval,
                                  /*profiling_string=*/nullptr,
                                  /*builtin_code=*/0,

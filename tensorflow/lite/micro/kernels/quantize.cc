@@ -26,12 +26,6 @@ namespace ops {
 namespace micro {
 namespace quantize {
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -119,8 +113,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 // AffineQuantize takes scale and zero point and quantizes the float value to
 // quantized output, in int8 or uint8 format.
 TfLiteRegistration* Register_QUANTIZE() {
-  static TfLiteRegistration r = {/*init=*/quantize::Init,
-                                 /*free=*/quantize::Free,
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
                                  /*prepare=*/quantize::Prepare,
                                  /*invoke=*/quantize::Eval,
                                  /*profiling_string=*/nullptr,

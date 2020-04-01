@@ -65,10 +65,6 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
   return kTfLiteOk;
 }
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  return kTfLiteOk;
-}
-
 void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                    TfLiteMulParams* params, OpData* data,
                    const TfLiteTensor* input1, const TfLiteTensor* input2,
@@ -165,7 +161,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteRegistration* Register_MUL() {
   static TfLiteRegistration r = {/*init=*/nullptr,
                                  /*free=*/nullptr,
-                                 /*prepare=*/mul::Prepare,
+                                 /*prepare=*/nullptr,
                                  /*invoke=*/mul::Eval,
                                  /*profiling_string=*/nullptr,
                                  /*builtin_code=*/0,

@@ -118,12 +118,6 @@ constexpr int kMaxOpDataSize = 2;
 static int kStaticOpDataCounter = 0;
 static OpData kStaticOpData[kMaxOpDataSize];
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   const TfLiteTensor* input = GetInput(context, node, 0);
@@ -168,8 +162,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 // AffineQuantize takes scale and zero point and quantizes the float value to
 // quantized output, in int8 or uint8 format.
 TfLiteRegistration* Register_QUANTIZE() {
-  static TfLiteRegistration r = {/*init=*/quantize::Init,
-                                 /*free=*/quantize::Free,
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
                                  /*prepare=*/quantize::Prepare,
                                  /*invoke=*/quantize::Eval,
                                  /*profiling_string=*/nullptr,

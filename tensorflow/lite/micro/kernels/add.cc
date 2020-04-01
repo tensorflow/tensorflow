@@ -54,16 +54,6 @@ struct OpData {
   int32 output_offset;
 };
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
-
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  return kTfLiteOk;
-}
-
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteAddParams* params,
                              const TfLiteTensor* input1,
                              const TfLiteTensor* input2, TfLiteTensor* output,
@@ -198,9 +188,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace add
 
 TfLiteRegistration* Register_ADD() {
-  static TfLiteRegistration r = {/*init=*/add::Init,
-                                 /*free=*/add::Free,
-                                 /*prepare=*/add::Prepare,
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
                                  /*invoke=*/add::Eval,
                                  /*profiling_string=*/nullptr,
                                  /*builtin_code=*/0,

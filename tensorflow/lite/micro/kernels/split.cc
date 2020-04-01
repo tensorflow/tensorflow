@@ -23,10 +23,6 @@ namespace ops {
 namespace micro {
 namespace split {
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  return kTfLiteOk;
-}
-
 template <typename T>
 TfLiteStatus SplitImpl(TfLiteContext* context, TfLiteNode* node,
                        const TfLiteTensor* input, int axis_value) {
@@ -118,7 +114,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteRegistration* Register_SPLIT() {
   static TfLiteRegistration r = {/*init=*/nullptr,
                                  /*free=*/nullptr,
-                                 /*prepare=*/split::Prepare,
+                                 /*prepare=*/nullptr,
                                  /*invoke=*/split::Eval,
                                  /*profiling_string=*/nullptr,
                                  /*builtin_code=*/0,

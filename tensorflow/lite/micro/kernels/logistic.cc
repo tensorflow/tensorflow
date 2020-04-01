@@ -31,10 +31,6 @@ namespace activations {
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  return kTfLiteOk;
-}
-
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
@@ -85,7 +81,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteRegistration* Register_LOGISTIC() {
   static TfLiteRegistration r = {/*init=*/nullptr,
                                  /*free=*/nullptr,
-                                 /*prepare=*/activations::Prepare,
+                                 /*prepare=*/nullptr,
                                  /*invoke=*/activations::Eval,
                                  /*profiling_string=*/nullptr,
                                  /*builtin_code=*/0,

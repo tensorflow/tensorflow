@@ -26,10 +26,6 @@ namespace {
 
 constexpr int kInputTensor = 0;
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  return kTfLiteOk;
-}
-
 template <typename T>
 TfLiteStatus UnpackImpl(TfLiteContext* context, TfLiteNode* node,
                         const TfLiteTensor* input, int output_count, int axis) {
@@ -108,7 +104,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteRegistration* Register_UNPACK() {
   static TfLiteRegistration r = {/*init=*/nullptr,
                                  /*free=*/nullptr,
-                                 /*prepare=*/unpack::Prepare,
+                                 /*prepare=*/nullptr,
                                  /*invoke=*/unpack::Eval,
                                  /*profiling_string=*/nullptr,
                                  /*builtin_code=*/0,

@@ -30,10 +30,6 @@ constexpr int kInputTensor = 0;
 constexpr int kAxis = 1;
 constexpr int kOutputTensor = 0;
 
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  return kTfLiteOk;
-}
-
 template <typename T1, typename T2, typename T3>
 inline void ArgMinMaxHelper(const RuntimeShape& input1_shape,
                             const T1* input1_data, const T3* input2_data,
@@ -105,7 +101,7 @@ TfLiteStatus ArgMaxEval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteRegistration* Register_ARG_MAX() {
   static TfLiteRegistration r = {/*init=*/nullptr,
                                  /*free=*/nullptr,
-                                 /*prepare=*/arg_min_max::Prepare,
+                                 /*prepare=*/nullptr,
                                  /*invoke=*/arg_min_max::ArgMaxEval,
                                  /*profiling_string=*/nullptr,
                                  /*builtin_code=*/0,
@@ -117,7 +113,7 @@ TfLiteRegistration* Register_ARG_MAX() {
 TfLiteRegistration* Register_ARG_MIN() {
   static TfLiteRegistration r = {/*init=*/nullptr,
                                  /*free=*/nullptr,
-                                 /*prepare=*/arg_min_max::Prepare,
+                                 /*prepare=*/nullptr,
                                  /*invoke=*/arg_min_max::ArgMinEval,
                                  /*profiling_string=*/nullptr,
                                  /*builtin_code=*/0,

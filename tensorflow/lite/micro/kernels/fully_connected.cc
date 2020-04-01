@@ -80,8 +80,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   return data;
 }
 
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
   auto* params =
@@ -222,7 +220,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteRegistration* Register_FULLY_CONNECTED() {
   static TfLiteRegistration r = {/*init=*/fully_connected::Init,
-                                 /*free=*/fully_connected::Free,
+                                 /*free=*/nullptr,
                                  /*prepare=*/fully_connected::Prepare,
                                  /*invoke=*/fully_connected::Eval,
                                  /*profiling_string=*/nullptr,
