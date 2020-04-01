@@ -163,6 +163,26 @@ bool AreShapesCompatible(const std::vector<TensorShape>& actual_shapes,
   return true;
 }
 
+TensorShape TrtDimsToTensorShape(const std::vector<int>& trt_dims,
+                                 bool use_implicit_batch, int batch_size) {
+  TensorShape shape;
+  TensorShapeUtils::MakeShape(trt_dims.data(), trt_dims.size(), &shape);
+  if (use_implicit_batch) {
+    shape.InsertDim(0, batch_size);
+  }
+  return shape;
+}
+
+TensorShape TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
+                                 bool use_implicit_batch, int batch_size) {
+  TensorShape shape;
+  TensorShapeUtils::MakeShape(trt_dims.d, trt_dims.nbDims, &shape);
+  if (use_implicit_batch) {
+    shape.InsertDim(0, batch_size);
+  }
+  return shape;
+}
+
 int GetNumberOfEngineInputs(const nvinfer1::ICudaEngine* engine) {
   int n_bindings = engine->getNbBindings();
   int n_input = 0;

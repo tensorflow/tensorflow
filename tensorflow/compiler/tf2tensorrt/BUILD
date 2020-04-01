@@ -90,6 +90,7 @@ cc_library(
     deps = [
         ":trt_allocator",
         ":trt_conversion",
+        ":trt_engine_utils",
         ":trt_logging",
         ":trt_plugins",
         ":trt_resources",
@@ -215,7 +216,22 @@ cc_library(
     deps = [
         ":get_calibration_data_op_op_lib",
         ":trt_engine_op_op_lib",
+        ":trt_engine_utils"
     ],
+)
+
+tf_cuda_library(
+    name = "trt_engine_utils",
+    srcs = ["utils/trt_engine_utils.cc"],
+    hdrs = ["utils/trt_engine_utils.h"],
+    deps = [
+        ":trt_logging",
+        ":utils",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:status",
+    ] + if_tensorrt([":tensorrt_lib"]),
 )
 
 tf_cuda_library(
