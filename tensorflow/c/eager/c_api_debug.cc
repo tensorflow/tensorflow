@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/c/eager/c_api.h"
-
 #include <vector>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #ifdef TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/compiler/jit/xla_device.h"
 #endif  // TENSORFLOW_EAGER_USE_XLA

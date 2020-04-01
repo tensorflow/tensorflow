@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -686,8 +687,7 @@ TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
 
   status->status = tensorflow::Status::OK();
   return new TFE_TensorHandle{
-      std::make_unique<tensorflow::TensorHandleInterface>(
-          tensorflow::TensorHandle::CreateLocalHandle(tensor))};
+      tensorflow::TensorHandle::CreateLocalHandle(tensor)};
 }
 
 namespace {

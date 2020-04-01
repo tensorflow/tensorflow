@@ -109,6 +109,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:core",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:execute",
         "//tensorflow/core/common_runtime/eager:process_function_library_runtime",
@@ -182,6 +183,9 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:core",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/common_runtime/eager:execute",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
     ],
 )

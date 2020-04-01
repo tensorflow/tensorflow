@@ -1915,12 +1915,13 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
       return PyTapeTensor(id, dtype, tensor);
     }
 
-    tensorflow::Status status;
     tensorflow::TensorShape tensor_shape;
-    int num_dims = t->handle->NumDims(&status);
+    int num_dims;
+    tensorflow::Status status = t->handle->NumDims(&num_dims);
     if (status.ok()) {
       for (int i = 0; i < num_dims; ++i) {
-        tensorflow::int64 dim_size = t->handle->Dim(i, &status);
+        tensorflow::int64 dim_size;
+        status = t->handle->Dim(i, &dim_size);
         if (!status.ok()) break;
         tensor_shape.AddDim(dim_size);
       }
@@ -3741,15 +3742,16 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
                     static_cast<tensorflow::DataType>(t->handle->DataType()));
     absl::StrAppend(&result->str, kShape);
 
-    tensorflow::Status status;
-    int num_dims = t->handle->NumDims(&status);
+    int num_dims;
+    tensorflow::Status status = t->handle->NumDims(&num_dims);
     if (!status.ok()) return status;
 
     if (include_tensor_ranks_only) {
       absl::StrAppend(&result->str, num_dims);
     } else {
       for (int i = 0; i < num_dims; ++i) {
-        tensorflow::int64 dim_size = t->handle->Dim(i, &status);
+        tensorflow::int64 dim_size;
+        status = t->handle->Dim(i, &dim_size);
         if (!status.ok()) return status;
         absl::StrAppend(&result->str, dim_size, kShapeDelim);
       }
