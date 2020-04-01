@@ -7,7 +7,7 @@
 # $ docker run -it -v$(pwd):/home/builder:z --rm xcoreai/build-tools:latest make -f tensorflow/lite/micro/tools/make/Makefile TARGET="xcore" <your make target>
 
 ifeq ($(TARGET), xcore)
-  PLATFORM_FLAGS = -target=XU316-1024-QF60-C20 -mcmodel=large -Os -DXCORE -Wno-xcore-fptrgroup -report
+  PLATFORM_FLAGS = -target=XU316-1024-FB265-C32 -mcmodel=large -Os -DXCORE -Wno-xcore-fptrgroup -report
   CXX_TOOL := xcc
   CC_TOOL := xcc
   AR_TOOL := xmosar   
