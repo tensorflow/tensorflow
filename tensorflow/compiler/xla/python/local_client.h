@@ -323,10 +323,6 @@ struct CompileOptions {
 };
 
 struct ExecuteOptions {
-  // If true, the arguments to the computation will be wrapped in a tuple and
-  // passed as a single parameter.
-  bool tuple_arguments = false;
-
   // If true, the computation must return a tuple, which will be destructured
   // into its elements.
   bool untuple_result = false;

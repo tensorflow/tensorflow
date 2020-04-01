@@ -1109,11 +1109,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .def(
           "Execute",
           [](const PyLocalExecutable& executable,
-             absl::Span<PyLocalBuffer* const> args, bool tuple_arguments)
+             absl::Span<PyLocalBuffer* const> args)
               -> StatusOr<std::vector<ClientAndUniquePtr<PyLocalBuffer>>> {
             py::gil_scoped_release gil_release;
             ExecuteOptions options;
-            options.tuple_arguments = tuple_arguments;
             options.untuple_result = true;
             TF_ASSIGN_OR_RETURN(
                 std::vector<std::unique_ptr<PyLocalBuffer>> output_buffers,
@@ -1126,17 +1125,15 @@ PYBIND11_MODULE(xla_extension, m) {
             }
             return outputs;
           },
-          py::arg("arguments"), py::arg("tuple_arguments") = false)
+          py::arg("arguments"))
       .def(
           "ExecuteOnLocalDevices",
           [](const PyLocalExecutable& executable,
-             absl::Span<const std::vector<PyLocalBuffer*>> args,
-             bool tuple_arguments)
+             absl::Span<const std::vector<PyLocalBuffer*>> args)
               -> StatusOr<
                   std::vector<std::vector<ClientAndUniquePtr<PyLocalBuffer>>>> {
             py::gil_scoped_release gil_release;
             ExecuteOptions options;
-            options.tuple_arguments = tuple_arguments;
             options.untuple_result = true;
             TF_ASSIGN_OR_RETURN(
                 std::vector<std::vector<std::unique_ptr<PyLocalBuffer>>>
@@ -1154,7 +1151,7 @@ PYBIND11_MODULE(xla_extension, m) {
             }
             return outputs;
           },
-          py::arg("arguments"), py::arg("tuple_arguments") = false)
+          py::arg("arguments"))
       .def(
           "get_hlo_modules",
           [](const PyLocalExecutable& executable)
