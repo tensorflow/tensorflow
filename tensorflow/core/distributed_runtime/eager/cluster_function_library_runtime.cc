@@ -132,13 +132,6 @@ void EagerClusterFunctionLibraryRuntime::Run(
     FunctionLibraryRuntime::LocalHandle handle,
     gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done) {
-  if (!rets->empty()) {
-    // TODO(b/150963957): Support remote outputs which are passed as Tensors.
-    done(errors::Unimplemented(
-        "Not implemented. Users could set the output devices in "
-        "FunctionLibraryRuntime::Options to the default multi-device "
-        "function device as a workaround."));
-  }
   FunctionData* function_data = nullptr;
   {
     mutex_lock l(mu_);
