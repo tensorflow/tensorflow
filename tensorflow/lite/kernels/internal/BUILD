@@ -362,7 +362,11 @@ cc_test(
 cc_library(
     name = "cppmath",
     srcs = [],
-    hdrs = ["cppmath.h"],
+    hdrs = [
+        "cppmath.h",
+        "max.h",
+        "min.h",
+    ],
     build_for_embedded = True,
     copts = tflite_copts(),
 )

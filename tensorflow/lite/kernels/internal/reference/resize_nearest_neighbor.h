@@ -18,6 +18,7 @@ limitations under the License.
 #include <cmath>
 
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 
 namespace tflite {
 
@@ -34,7 +35,7 @@ inline int32 GetNearestNeighbor(const int input_value, const int32 input_size,
   const float offset = half_pixel_centers ? 0.5f : 0.0f;
   int32 output_value = std::min(
       align_corners
-          ? static_cast<int32>(std::round((input_value + offset) * scale))
+          ? static_cast<int32>(TfLiteRound((input_value + offset) * scale))
           : static_cast<int32>(std::floor((input_value + offset) * scale)),
       input_size - 1);
   if (half_pixel_centers) {
