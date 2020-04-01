@@ -189,7 +189,13 @@ class FusedMatMulOp : public OpKernel {
       Name("_FusedMatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       FusedMatMulOp<CPUDevice, T>);
 
+#if defined(INTEL_MKL) && defined(ENABLE_INTEL_MKL_BFLOAT16)
 TF_CALL_float(REGISTER_FUSED_CPU_MATMUL);
+TF_CALL_bfloat16(REGISTER_FUSED_CPU_MATMUL);
+#else
+TF_CALL_float(REGISTER_FUSED_CPU_MATMUL);
+#endif
+
 
 #undef REGISTER_FUSED_CPU_MATMUL
 
