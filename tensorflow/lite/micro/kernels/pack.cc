@@ -113,9 +113,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace pack
 
 TfLiteRegistration* Register_PACK() {
-  static TfLiteRegistration r = {};
-  r.prepare = pack::Prepare;
-  r.invoke = pack::Eval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/pack::Prepare,
+                                 /*invoke=*/pack::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

@@ -195,11 +195,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace sub
 
 TfLiteRegistration* Register_SUB() {
-  static TfLiteRegistration r = {};
-  r.init = sub::Init;
-  r.free = sub::Free;
-  r.prepare = sub::Prepare;
-  r.invoke = sub::Eval;
+  static TfLiteRegistration r = {/*init=*/sub::Init,
+                                 /*free=*/sub::Free,
+                                 /*prepare=*/sub::Prepare,
+                                 /*invoke=*/sub::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

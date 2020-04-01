@@ -106,9 +106,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace unpack
 
 TfLiteRegistration* Register_UNPACK() {
-  static TfLiteRegistration r = {};
-  r.prepare = unpack::Prepare;
-  r.invoke = unpack::Eval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/unpack::Prepare,
+                                 /*invoke=*/unpack::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

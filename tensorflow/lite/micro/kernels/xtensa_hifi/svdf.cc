@@ -566,11 +566,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace svdf
 
 TfLiteRegistration* Register_SVDF() {
-  static TfLiteRegistration r = {};
-  r.init = svdf::Init;
-  r.free = svdf::Free;
-  r.prepare = svdf::Prepare;
-  r.invoke = svdf::Eval;
+  static TfLiteRegistration r = {/*init=*/svdf::Init,
+                                 /*free=*/svdf::Free,
+                                 /*prepare=*/svdf::Prepare,
+                                 /*invoke=*/svdf::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

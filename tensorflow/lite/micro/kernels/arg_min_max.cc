@@ -103,16 +103,26 @@ TfLiteStatus ArgMaxEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace arg_min_max
 
 TfLiteRegistration* Register_ARG_MAX() {
-  static TfLiteRegistration r = {};
-  r.prepare = arg_min_max::Prepare;
-  r.invoke = arg_min_max::ArgMaxEval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/arg_min_max::Prepare,
+                                 /*invoke=*/arg_min_max::ArgMaxEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_ARG_MIN() {
-  static TfLiteRegistration r = {};
-  r.prepare = arg_min_max::Prepare;
-  r.invoke = arg_min_max::ArgMinEval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/arg_min_max::Prepare,
+                                 /*invoke=*/arg_min_max::ArgMinEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 
