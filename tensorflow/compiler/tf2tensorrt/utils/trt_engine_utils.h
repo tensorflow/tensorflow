@@ -53,7 +53,7 @@ Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
                           const nvinfer1::ICudaEngine* cuda_engine,
                           int* binding_index);
 
-// Set input buffers for TRT from a list of input tensors. The input tensors
+// Sets input buffers for TRT from a list of input tensors. The input tensors
 // are either defined by ctx or by input_vec.
 Status SetTrtEngineInputs(nvinfer1::ICudaEngine* cuda_engine,
                           nvinfer1::IExecutionContext* execution_context,
