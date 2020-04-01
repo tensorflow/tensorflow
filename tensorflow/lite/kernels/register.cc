@@ -132,7 +132,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 3);
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE(),
              /* min_version */ 1,
-             /* max_version */ 3);
+             /* max_version */ 4);
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN(),
              /* min_version */ 1,
              /* max_version */ 2);
