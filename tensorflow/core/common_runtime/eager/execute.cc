@@ -157,9 +157,9 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
                             " to ", expected_input_device->name());
       },
       profiler::TraceMeLevel::kInfo);
-  Status status = EagerCopyToDevice(
-      handle, ctx, &op->Executor(), expected_input_device,
-      handle->ImplicitMirroring() || ctx->MirrorTensors(), &result_handle);
+  Status status =
+      EagerCopyToDevice(handle, ctx, &op->Executor(), expected_input_device,
+                        /* mirror= */ true, &result_handle);
   activity.Stop();
   if (!status.ok()) {
     return errors::Internal("Failed copying input tensor from ",
@@ -416,7 +416,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
         TensorHandle* handle = nullptr;
         TF_RETURN_IF_ERROR(EagerCopyToDevice(
             input, &ctx, &executor, device == nullptr ? ctx.HostCPU() : device,
-            input->ImplicitMirroring() || ctx.MirrorTensors(), &handle));
+            /* mirror= */ true, &handle));
         op->UpdateInput(i, handle);
         // Unref handle since it has a ref as an input now
         handle->Unref();
