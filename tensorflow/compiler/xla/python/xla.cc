@@ -1206,6 +1206,12 @@ PYBIND11_MODULE(xla_extension, m) {
           py::return_value_policy::reference, py::keep_alive<1, 0>());
 
   py::class_<XlaComputation>(m, "XlaComputation")
+      .def(py::init([](const py::bytes& serialized_hlo_module_proto)
+                        -> std::unique_ptr<XlaComputation> {
+        HloModuleProto proto;
+        proto.ParseFromString(serialized_hlo_module_proto);
+        return absl::make_unique<XlaComputation>(proto);
+      }))
       .def("GetProgramShape", &XlaComputation::GetProgramShape)
       .def("GetSerializedProto", &GetComputationSerializedProto)
       .def("GetHloText", &GetComputationHloText)
