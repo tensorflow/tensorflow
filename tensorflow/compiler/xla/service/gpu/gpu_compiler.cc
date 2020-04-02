@@ -205,6 +205,15 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<ZeroSizedHloElimination>();
 
       AlgebraicSimplifierOptions options;
+      // When transposes appear in a fusion node, we can easily adjust the
+      // multi-dimensional index to create the one needed for the operand. This
+      // is not as easy with bitcasts, because we don't have the information
+      // readily available which dimensions are permuted. In addition to that,
+      // if we have a transpose and a reshape next to each other, they will both
+      // be replaced by a bitcast, and we replace bitcast(bitcast) with one
+      // bitcast. This leads to having to linearize and then delinearize the
+      // index.
+      options.set_replace_transpose_with_bitcast(false);
       pass.AddPass<AlgebraicSimplifier>(options);
       // AlgebraicSimplifier may add contracting dimensions to a dot.
       pass.AddPass<DotDecomposer>();
@@ -306,6 +315,13 @@ Status GpuCompiler::OptimizeHloModule(
         /*combine_threshold_count=*/256);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
+  {
+    // Now we allow to replace any transposes outside of fusions with bitcasts.
+    HloPassPipeline pipeline("final_algebraic_simplifier");
+    AlgebraicSimplifierOptions options;
+    options.set_is_layout_sensitive(true);
+    pipeline.AddPass<AlgebraicSimplifier>(options);
+  }
   return Status::OK();
 }
 
@@ -372,6 +388,15 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
+  // When transposes appear in a fusion node, we can easily adjust the
+  // multi-dimensional index to create the one needed for the operand. This
+  // is not as easy with bitcasts, because we don't have the information
+  // readily available which dimensions are permuted. In addition to that,
+  // if we have a transpose and a reshape next to each other, they will both
+  // be replaced by a bitcast, and we replace bitcast(bitcast) with one
+  // bitcast. This leads to having to linearize and then delinearize the
+  // index.
+  options.set_replace_transpose_with_bitcast(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
   if (RequireDeterminism() ||

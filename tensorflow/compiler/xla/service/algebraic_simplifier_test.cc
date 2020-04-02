@@ -2437,7 +2437,7 @@ TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast1) {
   AlgebraicSimplifier simplifier(options);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  // Verify that the reshape is replaced.
+  // Verify that the transpose is replaced.
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Bitcast(m::Parameter(0))));
 }
@@ -2464,10 +2464,17 @@ TEST_F(AlgebraicSimplifierTest, TransposeEqualsBitcast2) {
 
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
+  // Don't replace transposes with bitcasts.
+  options.set_replace_transpose_with_bitcast(false);
+  AlgebraicSimplifier simplifier_no_replace(options);
+  ASSERT_FALSE(simplifier_no_replace.Run(m.get()).ValueOrDie());
+
+  // Replace transposes with bitcasts if possible.
+  options.set_replace_transpose_with_bitcast(true);
   AlgebraicSimplifier simplifier(options);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
 
-  // Verify that the reshape is replaced.
+  // Verify that the transpose is replaced.
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Bitcast(m::Parameter(0))));
 }
