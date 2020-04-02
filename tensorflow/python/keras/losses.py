@@ -861,7 +861,7 @@ class CategoricalHinge(LossFunctionWrapper):
   """Computes the categorical hinge loss between `y_true` and `y_pred`.
 
   `loss = maximum(neg - pos + 1, 0)`
-  where `neg = sum(y_true * y_pred)` and `pos = maximum(1 - y_true)`
+  where `neg=maximum((1-y_true)*y_pred) and pos=sum(y_true*y_pred)`
 
   Usage:
 
@@ -1014,7 +1014,7 @@ class LogCosh(LossFunctionWrapper):
   ```
   """
 
-  def __init__(self, reduction=losses_utils.ReductionV2.AUTO, name='logcosh'):
+  def __init__(self, reduction=losses_utils.ReductionV2.AUTO, name='log_cosh'):
     """Initializes `LogCosh` instance.
 
     Args:
@@ -1027,9 +1027,9 @@ class LogCosh(LossFunctionWrapper):
         will raise an error. Please see this custom training [tutorial]
         (https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
-      name: Optional name for the op. Defaults to 'logcosh'.
+      name: Optional name for the op. Defaults to 'log_cosh'.
     """
-    super(LogCosh, self).__init__(logcosh, name=name, reduction=reduction)
+    super(LogCosh, self).__init__(log_cosh, name=name, reduction=reduction)
 
 
 @keras_export('keras.losses.KLDivergence')
@@ -1075,7 +1075,7 @@ class KLDivergence(LossFunctionWrapper):
 
   def __init__(self,
                reduction=losses_utils.ReductionV2.AUTO,
-               name='kullback_leibler_divergence'):
+               name='kl_divergence'):
     """Initializes `KLDivergence` instance.
 
     Args:
@@ -1088,10 +1088,10 @@ class KLDivergence(LossFunctionWrapper):
         will raise an error. Please see this custom training [tutorial]
         (https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
-      name: Optional name for the op. Defaults to 'kullback_leibler_divergence'.
+      name: Optional name for the op. Defaults to 'kl_divergence'.
     """
     super(KLDivergence, self).__init__(
-        kullback_leibler_divergence, name=name, reduction=reduction)
+        kl_divergence, name=name, reduction=reduction)
 
 
 @keras_export('keras.losses.Huber')
@@ -1160,7 +1160,7 @@ class Huber(LossFunctionWrapper):
       name: Optional name for the op. Defaults to 'huber_loss'.
     """
     super(Huber, self).__init__(
-        huber_loss, name=name, reduction=reduction, delta=delta)
+        huber, name=name, reduction=reduction, delta=delta)
 
 
 @keras_export('keras.metrics.mean_squared_error',
@@ -1387,7 +1387,7 @@ def categorical_hinge(y_true, y_pred):
   """Computes the categorical hinge loss between `y_true` and `y_pred`.
 
   `loss = maximum(neg - pos + 1, 0)`
-  where `neg = sum(y_true * y_pred)` and `pos = maximum(1 - y_true)`
+  where `neg=maximum((1-y_true)*y_pred) and pos=sum(y_true*y_pred)`
 
   Usage:
 
@@ -1401,8 +1401,7 @@ def categorical_hinge(y_true, y_pred):
   >>> assert np.array_equal(loss.numpy(), np.maximum(0., neg - pos + 1.))
 
   Args:
-    y_true: The ground truth values. `y_true` values are expected to be -1 or 1.
-      If binary (0 or 1) labels are provided they will be converted to -1 or 1.
+    y_true: The ground truth values. `y_true` values are expected to be 0 or 1.
     y_pred: The predicted values.
 
   Returns:
@@ -1415,7 +1414,8 @@ def categorical_hinge(y_true, y_pred):
   return math_ops.maximum(0., neg - pos + 1.)
 
 
-def huber_loss(y_true, y_pred, delta=1.0):
+@keras_export('keras.losses.huber', v1=[])
+def huber(y_true, y_pred, delta=1.0):
   """Computes Huber loss value.
 
   For each value x in `error = y_true - y_pred`:
@@ -1450,8 +1450,8 @@ def huber_loss(y_true, y_pred, delta=1.0):
       axis=-1)
 
 
-@keras_export('keras.losses.logcosh')
-def logcosh(y_true, y_pred):
+@keras_export('keras.losses.log_cosh', 'keras.losses.logcosh')
+def log_cosh(y_true, y_pred):
   """Logarithm of the hyperbolic cosine of the prediction error.
 
   `log(cosh(x))` is approximately equal to `(x ** 2) / 2` for small `x` and
@@ -1595,13 +1595,15 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
       K.binary_crossentropy(y_true, y_pred, from_logits=from_logits), axis=-1)
 
 
-@keras_export('keras.metrics.kullback_leibler_divergence',
+@keras_export('keras.metrics.kl_divergence',
+              'keras.metrics.kullback_leibler_divergence',
               'keras.metrics.kld',
               'keras.metrics.KLD',
+              'keras.losses.kl_divergence',
               'keras.losses.kullback_leibler_divergence',
               'keras.losses.kld',
               'keras.losses.KLD')
-def kullback_leibler_divergence(y_true, y_pred):
+def kl_divergence(y_true, y_pred):
   """Computes Kullback-Leibler divergence loss between `y_true` and `y_pred`.
 
   `loss = y_true * log(y_true / y_pred)`
@@ -1698,8 +1700,8 @@ def cosine_similarity(y_true, y_pred, axis=-1):
   >>> # l2_norm(y_true) = [[0., 1.], [1./1.414], 1./1.414]]]
   >>> # l2_norm(y_pred) = [[1., 0.], [1./1.414], 1./1.414]]]
   >>> # l2_norm(y_true) . l2_norm(y_pred) = [[0., 0.], [0.5, 0.5]]
-  >>> # loss = mean(sum(l2_norm(y_true) . l2_norm(y_pred), axis=1))
-  >>> #       = ((0. + 0.) +  (0.5 + 0.5)) / 2
+  >>> # loss = -sum(l2_norm(y_true) . l2_norm(y_pred), axis=1)
+  >>> #       = -[0. + 0., 0.5 + 0.5]
   >>> loss.numpy()
   array([-0., -0.999], dtype=float32)
 
@@ -1718,9 +1720,16 @@ def cosine_similarity(y_true, y_pred, axis=-1):
 
 @keras_export('keras.losses.CosineSimilarity')
 class CosineSimilarity(LossFunctionWrapper):
-  """Computes the cosine similarity between `y_true` and `y_pred`.
+  """Computes the cosine similarity between labels and predictions.
 
-  `loss = -sum(y_true * y_pred)`
+  Note that it is a negative quantity between -1 and 0, where 0 indicates
+  orthogonality and values closer to -1 indicate greater similarity. This makes
+  it usable as a loss function in a setting where you try to maximize the
+  proximity between predictions and targets. If either `y_true` or `y_pred`
+  is a zero vector, cosine similarity will be 0 regardless of the proximity
+  between predictions and targets.
+
+  `loss = -sum(l2_norm(y_true) * l2_norm(y_pred))`
 
   Usage:
 
@@ -1732,7 +1741,7 @@ class CosineSimilarity(LossFunctionWrapper):
   >>> # l2_norm(y_pred) = [[1., 0.], [1./1.414], 1./1.414]]]
   >>> # l2_norm(y_true) . l2_norm(y_pred) = [[0., 0.], [0.5, 0.5]]
   >>> # loss = mean(sum(l2_norm(y_true) . l2_norm(y_pred), axis=1))
-  >>> #       = ((0. + 0.) +  (0.5 + 0.5)) / 2
+  >>> #       = -((0. + 0.) +  (0.5 + 0.5)) / 2
   >>> cosine_loss(y_true, y_pred).numpy()
   -0.5
 
@@ -1765,13 +1774,12 @@ class CosineSimilarity(LossFunctionWrapper):
     reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
       Default value is `AUTO`. `AUTO` indicates that the reduction option will
       be determined by the usage context. For almost all cases this defaults to
-      `SUM_OVER_BATCH_SIZE`.
-      When used with `tf.distribute.Strategy`, outside of built-in training
-      loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
-      `SUM_OVER_BATCH_SIZE` will raise an error. Please see this custom training
-      [tutorial]
-      (https://www.tensorflow.org/tutorials/distribute/custom_training)
-      for more details.
+      `SUM_OVER_BATCH_SIZE`. When used with `tf.distribute.Strategy`, outside of
+      built-in training loops such as `tf.keras` `compile` and `fit`, using
+      `AUTO` or `SUM_OVER_BATCH_SIZE` will raise an error. Please see this
+      custom training [tutorial]
+      (https://www.tensorflow.org/tutorials/distribute/custom_training) for more
+        details.
     name: Optional name for the op.
   """
 
@@ -1790,7 +1798,9 @@ mse = MSE = mean_squared_error
 mae = MAE = mean_absolute_error
 mape = MAPE = mean_absolute_percentage_error
 msle = MSLE = mean_squared_logarithmic_error
-kld = KLD = kullback_leibler_divergence
+kld = KLD = kullback_leibler_divergence = kl_divergence
+logcosh = log_cosh
+huber_loss = huber
 
 
 def is_categorical_crossentropy(loss):
@@ -1837,15 +1847,34 @@ def deserialize(name, custom_objects=None):
 
 @keras_export('keras.losses.get')
 def get(identifier):
-  """Retrieves a Keras loss function.
+  """Retrieves a Keras loss as a `function`/`Loss` class instance.
+
+  The `identifier` may be the string name of a loss function or `Loss` class.
+
+  >>> loss = tf.keras.losses.get("categorical_crossentropy")
+  >>> type(loss)
+  <class 'function'>
+  >>> loss = tf.keras.losses.get("CategoricalCrossentropy")
+  >>> type(loss)
+  <class '...tensorflow.python.keras.losses.CategoricalCrossentropy'>
+
+  You can also specify `config` of the loss to this function by passing dict
+  containing `class_name` and `config` as an identifier. Also note that the
+  `class_name` must map to a `Loss` class
+
+  >>> identifier = {"class_name": "CategoricalCrossentropy",
+  ...               "config": {"from_logits": True}}
+  >>> loss = tf.keras.losses.get(identifier)
+  >>> type(loss)
+  <class '...tensorflow.python.keras.losses.CategoricalCrossentropy'>
 
   Arguments:
     identifier: A loss identifier. One of None or string name of a loss
-      function/class or loss configuration dictionary or a loss function or
-      a loss class instance
+      function/class or loss configuration dictionary or a loss function or a
+      loss class instance
 
   Returns:
-    A Keras loss function/ `Loss` class instance.
+    A Keras loss as a `function`/ `Loss` class instance.
 
   Raises:
     ValueError: If `identifier` cannot be interpreted.

@@ -25,17 +25,20 @@ import numpy as np
 import six
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import server_lib
@@ -154,6 +157,39 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
       self.assertIn('Dimensions must be equal', cm.exception.message)
     else:
       self.assertIn('Dimensions must be equal', cm.exception.args[0])
+
+  def testClientVarible(self):
+    var = variables.Variable(initial_value=0)
+
+    @def_function.function
+    def func():
+      with ops.device('/job:localhost/task:0'):
+        read = var.read_value()
+      return read + 1
+
+    with ops.device('/job:worker/task:0'):
+      self.assertAllEqual(func(), 1)
+
+  @test_util.eager_lazy_remote_copy_on_and_off
+  def testRemoteCall(self):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    def _remote_fn(x):
+      return constant_op.constant(1) + x
+
+    remote_fn = _remote_fn.get_concrete_function()
+
+    @def_function.function
+    def func(x):
+      return functional_ops.remote_call(
+          args=[x],
+          Tout=[dtypes.int32],
+          f=remote_fn,
+          target='/job:worker/task:0')
+
+    with ops.device('/job:localhost/task:0'):
+      self.assertAllEqual(func(constant_op.constant(1)), [2])
 
 
 class RemoteAsyncTest(test.TestCase):
@@ -452,8 +488,9 @@ class MultiJobsTest(test.TestCase, parameterized.TestCase):
     with ops.device('/job:my_worker/task:1/device:CPU:0'):
       self.assertAllEqual(worker_fn(), 8)
 
+  # TODO(b/152224115): Re-enable this test.
   @test_util.eager_lazy_remote_copy_on_and_off
-  def testSimpleParameterServerWithDeviceFilters(self):
+  def DISABLED_testSimpleParameterServerWithDeviceFilters(self):
     cluster_device_filters = server_lib.ClusterDeviceFilters()
     for i in range(2):
       cluster_device_filters.set_device_filters('my_worker', i, ['/job:my_ps'])

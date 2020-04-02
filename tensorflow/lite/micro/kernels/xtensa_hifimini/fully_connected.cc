@@ -147,7 +147,7 @@ constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 
 // This size will work for both the hotword (5) and ambient music (2):
-constexpr int kMaxOpDataSize = 5;
+constexpr int kMaxOpDataSize = 7;
 static int kStaticOpDataCounter = 0;
 static OpData kStaticOpData[kMaxOpDataSize];
 
@@ -174,12 +174,6 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
 }
 
 }  // namespace
-
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
@@ -251,9 +245,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace fully_connected
 
 TfLiteRegistration* Register_FULLY_CONNECTED() {
-  static TfLiteRegistration r = {fully_connected::Init, fully_connected::Free,
-                                 fully_connected::Prepare,
-                                 fully_connected::Eval};
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/fully_connected::Prepare,
+                                 /*invoke=*/fully_connected::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
+
   return &r;
 }
 

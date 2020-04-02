@@ -489,8 +489,9 @@ StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(const Shape& output_shape,
   }
 
   // Eliminate the size one dimensions.
-  TF_ASSIGN_OR_RETURN(XlaOp reshaped_operand,
-                      ReshapeInternal(reshaped_shape, operand));
+  TF_ASSIGN_OR_RETURN(
+      XlaOp reshaped_operand,
+      ReshapeInternal(reshaped_shape, operand, /*inferred_dimension=*/-1));
   // Broadcast 'reshape' up to the larger size.
   return InDimBroadcast(broadcast_shape, reshaped_operand,
                         broadcast_dimensions);
@@ -498,12 +499,10 @@ StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(const Shape& output_shape,
 
 XlaOp XlaBuilder::UnaryOp(HloOpcode unop, XlaOp operand) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferUnaryOpShape(unop, *operand_shape));
-    *instr.mutable_shape() = shape.ToProto();
-    return AddInstruction(std::move(instr), unop, {operand});
+    return AddOpWithShape(unop, shape, {operand});
   });
 }
 
@@ -511,31 +510,17 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
                            absl::Span<const int64> broadcast_dimensions,
                            absl::optional<ComparisonDirection> direction) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferBinaryOpShape(
                          binop, *lhs_shape, *rhs_shape, broadcast_dimensions));
-    *instr.mutable_shape() = shape.ToProto();
-    if (binop == HloOpcode::kCompare) {
-      if (!direction.has_value()) {
-        return InvalidArgument(
-            "kCompare expects a ComparisonDirection, but none provided.");
-      }
-      instr.set_comparison_direction(ComparisonDirectionToString(*direction));
-    } else if (direction.has_value()) {
-      return InvalidArgument(
-          "A comparison direction is provided for a non-compare opcode: %s.",
-          HloOpcodeString(binop));
-    }
 
     const int64 lhs_rank = lhs_shape->rank();
     const int64 rhs_rank = rhs_shape->rank();
 
     XlaOp updated_lhs = lhs;
     XlaOp updated_rhs = rhs;
-
     if (!broadcast_dimensions.empty() && lhs_rank != rhs_rank) {
       const bool should_broadcast_lhs = lhs_rank < rhs_rank;
       XlaOp from = should_broadcast_lhs ? lhs : rhs;
@@ -576,13 +561,35 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
                           AddBroadcastSequence(shape, updated_rhs));
     }
 
-    return AddInstruction(std::move(instr), binop, {updated_lhs, updated_rhs});
+    return BinaryOpNoBroadcast(binop, shape, updated_lhs, updated_rhs,
+                               direction);
+  });
+}
+
+XlaOp XlaBuilder::BinaryOpNoBroadcast(
+    HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
+    absl::optional<ComparisonDirection> direction) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    if (binop == HloOpcode::kCompare) {
+      if (!direction.has_value()) {
+        return InvalidArgument(
+            "kCompare expects a ComparisonDirection, but none provided.");
+      }
+      instr.set_comparison_direction(ComparisonDirectionToString(*direction));
+    } else if (direction.has_value()) {
+      return InvalidArgument(
+          "A comparison direction is provided for a non-compare opcode: %s.",
+          HloOpcodeString(binop));
+    }
+
+    return AddInstruction(std::move(instr), binop, {lhs, rhs});
   });
 }
 
 XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     XlaOp updated_lhs = lhs;
     XlaOp updated_rhs = rhs;
     XlaOp updated_ehs = ehs;
@@ -635,8 +642,8 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
           "%s Input scalar shapes may have been changed to non-scalar shapes.",
           status_or_shape.status().error_message());
     }
-    *instr.mutable_shape() = status_or_shape.ConsumeValueOrDie().ToProto();
-    return AddInstruction(std::move(instr), triop,
+
+    return AddOpWithShape(triop, status_or_shape.ValueOrDie(),
                           {updated_lhs, updated_rhs, updated_ehs});
   });
 }
@@ -749,8 +756,9 @@ XlaOp XlaBuilder::BroadcastInDim(
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     // Output shape, in the case of degenerate broadcast, the out_dim_size is
     // not necessarily the same as the dimension sizes of the output shape.
-    auto output_shape =
-        ShapeUtil::MakeShape(operand_shape->element_type(), out_dim_size);
+    TF_ASSIGN_OR_RETURN(auto output_shape,
+                        ShapeUtil::MakeValidatedShape(
+                            operand_shape->element_type(), out_dim_size));
     if (operand_shape->rank() != broadcast_dimensions.size()) {
       return InvalidArgument(
           "Size of broadcast_dimensions has to match operand's rank; operand "
@@ -1616,12 +1624,10 @@ XlaOp XlaBuilder::Sort(absl::Span<const XlaOp> operands,
 XlaOp XlaBuilder::ConvertElementType(XlaOp operand,
                                      PrimitiveType new_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferConvertShape(
                                          *operand_shape, new_element_type));
-    *instr.mutable_shape() = shape.ToProto();
-    return AddInstruction(std::move(instr), HloOpcode::kConvert, {operand});
+    return AddOpWithShape(HloOpcode::kConvert, shape, {operand});
   });
 }
 
@@ -2803,6 +2809,13 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
 
   XlaOp op(handle, this);
   return op;
+}
+
+StatusOr<XlaOp> XlaBuilder::AddOpWithShape(HloOpcode opcode, const Shape& shape,
+                                           absl::Span<const XlaOp> operands) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  return AddInstruction(std::move(instr), opcode, operands);
 }
 
 void XlaBuilder::AddCalledComputation(const XlaComputation& computation,

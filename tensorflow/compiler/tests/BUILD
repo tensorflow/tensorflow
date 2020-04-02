@@ -32,6 +32,7 @@ package_group(
     packages = [
         # To pass open source testing in the pip Kokoros.
         "//bazel_pip/tensorflow/compiler/tests/...",
+        "//platforms/xla/tests/neural_nets",
     ],
 )
 
@@ -335,6 +336,21 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "searchsorted_op_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = ["searchsorted_op_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:platform_test",
     ],
 )
 
@@ -732,6 +748,7 @@ tf_xla_py_test(
 tf_xla_py_test(
     name = "image_ops_test",
     size = "small",
+    timeout = "long",
     srcs = ["image_ops_test.py"],
     python_version = "PY3",
     shard_count = 10,
@@ -1324,6 +1341,26 @@ tf_xla_py_test(
     name = "unary_ops_test",
     size = "medium",
     srcs = ["unary_ops_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+# TODO(hinsu): Combine this test with unary_ops_test instead of replicating it.
+tf_xla_py_test(
+    name = "unary_mlir_ops_test",
+    size = "medium",
+    srcs = ["unary_mlir_ops_test.py"],
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip

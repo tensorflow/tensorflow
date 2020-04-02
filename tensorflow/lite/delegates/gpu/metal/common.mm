@@ -34,9 +34,9 @@ namespace metal {
 
 id<MTLDevice> GetBestSupportedMetalDevice() { return MTLCreateSystemDefaultDevice(); }
 
-Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* functionName,
-                            NSDictionary<NSString*, NSString*>* macros,
-                            id<MTLComputePipelineState>* program) {
+absl::Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* functionName,
+                                  NSDictionary<NSString*, NSString*>* macros,
+                                  id<MTLComputePipelineState>* program) {
   MTLCompileOptions* options = [[MTLCompileOptions alloc] init];
 
   // Runtime checks for the iOS version independently of minimum target iOS.
@@ -70,14 +70,14 @@ Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* func
   if (!library) {
     NSString* errorString =
         [NSString stringWithFormat:@"newLibraryWithSource: %@", [error localizedDescription]];
-    return InternalError([errorString UTF8String]);
+    return absl::InternalError([errorString UTF8String]);
   }
 
   id<MTLFunction> function = [library newFunctionWithName:functionName];
   if (!function) {
     NSString* errorString =
         [NSString stringWithFormat:@"newFunctionWithName: %@", [error localizedDescription]];
-    return InternalError([errorString UTF8String]);
+    return absl::InternalError([errorString UTF8String]);
   }
 
   *program = [device newComputePipelineStateWithFunction:function error:&error];
@@ -85,9 +85,9 @@ Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* func
     NSString* errorString =
         [NSString stringWithFormat:@"newComputePipelineStateWithFunction error: %@",
                                    [error localizedDescription]];
-    return InternalError([errorString UTF8String]);
+    return absl::InternalError([errorString UTF8String]);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace metal

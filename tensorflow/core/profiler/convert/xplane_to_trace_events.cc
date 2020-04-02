@@ -36,17 +36,6 @@ Device BuildDeviceAndResource(const XPlaneVisitor& plane) {
   return device;
 }
 
-// Returns true if the given stat shouldn't be shown in the trace viewer.
-bool IsInternalStat(StatType stat_type) {
-  switch (stat_type) {
-    case StatType::kKernelDetails:
-    case StatType::kLevel0:
-      return true;
-    default:
-      return false;
-  }
-}
-
 }  // namespace
 
 void MaybeDropEventsForTraceViewer(Trace* trace, uint32 limit) {
@@ -88,18 +77,18 @@ void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
         event->set_device_id(device_id);
         event->set_resource_id(resource_id);
         if (xevent.HasDisplayName()) {
-          event->set_name(string(xevent.DisplayName()));
-          args["long_name"] = string(xevent.Name());
+          event->set_name(std::string(xevent.DisplayName()));
+          args["long_name"] = std::string(xevent.Name());
         } else {
-          event->set_name(string(xevent.Name()));
+          event->set_name(std::string(xevent.Name()));
         }
         event->set_timestamp_ps(xevent.TimestampPs());
         event->set_duration_ps(xevent.DurationPs());
 
         xevent.ForEachStat([&](const XStatVisitor& stat) {
           if (stat.ValueCase() == XStat::VALUE_NOT_SET) return;
-          if (stat.Type() && IsInternalStat(StatType(*stat.Type()))) return;
-          args[string(stat.Name())] = stat.ToString();
+          if (IsInternalStat(stat.Type())) return;
+          args[std::string(stat.Name())] = stat.ToString();
         });
       });
     });
@@ -109,6 +98,13 @@ void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
   // events to avoid loading failure for trace viewer.
   constexpr uint64 kMaxEvents = 1000000;
   MaybeDropEventsForTraceViewer(trace, kMaxEvents);
+}
+
+void ConvertXSpaceToTraceEventsString(const XSpace& xspace,
+                                      std::string* content) {
+  Trace trace;
+  ConvertXSpaceToTraceEvents(xspace, &trace);
+  trace.SerializeToString(content);
 }
 
 }  // namespace profiler

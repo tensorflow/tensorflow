@@ -960,6 +960,8 @@ def save(obj, export_dir, signatures=None, options=None):
   # Note that this needs to be the last file operation when saving the
   # SavedModel. Users rely on checking saved_model_dir/saved_model.pb as an
   # indication that the SavedModel is completely written.
+  if context.executing_eagerly():
+    context.async_wait()  # Ensure save operations have completed.
   path = os.path.join(
       compat.as_str(export_dir),
       compat.as_str(constants.SAVED_MODEL_FILENAME_PB))

@@ -1,9 +1,7 @@
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_test")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "if_nccl")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
@@ -64,6 +62,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":bfloat16",
+        ":local_client",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -170,6 +169,7 @@ cc_library(
     name = "local_client",
     srcs = ["local_client.cc"],
     hdrs = ["local_client.h"],
+    visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
         ":local_device_state",
         ":shared_device_buffer",
@@ -298,7 +298,7 @@ cc_library(
     name = "nvidia_gpu_device",
     srcs = ["nvidia_gpu_device.cc"],
     hdrs = ["nvidia_gpu_device.h"],
-    copts = if_nccl(["-DNCCL_ENABLED=1"]),
+    copts = if_cuda(["-DNCCL_ENABLED=1"]),
     deps = [
         ":local_client",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
@@ -310,7 +310,7 @@ cc_library(
         "//tensorflow/core:bfc_allocator",
         "//tensorflow/core:gpu_mem_allocator",
         "//tensorflow/stream_executor:tf_allocator_adapter",
-    ] + if_nccl(["@local_config_nccl//:nccl"]),
+    ] + if_cuda(["@local_config_nccl//:nccl"]),
 )
 
 config_setting(
@@ -395,4 +395,26 @@ pybind_extension(
         ":enable_gpu": ["//tensorflow/compiler/xla/service:gpu_plugin"],
         "//conditions:default": [],
     }),
+)
+
+tf_cc_test(
+    name = "gpu_multistream_test",
+    srcs = ["gpu_multistream_test.cc"],
+    tags = [
+        # TODO(phawkins): figure out TF test infra such that this only runs under GPU.
+        "no_oss",
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":local_client",
+        ":nvidia_gpu_device",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:random",
+    ],
 )

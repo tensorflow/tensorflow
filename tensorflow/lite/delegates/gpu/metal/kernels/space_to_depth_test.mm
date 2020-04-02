@@ -51,7 +51,7 @@ using ::tflite::gpu::metal::SingleOpModel;
     XCTFail(@"PopulateTensor()");
   }
   const auto status = model.Invoke();
-  if (!status.ok()) XCTFail(@"%s", status.error_message().c_str());
+  if (!status.ok()) XCTFail(@"%s", std::string(status.message()).c_str());
   const std::vector<float>& actual = model.GetOutput(0);
   const std::vector<float> expected = {1.0f, 2.0f, 3.0f, 4.0f};
   XCTAssertEqual(actual[0], expected[0]);
@@ -69,7 +69,7 @@ using ::tflite::gpu::metal::SingleOpModel;
     XCTFail(@"PopulateTensor()");
   }
   const auto status = model.Invoke();
-  if (!status.ok()) XCTFail(@"%s", status.error_message().c_str());
+  if (!status.ok()) XCTFail(@"%s", std::string(status.message()).c_str());
   const std::vector<float>& actual = model.GetOutput(0);
   const std::vector<float> expected = {1.4f, 2.3f, 3.2f, 4.1f, 5.4f, 6.3f, 7.2f, 8.1f};
   XCTAssertEqual(actual[0], expected[0]);
@@ -94,7 +94,7 @@ using ::tflite::gpu::metal::SingleOpModel;
     XCTFail(@"PopulateTensor()");
   }
   const auto status = model.Invoke();
-  if (!status.ok()) XCTFail(@"%s", status.error_message().c_str());
+  if (!status.ok()) XCTFail(@"%s", std::string(status.message()).c_str());
   const std::vector<float>& actual = model.GetOutput(0);
   const std::vector<float> expected = {1.0f,  2.0f,  3.0f,  //
                                        4.0f,  5.0f,  6.0f,  //
@@ -126,7 +126,7 @@ using ::tflite::gpu::metal::SingleOpModel;
     XCTFail(@"PopulateTensor()");
   }
   const auto status = model.Invoke();
-  if (!status.ok()) XCTFail(@"%s", status.error_message().c_str());
+  if (!status.ok()) XCTFail(@"%s", std::string(status.message()).c_str());
   const std::vector<float>& actual = model.GetOutput(0);
   const std::vector<float> expected = {1.0f,  2.0f,  3.0f,  4.0f,   //
                                        5.0f,  6.0f,  7.0f,  8.0f,   //

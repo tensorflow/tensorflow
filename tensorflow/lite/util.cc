@@ -17,6 +17,7 @@ limitations under the License.
 #include <complex>
 #include <cstring>
 
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -129,6 +130,17 @@ TfLiteRegistration CreateUnresolvedCustomOp(const char* custom_op_name) {
 bool IsUnresolvedCustomOp(const TfLiteRegistration& registration) {
   return registration.builtin_code == tflite::BuiltinOperator_CUSTOM &&
          registration.invoke == &UnresolvedOpInvoke;
+}
+
+std::string GetOpNameByRegistration(const TfLiteRegistration& registration) {
+  auto op = registration.builtin_code;
+  std::string result =
+      EnumNameBuiltinOperator(static_cast<BuiltinOperator>(op));
+  if ((op == kTfLiteBuiltinCustom || op == kTfLiteBuiltinDelegate) &&
+      registration.custom_name) {
+    result += " " + std::string(registration.custom_name);
+  }
+  return result;
 }
 
 }  // namespace tflite

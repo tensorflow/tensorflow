@@ -125,18 +125,20 @@ class MultiProcessRunnerTest(test.TestCase):
 
     def func_to_exit_in_15_sec():
       time.sleep(5)
-      mpr._add_return_data('foo')
+      print('foo', flush=True)
       time.sleep(20)
-      mpr._add_return_data('bar')
+      print('bar', flush=True)
 
     mpr = multi_process_runner.MultiProcessRunner(
         func_to_exit_in_15_sec,
         multi_worker_test_base.create_cluster_spec(num_workers=1),
+        list_stdout=True,
         max_run_time=15)
 
     mpr.start()
-    return_value = mpr.join().return_value
-    self.assertLen(return_value, 1)
+    stdout = mpr.join().stdout
+    self.assertLen([msg for msg in stdout if 'foo' in msg], 1)
+    self.assertLen([msg for msg in stdout if 'bar' in msg], 0)
 
   def test_signal_doesnt_fire_after_process_exits(self):
     mpr = multi_process_runner.MultiProcessRunner(
@@ -148,7 +150,8 @@ class MultiProcessRunnerTest(test.TestCase):
     with self.assertRaisesRegexp(Queue.Empty, ''):
       # If the signal was fired, another message would be added to internal
       # queue, so verifying it's empty.
-      mpr._get_process_status_queue().get(block=False)
+      multi_process_runner._resource(
+          multi_process_runner.PROCESS_STATUS_QUEUE).get(block=False)
 
   def test_termination(self):
 

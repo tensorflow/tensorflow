@@ -58,9 +58,9 @@ extern "C" {
 //   start_offset: array[uint64]
 //   data:         byte[...]
 //
-//   The string length (as a varint), followed by the contents of the string
-//   is encoded at data[start_offset[i]]]. TF_StringEncode and TF_StringDecode
-//   facilitate this encoding.
+//   The string length (as a varint, start_offset[i + 1] - start_offset[i]),
+//   followed by the contents of the string is encoded at data[start_offset[i]].
+//   TF_StringEncode and TF_StringDecode facilitate this encoding.
 
 typedef struct TF_Tensor TF_Tensor;
 

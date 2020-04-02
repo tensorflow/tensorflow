@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/softmax.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
@@ -118,21 +117,14 @@ inline void Softmax(const SoftmaxParams& params,
 namespace activations {
 namespace {
 
-struct OpData {
-  int32_t input_multiplier = 0;
-  int input_left_shift = 0;
-  int32_t input_range_radius = 0;
-  int diff_min = 0;
-};
-
 // This size will work for both the hotword (1) and ambient music (0):
-static OpData kStaticOpData;
+static SoftmaxParams kStaticOpData;
 
 TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
                                     const TfLiteTensor* input,
                                     TfLiteTensor* output,
                                     const TfLiteSoftmaxParams* params,
-                                    OpData* data) {
+                                    SoftmaxParams* op_data) {
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
     if (input->type == kTfLiteUInt8) {
       TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
@@ -149,82 +141,69 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
 
     static const int kScaledDiffIntegerBits = 5;
 
+    int input_left_shift;
     tflite::PreprocessSoftmaxScaling(
         static_cast<double>(params->beta),
         static_cast<double>(input->params.scale), kScaledDiffIntegerBits,
-        &data->input_multiplier, &data->input_left_shift);
-    data->diff_min = -1.0 * tflite::CalculateInputRadius(
-                                kScaledDiffIntegerBits, data->input_left_shift);
+        &op_data->input_multiplier, &input_left_shift);
+    op_data->input_left_shift = input_left_shift;
+    op_data->diff_min =
+        -1.0 * tflite::CalculateInputRadius(kScaledDiffIntegerBits,
+                                            op_data->input_left_shift);
   }
   return kTfLiteOk;
 }
 
 }  // namespace
 
-void Softmax2DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
-                        TfLiteSoftmaxParams* params, OpData* data) {
-  const int batch_size = input->dims->data[0];
-  const int input_size = input->dims->data[1];
-  const int32_t shape_data[4] = {batch_size, 1, 1, input_size};
-  RuntimeShape shape(4, shape_data);
-  SoftmaxParams op_params;
-  op_params.input_multiplier = data->input_multiplier;
-  op_params.input_left_shift = data->input_left_shift;
-  op_params.diff_min = data->diff_min;
-
+void SoftmaxQuantized(const TfLiteTensor* input, TfLiteTensor* output,
+                      const SoftmaxParams& op_params) {
   if (output->type == kTfLiteInt16) {
-    xtensa::hifimini::Softmax(op_params, shape, GetTensorData<int8_t>(input),
-                              shape, GetTensorData<int16_t>(output));
+    xtensa::hifimini::Softmax(
+        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+        GetTensorShape(output), GetTensorData<int16_t>(output));
 
   } else {
-    xtensa::hifimini::Softmax(op_params, shape, GetTensorData<int8_t>(input),
-                              shape, GetTensorData<int8_t>(output));
+    xtensa::hifimini::Softmax(
+        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+        GetTensorShape(output), GetTensorData<int8_t>(output));
   }
 }
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
-  auto* params = reinterpret_cast<TfLiteSoftmaxParams*>(node->builtin_data);
+  auto* params = static_cast<TfLiteSoftmaxParams*>(node->builtin_data);
 
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
+  TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
 
-  // TODO(b/132070898): Use statically slotted OpData structures until a
+  // TODO(b/132070898): Use statically slotted SoftmaxParams structures until a
   // scratch memory API is ready.
-  OpData* op_data = &kStaticOpData;
-  node->user_data = op_data;
+  SoftmaxParams* op_params = &kStaticOpData;
+  node->user_data = op_params;
 
   TF_LITE_ENSURE_STATUS(
-      CalculateSoftmaxOpData(context, input, output, params, op_data));
+      CalculateSoftmaxOpData(context, input, output, params, op_params));
 
   return kTfLiteOk;
 }
 
 TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
-  auto* params = reinterpret_cast<TfLiteSoftmaxParams*>(node->builtin_data);
-  auto* op_data = reinterpret_cast<OpData*>(node->user_data);
+  auto* op_params = static_cast<SoftmaxParams*>(node->user_data);
 
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
 
   switch (input->type) {
     case kTfLiteInt8: {
-      if (NumDimensions(input) == 2) {
-        Softmax2DQuantized(input, output, params, op_data);
-        return kTfLiteOk;
-      }
-      TF_LITE_KERNEL_LOG(context,
-                         "Only 2D tensors supported currently, got %dD.",
-                         NumDimensions(input));
-      return kTfLiteError;
+      SoftmaxQuantized(input, output, *op_params);
+      return kTfLiteOk;
     }
     default:
-      TF_LITE_KERNEL_LOG(context, "Only int8_t supported currently, got %d.",
+      TF_LITE_KERNEL_LOG(context,
+                         "Only int8_t input supported currently, got %d.",
                          input->type);
       return kTfLiteError;
   }
@@ -232,9 +211,14 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration* Register_SOFTMAX() {
-  static TfLiteRegistration r = {activations::Init, activations::Free,
-                                 activations::SoftmaxPrepare,
-                                 activations::SoftmaxEval};
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/activations::SoftmaxPrepare,
+                                 /*invoke=*/activations::SoftmaxEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

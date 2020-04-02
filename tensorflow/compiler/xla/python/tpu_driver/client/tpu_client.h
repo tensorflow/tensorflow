@@ -166,7 +166,7 @@ class PyTpuBuffer {
 
   // Supports nested tuple creation.
   static StatusOr<std::unique_ptr<PyTpuBuffer>> MakeTuple(
-      const std::vector<PyTpuBuffer*> buffers,
+      absl::Span<PyTpuBuffer* const> buffers,
       std::shared_ptr<PyTpuClient> client, std::shared_ptr<Device> device);
 
   PyTpuBuffer() = delete;
@@ -241,8 +241,9 @@ class PyTpuBuffer {
   // `child_buffers_` stores the child buffers; else, `device_buffer_` stores
   // the data content and `child_buffers_` is empty.
   mutable absl::Mutex mu_;
-  std::shared_ptr<TpuSharedBuffer> device_buffer_ GUARDED_BY(mu_);
-  std::vector<std::shared_ptr<TpuSharedBuffer>> child_buffers_ GUARDED_BY(mu_);
+  std::shared_ptr<TpuSharedBuffer> device_buffer_ TF_GUARDED_BY(mu_);
+  std::vector<std::shared_ptr<TpuSharedBuffer>> child_buffers_
+      TF_GUARDED_BY(mu_);
   // The cached value of the buffer on the host, produced either from a call to
   // CopyToHost or from a call to ToLiteral. Once a value has been fetched to
   // the host, it persists Delete() is called or the PyTpuBuffer is destroyed.
@@ -255,34 +256,24 @@ class PyTpuBuffer {
     Status status;
     std::shared_ptr<Literal> value;
   };
-  std::shared_ptr<HostValue> host_value_ GUARDED_BY(mu_);
+  std::shared_ptr<HostValue> host_value_ TF_GUARDED_BY(mu_);
 };
 
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. Wraps an XLA LocalExecutable.
 class PyTpuExecutable {
  public:
-  // Compiles a computation to an executable.
-  static StatusOr<std::unique_ptr<PyTpuExecutable>> CompileForDevices(
-      const XlaComputation& computation,
-      absl::optional<std::vector<Shape>> argument_layouts,
-      const ExecutableBuildOptions* build_options,
-      std::shared_ptr<PyTpuClient> client,
-      const std::vector<std::vector<std::shared_ptr<Device>>>&
-          device_assignment);
-
-  // TODO(phawkins): remove after changing callers to use the first overload.
   static StatusOr<std::unique_ptr<PyTpuExecutable>> Compile(
       const XlaComputation& computation,
       absl::optional<std::vector<Shape>> argument_layouts,
       const ExecutableBuildOptions* build_options,
       std::shared_ptr<PyTpuClient> client,
-      absl::optional<DeviceAssignment> device_assignment);
+      absl::optional<DeviceAssignment> device_assignment, bool tuple_arguments);
 
   PyTpuExecutable(
       std::unique_ptr<tpu_driver::CompiledProgramHandle> compiled_program,
       DeviceAssignment device_assignment, std::shared_ptr<PyTpuClient> client,
-      xla::Shape result_shape);
+      xla::Shape result_shape, bool tuple_arguments);
   virtual ~PyTpuExecutable() {
     for (auto it = executables_.begin(); it != executables_.end(); ++it) {
       client_->driver()->UnloadProgram(std::move(it->second), {});
@@ -314,25 +305,18 @@ class PyTpuExecutable {
     return local_devices_;
   }
 
-  // TODO(power): Both Execute and ExecutePerReplica block and wait inside for
-  // computation to finish. Coordinate with JAX code change to see if we can
-  // make both Execute and ExecutePerReplica non-blocking.
-  StatusOr<std::unique_ptr<PyTpuBuffer>> Execute(
+  // TODO(power): Both Execute and ExecutePerOnLocalDevices block and wait
+  // inside for computation to finish. Coordinate with JAX code change to see if
+  // we can make both Execute and ExecutePerReplica non-blocking.
+  StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> Execute(
       absl::Span<PyTpuBuffer* const> argument_handles);
-
-  // Execute on many replicas. Takes a sequence of argument lists (one argument
-  // list per replica) and returns a tuple of results (one result per replica).
-  // The number of argument lists must be equal to the replica count.
-  // The executable must have only one partition.
-  // TODO(cjfj): Remove this once JAX is moved to `ExecuteOnLocalDevices`.
-  StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> ExecutePerReplica(
-      absl::Span<const std::vector<PyTpuBuffer*>> argument_handles);
 
   // Execute on local devices. Takes a sequence of argument lists (one argument
   // list per local device) and returns a tuple of results (one result per local
   // device). The number of argument lists must be equal to the local device
   // count.
-  StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> ExecuteOnLocalDevices(
+  StatusOr<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>>
+  ExecuteOnLocalDevices(
       absl::Span<const std::vector<PyTpuBuffer*>> argument_handles);
 
   void Delete() { executables_.clear(); }
@@ -351,6 +335,7 @@ class PyTpuExecutable {
   std::shared_ptr<PyTpuClient> const client_;
   std::map<int, std::unique_ptr<tpu_driver::LoadedProgramHandle>> executables_;
   const DeviceAssignment device_assignment_;
+  const bool tuple_arguments_;
 
   // The replica and partition indices of device_assignment_ to be run by this
   // client. On single-host platforms without partitioning, this is all replicas

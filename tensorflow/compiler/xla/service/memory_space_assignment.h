@@ -23,9 +23,10 @@ namespace xla {
 
 // This class contains pre-set assignments determined by memory space
 // assignment. It contains two data structures: (1) a chunks vector that maps a
-// defining HloPosition to a Chunk (offset and size), and (2) a sizes vector
-// that maps the memory space to its size. If there is only one alternate memory
-// space like there is currently, there will be one entry in sizes.
+// defining HloPosition to a Chunk (offset and size), and (2) an assignment_info
+// vector that maps the memory space to information like its allocated size and
+// heap memory trace. If there is only one alternate memory space like there is
+// currently, there will be one entry in assignment_info.
 class PresetAssignments {
  public:
   // Contains per-memory-space information like the allocated size and heap
@@ -318,6 +319,14 @@ class MemorySpaceAssignment {
     // If true, verifies the memory space assignment against overlapping
     // buffers.
     bool verify = false;
+
+    // Enable prefetching buffers into preferred memory across program
+    // boundaries
+    bool enable_cross_program_prefetch = true;
+
+    // If true, use buffer_interval_compare to determine which buffers to
+    // prefetch across program boundaries.
+    bool default_cross_program_prefetch_heuristic = false;
   };
 
   // This class represents an allocation that might either be in the default or
@@ -622,6 +631,12 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
     }
   }
 
+  // Allocates a buffer in preferred memory with whole program lifetime and
+  // enables prefetching prefech_candidate from default memory across program
+  // boundaries.
+  void AllocateCrossProgramPrefetchBuffer(
+      HloModule* module, absl::optional<BufferInterval> prefetch_candidate);
+
   HeapSimulator::Result Finish() override;
 
  private:
@@ -639,13 +654,13 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   //        Segment    Segment   Segment
   //
   // start_time and end_time are the start and end logical times of the segment.
-  // last_use_time is the time of the last use for this buffer (Use3 in the
-  // figure). latest_prefetch_time is the latest time we can schedule the
-  // CopyDone for a prefetch.
+  // use_times is a sorted sequence of the times of all uses.
+  // latest_prefetch_time is the latest time we can schedule the CopyDone for a
+  // prefetch.
   struct AllocationRequest {
     int64 start_time;
     int64 end_time;
-    int64 last_use_time;
+    const std::vector<int64>* use_times;
     int64 latest_prefetch_time;
     int64 size;
     HloUse use;
@@ -696,11 +711,11 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       const AllocationRequest& request,
       const MemorySpaceAssignment::Allocation& prev_allocation_in_default_mem);
 
-  // For a no-copy allocation, find the best possible chunk candidate, where it
-  // has the longest possible availability if no preferred offset is given, or
-  // at the preferred_offset if it is given.
-  absl::optional<ChunkCandidate> FindBestNoCopyChunkCandidate(
-      int64 end_time, int64 last_use_time,
+  // Find the best possible chunk candidate, where it has the longest possible
+  // availability if no preferred offset is given, or at the preferred_offset if
+  // it is given.
+  absl::optional<ChunkCandidate> FindBestChunkCandidate(
+      int64 end_time, const std::vector<int64>& use_times,
       absl::optional<int64> preferred_offset,
       BufferInterval* alternate_mem_interval) const;
 

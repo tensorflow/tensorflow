@@ -1,14 +1,15 @@
 # Description:
 #   Contains the Keras Premade Models (internal TensorFlow version).
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        "//tensorflow/python/keras:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "premade",

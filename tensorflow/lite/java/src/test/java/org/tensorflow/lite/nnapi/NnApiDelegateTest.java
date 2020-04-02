@@ -16,6 +16,7 @@ limitations under the License.
 package org.tensorflow.lite.nnapi;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.Assert.fail;
 
 import java.nio.ByteBuffer;
 import org.junit.Test;
@@ -52,6 +53,36 @@ public final class NnApiDelegateTest {
       float[] outputOneD = parsedOutputs[0][0][0];
       float[] expected = {3.69f, 19.62f, 23.43f};
       assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+    }
+  }
+
+  @Test
+  public void testGetNnApiErrnoReturnsZeroIfNoNnapiCallFailed() throws Exception {
+    Interpreter.Options options = new Interpreter.Options();
+    try (NnApiDelegate delegate = new NnApiDelegate();
+        Interpreter interpreter = new Interpreter(MODEL_BUFFER, options.addDelegate(delegate))) {
+      float[] oneD = {1.23f, 6.54f, 7.81f};
+      float[][] twoD = {oneD, oneD, oneD, oneD, oneD, oneD, oneD, oneD};
+      float[][][] threeD = {twoD, twoD, twoD, twoD, twoD, twoD, twoD, twoD};
+      float[][][][] fourD = {threeD, threeD};
+      float[][][][] parsedOutputs = new float[2][8][8][3];
+      interpreter.run(fourD, parsedOutputs);
+
+      assertThat(delegate.getNnapiErrno()).isEqualTo(0);
+      assertThat(delegate.hasErrors()).isFalse();
+    }
+  }
+
+  @Test
+  public void testGetNnApiErrnoThrowsExceptionAfterClosingDelegate() {
+    NnApiDelegate delegate = new NnApiDelegate();
+    assertThat(delegate.getNnapiErrno()).isEqualTo(0);
+
+    delegate.close();
+    try {
+      delegate.getNnapiErrno();
+      fail("Expected IllegalStateException to be thrown.");
+    } catch (IllegalStateException expected) {
     }
   }
 }

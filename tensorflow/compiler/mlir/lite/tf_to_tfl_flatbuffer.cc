@@ -19,13 +19,13 @@ limitations under the License.
 #include <unordered_set>
 
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Parser.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/FileUtilities.h"  // TF:llvm-project
-#include "mlir/Transforms/Passes.h"  // TF:llvm-project
-#include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
@@ -169,7 +169,7 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     std::vector<std::string> exported_names =
         absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
 
-    auto module = tensorflow::SavedModelToMlirImport(
+    auto module = tensorflow::SavedModelObjectGraphToMlirImport(
         input_filename, tags, absl::Span<std::string>(exported_names), context);
     if (!module)
       return tensorflow::errors::InvalidArgument("fail to open input file");
@@ -179,8 +179,8 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     std::unordered_set<std::string> tags =
         absl::StrSplit(saved_model_tags, ',');
 
-    auto module =
-        tensorflow::SavedModelV1ToMlirImport(input_filename, tags, context);
+    auto module = tensorflow::SavedModelSignatureDefsToMlirImport(
+        input_filename, tags, context);
 
     if (!module)
       return tensorflow::errors::InvalidArgument("fail to open input file");

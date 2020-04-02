@@ -211,6 +211,12 @@ class GraphProperties {
   std::unordered_set<string> incompatible_shape_nodes_;
 };
 
+// Helper function for GraphProperties.
+bool IsShapeFullyDefinedIntegerVectorOrScalar(
+    shape_inference::InferenceContext* ic,
+    const shape_inference::ShapeHandle& shape,
+    const shape_inference::ShapeHandle& tensor_as_shape, const DataType& dtype);
+
 }  // end namespace grappler
 }  // end namespace tensorflow
 

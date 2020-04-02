@@ -34,6 +34,8 @@ std::string XStatVisitor::ToString() const {
       return absl::StrCat(stat_->double_value());
     case XStat::kStrValue:
       return stat_->str_value();
+    case XStat::kBytesValue:
+      return "<opaque bytes>";
     case XStat::VALUE_NOT_SET:
       return "";
   }

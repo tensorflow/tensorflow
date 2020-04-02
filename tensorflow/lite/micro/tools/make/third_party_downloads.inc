@@ -3,8 +3,8 @@
 GEMMLOWP_URL := "https://github.com/google/gemmlowp/archive/719139ce755a0f31cbf1c37f7f98adcc7fc9f425.zip"
 GEMMLOWP_MD5 := "7e8191b24853d75de2af87622ad293ba"
 
-FLATBUFFERS_URL := "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/flatbuffers/archive/v1.11.0.tar.gz"
-FLATBUFFERS_MD5 := "02c64880acb89dbd57eebacfd67200d8"
+FLATBUFFERS_URL := "https://github.com/google/flatbuffers/archive/v1.12.0.tar.gz"
+FLATBUFFERS_MD5 := "c62ffefb3d4548b127cca14ce047f16c"
 
 ifeq ($(HOST_OS),osx)
   GCC_EMBEDDED_URL := "https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-mac.tar.bz2"
@@ -59,3 +59,6 @@ EMBARC_OSP_MD5 := "9eaf7b3a1ed05872a03da9796672a776"
 
 EMBARC_MLI_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/4b6c6eed65395dced1564006be8188781af16035.zip"
 EMBARC_MLI_MD5 := "47167553c17ff8c7cd59fb1afb90c304"
+
+XTENSA_HIFI4_URL :="https://github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib.zip"
+XTENSA_HIFI4_MD5 :="a517b653a75b96d0271e1b99ee2a8c14"

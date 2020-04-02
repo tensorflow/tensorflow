@@ -50,11 +50,23 @@ def dense_to_ragged_batch(batch_size,
   batch from being produced.
 
   Unlike `tf.data.Dataset.batch`, the input elements to be batched may have
-  different shapes, and each batch will be encoded as a `tf.RaggedTensor`.
+  different shapes:
+
+  *  If an input element is a `tf.Tensor` whose static `tf.TensorShape` is
+     fully defined, then it is batched as normal.
+  *  If an input element is a `tf.Tensor` whose static `tf.TensorShape` contains
+     one or more axes with unknown size (i.e., `shape[i]=None`), then the output
+     will contain a `tf.RaggedTensor` that is ragged up to any of such
+     dimensions.
+  *  If an input element is a `tf.RaggedTensor` or any other type, then it is
+     batched as normal.
+
   Example:
 
   >>> dataset = tf.data.Dataset.from_tensor_slices(np.arange(6))
   >>> dataset = dataset.map(lambda x: tf.range(x))
+  >>> dataset.element_spec.shape
+  TensorShape([None])
   >>> dataset = dataset.apply(
   ...     tf.data.experimental.dense_to_ragged_batch(batch_size=2))
   >>> for batch in dataset:
@@ -207,11 +219,8 @@ def map_and_batch(map_func,
 
   Maps `map_func` across `batch_size` consecutive elements of this dataset
   and then combines them into a batch. Functionally, it is equivalent to `map`
-  followed by `batch`. However, by fusing the two transformations together, the
-  implementation can be more efficient. Surfacing this transformation in the API
-  is temporary. Once automatic input pipeline optimization is implemented,
-  the fusing of `map` and `batch` will happen automatically and this API will be
-  deprecated.
+  followed by `batch`. This API is temporary and deprecated since input pipeline
+  optimization now fuses consecutive `map` and `batch` operations automatically.
 
   Args:
     map_func: A function mapping a nested structure of tensors to another
@@ -388,35 +397,52 @@ class _DenseToRaggedDataset(dataset_ops.UnaryDataset):
         any new ragged tensors.  Existing `tf.RaggedTensor` elements do *not*
         have their row_splits dtype changed.
     """
-
     # Replace each TensorSpec in the input dataset's structure with a
     # corresponding RaggedTensorSpec.
     def to_ragged_spec(spec):
-      if isinstance(spec, tensor_spec.TensorSpec) and spec.shape.ndims != 0:
+      """Returns the new spec based on RaggedTensors."""
+      if (not isinstance(spec, tensor_spec.TensorSpec) or
+          spec.shape.rank is None or
+          spec.shape.is_fully_defined()):
+        return spec
+      else:
+        ragged_rank = max([
+            axis for (axis, size) in enumerate(spec.shape.as_list())
+            if size is None
+        ])
         return ragged_tensor.RaggedTensorSpec(
             shape=spec.shape,
             dtype=spec.dtype,
-            ragged_rank=0,
+            ragged_rank=ragged_rank,
             row_splits_dtype=row_splits_dtype)
-      else:
-        return spec
 
     self._structure = nest.map_structure(to_ragged_spec,
                                          input_dataset.element_spec)
 
     # Replace each tf.Tensor value in the input dataset with a variant-encoded
-    # RaggedTensor.  Since we're updating the corresponding structure to be
+    # RaggedTensor. Since we're updating the corresponding structure to be
     # a RaggedTensorSpec, this variant-encoded tensor will be decoded with
     # RaggedTensorSpec._from_tensor_list.
     def to_ragged_variant(value):
-      if isinstance(value, ops.Tensor) and value.shape.ndims != 0:
-        spec = to_ragged_spec(tensor_spec.TensorSpec.from_tensor(value))
-        return spec._to_tensor_list(value)[0]  # pylint: disable=protected-access
-      else:
+      """Re-encode Tensors as RaggedTensors."""
+      if (not isinstance(value, ops.Tensor) or
+          value.shape.rank is None or
+          value.shape.is_fully_defined()):
         return value
+      else:
+        spec = to_ragged_spec(tensor_spec.TensorSpec.from_tensor(value))
+        if spec._ragged_rank > 0:  # pylint: disable=protected-access
+          value = ragged_tensor.RaggedTensor.from_tensor(
+              value, ragged_rank=spec._ragged_rank)  # pylint: disable=protected-access
+        return spec._to_tensor_list(value)[0]  # pylint: disable=protected-access
 
-    self._mapped_dataset = input_dataset.map(
-        lambda value: nest.map_structure(to_ragged_variant, value))
+    # Tuples are automatically unpacked by `dataset.map` so we repack them.
+    if dataset_ops._should_unpack_args(input_dataset.element_spec):  # pylint: disable=protected-access
+      map_fn = lambda *value: nest.map_structure(to_ragged_variant, value)
+    else:
+      map_fn = lambda value: nest.map_structure(to_ragged_variant, value)
+
+    self._mapped_dataset = input_dataset.map(map_fn)
 
     variant = self._mapped_dataset._variant_tensor  # pylint: disable=protected-access
     super(_DenseToRaggedDataset, self).__init__(input_dataset, variant)

@@ -54,6 +54,7 @@ namespace tensorflow {
 namespace {
 Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
                         const std::vector<const XlaExpression*>& expressions,
+                        const NameAttrList& func,
                         std::vector<XlaCompiler::Argument>* args) {
   auto client = ctx->compiler()->client();
   std::vector<bool> arg_must_be_compile_time_constant(expressions.size());
@@ -78,9 +79,10 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
           TF_ASSIGN_OR_RETURN(absl::optional<Tensor> value,
                               expressions[i]->ResolveConstant(client));
           if (!value.has_value()) {
-            return errors::InvalidArgument(
-                "Argument to function must be a compile-time constant, but "
-                "unable to resolve argument value to a constant.");
+            return errors::InvalidArgument(absl::StrCat(
+                "Argument ", i, " to function '", func.name(),
+                "' must be a compile-time constant, but ",
+                "unable to resolve argument value to a constant."));
           }
           arg.kind = XlaCompiler::Argument::kConstant;
           arg.constant_value = *value;
@@ -249,8 +251,8 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
 
   auto graph = compiler->GetGraph(fbody);
 
-  TF_RETURN_IF_ERROR(
-      PrepareArguments(&xla_op_context, graph.get(), expressions, &arguments));
+  TF_RETURN_IF_ERROR(PrepareArguments(&xla_op_context, graph.get(), expressions,
+                                      func, &arguments));
 
   bool add_token_input_output =
       func.attr().find(kXlaTokenInputNodesAttrName) != func.attr().end();

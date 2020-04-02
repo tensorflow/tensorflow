@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
-#include "mlir/Transforms/Passes.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -42,6 +42,8 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateToIslandPass());
+  pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
+  pm.addNestedPass<FuncOp>(TFDevice::CreateParallelExecuteToIslandsPass());
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateLaunchToDeviceAttributePass());
 }
@@ -71,6 +73,8 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // Run island coarsening before shape inference to allow more exact shape
   // inference using constant folding within islands.
   pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorIslandCoarseningPass());
+  // TODO(b/150462212): Move graph pruning before island coarsening.
+  pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorGraphPruningPass());
   // Run shape inference so that tf_executor/tf_device ops created later will
   // likely to inherit more concrete types.
   pm.addPass(TF::CreateTFShapeInferencePass());
@@ -90,6 +94,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
   pm.addPass(CreateTPUDynamicPaddingMapperPass());
+  pm.addPass(CreateTPUShardingIdentificationPass());
   pm.addPass(TFDevice::CreateAnnotateParameterReplicationPass());
   pm.addPass(CreateTPURewritePass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());

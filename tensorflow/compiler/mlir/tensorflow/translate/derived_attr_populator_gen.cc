@@ -23,7 +23,7 @@ limitations under the License.
 #include "llvm/TableGen/Main.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
-#include "mlir/TableGen/Operator.h"  // TF:llvm-project
+#include "mlir/TableGen/Operator.h"  // from @llvm-project
 
 using llvm::LessRecord;
 using llvm::raw_ostream;

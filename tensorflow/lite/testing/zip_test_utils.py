@@ -94,7 +94,7 @@ class ExtraTocoOptions(object):
     self.allow_custom_ops = False
     # Rnn states that are used to support rnn / lstm cells.
     self.rnn_states = None
-    # Split the LSTM inputs from 5 inoputs to 18 inputs for TFLite.
+    # Split the LSTM inputs from 5 inputs to 18 inputs for TFLite.
     self.split_tflite_lstm_inputs = None
     # The inference input type passed to TFLiteConvert.
     self.inference_input_type = None
@@ -168,7 +168,7 @@ def write_examples(fp, examples):
 
   Args:
     fp: File-like object to write to.
-    examples: Example dictionary consiting of keys "inputs" and "outputs"
+    examples: Example dictionary consisting of keys "inputs" and "outputs"
   """
 
   def write_tensor(fp, x):
@@ -196,7 +196,7 @@ def write_test_cases(fp, model_name, examples):
   Args:
     fp: File-like object to write to.
     model_name: Filename where the model was written to, relative to filename.
-    examples: Example dictionary consiting of keys "inputs" and "outputs"
+    examples: Example dictionary consisting of keys "inputs" and "outputs"
   """
 
   fp.write("load_model: %s\n" % os.path.basename(model_name))
@@ -262,8 +262,8 @@ def make_zip_of_tests(options,
                       expected_tf_failures=0):
   """Helper to make a zip file of a bunch of TensorFlow models.
 
-  This does a cartestian product of the dictionary of test_parameters and
-  calls make_graph() for each item in the cartestian product set.
+  This does a cartesian product of the dictionary of test_parameters and
+  calls make_graph() for each item in the cartesian product set.
   If the graph is built successfully, then make_test_inputs() is called to
   build expected input/output value pairs. The model is then converted to tflite
   with toco, and the examples are serialized with the tflite model into a zip

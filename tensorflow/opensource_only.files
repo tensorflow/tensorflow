@@ -32,6 +32,7 @@ tensorflow/third_party/clang_toolchain/download_clang.bzl
 tensorflow/third_party/codegen.BUILD
 tensorflow/third_party/com_google_absl.BUILD
 tensorflow/third_party/common.bzl
+tensorflow/third_party/coremltools.BUILD
 tensorflow/third_party/cub.BUILD
 tensorflow/third_party/curl.BUILD
 tensorflow/third_party/cython.BUILD
@@ -78,7 +79,10 @@ tensorflow/third_party/gif_fix_strtok_r.patch
 tensorflow/third_party/git/BUILD
 tensorflow/third_party/git/BUILD.tpl
 tensorflow/third_party/git/git_configure.bzl
-tensorflow/third_party/googleapis.BUILD
+tensorflow/third_party/googleapis/BUILD
+tensorflow/third_party/googleapis/build_rules.bzl
+tensorflow/third_party/googleapis/googleapis.BUILD
+tensorflow/third_party/googleapis/repository_rules.bzl
 tensorflow/third_party/gpus/BUILD
 tensorflow/third_party/gpus/crosstool/BUILD
 tensorflow/third_party/gpus/crosstool/BUILD.rocm.tpl
@@ -174,7 +178,6 @@ tensorflow/third_party/systemlibs/gast.BUILD
 tensorflow/third_party/systemlibs/gif.BUILD
 tensorflow/third_party/systemlibs/google_cloud_cpp.BUILD
 tensorflow/third_party/systemlibs/google_cloud_cpp.google.cloud.bigtable.BUILD
-tensorflow/third_party/systemlibs/googleapis.BUILD
 tensorflow/third_party/systemlibs/grpc.BUILD
 tensorflow/third_party/systemlibs/jsoncpp.BUILD
 tensorflow/third_party/systemlibs/lmdb.BUILD
@@ -399,5 +402,6 @@ tensorflow/tools/pip_package/pip_smoke_test.py
 tensorflow/tools/pip_package/setup.py
 tensorflow/tools/pip_package/simple_console.py
 tensorflow/tools/pip_package/simple_console_for_windows.py
+tensorflow/tools/pip_package/xla_build/CMakeLists.txt
 tensorflow/virtual_root_template_v1.__init__.py
 tensorflow/virtual_root_template_v2.__init__.py

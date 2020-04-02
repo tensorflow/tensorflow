@@ -31,6 +31,7 @@ py_library(
         "inspect_utils.py",
         "loader.py",
         "loader_deprecated_py2.py",
+        "naming.py",
         "origin_info.py",
         "parser.py",
         "pretty_printer.py",
@@ -131,6 +132,17 @@ sh_test(
     name = "inspect_utils_test_par",
     srcs = ["inspect_utils_test.sh"],
     tags = ["no_oss"],
+)
+
+py_test(
+    name = "naming_test",
+    srcs = ["naming_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
+    ],
 )
 
 py_test(

@@ -164,7 +164,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
-        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/losses:loss_reduction",
         "//tensorflow/tools/docs:doc_controls",
@@ -177,6 +176,7 @@ py_test(
     srcs = ["distribute_lib_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":combinations",
         ":distribute_lib",
@@ -268,19 +268,25 @@ py_library(
         ":shared_variable_creator",
         ":values",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:config",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:device",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:summary_ops_v2",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python:tf_export",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/autograph/core",
+        "//tensorflow/python/autograph/impl",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:tape",
     ],
 )
@@ -414,6 +420,9 @@ cuda_py_test(
     name = "multi_worker_continuous_run_test",
     srcs = [
         "multi_worker_continuous_run_test.py",
+    ],
+    tags = [
+        "notsan",  # TODO(b/151841995)
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -564,12 +573,14 @@ py_library(
 tpu_py_test(
     name = "tpu_strategy_test",
     srcs = ["tpu_strategy_test.py"],
+    disable_experimental = True,
     python_version = "PY3",
     deps = [
         ":tpu_strategy",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
     ],
 )
 
@@ -791,7 +802,9 @@ distribute_py_test(
     main = "input_lib_test.py",
     shard_count = 10,
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "notap",  # TODO(b/151467526)
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -839,6 +852,8 @@ cuda_py_test(
     srcs = ["cross_device_ops_test.py"],
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/151025792): enable after this is fixed.
+        "notap",  # TODO(b/151025792): enable after this is fixed.
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -928,10 +943,15 @@ py_library(
 
 distribute_py_test(
     name = "values_test",
+    size = "medium",
     srcs = ["values_test.py"],
     main = "values_test.py",
+    shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+    ],
+    tpu_tags = [
+        "no_oss",  # Target too big to run serially reliably.
     ],
     deps = [
         ":mirrored_strategy",
@@ -1201,10 +1221,12 @@ cuda_py_test(
     ],
     deps = [
         ":combinations",
+        ":distribute_lib",
         ":mirrored_strategy",
         ":multi_worker_test_base",
         ":strategy_combinations",
         ":strategy_test_lib",
+        ":values",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -1214,8 +1236,6 @@ cuda_py_test(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras/layers",
@@ -1338,6 +1358,7 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":saved_model_test_base",
@@ -1370,6 +1391,7 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":saved_model_test_base",

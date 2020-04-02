@@ -99,8 +99,7 @@ def get_replica_context():
      will return the default `ReplicaContext` object);
   2. switches to cross-replica context (in which case this will return
      `None`) when entering a `with tf.distribute.Strategy.scope():` block;
-  3. switches to a (non-default) replica context inside
-     `strategy.experimental_run_v2(fn, ...)`;
+  3. switches to a (non-default) replica context inside `strategy.run(fn, ...)`;
   4. if `fn` calls `get_replica_context().merge_call(merge_fn, ...)`, then
      inside `merge_fn` you are back in the cross-replica context (and again
      this function will return `None`).
@@ -121,7 +120,7 @@ def get_replica_context():
       tf.print("Replica id: ", replica_context.replica_id_in_sync_group,
                " of ", replica_context.num_replicas_in_sync)
 
-    strategy.experimental_run_v2(f)
+    strategy.run(f)
   ```
 
   Returns:
@@ -166,7 +165,7 @@ def in_cross_replica_context():
     def f():
       assert not tf.distribute.in_cross_replica_context()
 
-    strategy.experimental_run_v2(f)
+    strategy.run(f)
   ```
 
   Returns:

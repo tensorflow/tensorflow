@@ -33,8 +33,8 @@ namespace {
 
 class Slice : public NodeShader {
  public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     auto output = ctx.graph->FindOutputs(ctx.node->id)[0];
 
     auto attr =
@@ -107,7 +107,7 @@ class Slice : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

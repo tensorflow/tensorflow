@@ -37,6 +37,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "//tensorflow/compiler/mlir/lite/quantization/xla:quantize",
         "//tensorflow/compiler/tf2xla",
         "//tensorflow/compiler/tf2xla:mlir_tf2xla",
         "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
@@ -64,6 +65,7 @@ cc_library(
         "@llvm-project//llvm:powerpc_code_gen",  # fixdeps: keep
         "@llvm-project//llvm:target",
         "@llvm-project//llvm:x86_code_gen",  # fixdeps: keep
+        "//tensorflow/core:regexp_internal",
     ] + if_llvm_aarch64_available([
         "//third_party/llvm/llvm-project/llvm:aarch64_target",  # fixdeps: keep
     ]),

@@ -15,4 +15,4 @@
 #!/bin/bash
 set -x
 
-DEFAULT_BAZEL_TARGETS="//tensorflow/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... //tensorflow/compiler/mlir/lite/..."
+DEFAULT_BAZEL_TARGETS="//tensorflow/... -//tensorflow/python/integration_testing/... -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/compiler/xrt/... //tensorflow/compiler/mlir/lite/..."

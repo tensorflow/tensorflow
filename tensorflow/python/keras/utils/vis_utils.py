@@ -49,7 +49,7 @@ def check_pydot():
     # to check the pydot/graphviz installation.
     pydot.Dot.create(pydot.Dot())
     return True
-  except OSError:
+  except (OSError, pydot.InvocationException):
     return False
 
 
@@ -260,6 +260,22 @@ def plot_model(model,
                expand_nested=False,
                dpi=96):
   """Converts a Keras model to dot format and save to a file.
+
+  Example:
+
+  ```python
+  input = tf.keras.Input(shape=(100,), dtype='int32', name='input')
+  x = tf.keras.layers.Embedding(
+      output_dim=512, input_dim=10000, input_length=100)(input)
+  x = tf.keras.layers.LSTM(32)(x)
+  x = tf.keras.layers.Dense(64, activation='relu')(x)
+  x = tf.keras.layers.Dense(64, activation='relu')(x)
+  x = tf.keras.layers.Dense(64, activation='relu')(x)
+  output = tf.keras.layers.Dense(1, activation='sigmoid', name='output')(x)
+  model = tf.keras.Model(inputs=[input], outputs=[output])
+  dot_img_file = '/tmp/model_1.png'
+  tf.keras.utils.plot_model(model, to_file=dot_img_file, show_shapes=True)
+  ```
 
   Arguments:
     model: A Keras model instance

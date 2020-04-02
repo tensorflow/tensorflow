@@ -96,10 +96,8 @@ void GpuExecutable::ComputeThunkAnnotations() {
     const HloInstruction* hlo = thunk->hlo_instruction();
     CHECK(hlo);
     thunk_annotations_[thunk] =
-        absl::StrFormat("%s:#hlo_op=%s,hlo_module=%s#",
-                        hlo->ToStringWithCanonicalNameMap(
-                            HloPrintOptions::Canonical(), &canonical_name_map),
-                        hlo->name(), hlo->GetModule()->name());
+        absl::StrFormat("Thunk#hlo_op=%s,hlo_module=%s#", hlo->name(),
+                        hlo->GetModule()->name());
   }
 }
 
@@ -161,6 +159,9 @@ Status GpuExecutable::ExecuteThunks(
     sub_streams.emplace_back();
     TF_ASSIGN_OR_RETURN(sub_streams.back(),
                         run_options->BorrowStream(executor->device_ordinal()));
+    // Require substreams to wait for the main stream, otherwise substreams may
+    // execute before the program is scheduled to start on the main stream.
+    sub_streams.back()->ThenWaitFor(main_stream);
   }
 
   HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream,

@@ -28,6 +28,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
@@ -90,7 +91,7 @@ class _ResidualLSTMCell(keras.layers.LSTMCell):
 
 class TimeDistributedTest(keras_parameterized.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_timedistributed_dense(self):
     model = keras.models.Sequential()
     model.add(
@@ -253,7 +254,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
         self.assertAllEqual(mask_outputs_val[i], ref_mask_val[i])
       self.assertIs(mask_outputs[-1], None)  # final layer
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_TimeDistributed_with_masking_layer(self):
     # test with Masking layer
     model = keras.models.Sequential()
@@ -298,7 +299,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
         '`TimeDistributed` Layer should be passed an `input_shape `'):
       time_dist(ph)
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_TimeDistributed_reshape(self):
 
     class NoReshapeLayer(keras.layers.Layer):
@@ -319,7 +320,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     td3 = keras.layers.TimeDistributed(NoReshapeLayer())
     self.assertFalse(td3._always_use_reshape)
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_TimeDistributed_output_shape_return_types(self):
 
     class TestLayer(keras.layers.Layer):
@@ -448,7 +449,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     self.assertAllEqual(output_ragged.to_tensor(), output_dense)
 
 
-@tf_test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(['sum', 'concat', 'ave', 'mul'])
@@ -899,6 +900,12 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
           [None, 2, 16])
 
   def test_Bidirectional_last_output_with_masking(self):
+    if test.is_built_with_rocm():
+      # testcase uses input and/or output sequences which require padding
+      # leading to the following error on ROCm platform
+      # ROCm MIOpen only supports packed input output
+      # Skip this subtest for now
+      self.skipTest('Test not supported on the ROCm platform')
     rnn = keras.layers.LSTM
     samples = 2
     dim = 5
@@ -926,6 +933,12 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([keras.layers.LSTM, keras.layers.GRU])
   def test_Bidirectional_sequence_output_with_masking(self, rnn):
+    if test.is_built_with_rocm():
+      # testcase uses input and/or output sequences which require padding
+      # leading to the following error on ROCm platform
+      # ROCm MIOpen only supports packed input output
+      # Skip this subtest for now
+      self.skipTest('Test not supported on the ROCm platform')
     samples = 2
     dim = 5
     timesteps = 3
@@ -1127,6 +1140,9 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(['ave', 'concat', 'mul'])
   def test_Bidirectional_ragged_input(self, merge_mode):
+    if test.is_built_with_rocm():
+      # ragged tenors are not supported in ROCM RNN implementation
+      self.skipTest('Test not supported on the ROCm platform')
     np.random.seed(100)
     rnn = keras.layers.LSTM
     units = 3
@@ -1175,7 +1191,7 @@ class ExampleWrapper(keras.layers.Wrapper):
     return self.layer(inputs, *args, **kwargs)
 
 
-class WrapperTest(keras_parameterized.TestCase):
+class WrapperTest(parameterized.TestCase):
 
   def test_wrapper_from_config_no_mutation(self):
     wrapper = ExampleWrapper(keras.layers.Dense(1))

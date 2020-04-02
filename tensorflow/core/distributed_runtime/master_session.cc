@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -228,7 +229,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   const BuildGraphOptions bg_opts_;
 
   // NOTE(mrry): This pointer will be null after `RegisterPartitions()` returns.
-  std::unique_ptr<ClientGraph> client_graph_before_register_ GUARDED_BY(mu_);
+  std::unique_ptr<ClientGraph> client_graph_before_register_ TF_GUARDED_BY(mu_);
   const SessionOptions session_opts_;
   const bool is_partial_;
   const CallableOptions callable_opts_;
@@ -281,7 +282,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   Notification init_done_;
 
   // init_result_ remembers the initialization error if any.
-  Status init_result_ GUARDED_BY(mu_);
+  Status init_result_ TF_GUARDED_BY(mu_);
 
   std::unique_ptr<StatsPublisherInterface> stats_publisher_;
 
@@ -472,8 +473,8 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     c->req.set_session_handle(session_handle_);
     c->req.set_create_worker_session_called(!should_deregister_);
     c->req.mutable_graph_def()->Swap(&graph_partitions[part.name]);
-    // TODO(b/146354085): Default attributes should be stripped here from
-    // c->req.graph_def(), but this causes some TFX pipelines to fail.
+    StripDefaultAttributes(*OpRegistry::Global(),
+                           c->req.mutable_graph_def()->mutable_node());
     *c->req.mutable_config_proto() = session_opts_.config;
     *c->req.mutable_graph_options() = session_opts_.config.graph_options();
     *c->req.mutable_debug_options() =
@@ -582,10 +583,10 @@ class RunManyGraphs {
 
   BlockingCounter pending_;
   mutable mutex mu_;
-  StatusGroup status_group_ GUARDED_BY(mu_);
-  bool cancel_issued_ GUARDED_BY(mu_) = false;
+  StatusGroup status_group_ TF_GUARDED_BY(mu_);
+  bool cancel_issued_ TF_GUARDED_BY(mu_) = false;
 
-  void ReportBadStatus(const Status& s) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  void ReportBadStatus(const Status& s) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     VLOG(1) << "Master received error status " << s;
     if (!cancel_issued_ && !StatusGroup::IsDerived(s)) {
       // Only start cancelling other workers upon receiving a non-derived
@@ -910,9 +911,9 @@ class CleanupBroadcastHelper {
 
   mutex mu_;
   // Number of requests remaining to be collected.
-  int num_pending_ GUARDED_BY(mu_);
+  int num_pending_ TF_GUARDED_BY(mu_);
   // Aggregate status of the operation.
-  Status status_ GUARDED_BY(mu_);
+  Status status_ TF_GUARDED_BY(mu_);
   // Callback to be called when all operations complete.
   StatusCallback done_;
 

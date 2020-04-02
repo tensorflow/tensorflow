@@ -403,8 +403,7 @@ class MirroredStrategy(distribute_lib.Strategy):
 
       total_result = 0
       for x in dataset:
-        per_replica_result = my_strategy.experimental_run_v2(replica_fn,
-                                                             args=(x,))
+        per_replica_result = my_strategy.run(replica_fn, args=(x,))
         total_result += my_strategy.reduce(tf.distribute.ReduceOp.SUM,
                                            per_replica_result, axis=None)
       return total_result
@@ -752,13 +751,13 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       return wrapped(args, kwargs)
 
     if context.executing_eagerly():
-      logging.log_first_n(logging.WARN, "Using %s eagerly has significant "
-                          "overhead currently. We will be working on improving "
-                          "this in the future, but for now please wrap "
-                          "`call_for_each_replica` or `experimental_run` or "
-                          "`experimental_run_v2` inside a tf.function to get "
-                          "the best performance." %
-                          self._container_strategy().__class__.__name__, 5)
+      logging.log_first_n(
+          logging.WARN, "Using %s eagerly has significant "
+          "overhead currently. We will be working on improving "
+          "this in the future, but for now please wrap "
+          "`call_for_each_replica` or `experimental_run` or "
+          "`run` inside a tf.function to get the best performance." %
+          self._container_strategy().__class__.__name__, 5)
     else:
       # When a tf.function is wrapped to trigger _call_for_each_replica (see
       # the other branch above), AutoGraph stops conversion at
@@ -1058,26 +1057,48 @@ class MirroredReplicaContext(distribute_lib.ReplicaContext):
     t.captured_var_scope = variable_scope.get_variable_scope()
     t.captured_control_deps = t.graph._current_control_dependencies()  # pylint: disable=protected-access
 
-    # NOTE(priyag): Throw an error if there is a merge call in the middle of a
-    # `fn` passed to call_for_each_replica which changes the graph being used
-    # while calling `fn`. This can happen when the `fn` is decorated with
-    # `tf.function` and there is a merge_call in `fn`. This breaks because each
-    # thread tries to create a distinct tf.function. Each tf.function creation
-    # takes a lock, and so if there is a merge call in the middle, the lock is
-    # never released and subsequent replica threads cannot proceed to define
-    # their own functions. Checking for the graph being the same is one way for
-    # us to check this didn't happen.
+    # It is problematic if `merge_call` is called under a different graph other
+    # than the one that `_call_for_each_replica` is called under, there are
+    # 3 cases this can happen:
+    #
+    #   1. The `fn` passed to `_call_for_each_replica` is decorated with
+    #   `tf.function` and there is a `merge_call` in `fn`. Since
+    #   MirroredStrategy traces a separate function per thread (per device),
+    #   and each trace takes a shared lock, the lock is never released by the
+    #   first thread and subsequent replica threads cannot proceed to trace
+    #   their own functions. This issue is addressed by always converting
+    #   `_call_for_each_replica(tf.function(f))` to
+    #   ``tf.function(_call_for_each_replica(f))`.` in
+    #   `MirroredStrategy._call_for_each_replica`.
+    #
+    #   2. The `fn` passed to `_call_for_each_replica` contains a nested
+    #   `tf.function`, and there is a `merge_call` in the nested `tf.function`.
+    #   In this case each thread can successfully trace its own function, but
+    #   since the `merge_fn` passed to `merge_call` is executed in the main
+    #   thread (where `_call_for_each_replica` is executed), it can't access
+    #   the tensors that come from different graphs.
+    #
+    #   3. The `fn` passed to `_call_for_each_replica` contains a control-flow
+    #   statement, and there is a `merge_call` inside the control-flow body,
+    #   `fn` or `_call_for_each_replica` is decorated with `tf.function`.
+    #   Control flow statement creates a separate graph for its body, similar
+    #   to #2, `merge_fn` executed in the main thread can't access the
+    #   tensors that come from different graphs.
+    #
+    #   We raise an error for #2 and #3.
     if ops.get_default_graph() != t.graph:
       raise RuntimeError(
-          "`merge_call` called while defining a new graph or a tf.function. "
-          "This can often happen if the function `fn` passed to "
-          "`strategy.experimental_run()` is decorated with "
-          "`@tf.function` (or contains a nested `@tf.function`), and `fn` "
-          "contains a synchronization point, such as aggregating gradients. "
-          "This behavior is not yet supported. Instead, please wrap the entire "
-          "call `strategy.experimental_run(fn)` in a `@tf.function`, and avoid "
-          "nested `tf.function`s that may potentially cross a synchronization "
-          "boundary.")
+          "`merge_call` called while defining a new graph or a tf.function."
+          " This can often happen if the function `fn` passed to"
+          " `strategy.run()` contains a nested `@tf.function`, and the nested "
+          "`@tf.function` contains a synchronization point, such as aggregating"
+          " gradients (e.g, optimizer.apply_gradients), or if the function `fn`"
+          " uses a control flow statement which contains a synchronization"
+          " point in the body. Such behaviors are not yet supported. Instead,"
+          " please avoid nested `tf.function`s or control flow statements that"
+          " may potentially cross a synchronization boundary, for example,"
+          " wrap the `fn` passed to `strategy.run` or the entire `strategy.run`"
+          " inside a `tf.function` or move the control flow out of `fn`")
 
     t.has_paused.set()
     t.should_run.wait()

@@ -178,8 +178,9 @@ Status GpuCompiler::OptimizeHloModule(
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-      pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                            /*allow_mixed_precision=*/false);
+      pass.AddInvariantCheckerDebug<HloVerifier>(
+          /*layout_sensitive=*/false,
+          /*allow_mixed_precision=*/false);
 
       // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
       // where possible.  Not every batchnorm op can be implemented as a call to
@@ -205,6 +206,15 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<ZeroSizedHloElimination>();
 
       AlgebraicSimplifierOptions options;
+      // When transposes appear in a fusion node, we can easily adjust the
+      // multi-dimensional index to create the one needed for the operand. This
+      // is not as easy with bitcasts, because we don't have the information
+      // readily available which dimensions are permuted. In addition to that,
+      // if we have a transpose and a reshape next to each other, they will both
+      // be replaced by a bitcast, and we replace bitcast(bitcast) with one
+      // bitcast. This leads to having to linearize and then delinearize the
+      // index.
+      options.set_replace_transpose_with_bitcast(false);
       pass.AddPass<AlgebraicSimplifier>(options);
       // AlgebraicSimplifier may add contracting dimensions to a dot.
       pass.AddPass<DotDecomposer>();
@@ -279,7 +289,7 @@ Status GpuCompiler::OptimizeHloModule(
     fusion.AddPass<VariadicOpSplitter>();
     /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
      * fixing the ticket. */
-    fusion.AddInvariantChecker<HloVerifier>(
+    fusion.AddInvariantCheckerDebug<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false,
         LayoutAssignment::InstructionCanChangeLayout);
@@ -306,6 +316,13 @@ Status GpuCompiler::OptimizeHloModule(
         /*combine_threshold_count=*/256);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
+  {
+    // Now we allow to replace any transposes outside of fusions with bitcasts.
+    HloPassPipeline pipeline("final_algebraic_simplifier");
+    AlgebraicSimplifierOptions options;
+    options.set_is_layout_sensitive(true);
+    pipeline.AddPass<AlgebraicSimplifier>(options);
+  }
   return Status::OK();
 }
 
@@ -320,7 +337,7 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   HloPassPipeline pipeline("GPU-ir-emit-prepare");
   /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
    * fixing the ticket. */
-  pipeline.AddInvariantChecker<HloVerifier>(
+  pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/true,
       /*allow_mixed_precision=*/false,
       LayoutAssignment::InstructionCanChangeLayout);
@@ -343,11 +360,14 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
 // TODO(cheshire): Duplication with gpu_conv_algorithm picker, figure out a
 // right way to share this.
 static bool RequireDeterminism() {
-  bool deterministic_ops = false;
-  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                             /*default_val=*/false,
-                                             &deterministic_ops));
-  return deterministic_ops;
+  static bool require_determinism = [] {
+    bool deterministic_ops = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
+                                               /*default_val=*/false,
+                                               &deterministic_ops));
+    return deterministic_ops;
+  }();
+  return require_determinism;
 }
 
 Status GpuCompiler::OptimizeHloPostLayoutAssignment(
@@ -356,7 +376,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   HloPassPipeline pipeline("post-layout_assignment");
   /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
    * fixing the ticket. */
-  pipeline.AddInvariantChecker<HloVerifier>(
+  pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/true,
       /*allow_mixed_precision=*/false,
       LayoutAssignment::InstructionCanChangeLayout);
@@ -369,6 +389,15 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
+  // When transposes appear in a fusion node, we can easily adjust the
+  // multi-dimensional index to create the one needed for the operand. This
+  // is not as easy with bitcasts, because we don't have the information
+  // readily available which dimensions are permuted. In addition to that,
+  // if we have a transpose and a reshape next to each other, they will both
+  // be replaced by a bitcast, and we replace bitcast(bitcast) with one
+  // bitcast. This leads to having to linearize and then delinearize the
+  // index.
+  options.set_replace_transpose_with_bitcast(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
   if (RequireDeterminism() ||
@@ -515,7 +544,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
         << "Invalid LLVM IR before optimizations:\n"
         << err_stream.str()
         << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
-           "Rerun with --xla_dump_to to get the IR. ";
+           "Rerun with --xla_dump_to to get the IR and looks for files with "
+           "name containing: *"
+        << FilenameFor(*module, "", "") << "*";
   }
 
   GpuVersion gpu_version = GetGpuVersion(stream_exec);

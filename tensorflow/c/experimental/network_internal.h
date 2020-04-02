@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/c/experimental/rendezvous.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace tensorflow {

@@ -80,10 +80,15 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"WhileOp-StartBody", kWhileOpStartBody},
       {"ForOp", kForOp},
       {"PartitionedCallOp", kPartitionedCallOp},
+      // XLA related.
+      {"LocalExecutable::ExecuteOnLocalDevices",
+       kLocalExecutableExecuteOnLocalDevice},
+      {"LocalExecutable::Execute", kLocalExecutableExecute},
       // tf.data related.
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       // Virtual events for grouping.
       {"HostTrainingLoopIteration", kHostTrainingLoopIteration},
+      {"AsyncExecutorTraceContext", kAsyncExecutorTraceContext},
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},
@@ -117,6 +122,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"fragmentation", kFragmentation},
       {"peak_bytes_in_use", kPeakBytesInUse},
       {"requested_bytes", kRequestedBytes},
+      {"allocation_bytes", kAllocationBytes},
+      {"addr", kAddress},
       {"shape", kTensorShapes},
       // Device trace arguments.
       {"device_id", kDeviceId},
@@ -134,6 +141,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"tf_op", kTfOp},
       {"hlo_op", kHloOp},
       {"hlo_module", kHloModule},
+      {"equation", kEquation},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},
