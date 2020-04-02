@@ -340,7 +340,7 @@ class Tensor(tensor_like.TensorLike):
   shape of a tensor at execution time.
 
   A number of specialized tensors are available: see `tf.Variable`,
-  `tf.constant`, `tf.placeholder`, `tf.SparseTensor`, and
+  `tf.constant`, `tf.placeholder`, `tf.sparse.SparseTensor`, and
   `tf.RaggedTensor`.
 
   For more on Tensors, see the [guide](https://tensorflow.org/guide/tensor).
