@@ -67,7 +67,7 @@ class QuantizeContext {
   QuantizeContext(FuncOp func, const DeviceTarget &spec);
 
   // Returns all the quant region ops.
-  ArrayRef<quant::QuantizeRegionOp> GetAllOps();
+  std::vector<quant::QuantizeRegionOp> GetAllOps();
 
   // For each quant region op, propagates its quantization parameters according
   // to the kernel specification and also returns the adjcent quant region ops

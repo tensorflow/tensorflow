@@ -57,8 +57,9 @@ QuantizeContext::QuantizeContext(FuncOp func, const DeviceTarget &spec)
   });
 }
 
-llvm::ArrayRef<quant::QuantizeRegionOp> QuantizeContext::GetAllOps() {
-  llvm::SmallVector<quant::QuantizeRegionOp, 64> all_ops;
+std::vector<quant::QuantizeRegionOp> QuantizeContext::GetAllOps() {
+  std::vector<quant::QuantizeRegionOp> all_ops;
+  all_ops.reserve(128);
   func_.walk([&](quant::QuantizeRegionOp op) { all_ops.push_back(op); });
   return all_ops;
 }
