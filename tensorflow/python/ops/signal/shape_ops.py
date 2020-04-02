@@ -168,7 +168,7 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
       length_samples = signal_shape[axis]
     else:
       num_frames = math_ops.maximum(
-          0, 1 + (length_samples - frame_length) // frame_step)
+          0, length_samples // frame_step)
 
     subframe_length, _ = maybe_constant(util_ops.gcd(frame_length, frame_step))
     subframes_per_frame = frame_length // subframe_length
