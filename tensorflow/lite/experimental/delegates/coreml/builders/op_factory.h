@@ -39,6 +39,7 @@ OpBuilder* CreateReshapeOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateResizeBilinearOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateSoftmaxOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateTanhOpBuilder(GraphBuilder* graph_builder);
+OpBuilder* CreateTransposeConvolutionOpBuilder(GraphBuilder* graph_builder);
 
 OpBuilder* CreateActivationLayerBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateThresholdLayerBuilder(GraphBuilder* graph_builder);

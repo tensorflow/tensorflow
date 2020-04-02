@@ -38,40 +38,65 @@ void ConvolutionOpBuilder::SetWeights(TfLiteTensor* weights) {
 
 void ConvolutionOpBuilder::SetBias(TfLiteTensor* bias) { bias_ = bias; }
 
+void ConvolutionOpBuilder::SetOutputShape(TfLiteTensor* output_shape) {
+  output_shape_ = output_shape;
+}
+
 CoreML::Specification::NeuralNetworkLayer* ConvolutionOpBuilder::Build() {
   if (layer_ == nullptr) {
     layer_.reset(new CoreML::Specification::NeuralNetworkLayer);
   }
   layer_->set_name(DebugName());
 
-  int stride_height;
-  int stride_width;
-  int dilation_height;
-  int dilation_width;
+  int stride_height = 0;
+  int stride_width = 0;
+  int dilation_height = 0;
+  int dilation_width = 0;
   TfLitePadding padding;
 
-  if (is_depthwise_) {
-    const auto* depthwise_conv_params =
-        reinterpret_cast<const TfLiteDepthwiseConvParams*>(builtin_data_);
-    stride_height = depthwise_conv_params->stride_height;
-    stride_width = depthwise_conv_params->stride_width;
-    dilation_height = depthwise_conv_params->dilation_height_factor;
-    dilation_width = depthwise_conv_params->dilation_width_factor;
-    padding = depthwise_conv_params->padding;
+  switch (conv_type_) {
+    case ConvolutionType::kConv: {
+      const auto* conv_params =
+          reinterpret_cast<const TfLiteConvParams*>(builtin_data_);
+      stride_height = conv_params->stride_height;
+      stride_width = conv_params->stride_width;
+      dilation_height = conv_params->dilation_height_factor;
+      dilation_width = conv_params->dilation_width_factor;
+      padding = conv_params->padding;
 
-    // n_groups = kernel_channel / depth_multiplier
-    layer_->mutable_convolution()->set_ngroups(
-        weights_->dims->data[3] / depthwise_conv_params->depth_multiplier);
-  } else {
-    const auto* conv_params =
-        reinterpret_cast<const TfLiteConvParams*>(builtin_data_);
-    stride_height = conv_params->stride_height;
-    stride_width = conv_params->stride_width;
-    dilation_height = conv_params->dilation_height_factor;
-    dilation_width = conv_params->dilation_width_factor;
-    padding = conv_params->padding;
+      layer_->mutable_convolution()->set_ngroups(1);
+      break;
+    }
+    case ConvolutionType::kDepthwiseConv: {
+      const auto* depthwise_conv_params =
+          reinterpret_cast<const TfLiteDepthwiseConvParams*>(builtin_data_);
+      stride_height = depthwise_conv_params->stride_height;
+      stride_width = depthwise_conv_params->stride_width;
+      dilation_height = depthwise_conv_params->dilation_height_factor;
+      dilation_width = depthwise_conv_params->dilation_width_factor;
+      padding = depthwise_conv_params->padding;
 
-    layer_->mutable_convolution()->set_ngroups(1);
+      // n_groups = kernel_channel / depth_multiplier
+      layer_->mutable_convolution()->set_ngroups(
+          weights_->dims->data[3] / depthwise_conv_params->depth_multiplier);
+      break;
+    }
+    case ConvolutionType::kTransposeConv: {
+      const auto* transpose_conv_params =
+          reinterpret_cast<const TfLiteTransposeConvParams*>(builtin_data_);
+      const int height_index = 1;
+      const int width_index = 2;
+
+      stride_height = transpose_conv_params->stride_height;
+      stride_width = transpose_conv_params->stride_width;
+      padding = transpose_conv_params->padding;
+
+      layer_->mutable_convolution()->mutable_outputshape()->Add(
+          GetTensorData<int32_t>(output_shape_)[height_index]);
+      layer_->mutable_convolution()->mutable_outputshape()->Add(
+          GetTensorData<int32_t>(output_shape_)[width_index]);
+      break;
+    }
   }
 
   // If not set, it will default to (1,1)
@@ -80,8 +105,10 @@ CoreML::Specification::NeuralNetworkLayer* ConvolutionOpBuilder::Build() {
     layer_->mutable_convolution()->add_stride(stride_width);
   }
 
-  layer_->mutable_convolution()->add_dilationfactor(dilation_height);
-  layer_->mutable_convolution()->add_dilationfactor(dilation_width);
+  if (dilation_height) {
+    layer_->mutable_convolution()->add_dilationfactor(dilation_height);
+    layer_->mutable_convolution()->add_dilationfactor(dilation_width);
+  }
 
   switch (padding) {
     case kTfLitePaddingSame:
@@ -97,13 +124,12 @@ CoreML::Specification::NeuralNetworkLayer* ConvolutionOpBuilder::Build() {
 
   FillCoreMLWeights();
   FillCoreMLBias();
-  // TODO(taeheej): add output shape when deconvolution == true
 
   return layer_.release();
 }
 
 void ConvolutionOpBuilder::FillCoreMLWeights() {
-  if (is_depthwise_) {
+  if (conv_type_ == ConvolutionType::kDepthwiseConv) {
     layer_->mutable_convolution()->set_kernelchannels(1);
     layer_->mutable_convolution()->set_outputchannels(weights_->dims->data[3]);
   } else {
@@ -127,14 +153,18 @@ void ConvolutionOpBuilder::TransposeKernelWeights() {
 
   TransposeParams params;
 
-  if (is_depthwise_) {
+  if (conv_type_ == ConvolutionType::kDepthwiseConv) {
     // DepthwiseConv2D: TFL kernel has shape of (1, H, W, C_out),
     // and CoreML kernel has shape of (C_out, 1, H, W)
     params = {/*perm_count=*/4, /*perm=*/{3, 0, 1, 2}};
   } else {
-    // Conv2D: TFL kernel has shape of (C_out, H, W, C_in),
+    // Conv2D and TransposeConv: TFL kernel has shape of (C_out, H, W, C_in),
     // and CoreML kernel has shape of (C_out, C_in, H, W)
     params = {/*perm_count=*/4, /*perm=*/{0, 3, 1, 2}};
+  }
+
+  if (conv_type_ == ConvolutionType::kTransposeConv) {
+    layer_->mutable_convolution()->set_isdeconvolution(true);
   }
 
   auto* coreml_weights =
@@ -157,14 +187,23 @@ void ConvolutionOpBuilder::FillCoreMLBias() {
 
 TfLiteStatus ConvolutionOpBuilder::PopulateSubgraph(TfLiteContext* context) {
   TfLiteFusedActivation activation;
-  if (is_depthwise_) {
-    const auto* depthwise_conv_params =
-        reinterpret_cast<const TfLiteDepthwiseConvParams*>(builtin_data_);
-    activation = depthwise_conv_params->activation;
-  } else {
-    const auto* conv_params =
-        reinterpret_cast<const TfLiteConvParams*>(builtin_data_);
-    activation = conv_params->activation;
+  switch (conv_type_) {
+    case ConvolutionType::kConv: {
+      const auto* conv_params =
+          reinterpret_cast<const TfLiteConvParams*>(builtin_data_);
+      activation = conv_params->activation;
+      break;
+    }
+    case ConvolutionType::kDepthwiseConv: {
+      const auto* depthwise_conv_params =
+          reinterpret_cast<const TfLiteDepthwiseConvParams*>(builtin_data_);
+      activation = depthwise_conv_params->activation;
+      break;
+    }
+    case ConvolutionType::kTransposeConv: {
+      activation = kTfLiteActNone;
+      break;
+    }
   }
 
   if (activation == kTfLiteActNone) {
@@ -183,15 +222,29 @@ TfLiteStatus ConvolutionOpBuilder::PopulateSubgraph(TfLiteContext* context) {
 
 TfLiteStatus ConvolutionOpBuilder::RegisterInputs(const TfLiteIntArray* inputs,
                                                   TfLiteContext* context) {
-  if (inputs->size != 2 && inputs->size != 3) {
-    TF_LITE_KERNEL_LOG(context, "Wrong # of inputs!.");
-    return kTfLiteError;
+  if (conv_type_ == ConvolutionType::kTransposeConv) {
+    if (inputs->size != 3) {
+      TF_LITE_KERNEL_LOG(context,
+                         "Transpose Conv should have 3 inputs, %d given.",
+                         inputs->size);
+      return kTfLiteError;
+    }
+    AddInput(inputs->data[2]);
+    SetOutputShape(&context->tensors[inputs->data[0]]);
+  } else {
+    if (inputs->size != 2 && inputs->size != 3) {
+      TF_LITE_KERNEL_LOG(context,
+                         "Convolution and depthwise convolution should have 2 "
+                         "or 3 inputs, %d given.",
+                         inputs->size);
+      return kTfLiteError;
+    }
+    AddInput(inputs->data[0]);
+    if (inputs->size > 2) {
+      SetBias(&context->tensors[inputs->data[2]]);
+    }
   }
-  AddInput(inputs->data[0]);
   SetWeights(&context->tensors[inputs->data[1]]);
-  if (inputs->size > 2) {
-    SetBias(&context->tensors[inputs->data[2]]);
-  }
   return kTfLiteOk;
 }
 
@@ -211,70 +264,79 @@ TfLiteStatus ConvolutionOpBuilder::RegisterOutputs(
 }
 
 OpBuilder* CreateConvolutionOpBuilder(GraphBuilder* graph_builder) {
-  return new ConvolutionOpBuilder(graph_builder, /*is_depthwise=*/false);
+  return new ConvolutionOpBuilder(graph_builder, ConvolutionType::kConv);
 }
 
 OpBuilder* CreateDepthwiseConvolutionOpBuilder(GraphBuilder* graph_builder) {
-  return new ConvolutionOpBuilder(graph_builder, /*is_depthwise=*/true);
+  return new ConvolutionOpBuilder(graph_builder,
+                                  ConvolutionType::kDepthwiseConv);
+}
+
+OpBuilder* CreateTransposeConvolutionOpBuilder(GraphBuilder* graph_builder) {
+  return new ConvolutionOpBuilder(graph_builder,
+                                  ConvolutionType::kTransposeConv);
 }
 
 bool IsConvolutionOpSupported(const TfLiteRegistration* registration,
                               const TfLiteNode* node, TfLiteContext* context) {
   if (node->builtin_data == nullptr) return false;
-  const int kWeightTensor = 1;
-  const int kBiasTensor = 2;
 
   TfLiteFusedActivation activation;
-  int dilation_width_factor;
-  int dilation_height_factor;
 
   if (registration->builtin_code == kTfLiteBuiltinConv2d) {
     const auto* conv_params =
         reinterpret_cast<const TfLiteConvParams*>(node->builtin_data);
     activation = conv_params->activation;
-    dilation_width_factor = conv_params->dilation_width_factor;
-    dilation_height_factor = conv_params->dilation_height_factor;
   } else if (registration->builtin_code == kTfLiteBuiltinDepthwiseConv2d) {
     const auto* depthwise_conv_params =
         reinterpret_cast<const TfLiteDepthwiseConvParams*>(node->builtin_data);
     activation = depthwise_conv_params->activation;
-    dilation_width_factor = depthwise_conv_params->dilation_width_factor;
-    dilation_height_factor = depthwise_conv_params->dilation_height_factor;
+  } else if (registration->builtin_code == kTfLiteBuiltinTransposeConv) {
+    activation = kTfLiteActNone;
   } else {
-    TF_LITE_KERNEL_LOG(context,
-                       "Invalid op: op must be Conv2D or DepthwiseConv2D.");
-
+    TF_LITE_KERNEL_LOG(
+        context,
+        "Invalid op: op must be Conv2D, DepthwiseConv2D or TransposeConv.");
     return false;
   }
 
   if (activation == kTfLiteActSignBit) {
-    TF_LITE_KERNEL_LOG(context, "Unsupported activation.");
     return false;
   }
 
+  const int kOutputShapeTensor = 0;  // Only used for TransposeConv
+  const int kWeightTensor = 1;
+  const int kBiasTensor = 2;  // Only used for non-TransposeConv
   const TfLiteTensor* weights = GetInput(context, node, kWeightTensor);
   const int max_kernel_size = 16384;
   if (!IsConstantTensor(weights)) {
-    TF_LITE_KERNEL_LOG(context, "Weight tensor should be constant.");
     return false;
   }
   if (weights->dims->data[1] > max_kernel_size ||
       weights->dims->data[2] > max_kernel_size) {
-    TF_LITE_KERNEL_LOG(
-        context, "Core ML supports filters with width and height less than %d.",
-        max_kernel_size);
     return false;
   }
-  if (node->inputs->size >= kBiasTensor &&
-      !IsConstantTensor(GetInput(context, node, kBiasTensor))) {
-    TF_LITE_KERNEL_LOG(context, "Bias tensor should be constant.");
-    return false;
+  if (registration->builtin_code == kTfLiteBuiltinTransposeConv) {
+    if (!IsConstantTensor(GetInput(context, node, kOutputShapeTensor))) {
+      return false;
+    }
+  } else {
+    if (node->inputs->size >= kBiasTensor &&
+        !IsConstantTensor(GetInput(context, node, kBiasTensor))) {
+      return false;
+    }
   }
 
   return true;
 }
 
 bool IsDepthwiseConvolutionOpSupported(const TfLiteRegistration* registration,
+                                       const TfLiteNode* node,
+                                       TfLiteContext* context) {
+  return IsConvolutionOpSupported(registration, node, context);
+}
+
+bool IsTransposeConvolutionOpSupported(const TfLiteRegistration* registration,
                                        const TfLiteNode* node,
                                        TfLiteContext* context) {
   return IsConvolutionOpSupported(registration, node, context);
