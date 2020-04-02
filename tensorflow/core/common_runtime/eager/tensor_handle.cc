@@ -299,7 +299,13 @@ Status TensorHandle::TensorFromDevice(const Device* d,
 Status TensorHandle::TensorValue(const Device* d, tensorflow::TensorValue* t) {
   DVLOG(3) << "TensorValue on TensorHandle: " << this << " device: " << d;
 
-  if (d == absl::get<Device*>(device_)) {
+  if (VariantDeviceIsCustom(device_)) {
+    return errors::Internal(
+        "TensorHandle::TensorValue not supported for custom devices yet. "
+        "Handle device: ",
+        VariantDeviceDebugString(device_),
+        ", requested device: ", d != nullptr ? d->name() : "(nil)");
+  } else if (d == absl::get<Device*>(device_)) {
     if (IsRemote()) {
       return errors::Internal("Invalid TensorValue call on remote handle: ",
                               this);
