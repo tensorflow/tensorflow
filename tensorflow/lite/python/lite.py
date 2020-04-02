@@ -37,6 +37,7 @@ from tensorflow.lite.experimental.tensorboard.ops_util import get_potentially_su
 from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
+from tensorflow.lite.python.convert import mlir_quantize as _mlir_quantize
 from tensorflow.lite.python.convert import OpsSet
 from tensorflow.lite.python.convert import toco_convert  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import toco_convert_graph_def as _toco_convert_graph_def
@@ -310,12 +311,19 @@ class TFLiteConverterBase(object):
 
   def _calibrate_quantize_model(self, result, inference_input_type,
                                 inference_output_type, allow_float):
+    """Calibrate and quantize the model."""
     if not isinstance(self.representative_dataset, RepresentativeDataset):
       self.representative_dataset = RepresentativeDataset(
           self.representative_dataset)
     calibrate_quantize = _calibrator.Calibrator(result)
+    if self._experimental_calibrate_only or self._experimental_new_quantizer:
+      calibrated = calibrate_quantize.calibrate(
+          self.representative_dataset.input_gen)
+
     if self._experimental_calibrate_only:
-      return calibrate_quantize.calibrate(self.representative_dataset.input_gen)
+      return calibrated
+    elif self._experimental_new_quantizer:
+      return _mlir_quantize(calibrated)
     else:
       return calibrate_quantize.calibrate_and_quantize(
           self.representative_dataset.input_gen, inference_input_type,
