@@ -1632,7 +1632,7 @@ name=None))
     >>> list(d.as_numpy_iterator())
     [b'HELLO', b'WORLD']
 
-    Note the fact that the use of `tf.numpy_function` and `tf.py_function`
+    Note that the use of `tf.numpy_function` and `tf.py_function`
     in general precludes the possibility of executing user-defined
     transformations in parallel (because of Python GIL).
 
