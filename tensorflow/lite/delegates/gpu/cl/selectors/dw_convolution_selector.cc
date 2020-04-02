@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv_3x3.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/depthwise_conv.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/depthwise_conv_3x3.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 
 namespace tflite {

@@ -47,7 +47,6 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Affine",

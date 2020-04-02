@@ -115,8 +115,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   return raw;
 }
 
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 #if defined(__ARM_FEATURE_DSP)
   OpData data;
@@ -251,8 +249,8 @@ TfLiteStatus EvalQuantizedPerChannel(
 
   if (op_params.padding_values.width == 0 &&
       op_params.padding_values.height == 0 && (input_depth % 4 == 0) &&
-      (output_depth % 2 == 0) && op_params.stride_width == 1 &&
-      op_params.stride_height == 1 && filter_width == 1 && filter_height == 1) {
+      op_params.stride_width == 1 && op_params.stride_height == 1 &&
+      filter_width == 1 && filter_height == 1) {
     if (arm_convolve_1x1_s8_fast(
             GetTensorData<int8_t>(input), input_width, input_height,
             input_depth, batches, GetTensorData<int8_t>(filter), output_depth,
@@ -263,6 +261,25 @@ TfLiteStatus EvalQuantizedPerChannel(
             op_params.output_offset, op_params.input_offset,
             output_activation_min, output_activation_max, output_width,
             output_height, buf) != ARM_MATH_SUCCESS) {
+      return kTfLiteError;
+    }
+
+  } else if (output_height == 1 && input_height == 1 && filter_height == 1 &&
+             (output_width % 4 == 0) && batches == 1) {
+    const int32_t buf_size = arm_convolve_1_x_n_s8_get_buffer_size(
+        input_depth, filter_width, filter_height);
+    if (get_cmsis_scratch_buffer(context, &buf, buf_size) != kTfLiteOk) {
+      return kTfLiteError;
+    }
+    if (arm_convolve_1_x_n_s8(
+            GetTensorData<int8_t>(input), input_width, input_depth, batches,
+            GetTensorData<int8_t>(filter), output_depth, filter_width,
+            op_params.padding_values.width, op_params.stride_width,
+            GetTensorData<int32_t>(bias), GetTensorData<int8_t>(output),
+            data->per_channel_output_shift, data->per_channel_output_multiplier,
+            op_params.output_offset, op_params.input_offset,
+            output_activation_min, output_activation_max, output_width,
+            buf) != ARM_MATH_SUCCESS) {
       return kTfLiteError;
     }
   } else {
@@ -389,8 +406,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace conv
 
 TfLiteRegistration* Register_CONV_2D() {
-  static TfLiteRegistration r = {conv::Init, conv::Free, conv::Prepare,
-                                 conv::Eval};
+  static TfLiteRegistration r = {/*init=*/conv::Init,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/conv::Prepare,
+                                 /*invoke=*/conv::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

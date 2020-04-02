@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import os
 
 from tensorflow.lite.tools import flatbuffer_utils
@@ -76,10 +77,11 @@ class StripStringsTest(test_util.TensorFlowTestCase):
     # 1. SETUP
     # Define the initial model
     initial_model = test_utils.build_mock_model_python_object()
+    final_model = copy.deepcopy(initial_model)
 
     # 2. INVOKE
     # Invoke the strip_strings function
-    final_model = flatbuffer_utils.strip_strings(initial_model)
+    flatbuffer_utils.strip_strings(final_model)
 
     # 3. VALIDATE
     # Validate that the initial and final models are the same except strings
@@ -120,10 +122,11 @@ class RandomizeWeightsTest(test_util.TensorFlowTestCase):
     # 1. SETUP
     # Define the initial model
     initial_model = test_utils.build_mock_model_python_object()
+    final_model = copy.deepcopy(initial_model)
 
     # 2. INVOKE
     # Invoke the randomize_weights function
-    final_model = flatbuffer_utils.randomize_weights(initial_model)
+    flatbuffer_utils.randomize_weights(final_model)
 
     # 3. VALIDATE
     # Validate that the initial and final models are the same, except that

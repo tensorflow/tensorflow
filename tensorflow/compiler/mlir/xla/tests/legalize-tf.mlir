@@ -2838,7 +2838,9 @@ func @range(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<5xf32> {
 // CHECK-SAME: [[START:%.*]]: tensor<f32>, [[STOP:%.*]]: tensor<f32>
 func @linspace_static(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<4xf32> {
   // CHECK-DAG: [[NUM:%.*]] = xla_hlo.constant dense<4>
-  // CHECK-DAG: [[STEP_DENOMINATOR:%.*]] = "xla_hlo.convert"([[NUM]])
+  // CHECK-DAG: [[NUM_F32:%.*]] = "xla_hlo.convert"([[NUM]])
+  // CHECK-DAG: [[ONE:%.*]] = xla_hlo.constant dense<1.000000e+00>
+  // CHECK-DAG: [[STEP_DENOMINATOR:%.*]] = xla_hlo.subtract [[NUM_F32]], [[ONE]]
   // CHECK-DAG: [[STEP_NUMERATOR:%.*]] = xla_hlo.subtract [[STOP]], [[START]]
   // CHECK-DAG: [[STEP:%.*]] = xla_hlo.divide [[STEP_NUMERATOR]], [[STEP_DENOMINATOR]]
   // CHECK-DAG: [[IOTA:%.*]] = "xla_hlo.iota"() {iota_dimension = 0 : i64}
@@ -2855,6 +2857,15 @@ func @linspace_dynamic(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i32
   // CHECK: "tf.LinSpace"
   %0 = "tf.LinSpace"(%arg0, %arg1, %arg2) : (tensor<f32>, tensor<f32>, tensor<i32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @linspace_invalid_num
+func @linspace_invalid_num(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<?xf32> {
+  // CHECK: xla_hlo.constant {value = dense<[]> : tensor<0xi32>} : tensor<i32>
+  // CHECK: "tf.LinSpace"
+  %0 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "", dtype = i32, value = dense<[]> : tensor<0xi32>} : () -> tensor<i32>
+  %1 = "tf.LinSpace"(%arg0, %arg1, %0) : (tensor<f32>, tensor<f32>, tensor<i32>) -> tensor<?xf32>
+  return %1 : tensor<?xf32>
 }
 
 //===----------------------------------------------------------------------===//

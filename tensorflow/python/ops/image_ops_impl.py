@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -4449,6 +4450,83 @@ def non_max_suppression_padded(boxes,
                                sorted_input=False,
                                canonicalized_coordinates=False,
                                tile_size=512):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  Performs algorithmically equivalent operation to tf.image.non_max_suppression,
+  with the addition of an optional parameter which zero-pads the output to
+  be of size `max_output_size`.
+  The output of this operation is a tuple containing the set of integers
+  indexing into the input collection of bounding boxes representing the selected
+  boxes and the number of valid indices in the index set.  The bounding box
+  coordinates corresponding to the selected indices can then be obtained using
+  the `tf.slice` and `tf.gather` operations.  For example:
+    ```python
+    selected_indices_padded, num_valid = tf.image.non_max_suppression_padded(
+        boxes, scores, max_output_size, iou_threshold,
+        score_threshold, pad_to_max_output_size=True)
+    selected_indices = tf.slice(
+        selected_indices_padded, tf.constant([0]), num_valid)
+    selected_boxes = tf.gather(boxes, selected_indices)
+
+  Args:
+    boxes: a tensor of rank 2 or higher with a shape of [..., num_boxes, 4].
+      Dimensions except the last two are batch dimensions.
+    scores: a tensor of rank 1 or higher with a shape of [..., num_boxes].
+    max_output_size: a scalar integer `Tensor` representing the maximum number
+      of boxes to be selected by non max suppression.
+    iou_threshold: a float representing the threshold for deciding whether boxes
+      overlap too much with respect to IoU (intersection over union).
+    score_threshold: a float representing the threshold for box scores. Boxes
+      with a score that is not larger than this threshold will be suppressed.
+    pad_to_max_output_size: whether to pad the output idx to max_output_size.
+      Must be set to True when the input is a batch of images.
+    name: name of operation.
+    sorted_input: a boolean indicating whether the input boxes and scores
+      are sorted in descending order by the score.
+    canonicalized_coordinates: if box coordinates are given as
+    `[y_min, x_min, y_max, x_max]`, settign to True eliminate redundant
+     computation to canonicalize box coordinates.
+    tile_size: an integer representing the number of boxes in a tile, i.e.,
+      the maximum number of boxes per image that can be used to suppress other
+      boxes in parallel; larger tile_size means larger parallelism and
+      potentially more redundant work.
+  Returns:
+    idx: a tensor with a shape of [..., num_boxes] representing the
+      indices selected by non-max suppression. The leadign dimensions
+      are the batch dimensions of the input boxes. All numbers are are within
+      [0, num_boxes). For each image (i.e., idx[i]), only the first num_valid[i]
+      indices (i.e., idx[i][:num_valid[i]]) are valid.
+    num_valid: a tensor of rank 0 or higher with a shape of [...]
+      representing the number of valid indices in idx. Its dimensions are the
+      batch dimensions of the input boxes.
+   Raises:
+    ValueError: When set pad_to_max_output_size to False for batched input.
+  """
+  # if no new arguments are used and no later than 2020/4/20, use the old
+  # version to give us time to fix TFLite conversion
+  if (not sorted_input) and \
+      (not canonicalized_coordinates) and \
+      tile_size == 512 and not compat.forward_compatible(2020, 4, 20):
+    return non_max_suppression_padded_v1(
+        boxes, scores, max_output_size, iou_threshold, score_threshold,
+        pad_to_max_output_size, name)
+  else:
+    return non_max_suppression_padded_v2(
+        boxes, scores, max_output_size, iou_threshold, score_threshold,
+        pad_to_max_output_size, name, sorted_input, canonicalized_coordinates,
+        tile_size)
+
+
+def non_max_suppression_padded_v2(boxes,
+                                  scores,
+                                  max_output_size,
+                                  iou_threshold=0.5,
+                                  score_threshold=float('-inf'),
+                                  pad_to_max_output_size=False,
+                                  name=None,
+                                  sorted_input=False,
+                                  canonicalized_coordinates=False,
+                                  tile_size=512):
   """Non-maximum suppression.
 
   Prunes away boxes that have high intersection-over-union (IOU) overlap
@@ -4466,9 +4544,9 @@ def non_max_suppression_padded(boxes,
   system; thus translating or reflections of the coordinate system result in the
   same boxes being selected by the algorithm.
 
-  Similar to tf.image.non_max_suppression, batched_non_max_suppression
+  Similar to tf.image.non_max_suppression, non_max_suppression_padded
   implements hard NMS but can operate on a batch of images and improves
-  performance by titling the bounding boxes. Batched_non_max_suppression should
+  performance by titling the bounding boxes. Non_max_suppression_padded should
   be preferred over tf.image_non_max_suppression when running on devices with
   abundant parallelsim for higher computation speed. For soft NMS, refer to
   tf.image.non_max_suppression_with_scores.
@@ -4524,7 +4602,7 @@ def non_max_suppression_padded(boxes,
     iou_threshold: a float representing the threshold for deciding whether boxes
       overlap too much with respect to IoU (intersection over union).
     score_threshold: a float representing the threshold for box scores. Boxes
-      with a score that is lower than this threshold will be suppressed.
+      with a score that is not larger than this threshold will be suppressed.
     pad_to_max_output_size: whether to pad the output idx to max_output_size.
       Must be set to True when the input is a batch of images.
     name: name of operation.
@@ -4580,19 +4658,24 @@ def non_max_suppression_padded(boxes,
           [batch_size, -1, 4])
     return sorted_scores, sorted_boxes, sorted_scores_indices
 
-  with ops.name_scope(name, 'batched_non_max_suppression'):
-    if boxes.get_shape().ndims > 2 and not pad_to_max_output_size:
-      raise ValueError("'pad_to_max_output_size' (value {}) must be "
-                       "True for batched input".format(pad_to_max_output_size))
+  with ops.name_scope(name, 'non_max_suppression_padded'):
+    if not pad_to_max_output_size:
+      # pad_to_max_output_size may be set to False only when the shape of boxes`
+      # is [num_boxes, 4], i.e., a single image. We make best effort to detect
+      # violations at compile time. If `boxes` does not have a static rank,
+      # the check allows computation to proceed.
+      if boxes.get_shape().rank is not None and boxes.get_shape().rank > 2:
+        raise ValueError("'pad_to_max_output_size' (value {}) must be True for "
+                         "batched input".format(pad_to_max_output_size))
 
-    batch_dims = boxes.get_shape().as_list()[:-2]
+    batch_dims = array_ops.shape(boxes)[:-2]
     num_boxes = array_ops.shape(boxes)[-2]
     boxes = array_ops.reshape(boxes, [-1, num_boxes, 4])
     scores = array_ops.reshape(scores, [-1, num_boxes])
     batch_size = array_ops.shape(boxes)[0]
     if score_threshold != float('-inf'):
       with ops.name_scope('filter_by_score'):
-        score_mask = math_ops.cast(scores >= score_threshold, scores.dtype)
+        score_mask = math_ops.cast(scores > score_threshold, scores.dtype)
         scores *= score_mask
         box_mask = array_ops.expand_dims(
             math_ops.cast(score_mask, boxes.dtype), 2)
@@ -4602,10 +4685,12 @@ def non_max_suppression_padded(boxes,
       with ops.name_scope('canonicalize_coordinates'):
         y_1, x_1, y_2, x_2 = array_ops.split(
             value=boxes, num_or_size_splits=4, axis=2)
-        y_1_is_min = math_ops.less(y_1[0, 0, 0], y_2[0, 0, 0])
+        y_1_is_min = math_ops.reduce_all(
+            math_ops.less_equal(y_1[0, 0, 0], y_2[0, 0, 0]))
         y_min, y_max = control_flow_ops.cond(
             y_1_is_min, lambda: (y_1, y_2), lambda: (y_2, y_1))
-        x_1_is_min = math_ops.less(x_1[0, 0, 0], x_2[0, 0, 0])
+        x_1_is_min = math_ops.reduce_all(
+            math_ops.less_equal(x_1[0, 0, 0], x_2[0, 0, 0]))
         x_min, x_max = control_flow_ops.cond(
             x_1_is_min, lambda: (x_1, x_2), lambda: (x_2, x_1))
         boxes = array_ops.concat([y_min, x_min, y_max, x_max], axis=2)
@@ -4615,18 +4700,20 @@ def non_max_suppression_padded(boxes,
 
     pad = math_ops.cast(
         math_ops.ceil(
-            math_ops.cast(num_boxes, dtypes.float32) / tile_size),
+            math_ops.cast(math_ops.maximum(num_boxes, max_output_size),
+                          dtypes.float32) / tile_size
+            ),
         dtypes.int32) * tile_size - num_boxes
     boxes = array_ops.pad(
         math_ops.cast(boxes, dtypes.float32), [[0, 0], [0, pad], [0, 0]])
     scores = array_ops.pad(
         math_ops.cast(scores, dtypes.float32), [[0, 0], [0, pad]])
     num_boxes_after_padding = num_boxes + pad
-
+    num_iterations = num_boxes_after_padding // tile_size
     def _loop_cond(unused_boxes, unused_threshold, output_size, idx):
       return math_ops.logical_and(
           math_ops.reduce_min(output_size) < max_output_size,
-          idx < num_boxes_after_padding // tile_size)
+          idx < num_iterations)
 
     def suppression_loop_body(boxes, iou_threshold, output_size, idx):
       return _suppression_loop_body(
@@ -4646,6 +4733,7 @@ def non_max_suppression_padded(boxes,
                 math_ops.range(num_boxes_after_padding, 0, -1), 0),
             max_output_size)[0], dtypes.int32)
     idx = math_ops.minimum(idx, num_boxes - 1)
+
     if not sorted_input:
       index_offsets = math_ops.range(batch_size) * num_boxes
       gather_idx = array_ops.reshape(
@@ -4654,13 +4742,75 @@ def non_max_suppression_padded(boxes,
           array_ops.gather(array_ops.reshape(sorted_indices, [-1]),
                            gather_idx),
           [batch_size, -1])
+    invalid_index = array_ops.fill([batch_size, max_output_size], 0)
+    idx_index = array_ops.expand_dims(math_ops.range(max_output_size), 0)
+    num_valid_expanded = array_ops.expand_dims(num_valid, 1)
+    idx = array_ops.where(idx_index < num_valid_expanded,
+                          idx, invalid_index)
 
     num_valid = array_ops.reshape(num_valid, batch_dims)
     if not pad_to_max_output_size:
       idx = idx[0, :num_valid]
-    batch_dims.append(-1)
+      return idx, num_valid
+    last_dim = constant_op.constant(-1, shape=[1])
+    batch_dims = array_ops.concat([batch_dims, last_dim], 0)
     idx = array_ops.reshape(idx, batch_dims)
     return idx, num_valid
+
+
+def non_max_suppression_padded_v1(boxes,
+                                  scores,
+                                  max_output_size,
+                                  iou_threshold=0.5,
+                                  score_threshold=float('-inf'),
+                                  pad_to_max_output_size=False,
+                                  name=None):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  Performs algorithmically equivalent operation to tf.image.non_max_suppression,
+  with the addition of an optional parameter which zero-pads the output to
+  be of size `max_output_size`.
+  The output of this operation is a tuple containing the set of integers
+  indexing into the input collection of bounding boxes representing the selected
+  boxes and the number of valid indices in the index set.  The bounding box
+  coordinates corresponding to the selected indices can then be obtained using
+  the `tf.slice` and `tf.gather` operations.  For example:
+    ```python
+    selected_indices_padded, num_valid = tf.image.non_max_suppression_padded(
+        boxes, scores, max_output_size, iou_threshold,
+        score_threshold, pad_to_max_output_size=True)
+    selected_indices = tf.slice(
+        selected_indices_padded, tf.constant([0]), num_valid)
+    selected_boxes = tf.gather(boxes, selected_indices)
+    ```
+
+  Args:
+    boxes: A 2-D float `Tensor` of shape `[num_boxes, 4]`.
+    scores: A 1-D float `Tensor` of shape `[num_boxes]` representing a single
+      score corresponding to each box (each row of boxes).
+    max_output_size: A scalar integer `Tensor` representing the maximum number
+      of boxes to be selected by non-max suppression.
+    iou_threshold: A float representing the threshold for deciding whether boxes
+      overlap too much with respect to IOU.
+    score_threshold: A float representing the threshold for deciding when to
+      remove boxes based on score.
+    pad_to_max_output_size: bool.  If True, size of `selected_indices` output is
+      padded to `max_output_size`.
+    name: A name for the operation (optional).
+
+  Returns:
+    selected_indices: A 1-D integer `Tensor` of shape `[M]` representing the
+      selected indices from the boxes tensor, where `M <= max_output_size`.
+    valid_outputs: A scalar integer `Tensor` denoting how many elements in
+    `selected_indices` are valid.  Valid elements occur first, then padding.
+  """
+  with ops.name_scope(name, 'non_max_suppression_padded'):
+    iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
+    score_threshold = ops.convert_to_tensor(
+        score_threshold, name='score_threshold')
+    return gen_image_ops.non_max_suppression_v4(boxes, scores, max_output_size,
+                                                iou_threshold, score_threshold,
+                                                pad_to_max_output_size)
 
 
 @tf_export('image.draw_bounding_boxes', v1=[])

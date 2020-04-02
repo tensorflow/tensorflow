@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
+#include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -185,10 +186,10 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote) {
   // TODO(gjn): Add support for waiting on async local mirrors
   if (!async) {
     auto remote_arg = tensorflow::TensorHandleFromInterface(h1_task2->handle);
-    auto op = tensorflow::down_cast<tensorflow::OperationInterface*>(
-        matmul->operation.get());
+    tensorflow::EagerOperation* op =
+        tensorflow::OperationFromInterface(matmul->operation);
     // The input handles should never change since they have been mirrored.
-    ASSERT_EQ(op->GetInput(1), remote_arg);
+    ASSERT_EQ(op->Inputs()[1], remote_arg);
   }
 
   auto* retval_task0 = TFE_TensorHandleCopyToDevice(

@@ -71,8 +71,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace floor
 
 TfLiteRegistration* Register_FLOOR() {
-  static TfLiteRegistration r = {};
-  r.invoke = floor::Eval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/floor::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_FRAMEWORK_TENSOR_INTERFACE_H_
-#define TENSORFLOW_CORE_FRAMEWORK_TENSOR_INTERFACE_H_
+#ifndef TENSORFLOW_C_TENSOR_INTERFACE_H_
+#define TENSORFLOW_C_TENSOR_INTERFACE_H_
 
-#include "tensorflow/c/tf_datatype.h"
-#include "tensorflow/c/tf_status.h"
-#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/status.h"
+
+namespace tensorflow {
 
 // Abstract interface to a Tensor.
 //
@@ -28,10 +29,11 @@ limitations under the License.
 // is needed a static_cast can be applied.
 class AbstractTensorInterface {
  public:
-  virtual ~AbstractTensorInterface() {}
+  // Release any underlying resources, including the interface object.
+  virtual void Release() = 0;
 
   // Returns tensor dtype.
-  virtual TF_DataType Type() const = 0;
+  virtual DataType Type() const = 0;
   // Returns number of dimensions.
   virtual int NumDims() const = 0;
   // Returns size of specified dimension
@@ -47,37 +49,11 @@ class AbstractTensorInterface {
   virtual bool IsAligned() const = 0;
   // Returns if their is sole ownership of this Tensor and thus it can be moved.
   virtual bool CanMove() const = 0;
-};
 
-namespace tensorflow {
-
-class TensorInterface : public AbstractTensorInterface {
- public:
-  TensorInterface() {}
-  explicit TensorInterface(tensorflow::Tensor t) : tensor_(std::move(t)) {}
-  ~TensorInterface() override {}
-
-  TF_DataType Type() const override;
-  int NumDims() const override;
-  int64_t Dim(int dim_index) const override;
-  int64_t NumElements() const override;
-  size_t ByteSize() const override;
-  void* Data() const override;
-  bool IsAligned() const override;
-  bool CanMove() const override;
-
-  Status ToTensor(tensorflow::Tensor* dst) const;
-  Status BitcastFrom(const TensorInterface& from, TF_DataType type,
-                     const int64_t* new_dims, int num_new_dims);
-
-  // TODO(gjn): This is not a very generic interface, but is needed for specific
-  // use cases.
-  tensorflow::Tensor Tensor() { return tensor_; }
-
- private:
-  tensorflow::Tensor tensor_;
+ protected:
+  virtual ~AbstractTensorInterface() {}
 };
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_FRAMEWORK_TENSOR_INTERFACE_H_
+#endif  // TENSORFLOW_C_TENSOR_INTERFACE_H_

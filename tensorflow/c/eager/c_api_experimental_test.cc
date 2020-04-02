@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/cc/profiler/profiler.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 

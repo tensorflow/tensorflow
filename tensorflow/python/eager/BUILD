@@ -231,6 +231,7 @@ py_library(
         "//tensorflow/core/profiler:internal",
     ],
     deps = [
+        "//tensorflow/python:util",
         "//tensorflow/python/profiler/internal:_pywrap_profiler",
     ],
 )
@@ -861,7 +862,10 @@ cuda_py_test(
         ":def_function",
         ":remote",
         ":test",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:functional_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:tensor_spec",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],

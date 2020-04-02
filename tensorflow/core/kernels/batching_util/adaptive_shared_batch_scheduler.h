@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -92,6 +93,10 @@ class AdaptiveSharedBatchScheduler
     // for num_batch_threads allows for large in_flight_batches_limit_, which
     // will harm latency for some time once load increases again.
     int64 num_batch_threads = port::MaxParallelism();
+    // You can pass a ThreadPoolInterface directly rather than the above two
+    // parameters.  If given, the above two parameers are ignored.  Ownership of
+    // the threadpool is not transferred.
+    thread::ThreadPoolInterface* thread_pool = nullptr;
     // Lower bound for in_flight_batches_limit_. As discussed above, can be used
     // to minimize the damage caused by the random walk under low load.
     int64 min_in_flight_batches_limit = 1;
@@ -356,8 +361,12 @@ AdaptiveSharedBatchScheduler<TaskType>::AdaptiveSharedBatchScheduler(
       rand_double_(0.0, 1.0) {
   std::random_device device;
   rand_engine_.seed(device());
-  batch_thread_pool_.reset(new thread::ThreadPool(
-      GetEnv(), options.thread_pool_name, options.num_batch_threads));
+  if (options.thread_pool == nullptr) {
+    batch_thread_pool_.reset(new thread::ThreadPool(
+        GetEnv(), options.thread_pool_name, options.num_batch_threads));
+  } else {
+    batch_thread_pool_.reset(new thread::ThreadPool(options.thread_pool));
+  }
 }
 
 template <typename TaskType>

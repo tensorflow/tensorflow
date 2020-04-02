@@ -1,6 +1,7 @@
 # Description:
 #   Contains experimental kernels for datasets and iterators.
 
+load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -121,6 +122,25 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "data_service_ops",
+    srcs = ["data_service_ops.cc"],
+    hdrs = ["data_service_ops.h"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/data/service:credentials_factory",
+        "//tensorflow/core/data/service:grpc_util",
+        "//tensorflow/core/data/service:master_cc_grpc_proto",
+        "//tensorflow/core/data/service:master_proto_cc",
+        "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:iterator_ops",
+        tf_grpc_cc_dependency(),
+    ],
+)
+
+tf_kernel_library(
     name = "dense_to_sparse_batch_dataset_op",
     srcs = ["dense_to_sparse_batch_dataset_op.cc"],
     deps = [
@@ -201,12 +221,32 @@ tf_kernel_library(
 tf_kernel_library(
     name = "lmdb_dataset_op",
     srcs = ["lmdb_dataset_op.cc"],
+    hdrs = ["lmdb_dataset_op.h"],
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
         "@lmdb",
+    ],
+)
+
+tf_cc_test(
+    name = "lmdb_dataset_op_test",
+    size = "small",
+    srcs = ["lmdb_dataset_op_test.cc"],
+    data = ["//tensorflow/core:lmdb_testdata"],
+    deps = [
+        ":lmdb_dataset_op",
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:dataset_test_base",
+        "//tensorflow/core/platform:env",
+        "//third_party/eigen3",
     ],
 )
 

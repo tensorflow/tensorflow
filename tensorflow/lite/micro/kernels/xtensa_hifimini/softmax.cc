@@ -169,12 +169,6 @@ void SoftmaxQuantized(const TfLiteTensor* input, TfLiteTensor* output,
   }
 }
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = static_cast<TfLiteSoftmaxParams*>(node->builtin_data);
 
@@ -216,9 +210,14 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration* Register_SOFTMAX() {
-  static TfLiteRegistration r = {activations::Init, activations::Free,
-                                 activations::SoftmaxPrepare,
-                                 activations::SoftmaxEval};
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/activations::SoftmaxPrepare,
+                                 /*invoke=*/activations::SoftmaxEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

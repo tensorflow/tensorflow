@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
+#include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -1198,4 +1199,5 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
 #endif  // !IS_MOBILE_PLATFORM
   }
 }
+
 }  // namespace tensorflow

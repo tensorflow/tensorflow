@@ -230,7 +230,8 @@ FunctionLibraryRuntime* ProcessFunctionLibraryRuntime::GetFLR(
   }
   const auto& iter = flr_map_->find(device);
   if (iter == flr_map_->end()) {
-    LOG(ERROR) << "Could not find device: " << device_name;
+    VLOG(1) << "Could not find device: " << device_name
+            << "in the local process.";
     return nullptr;
   }
   return iter->second.get();

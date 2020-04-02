@@ -19,18 +19,20 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/strcat.h"
 
 using tensorflow::string;
 
 void TFE_OpReset(TFE_Op* op_to_reset, const char* op_or_function_name,
                  const char* raw_device_name, TF_Status* status) {
   if (op_to_reset) {
+    op_to_reset->operation->Clear();
     status->status =
         op_to_reset->operation->Reset(op_or_function_name, raw_device_name);
   } else {
@@ -525,7 +527,11 @@ void TFE_DeleteCancellationManager(
 void TFE_OpSetCancellationManager(TFE_Op* op,
                                   TFE_CancellationManager* cancellation_manager,
                                   TF_Status* status) {
-  status->status = op->operation->SetCancellationManager(cancellation_manager);
+  tensorflow::EagerOperation* operation =
+      tensorflow::OperationFromInterface(op->operation);
+  operation->SetCancellationManager(
+      &cancellation_manager->cancellation_manager);
+  status->status = tensorflow::Status::OK();
 }
 
 TFE_Executor* TFE_NewExecutor(bool is_async) {

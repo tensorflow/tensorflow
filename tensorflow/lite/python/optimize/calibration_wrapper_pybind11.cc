@@ -54,10 +54,14 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
              return tensorflow::pyo_or_throw(self.QuantizeModel(
                  input_py_type, output_py_type, allow_float));
            })
-      .def("QuantizeModel", [](CalibrationWrapper& self, int input_py_type,
-                               int output_py_type, bool allow_float,
-                               const char* operator_output_name) {
-        return tensorflow::pyo_or_throw(self.QuantizeModel(
-            input_py_type, output_py_type, allow_float, operator_output_name));
+      .def("QuantizeModel",
+           [](CalibrationWrapper& self, int input_py_type, int output_py_type,
+              bool allow_float, const char* operator_output_name) {
+             return tensorflow::pyo_or_throw(
+                 self.QuantizeModel(input_py_type, output_py_type, allow_float,
+                                    operator_output_name));
+           })
+      .def("Calibrate", [](CalibrationWrapper& self) {
+        return tensorflow::pyo_or_throw(self.Calibrate());
       });
 }

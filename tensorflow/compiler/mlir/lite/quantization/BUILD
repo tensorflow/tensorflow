@@ -123,3 +123,19 @@ cc_library(
         "@llvm-project//mlir:Support",
     ],
 )
+
+cc_library(
+    name = "quantization_context",
+    srcs = ["quantization_context.cc"],
+    hdrs = ["quantization_context.h"],
+    deps = [
+        ":device_target",
+        ":quantization_lib",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+)

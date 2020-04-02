@@ -79,27 +79,12 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
             pass_config.quant_specs.serialized_quant_stats));
   }
 
-  // Note:
-  // We need to fuse composite ops before LowerStaticTensorList pass.
-  // The tensorflow list is not supported right now by that pass.
-  // Enable fusing composite ops that can be lowered to built-in TFLite ops.
-  if (pass_config.emit_builtin_tflite_ops) {
-    pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
-  }
-
-  // This pass marks non-exported functions as symbol visibility 'private'
-  // those deemed read-only as immutable.
-  pass_manager->addPass(
-      mlir::tf_saved_model::
-          CreateMarkFunctionVisibilityUsingSavedModelLinkagePass());
-
-  pass_manager->addPass(mlir::createInlinerPass());
-  pass_manager->addPass(mlir::createSymbolDCEPass());
-
-  if (pass_config.lower_tensor_list_ops) {
-    // TODO(haoliang): Add this pass by default.
-    pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
-  }
+  // The conversion pipeline has to follow the following orders:
+  // 1) Try to convert ophint nodes if present first like ophint lstm.
+  // 2) Saved model related optimization like decompose resource ops
+  // 3) Convert composite functions like lstm/rnns, along with proper function
+  // inlining & dce.
+  // 4) Lower static tensor list pass.
 
   // The ophint extractions happen before lots of other passes:
   // The assumption of ophint-extraction is each ophinted region is a black-box
@@ -121,6 +106,28 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   // during which resources dont get frozen in the python layer.
   pass_manager->addNestedPass<mlir::FuncOp>(
       mlir::TFDevice::CreateDecomposeResourceOpsPass());
+
+  // Note:
+  // We need to fuse composite ops before LowerStaticTensorList pass.
+  // The tensorflow list is not supported right now by that pass.
+  // Enable fusing composite ops that can be lowered to built-in TFLite ops.
+  if (pass_config.emit_builtin_tflite_ops) {
+    pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
+  }
+
+  // This pass marks non-exported functions as symbol visibility 'private'
+  // those deemed read-only as immutable.
+  pass_manager->addPass(
+      mlir::tf_saved_model::
+          CreateMarkFunctionVisibilityUsingSavedModelLinkagePass());
+
+  pass_manager->addPass(mlir::createInlinerPass());
+  pass_manager->addPass(mlir::createSymbolDCEPass());
+
+  if (pass_config.lower_tensor_list_ops) {
+    // TODO(haoliang): Add this pass by default.
+    pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
+  }
 
   // This pass does resource analysis of saved model global tensors and marks
   // those deemed read-only as immutable.

@@ -111,8 +111,17 @@ using stream_executor::port::StatusOr;
 
 namespace {
 
-const char* disable_call_shape_inference_attribute_name =
-    "_disable_call_shape_inference";
+bool IsDisableCallShapeInferenceAttribute(const AttrValue& attr_value,
+                                          llvm::StringRef attr_name) {
+  return attr_name.compare("_disable_call_shape_inference") == 0 &&
+         attr_value.value_case() == AttrValue::kB;
+}
+
+bool IsOutputShapesAttribute(const AttrValue& attr_value,
+                             llvm::StringRef attr_name) {
+  return attr_name.compare("_output_shapes") == 0 &&
+         attr_value.value_case() == AttrValue::kList;
+}
 
 // This class is used to generate new MLIR function name strings that are both
 // unique in the TF function library `flib_` and unique among the name strings
@@ -1452,9 +1461,7 @@ mlir::Operation* ImporterBase::createOperation(
     for (const auto& name_and_value : node.attrs()) {
       const auto& attr_name = name_and_value.first;
       const AttrValue& attr_value = name_and_value.second;
-      if (strcmp(attr_name.c_str(),
-                 disable_call_shape_inference_attribute_name) == 0 &&
-          attr_value.value_case() == AttrValue::kB) {
+      if (IsDisableCallShapeInferenceAttribute(attr_value, attr_name)) {
         disable_call_shape_inference = attr_value.b();
       }
     }
@@ -1607,12 +1614,15 @@ Status ImporterBase::ConvertNode(const Node& node) {
     // Skip adding derived attributes to the generated op.
     if (derived_op && derived_op->isDerivedAttribute(attr_name)) continue;
     const AttrValue& attr_value = name_and_value.second;
-    // LegacyCall can only represent _diable_call_shape_inference attribute.
-    // If a call has other attributes, can't convert it to LegacyCall.
+
+    // Remove _output_shapes attribute that will be added by the exporter.
+    if (IsOutputShapesAttribute(attr_value, attr_name)) continue;
+
+    // We represent the _diable_call_shape_inference attribute and remove
+    // the _output_shapes attribute for LegacyCall. If a call has other
+    // attributes, we can't convert it to LegacyCall.
     if (convert_to_legacy_call &&
-        (strcmp(attr_name.c_str(),
-                disable_call_shape_inference_attribute_name) ||
-         attr_value.value_case() != AttrValue::kB)) {
+        !IsDisableCallShapeInferenceAttribute(attr_value, attr_name)) {
       convert_to_legacy_call = false;
     }
     if (attr_value.value_case() == AttrValue::kFunc) {

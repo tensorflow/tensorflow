@@ -636,8 +636,8 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
 }
 
 Status PyLocalBuffer::CopyToRemoteDevice(
-    absl::string_view serialized_descriptor, Device* dst_device) {
-  return client_->CopyToRemoteDevice(this, serialized_descriptor, dst_device);
+    absl::string_view serialized_descriptor) {
+  return client_->CopyToRemoteDevice(this, serialized_descriptor);
 }
 
 Status PyLocalBuffer::BlockHostUntilReady() {
@@ -728,7 +728,7 @@ PyLocalExecutable::ExecuteHelper(
 
   std::unique_ptr<PyLocalBuffer> tuple_buffer;
   std::vector<PyLocalBuffer*> tupled_arguments;
-  if (options.tuple_arguments || tuple_arguments_) {
+  if (tuple_arguments_) {
     TF_ASSIGN_OR_RETURN(tuple_buffer, PyLocalBuffer::MakeTuple(
                                           argument_handles, client_, device));
     tupled_arguments = {tuple_buffer.get()};

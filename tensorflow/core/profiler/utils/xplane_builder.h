@@ -46,11 +46,21 @@ class XStatsBuilder {
   void AddStatValue(const XStatMetadata& metadata, double value) {
     AddStat(metadata)->set_double_value(value);
   }
-  void AddStatValue(const XStatMetadata& metadata, absl::string_view value) {
-    AddStat(metadata)->set_str_value(string(value));
+  void AddStatValue(const XStatMetadata& metadata, absl::string_view value,
+                    bool is_bytes = false) {
+    if (is_bytes) {
+      AddStat(metadata)->set_bytes_value(string(value));
+    } else {
+      AddStat(metadata)->set_str_value(string(value));
+    }
   }
-  void AddStatValue(const XStatMetadata& metadata, string&& value) {
-    AddStat(metadata)->set_str_value(std::move(value));
+  void AddStatValue(const XStatMetadata& metadata, string&& value,
+                    bool is_bytes = false) {
+    if (is_bytes) {
+      AddStat(metadata)->set_bytes_value(std::move(value));
+    } else {
+      AddStat(metadata)->set_str_value(std::move(value));
+    }
   }
 
   void AddStat(const XStatMetadata& metadata, const XStat& stat) {
