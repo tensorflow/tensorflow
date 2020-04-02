@@ -553,31 +553,42 @@ class Function(object):
         self._python_function, self.input_signature)
 
   def experimental_get_tracing_count(self):
-    """
-    Return the tracing count in the recent calls.
+    """Return how many times the function has been traced.
 
-    ```python
-    def mul(x, y):
-      return x * y
-    mul_fn = tf.function(mul)
-    mul_fn(2, 3)
-    mul_fn.experimental_get_tracing_count()   # return 1
-    mul_fn(2, 3)
-    mul_fn.experimental_get_tracing_count()   # return 1
-    mul_fn(2, 4)
-    mul_fn.experimental_get_tracing_count()   # return 2
+    Currently, a retracing will happen in these conditions (notices that
+    these conditions may change in future TF versions):
 
-    def dot(x, y):
-      return tf.matmul(x, y)
-    dot_fn = tf.function(dot)
-    dot_fn(tf.ones((2, 3)), tf.ones((3, 3)))
-    mul_fn.experimental_get_tracing_count()   # return 1
-    dot_fn(tf.zeros((2, 3)), tf.zeros((3, 3)))
-    mul_fn.experimental_get_tracing_count()   # return 1
-    dot_fn(tf.ones((3, 4)), tf.ones((4, 5)))
-    mul_fn.experimental_get_tracing_count()   # return 2
-    ```
+    If the inputs to the function are python objects, the function will
+    be retraced if the values of inputs are changed.
 
+    If the inputs are tensors, the function will be retraced if the `TensorSpec`s (dtype, shape)
+    of inputs are changed.
+
+    For example:
+
+    >>> def mul(x, y): return x * y
+    >>> mul_fn = tf.function(mul)
+    >>> _ = mul_fn(2, 3)
+    >>> mul_fn.experimental_get_tracing_count()
+    1
+    >>> _ = mul_fn(2, 3)
+    >>> mul_fn.experimental_get_tracing_count()
+    1
+    >>> _ = mul_fn(2, 4)
+    >>> mul_fn.experimental_get_tracing_count()
+    2
+    
+    >>> def dot(x, y): return tf.matmul(x, y)
+    >>> dot_fn = tf.function(dot)
+    >>> _ = dot_fn(tf.ones((2, 3)), tf.ones((3, 3)))
+    >>> mul_fn.experimental_get_tracing_count()
+    1
+    >>> _ = dot_fn(tf.zeros((2, 3)), tf.zeros((3, 3)))
+    >>> mul_fn.experimental_get_tracing_count()
+    1
+    >>> _ = dot_fn(tf.ones((3, 4)), tf.ones((4, 5)))
+    >>> mul_fn.experimental_get_tracing_count()
+    2
     """
     result = self._stateless_fn.tracing_count if self._stateless_fn else 0
     result += self._stateful_fn.tracing_count if self._stateful_fn else 0
