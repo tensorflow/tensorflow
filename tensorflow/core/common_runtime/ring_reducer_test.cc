@@ -94,7 +94,7 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
   }
 
   mutex mu_;
-  int fail_after_ GUARDED_BY(mu_);
+  int fail_after_ TF_GUARDED_BY(mu_);
 };
 
 std::unique_ptr<OpKernel> GetKernel(const NodeDef& node,
@@ -138,7 +138,7 @@ class RingReducerTest : public ::testing::Test {
  protected:
   RingReducerTest() : device_type_(DEVICE_CPU) {}
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   void InitGPUDevices() {
     auto device_factory = DeviceFactory::GetFactory("GPU");
     CHECK(device_factory);
@@ -157,7 +157,7 @@ class RingReducerTest : public ::testing::Test {
 
   void Init(int num_workers, int num_devices, DataType dtype,
             const DeviceType& device_type, int num_subdivs, int fail_after) {
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     InitGPUDevices();
 #endif
     device_type_ = device_type;
@@ -556,7 +556,7 @@ class RingReducerTest : public ::testing::Test {
   std::unique_ptr<tensorflow::DeviceMgr> dev_mgr_;
   std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
-  int32 reduce_counter_ GUARDED_BY(mu_) = 0;
+  int32 reduce_counter_ TF_GUARDED_BY(mu_) = 0;
 };
 
 CollectiveParams SetUpCollectiveParams(const int num_devs_per_task,
@@ -683,7 +683,7 @@ TEST_F(RingReducerTest, AutomaticSubdivUpperBound) {
     }                                                                         \
   }
 
-#ifndef GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 // Success tests
 DEF_TEST(FLOAT, CPU, 1, 2, 1, 1, 0)
 DEF_TEST(FLOAT, CPU, 1, 2, 1, 2, 0)
@@ -710,7 +710,7 @@ DEF_TEST(FLOAT, CPU, 2, 8, 1, 9408, 7)
 DEF_TEST(FLOAT, CPU, 2, 8, 2, 9408, 11)
 #endif
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // GPU tests.  So long as the device names are all in a single tasks we
 // bypass inter-worker routing code and can fake multiple GPUs with a single
 // GPU, from the perspective of the RingReducer logic.  So these tests

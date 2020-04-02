@@ -88,7 +88,7 @@ class TFConfigClusterResolver(ClusterResolver):
 
   @property
   def task_id(self):
-    if self._task_type is None:
+    if self._task_id is None:
       task_info = _get_value_in_tfconfig(_TASK_KEY, {})
       return int(task_info['index']) if 'index' in task_info else None
     else:

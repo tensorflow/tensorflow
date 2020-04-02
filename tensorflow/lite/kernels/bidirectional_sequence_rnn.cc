@@ -607,8 +607,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteTensor* fw_hidden_state =
       GetVariableInput(context, node, kFwHiddenStateTensor);
+  TF_LITE_ENSURE(context, fw_hidden_state != nullptr);
   TfLiteTensor* bw_hidden_state =
       GetVariableInput(context, node, kBwHiddenStateTensor);
+  TF_LITE_ENSURE(context, bw_hidden_state != nullptr);
 
   TfLiteTensor* fw_output = GetOutput(context, node, kFwOutputTensor);
   TfLiteTensor* bw_output = params->merge_outputs

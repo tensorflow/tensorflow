@@ -143,17 +143,19 @@ void RunCudnnBatchNormForwardInferenceImpl(
       params->mean,                                                 //
       params->variance,                                             //
       /*side_input=*/null_device_ptr, params->common.operand_desc,  //
-      params->common.scale_offset_desc, params->common.epsilon,     //
-      se::dnn::ActivationMode::kNone,                               //
-      &output_buf,                                                  //
-      /*batch_mean=*/nullptr,                                       //
-      /*batch_var=*/nullptr,                                        //
-      /*saved_mean=*/nullptr,                                       //
-      /*saved_inv_var=*/nullptr,                                    //
-      /*is_training=*/false,                                        //
-      /*var_to_inv_var=*/nullptr,                                   //
-      /*inv_var_to_var=*/nullptr,                                   //
-      /*reserve_space_allocator=*/nullptr,                          //
+      params->common.scale_offset_desc,                             //
+      static_cast<double>(params->common.epsilon),                  //
+      // TODO(b/137108598): Extend method to allow use of non-trivial
+      // exponential averaging.
+      /*exponential_average_factor=*/1.0,
+      se::dnn::ActivationMode::kNone,       //
+      &output_buf,                          //
+      /*batch_mean=*/nullptr,               //
+      /*batch_var=*/nullptr,                //
+      /*saved_mean=*/nullptr,               //
+      /*saved_inv_var=*/nullptr,            //
+      /*is_training=*/false,                //
+      /*reserve_space_allocator=*/nullptr,  //
       /*workspace_allocator=*/nullptr);
 }
 
@@ -164,14 +166,17 @@ void RunCudnnBatchNormForwardTrainingImpl(
   auto output_data = se::DeviceMemory<ElemType>(params->output_data);
   stream->ThenBatchNormalizationForward(
       se::DeviceMemory<ElemType>(params->common.operand),
-      params->common.scale,                          //
-      params->offset,                                //
-      /*estimated_mean=*/null_device_ptr,            //
-      /*estimated_variance=*/null_device_ptr,        //
-      /*side_input=*/null_device_ptr,                //
-      params->common.operand_desc,                   //
-      params->common.scale_offset_desc,              //
-      params->common.epsilon,                        //
+      params->common.scale,                    //
+      params->offset,                          //
+      /*estimated_mean=*/null_device_ptr,      //
+      /*estimated_variance=*/null_device_ptr,  //
+      /*side_input=*/null_device_ptr,          //
+      params->common.operand_desc,             //
+      params->common.scale_offset_desc,        //
+      params->common.epsilon,                  //
+      // TODO(b/137108598): Extend method to allow use of non-trivial
+      // exponential averaging.
+      /*exponential_average_factor=*/1.0,
       se::dnn::ActivationMode::kNone,                //
       &output_data,                                  //
       /*batch_mean=*/&null_device_ptr,               //
@@ -179,8 +184,6 @@ void RunCudnnBatchNormForwardTrainingImpl(
       /*saved_mean=*/&params->output_mean,           //
       /*saved_inv_var=*/&params->output_inv_stddev,  //
       /*is_training=*/true,                          //
-      /*var_to_inv_var=*/nullptr,                    //
-      /*inv_var_to_var=*/nullptr,                    //
       /*reserve_space_allocator=*/nullptr,           //
       /*workspace_allocator=*/nullptr);
 }

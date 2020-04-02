@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 
 namespace stream_executor {
 
@@ -76,7 +77,7 @@ class RedzoneAllocator : public ScratchAllocator {
 
     std::string RedzoneFailureMsg() const;
 
-    string buffer_name = {};
+    std::string buffer_name = {};
     void* user_buffer_address = nullptr;
     int64 offset = 0;
     uint64 expected_value = 0;

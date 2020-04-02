@@ -37,7 +37,7 @@ struct ProfileEvent {
   using EventType = tflite::Profiler::EventType;
 
   // Label of the event. This usually describes the event.
-  const char* tag;
+  std::string tag;
   // Timestamp in microseconds when the event began.
   uint64_t begin_timestamp_us;
   // Timestamp in microseconds when the event ended.
@@ -76,7 +76,8 @@ class ProfileBuffer {
     uint64_t timestamp = time::NowMicros();
     int index = current_index_ % event_buffer_.size();
     if (current_index_ != 0 && index == 0) {
-      fprintf(stderr, "Warning: ProfileBuffer wrapping.\n");
+      fprintf(stderr, "Warning: Dropping ProfileBuffer event.\n");
+      return current_index_;
     }
     event_buffer_[index].tag = tag;
     event_buffer_[index].event_type = event_type;
@@ -115,6 +116,26 @@ class ProfileBuffer {
         Profiler::EventType::OPERATOR_INVOKE_EVENT) {
       event_buffer_[event_index].end_mem_usage = memory::GetMemoryUsage();
     }
+  }
+
+  void AddEvent(const char* tag, ProfileEvent::EventType event_type,
+                uint32_t event_metadata, uint64_t start, uint64_t end,
+                uint32_t event_subgraph_index) {
+    if (!enabled_) {
+      return;
+    }
+    const int index = current_index_ % event_buffer_.size();
+    if (current_index_ != 0 && index == 0) {
+      fprintf(stderr, "Warning: Dropping ProfileBuffer event.\n");
+      return;
+    }
+    event_buffer_[index].tag = tag;
+    event_buffer_[index].event_type = event_type;
+    event_buffer_[index].event_subgraph_index = event_subgraph_index;
+    event_buffer_[index].event_metadata = event_metadata;
+    event_buffer_[index].begin_timestamp_us = start;
+    event_buffer_[index].end_timestamp_us = end;
+    current_index_++;
   }
 
   // Returns the size of the buffer.

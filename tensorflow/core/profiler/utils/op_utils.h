@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -48,30 +48,40 @@ class HostOpMetricsDbBuilder : public OpMetricsDbBuilder {
                                uint64 start_timestamp_ps_diff);
 };
 
-// Type of a TensorFlow Op activity, which is either beginning or ending an Op.
-enum TfActivityType { kTfOpBegin, kTfOpEnd };
+class DeviceOpMetricsDbBuilder : public OpMetricsDbBuilder {
+ public:
+  explicit DeviceOpMetricsDbBuilder(OpMetricsDb* db,
+                                    double peak_tera_flops_per_second,
+                                    double peak_hbm_bw_giga_bytes_per_second)
+      : OpMetricsDbBuilder(db),
+        peak_tera_flops_per_second_(peak_tera_flops_per_second),
+        peak_hbm_bw_giga_bytes_per_second_(peak_hbm_bw_giga_bytes_per_second) {}
 
-// Instant activity representing the begin or end of a host-side TF Op.
-struct TfActivity {
-  // The timestamp in picoseconds when this activity happened.
-  uint64 timestamp_ps;
-  // The ID of this Op.
-  uint32 tf_op_id;
-  // Type of this activity.
-  TfActivityType activity_type;
-  // Full TF op name and type of this activity (backed by XEvent::name).
-  TfOp tf_op;
+  // A function that will be called when the end of an OP is
+  // observed on a trace, where:
+  //   program_id = the ID of the program that contains this OP.
+  //   name = the OP name.
+  //   category = the OP category.
+  //   provenance = the provenance of this OP (e.g. original TF OP).
+  //   occurrences = the number of occurrences of this OP.
+  //   time_ps = the total execution time of the OP in picoseconds, including
+  //             the execution time of its children.
+  //   children_time_ps = the execution time of the children of this OP in
+  //                      picoseconds.
+  //   flops = the number of floating-point operations computed.
+  //   bytes_accessed = the sum of bytes read and bytes written by this OP.
+  void EnterOp(uint64 program_id, absl::string_view name,
+               absl::string_view category, absl::string_view provenance,
+               uint64 occurrences, uint64 time_ps, uint64 children_time_ps,
+               int64 flops, int64 bytes_accessed);
+
+ protected:
+  // Peak performance of a TensorCore or a GPU in TFLOP/s.
+  double peak_tera_flops_per_second_;
+  // Peak memory bandwidth of a TensorCore or a GPU in GiBs/s.
+  double peak_hbm_bw_giga_bytes_per_second_;
 };
 
-// TF Op metrics stored as element in OpStack.
-struct TfOpInfo {
-  explicit TfOpInfo(uint64 ts) : start_timestamp_ps(ts) {}
-
-  // Start timestamp in picoseconds.
-  uint64 start_timestamp_ps;
-  // Children duration in picoseconds.
-  uint64 children_duration_ps = 0;
-};
 }  // namespace profiler
 }  // namespace tensorflow
 

@@ -20,15 +20,19 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_DATAFLOW_ANALYSIS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_DATAFLOW_ANALYSIS_H_
 
+#include <iterator>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_phi_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -60,7 +64,8 @@ class HloDataflowAnalysis {
   //     SSA form is minimal in that a new phi value is defined only if the
   //     merge point is reachable by multiple different values. The SSA form is
   //     also in loop-closed form in that no values defined inside of a loop
-  //     (while body) is used outside of the loop.
+  //     (while body) is used outside of the loop. Example use of this ssa_form
+  //     mode is to reason about live range interference of buffers.
   //
   //     If ssa_form is false, then merge points do not define new
   //     values. Rather, the HloValueSet for the merge point contains the union
@@ -138,8 +143,8 @@ class HloDataflowAnalysis {
   // Returns true if 'user' cannot possibly use the buffer at 'index' in
   // 'operand'. Returns false otherwise.
   //
-  // 'operand' does not have to be an operand of 'user'. This can be the case
-  // with indirect uses.
+  // 'operand' does not have to be an operand of 'user'. This can be the
+  // case with indirect uses.
   bool DoesNotUseOperandBuffer(const HloInstruction* operand,
                                const ShapeIndex& index,
                                const HloInstruction* user) const;
@@ -160,9 +165,22 @@ class HloDataflowAnalysis {
                       bool bitcast_defines_value = false,
                       const CanShareBuffer& can_share_buffer = nullptr);
 
+  // 1. During value propagation (Propagate function), always create phi
+  // values once it see multiple inputs merging at the same point. It then
+  // records those phi values as well as their inputs in a phi graph.
+  //
+  // 2. Post value propagation, Dataflow analysis can then do certain
+  // optimization(OptimizePhiValues) on the phi graph to prune uncessary phi
+  // nodes.
+  //
+  // Note that this applies in SSA form, and Both of the functions are
+  // guaranteed to exit.
+  //
+  void OptimizePhiValues();
+
   // Returns a new HloValue defined at the given instruction and shape index.
   HloValue* NewHloValue(HloInstruction* instruction, const ShapeIndex& index,
-                        bool is_phi = false);
+                        bool is_phi);
 
   // Marks the HloValue with the given ID for deletion.
   void MarkValueForDeletion(HloValue::Id value_id);
@@ -189,6 +207,7 @@ class HloDataflowAnalysis {
   bool UpdateDomainValueSet(HloInstruction* domain);
   bool UpdateGetTupleElementValueSet(HloInstruction* gte);
   bool UpdateParameterValueSet(HloInstruction* parameter);
+  bool UpdateCopyStartValueSet(HloInstruction* copy_start);
   bool UpdateCopyDoneValueSet(HloInstruction* copy_done);
   bool UpdateRecvDoneValueSet(HloInstruction* recv_done);
   bool UpdateTupleSelectValueSet(HloInstruction* select);
@@ -246,6 +265,9 @@ class HloDataflowAnalysis {
 
   // The Id to use for the next HloValue.
   HloValue::Id next_value_id_ = 0;
+
+  // An explicit graph holding phi values and edges.
+  PhiGraph phi_graph_;
 
   // Backend specific function that decides whether an instruction can share
   // a buffer with its operand.

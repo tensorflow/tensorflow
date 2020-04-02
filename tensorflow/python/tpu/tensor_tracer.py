@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -62,6 +63,7 @@ _TRACE_MODE_PART_TENSOR_SIZE = 3
 _REASON_OUTSIDE_OP_RANGE = 'not-traced-outside-op-range'
 _REASON_UNSAFE_OP = 'not-traced-unsafe-op'
 _REASON_WHILELOOP_OP = 'not-traced-special-whileloop-op'
+_REASON_CONTROLFLOW_OP = 'not-traced-control-flow-op'
 _REASON_UNSAFE_SCALAR = 'not-traced-unsafe-scalar'
 _REASON_SKIP_SCALAR = 'not-traced-scalar'
 _REASON_LESS_INTERESTING_OP = 'not-traced-less-interesting-op'
@@ -99,6 +101,117 @@ _TT_EVENT_FILE_SUFFIX = '.tensor_tracer'
 _TT_SUMMARY_MAX_QUEUE = 100
 
 
+def set_parameters(tensor_tracer_params=None):
+  """Enables tensor tracer and sets its parameters.
+
+  Example usage:
+    tensor_tracer_parameters = {'trace_dir': '/usr/tmp/trace_dir',
+                                'trace_mode': 'norm',
+                                'report_file': '/usr/tmp/trace_dir/report.all'}
+    tensor_tracer.set_parameters(tensor_tracer_parameters)
+
+  This sets up the parameters for tensor tracer. A call to tensor tracer as
+  below is necessary to enable debugging on CPUs and GPUs. On TPUs below can be
+  skipped as this call is hooked into tpu.rewrite.
+    tt = tensor_tracer.TensorTracer()
+    loss = tt.trace_cpu(tf.get_default_graph(), tensor_fetches=loss)
+
+  Args:
+    tensor_tracer_params: Tensor tracer parameter dictionary. Below gives
+    examples of these parameters: See tensor_tracer_report.py for all
+      parameters.
+        - enable: If set, tensor tracer will be enabled. Calling
+          enable_tensor_tracer automatically adds this parameters.
+        - trace_mode: The trace_mode to be used by tensor tracer. These include:
+          - summary: Collects multiple statistics for traced tensors, and writes
+            them a summary file that can be visualized using tensorboard. This
+            mode currently only works for TPUEstimator. It can be also be used
+            for other models, but outfeed must be handled by the user.
+          - norm: Collects norm of each traced tensor and writes them into a
+            text file pointed by 'trace_dir' flag. (Default mode).
+          - nan-inf: Checks the existince of NaNs and Infs in the tensor, and
+            writes a boolean value to a text file pointed by 'trace_dir' flag.
+            Note that 'norm' mode can also capture this information with more
+            numerical info.
+          - max-abs: Collects the absolute max for each traced tensors and
+            writes it into a text file pointed by 'trace_dir' flag.
+          - full-tensor: Writes the full tensor content of the traced tensors
+            into a text file pointed by 'trace_dir' flag.
+          - part-tensor: Writes a part of the tensor content of the traced
+            tensors into a text file pointed by 'trace_dir' flag.
+          - full_tensor_summary: Writes the full tensors as binary event files.
+            The outputs can be read using: trace =
+              tensor_tracer.read_tensor_tracer_event_file(event_file_path)
+          - trace-back-if-nan: This mode will write the full tensor content only
+            when the tensor has a NaN or Inf in it. It is possible to also print
+            the inputs coming to this op using 'trace_stack_size' parameter.
+            E.g., if trace_stack_size=2, then the tensor with NaN/Inf, its
+            inputs, and its inputs' inputs will also be printed.
+        - report_file: Path to the metadata file that is written during graph
+          construction. If not set, metadata will be printed to stdout during
+          graph construction.
+        - trace_dir: Path where the execution traces will be written during the
+          graph execution. If not set, trace will be printed to stderr.
+        - trace_level: Tensor tracer aims to trace everything it can. This
+          introduces some overhead on graph execution and graph compilation
+          times. Using trace_level parameter, it is possible to trace operation
+          based on their priorities. For example, - trace_level=7 is the highest
+          trace_level, in which every op is traced. - trace_level=6 will skip
+          constant operations such as tf.constant. - trace_level=5 will skip
+          less important ops such as tf.identities. - The default trace_level=3,
+          that will skip concat ops, or random number generators. - To reduce
+          the graph compile time overhead, trace_level can be set to 0, that
+          will skip additions, and substractions, and multiplications as well.
+        - excluded_opnames: If set, any matching op name will not be traced.
+          excluded_opnames can be set as a regular expression. E.g,
+          excluded_opnames=.* will exclude everything.
+        - excluded_optypes: If set, any matching op type will not be traced.
+          excluded_optypes can be set as a regular expression. E.g,
+          excluded_optypes=.* will exclude everything. excluded_optypes=MatMul
+          will exclude all MatMul ops from tracing.
+        - included_opnames: If set, any matching op name will be forced to be
+          traced. included_opnames can be set as a regular expression. E.g,
+          '--included_opnames=some_op --excluded_opname=*.' will only trace
+          some_op.
+        - included_optypes: If set, any matching op type will be forced to be
+          traced. included_optypes can be set as a regular expression. E.g,
+          '--included_optypes=some_op_type --excluded_optypes=*.' will trace
+          only the ops with type 'some_op_type'
+        Advanced Flags:
+        - compact_trace: If not set, statistics per tensor is written as soon as
+          they are executed. If set, then statistics for all traced tensors will
+          be stored in a cache and will be written only once per step. This flag
+          is ignored for full-tensor and part-tensor trace modes. If the
+          trace_dir is a remote directory, compact_trace will be forced.
+        - trace_scalar: Scalar values are not traced by default. If this flag is
+          set, scalar values will also be traced.
+        - included_cores: Accepts a list string. Tracing will only be dumped for
+          these cores. E.g, setting it to '[0,2,4,6]' will result in a trace
+          only for those cores.
+        - op_range: In the form of '%d:%d' that limits the tracing to the ops
+          within this limit. --op_range='5:10' will trace only the ops that have
+            topological order between 5-10.
+        - trace_before_included_ops: If set to a number-k, it will also trace
+          distance-k inputs of each traced tensor. E.g., k=1, then in addition
+          to each traced_tensor, their input tensors will also be traced.
+        - trace_after_included_ops: Same as trace_before_included_ops, where it
+          will also trace distance-k outputs of each traced tensor.
+        - submode: 'brief' or 'detailed'. If the trace mode is not compact,
+          brief mode will print only the id of each traced tensor to save some
+          space. 'detailed' mode prints the full tensor name.
+        - trace_stack_size: Used only for trace_mode=trace-back-if-nan mode. It
+          determines how many ops to print back from a nan op. E.g, op4 -> op3
+          -> op2 -> op1 -> op0, if op0 has a NaN and trace_stack_size is 1, the
+          result of op1 will also be printed. trace_stack_size is 2, the result
+          of op1 and op2 will be printed.
+  """
+  flags = '--%s=1' % tensor_tracer_flags.FLAG_NAME_ENABLE
+  if tensor_tracer_params:
+    for key, value in tensor_tracer_params.items():
+      flags += ' --%s=%s' % (key, value)
+  os.environ[tensor_tracer_flags.FLAGS_ENV_VAR] = flags
+
+
 def op_priority(op_type):
   """Returns the priority of the op.
 
@@ -110,7 +223,7 @@ def op_priority(op_type):
   """
   if op_type in ('Const', 'Shape', 'BroadcastGradientArgs', 'Range',
                  'VariableShape', 'Fill', 'OneHot', 'ShapeN'):
-    # Lowest priority ops, e.g., constant ops accross different steps,
+    # Lowest priority ops, e.g., constant ops across different steps,
     # They will be traced only if trace_level>=7
     return 7
 
@@ -145,6 +258,15 @@ def op_priority(op_type):
 def read_tensor_tracer_event_file(event_file):
   """Reads the event file written by tensor tracer.
 
+  This can be used to read the full tensors written into binary event files by
+  by TensorTracer with trace_mode=full_tensor_summary.
+
+  Example usage:
+    result_dict = tensor_tracer.read_tensor_tracer_event_file(event_file_path)
+    for step, tensor_dict in result_dict.items():
+      for tensor_name, full_tensor_content in tensor_dict.items():
+        logging.info(tensor_name, full_tensor_content)
+
   Args:
     event_file: Path to the event file that contains only tensor tracer events.
   Returns:
@@ -177,31 +299,40 @@ def read_tensor_tracer_event_file(event_file):
   return event_dict
 
 
-def tensor_tracepoint(tensor, checkpoint_name):
-  """Adds a checkpoint with the given checkpoint name for the given tensor.
+def trace_tensor(tensor, tracepoint_name=None):
+  """Programmatic interface to trace a tensor with Tensor Tracer.
 
-  The tensor will be added to the list of tensors that will be traced by the
-  tensor tracer.
+  Tensor Tracer, by default, traces all tensors in the execution. This function
+  can be used to limit traced tensors. If this function is called for a subset
+  of the tensors, only those will be traced.
 
+  For example, Tensor Traacer will only trace c below.
+    c = tf.MatMul(a, b)
+    tensor_tracer.trace_tensor(c)
+    d = tf.add(c, 1)
   Args:
      tensor: the tensor object for which the tracing is requested.
-     checkpoint_name: a string name for the checkpoint. This name has to be a
-     unique name if used within model comparison. The tensors that have the same
-     checkpoint identifier is compared in model comparison.
+     tracepoint_name: an optional tensor tracepoint name string. A tracepoint
+       name is an Tensor Tracer internal name for the tensor. It is useful when
+       comparing equivalent traces from different models that have different
+       tensor namings. Equivalent tensors (with different names) can be mapped
+       to each other by assigning a common tracepoint_name.
+
   Returns:
     The provided tensor.
   """
-
+  if tracepoint_name is None:
+    tracepoint_name = tensor.name
   tensor.graph.get_collection(_TENSOR_TRACER_COLLECTION)
   tensor.graph.add_to_collection(_TENSOR_TRACER_COLLECTION,
-                                 (tensor, checkpoint_name))
+                                 (tensor, tracepoint_name))
   return tensor
 
 
 def keras_layer_tracepoint(layer, checkpoint_name):
   """An interface for adding the tensor outputs of a keras layer.
 
-  Encapsulates tensor_tracepoint.
+  Encapsulates trace_tensor.
 
   Args:
      layer: A keras layer.
@@ -215,12 +346,12 @@ def keras_layer_tracepoint(layer, checkpoint_name):
   try:
     outputs = layer.output
     if tensor_util.is_tensor(outputs):
-      tensor_tracepoint(outputs, '%s' % (checkpoint_name))
+      trace_tensor(outputs, '%s' % (checkpoint_name))
     else:
       idx = 0
       for output_tensor in outputs:
         if tensor_util.is_tensor(outputs):
-          tensor_tracepoint(output_tensor, '%s_%d' % (checkpoint_name, idx))
+          trace_tensor(output_tensor, '%s_%d' % (checkpoint_name, idx))
         idx += 1
   except AttributeError:
     pass
@@ -248,20 +379,40 @@ def _trace_files_need_precreated(output_dir):
 
 
 class TensorTracer(object):
-  """A software construct for tracing tensor values in a TF graph on TPU.
+  """A software construct for tracing tensor values in a TF graph.
 
-  This utility is disabled by default. It can be enabled by setting
-  the TENSOR_TRACER_FLAGS env variable as:
+  This utility is disabled by default. It is hooked into tpu.rewrite, so it can
+  easily be enabled on TPUs by setting the TENSOR_TRACER_FLAGS env variable as
+  below without a code change.
     export TENSOR_TRACER_FLAGS="--enable=1"
+
+  Below is the use example to enable it on CPUs or GPUs, or for more advance use
+  cases on TPUs.
+
+    a = x + 1
+    b = a * 2
+    rs = tf.reduce_sum(b)
+    tensor_tracer.set_parameters({'trace_dir': 'path/to/trace_dir',
+                             'report_file: 'path/to/report/file'})
+    tt = tensor_tracer.TensorTracer()
+    if on_tpu:
+      rs = tt.trace_tpu(tf.get_default_graph(),
+                          tensor_fetches=rs)
+    else:
+      rs = tt.trace_cpu(tf.get_default_graph(),
+                          tensor_fetches=rs)
+    session.run(rs)
+
   If it is enabled, it will trace the output tensor values of
   selected Ops in the graph. It has two outputs: (1) the traces and (2)
-  a report. The traces are dumped to a specified local file on the TPU
-  host. The report is printed to the log.info of the TPU job.
+  a report. The traces are dumped to a specified directory during the graph
+  execution, while the report is dumped during the graph construction.
   By passing options via the env variable, users can change:
      (1) the trace mode (e.g., detecting NaN/Inf, printing partial or
          full tensor values)
      (2) which Ops to be traced (via op.name or op.type)
      (3) output trace file path.
+
   """
   # The set of graphs that are rewritten by tensor tracer.
   _traced_graphs = set()
@@ -288,8 +439,7 @@ class TensorTracer(object):
     Raises:
       ValueError: If the given trace mode is not supported for the device.
     """
-    if trace_mode in (tensor_tracer_flags.TRACE_MODE_SUMMARY,
-                      tensor_tracer_flags.TRACE_MODE_FULL_TENSOR_SUMMARY):
+    if trace_mode == tensor_tracer_flags.TRACE_MODE_FULL_TENSOR_SUMMARY:
       if device_type != _DEVICE_TYPE_TPU:
         raise ValueError('Device_type "%s" is not yet supported for '
                          'trace mode "%s"' % (device_type, trace_mode))
@@ -316,6 +466,21 @@ class TensorTracer(object):
              control_flow_util.IsLoopExit(op) or
              TensorTracer.loop_cond_op(op) or
              op.type in ('RefNextIteration', 'NextIteration'))
+
+  @staticmethod
+  def control_flow_op(op):
+    """Returns true if op is one of the special ops of in a while loop.
+
+    Args:
+       op: A tf.Operation.
+
+    Returns:
+       True if the given op is one of [Switch, Merge, Enter, Exit,
+       NextIteration, LoopCond], which are all building blocks for TF while
+       loops.
+    """
+    return  (control_flow_util.IsSwitch(op) or
+             control_flow_util.IsMerge(op))
 
   @staticmethod
   def unsafe_op(op):
@@ -380,6 +545,7 @@ class TensorTracer(object):
     self._included_op_full_names = set()
     self._host_call_fn = {}
     self._cache_variables = {}
+    self._traced_op_names = set()
 
   def _get_all_cache_variables(self):
     return self._cache_variables
@@ -549,7 +715,7 @@ class TensorTracer(object):
       Cache update operation.
     """
     # state_ops.scatter_update allows updates only along the first dimension.
-    # Make a compact array by concantating different signatures, and update
+    # Make a compact array by concatenating different signatures, and update
     # them all together.
     sorted_update = []
     if self._num_signature_dimensions() > 1:
@@ -855,6 +1021,10 @@ class TensorTracer(object):
       report_handler.instrument_op(
           op, TensorTracer.reason(op_id, _REASON_WHILELOOP_OP))
       return True
+    if TensorTracer.control_flow_op(op):
+      report_handler.instrument_op(
+          op, TensorTracer.reason(op_id, _REASON_CONTROLFLOW_OP))
+      return True
     if TensorTracer.unsafe_op(op):
       report_handler.instrument_op(
           op, TensorTracer.reason(op_id, _REASON_UNSAFE_OP))
@@ -1054,7 +1224,7 @@ class TensorTracer(object):
               'appropriate properties.'%trace_file_path)
     else:
       if not gfile.Exists(self._parameters.trace_dir):
-        gfile.MkDir(self._parameters.trace_dir)
+        file_io.recursive_create_dir(self._parameters.trace_dir)
         if not gfile.Exists(self._parameters.trace_dir):
           raise RuntimeError('Failed to create %s'%self._parameters.trace_dir)
 
@@ -1344,9 +1514,12 @@ class TensorTracer(object):
               # Expand 1 more dimension so that it will match with the expected
               # structure num_cores x num_traced_tensors x num_signatures.
               value = array_ops.expand_dims(transposed_signatures, axis=0)
-          summary_write_ops.append(summary.write(
-              _TT_SUMMARY_TAG + '/' + key, value, metadata=summary_metadata,
-              step=step[0]))
+
+          with ops.control_dependencies(
+              summary.summary_writer_initializer_op()):
+            summary_write_ops.append(summary.write(
+                _TT_SUMMARY_TAG + '/' + key, value, metadata=summary_metadata,
+                step=step[0]))
       return control_flow_ops.group(summary_write_ops)
 
     step = array_ops.reshape(training_util.get_or_create_global_step(), [1])
@@ -1376,6 +1549,10 @@ class TensorTracer(object):
 
   def host_call_deps_and_fn(self):
     return self._host_call_fn
+
+  def get_traced_op_names(self):
+    """Returns the set of traced op names."""
+    return self._traced_op_names
 
   def _trace_execution(self, graph,
                        tensor_fetches,
@@ -1451,6 +1628,7 @@ class TensorTracer(object):
         tensor_name = out_tensor.name
         if tensor_name not in tensor_trace_order.tensorname_to_cache_idx:
           continue
+        self._traced_op_names.add(op.name)
         # Create the list of consumers before calling _preprocess_traced_tensor.
         # Otherwise, adding control input below, will introduce a cycle in the
         # graph.
@@ -1466,9 +1644,11 @@ class TensorTracer(object):
           continue
 
         op_control_flow_context = self._get_op_control_flow_context(op)
-        # pylint: disable=protected-access
-        graph._set_control_flow_context(op_control_flow_context)
-        # pylint: enable=protected-access
+        if op_control_flow_context:
+          # pylint: disable=protected-access
+          graph._set_control_flow_context(op_control_flow_context)
+          # pylint: enable=protected-access
+
         processed_tensors = self._preprocess_traced_tensor(out_tensor)
 
         if on_tpu:
@@ -1528,6 +1708,11 @@ class TensorTracer(object):
           else:
             trace_op = tpu_wrap_trace_fn(processed_out_tensor, tensor_name)
 
+        if op_control_flow_context:
+          # pylint: disable=protected-access
+          graph._set_control_flow_context(current_control_flow_context)
+          # pylint: enable=protected-access
+
         if is_a_fetched_tensor:
           tracing_ops.append(trace_op)
           continue
@@ -1547,8 +1732,14 @@ class TensorTracer(object):
       processed_t_fetches = control_flow_ops.tuple(processed_t_fetches,
                                                    control_inputs=tracing_ops)
     if self._use_tensor_values_cache() or self._use_tensor_buffer():
-      if self._create_host_call() and on_tpu:
+      if self._create_host_call():
         self._prepare_host_call_fn(processed_t_fetches, op_fetches)
+        if not on_tpu:
+          write_cache, caches_to_write = self._host_call_fn[_TT_HOSTCALL_KEY]
+          cache_write_op = write_cache(**caches_to_write)
+          processed_t_fetches = control_flow_ops.tuple(
+              processed_t_fetches, control_inputs=[cache_write_op])
+          del self._host_call_fn[_TT_HOSTCALL_KEY]
       else:
         processed_t_fetches = self._flush_tensor_values_cache(
             processed_t_fetches, op_fetches, on_tpu=on_tpu)

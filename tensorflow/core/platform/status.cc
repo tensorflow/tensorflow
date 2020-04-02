@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -60,7 +61,7 @@ class StatusLogSink : public TFLogSink {
     });
   }
 
-  void GetMessages(std::vector<std::string>* logs) LOCKS_EXCLUDED(mu_) {
+  void GetMessages(std::vector<std::string>* logs) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
 
     for (auto& msg : messages_) {
@@ -68,7 +69,7 @@ class StatusLogSink : public TFLogSink {
     }
   }
 
-  void Send(const TFLogEntry& entry) override LOCKS_EXCLUDED(mu_) {
+  void Send(const TFLogEntry& entry) override TF_LOCKS_EXCLUDED(mu_) {
     if (entry.log_severity() < absl::LogSeverity::kWarning) return;
 
     mutex_lock lock(mu_);
@@ -81,7 +82,7 @@ class StatusLogSink : public TFLogSink {
   // for allowing repeated/concurrent calls to enable()
   absl::once_flag flag_;
   int num_messages_ = 0;
-  std::deque<std::string> messages_ GUARDED_BY(mu_);
+  std::deque<std::string> messages_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace
@@ -91,6 +92,8 @@ Status::Status(tensorflow::error::Code code, StringPiece msg) {
   state_ = std::unique_ptr<State>(new State);
   state_->code = code;
   state_->msg = string(msg);
+  VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
+          << CurrentStackTrace();
 }
 
 void Status::Update(const Status& new_status) {

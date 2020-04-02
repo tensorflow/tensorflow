@@ -126,7 +126,7 @@ std::vector<int> GetDivisorsForRange(int number, int range) {
 std::vector<int> GetPossibleSizes(int number,
                                   WorkGroupSizeAlignment z_alignment) {
   if (z_alignment == WorkGroupSizeAlignment::PRECISE) {
-    // we will use for potential sizes, sizes that cover grid preciselly
+    // we will use for potential sizes, sizes that cover grid precisely
     // work group size * k (k is integer) == grid_size
     return GetDivisors(number);
   } else {
@@ -184,10 +184,9 @@ template std::vector<uint3> GenerateWorkGroupSizes(
     WorkGroupSizeAlignment z_alignment);
 
 template <typename T>
-Status GenerateWorkGroupSizesAlignedToGrid(const T& grid,
-                                           const T& max_work_group_size,
-                                           const int max_work_group_invocations,
-                                           std::vector<T>* work_groups) {
+absl::Status GenerateWorkGroupSizesAlignedToGrid(
+    const T& grid, const T& max_work_group_size,
+    const int max_work_group_invocations, std::vector<T>* work_groups) {
   auto alignment = WorkGroupSizeAlignment::PRECISE;
   *work_groups = GenerateWorkGroupSizes<T>(
       grid, /*min_work_group_total_size = */ 32, max_work_group_invocations,
@@ -197,16 +196,16 @@ Status GenerateWorkGroupSizesAlignedToGrid(const T& grid,
     AddCornerCases(grid, max_work_group_invocations, max_work_group_size,
                    alignment, alignment, alignment, work_groups);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Specializations of GenerateWorkGroupSizesAlignedToGrid for int3 and uint3
 
-template Status GenerateWorkGroupSizesAlignedToGrid(
+template absl::Status GenerateWorkGroupSizesAlignedToGrid(
     const int3& grid, const int3& max_work_group_size,
     const int max_work_group_invocations, std::vector<int3>* work_groups);
 
-template Status GenerateWorkGroupSizesAlignedToGrid(
+template absl::Status GenerateWorkGroupSizesAlignedToGrid(
     const uint3& grid, const uint3& max_work_group_size,
     const int max_work_group_invocations, std::vector<uint3>* work_groups);
 

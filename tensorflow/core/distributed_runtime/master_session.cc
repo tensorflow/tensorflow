@@ -229,7 +229,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   const BuildGraphOptions bg_opts_;
 
   // NOTE(mrry): This pointer will be null after `RegisterPartitions()` returns.
-  std::unique_ptr<ClientGraph> client_graph_before_register_ GUARDED_BY(mu_);
+  std::unique_ptr<ClientGraph> client_graph_before_register_ TF_GUARDED_BY(mu_);
   const SessionOptions session_opts_;
   const bool is_partial_;
   const CallableOptions callable_opts_;
@@ -282,7 +282,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   Notification init_done_;
 
   // init_result_ remembers the initialization error if any.
-  Status init_result_ GUARDED_BY(mu_);
+  Status init_result_ TF_GUARDED_BY(mu_);
 
   std::unique_ptr<StatsPublisherInterface> stats_publisher_;
 
@@ -583,13 +583,13 @@ class RunManyGraphs {
 
   BlockingCounter pending_;
   mutable mutex mu_;
-  StatusGroup status_group_ GUARDED_BY(mu_);
-  bool cancel_issued_ GUARDED_BY(mu_) = false;
+  StatusGroup status_group_ TF_GUARDED_BY(mu_);
+  bool cancel_issued_ TF_GUARDED_BY(mu_) = false;
 
-  void ReportBadStatus(const Status& s) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  void ReportBadStatus(const Status& s) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     VLOG(1) << "Master received error status " << s;
     if (!cancel_issued_ && !StatusGroup::IsDerived(s)) {
-      // Only start cancelling other workers upon receiveing a non-derived
+      // Only start cancelling other workers upon receiving a non-derived
       // error
       cancel_issued_ = true;
 
@@ -911,9 +911,9 @@ class CleanupBroadcastHelper {
 
   mutex mu_;
   // Number of requests remaining to be collected.
-  int num_pending_ GUARDED_BY(mu_);
+  int num_pending_ TF_GUARDED_BY(mu_);
   // Aggregate status of the operation.
-  Status status_ GUARDED_BY(mu_);
+  Status status_ TF_GUARDED_BY(mu_);
   // Callback to be called when all operations complete.
   StatusCallback done_;
 
@@ -1320,11 +1320,22 @@ Status MasterSession::CreateWorkerSessions(
     workers[i].name = &worker_names[i];
     workers[i].worker = worker_cache->GetOrCreateWorker(worker_names[i]);
     workers[i].request.set_session_handle(handle_);
-    if (session_opts_.config.experimental()
+    if (session_opts_.config.share_cluster_devices_in_session() ||
+        session_opts_.config.experimental()
             .share_cluster_devices_in_session()) {
       for (const auto& remote_dev : devices_->devices()) {
         *workers[i].request.add_cluster_device_attributes() =
             remote_dev->attributes();
+      }
+
+      if (!session_opts_.config.share_cluster_devices_in_session() &&
+          session_opts_.config.experimental()
+              .share_cluster_devices_in_session()) {
+        LOG(WARNING)
+            << "ConfigProto.Experimental.share_cluster_devices_in_session has "
+               "been promoted to a non-experimental API. Please use "
+               "ConfigProto.share_cluster_devices_in_session instead. The "
+               "experimental option will be removed in the future.";
       }
     }
 

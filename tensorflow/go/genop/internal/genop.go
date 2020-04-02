@@ -47,8 +47,8 @@ import (
 	"unsafe"
 
 	"github.com/golang/protobuf/proto"
-	adpb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core/framework/api_def_go_proto"
-	odpb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/github.com/tensorflow/tensorflow/tensorflow/go/core/framework/op_def_go_proto"
+	adpb "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/api_def_go_proto"
+	odpb "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/op_def_go_proto"
 )
 
 // GenerateFunctionsForRegisteredOps writes a Go source code file to w
@@ -265,7 +265,7 @@ func {{$.Op.Name}}{{CamelCase .RenameTo}}(value {{GoType .Type}}) {{$.Op.Name}}A
 {{- else }}
 {{- if .DescribeOutputs}}
 //
-{{- if ((len .OutArgs) eq 1) }}
+{{- if eq (len .OutArgs) 1 }}
 // Returns {{range .OutArgs}}{{MakeComment .Description}}{{end}}
 {{- else }}
 // Returns:

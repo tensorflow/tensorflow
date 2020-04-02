@@ -71,7 +71,7 @@ typedef struct {
   // [OBSOLETE]: to be removed
   int32_t is_precision_loss_allowed;
 
-  // Preference is defined in TfLiteGpuInferencePreference.
+  // Preference is defined in TfLiteGpuInferenceUsage.
   int32_t inference_preference;
 
   // Ordered priorities provide better control over desired semantics,
@@ -79,7 +79,7 @@ typedef struct {
   // each time inference engine needs to make a decision, it uses
   // ordered priorities to do so.
   // For example:
-  //   MAX_PRECISION at priority1 would not allow to decrease presision,
+  //   MAX_PRECISION at priority1 would not allow to decrease precision,
   //   but moving it to priority2 or priority3 would result in F16 calculation.
   //
   // Priority is defined in TfLiteGpuInferencePriority.

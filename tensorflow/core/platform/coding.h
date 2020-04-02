@@ -46,6 +46,9 @@ extern void PutFixed64(string* dst, uint64 value);
 extern void PutVarint32(string* dst, uint32 value);
 extern void PutVarint64(string* dst, uint64 value);
 
+extern void PutVarint32(tstring* dst, uint32 value);
+extern void PutVarint64(tstring* dst, uint64 value);
+
 extern bool GetVarint32(StringPiece* input, uint32* value);
 extern bool GetVarint64(StringPiece* input, uint64* value);
 

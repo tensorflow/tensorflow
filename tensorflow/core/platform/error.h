@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -26,21 +25,5 @@ namespace tensorflow {
 Status IOError(const string& context, int err_number);
 
 }  // namespace tensorflow
-
-#if defined(PLATFORM_WINDOWS)
-
-#include <Windows.h>
-// Windows.h #defines ERROR, but it is also used in
-// tensorflow/core/util/event.proto
-#undef ERROR
-
-namespace tensorflow {
-namespace internal {
-
-std::string GetWindowsErrorMessage(DWORD err);
-}
-}  // namespace tensorflow
-
-#endif
 
 #endif  // TENSORFLOW_CORE_PLATFORM_ERROR_H_

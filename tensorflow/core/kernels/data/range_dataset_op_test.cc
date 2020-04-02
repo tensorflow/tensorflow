@@ -34,6 +34,16 @@ RangeDatasetParams ZeroStepRangeDatasetParams() {
   return RangeDatasetParams(/*start=*/10, /*stop=*/0, /*step=*/0);
 }
 
+RangeDatasetParams RangeDatasetParams1() {
+  return RangeDatasetParams(/*start=*/0, /*stop=*/10, /*step=*/3,
+                            /*output_dtypes=*/{DT_INT32});
+}
+
+RangeDatasetParams RangeDatasetParams2() {
+  return RangeDatasetParams(/*start=*/0, /*stop=*/10, /*step=*/3,
+                            /*output_dtypes=*/{DT_INT64});
+}
+
 std::vector<GetNextTestCase<RangeDatasetParams>> GetNextTestCases() {
   return {{/*dataset_params=*/PositiveStepRangeDatasetParams(),
            /*expected_outputs=*/
@@ -59,11 +69,16 @@ TEST_F(RangeDatasetOpTest, DatasetTypeString) {
       CheckDatasetTypeString(name_utils::OpName(RangeDatasetOp::kDatasetType)));
 }
 
-TEST_F(RangeDatasetOpTest, DatasetOutputDtypes) {
-  auto range_dataset_params = PositiveStepRangeDatasetParams();
-  TF_ASSERT_OK(Initialize(range_dataset_params));
-  TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_INT64}));
+std::vector<DatasetOutputDtypesTestCase<RangeDatasetParams>>
+DatasetOutputDtypesTestCases() {
+  return {{/*dataset_params=*/RangeDatasetParams1(),
+           /*expected_output_dtypes=*/{DT_INT32}},
+          {/*dataset_params=*/RangeDatasetParams2(),
+           /*expected_output_dtypes=*/{DT_INT64}}};
 }
+
+DATASET_OUTPUT_DTYPES_TEST_P(RangeDatasetOpTest, RangeDatasetParams,
+                             DatasetOutputDtypesTestCases())
 
 TEST_F(RangeDatasetOpTest, DatasetOutputShapes) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
@@ -81,11 +96,16 @@ std::vector<CardinalityTestCase<RangeDatasetParams>> CardinalityTestCases() {
 DATASET_CARDINALITY_TEST_P(RangeDatasetOpTest, RangeDatasetParams,
                            CardinalityTestCases())
 
-TEST_F(RangeDatasetOpTest, IteratorOutputDtypes) {
-  auto range_dataset_params = PositiveStepRangeDatasetParams();
-  TF_ASSERT_OK(Initialize(range_dataset_params));
-  TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_INT64}));
+std::vector<IteratorOutputDtypesTestCase<RangeDatasetParams>>
+IteratorOutputDtypesTestCases() {
+  return {{/*dataset_params=*/RangeDatasetParams1(),
+           /*expected_output_dtypes=*/{DT_INT32}},
+          {/*dataset_params=*/RangeDatasetParams2(),
+           /*expected_output_dtypes=*/{DT_INT64}}};
 }
+
+ITERATOR_OUTPUT_DTYPES_TEST_P(RangeDatasetOpTest, RangeDatasetParams,
+                              IteratorOutputDtypesTestCases())
 
 TEST_F(RangeDatasetOpTest, IteratorOutputShapes) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();

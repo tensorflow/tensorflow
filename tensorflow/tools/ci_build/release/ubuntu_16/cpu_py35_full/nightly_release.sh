@@ -17,11 +17,12 @@ set -e
 set -x
 
 source tensorflow/tools/ci_build/release/common.sh
-set_bazel_outdir
 
 install_ubuntu_16_pip_deps pip3.5
 
-update_bazel_linux
+pip3.7 install --upgrade auditwheel --user
+
+install_bazelisk
 
 python2.7 tensorflow/tools/ci_build/update_version.py --nightly
 
@@ -57,7 +58,7 @@ for WHL_PATH in $(ls pip_pkg/tf_nightly_cpu-*dev*.whl); do
   # Upload the PIP package if whl test passes.
   if [ ${RETVAL} -eq 0 ]; then
     echo "Basic PIP test PASSED, Uploading package: ${AUDITED_WHL_NAME}"
-    twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}" || echo
+    twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}"
   else
     echo "Basic PIP test FAILED, will not upload ${AUDITED_WHL_NAME} package"
     return 1

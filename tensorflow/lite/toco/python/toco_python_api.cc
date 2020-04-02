@@ -67,7 +67,8 @@ void PopulateConversionLogHelper(const toco::ModelFlags& model_flags,
   // Dump post-conversion toco logs.
   TocoConversionLog toco_log_after;
   PopulateConversionLog(*flatbuffer_model, &toco_log_after);
-  toco_log_after.set_toco_err_logs(error_message);
+  // Make sure we sanitize the error message.
+  toco_log_after.set_toco_err_logs(SanitizeErrorMessage(error_message));
   std::ofstream ostream_after(toco_flags->conversion_summary_dir() +
                               "/toco_log_after.pb");
   toco_log_after.SerializeToOstream(&ostream_after);

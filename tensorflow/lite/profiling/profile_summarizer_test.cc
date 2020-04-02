@@ -178,7 +178,6 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfTrue) {
   TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
   subgraph_test_util::CheckIntTensor(output, {1, 2}, {6, 9});
 
-  ProfileSummarizer summarizer;
   auto events = profiler.GetProfileEvents();
   EXPECT_EQ(2, events.size());
   int event_count_of_subgraph_zero = std::count_if(
@@ -206,7 +205,6 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfFalse) {
   TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
   subgraph_test_util::CheckIntTensor(output, {1, 2}, {5, 14});
 
-  ProfileSummarizer summarizer;
   auto events = profiler.GetProfileEvents();
   EXPECT_EQ(2, events.size());
   int event_count_of_subgraph_zero = std::count_if(

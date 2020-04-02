@@ -421,7 +421,7 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     vh_linv_rhs = math_ops.matmul(v, linv_rhs, adjoint_a=True)
     # C^{-1} V^H L^{-1} rhs
     if self._use_cholesky:
-      capinv_vh_linv_rhs = linear_operator_util.cholesky_solve_with_broadcast(
+      capinv_vh_linv_rhs = linalg_ops.cholesky_solve(
           linalg_ops.cholesky(self._make_capacitance()), vh_linv_rhs)
     else:
       capinv_vh_linv_rhs = linear_operator_util.matrix_solve_with_broadcast(

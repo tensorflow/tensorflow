@@ -18,6 +18,7 @@ limitations under the License.
 #include <fcntl.h>
 #include <fnmatch.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -46,7 +47,7 @@ namespace {
 mutex name_mutex(tensorflow::LINKER_INITIALIZED);
 
 std::map<std::thread::id, string>& GetThreadNameRegistry()
-    EXCLUSIVE_LOCKS_REQUIRED(name_mutex) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(name_mutex) {
   static auto* thread_name_registry = new std::map<std::thread::id, string>();
   return *thread_name_registry;
 }
@@ -257,5 +258,11 @@ void PosixEnv::GetLocalTempDirectories(std::vector<string>* list) {
     }
   }
 }
+
+int setenv(const char* name, const char* value, int overwrite) {
+  return ::setenv(name, value, overwrite);
+}
+
+int unsetenv(const char* name) { return ::unsetenv(name); }
 
 }  // namespace tensorflow

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_IO_PROTO_ENCODE_HELPER_H_
 
 #include "tensorflow/core/lib/core/coding.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stringpiece.h"
 

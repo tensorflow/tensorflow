@@ -26,6 +26,7 @@ from absl.testing import parameterized
 import six
 
 from tensorflow.python import tf2
+from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values as distributed_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -151,7 +152,7 @@ class TestModuleNaming(test_util.TensorFlowTestCase):
     with self.assertRaises(ErrorModuleError):
       # If super ctor is not called then the name scope isn't opened. We need to
       # ensure that this doesn't trigger an exception (e.g. the metaclass trying
-      # to __exit__ a non-existant name scope).
+      # to __exit__ a non-existent name scope).
       ErrorModule(call_super=False)
 
     self.assertEqual("", get_name_scope())
@@ -247,15 +248,10 @@ class VariableTrackingTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(m.child.child.trainable_variables), 0)
 
   def test_supports_distributed_variables(self):
-    device_map = distributed_values.SingleDeviceMap("/CPU:0")
     mirrored = distributed_values.MirroredVariable(
-        None, device_map, [variables.Variable(1.)],
-        variables.VariableAggregation.SUM)
-    tpu = distributed_values.TPUMirroredVariable(
-        strategy=None,
-        device_map=device_map,
-        values=[variables.Variable(42.)],
-        aggregation=None)
+        None, [variables.Variable(1.)], variables.VariableAggregation.SUM)
+    tpu = tpu_values.TPUMirroredVariable(
+        strategy=None, values=[variables.Variable(42.)], aggregation=None)
     aggregating = distributed_values.AggregatingVariable(
         strategy=None, v=variables.Variable(1.), aggregation=None)
 
@@ -286,8 +282,8 @@ class ForwardMethodsTest(test_util.TensorFlowTestCase):
 
   def testFunctionType(self):
     mod = ModuleWithFunctionAnnotatedCall()
-    self.assertTrue(isinstance(mod.forward, def_function.Function))
-    self.assertTrue(isinstance(mod.forward_ag, def_function.Function))
+    self.assertIsInstance(mod.forward, def_function.Function)
+    self.assertIsInstance(mod.forward_ag, def_function.Function)
 
   def testEntersNameScope_call(self):
     mod = ModuleWithFunctionAnnotatedCall()
@@ -536,6 +532,29 @@ class FlattenTest(parameterized.TestCase, test_util.TensorFlowTestCase):
     self.assertEqual(m.submodules, (m.layers[0], m.layers[1]))
     m(layers.Input((1,)))
     self.assertLen(m.variables, 4)
+
+  def test_model_wrapped_in_module_discovers_submodules(self):
+    linear = models.Sequential([layers.Dense(units=1, input_shape=[1])])
+    linear.compile(optimizer="sgd", loss="mean_squared_error")
+    m = module.Module()
+    m.l = linear
+    self.assertNotEmpty(m.submodules)
+    self.assertLen(m.variables, 2)
+
+  def test_raises_error_with_path(self):
+    if six.PY2:
+      class NonOrderable(object):
+        __lt__ = None
+
+      non_orderable = NonOrderable
+    else:
+      non_orderable = object
+
+    m = module.Module()
+    m.layers = {non_orderable(): None, non_orderable(): None}
+    with self.assertRaisesRegexp(ValueError,
+                                 "Error processing property 'layers'"):
+      m.variables  # pylint: disable=pointless-statement
 
 
 class LayerModule(module.Module):

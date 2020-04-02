@@ -1,19 +1,17 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
+load("@build_bazel_rules_apple//apple:macos.bzl", "macos_dylib")
 
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["metal_delegate.h"])
+exports_files([
+    "delegate.h",
+    "metal_delegate.h",
+])
 
-# Primary purpose of this config is to replace ::util::Status with our custom
-# light implementation ::tflite::gpu::StatusLite to reduce binary size.  Besides
-# that, certain features that were hard to communicate without full open source
-# were hidden away too such as compiled models, serialization, and metadata.
-# While the latter will be fully available with the open source release, the
-# former will have to stay until absl::Status is released.
 config_setting(
     name = "tflite_gpu_binary_release",
     values = {"copt": "-DTFLITE_GPU_BINARY_RELEASE"},
@@ -95,9 +93,11 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal:api",
         "//tensorflow/lite/delegates/gpu/metal:buffer_convert",
         "//tensorflow/lite/delegates/gpu/metal:compiled_model",
+        "//tensorflow/lite/delegates/gpu/metal:environment",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "@com_google_absl//absl/types:span",
     ],
+    alwayslink = 1,
 )
 
 objc_library(
@@ -107,6 +107,7 @@ objc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu:metal_delegate",
     ],
+    alwayslink = 1,
 )
 
 # build -c opt --config android_arm64 --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt --linkopt -s --strip always :libtensorflowlite_gpu_gl.so
@@ -170,6 +171,22 @@ ios_static_framework(
     deps = [":metal_delegate"],
 )
 
+# Note: Support for MacOS is best-effort at the moment.
+# bazel build -c opt --copt -Os --copt -DTFLITE_GPU_BINARY_RELEASE --copt -fvisibility=hidden --linkopt -s --strip always --cxxopt=-std=c++14 :tensorflow_lite_gpu_dylib --apple_platform_type=macos
+macos_dylib(
+    name = "tensorflow_lite_gpu_dylib",
+    minimum_os_version = "10.13",
+    tags = [
+        "manual",
+        "nobuilder",
+        "notap",
+    ],
+    deps = [
+        ":metal_delegate",
+        ":metal_delegate_internal",
+    ],
+)
+
 cc_library(
     name = "api",
     srcs = ["api.cc"],
@@ -182,6 +199,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@opencl_headers",
+        "@vulkan_headers//:vulkan_headers_no_prototypes",
     ],
 )
 
@@ -218,8 +236,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
         "//tensorflow/lite/delegates/gpu/gl:api2",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
 )

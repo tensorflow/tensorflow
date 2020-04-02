@@ -28,7 +28,7 @@ std::vector<const OpMetrics*> SortedOpMetricsDb(const OpMetricsDb& metrics_db,
   std::vector<const OpMetrics*> result;
   result.reserve(metrics_db.metrics_db_size());
   for (const OpMetrics& metrics : metrics_db.metrics_db()) {
-    if (metrics.occurrences() > 0) result.push_back(&metrics);
+    result.push_back(&metrics);
   }
 
   auto comp = [](const OpMetrics* a, const OpMetrics* b) {

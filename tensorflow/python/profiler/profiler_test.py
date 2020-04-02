@@ -111,7 +111,7 @@ class ProfilerTest(test.TestCase):
     opts = builder.time_and_memory(min_bytes=0)
 
     with session.Session() as sess:
-      r1, r2, r3 = lib.BuildSplitableModel()
+      r1, r2, r3 = lib.BuildSplittableModel()
       sess.run(variables.global_variables_initializer())
 
       profiler = model_analyzer.Profiler(sess.graph)

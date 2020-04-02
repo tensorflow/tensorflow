@@ -24,6 +24,7 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
@@ -78,13 +79,34 @@ class ContextTest(test.TestCase):
     def f(x):
       return x + constant_op.constant(1.)
 
-    with context.collect_optimized_graphs() as graphs:
+    with context.collect_graphs() as graphs:
       with ops.device('CPU:0'):
         f(constant_op.constant(1.))
 
     self.assertLen(graphs, 1)
     graph, = graphs
     self.assertIn('CPU:0', graph.node[0].device)
+
+  def testGetFunctionDef(self):
+
+    @def_function.function
+    def f():
+      return constant_op.constant(1.)
+
+    concrete = f.get_concrete_function()
+    function_def = context.get_function_def(concrete.name)
+
+    self.assertIsNot(function_def, None)
+
+    found_const_node = False
+    for node_def in function_def.node_def:
+      if node_def.op == 'Const':
+        found_const_node = True
+        break
+    self.assertTrue(found_const_node)
+
+    with self.assertRaises(errors.NotFoundError):
+      _ = context.get_function_def('this_should_not_be_found')
 
 
 if __name__ == '__main__':

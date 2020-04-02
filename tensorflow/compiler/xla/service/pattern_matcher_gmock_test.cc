@@ -56,9 +56,6 @@ TEST(PatternMatcherGmock, MatchShape) {
 TEST(PatternMatcherGmock, MatchLayout) {
   Layout l = LayoutUtil::MakeLayout({0, 1});
   EXPECT_THAT(l, GmockMatch(m::Layout()));
-  EXPECT_THAT(&l, Not(GmockMatch(m::Layout().WithSparseFormat())));
-  EXPECT_THAT(Describe<Layout>(GmockMatch(m::Layout().WithSparseFormat())),
-              "a layout with format SPARSE");
 }
 
 TEST(PatternMatchGmock, MatchInstruction) {

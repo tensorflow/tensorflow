@@ -193,7 +193,7 @@ Status Visitor::HandleBatchNormTraining(HloInstruction* batch_norm) {
   if (is_batchnorm_with_fp16_inputs) {
     new_gte = AddConvert(new_gte, F32);
   }
-  // Repackage the results. Athough this tuple is redundant when convert is not
+  // Repackage the results. Although this tuple is redundant when convert is not
   // inserted, TupleSimplifier eliminates the Tuple eventually
   std::unique_ptr<HloInstruction> replacing_tuple = HloInstruction::CreateTuple(
       {new_gte,
@@ -282,7 +282,7 @@ Status Visitor::HandleBatchNormGrad(HloInstruction* batch_norm) {
   if (is_batchnorm_with_fp16_inputs) {
     new_gte = AddConvert(new_gte, F32);
   }
-  // Repackage the results. Athough this tuple is redundant when convert is not
+  // Repackage the results. Although this tuple is redundant when convert is not
   // inserted, TupleSimplifier eliminates the Tuple eventually
   std::unique_ptr<HloInstruction> replacing_tuple = HloInstruction::CreateTuple(
       {new_gte,

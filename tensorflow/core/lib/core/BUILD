@@ -1,4 +1,8 @@
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 package(
     default_visibility = [
@@ -140,6 +144,35 @@ tf_proto_library(
     exports = ["//tensorflow/core:error_codes_proto_impl"],
 )
 
+# Export source files needed for mobile builds, which do not use granular targets.
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "blocking_counter.h",
+        "coding.h",
+        "errors.h",
+        "refcount.h",
+        "status.h",
+        "stringpiece.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "arena.cc",
+        "arena.h",
+        "bitmap.h",
+        "bits.h",
+        "notification.h",
+        "threadpool.h",
+        "threadpool_interface.h",
+        "threadpool_options.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
 filegroup(
     name = "legacy_lib_core_all_headers",
     srcs = [
@@ -158,15 +191,6 @@ filegroup(
         "threadpool.h",
         "threadpool_interface.h",
         "threadpool_options.h",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_lib_core_all_srcs",
-    srcs = [
-        "arena.cc",
-        "bitmap.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

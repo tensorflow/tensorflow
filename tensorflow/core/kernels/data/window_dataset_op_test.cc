@@ -12,6 +12,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/window_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -301,7 +302,8 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
                                                  &window_dataset));
         std::unique_ptr<IteratorBase> window_dataset_iterator;
         TF_ASSERT_OK(window_dataset->MakeIterator(
-            iterator_ctx_.get(), test_case.dataset_params.iterator_prefix(),
+            iterator_ctx_.get(), /*parent=*/nullptr,
+            test_case.dataset_params.iterator_prefix(),
             &window_dataset_iterator));
         bool end_of_window_dataset = false;
         std::vector<Tensor> window_elements;
@@ -471,11 +473,11 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {
   auto expected_outputs_it = test_case.expected_outputs.begin();
   int cur_iteration = 0;
   for (int breakpoint : test_case.breakpoints) {
-    VariantTensorData data;
-    VariantTensorDataWriter writer(&data);
+    VariantTensorDataWriter writer;
     TF_EXPECT_OK(iterator_->Save(serialization_ctx.get(), &writer));
-    TF_EXPECT_OK(writer.Flush());
-    VariantTensorDataReader reader(&data);
+    std::vector<const VariantTensorData*> data;
+    writer.GetData(&data);
+    VariantTensorDataReader reader(data);
     TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader,
                                  test_case.dataset_params.iterator_prefix(),
                                  *dataset_, &iterator_));
@@ -494,7 +496,8 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, IteratorSaveAndRestore) {
                                                      &window_dataset));
             std::unique_ptr<IteratorBase> window_dataset_iterator;
             TF_ASSERT_OK(window_dataset->MakeIterator(
-                iterator_ctx_.get(), test_case.dataset_params.iterator_prefix(),
+                iterator_ctx_.get(), /*parent=*/nullptr,
+                test_case.dataset_params.iterator_prefix(),
                 &window_dataset_iterator));
             bool end_of_window_dataset = false;
             std::vector<Tensor> window_elements;

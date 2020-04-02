@@ -9,7 +9,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'jobs\', \'port_base\', \'gpus_per_node\', \'gpus_per_task\', \'tasks_per_node\', \'auto_set_gpu\', \'rpc_layer\'], varargs=None, keywords=None, defaults=[\'8888\', \'1\', \'1\', \'None\', \'True\', \'grpc\'], "
+    argspec: "args=[\'self\', \'jobs\', \'port_base\', \'gpus_per_node\', \'gpus_per_task\', \'tasks_per_node\', \'auto_set_gpu\', \'rpc_layer\'], varargs=None, keywords=None, defaults=[\'None\', \'8888\', \'None\', \'None\', \'None\', \'True\', \'grpc\'], "
   }
   member_method {
     name: "cluster_spec"

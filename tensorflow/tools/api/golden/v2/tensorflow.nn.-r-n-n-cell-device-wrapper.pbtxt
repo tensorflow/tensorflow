@@ -1,13 +1,14 @@
 path: "tensorflow.nn.RNNCellDeviceWrapper"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.layers.rnn_cell_wrapper_v2.DeviceWrapper\'>"
-  is_instance: "<class \'tensorflow.python.ops.rnn_cell_wrapper_impl.DeviceWrapperBase\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.legacy_rnn.rnn_cell_wrapper_impl.DeviceWrapperBase\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.rnn_cell_wrapper_v2._RNNCellWrapperV2\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.recurrent.AbstractRNNCell\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.keras.utils.version_utils.LayerVersionSelector\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"

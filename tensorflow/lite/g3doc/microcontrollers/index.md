@@ -37,6 +37,9 @@ There are example applications available for the following development boards:
 *   [STM32F746 Discovery kit](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html)
 *   [Adafruit EdgeBadge](https://www.adafruit.com/product/4400)
 *   [Adafruit TensorFlow Lite for Microcontrollers Kit](https://www.adafruit.com/product/4317)
+*   [Adafruit Circuit Playground Bluefruit](https://learn.adafruit.com/tensorflow-lite-for-circuit-playground-bluefruit-quickstart?view=all)
+*   [Espressif ESP32-DevKitC](https://www.espressif.com/en/products/hardware/esp32-devkitc/overview)
+*   [Espressif ESP-EYE](https://www.espressif.com/en/products/hardware/esp-eye/overview)
 
 To learn more about the libraries and examples, see
 [Get started with microcontrollers](get_started.md).

@@ -27,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.types import core
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -325,7 +326,7 @@ def _AssertCompatible(values, dtype):
   except ValueError as e:
     [mismatch] = e.args
     if dtype is None:
-      raise TypeError("List of Tensors when single Tensor expected")
+      raise TypeError("Expected any non-tensor type, got a tensor instead.")
     else:
       raise TypeError("Expected %s, got %s of type '%s' instead." %
                       (dtype.name, repr(mismatch), type(mismatch).__name__))
@@ -566,9 +567,9 @@ def MakeNdarray(tensor):
   """Create a numpy ndarray from a tensor.
 
   Create a numpy ndarray with the same shape and data as the tensor.
-  
+
   For example:
-  
+
   ```python
   # Tensor a has shape (2,3)
   a = tf.constant([[1,2,3],[4,5,6]])
@@ -977,10 +978,23 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
 
 @tf_export("is_tensor")
 def is_tensor(x):  # pylint: disable=invalid-name
-  """Checks whether `x` is a tensor or "tensor-like".
+  """Checks whether `x` is a TF-native type that can be passed to many TF ops.
 
-  If `is_tensor(x)` returns `True`, it is safe to assume that `x` is a tensor or
-  can be converted to a tensor using `ops.convert_to_tensor(x)`.
+  Use is_tensor to differentiate types that can ingested by TensorFlow ops
+  without any conversion (e.g., `tf.Tensor`, `tf.SparseTensor`, and
+  `tf.RaggedTensor`) from types that need to be converted into tensors before
+  they are ingested (e.g., numpy `ndarray` and Python scalars).
+
+  For example, in the following code block:
+
+  ```python
+  if not tf.is_tensor(t):
+    t = tf.convert_to_tensor(t)
+  return t.dtype
+  ```
+
+  we check to make sure that `t` is a tensor (and convert it if not) before
+  accessing its `shape` and `dtype`.
 
   Args:
     x: A python object to check.
@@ -988,7 +1002,7 @@ def is_tensor(x):  # pylint: disable=invalid-name
   Returns:
     `True` if `x` is a tensor or "tensor-like", `False` if not.
   """
-  return (isinstance(x, tensor_like._TensorLike) or  # pylint: disable=protected-access
+  return (isinstance(x, (tensor_like.TensorLike, core.Tensor)) or
           ops.is_dense_tensor_like(x) or
           getattr(x, "is_tensor_like", False))
 
@@ -1003,7 +1017,7 @@ def shape_tensor(shape):  # pylint: disable=invalid-name
       # If there are Dimension objects in the shape, unwrap them. This can be a
       # problem if v1 and v2 TensorShape objects get mixed up in partial
       # conversions, leading to shapes such as (1, 2, Dimension(5)), which are
-      # not convertible to Tensors becasue of mixed content.
+      # not convertible to Tensors because of mixed content.
       shape = tuple(map(tensor_shape.dimension_value, shape))
   return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
 

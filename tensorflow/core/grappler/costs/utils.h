@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/graph/types.h"
+#include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -118,6 +119,12 @@ string GetDeviceClass(const string& device_name);
 // Get stats in string format from RunMetadata.
 string GetStatsStringFromRunMetadata(const RunMetadata& run_metadata,
                                      bool verbosity);
+
+// This method calculates the execution time depending on whether IO can
+// overlap with computation. It assumes the memory and the compute times have
+// already been calculated.
+void CombineCostsAndUpdateExecutionTime(bool compute_memory_overlap,
+                                        Costs* costs);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

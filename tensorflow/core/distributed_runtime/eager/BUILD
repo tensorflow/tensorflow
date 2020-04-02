@@ -43,6 +43,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime:worker_session",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -108,10 +109,12 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:core",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:execute",
         "//tensorflow/core/common_runtime/eager:process_function_library_runtime",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/distributed_runtime:message_wrappers",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:session_mgr",
         "//tensorflow/core/distributed_runtime:worker_cache",
@@ -149,6 +152,7 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 
@@ -179,6 +183,9 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:core",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/common_runtime/eager:execute",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
     ],
 )
@@ -190,8 +197,10 @@ cc_library(
     deps = [
         ":destroy_tensor_handle_node",
         ":eager_client",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core/common_runtime/eager:tensor_handle_data",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
 )
 
@@ -214,5 +223,18 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "@com_google_absl//absl/types:optional",
+    ],
+)
+
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "eager_client.h",
+        "remote_tensor_handle.h",
+        "remote_tensor_handle_data.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
     ],
 )

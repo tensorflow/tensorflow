@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/gtl/manual_constructor.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -110,6 +111,16 @@ Status LocalRendezvous::Send(const Rendezvous::ParsedKey& key,
                              const Tensor& val, const bool is_dead) {
   uint64 key_hash = KeyHash(key.FullKey());
   DVLOG(2) << "Send " << this << " " << key_hash << " " << key.FullKey();
+
+  if (is_dead) {
+    static auto* rendezvous_dead_values_sent = monitoring::Counter<2>::New(
+        "/tensorflow/core/rendezvous_dead_values_sent",
+        "The number of dead values sent between a pair of devices.",
+        "send_device", "recv_device");
+    rendezvous_dead_values_sent
+        ->GetCell(string(key.src_device), string(key.dst_device))
+        ->IncrementBy(1);
+  }
 
   mu_.lock();
   if (!status_.ok()) {

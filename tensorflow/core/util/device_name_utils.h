@@ -128,12 +128,9 @@ class DeviceNameUtils {
   static bool IsCompleteSpecification(const ParsedName& pattern,
                                       const ParsedName& name);
 
-  // True iff there exists any possible complete device name that is
-  // a specification of both "a" and "b".
-  static inline bool AreCompatibleDevNames(const ParsedName& a,
-                                           const ParsedName& b) {
-    return IsSpecification(a, b) || IsSpecification(b, a);
-  }
+  // True iff there exists any possible device name that is a specification of
+  // both "a" and "b".
+  static bool AreCompatibleDevNames(const ParsedName& a, const ParsedName& b);
 
   // Merges the device specifications in "*target" and "other", and
   // stores the result in "*target". Returns OK if "*target" and

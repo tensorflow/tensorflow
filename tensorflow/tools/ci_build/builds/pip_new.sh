@@ -72,7 +72,7 @@
 #   GIT_TAG_OVERRIDE:    Values for `--git_tag_override`. This flag gets passed
 #                        in as `--action_env` for bazel build and tests.
 #   TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES:
-#                        Additonal pip packages to be installed.
+#                        Additional pip packages to be installed.
 #                        Caveat: pip version needs to be checked prior.
 #
 # ==============================================================================
@@ -273,7 +273,7 @@ PYTHON_BIN_PATH_INIT=${PYTHON_BIN_PATH}
 PIP_BIN_PATH="$(which pip${PY_MAJOR_MINOR_VER})"
 
 # PIP packages
-INSTALL_EXTRA_PIP_PACKAGES="portpicker scipy scikit-learn ${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}"
+INSTALL_EXTRA_PIP_PACKAGES="h5py portpicker scipy scikit-learn ${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}"
 
 ###########################################################################
 # Build TF PIP Package
@@ -431,7 +431,7 @@ install_tensorflow_pip() {
   fi
 
   # Set path to pip.
-  PIP_BIN_PATH="$(which pip${PY_MAJOR_MINOR_VER})"
+  PIP_BIN_PATH="${PYTHON_BIN_PATH} -m pip"
 
   # Print python and pip bin paths
   echo "PYTHON_BIN_PATH to be used to install the .whl: ${PYTHON_BIN_PATH}"
@@ -477,7 +477,7 @@ install_tensorflow_pip() {
 
   # Install the gast package in the virtualenv. Installing it in user system
   # packages does not appear to port it over when creating a virtualenv.
-  ${PIP_BIN_PATH} install --upgrade "gast==0.2.2" || \
+  ${PIP_BIN_PATH} install --upgrade "gast==0.3.3" || \
     die "Error: gast install, upgrade FAILED"
 
 }

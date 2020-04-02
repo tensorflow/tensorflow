@@ -270,7 +270,7 @@ class WrappedFunction(function.ConcreteFunction):
     tensor_fetches = []
     tensor_infos = []
 
-    def _fetch_preprocesing_callback(fetch):
+    def _fetch_preprocessing_callback(fetch):
       """Extract out lists of ops, tensors, and tensor type info.
 
       Turns TensorInfos into Tensors in the original `fetches` structure.
@@ -300,9 +300,9 @@ class WrappedFunction(function.ConcreteFunction):
         return fetch
       else:
         graph_element = self.graph.as_graph_element(fetch)
-        return _fetch_preprocesing_callback(graph_element)
+        return _fetch_preprocessing_callback(graph_element)
 
-    fetches = nest.map_structure(_fetch_preprocesing_callback, fetches)
+    fetches = nest.map_structure(_fetch_preprocessing_callback, fetches)
 
     # Expand composite tensors into their component dense Tensors.
     tensor_fetches = nest.flatten(tensor_fetches, expand_composites=True)

@@ -24,7 +24,6 @@ import os
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -36,10 +35,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-# copybara:strip_begin
-# TODO(b/138808492): Remove code inside copybara
-from tensorflow.python.ops import control_flow_ops
-# copybara:strip_end
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -48,7 +43,7 @@ from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import device_context
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.deprecation import deprecated_args
@@ -538,8 +533,8 @@ class _WithSpaceToBatch(object):
     spatial_dims = sorted(set(int(x) for x in orig_spatial_dims))
     if spatial_dims != orig_spatial_dims or any(x < 1 for x in spatial_dims):
       raise ValueError(
-          "spatial_dims must be a montonically increasing sequence of positive "
-          "integers")
+          "spatial_dims must be a monotonically increasing sequence of "
+          "positive integers")
 
     if data_format is not None and data_format.startswith("NC"):
       expected_input_rank = spatial_dims[-1]
@@ -562,6 +557,8 @@ class _WithSpaceToBatch(object):
         self.call = build_op(num_spatial_dims, padding)
         return
 
+    padding, explicit_paddings = convert_padding(padding)
+
     # We have two padding contributions. The first is used for converting "SAME"
     # to "VALID". The second is required so that the height and width of the
     # zero-padded value tensor are multiples of rate.
@@ -582,6 +579,14 @@ class _WithSpaceToBatch(object):
         self.base_paddings = None
     elif padding == "VALID":
       self.base_paddings = np.zeros([num_spatial_dims, 2], np.int32)
+    elif padding == "EXPLICIT":
+      base_paddings = (np.array(explicit_paddings)
+                       .reshape([num_spatial_dims + 2, 2]))
+      # Remove batch and channel dimensions
+      if data_format is not None and data_format.startswith("NC"):
+        self.base_paddings = base_paddings[2:]
+      else:
+        self.base_paddings = base_paddings[1:-1]
     else:
       raise ValueError("Invalid padding method %r" % padding)
 
@@ -775,7 +780,7 @@ def convolution(
     name=None,
     data_format=None,
     filters=None,
-    dilations=None):
+    dilations=None):  # pylint: disable=g-doc-args
   """Computes sums of N-D convolutions (actually cross-correlation).
 
   This also supports either output striding via the optional `strides` parameter
@@ -860,8 +865,6 @@ def convolution(
       starts with "NC").  For N=1, the valid values are "NWC" (default) and
       "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".
       For N=3, the valid values are "NDHWC" (default) and "NCDHW".
-    filters: Alias of filter.
-    dilations: Alias of dilation_rate.
 
   Returns:
     A `Tensor` with the same type as `input` of shape
@@ -927,22 +930,6 @@ convolution_v2.__doc__ = deprecation.rewrite_argument_docstring(
     "filter", "filters")
 
 
-# copybara:strip_begin
-# TODO(b/138808492): Remove code inside copybara
-# to make TPU code and CPU code consistent.
-def _enclosing_tpu_context():
-  # pylint: disable=protected-access
-  run_context = ops.get_default_graph()._get_control_flow_context()
-  # pylint: enable=protected-access
-  while run_context is not None and not isinstance(
-      run_context, control_flow_ops.XLAControlFlowContext):
-    run_context = run_context.outer_context
-  return run_context
-
-
-# copybara:strip_end
-
-
 def convolution_internal(
     input,  # pylint: disable=redefined-builtin
     filters,
@@ -980,28 +967,20 @@ def convolution_internal(
   strides = _get_sequence(strides, n, channel_index, "strides")
   dilations = _get_sequence(dilations, n, channel_index, "dilations")
 
-  # copybara:strip_begin
-  # TODO(b/138808492): Remove code inside copybara
-  # to make TPU code and CPU code consistent.
   scopes = {1: "conv1d", 2: "Conv2D", 3: "Conv3D"}
-  if not call_from_convolution and _enclosing_tpu_context() is not None:
+  if not call_from_convolution and device_context.enclosing_tpu_context(
+  ) is not None:
     scope = scopes[n]
   else:
     scope = "convolution"
-  # copybara:strip_end
-  # copybara:insert scope = "convolution"
 
   with ops.name_scope(name, scope, [input, filters]) as name:
     conv_ops = {1: conv1d, 2: gen_nn_ops.conv2d, 3: gen_nn_ops.conv3d}
 
-    # copybara:strip_begin
-    # TODO(b/138808492): Remove code inside copybara
-    # to make TPU code and CPU code consistent.
-    if _enclosing_tpu_context() is not None or all(i == 1 for i in dilations):
+    if device_context.enclosing_tpu_context() is not None or all(
+        i == 1 for i in dilations):
       # fast path for TPU or if no dilation as gradient only supported on GPU
       # for dilations
-      # copybara:strip_end
-      # copybara:insert if all(i == 1 for i in dilations):
       op = conv_ops[n]
       return op(
           input,
@@ -1120,11 +1099,8 @@ class Convolution(object):
         name=self.name)
 
   def __call__(self, inp, filter):  # pylint: disable=redefined-builtin
-    # copybara:strip_begin
-    # TODO(b/138808492): Remove code inside copybara
-    # to make TPU code and CPU code consistent.
     # TPU convolution supports dilations greater than 1.
-    if _enclosing_tpu_context() is not None:
+    if device_context.enclosing_tpu_context() is not None:
       return convolution_internal(
           inp,
           filter,
@@ -1136,8 +1112,6 @@ class Convolution(object):
           call_from_convolution=False)
     else:
       return self.conv_op(inp, filter)
-    # copybara:strip_end
-    # copybara:insert return self.conv_op(inp, filter)
 
 
 @tf_export(v1=["nn.pool"])
@@ -1562,7 +1536,7 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
       name=name)
 
 
-def _convert_padding(padding):
+def convert_padding(padding):
   """Converts Python padding to C++ padding for ops which take EXPLICIT padding.
 
   Args:
@@ -1882,7 +1856,23 @@ def conv2d_v2(input,  # pylint: disable=redefined-builtin
                           filter[di, dj, q, k]
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
-  horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
+  horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
+  
+  Usage Example:
+  
+  >>> x_in = np.array([[
+  ...   [[2], [1], [2], [0], [1]],
+  ...   [[1], [3], [2], [2], [3]],
+  ...   [[1], [1], [3], [3], [0]],
+  ...   [[2], [2], [0], [1], [1]],
+  ...   [[0], [0], [3], [1], [2]], ]])
+  >>> kernel_in = np.array([
+  ...  [ [[2, 0.1]], [[3, 0.2]] ],
+  ...  [ [[0, 0.3]],[[1, 0.4]] ], ])
+  >>> x = tf.constant(x_in, dtype=tf.float32)
+  >>> kernel = tf.constant(kernel_in, dtype=tf.float32)
+  >>> tf.nn.conv2d(x, kernel, strides=[1, 1, 1, 1], padding='VALID')
+  <tf.Tensor: shape=(1, 4, 4, 2), dtype=float32, numpy=..., dtype=float32)>
 
   Args:
     input: A `Tensor`. Must be one of the following types:
@@ -1968,7 +1958,7 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
                           * filter[di, dj, q, k]
 
   Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
-  horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
+  horizontal and vertical strides, `strides = [1, stride, stride, 1]`.
 
   Args:
     input: A `Tensor`. Must be one of the following types:
@@ -2014,7 +2004,7 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
   """
   filter = deprecation.deprecated_argument_lookup(
       "filters", filters, "filter", filter)
-  padding, explicit_paddings = _convert_padding(padding)
+  padding, explicit_paddings = convert_padding(padding)
   if data_format is None:
     data_format = "NHWC"
   channel_index = 1 if data_format.startswith("NC") else 3
@@ -2086,7 +2076,7 @@ def conv2d_backprop_filter(  # pylint: disable=redefined-builtin,dangerous-defau
   Returns:
     A `Tensor`. Has the same type as `input`.
   """
-  padding, explicit_paddings = _convert_padding(padding)
+  padding, explicit_paddings = convert_padding(padding)
   return gen_nn_ops.conv2d_backprop_filter(
       input, filter_sizes, out_backprop, strides, padding, use_cudnn_on_gpu,
       explicit_paddings, data_format, dilations, name)
@@ -2150,7 +2140,7 @@ def conv2d_backprop_input(  # pylint: disable=redefined-builtin,dangerous-defaul
   """
   filter = deprecation.deprecated_argument_lookup(
       "filters", filters, "filter", filter)
-  padding, explicit_paddings = _convert_padding(padding)
+  padding, explicit_paddings = convert_padding(padding)
   return gen_nn_ops.conv2d_backprop_input(
       input_sizes, filter, out_backprop, strides, padding, use_cudnn_on_gpu,
       explicit_paddings, data_format, dilations, name)
@@ -2465,6 +2455,219 @@ def atrous_conv2d_transpose(value,
 
     return array_ops.batch_to_space(
         input=value, crops=batch_to_space_crop, block_size=rate)
+
+
+@tf_export(v1=["nn.depthwise_conv2d_native"])
+@deprecation.deprecated_endpoints("nn.depthwise_conv2d_native")
+def depthwise_conv2d_native(  # pylint: disable=redefined-builtin,dangerous-default-value
+    input,
+    filter,
+    strides,
+    padding,
+    data_format="NHWC",
+    dilations=[1, 1, 1, 1],
+    name=None):
+  r"""Computes a 2-D depthwise convolution.
+
+  Given an input tensor of shape `[batch, in_height, in_width, in_channels]`
+  and a filter / kernel tensor of shape
+  `[filter_height, filter_width, in_channels, channel_multiplier]`, containing
+  `in_channels` convolutional filters of depth 1, `depthwise_conv2d` applies
+  a different filter to each input channel (expanding from 1 channel to
+  `channel_multiplier` channels for each), then concatenates the results
+  together. Thus, the output has `in_channels * channel_multiplier` channels.
+
+  ```
+  for k in 0..in_channels-1
+    for q in 0..channel_multiplier-1
+      output[b, i, j, k * channel_multiplier + q] =
+        sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *
+                          filter[di, dj, k, q]
+  ```
+
+  Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
+  horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
+
+  Args:
+    input: A `Tensor`. Must be one of the following types: `half`, `bfloat16`,
+      `float32`, `float64`.
+    filter: A `Tensor`. Must have the same type as `input`.
+    strides: A list of `ints`. 1-D of length 4.  The stride of the sliding
+      window for each dimension of `input`.
+    padding: Controls how to pad the image before applying the convolution. Can
+      be the string `"SAME"` or `"VALID"` indicating the type of padding
+      algorithm to use, or a list indicating the explicit paddings at the start
+      and end of each dimension. When explicit padding is used and data_format
+      is `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+      [pad_left, pad_right], [0, 0]]`. When explicit padding used and
+      data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      [pad_top, pad_bottom], [pad_left, pad_right]]`.
+    data_format: An optional `string` from: `"NHWC", "NCHW"`. Defaults to
+      `"NHWC"`. Specify the data format of the input and output data. With the
+      default format "NHWC", the data is stored in the order of: [batch, height,
+        width, channels].
+      Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, channels, height, width].
+    dilations: An optional list of `ints`. Defaults to `[1, 1, 1, 1]`. 1-D
+      tensor of length 4.  The dilation factor for each dimension of `input`. If
+      set to k > 1, there will be k-1 skipped cells between each filter element
+      on that dimension. The dimension order is determined by the value of
+      `data_format`, see above for details. Dilations in the batch and depth
+      dimensions must be 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `input`.
+  """
+  padding, explicit_paddings = convert_padding(padding)
+  return gen_nn_ops.depthwise_conv2d_native(
+      input,
+      filter,
+      strides,
+      padding,
+      explicit_paddings=explicit_paddings,
+      data_format=data_format,
+      dilations=dilations,
+      name=name)
+
+
+@tf_export(
+    "nn.depthwise_conv2d_backprop_input",
+    v1=[
+        "nn.depthwise_conv2d_native_backprop_input",
+        "nn.depthwise_conv2d_backprop_input"
+    ])
+@deprecation.deprecated_endpoints("nn.depthwise_conv2d_native_backprop_input")
+def depthwise_conv2d_native_backprop_input(  # pylint: disable=redefined-builtin,dangerous-default-value
+    input_sizes,
+    filter,
+    out_backprop,
+    strides,
+    padding,
+    data_format="NHWC",
+    dilations=[1, 1, 1, 1],
+    name=None):
+  r"""Computes the gradients of depthwise convolution with respect to the input.
+
+  Args:
+    input_sizes: A `Tensor` of type `int32`. An integer vector representing the
+      shape of `input`, based on `data_format`.  For example, if `data_format`
+      is 'NHWC' then `input` is a 4-D `[batch, height, width, channels]` tensor.
+    filter: A `Tensor`. Must be one of the following types: `half`, `bfloat16`,
+      `float32`, `float64`. 4-D with shape `[filter_height, filter_width,
+      in_channels, depthwise_multiplier]`.
+    out_backprop: A `Tensor`. Must have the same type as `filter`. 4-D with
+      shape  based on `data_format`. For example, if `data_format` is 'NHWC'
+      then out_backprop shape is `[batch, out_height, out_width, out_channels]`.
+      Gradients w.r.t. the output of the convolution.
+    strides: A list of `ints`. The stride of the sliding window for each
+      dimension of the input of the convolution.
+    padding: Controls how to pad the image before applying the convolution. Can
+      be the string `"SAME"` or `"VALID"` indicating the type of padding
+      algorithm to use, or a list indicating the explicit paddings at the start
+      and end of each dimension. When explicit padding is used and data_format
+      is `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+      [pad_left, pad_right], [0, 0]]`. When explicit padding used and
+      data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      [pad_top, pad_bottom], [pad_left, pad_right]]`.
+    data_format: An optional `string` from: `"NHWC", "NCHW"`. Defaults to
+      `"NHWC"`. Specify the data format of the input and output data. With the
+      default format "NHWC", the data is stored in the order of: [batch, height,
+        width, channels].
+      Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, channels, height, width].
+    dilations: An optional list of `ints`. Defaults to `[1, 1, 1, 1]`. 1-D
+      tensor of length 4.  The dilation factor for each dimension of `input`. If
+      set to k > 1, there will be k-1 skipped cells between each filter element
+      on that dimension. The dimension order is determined by the value of
+      `data_format`, see above for details. Dilations in the batch and depth
+      dimensions must be 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `filter`.
+  """
+  padding, explicit_paddings = convert_padding(padding)
+  return gen_nn_ops.depthwise_conv2d_native_backprop_input(
+      input_sizes,
+      filter,
+      out_backprop,
+      strides,
+      padding,
+      explicit_paddings=explicit_paddings,
+      data_format=data_format,
+      dilations=dilations,
+      name=name)
+
+
+@tf_export(
+    "nn.depthwise_conv2d_backprop_filter",
+    v1=[
+        "nn.depthwise_conv2d_native_backprop_filter",
+        "nn.depthwise_conv2d_backprop_filter"
+    ])
+@deprecation.deprecated_endpoints("nn.depthwise_conv2d_native_backprop_filter")
+def depthwise_conv2d_native_backprop_filter(  # pylint: disable=redefined-builtin,dangerous-default-value
+    input,
+    filter_sizes,
+    out_backprop,
+    strides,
+    padding,
+    data_format="NHWC",
+    dilations=[1, 1, 1, 1],
+    name=None):
+  r"""Computes the gradients of depthwise convolution with respect to the filter.
+
+  Args:
+    input: A `Tensor`. Must be one of the following types: `half`, `bfloat16`,
+      `float32`, `float64`. 4-D with shape based on `data_format`.  For example,
+      if `data_format` is 'NHWC' then `input` is a 4-D `[batch, in_height,
+      in_width, in_channels]` tensor.
+    filter_sizes: A `Tensor` of type `int32`. An integer vector representing the
+      tensor shape of `filter`, where `filter` is a 4-D `[filter_height,
+      filter_width, in_channels, depthwise_multiplier]` tensor.
+    out_backprop: A `Tensor`. Must have the same type as `input`. 4-D with shape
+      based on `data_format`. For example, if `data_format` is 'NHWC' then
+      out_backprop shape is `[batch, out_height, out_width, out_channels]`.
+      Gradients w.r.t. the output of the convolution.
+    strides: A list of `ints`. The stride of the sliding window for each
+      dimension of the input of the convolution.
+    padding: Controls how to pad the image before applying the convolution. Can
+      be the string `"SAME"` or `"VALID"` indicating the type of padding
+      algorithm to use, or a list indicating the explicit paddings at the start
+      and end of each dimension. When explicit padding is used and data_format
+      is `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+      [pad_left, pad_right], [0, 0]]`. When explicit padding used and
+      data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      [pad_top, pad_bottom], [pad_left, pad_right]]`.
+    data_format: An optional `string` from: `"NHWC", "NCHW"`. Defaults to
+      `"NHWC"`. Specify the data format of the input and output data. With the
+      default format "NHWC", the data is stored in the order of: [batch, height,
+        width, channels].
+      Alternatively, the format could be "NCHW", the data storage order of:
+        [batch, channels, height, width].
+    dilations: An optional list of `ints`. Defaults to `[1, 1, 1, 1]`. 1-D
+      tensor of length 4.  The dilation factor for each dimension of `input`. If
+      set to k > 1, there will be k-1 skipped cells between each filter element
+      on that dimension. The dimension order is determined by the value of
+      `data_format`, see above for details. Dilations in the batch and depth
+      dimensions must be 1.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `input`.
+  """
+  padding, explicit_paddings = convert_padding(padding)
+  return gen_nn_ops.depthwise_conv2d_native_backprop_filter(
+      input,
+      filter_sizes,
+      out_backprop,
+      strides,
+      padding,
+      explicit_paddings=explicit_paddings,
+      data_format=data_format,
+      dilations=dilations,
+      name=name)
 
 
 @tf_export("nn.conv3d", v1=[])
@@ -3333,7 +3536,7 @@ def softmax_cross_entropy_with_logits_v2_helper(
 
     # Do the actual op computation.
     # The second output tensor contains the gradients.  We use it in
-    # _CrossEntropyGrad() in nn_grad but not here.
+    # CrossEntropyGrad() in nn_grad but not here.
     cost, unused_backprop = gen_nn_ops.softmax_cross_entropy_with_logits(
         precise_logits, labels, name=name)
 
@@ -4377,7 +4580,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
   rely on the output of other nodes.
 
   More precisely: With probability `rate` elements of `x` are set to `0`.
-  The remaining elemenst are scaled up by `1.0 / (1 - rate)`, so that the
+  The remaining elements are scaled up by `1.0 / (1 - rate)`, so that the
   expected value is preserved.
 
   >>> tf.random.set_seed(0)
@@ -4435,100 +4638,51 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
       which is likely not what was intended.
   """
   with ops.name_scope(name, "dropout", [x]) as name:
-    # TODO(b/144930399): Remove this once the compatible window is passed.
-    if compat.forward_compatible(2019, 12, 16):
-      is_rate_number = isinstance(rate, numbers.Real)
-      if is_rate_number and (rate < 0 or rate >= 1):
-        raise ValueError("rate must be a scalar tensor or a float in the "
-                         "range [0, 1), got %g" % rate)
-      x = ops.convert_to_tensor(x, name="x")
-      x_dtype = x.dtype
-      if not x_dtype.is_floating:
-        raise ValueError("x has to be a floating point tensor since it's going "
-                         "to be scaled. Got a %s tensor instead." % x_dtype)
-      is_executing_eagerly = context.executing_eagerly()
-      if not tensor_util.is_tensor(rate):
-        if is_rate_number:
-          keep_prob = 1 - rate
-          scale = 1 / keep_prob
-          scale = ops.convert_to_tensor(scale, dtype=x_dtype)
-          ret = gen_math_ops.mul(x, scale)
-        else:
-          raise ValueError("rate is neither scalar nor scalar tensor %r" % rate)
+    is_rate_number = isinstance(rate, numbers.Real)
+    if is_rate_number and (rate < 0 or rate >= 1):
+      raise ValueError("rate must be a scalar tensor or a float in the "
+                       "range [0, 1), got %g" % rate)
+    x = ops.convert_to_tensor(x, name="x")
+    x_dtype = x.dtype
+    if not x_dtype.is_floating:
+      raise ValueError("x has to be a floating point tensor since it's going "
+                       "to be scaled. Got a %s tensor instead." % x_dtype)
+    is_executing_eagerly = context.executing_eagerly()
+    if not tensor_util.is_tensor(rate):
+      if is_rate_number:
+        keep_prob = 1 - rate
+        scale = 1 / keep_prob
+        scale = ops.convert_to_tensor(scale, dtype=x_dtype)
+        ret = gen_math_ops.mul(x, scale)
       else:
-        rate.get_shape().assert_has_rank(0)
-        rate_dtype = rate.dtype
-        if rate_dtype != x_dtype:
-          if not rate_dtype.is_compatible_with(x_dtype):
-            raise ValueError(
-                "Tensor dtype %s is incomptaible with Tensor dtype %s: %r" %
-                (x_dtype.name, rate_dtype.name, rate))
-          rate = gen_math_ops.cast(rate, x_dtype, name="rate")
-        one_tensor = constant_op.constant(1, dtype=x_dtype)
-        ret = gen_math_ops.real_div(x, gen_math_ops.sub(one_tensor, rate))
-
-      noise_shape = _get_noise_shape(x, noise_shape)
-      # Sample a uniform distribution on [0.0, 1.0) and select values larger
-      # than rate.
-      #
-      # NOTE: Random uniform can only generate 2^23 floats on [1.0, 2.0)
-      # and subtract 1.0.
-      random_tensor = random_ops.random_uniform(
-          noise_shape, seed=seed, dtype=x_dtype)
-      # NOTE: if (1.0 + rate) - 1 is equal to rate, then that float is selected,
-      # hence a >= comparison is used.
-      keep_mask = random_tensor >= rate
-      ret = gen_math_ops.mul(ret, gen_math_ops.cast(keep_mask, x_dtype))
-      if not is_executing_eagerly:
-        ret.set_shape(x.get_shape())
-      return ret
+        raise ValueError("rate is neither scalar nor scalar tensor %r" % rate)
     else:
-      x = ops.convert_to_tensor(x, name="x")
-      if not x.dtype.is_floating:
-        raise ValueError("x has to be a floating point tensor since it will "
-                         "be scaled. Got a %s tensor instead." % x.dtype)
-      if isinstance(rate, numbers.Real):
-        if not (rate >= 0 and rate < 1):
-          raise ValueError("rate must be a scalar tensor or a float in the "
-                           "range [0, 1), got %g" % rate)
-        if rate > 0.5:
-          logging.log_first_n(
-              logging.WARN, "Large dropout rate: %g (>0.5). In TensorFlow "
-              "2.x, dropout() uses dropout rate instead of keep_prob. "
-              "Please ensure that this is intended.", 5, rate)
+      rate.get_shape().assert_has_rank(0)
+      rate_dtype = rate.dtype
+      if rate_dtype != x_dtype:
+        if not rate_dtype.is_compatible_with(x_dtype):
+          raise ValueError(
+              "Tensor dtype %s is incomptaible with Tensor dtype %s: %r" %
+              (x_dtype.name, rate_dtype.name, rate))
+        rate = gen_math_ops.cast(rate, x_dtype, name="rate")
+      one_tensor = constant_op.constant(1, dtype=x_dtype)
+      ret = gen_math_ops.real_div(x, gen_math_ops.sub(one_tensor, rate))
 
-      # Early return if nothing needs to be dropped.
-      if isinstance(rate, numbers.Real) and rate == 0:
-        return x
-      if context.executing_eagerly():
-        if isinstance(rate, ops.EagerTensor):
-          if rate.numpy() == 0:
-            return x
-      else:
-        rate = ops.convert_to_tensor(rate, dtype=x.dtype, name="rate")
-        rate.get_shape().assert_has_rank(0)
-
-        # Do nothing if we know rate == 0
-        if tensor_util.constant_value(rate) == 0:
-          return x
-
-      noise_shape = _get_noise_shape(x, noise_shape)
-      # Sample a uniform distribution on [0.0, 1.0) and select values larger
-      # than rate.
-      #
-      # NOTE: Random uniform can only generate 2^23 floats on [1.0, 2.0)
-      # and subtract 1.0.
-      random_tensor = random_ops.random_uniform(
-          noise_shape, seed=seed, dtype=x.dtype)
-      keep_prob = 1 - rate
-      scale = 1 / keep_prob
-      # NOTE: if (1.0 + rate) - 1 is equal to rate, then that
-      # float is selected, hence we use a >= comparison.
-      keep_mask = random_tensor >= rate
-      ret = x * scale * math_ops.cast(keep_mask, x.dtype)
-      if not context.executing_eagerly():
-        ret.set_shape(x.get_shape())
-      return ret
+    noise_shape = _get_noise_shape(x, noise_shape)
+    # Sample a uniform distribution on [0.0, 1.0) and select values larger
+    # than rate.
+    #
+    # NOTE: Random uniform can only generate 2^23 floats on [1.0, 2.0)
+    # and subtract 1.0.
+    random_tensor = random_ops.random_uniform(
+        noise_shape, seed=seed, dtype=x_dtype)
+    # NOTE: if (1.0 + rate) - 1 is equal to rate, then that float is selected,
+    # hence a >= comparison is used.
+    keep_mask = random_tensor >= rate
+    ret = gen_math_ops.mul(ret, gen_math_ops.cast(keep_mask, x_dtype))
+    if not is_executing_eagerly:
+      ret.set_shape(x.get_shape())
+    return ret
 
 
 @tf_export("math.top_k", "nn.top_k")

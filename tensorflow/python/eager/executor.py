@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 
 
 class Executor(object):
@@ -45,8 +45,8 @@ class Executor(object):
 
   def __del__(self):
     try:
-      # pywrap_tensorflow.TFE_ExecutorWaitForAllPendingNodes(self._handle)
-      pywrap_tensorflow.TFE_DeleteExecutor(self._handle)
+      # pywrap_tfe.TFE_ExecutorWaitForAllPendingNodes(self._handle)
+      pywrap_tfe.TFE_DeleteExecutor(self._handle)
     except TypeError:
       # Suppress some exceptions, mainly for the case when we're running on
       # module deletion. Things that can go wrong include the pywrap module
@@ -57,20 +57,20 @@ class Executor(object):
       # partially unloaded.
 
   def is_async(self):
-    return pywrap_tensorflow.TFE_ExecutorIsAsync(self._handle)
+    return pywrap_tfe.TFE_ExecutorIsAsync(self._handle)
 
   def handle(self):
     return self._handle
 
   def wait(self):
     """Waits for ops dispatched in this executor to finish."""
-    pywrap_tensorflow.TFE_ExecutorWaitForAllPendingNodes(self._handle)
+    pywrap_tfe.TFE_ExecutorWaitForAllPendingNodes(self._handle)
 
   def clear_error(self):
     """Clears errors raised in this executor during execution."""
-    pywrap_tensorflow.TFE_ExecutorClearError(self._handle)
+    pywrap_tfe.TFE_ExecutorClearError(self._handle)
 
 
 def new_executor(enable_async):
-  handle = pywrap_tensorflow.TFE_NewExecutor(enable_async)
+  handle = pywrap_tfe.TFE_NewExecutor(enable_async)
   return Executor(handle)

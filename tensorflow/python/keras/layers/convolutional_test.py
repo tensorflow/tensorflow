@@ -95,6 +95,19 @@ class Conv1DTest(keras_parameterized.TestCase):
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
+  def test_conv1d_recreate_conv(self):
+    with self.cached_session(use_gpu=True):
+      layer = keras.layers.Conv1D(filters=1,
+                                  kernel_size=3,
+                                  strides=1,
+                                  dilation_rate=2,
+                                  padding='causal')
+      inpt1 = np.random.normal(size=[1, 2, 1])
+      inpt2 = np.random.normal(size=[1, 1, 1])
+      outp1_shape = layer(inpt1).shape
+      _ = layer(inpt2).shape
+      self.assertEqual(outp1_shape, layer(inpt1).shape)
+
 
 @keras_parameterized.run_all_keras_modes
 class Conv2DTest(keras_parameterized.TestCase):
@@ -163,6 +176,11 @@ class Conv2DTest(keras_parameterized.TestCase):
       layer.build((None, 5, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
+
+  def test_conv2d_zero_kernel_size(self):
+    kwargs = {'filters': 2, 'kernel_size': 0}
+    with self.assertRaises(ValueError):
+      keras.layers.Conv2D(**kwargs)
 
 
 @keras_parameterized.run_all_keras_modes
@@ -256,6 +274,39 @@ class Conv3DTest(keras_parameterized.TestCase):
             },
             input_shape=(None, 3, None, None, None),
             input_data=input_data)
+
+
+@keras_parameterized.run_all_keras_modes
+class Conv3DTransposeTest(keras_parameterized.TestCase):
+
+  def _run_test(self, kwargs, expected_output_shape):
+    num_samples = 2
+    stack_size = 3
+    num_row = 7
+    num_col = 6
+    depth = 5
+
+    with test_util.use_gpu():
+      testing_utils.layer_test(
+          keras.layers.Conv3DTranspose,
+          kwargs=kwargs,
+          input_shape=(num_samples, depth, num_row, num_col, stack_size),
+          expected_output_shape=expected_output_shape)
+
+  @parameterized.named_parameters(
+      ('padding_valid', {'padding': 'valid'}, (None, 7, 9, 8, 2)),
+      ('padding_same', {'padding': 'same'}, (None, 5, 7, 6, 2)),
+      ('strides', {'strides': (2, 2, 2)}, (None, 11, 15, 13, 2)),
+      ('dilation_rate', {'dilation_rate': (2, 2, 2)}, (None, 7, 9, 8, 2)),
+      # Only runs on GPU with CUDA, channels_first is not supported on CPU.
+      # TODO(b/62340061): Support channels_first on CPU.
+      ('data_format', {'data_format': 'channels_first'}),
+  )
+  def test_conv3d_transpose(self, kwargs, expected_output_shape=None):
+    kwargs['filters'] = 2
+    kwargs['kernel_size'] = (3, 3, 3)
+    if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
+      self._run_test(kwargs, expected_output_shape)
 
 
 @keras_parameterized.run_all_keras_modes

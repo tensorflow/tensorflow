@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/c/checkpoint_reader.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
 #include "tensorflow/core/profiler/internal/tfprof_node.h"
 #include "tensorflow/core/profiler/internal/tfprof_node_show.h"
@@ -45,8 +44,7 @@ class TFMultiShow {
   virtual ~TFMultiShow() {}
   virtual void AddNode(TFGraphNode* node) = 0;
   virtual void Build() = 0;
-  virtual const MultiGraphNodeProto& Show(const string& prefix,
-                                          const Options& opts) final;
+  const MultiGraphNodeProto& Show(const string& prefix, const Options& opts);
 
  protected:
   virtual const ShowMultiNode* ShowInternal(const Options& opts,

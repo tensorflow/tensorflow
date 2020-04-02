@@ -71,7 +71,7 @@ class GuardedPhiloxRandom {
 
  private:
   mutex mu_;
-  random::PhiloxRandom generator_ GUARDED_BY(mu_);
+  random::PhiloxRandom generator_ TF_GUARDED_BY(mu_);
   bool initialized_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GuardedPhiloxRandom);

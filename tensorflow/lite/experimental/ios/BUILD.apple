@@ -5,7 +5,9 @@ load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_MINIMUM_OS_VERSION")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 
 package(
-    default_visibility = ["//tensorflow/lite/c:experimental"],
+    default_visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -80,6 +82,7 @@ cc_library(
 build_test(
     name = "framework_build_test",
     tags = [
+        "noasan",  # b/147230742
         "nomsan",  # b/145205324
         "notsan",  # b/145205324
     ],

@@ -75,12 +75,16 @@ typedef enum {
 } TfLiteFusedActivation;
 
 typedef struct {
+  // Parameters for CONV_2D version 1.
   TfLitePadding padding;
   int stride_width;
   int stride_height;
+  TfLiteFusedActivation activation;
+
+  // Parameters for CONV_2D version 2.
+  // Note: Version 2 supports dilation values not equal to 1.
   int dilation_width_factor;
   int dilation_height_factor;
-  TfLiteFusedActivation activation;
 } TfLiteConvParams;
 
 typedef struct {
@@ -105,7 +109,7 @@ typedef struct {
   //
   // The information can be deduced from the shape of input and the shape of
   // weights. Since the TFLiteConverter toolchain doesn't support partially
-  // specificed shapes, relying on `depth_multiplier` stops us from supporting
+  // specified shapes, relying on `depth_multiplier` stops us from supporting
   // graphs with dynamic shape tensors.
   //
   // Note: Some of the delegates (e.g. NNAPI, GPU) are still relying on this
@@ -253,6 +257,10 @@ typedef struct {
 
 typedef struct {
   bool align_corners;
+  // half_pixel_centers assumes pixels are of half the actual dimensions, and
+  // yields more accurate resizes. Corresponds to the same argument for the
+  // original TensorFlow op in TF2.0.
+  bool half_pixel_centers;
 } TfLiteResizeBilinearParams;
 
 typedef struct {

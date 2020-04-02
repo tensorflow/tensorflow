@@ -280,7 +280,6 @@ TokKind HloLexer::LexIdentifier() {
   KEYWORD(ROOT);
   KEYWORD(maximal);
   KEYWORD(replicated);
-  KEYWORD(sparse);
 
 #undef KEYWORD
 
@@ -496,8 +495,6 @@ string TokKindToString(TokKind kind) {
       return "kw_inf";
     case TokKind::kNegInf:
       return "kNegInf";
-    case TokKind::kw_sparse:
-      return "kw_sparse";
     case TokKind::kPrimitiveType:
       return "kPrimitiveType";
     case TokKind::kName:

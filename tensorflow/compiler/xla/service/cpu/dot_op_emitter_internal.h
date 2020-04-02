@@ -63,7 +63,7 @@ enum class DotImplementationStrategy {
   // supported.
   kTiledLlvmIrGemv,
 
-  // The dot operation is lowered into LLVM IR that implemetns a tiled
+  // The dot operation is lowered into LLVM IR that implements a tiled
   // Matrix*Matrix operation.  No fusions are supported.  The two inputs
   // and the output have to be row major.
   kTiledLlvmIrGemm,

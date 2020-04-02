@@ -27,7 +27,6 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import confusion_matrix
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
@@ -143,9 +142,6 @@ def scale_losses_by_sample_weight(losses, sample_weight):
   # Update dimensions of `sample_weight` to match with `losses` if possible.
   losses, _, sample_weight = squeeze_or_expand_dimensions(
       losses, None, sample_weight)
-
-  # Broadcast weights if possible.
-  sample_weight = weights_broadcast_ops.broadcast_weights(sample_weight, losses)
   return math_ops.multiply(losses, sample_weight)
 
 

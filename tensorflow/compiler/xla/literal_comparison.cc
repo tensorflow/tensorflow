@@ -433,7 +433,7 @@ class NearComparator {
       }
     } else if (IsInf(expected) || IsInf(actual)) {
       // If either the expected or actual value is infinity but not both,
-      // then both absolute and relative error are regarded as inifity.
+      // then both absolute and relative error are regarded as infinity.
       CHECK(!CompareEqual(expected, actual, {linear_index}));
       abs_error = std::numeric_limits<float>::infinity();
       rel_error = std::numeric_limits<float>::infinity();

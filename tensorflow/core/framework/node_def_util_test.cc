@@ -309,6 +309,24 @@ TEST(NodeDefUtilTest, ValidSyntax) {
   EXPECT_EQ("{{node n}} = AnyIn[T=[DT_INT32, DT_STRING]](a:0, b:123)",
             SummarizeNodeDef(node_def_explicit_inputs));
 
+  const NodeDef node_def_explicit_inputs_namespace = ToNodeDef(R"proto(
+    name: 'Project>n'
+    op: 'Project>AnyIn'
+    input: 'Project>a:0'
+    input: 'Project>b:123'
+    input: '^Project>c'
+    attr {
+      key: 'T'
+      value { list { type: [ DT_INT32, DT_STRING ] } }
+    }
+  )proto");
+  ExpectValidSyntax(node_def_explicit_inputs_namespace);
+
+  EXPECT_EQ(
+      "{{node Project>n}} = Project>AnyIn[T=[DT_INT32, DT_STRING]]"
+      "(Project>a:0, Project>b:123, ^Project>c)",
+      SummarizeNodeDef(node_def_explicit_inputs_namespace));
+
   const NodeDef node_def_partial_shape = ToNodeDef(R"proto(
     name:'n' op:'AnyIn'
     attr { key:'shp' value { shape { dim { size: -1 } dim { size: 0 } } } }

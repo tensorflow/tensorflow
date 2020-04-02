@@ -56,11 +56,6 @@ try:
     sys.setdlopenflags(_default_dlopen_flags | ctypes.RTLD_LOCAL)
 
   from tensorflow.python.pywrap_tensorflow_internal import *
-  from tensorflow.python.pywrap_tensorflow_internal import __version__
-  from tensorflow.python.pywrap_tensorflow_internal import __git_version__
-  from tensorflow.python.pywrap_tensorflow_internal import __compiler_version__
-  from tensorflow.python.pywrap_tensorflow_internal import __cxx11_abi_flag__
-  from tensorflow.python.pywrap_tensorflow_internal import __monolithic_build__
 
   if _use_dlopen_global_flags:
     pywrap_dlopen_global_flags.reset_dlopen_flags()

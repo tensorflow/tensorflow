@@ -84,7 +84,7 @@ class GpuExecutable : public Executable {
   // doesn't match the compute capability passed to this object's constructor.
   StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
+      std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
   std::shared_ptr<const BufferAssignment> GetBufferAssignment() const {
@@ -118,7 +118,7 @@ class GpuExecutable : public Executable {
   // Computes annotations for each thunk and store them in thunk_annotations_.
   void ComputeThunkAnnotations();
 
-  // GpuExecutable check with either AMD's ISA version, or Nvdia's major minor
+  // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
   Status CheckCompatibilityWithServiceExecutableRunOptions(
       const ServiceExecutableRunOptions* run_options);
@@ -159,9 +159,9 @@ class GpuExecutable : public Executable {
   // `ResolveConstantGlobals`.
   tensorflow::mutex module_handle_mutex_;
   std::map<stream_executor::StreamExecutor*, se::ScopedModuleHandle>
-      module_handles_ GUARDED_BY(module_handle_mutex_);
+      module_handles_ TF_GUARDED_BY(module_handle_mutex_);
   std::map<stream_executor::StreamExecutor*, BufferAllocToDeviceMemoryMap>
-      module_globals_ GUARDED_BY(module_handle_mutex_);
+      module_globals_ TF_GUARDED_BY(module_handle_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };

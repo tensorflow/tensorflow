@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -304,11 +305,11 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, SaveAndRestore) {
       EXPECT_TRUE(end_of_sequence);
     }
 
-    VariantTensorData data;
-    VariantTensorDataWriter writer(&data);
+    VariantTensorDataWriter writer;
     TF_ASSERT_OK(iterator_->Save(serialization_context.get(), &writer));
-    TF_ASSERT_OK(writer.Flush());
-    VariantTensorDataReader reader(&data);
+    std::vector<const VariantTensorData*> data;
+    writer.GetData(&data);
+    VariantTensorDataReader reader(data);
     TF_EXPECT_OK(RestoreIterator(iterator_ctx_.get(), &reader, "Iterator",
                                  *dataset_, &iterator_));
   }

@@ -63,7 +63,7 @@ def _initialized_session(config=None):
 
 class LazyColumnTest(test.TestCase):
 
-  def test_transormations_called_once(self):
+  def test_transformations_called_once(self):
 
     class TransformCounter(_FeatureColumn):
 
@@ -1131,7 +1131,7 @@ class CrossedColumnTest(test.TestCase):
   def test_linear_model(self):
     """Tests linear_model.
 
-    Uses data from test_get_sparse_tesnsors_simple.
+    Uses data from test_get_sparse_tensors_simple.
     """
     a = fc._numeric_column('a', dtype=dtypes.int32, shape=(2,))
     b = fc._bucketized_column(a, boundaries=(0, 1))
@@ -1213,7 +1213,7 @@ class CrossedColumnTest(test.TestCase):
   def test_keras_linear_model(self):
     """Tests _LinearModel.
 
-    Uses data from test_get_sparse_tesnsors_simple.
+    Uses data from test_get_sparse_tensors_simple.
     """
     a = fc._numeric_column('a', dtype=dtypes.int32, shape=(2,))
     b = fc._bucketized_column(a, boundaries=(0, 1))

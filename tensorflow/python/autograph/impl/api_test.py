@@ -291,6 +291,32 @@ class ApiTest(test.TestCase):
         options=DEFAULT_RECURSIVE)
     self.assertEqual((1, 2, 3), self.evaluate(x))
 
+  @test_util.run_v1_only('b/120545219')
+  def test_converted_call_functools_partial_kwarg_mutation(self):
+    def test_fn(x, y, z):
+      if x < 0:
+        return -x, -y, -z
+      return x, y, z
+
+    partial_fn = functools.partial(test_fn, constant_op.constant(-1), z=-3)
+    # Call using kwargs to assign y first to ensure that partial_fn.keywords is
+    # not mutated for subsequent calls (where y is assign through args).
+    x = api.converted_call(
+        partial_fn,
+        args=(),
+        kwargs={
+            'y': constant_op.constant(-2),
+        },
+        options=DEFAULT_RECURSIVE)
+    self.assertEqual((1, 2, 3), self.evaluate(x))
+
+    x = api.converted_call(
+        partial_fn,
+        args=(constant_op.constant(-4),),
+        kwargs=None,
+        options=DEFAULT_RECURSIVE)
+    self.assertEqual((1, 4, 3), self.evaluate(x))
+
   def test_converted_call_method(self):
 
     class TestClass(object):
@@ -727,6 +753,27 @@ class ApiTest(test.TestCase):
 
     self.assertAllEqual(1, self.evaluate(x))
 
+  def test_converted_call_native_binding(self):
+    x = api.converted_call(np.power, (2, 2), None, options=DEFAULT_RECURSIVE)
+    self.assertAllEqual(x, 4)
+
+  def test_converted_call_native_binding_errorneous(self):
+
+    class FaultyBinding(object):
+
+      def __array__(self):
+        raise ValueError('fault')
+
+    bad_obj = FaultyBinding()
+
+    def fail_if_warning(*_):
+      self.fail('No warning should be issued')
+
+    with test.mock.patch.object(ag_logging, 'warn', fail_if_warning):
+      with self.assertRaisesRegex(ValueError, 'fault'):
+        api.converted_call(
+            np.power, (bad_obj, 2), None, options=DEFAULT_RECURSIVE)
+
   def test_converted_call_through_tf_dataset(self):
 
     def other_fn(x):
@@ -995,7 +1042,7 @@ class ApiTest(test.TestCase):
                        ag_ctx.Status.ENABLED)
       return 0
 
-    # Note: the autograph=False sets the contect to Status.DISABLED. The test
+    # Note: the autograph=False sets the connect to Status.DISABLED. The test
     # verifies that to_graph overrides that.
     @def_function.function(autograph=False)
     def f():

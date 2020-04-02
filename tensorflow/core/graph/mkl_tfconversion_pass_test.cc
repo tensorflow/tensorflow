@@ -107,20 +107,19 @@ class MklToTfConversionPass : public ::testing::Test {
   string original_;
 };
 
-REGISTER_OP("Input").Output("o: float").SetIsStateful();
-REGISTER_OP("HalfInput").Output("o: half").SetIsStateful();
-REGISTER_OP("_MklInput").Output("o: uint8").SetIsStateful();
+REGISTER_OP("Float_Input").Output("o: float").SetIsStateful();
+REGISTER_OP("_Mkl_Input").Output("o: uint8").SetIsStateful();
 
 TEST_F(MklToTfConversionPass, Basic) {
   InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Input'}"
+      "node { name: 'A' op: 'Float_Input'}"
+      "node { name: 'B' op: 'Float_Input'}"
       "node { name: 'C' op: 'Mul' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'B'] }"
       "node { name: 'D' op: 'Mul' attr { key: 'T' value { type: DT_FLOAT } }"
       " input: ['A', 'B'] }");
   EXPECT_EQ(DoRunMklToTfConversionPass(),
-            "A(Input);B(Input);C(Mul);D(Mul)|"
+            "A(Float_Input);B(Float_Input);C(Mul);D(Mul)|"
             "A->C;A->D;B->C:1;B->D:1");
 }
 
@@ -130,10 +129,10 @@ TEST_F(MklToTfConversionPass, Basic) {
 TEST_F(MklToTfConversionPass, Positive) {
   if (kTensorOrdering == MklTfTensorOrdering::TENSORS_INTERLEAVED) {
     InitGraph(
-        "node { name: 'A' op: 'Input'}"
-        "node { name: 'M' op: '_MklInput'}"
-        "node { name: 'B' op: 'Input'}"
-        "node { name: 'N' op: '_MklInput'}"
+        "node { name: 'A' op: 'Float_Input'}"
+        "node { name: 'M' op: '_Mkl_Input'}"
+        "node { name: 'B' op: 'Float_Input'}"
+        "node { name: 'N' op: '_Mkl_Input'}"
         "node { name: 'C' op: '_MklConv2D'"
         " attr { key: 'T'                value { type: DT_FLOAT } }"
         " attr { key: 'data_format'      value { s: 'NCHW' } }"
@@ -142,21 +141,22 @@ TEST_F(MklToTfConversionPass, Positive) {
         "}"
         " attr { key: 'padding'          value { s: 'SAME' } }"
         " input: ['A', 'M', 'B', 'N']}"
-        "node { name: 'D' op: 'Input'}"
+        "node { name: 'D' op: 'Float_Input'}"
         "node { name: 'E' op: 'Sub'"
         " attr {key: 'T'                 value { type: DT_FLOAT } }"
         " input: ['C', 'D']}");
     EXPECT_EQ(DoRunMklToTfConversionPass(),
-              "A(Input);B(Input);C(_MklConv2D);D(Input);E(Sub);M(_MklInput);"
-              "Mkl2Tf/_0(_MklToTf);N(_MklInput)|A->C;B->C:2;C->Mkl2Tf/_0;"
+              "A(Float_Input);B(Float_Input);C(_MklConv2D);D(Float_Input);E("
+              "Sub);M(_Mkl_Input);"
+              "Mkl2Tf/_0(_MklToTf);N(_Mkl_Input)|A->C;B->C:2;C->Mkl2Tf/_0;"
               "C:1->Mkl2Tf/_0:1;D->E:1;M->C:1;Mkl2Tf/_0->E;N->C:3");
   } else {
     CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
     InitGraph(
-        "node { name: 'A' op: 'Input'}"
-        "node { name: 'B' op: 'Input'}"
-        "node { name: 'M' op: '_MklInput'}"
-        "node { name: 'N' op: '_MklInput'}"
+        "node { name: 'A' op: 'Float_Input'}"
+        "node { name: 'B' op: 'Float_Input'}"
+        "node { name: 'M' op: '_Mkl_Input'}"
+        "node { name: 'N' op: '_Mkl_Input'}"
         "node { name: 'C' op: '_MklConv2D'"
         " attr { key: 'T'                value { type: DT_FLOAT } }"
         " attr { key: 'data_format'      value { s: 'NCHW' } }"
@@ -165,13 +165,14 @@ TEST_F(MklToTfConversionPass, Positive) {
         "}"
         " attr { key: 'padding'          value { s: 'SAME' } }"
         " input: ['A', 'B', 'M', 'N']}"
-        "node { name: 'D' op: 'Input'}"
+        "node { name: 'D' op: 'Float_Input'}"
         "node { name: 'E' op: 'Sub'"
         " attr {key: 'T'                 value { type: DT_FLOAT } }"
         " input: ['C', 'D']}");
     EXPECT_EQ(DoRunMklToTfConversionPass(),
-              "A(Input);B(Input);C(_MklConv2D);D(Input);E(Sub);M(_MklInput);"
-              "Mkl2Tf/_0(_MklToTf);N(_MklInput)|A->C;B->C:1;C->Mkl2Tf/_0;"
+              "A(Float_Input);B(Float_Input);C(_MklConv2D);D(Float_Input);E("
+              "Sub);M(_Mkl_Input);"
+              "Mkl2Tf/_0(_MklToTf);N(_Mkl_Input)|A->C;B->C:1;C->Mkl2Tf/_0;"
               "C:2->Mkl2Tf/_0:1;D->E:1;M->C:2;Mkl2Tf/_0->E;N->C:3");
   }
 }
@@ -183,10 +184,10 @@ TEST_F(MklToTfConversionPass, Positive) {
 TEST_F(MklToTfConversionPass, Negative_DoubleInsert) {
   if (kTensorOrdering == MklTfTensorOrdering::TENSORS_INTERLEAVED) {
     InitGraph(
-        "node { name: 'A' op: 'Input'}"
-        "node { name: 'M' op: '_MklInput'}"
-        "node { name: 'B' op: 'Input'}"
-        "node { name: 'N' op: '_MklInput'}"
+        "node { name: 'A' op: 'Float_Input'}"
+        "node { name: 'M' op: '_Mkl_Input'}"
+        "node { name: 'B' op: 'Float_Input'}"
+        "node { name: 'N' op: '_Mkl_Input'}"
         "node { name: 'C' op: '_MklConv2D'"
         " attr { key: 'T'                value { type: DT_FLOAT } }"
         " attr { key: 'data_format'      value { s: 'NCHW' } }"
@@ -199,21 +200,22 @@ TEST_F(MklToTfConversionPass, Negative_DoubleInsert) {
         " attr { key: 'T'                value { type: DT_FLOAT } }"
         " attr { key: 'data_format'      value { s: 'NCHW' } }"
         " input: ['C:0', 'C:1']}"
-        "node { name: 'E' op: 'Input'}"
+        "node { name: 'E' op: 'Float_Input'}"
         "node { name: 'F' op: 'Sub'"
         " attr {key: 'T'                 value { type: DT_FLOAT } }"
         " input: ['D', 'E']}");
     EXPECT_EQ(DoRunMklToTfConversionPass(),
-              "A(Input);B(Input);C(_MklConv2D);D(_MklToTf);E(Input);"
-              "F(Sub);M(_MklInput);N(_MklInput)|"
+              "A(Float_Input);B(Float_Input);C(_MklConv2D);D(_MklToTf);E(Float_"
+              "Input);"
+              "F(Sub);M(_Mkl_Input);N(_Mkl_Input)|"
               "A->C;B->C:2;C->D;C:1->D:1;D->F;E->F:1;M->C:1;N->C:3");
   } else {
     CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);
     InitGraph(
-        "node { name: 'A' op: 'Input'}"
-        "node { name: 'B' op: 'Input'}"
-        "node { name: 'M' op: '_MklInput'}"
-        "node { name: 'N' op: '_MklInput'}"
+        "node { name: 'A' op: 'Float_Input'}"
+        "node { name: 'B' op: 'Float_Input'}"
+        "node { name: 'M' op: '_Mkl_Input'}"
+        "node { name: 'N' op: '_Mkl_Input'}"
         "node { name: 'C' op: '_MklConv2D'"
         " attr { key: 'T'                value { type: DT_FLOAT } }"
         " attr { key: 'data_format'      value { s: 'NCHW' } }"
@@ -226,13 +228,14 @@ TEST_F(MklToTfConversionPass, Negative_DoubleInsert) {
         " attr { key: 'T'                value { type: DT_FLOAT } }"
         " attr { key: 'data_format'      value { s: 'NCHW' } }"
         " input: ['C:0', 'C:2']}"
-        "node { name: 'E' op: 'Input'}"
+        "node { name: 'E' op: 'Float_Input'}"
         "node { name: 'F' op: 'Sub'"
         " attr {key: 'T'                 value { type: DT_FLOAT } }"
         " input: ['D', 'E']}");
     EXPECT_EQ(DoRunMklToTfConversionPass(),
-              "A(Input);B(Input);C(_MklConv2D);D(_MklToTf);E(Input);"
-              "F(Sub);M(_MklInput);N(_MklInput)|"
+              "A(Float_Input);B(Float_Input);C(_MklConv2D);D(_MklToTf);E(Float_"
+              "Input);"
+              "F(Sub);M(_Mkl_Input);N(_Mkl_Input)|"
               "A->C;B->C:1;C->D;C:2->D:1;D->F;E->F:1;M->C:2;N->C:3");
   }
 }
@@ -241,8 +244,8 @@ TEST_F(MklToTfConversionPass, Negative_DoubleInsert) {
 // There is no Mkl layer so no conversion op should be inserted.
 TEST_F(MklToTfConversionPass, Negative_NoMklLayer) {
   InitGraph(
-      "node { name: 'A' op: 'Input'}"
-      "node { name: 'B' op: 'Input'}"
+      "node { name: 'A' op: 'Float_Input'}"
+      "node { name: 'B' op: 'Float_Input'}"
       "node { name: 'C' op: 'Conv2D'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
@@ -250,17 +253,18 @@ TEST_F(MklToTfConversionPass, Negative_NoMklLayer) {
       " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
       " attr { key: 'padding'          value { s: 'SAME' } }"
       " input: ['A', 'B']}"
-      "node { name: 'D' op: 'Input'}"
+      "node { name: 'D' op: 'Float_Input'}"
       "node { name: 'E' op: 'BiasAdd'"
       " attr { key: 'T'                value { type: DT_FLOAT } }"
       " attr { key: 'data_format'      value { s: 'NCHW' } }"
       " input: ['C', 'D'] }"
-      "node { name: 'Y' op: 'Input'}"
+      "node { name: 'Y' op: 'Float_Input'}"
       "node { name: 'Z' op: 'Sub'"
       " attr {key: 'T'                 value { type: DT_FLOAT } }"
       " input: ['E', 'Y']}");
   EXPECT_EQ(DoRunMklToTfConversionPass(),
-            "A(Input);B(Input);C(Conv2D);D(Input);E(BiasAdd);Y(Input);Z(Sub)|"
+            "A(Float_Input);B(Float_Input);C(Conv2D);D(Float_Input);E(BiasAdd);"
+            "Y(Float_Input);Z(Sub)|"
             "A->C;B->C:1;C->E;D->E:1;E->Z;Y->Z:1");
 }
 
@@ -268,7 +272,7 @@ static void BM_RunMklToTfConversionPass(int iters, int op_nodes) {
   testing::StopTiming();
   string s;
   for (int in = 0; in < 10; in++) {
-    s += strings::Printf("node { name: 'in%04d' op: 'Input'}", in);
+    s += strings::Printf("node { name: 'in%04d' op: 'Float_Input'}", in);
   }
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);

@@ -2,4 +2,17 @@ op {
   graph_op_name: "TPUReplicatedInput"
   visibility: HIDDEN
   summary: "Connects N inputs to an N-way replicated TPU computation."
+  description: <<END
+This operation holds a replicated input to a `tpu.replicate()` computation subgraph.
+Each replicated input has the same shape and type alongside the output.
+
+For example:
+```
+%a = "tf.opA"()
+%b = "tf.opB"()
+%replicated_input = "tf.TPUReplicatedInput"(%a, %b)
+%computation = "tf.Computation"(%replicated_input)
+```
+The above computation has a replicated input of two replicas.
+END
 }

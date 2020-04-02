@@ -187,7 +187,7 @@ def _is_subscribed_identity(tensor):
     tensor: A `tf.Tensor` to check.
 
   Returns:
-    True if the given tensor matches the criteria for subscription identies:
+    True if the given tensor matches the criteria for subscription identities:
     its op type is `Identity`, its name matches the name of its input and
     conforms to the convention for subscribed nodes.
     False otherwise.

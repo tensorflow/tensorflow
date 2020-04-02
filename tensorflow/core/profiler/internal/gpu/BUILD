@@ -31,14 +31,18 @@ tf_cuda_library(
     ],
     deps = [
         ":cupti_utils",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/internal:annotation_stack",
         "//tensorflow/core/profiler/internal:parse_annotation",
+        "//tensorflow/core/profiler/internal:profiler_factory",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
     alwayslink = 1,
 )
@@ -49,7 +53,10 @@ tf_cc_test_gpu(
     srcs = ["device_tracer_test.cc"],
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["nomac"],
+    tags = tf_cuda_tests_tags() + [
+        "nomac",
+        "gpu_cupti",
+    ],
     deps = [
         ":device_tracer",
         "//tensorflow/cc:cc_ops",
@@ -69,6 +76,9 @@ tf_cc_test_gpu(
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/internal:profiler_interface",
+        "//tensorflow/core/profiler/utils:tf_xplane_visitor",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
     ],
 )
 

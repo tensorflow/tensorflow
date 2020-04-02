@@ -19,15 +19,24 @@ package tpu_driver;
 
 enum MemoryRegion { HBM = 1; }
 
+message ChipCoordinate {
+  required int32 x = 1;
+  required int32 y = 2;
+  required int32 z = 3;
+}
+
 message TpuCoreInfo {
   required int32 id = 1;
-
-  required int64 hbm_bytes_available = 100;
-  required int64 hbm_bytes_allocatable = 101;
+  optional int32 core_on_chip_index = 2;
+  optional int32 core_on_host_index = 3;
+  optional int64 hbm_bytes_available = 100;
+  optional int64 hbm_bytes_allocatable = 101;
 }
 
 message TpuChipInfo {
   repeated TpuCoreInfo core = 1;
+  optional int32 host_id = 2;
+  optional ChipCoordinate chip_coord = 3;
 }
 
 message CpuInfo {
@@ -40,6 +49,11 @@ message CpuInfo {
 message SystemInfo {
   repeated TpuChipInfo tpu_chip = 1;
   required CpuInfo cpu = 2;
+  repeated TpuCoreInfo local_core = 3;
+  optional int32 host_id = 4;
+  optional int32 host_count = 5;
+  optional int32 chip_count = 6;
+  optional int32 core_count = 7;
 }
 
 message TpuDriverConfig {

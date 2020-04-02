@@ -1,7 +1,7 @@
 """Provides an indirection layer to bazel cc_rules"""
 
 load(
-    "//tensorflow/core/platform:google/rules_cc.bzl",
+    "//tensorflow/core/platform/default:rules_cc.bzl",
     _cc_binary = "cc_binary",
     _cc_import = "cc_import",
     _cc_library = "cc_library",

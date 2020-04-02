@@ -18,15 +18,13 @@ func @chained_islands(%arg0 : i32) -> i32 {
   return %0 : i32
 }
 
-// Check that empty islands that don't contribute to the fetch are removed.
+// Check that a function that does not have arguments/results is ignored by
+// thep pruning pass: this could be a V1 graph imported without feeds/fetches.
 // CHECK-LABEL: func @empty_islands(
 func @empty_islands() {
-// CHECK-NOT: tf_executor.island
+// CHECK: tf_executor.island
   tf_executor.graph {
     %0 = tf_executor.island {
-      tf_executor.yield
-    }
-    %1 = tf_executor.island {
       tf_executor.yield
     }
     tf_executor.fetch
@@ -87,7 +85,7 @@ func @nextiteration_deleted(%arg0 : i32) -> i32 {
 // Check that NextIteration.source/sink ops and associated ops are deleted when
 // associated loop is unreachable.
 // CHECK-LABEL: func @unreachable_loop
-func @unreachable_loop() {
+func @unreachable_loop(%arg0 : i32) {
 // CHECK:      tf_executor.graph
 // CHECK-NEXT:   tf_executor.fetch
   tf_executor.graph {
@@ -104,7 +102,7 @@ func @unreachable_loop() {
     %10:2 = tf_executor.island(%9#1) wraps "tf.Const"() {dtype = "tfdtype$DT_INT32", value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %11:2 = tf_executor.island wraps "tf.Add"(%9#0, %10#0) {T = "tfdtype$DT_INT32"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
     tf_executor.NextIteration.Sink [%0#1] %11#0 : tensor<*xi32> {T = "tfdtype$DT_INT32"}
-    tf_executor.fetch
+    tf_executor.fetch %arg0 : i32
   }
   return
 }

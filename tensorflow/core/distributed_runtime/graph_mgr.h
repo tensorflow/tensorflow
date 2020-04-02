@@ -151,7 +151,7 @@ class GraphMgr {
 
   // Owned.
   mutex mu_;
-  int64 next_id_ GUARDED_BY(mu_) = 0;
+  int64 next_id_ TF_GUARDED_BY(mu_) = 0;
 
   // If true, blocks until device has finished all queued operations in a step.
   bool sync_on_finish_ = true;

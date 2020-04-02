@@ -35,6 +35,7 @@ cc_library(
         "@local_config_rocm//rocm:rccl",
         "//tensorflow/core:gpu_runtime",
     ]) + if_cuda_or_rocm([
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "//tensorflow/core:core_cpu",
@@ -52,11 +53,13 @@ tf_cuda_cc_test(
     size = "medium",
     srcs = ["nccl_manager_test.cc"],
     tags = tf_cuda_tests_tags() + [
-        "no_cuda_on_cpu_tap",
-        # TODO(b/120284216): Add 'multi_gpu' tag and replace 'no_rocm' with 'rocm_multi_gpu'.
-        # The test fails on CUDA multi_gpu, and that tag also triggers on rocm_multi_gpu.
-        # The test also fails on ROCm unless 4 GPUs are used.
+        "guitar",
+        "manual",
+        "multi_gpu",
+        "no_oss",
+        # TODO(b/147451637): Replace 'no_rocm' with 'rocm_multi_gpu'.
         "no_rocm",
+        "notap",
     ],
     deps = [
         "//tensorflow/core:test",

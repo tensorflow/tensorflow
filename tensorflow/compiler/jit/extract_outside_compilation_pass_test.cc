@@ -941,7 +941,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest,
   // "const0"
   // "identity0" = "const0" (outside compilation cluster "0")
   // "identity1" = "const0" "^identity0" (outside compilation cluster "1",
-  //                                      control depdent on cluster "0")
+  //                                      control dependent on cluster "0")
   // "identity2" = "identity1"
   FunctionDefLibrary fdl;
   {

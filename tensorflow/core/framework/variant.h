@@ -198,6 +198,25 @@ class Variant {
     return *this;
   }
 
+  // Constructs a value of type T with the given args in-place in this Variant.
+  // Returns a reference to the newly constructed value.
+  // The signature is based on std::variant<Types...>::emplace() in C++17.
+  template <typename T, class... Args>
+  T& emplace(Args&&... args) {
+    ResetMemory();
+    is_inline_ = CanInlineType<T>();
+    if (is_inline_) {
+      new (&inline_value_)
+          InlineValue(InlineValue::Tag<T>{}, std::forward<Args>(args)...);
+      return static_cast<Variant::Value<T>*>(inline_value_.AsValueInterface())
+          ->value;
+    } else {
+      new (&heap_value_) HeapValue(
+          absl::make_unique<Value<T>>(InPlace(), std::forward<Args>(args)...));
+      return static_cast<Variant::Value<T>*>(heap_value_.get())->value;
+    }
+  }
+
   bool is_empty() const { return GetValue() == nullptr; }
 
   void clear() noexcept;

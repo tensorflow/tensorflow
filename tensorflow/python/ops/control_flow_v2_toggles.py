@@ -79,8 +79,8 @@ def output_all_intermediates(state):  # pylint: disable=invalid-name
   to output the needed intermediates. We work around this by proactively
   outputting the needed intermediates when building the forward pass itself.
   Ideally any such extra tensors should be pruned out at runtime. However, if
-  for any reason this doesn't work for you or if you have an infernce-only model
-  you can turn this behavior off using
+  for any reason this doesn't work for you or if you have an inference-only
+  model you can turn this behavior off using
   `tf.compat.v1.experimental.output_all_intermediates(False)`.
 
   If with the default behavior you are still seeing errors of the form

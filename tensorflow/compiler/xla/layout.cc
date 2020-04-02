@@ -52,7 +52,6 @@ string Tile::ToString() const {
   for (const int64 dimension : proto.minor_to_major()) {
     layout.add_minor_to_major(dimension);
   }
-  layout.set_max_sparse_elements(proto.max_sparse_elements());
   for (const TileProto& tile_proto : proto.tiles()) {
     *layout.add_tiles() = Tile::CreateFromProto(tile_proto);
   }
@@ -68,7 +67,6 @@ LayoutProto Layout::ToProto() const {
   for (const int64 dimension : minor_to_major()) {
     proto.add_minor_to_major(dimension);
   }
-  proto.set_max_sparse_elements(max_sparse_elements_);
   for (const Tile& tile : tiles()) {
     *proto.add_tiles() = tile.ToProto();
   }
@@ -78,10 +76,7 @@ LayoutProto Layout::ToProto() const {
 }
 
 string Layout::ToString() const {
-  if (format() == SPARSE) {
-    CHECK_EQ(tiles_size(), 0) << "Sparse layout should not be tiled.";
-    return absl::StrCat("sparse{", max_sparse_elements(), "}");
-  } else if (format() == DENSE) {
+  if (format() == DENSE) {
     string colon_string = tiles().empty() ? "" : "T";
     for (Tile tile : tiles()) {
       absl::StrAppend(&colon_string, tile.ToString());
@@ -105,10 +100,6 @@ bool Layout::Equal::operator()(const Layout& lhs, const Layout& rhs) {
     return false;
   }
   if (lhs.format() == DENSE && lhs.minor_to_major() != rhs.minor_to_major()) {
-    return false;
-  }
-  if (lhs.format() == SPARSE &&
-      lhs.max_sparse_elements() != rhs.max_sparse_elements()) {
     return false;
   }
   if (!ignore_tiles_ && lhs.tiles() != rhs.tiles()) {

@@ -274,8 +274,9 @@ class Bfloat16NumPyTest(parameterized.TestCase):
 
   def testCasts(self):
     for dtype in [
-        np.float16, np.float32, np.float64, np.int32, np.int64, np.complex64,
-        np.complex128
+        np.float16, np.float32, np.float64, np.int8, np.int16, np.int32,
+        np.int64, np.complex64, np.complex128, np.uint8, np.uint16, np.uint32,
+        np.uint64
     ]:
       x = np.array([[1, 2, 3]], dtype=dtype)
       y = x.astype(bfloat16)

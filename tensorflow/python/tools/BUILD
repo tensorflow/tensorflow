@@ -1,8 +1,8 @@
 # Description:
 #   Tools for manipulating TensorFlow graphs.
 
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "py_binary")
+load("//tensorflow:tensorflow.bzl", "if_xla_available", "py_binary", "py_test", "tf_cc_test")
+load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -47,7 +47,7 @@ py_test(
     name = "saved_model_utils_test",
     size = "small",
     srcs = ["saved_model_utils_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_windows"],  # TODO: needs investigation on Windows
     visibility = ["//visibility:private"],
@@ -81,7 +81,7 @@ py_library(
 py_binary(
     name = "freeze_graph",
     srcs = ["freeze_graph.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [":freeze_graph_main_lib"],
 )
@@ -98,7 +98,7 @@ py_library(
 py_binary(
     name = "import_pb_to_tensorboard",
     srcs = ["import_pb_to_tensorboard.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [":import_pb_to_tensorboard_lib"],
 )
@@ -122,7 +122,7 @@ py_test(
     name = "freeze_graph_test",
     size = "small",
     srcs = ["freeze_graph_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":freeze_graph_lib",
@@ -141,7 +141,7 @@ py_test(
 py_binary(
     name = "inspect_checkpoint",
     srcs = ["inspect_checkpoint.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [":inspect_checkpoint_lib"],
 )
@@ -177,7 +177,7 @@ py_library(
 py_binary(
     name = "strip_unused",
     srcs = ["strip_unused.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":strip_unused_lib",
@@ -191,7 +191,7 @@ py_test(
     name = "strip_unused_test",
     size = "small",
     srcs = ["strip_unused_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["notap"],
     deps = [
@@ -224,7 +224,7 @@ py_library(
 py_binary(
     name = "optimize_for_inference",
     srcs = ["optimize_for_inference.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [":optimize_for_inference_main_lib"],
 )
@@ -248,7 +248,7 @@ py_test(
     name = "optimize_for_inference_test",
     size = "small",
     srcs = ["optimize_for_inference_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":optimize_for_inference_lib",
@@ -280,7 +280,7 @@ py_library(
 py_binary(
     name = "print_selective_registration_header",
     srcs = ["print_selective_registration_header.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [":print_selective_registration_header_lib"],
@@ -300,7 +300,7 @@ py_library(
 py_test(
     name = "print_selective_registration_header_test",
     srcs = ["print_selective_registration_header_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":selective_registration_header_lib",
@@ -312,7 +312,7 @@ py_test(
 py_binary(
     name = "saved_model_cli",
     srcs = ["saved_model_cli.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [":saved_model_cli_lib"],
 )
@@ -322,10 +322,23 @@ py_library(
     srcs = ["saved_model_cli.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":saved_model_aot_compile",
         ":saved_model_utils",
         "//tensorflow/python",
         "//tensorflow/python/debug:local_cli_wrapper",
     ],
+)
+
+py_library(
+    name = "saved_model_aot_compile",
+    srcs = ["saved_model_aot_compile.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python",
+        "//tensorflow/python:tf_optimizer",
+    ] + if_xla_available(
+        ["//tensorflow/compiler/tf2xla:tf2xla_proto_py"],
+    ),
 )
 
 py_test(
@@ -339,9 +352,63 @@ py_test(
     tags = [
         "manual",
         "no-internal-py3",
+        "nosan",
     ],
     deps = [
         ":saved_model_cli_lib",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
     ],
+)
+
+saved_model_compile_aot(
+    name = "aot_compiled_x_plus_y",
+    cpp_class = "XPlusY",
+    directory = "//tensorflow/cc/saved_model:testdata/x_plus_y_v2_debuginfo",
+    filegroups = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    ],
+    force_without_xla_support_flag = False,
+    tags = ["no_rocm"],
+)
+
+saved_model_compile_aot(
+    name = "aot_compiled_vars_and_arithmetic_frozen",
+    cpp_class = "VarsAndArithmeticFrozen",
+    directory = "//tensorflow/cc/saved_model:testdata/VarsAndArithmeticObjectGraph",
+    filegroups = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    ],
+    force_without_xla_support_flag = False,
+    tags = ["no_rocm"],
+)
+
+saved_model_compile_aot(
+    name = "aot_compiled_vars_and_arithmetic",
+    cpp_class = "VarsAndArithmetic",
+    directory = "//tensorflow/cc/saved_model:testdata/VarsAndArithmeticObjectGraph",
+    filegroups = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    ],
+    force_without_xla_support_flag = False,
+    tags = ["no_rocm"],
+    variables_to_feed = "variable_x",
+)
+
+tf_cc_test(
+    name = "aot_compiled_test",
+    srcs = if_xla_available([
+        "aot_compiled_test.cc",
+    ]),
+    tags = ["no_rocm"],
+    deps = [
+        "//tensorflow/core:test_main",
+    ] + if_xla_available([
+        ":aot_compiled_vars_and_arithmetic",
+        ":aot_compiled_vars_and_arithmetic_frozen",
+        ":aot_compiled_x_plus_y",
+        "//tensorflow/core:test",
+        "//tensorflow/core/platform:logging",
+    ]),
 )

@@ -95,7 +95,7 @@ void EvalSquaredDifference(TfLiteContext* context, TfLiteNode* node,
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
-  gemmlowp::ScopedProfilingLabel label("SquaredDifference");
+  ruy::profiler::ScopeLabel label("SquaredDifference");
 
   const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
   const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);

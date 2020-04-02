@@ -30,6 +30,7 @@ from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
@@ -206,6 +207,26 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
           "dtype. Expected int32 got float"):
         resource_variable_ops.assign_variable_op(
             handle, constant_op.constant([1.], dtype=dtypes.float32))
+
+  def testRepr(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable(1)
+      text = "%r" % v
+      self.assertEqual(
+          "<tf.Variable 'Variable:0' shape=() dtype=int32, numpy=1>", text)
+
+  def testReprUnavailable(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable(1)
+
+      # Monkey-patch this variable to not have an available value
+      def broken_read():
+        raise ValueError("This doesn't work")
+
+      v.read_value = broken_read
+      text = "%r" % v
+      self.assertEqual("<tf.Variable 'Variable:0' shape=() dtype=int32,"
+                       " numpy=<unavailable>>", text)
 
   def testUnprintableHandle(self):
     with context.eager_mode():
@@ -957,6 +978,46 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.assertAllEqual(np.zeros(shape=[2, 2]), var.read_value())
 
   @test_util.run_in_graph_and_eager_modes
+  def testAssignReturnsVariable(self):
+    var = resource_variable_ops.ResourceVariable(1.)
+    self.evaluate(variables.global_variables_initializer())
+    assigned = var.assign(2.)
+    self.assertIsInstance(assigned, resource_variable_ops.BaseResourceVariable)
+    assigned = assigned.assign(3.)
+    self.assertEqual(self.evaluate(assigned), 3.)
+    self.assertEqual(self.evaluate(var), 3.)
+
+    self.assertEqual(self.evaluate(var.assign_add(1.).assign_add(1.)), 5)
+    self.assertEqual(self.evaluate(var.assign_sub(1.).assign_sub(1.)), 3)
+
+    var = resource_variable_ops.ResourceVariable([1., 2.])
+    self.evaluate(variables.global_variables_initializer())
+    slices = ops.IndexedSlices(indices=[1], values=[2])
+    def assert_eq(tensor, vals):
+      self.assertAllEqual(self.evaluate(tensor), vals)
+    assert_eq(var.scatter_add(slices).scatter_add(slices), [1., 6.])
+    assert_eq(var.scatter_sub(slices).scatter_sub(slices), [1., 2.])
+    slices2 = ops.IndexedSlices(indices=[0], values=[3])
+    assert_eq(var.scatter_max(slices2).scatter_add(slices), [3., 4.])
+    assert_eq(var.scatter_add(slices).scatter_min(slices), [3., 2.])
+    assert_eq(var.scatter_mul(slices).scatter_mul(slices), [3., 8.])
+    assert_eq(var.scatter_div(slices).scatter_div(slices), [3., 2.])
+    assert_eq(
+        var.scatter_nd_update([[1]], [4.]).scatter_nd_add([[0]], [2.])
+        .scatter_nd_sub([[1]], [3]),
+        [5., 1.])
+    assert_eq(var, [5., 1.])
+
+    batch_var = resource_variable_ops.ResourceVariable(array_ops.ones((2, 2)))
+    self.evaluate(variables.global_variables_initializer())
+    batch_slices1 = ops.IndexedSlices(indices=[[1], [0]], values=[[2], [2]])
+    batch_slices2 = ops.IndexedSlices(indices=[[1], [1]], values=[[3], [3]])
+    assert_eq(
+        batch_var.batch_scatter_update(batch_slices1)
+        .batch_scatter_update(batch_slices2),
+        [[1, 3], [2, 3]])
+
+  @test_util.run_in_graph_and_eager_modes
   def testInitValueWrongShape(self):
     with self.assertRaisesWithPredicateMatch(
         ValueError, r"not compatible with"):
@@ -1446,6 +1507,41 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       result = resource_variable_ops.resource_gather(
           var.handle, indices, dtype=dtype)
     self.assertAllEqual(expected, result)
+
+
+class PerReplicaResourceHandleTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    super(PerReplicaResourceHandleTest, self).setUp()
+    cpus = config.list_physical_devices("CPU")
+    # Set 2 virtual CPUs
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration(),
+    ])
+
+  def testAllowedDevices(self):
+    device0 = "/job:localhost/replica:0/task:0/device:CPU:0"
+    device1 = "/job:localhost/replica:0/task:0/device:CPU:1"
+    value0 = 1
+    value1 = 2
+    with context.eager_mode():
+      handle = resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[], allowed_devices=[device0, device1])
+      with ops.device(device0):
+        assign0 = resource_variable_ops.assign_variable_op(handle, value0)
+      with ops.device(device1):
+        assign1 = resource_variable_ops.assign_variable_op(handle, value1)
+      with ops.control_dependencies([assign0, assign1]):
+        with ops.device(device0):
+          read0 = resource_variable_ops.read_variable_op(
+              handle, dtype=dtypes.int32)
+        with ops.device(device1):
+          read1 = resource_variable_ops.read_variable_op(
+              handle, dtype=dtypes.int32)
+
+      self.assertAllEqual(value0, read0)
+      self.assertAllEqual(value1, read1)
 
 
 if __name__ == "__main__":

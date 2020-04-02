@@ -33,6 +33,7 @@ from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -53,6 +54,7 @@ from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import compat
@@ -76,6 +78,21 @@ class _ModelWithOptimizer(util.Checkpoint):
     return {"loss": loss}
 
 
+def _run_signature(session, meta_graph_def, inputs, signature_key):
+  signature = meta_graph_def.signature_def[signature_key]
+  assert set(inputs.keys()) == set(signature.inputs.keys())
+  feed_dict = {}
+  for arg_name in inputs.keys():
+    input_tensor = session.graph.get_tensor_by_name(
+        signature.inputs[arg_name].name)
+    feed_dict[input_tensor] = inputs[arg_name]
+  output_dict = {}
+  for output_name, output_tensor_info in signature.outputs.items():
+    output_dict[output_name] = session.graph.get_tensor_by_name(
+        output_tensor_info.name)
+  return session.run(output_dict, feed_dict=feed_dict)
+
+
 def _import_and_infer(
     save_dir, inputs,
     signature_key=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY):
@@ -83,17 +100,7 @@ def _import_and_infer(
   graph = ops.Graph()
   with graph.as_default(), session_lib.Session() as session:
     model = loader.load(session, [tag_constants.SERVING], save_dir)
-    signature = model.signature_def[signature_key]
-    assert set(inputs.keys()) == set(signature.inputs.keys())
-    feed_dict = {}
-    for arg_name in inputs.keys():
-      feed_dict[graph.get_tensor_by_name(signature.inputs[arg_name].name)] = (
-          inputs[arg_name])
-    output_dict = {}
-    for output_name, output_tensor_info in signature.outputs.items():
-      output_dict[output_name] = graph.get_tensor_by_name(
-          output_tensor_info.name)
-    return session.run(output_dict, feed_dict=feed_dict)
+    return _run_signature(session, model, inputs, signature_key)
 
 
 class SaveTest(test.TestCase):
@@ -163,23 +170,6 @@ class SaveTest(test.TestCase):
   def test_unbuilt_model_does_not_prevent_saving(self):
     root = util.Checkpoint(model=sequential.Sequential([core.Dense(2)]))
     save.save(root, os.path.join(self.get_temp_dir(), "saved_model"))
-
-  def test_captured_symbolic_tensor_exception(self):
-    root = module.Module()
-    symbolic_tensor = []
-
-    @def_function.function
-    def captured_intermediate(x):
-      symbolic_tensor.append(math_ops.add(x, x, name="a_tensor"))
-      return symbolic_tensor[-1] * 2
-
-    captured_intermediate(constant_op.constant(1.))
-
-    root.f = def_function.function(lambda: symbolic_tensor[-1],
-                                   input_signature=[])
-    with self.assertRaisesRegexp(ValueError, "a_tensor"):
-      save.save(root, os.path.join(self.get_temp_dir(), "saved_model"),
-                signatures=root.f)
 
   def test_unsaveable_func_graph(self):
     root = module.Module()
@@ -442,6 +432,69 @@ class SaveTest(test.TestCase):
       save.save(root, os.path.join(self.get_temp_dir(), "saved_model"),
                 signatures=root.f)
 
+  def test_export_correct_output_shapes(self):
+    """Asserts that nodes are exported with the correct number of output shapes.
+
+    After backpropagation rewrite, functions are rewritten with additional
+    outputs. When exporting to SavedModel, the shapes of the additional outputs
+    were incorrectly added to the FunctionDef proto (b/133666530).
+    """
+    obj = tracking.AutoTrackable()
+    obj.v = variables.Variable(2.)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(None, dtypes.float32)])
+    def f(x):
+      return (math_ops.multiply(obj.v, x),
+              math_ops.multiply(obj.v, (x+1)),
+              None)
+    obj.f = f
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(None, dtypes.float32)])
+    def g(x):
+      return obj.f(x)[1]
+    obj.g = g
+
+    # After the following lines, the concrete functions of obj.g and obj.f are
+    # rewritten with many extra outputs.
+    with backprop.GradientTape():
+      obj.g(constant_op.constant(3.0))
+
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(obj, save_dir, signatures={"g": obj.g})
+    graph_def = loader_impl.parse_saved_model(save_dir).meta_graphs[0].graph_def
+
+    def assert_correct_number_of_output_shapes(node):
+      if node.op == "StatefulPartitionedCall":
+        fn_name = node.attr["f"].func.name
+        if fn_name.startswith("__inference_f"):
+          self.assertLen(node.attr["_output_shapes"].list.shape, 2)
+        if fn_name.startswith("__inference_g"):
+          self.assertLen(node.attr["_output_shapes"].list.shape, 1)
+
+    for f in graph_def.library.function:
+      if(f.signature.name.startswith("__inference_f") or
+         f.signature.name.startswith("__inference_g")):
+        for node in f.node_def:
+          assert_correct_number_of_output_shapes(node)
+
+  def test_save_cached_variable(self):
+    with ops.Graph().as_default(), session_lib.Session() as session:
+      obj = tracking.AutoTrackable()
+      obj.v = variables.Variable(2., caching_device=lambda op: op.device)
+      obj.w = variables.Variable(3.)
+      session.run([obj.v.initializer, obj.w.initializer])
+
+      @def_function.function(input_signature=[])
+      def f():
+        return obj.v + obj.w
+
+      obj.f = f
+      save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+      save.save(obj, save_dir, signatures=obj.f)
+      self.assertAllClose({"output_0": 5}, _import_and_infer(save_dir, {}))
+
 
 class SavingOptionsTest(test.TestCase):
 
@@ -505,6 +558,24 @@ class SavingOptionsTest(test.TestCase):
     debug_info_file_name = os.path.join(save_dir, "debug",
                                         "saved_model_debug_info.pb")
     self.assertFalse(os.path.exists(debug_info_file_name))
+
+  def test_function_aliases(self):
+    root = tracking.AutoTrackable()
+    root.f = def_function.function(
+        lambda x: 2. * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+    root.f(constant_op.constant(1.))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(function_aliases={
+        "my_func": root.f,
+    })
+    save.save(root, save_dir, root.f, options=options)
+    function_cache = list(root.f._stateful_fn._function_cache.all_values())
+    function_aliases = loader_impl.parse_saved_model(
+        save_dir).meta_graphs[0].meta_info_def.function_aliases
+    self.assertLen(function_cache, 1)
+    self.assertEqual(function_cache[0].name.decode("utf-8"),
+                     list(function_aliases.keys())[0])
 
 
 class AssetTests(test.TestCase):
@@ -619,6 +690,56 @@ class MemoryTests(test.TestCase):
                     "created in older Python versions.")
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(self._model, save_dir, self._model.call)
+
+
+class ExportMetaGraphTests(test.TestCase):
+
+  def test_export_meta_graph(self):
+    root = tracking.AutoTrackable()
+    root.variable = resource_variable_ops.UninitializedVariable(
+        name="some_variable", dtype=dtypes.float32)
+
+    @def_function.function(input_signature=[tensor_spec.TensorSpec(None)])
+    def multiply_var(x):
+      return root.variable * x
+
+    @def_function.function(input_signature=[tensor_spec.TensorSpec([])])
+    def update(y):
+      root.variable.assign_add(y)
+      # TODO(b/150393409): All functions exported as signatures must have at
+      # least one output.
+      return 0
+
+    @def_function.function(input_signature=[])
+    def initialize():
+      root.variable.assign(1.0)
+      # TODO(b/150393409): All functions exported as signatures must have at
+      # least one output.
+      return 0
+
+    save_path = os.path.join(self.get_temp_dir(), "meta_graph.pb")
+    save.export_meta_graph(
+        root,
+        save_path,
+        signatures={
+            "multiply_var": multiply_var,
+            "initialize": initialize,
+            "update": update
+        })
+
+    with ops.Graph().as_default(), session_lib.Session() as session:
+      saver.import_meta_graph(save_path)
+      meta_graph_def = meta_graph.read_meta_graph_file(save_path)
+
+      # Initialize variable to 1
+      _run_signature(session, meta_graph_def, {}, "initialize")
+      out = _run_signature(session, meta_graph_def, {"x": 3}, "multiply_var")
+      self.assertAllEqual(out, {"output_0": 3})
+
+      # Adds 2 to the variable. Variable is now 3
+      _run_signature(session, meta_graph_def, {"y": 2}, "update")
+      out = _run_signature(session, meta_graph_def, {"x": 4}, "multiply_var")
+      self.assertAllEqual(out, {"output_0": 12})
 
 
 if __name__ == "__main__":

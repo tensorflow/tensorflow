@@ -32,7 +32,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import context
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import graph_io
@@ -297,9 +297,10 @@ def _find_extraneous_saver_nodes(graph_def, saver_def):
   # but it seems unnecessarily complex given the name scope solution.
 
   # load the graph DAG in minimal form, without initializing a full Graph object
-  nodes = {node_def.name:
-           (set([_op_name(x) for x in node_def.input]), node_def.op)
-           for node_def in graph_def.node}
+  nodes = {
+      node_def.name: (set(_op_name(x) for x in node_def.input), node_def.op)
+      for node_def in graph_def.node
+  }
 
   retain_scope_save = None
   retain_scope_restore = None
@@ -313,12 +314,12 @@ def _find_extraneous_saver_nodes(graph_def, saver_def):
     retain_scope_restore = _get_scope(restore_op_name) + "/"
     retain_scope_save = _get_scope(save_op_name) + "/"
 
-  all_saver_node_names = set([name for name, (_, op) in nodes.items()
-                              if op in SAVE_AND_RESTORE_OPS])
+  all_saver_node_names = set(
+      name for name, (_, op) in nodes.items() if op in SAVE_AND_RESTORE_OPS)
 
-  all_saver_scopes = (set([_get_scope(x) for x in all_saver_node_names])
-                      - all_saver_node_names)
-  all_saver_scopes = set([x + "/" for x in all_saver_scopes])
+  all_saver_scopes = (
+      set(_get_scope(x) for x in all_saver_node_names) - all_saver_node_names)
+  all_saver_scopes = set(x + "/" for x in all_saver_scopes)
 
   extraneous_scopes = all_saver_scopes - set([retain_scope_save,
                                               retain_scope_restore])
@@ -445,9 +446,9 @@ def _is_default_attr_value(op_def, attr_name, attr_value):
     if attr_def.name == attr_name:
       if not attr_def.HasField("default_value"):
         return False
-      # pywrap_tensorflow.EqualAttrValueWrapper returns an empty string
+      # c_api.EqualAttrValueWrapper returns an empty string
       # if both arguments represent an equivalent AttrValue instance.
-      return not pywrap_tensorflow.EqualAttrValueWrapper(
+      return not c_api.EqualAttrValueWrapper(
           attr_value.SerializeToString(),
           attr_def.default_value.SerializeToString())
   return False
@@ -766,9 +767,10 @@ def import_scoped_meta_graph_with_return_elements(
             sorted([compat.as_str(v) for v in field.value]) !=
             sorted(input_map)):
           raise ValueError("Graph contains unbound inputs: %s. Must "
-                           "provide these inputs through input_map." %
-                           ",".join([compat.as_str(v) for v in field.value
-                                     if not input_map or v not in input_map]))
+                           "provide these inputs through input_map." % ",".join(
+                               compat.as_str(v)
+                               for v in field.value
+                               if not input_map or v not in input_map))
         break
 
   # Sets graph to default graph if it's not passed in.
@@ -1043,7 +1045,7 @@ def export_scoped_meta_graph(filename=None,
       name, _ = os.path.splitext(filename)
       debug_filename = "{name}{ext}".format(name=name, ext=".debug")
 
-      # Gets the operation from the graph by the name. Exludes variable nodes,
+      # Gets the operation from the graph by the name. Excludes variable nodes,
       # so only the nodes in the frozen models are included.
       # TODO(liufengdb): fix this for functions.
       ops_to_export = []

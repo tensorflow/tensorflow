@@ -294,7 +294,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       absl::string_view name);
 
   // Emits a call to a "global" function (e.g. to the computation nested within
-  // a kWhile or a kCall).  Buffer assignment unabiguously assignes buffers to
+  // a kWhile or a kCall).  Buffer assignment unabiguously assigns buffers to
   // the parameters and return values for these computations so there is no need
   // to explicitly pass parameters or return results.
   void EmitGlobalCall(const HloComputation& callee, absl::string_view name);
@@ -366,7 +366,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // without generating IR with illegal (e.g. excessively large or
   // non-power-of-two) vector types.  We do this by introducing a layer of
   // abstraction: we introduce a high level vector-like concept called a
-  // "sharded vector" that models data paralleism, and is mapped to a sequence
+  // "sharded vector" that models data parallelism, and is mapped to a sequence
   // scalar and vector llvm::Value s.
   //
   // For example, we can represent 29 f32 elements by a sharded vector mapped to

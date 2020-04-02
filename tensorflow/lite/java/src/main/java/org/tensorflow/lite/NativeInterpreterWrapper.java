@@ -37,17 +37,19 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     this(modelPath, /* options= */ null);
   }
 
+  NativeInterpreterWrapper(ByteBuffer byteBuffer) {
+    this(byteBuffer, /* options= */ null);
+  }
+
   NativeInterpreterWrapper(String modelPath, Interpreter.Options options) {
+    TensorFlowLite.init();
     long errorHandle = createErrorReporter(ERROR_BUFFER_SIZE);
     long modelHandle = createModel(modelPath, errorHandle);
     init(errorHandle, modelHandle, options);
   }
 
-  NativeInterpreterWrapper(ByteBuffer byteBuffer) {
-    this(byteBuffer, /* options= */ null);
-  }
-
   NativeInterpreterWrapper(ByteBuffer buffer, Interpreter.Options options) {
+    TensorFlowLite.init();
     if (buffer == null
         || (!(buffer instanceof MappedByteBuffer)
             && (!buffer.isDirect() || buffer.order() != ByteOrder.nativeOrder()))) {
@@ -252,24 +254,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     return (inferenceDurationNanoseconds < 0) ? null : inferenceDurationNanoseconds;
   }
 
-  /**
-   * Gets the quantization zero point of an output.
-   *
-   * @throws IllegalArgumentException if the output index is invalid.
-   */
-  int getOutputQuantizationZeroPoint(int index) {
-    return getOutputQuantizationZeroPoint(interpreterHandle, index);
-  }
-
-  /**
-   * Gets the quantization scale of an output.
-   *
-   * @throws IllegalArgumentException if the output index is invalid.
-   */
-  float getOutputQuantizationScale(int index) {
-    return getOutputQuantizationScale(interpreterHandle, index);
-  }
-
   /** Gets the number of input tensors. */
   int getInputTensorCount() {
     return inputTensors.length;
@@ -372,10 +356,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native int getOutputDataType(long interpreterHandle, int outputIdx);
 
-  private static native int getOutputQuantizationZeroPoint(long interpreterHandle, int outputIdx);
-
-  private static native float getOutputQuantizationScale(long interpreterHandle, int outputIdx);
-
   private static final int ERROR_BUFFER_SIZE = 512;
 
   private long errorHandle;
@@ -443,8 +423,4 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private static native void resetVariableTensors(long interpreterHandle, long errorHandle);
 
   private static native void delete(long errorHandle, long modelHandle, long interpreterHandle);
-
-  static {
-    TensorFlowLite.init();
-  }
 }

@@ -201,6 +201,7 @@ namespace opcode_matchers {
   }
 HLO_MATCHER(Abs);
 HLO_MATCHER(Add);
+HLO_MATCHER(AddDependency);
 HLO_MATCHER(AfterAll);
 HLO_MATCHER(AllReduce);
 HLO_MATCHER(AllToAll);

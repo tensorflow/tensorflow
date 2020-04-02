@@ -219,9 +219,10 @@ class CheckpointingTests(test.TestCase):
     on_create_model = MyModel()
     on_create_optimizer = adam.AdamOptimizer(
         0.001,
-        # Preserve beta1_power and beta2_power when appying gradients so we can
+        # Preserve beta1_power and beta2_power when applying gradients so we can
         # test that they've been restored correctly.
-        beta1=1.0, beta2=1.0)
+        beta1=1.0,
+        beta2=1.0)
     on_create_root = trackable_utils.Checkpoint(
         optimizer=on_create_optimizer, model=on_create_model)
     # Deferred restoration

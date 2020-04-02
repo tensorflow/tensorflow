@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace xla {
 
@@ -56,10 +57,10 @@ class Semaphore {
     int64 amount;
   };
   static bool CanAcquire(CanAcquireArgs* args)
-      EXCLUSIVE_LOCKS_REQUIRED(args->semaphore->mu_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(args->semaphore->mu_);
 
   absl::Mutex mu_;
-  int64 value_ GUARDED_BY(mu_);
+  int64 value_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace xla

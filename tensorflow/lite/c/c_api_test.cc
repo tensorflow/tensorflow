@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api.h"
 
+#include <stdarg.h>
+#include <stdint.h>
+
 #include <array>
 #include <fstream>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/testing/util.h"
 
 namespace {
@@ -177,7 +181,7 @@ TEST(CApiSimple, Delegate) {
   // The delegate should have been applied.
   EXPECT_TRUE(delegate_prepared);
 
-  // Subsequent exectuion should behave properly (the delegate is a no-op).
+  // Subsequent execution should behave properly (the delegate is a no-op).
   TfLiteInterpreterOptionsDelete(options);
   TfLiteModelDelete(model);
   EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);

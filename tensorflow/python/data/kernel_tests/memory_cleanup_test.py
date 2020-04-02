@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import gc
 import time
+
 from absl.testing import parameterized
 import six
 
@@ -115,7 +116,7 @@ class MemoryCleanupTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     gc.collect()
     tensors = [
-        o for o in gc.get_objects() if isinstance(o, tensor_like._TensorLike)
+        o for o in gc.get_objects() if isinstance(o, tensor_like.TensorLike)
     ]
     self.assertEmpty(tensors, "%d Tensors are still alive." % len(tensors))
 

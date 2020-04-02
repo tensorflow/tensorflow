@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdarg>
 #include <cstdint>
 #include <cstring>
+#include <utility>
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
@@ -49,6 +50,8 @@ static_assert(sizeof(TfLiteFloat16) == sizeof(uint16_t),
               "Float 16 type must be 16 bits.");
 
 namespace tflite {
+
+namespace impl {
 
 namespace {
 
@@ -100,7 +103,27 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   UseNNAPI(false);
 }
 
-Interpreter::~Interpreter() {}
+Interpreter::~Interpreter() {
+  // The owned external Cpu Backend Context will go out of scope with this
+  // interpreter. If we have an external backend context that is not
+  // owned, we need to clear the cache for other interpreters that may
+  // use the context.
+  if (external_contexts_[kTfLiteCpuBackendContext] &&
+      (external_contexts_[kTfLiteCpuBackendContext] !=
+       own_external_cpu_backend_context_.get())) {
+    ExternalCpuBackendContext* external_context =
+        static_cast<ExternalCpuBackendContext*>(
+            external_contexts_[kTfLiteCpuBackendContext]);
+    TfLiteInternalBackendContext* internal_context =
+        external_context->internal_backend_context();
+    if (internal_context) {
+      // This call may have negative performance impacts on the next inference
+      // for any interpreter using this context. The cache will be refreshed
+      // by the next inference.
+      internal_context->ClearCaches();
+    }
+  }
+}
 
 void Interpreter::SetExternalContext(TfLiteExternalContextType type,
                                      TfLiteExternalContext* ctx) {
@@ -115,7 +138,7 @@ void Interpreter::SetExternalContext(TfLiteExternalContextType type,
   // If it's overwritten here, we will release the resource of the internally
   // owned external context.
   // Note: the 'max thread count' info associated with the overwritten context
-  // will be lost here, and such info is now detemined by the new context, thus
+  // will be lost here, and such info is now determined by the new context, thus
   // affecting how much parallelism a TFLite op would have.
   if (kTfLiteCpuBackendContext == type &&
       external_contexts_[kTfLiteCpuBackendContext] ==
@@ -128,15 +151,15 @@ void Interpreter::SetExternalContext(TfLiteExternalContextType type,
 }
 
 TfLiteStatus Interpreter::SetInputs(std::vector<int> inputs) {
-  return primary_subgraph().SetInputs(inputs);
+  return primary_subgraph().SetInputs(std::move(inputs));
 }
 
 TfLiteStatus Interpreter::SetOutputs(std::vector<int> outputs) {
-  return primary_subgraph().SetOutputs(outputs);
+  return primary_subgraph().SetOutputs(std::move(outputs));
 }
 
 TfLiteStatus Interpreter::SetVariables(std::vector<int> variables) {
-  return primary_subgraph().SetVariables(variables);
+  return primary_subgraph().SetVariables(std::move(variables));
 }
 
 TfLiteStatus Interpreter::AllocateTensors() {
@@ -246,6 +269,13 @@ TfLiteStatus Interpreter::SetExecutionPlan(const std::vector<int>& new_plan) {
 void Interpreter::UseNNAPI(bool enable) { primary_subgraph().UseNNAPI(enable); }
 
 void Interpreter::SetNumThreads(int num_threads) {
+  if (num_threads < -1) {
+    context_->ReportError(context_,
+                          "num_threads should be >=0 or just -1 to let TFLite "
+                          "runtime set the value.");
+    return;
+  }
+
   for (auto& subgraph : subgraphs_) {
     subgraph->context()->recommended_num_threads = num_threads;
   }
@@ -321,6 +351,18 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
 }
 
 void Interpreter::SetProfiler(Profiler* profiler) {
+  // Release resources occupied by owned_profiler_ which is replaced by
+  // caller-owned profiler.
+  owned_profiler_.reset(nullptr);
+  SetSubgraphProfiler(profiler);
+}
+
+void Interpreter::SetProfiler(std::unique_ptr<Profiler> profiler) {
+  owned_profiler_ = std::move(profiler);
+  SetSubgraphProfiler(owned_profiler_.get());
+}
+
+void Interpreter::SetSubgraphProfiler(Profiler* profiler) {
   for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
        ++subgraph_index) {
     subgraphs_[subgraph_index]->SetProfiler(profiler, subgraph_index);
@@ -330,5 +372,7 @@ void Interpreter::SetProfiler(Profiler* profiler) {
 Profiler* Interpreter::GetProfiler() {
   return primary_subgraph().GetProfiler();
 }
+
+}  // namespace impl
 
 }  // namespace tflite

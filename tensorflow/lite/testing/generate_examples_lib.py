@@ -34,7 +34,8 @@ import datetime
 import os
 import re
 import zipfile
-import tensorflow as tf
+
+import tensorflow.compat.v1 as tf
 
 # TODO(aselle): Disable GPU for now
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"

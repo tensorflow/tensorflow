@@ -60,6 +60,7 @@ StatusOr<bool> HloPassPipeline::RunPassesInternal(
   for (HloPassInterface* pass : passes) {
     absl::string_view pass_name = pass->name();
     VLOG(1) << "  HLO pass " << pass_name;
+    VLOG(2) << "  Module hash " << hlo->Hash();
     MaybeDumpHlo(*hlo,
                  /*after_pass_name=*/last_pass_name,
                  /*before_pass_name=*/pass_name);

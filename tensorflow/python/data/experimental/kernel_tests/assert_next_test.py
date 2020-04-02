@@ -17,17 +17,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class AssertNextTest(test_base.DatasetTestBase):
+class AssertNextTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testAssertNext(self):
     dataset = dataset_ops.Dataset.from_tensors(0).apply(
         testing.assert_next(["Map"])).map(lambda x: x)
@@ -36,6 +38,7 @@ class AssertNextTest(test_base.DatasetTestBase):
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[0])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testAssertNextInvalid(self):
     dataset = dataset_ops.Dataset.from_tensors(0).apply(
         testing.assert_next(["Whoops"])).map(lambda x: x)
@@ -49,6 +52,7 @@ class AssertNextTest(test_base.DatasetTestBase):
             "Asserted Whoops transformation at offset 0 but encountered "
             "Map transformation instead."))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testAssertNextShort(self):
     dataset = dataset_ops.Dataset.from_tensors(0).apply(
         testing.assert_next(["Map", "Whoops"])).map(lambda x: x)

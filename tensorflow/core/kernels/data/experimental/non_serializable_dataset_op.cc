@@ -90,7 +90,8 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        return dataset()->input_->MakeIterator(ctx, this, prefix(),
+                                               &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -105,8 +106,9 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
         return model::MakeKnownRatioNode(std::move(args), /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         return Status::OK();
       }
 
