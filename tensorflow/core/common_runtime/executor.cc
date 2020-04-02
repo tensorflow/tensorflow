@@ -625,7 +625,14 @@ template <class PropagatorStateType>
 void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
                                                  int64 scheduled_nsec) {
   profiler::TraceMe activity(
-      [&] { return absl::StrCat("ExecutorState::Process#id=", step_id_, "#"); },
+      [&] {
+        // NOTE: This tracing uses the iteration number from the first tagged
+        // node that executes during this call to `Process()`. In principle,
+        // subsequent nodes could have different values of `iter_num` that
+        // will not be traced.
+        return absl::StrCat("ExecutorState::Process#id=", step_id_,
+                            ",iter_num=", tagged_node.get_iter_num(), "#");
+      },
       2);
   WithContext wc(context_);
   TaggedNodeSeq ready;

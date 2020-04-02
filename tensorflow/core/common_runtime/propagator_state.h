@@ -74,6 +74,7 @@ class PropagatorState {
     const NodeItem& get_node_item() const { return *node_item; }
 
     bool get_is_dead() const { return is_dead; }
+    int64 get_iter_num() const { return input_iter; }
   };
 
   // A drop-in replacement for std::deque<TaggedNode>.  We typically don't
