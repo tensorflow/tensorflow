@@ -211,8 +211,6 @@ class GraphView {
   Status SetAllocAttrs(const Graph* g, const Device* device);
   void SetScopedAllocatorAttrs(const std::vector<const Node*>& sa_nodes);
 
-  // Returns a mutable pointer to the `NodeItem` with the given `id` if it
-  // exists in the graph, or `nullptr` if it does not.
   NodeItem* node(int32 id) const {
     DCHECK_GE(id, 0);
     DCHECK_LT(id, num_nodes_);
@@ -220,17 +218,6 @@ class GraphView {
     return ((offset == kuint32max)
                 ? nullptr
                 : reinterpret_cast<NodeItem*>(space_ + node_offsets_[id]));
-  }
-
-  // Returns the `NodeItem` with the given `id`.
-  //
-  // REQUIRES: `id` must be the ID of a valid node in the graph.
-  const NodeItem& node_ref(int32 id) const {
-    DCHECK_GE(id, 0);
-    DCHECK_LT(id, num_nodes_);
-    uint32 offset = node_offsets_[id];
-    DCHECK_NE(offset, kuint32max);
-    return *reinterpret_cast<NodeItem*>(space_ + node_offsets_[id]);
   }
 
   int32 num_nodes() const { return num_nodes_; }

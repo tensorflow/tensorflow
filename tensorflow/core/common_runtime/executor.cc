@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/pending_counts.h"
 #include "tensorflow/core/common_runtime/propagator_state.h"
 #include "tensorflow/core/common_runtime/renamed_device.h"
-#include "tensorflow/core/common_runtime/simple_propagator_state.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -373,10 +372,6 @@ class ExecutorState {
 
   mutex mu_;
   Status status_ TF_GUARDED_BY(mu_);
-
-  // A flag that is set on error after the propagator state has been
-  // dumped for diagnostic purposes.
-  bool dumped_on_error_ TF_GUARDED_BY(mu_) = false;
 };
 
 template <class PropagatorStateType>
@@ -930,11 +925,7 @@ Status ExecutorState<PropagatorStateType>::ProcessOutputs(
     // add better optional debugging support.
     if (vlog_ && VLOG_IS_ON(1)) {
       LOG(WARNING) << this << " Compute status: " << s;
-      mutex_lock l(mu_);
-      if (!dumped_on_error_) {
-        propagator_.DumpState();
-        dumped_on_error_ = true;
-      }
+      propagator_.DumpState();
     }
     if (s.code() == error::RESOURCE_EXHAUSTED) {
       if (stats_collector_) {
@@ -1265,14 +1256,8 @@ void ExecutorState<PropagatorStateType>::Finish() {
 }
 
 void ExecutorImpl::RunAsync(const Args& args, DoneCallback done) {
-  if (immutable_state_.requires_control_flow_support()) {
-    (new ExecutorState<PropagatorState>(args, immutable_state_, &kernel_stats_))
-        ->RunAsync(std::move(done));
-  } else {
-    (new ExecutorState<SimplePropagatorState>(args, immutable_state_,
-                                              &kernel_stats_))
-        ->RunAsync(std::move(done));
-  }
+  (new ExecutorState<PropagatorState>(args, immutable_state_, &kernel_stats_))
+      ->RunAsync(std::move(done));
 }
 
 }  // namespace

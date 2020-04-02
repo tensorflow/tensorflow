@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/metrics.h"
-#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/edgeset.h"
 #include "tensorflow/core/graph/graph.h"
@@ -89,33 +88,13 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
     EnsureFrameInfo(it)->nodes =
         absl::make_unique<std::vector<const NodeItem*>>();
   }
-  root_frame_info_ = frame_info_[""];
 
   pending_ids_.resize(gview_.num_nodes());
 
   // Preprocess every node in the graph to create an instance of op
   // kernel for each node.
-  requires_control_flow_ = false;
   for (const Node* n : graph.nodes()) {
     if (IsSink(n)) continue;
-    if (IsSwitch(n) || IsMerge(n) || IsEnter(n) || IsExit(n)) {
-      requires_control_flow_ = true;
-    } else if (IsRecv(n)) {
-      // A Recv node from a different device may produce dead tensors from
-      // non-local control-flow nodes.
-      //
-      // TODO(mrry): Track whether control flow was present in the
-      // pre-partitioned graph, and enable the caller (e.g.
-      // `DirectSession`) to relax this constraint.
-      string send_device;
-      string recv_device;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "send_device", &send_device));
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "recv_device", &recv_device));
-      if (send_device != recv_device) {
-        requires_control_flow_ = true;
-      }
-    }
-
     const int id = n->id();
     const string& frame_name = cf_info.frame_names[id];
     FrameInfo* frame_info = EnsureFrameInfo(frame_name);

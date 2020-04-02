@@ -16,11 +16,16 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/propagator_state.h"
 
 #include "tensorflow/core/common_runtime/graph_view.h"
-#include "tensorflow/core/common_runtime/propagator_debug_utils.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
+
+// 1-D, 0 element tensor.
+static const Tensor* const kEmptyTensor = new Tensor;
+
+typedef gtl::InlinedVector<TensorValue, 4> TensorValueVec;
+typedef gtl::InlinedVector<AllocatorAttributes, 4> AllocatorAttributeVec;
 
 PropagatorState::PropagatorState(const ImmutableExecutorState& immutable_state,
                                  int64 step_id)
@@ -52,7 +57,7 @@ void PropagatorState::ActivateRoots(gtl::ArraySlice<const NodeItem*> roots,
                                     TaggedNodeSeq* ready) {
   for (const NodeItem* item : roots) {
     DCHECK_EQ(item->num_inputs, 0);
-    ready->emplace_back(item, root_frame_, 0, false);
+    ready->push_back(TaggedNode{item, root_frame_, 0, false});
   }
   mutex_lock l(root_frame_->mu);
   root_frame_->GetIteration(0)->outstanding_ops = ready->size();
@@ -168,6 +173,72 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
   }
 }
 
+const Tensor* PropagatorState::GetTensorValueForDump(const Entry& input) {
+  switch (input.state) {
+    case Entry::State::NO_VALUE:
+      return kEmptyTensor;
+    case Entry::State::HAS_VALUE:
+      return input.val.get();
+    case Entry::State::HAS_CONST_TENSOR:
+      return input.const_tensor;
+    case Entry::State::HAS_REF_TENSOR:
+      return input.ref_tensor.tensor;
+  }
+}
+
+void PropagatorState::DumpPendingNodeState(
+    const int node_id, const Entry* input_vector,
+    const bool show_nodes_with_no_ready_inputs) {
+  const NodeItem& node_item = *immutable_state_.graph_view().node(node_id);
+  const int input_base = node_item.input_start;
+  if (!show_nodes_with_no_ready_inputs) {
+    bool has_ready_input = false;
+    for (int i = 0; i < node_item.num_inputs; ++i) {
+      const Entry& input = input_vector[input_base + i];
+      const Tensor* tensor = GetTensorValueForDump(input);
+      if (tensor->IsInitialized()) {
+        has_ready_input = true;
+        break;
+      }
+    }
+    if (!has_ready_input) {
+      return;
+    }
+  }
+  LOG(WARNING) << "    Pending Node: " << node_item.DebugString();
+  for (int i = 0; i < node_item.num_inputs; ++i) {
+    const Entry& input = input_vector[input_base + i];
+    const Tensor* tensor = GetTensorValueForDump(input);
+    if (tensor->IsInitialized()) {
+      LOG(WARNING) << "      Input " << i << ": "
+                   << strings::StrCat(
+                          "Tensor<type: ", DataTypeString(tensor->dtype()),
+                          " shape: ", tensor->shape().DebugString(), ">");
+    } else {
+      LOG(WARNING) << "      Input " << i << ": not present";
+    }
+  }
+}
+
+void PropagatorState::DumpActiveNodeState(const int node_id,
+                                          const Entry* input_vector) {
+  const NodeItem& node_item = *immutable_state_.graph_view().node(node_id);
+  LOG(WARNING) << "    Active Node: " << node_item.DebugString();
+  const int input_base = node_item.input_start;
+  for (int i = 0; i < node_item.num_inputs; ++i) {
+    const Entry& input = input_vector[input_base + i];
+    const Tensor* tensor = GetTensorValueForDump(input);
+    if (tensor->IsInitialized()) {
+      LOG(WARNING) << "      Input " << i << ": "
+                   << strings::StrCat(
+                          "Tensor<type: ", DataTypeString(tensor->dtype()),
+                          " shape: ", tensor->shape().DebugString(), ">");
+    } else {
+      LOG(WARNING) << "      Input " << i << ": not present";
+    }
+  }
+}
+
 void PropagatorState::DumpIterationState(const FrameState* frame,
                                          IterationState* iteration) {
   const std::vector<const NodeItem*>* nodes = frame->nodes;
@@ -177,8 +248,7 @@ void PropagatorState::DumpIterationState(const FrameState* frame,
         immutable_state_.pending_ids()[node->node_id];
     if (iteration->node_state(pending_id) == PendingCounts::PENDING_NOTREADY ||
         iteration->node_state(pending_id) == PendingCounts::PENDING_READY) {
-      DumpPendingNodeState(immutable_state_, node->node_id,
-                           iteration->input_tensors, false);
+      DumpPendingNodeState(node->node_id, iteration->input_tensors, false);
     }
   }
   // Then the active nodes.
@@ -186,8 +256,7 @@ void PropagatorState::DumpIterationState(const FrameState* frame,
     PendingCounts::Handle pending_id =
         immutable_state_.pending_ids()[node->node_id];
     if (iteration->node_state(pending_id) == PendingCounts::STARTED) {
-      DumpActiveNodeState(immutable_state_, node->node_id,
-                          iteration->input_tensors);
+      DumpActiveNodeState(node->node_id, iteration->input_tensors);
     }
   }
   // Show all input tensors in use.
@@ -210,11 +279,14 @@ void PropagatorState::DumpIterationState(const FrameState* frame,
 
 void PropagatorState::DumpState() {
   mutex_lock l(mu_);
-  LOG(WARNING) << "Dumping state";
-  for (auto& frame : outstanding_frames_) {
-    LOG(WARNING) << frame.first;
-    FrameState* frame_state = frame.second;
-    frame_state->DumpIterationState(this);
+  if (!dumped_on_error_) {
+    LOG(WARNING) << "Dumping state";
+    for (auto& frame : outstanding_frames_) {
+      LOG(WARNING) << frame.first;
+      FrameState* frame_state = frame.second;
+      frame_state->DumpIterationState(this);
+    }
+    dumped_on_error_ = true;
   }
 }
 
@@ -306,7 +378,7 @@ void PropagatorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
 
       for (const EdgeInfo& e : item->output_edges()) {
         const NodeItem& dst_item =
-            immutable_state_.graph_view().node_ref(e.dst_id);
+            *immutable_state_.graph_view().node(e.dst_id);
         const auto dst_pending_id = immutable_state_.pending_ids()[e.dst_id];
 
         bool dst_dead = true;
@@ -326,7 +398,7 @@ void PropagatorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
 
       for (const ControlEdgeInfo& e : item->output_control_edges()) {
         const NodeItem& dst_item =
-            immutable_state_.graph_view().node_ref(e.dst_id);
+            *immutable_state_.graph_view().node(e.dst_id);
         const auto dst_pending_id = immutable_state_.pending_ids()[e.dst_id];
 
         bool dst_dead;
@@ -392,17 +464,17 @@ void PropagatorState::FrameState::ActivateNodesFastPath(const NodeItem* item,
 //
 // NOTE(mrry): Use a macro here instead of a lambda, because this method is
 // performance-critical and we need to ensure that the code is inlined.
-#define MAYBE_ADD_TO_READY(dst_id, adjust_result)         \
-  do {                                                    \
-    if (!adjust_result.any_pending) {                     \
-      const NodeItem* dst_item = &gview.node_ref(dst_id); \
-      TaggedNode& t = ready->emplace_back();              \
-      t.node_item = dst_item;                             \
-      t.input_frame = this;                               \
-      t.input_iter = iter;                                \
-      t.is_dead = adjust_result.any_dead;                 \
-      iter_state->outstanding_ops++;                      \
-    }                                                     \
+#define MAYBE_ADD_TO_READY(dst_id, adjust_result)    \
+  do {                                               \
+    if (!adjust_result.any_pending) {                \
+      const NodeItem* dst_item = gview.node(dst_id); \
+      TaggedNode& t = ready->emplace_back();         \
+      t.node_item = dst_item;                        \
+      t.input_frame = this;                          \
+      t.input_iter = iter;                           \
+      t.is_dead = adjust_result.any_dead;            \
+      iter_state->outstanding_ops++;                 \
+    }                                                \
   } while (0);
 
   Entry* input_tensors = iter_state->input_tensors;
@@ -462,7 +534,7 @@ void PropagatorState::FrameState::ActivateNodesSlowPath(const NodeItem* item,
 
   for (const EdgeInfo& e : item->output_edges()) {
     const int dst_id = e.dst_id;
-    const NodeItem* dst_item = &gview.node_ref(dst_id);
+    const NodeItem* dst_item = gview.node(dst_id);
     const PendingCounts::Handle dst_pending_id =
         immutable_state.pending_ids()[dst_id];
     const int src_slot = e.output_slot;
@@ -524,7 +596,7 @@ void PropagatorState::FrameState::ActivateNodesSlowPath(const NodeItem* item,
 
   for (const ControlEdgeInfo& e : item->output_control_edges()) {
     const int dst_id = e.dst_id;
-    const NodeItem* dst_item = &gview.node_ref(dst_id);
+    const NodeItem* dst_item = gview.node(dst_id);
     const PendingCounts::Handle dst_pending_id =
         immutable_state.pending_ids()[dst_id];
 

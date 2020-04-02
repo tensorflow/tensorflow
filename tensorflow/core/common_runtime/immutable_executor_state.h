@@ -91,10 +91,6 @@ class ImmutableExecutorState {
     }
   }
 
-  const FrameInfo& get_root_frame_info() const { return *root_frame_info_; }
-
-  bool requires_control_flow_support() const { return requires_control_flow_; }
-
  private:
   struct ControlFlowInfo {
     gtl::FlatSet<string> unique_frame_names;
@@ -110,7 +106,6 @@ class ImmutableExecutorState {
   // Owned.
   LocalExecutorParams params_;
   GraphView gview_;
-  bool requires_control_flow_;
   std::vector<PendingCounts::Handle> pending_ids_;
 
   // Root nodes (with no in edges) that should form the initial ready queue
@@ -120,7 +115,6 @@ class ImmutableExecutorState {
   // TODO(yuanbyu): We could cache it along with the graph so to avoid
   // the overhead of constructing it for each executor instance.
   gtl::FlatMap<string, FrameInfo*> frame_info_;
-  const FrameInfo* root_frame_info_;  // Not owned.
 
   // Shallow copies of the constant tensors used in the graph.
   std::vector<Tensor> const_tensors_;
