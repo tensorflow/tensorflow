@@ -14,6 +14,10 @@
 # ==============================================================================
 """Implementation of a Cluster Resolver for MPI jobs."""
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 from socket import gethostname
 from slurm_cluster_resolver import SlurmClusterResolver
 
