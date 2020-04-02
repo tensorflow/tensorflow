@@ -20,7 +20,7 @@ from __future__ import print_function
 
 # pylint: disable=invalid-import-order,g-bad-import-order, unused-import
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.core.data.service.python import _pywrap_server_lib
+from tensorflow.python.data.service import _pywrap_server_lib
 
 
 class MasterServer(object):
