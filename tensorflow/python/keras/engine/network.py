@@ -1027,7 +1027,8 @@ class Network(base_layer.Layer):
      access specific variables, e.g. `model.get_layer("dense_1").kernel`.
 
     Arguments:
-        filepath: String, PathLike, path to SavedModel or H5 file to save the model.
+        filepath: String, PathLike, path to SavedModel or H5 file to save the
+            model.
         overwrite: Whether to silently overwrite any existing file at the
             target location, or provide the user with a manual prompt.
         include_optimizer: If True, save optimizer's state together.
@@ -1100,10 +1101,10 @@ class Network(base_layer.Layer):
     on the TensorFlow format.
 
     Arguments:
-        filepath: String or PathLike, path to the file to save the weights to. When saving
-            in TensorFlow format, this is the prefix used for checkpoint files
-            (multiple files are generated). Note that the '.h5' suffix causes
-            weights to be saved in HDF5 format.
+        filepath: String or PathLike, path to the file to save the weights to.
+            When saving in TensorFlow format, this is the prefix used for
+            checkpoint files (multiple files are generated). Note that the '.h5'
+            suffix causes weights to be saved in HDF5 format.
         overwrite: Whether to silently overwrite any existing file at the
             target location, or provide the user with a manual prompt.
         save_format: Either 'tf' or 'h5'. A `filepath` ending in '.h5' or

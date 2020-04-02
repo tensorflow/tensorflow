@@ -1047,12 +1047,12 @@ class ModelCheckpoint(Callback):
   ```
 
   Arguments:
-      filepath: string or `PathLike`, path to save the model file. `filepath` can contain
-        named formatting options, which will be filled the value of `epoch` and
-        keys in `logs` (passed in `on_epoch_end`). For example: if `filepath` is
-        `weights.{epoch:02d}-{val_loss:.2f}.hdf5`, then the model checkpoints
-        will be saved with the epoch number and the validation loss in the
-        filename.
+      filepath: string or `PathLike`, path to save the model file. `filepath`
+        can contain named formatting options, which will be filled the value of
+        `epoch` and keys in `logs` (passed in `on_epoch_end`). For example: if
+        `filepath` is `weights.{epoch:02d}-{val_loss:.2f}.hdf5`, then the model
+        checkpoints will be saved with the epoch number and the validation loss
+        in the filename.
       monitor: quantity to monitor.
       verbose: verbosity mode, 0 or 1.
       save_best_only: if `save_best_only=True`, the latest best model according
