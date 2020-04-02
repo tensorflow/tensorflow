@@ -30,8 +30,8 @@ namespace testing {
 constexpr int kOfflinePlannerHeaderSize = 3;
 
 struct NodeConnection_ {
-  std::initializer_list<int> input;
-  std::initializer_list<int> output;
+  std::initializer_list<int32_t> input;
+  std::initializer_list<int32_t> output;
 };
 typedef struct NodeConnection_ NodeConnection;
 

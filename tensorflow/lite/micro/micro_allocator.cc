@@ -37,7 +37,7 @@ struct AllocationInfo {
   int last_used;
   bool needs_allocating;
   void** output_ptr;
-  int offline_offset;
+  int32_t offline_offset;
 };
 
 // We align tensor buffers to 16-byte boundaries, since this is a common
@@ -206,10 +206,10 @@ class AllocationInfoBuilder {
   //  - If there's metadata available, offline_planner_offsets will point to the
   //    first offset in the metadata buffer list.
   TfLiteStatus GetOfflinePlannedOffsets(const Model* model,
-                                        int** offline_planner_offsets);
+                                        int32_t** offline_planner_offsets);
 
   // Add allocaiton information for the tensors.
-  TfLiteStatus AddTensors(const SubGraph* subgraph, int* offline_offsets,
+  TfLiteStatus AddTensors(const SubGraph* subgraph, int32_t* offline_offsets,
                           TfLiteTensor* runtime_tensors);
 
   // Add allocation information for the scratch buffers.
@@ -245,7 +245,7 @@ TfLiteStatus AllocationInfoBuilder::Allocate() {
 }
 
 TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
-                                               int* offline_offsets,
+                                               int32_t* offline_offsets,
                                                TfLiteTensor* runtime_tensors) {
   // Set up allocation info for all tensors.
   for (size_t i = 0; i < tensor_count_; ++i) {
@@ -337,7 +337,7 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
 // |    4    | Arena byte offset of tensor #1 or -1 to allocate at runtime     |
 // | 3+(n-1) | Arena byte offset of tensor #(n-1) or -1 to allocate at runtime |
 TfLiteStatus AllocationInfoBuilder::GetOfflinePlannedOffsets(
-    const Model* model, int** offline_planner_offsets) {
+    const Model* model, int32_t** offline_planner_offsets) {
   if (model->metadata()) {
     for (int i = 0; i < model->metadata()->size(); ++i) {
       auto metadata = model->metadata()->Get(i);
@@ -702,7 +702,7 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
     AllocationInfoBuilder builder(error_reporter_, &tmp_allocator);
     TF_LITE_ENSURE_STATUS(
         builder.Init(tensors_->size(), scratch_buffer_count_));
-    int* offline_planner_offsets = nullptr;
+    int32_t* offline_planner_offsets = nullptr;
     TF_LITE_ENSURE_STATUS(
         builder.GetOfflinePlannedOffsets(model_, &offline_planner_offsets));
     TF_LITE_ENSURE_STATUS(builder.AddTensors(subgraph_, offline_planner_offsets,
