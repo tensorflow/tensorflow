@@ -71,6 +71,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
         "//tensorflow/compiler/mlir/xla:hlo",
         "//tensorflow/compiler/mlir/xla:hlo_legalize_to_lhlo",
         "//tensorflow/compiler/mlir/xla:lhlo",
@@ -78,6 +79,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:lhlo_fuse_linalg",
         "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_affine",
         "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_gpu",
+        "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_parallel_loops",
         "//tensorflow/compiler/mlir/xla:xla_dialect_registration",
         "//tensorflow/compiler/mlir/xla:xla_legalize_control_flow",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
@@ -87,7 +89,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_lower",
         "//tensorflow/compiler/mlir/xla:xla_materialize_broadcasts",
         "//tensorflow/compiler/mlir/xla:xla_test_passes",
-        "@llvm-project//mlir:AffineOps",
+        "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:QuantOps",
     ],
 )
@@ -100,6 +102,37 @@ cc_library(
         "//tensorflow/core:lib",
         "@llvm-project//llvm:support",
     ],
+)
+
+cc_library(
+    name = "mlir_graph_optimization_pass",
+    srcs = ["mlir_graph_optimization_pass.cc"],
+    hdrs = ["mlir_graph_optimization_pass.h"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:device_util",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/core:core_cpu",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "mlir_graph_optimization_pass_registration",
+    srcs = [
+        "mlir_graph_optimization_pass_registration.cc",
+    ],
+    deps = [
+        ":mlir_graph_optimization_pass",
+        "//tensorflow/core:core_cpu",
+    ],
+    alwayslink = 1,
 )
 
 tf_cc_binary(

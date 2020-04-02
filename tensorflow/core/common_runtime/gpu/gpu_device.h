@@ -62,15 +62,6 @@ class BaseGPUDevice : public LocalDevice {
   // Initialize the device and return the status of initialization.
   Status Init(const SessionOptions& options);
 
-  // GPU devices require the Op Compute method to save a reference to
-  // any temporary tensors that are allocated until the Op execution
-  // completes.
-  bool RequiresRecordingAccessedTensors() const override;
-
-  void ConsumeListOfAccessedTensors(
-      DeviceContext* device_context,
-      const TensorReferenceVector& tensor_refs) override;
-
   void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
 
   Status Sync() override;

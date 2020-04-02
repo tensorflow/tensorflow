@@ -510,7 +510,7 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
       return input_data
 
     for _ in range(2):
-      default_strategy.experimental_run_v2(train_step, args=(next_val,))
+      default_strategy.run(train_step, args=(next_val,))
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testDistributedDatasets(self):

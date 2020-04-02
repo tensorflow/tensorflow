@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import weakref
 
 from tensorflow.python.distribute import device_util
@@ -61,13 +60,13 @@ class DistributedValues(object):
 
   A subclass instance of DistributedValues is created when creating variables
   within a distribution strategy, iterating a `tf.Dataset` or through
-  `strategy.experimental_run_v2`.  This base class should never be instantiated
+  `strategy.run`.  This base class should never be instantiated
   directly.  DistributedValues contains a value per replica.  Depending on
   the subclass, the values could either be synced on update, synced on demand,
   or never synced.
 
   DistributedValues can be reduced to obtain single value across replicas,
-  as input into `experimental_run_v2` or the per replica values inspected
+  as input into `run` or the per replica values inspected
   using `experimental_local_results`.
 
   Example usage:
@@ -79,16 +78,17 @@ class DistributedValues(object):
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
   >>> distributed_values = next(dataset_iterator)
 
-  2. Returned by `experimental_run_v2`:
+  2. Returned by `run`:
 
   >>> strategy = tf.distribute.MirroredStrategy()
   >>> @tf.function
   ... def run():
   ...   ctx = tf.distribute.get_replica_context()
   ...   return ctx.replica_id_in_sync_group
-  >>> distributed_values = strategy.experimental_run_v2(run)
+  >>> distributed_values = strategy.run(run)
 
-  3. As input into `experimental_run_v2`:
+  3. As input into `run`:
+
   >>> strategy = tf.distribute.MirroredStrategy()
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
@@ -96,10 +96,10 @@ class DistributedValues(object):
   >>> @tf.function
   ... def run(input):
   ...   return input + 1.0
-  >>> updated_value = strategy.experimental_run_v2(run,
-  ...                                              args=(distributed_values,))
+  >>> updated_value = strategy.run(run, args=(distributed_values,))
 
-  4. Reduce value
+  4. Reduce value:
+
   >>> strategy = tf.distribute.MirroredStrategy()
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
@@ -108,7 +108,8 @@ class DistributedValues(object):
   ...                                 distributed_values,
   ...                                 axis = 0)
 
-  5. Inspect per replica values.
+  5. Inspect per replica values:
+
   >>> strategy = tf.distribute.MirroredStrategy()
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
@@ -402,8 +403,23 @@ def _assign_sub_on_device(device, variable, tensor):
     return variable.assign_sub(tensor)
 
 
-DistributedVarOp = collections.namedtuple(
-    "DistributedVarOp", ["name", "graph", "traceback", "type"])
+class DistributedVarOp(object):
+  """A class that looks like `tf.Operation`."""
+
+  def __init__(self, name, graph, traceback, typ):
+    self.name = name
+    self.graph = graph
+    self.traceback = traceback
+    self.type = typ
+
+  def __eq__(self, o):
+    if not isinstance(o, self.__class__):
+      raise NotImplementedError
+    return (self.name == o.name and self.graph == o.graph and
+            self.traceback == o.traceback and self.type == o.type)
+
+  def __hash__(self):
+    return hash((self.name, self.graph, self.traceback, self.type))
 
 
 class DistributedVariable(DistributedDelegate, variables_lib.Variable):
@@ -877,7 +893,13 @@ class MirroredVariable(DistributedVariable, Mirrored):
     """Converts a variable to a tensor."""
     # Try to avoid assignments to and other mutations of MirroredVariable
     # state except through a DistributionStrategy.extended.update() call.
-    assert not as_ref
+    if as_ref:
+      # A TF 1.x case where the variable is a boolean variable and used like:
+      # tf.cond(v, true_fn, false_fn).
+      raise ValueError(
+          "You may be using variable created under distribute strategy in TF "
+          "1.x control flows. Try explicitly converting the variable to Tensor "
+          "using variable.read_value(), or switch to TF 2.x.")
     return ops.convert_to_tensor(
         self._get(), dtype=dtype, name=name, as_ref=as_ref)
 

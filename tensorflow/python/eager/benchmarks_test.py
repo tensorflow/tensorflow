@@ -241,7 +241,7 @@ class MicroBenchmarks(test.Benchmark):
 
   def _benchmark_add(self, a, b):
     def func():
-      return memoryview(math_ops.add(a, b))
+      return memoryview(math_ops.add_v2(a, b))
 
     with ops.device("GPU:0" if context.num_gpus() else "CPU:0"):
       for _ in range(1000):

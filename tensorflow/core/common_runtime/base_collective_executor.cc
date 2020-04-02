@@ -142,7 +142,8 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
 
   Tensor TempChunk(int i) const override {
     AllocationAttributes empty;
-    MEMDEBUG_CACHE_OP("CollectiveAdapterImpl::TempChunk");
+    auto op_annotation =
+        ScopedMemoryDebugAnnotation("CollectiveAdapterImpl::TempChunk", 0);
     return Tensor(allocator_, dt_, {ChunkElts(i)}, empty);
   }
 

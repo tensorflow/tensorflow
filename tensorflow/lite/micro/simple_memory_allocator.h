@@ -56,7 +56,7 @@ class SimpleMemoryAllocator {
   size_t data_size_max_;
   uint8_t* data_;
   SimpleMemoryAllocator* parent_allocator_ = nullptr;
-  // The allocator is locaked if it has a child.
+  // The allocator is locked if it has a child.
   bool has_child_allocator_ = false;
 };
 

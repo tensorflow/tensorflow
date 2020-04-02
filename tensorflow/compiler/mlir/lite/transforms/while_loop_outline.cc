@@ -17,15 +17,16 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/CommandLine.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Identifier.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
@@ -89,25 +90,20 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   llvm::SmallVector<Region*, 2> regions{&while_op.cond(), &while_op.body()};
   for (auto it : llvm::enumerate(regions)) {
     llvm::SetVector<Value> region_extern_values;
-    Value const_none = nullptr;
     getUsedValuesDefinedAbove(*it.value(), region_extern_values);
 
-    // Sink down none type constants into the functions.
+    // Sink down constants into the functions.
     for (auto extern_value : region_extern_values) {
-      if (!extern_value.getType().isa<NoneType>()) {
+      if (!matchPattern(extern_value, m_Constant())) {
         extern_values.insert(extern_value);
         continue;
       }
-      assert(extern_value.getDefiningOp()->hasNoSideEffect());
-      if (!const_none) {
-        // Add constant at start of region.
-        auto const_builder =
-            OpBuilder(&it.value()->front(), it.value()->front().begin());
-        const_none = const_builder.create<ConstantOp>(
-            while_op.getLoc(), extern_value.getType(),
-            const_builder.getUnitAttr());
-      }
-      replaceAllUsesInRegionWith(extern_value, const_none, *it.value());
+      // Add constant at start of region.
+      auto const_builder =
+          OpBuilder(&it.value()->front(), it.value()->front().begin());
+      auto const_value = const_builder.clone(*extern_value.getDefiningOp());
+      replaceAllUsesInRegionWith(extern_value, const_value->getResult(0),
+                                 *it.value());
     }
   }
 

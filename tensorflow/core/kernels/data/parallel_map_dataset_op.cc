@@ -233,7 +233,6 @@ ParallelMapDatasetOp::ParallelMapDatasetOp(OpKernelConstruction* ctx)
   FunctionMetadata::Params params;
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kUseInterOpParallelism,
                                    &params.use_inter_op_parallelism));
-  params.is_multi_device_function = true;
   OP_REQUIRES_OK(ctx,
                  FunctionMetadata::Create(ctx, kFunc, params, &func_metadata_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
@@ -378,8 +377,10 @@ class ParallelMapIterator : public DatasetBaseIterator {
                               /*max=*/ctx->runner_threadpool_size())});
   }
 
-  Status SaveInternal(IteratorStateWriter* writer) override {
-    TF_RETURN_IF_ERROR(parallel_map_functor_->CheckExternalState());
+  Status SaveInternal(SerializationContext* ctx,
+                      IteratorStateWriter* writer) override {
+    TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+        parallel_map_functor_->CheckExternalState()));
     mutex_lock l(*mu_);
     // Wait for all in-flight calls to complete.
     while (num_calls_ > 0) {
@@ -389,7 +390,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
       return errors::FailedPrecondition(
           "Unexpected outstanding calls encountered.");
     }
-    TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+    TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
     TF_RETURN_IF_ERROR(writer->WriteScalar(
         full_name(strings::StrCat(kInvocationResults, kSizeSuffix)),
         invocation_results_.size()));

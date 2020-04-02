@@ -197,8 +197,8 @@ class HloModule {
   std::vector<HloComputation*> MakeComputationPostOrder() const;
 
   // Same as MakeComputationPostOrder() but sorting the computations by their
-  // contents.
-  std::vector<HloComputation*> MakeComputationSortedByContent() const;
+  // contents. The order is longer post order.
+  std::vector<HloComputation*> MakeComputationSorted() const;
 
   // Gets the computations in this module which aren't for fusion nodes.
   //
@@ -211,7 +211,7 @@ class HloModule {
   // MakeNonfusionComputations().
   std::vector<HloComputation*> MakeNonfusionComputations() const;
 
-  // Same as MakeNonfusionComputations() but sorting the computations by names.
+  // Same as MakeNonfusionComputations() but sorting computations by content.
   std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
 
   const HloModuleConfig& config() const { return config_; }
@@ -345,6 +345,17 @@ class HloModule {
     spmd_output_sharding_ = sharding;
   }
 
+  // Add a program argument to be prefetched across programs.
+  void AddCrossProgramPrefetch(int64 parameter, const ShapeIndex& index) {
+    cross_program_prefetches_.emplace_back(parameter, index);
+  }
+
+  // Get the list of program arguments to be prefetch across programs.
+  const absl::Span<const std::pair<int64, ShapeIndex>> CrossProgramPrefetches()
+      const {
+    return cross_program_prefetches_;
+  }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -392,6 +403,9 @@ class HloModule {
   // The HLO sharding of the entry computation's output (root) for
   // SPMD-partitioned programs.
   absl::optional<HloSharding> spmd_output_sharding_;
+
+  // Arguments to be prefetched across programs.
+  std::vector<std::pair<int64, ShapeIndex>> cross_program_prefetches_;
 };
 
 }  // namespace xla

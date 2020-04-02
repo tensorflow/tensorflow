@@ -1,7 +1,7 @@
 path: "tensorflow.nn.RNNCellResidualWrapper"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.layers.rnn_cell_wrapper_v2.ResidualWrapper\'>"
-  is_instance: "<class \'tensorflow.python.ops.rnn_cell_wrapper_impl.ResidualWrapperBase\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.legacy_rnn.rnn_cell_wrapper_impl.ResidualWrapperBase\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.rnn_cell_wrapper_v2._RNNCellWrapperV2\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.recurrent.AbstractRNNCell\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"

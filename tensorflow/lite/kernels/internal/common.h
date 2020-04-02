@@ -524,13 +524,10 @@ inline int SubscriptToIndex(const NdArrayDesc<4>& desc, int i0, int i1, int i2,
          i3 * desc.strides[3];
 }
 
-template <int N>
-inline int SubscriptToIndex(const NdArrayDesc<N>& desc, int indexes[N]) {
-  int result = 0;
-  for (int i = 0; i < N; ++i) {
-    result += indexes[i] * desc.strides[i];
-  }
-  return result;
+inline int SubscriptToIndex(const NdArrayDesc<5>& desc, int indexes[5]) {
+  return indexes[0] * desc.strides[0] + indexes[1] * desc.strides[1] +
+         indexes[2] * desc.strides[2] + indexes[3] * desc.strides[3] +
+         indexes[4] * desc.strides[4];
 }
 
 // Given the dimensions of the operands for an element-wise binary broadcast,
@@ -721,7 +718,6 @@ inline void NDOpsHelper(const NdArrayDesc<N>& output, const Calc& calc) {
   int indexes[N] = {0};
   NDOpsHelperImpl<N, 0, Calc>(output, calc, indexes);
 }
-
 // Copied from gemmlowp::RoundDown when we dropped direct dependency on
 // gemmlowp.
 //

@@ -62,6 +62,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":bfloat16",
+        ":local_client",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -168,6 +169,7 @@ cc_library(
     name = "local_client",
     srcs = ["local_client.cc"],
     hdrs = ["local_client.h"],
+    visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
         ":local_device_state",
         ":shared_device_buffer",

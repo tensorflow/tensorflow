@@ -1,0 +1,189 @@
+book_path: /lite/_book.yaml
+project_path: /lite/_project.yaml
+title: Tutorials
+landing_page:
+  custom_css_path: /site-assets/css/style.css
+  nav: left
+  meta_tags:
+  - name: description
+    content: >
+      TensorFlow Lite tutorials to help you get started with machine learning on Android, iOS,
+      Raspberry Pi and IoT devices.
+
+  rows:
+  # Pre-trained models
+  - classname: devsite-landing-row-100
+    items:
+    - description: >
+        <h2 class="tfo-landing-page-heading no-link">Getting Started</h2>
+        TensorFlow Lite is an open-source deep learning framework to run TensorFlow models
+        on-device. If you are new to TensorFlow Lite, we recommend that you first explore the
+        <a href="/lite/models">pre-trained models</a> and run the example
+        apps below on a real device to see what TensorFlow Lite can do.
+
+  - classname: devsite-landing-row-100
+    items:
+    - classname: tfo-landing-page-card
+      description: >
+        <a href="/lite/models/object_detection/overview">
+          <h3 class="no-link">Object Detection</h3>
+        </a>
+        Detect objects in real time from a camera feed with a MobileNet model.
+      path: /lite/models/object_detection/overview
+    - classname: tfo-landing-page-card
+      description: >
+        <a href="/lite/models/bert_qa/overview">
+          <h3 class="no-link">Question and Answer</h3>
+        </a>
+        Answer any questions related to a given text with a MobileBERT model.
+      path: /lite/models/bert_qa/overview
+
+  # Mobile developers
+  - classname: devsite-landing-row-100
+    items:
+    - description: >
+        <h3 class="tfo-landing-page-heading no-link">For mobile developers</h3>
+        If you are a mobile developer without much experience with machine learning and
+        TensorFlow, you can start by learning how to train a model and deploy to a
+        mobile app with TensorFlow Lite Model Maker.
+
+  - classname: devsite-landing-row-100
+    items:
+    - classname: tfo-landing-page-card
+      description: >
+        <a href="https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/#0">
+          <h3 class="no-link">Recognize flowers on Android</h3>
+        </a>
+        A quick start tutorial for Android. Train a flower classification model and deploy it to an
+        Android application.
+      path: https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/#0
+    - classname: tfo-landing-page-card
+      description: >
+        <a href="https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-ios/#0">
+          <h3 class="no-link">Recognize flowers on iOS</h3>
+        </a>
+        A quick start tutorial for iOS. Train a flower classification model and deploy it to an iOS
+        application.
+      path: https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-ios/#0
+
+  # Model creators
+  - classname: devsite-landing-row-100
+    items:
+    - description: >
+        <h3 class="tfo-landing-page-heading no-link">For model creators</h3>
+        If you are already familiar with TensorFlow and interested in deploying to edge devices,
+        then you can start with the below tutorial to learn how to convert a TensorFlow model to
+        TensorFlow Lite format and optimize it for on-device inference.
+
+  - classname: devsite-landing-row-100
+    items:
+    - classname: tfo-landing-page-card
+      description: >
+        <a href="https://codelabs.developers.google.com/codelabs/digit-classifier-tflite/#0">
+          <h3 class="no-link">Recognize handwritten digits</h3>
+        </a>
+        A quick start end-to-end tutorial on converting and optimizing a TensorFlow model for
+        on-device inference, then deploy it to an Android app.
+      path: https://codelabs.developers.google.com/codelabs/digit-classifier-tflite/#0
+    - classname: tfo-landing-page-card
+      description: >
+        <a href="https://colab.sandbox.google.com/github/tensorflow/examples/blob/master/tensorflow_examples/lite/model_maker/demo/image_classification.ipynb">
+          <h3 class="no-link">Transfer learning for image classification</h3>
+        </a>
+        Learn how to use TensorFlow Lite Model Maker to quickly create image classification models.
+      path: https://colab.sandbox.google.com/github/tensorflow/examples/blob/master/tensorflow_examples/lite/model_maker/demo/image_classification.ipynb
+
+  # IoT developers
+  ## Linux-based IoT devices
+  - classname: devsite-landing-row-100
+    items:
+    - description: >
+        <h3 class="tfo-landing-page-heading no-link">For IoT developers</h3>
+        If you are interested in deploying a TensorFlow model to Linux-based IoT devices such as
+        Raspberry Pi, then you can try out these tutorials on how to implement computer vision tasks
+        on IoT devices.
+
+  - classname: devsite-landing-row-100
+    items:
+    - classname: tfo-landing-page-card
+      description: >
+        <a href="https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/raspberry_pi/">
+          <h3 class="no-link">Image classification on Raspberry Pi</h3>
+        </a>
+        Perform real-time image classification using images streamed from the Pi Camera.
+      path: https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/raspberry_pi/
+    - classname: tfo-landing-page-card
+      description: >
+        <a href="https://github.com/tensorflow/examples/blob/master/lite/examples/object_detection/raspberry_pi/">
+          <h3 class="no-link">Object Detection on Raspberry Pi</h3>
+        </a>
+        Perform real-time object detection using images streamed from the Pi Camera.
+      path: https://github.com/tensorflow/examples/blob/master/lite/examples/object_detection/raspberry_pi/
+  ## Microcontrollers
+  - classname: devsite-landing-row-100
+    items:
+    - description: >
+        If you are interested in deploying a TensorFlow model to microcontrollers which are much
+        more resource constrained, then you can start with these tutorials that demonstrate an
+        end-to-end workflow from developing a TensorFlow model to converting to a TensorFlow Lite
+        format and deploying to a microcontroller with TensorFlow Lite Micro.
+
+  - classname: devsite-landing-row-100
+    items:
+    - classname: tfo-landing-page-card
+      description: >
+        <a href="https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/#0">
+          <h3 class="no-link">Hotword detection</h3>
+        </a>
+        Train a tiny speech model that can detect simple hotwords.
+      path: https://github.com/tensorflow/examples/blob/master/lite/examples/object_detection/raspberry_pi/
+    - classname: tfo-landing-page-card
+      description: >
+        <a href="https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/#0">
+          <h3 class="no-link">Gesture recognition</h3>
+        </a>
+        Train a model that can recognize different gestures using accelerometer data.
+      path: https://github.com/tensorflow/examples/blob/master/lite/examples/object_detection/raspberry_pi/
+
+
+  # Next steps
+  - classname: devsite-landing-row-100
+    items:
+    - description: >
+        <h2 class="tfo-landing-page-heading no-link">Next steps</h2>
+        <p>After you have familiarized yourself with the workflow of training a TensorFlow model,
+        converting it to a TensorFlow Lite format, and deploying it to mobile apps, you can learn
+        more about TensorFlow Lite with the below materials:</p>
+        <ul>
+          <li>
+            Try out the different domain tutorials (e.g. vision, speech) from the left navigation
+            bar. They show you how to train a model for a specific machine learning task, such as
+            <a href="https://blog.tensorflow.org/2018/07/training-and-serving-realtime-mobile-object-detector-cloud-tpus.html">object detection</a>
+            or
+            <a href="https://colab.sandbox.google.com/github/tensorflow/examples/blob/master/tensorflow_examples/lite/model_maker/demo/text_classification.ipynb">sentiment analysis</a>.
+          </li>
+          <li>
+            Learn more about the development workflow in the TensorFlow Lite
+            <a href="https://www.tensorflow.org/lite/guide">Guide</a>.
+            You can find in-depth information about TensorFlow Lite features, such as
+            <a href="https://www.tensorflow.org/lite/convert">model conversion</a>
+            or
+            <a href="https://www.tensorflow.org/lite/performance/model_optimization">model optimization</a>.
+          </li>
+          <li>
+            Check out this free
+            <a href="https://www.udacity.com/course/intro-to-tensorflow-lite--ud190">e-learning course</a>
+            on TensorFlow Lite.
+          </li>
+        </ul>
+
+  # Blogs and videos
+  - classname: devsite-landing-row-100
+    items:
+    - description: >
+        <h2 class="tfo-landing-page-heading no-link">Blogs and videos</h2>
+        <p>Subscribe to the
+          <a href="https://blog.tensorflow.org/search?label=TensorFlow+Lite&amp;max-results=20">TensorFlow blog</a>,
+          <a href="https://www.youtube.com/tensorflow">YouTube channel</a>,
+          and <a href="https://twitter.com/tensorflow">Twitter</a> for the latest updates.
+        </p>

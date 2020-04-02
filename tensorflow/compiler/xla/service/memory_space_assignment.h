@@ -23,9 +23,10 @@ namespace xla {
 
 // This class contains pre-set assignments determined by memory space
 // assignment. It contains two data structures: (1) a chunks vector that maps a
-// defining HloPosition to a Chunk (offset and size), and (2) a sizes vector
-// that maps the memory space to its size. If there is only one alternate memory
-// space like there is currently, there will be one entry in sizes.
+// defining HloPosition to a Chunk (offset and size), and (2) an assignment_info
+// vector that maps the memory space to information like its allocated size and
+// heap memory trace. If there is only one alternate memory space like there is
+// currently, there will be one entry in assignment_info.
 class PresetAssignments {
  public:
   // Contains per-memory-space information like the allocated size and heap
@@ -318,6 +319,14 @@ class MemorySpaceAssignment {
     // If true, verifies the memory space assignment against overlapping
     // buffers.
     bool verify = false;
+
+    // Enable prefetching buffers into preferred memory across program
+    // boundaries
+    bool enable_cross_program_prefetch = true;
+
+    // If true, use buffer_interval_compare to determine which buffers to
+    // prefetch across program boundaries.
+    bool default_cross_program_prefetch_heuristic = false;
   };
 
   // This class represents an allocation that might either be in the default or
@@ -621,6 +630,12 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       buffer_interval_compare_ = *options.buffer_interval_compare;
     }
   }
+
+  // Allocates a buffer in preferred memory with whole program lifetime and
+  // enables prefetching prefech_candidate from default memory across program
+  // boundaries.
+  void AllocateCrossProgramPrefetchBuffer(
+      HloModule* module, absl::optional<BufferInterval> prefetch_candidate);
 
   HeapSimulator::Result Finish() override;
 

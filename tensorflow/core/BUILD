@@ -175,6 +175,9 @@ exports_files([
 
 package_group(name = "experimental_access")
 
+# Authorized users go here.
+package_group(name = "friends")
+
 # -----------------------------------------------------------------------------
 # Public targets
 
@@ -196,7 +199,6 @@ COMMON_PROTO_SRCS = [
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
     "protobuf/verifier_config.proto",
-    "protobuf/trace_events.proto",
 ]
 
 EXAMPLE_PROTO_SRCS = [
@@ -498,7 +500,6 @@ tf_cuda_library(
         "//tensorflow/core/framework:shared_ptr_variant.h",
         "//tensorflow/core/framework:stats_aggregator.h",
         "//tensorflow/core/framework:tensor.h",
-        "//tensorflow/core/framework:tensor_interface.h",
         "//tensorflow/core/framework:tensor_shape.h",
         "//tensorflow/core/framework:tensor_slice.h",
         "//tensorflow/core/framework:tensor_types.h",
@@ -720,6 +721,7 @@ tf_gen_op_libs(
         "tpu_configuration_ops",
         "tpu_cross_replica_ops",
         "tpu_embedding_ops",
+        "tpu_embedding_load_retrieve_ops",
         "tpu_functional_ops",
         "tpu_heartbeat_ops",
         "tpu_host_compute_ops",
@@ -732,6 +734,7 @@ tf_gen_op_libs(
         ":lib",
         ":lib_proto_parsing",
         ":protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_cc",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
         "//tensorflow/core/tpu:tpu_embedding_optimization_parameters_utils",
         "//tensorflow/core/tpu:tpu_embedding_output_layout_utils",
@@ -891,6 +894,7 @@ cc_library(
         ":tpu_configuration_ops_op_lib",
         ":tpu_cross_replica_ops_op_lib",
         ":tpu_embedding_ops_op_lib",
+        ":tpu_embedding_load_retrieve_ops_op_lib",
         ":tpu_functional_ops_op_lib",
         ":tpu_heartbeat_ops_op_lib",
         ":tpu_host_compute_ops_op_lib",
@@ -1024,6 +1028,7 @@ cc_library(
         "//tensorflow/core/kernels:data_flow",
         "//tensorflow/core/kernels:decode_proto_op",
         "//tensorflow/core/kernels:encode_proto_op",
+        "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:functional_ops",
@@ -1043,6 +1048,7 @@ cc_library(
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/core/kernels:partitioned_function_ops",
         "//tensorflow/core/kernels:pooling_ops",
+        "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:ragged_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:stateful_random_ops",
@@ -1066,10 +1072,6 @@ cc_library(
         "//tensorflow/core/kernels:word2vec_kernels",
         "//tensorflow/core/kernels/sparse:kernels",
     ] + if_not_windows([
-        "//tensorflow/core/kernels:fact_op",
-        "//tensorflow/core/kernels:array_not_windows",
-        "//tensorflow/core/kernels:math_not_windows",
-        "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels/neon:neon_depthwise_conv_op",
     ]) + if_mkl([
         "//tensorflow/core/kernels:mkl_aggregate_ops",
@@ -1385,7 +1387,7 @@ cc_library(
         full = [],
         lite = ["TENSORFLOW_LITE_PROTOS"],
     ) + if_chromiumos(["IS_MOBILE_PLATFORM"]) + tf_defines_nortti_if_lite_protos(),
-    linkopts = if_android(["-lz"]),
+    linkopts = if_android(["-lz"]) + if_ios(["-lz"]),
     tags = [
         "manual",
         "notap",
@@ -1438,7 +1440,7 @@ cc_library(
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
     ]),
-    copts = tf_copts() + ["-Os"],
+    copts = tf_copts() + tf_opts_nortti_if_lite_protos() + ["-Os"],
     visibility = ["//visibility:public"],
     deps = [
         ":portable_tensorflow_lib_lite",
@@ -2253,7 +2255,6 @@ filegroup(
         "//tensorflow/core/framework:shared_ptr_variant.h",
         "//tensorflow/core/framework:tensor_reference.h",
         "//tensorflow/core/framework:tracking_allocator.h",  # only needed for tests
-        "//tensorflow/core/framework:unique_tensor_references.h",
         "//tensorflow/core/framework:variant.h",
         "//tensorflow/core/util:framework_internal_public_hdrs",
     ],
@@ -2517,6 +2518,7 @@ tf_cuda_library(
         "//third_party/eigen3",
     ] + if_static([
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ]),
 )
 
@@ -2543,11 +2545,15 @@ filegroup(
         "common_runtime/debugger_state_interface.h",
         "common_runtime/device_resolver_local.h",
         "common_runtime/dma_helper.h",
+        "common_runtime/entry.h",
         "common_runtime/executor.h",
         "common_runtime/executor_factory.h",
         "common_runtime/function_optimization_registry.h",
         "common_runtime/graph_optimizer.h",
+        "common_runtime/graph_view.h",
+        "common_runtime/immutable_executor_state.h",
         "common_runtime/input_colocation_exemption_registry.h",
+        "common_runtime/inspecting_placer.h",
         "common_runtime/isolate_placer_inspection_required_ops_pass.h",
         "common_runtime/local_device.h",
         "common_runtime/lower_function_call_op.h",
@@ -2562,7 +2568,7 @@ filegroup(
         "common_runtime/partitioning_utils.h",
         "common_runtime/placer.h",
         "common_runtime/process_util.h",
-        "common_runtime/inspecting_placer.h",
+        "common_runtime/propagator_state.h",
         "common_runtime/profile_handler.h",
         "common_runtime/renamed_device.h",
         "common_runtime/rendezvous_mgr.h",
@@ -2610,7 +2616,9 @@ tf_cuda_library(
         "common_runtime/function_optimization_registry.cc",
         "common_runtime/graph_optimizer.cc",
         "common_runtime/graph_runner.cc",
+        "common_runtime/graph_view.cc",
         "common_runtime/hierarchical_tree_broadcaster.cc",
+        "common_runtime/immutable_executor_state.cc",
         "common_runtime/input_colocation_exemption_registry.cc",
         "common_runtime/inspecting_placer.cc",
         "common_runtime/isolate_placer_inspection_required_ops_pass.cc",
@@ -2633,6 +2641,7 @@ tf_cuda_library(
         "common_runtime/process_function_library_runtime.cc",
         "common_runtime/process_state.cc",
         "common_runtime/process_util.cc",
+        "common_runtime/propagator_state.cc",
         "common_runtime/renamed_device.cc",
         "common_runtime/rendezvous_mgr.cc",
         "common_runtime/rendezvous_util.cc",
@@ -2666,9 +2675,11 @@ tf_cuda_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:variant",
         "//third_party/eigen3",
         "//tensorflow/core/public:version",
         "//tensorflow/core/grappler/utils:functions",
@@ -3215,6 +3226,49 @@ test_suite(
     ],
 )
 
+tf_cc_test(
+    name = "common_runtime_placer_test",
+    size = "small",
+    srcs = [
+        "common_runtime/placer_test.cc",
+    ],
+    linkopts = select({
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = ["no_windows"],
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/cc:while_loop",
+        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/util:protos_test_cc",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_cc_tests(
     name = "core_higher_level_tests",
     size = "small",
@@ -3234,7 +3288,6 @@ tf_cc_tests(
         "common_runtime/optimization_registry_test.cc",
         "common_runtime/pending_counts_test.cc",
         "common_runtime/placer_inspection_required_ops_utils_test.cc",
-        "common_runtime/placer_test.cc",
         "common_runtime/session_test.cc",
         "common_runtime/threadpool_device_test.cc",
         "//tensorflow/core/example:feature_util_test.cc",

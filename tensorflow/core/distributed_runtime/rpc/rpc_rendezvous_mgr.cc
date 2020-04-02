@@ -224,11 +224,12 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
                          " is invalid remote source device.");
   }
   WorkerSession* sess = session();
+  std::shared_ptr<WorkerCacheInterface> worker_cache =
+      sess->GetSharedWorkerCache();
   // The worker will be released in a subsequent call to
   // `sess->worker_cache()->ReleaseWorker()` (if the call has not yet been
   // initialized) or `call->ReleaseWorker()` (if it has been initialized).
-  WorkerInterface* rwi =
-      sess->worker_cache()->GetOrCreateWorker(call->src_worker_);
+  WorkerInterface* rwi = worker_cache->GetOrCreateWorker(call->src_worker_);
   if (s.ok() && rwi == nullptr) {
     s = errors::Internal("No worker known as ", call->src_worker_);
   }
@@ -265,7 +266,7 @@ void RpcRemoteRendezvous::RecvFromRemoteAsync(
 
   // Start "call".
   Ref();
-  call->Start([this, call]() {
+  call->Start([this, call, worker_cache]() {
     // Removes "call" from active_. Prevent StartAbort().
     DeregisterCall(call);
     // If StartAbort was called prior to DeregisterCall, then the

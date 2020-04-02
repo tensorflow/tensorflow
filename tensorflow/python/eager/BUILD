@@ -178,10 +178,7 @@ py_library(
     name = "monitoring",
     srcs = ["monitoring.py"],
     srcs_version = "PY2AND3",
-    visibility = [
-        "//tensorflow:internal",
-        "//third_party/py/tf_agents:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:pywrap_tf_session",
@@ -219,6 +216,7 @@ cuda_py_test(
     deps = [
         ":profiler",
         ":test",
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python/profiler:traceme",
     ],
@@ -233,6 +231,7 @@ py_library(
         "//tensorflow/core/profiler:internal",
     ],
     deps = [
+        "//tensorflow/python:util",
         "//tensorflow/python/profiler/internal:_pywrap_profiler",
     ],
 )
@@ -843,6 +842,7 @@ py_library(
         ":context",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
+        "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
     ],
 )
 
@@ -862,7 +862,10 @@ cuda_py_test(
         ":def_function",
         ":remote",
         ":test",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:functional_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:tensor_spec",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
@@ -873,7 +876,7 @@ cuda_py_test(
     srcs = ["remote_execution_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
-    shard_count = 2,
+    shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
     ],
@@ -893,9 +896,10 @@ cuda_py_test(
     srcs = ["remote_cluster_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
-    shard_count = 16,
+    shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
+        "notsan",  # TODO(b/152075365)
     ],
     deps = [
         "//tensorflow/python:array_ops",

@@ -15,6 +15,8 @@ package_group(
         "//learning/brain/experimental/swift_mlir/...",
         "//learning/brain/google/xla/kernels/...",
         "//learning/brain/swift/swift_mlir/...",
+        "//learning/pathways/data_parallel/tf2xla/...",
+        "//platforms/xla/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/compiler/xla/...",
@@ -29,12 +31,27 @@ exports_files(["ir/hlo_ops.td"])
 filegroup(
     name = "hlo_ops_td_files",
     srcs = [
+        "ir/hlo_client_ops.td",
         "ir/hlo_ops.td",
         "ir/hlo_ops_base.td",
         "ir/hlo_utils.td",
         "ir/lhlo_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:include/mlir/Analysis/InferTypeOpInterface.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
+    ],
+)
+
+gentbl(
+    name = "hlo_client_ops_inc_gen",
+    tbl_outs = [
+        ("-gen-op-decls", "ir/hlo_client_ops.h.inc"),
+        ("-gen-op-defs", "ir/hlo_client_ops.cc.inc"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ir/hlo_client_ops.td",
+    td_srcs = [
+        ":hlo_ops_td_files",
     ],
 )
 
@@ -49,7 +66,10 @@ gentbl(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/hlo_ops.td",
     td_includes = ["ir/hlo_utils.td"],
-    td_srcs = [":hlo_ops_td_files"],
+    td_srcs = [
+        ":hlo_ops_td_files",
+        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
+    ],
 )
 
 gentbl(
@@ -161,6 +181,7 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -191,19 +212,6 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_shape_derivation",
-    srcs = [],
-    hdrs = ["transforms/hlo_shape_derivation.h"],
-    deps = [
-        ":hlo",
-        ":lhlo",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
-cc_library(
     name = "lhlo_legalize_to_affine",
     srcs = ["transforms/lhlo_legalize_to_affine.cc"],
     deps = [
@@ -213,10 +221,27 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
-        "@llvm-project//mlir:AffineOps",
+        "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "lhlo_legalize_to_parallel_loops",
+    srcs = ["transforms/lhlo_legalize_to_parallel_loops.cc"],
+    deps = [
+        ":lhlo",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:LoopOps",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
@@ -292,7 +317,6 @@ cc_library(
     srcs = ["transforms/hlo_legalize_to_lhlo.cc"],
     deps = [
         ":hlo",
-        ":hlo_shape_derivation",
         ":lhlo",
         ":map_hlo_to_lhlo_op",
         "@com_google_absl//absl/memory",
@@ -432,12 +456,14 @@ cc_library(
 cc_library(
     name = "hlo",
     srcs = [
+        "ir/hlo_client_ops.cc",
         "ir/hlo_ops.cc",
         "ir/hlo_ops.cc.inc",
         "ir/hlo_ops.h.inc",
         "ir/hlo_utils.cc",
     ],
     hdrs = [
+        "ir/hlo_client_ops.h",
         "ir/hlo_ops.h",
         "ir/hlo_utils.h",
         "transforms/passes.h",
@@ -446,6 +472,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":convert_op_folder",
+        ":hlo_client_ops_inc_gen",
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_inc_gen",
         ":xla_canonicalize_inc_gen",
@@ -453,7 +480,9 @@ cc_library(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
@@ -507,6 +536,7 @@ cc_library(
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
@@ -588,7 +618,10 @@ cc_library(
         ":hlo",
         ":type_to_shape",
         ":xla_dialect_registration",
+        "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -599,6 +632,8 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:quantize",
         "//tensorflow/compiler/xla/client/lib:slicing",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
@@ -687,7 +722,8 @@ tf_native_cc_binary(
 genrule(
     name = "operator_writer_inc",
     srcs = [
-        "@llvm-project//mlir:include/mlir/Analysis/InferTypeOpInterface.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         ":ir/hlo_ops.td",
         ":ir/hlo_ops_base.td",
@@ -696,6 +732,7 @@ genrule(
     outs = ["operator_writers.inc"],
     cmd = ("$(location :operator_writer_gen) " +
            "-I external/llvm-project/mlir/include " +
+           "-I external/org_tensorflow " +
            "$(location //tensorflow/compiler/mlir/xla:ir/hlo_ops.td) " +
            " -o $@"),
     tools = [":operator_writer_gen"],

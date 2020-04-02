@@ -1321,6 +1321,61 @@ TEST_P(MemorySpaceAssignmentTest,
   }
 }
 
+TEST_P(MemorySpaceAssignmentTest, SendDoneShouldHaveSendOperand) {
+  // Ensure that SendDone has only a Send operand.
+  absl::string_view hlo_string = R"(
+  HloModule SendRecv, is_scheduled=true
+
+  ENTRY %AddDependency (p: f32[3]) -> f32[3] {
+    %p0 = f32[3]{0} parameter(0)
+    %p1 = f32[3]{0} parameter(1)
+    %neg0 = f32[3]{0} negate(f32[3]{0} %p1)
+    %neg1 = f32[3]{0} negate(f32[3]{0} %neg0)
+    %neg2 = f32[3]{0} negate(f32[3]{0} %neg1)
+    %neg3 = f32[3]{0} negate(f32[3]{0} %neg2)
+    %neg4 = f32[3]{0} negate(f32[3]{0} %neg3)
+    %neg5 = f32[3]{0} negate(f32[3]{0} %neg4)
+    %neg6 = f32[3]{0} negate(f32[3]{0} %neg5)
+    %after-all = token[] after-all()
+    %send = (f32[3]{0}, u32[], token[]) send(f32[3]{0} %p0, token[] %after-all), channel_id=2
+    %send-done = token[] send-done((f32[3]{0}, u32[], token[]) %send), channel_id=2
+    ROOT %add = f32[3]{0} add(f32[3]{0} %p0, f32[3]{0} %neg6)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, SendAndSendDoneShouldGetSameAllocation) {
+  // Ensure that Send and SendDone have the same allocation.
+  absl::string_view hlo_string = R"(
+  HloModule SendRecv, is_scheduled=true
+
+  ENTRY %AddDependency (p: f32[3]) -> f32[3] {
+    %p0 = f32[3]{0} parameter(0)
+    %p1 = f32[3]{0} parameter(1)
+    %after-all = token[] after-all()
+    %send = (f32[3]{0}, u32[], token[]) send(f32[3]{0} %p0, token[] %after-all), channel_id=2
+    %neg0 = f32[3]{0} negate(f32[3]{0} %p1)
+    %neg1 = f32[3]{0} negate(f32[3]{0} %neg0)
+    %neg2 = f32[3]{0} negate(f32[3]{0} %neg1)
+    %neg3 = f32[3]{0} negate(f32[3]{0} %neg2)
+    %neg4 = f32[3]{0} negate(f32[3]{0} %neg3)
+    %neg5 = f32[3]{0} negate(f32[3]{0} %neg4)
+    %neg6 = f32[3]{0} negate(f32[3]{0} %neg5)
+    %send-done = token[] send-done((f32[3]{0}, u32[], token[]) %send), channel_id=2
+    ROOT %add = f32[3]{0} add(f32[3]{0} %p0, f32[3]{0} %neg6)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/4);
+}
+
 TEST_P(MemorySpaceAssignmentTest, LastUseOpt) {
   // Test that checks the last use optimization. It uses two buffers that should
   // be placed in alternate memory.
@@ -2971,6 +3026,204 @@ TEST_F(AsynchronousCopyOrderingTest, Simple) {
   ordering.AddCopy({5, 13, alternate_mem_space});
   EXPECT_FALSE(ordering.ViolatesOrdering(5, 14));
   ordering.AddCopy({5, 14, alternate_mem_space});
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTest) {
+  HloComputation::Builder builder(TestName());
+
+  constexpr int kBatch = 8;
+  constexpr int kFeature = 8;
+  constexpr int kOutput = 2;
+
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
+  auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p0"));
+
+  auto lhs = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(lhs_shape, param, 0));
+  auto rhs = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(rhs_shape, param, 1));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      result_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {param, lhs, rhs, dot});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  if (!cross_program_prefetches.empty()) {
+    EXPECT_EQ(cross_program_prefetches[0].first, 0);
+    EXPECT_EQ(cross_program_prefetches[0].second, ShapeIndex({1}));
+  }
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNestedTupleTest) {
+  HloComputation::Builder builder(TestName());
+
+  constexpr int kBatch = 8;
+  constexpr int kFeature = 8;
+  constexpr int kOutput = 2;
+
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
+  auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
+  auto tuple_tuple_shape = ShapeUtil::MakeTupleShape({tuple_shape});
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_tuple_shape, "p0"));
+
+  auto gte = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(tuple_shape, param, 0));
+
+  auto lhs = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(lhs_shape, gte, 0));
+  auto rhs = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(rhs_shape, gte, 1));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      result_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {param, gte, lhs, rhs, dot});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 0);
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchUnusedParamTest) {
+  HloComputation::Builder builder(TestName());
+
+  constexpr int kFeature = 8;
+  constexpr int kOutput = 2;
+
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, rhs_shape, "p0"));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {param});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 0);
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchTooBigTest) {
+  HloComputation::Builder builder(TestName());
+
+  constexpr int kBatch = 8;
+  constexpr int kFeature = 8;
+  constexpr int kOutput = 8;
+
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
+  auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
+  HloInstruction* param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p0"));
+
+  auto lhs = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(lhs_shape, param, 0));
+  auto rhs = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(rhs_shape, param, 1));
+
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot = builder.AddInstruction(HloInstruction::CreateDot(
+      result_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {param, lhs, rhs, dot});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 0);
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchFusionTest) {
+  HloComputation::Builder builder(TestName());
+
+  constexpr int kBatch = 2;
+  constexpr int kFeature = 2;
+  constexpr int kOutput = 2;
+
+  auto lhs_shape = ShapeUtil::MakeShape(F32, {kBatch, kFeature});
+  auto rhs_shape = ShapeUtil::MakeShape(F32, {kFeature, kOutput});
+  auto result_shape = ShapeUtil::MakeShape(F32, {kBatch, kOutput});
+  auto tuple_shape = ShapeUtil::MakeTupleShape({lhs_shape, rhs_shape});
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder fusion_builder("fusion");
+  {
+    HloInstruction* param = fusion_builder.AddInstruction(
+        HloInstruction::CreateParameter(0, tuple_shape, "p0"));
+    auto lhs = fusion_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(lhs_shape, param, 0));
+    auto rhs = fusion_builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(rhs_shape, param, 1));
+    DotDimensionNumbers dot_dnums;
+    dot_dnums.add_lhs_contracting_dimensions(1);
+    dot_dnums.add_rhs_contracting_dimensions(0);
+    auto dot = fusion_builder.AddInstruction(HloInstruction::CreateDot(
+        result_shape, lhs, rhs, dot_dnums, DefaultPrecisionConfig(2)));
+    (void)dot;
+  }
+  HloComputation* fusion_computation =
+      module->AddEmbeddedComputation(fusion_builder.Build());
+
+  auto activations = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{0.0, 1.0}, {2.0, 3.0}})));
+  auto weights = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{0.0, 1.0}, {2.0, 3.0}})));
+  HloInstruction* tuple = builder.AddInstruction(
+      HloInstruction::CreateTuple({activations, weights}));
+  HloInstruction* fusion = builder.AddInstruction(HloInstruction::CreateFusion(
+      result_shape, HloInstruction::FusionKind::kCustom, {tuple},
+      fusion_computation));
+
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {activations, weights, tuple, fusion});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
 }  // namespace

@@ -258,8 +258,7 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
     graph_def = dataset._as_serialized_graph(
         strip_device_assignment=True,
-        external_state_policy=
-        dataset.options().experimental_external_state_policy)
+        external_state_policy=distribute_options.ExternalStatePolicy.WARN)
 
     options = dataset_ops.Options()
     options.experimental_distribute.auto_shard_policy = sharding_policy

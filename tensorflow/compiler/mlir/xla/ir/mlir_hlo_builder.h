@@ -18,12 +18,13 @@ limitations under the License.
 #include <memory>
 
 #include "absl/container/flat_hash_map.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -87,7 +88,26 @@ class MlirHloBuilder : public XlaBuilder {
   StatusOr<const Shape*> GetShapePtr(XlaOp op) const override;
 
  private:
-  XlaOp UnaryOp(HloOpcode unop, XlaOp operand) override;
+  XlaOp ConstantLiteral(const LiteralSlice& literal) override;
+
+  StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
+                                  int64 inferred_dimension) override;
+
+  StatusOr<XlaOp> InDimBroadcast(
+      const Shape& shape, XlaOp operand,
+      absl::Span<const int64> broadcast_dimensions) override;
+
+  XlaOp BinaryOpNoBroadcast(
+      HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
+      absl::optional<ComparisonDirection> direction) override;
+
+  StatusOr<XlaOp> AddOpWithShape(HloOpcode opcode, const Shape& shape,
+                                 absl::Span<const XlaOp> operands) override;
+
+  // Creates HLO dialect op and returns the result as an XlaOp.
+  StatusOr<XlaOp> CreateOp(const std::string& op_name, const Shape& shape,
+                           llvm::ArrayRef<XlaOp> operands,
+                           llvm::ArrayRef<mlir::NamedAttribute> attributes);
 
   mlir::OpBuilder builder_;
   mlir::Location loc_;

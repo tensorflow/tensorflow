@@ -304,12 +304,10 @@ class MetricsContainer(Container):
                                                       self._weighted_metrics)
 
     # Standardize on tuple since `tf.data` turns lists into `Tensor`s.
-    # pylint: disable=protected-access
-    y_pred = nest._list_to_tuple(y_pred)
-    y_true = nest._list_to_tuple(y_true)
-    self._metrics = nest._list_to_tuple(self._metrics)
-    self._weighted_metrics = nest._list_to_tuple(self._weighted_metrics)
-    # pylint: enable=protected-access
+    y_pred = nest.list_to_tuple(y_pred)
+    y_true = nest.list_to_tuple(y_true)
+    self._metrics = nest.list_to_tuple(self._metrics)
+    self._weighted_metrics = nest.list_to_tuple(self._weighted_metrics)
 
     # Convert to `Metric` objects, potentially disambiguating based on output
     # properties.

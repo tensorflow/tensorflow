@@ -40,7 +40,7 @@ def _convert_to_per_replicas(distribution, values):
   Returns:
     `values`, but each element has been converted to a PerReplica value.
   """
-  return distribution.experimental_run_v2(
+  return distribution.run(
       lambda values: [array_ops.identity(v) for v in values],
       args=(values,)
   )
@@ -302,10 +302,11 @@ def _compute_gradients_until_finite(
       return grads
 
     # Switch to a replica-context to compute gradients once per replica.
-    grads = distribution.experimental_run_v2(
-        replica_fn, args=(loss_scale_gradient_tapes, target, flattened_sources,
-                          output_gradients, initial_grads))
-    # Check for non-finite gradients possibly resulting from scaling.
+    grads = distribution.run(
+        replica_fn,
+        args=(loss_scale_gradient_tapes, target, flattened_sources,
+              output_gradients, initial_grads))
+    # Check for non-finite gradients possibly resulting from scaling
     _, ready_to_update = loss_scale.update(grads)
     is_first_iteration = False
     return grads, ready_to_update, is_first_iteration

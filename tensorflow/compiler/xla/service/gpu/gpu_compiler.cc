@@ -343,11 +343,14 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
 // TODO(cheshire): Duplication with gpu_conv_algorithm picker, figure out a
 // right way to share this.
 static bool RequireDeterminism() {
-  bool deterministic_ops = false;
-  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                             /*default_val=*/false,
-                                             &deterministic_ops));
-  return deterministic_ops;
+  static bool require_determinism = [] {
+    bool deterministic_ops = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
+                                               /*default_val=*/false,
+                                               &deterministic_ops));
+    return deterministic_ops;
+  }();
+  return require_determinism;
 }
 
 Status GpuCompiler::OptimizeHloPostLayoutAssignment(
@@ -515,7 +518,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
         << "Invalid LLVM IR before optimizations:\n"
         << err_stream.str()
         << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
-           "Rerun with --xla_dump_to to get the IR. ";
+           "Rerun with --xla_dump_to to get the IR and looks for files with "
+           "name containing: *"
+        << FilenameFor(*module, "", "") << "*";
   }
 
   GpuVersion gpu_version = GetGpuVersion(stream_exec);

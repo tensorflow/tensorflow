@@ -54,13 +54,15 @@ function test_tf_imports() {
   # test for basic import and perform tf.add operation.
   RET_VAL=$(python -c "import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)")
   if ! [[ ${RET_VAL} == *'(4,)'* ]]; then
+    echo "Unexpected return value: ${RET_VALUE}"
     echo "PIP test on virtualenv FAILED, will not upload ${WHL_NAME} package."
      return 1
   fi
 
   # test basic keras is available
   RET_VAL=$(python -c "import tensorflow as tf; print(tf.keras.__name__)")
-  if ! [[ ${RET_VAL} == *'tensorflow.python.keras.api._v2.keras'* ]]; then
+  if ! [[ ${RET_VAL} == *'tensorflow.keras'* ]]; then
+    echo "Unexpected return value: ${RET_VALUE}"
     echo "PIP test on virtualenv FAILED, will not upload ${WHL_NAME} package."
     return 1
   fi
@@ -68,6 +70,7 @@ function test_tf_imports() {
   # similar test for estimator
   RET_VAL=$(python -c "import tensorflow as tf; print(tf.estimator.__name__)")
   if ! [[ ${RET_VAL} == *'tensorflow_estimator.python.estimator.api._v2.estimator'* ]]; then
+    echo "Unexpected return value: ${RET_VALUE}"
     echo "PIP test on virtualenv FAILED, will not upload ${WHL_NAME} package."
     return 1
   fi

@@ -136,7 +136,7 @@ Status PartitionedCallOp::FillOutputDevices(
   const FunctionLibraryDefinition* flib = lib.GetFunctionLibraryDefinition();
   const FunctionDef* fdef = flib->Find(func_->name());
   if (fdef == nullptr) {
-    return errors::NotFound("Failed for find definition for function \"",
+    return errors::NotFound("Failed to find definition for function \"",
                             func_->name(), "\"");
   }
 

@@ -134,13 +134,13 @@ Status WriteMetadataFile(const string& hash_dir,
                          const experimental::SnapshotMetadataRecord* metadata);
 
 Status ReadMetadataFile(const string& hash_dir,
-                        experimental::SnapshotMetadataRecord* metadata);
+                        experimental::SnapshotMetadataRecord* metadata,
+                        bool* file_exists);
 
 Status DumpDatasetGraph(const std::string& path, uint64 hash,
                         const GraphDef* graph);
 
-Status DetermineOpState(const std::string& mode_string,
-                        const Status& file_status,
+Status DetermineOpState(const std::string& mode_string, bool file_exists,
                         const experimental::SnapshotMetadataRecord* metadata,
                         const uint64 pending_snapshot_expiry_seconds,
                         Mode* mode);

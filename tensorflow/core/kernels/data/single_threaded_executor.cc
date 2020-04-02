@@ -243,7 +243,6 @@ class SingleThreadedExecutorImpl : public Executor {
     Device* device = params_.device;
     params.device = device;
     params.log_memory = false;              // TODO(mrry): Too severe?
-    params.record_tensor_accesses = false;  // TODO(mrry): Too severe?
     params.rendezvous = args.rendezvous;
     params.session_state = args.session_state;
     params.tensor_store = args.tensor_store;

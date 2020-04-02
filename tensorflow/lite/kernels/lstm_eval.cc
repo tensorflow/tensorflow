@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
@@ -861,7 +861,7 @@ inline void LstmStepHybrid(
 //
 // Layer norm coefficients of size 'n_cell', representing diagonal matrices.
 //   layer_norm_input_weight_ptr    - optional
-//   layer_norm_forput_weight_ptr   - optional
+//   layer_norm_forget_weight_ptr   - optional
 //   layer_norm_cell_weight_ptr     - optional
 //   layer_norm_output_weight_ptr   - optional
 //
@@ -1187,7 +1187,7 @@ inline void LstmStepInteger(
 //
 // Layer norm coefficients of size 'n_cell', representing diagonal matrices.
 //   layer_norm_input_weight_ptr    - optional
-//   layer_norm_forput_weight_ptr   - optional
+//   layer_norm_forget_weight_ptr   - optional
 //   layer_norm_cell_weight_ptr     - optional
 //   layer_norm_output_weight_ptr   - optional
 //

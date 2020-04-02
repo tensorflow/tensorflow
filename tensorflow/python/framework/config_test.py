@@ -223,6 +223,22 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     config.disable_mlir_bridge()
     self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
 
+  @reset_eager
+  def testEnableMlirGraphOptimization(self):
+    # Default value of enable_mlir_graph_optimization is false.
+    self.assertFalse(
+        context.context().config.experimental.enable_mlir_graph_optimization)
+
+    # Tests enabling mlir graph optimization.
+    config.enable_mlir_graph_optimization()
+    self.assertTrue(
+        context.context().config.experimental.enable_mlir_graph_optimization)
+
+    # Tests disabling mlir graph optimization.
+    config.disable_mlir_graph_optimization()
+    self.assertFalse(
+        context.context().config.experimental.enable_mlir_graph_optimization)
+
   @test_util.run_gpu_only
   @reset_eager
   def testJit(self):

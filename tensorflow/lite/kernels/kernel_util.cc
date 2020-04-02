@@ -18,8 +18,8 @@ limitations under the License.
 #include <cmath>
 #include <memory>
 
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/round.h"
 
 namespace tflite {
 
@@ -100,7 +100,7 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
         context, input, filter, bias, output, &real_multiplier));
     int exponent;
 
-    // Populate quantization parameteters with multiplier and shift.
+    // Populate quantization parameters with multiplier and shift.
     QuantizeMultiplier(real_multiplier, multiplier, &exponent);
     *shift = -exponent;
   }

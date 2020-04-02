@@ -958,8 +958,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     strategy = mirrored_strategy.MirroredStrategy()
     with strategy.scope():
       v = variables.Variable([1., 2., 3.])
-      strategy.experimental_run_v2(
-          _replicated, args=(constant_op.constant([.1, -.2, .3]),))
+      strategy.run(_replicated, args=(constant_op.constant([.1, -.2, .3]),))
 
   # TODO(b/141025187): Add a no_new_pyobjects decorator.
   def testArgumentUnused(self):

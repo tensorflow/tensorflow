@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir {
 
@@ -90,6 +90,9 @@ std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg(
 // buffers. The buffers are freed. This pass only works in regions that contain
 // a single block.
 std::unique_ptr<Pass> createLhloCopyRemovalPass();
+
+// Lowers from LHLO dialect to parallel loops.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 
 }  // namespace xla_lhlo
 }  // namespace mlir

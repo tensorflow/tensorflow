@@ -207,12 +207,12 @@ StatusOr<std::string> NcclIdStore::GetNcclUniqueId(const NcclCliqueKey& key) {
   return cache_.emplace(key_string, result.ValueOrDie()).first->second;
 }
 
-std::vector<std::shared_ptr<Device>> BuildLocalDevices(
+std::vector<std::unique_ptr<Device>> BuildLocalDevices(
     std::vector<std::unique_ptr<LocalDeviceState>> local_device_states) {
-  std::vector<std::shared_ptr<Device>> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   for (auto& local_device : local_device_states) {
     int device_ordinal = local_device->device_ordinal();
-    std::shared_ptr<Device> device = std::make_shared<GpuDevice>(
+    auto device = absl::make_unique<GpuDevice>(
         device_ordinal, std::move(local_device), /*node_id=*/0);
     devices.push_back(std::move(device));
   }
@@ -222,7 +222,7 @@ std::vector<std::shared_ptr<Device>> BuildLocalDevices(
 Status BuildDistributedDevices(
     std::vector<std::unique_ptr<LocalDeviceState>> local_device_states,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
-    std::vector<std::shared_ptr<Device>>* devices,
+    std::vector<std::unique_ptr<Device>>* devices,
     GpuExecutableRunOptions* gpu_executable_run_options) {
   LocalTopologyProto local_topology;
   local_topology.set_node_id(node_id);
@@ -258,9 +258,9 @@ Status BuildDistributedDevices(
         gpu_device_ids[device_proto.local_device_ordinal()] =
             GlobalDeviceId(device_proto.global_device_id());
       }
-      std::shared_ptr<Device> device =
-          std::make_shared<GpuDevice>(device_proto.global_device_id(),
-                                      std::move(local_device), node.node_id());
+      auto device =
+          absl::make_unique<GpuDevice>(device_proto.global_device_id(),
+                                       std::move(local_device), node.node_id());
       devices->push_back(std::move(device));
     }
   }
@@ -298,7 +298,7 @@ StatusOr<std::shared_ptr<PyLocalClient>> GetNvidiaGpuClient(
   auto host_memory_allocator =
       GetGpuHostAllocator(local_device_states.front()->executor());
 
-  std::vector<std::shared_ptr<Device>> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   auto gpu_run_options = absl::make_unique<GpuExecutableRunOptions>();
   if (distributed_client) {
     TF_RETURN_IF_ERROR(BuildDistributedDevices(

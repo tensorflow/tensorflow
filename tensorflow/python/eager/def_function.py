@@ -22,7 +22,11 @@ from __future__ import print_function
 import functools
 import threading
 import weakref
+import six
 
+from google.protobuf import text_format as _text_format
+from google.protobuf.message import DecodeError
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
@@ -36,8 +40,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
-
-
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
@@ -175,7 +177,7 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
 
     with ops.name_scope(name, "Variable", []
                         if init_from_fn else [initial_value]) as scope_name:
-      with ops.name_scope("Initializer"), ops.device(None):
+      with ops.name_scope("Initializer"):
         initial_value = ops.convert_to_tensor(
             initial_value() if init_from_fn else initial_value,
             name="initial_value", dtype=dtype)
@@ -376,7 +378,10 @@ class Function(object):
         def embedding_matmul(a, b):
            # custom implementation here
         ```
-
+        This can either be specified as just the string name of the function or
+        a NameAttrList corresponding to a list of key-value attributes
+        with the function name. The name of the function will be in the 'name'
+        field of the NameAttrList.
       experimental_autograph_options: optional tuple of
         tensorflow.autograph.Feature values. Allows enabling additional
         conversion options when autograph is set to True.
@@ -445,11 +450,35 @@ class Function(object):
         self._python_function,
         wrapped_fn))
 
+  def _create_implements_attribute(self):
+    """Creates the attribute value corresponding to IMPLEMENTS_ATTRIBUTE_NAME."""
+    attributes = {}
+    if isinstance(self._implements, str):
+      # First check if the IMPLEMENTS_ATTRIBUTE_NAME is specified as a
+      # NameAttrList. This is used when apart from the function name being
+      # implemented, a list of attributes is also being specified.
+      # The attributes are specified as key-value pairs in the NameAttrList
+      # of the corresponding AttrValue. The function name will be in the
+      # 'name' field of the NameAttrList. Else, it is just a string
+      # corresponding to the function name.
+      try:
+        implements_attr = six.ensure_text(self._implements, "utf-8")
+        attr_value = attr_value_pb2.AttrValue()
+        nameattrlist = attr_value_pb2.NameAttrList()
+        _text_format.Merge(implements_attr, nameattrlist)
+        attr_value.func.CopyFrom(nameattrlist)
+        attributes[function_lib.IMPLEMENTS_ATTRIBUTE_NAME] = attr_value
+      except (_text_format.ParseError, DecodeError):
+        attributes[function_lib.IMPLEMENTS_ATTRIBUTE_NAME] = self._implements
+    return attributes
+
   def _defun(self, fn):
     """Returns a defun generated from the input function."""
     attributes = {}
+
     if self._implements is not None:
-      attributes[function_lib.IMPLEMENTS_ATTRIBUTE_NAME] = self._implements
+      attributes = self._create_implements_attribute()
+
     if self._experimental_compile is not None:
       attributes.update(_XlaMustCompile=bool(self._experimental_compile))
       if self._experimental_compile:
@@ -1186,6 +1215,10 @@ def function(func=None,
       `embedded_matmul` (perhaps more efficiently!)
       by specifying it using this parameter:
       `@tf.function(experimental_implements="embedded_matmul")`
+      This can either be specified as just the string name of the function or
+      a NameAttrList corresponding to a list of key-value attributes associated
+      with the function name. The name of the function will be in the 'name'
+      field of the NameAttrList.
     experimental_autograph_options: Optional tuple of
       `tf.autograph.experimental.Feature` values.
     experimental_relax_shapes: When True, `tf.function` may generate fewer,

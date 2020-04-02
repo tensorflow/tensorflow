@@ -129,6 +129,9 @@ class Conv(Layer):
     self.filters = filters
     self.kernel_size = conv_utils.normalize_tuple(
         kernel_size, rank, 'kernel_size')
+    if not all(self.kernel_size):
+      raise ValueError('The argument `kernel_size` cannot contain 0(s). '
+                       'Received: %s' % (kernel_size,))
     self.strides = conv_utils.normalize_tuple(strides, rank, 'strides')
     self.padding = conv_utils.normalize_padding(padding)
     if (self.padding == 'causal' and not isinstance(self,
@@ -199,6 +202,7 @@ class Conv(Layer):
           strides=self.strides,
           padding=self._padding_op,
           data_format=self._conv_op_data_format)
+      self._build_conv_op_input_shape = inputs.get_shape()
 
     # Apply causal padding to inputs for Conv1D.
     if self.padding == 'causal' and self.__class__.__name__ == 'Conv1D':
@@ -1154,6 +1158,7 @@ class Conv3DTranspose(Conv3D):
                padding='valid',
                output_padding=None,
                data_format=None,
+               dilation_rate=(1, 1, 1),
                activation=None,
                use_bias=True,
                kernel_initializer='glorot_uniform',
@@ -1170,6 +1175,7 @@ class Conv3DTranspose(Conv3D):
         strides=strides,
         padding=padding,
         data_format=data_format,
+        dilation_rate=dilation_rate,
         activation=activations.get(activation),
         use_bias=use_bias,
         kernel_initializer=initializers.get(kernel_initializer),

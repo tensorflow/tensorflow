@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
@@ -416,6 +417,7 @@ TEST_F(ExecutorTest, RecvInvalidRefDtype) {
 // maximum of 'width' nodes. All nodes are no-ops and all dependencies are
 // control dependencies.
 static void BM_executor(int iters, int width, int depth) {
+  testing::StopTiming();
 #ifdef PLATFORM_GOOGLE
   BenchmarkUseRealTime();
 #endif  // PLATFORM_GOOGLE
@@ -451,6 +453,8 @@ static void BM_executor(int iters, int width, int depth) {
   SetBenchmarkLabel(strings::StrCat("Nodes = ", cur));
   SetBenchmarkItemsProcessed(cur * static_cast<int64>(iters));
 #endif  // PLATFORM_GOOGLE
+  FixupSourceAndSinkEdges(g);
+  testing::StartTiming();
   test::Benchmark("cpu", g).Run(iters);
 }
 
@@ -466,6 +470,7 @@ BENCHMARK(BM_executor)->ArgPair(8192, 32);
 BENCHMARK(BM_executor)->ArgPair(1024, 1024);
 
 static void BM_FeedInputFetchOutput(int iters) {
+  testing::StopTiming();
   Graph* g = new Graph(OpRegistry::Global());
   // z = x + y: x and y are provided as benchmark inputs.  z is the
   // output of the benchmark.  Conceptually, the caller is ALICE, the
@@ -484,6 +489,8 @@ static void BM_FeedInputFetchOutput(int iters) {
 #ifdef PLATFORM_GOOGLE
   SetBenchmarkItemsProcessed(static_cast<int64>(iters));
 #endif  // PLATFORM_GOOGLE
+  FixupSourceAndSinkEdges(g);
+  testing::StartTiming();
   test::Benchmark("cpu", g).RunWithRendezvousArgs({{x_key, val}, {y_key, val}},
                                                   {z_key}, iters);
 }

@@ -26,24 +26,24 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/Dialect/Traits.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/DialectImplementation.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Matchers.h"  // TF:llvm-project
-#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
-#include "mlir/IR/OpImplementation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
-#include "mlir/Support/STLExtras.h"  // TF:llvm-project
-#include "mlir/Transforms/FoldUtils.h"  // TF:llvm-project
-#include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/DialectImplementation.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/STLExtras.h"  // from @llvm-project
+#include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
+#include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -1067,16 +1067,16 @@ bool HasSingleOpInBlock(Block *block) {
 struct DropEmptyGraph : public OpRewritePattern<GraphOp> {
   using OpRewritePattern<GraphOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(GraphOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(GraphOp op,
+                                PatternRewriter &rewriter) const override {
     Block &block = op.GetBody();
     // Check if graph only has one fetch.
-    if (&block.front() != &block.back()) return matchFailure();
+    if (&block.front() != &block.back()) return failure();
 
     // Map graph results to fetch operands.
     rewriter.replaceOp(op, op.GetFetch().fetches());
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -1086,11 +1086,11 @@ struct DropEmptyGraph : public OpRewritePattern<GraphOp> {
 struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
   using OpRewritePattern<GraphOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(GraphOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(GraphOp op,
+                                PatternRewriter &rewriter) const override {
     Block &block = op.GetBody();
     // Check if graph only has one island.
-    if (!HasSingleOpInBlock<IslandOp>(&block)) return matchFailure();
+    if (!HasSingleOpInBlock<IslandOp>(&block)) return failure();
 
     FetchOp fetch_op = op.GetFetch();
     auto island_op = llvm::cast<IslandOp>(block.front());
@@ -1120,7 +1120,7 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
         std::prev(island_body.end()));
     rewriter.replaceOp(op, new_rets);
 
-    return matchSuccess();
+    return success();
   }
 };
 }  // anonymous namespace
@@ -1142,18 +1142,18 @@ struct DropEmptyIslandNoOperandNoDataResult
     : public OpRewritePattern<IslandOp> {
   using OpRewritePattern<IslandOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(IslandOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(IslandOp op,
+                                PatternRewriter &rewriter) const override {
     if (op.getNumOperands() != 0 || op.getNumResults() != 1 ||
         !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
-      return matchFailure();
+      return failure();
 
     for (auto &use : llvm::make_early_inc_range(op.control().getUses()))
       use.getOwner()->eraseOperand(use.getOperandNumber());
 
     rewriter.eraseOp(op);
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -1165,16 +1165,16 @@ struct DropEmptyIslandNoOperandOneDataResult
     : public OpRewritePattern<IslandOp> {
   using OpRewritePattern<IslandOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(IslandOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(IslandOp op,
+                                PatternRewriter &rewriter) const override {
     if (op.getNumOperands() != 0 || op.getNumResults() != 2 ||
         !op.control().use_empty() ||
         !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
-      return matchFailure();
+      return failure();
 
     rewriter.replaceOp(op, {op.GetYield().getOperand(0), nullptr});
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -1199,16 +1199,16 @@ namespace {
 struct DropEmptyControlTrigger : public OpRewritePattern<ControlTriggerOp> {
   using OpRewritePattern<ControlTriggerOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(ControlTriggerOp op,
-                                     PatternRewriter &rewriter) const override {
-    if (op.getNumOperands() != 0) return matchFailure();
+  LogicalResult matchAndRewrite(ControlTriggerOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() != 0) return failure();
 
     for (auto &use : llvm::make_early_inc_range(op.control().getUses()))
       use.getOwner()->eraseOperand(use.getOperandNumber());
 
     rewriter.eraseOp(op);
 
-    return matchSuccess();
+    return success();
   }
 };
 }  // anonymous namespace

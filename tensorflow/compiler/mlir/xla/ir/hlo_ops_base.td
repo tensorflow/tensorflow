@@ -25,7 +25,61 @@ def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 // smaller rank shape is broadcast into a larger rank shape. For example,
 // given a 2x3x4 cuboid and a 3x4 matrix, a broadcasting tuple (1,2) means
 // matching the matrix to dimensions 1 and 2 of the cuboid.
-def BroadcastDimAttr : OptionalAttr<I64ElementsAttr>;
+defvar BroadcastDimAttr = I64ElementsAttr;
+
+//===----------------------------------------------------------------------===//
+// XLA on tensors type definitions.
+//===----------------------------------------------------------------------===//
+
+// Token type.
+def HLO_Token : Type<CPred<"$_self.isa<TokenType>()">, "token">;
+
+// Any integer tensor types
+def HLO_IntTensor : TensorOf<[HLO_Int]>;
+
+// Any floating-point tensor types
+def HLO_FpTensor : TensorOf<[AnyFloat]>;
+
+def HLO_PredTensor : TensorOf<[HLO_Pred]>;
+
+def HLO_Tensor : TensorOf<[AnyFloat, AnySignlessInteger, AnyComplex]>;
+
+def HLO_ComplexTensor : TensorOf<[AnyComplex]>;
+
+def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
+
+def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
+
+// Dynamic representation of a shape vector as a tensor. Ideally this would be
+// an index type (as it stores indices) but that is currently disallowed in
+// MLIR.
+def HLO_DimensionTensor : ShapedContainerType<
+    [AnySignlessInteger], And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
+    "a 1D tensor of dimensions">;
+
+// In general, static shaped tensor constraints should be avoided unless
+// it is for a legacy op which is only correct with static shapes.
+def HLO_StaticShapeTensor : StaticShapeTensorOf<[
+      AnyFloat, AnySignlessInteger, AnyComplex]>;
+
+//===----------------------------------------------------------------------===//
+// XLA on tensors combined type definitions.
+//===----------------------------------------------------------------------===//
+
+// Any integer or floating-point tensor types
+def HLO_IntOrFpTensor : TensorOf<[HLO_Int, AnyFloat]>;
+
+// Any integer or predicate tensor types
+def HLO_PredOrIntTensor : TensorOf<[HLO_Pred, HLO_Int]>;
+
+// Any floating-point or complex tensor types
+def HLO_FpOrComplexTensor : TensorOf<[AnyFloat, AnyComplex]>;
+
+// Any int, floating-point or complex tensor types
+def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, AnyFloat, AnyComplex]>;
+
+// Any pred, int or floating-point tensor types
+def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, AnyFloat]>;
 
 //===----------------------------------------------------------------------===//
 // XLA nullary op definitions.

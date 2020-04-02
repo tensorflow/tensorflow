@@ -25,21 +25,21 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
-#include "mlir/Transforms/FoldUtils.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -236,6 +236,40 @@ bool PassThroughOperandTypes(OperandRange operands, ResultRange results) {
   return changed;
 }
 
+// Infers the shape from a (Stateful)PartionedCall operation by looking up the
+// called function and propagating the return type.
+bool InferShapeForCall(Operation* op) {
+  auto call_op = cast<CallOpInterface>(op);
+  CallInterfaceCallable callable = call_op.getCallableForCallee();
+  SymbolRefAttr sym = callable.dyn_cast<SymbolRefAttr>();
+  if (!sym) return false;
+  FuncOp func =
+      dyn_cast<mlir::FuncOp>(SymbolTable::lookupNearestSymbolFrom(op, sym));
+  if (!func) return false;
+
+  bool changed = false;
+  // Map each of the results of the call to the returned type of the
+  // function.
+  for (auto result : llvm::zip(op->getResults(), func.getType().getResults())) {
+    if (std::get<0>(result).getType() == std::get<1>(result)) continue;
+    // Skip already statically shaped results.
+    auto shaped_type = std::get<0>(result).getType().dyn_cast<ShapedType>();
+    if (!shaped_type || shaped_type.hasStaticShape()) continue;
+
+    auto new_type = std::get<1>(result).dyn_cast<RankedTensorType>();
+    if (!new_type) continue;
+
+    // Inserts a cast back to the original type if any user is not in the
+    // TF dialect.
+    AddCastBackForUnsupportedNonTFUses(op, std::get<0>(result),
+                                       op->getDialect(), shaped_type);
+    // Finally we inferred the shape and replace the type for this result.
+    std::get<0>(result).setType(new_type);
+    changed = true;
+  }
+  return changed;
+}
+
 }  // namespace
 
 bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
@@ -263,6 +297,11 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
                             << op->getName() << "'.\n";);
     return false;
   }
+
+  // Handle call operations by looking up callee and infering return shape as
+  // needed.
+  if (isa<PartitionedCallOp>(op) || isa<StatefulPartitionedCallOp>(op))
+    return InferShapeForCall(op);
 
   // tf.Cast are only inferred if they have at least one user in the tf dialect.
   // This is necessary to avoid reprocessing the tf.Cast that are inserted at
@@ -438,7 +477,7 @@ LogicalResult RefineShapeForControlFlowFunc(FuncOp func,
   auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
   int num_uses = std::distance(func_uses->begin(), func_uses->end());
   if (num_uses != 1) {
-    func.emitError(llvm::formatv(
+    func.emitWarning(llvm::formatv(
         "expected control flow function {0} to have exactly 1 use, found {1}.",
         func.getName(), num_uses));
     return failure();
@@ -496,11 +535,13 @@ LogicalResult PropagateShapeIntoAttachedFunctions(Operation* op,
     return PropagateShapeToFunctions(module, while_op.getOperandTypes(),
                                      {while_op.cond(), while_op.body()},
                                      graph_version, max_iteration);
-  } else if (auto call_op = dyn_cast<TF::PartitionedCallOp>(op)) {
-    if (call_op.f().isa<FlatSymbolRefAttr>())
-      return PropagateShapeToFunctions(module, call_op.getOperandTypes(),
-                                       {call_op.f().getRootReference()},
-                                       graph_version, max_iteration);
+  } else if (auto call_op = dyn_cast<CallOpInterface>(op)) {
+    CallInterfaceCallable callable = call_op.getCallableForCallee();
+    if (SymbolRefAttr sym = callable.dyn_cast<SymbolRefAttr>()) {
+      return PropagateShapeToFunctions(
+          module, call_op.getArgOperands().getTypes(), {sym.getRootReference()},
+          graph_version, max_iteration);
+    }
   }
 
   // TODO(ycao): Implement support for Call op, including function reuse.

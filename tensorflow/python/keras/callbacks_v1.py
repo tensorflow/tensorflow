@@ -39,7 +39,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export(v1=['keras.callbacks.TensorBoard'])
-class TensorBoard(callbacks.Callback):
+class TensorBoard(callbacks.TensorBoard):
   # pylint: disable=line-too-long
   """Enable visualizations for TensorBoard.
 
@@ -127,7 +127,8 @@ class TensorBoard(callbacks.Callback):
                embeddings_data=None,
                update_freq='epoch',
                profile_batch=2):
-    super(TensorBoard, self).__init__()
+    # Don't call super's init since it is an eager-only version.
+    callbacks.Callback.__init__(self)
     self.log_dir = log_dir
     self.histogram_freq = histogram_freq
     if self.histogram_freq and context.executing_eagerly():
@@ -342,6 +343,21 @@ class TensorBoard(callbacks.Callback):
         self.writer.add_summary(summary, step)
     self.writer.flush()
 
+  def on_train_batch_begin(self, batch, logs=None):
+    if (not self._is_profiling and
+        self._total_batches_seen == self._profile_batch - 1):
+      profiler.start(self.log_dir)
+      self._is_profiling = True
+
+  def on_train_batch_end(self, batch, logs=None):
+    return self.on_batch_end(batch, logs)
+
+  def on_test_begin(self, logs=None):
+    pass
+
+  def on_test_end(self, logs=None):
+    pass
+
   def on_batch_end(self, batch, logs=None):
     """Writes scalar summaries for metrics on every training batch.
 
@@ -358,18 +374,13 @@ class TensorBoard(callbacks.Callback):
       self._write_custom_summaries(self._total_batches_seen, batch_logs)
       self._samples_seen_at_last_write = self._samples_seen
     self._total_batches_seen += 1
+
     if self._is_profiling:
       profiler.stop()
       self._is_profiling = False
-    elif (not self._is_profiling and
-          self._total_batches_seen == self._profile_batch - 1):
-      profiler.start(self.log_dir)
-      self._is_profiling = True
 
   def on_train_begin(self, logs=None):
-    if self._profile_batch == 1:
-      profiler.start(self.log_dir)
-      self._is_profiling = True
+    pass
 
   def on_epoch_begin(self, epoch, logs=None):
     """Add histogram op to Model eval_function callbacks, reset batch count."""

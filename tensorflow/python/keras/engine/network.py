@@ -239,11 +239,16 @@ class Network(base_layer.Layer):
       outputs = outputs[0]
     self._nested_outputs = outputs
     self._nested_inputs = inputs
-    self._nested_inputs_are_flat_list = (
-        isinstance(self._nested_inputs, (list, tuple)) and
-        not any(nest.is_sequence(t) for t in self._nested_inputs))
     self.inputs = nest.flatten(inputs)
     self.outputs = nest.flatten(outputs)
+
+    # Models constructed with a single Tensor or list of Tensors can
+    # be called with a dict, where the keys of the dict are the names
+    # of the `Input` objects. Extra keys are ignored.
+    self._enable_dict_to_input_mapping = (
+        not nest.is_sequence(self._nested_inputs) or
+        (isinstance(self._nested_inputs, (list, tuple)) and
+         not any(nest.is_sequence(t) for t in self._nested_inputs)))
 
     if any(not hasattr(tensor, '_keras_history') for tensor in self.outputs):
       base_layer_utils.create_keras_history(self._nested_outputs)
@@ -388,7 +393,7 @@ class Network(base_layer.Layer):
 
     weight_layer_index = 0
 
-    dependencies = {}
+    dependencies = collections.OrderedDict()
     for layer_index, layer in enumerate(self.layers):
       try:
         if layer.weights:
@@ -411,7 +416,7 @@ class Network(base_layer.Layer):
   def _checkpoint_dependencies(self):
     dependencies = [
         trackable.TrackableReference(name=name, ref=layer)
-        for name, layer in sorted(self._layer_checkpoint_dependencies.items())]
+        for name, layer in self._layer_checkpoint_dependencies.items()]
     dependencies.extend(super(Network, self)._checkpoint_dependencies)
     return dependencies
 
@@ -912,16 +917,20 @@ class Network(base_layer.Layer):
 
   def _flatten_to_reference_inputs(self, tensors):
     """Maps `tensors` to their respective `keras.Input`."""
-    if self._nested_inputs_are_flat_list and isinstance(tensors, dict):
-      # Backwards compat: Allows passing a dict to a Model constructed with a
-      # list. Matches dict keys to input names.
-      tensors = [
-          tensors[inp._keras_history.layer.name] for inp in self._nested_inputs
-      ]
-    else:
-      # Otherwise both self.inputs and tensors will be flattened in same order.
-      tensors = nest.flatten(tensors)
-    return tensors
+    if self._enable_dict_to_input_mapping and isinstance(tensors, dict):
+      ref_inputs = self._nested_inputs
+      if not nest.is_sequence(ref_inputs):
+        ref_inputs = [self._nested_inputs]
+
+      try:
+        # Flatten in the order `Input`s were passed during Model construction.
+        return [tensors[inp._keras_history.layer.name] for inp in ref_inputs]
+      except KeyError:
+        # TODO(b/151582614)
+        return nest.flatten(tensors)
+
+    # Otherwise both self.inputs and tensors will already be in same order.
+    return nest.flatten(tensors)
 
   def _conform_to_reference_input(self, tensor, ref_input):
     """Set shape and dtype based on `keras.Input`s."""
@@ -995,10 +1004,11 @@ class Network(base_layer.Layer):
     """Saves the model to Tensorflow SavedModel or a single HDF5 file.
 
     The savefile includes:
-        - The model architecture, allowing to re-instantiate the model.
-        - The model weights.
-        - The state of the optimizer, allowing to resume training
-            exactly where you left off.
+
+    - The model architecture, allowing to re-instantiate the model.
+    - The model weights.
+    - The state of the optimizer, allowing to resume training
+        exactly where you left off.
 
     This allows you to save the entirety of the state of a model
     in a single file.
@@ -1013,7 +1023,7 @@ class Network(base_layer.Layer):
 
     Note that the model weights may have different scoped names after being
     loaded. Scoped names include the model/layer names, such as
-    "dense_1/kernel:0"`. It is recommended that you use the layer properties to
+    `"dense_1/kernel:0"`. It is recommended that you use the layer properties to
      access specific variables, e.g. `model.get_layer("dense_1").kernel`.
 
     Arguments:
@@ -1021,9 +1031,9 @@ class Network(base_layer.Layer):
         overwrite: Whether to silently overwrite any existing file at the
             target location, or provide the user with a manual prompt.
         include_optimizer: If True, save optimizer's state together.
-        save_format: Either 'tf' or 'h5', indicating whether to save the model
-            to Tensorflow SavedModel or HDF5. Defaults to 'tf' in TF 2.X, and
-            'h5' in TF 1.X.
+        save_format: Either `'tf'` or `'h5'`, indicating whether to save the
+            model to Tensorflow SavedModel or HDF5. Defaults to 'tf' in TF 2.X,
+            and 'h5' in TF 1.X.
         signatures: Signatures to save with the SavedModel. Applicable to the
             'tf' format only. Please see the `signatures` argument in
             `tf.saved_model.save` for details.

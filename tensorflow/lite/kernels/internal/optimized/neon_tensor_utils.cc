@@ -23,16 +23,16 @@ limitations under the License.
 #include <limits>
 #include <utility>
 
-#include "tensorflow/lite/experimental/ruy/detect_arm.h"
-#include "tensorflow/lite/experimental/ruy/ruy.h"
+#include "tensorflow/lite/experimental/ruy/ruy/detect_arm.h"
+#include "tensorflow/lite/experimental/ruy/ruy/ruy.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_tensor_utils_impl.h"
-#include "tensorflow/lite/kernels/internal/round.h"
 
 #ifdef USE_NEON
 
@@ -2339,7 +2339,7 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
     const int32x4_t f2i0_i32x4 = RoundToNearest(mul0_f32x4);
     const int32x4_t f2i1_i32x4 = RoundToNearest(mul1_f32x4);
 
-    // Implements the vectorized version of the folowing block:
+    // Implements the vectorized version of the following block:
     //  quantized_values[i] = std::min(kScale, std::max(-kScale,
     //  quantized_value));
     int32x4_t max0_i32x4 = vmaxq_s32(f2i0_i32x4, neg_scale_i32x4);

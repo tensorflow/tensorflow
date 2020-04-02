@@ -581,11 +581,8 @@ tf_py_test(
     size = "small",
     srcs = ["rebatch_dataset_test.py"],
     deps = [
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:image_ops",
-        "//tensorflow/python:parsing_ops",
-        "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
@@ -753,7 +750,7 @@ tf_py_test(
 
 tf_py_test(
     name = "stats_dataset_ops_test",
-    size = "large",
+    size = "small",
     srcs = ["stats_dataset_ops_test.py"],
     tags = [
         "no_pip",

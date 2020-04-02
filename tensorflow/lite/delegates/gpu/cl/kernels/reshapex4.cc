@@ -120,7 +120,7 @@ Reshapex4& Reshapex4::operator=(Reshapex4&& operation) {
   return *this;
 }
 
-Status Reshapex4::Compile(const CreationContext& creation_context) {
+absl::Status Reshapex4::Compile(const CreationContext& creation_context) {
   const auto code = definition_.IsBatchSupported()
                         ? GetReshapeBatchedCode(definition_, linked_operations_)
                         : GetReshapeCode(definition_, linked_operations_);
@@ -129,15 +129,14 @@ Status Reshapex4::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-Status Reshapex4::BindArguments() {
+absl::Status Reshapex4::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
-
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 Reshapex4::GetGridSize() const {
@@ -147,12 +146,12 @@ int3 Reshapex4::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status Reshapex4::Tune(const TuningParameters& params) {
+absl::Status Reshapex4::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Status Reshapex4::AddToQueue(CLCommandQueue* queue) {
+absl::Status Reshapex4::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }

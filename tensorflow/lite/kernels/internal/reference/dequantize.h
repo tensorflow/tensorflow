@@ -43,25 +43,6 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
   }
 }
 
-// Dequantizes into an integer with rounding.
-template <typename InputT, typename OutputT>
-inline void DequantizeInteger(const tflite::DequantizationParams& op_params,
-                              const RuntimeShape& input_shape,
-                              const InputT* input_data,
-                              const RuntimeShape& output_shape,
-                              OutputT* output_data) {
-  int32 zero_point = op_params.zero_point;
-  const double scale = op_params.scale;
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    const int32 val = input_data[i];
-    const OutputT result =
-        static_cast<OutputT>(round(scale * (val - zero_point)));
-    output_data[i] = result;
-  }
-}
-
 // Dequantizes per-channel quantized tensor to float.
 template <typename T>
 inline void PerChannelDequantize(
@@ -76,17 +57,19 @@ inline void PerChannelDequantize(
   const int32 quantized_dimension = op_params.quantized_dimension;
   const int32 num_dims = input_shape.DimensionsCount();
   const int32* dims_data = input_shape.DimsData();
-  std::vector<int32> current_dim(num_dims, 0);
+  std::vector<int> current_dim(num_dims, 0);
 
   do {
-    size_t offset = ReducedOutputOffset(num_dims, dims_data, current_dim.data(),
-                                        0, nullptr);
+    size_t offset =
+        ReducedOutputOffset(num_dims, reinterpret_cast<const int*>(dims_data),
+                            current_dim.data(), 0, nullptr);
     const int channel = current_dim[quantized_dimension];
     const int32 val = input_data[offset];
     const float result =
         static_cast<float>(scale[channel] * (val - zero_point[channel]));
     output_data[offset] = result;
-  } while (NextIndex(num_dims, dims_data, current_dim.data()));
+  } while (NextIndex(num_dims, reinterpret_cast<const int*>(dims_data),
+                     current_dim.data()));
 }
 
 }  // namespace reference_ops
