@@ -45,6 +45,13 @@ limitations under the License.
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
+#if defined(__ANDROID__)
+#include "tensorflow/lite/delegates/gpu/delegate.h"
+#if (defined(__arm__) || defined(__aarch64__))
+#include "tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h"
+#endif
+#endif
+
 #define LOG(x) std::cerr
 
 namespace tflite {
