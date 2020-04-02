@@ -28,17 +28,17 @@ limitations under the License.
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // TF:llvm-project
-#include "mlir/Dialect/Quant/UniformSupport.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/Functional.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/Functional.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -745,7 +745,8 @@ void LegalizeTF::runOnFunction() {
       Optional<ConversionTarget::DynamicLegalityCallbackFn>([](Operation* op) {
         auto tfl_op = dyn_cast_or_null<TflRuntimeVerifyOpInterface>(op);
         if (!tfl_op) return false;
-        return succeeded(tfl_op.VerifyTflRuntimeTypes(tfl_op.getOperation()));
+        return succeeded(tfl_op.VerifyTflRuntimeTypes(
+            tfl_op.getOperation(), /*failure_on_operand_type_mismatch=*/false));
       }));
   // Keep trying to convert.
   // TODO(karimnosseir): This is similar to what apply greedy patterns does.

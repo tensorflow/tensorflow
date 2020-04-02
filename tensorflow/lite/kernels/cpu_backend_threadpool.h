@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
 #ifdef TFLITE_WITH_RUY
-#include "tensorflow/lite/experimental/ruy/context.h"
-#include "tensorflow/lite/experimental/ruy/thread_pool.h"
+#include "tensorflow/lite/experimental/ruy/ruy/context.h"
+#include "tensorflow/lite/experimental/ruy/ruy/thread_pool.h"
 #else
 #include "public/gemmlowp.h"
 #endif

@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace delegates {
@@ -43,11 +44,16 @@ using IsNodeSupportedFn =
 // Note the class *needs* to be used in TfLiteDelegate::Prepare.
 class GraphPartitionHelper {
  public:
-  // TODO(b/151152967): Support use-cases where a list of supported nodes are
-  // directly passed-in.
   GraphPartitionHelper(TfLiteContext* context,
                        IsNodeSupportedFn is_node_supported_fn)
       : context_(context), is_node_supported_fn_(is_node_supported_fn) {}
+
+  GraphPartitionHelper(TfLiteContext* context,
+                       const std::vector<int>& supported_node_indices)
+      : context_(context),
+        num_total_nodes_(supported_node_indices.size()),
+        supported_nodes_(
+            ConvertVectorToTfLiteIntArray(supported_node_indices)) {}
 
   virtual ~GraphPartitionHelper() { TfLiteIntArrayFree(supported_nodes_); }
 
@@ -98,7 +104,7 @@ class GraphPartitionHelper {
   int num_total_nodes_ = 0;
 
   // Tells if a node is supported as it could be delegated.
-  const IsNodeSupportedFn is_node_supported_fn_;
+  const IsNodeSupportedFn is_node_supported_fn_ = nullptr;
 
   // Contains an array of supported node indices.
   TfLiteIntArray* supported_nodes_ = nullptr;  // owns the memory

@@ -28,7 +28,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
-#include "tensorflow/lite/experimental/ruy/profiler/profiler.h"
+#include "tensorflow/lite/experimental/ruy/ruy/profiler/profiler.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
@@ -284,7 +284,9 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
 
 BenchmarkTfLiteModel::BenchmarkTfLiteModel(BenchmarkParams params)
     : BenchmarkModel(std::move(params)),
-      random_engine_(std::random_device()()) {}
+      random_engine_(std::random_device()()) {
+  AddListener(&log_output_);
+}
 
 void BenchmarkTfLiteModel::CleanUp() {
   // Free up any pre-allocated tensor data during PrepareInputData.
@@ -615,6 +617,7 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
+  owned_delegates_.clear();
   for (const auto& delegate_provider : GetRegisteredDelegateProviders()) {
     auto delegate = delegate_provider->CreateTfLiteDelegate(params_);
     // It's possible that a delegate of certain type won't be created as
@@ -646,6 +649,7 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
                        << " delegate, and the model graph will be "
                        << delegate_status << " executed w/ the delegate.";
     }
+    owned_delegates_.emplace_back(std::move(delegate));
   }
 
   auto interpreter_inputs = interpreter_->inputs();

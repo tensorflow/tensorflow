@@ -10,7 +10,6 @@ cc_library(
     srcs = ["calibration_wrapper.cc"],
     hdrs = ["calibration_wrapper.h"],
     deps = [
-        "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",

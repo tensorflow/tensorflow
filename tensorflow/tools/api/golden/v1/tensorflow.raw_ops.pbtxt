@@ -1098,15 +1098,15 @@ tf_module {
   }
   member_method {
     name: "DepthwiseConv2dNative"
-    argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'strides\', \'padding\', \'explicit_paddings\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "DepthwiseConv2dNativeBackpropFilter"
-    argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter_sizes\', \'out_backprop\', \'strides\', \'padding\', \'explicit_paddings\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "DepthwiseConv2dNativeBackpropInput"
-    argspec: "args=[\'input_sizes\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
+    argspec: "args=[\'input_sizes\', \'filter\', \'out_backprop\', \'strides\', \'padding\', \'explicit_paddings\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'NHWC\', \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "Dequantize"
@@ -1243,6 +1243,10 @@ tf_module {
   member_method {
     name: "EnqueueTPUEmbeddingIntegerBatch"
     argspec: "args=[\'batch\', \'mode_override\', \'device_ordinal\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
+  }
+  member_method {
+    name: "EnqueueTPUEmbeddingRaggedTensorBatch"
+    argspec: "args=[\'sample_splits\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'table_ids\', \'device_ordinal\', \'combiners\', \'max_sequence_lengths\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'[]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "EnqueueTPUEmbeddingSparseBatch"

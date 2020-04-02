@@ -22,6 +22,8 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+ABSL_CONST_INIT extern const uint32 kDefaultGpuLocalCoreId;
+
 // Converts from overlapped Step-Events to StepDatabaseResult.
 StepDatabaseResult ConvertStepEventsToStepDb(
     bool has_device, const StepEvents& overlapped_step_events);

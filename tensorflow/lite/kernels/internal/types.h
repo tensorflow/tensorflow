@@ -1077,7 +1077,7 @@ struct TanhParams {
 
 struct TransposeParams {
   int8 perm_count;
-  int32 perm[4];
+  int32 perm[5];
 };
 
 struct UnpackParams {

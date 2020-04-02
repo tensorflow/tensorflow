@@ -61,8 +61,10 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
     -Wno-unused-parameter \
     -Wno-write-strings \
     -fno-delete-null-pointer-checks \
+    -fno-threadsafe-statics \
     -fomit-frame-pointer \
     -fpermissive \
+    -fno-use-cxa-atexit \
     -nostdlib \
     -ggdb \
     -O3

@@ -390,7 +390,7 @@ class CallbackList(object):
 
     Arguments:
         batch: integer, index of batch within the current epoch.
-        logs: dict. Metric results for this batch.
+        logs: dict. Aggregated metric results up until this batch.
     """
     if self._should_call_train_batch_hooks:
       self._call_batch_hook(ModeKeys.TRAIN, 'end', batch, logs=logs)
@@ -411,7 +411,7 @@ class CallbackList(object):
 
     Arguments:
         batch: integer, index of batch within the current epoch.
-        logs: dict. Metric results for this batch.
+        logs: dict. Aggregated metric results up until this batch.
     """
     if self._should_call_test_batch_hooks:
       self._call_batch_hook(ModeKeys.TEST, 'end', batch, logs=logs)
@@ -432,7 +432,7 @@ class CallbackList(object):
 
     Arguments:
         batch: integer, index of batch within the current epoch.
-        logs: dict. Metric results for this batch.
+        logs: dict. Aggregated metric results up until this batch.
     """
     if self._should_call_predict_batch_hooks:
       self._call_batch_hook(ModeKeys.PREDICT, 'end', batch, logs=logs)
@@ -552,28 +552,14 @@ class Callback(object):
           (eg. verbosity, batch size, number of epochs...).
       model: instance of `keras.models.Model`.
           Reference of the model being trained.
-      validation_data: Deprecated. Do not use.
 
   The `logs` dictionary that callback methods
   take as argument will contain keys for quantities relevant to
-  the current batch or epoch.
-
-  Currently, the `.fit()` method of the `Model` class
-  will include the following quantities in the `logs` that
-  it passes to its callbacks:
-
-      on_epoch_end: logs include `acc` and `loss`, and
-          optionally include `val_loss`
-          (if validation is enabled in `fit`), and `val_acc`
-          (if validation and accuracy monitoring are enabled).
-      on_batch_begin: logs include `size`,
-          the number of samples in the current batch.
-      on_batch_end: logs include `loss`, and optionally `acc`
-          (if accuracy monitoring is enabled).
+  the current batch or epoch (see method-specific docstrings).
   """
 
   def __init__(self):
-    self.validation_data = None
+    self.validation_data = None  # pylint: disable=g-missing-from-attributes
     self.model = None
     # Whether this Callback should only run on the chief worker in a
     # Multi-Worker setting.
@@ -648,7 +634,7 @@ class Callback(object):
 
     Arguments:
         batch: integer, index of batch within the current epoch.
-        logs: dict. Metric results for this batch.
+        logs: dict. Aggregated metric results up until this batch.
     """
     # For backwards compatibility.
     self.on_batch_end(batch, logs=logs)
@@ -681,7 +667,7 @@ class Callback(object):
 
     Arguments:
         batch: integer, index of batch within the current epoch.
-        logs: dict. Metric results for this batch.
+        logs: dict. Aggregated metric results up until this batch.
     """
 
   @doc_controls.for_subclass_implementers
@@ -706,7 +692,7 @@ class Callback(object):
 
     Arguments:
         batch: integer, index of batch within the current epoch.
-        logs: dict. Metric results for this batch.
+        logs: dict. Aggregated metric results up until this batch.
     """
 
   @doc_controls.for_subclass_implementers
@@ -920,14 +906,15 @@ class ProgbarLogger(Callback):
       print('Epoch %d/%d' % (epoch + 1, self.epochs))
 
   def on_train_batch_end(self, batch, logs=None):
-    self._batch_update_progbar(logs)
+    self._batch_update_progbar(batch, logs)
 
   def on_test_batch_end(self, batch, logs=None):
     if not self._called_in_fit:
-      self._batch_update_progbar(logs)
+      self._batch_update_progbar(batch, logs)
 
   def on_predict_batch_end(self, batch, logs=None):
-    self._batch_update_progbar(None)  # Don't pass prediction results.
+    # Don't pass prediction results.
+    self._batch_update_progbar(batch, None)
 
   def on_epoch_end(self, epoch, logs=None):
     self._finalize_progbar(logs)
@@ -943,7 +930,7 @@ class ProgbarLogger(Callback):
     self.seen = 0
     self.progbar = None
 
-  def _batch_update_progbar(self, logs=None):
+  def _batch_update_progbar(self, batch, logs=None):
     """Updates the progbar."""
     if self.stateful_metrics is None:
       if self.model:
@@ -962,8 +949,11 @@ class ProgbarLogger(Callback):
     batch_size = logs.pop('size', 0)
     num_steps = logs.pop('num_steps', 1)  # DistStrat can run >1 steps.
     logs.pop('batch', None)
-    add_seen = num_steps if self.use_steps else num_steps * batch_size
-    self.seen += add_seen
+    if self.use_steps:
+      self.seen = batch + 1  # One-indexed.
+    else:
+      add_seen = num_steps * batch_size
+      self.seen += add_seen
     self.progbar.update(self.seen, list(logs.items()), finalize=False)
 
   def _finalize_progbar(self, logs):
@@ -1065,10 +1055,12 @@ class ModelCheckpoint(Callback):
         (`model.save(filepath)`).
       save_freq: `'epoch'` or integer. When using `'epoch'`, the callback saves
         the model after each epoch. When using integer, the callback saves the
-        model at end of this many batches. Note that if the saving isn't aligned
-        to epochs, the monitored metric may potentially be less reliable (it
+        model at end of this many batches. If the `Model` is compiled with
+        `experimental_steps_per_execution=N`, then the saving criteria will be
+        checked every Nth batch. Note that if the saving isn't aligned to
+        epochs, the monitored metric may potentially be less reliable (it
         could reflect as little as 1 batch, since the metrics get reset every
-        epoch). Defaults to `'epoch'`
+        epoch). Defaults to `'epoch'`.
       **kwargs: Additional arguments for backwards compatibility. Possible key
         is `period`.
   """
@@ -1083,6 +1075,7 @@ class ModelCheckpoint(Callback):
                save_freq='epoch',
                **kwargs):
     super(ModelCheckpoint, self).__init__()
+    self._supports_tf_logs = True
     self.monitor = monitor
     self.verbose = verbose
     self.filepath = filepath
@@ -1091,6 +1084,7 @@ class ModelCheckpoint(Callback):
     self.save_freq = save_freq
     self.epochs_since_last_save = 0
     self._batches_seen_since_last_saving = 0
+    self._last_batch_seen = 0
 
     # Deprecated field `load_weights_on_restart` is for loading the checkpoint
     # file from `filepath` at the start of `model.fit()`
@@ -1193,13 +1187,9 @@ class ModelCheckpoint(Callback):
         del self._training_state
         self.model._training_state = None
 
-  def on_batch_end(self, batch, logs=None):
-    if self._implements_train_batch_hooks():
-      logs = logs or {}
-      self._batches_seen_since_last_saving += 1
-      if self._batches_seen_since_last_saving >= self.save_freq:
-        self._save_model(epoch=self._current_epoch, logs=logs)
-        self._batches_seen_since_last_saving = 0
+  def on_train_batch_end(self, batch, logs=None):
+    if self._should_save_on_batch(batch):
+      self._save_model(epoch=self._current_epoch, logs=logs)
 
   def on_epoch_begin(self, epoch, logs=None):
     self._current_epoch = epoch
@@ -1220,6 +1210,23 @@ class ModelCheckpoint(Callback):
       # TODO(rchao): Call `back_up` at finer period such as N steps.
       self._training_state.back_up(epoch)
 
+  def _should_save_on_batch(self, batch):
+    """Handles batch-level saving logic, supports steps_per_execution."""
+    if self.save_freq == 'epoch':
+      return False
+
+    if batch <= self._last_batch_seen:  # New epoch.
+      add_batches = batch + 1  # batches are zero-indexed.
+    else:
+      add_batches = batch - self._last_batch_seen
+    self._batches_seen_since_last_saving += add_batches
+    self._last_batch_seen = batch
+
+    if self._batches_seen_since_last_saving >= self.save_freq:
+      self._batches_seen_since_last_saving = 0
+      return True
+    return False
+
   def _save_model(self, epoch, logs):
     """Saves the model.
 
@@ -1231,6 +1238,8 @@ class ModelCheckpoint(Callback):
 
     if isinstance(self.save_freq,
                   int) or self.epochs_since_last_save >= self.period:
+      # Block only when saving interval is reached.
+      logs = tf_utils.to_numpy_or_python_type(logs)
       self.epochs_since_last_save = 0
       filepath = self._get_file_path(epoch, logs)
 
@@ -1395,10 +1404,6 @@ class ModelCheckpoint(Callback):
       # If there are more than one file having latest modified time, return
       # the file path with the largest file name.
       return file_path_with_largest_file_name
-
-  def _implements_train_batch_hooks(self):
-    # If save_freq="epoch", batch-level hooks don't need to be run.
-    return isinstance(self.save_freq, int)
 
 
 @keras_export('keras.callbacks.EarlyStopping')
@@ -1986,6 +1991,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self._should_trace = not (self._start_batch == 0 and self._stop_batch == 0)
 
   def on_train_begin(self, logs=None):
+    self._global_train_batch = 0
     self._push_writer(self._train_writer, self._train_step)
 
   def on_train_end(self, logs=None):

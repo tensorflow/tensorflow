@@ -100,6 +100,8 @@ TfLiteStatus TfliteInferenceStage::Init() {
   auto delegate = CreateTfLiteDelegate(params, &error_message);
   if (delegate) {
     delegates_.push_back(std::move(delegate));
+    LOG(INFO) << "Successfully created "
+              << params.Delegate_Name(params.delegate()) << " delegate.";
   } else {
     LOG(WARNING) << error_message;
   }

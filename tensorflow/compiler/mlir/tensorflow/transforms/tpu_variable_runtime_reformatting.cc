@@ -26,20 +26,20 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/STLExtras.h"  // TF:llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/STLExtras.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -318,7 +318,7 @@ TF::WhileOp AddStateVarsToWhileOp(TF::WhileOp while_op, FuncOp body,
     new_body_return_vals.push_back(inner_arg);
     new_while_operands.push_back(state_var.resource());
   }
-  OpBuilder builder(&body.front());
+  OpBuilder builder = OpBuilder::atBlockEnd(&body.front());
   // Update return values.
   builder.create<ReturnOp>(body_return.getLoc(), new_body_return_vals);
   body_return.erase();

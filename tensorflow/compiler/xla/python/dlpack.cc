@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "include/dlpack/dlpack.h"  // TF:dlpack
+#include "include/dlpack/dlpack.h"  // from @dlpack
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"

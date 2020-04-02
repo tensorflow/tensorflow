@@ -16,26 +16,22 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/requantize.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
 namespace ops {
 namespace micro {
 namespace quantize {
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-  TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
-  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
 
   // TODO(b/128934713): Add support for fixed-point per-channel quantization.
   // Currently this only support affine per-layer quantization.
@@ -56,8 +52,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
-  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
 
   tflite::QuantizationParams op_params;
   op_params.zero_point = output->params.zero_point;
@@ -82,13 +78,19 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return kTfLiteError;
     }
   } else if (input->type == kTfLiteInt16) {
+    size_t size = ElementCount(*input->dims);
+    int32_t output_multiplier;
+    int output_shift;
+    double effective_scale =
+        static_cast<double>(input->params.scale / output->params.scale);
     switch (output->type) {
       case kTfLiteInt8:
-        reference_ops::AffineQuantize(
-            op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
-            GetTensorShape(output), GetTensorData<int8_t>(output));
+        QuantizeMultiplier(effective_scale, &output_multiplier, &output_shift);
+        reference_ops::Requantize(
+            GetTensorData<int16_t>(input), size, output_multiplier,
+            output_shift, input->params.zero_point, output->params.zero_point,
+            GetTensorData<int8_t>(output));
         break;
-
       default:
         TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
                            TfLiteTypeGetName(input->type),
@@ -111,11 +113,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 // AffineQuantize takes scale and zero point and quantizes the float value to
 // quantized output, in int8 or uint8 format.
 TfLiteRegistration* Register_QUANTIZE() {
-  static TfLiteRegistration r = {};
-  r.init = quantize::Init;
-  r.free = quantize::Free;
-  r.prepare = quantize::Prepare;
-  r.invoke = quantize::Eval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/quantize::Prepare,
+                                 /*invoke=*/quantize::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

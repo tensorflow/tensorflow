@@ -312,6 +312,22 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
                                   reference_preprocessor);
 }
 
+::testing::AssertionResult HloTestBase::Run(std::unique_ptr<HloModule> module,
+                                            bool run_hlo_passes) {
+  const auto fake_arguments =
+      MakeFakeArguments(module.get()).ConsumeValueOrDie();
+  const auto change = hlo_verifier_->Run(module.get());
+  if (!change.ok()) {
+    return ::testing::AssertionFailure() << change.status();
+  }
+
+  const auto output =
+      test_runner_.Execute(std::move(module), fake_arguments, run_hlo_passes);
+  return output.ok()
+             ? ::testing::AssertionSuccess()
+             : ::testing::AssertionFailure() << output.status().error_message();
+}
+
 ::testing::AssertionResult HloTestBase::RunAndCompare(
     string_view hlo_string, const absl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {

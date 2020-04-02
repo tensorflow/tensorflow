@@ -36,16 +36,17 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -210,8 +211,21 @@ LogicalResult PromoteResourcesToArguments(FuncOp function) {
   for (Operation& op : llvm::make_early_inc_range(function.front())) {
     auto var_handle_op = llvm::dyn_cast<TF::VarHandleOp>(op);
     if (!var_handle_op) continue;
-    if (!var_handle_op.use_empty())
-      return var_handle_op.emitOpError() << "expects no uses";
+    if (!var_handle_op.use_empty()) {
+      // SmallSet will use a vector when there is only one element and use
+      // std::set when there are more than one elements. This ensures that
+      // the operations in the error message are ordered.
+      llvm::SmallSet<std::string, 2> unique_operations;
+      llvm::for_each(
+          var_handle_op.getOperation()->getUsers(), [&](Operation* user) {
+            unique_operations.insert(user->getName().getStringRef().str());
+          });
+
+      return var_handle_op.emitOpError(
+                 "expects no uses but used by operations: ")
+             << llvm::join(unique_operations.begin(), unique_operations.end(),
+                           ", ");
+    }
 
     op.erase();
   }

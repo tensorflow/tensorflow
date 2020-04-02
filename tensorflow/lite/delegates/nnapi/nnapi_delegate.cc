@@ -2061,7 +2061,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinMaximum:
     case kTfLiteBuiltinMinimum: {
-      ExpectMaxOpVersion(version, 2, &val_ctx);
+      ExpectMaxOpVersion(version, 3, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
@@ -4260,8 +4260,10 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
 
   int num_partitions;
   TfLiteDelegateParams* params_array;
-  if (is_accelerator_specified) {
-    // Filtering out nodes not supported by target accelerators
+  if (is_accelerator_specified &&
+      nnapi->android_sdk_version >= kMinSdkVersionForNNAPI12) {
+    // Filtering out nodes not supported by target accelerators.
+    // Cannot query supported operation before NNAPI 1.2
     TF_LITE_ENSURE_STATUS(GetNodesSupportedByAccelerator(
         context, delegate, nnapi, supported_nodes, &nodes_to_delegate,
         &num_partitions, &params_array, nnapi_errno));

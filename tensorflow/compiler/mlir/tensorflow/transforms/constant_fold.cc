@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "mlir/Interfaces/SideEffects.h"  // TF:llvm-project
+#include "mlir/Interfaces/SideEffects.h"  // from @llvm-project
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"

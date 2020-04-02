@@ -25,13 +25,16 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
+#include "tensorflow/lite/delegates/gpu/metal/environment.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
-std::string GetSoftmax1x1Code() {
+std::string GetSoftmax1x1Code(const DeviceInfo& device_info) {
+  const std::string barrier =
+      device_info.IsAppleGPU() ? "BARRIER" : "threadgroup_barrier";
   std::string code = R"(
 #include <metal_stdlib>
 using namespace metal;
@@ -63,7 +66,9 @@ kernel void ComputeFunction($1
   threadgroup float4 tmp[8];
   threadgroup float* tmpx1 = (threadgroup float*)tmp;
   tmpx1[tid] = sum;
-  BARRIER(mem_flags::mem_threadgroup);
+)";
+  code += "  " + barrier + "(mem_flags::mem_threadgroup);\n";
+  code += R"(
   if (tid == 0) {
     sum = dot(float4(1.0f), tmp[0]);
     sum += dot(float4(1.0f), tmp[1]);
@@ -75,7 +80,9 @@ kernel void ComputeFunction($1
     sum += dot(float4(1.0f), tmp[7]);
     tmpx1[0] = 1.0 / sum;
   }
-  BARRIER(mem_flags::mem_threadgroup);
+)";
+  code += "  " + barrier + "(mem_flags::mem_threadgroup);\n";
+  code += R"(
   sum = tmpx1[0];
 
   offset = 0;
@@ -171,11 +178,12 @@ std::vector<ComputeTaskDescriptorPtr> Softmax(int id, ValueId input_id,
 
 std::vector<ComputeTaskDescriptorPtr> Softmax1x1(int id, ValueId input_id,
                                                  ValueId output_id,
+                                                 const DeviceInfo& device_info,
                                                  int channels_count) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
-  desc->shader_source = GetSoftmax1x1Code();
+  desc->shader_source = GetSoftmax1x1Code(device_info);
 
   desc->input_buffers = {
       {input_id, "device FLT4* const src_buffer"},

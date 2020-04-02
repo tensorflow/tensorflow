@@ -64,6 +64,7 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
   x = ... Shape [2, 4] Tensor
   operator.matmul(x)
   ==> Shape [2, 4] Tensor
+  ```
 
   #### Shape compatibility
 

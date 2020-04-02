@@ -50,14 +50,33 @@ class IteratorResource : public ResourceBase {
 
   ~IteratorResource() override { VLOG(2) << "destructor"; }
 
+  // Gets the next output from the iterator managed by this iterator resource.
+  //
+  // If at least one output remains, that output will be stored in
+  // `*out_tensors` and `false` will be stored in `*end_of_sequence`.
+  //
+  // If no more outputs remain, `true` will be stored in `*end_of_sequence`, and
+  // the content of `*out_tensors` will be undefined.
   Status GetNext(OpKernelContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence);
 
+  // Saves a checkpoint of the state of the iterator through the given `writer`.
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer);
 
+  // Restores the state of the iterator from a checkpoint created by `Save`.
   Status Restore(OpKernelContext* ctx, IteratorStateReader* reader);
 
-  Status SetIteratorFromDataset(OpKernelContext* ctx, DatasetBase* dataset);
+  // Creates an iterator for `dataset`, and associates the iterator with this
+  // iterator resource.
+  //
+  // The `epoch_id` will be passed through the IteratorContext when creating
+  // the iterator. This id is used by the tf.data service to determine which
+  // epoch to iterate through.
+  //
+  // `SetIteratorFromDataset` should be called before calling `GetNext`, `Save`,
+  // or `Restore`.
+  Status SetIteratorFromDataset(OpKernelContext* ctx, DatasetBase* dataset,
+                                int64 epoch_id);
 
   string DebugString() const override { return "Iterator resource"; }
 

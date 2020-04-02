@@ -86,6 +86,7 @@ std::vector<ComputeTaskDescriptorPtr> Add(int id,
   }
 
   desc->is_linkable = true;
+  desc->is_associative_op = true;
   desc->shader_source = GetAddTableCodeFused(input_ids.size() - 1);
 
   for (int i = 0; i < input_ids.size(); ++i) {

@@ -54,13 +54,9 @@ tensor_util = LazyLoader(
     "tensor_util", globals(),
     "tensorflow.python.framework.tensor_util")
 
-# pylint: disable=protected-access
-_TensorLike = tensor_like._TensorLike
-# pylint: enable=protected-access
-
 
 @tf_export("IndexedSlices")
-class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
+class IndexedSlices(tensor_like.TensorLike, composite_tensor.CompositeTensor):
   """A sparse representation of a set of tensor slices at given indices.
 
   This class is a simple wrapper for a pair of `Tensor` objects:
@@ -309,7 +305,7 @@ def internal_convert_to_tensor_or_indexed_slices(value,
   """
   if isinstance(value, ops.EagerTensor) and not context.executing_eagerly():
     return ops.convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
-  elif isinstance(value, _TensorLike):
+  elif isinstance(value, tensor_like.TensorLike):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %

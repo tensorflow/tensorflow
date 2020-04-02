@@ -1024,8 +1024,10 @@ def _create_local_cuda_repository(repository_ctx):
     cuda_defines = {}
     cuda_defines["%{builtin_sysroot}"] = tf_sysroot
     cuda_defines["%{cuda_toolkit_path}"] = ""
+    cuda_defines["%{compiler}"] = "unknown"
     if is_cuda_clang:
         cuda_defines["%{cuda_toolkit_path}"] = cuda_config.config["cuda_toolkit_path"]
+        cuda_defines["%{compiler}"] = "clang"
 
     host_compiler_prefix = get_host_environ(repository_ctx, _GCC_HOST_COMPILER_PREFIX)
     if not host_compiler_prefix:
@@ -1033,18 +1035,7 @@ def _create_local_cuda_repository(repository_ctx):
 
     cuda_defines["%{host_compiler_prefix}"] = host_compiler_prefix
 
-    # Bazel sets '-B/usr/bin' flag to workaround build errors on RHEL (see
-    # https://github.com/bazelbuild/bazel/issues/760).
-    # However, this stops our custom clang toolchain from picking the provided
-    # LLD linker, so we're only adding '-B/usr/bin' when using non-downloaded
-    # toolchain.
-    # TODO: when bazel stops adding '-B/usr/bin' by default, remove this
-    #       flag from the CROSSTOOL completely (see
-    #       https://github.com/bazelbuild/bazel/issues/5634)
-    if should_download_clang:
-        cuda_defines["%{linker_bin_path}"] = ""
-    else:
-        cuda_defines["%{linker_bin_path}"] = host_compiler_prefix
+    cuda_defines["%{linker_bin_path}"] = ""
 
     cuda_defines["%{extra_no_canonical_prefixes_flags}"] = ""
     cuda_defines["%{unfiltered_compile_flags}"] = ""

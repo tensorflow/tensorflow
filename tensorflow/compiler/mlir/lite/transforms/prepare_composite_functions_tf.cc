@@ -23,21 +23,21 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Identifier.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
-#include "mlir/Interfaces/CallInterfaces.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/lstm_utils.h"
