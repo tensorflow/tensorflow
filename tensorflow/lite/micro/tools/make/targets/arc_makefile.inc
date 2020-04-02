@@ -1,19 +1,12 @@
-# Settings for arc processors
+# Settings for not pre-defined ARC processors. 
+# User need to specify ARC target with Tool Configuration File (*.tcf). 
+# Path to this file must be passed through TCF_FILE variable.
+# Otherwise, default em7d_voice_audio configuration is used 
+
 ifeq ($(TARGET_ARCH), arc)
 
-  CC_TOOL = ccac
-  AR_TOOL = arac
-  CXX_TOOL = ccac
-
-ifeq ($(TARGET), iotdk)
-  TCF_FILE = $(PWD)/$(MAKEFILE_DIR)/targets/arc/iotdk/iotdk.tcf
-  LCF_FILE = $(PWD)/$(MAKEFILE_DIR)/targets/arc/iotdk/iotdk.lcf
-endif
-
-ifeq ($(TARGET), emsdp)
-  TCF_FILE = $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp/emsdp_em11d_dfss.tcf
-  LCF_FILE = $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp/emsdp.lcf
-endif
+# Known target are specifyed with their own make configurations. 
+ifeq ($(filter $(TARGET), emsdp iotdk),)
 
 ifneq ($(TCF_FILE), )
   TARGET = $(basename $(notdir $(TCF_FILE)))
@@ -26,30 +19,61 @@ endif
 # This condition also handles the case when the user/makefile specifies the configuration bundled with MWDT (usually without .tcf extension) and that doesn't require copying.
 ifneq (,$(findstring .tcf,$(TCF_FILE)))
   TCF_FILE_NAME = $(notdir $(TCF_FILE))
-  THIRD_PARTY_CC_HDRS += $(TCF_FILE_NAME)
+  ARC_TARGET_FILES_DIRS := $(dir $(TCF_FILE))
+  MAKE_PROJECT_FILES += $(TCF_FILE_NAME)
 else
   TCF_FILE_NAME = $(TCF_FILE)
 endif
 
-  PLATFORM_FLAGS = -tcf=$(TCF_FILE_NAME) -Hnocopyr -O3 -Hpurge -Hcl -Hcrt_fast_memcpy -Hcrt_fast_memset -fslp-vectorize-aggressive -ffunction-sections -fdata-sections
-  PLATFORM_FLAGS += -tcf_core_config
-  PLATFORM_LDFLAGS = -tcf=$(TCF_FILE_NAME) -Hnocopyr -m -Hldopt=-Coutput=memory.map -default_lcf=$(MAKEFILE_DIR)/targets/arc/memory.lcf 
+  CC_TOOL = ccac
+  AR_TOOL = arac
+  CXX_TOOL = ccac
+  LD_TOOL = ccac
+  
+  # TODO: Move this to a common arc/arc_common.inc file to share this with other targets 
+  DLR = $$$$
+  ARC_EXTRA_APP_SETTINGS = 
 
+  ARC_EXTRA_APP_RULES = 
+  
+  ARC_EXTRA_RM_TARGETS =
+
+  ARC_BIN_DEPEND = 
+  ARC_BIN_RULE = \t$(DLR)\(error Flash rule isnt defined for this ARC target\)
+   
+  ARC_APP_RUN_CMD = mdb -run -jit -tcf=$(TCF_FILE_NAME) $(DLR)\(DBG_ARGS)
+  ARC_APP_DEBUG_CMD = mdb -OK -jit -tcf=$(TCF_FILE_NAME) $(DLR)\(DBG_ARGS)
+  ARC_EXTRA_EXECUTE_RULES = 
+
+
+  PLATFORM_FLAGS = -tcf=$(TCF_FILE_NAME)
+  PLATFORM_FLAGS += -Hnocopyr -O3 -Hpurge -Hcl -Hcrt_fast_memcpy -Hcrt_fast_memset -fslp-vectorize-aggressive -ffunction-sections -fdata-sections
+  PLATFORM_FLAGS += -tcf_core_config
+  
+  PLATFORM_LDFLAGS = -tcf=$(TCF_FILE_NAME) 
+  PLATFORM_LDFLAGS = -Hnocopyr -m -Hldopt=-Coutput=memory.map
 ifneq ($(LCF_FILE), )
   PLATFORM_LDFLAGS += $(notdir $(LCF_FILE))
-  THIRD_PARTY_CC_HDRS += $(notdir $(LCF_FILE))
+  MAKE_PROJECT_FILES += $(notdir $(LCF_FILE))
+ifeq ($(filter $(ARC_TARGET_FILES_DIRS), $(dir LCF_FILE)),)
+  ARC_TARGET_FILES_DIRS += $(dir $(LCF_FILE))
+endif
 endif
 
   CXXFLAGS += $(PLATFORM_FLAGS)
   CXXFLAGS:=$(filter-out -std=c++11,$(CXXFLAGS))
   CCFLAGS += $(PLATFORM_FLAGS)
+  CCFLAGS:=$(filter-out -std=c11,$(CCFLAGS))
   LDFLAGS += $(PLATFORM_LDFLAGS)
+
 
   MICROLITE_LIBS := $(filter-out -lm,$(MICROLITE_LIBS))
 
+  # TODO: Move/organize embarc_mli usage in an implied way (see ext_libs/cmsis.inc for example
   USE_EMBARC_MLI ?= true
 
 ifeq ($(USE_EMBARC_MLI), true)
+  # TODO: To understand why it's done here. The same is performed in the higher level MakeFile.
   ALL_TAGS += arc
 
 ifeq ($(PRE_COMPILED_MLI),true)
@@ -110,10 +134,29 @@ endif
 
 endif # USE_EMBARC_MLI
 
+# We overwrite project generator to exclude everything not relevant to ARC platform
+define generate_microlite_projects
+$(call generate_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(MICROLITE_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
+$(call generate_arc_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(GENERATED_PROJECT_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
+endef
+
+# Copy rule generator to do file copyes with changing paths in generated project
+# Arguments are:
+# 1 - Path files in generated project.
+# 2 - Path files in the source repo
+# Used in helper_functions.inc for arc projects to copy files
+define path_changing_copy_file
+$(1)/%: $(2)/%
+	@mkdir -p $$(dir $$@)
+	@cp $$< $$@
+endef
+
 # These are microcontroller-specific rules for converting the ELF output
 # of the linker into a binary image that can be loaded directly.
-
 # Not applicable for ARC, leaving it empty.
 $(BINDIR)%.bin:
 
-endif
+
+endif  # ifeq ($(filter $(TARGET),$(ARC_PREDEFINED_TARGETS)),)
+endif  # ifeq ($(TARGET_ARCH), arc)
+

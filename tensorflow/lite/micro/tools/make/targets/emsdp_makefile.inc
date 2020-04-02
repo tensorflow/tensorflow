@@ -21,7 +21,6 @@ ifeq ($(TARGET), emsdp)
      \n$(DLR)\(BIN_DIR\):\
      \n\t\@$(DLR)\(MKDIR\) $(DLR)\(BIN_DIR\)\
 
-
    ARC_EXTRA_RM_TARGETS = $(DLR)\(BIN_DIR\)
 
    ARC_BIN_DEPEND = $(DLR)\(BIN_DIR\) $(DLR)\(BIN_FILE\)
@@ -31,21 +30,19 @@ ifeq ($(TARGET), emsdp)
    ARC_APP_DEBUG_CMD = mdb -OK -digilent -nooptions $(DLR)\(DBG_ARGS)
    ARC_EXTRA_EXECUTE_RULES = 
 
-
-
   TCF_FILE = $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp/emsdp_em11d_dfss.tcf
   LCF_FILE = $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp/emsdp.lcf
 
   MAKE_PROJECT_FILES += emsdp_em11d_dfss.tcf emsdp.lcf uboot.env
 
-  ARC_TARGET_DIRS := $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp $(PWD)/$(MAKEFILE_DIR)/targets/arc
-  # ARC_TARGET_DIRS := $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp
+  ARC_TARGET_FILES_DIRS := $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp
 
+# TODO: LESS TCF/LCF Variables
 # The variable TCF_FILE_NAME stores the TCF file name (including .tcf extension), this variable is used later to add the option to the linker/compiler flags.
 # This condition also handles the case when the user/makefile specifies the configuration bundled with MWDT (usually without .tcf extension) and that doesn't require copying.
   TCF_FILE_NAME = $(notdir $(TCF_FILE))
 
-  THIRD_PARTY_CC_HDRS += $(TCF_FILE_NAME)
+#  THIRD_PARTY_CC_HDRS += $(TCF_FILE_NAME)
 
   PLATFORM_FLAGS = -tcf=$(TCF_FILE_NAME) -Hnocopyr -O3 -Hpurge -Hcl -Hcrt_fast_memcpy -Hcrt_fast_memset -fslp-vectorize-aggressive -ffunction-sections -fdata-sections
   PLATFORM_FLAGS += -tcf_core_config
@@ -53,7 +50,7 @@ ifeq ($(TARGET), emsdp)
 
 #  DMITRYZ: I think we need to move it to target specific LCF file.
   PLATFORM_LDFLAGS += $(notdir $(LCF_FILE))
-  # THIRD_PARTY_CC_HDRS += $(notdir $(LCF_FILE))
+#  THIRD_PARTY_CC_HDRS += $(notdir $(LCF_FILE))
 
   CXXFLAGS += $(PLATFORM_FLAGS)
   CXXFLAGS:=$(filter-out -std=c++11,$(CXXFLAGS))
@@ -133,7 +130,7 @@ $(call generate_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(T
 $(call generate_arc_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(GENERATED_PROJECT_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
 endef
 
-# Copy rule generator to do file copyes with changing paths in generated project
+# Copy rule generator to do file copyes changing paths in generated project
 # Arguments are:
 # 1 - Path files in generated project.
 # 2 - Path files in the source repo
@@ -144,7 +141,7 @@ $(1)/%: $(2)/%
 	@cp $$< $$@
 endef
 
-$(foreach var,$(ARC_TARGET_DIRS),$(eval $(call copy_arc_project_file,$(PRJDIR)$(3)/$(1),$(var))))
+
 
 # These are microcontroller-specific rules for converting the ELF output
 # of the linker into a binary image that can be loaded directly.
