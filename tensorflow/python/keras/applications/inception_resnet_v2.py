@@ -80,15 +80,10 @@ def InceptionResNetV2(include_top=True,
       It should have exactly 3 inputs channels,
       and width and height should be no smaller than 75.
       E.g. `(150, 150, 3)` would be one valid value.
-    pooling: Optional pooling mode for feature extraction
-      when `include_top` is `False`.
-      - `None` means that the output of the model will be
-          the 4D tensor output of the last convolutional block.
-      - `'avg'` means that global average pooling
-          will be applied to the output of the
-          last convolutional block, and thus
-          the output of the model will be a 2D tensor.
-      - `'max'` means that global max pooling will be applied.
+    pooling: optional pooling mode for feature extraction when `include_top` is
+        `False`. If `'max'` or `'avg'` pooling is applied, the output of the
+        model will be a 2D tensor. `None` will directly output the last
+        convolutional layer, a 4D tensor.
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is `True`, and
       if no `weights` argument is specified.
@@ -99,6 +94,34 @@ def InceptionResNetV2(include_top=True,
 
   Returns:
     A `keras.Model` instance.
+
+  Example:
+
+  ```python
+  #Extract image features with InceptionResNetV2
+  from tensorflow.keras.applications.inception_resnet_v2 \
+  import InceptionResNetV2
+  from tensorflow.keras.preprocessing import image
+  from tensorflow.keras.applications.inception_resnet_v2 import preprocess_input
+  import numpy as np
+
+  #create a InceptionResNetV2 model pre-trained on imagenet
+  model = InceptionResNetV2(weights='imagenet', include_top=False)
+
+  #process the input
+  img_path = 'elephant_example.jpg'
+  img = image.load_img(img_path, target_size=(224, 224))
+  x = image.img_to_array(img)
+  x = np.expand_dims(x, axis=0)
+  x = preprocess_input(x)
+
+  #extract the features
+  features = model.predict(x)
+  ```
+
+  >>> model = InceptionResNetV2(weights = None)
+  >>> model.name
+  'inception_resnet_v2'
 
   Raises:
     ValueError: in case of invalid argument for `weights`,
