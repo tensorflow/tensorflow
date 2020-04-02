@@ -129,12 +129,12 @@ std::vector<ComputeTaskDescriptorPtr> SelectReshape(
   }
 }
 
-std::vector<ComputeTaskDescriptorPtr> SelectSoftmax(const GraphFloat32& graph,
-                                                    int id, ValueId input_id,
-                                                    ValueId output_id) {
+std::vector<ComputeTaskDescriptorPtr> SelectSoftmax(
+    const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
+    const DeviceInfo& device_info) {
   const auto src_shape = graph.FindInputs(id)[0]->tensor.shape;
   if (src_shape.w == 1 && src_shape.h == 1) {
-    return Softmax1x1(id, input_id, output_id, src_shape.c);
+    return Softmax1x1(id, input_id, output_id, device_info, src_shape.c);
   } else {
     return Softmax(id, input_id, output_id, src_shape.c);
   }
@@ -334,7 +334,8 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         return absl::UnimplementedError(
             "Softmax supports only CHANNELS dimension");
       }
-      *tasks = SelectSoftmax(graph, node_id, inputs[0], outputs[0]);
+      *tasks =
+          SelectSoftmax(graph, node_id, inputs[0], outputs[0], device_info);
       break;
     }
     case OperationType::SPACE_TO_DEPTH:

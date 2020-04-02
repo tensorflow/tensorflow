@@ -37,8 +37,13 @@ namespace gpu {
 namespace metal {
 namespace {
 
-std::string GetFullyConnectedCode(bool shared_memory, int src_channels,
-                                  int dst_channels) {
+std::string GetFullyConnectedCode(const DeviceInfo& device_info,
+                                  int src_channels, int dst_channels) {
+  bool shared_memory =
+      device_info.IsAppleGPU() &&
+      device_info.apple_info.IsLocalMemoryPreferredOverGlobal();
+  const std::string barrier =
+      device_info.IsAppleGPU() ? "BARRIER" : "threadgroup_barrier";
   const int src_depth = IntegralDivideRoundUp(src_channels, 4);
   std::stringstream code;
   code << R"(
@@ -67,11 +72,11 @@ std::string GetFullyConnectedCode(bool shared_memory, int src_channels,
   for (int j = 0; j < $0; ++j) {
     local_vector[tid_index] = j * 32 + tid_index >= params.src_depth ?
       FLT4(0.0f) : vector[j * 32 + tid_index];
-    BARRIER(mem_flags::mem_threadgroup);
+    $1(mem_flags::mem_threadgroup);
     for (uint i = 0, counter = j * 32 + tid.y * 8; i < 8; ++i, ++counter) {
       summa += dot(local_vector[tid.y * 8 + i], matrix[counter * params.dst_channels + ugid.x]);
     }
-    BARRIER(mem_flags::mem_none);
+    $1(mem_flags::mem_none);
   }
   )";
   } else {
@@ -92,14 +97,14 @@ std::string GetFullyConnectedCode(bool shared_memory, int src_channels,
 
   threadgroup float temp[8][4];
   temp[tid.x][tid.y] = summa;
-  BARRIER(mem_flags::mem_threadgroup);
+  $1(mem_flags::mem_threadgroup);
   if (tid.y == 0) {
     summa += temp[tid.x][1];
     summa += temp[tid.x][2];
     summa += temp[tid.x][3];
     temp[tid.x][0] = summa;
   }
-  BARRIER(mem_flags::mem_threadgroup);
+  $1(mem_flags::mem_threadgroup);
   if (tid.y == 0 && tid.x % 4 == 0 && ugid.x < params.out_channels) {
     const int linear_index = ugid.x / 4;
     FLT4 value = FLT4(temp[tid.x][0], temp[tid.x + 1][0], temp[tid.x + 2][0], temp[tid.x + 3][0]) +
@@ -113,7 +118,7 @@ std::string GetFullyConnectedCode(bool shared_memory, int src_channels,
   const int src_depth_sub_groups = shared_memory
                                        ? IntegralDivideRoundUp(src_depth, 32)
                                        : IntegralDivideRoundUp(src_depth, 4);
-  return absl::Substitute(code.str(), src_depth_sub_groups);
+  return absl::Substitute(code.str(), src_depth_sub_groups, barrier);
 }
 }  // namespace
 
@@ -124,9 +129,8 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
-  bool shared = device_info.apple_info.IsLocalMemoryPreferredOverGlobal();
-  desc->shader_source =
-      GetFullyConnectedCode(shared, attr.weights.shape.i, attr.weights.shape.o);
+  desc->shader_source = GetFullyConnectedCode(device_info, attr.weights.shape.i,
+                                              attr.weights.shape.o);
 
   desc->input_buffers = {
       {input_id, "device FLT4* const vector"},
@@ -138,8 +142,11 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
         return CalculateOutputShape(buffers.find(input_id)->second, attr);
       }};
 
+  bool shared_memory =
+      device_info.IsAppleGPU() &&
+      device_info.apple_info.IsLocalMemoryPreferredOverGlobal();
   const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
-  const int src_depth_aligned = AlignByN(src_depth, shared ? 32 : 4);
+  const int src_depth_aligned = AlignByN(src_depth, shared_memory ? 32 : 4);
   const int dst_channels_aligned = AlignByN(attr.weights.shape.o, 8);
 
   int counter = 0;
