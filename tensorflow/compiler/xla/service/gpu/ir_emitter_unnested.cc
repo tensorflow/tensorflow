@@ -1956,7 +1956,7 @@ static void UnrollInnerTileLoop(
     bool check_x_tile_bounds, int64 x_num_steps, int64 step_x,
     int64 vector_size, const string& loop_name, KernelSupportLibrary* ksl,
     llvm::Value* start_offset_x, llvm::Value* y_loc, llvm::Value* tile_width,
-    const IrArray::Index& source_idx, llvm::IRBuilder<>* b_,
+    const IrArray::Index& source_idx, llvm::IRBuilder<>* b,
     const IrEmitterUnnested::EmitElementFunction* emit_elem_function) {
   llvm::Type* index_ty = tile_width->getType();
   auto constant = [&](int64 val) {
@@ -1964,18 +1964,18 @@ static void UnrollInnerTileLoop(
   };
   for (int64 j = 0; j < x_num_steps / vector_size; j++) {
     IrArray::Index source_idx_x_base =
-        source_idx.AddOffsetToDim(y_loc, kDimY, b_);
+        source_idx.AddOffsetToDim(y_loc, kDimY, b);
     for (int64 i = 0; i < vector_size; i++) {
       int linear_index = j * vector_size + i;
-      llvm::Value* x_loc = b_->CreateAdd(constant(j * step_x * vector_size + i),
-                                         start_offset_x, "x_loc");
+      llvm::Value* x_loc = b->CreateAdd(constant(j * step_x * vector_size + i),
+                                        start_offset_x, "x_loc");
       IrArray::Index source_idx_x = source_idx_x_base.AddOffsetToDim(
-          constant(j * step_x * vector_size + i), kDimX, b_);
+          constant(j * step_x * vector_size + i), kDimX, b);
       auto emit_element = [&] {
         return (*emit_elem_function)(source_idx_x, y_loc, x_loc, linear_index);
       };
       if (check_x_tile_bounds) {
-        ksl->If(loop_name + "_x_in_tile", b_->CreateICmpULT(x_loc, tile_width),
+        ksl->If(loop_name + "_x_in_tile", b->CreateICmpULT(x_loc, tile_width),
                 emit_element);
       } else {
         emit_element();
