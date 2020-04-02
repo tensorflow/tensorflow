@@ -222,6 +222,116 @@ kernel void ComputeFunction($1
 )";
   return c;
 }
+
+std::string GetKernelWinograd36To4x4Tile4x1() {
+  std::string c;
+  c += R"(
+#include <metal_stdlib>
+using namespace metal;
+
+struct uniforms {
+    int4 src_size;
+    int4 dst_size;
+    int4 tiles;
+};
+)";
+  auto at_mat = AtMatrixForWinograd4x4To6x6();
+  c += "constant FLT At[24] = {\n";
+  for (int y = 0; y < 4; ++y) {
+    c += "\t";
+    for (int x = 0; x < 6; ++x) {
+      c += absl::StrFormat("%.10f", at_mat[y * 6 + x]) + "f, ";
+    }
+    c += "\n";
+  }
+  c += "};\n";
+  c += R"(
+
+$0
+
+kernel void ComputeFunction($1
+                            uint3 global_ids[[thread_position_in_grid]])
+{
+  int tile_id = global_ids.x;
+  int DST_Y = global_ids.y;
+  int DST_Z = global_ids.z;
+  int tile_x = (tile_id % U.tiles.x) * 4;
+  int tile_y = (tile_id / U.tiles.x) * 4 + DST_Y;
+  if (tile_x >= U.dst_size.x || tile_y >= U.dst_size.y || DST_Z >= U.dst_size.z) {
+    return;
+  }
+  FLT4 I0, I1, I2, I3, I4, I5;
+  FLT at_ar[6];
+  FLT4 t00 = at_arr[DST_Y * 2 + 0];
+  FLT4 t01 = at_arr[DST_Y * 2 + 1];
+  at_ar[0] = t00.x;
+  at_ar[1] = t00.y;
+  at_ar[2] = t00.z;
+  at_ar[3] = t00.w;
+  at_ar[4] = t01.x;
+  at_ar[5] = t01.y;
+  int src_adress = DST_Z * U.src_size.y * U.src_size.x + tile_id;
+  {
+    FLT at = at_ar[0];
+)";
+  for (int x = 0; x < 6; ++x) {
+    const std::string yc = std::to_string(x);
+    const std::string src = "src" + std::to_string(x);
+    c += "    FLT4 " + src + " = src_buffer[src_adress + U.src_size.x * " + yc +
+         "];\n";
+    c += "    I" + std::to_string(x) + " = at * " + src + ";\n";
+  }
+  c += "  }\n";
+  for (int y = 1; y < 6; ++y) {
+    c += "  {\n";
+    c += "    FLT at = at_ar[" + std::to_string(y) + "];\n";
+    for (int x = 0; x < 6; ++x) {
+      const std::string yc = std::to_string(y * 6 + x);
+      const std::string src = "src" + std::to_string(x);
+      c += "    FLT4 " + src + " = src_buffer[src_adress + U.src_size.x * " +
+           yc + "];\n";
+      c += "    I" + std::to_string(x) + " += at * " + src + ";\n";
+    }
+    c += "  }\n";
+  }
+  c += R"(
+  FLT4 t0 = I1 + I2;
+  FLT4 t1 = I3 + I4;
+  int dst_adress = (DST_Z * U.dst_size.y + tile_y) * U.dst_size.x + tile_x;
+  if (tile_x < U.dst_size.x) {
+    FLT4 value = I0 + t0 + t1;
+    uint3 gid = uint3(tile_x, tile_y, global_ids.z);
+    int linear_index = dst_adress;
+    $2;
+    dst_buffer[linear_index] = value;
+  }
+  FLT4 t2 = I1 - I2;
+  FLT4 t3 = I3 - I4;
+  if (tile_x + 1 < U.dst_size.x) {
+    FLT4 value = t2 * At[7] + t3 * At[9];
+    uint3 gid = uint3(tile_x + 1, tile_y, global_ids.z);
+    int linear_index = dst_adress + 1;
+    $2;
+    dst_buffer[linear_index] = value;
+  }
+  if (tile_x + 2 < U.dst_size.x) {
+    FLT4 value = t0 * At[13] + t1 * At[15];
+    uint3 gid = uint3(tile_x + 2, tile_y, global_ids.z);
+    int linear_index = dst_adress + 2;
+    $2;
+    dst_buffer[linear_index] = value;
+  }
+  if (tile_x + 3 < U.dst_size.x) {
+    FLT4 value = t2 * At[19] + t3 * At[21] + I5;
+    uint3 gid = uint3(tile_x + 3, tile_y, global_ids.z);
+    int linear_index = dst_adress + 3;
+    $2;
+    dst_buffer[linear_index] = value;
+  }
+}
+)";
+  return c;
+}
 }  // namespace
 
 std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36(
@@ -351,6 +461,90 @@ std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4(
     int grid_x = src_shape.w;
     int grid_y = 1;
     int grid_z = IntegralDivideRoundUp(src_shape.c, 4);
+    int groups_x = IntegralDivideRoundUp(grid_x, groups_size.x);
+    int groups_y = IntegralDivideRoundUp(grid_y, groups_size.y);
+    int groups_z = IntegralDivideRoundUp(grid_z, groups_size.z);
+    return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
+  };
+  return {desc};
+}
+
+std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4Tile4x1(
+    int id, ValueId input_id, ValueId output_id, const RuntimeOptions& options,
+    const Winograd36To4x4Attributes& attr) {
+  auto desc = std::make_shared<ComputeTaskDescriptor>();
+  desc->id = id;
+  desc->is_linkable = false;
+  desc->shader_source = GetKernelWinograd36To4x4Tile4x1();
+
+  desc->input_buffers = {
+      {input_id, "device FLT4* const src_buffer"},
+  };
+
+  desc->output_buffer = {
+      output_id, "device FLT4* dst_buffer",
+      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
+        const auto src_shape = buffers.find(input_id)->second;
+        BHWC dst_shape;
+        dst_shape.b = src_shape.b;
+        dst_shape.h = attr.output_shape.h;
+        dst_shape.w = attr.output_shape.w;
+        dst_shape.c = src_shape.c;
+        return dst_shape;
+      }};
+
+  std::vector<float> at_aligned(4 * 8);
+  auto at_mat = AtMatrixForWinograd4x4To6x6();
+  for (int y = 0; y < 4; ++y) {
+    for (int x = 0; x < 6; ++x) {
+      at_aligned[y * 8 + x] = at_mat[y * 6 + x];
+    }
+    at_aligned[y * 8 + 6] = 0.0f;
+    at_aligned[y * 8 + 7] = 0.0f;
+  }
+
+  desc->immutable_buffers = {
+      {"device FLT4* const biases",
+       GetByteBufferConvertedResized(attr.biases.data,
+                                     options.storage_precision,
+                                     AlignByN(attr.output_shape.c, 4))},
+      {"device FLT4* const at_arr",
+       GetByteBufferConverted(at_aligned, options.storage_precision)},
+  };
+
+  desc->uniform_buffers = {
+      {"constant uniforms& U",
+       [input_id, output_id](const std::map<ValueId, BHWC>& buffers) {
+         const auto& src_shape = buffers.find(input_id)->second;
+         const auto& dst_shape = buffers.find(output_id)->second;
+         const int tiles_x = IntegralDivideRoundUp(dst_shape.w, 4);
+         const int tiles_y = IntegralDivideRoundUp(dst_shape.h, 4);
+         std::vector<int> sizes = {
+             src_shape.w,
+             src_shape.h,
+             IntegralDivideRoundUp(src_shape.c, 4),
+             0,
+             dst_shape.w,
+             dst_shape.h,
+             IntegralDivideRoundUp(dst_shape.c, 4),
+             0,
+             tiles_x,
+             tiles_y,
+             0,
+             0,
+         };
+         return GetByteBuffer(sizes);
+       }},
+  };
+
+  desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
+    const uint3 groups_size{8, 4, 1};
+    const auto& dst_shape = buffers.find(output_id)->second;
+    const int tiles_x = IntegralDivideRoundUp(dst_shape.w, 4);
+    const int tiles_y = IntegralDivideRoundUp(dst_shape.h, 4);
+    int grid_x = tiles_x * tiles_y;
+    int grid_y = 4;
+    int grid_z = IntegralDivideRoundUp(dst_shape.c, 4);
     int groups_x = IntegralDivideRoundUp(grid_x, groups_size.x);
     int groups_y = IntegralDivideRoundUp(grid_y, groups_size.y);
     int groups_z = IntegralDivideRoundUp(grid_z, groups_size.z);

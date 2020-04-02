@@ -42,6 +42,10 @@ std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4(
     int id, ValueId input_id, ValueId output_id, const RuntimeOptions& options,
     const Winograd36To4x4Attributes& attr);
 
+std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4Tile4x1(
+    int id, ValueId input_id, ValueId output_id, const RuntimeOptions& options,
+    const Winograd36To4x4Attributes& attr);
+
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite
