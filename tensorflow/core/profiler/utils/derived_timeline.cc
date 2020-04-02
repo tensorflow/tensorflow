@@ -147,7 +147,8 @@ void ProcessTfOpEvent(const XEventVisitor& event,
       plane_builder->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId))
           ->id();
   TfOp tf_op = ParseTfOpFullname(tf_op_full_name);
-  if (tf_op.is_tf_op) {
+  Category category = tf_op.category;
+  if (category == Category::kTensorFlow || category == Category::kJax) {
     std::vector<XEvent> name_scope_event_per_level;
     for (const auto& tf_name_scope : ParseTfNameScopes(tf_op)) {
       name_scope_event_per_level.push_back(CreateXEvent(

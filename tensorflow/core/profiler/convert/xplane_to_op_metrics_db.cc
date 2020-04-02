@@ -153,7 +153,7 @@ absl::flat_hash_map<int64, TfOp> CollectTfOpsFromHostThreadsXPlane(
     // user-inserted TraceMe's have "unknown" type. We don't count them in
     // Tf-stats.
     TfOp tf_op = ParseTfOpFullname(metadata.name());
-    if (!IsUnknownOp(tf_op.type)) {
+    if (tf_op.category != Category::kUnknown) {
       tf_ops.try_emplace(metadata.id(), tf_op);
     }
   }
@@ -214,7 +214,7 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
       if (tf_op_fullname.empty()) return;
       TfOp tf_op = ParseTfOpFullname(tf_op_fullname);
       TfOpRoofLineCostEstimator::OpRoofLineStats costs;
-      if (tf_op.type != kUnknownOp) {
+      if (tf_op.category != Category::kUnknown) {
         costs = op_level_cost_estimator.Predict(event);
       }
       device_op_metrics_db_builder.EnterOp(
