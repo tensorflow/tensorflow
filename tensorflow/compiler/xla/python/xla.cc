@@ -173,6 +173,7 @@ struct ExtraBufferInfo {
 int PyLocalBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
   auto& buffer =
       py::reinterpret_borrow<py::object>(exporter).cast<PyLocalBuffer&>();
+  std::shared_ptr<SharedDeviceBuffer> device_buffer;
   Status status = [&]() {
     // Py_buffer objects are POD C structures, so we don't need to hold the GIL.
     // Additionally we call BlockHostUntilReady() below, which may block.
@@ -197,7 +198,7 @@ int PyLocalBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
     if ((flags & PyBUF_WRITEABLE) == PyBUF_WRITEABLE) {
       return InvalidArgument("XLA buffers are read-only.");
     }
-    std::shared_ptr<SharedDeviceBuffer> device_buffer = buffer.DeviceBuffer();
+    device_buffer = buffer.GetBufferWithExternalReference();
     if (!device_buffer) {
       return InvalidArgument("Deleted buffer used in buffer protocol.");
     }
@@ -219,7 +220,7 @@ int PyLocalBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
     view->buf =
         const_cast<void*>(device_buffer->device_memory().front().opaque());
     auto extra = absl::make_unique<ExtraBufferInfo>();
-    extra->device_buffer = std::move(device_buffer);
+    extra->device_buffer = device_buffer;
     view->itemsize = ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
     view->len = ShapeUtil::ByteSizeOf(shape);
     view->readonly = 1;
@@ -246,6 +247,9 @@ int PyLocalBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
     return Status::OK();
   }();
   if (!status.ok()) {
+    if (device_buffer != nullptr) {
+      device_buffer->DropExternalReference();
+    }
     PyErr_SetString(PyExc_BufferError, status.ToString().c_str());
     return -1;
   }
@@ -255,7 +259,9 @@ int PyLocalBufferGetBuffer(PyObject* exporter, Py_buffer* view, int flags) {
 }
 
 void PyLocalBufferReleaseBuffer(PyObject*, Py_buffer* buffer) {
-  delete static_cast<ExtraBufferInfo*>(buffer->internal);
+  auto extra = static_cast<ExtraBufferInfo*>(buffer->internal);
+  extra->device_buffer->DropExternalReference();
+  delete extra;
 }
 
 PyBufferProcs PyLocalBufferProcs = []() {
@@ -1009,9 +1015,7 @@ PYBIND11_MODULE(xla_extension, m) {
            })
       .def("platform", &PyLocalBuffer::platform_name)
       .def("is_deleted",
-           [](const PyLocalBuffer& buffer) {
-             return buffer.DeviceBuffer() == nullptr;
-           })
+           [](PyLocalBuffer* buffer) { return buffer->IsDeleted(); })
       .def("unsafe_buffer_pointer",
            [](const PyLocalBuffer& buffer) -> StatusOr<std::uintptr_t> {
              TF_ASSIGN_OR_RETURN(ShapedBuffer shaped_buffer,

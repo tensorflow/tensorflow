@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 // API notes:
 // Despite having the name "PyLocalClient", it is intended that this API may
@@ -87,7 +89,9 @@ class Device {
   const std::string platform_name_;
 };
 
+// Forward declaration.
 class PyLocalBuffer;
+
 // Helper struct for cross host transfers, returned by the callback from a call
 // to PyLocalBuffer::MakeCrossHostReceiveBuffers.
 struct PyLocalCrossHostRecvBuffer {
@@ -193,13 +197,12 @@ class PyLocalClient : public std::enable_shared_from_this<PyLocalClient> {
 StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
     absl::Span<const std::vector<Device*>> devices);
 
-// Holds a reference from Python to one or more device buffers.
-// A PyLocalBuffer can be either valid or invalid. An invalid buffer is one that
-// has never been initialized, or a buffer that has been deleted (e.g., by
-// calling Delete). We allow PyLocalBuffer objects to outlive the underlying
-// device buffers so we can decouple buffer lifetimes from the corresponding
-// Python references if needed.
-// Thread-safe.
+// Holds a reference from Python to a tuple of device buffers. A PyLocalBuffer
+// can be either valid or invalid. An invalid buffer is one that has never been
+// initialized, or a buffer that has been deleted (e.g., by calling Delete). We
+// allow PyLocalBuffer objects to outlive the underlying device buffers so we
+// can decouple buffer lifetimes from the corresponding Python references if
+// needed. Thread-safe.
 class PyLocalBuffer {
  public:
   // If `force_copy` is true, forces a copy of the input buffer on CPU.
@@ -210,10 +213,6 @@ class PyLocalBuffer {
   static StatusOr<std::unique_ptr<PyLocalBuffer>> FromHostBuffer(
       const void* data, const Shape& shape, bool force_copy,
       std::shared_ptr<void> buffer_reference, PyLocalClient* client,
-      Device* device);
-
-  static StatusOr<std::unique_ptr<PyLocalBuffer>> MakeTuple(
-      absl::Span<PyLocalBuffer* const> buffers, PyLocalClient* client,
       Device* device);
 
   // Asynchronously makes a vector of PyLocalBuffers that can be used to receive
@@ -232,6 +231,7 @@ class PyLocalBuffer {
   PyLocalBuffer(Shape on_host_shape, Shape on_device_shape,
                 std::shared_ptr<SharedDeviceBuffer> device_buffer,
                 PyLocalClient* client, Device* device);
+  ~PyLocalBuffer();
 
   PyLocalBuffer(const PyLocalBuffer&) = delete;
   PyLocalBuffer(PyLocalBuffer&&) = delete;
@@ -243,11 +243,13 @@ class PyLocalBuffer {
   Device* device() const { return device_; }
   const std::string& platform_name() const { return client_->platform_name(); }
   PyLocalClient* client() const { return client_; }
+  bool IsEmptyTuple() const {
+    return on_host_shape_.IsTuple() && on_host_shape_.tuple_shapes_size() == 0;
+  }
 
-  // Returns the buffer's value as a tuple DAG of Python arrays. If the value
-  // has previously been prefetched to the host, then returns the prefetched
-  // version, otherwise copies the buffer to the host. Blocks until the
-  // value is ready.
+  // Returns the buffer's value as an XLA Literal. If the value has previously
+  // been prefetched to the host, then returns the prefetched version, otherwise
+  // copies the buffer to the host. Blocks until the value is ready.
   StatusOr<std::shared_ptr<Literal>> ToLiteral();
 
   // Initiates a copy of the buffer to the host. Does not block waiting for
@@ -255,23 +257,55 @@ class PyLocalBuffer {
   // ToLiteral().
   Status CopyToHostAsync();
 
-  // Returns the associated device buffer. Returns a nullptr if the buffer is
-  // invalid.
-  std::shared_ptr<SharedDeviceBuffer> DeviceBuffer() const;
-
-  // Deletes the device memory associated with this buffer, leaving it in an
-  // invalid state.
+  // Drops the buffer's reference to its associated device memory, leaving the
+  // buffer in an invalid state. The memory will be freed lazily when all async
+  // operations using the buffer have completed, according to the allocation
+  // semantics of the underlying platform. Delete may briefly block if another
+  // thread is in the process of enqueuing an operation on this buffer, but it
+  // will never block for a stream operation to complete. If an external
+  // framework holds a reference to the SharedDeviceBuffer via
+  // GetBufferWithExternalReference, the memory will not be freed until the
+  // external framework drops the reference.
   void Delete();
 
-  // Returns a view of the PyLocalBuffer DAG as a ShapedBuffer. The
+  // Similar to Delete, drops the buffer's reference to its associated device
+  // memory, leaving the buffer in an invalid state, but returns the
+  // SharedDeviceBuffer rather than freeing the device memory, so that another
+  // framework can take ownership of it. The buffer returned from Release may
+  // be safely dropped at any time even if it still has pending async
+  // operations. The client should call BlockHostUntilReady before calling
+  // Release, which will ensure that the host has synchronized past any
+  // outstanding write operations to the buffer. If wait_for_reads_to_complete
+  // is true the host will block until any potentially outstanding asynchronous
+  // read operations have completed before returning, after which it is safe to
+  // mutate the returned buffer.
+  StatusOr<std::shared_ptr<SharedDeviceBuffer>> Release(
+      bool wait_for_reads_to_complete);
+
+  // True if and only if Delete or Release has previously been called.
+  bool IsDeleted();
+
+  // Returns a view of the PyLocalBuffer device memory as a ShapedBuffer. The
   // PyLocalBuffer retains ownership of the device buffers.
   StatusOr<ShapedBuffer> AsShapedBuffer() const;
 
-  // Destructures a tuple-valued PyLocalBuffer into its constituent elements.
-  StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> DestructureTuple()
-      const;
+  // Returns a 'usage hold' on the SharedDeviceBuffer holding the device
+  // buffers. The hold ensures that the device buffers can't be deleted until
+  // the hold is dropped or converted. GetBufferWithUsageHold is called
+  // before enqueueing the buffer on any stream operation, and the usage hold is
+  // dropped or converted after the enqueue is complete. The buffer in the hold
+  // is nullptr if Delete or Release has been called.
+  SharedDeviceBuffer::ScopedUsage GetBufferWithUsageHold();
 
-  // Copies the buffer to device `dst_device`.
+  // Returns the SharedDeviceBuffer holding the device buffers, after adding an
+  // external reference ensuring that the device buffers can't be deleted until
+  // the reference is dropped. GetBufferWithExernalReference is called when an
+  // external framework wants to share the device buffers temporarily. Returns
+  // nullptr if Delete or Release has been called.
+  std::shared_ptr<SharedDeviceBuffer> GetBufferWithExternalReference();
+
+  // Copies the buffer to device `dst_device`. Returns an error if the buffer is
+  // already on dst_device.
   StatusOr<std::unique_ptr<PyLocalBuffer>> CopyToDevice(Device* dst_device);
 
   // Copies the buffer to the remote device encoded in serialized_descriptor.
@@ -290,13 +324,7 @@ class PyLocalBuffer {
   Status BlockHostUntilReady();
 
  private:
-  PyLocalClient* const client_;
-  const Shape on_host_shape_;
-  const Shape on_device_shape_;
-  Device* const device_;
-  mutable absl::Mutex mu_;
-  std::shared_ptr<SharedDeviceBuffer> device_buffer_ TF_GUARDED_BY(mu_);
-
+  friend class PyLocalClient;
   // The cached value of the buffer on the host, produced either from a call to
   // CopyToHost or from a call to ToLiteral. Once a value has been fetched to
   // the host, it persists Delete() is called or the PyLocalBuffer is destroyed.
@@ -307,6 +335,24 @@ class PyLocalBuffer {
     Status status;
     std::shared_ptr<Literal> value;
   };
+
+  Status CopyToHostAsyncHelper(
+      se::Stream* stream, std::shared_ptr<HostValue> host_value,
+      std::shared_ptr<BufferDefinitionEvent> usage_event);
+  StatusOr<std::pair<std::unique_ptr<PyLocalBuffer>,
+                     std::shared_ptr<BufferDefinitionEvent>>>
+  CopyToDeviceHelper(Device* dst_device, LocalDeviceState* dst_local_device,
+                     LocalDeviceState* transfer_local_device,
+                     se::Stream* transfer_stream,
+                     std::shared_ptr<SharedDeviceBuffer> src_device_buffer);
+
+  PyLocalClient* const client_;
+  const Shape on_host_shape_;
+  const Shape on_device_shape_;
+  Device* const device_;
+
+  mutable absl::Mutex mu_;
+  std::shared_ptr<SharedDeviceBuffer> device_buffer_ TF_GUARDED_BY(mu_);
   std::shared_ptr<HostValue> host_value_ TF_GUARDED_BY(mu_);
 };
 
@@ -391,6 +437,11 @@ class PyLocalExecutable {
   const string& name() const;
 
  private:
+  StatusOr<ScopedShapedBuffer> EnqueueExecution(
+      absl::Span<PyLocalBuffer* const> argument_handles, int replica,
+      int partition, int executable_idx, const RunId& run_id,
+      const ExecuteOptions& options, Device* device,
+      std::vector<SharedDeviceBuffer::ScopedUsage>* device_buffers) const;
   StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> ExecuteHelper(
       absl::Span<PyLocalBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options) const;
