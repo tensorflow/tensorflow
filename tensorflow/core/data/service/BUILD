@@ -196,6 +196,18 @@ cc_library(
 )
 
 cc_library(
+    name = "test_cluster",
+    testonly = True,
+    srcs = ["test_cluster.cc"],
+    hdrs = ["test_cluster.h"],
+    deps = [
+        ":server_lib",
+        "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "test_util",
     testonly = True,
     srcs = ["test_util.cc"],
@@ -286,6 +298,7 @@ tf_cc_test(
         ":master_cc_grpc_proto",
         ":master_proto_cc",
         ":server_lib",
+        ":test_cluster",
         ":test_util",
         ":worker_cc_grpc_proto",
         ":worker_proto_cc",
