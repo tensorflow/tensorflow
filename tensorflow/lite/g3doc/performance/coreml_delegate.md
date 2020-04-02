@@ -4,44 +4,66 @@ TensorFlow Lite Core ML Delegate enables running TensorFlow Lite models on
 [Core ML framework](https://developer.apple.com/documentation/coreml),
 which results in faster model inference on iOS devices.
 
-[TOC]
+Note: This delegate is in experimental (beta) phase.
 
-## Supported iOS versions and processors
+Note: Core ML delegate is using Core ML version 2.1.
 
-* iOS 12 and later. In the older iOS versions, Core ML delegate will
-  automatically fallback to CPU.
-* When running on iPhone Xs and later, it will use Neural Engine for faster
-  inference.
+**Supported iOS versions and devices:**
 
-## Update code to use Core ML delegate
+*   iOS 12 and later. In the older iOS versions, Core ML delegate will
+    automatically fallback to CPU.
+*   When running on iPhone Xs and later, it will use Neural Engine for faster
+    inference.
+
+**Supported models**
+
+The Core ML delegate currently supports float32 models.
+
+## Trying the Core ML delegate on your own model
+
+The Core ML delegate is already included in nightly release of TensorFlow lite
+CocoaPods. To use Core ML delegate, change your TensorFlow lite pod
+(`TensorflowLiteC` for C++ API, and `TensorFlowLiteSwift` for Swift) version to
+`0.0.1-nightly` in your `Podfile`.
+
+```
+target 'YourProjectName'
+  # pod 'TensorFlowLiteSwift'
+  pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly'
+```
+
+Note: After updating `Podfile`, you should run `pod update` to reflect changes.
 
 ### Swift
 
-Initialize TensorFlow Lite interpreter with Core ML delegate.
+Initialize TensorFlow Lite interpreter with the Core ML delegate.
 
 ```swift
 let coreMlDelegate = CoreMLDelegate()
 let interpreter = try Interpreter(modelPath: modelPath,
-                                  delegates: [coreMLDelegate])
+                                  delegates: [coreMlDelegate])
 ```
 
 ### Objective-C++
 
-#### Interpreter initialization
+The Core ML delegate uses C++ API for Objective-C++ codes.
 
-Include `coreml_delegate.h`.
+#### Step 1. Include `coreml_delegate.h`.
 
 ```objectivec++
 #include "tensorflow/lite/experimental/delegates/coreml/coreml_delegate.h"
 ```
 
-Modify code following interpreter initialization to apply delegate.
+#### Step 2. Create a delegate and initialize a TensorFlow Lite Interpreter
+
+After initializing the interpreter, call `interpreter->ModifyGraphWithDelegate`
+with initialized Core ML delegate to apply the delegate.
 
 ```objectivec++
 // initializer interpreter with model.
 tflite::InterpreterBuilder(*model, resolver)(&interpreter);
 
-// Add following section to use Core ML delegate.
+// Add following section to use the Core ML delegate.
 TfLiteCoreMlDelegateOptions options = {};
 delegate = TfLiteCoreMlDelegateCreate(&options);
 interpreter->ModifyGraphWithDelegate(delegate);
@@ -49,7 +71,7 @@ interpreter->ModifyGraphWithDelegate(delegate);
 // ...
 ```
 
-#### Disposal
+#### Step 3. Dispose the delegate when it is no longer used.
 
 Add this code to the section where you dispose of the delegate (e.g. `dealloc`
 of class).
@@ -87,21 +109,27 @@ Following ops are supported by the Core ML delegate.
 *   SoftMax
 *   Tanh
 
+## Feedback
+
+For issues, please create a
+[GitHub](https://github.com/tensorflow/tensorflow/issues/new?template=50-other-issues.md)
+issue with all the necessary details to reproduce.
+
 ## FAQ
 
-* Does Core ML delegate support fallback to CPU if a graph contains unsupported
+* Does CoreML delegate support fallback to CPU if a graph contains unsupported
   ops?
-  * Yes.
-* Does Core ML delegate work on iOS Simulator?
+  * Yes
+* Does CoreML delegate work on iOS Simulator?
   * Yes. The library includes x86 and x86_64 targets so it can run on
     a simulator, but you will not see performance boost over CPU.
-* Does TensorFlow Lite and Core ML delegate support macOS?
-  * TensorFlow Lite is only tested on iOS but not macOS.
-* Are custom TF Lite ops supported?
+* Does TensorFlow Lite and CoreML delegate support MacOS?
+  * TensorFlow Lite is only tested on iOS but not MacOS.
+* Is custom TF Lite ops supported?
   * No, CoreML delegate does not support custom ops and they will fallback to
     CPU.
 
-## Appendix
+## APIs
 
 ### Core ML delegate Swift API
 
