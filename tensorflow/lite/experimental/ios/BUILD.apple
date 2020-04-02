@@ -11,6 +11,17 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+genrule(
+    name = "strip_coreml_include_hdr",
+    srcs = ["//tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h"],
+    outs = ["coreml_delegate.h"],
+    cmd = """
+    sed 's/#include \".*common.h"/#include \"common.h\"/' \
+    "$(location //tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h)" \
+    > "$@"
+    """,
+)
+
 TFL_LIBRARY_HDRS = [
     "//tensorflow/lite/delegates/gpu:metal_delegate.h",
     "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate.h",
@@ -18,10 +29,17 @@ TFL_LIBRARY_HDRS = [
     "//tensorflow/lite/c:common.h",
 ]
 
+TFL_FRAMEWORK_HDRS = [
+    "//tensorflow/lite/delegates/gpu:metal_delegate.h",
+    ":coreml_delegate.h",
+    "//tensorflow/lite/c:c_api.h",
+    "//tensorflow/lite/c:common.h",
+]
+
 # bazel build -c opt --config=ios_fat //tensorflow/lite/experimental/ios:TensorFlowLiteC_framework
 ios_static_framework(
     name = "TensorFlowLiteC_framework",
-    hdrs = TFL_LIBRARY_HDRS,
+    hdrs = TFL_FRAMEWORK_HDRS,
     bundle_name = "TensorFlowLiteC",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
     deps = [
