@@ -1045,6 +1045,16 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
             "https://github.com/GrahamDumpleton/wrapt/archive/1.11.1.tar.gz",
         ],
     )
+    tf_http_archive(
+        name = "coremltools",
+        sha256 = "0d594a714e8a5fd5bd740ad112ef59155c0482e25fdc8f8efa5758f90abdcf1e",
+        strip_prefix = "coremltools-3.3",
+        build_file = clean_dep("//third_party:coremltools.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/github.com/apple/coremltools/archive/3.3.zip",
+            "https://github.com/apple/coremltools/archive/3.3.zip",
+        ],
+    )
 
 def tf_bind():
     """Bind targets for some external repositories"""
