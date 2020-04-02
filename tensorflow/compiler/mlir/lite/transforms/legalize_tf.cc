@@ -745,7 +745,8 @@ void LegalizeTF::runOnFunction() {
       Optional<ConversionTarget::DynamicLegalityCallbackFn>([](Operation* op) {
         auto tfl_op = dyn_cast_or_null<TflRuntimeVerifyOpInterface>(op);
         if (!tfl_op) return false;
-        return succeeded(tfl_op.VerifyTflRuntimeTypes(tfl_op.getOperation()));
+        return succeeded(tfl_op.VerifyTflRuntimeTypes(
+            tfl_op.getOperation(), /*failure_on_operand_type_mismatch=*/false));
       }));
   // Keep trying to convert.
   // TODO(karimnosseir): This is similar to what apply greedy patterns does.
