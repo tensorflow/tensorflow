@@ -77,7 +77,7 @@ class ExecuteNode : public EagerNode {
       EagerContext* ctx, const absl::InlinedVector<TensorHandle*, 4>& inputs,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
       const core::RefCountPtr<KernelAndDevice>& kernel,
-      GraphCollector* graph_collector, const DataTypeVector& output_dtypes,
+      GraphCollector* graph_collector,
       CancellationManager* cancellation_manager,
       absl::Span<TensorHandle*> retvals)
       : EagerNode(),
@@ -130,7 +130,7 @@ class AsyncExecuteNode : public EagerNode {
       EagerContext* ctx, const absl::InlinedVector<TensorHandle*, 4>& inputs,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
       core::RefCountPtr<KernelAndDevice> kernel,
-      GraphCollector* graph_collector, const DataTypeVector& output_dtypes,
+      GraphCollector* graph_collector,
       CancellationManager* cancellation_manager,
       absl::Span<TensorHandle*> retvals)
       : EagerNode(),
@@ -189,8 +189,10 @@ class AsyncExecuteNode : public EagerNode {
   }
 
   void Abort(Status status) override {
+    int i = 0;
     for (auto handle : retvals_) {
-      handle->Poison(status);
+      handle->Poison(status, ctx_->CanonicalDevice(kernel_->OutputDevice(i)));
+      ++i;
     }
   }
 

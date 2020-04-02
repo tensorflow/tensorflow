@@ -26,9 +26,9 @@ from __future__ import print_function
 import os
 
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.util.tf_export import keras_export
@@ -41,6 +41,8 @@ WEIGHTS_PATH_NO_TOP = (
     'https://storage.googleapis.com/tensorflow/keras-applications/'
     'inception_v3/inception_v3_weights_tf_dim_ordering_tf_kernels_notop.h5')
 
+layers = VersionAwareLayers()
+
 
 @keras_export('keras.applications.inception_v3.InceptionV3',
               'keras.applications.InceptionV3')
@@ -51,8 +53,7 @@ def InceptionV3(
     input_shape=None,
     pooling=None,
     classes=1000,
-    classifier_activation='softmax',
-):
+    classifier_activation='softmax'):
   """Instantiates the Inception v3 architecture.
 
   Reference paper:
@@ -62,6 +63,9 @@ def InceptionV3(
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in the `tf.keras.backend.image_data_format()`.
+
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.inception_v3.preprocess_input` for an example.
 
   Arguments:
     include_top: Boolean, whether to include the fully-connected
@@ -409,3 +413,8 @@ def preprocess_input(x, data_format=None):
 @keras_export('keras.applications.inception_v3.decode_predictions')
 def decode_predictions(preds, top=5):
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

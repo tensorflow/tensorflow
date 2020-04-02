@@ -181,8 +181,7 @@ class MetricsSerialization(keras_parameterized.TestCase):
           'mae',
           metrics=metric_input,
           weighted_metrics=weighted_metric_input,
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
       history = model.fit([self.x, self.x], [self.y, self.y],
                           batch_size=3,
                           epochs=3,
@@ -222,8 +221,7 @@ class MetricsSerialization(keras_parameterized.TestCase):
         'mae',
         metrics=metric_input,
         weighted_metrics=weighted_metric_input,
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit([self.x, self.x], [self.y, self.y],
                         batch_size=3,
                         epochs=3,

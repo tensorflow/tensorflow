@@ -62,9 +62,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::RESHAPE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4, 5, 6}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({1, 2, 3, 4, 5, 6}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testReshape3x1x2To2x1x3 {
@@ -84,9 +84,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::RESHAPE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4, 5, 6}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({1, 2, 3, 4, 5, 6}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testReshape1x1x4To2x2x1 {
@@ -106,9 +106,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::RESHAPE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({1, 2, 3, 4}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testReshapeBatchIsUnsupported {
@@ -128,9 +128,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::RESHAPE), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.error_message().find("Only identical batch dimension is supported") !=
+  XCTAssertTrue(std::string(status.message()).find("Only identical batch dimension is supported") !=
                     std::string::npos,
-                @"%s", status.error_message().c_str());
+                @"%s", std::string(status.message()).c_str());
 }
 
 @end

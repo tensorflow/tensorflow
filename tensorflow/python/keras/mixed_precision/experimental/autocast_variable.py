@@ -28,21 +28,23 @@ from tensorflow.python.ops import variables
 class AutoCastVariable(variables.Variable):
   """Variable that will cast itself to a different dtype in applicable contexts.
 
-  This class wraps a floating-point tf.Variable. It emulates the variable
+  This class wraps a floating-point `tf.Variable`. It emulates the variable
   interface and delegates to the wrapped variable, but it additionally will cast
-  the wrapped variable under a `Graph._enable_variable_auto_cast(dtype)` context
-  manager.
+  the wrapped variable under a `Graph._enable_auto_casting_variables(dtype)`
+  context manager.
 
   For example:
 
-  ```
-  v = tf.Variable(1.0, dtype=tf.float32)
-  v = AutoCastVariable(v)
-  print(tf.identity(v).dtype)  # tf.float32
-  with ops.get_default_graph()._enable_variable_auto_cast(tf.float16):
-    print(tf.identity(v).dtype)  # tf.float16, as v will cast itself to float16
-    print(v.dtype)  # tf.float16, as v.dtype also changes under the ctx manager.
-  ```
+  >>> v = tf.Variable(1.0, dtype=tf.float32)
+  >>> v = AutoCastVariable(v)
+  >>> tf.identity(v).dtype
+  tf.float32
+  >>> with ops.get_default_graph()._enable_auto_casting_variables(tf.float16):
+  ...   tf.identity(v).dtype
+  tf.float16
+  >>> with ops.get_default_graph()._enable_auto_casting_variables(tf.float16):
+  ...   v.dtype  # v.dtype also changes under the context manager
+  tf.float16
 
   The purpose of this class is to allow Keras layers to create variables in
   float32, and automatically cast them to float16 or bfloat16 when the layer is

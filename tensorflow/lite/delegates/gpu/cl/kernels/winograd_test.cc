@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 
 using ::testing::FloatNear;
 using ::testing::Pointwise;
@@ -77,7 +78,12 @@ TEST_F(OpenCLOperationTest, Winograd4x4To36) {
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
-      const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
+      float eps;
+      if (precision == CalculationsPrecision::F32) {
+        eps = 1e-5f * (env_.device().SupportsFP32RTN() ? 1.0f : 4.0f);
+      } else {
+        eps = 1e-2f * (env_.device().SupportsFP16RTN() ? 1.0f : 4.0f);
+      }
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
@@ -105,7 +111,7 @@ TEST_F(OpenCLOperationTest, Winograd36To4x4) {
     src_tensor.data[i] = sin(i);
   }
 
-  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> biases;
+  Tensor<Linear, DataType::FLOAT32> biases;
   biases.shape = Linear(1);
   biases.data.resize(biases.shape.DimensionsProduct());
   for (int i = 0; i < biases.data.size(); ++i) {
@@ -144,7 +150,12 @@ TEST_F(OpenCLOperationTest, Winograd36To4x4) {
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
-      const float eps = precision == CalculationsPrecision::F32 ? 1e-5f : 1e-2f;
+      float eps;
+      if (precision == CalculationsPrecision::F32) {
+        eps = 1e-5f * (env_.device().SupportsFP32RTN() ? 1.0f : 4.0f);
+      } else {
+        eps = 1e-2f * (env_.device().SupportsFP16RTN() ? 1.0f : 4.0f);
+      }
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);

@@ -41,7 +41,16 @@ from tensorflow.python.util.tf_export import tf_export
 @tf_export('mixed_precision.experimental.LossScale',
            'train.experimental.LossScale')
 class LossScale(trackable.Trackable):
-  """Loss scale base class.
+  """Base class for all loss scales.
+
+  This is an abstract base class, so you cannot instantiate it directly.
+  Instead, use one of its concrete subclasses:
+    * `tf.mixed_precision.experimental.DynamicLossScale` (recommended)
+    * `tf.mixed_precision.experimental.FixedLossScale`
+
+  It's recommended to use a loss scale with a
+  `tf.keras.mixed_precision.experimental.LossScaleOptimizer`, as its easier than
+  using a loss scale directly.
 
   Loss scaling is a process that multiplies the loss by a multiplier called the
   loss scale, and divides each gradient by the same multiplier. The pseudocode
@@ -63,6 +72,10 @@ class LossScale(trackable.Trackable):
   class returns the loss scale as a scalar float32 tensor, while method
   `update()` updates the loss scale depending on the values of the gradients.
   Optimizers use instances of this class to scale loss and gradients.
+
+  In most functions that accept a LossScale, you can also pass an int (such as
+  8) to create a `FixedLossScale` or the string `"dynamic"` to create a dynamic
+  loss scale.
   """
 
   def __init__(self):

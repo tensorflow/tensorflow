@@ -22,11 +22,11 @@ import collections
 import re
 
 from tensorflow.core.framework import function_pb2
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.framework import func_graph as func_graph_lib
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
+from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
@@ -298,6 +298,19 @@ def load_function_def_library(library, load_shared_name_suffix=None):
   functions = {}
   renamed_functions = {}
 
+  # Our graph building code currently requires functions to be registered with
+  # some tf.Graph in order to import functions using the
+  # op-name-is-function-name calling convention. To avoid leaking memory into
+  # the global default graph when executing eagerly, we create a temporary
+  # Graph.
+  #
+  # TODO(allenl): Make this Graph creation unnecessary when executing eagerly by
+  # fixing function_def_to_graph_def.
+  if ops.executing_eagerly_outside_functions():
+    graph = ops.Graph()
+  else:
+    graph = ops.get_default_graph()
+
   if load_shared_name_suffix is None:
     load_shared_name_suffix = "_load_{}".format(ops.uid())
   for fdef in _sort_function_defs(library, library_function_names):
@@ -308,18 +321,22 @@ def load_function_def_library(library, load_shared_name_suffix=None):
     # extra function definitions are a no-op since they already imported as a
     # function before and passed in explicitly (due to the topologic sort
     # import).
-    func_graph = function_def_lib.function_def_to_graph(copy)
+    with graph.as_default():
+      func_graph = function_def_lib.function_def_to_graph(copy)
     _restore_gradient_functions(func_graph, renamed_functions)
 
     for dep in _list_function_deps(fdef, library_function_names):
       functions[dep].add_to_graph(func_graph)
     func = function_lib.ConcreteFunction(func_graph)
-    func.add_to_graph()
-    if context.executing_eagerly():
-      func.add_to_graph(ops.get_default_graph())
+    func.add_to_graph(graph)
 
     functions[fdef.signature.name] = func
     renamed_functions[func.name] = func
+    if any(op.type == "TRTEngineOp" for op in func_graph.get_operations()):
+      # TODO(b/150708051): Remove this hack once TensorRT SavedModel integration
+      # is fixed. Currently it's leaking memory to maintain bug compatibility
+      # with previous behavior.
+      func.add_to_graph(ops.get_default_graph())
 
   return functions
 
@@ -394,14 +411,21 @@ def fix_node_def(node_def, functions, shared_name_suffix, debug_name):
   # TODO(b/124205571): Avoid accidental sharing and destruction of restored
   # resources. For now uniquify "shared_name" when loading functions to avoid
   # sharing.
-  if "shared_name" in node_def.attr:
-    if node_def.attr["shared_name"].s:
-      node_def.attr["shared_name"].s += compat.as_bytes(shared_name_suffix)
-    else:
-      # Blank shared_name attributes would use the node name, so we'll start
-      # with that when uniquifying.
+  # TODO: Add regression test for b/150826922.
+  op_def = op_def_registry.get(node_def.op)
+  if op_def:
+    attr = next((a for a in op_def.attr if a.name == "shared_name"), None)
+    if attr:
+      shared_name = None
+      if "shared_name" in node_def.attr and node_def.attr["shared_name"].s:
+        shared_name = node_def.attr["shared_name"].s
+      elif attr.default_value.s:
+        shared_name = compat.as_bytes(attr.default_value.s)
+      if not shared_name:
+        shared_name = compat.as_bytes(node_def.name)
+
       node_def.attr["shared_name"].s = (
-          compat.as_bytes(node_def.name) + compat.as_bytes(shared_name_suffix))
+          shared_name + compat.as_bytes(shared_name_suffix))
 
 
 def _fix_fdef(orig_fdef, functions, shared_name_suffix):

@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import sys
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
@@ -28,9 +29,14 @@ from tensorflow.python.eager import context
 from tensorflow.python.feature_column import feature_column_lib
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
+from tensorflow.python.keras import losses
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import save
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader_impl
@@ -43,7 +49,7 @@ except ImportError:
   h5py = None
 
 
-class TestSaveModel(test.TestCase):
+class TestSaveModel(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super(TestSaveModel, self).setUp()
@@ -99,7 +105,7 @@ class TestSaveModel(test.TestCase):
       save.save_model(self.model, path, save_format='tf')
       save.load_model(path)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_saving_with_dense_features(self):
     cols = [
         feature_column_lib.numeric_column('a'),
@@ -128,13 +134,14 @@ class TestSaveModel(test.TestCase):
     inputs_a = np.arange(10).reshape(10, 1)
     inputs_b = np.arange(10).reshape(10, 1).astype('str')
 
-    # Initialize tables for V1 lookup.
-    if not context.executing_eagerly():
-      self.evaluate(lookup_ops.tables_initializer())
+    with self.cached_session():
+      # Initialize tables for V1 lookup.
+      if not context.executing_eagerly():
+        self.evaluate(lookup_ops.tables_initializer())
 
-    self.assertLen(loaded_model.predict({'a': inputs_a, 'b': inputs_b}), 10)
+      self.assertLen(loaded_model.predict({'a': inputs_a, 'b': inputs_b}), 10)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_saving_with_sequence_features(self):
     cols = [
         feature_column_lib.sequence_numeric_column('a'),
@@ -182,17 +189,18 @@ class TestSaveModel(test.TestCase):
     inputs_b = sparse_tensor.SparseTensor(indices_b, values_b,
                                           (batch_size, timesteps, 1))
 
-    # Initialize tables for V1 lookup.
-    if not context.executing_eagerly():
-      self.evaluate(lookup_ops.tables_initializer())
+    with self.cached_session():
+      # Initialize tables for V1 lookup.
+      if not context.executing_eagerly():
+        self.evaluate(lookup_ops.tables_initializer())
 
-    self.assertLen(
-        loaded_model.predict({
-            'a': inputs_a,
-            'b': inputs_b
-        }, steps=1), batch_size)
+      self.assertLen(
+          loaded_model.predict({
+              'a': inputs_a,
+              'b': inputs_b
+          }, steps=1), batch_size)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_saving_h5_for_rnn_layers(self):
     # See https://github.com/tensorflow/tensorflow/issues/35731 for details.
     inputs = keras.Input([10, 91], name='train_input')
@@ -213,7 +221,7 @@ class TestSaveModel(test.TestCase):
                         rnn_layers[1].kernel.name)
     self.assertIn('rnn_cell1', rnn_layers[1].kernel.name)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_saving_optimizer_weights(self):
 
     class MyModel(keras.Model):
@@ -245,6 +253,26 @@ class TestSaveModel(test.TestCase):
     new_batch_loss = new_model.train_on_batch(x, y)
 
     self.assertAllClose(batch_loss, new_batch_loss)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_saving_model_with_custom_object(self):
+    with generic_utils.custom_object_scope():
+
+      @generic_utils.register_keras_serializable()
+      class CustomLoss(losses.MeanSquaredError):
+        pass
+
+      model = sequential.Sequential(
+          [core.Dense(units=1, input_shape=(1,))])
+      model.compile(optimizer='sgd', loss=CustomLoss())
+      model.fit(np.zeros([10, 1]), np.zeros([10, 1]))
+
+      temp_dir = self.get_temp_dir()
+      filepath = os.path.join(temp_dir, 'saving')
+      model.save(filepath)
+
+      # Make sure the model can be correctly load back.
+      _ = save.load_model(filepath, compile=True)
 
 
 if __name__ == '__main__':

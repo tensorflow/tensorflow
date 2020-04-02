@@ -815,6 +815,30 @@ ENTRY %primitive_computation_svd.38 (constant_5: f32[3,29,29], fusion.3: pred[3]
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
 }
 
+TEST_F(GpuKernelTilingTest, RowReductionCorrectShmemUsage) {
+  const char *const kHloString = R"(
+  HloModule RowReduce
+
+  Sum {
+    x.1 = f32[] parameter(0)
+    y.1 = f32[] parameter(1)
+    ROOT add.1 = f32[] add(x.1, y.1)
+  }
+
+  ENTRY reduce.1 {
+    parameter = f32[1048576] parameter(0)
+    init_value = f32[] constant(0)
+    ROOT reduce = f32[] reduce(parameter, init_value), dimensions={0}, to_apply=Sum
+  }
+  )";
+  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
+  auto expected_ir = R"(
+; CHECK: shared_cache_{{[0-9]*}} = private addrspace({{[0-9]*}}) global [1 x [32 x float]]
+  )";
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+                     /*match_optimized_ir=*/true);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

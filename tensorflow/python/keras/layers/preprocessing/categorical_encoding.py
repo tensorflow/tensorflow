@@ -292,6 +292,11 @@ class CategoricalEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     raise ValueError("Unknown output mode %s" % self._output_mode)
 
 
+class _CategoricalEncodingAccumulator(
+    collections.namedtuple("Accumulator", ["data", "per_doc_count_dict"])):
+  pass
+
+
 class _CategoricalEncodingCombiner(base_preprocessing_layer.Combiner):
   """Combiner for the CategoricalEncoding preprocessing layer.
 
@@ -307,8 +312,6 @@ class _CategoricalEncodingCombiner(base_preprocessing_layer.Combiner):
   # These are indices into the accumulator's `data` array.
   MAX_VALUE_IDX = 0
   DOC_ID_IDX = 1
-  ACCUMULATOR_CLS = collections.namedtuple("Accumulator",
-                                           ["data", "per_doc_count_dict"])
 
   def __init__(self, compute_max_element=True, compute_idf=False):
     self._compute_idf = compute_idf
@@ -452,4 +455,4 @@ class _CategoricalEncodingCombiner(base_preprocessing_layer.Combiner):
     else:
       per_doc_count_dict = None
     data = [0, 0]
-    return self.ACCUMULATOR_CLS(data, per_doc_count_dict)
+    return _CategoricalEncodingAccumulator(data, per_doc_count_dict)

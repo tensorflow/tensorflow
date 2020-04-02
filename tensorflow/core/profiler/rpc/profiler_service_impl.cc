@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
+#include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
@@ -36,7 +37,8 @@ Status CollectDataToResponse(const ProfileRequest& req,
                              ProfileResponse* response) {
   profiler::XSpace xspace;
   TF_RETURN_IF_ERROR(profiler->CollectData(&xspace));
-  profiler::ConvertXSpaceToProfileResponse(xspace, req, response);
+  TF_RETURN_IF_ERROR(
+      profiler::ConvertXSpaceToProfileResponse(xspace, req, response));
   return Status::OK();
 }
 
@@ -49,8 +51,9 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
 
   ::grpc::Status Profile(::grpc::ServerContext* ctx, const ProfileRequest* req,
                          ProfileResponse* response) override {
-    LOG(INFO) << "Received a profile request: " << req->DebugString();
-    std::unique_ptr<ProfilerSession> profiler = ProfilerSession::Create();
+    VLOG(1) << "Received a profile request: " << req->DebugString();
+    std::unique_ptr<ProfilerSession> profiler =
+        ProfilerSession::Create(GetOptions(req->opts()));
     Status status = profiler->Status();
     if (!status.ok()) {
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,
@@ -72,6 +75,19 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
     }
 
     return ::grpc::Status::OK;
+  }
+
+ private:
+  profiler::ProfilerOptions GetOptions(const tensorflow::ProfileOptions& opts) {
+    profiler::ProfilerOptions options;
+    if (opts.version()) {
+      options.host_tracer_level = opts.host_tracer_level();
+      options.device_tracer_level = opts.device_tracer_level();
+      options.enable_python_tracer = opts.python_tracer_level() > 0;
+    } else {
+      // use default options value;
+    }
+    return options;
   }
 };
 

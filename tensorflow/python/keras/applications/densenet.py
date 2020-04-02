@@ -26,9 +26,9 @@ from __future__ import print_function
 import os
 
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.util.tf_export import keras_export
@@ -51,6 +51,8 @@ DENSENET201_WEIGHT_PATH = (
 DENSENET201_WEIGHT_PATH_NO_TOP = (
     BASE_WEIGTHS_PATH +
     'densenet201_weights_tf_dim_ordering_tf_kernels_notop.h5')
+
+layers = VersionAwareLayers()
 
 
 def dense_block(x, blocks, name):
@@ -133,13 +135,19 @@ def DenseNet(
     input_shape=None,
     pooling=None,
     classes=1000,
-    classifier_activation='softmax',
-):
+    classifier_activation='softmax'):
   """Instantiates the DenseNet architecture.
+
+  Reference paper:
+  - [Densely Connected Convolutional Networks]
+    (https://arxiv.org/abs/1608.06993) (CVPR 2017 Best Paper Award)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
+
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.densenet.preprocess_input` for an example.
 
   Arguments:
     blocks: numbers of building blocks for the four dense layers.
@@ -360,12 +368,20 @@ def decode_predictions(preds, top=5):
   return imagenet_utils.decode_predictions(preds, top=top)
 
 
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TORCH)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
+
 DOC = """
+
+  Reference paper:
+  - [Densely Connected Convolutional Networks]
+    (https://arxiv.org/abs/1608.06993) (CVPR 2017 Best Paper Award)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
-  
+
   Arguments:
     include_top: whether to include the fully-connected
       layer at the top of the network.

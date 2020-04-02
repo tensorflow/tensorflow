@@ -61,6 +61,46 @@ struct AdrenoInfo {
   bool support_one_layer_texture_array = true;
 };
 
+enum class MaliGPU {
+  T604,
+  T622,
+  T624,
+  T628,
+  T658,
+  T678,
+  T720,
+  T760,
+  T820,
+  T830,
+  T860,
+  T880,
+  G31,
+  G51,
+  G71,
+  G52,
+  G72,
+  G76,
+  G57,
+  G77,
+  UNKNOWN
+};
+
+struct MaliInfo {
+  MaliInfo() = default;
+  explicit MaliInfo(const std::string& device_name);
+  MaliGPU gpu_version;
+
+  bool IsMaliT6xx() const;
+  bool IsMaliT7xx() const;
+  bool IsMaliT8xx() const;
+  bool IsMidgard() const;
+  bool IsBifrostGen1() const;
+  bool IsBifrostGen2() const;
+  bool IsBifrostGen3() const;
+  bool IsBifrost() const;
+  bool IsValhall() const;
+};
+
 struct DeviceInfo {
   DeviceInfo() = default;
   explicit DeviceInfo(cl_device_id id);
@@ -98,6 +138,7 @@ struct DeviceInfo {
   bool supports_fp16_rtn;
 
   AdrenoInfo adreno_info;
+  MaliInfo mali_info;
 };
 
 // A wrapper around opencl device id
@@ -150,7 +191,7 @@ class CLDevice {
   DeviceInfo info_;
 };
 
-Status CreateDefaultGPUDevice(CLDevice* result);
+absl::Status CreateDefaultGPUDevice(CLDevice* result);
 
 template <typename T>
 T GetDeviceInfo(cl_device_id id, cl_device_info info) {
@@ -163,12 +204,12 @@ T GetDeviceInfo(cl_device_id id, cl_device_info info) {
 }
 
 template <typename T>
-Status GetDeviceInfo(cl_device_id id, cl_device_info info, T* result) {
+absl::Status GetDeviceInfo(cl_device_id id, cl_device_info info, T* result) {
   cl_int error = clGetDeviceInfo(id, info, sizeof(T), result, nullptr);
   if (error != CL_SUCCESS) {
-    return InvalidArgumentError(CLErrorCodeToString(error));
+    return absl::InvalidArgumentError(CLErrorCodeToString(error));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cl

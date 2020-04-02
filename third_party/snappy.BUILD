@@ -27,6 +27,10 @@ cc_library(
             "-Wno-implicit-function-declaration",
         ],
     }),
+    defines = select({
+        "@org_tensorflow//tensorflow:windows": [],
+        "//conditions:default": ["HAVE_SYS_UIO_H"],
+    }),
 )
 
 genrule(

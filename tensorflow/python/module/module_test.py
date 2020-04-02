@@ -26,6 +26,7 @@ from absl.testing import parameterized
 import six
 
 from tensorflow.python import tf2
+from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values as distributed_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -249,10 +250,8 @@ class VariableTrackingTest(test_util.TensorFlowTestCase):
   def test_supports_distributed_variables(self):
     mirrored = distributed_values.MirroredVariable(
         None, [variables.Variable(1.)], variables.VariableAggregation.SUM)
-    tpu = distributed_values.TPUMirroredVariable(
-        strategy=None,
-        values=[variables.Variable(42.)],
-        aggregation=None)
+    tpu = tpu_values.TPUMirroredVariable(
+        strategy=None, values=[variables.Variable(42.)], aggregation=None)
     aggregating = distributed_values.AggregatingVariable(
         strategy=None, v=variables.Variable(1.), aggregation=None)
 

@@ -274,7 +274,7 @@ def _verify_tf_cond_vars(body_vars, orelse_vars, symbol_names):
   assert isinstance(composite_body_vars, tuple)
   assert isinstance(composite_orelse_vars, tuple)
 
-  # TODO(kkimlabs): Make this more consistent.
+  # TODO(kkb): Make this more consistent.
   # The basic outputs should always be a tuple.
   if not isinstance(basic_body_vars, tuple):
     basic_body_vars = (basic_body_vars,)
@@ -340,8 +340,11 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
   """
   if tensor_util.is_tensor(iter_):
     if tensors.is_range_tensor(iter_):
-      _tf_range_for_stmt(
-          iter_, extra_test, body, get_state, set_state, symbol_names, opts)
+      _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state,
+                         symbol_names, opts)
+    elif isinstance(iter_, ragged_tensor.RaggedTensor):
+      _tf_ragged_for_stmt(iter_, extra_test, body, get_state, set_state,
+                          symbol_names, opts)
     else:
       _known_len_tf_for_stmt(
           iter_, extra_test, body, get_state, set_state, symbol_names, opts)

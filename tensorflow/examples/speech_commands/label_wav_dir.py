@@ -64,8 +64,7 @@ def run_graph(wav_dir, labels, input_layer_name, output_layer_name,
     #   predictions per class
     for wav_path in glob.glob(wav_dir + '/*.wav'):
       if not wav_path or not tf.io.gfile.exists(wav_path):
-        tf.compat.v1.logging.fatal('Audio file does not exist %s', wav_path)
-
+        raise ValueError('Audio file does not exist at {0}'.format(wav_path))
       with open(wav_path, 'rb') as wav_file:
         wav_data = wav_file.read()
 
@@ -86,10 +85,10 @@ def run_graph(wav_dir, labels, input_layer_name, output_layer_name,
 def label_wav(wav_dir, labels, graph, input_name, output_name, how_many_labels):
   """Loads the model and labels, and runs the inference to print predictions."""
   if not labels or not tf.io.gfile.exists(labels):
-    tf.compat.v1.logging.fatal('Labels file does not exist %s', labels)
+    raise ValueError('Labels file does not exist at {0}'.format(labels))
 
   if not graph or not tf.io.gfile.exists(graph):
-    tf.compat.v1.logging.fatal('Graph file does not exist %s', graph)
+    raise ValueError('Graph file does not exist at {0}'.format(graph))
 
   labels_list = load_labels(labels)
 

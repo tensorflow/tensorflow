@@ -38,7 +38,7 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testParallelMap(self):
     dataset = dataset_ops.Dataset.range(100)
     parallel_map = "ParallelMap"
-    if compat.forward_compatible(2020, 2, 20):
+    if compat.forward_compatible(2020, 3, 6):
       parallel_map = "ParallelMapV2"
     dataset = dataset.apply(
         testing.assert_next([parallel_map, "Prefetch", "FiniteTake"]))
@@ -64,9 +64,7 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testParallelInterleave(self):
     dataset = dataset_ops.Dataset.range(100)
-    parallel_interleave = "ParallelInterleaveV2"
-    if compat.forward_compatible(2020, 2, 20):
-      parallel_interleave = "ParallelInterleaveV3"
+    parallel_interleave = "ParallelInterleaveV3"
     if compat.forward_compatible(2020, 3, 6):
       parallel_interleave = "ParallelInterleaveV4"
     dataset = dataset.apply(
@@ -81,13 +79,11 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testChainedParallelDatasets(self):
     dataset = dataset_ops.Dataset.range(100)
-    parallel_interleave = "ParallelInterleaveV2"
-    if compat.forward_compatible(2020, 2, 20):
-      parallel_interleave = "ParallelInterleaveV3"
+    parallel_interleave = "ParallelInterleaveV3"
     if compat.forward_compatible(2020, 3, 6):
       parallel_interleave = "ParallelInterleaveV4"
     parallel_map = "ParallelMap"
-    if compat.forward_compatible(2020, 2, 20):
+    if compat.forward_compatible(2020, 3, 6):
       parallel_map = "ParallelMapV2"
     dataset = dataset.apply(
         testing.assert_next([
@@ -113,6 +109,7 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.map(lambda x: x + 1).take(50)
     dataset = self._enable_autotune_buffers(dataset)
     self.assertDatasetProduces(dataset, range(1, 51))
+
 
 if __name__ == "__main__":
   test.main()

@@ -13,9 +13,15 @@ load(
     "tf_gen_op_wrapper_py",
     "tf_gpu_kernel_library",
 )
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+
+# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
@@ -235,8 +241,8 @@ tf_custom_op_py_library(
     name = "trt_ops_loader",
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_py_utils",
         ":trt_ops",
-        ":wrap_py_utils",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
@@ -547,12 +553,16 @@ cc_library(
     ]),
 )
 
-tf_py_wrap_cc(
-    name = "wrap_py_utils",
-    srcs = ["utils/py_utils.i"],
-    copts = tf_copts(),
+pybind_extension(
+    name = "_pywrap_py_utils",
+    srcs = ["utils/py_utils_wrapper.cc"],
+    link_in_framework = True,
+    module_name = "_pywrap_py_utils",
     deps = [
         ":py_utils",
-        "//third_party/python_runtime:headers",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:status",
+        "@pybind11",
     ],
 )

@@ -959,6 +959,11 @@ def _QuantizeAndDequantizeGrad(_, grad):
   return grad
 
 
+@ops.RegisterGradient("QuantizeAndDequantizeV2")
+def _QuantizeAndDequantizeV2Grad(_, grad):
+  return [grad, None, None]
+
+
 @ops.RegisterGradient("QuantizeAndDequantizeV3")
 def _QuantizeAndDequantizeV3Grad(_, grad):
   # Only propagate the gradient for the unquantized input.

@@ -48,7 +48,7 @@ namespace tensorflow {
 namespace {
 
 NodeDef StripTensorDataFromNodeDef(OpKernelConstruction* ctx) {
-#ifndef __ANDROID__
+#ifndef TENSORFLOW_LITE_PROTOS
   DCHECK_EQ(NodeDef::descriptor()->field_count(), 6)
       << "The NodeDef format has changed, and the attr-stripping code may need "
       << "to be updated.";
@@ -73,7 +73,7 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
     : OpKernel(ctx, StripTensorDataFromNodeDef(ctx), false),
       tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
-  MEMDEBUG_CACHE_OP(ctx->def().name().c_str());
+  auto op_annotation = ScopedMemoryDebugAnnotation(name_view().data());
   OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
   OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
                           *proto, AllocatorAttributes(), &tensor_));

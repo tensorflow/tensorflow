@@ -71,7 +71,7 @@ class CreateTRTResourceHandle : public OpKernel {
   string resource_name_;
   Tensor handle_;
   mutex mutex_;
-  bool initialized_ GUARDED_BY(mutex_) = false;
+  bool initialized_ TF_GUARDED_BY(mutex_) = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CreateTRTResourceHandle);
 };
@@ -157,7 +157,7 @@ class InitializeTRTResource : public OpKernel {
       }
       resource->cache_.emplace(engine_input_shapes,
                                absl::make_unique<EngineContext>(
-                                   std::move(engine), std::move(ctx_vec[0])));
+                                   std::move(engine), std::move(ctx_vec)));
       ++num_loaded_engine;
     } while (1);
     VLOG(1) << "Loaded " << num_loaded_engine << " TRT engines for op "

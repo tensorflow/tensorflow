@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
@@ -168,6 +168,18 @@ std::string GetDumpDirFromEnvVar() {
     return "";
   }
   return result;
+}
+
+std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
+                                llvm::StringRef dirname) {
+  std::unique_ptr<llvm::raw_ostream> os;
+  std::string filepath;
+  Status result = CreateFileForDumping(name, &os, &filepath, dirname);
+  if (!result.ok()) return result.error_message();
+
+  (*os) << content;
+  LOG(INFO) << "Outputted requested string to '" << filepath << "'";
+  return filepath;
 }
 
 }  // namespace tensorflow

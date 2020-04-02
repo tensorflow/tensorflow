@@ -73,7 +73,8 @@ flags.DEFINE_bool("search_hints", True,
                   "Include meta-data search hints at the top of each file.")
 
 flags.DEFINE_string(
-    "site_path", "", "The prefix ({site-path}/api_docs/python/...) used in the "
+    "site_path", "",
+    "The path prefix (up to `.../api_docs/python`) used in the "
     "`_toc.yaml` and `_redirects.yaml` files")
 
 _PRIVATE_MAP = {
@@ -115,12 +116,14 @@ def generate_raw_ops_doc():
       has_gradient = "\N{HEAVY CHECK MARK}\N{VARIATION SELECTOR-16}"
     except LookupError:
       has_gradient = "\N{CROSS MARK}"
-    link = (
-        '<a id={op_name} href="{FLAGS.site_path}/api_docs/python/tf/raw_ops">'
-        '{op_name}</a>').format(op_name=op_name, FLAGS=FLAGS)
-    parts.append(
-        "| {link} | {has_gradient} |".format(link=link,
-                                             has_gradient=has_gradient))
+
+    if not op_name.startswith("_"):
+      path = pathlib.Path("/") / FLAGS.site_path / "tf/raw_ops" / op_name
+      path = path.with_suffix(".md")
+      link = ('<a id={op_name} href="{path}">{op_name}</a>').format(
+          op_name=op_name, path=str(path))
+      parts.append("| {link} | {has_gradient} |".format(
+          link=link, has_gradient=has_gradient))
 
   return "\n".join(parts)
 
@@ -180,6 +183,11 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
   """
   # The custom page will be used for raw_ops.md not the one generated above.
   doc_controls.set_custom_page_content(tf.raw_ops, generate_raw_ops_doc())
+
+  # Hide raw_ops from search.
+  for name, obj in tf_inspect.getmembers(tf.raw_ops):
+    if not name.startswith("_"):
+      doc_controls.hide_from_search(obj)
 
   _hide_layer_and_module_methods()
 

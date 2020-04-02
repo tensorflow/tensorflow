@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <atomic>
 #include <cstring>
+#include <unordered_map>
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
@@ -58,12 +59,16 @@ namespace {
 // This occurs when a PyFunc kernel is run. This behavior makes it safe in that
 // case, as well as the case where python decides to reuse the underlying
 // C++ thread in 2 python threads case.
-thread_local std::map<TFE_Context*, std::unique_ptr<TFE_Op>>
+struct OpDeleter {
+  void operator()(TFE_Op* op) const { TFE_DeleteOp(op); }
+};
+thread_local std::unordered_map<TFE_Context*,
+                                std::unique_ptr<TFE_Op, OpDeleter>>
     thread_local_eager_operation_map;                             // NOLINT
 thread_local std::unique_ptr<TF_Status> thread_local_tf_status =  // NOLINT
     nullptr;
 
-std::unique_ptr<TFE_Op> ReleaseThreadLocalOp(TFE_Context* ctx) {
+std::unique_ptr<TFE_Op, OpDeleter> ReleaseThreadLocalOp(TFE_Context* ctx) {
   auto it = thread_local_eager_operation_map.find(ctx);
   if (it == thread_local_eager_operation_map.end()) {
     return nullptr;
@@ -73,9 +78,9 @@ std::unique_ptr<TFE_Op> ReleaseThreadLocalOp(TFE_Context* ctx) {
 
 TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
               const char* raw_device_name, TF_Status* status) {
-  std::unique_ptr<TFE_Op> op = ReleaseThreadLocalOp(ctx);
+  auto op = ReleaseThreadLocalOp(ctx);
   if (!op) {
-    op.reset(new TFE_Op{std::make_unique<tensorflow::OperationInterface>(ctx)});
+    op.reset(new TFE_Op{ctx->context->CreateOperation()});
   }
   status->status = op->operation->Reset(op_or_function_name, raw_device_name);
   if (!status->status.ok()) {
@@ -114,17 +119,19 @@ using AttrToInputsMap =
     tensorflow::gtl::FlatMap<string,
                              tensorflow::gtl::InlinedVector<InputInfo, 4>>;
 
-tensorflow::mutex all_attr_to_input_maps_lock(tensorflow::LINKER_INITIALIZED);
 tensorflow::gtl::FlatMap<string, AttrToInputsMap*>* GetAllAttrToInputsMaps() {
   static auto* all_attr_to_input_maps =
       new tensorflow::gtl::FlatMap<string, AttrToInputsMap*>;
   return all_attr_to_input_maps;
 }
 
-AttrToInputsMap* GetAttrToInputsMap(const tensorflow::OpDef& op_def) {
-  tensorflow::mutex_lock l(all_attr_to_input_maps_lock);
+// This function doesn't use a lock, since we depend on the GIL directly.
+AttrToInputsMap* GetAttrToInputsMapHoldingGIL(const tensorflow::OpDef& op_def) {
+#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 4
+  DCHECK(PyGILState_Check())
+      << "This function needs to hold the GIL when called.";
+#endif
   auto* all_attr_to_input_maps = GetAllAttrToInputsMaps();
-
   auto* output =
       tensorflow::gtl::FindPtrOrNull(*all_attr_to_input_maps, op_def.name());
   if (output != nullptr) {
@@ -150,8 +157,7 @@ AttrToInputsMap* GetAttrToInputsMap(const tensorflow::OpDef& op_def) {
   return retval;
 }
 
-tensorflow::mutex all_attr_to_defaults_maps_lock(
-    tensorflow::LINKER_INITIALIZED);
+// This function doesn't use a lock, since we depend on the GIL directly.
 tensorflow::gtl::FlatMap<
     string, tensorflow::gtl::FlatMap<string, tensorflow::DataType>*>*
 GetAllAttrToDefaultsMaps() {
@@ -160,11 +166,13 @@ GetAllAttrToDefaultsMaps() {
   return all_attr_to_defaults_maps;
 }
 
-tensorflow::gtl::FlatMap<string, tensorflow::DataType>* GetAttrToDefaultsMap(
-    const tensorflow::OpDef& op_def) {
-  tensorflow::mutex_lock l(all_attr_to_defaults_maps_lock);
+tensorflow::gtl::FlatMap<string, tensorflow::DataType>*
+GetAttrToDefaultsMapHoldingGIL(const tensorflow::OpDef& op_def) {
+#if PY_MAJOR_VERSION >= 3 && PY_MINOR_VERSION >= 4
+  DCHECK(PyGILState_Check())
+      << "This function needs to hold the GIL when called.";
+#endif
   auto* all_attr_to_defaults_maps = GetAllAttrToDefaultsMaps();
-
   auto* output =
       tensorflow::gtl::FindPtrOrNull(*all_attr_to_defaults_maps, op_def.name());
   if (output != nullptr) {
@@ -795,7 +803,7 @@ PyObject* GetPythonObjectFromInt(int num) {
 
 // Python subclass of Exception that is created on not ok Status.
 tensorflow::mutex exception_class_mutex(tensorflow::LINKER_INITIALIZED);
-PyObject* exception_class GUARDED_BY(exception_class_mutex) = nullptr;
+PyObject* exception_class TF_GUARDED_BY(exception_class_mutex) = nullptr;
 
 // Python subclass of Exception that is created to signal fallback.
 PyObject* fallback_exception_class = nullptr;
@@ -1015,7 +1023,7 @@ PyObject* TFE_Py_UID() { return PyLong_FromLongLong(get_uid()); }
 void TFE_DeleteContextCapsule(PyObject* context) {
   TFE_Context* ctx =
       reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(context, nullptr));
-  std::unique_ptr<TFE_Op> op = ReleaseThreadLocalOp(ctx);
+  auto op = ReleaseThreadLocalOp(ctx);
   op.reset();
   TFE_DeleteContext(ctx);
 }
@@ -1440,7 +1448,7 @@ class GradientTape
   bool watch_accessed_variables_;
   tensorflow::mutex watched_variables_mu_;
   std::set<IdAndVariable, CompareById> watched_variables_
-      GUARDED_BY(watched_variables_mu_);
+      TF_GUARDED_BY(watched_variables_mu_);
 };
 
 typedef tensorflow::eager::ForwardAccumulator<PyObject, PyBackwardFunction,
@@ -1912,12 +1920,13 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
       return PyTapeTensor(id, dtype, tensor);
     }
 
-    tensorflow::Status status;
     tensorflow::TensorShape tensor_shape;
-    int num_dims = t->handle->NumDims(&status);
+    int num_dims;
+    tensorflow::Status status = t->handle->NumDims(&num_dims);
     if (status.ok()) {
       for (int i = 0; i < num_dims; ++i) {
-        tensorflow::int64 dim_size = t->handle->Dim(i, &status);
+        tensorflow::int64 dim_size;
+        status = t->handle->Dim(i, &dim_size);
         if (!status.ok()) break;
         tensor_shape.AddDim(dim_size);
       }
@@ -3414,8 +3423,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     return nullptr;
   }
 
-  op_exec_info.attr_to_inputs_map = GetAttrToInputsMap(*op_def);
-  op_exec_info.default_dtypes = GetAttrToDefaultsMap(*op_def);
+  op_exec_info.attr_to_inputs_map = GetAttrToInputsMapHoldingGIL(*op_def);
+  op_exec_info.default_dtypes = GetAttrToDefaultsMapHoldingGIL(*op_def);
 
   // Mapping of attr name to size - used to calculate the number of values
   // to be expected by the TFE_Execute run.
@@ -3738,15 +3747,16 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
                     static_cast<tensorflow::DataType>(t->handle->DataType()));
     absl::StrAppend(&result->str, kShape);
 
-    tensorflow::Status status;
-    int num_dims = t->handle->NumDims(&status);
+    int num_dims;
+    tensorflow::Status status = t->handle->NumDims(&num_dims);
     if (!status.ok()) return status;
 
     if (include_tensor_ranks_only) {
       absl::StrAppend(&result->str, num_dims);
     } else {
       for (int i = 0; i < num_dims; ++i) {
-        tensorflow::int64 dim_size = t->handle->Dim(i, &status);
+        tensorflow::int64 dim_size;
+        status = t->handle->Dim(i, &dim_size);
         if (!status.ok()) return status;
         absl::StrAppend(&result->str, dim_size, kShapeDelim);
       }
@@ -3924,8 +3934,6 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
 // `include_tensor_ranks_only` allows caching on arguments excluding shape info,
 // so that a slow path using relaxed shape can rely on a cache key that excludes
 // shapes.
-//
-// TODO(nareshmodi): Add support for sparse tensors.
 PyObject* TFE_Py_EncodeArg(PyObject* arg, bool include_tensor_ranks_only) {
   EncodeResult result;
   const auto status =

@@ -56,6 +56,8 @@ cc_library(
         "aws-cpp-sdk-core/source/utils/crypto/factory/**/*.cpp",
         "aws-cpp-sdk-s3/include/**/*.h",
         "aws-cpp-sdk-s3/source/**/*.cpp",
+        "aws-cpp-sdk-transfer/include/**/*.h",
+        "aws-cpp-sdk-transfer/source/**/*.cpp",
         "aws-cpp-sdk-core/source/monitoring/*.cpp",
         "aws-cpp-sdk-core/source/net/linux-shared/*.cpp",
         "aws-cpp-sdk-core/source/utils/memory/*.cpp",
@@ -97,6 +99,7 @@ cc_library(
     includes = [
         "aws-cpp-sdk-core/include/",
         "aws-cpp-sdk-s3/include/",
+        "aws-cpp-sdk-transfer/include/",
     ],
     deps = [
         "@aws-c-common",

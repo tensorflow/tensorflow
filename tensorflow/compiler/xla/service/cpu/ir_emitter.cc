@@ -1416,6 +1416,7 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
   bool is_datatype_supported = [&] {
     // TODO(cheshire): Fix duplication wrt. cpu_runtime
     switch (datatype) {
+      case PRED:
       case S8:
       case U8:
       case S32:

@@ -90,6 +90,8 @@ std::string ToString(enum OperationType op) {
       return "depthwise_convolution";
     case OperationType::DIV:
       return "div";
+    case OperationType::EXP:
+      return "exp";
     case OperationType::FULLY_CONNECTED:
       return "fully_connected";
     case OperationType::HARD_SWISH:
@@ -116,6 +118,8 @@ std::string ToString(enum OperationType op) {
       return "pow";
     case OperationType::PRELU:
       return "prelu";
+    case OperationType::QUANTIZE_AND_DEQUANTIZE:
+      return "quantize_and_dequantize";
     case OperationType::RELU:
       return "relu";
     case OperationType::RESHAPE:
@@ -167,6 +171,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"cos", OperationType::COS},
           {"depthwise_convolution", OperationType::DEPTHWISE_CONVOLUTION},
           {"div", OperationType::DIV},
+          {"exp", OperationType::EXP},
           {"fully_connected", OperationType::FULLY_CONNECTED},
           {"hard_swish", OperationType::HARD_SWISH},
           {"log", OperationType::LOG},
@@ -180,6 +185,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"pooling_2d", OperationType::POOLING_2D},
           {"pow", OperationType::POW},
           {"prelu", OperationType::PRELU},
+          {"quantize_and_dequantize", OperationType::QUANTIZE_AND_DEQUANTIZE},
           {"relu", OperationType::RELU},
           {"resize", OperationType::RESIZE},
           {"reshape", OperationType::RESHAPE},
@@ -513,14 +519,15 @@ BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr) {
   return BHWC(b, h, w, c);
 }
 
-Status CalculateOutputShape(const std::vector<BHWC>& input,
-                            const ConcatAttributes& attr, BHWC* output_shape) {
+absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
+                                  const ConcatAttributes& attr,
+                                  BHWC* output_shape) {
   BHWC new_shape = input[0];
   switch (attr.axis) {
     case Axis::CHANNELS:
       for (int i = 1; i < input.size(); i++) {
         if (input[i].h != new_shape.h || input[i].w != new_shape.w) {
-          return InvalidArgumentError(
+          return absl::InvalidArgumentError(
               "Height and Width must be the same when concatenating "
               "by channels axis");
         }
@@ -530,7 +537,7 @@ Status CalculateOutputShape(const std::vector<BHWC>& input,
     case Axis::HEIGHT:
       for (int i = 1; i < input.size(); i++) {
         if (input[i].w != new_shape.w || input[i].c != new_shape.c) {
-          return InvalidArgumentError(
+          return absl::InvalidArgumentError(
               "Channels and Width must be the same when concatenating "
               "by height axis");
         }
@@ -540,7 +547,7 @@ Status CalculateOutputShape(const std::vector<BHWC>& input,
     case Axis::WIDTH:
       for (int i = 1; i < input.size(); i++) {
         if (input[i].h != new_shape.h || input[i].c != new_shape.c) {
-          return InvalidArgumentError(
+          return absl::InvalidArgumentError(
               "Height and Channels must be the same when concatenating "
               "by width axis");
         }
@@ -548,11 +555,11 @@ Status CalculateOutputShape(const std::vector<BHWC>& input,
       }
       break;
     default:
-      return InvalidArgumentError("Invalid axis");
+      return absl::InvalidArgumentError("Invalid axis");
       break;
   }
   *output_shape = new_shape;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 Padding2D CalculateSamePadding(const BHWC& input,

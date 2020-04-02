@@ -1,0 +1,16 @@
+op {
+  name: "MakeDataServiceIterator"
+  input_arg {
+    name: "dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "epoch_id"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
+}

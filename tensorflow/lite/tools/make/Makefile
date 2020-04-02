@@ -51,14 +51,14 @@ LIBS := \
 -lstdc++ \
 -lpthread \
 -lm \
--lz
+-lz \
+-ldl
 
 # There are no rules for compiling objects for the host system (since we don't
 # generate things like the protobuf compiler that require that), so all of
 # these settings are for the target compiler.
-CXXFLAGS := -O3 -DNDEBUG -fPIC
-CXXFLAGS += $(EXTRA_CXXFLAGS)
-CFLAGS := ${CXXFLAGS}
+CFLAGS := -O3 -DNDEBUG -fPIC
+CXXFLAGS := $(CFLAGS) --std=c++11 $(EXTRA_CXXFLAGS)
 LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
 TARGET_TOOLCHAIN_PREFIX :=
@@ -66,10 +66,6 @@ CC_PREFIX :=
 
 ifeq ($(HOST_OS),windows)
 CXXFLAGS += -fext-numeric-literals -D__LITTLE_ENDIAN__
-endif
-
-ifeq ($(TARGET),ios)
-CXXFLAGS += --std=c++11
 endif
 
 # Auto-detect optimization opportunity if building natively.
@@ -104,7 +100,8 @@ MINIMAL_SRCS := \
 # build files.
 
 PROFILER_SRCS := \
-  tensorflow/lite/profiling/memory_info.cc \
+	tensorflow/lite/profiling/memory_info.cc \
+	tensorflow/lite/profiling/platform_profiler.cc \
 	tensorflow/lite/profiling/time.cc
 
 PROFILE_SUMMARIZER_SRCS := \
@@ -121,8 +118,8 @@ $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
-$(wildcard tensorflow/lite/experimental/resource_variable/*.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/*.cc)
+$(wildcard tensorflow/lite/experimental/resource/*.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/ruy/*.cc)
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
 $(wildcard tensorflow/lite/kernels/*.cc) \
@@ -137,7 +134,7 @@ tensorflow/lite/tools/make/downloads/fft2d/fftsg2d.c \
 tensorflow/lite/tools/make/downloads/flatbuffers/src/util.cpp
 CORE_CC_ALL_SRCS += \
 	$(shell find tensorflow/lite/tools/make/downloads/absl/absl/ \
-	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v synchronization | grep -v debugging | grep -v hash | grep -v flags)
+	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v synchronization | grep -v debugging | grep -v hash | grep -v flags | grep -v random)
 endif
 # Remove any duplicates.
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
@@ -148,10 +145,15 @@ $(wildcard tensorflow/lite/*/*/benchmark.cc) \
 $(wildcard tensorflow/lite/*/*/example*.cc) \
 $(wildcard tensorflow/lite/*/*/test*.cc) \
 $(wildcard tensorflow/lite/*/*/*test.cc) \
+$(wildcard tensorflow/lite/*/*/*tool.cc) \
+$(wildcard tensorflow/lite/*/*/*/benchmark.cc) \
+$(wildcard tensorflow/lite/*/*/*/example*.cc) \
+$(wildcard tensorflow/lite/*/*/*/test*.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
+$(wildcard tensorflow/lite/*/*/*/*tool.cc) \
 $(wildcard tensorflow/lite/kernels/*test_main.cc) \
 $(wildcard tensorflow/lite/kernels/*test_util*.cc) \
-tensorflow/lite/experimental/ruy/tune_tool.cc \
+tensorflow/lite/tflite_with_xnnpack.cc \
 $(MINIMAL_SRCS)
 
 BUILD_WITH_MMAP ?= true
@@ -174,6 +176,9 @@ endif
 ifeq ($(BUILD_WITH_RUY),true)
   CXXFLAGS += -DTFLITE_WITH_RUY
 endif
+
+# Not to include XNNPACK.
+CXXFLAGS += -DTFLITE_WITHOUT_XNNPACK
 
 BUILD_WITH_NNAPI ?= false
 ifeq ($(BUILD_WITH_NNAPI),true)
@@ -215,7 +220,12 @@ BENCHMARK_LIB_SRCS := $(filter-out \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*_test.cc) \
 	$(BENCHMARK_MAIN_SRC) \
 	$(BENCHMARK_PERF_OPTIONS_SRC) \
-	$(BENCHMARK_SRCS_DIR)/benchmark_plus_flex_main.cc, \
+	$(BENCHMARK_SRCS_DIR)/benchmark_plus_flex_main.cc \
+	$(BENCHMARK_SRCS_DIR)/external_delegate_provider.cc \
+	$(BENCHMARK_SRCS_DIR)/gpu_delegate_provider.cc \
+	$(BENCHMARK_SRCS_DIR)/hexagon_delegate_provider.cc \
+	$(BENCHMARK_SRCS_DIR)/nnapi_delegate_provider.cc \
+	$(BENCHMARK_SRCS_DIR)/xnnpack_delegate_provider.cc, \
 	$(BENCHMARK_ALL_SRCS))
 
 # These target-specific makefiles should modify or replace options like
@@ -316,7 +326,7 @@ $(BENCHMARK_BINARY) : $(BENCHMARK_MAIN_OBJ) $(BENCHMARK_LIB)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
 	-o $(BENCHMARK_BINARY) $(BENCHMARK_MAIN_OBJ) \
-	$(LIBFLAGS) $(BENCHMARK_LIB) $(LDFLAGS) $(LIBS)
+	$(LIBFLAGS) -Wl,--whole-archive $(BENCHMARK_LIB) -Wl,--no-whole-archive $(LDFLAGS) $(LIBS)
 
 $(BENCHMARK_PERF_OPTIONS_BINARY) : $(BENCHMARK_PERF_OPTIONS_OBJ) $(BENCHMARK_LIB)
 	@mkdir -p $(dir $@)

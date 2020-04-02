@@ -11,11 +11,13 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
 )
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -52,6 +54,22 @@ tf_proto_library_cc(
     srcs = ["backend_configs.proto"],
     cc_api_version = 2,
     protodeps = ["//tensorflow/compiler/xla:xla_data_proto"],
+)
+
+cc_library(
+    name = "gpu_executable_run_options",
+    srcs = ["gpu_executable_run_options.cc"],
+    hdrs = ["gpu_executable_run_options.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 cc_library(
@@ -140,6 +158,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_reachability",
+        "//tensorflow/core/platform:random",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
@@ -385,6 +404,7 @@ cc_library(
     hdrs = ["thunk.h"],
     deps = [
         ":buffer_allocations",
+        ":gpu_executable_run_options",
         ":hlo_execution_profiler",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla/service:hlo",
@@ -402,9 +422,24 @@ filegroup(
     ),
 )
 
+# use alias since nested select statements not possible
+cc_library(
+    name = "empty",
+)
+
+alias(
+    name = "virtual_nccl",
+    actual = if_cuda("@local_config_nccl//:nccl", ":empty"),
+)
+
+alias(
+    name = "virtual_rccl",
+    actual = if_rocm("@local_config_rocm//rocm:rccl", ":empty"),
+)
+
 tf_cuda_library(
     name = "nccl_all_reduce_thunk",
-    srcs = if_cuda(
+    srcs = if_cuda_or_rocm(
         [":nccl_all_reduce_thunk_src"],
         ["dummy_all_reduce_thunk.cc"],
     ),
@@ -413,6 +448,7 @@ tf_cuda_library(
         ":buffer_allocations",
         ":hlo_execution_profiler",
         ":thunk",
+        ":gpu_executable_run_options",
         "@com_google_absl//absl/base:core_headers",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla:refcounting_hash_map",
@@ -424,10 +460,15 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+    ] + if_cuda([
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
-    ] + if_nccl([
-        "@local_config_nccl//:nccl",
+    ]) + if_rocm([
+        "//tensorflow/stream_executor/rocm:rocm_activation",
+        "//tensorflow/stream_executor/rocm:rocm_gpu_executor",
+    ]) + if_nccl([
+        ":virtual_nccl",
+        ":virtual_rccl",
     ]),
 )
 
@@ -522,6 +563,7 @@ cc_library(
         ":cudnn_batchnorm_runner",
         ":gpu_conv_runner",
         ":gpu_debug_info_manager",
+        ":gpu_executable_run_options",
         ":gpu_types",
         ":hlo_execution_profiler",
         ":infeed_manager",
@@ -601,6 +643,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:device_description",
         "@com_google_absl//absl/algorithm:container",
         "@llvm-project//llvm:core",
     ],
@@ -1105,6 +1148,7 @@ cc_library(
         ":cudnn_batchnorm_rewriter",
         ":cudnn_pad_for_convolutions",
         ":fusion_merger",
+        ":gemm_rewriter",
         ":gpu_constants",
         ":gpu_conv_algorithm_picker",
         ":gpu_conv_padding_legalization",
@@ -1121,9 +1165,13 @@ cc_library(
         ":ir_emitter",
         ":multi_output_fusion",
         ":partition_assignment",
+        ":reduction_degenerate_dim_remover",
+        ":reduction_dimension_grouper",
+        ":reduction_layout_normalizer",
         ":stream_assignment",
         ":stream_executor_util",
         ":target_constants",
+        ":tree_reduction_rewriter",
         ":variadic_op_splitter",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -1213,19 +1261,13 @@ cc_library(
         ":cudnn_pad_for_convolutions",
         ":cusolver_rewriter",
         ":gemm_algorithm_picker",
-        ":gemm_rewriter",
         ":gpu_compiler",
-        ":gpu_conv_algorithm_picker",
         ":gpu_conv_padding_legalization",
         ":gpu_conv_rewriter",
         ":gpu_layout_assignment",
         ":ir_emission_utils",
-        ":reduction_degenerate_dim_remover",
-        ":reduction_dimension_grouper",
-        ":reduction_layout_normalizer",
         ":stream_executor_util",
         ":target_constants",
-        ":tree_reduction_rewriter",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/types:optional",

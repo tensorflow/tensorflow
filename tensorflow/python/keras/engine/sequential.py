@@ -23,7 +23,6 @@ import copy
 
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_utils
@@ -36,6 +35,7 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -116,6 +116,7 @@ class Sequential(training.Model):
     super(Sequential, self).__init__(name=name, autocast=False)
     self.supports_masking = True
     self._compute_output_and_mask_jointly = True
+    self._auto_track_sub_layers = False
 
     self._layer_call_argspecs = {}
 
@@ -182,8 +183,7 @@ class Sequential(training.Model):
     set_inputs = False
     if not self._layers:
       if isinstance(layer, input_layer.InputLayer):
-        # Corner case where the user passes an InputLayer layer via `add`.
-        assert len(nest.flatten(layer._inbound_nodes[-1].output_tensors)) == 1
+        # Case where the user passes an Input or InputLayer layer via `add`.
         set_inputs = True
       else:
         batch_shape, dtype = training_utils.get_input_shape_and_dtype(layer)
@@ -198,13 +198,12 @@ class Sequential(training.Model):
           set_inputs = True
 
       if set_inputs:
-        # If an input layer (placeholder) is available.
-        if len(nest.flatten(layer._inbound_nodes[-1].output_tensors)) != 1:
+        outputs = nest.flatten(layer._inbound_nodes[-1].output_tensors)
+        if len(outputs) != 1:
           raise ValueError(SINGLE_LAYER_OUTPUT_ERROR_MSG)
-        self.outputs = [
-            nest.flatten(layer._inbound_nodes[-1].output_tensors)[0]
-        ]
+        self.outputs = outputs
         self.inputs = layer_utils.get_source_inputs(self.outputs[0])
+        self.built = True
 
     elif self.outputs:
       # If the model is being built continuously on top of an input layer:
@@ -213,10 +212,6 @@ class Sequential(training.Model):
       if len(nest.flatten(output_tensor)) != 1:
         raise ValueError(SINGLE_LAYER_OUTPUT_ERROR_MSG)
       self.outputs = [output_tensor]
-
-    if self.outputs:
-      # True if set_inputs or self._is_graph_network or if adding a layer
-      # to an already built deferred seq model.
       self.built = True
 
     if set_inputs or self._is_graph_network:
@@ -253,7 +248,7 @@ class Sequential(training.Model):
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
       self.built = True
 
-  @base_layer_utils.default
+  @generic_utils.default
   def build(self, input_shape=None):
     if self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
@@ -266,14 +261,13 @@ class Sequential(training.Model):
     self.built = True
 
   def call(self, inputs, training=None, mask=None):  # pylint: disable=redefined-outer-name
-    if self._build_input_shape is None:
-      input_shapes = nest.map_structure(_get_shape_tuple, inputs)
-      self._build_input_shape = input_shapes
-
     if self._is_graph_network:
       if not self.built:
         self._init_graph_network(self.inputs, self.outputs, name=self.name)
       return super(Sequential, self).call(inputs, training=training, mask=mask)
+
+    if self._build_input_shape is None:
+      self._build_input_shape = nest.map_structure(_get_shape_tuple, inputs)
 
     outputs = inputs  # handle the corner case where self.layers is empty
     for layer in self.layers:
@@ -310,6 +304,7 @@ class Sequential(training.Model):
     outputs = self.call(inputs, mask=mask)
     return outputs._keras_mask
 
+  @deprecated('2021-01-01', 'Please use `model.predict()` instead.')
   def predict_proba(self, x, batch_size=32, verbose=0):
     """Generates class probability predictions for the input samples.
 
@@ -332,6 +327,14 @@ class Sequential(training.Model):
                       '(like softmax or sigmoid would).')
     return preds
 
+  @deprecated('2021-01-01',
+              'Please use instead:'
+              '* `np.argmax(model.predict(x), axis=-1)`, '
+              '  if your model does multi-class classification '
+              '  (e.g. if it uses a `softmax` last-layer activation).'
+              '* `(model.predict(x) > 0.5).astype("int32")`, '
+              '  if your model does binary classification '
+              '  (e.g. if it uses a `sigmoid` last-layer activation).')
   def predict_classes(self, x, batch_size=32, verbose=0):
     """Generate class predictions for the input samples.
 
@@ -354,21 +357,16 @@ class Sequential(training.Model):
 
   def get_config(self):
     layer_configs = []
-    for layer in self.layers:
+    for layer in super(Sequential, self).layers:
+      # `super().layers` include the InputLayer if available (it is filtered out
+      # of `self.layers`). Note that `self._layers` is managed by the
+      # tracking infrastructure and should not be used.
       layer_configs.append(generic_utils.serialize_keras_object(layer))
-    # When constructed using an `InputLayer` the first non-input layer may not
-    # have the shape information to reconstruct `Sequential` as a graph network.
-    if (self._is_graph_network and layer_configs and
-        'batch_input_shape' not in layer_configs[0]['config'] and
-        isinstance(self._layers[0], input_layer.InputLayer)):
-      batch_input_shape = self._layers[0]._batch_input_shape
-      layer_configs[0]['config']['batch_input_shape'] = batch_input_shape
-
     config = {
         'name': self.name,
         'layers': copy.deepcopy(layer_configs)
     }
-    if self._build_input_shape is not None:
+    if not self._is_graph_network and self._build_input_shape is not None:
       config['build_input_shape'] = self._build_input_shape
     return config
 

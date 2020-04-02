@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_DEPTHWISE_CONV_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_DEPTHWISE_CONV_H_
 
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
@@ -1441,37 +1441,37 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
     // For the current (filter_x, filter_y) point in the filter,
     // compute the boundaries of the corresponding output row segment.
-    int out_x_loop_start_unclampled = 0;
-    int out_x_loop_end_unclampled = 0;
+    int out_x_loop_start_unclamped = 0;
+    int out_x_loop_end_unclamped = 0;
     if (kAllowStrided) {
       if (stride == 2) {
-        out_x_loop_start_unclampled =
+        out_x_loop_start_unclamped =
             (pad_width - dilation_factor * filter_x + 1) / 2;
-        out_x_loop_end_unclampled =
+        out_x_loop_end_unclamped =
             (pad_width + input_width - dilation_factor * filter_x + 1) / 2;
       } else if (stride == 4) {
-        out_x_loop_start_unclampled =
+        out_x_loop_start_unclamped =
             (pad_width - dilation_factor * filter_x + 3) / 4;
-        out_x_loop_end_unclampled =
+        out_x_loop_end_unclamped =
             (pad_width + input_width - dilation_factor * filter_x + 3) / 4;
       } else {
-        out_x_loop_start_unclampled =
+        out_x_loop_start_unclamped =
             (pad_width - dilation_factor * filter_x + stride - 1) / stride;
-        out_x_loop_end_unclampled = (pad_width + input_width -
-                                     dilation_factor * filter_x + stride - 1) /
-                                    stride;
+        out_x_loop_end_unclamped = (pad_width + input_width -
+                                    dilation_factor * filter_x + stride - 1) /
+                                   stride;
       }
     } else {
-      out_x_loop_start_unclampled = pad_width - dilation_factor * filter_x;
-      out_x_loop_end_unclampled =
+      out_x_loop_start_unclamped = pad_width - dilation_factor * filter_x;
+      out_x_loop_end_unclamped =
           pad_width + input_width - dilation_factor * filter_x;
     }
     // The kernel will have to iterate on the segment of the
     // output row that starts at out_x_loop_start and out_x_loop_end.
     const int out_x_loop_start =
-        std::max(out_x_buffer_start, out_x_loop_start_unclampled);
+        std::max(out_x_buffer_start, out_x_loop_start_unclamped);
     const int out_x_loop_end =
-        std::min(out_x_buffer_end, out_x_loop_end_unclampled);
+        std::min(out_x_buffer_end, out_x_loop_end_unclamped);
 
     int32* acc_buffer_ptr =
         acc_buffer + (out_x_loop_start - out_x_buffer_start) * output_depth;
@@ -1814,8 +1814,9 @@ inline void DepthwiseConvWithRounding(
   const auto ruy_paths = ruy_context != nullptr
                              ? ruy_context->GetRuntimeEnabledPaths()
                              : ruy::Path::kNone;
+  // TODO(b/150208140): Re-enable once erroneous activation in test is resolved.
   const bool has_dot_product_instructions =
-      (ruy_paths & ruy::Path::kNeonDotprod) != ruy::Path::kNone;
+      false && (ruy_paths & ruy::Path::kNeonDotprod) != ruy::Path::kNone;
 
   // Dispatch to dot-product 3x3 kernels when supported.
   if (has_dot_product_instructions) {
@@ -1823,13 +1824,16 @@ inline void DepthwiseConvWithRounding(
     DotProduct3x3KernelType kernel_type =
         optimized_ops::depthwise_conv::CategorizeDotProductKernel<
             optimized_ops::depthwise_conv::QuantizationType::kPerChannelInt8>(
-            input_shape, filter_shape, output_shape, params);
+            input_shape, filter_shape, output_shape, params, output_shift);
     if (kernel_type != DotProduct3x3KernelType::kNone) {
       ruy::profiler::ScopeLabel specialized_label(
           "DepthwiseConvInt8/8bit/3x3XDotProduct");
+      DepthwiseParams params_copy = params;
+      params_copy.output_shift_per_channel = output_shift;
+      params_copy.output_multiplier_per_channel = output_multiplier;
       optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3PerChannel<
           DepthwiseConvImplementation::kUseNeon3x3DotProduct>(
-          params, input_shape, input_data, filter_shape, filter_data,
+          params_copy, input_shape, input_data, filter_shape, filter_data,
           bias_shape, bias_data, output_shape, output_data, thread_start,
           thread_end, thread_dim);
       return;

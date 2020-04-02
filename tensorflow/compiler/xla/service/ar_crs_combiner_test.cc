@@ -1761,5 +1761,34 @@ ENTRY %entrycomp (p: f32[2,4]) -> f32[2,4] {
   EXPECT_TRUE(divisor->literal().IsAllFloat(4));
 }
 
+TEST_F(ArCrsCombinerTest, AllReduceWithGlobalIdReplicaGroups) {
+  const char* module_str = R"(
+HloModule foobar
+
+%sum.f32 (x: f32[], y: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+ENTRY %entrycomp (p: bf16[]) -> (f32[]) {
+  %p = bf16[] parameter(0)
+  %all-reduce.0 = f32[] all-reduce(%p), channel_id=1,
+    replica_groups={{0,1,2,3},{4,5,6,7}}, use_global_device_ids=true,
+    to_apply=%sum.f32
+  %all-reduce.2 = f32[] all-reduce(%all-reduce.0), replica_groups={{0,1}},
+    to_apply=%sum.f32
+  ROOT %tuple = (f32[]) tuple(%all-reduce.2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  ArCrsCombiner combiner(/*num_spatial_partitions=*/4, /*num_replicas=*/2,
+                         /*spmd_partition=*/true);
+  auto changed = combiner.Run(module.get()).ValueOrDie();
+  EXPECT_TRUE(changed);
+}
+
 }  // namespace
 }  // namespace xla

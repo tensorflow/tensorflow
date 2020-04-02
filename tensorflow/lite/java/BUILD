@@ -201,7 +201,6 @@ java_test(
         "src/testdata/int32.bin",
         "src/testdata/int64.bin",
         "src/testdata/invalid_model.bin",
-        "src/testdata/quantized.bin",
         "src/testdata/string.bin",
         "src/testdata/uint8.bin",
         "src/testdata/with_custom_op.lite",
@@ -304,6 +303,7 @@ java_test(
         "src/testdata/add.bin",
         "src/testdata/int32.bin",
         "src/testdata/int64.bin",
+        "src/testdata/quantized.bin",
     ],
     javacopts = JAVACOPTS,
     tags = [

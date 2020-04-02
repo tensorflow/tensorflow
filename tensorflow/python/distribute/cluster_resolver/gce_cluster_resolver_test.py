@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.distribute.cluster_resolver import GCEClusterResolver
-from tensorflow.python.distribute.cluster_resolver import UnionClusterResolver
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import UnionClusterResolver
+from tensorflow.python.distribute.cluster_resolver.gce_cluster_resolver import GCEClusterResolver
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 

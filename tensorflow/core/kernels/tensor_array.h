@@ -353,18 +353,18 @@ class TensorArray : public ResourceBase {
 
  private:
   Status LockedWrite(OpKernelContext* ctx, const int32 index,
-                     PersistentTensor* value) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                     PersistentTensor* value) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   template <typename Device, typename T>
   Status LockedWriteOrAggregate(OpKernelContext* ctx, const int32 index,
                                 PersistentTensor* value)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   template <typename Device, typename T>
   Status LockedRead(OpKernelContext* ctx, const int32 index,
-                    PersistentTensor* value) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                    PersistentTensor* value) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  Status LockedReturnIfClosed() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Status LockedReturnIfClosed() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (closed_) {
       return errors::InvalidArgument("TensorArray ", handle_.vec<tstring>()(1),
                                      " has already been closed.");
@@ -380,7 +380,7 @@ class TensorArray : public ResourceBase {
   mutable mutex mu_;
 
   // Marks that the tensor_array_ has been cleared.
-  bool closed_ GUARDED_BY(mu_);
+  bool closed_ TF_GUARDED_BY(mu_);
 
   // Writes are allowed to grow the array.
   bool dynamic_size_;
@@ -391,7 +391,7 @@ class TensorArray : public ResourceBase {
 
   // If multiple Writes were attempted (e.g. via attribute
   // multiple_writes_aggregate), then gradients are disallowed.
-  bool gradients_disallowed_ GUARDED_BY(mu_);
+  bool gradients_disallowed_ TF_GUARDED_BY(mu_);
 
   // After a read at an index, clear away its PersistentTensor to
   // release memory.
@@ -406,7 +406,7 @@ class TensorArray : public ResourceBase {
 
   // The shape of each element in the TensorArray, may be partially known or not
   // known at all.
-  PartialTensorShape element_shape_ GUARDED_BY(mu_);
+  PartialTensorShape element_shape_ TF_GUARDED_BY(mu_);
 
   // Whether all elements in the TensorArray have identical shapes.
   // This allows certain behaviors, like dynamically checking for
@@ -437,7 +437,7 @@ class TensorArray : public ResourceBase {
     bool local_copy;
   };
   // The list of underlying PersistentTensors and states.
-  std::vector<TensorAndState> tensors_ GUARDED_BY(mu_);
+  std::vector<TensorAndState> tensors_ TF_GUARDED_BY(mu_);
 };
 
 template <typename Device, typename T>

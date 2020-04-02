@@ -929,6 +929,28 @@ struct FusedBatchNorm<GPUDevice, T, U, is_training> {
       workspace_allocator.reset(
           new functor::CudnnBatchNormAllocatorInTemp<uint8>(context));
     }
+    if (!batch_mean->SharesBufferWith(estimated_mean) &&
+        exponential_avg_factor != 1.0f) {
+      OP_REQUIRES(
+          context,
+          stream
+              ->ThenMemcpyD2D(&batch_mean_ptr, estimated_mean_ptr,
+                              estimated_mean.NumElements() * sizeof(U))
+              .ok(),
+          errors::Internal("MatrixTriangularSolveOp: failed to copy rhs "
+                           "from device"));
+    }
+    if (!batch_var->SharesBufferWith(estimated_variance) &&
+        exponential_avg_factor != 1.0f) {
+      OP_REQUIRES(
+          context,
+          stream
+              ->ThenMemcpyD2D(&batch_var_ptr, estimated_variance_ptr,
+                              estimated_variance.NumElements() * sizeof(U))
+              .ok(),
+          errors::Internal("MatrixTriangularSolveOp: failed to copy rhs "
+                           "from device"));
+    }
     bool cudnn_launch_status =
         stream
             ->ThenBatchNormalizationForward(
@@ -1263,11 +1285,11 @@ class FusedBatchNormOpBase : public OpKernel {
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {0}, 0, x.shape(), &y));
     Tensor* batch_mean = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(1, scale.shape(), &batch_mean));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {3}, 1, scale.shape(), &batch_mean));
     Tensor* batch_var = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(2, scale.shape(), &batch_var));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {4}, 2, scale.shape(), &batch_var));
     Tensor* saved_mean = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(3, scale.shape(), &saved_mean));
@@ -1400,12 +1422,9 @@ class FusedBatchNormGradOpBase : public OpKernel {
     Tensor* placeholder_1 = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(3, TensorShape({0}), &placeholder_1));
-    functor::SetZeroFunctor<Device, float> f;
-    f(context->eigen_device<Device>(), placeholder_1->flat<U>());
     Tensor* placeholder_2 = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(4, TensorShape({0}), &placeholder_2));
-    f(context->eigen_device<Device>(), placeholder_2->flat<U>());
 
     // If input is empty, set gradients w.r.t scale/offset to zero.
     if (x.shape().num_elements() == 0) {

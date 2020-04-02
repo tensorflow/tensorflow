@@ -26,8 +26,10 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
@@ -80,7 +82,9 @@ Status CombineAllReduces(absl::Span<HloInstruction* const> to_combine) {
   combined = computation.AddInstruction(HloInstruction::CreateAllReduce(
       ShapeUtil::MakeTupleShape(operand_shapes), operands, reduction,
       to_combine.front()->replica_groups(),
-      /*constrain_layout=*/false, to_combine.front()->channel_id()));
+      /*constrain_layout=*/false, to_combine.front()->channel_id(),
+      Cast<HloAllReduceInstruction>(to_combine.front())
+          ->use_global_device_ids()));
 
   // We have to propagate the sharding manually because Domain instructions are
   // not guaranteed to preserve it for side effecting instructions.
@@ -106,6 +110,8 @@ struct GroupKey {
         accum_type(hlo->to_apply()->root_instruction()->shape().element_type()),
         domain_id(domain_map.GetDomainMetadataId(hlo)),
         is_cross_shard(hlo->channel_id().has_value()),
+        use_global_device_ids(
+            Cast<HloAllReduceInstruction>(hlo)->use_global_device_ids()),
         replica_groups(hlo->replica_groups()) {}
 
   bool operator<(const GroupKey& other) const {
@@ -120,6 +126,9 @@ struct GroupKey {
     }
     if (is_cross_shard != other.is_cross_shard) {
       return is_cross_shard < other.is_cross_shard;
+    }
+    if (use_global_device_ids != other.use_global_device_ids) {
+      return use_global_device_ids < other.use_global_device_ids;
     }
     if (replica_groups.size() != other.replica_groups.size()) {
       return replica_groups.size() < other.replica_groups.size();
@@ -143,6 +152,7 @@ struct GroupKey {
   PrimitiveType accum_type;
   int64 domain_id;
   bool is_cross_shard;
+  bool use_global_device_ids;
   std::vector<ReplicaGroup> replica_groups;
 };
 

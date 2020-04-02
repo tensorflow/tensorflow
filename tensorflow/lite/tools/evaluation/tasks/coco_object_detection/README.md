@@ -127,7 +127,13 @@ The following optional parameters can be used to modify the inference runtime:
 
 *   `delegate`: `string` \
     If provided, tries to use the specified delegate for accuracy evaluation.
-    Valid values: "nnapi", "gpu".
+    Valid values: "nnapi", "gpu", "hexagon".
+
+    NOTE: Please refer to the
+    [Hexagon delegate documentation](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/hexagon_delegate.md)
+    for instructions on how to set it up for the Hexagon delegate. The tool
+    assumes that `libhexagon_interface.so` and Qualcomm libraries lie in
+    `/data/local/tmp`.
 
 ### Debug Mode
 

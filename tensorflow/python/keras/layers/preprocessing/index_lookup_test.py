@@ -18,7 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
 import os
+import random
+import string
 
 from absl.testing import parameterized
 import numpy as np
@@ -30,6 +33,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers.preprocessing import index_lookup
@@ -226,6 +230,84 @@ class CategoricalEncodingInputTest(
 
 
 @keras_parameterized.run_all_keras_modes
+class CategoricalEncodingMultiOOVTest(
+    keras_parameterized.TestCase,
+    preprocessing_test_utils.PreprocessingLayerTest):
+
+  def test_sparse_string_input_multi_bucket(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]],
+        values=["fire", "ohio"],
+        dense_shape=[3, 4])
+
+    expected_indices = [[0, 0], [1, 2]]
+    expected_values = [6, 2]
+    expected_dense_shape = [3, 4]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string, sparse=True)
+    layer = get_layer_class()(max_tokens=None, num_oov_tokens=2)
+    layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_data = model.predict(input_array, steps=1)
+    self.assertAllEqual(expected_indices, output_data.indices)
+    self.assertAllEqual(expected_values, output_data.values)
+    self.assertAllEqual(expected_dense_shape, output_data.dense_shape)
+
+  def test_sparse_int_input_multi_bucket(self):
+    vocab_data = np.array([10, 11, 12, 13], dtype=np.int64)
+    input_array = sparse_tensor.SparseTensor(
+        indices=[[0, 0], [1, 2]],
+        values=np.array([13, 132], dtype=np.int64),
+        dense_shape=[3, 4])
+
+    expected_indices = [[0, 0], [1, 2]]
+    expected_values = [6, 2]
+    expected_dense_shape = [3, 4]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64, sparse=True)
+    layer = get_layer_class()(
+        max_tokens=None, dtype=dtypes.int64, num_oov_tokens=2)
+    layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_data = model.predict(input_array, steps=1)
+    self.assertAllEqual(expected_indices, output_data.indices)
+    self.assertAllEqual(expected_values, output_data.values)
+    self.assertAllEqual(expected_dense_shape, output_data.dense_shape)
+
+  def test_ragged_string_input_multi_bucket(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = ragged_factory_ops.constant(
+        [["earth", "wind", "fire"], ["fire", "and", "earth", "ohio"]])
+    expected_output = [[3, 4, 6], [6, 5, 3, 2]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string, ragged=True)
+    layer = get_layer_class()(max_tokens=None, num_oov_tokens=2)
+    layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_ragged_int_input_multi_bucket(self):
+    vocab_data = np.array([10, 11, 12, 13], dtype=np.int64)
+    input_array = ragged_factory_ops.constant([[10, 11, 13], [13, 12, 10, 132]],
+                                              dtype=np.int64)
+    expected_output = [[3, 4, 6], [6, 5, 3, 2]]
+
+    input_data = keras.Input(shape=(None,), dtype=dtypes.int64, ragged=True)
+    layer = get_layer_class()(
+        max_tokens=None, dtype=dtypes.int64, num_oov_tokens=2)
+    layer.set_vocabulary(vocab_data)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+
+@keras_parameterized.run_all_keras_modes
 class CategoricalEncodingAdaptTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
@@ -304,6 +386,21 @@ class CategoricalEncodingAdaptTest(
     model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
+
+  def test_single_string_generator_dataset(self):
+
+    def word_gen():
+      for _ in itertools.count(1):
+        yield "".join(random.choice(string.ascii_letters) for i in range(2))
+
+    ds = dataset_ops.Dataset.from_generator(word_gen, dtypes.string,
+                                            tensor_shape.TensorShape([]))
+    batched_ds = ds.take(100).batch(1)
+    input_t = keras.Input(shape=(), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=10, num_oov_tokens=0, reserve_zero=False)
+    _ = layer(input_t)
+    layer.adapt(batched_ds)
 
 
 @keras_parameterized.run_all_keras_modes

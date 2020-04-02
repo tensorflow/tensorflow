@@ -135,8 +135,7 @@ class LossesSerialization(keras_parameterized.TestCase):
       model.compile(
           optimizer_v2.gradient_descent.SGD(0.1),
           loss=value,
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
       history = model.fit([self.x, self.x], [self.y, self.y],
                           batch_size=3,
                           epochs=3,
@@ -163,8 +162,7 @@ class LossesSerialization(keras_parameterized.TestCase):
     model.compile(
         optimizer_v2.gradient_descent.SGD(0.1),
         loss=value,
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit([self.x, self.x], [self.y, self.y],
                         batch_size=3,
                         epochs=3,

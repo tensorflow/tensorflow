@@ -50,7 +50,10 @@ std::vector<Flag> NnapiDelegateProvider::CreateFlags(
                               "sustained_speed, low_power, undefined"),
       CreateFlag<std::string>(
           "nnapi_accelerator_name", params,
-          "the name of the nnapi accelerator to use (requires Android Q+)")};
+          "the name of the nnapi accelerator to use (requires Android Q+)"),
+      CreateFlag<bool>("disable_nnapi_cpu", params,
+                       "Disable the NNAPI CPU device")};
+
   return flags;
 }
 
@@ -60,17 +63,18 @@ void NnapiDelegateProvider::AddParams(BenchmarkParams* params) const {
                    BenchmarkParam::Create<std::string>(""));
   params->AddParam("nnapi_accelerator_name",
                    BenchmarkParam::Create<std::string>(""));
+  params->AddParam("disable_nnapi_cpu", BenchmarkParam::Create<bool>(false));
 }
 
 void NnapiDelegateProvider::LogParams(const BenchmarkParams& params) const {
 #if defined(__ANDROID__)
   TFLITE_LOG(INFO) << "Use nnapi : [" << params.Get<bool>("use_nnapi") << "]";
-  if (!params.Get<std::string>("nnapi_execution_preference").empty()) {
-    TFLITE_LOG(INFO) << "nnapi execution preference: ["
-                     << params.Get<std::string>("nnapi_execution_preference")
-                     << "]";
-  }
   if (params.Get<bool>("use_nnapi")) {
+    if (!params.Get<std::string>("nnapi_execution_preference").empty()) {
+      TFLITE_LOG(INFO) << "nnapi execution preference: ["
+                       << params.Get<std::string>("nnapi_execution_preference")
+                       << "]";
+    }
     std::string log_string = "nnapi accelerator name: [" +
                              params.Get<std::string>("nnapi_accelerator_name") +
                              "]";
@@ -80,6 +84,10 @@ void NnapiDelegateProvider::LogParams(const BenchmarkParams& params) const {
       log_string += " (Available: " + string_device_names_list + ")";
     }
     TFLITE_LOG(INFO) << log_string;
+    if (params.Get<bool>("disable_nnapi_cpu")) {
+      TFLITE_LOG(INFO) << "disable_nnapi_cpu: ["
+                       << params.Get<bool>("disable_nnapi_cpu") << "]";
+    }
   }
 #endif
 }
@@ -93,6 +101,8 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
         params.Get<std::string>("nnapi_accelerator_name");
     if (!accelerator_name.empty()) {
       options.accelerator_name = accelerator_name.c_str();
+    } else if (params.Get<bool>("disable_nnapi_cpu")) {
+      options.disallow_nnapi_cpu = true;
     }
     std::string string_execution_preference =
         params.Get<std::string>("nnapi_execution_preference");
@@ -120,6 +130,10 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
                          << ") is not a valid nnapi execution preference.";
       }
       options.execution_preference = execution_preference;
+    }
+    int max_delegated_partitions = params.Get<int>("max_delegated_partitions");
+    if (max_delegated_partitions > 0) {
+      options.max_number_delegated_partitions = max_delegated_partitions;
     }
     delegate = evaluation::CreateNNAPIDelegate(options);
     if (!delegate.get()) {

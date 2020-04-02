@@ -42,7 +42,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
-from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
@@ -128,7 +127,8 @@ class MirroredTwoDeviceDistributionTest(
       def replica_squared_fn(dtype=dtype):
         # Lists with different lengths on different replicas.
         replica_id = _replica_id_as_int()
-        return math_ops.cast([replica_id] * (replica_id + 1), dtype)
+        return array_ops.identity(
+            math_ops.cast([replica_id] * (replica_id + 1), dtype))
 
       self.reduce_axis_helper(distribution, replica_squared_fn)
 
@@ -379,16 +379,38 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
           self.evaluate(distribution.experimental_local_results(result)))
       self.assertLen(traces, distribution.num_replicas_in_sync)
 
-  def testNestedFunctionInCallForEachReplicaWithMergeCall(self, distribution):
-    def merge_fn(_):
-      pass
+  def testControlFlowFunctionInCallForEachReplicaWithMergeCall(
+      self, distribution):
+
+    def merge_fn(strategy, value):
+      return strategy.reduce(reduce_util.ReduceOp.SUM, value, axis=None)
 
     @def_function.function
     def model_fn():
+
       def body_fn(i):
-        ds_context.get_replica_context().merge_call(merge_fn)
-        return i + 1
+        return ds_context.get_replica_context().merge_call(merge_fn, args=(i,))
+
       return control_flow_ops.while_loop_v2(lambda i: i < 2, body_fn, [0])
+
+    with distribution.scope():
+      with self.assertRaisesRegexp(
+          RuntimeError, "`merge_call` called while defining a new graph."):
+        distribution.extended.call_for_each_replica(model_fn)
+
+  def testNestedFunctionInCallForEachReplicaWithMergeCall(self, distribution):
+
+    def merge_fn(strategy, value):
+      return strategy.reduce(reduce_util.ReduceOp.SUM, value, axis=None)
+
+    def model_fn():
+
+      @def_function.function
+      def model_fn_nested():
+        t = constant_op.constant(1)
+        return ds_context.get_replica_context().merge_call(merge_fn, args=(t,))
+
+      return model_fn_nested()
 
     with distribution.scope():
       with self.assertRaisesRegexp(
@@ -1340,34 +1362,36 @@ class MirroredVariableStopGradientTest(test.TestCase, parameterized.TestCase):
       self.assertIsNone(grads[0])
 
 
-class FunctionTest(test.TestCase):
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+        ],
+        mode=["eager"]))
+class FunctionTest(test.TestCase, parameterized.TestCase):
 
-  def testBackwardFunctionDevicePlacement(self):
-    if context.num_gpus() < 1:
-      self.skipTest("At least one GPU is required.")
-    devices = [device_util.resolve("/device:GPU:0"),
-               device_util.resolve("/device:CPU:0")]
-    ms = mirrored_strategy.MirroredStrategy(devices)
-
-    with ms.scope():
+  def testBackwardFunctionDevicePlacement(self, distribution):
+    with distribution.scope():
       w = variable_scope.variable([1.5], name="w")
       b = variable_scope.variable([0.5], name="b")
 
     @def_function.function
     def forward(x, w, b):
       return x * w + b
-    x = constant_op.constant([1.0], name="x_useless")
+
+    x = array_ops.identity([1.0], name="x_useless")
     concrete_forward = forward.get_concrete_function(x, w._primary, b._primary)
 
-    with ms.scope():
+    with distribution.scope():
+
       def replica_fn():
         with backprop.GradientTape() as t:
-          x = constant_op.constant([1.0], name="x")
+          x = array_ops.identity([1.0], name="x")
           loss = concrete_forward(x, w._get(), b._get()) - [1.0]
           return t.gradient(loss, [w, b])
 
       def step_fn():
-        return ms.experimental_run_v2(replica_fn)
+        return distribution.run(replica_fn)
 
       context.enable_run_metadata()
       g1, g2 = step_fn()
@@ -1383,31 +1407,29 @@ class FunctionTest(test.TestCase):
         for node in partition_graph.node:
           if node.name == node_name:
             devices_for_this_node.add(node.device)
+      devices = [device_util.resolve("/device:GPU:0"),
+                 device_util.resolve("/device:CPU:0")]
       self.assertSetEqual(devices_for_this_node, set(devices))
 
-  def testFuctionPreservesAutoGraph(self):
-    config.set_logical_device_configuration(
-        config.list_physical_devices("CPU")[0],
-        [context.LogicalDeviceConfiguration()] * 2)
-    ms = mirrored_strategy.MirroredStrategy()
-
+  def testFuctionPreservesAutoGraph(self, distribution):
     def f():
       self.assertTrue(converter_testing.is_inside_generated_code())
       return 1
 
-    with ms.scope():
+    with distribution.scope():
+
       @def_function.function
       def replica_fn():
         return f()
 
-      ms.experimental_run_v2(replica_fn)
+      distribution.run(replica_fn)
 
 
 def _replica_id():
   replica_id = ds_context.get_replica_context().replica_id_in_sync_group
   if not isinstance(replica_id, ops.Tensor):
     replica_id = constant_op.constant(replica_id)
-  return replica_id
+  return array_ops.identity(replica_id)
 
 
 def _replica_id_as_int():

@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -50,7 +51,10 @@ class DefFunctionTest(test.TestCase):
     with context.collect_graphs(optimized=True) as graphs:
       outer(i1, i2, i3)
 
-    self.assertIn('_XlaRun', [n.op for n in graphs[0].node])
+    if test_util.is_xla_enabled():
+      self.assertIn('_XlaRun', [n.op for n in graphs[0].node])
+    else:
+      self.assertNotIn('_XlaRun', [n.op for n in graphs[0].node])
 
   def testBasic(self):
 
@@ -231,6 +235,24 @@ class DefFunctionTest(test.TestCase):
     c = C()
     with self.assertRaisesRegexp(errors.InvalidArgumentError, 'not compilable'):
       c.f1(inputs)
+
+  def testMustBeConstantPropagation(self):
+    if test.is_built_with_rocm():
+      return
+
+    @def_function.function(experimental_compile=True)
+    def f():
+      return constant_op.constant([0, 2, 1], dtype=dtypes.int32)
+
+    @def_function.function(experimental_compile=True)
+    def g(a, b):
+      return array_ops.transpose(a, b)
+
+    @def_function.function
+    def z():
+      return g(array_ops.ones([3, 4, 3], dtype=dtypes.float32), f())
+
+    z()
 
 
 if __name__ == '__main__':

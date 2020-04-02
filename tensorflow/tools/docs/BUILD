@@ -26,6 +26,7 @@ py_test(
     tags = [
         "no_oss_py2",
         "no_pip",
+        "no_rocm",
         "no_windows",  # numpy prints differently on windows.
         "noasan",
         "nomsan",
@@ -34,6 +35,7 @@ py_test(
     deps = [
         ":tf_doctest_lib",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/preprocessing",
         "//third_party/py/numpy",
     ],
 )

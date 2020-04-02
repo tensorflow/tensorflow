@@ -17,6 +17,7 @@ kilobytes of Flash.
 
 -   [Getting started](#getting-started)
 -   [Deploy to Arduino](#deploy-to-arduino)
+-   [Deploy to ESP32](#deploy-to-esp32)
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
 -   [Deploy to NXP FRDM K66F](#deploy-to-nxp-frdm-k66f)
@@ -94,7 +95,11 @@ The sample has been tested on ESP-IDF version 4.0 with the following devices: -
 
 ESP-EYE is a board which has a built-in microphone which can be used to run this
 example , if you want to use other esp boards you will have to connect
-microphone externally and write your own +audio_provider.cc+.
+microphone externally and write your own
+[audio_provider.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/micro_speech/esp/audio_provider.cc).
+You can also edit the
+[command_responder.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/micro_speech/command_responder.cc)
+to define your own actions after detecting command.
 
 ### Install the ESP IDF
 
@@ -392,16 +397,23 @@ The following instructions will help you build and deploy the sample to the
 [NXP FRDM K66F](https://www.nxp.com/design/development-boards/freedom-development-boards/mcu-boards/freedom-development-platform-for-kinetis-k66-k65-and-k26-mcus:FRDM-K66F)
 using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
 
-1.  Download [the TensorFlow source code](https://github.com/tensorflow/tensorflow).
-2.  Follow instructions from [mbed website](https://os.mbed.com/docs/mbed-os/v5.13/tools/installation-and-setup.html) to setup and install mbed CLI.
+1.  Download
+    [the TensorFlow source code](https://github.com/tensorflow/tensorflow).
+2.  Follow instructions from
+    [mbed website](https://os.mbed.com/docs/mbed-os/v5.13/tools/installation-and-setup.html)
+    to setup and install mbed CLI.
 3.  Compile TensorFlow with the following command to generate mbed project:
 
     ```
     make -f tensorflow/lite/micro/tools/make/Makefile TARGET=mbed TAGS="nxp_k66f" generate_micro_speech_mbed_project
     ```
-4.  Go to the location of the generated project. The generated project is usually
-    in `tensorflow/lite/micro/tools/make/gen/mbed_cortex-m4/prj/micro_speech/mbed`
+
+4.  Go to the location of the generated project. The generated project is
+    usually in
+    `tensorflow/lite/micro/tools/make/gen/mbed_cortex-m4/prj/micro_speech/mbed`
+
 5.  Create a mbed project using the generated files: `mbed new .`
+
 6.  Change the project setting to use C++ 11 rather than C++ 14 using:
 
     ```
@@ -410,13 +422,15 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
       for line in fileinput.input(filename, inplace=True):
         print line.replace("\"-std=gnu++14\"","\"-std=c++11\", \"-fpermissive\"")'
     ```
+
 7.  To compile project, use the following command:
 
     ```
     mbed compile --target K66F --toolchain GCC_ARM --profile release
     ```
-8.  For some mbed compliers, you may get compile error in mbed_rtc_time.cpp.
-    Go to `mbed-os/platform/mbed_rtc_time.h` and comment line 32 and line 37:
+
+8.  For some mbed compilers, you may get compile error in mbed_rtc_time.cpp. Go
+    to `mbed-os/platform/mbed_rtc_time.h` and comment line 32 and line 37:
 
     ```
     //#if !defined(__GNUC__) || defined(__CC_ARM) || defined(__clang__)
@@ -426,25 +440,35 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
     };
     //#endif
     ```
-9.  Look at helpful resources from NXP website such as [NXP FRDM-K66F User guide](https://www.nxp.com/docs/en/user-guide/FRDMK66FUG.pdf) and [NXP FRDM-K66F Getting Started](https://www.nxp.com/document/guide/get-started-with-the-frdm-k66f:NGS-FRDM-K66F)
+
+9.  Look at helpful resources from NXP website such as
+    [NXP FRDM-K66F User guide](https://www.nxp.com/docs/en/user-guide/FRDMK66FUG.pdf)
+    and
+    [NXP FRDM-K66F Getting Started](https://www.nxp.com/document/guide/get-started-with-the-frdm-k66f:NGS-FRDM-K66F)
     to understand information about the board.
+
 10. Connect the USB cable to the micro USB port. When the Ethernet port is
     facing towards you, the micro USB port is left of the Ethernet port.
-11.  To compile and flash in a single step, add the `--flash` option:
+
+11. To compile and flash in a single step, add the `--flash` option:
 
     ```
     mbed compile --target K66F --toolchain GCC_ARM --profile release --flash
     ```
+
 12. Disconnect USB cable from the device to power down the device and connect
     back the power cable to start running the model.
-13. Connect to serial port with baud rate of 9600 and correct serial device
-    to view the output from the MCU. In linux, you can run the following screen
+
+13. Connect to serial port with baud rate of 9600 and correct serial device to
+    view the output from the MCU. In linux, you can run the following screen
     command if the serial device is `/dev/ttyACM0`:
 
     ```
     sudo screen /dev/ttyACM0 9600
     ```
+
 14. Saying "Yes" will print "Yes" and "No" will print "No" on the serial port.
+
 15. A loopback path from microphone to headset jack is enabled. Headset jack is
     in black color. If there is no output on the serial port, you can connect
     headphone to headphone port to check if audio loopback path is working.

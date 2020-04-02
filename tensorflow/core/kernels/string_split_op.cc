@@ -31,7 +31,7 @@ namespace {
 // Returns a vector of StringPieces which are valid as long as input `str`
 // is valid.
 // Note: The single character delimiter is a common case and is implemented as
-// a series of finds in the input string, making it much more effcient than
+// a series of finds in the input string, making it much more efficient than
 // SplitOnCharSet.
 template <typename Predicate>
 std::vector<StringPiece> SplitOnChar(const tstring& str, const char delim,

@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -46,7 +47,7 @@ class NcclAllReduceThunk : public Thunk {
   // (Indeed, because the NCCL channels are a global variable, in the real
   // world, the value returned here is stale as soon as you read it, so it's not
   // clear how you *could* use it for anything other than tests.)
-  static absl::flat_hash_set<int> DevicesWithOpenNcclChannels();
+  static absl::flat_hash_set<GlobalDeviceId> DevicesWithOpenNcclChannels();
 
   // TODO(b/125951860): Support all-reduces with replica groups, i.e.
   // all-reduces that compute multiple sums across subsets of all replicas.

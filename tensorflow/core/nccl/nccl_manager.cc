@@ -88,8 +88,8 @@ struct NcclManager::NcclStream : public core::RefCounted {
   mutex mu;
   condition_variable cv;
   // Has (collective, participant_idx) pairs.
-  std::deque<std::pair<Collective*, int>> pending_launches_ GUARDED_BY(mu);
-  bool shutdown_requested GUARDED_BY(mu) = false;
+  std::deque<std::pair<Collective*, int>> pending_launches_ TF_GUARDED_BY(mu);
+  bool shutdown_requested TF_GUARDED_BY(mu) = false;
 };
 
 struct NcclManager::CommunicatorMember {

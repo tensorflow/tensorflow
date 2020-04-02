@@ -16,7 +16,7 @@ limitations under the License.
 #include <iostream>
 #include <unordered_map>
 #include <unordered_set>
-#include "flatbuffers/minireflect.h"  // TF:flatbuffers
+#include "flatbuffers/minireflect.h"  // from @flatbuffers
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
 
 namespace tflite {
@@ -258,7 +258,7 @@ void GenerateImportForResizeBilinearOp(FILE* fp) {
           "    const auto* params = reinterpret_cast<const "
           "TfLiteResizeBilinearParams*>(builtin_op_data);\n"
           "    auto union_type = CreateResizeBilinearOptions(*fbb, "
-          "params->align_corners).Union();\n"
+          "params->align_corners, params->half_pixel_centers).Union();\n"
           "    return std::make_pair(BuiltinOptions_ResizeBilinearOptions, "
           "union_type);\n"
           "  }\n  break;\n");

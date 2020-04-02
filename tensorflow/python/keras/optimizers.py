@@ -71,6 +71,10 @@ class Optimizer(object):
     self.updates = []
     self.weights = []
 
+  # Set this to False, indicating `apply_gradients` does not take the
+  # `experimental_aggregate_gradients` argument.
+  _HAS_AGGREGATE_GRAD = False
+
   def get_updates(self, loss, params):
     raise NotImplementedError
 

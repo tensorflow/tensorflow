@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
@@ -181,7 +182,8 @@ def create_keras_history(tensors):
       operations and need to have Keras metadata assigned to them.
 
   Returns:
-    keras_tensors: The Tensors found that came from a Keras Layer.
+    created_layers: List. The `TensorFlowOpLayer` instances created to wrap
+      the raw Tensorflow operations.
   """
   _, created_layers = _create_keras_history_helper(tensors, set(), [])
   return created_layers
@@ -392,6 +394,9 @@ def call_context():
   if getattr(_call_context, 'call_context', None) is None:
     _call_context.call_context = CallContext()
   return _call_context.call_context
+
+
+control_flow_util_v2._register_keras_layer_context_function(call_context)  # pylint: disable=protected-access
 
 
 class CallContext(object):
@@ -650,17 +655,9 @@ def mark_as_return(outputs, acd):
   return nest.map_structure(_mark_as_return, outputs)
 
 
-def default(method):
-  """Decorates a method to detect overrides in subclasses."""
-  method._is_default = True  # pylint: disable=protected-access
-  return method
-
-
 V2_DTYPE_BEHAVIOR = None
 
 
-# These two functions are not exported because we plan on removing them in the
-# future.
 def enable_v2_dtype_behavior():
   """Enable the V2 dtype behavior for Keras layers.
 

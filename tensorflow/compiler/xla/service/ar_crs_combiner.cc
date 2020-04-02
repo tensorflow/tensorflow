@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/hlo_replication_analysis.h"
@@ -86,6 +87,42 @@ StatusOr<bool> ReplaceReplicatedAllReduce(HloModule* module,
   return changed;
 }
 
+// Returns true if the given instruction (must be a cross-partition all-reduce)
+// has a ReplicaGroup config that can be combined with cross-replica all-reduce.
+// We currently restrict to those groups where all partitions in each replica
+// belong to the same group.
+bool HasCombinableReplicaGroup(HloInstruction* hlo, int64 num_replicas,
+                               int64 num_partitions) {
+  auto all_reduce = Cast<HloAllReduceInstruction>(hlo);
+  auto replica_groups = all_reduce->replica_groups();
+  CHECK(all_reduce->IsCrossModuleAllReduce());
+
+  if (all_reduce->use_global_device_ids()) {
+    if (replica_groups.size() != num_replicas) {
+      return false;
+    }
+    for (auto group : replica_groups) {
+      if (group.replica_ids_size() != num_partitions) {
+        return false;
+      }
+      std::unordered_set<int64> partition_ids;
+      int64 replica_id = group.replica_ids(0) / num_partitions;
+      for (int64 i = 0; i < num_partitions; ++i) {
+        if (group.replica_ids(i) / num_partitions != replica_id) {
+          return false;
+        }
+        partition_ids.insert(group.replica_ids(i) % num_partitions);
+      }
+      if (partition_ids.size() != num_partitions) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  return replica_groups.size() == num_replicas;
+}
+
 }  // namespace
 
 namespace m = match;
@@ -128,7 +165,8 @@ absl::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
   // belongs to its own group, since the later cross-replica all-reduce combines
   // along the replica dimension.
   if (instruction->IsCrossModuleAllReduce() &&
-      instruction->replica_groups().size() == num_replicas_ &&
+      HasCombinableReplicaGroup(instruction, num_replicas_,
+                                num_spatial_partitions_) &&
       computation_is_addition(instruction->called_computations()[0]) &&
       instruction->user_count() == 1) {
     auto next = instruction->users()[0];
@@ -546,6 +584,12 @@ StatusOr<bool> ArCrsCombiner::RewriteGraph() {
         next = next->users()[0];
       }
       // The AllReduce and the CRS are combined to an all-core AllReduce.
+      //
+      // Note that we can just reuse the ReplicaGroup config of cross-replica
+      // all-reduce since we already checked that cross-partition all-reduce
+      // is always across all partitions (HasCombinableReplicaGroup). We need to
+      // combine ReplicaGroup configs using global ids here if we relax that
+      // restriction.
       next->set_channel_id(channel_id);
     }
   }

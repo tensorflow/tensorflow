@@ -163,7 +163,7 @@ execute the op. In this example, it means:
 *   Populate version=2 otherwise.
 
 To do this, you need to override `GetVersion` function for the operator class in
-`lite/toco/tflite/operator.cc`.
+`lite/tools/versioning/op_version.cc`.
 
 For ops with only one version, the `GetVersion` function is defined as:
 
@@ -191,7 +191,8 @@ The last step is to add the new version info into the operator version map. This
 step is required because we need generate the model's minimum required runtime
 version based on this version map.
 
-To do this, you need to add a new map entry in `lite/toco/tflite/op_version.cc`.
+To do this, you need to add a new map entry in
+`lite/tools/versioning/op_version.cc`.
 
 In this example, it means you need to add the following into `op_version_map`:
 ```
@@ -209,8 +210,8 @@ is supported for every node in Delegation code.
 ```
 const int kMinVersion = 1;
 TfLiteNode* node;
-TfLiteRegistration;
-context->GetNodeAndRegistration(context, node_index, &node, &registration);
+TfLiteRegistration* registration = nullptr;
+TF_LITE_ENSURE_STATUS(context->GetNodeAndRegistration(context, node_index, &node, &registration));
 
 if (registration->version > kMinVersion) {
   // Reject the node if the version isn't supported.

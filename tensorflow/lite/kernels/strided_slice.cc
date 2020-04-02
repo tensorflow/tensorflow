@@ -142,8 +142,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, op_context.begin->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, op_context.end->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, op_context.strides->type, kTfLiteInt32);
-  TF_LITE_ENSURE_MSG(context, op_context.dims <= 4,
-                     "StridedSlice op only supports 1D-4D input arrays.");
+  TF_LITE_ENSURE_MSG(context, op_context.dims <= 5,
+                     "StridedSlice op only supports 1D-5D input arrays.");
 
   // TODO(b/138098220): Remove when bug is resolved.
   // Currently, working on using the compiler to cannonize strided_slice,

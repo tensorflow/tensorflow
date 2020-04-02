@@ -348,7 +348,7 @@ func @invalid_switch(%arg0: tensor<*xf32>) {
 func @invalid_switch(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
   %result = tf_executor.graph {
     %true, %false, %ctlSwitch = "tf_executor.Switch"(%arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>, !tf_executor.control)
-// expected-error@-1 {{'tf_executor.Switch' op operand #1 must be tensor of 1-bit integer values}}
+// expected-error@-1 {{'tf_executor.Switch' op operand #1 must be tensor of 1-bit signless integer values}}
     tf_executor.fetch %true : tensor<*xf32>
   }
   return %result : tensor<*xf32>

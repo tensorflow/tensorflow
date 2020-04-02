@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
+#include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -163,8 +164,8 @@ InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
   Stat<double> input_summary_stats_in_percent;
   for (const auto& coreid_stepinfo_map : grouped_by_step) {
     // Iterates over each step.
-    const auto* ptr =
-        gtl::FindOrNull(coreid_stepinfo_map.step_info_per_core(), 0);
+    const auto* ptr = gtl::FindOrNull(coreid_stepinfo_map.step_info_per_core(),
+                                      kDefaultGpuLocalCoreId);
     if (ptr == nullptr) {
       // For generic hardware, all step-info is put under core-0. If ptr
       // is nullptr, it means there is no step at all.
@@ -400,9 +401,9 @@ std::string MakeDocLink(absl::string_view doc_link, absl::string_view text) {
                       "</a>");
 }
 
-// Returns the HTML link to the introduction to the Dataset API.
+// Returns the HTML link to the introduction to the tf.data API.
 std::string DatasetIntroDoc() {
-  return "https://www.tensorflow.org/programmers_guide/datasets";
+  return "https://www.tensorflow.org/guide/data";
 }
 
 }  // namespace
@@ -489,7 +490,7 @@ InputPipelineAnalysisRecommendation GenerateRecommendation() {
       " or preprocess the data OFFLINE.");
   *recommendation.add_details() = absl::StrCat(
       "Reading data from files in advance: you may tune parameters in the "
-      "following Dataset API (",
+      "following tf.data API (",
       AnchorElement(absl::StrCat(kDatasetTopic, "prefetch"), "prefetch size"),
       ", ",
       AnchorElement(absl::StrCat(kDatasetTopic, "interleave"),
@@ -497,13 +498,13 @@ InputPipelineAnalysisRecommendation GenerateRecommendation() {
       ", ", AnchorElement(kTfRecordDataset, "reader buffer_size"), ")");
   *recommendation.add_details() = absl::StrCat(
       "Reading data from files on demand: you should read data IN ADVANCE "
-      "using the following Dataset API (",
+      "using the following tf.data API (",
       AnchorElement(absl::StrCat(kDatasetTopic, "prefetch"), "prefetch"), ", ",
       AnchorElement(absl::StrCat(kDatasetTopic, "interleave"), "interleave"),
       ", ", AnchorElement(kTfRecordDataset, "reader buffer"), ")");
   *recommendation.add_details() = absl::StrCat(
       "Other data reading or processing: you may consider using the ",
-      AnchorElement(kDatasetIntro, "Dataset API"),
+      AnchorElement(kDatasetIntro, "tf.data API"),
       " (if you are not using it now)");
 
   return recommendation;

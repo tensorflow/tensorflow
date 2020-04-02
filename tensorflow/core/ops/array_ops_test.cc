@@ -862,12 +862,14 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // No valid shape provided.
   INFER_OK(op, "?;?", "?");
   INFER_OK(op, "[?];?", "?");
+  INFER_OK(op, "?;[?]", "?");
   INFER_OK(op, "[?];[?]", "?");
   INFER_OK(op, "[4];[?]", "?");
 
   // All dimensions provided.
   Tensor new_shape = test::AsTensor<int32>({1, 2, 3});
   op.input_tensors[1] = &new_shape;
+  INFER_OK(op, "?;[3]", "[1,2,3]");
   INFER_OK(op, "[?];[3]", "[1,2,3]");
   INFER_OK(op, "[6];[3]", "[1,2,3]");
   // The number of elements should match for the reshape to succeed.
@@ -878,6 +880,7 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // Unknown dimensions.
   // Flatten:
   new_shape = test::AsTensor<int32>({-1});
+  INFER_OK(op, "?;[1]", "[?]");
   INFER_OK(op, "[?];[1]", "[d0_0]");
   INFER_OK(op, "[2,2];[1]", "[4]");
   // The first dimension is inferred:
@@ -890,6 +893,7 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // Multiple missing dimensions cannot be inferred.
   new_shape = test::AsTensor<int32>({-1, -1, 2});
   INFER_OK(op, "[8];[3]", "[?,?,2]");
+  INFER_OK(op, "?;[3]", "[?,?,2]");
 
   // Symbolic shape propagation
   new_shape = test::AsTensor<int32>({-1, 2, 3});
@@ -1359,7 +1363,7 @@ TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {
   INFER_ERROR("Dimension size must be evenly divisible by 2 but is 13", op,
               "[1,10,10,3];[2,2]");
 
-  // Negative paddsings
+  // Negative paddings
   paddings = test::AsTensor<int32>({1, -2, 3, 4}, {{2, 2}});
   op.input_tensors[1] = &paddings;
   INFER_ERROR("cannot be negative", op, "[1,10,10,3];[2,2]");
@@ -1479,7 +1483,7 @@ TEST(ArrayOpsTest, BatchToSpace_ShapeFn) {
   INFER_ERROR("Negative dimension size caused by subtracting", op,
               "[4,8,8,3];[2,2]");
 
-  // Negative paddsings
+  // Negative paddings
   croppings = test::AsTensor<int32>({1, -2, 3, 4}, {{2, 2}});
   op.input_tensors[1] = &croppings;
   INFER_ERROR("cannot be negative", op, "[4,8,8,3];[2,2]");

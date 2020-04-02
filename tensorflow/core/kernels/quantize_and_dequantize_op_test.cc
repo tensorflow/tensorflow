@@ -362,54 +362,6 @@ TEST_P(ParameterizedQuantizeAndDequantizeTest,
   }
 }
 
-// Convert a 1D tensor with signed 8 bits and round_mode half_up.
-TEST_P(ParameterizedQuantizeAndDequantizeTest, GradientV2_op) {
-  const int axis = GetParam();
-  TF_ASSERT_OK(NodeDefBuilder("qdq_v2_grad_op", "QuantizeAndDequantizeV2Grad")
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_FLOAT))
-                   .Attr("axis", axis)
-                   .Finalize(node_def()));
-  TF_ASSERT_OK(InitOp());
-  const std::vector<int64> dims = {2, 3, 4, 5};
-  // Input gradient. (repeating 11 values multiplied by (slice_idx + 1))
-  auto gradients = ScalePerSliceAlongAxis<float>(
-      dims, axis, {1, -2, -3, 4, 5, 6, -7, -8, -9, -10, 11});
-  AddInputFromArray<float>(TensorShape(dims), gradients);
-  // Forward op inputs. (repeating 7 values multiplied by (slice_idx + 1)).
-  auto inputs = ScalePerSliceAlongAxis<float>(
-      dims, axis, {-1, -0.5, 0, 0.3, 0.8, 0.55, 0.6});
-  AddInputFromArray<float>(TensorShape(dims), inputs);
-  const int num_slices = (axis == -1) ? 1 : dims[axis];
-  const TensorShape range_shape =
-      (axis == -1) ? TensorShape({}) : TensorShape({num_slices});
-  std::vector<float> input_min_values(num_slices), input_max_values(num_slices);
-  for (int i = 0; i < num_slices; ++i) {
-    input_max_values[i] = 0.8f + i * 0.4f;
-    input_min_values[i] = -input_max_values[i];
-  }
-  AddInputFromArray<float>(range_shape, input_min_values);
-  AddInputFromArray<float>(range_shape, input_max_values);
-  std::vector<float> expected_vals(inputs.size());
-  int minor_size = 1;
-  for (int i = axis + 1; i < dims.size(); ++i) {
-    minor_size *= dims[i];
-  }
-  for (int i = 0; i < inputs.size(); ++i) {
-    int slice_idx = (i / minor_size) % num_slices;
-    expected_vals[i] = ((inputs[i] >= input_min_values[slice_idx]) &&
-                        (inputs[i] <= input_max_values[slice_idx]))
-                           ? gradients[i]
-                           : 0;
-  }
-  TF_ASSERT_OK(RunOpKernel());
-  Tensor expected(allocator(), DT_FLOAT, TensorShape(dims));
-  test::FillValues<float>(&expected, expected_vals);
-  test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
-}
-
 // Instantiate parameterized tests for axis = -1, 1, 3.
 INSTANTIATE_TEST_SUITE_P(All, ParameterizedQuantizeAndDequantizeTest,
                          ::testing::Values(-1, 1, 3));

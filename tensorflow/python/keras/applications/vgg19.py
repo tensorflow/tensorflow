@@ -26,9 +26,9 @@ from __future__ import print_function
 import os
 
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.util.tf_export import keras_export
@@ -40,6 +40,8 @@ WEIGHTS_PATH_NO_TOP = ('https://storage.googleapis.com/tensorflow/'
                        'keras-applications/vgg19/'
                        'vgg19_weights_tf_dim_ordering_tf_kernels_notop.h5')
 
+layers = VersionAwareLayers()
+
 
 @keras_export('keras.applications.vgg19.VGG19', 'keras.applications.VGG19')
 def VGG19(
@@ -49,9 +51,12 @@ def VGG19(
     input_shape=None,
     pooling=None,
     classes=1000,
-    classifier_activation='softmax',
-):
+    classifier_activation='softmax'):
   """Instantiates the VGG19 architecture.
+
+  Reference:
+  - [Very Deep Convolutional Networks for Large-Scale Image Recognition](
+      https://arxiv.org/abs/1409.1556) (ICLR 2015)
 
   By default, it loads weights pre-trained on ImageNet. Check 'weights' for
   other options.
@@ -61,6 +66,9 @@ def VGG19(
   (height, width, channels).
 
   The default input size for this model is 224x224.
+
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.vgg19.preprocess_input` for an example.
 
   Arguments:
     include_top: whether to include the 3 fully-connected
@@ -225,12 +233,15 @@ def VGG19(
 
 @keras_export('keras.applications.vgg19.preprocess_input')
 def preprocess_input(x, data_format=None):
-  """Preprocesses the input (encoding a batch of images) to the VGG19 model."""
   return imagenet_utils.preprocess_input(
       x, data_format=data_format, mode='caffe')
 
 
 @keras_export('keras.applications.vgg19.decode_predictions')
 def decode_predictions(preds, top=5):
-  """Decodes the prediction result from the VGG19 model."""
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_CAFFE)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
