@@ -307,8 +307,8 @@ cc_library(
         "//tensorflow/compiler/xla/python/distributed:client",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:bfc_allocator",
-        "//tensorflow/core:gpu_mem_allocator",
+        "//tensorflow/core/common_runtime:bfc_allocator",
+        "//tensorflow/core/common_runtime/gpu:gpu_mem_allocator",
         "//tensorflow/stream_executor:tf_allocator_adapter",
     ] + if_cuda(["@local_config_nccl//:nccl"]),
 )
