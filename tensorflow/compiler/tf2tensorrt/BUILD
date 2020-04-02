@@ -216,7 +216,7 @@ cc_library(
     deps = [
         ":get_calibration_data_op_op_lib",
         ":trt_engine_op_op_lib",
-        ":trt_engine_utils"
+        ":trt_engine_utils",
     ],
 )
 
