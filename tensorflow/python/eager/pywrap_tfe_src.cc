@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <atomic>
 #include <cstring>
+#include <unordered_map>
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
@@ -58,12 +59,16 @@ namespace {
 // This occurs when a PyFunc kernel is run. This behavior makes it safe in that
 // case, as well as the case where python decides to reuse the underlying
 // C++ thread in 2 python threads case.
-thread_local std::map<TFE_Context*, std::unique_ptr<TFE_Op>>
+struct OpDeleter {
+  void operator()(TFE_Op* op) const { TFE_DeleteOp(op); }
+};
+thread_local std::unordered_map<TFE_Context*,
+                                std::unique_ptr<TFE_Op, OpDeleter>>
     thread_local_eager_operation_map;                             // NOLINT
 thread_local std::unique_ptr<TF_Status> thread_local_tf_status =  // NOLINT
     nullptr;
 
-std::unique_ptr<TFE_Op> ReleaseThreadLocalOp(TFE_Context* ctx) {
+std::unique_ptr<TFE_Op, OpDeleter> ReleaseThreadLocalOp(TFE_Context* ctx) {
   auto it = thread_local_eager_operation_map.find(ctx);
   if (it == thread_local_eager_operation_map.end()) {
     return nullptr;
@@ -73,7 +78,7 @@ std::unique_ptr<TFE_Op> ReleaseThreadLocalOp(TFE_Context* ctx) {
 
 TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
               const char* raw_device_name, TF_Status* status) {
-  std::unique_ptr<TFE_Op> op = ReleaseThreadLocalOp(ctx);
+  auto op = ReleaseThreadLocalOp(ctx);
   if (!op) {
     op.reset(new TFE_Op{ctx->context->CreateOperation()});
   }
@@ -1018,7 +1023,7 @@ PyObject* TFE_Py_UID() { return PyLong_FromLongLong(get_uid()); }
 void TFE_DeleteContextCapsule(PyObject* context) {
   TFE_Context* ctx =
       reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(context, nullptr));
-  std::unique_ptr<TFE_Op> op = ReleaseThreadLocalOp(ctx);
+  auto op = ReleaseThreadLocalOp(ctx);
   op.reset();
   TFE_DeleteContext(ctx);
 }
