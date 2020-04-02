@@ -143,7 +143,8 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
 
     int input_left_shift;
     tflite::PreprocessSoftmaxScaling(
-        params->beta, input->params.scale, kScaledDiffIntegerBits,
+        static_cast<double>(params->beta),
+        static_cast<double>(input->params.scale), kScaledDiffIntegerBits,
         &op_data->input_multiplier, &input_left_shift);
     op_data->input_left_shift = input_left_shift;
     op_data->diff_min =
