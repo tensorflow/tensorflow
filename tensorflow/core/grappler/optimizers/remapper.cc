@@ -1662,7 +1662,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
   TF_RETURN_IF_ERROR(mutation->Apply());
 
-  *optimized_graph = mutable_item.graph;
+  *optimized_graph = std::move(mutable_item.graph);
 
   return Status::OK();
 }

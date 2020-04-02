@@ -20,6 +20,7 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -436,7 +437,7 @@ void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
 }
 
 void DedupControlInputs(NodeDef* node) {
-  std::unordered_set<string> inputs;
+  absl::flat_hash_set<string> inputs;
   int pos = 0;
   while (pos < node->input_size()) {
     const string& input = node->input(pos);
