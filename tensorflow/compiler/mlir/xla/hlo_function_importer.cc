@@ -140,7 +140,7 @@ tensorflow::Status HloFunctionImporter::ImportInstructions(
     instruction_value_map_[hlo_parameter] = block->getArgument(i);
   }
 
-  mlir::OpBuilder builder(block);
+  mlir::OpBuilder builder = mlir::OpBuilder::atBlockEnd(block);
   for (auto instruction : computation->MakeInstructionPostOrder()) {
     TF_ASSIGN_OR_RETURN(auto new_operation,
                         ImportInstruction(instruction, &builder));

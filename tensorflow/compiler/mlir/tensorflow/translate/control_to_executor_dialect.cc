@@ -218,7 +218,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
       }
 
       // Create the operation inside the island
-      OpBuilder island_builder(&island.GetBody());
+      OpBuilder island_builder = OpBuilder::atBlockEnd(&island.GetBody());
       Operation *inner_op = island_builder.createOperation(result);
       inner_op->setAttrs(op.getAttrList());
 
