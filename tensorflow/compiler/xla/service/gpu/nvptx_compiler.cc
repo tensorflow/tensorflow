@@ -109,8 +109,9 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   // Convert convolutions into CustomCalls to cudnn, then canonicalize them
   // (GpuConvPaddingLegalization). Also expand cuSolver calls.
   HloPassPipeline pipeline("conv_canonicalization");
-  pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                            /*allow_mixed_precision=*/false);
+  pipeline.AddInvariantCheckerDebug<HloVerifier>(
+      /*layout_sensitive=*/false,
+      /*allow_mixed_precision=*/false);
   pipeline.AddPass<CusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
   pipeline.AddPass<CudnnFusedConvRewriter>();
@@ -127,8 +128,8 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
         "algebraic_simplification_post_conv_rewriter");
-    pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                          /*allow_mixed_precision=*/false);
+    pass.AddInvariantCheckerDebug<HloVerifier>(/*layout_sensitive=*/false,
+                                               /*allow_mixed_precision=*/false);
 
     AlgebraicSimplifierOptions options;
     // When transposes appear in a fusion node, we can easily adjust the

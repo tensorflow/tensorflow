@@ -178,8 +178,9 @@ Status GpuCompiler::OptimizeHloModule(
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-      pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                            /*allow_mixed_precision=*/false);
+      pass.AddInvariantCheckerDebug<HloVerifier>(
+          /*layout_sensitive=*/false,
+          /*allow_mixed_precision=*/false);
 
       // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
       // where possible.  Not every batchnorm op can be implemented as a call to
@@ -288,7 +289,7 @@ Status GpuCompiler::OptimizeHloModule(
     fusion.AddPass<VariadicOpSplitter>();
     /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
      * fixing the ticket. */
-    fusion.AddInvariantChecker<HloVerifier>(
+    fusion.AddInvariantCheckerDebug<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false,
         LayoutAssignment::InstructionCanChangeLayout);
@@ -336,7 +337,7 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   HloPassPipeline pipeline("GPU-ir-emit-prepare");
   /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
    * fixing the ticket. */
-  pipeline.AddInvariantChecker<HloVerifier>(
+  pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/true,
       /*allow_mixed_precision=*/false,
       LayoutAssignment::InstructionCanChangeLayout);
@@ -375,7 +376,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   HloPassPipeline pipeline("post-layout_assignment");
   /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
    * fixing the ticket. */
-  pipeline.AddInvariantChecker<HloVerifier>(
+  pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/true,
       /*allow_mixed_precision=*/false,
       LayoutAssignment::InstructionCanChangeLayout);
