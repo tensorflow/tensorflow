@@ -3,6 +3,7 @@
 
 #include "lib_ops/api/conv2d.h"
 #include "lib_ops/api/pooling.h"
+#include "lib_ops/api/par.h"
 
 namespace tflite {
 namespace ops {
@@ -13,7 +14,7 @@ void parse_custom_options(
     const char *buffer, size_t length,
     ::xcore::conv::Conv2DParams &conv2d_legacy_params,
     ::xcore::conv::Conv2DUnpaddedShape *unpadded_shape = nullptr,
-    ::xcore::ParPlan *par_plan = nullptr,
+    ::xcore::ParRegionArray *par_regions = nullptr,
     padding_mode_t *padding_mode = nullptr);
 
 void parse_custom_options(const char *buffer, size_t length,
@@ -25,7 +26,7 @@ void parse_custom_options(
     int32_t *pool_w = nullptr,
     ::xcore::conv::Conv2DUnpaddedShape *unpadded_shape = nullptr,
     ::xcore::conv::Conv2DPadding *pad = nullptr,
-    ::xcore::ParPlan *par_plan = nullptr,
+    ::xcore::ParRegionArray *par_regions = nullptr,
     padding_mode_t *padding_mode = nullptr);
 
 }  // namespace xcore

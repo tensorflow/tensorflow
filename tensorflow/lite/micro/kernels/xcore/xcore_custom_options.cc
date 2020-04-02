@@ -1,6 +1,6 @@
-//#include <iostream>
-#include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 #include "flatbuffers/flexbuffers.h"
+
+#include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 
 namespace tflite {
 namespace ops {
@@ -28,13 +28,13 @@ void parse_custom_options(const char *buffer, size_t length,
 void parse_custom_options(const char *buffer, size_t length,
                           ::xcore::conv::Conv2DParams &conv2d_params,
                           ::xcore::conv::Conv2DUnpaddedShape *unpadded_shape,
-                          ::xcore::ParPlan *par_plan,
+                          ::xcore::ParRegionArray *par_regions,
                           padding_mode_t *padding_mode) {
   parse_custom_options(
       buffer, length, &conv2d_params.stride_h, &conv2d_params.stride_w,
       nullptr,  // pool_h
       nullptr,  // pool_w
-      unpadded_shape, &conv2d_params.pad, par_plan, padding_mode);
+      unpadded_shape, &conv2d_params.pad, par_regions, padding_mode);
 }
 
 //*****************************
@@ -44,7 +44,7 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
                           int32_t *stride_w, int32_t *pool_h, int32_t *pool_w,
                           ::xcore::conv::Conv2DUnpaddedShape *unpadded_shape,
                           ::xcore::conv::Conv2DPadding *pad,
-                          ::xcore::ParPlan *par_plan,
+                          ::xcore::ParRegionArray *par_regions,
                           padding_mode_t *padding_mode) {
   const uint8_t *buffer_t = reinterpret_cast<const uint8_t *>(buffer);
   // std::cout << flexbuffers::GetRoot(buffer_t, length).ToString() <<
@@ -86,12 +86,13 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
         pad->zero_point = vec[2].AsInt32();
       }
     } else if (key.compare("par_plan") == 0) {
-      if (par_plan) {
+      if (par_regions) {
         auto jobs = values[i].AsVector();
-        for (int i = 0; i < jobs.size(); ++i) {
+        par_regions->clear();
+        for (int i = 0; i < par_regions->size; i++) {
           auto region = jobs[i].AsVector();
-          par_plan->emplace_back(region[0].AsInt32(), region[1].AsInt32(),
-                                 region[2].AsInt32(), region[3].AsInt32());
+          par_regions->append({region[0].AsInt32(), region[1].AsInt32(),
+                              region[2].AsInt32(), region[3].AsInt32()});
         }
       }
     } else if (key.compare("padding") == 0) {

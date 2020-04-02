@@ -89,18 +89,18 @@ namespace dido {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   ::xcore::conv::Conv2DParams conv2d_legacy_params;
-  ::xcore::ParPlan par_plan;
+  ::xcore::ParRegionArray par_regions;
   padding_mode_t padding_mode;
 
   if (buffer)
     parse_custom_options(buffer, length, conv2d_legacy_params, nullptr,
-                         &par_plan, &padding_mode);
+                         &par_regions, &padding_mode);
 
   void *data = nullptr;
   context->AllocatePersistentBuffer(context, sizeof(::xcore::conv::Conv2D_DIDO),
                                     &data);
   ::xcore::conv::Conv2D_DIDO *op = new (data)::xcore::conv::Conv2D_DIDO(
-      conv2d_legacy_params, par_plan, padding_mode);
+      conv2d_legacy_params, par_regions, padding_mode);
 
   return op;
 }
