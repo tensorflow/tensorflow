@@ -2057,13 +2057,14 @@ void IrEmitterUnnested::EmitTile(
         // vectorized size, so it can't be vectorized by LLVM.
         if (!x_tile_fits &&
             mapping_scheme.GetIndexingOrder() == kLinearStridedIndexingX) {
-          ksl->If(loop_name + "_is_full_tile",
-                  // For the last block, tile_width will be the number of
-                  // elements left.
-                  b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeX()),
-                                  tile_width),
-                  [&] { unroll_inner_tile_loop(/*check_x_tile_bounds=*/false); },
-                  [&] { unroll_inner_tile_loop(/*check_x_tile_bounds=*/true); });
+          ksl->If(
+              loop_name + "_is_full_tile",
+              // For the last block, tile_width will be the number of
+              // elements left.
+              b_.CreateICmpEQ(constant(mapping_scheme.GetTileSizeX()),
+                              tile_width),
+              [&] { unroll_inner_tile_loop(/*check_x_tile_bounds=*/false); },
+              [&] { unroll_inner_tile_loop(/*check_x_tile_bounds=*/true); });
         } else {
           unroll_inner_tile_loop(/*check_x_tile_bounds=*/!x_tile_fits);
         }
