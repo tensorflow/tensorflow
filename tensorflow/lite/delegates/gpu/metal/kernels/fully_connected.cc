@@ -42,8 +42,9 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
   bool shared_memory =
       device_info.IsAppleGPU() &&
       device_info.apple_info.IsLocalMemoryPreferredOverGlobal();
-  const std::string barrier =
-      device_info.IsAppleGPU() ? "BARRIER" : "threadgroup_barrier";
+  const std::string barrier = device_info.IsWaveSizeEqualTo32()
+                                  ? "SIMDGROUP_BARRIER"
+                                  : "threadgroup_barrier";
   const int src_depth = IntegralDivideRoundUp(src_channels, 4);
   std::stringstream code;
   code << R"(
