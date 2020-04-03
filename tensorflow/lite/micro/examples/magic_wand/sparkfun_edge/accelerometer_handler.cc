@@ -139,12 +139,12 @@ TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
   }
 
   if (lis2dh12_fifo_mode_set(&dev_ctx, LIS2DH12_BYPASS_MODE)) {
-    error_reporter->Report("Failed to clear FIFO buffer.");
+    TF_LITE_REPORT_ERROR(error_reporter, "Failed to clear FIFO buffer.");
     return kTfLiteError;
   }
 
   if (lis2dh12_fifo_mode_set(&dev_ctx, LIS2DH12_DYNAMIC_STREAM_MODE)) {
-    error_reporter->Report("Failed to set streaming mode.");
+    TF_LITE_REPORT_ERROR(error_reporter, "Failed to set streaming mode.");
     return kTfLiteError;
   }
 
