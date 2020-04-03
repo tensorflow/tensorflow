@@ -12,17 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_CORE_KERNELS_TILE_FUNCTOR_CPU_H_
+#define TENSORFLOW_CORE_KERNELS_TILE_FUNCTOR_CPU_H_
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/tile_functor.h"
 
 namespace tensorflow {
 namespace internal {
-namespace {
 
 template <typename Device, typename T>
 void TileSimpleImpl(const Device& d, Tensor* out, const Tensor& in) {
@@ -44,8 +43,6 @@ void TileSimpleImpl(const Device& d, Tensor* out, const Tensor& in) {
   }
 }
 
-}  // namespace
-
 template <typename T>
 void TileSimple(const Eigen::ThreadPoolDevice& d, Tensor* out,
                 const Tensor& in) {
@@ -59,50 +56,6 @@ void TileSimple(const Eigen::SyclDevice& d, Tensor* out, const Tensor& in) {
 #endif
 
 }  // namespace internal
-
-namespace functor {
-
-typedef Eigen::ThreadPoolDevice CPUDevice;
-
-// Register functors used for Tile functor.
-#define DEFINE_TYPE(T)                       \
-  template struct Tile<CPUDevice, T, int32>; \
-  template struct Tile<CPUDevice, T, int64>;
-
-TF_CALL_bool(DEFINE_TYPE);
-TF_CALL_float(DEFINE_TYPE);
-TF_CALL_bfloat16(DEFINE_TYPE);
-TF_CALL_double(DEFINE_TYPE);
-TF_CALL_uint8(DEFINE_TYPE);
-TF_CALL_int8(DEFINE_TYPE);
-TF_CALL_int32(DEFINE_TYPE);
-TF_CALL_int16(DEFINE_TYPE);
-TF_CALL_int64(DEFINE_TYPE);
-TF_CALL_half(DEFINE_TYPE);
-TF_CALL_complex64(DEFINE_TYPE);
-TF_CALL_complex128(DEFINE_TYPE);
-TF_CALL_tstring(DEFINE_TYPE);
-
-#undef DEFINE_TYPE
-
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-
-#define DEFINE_TYPE(T)                        \
-  template struct Tile<SYCLDevice, T, int32>; \
-  template struct Tile<SYCLDevice, T, int64>;
-
-TF_CALL_bool(DEFINE_TYPE);
-TF_CALL_float(DEFINE_TYPE);
-TF_CALL_bfloat16(DEFINE_TYPE);
-TF_CALL_double(DEFINE_TYPE);
-TF_CALL_uint8(DEFINE_TYPE);
-TF_CALL_int32(DEFINE_TYPE);
-TF_CALL_int16(DEFINE_TYPE);
-TF_CALL_int64(DEFINE_TYPE);
-
-#undef DEFINE_TYPE
-#endif  // TENSORFLOW_USE_SYCL
-
-}  // end namespace functor
 }  // end namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_KERNELS_TILE_FUNCTOR_CPU_H_
