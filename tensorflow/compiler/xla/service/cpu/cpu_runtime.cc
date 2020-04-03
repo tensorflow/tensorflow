@@ -278,6 +278,7 @@ class CpuAllReduceRendezvous : public xla::Rendezvous<std::nullptr_t> {
         case xla::S8:
           DoAllReduce<xla::S8>(participant);
           break;
+        case xla::PRED:
         case xla::U8:
           DoAllReduce<xla::U8>(participant);
           break;

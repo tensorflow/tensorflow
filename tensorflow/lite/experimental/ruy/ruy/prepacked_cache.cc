@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/ruy/prepacked_cache.h"
 
+#include <utility>
+
 #include "tensorflow/lite/experimental/ruy/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/ruy/profiler/instrumentation.h"
 
@@ -30,7 +32,9 @@ CacheIterator PrepackedCache::FindAndUpdate(const CacheKey &key) {
     const TimePoint time = CacheNow();
     itr->second.second = time;
   }
-  return itr;
+  // std::move() is required in the MSVC STL when NDEBUG is not set, and has no
+  // effect in libc++.
+  return std::move(itr);  // NOLINT
 }
 
 void PrepackedCache::Insert(const CacheKey &key,

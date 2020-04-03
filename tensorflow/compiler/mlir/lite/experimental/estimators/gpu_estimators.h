@@ -70,9 +70,48 @@ class TFLiteCostEstimator<Conv2DOp, hardware::GPU> {
   static bool IsSupported(mlir::Operation* op) { return true; }
 };
 
+// tfl.cos
+template <>
+class TFLiteCostEstimator<CosOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
 // tfl.depthwise_conv_2d
 template <>
 class TFLiteCostEstimator<DepthwiseConv2DOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
+// tfl.div
+template <>
+class TFLiteCostEstimator<DivOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
+// tfl.exp
+template <>
+class TFLiteCostEstimator<ExpOp, hardware::GPU> {
  public:
   static double GetCost(mlir::Operation* op) {
     llvm::errs() << "No defined cost function for op: "
@@ -94,6 +133,19 @@ class TFLiteCostEstimator<FullyConnectedOp, hardware::GPU> {
   }
 
   // TODO(renjieliu): we need to check for dynamic weights.
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
+// tfl.hard_swish
+template <>
+class TFLiteCostEstimator<HardSwishOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
   static bool IsSupported(mlir::Operation* op) { return true; }
 };
 
@@ -136,6 +188,32 @@ class TFLiteCostEstimator<MirrorPadOp, hardware::GPU> {
   static bool IsSupported(mlir::Operation* op) { return true; }
 };
 
+// tfl.maximum
+template <>
+class TFLiteCostEstimator<MaximumOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
+// tfl.minimum
+template <>
+class TFLiteCostEstimator<MinimumOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
 // tfl.mul
 template <>
 class TFLiteCostEstimator<MulOp, hardware::GPU> {
@@ -152,6 +230,19 @@ class TFLiteCostEstimator<MulOp, hardware::GPU> {
 // tfl.relu
 template <>
 class TFLiteCostEstimator<ReluOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
+// tfl.relu6
+template <>
+class TFLiteCostEstimator<Relu6Op, hardware::GPU> {
  public:
   static double GetCost(mlir::Operation* op) {
     llvm::errs() << "No defined cost function for op: "

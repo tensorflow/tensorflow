@@ -241,7 +241,7 @@ class SpaceToBatchND
     const Array& input_array = op_signature.model->GetArray(input_name);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.space_batch.num_dims =
+    op_sig.options.single_input_op.num_dims =
         input_array.shape().dimensions_count();
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
@@ -325,7 +325,7 @@ class BatchToSpaceND
     const Array& input_array = op_signature.model->GetArray(input_name);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.space_batch.num_dims =
+    op_sig.options.single_input_op.num_dims =
         input_array.shape().dimensions_count();
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
@@ -1208,7 +1208,7 @@ class StridedSlice
         static_cast<const StridedSliceOperator&>(*op_signature.op);
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
-    op_sig.options.strided_slice.num_dims = ss_op.start_indices.size();
+    op_sig.options.single_input_op.num_dims = ss_op.start_indices.size();
     return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };

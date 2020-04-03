@@ -32,7 +32,8 @@ namespace profiler {
 struct InterThreadConnectInfo {
   int64 parent_event_type;
   int64 child_event_type;
-  std::vector<int64> stat_types;
+  std::vector<int64> parent_stat_types;
+  std::vector<int64> child_stat_types;
 };
 
 // A wrapper for XEvent with parent and children pointers. Through these
@@ -135,6 +136,8 @@ class EventForest {
   VirtualEventContainer virtual_event_container_;
   EventGroupNameMap event_group_name_map_;
 };
+
+std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList();
 
 // Calls GroupEvents with connect_info_list and root_event_types specific to
 // TensorFlow.

@@ -10,6 +10,14 @@ config_setting(
     define_values = {"ruy_profiler": "true"},
 )
 
+# Used to build TFLite Micro RUY dependency for embedded targets outside of the
+# RUY source tree.
+filegroup(
+    name = "ruy_instrumentation_header",
+    srcs = ["instrumentation.h"],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "instrumentation",
     srcs = ["instrumentation.cc"],

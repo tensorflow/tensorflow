@@ -233,7 +233,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
   // Constant nodes with no input control dependency are always executed early,
   // so we can prune all their output control dependencies.
   if (IsConstant(*node) && node->input_size() == 0) {
-    const std::set<NodeDef*> output_nodes = node_map_->GetOutputs(node_name);
+    const auto output_nodes = node_map_->GetOutputs(node_name);
     for (NodeDef* fanout : output_nodes) {
       bool optimize_fanout = false;
       bool data_connection = false;

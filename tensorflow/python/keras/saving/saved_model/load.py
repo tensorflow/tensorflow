@@ -550,7 +550,8 @@ class KerasObjectLoader(tf_load.Loader):
           layers.insert(0, input_layer.InputLayer(
               input_shape=batch_input_shape[1:],
               batch_size=batch_input_shape[0],
-              dtype=layers[0].dtype))
+              dtype=layers[0].dtype,
+              name=layers[0].name + '_input'))
       model.__init__(layers, name=config['name'])
       if not model.inputs:
         first_layer = self._get_child_layer_node_ids(model_id, model.name)[0]

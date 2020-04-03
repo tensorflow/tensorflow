@@ -34,7 +34,9 @@ class RuntimeTypeVerifyPass : public mlir::FunctionPass<RuntimeTypeVerifyPass> {
 
 void RuntimeTypeVerifyPass::runOnFunction() {
   getFunction().walk([&](TflRuntimeVerifyOpInterface op) {
-    if (failed(op.VerifyTflRuntimeTypes(op.getOperation())))
+    if (failed(op.VerifyTflRuntimeTypes(
+            op.getOperation(),
+            /*failure_on_operand_type_mismatch=*/true)))
       signalPassFailure();
   });
 }

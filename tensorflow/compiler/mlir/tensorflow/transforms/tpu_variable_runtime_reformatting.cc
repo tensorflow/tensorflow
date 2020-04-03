@@ -318,7 +318,7 @@ TF::WhileOp AddStateVarsToWhileOp(TF::WhileOp while_op, FuncOp body,
     new_body_return_vals.push_back(inner_arg);
     new_while_operands.push_back(state_var.resource());
   }
-  OpBuilder builder(&body.front());
+  OpBuilder builder = OpBuilder::atBlockEnd(&body.front());
   // Update return values.
   builder.create<ReturnOp>(body_return.getLoc(), new_body_return_vals);
   body_return.erase();

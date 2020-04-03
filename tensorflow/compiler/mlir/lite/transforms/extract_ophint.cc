@@ -710,7 +710,7 @@ void ExtractOphintPass::runOnModule() {
       ophint_composite_ops_count = ophint_composite_ops.size();
 
       // Convert.
-      OpBuilder builder(&bb);
+      OpBuilder builder = OpBuilder::atBlockEnd(&bb);
       for (const auto& kv : ophint_composite_ops) {
         if (failed(ConvertOphintToStub(kv.getKey(), kv.getValue(), &builder,
                                        &module))) {

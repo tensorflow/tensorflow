@@ -19,10 +19,10 @@
 # Compiler options:
 #     cuda_clang:             Use clang when building CUDA code.
 #     c++17:                  Build with C++17 options
-#     C++1z:                  Build with C++17 options
+#     c++1z:                  Build with C++17 options
 #     avx_linux:              Build with avx instruction set on linux.
 #     avx2_linux:             Build with avx2 instruction set on linux.
-#     arch_native_linux:      Build with instruction sets available to the host machine on linux
+#     native_arch_linux:      Build with instruction sets available to the host machine on linux
 #     avx_win:                Build with avx instruction set on windows
 #     avx2_win:               Build with avx2 instruction set on windows
 #

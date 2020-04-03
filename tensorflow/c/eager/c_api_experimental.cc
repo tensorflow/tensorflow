@@ -19,12 +19,13 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/strcat.h"
 
 using tensorflow::string;
 
@@ -526,7 +527,11 @@ void TFE_DeleteCancellationManager(
 void TFE_OpSetCancellationManager(TFE_Op* op,
                                   TFE_CancellationManager* cancellation_manager,
                                   TF_Status* status) {
-  status->status = op->operation->SetCancellationManager(cancellation_manager);
+  tensorflow::EagerOperation* operation =
+      tensorflow::OperationFromInterface(op->operation);
+  operation->SetCancellationManager(
+      &cancellation_manager->cancellation_manager);
+  status->status = tensorflow::Status::OK();
 }
 
 TFE_Executor* TFE_NewExecutor(bool is_async) {
@@ -573,12 +578,6 @@ void TFE_HostAddressSpace(TFE_Context* ctx, TF_Buffer* buf) {
   buf->data_deallocator = [](void* data, size_t length) {
     tensorflow::port::Free(data);
   };
-}
-
-void TFE_TensorHandleEnableImplicitMirroring(TFE_TensorHandle* h,
-                                             TF_Status* status) {
-  h->handle->EnableImplicitMirroring();
-  status->status = tensorflow::Status::OK();
 }
 
 void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,

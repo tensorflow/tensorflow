@@ -194,6 +194,25 @@ StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
         "When populating derived attrs for ",
         inst->getName().getStringRef().str());
   }
+
+  // If the instruction is in the TF dialect, the code above already filtered
+  // results with control types. Here we only add the shapes for the leading
+  // values with ShapedType, assuming values with non-ShapedType are put at the
+  // end of the result.
+  if (!ignore_unregistered_attrs && inst->getNumResults() > 0) {
+    auto values = inst->getResults();
+    auto begin = values.begin();
+    auto end = values.begin();
+    while (end != values.end() && (*end).getType().isa<mlir::ShapedType>())
+      end++;
+    if (begin != end) {
+      mlir::TF::ResultShapeRange output_shapes = {
+          mlir::TF::ResultShapeIterator(begin),
+          mlir::TF::ResultShapeIterator(end)};
+      TF_RETURN_IF_ERROR(SetShapeAttribute("_output_shapes", output_shapes,
+                                           node_def->mutable_attr()));
+    }
+  }
   return node_def;
 }
 

@@ -1521,6 +1521,34 @@ static LogicalResult Verify(FillOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// FusedBatchNormGradOp
+//===----------------------------------------------------------------------===//
+
+// TODO(b/150954845): Add benchmarks to verify that layout preference didn't
+// change in the latest GPU generations.
+
+LogicalResult FusedBatchNormGradV3Op::UpdateDataFormat(StringRef data_format) {
+  return ::mlir::TF::UpdateDataFormat(data_format, this);
+}
+
+StringRef FusedBatchNormGradV3Op::GetOptimalLayout(
+    const RuntimeDevices &devices) {
+  // Keep current data format if no GPUs are available or if explicit placement
+  // does not allow to use GPU for this operation.
+  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(getOperation()))
+    return data_format();
+
+  // For f16 data type on devices with Tensor Cores support NHWC data format
+  // is up to ~2x faster.
+  auto x_ty = x().getType().cast<TensorType>();
+  const bool is_f16 = x_ty.getElementType().isF16();
+  if (is_f16 && CanUseTensorCores(devices)) return "NHWC";
+
+  // For all other data types prefer NCHW.
+  return "NCHW";
+}
+
+//===----------------------------------------------------------------------===//
 // FusedBatchNormOp
 //===----------------------------------------------------------------------===//
 
@@ -1547,7 +1575,34 @@ static LogicalResult Verify(FusedBatchNormOp op) {
 
 LogicalResult FusedBatchNormV3Op::FoldOperandsPermutation(
     ArrayRef<int64_t> permutation) {
+  // FusedBatchNorm in training mode is a layout sentitive operation, and should
+  // have already assigned an optimal data format.
+  if (is_training()) return failure();
+
   return ::mlir::TF::FoldOperandsPermutation(permutation, this);
+}
+
+LogicalResult FusedBatchNormV3Op::UpdateDataFormat(StringRef data_format) {
+  return ::mlir::TF::UpdateDataFormat(data_format, this);
+}
+
+StringRef FusedBatchNormV3Op::GetOptimalLayout(const RuntimeDevices &devices) {
+  // In inference mode FusedBatchNorm is not sensitive to data layout.
+  if (!is_training()) return data_format();
+
+  // Keep current data format if no GPUs are available or if explicit placement
+  // does not allow to use GPU for this operation.
+  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(getOperation()))
+    return data_format();
+
+  // For f16 data type on devices with Tensor Cores support NHWC data format
+  // is up to ~2x faster.
+  auto x_ty = x().getType().cast<TensorType>();
+  const bool is_f16 = x_ty.getElementType().isF16();
+  if (is_f16 && CanUseTensorCores(devices)) return "NHWC";
+
+  // For all other data types prefer NCHW.
+  return "NCHW";
 }
 
 //===----------------------------------------------------------------------===//
@@ -2096,6 +2151,27 @@ static LogicalResult VerifyPartitionedCall(OpClass op) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// PowOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult PowOp::fold(ArrayRef<Attribute> operands) {
+  auto constant_y = operands[1].dyn_cast_or_null<DenseFPElementsAttr>();
+  if (constant_y && constant_y.isSplat()) {
+    APFloat y_value = constant_y.getSplatValue<APFloat>();
+    auto output_type = getType().cast<ShapedType>();
+    if (y_value.isZero() && output_type.hasStaticShape()) {
+      return DenseElementsAttr::get(
+          output_type,
+          FloatAttr::get(output_type.getElementType(), /*value=*/1.0));
+    }
+    if (y_value.isExactlyValue(1.0)) {
+      return x();
+    }
+  }
+  return {};
 }
 
 //===----------------------------------------------------------------------===//

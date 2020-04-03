@@ -1841,7 +1841,6 @@ class AggregatingVariableTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(self.evaluate(aggregating._v.read_value()), 3.)
 
   def testAssignAdd(self, distribution):
-    self.skipTest("b/151250566")
     with distribution.scope():
       v = variable_scope.variable(
           1, aggregation=variables_lib.VariableAggregation.MEAN)

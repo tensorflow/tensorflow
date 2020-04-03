@@ -706,7 +706,10 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0> {
 }
 
 def TFL_CosOp: TFL_Op<"cos", [
-    NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
+    NoSideEffect,
+    SameOperandsAndResultType,
+    NoQuantizableResult,
+    TFL_GpuTargetOp]> {
   let summary = "Cosine operator";
 
   let description = [{
@@ -1108,7 +1111,10 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
 def TFL_DivOp : TFL_Op<"div", [
   // TODO(fengliuai): NoQuantizableResult is only correct for int8
   // quantization. update to handle Uint8 quantization.
-    ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
+    ResultsBroadcastableShape,
+    NoSideEffect,
+    NoQuantizableResult,
+    TFL_GpuTargetOp]> {
   let summary = "Division operator";
 
   let description = [{
@@ -1187,7 +1193,9 @@ def TFL_EqualOp: TFL_Op<"equal", [Commutative, ResultsBroadcastableShape,
   let builders = [TFL_ComparisonBinaryBuilder];
 }
 
-def TFL_ExpOp: TFL_Op<"exp", [NoSideEffect, SameOperandsAndResultType]> {
+def TFL_ExpOp: TFL_Op<"exp", [NoSideEffect,
+                              SameOperandsAndResultType,
+                              TFL_GpuTargetOp]> {
   let summary = "Natural exponentiation operator";
 
   let description = [{
@@ -1369,7 +1377,8 @@ def TFL_GreaterOp : TFL_Op<"greater", [
 }
 
 def TFL_HardSwishOp: TFL_Op<"hard_swish", [NoSideEffect,
-                                          SameOperandsAndResultShape]> {
+                                          SameOperandsAndResultShape,
+                                          TFL_GpuTargetOp]> {
   let summary = "Hardswish activation function.";
   let description = [{
     Computes hard-swish activation function
@@ -1657,7 +1666,11 @@ def TFL_MaxUnpooling2DOp :
 }
 
 def TFL_MaximumOp : TFL_Op<"maximum", [
-    ResultsBroadcastableShape, NoSideEffect, Commutative, SameOperandsAndResultsScale]> {
+    ResultsBroadcastableShape,
+    NoSideEffect,
+    Commutative,
+    SameOperandsAndResultsScale,
+    TFL_GpuTargetOp]> {
   let summary = "Max operator";
   let description = [{
     Element-wise max operation.
@@ -1855,7 +1868,11 @@ def TFL_ReduceProdOp: TFL_Op<"reduce_prod", [NoSideEffect]> {
 }
 
 def TFL_MinimumOp : TFL_Op<"minimum", [
-    ResultsBroadcastableShape, NoSideEffect, Commutative, SameOperandsAndResultsScale]> {
+    ResultsBroadcastableShape,
+    NoSideEffect,
+    Commutative,
+    SameOperandsAndResultsScale,
+    TFL_GpuTargetOp]> {
   let summary = "Min operator";
   let description = [{
     Element-wise min operation.
@@ -2127,7 +2144,8 @@ def TFL_ReluOp: TFL_Op<"relu", [NoSideEffect,
 
 def TFL_Relu6Op: TFL_Op<"relu6", [NoSideEffect,
                                   SameOperandsAndResultShape,
-                                  SameOperandsAndResultsScale]> {
+                                  SameOperandsAndResultsScale,
+                                  TFL_GpuTargetOp]> {
   let summary = "Relu6 operator";
 
   let description = [{

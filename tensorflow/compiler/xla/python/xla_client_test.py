@@ -381,6 +381,21 @@ class ComputationsWithConstantsTest(ComputationTest):
     self._ExecuteAndCompareClose(c, expected=[0.75])
 
 
+class ComputationFromProtoTest(absltest.TestCase):
+  """Test computation execution from HLO proto."""
+
+  def testExecuteFromProto(self):
+    # Build the HLO proto
+    b = xla_client.ComputationBuilder("computation")
+    b.Add(b.Constant(np.int8(1)), b.Constant(np.int8(2)))
+    serialized_proto = b.Build().GetSerializedProto()
+
+    # Load and execute the proto
+    c = xla_client.Computation(xla_client._xla.XlaComputation(serialized_proto))
+    ans, = xla_client.execute_with_python_values(c.Compile())
+    np.testing.assert_equal(ans, np.int8(3))
+
+
 class ParametersTest(ComputationTest):
   """Tests focusing on Parameter ops and argument-passing."""
 
@@ -494,7 +509,7 @@ class BufferTest(ComputationTest):
     arg_buffer = xla_client.Buffer.from_pyval(arg)
     arg_buffer.delete()
     with self.assertRaises(RuntimeError):
-      compiled_c.Execute([arg_buffer], tuple_arguments=False)
+      compiled_c.Execute([arg_buffer])
 
   def testShape(self):
     pyval = np.array([[1., 2.]], np.float32)
@@ -1903,8 +1918,7 @@ class EmbeddedComputationsTest(ComputationTest):
     compiled_c = c.Build().Compile()
 
     for want in to_round_trip:
-      execution = threading.Thread(
-          target=lambda: compiled_c.Execute([], tuple_arguments=False))
+      execution = threading.Thread(target=lambda: compiled_c.Execute([]))
       execution.start()
       xla_client.transfer_to_infeed(want)
       got = xla_client.transfer_from_outfeed(

@@ -31,12 +31,6 @@ void EagerProcessFunctionLibraryRuntime::RunRemoteDevice(
     FunctionLibraryRuntime::Handle local_handle,
     gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done) const {
-  if (!rets->empty()) {
-    done(
-        errors::Unimplemented("Remote outputs are not supported by "
-                              "EagerClusterFunctionLibraryRuntime yet."));
-    return;
-  }
   parent_->Run(opts, local_handle, args, rets, std::move(done));
 }
 

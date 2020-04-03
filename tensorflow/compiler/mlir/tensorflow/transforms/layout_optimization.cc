@@ -126,7 +126,7 @@ void LayoutAssignmentPass::runOnFunction() {
 
     mlir::Operation* op = layout_sensitive_interface.getOperation();
     Location loc = op->getLoc();
-    OpBuilder builder(op->getBlock());
+    OpBuilder builder = OpBuilder::atBlockEnd(op->getBlock());
 
     auto perm_attr = [&](Permutation permutation) -> DenseIntElementsAttr {
       auto perm_ty = RankedTensorType::get({4}, builder.getIntegerType(32));

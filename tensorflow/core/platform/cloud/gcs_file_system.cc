@@ -308,7 +308,8 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
       : filename_(filename),
         read_fn_(std::move(read_fn)),
         buffer_size_(buffer_size),
-        buffer_start_(0) {}
+        buffer_start_(0),
+        buffer_end_is_past_eof_(false) {}
 
   Status Name(StringPiece* result) const override {
     *result = filename_;
@@ -332,9 +333,9 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
         memcpy(scratch, buffer_.data() + (offset - buffer_start_), copy_size);
         *result = StringPiece(scratch, copy_size);
       }
-      if (copy_size < n) {
-        // Try reading from the file regardless of previous read status.
-        // The file might have grown since the last read.
+      bool consumed_buffer_to_eof =
+          offset + copy_size >= buffer_end && buffer_end_is_past_eof_;
+      if (copy_size < n && !consumed_buffer_to_eof) {
         Status status = FillBuffer(offset + copy_size);
         if (!status.ok() && status.code() != errors::Code::OUT_OF_RANGE) {
           // Empty the buffer to avoid caching bad reads.
@@ -347,9 +348,11 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
         *result = StringPiece(scratch, copy_size);
       }
       if (copy_size < n) {
+        // Forget the end-of-file flag to allow for clients that poll on the
+        // same file.
+        buffer_end_is_past_eof_ = false;
         return errors::OutOfRange("EOF reached. Requested to read ", n,
-                                  " bytes from ", offset, " but only got ",
-                                  copy_size, " bytes.");
+                                  " bytes from ", offset, ".");
       }
     }
     return Status::OK();
@@ -363,6 +366,7 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
     StringPiece str_piece;
     Status status = read_fn_(filename_, buffer_start_, buffer_size_, &str_piece,
                              &(buffer_[0]));
+    buffer_end_is_past_eof_ = status.code() == errors::Code::OUT_OF_RANGE;
     buffer_.resize(str_piece.size());
     return status;
   }
@@ -382,6 +386,8 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
 
   // Offset of buffer from start of the file.
   mutable uint64 buffer_start_ TF_GUARDED_BY(buffer_mutex_);
+
+  mutable bool buffer_end_is_past_eof_ TF_GUARDED_BY(buffer_mutex_);
 
   mutable string buffer_ TF_GUARDED_BY(buffer_mutex_);
 };

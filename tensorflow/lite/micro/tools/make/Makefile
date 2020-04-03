@@ -2,7 +2,10 @@ ifneq (3.82,$(firstword $(sort $(MAKE_VERSION) 3.82)))
   $(error "Requires make version 3.82 or later (current is $(MAKE_VERSION))")
 endif
 
+# root directory of tensorflow
+TENSORFLOW_ROOT :=
 MAKEFILE_DIR := tensorflow/lite/micro/tools/make
+
 
 # Pull in some convenience functions.
 include $(MAKEFILE_DIR)/helper_functions.inc
@@ -68,8 +71,10 @@ MICROLITE_LIBS := -lm
 CXXFLAGS := -std=c++11 -DTF_LITE_STATIC_MEMORY
 CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY
 ARFLAGS := -r
+
+# override these in the makefile.inc for specific compiler targets
 TARGET_TOOLCHAIN_PREFIX :=
-CC_PREFIX :=
+TARGET_TOOLCHAIN_ROOT :=
 
 ifeq ($(BUILD_TYPE), debug)
 	CXXFLAGS += -DDEBUG -g
@@ -94,7 +99,7 @@ $(wildcard tensorflow/lite/micro/kernels/*test.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*test.cc)
 
 MICROLITE_BENCHMARK_SRCS := \
-$(wildcard tensorflow/lite/micro/kernels/xtensa-hifimini/*benchmark.cc)
+$(wildcard tensorflow/lite/micro/kernels/benchmarks/*.cc)
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
@@ -190,8 +195,8 @@ third_party/flatbuffers/include/flatbuffers/flatbuffers.h \
 third_party/flatbuffers/LICENSE.txt
 
 MAKE_PROJECT_FILES := \
-  README_MAKE.md \
   Makefile \
+  README_MAKE.md \
   .vscode/tasks.json
 
 MBED_PROJECT_FILES := \
@@ -249,9 +254,9 @@ PRJDIR := $(GENDIR)prj/
 
 MICROLITE_LIB_PATH := $(LIBDIR)$(MICROLITE_LIB_NAME)
 
-CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${CXX_TOOL}
-CC := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${CC_TOOL}
-AR := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}${AR_TOOL}
+CXX := $(TARGET_TOOLCHAIN_ROOT)${TARGET_TOOLCHAIN_PREFIX}${CXX_TOOL}
+CC := $(TARGET_TOOLCHAIN_ROOT)${TARGET_TOOLCHAIN_PREFIX}${CC_TOOL}
+AR := $(TARGET_TOOLCHAIN_ROOT)${TARGET_TOOLCHAIN_PREFIX}${AR_TOOL}
 
 # Load the examples.
 include $(MICRO_LITE_EXAMPLE_TESTS)
@@ -309,7 +314,7 @@ $(BINDIR)%.test_target: $(BINDIR)%_test
 # snease: Add %.bin rule here since BINDIR is now defined
 # These are microcontroller-specific rules for converting the ELF output
 # of the linker into a binary image that can be loaded directly.
-OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
+OBJCOPY := ${TARGET_TOOLCHAIN_ROOT}$(TARGET_TOOLCHAIN_PREFIX)objcopy
 $(BINDIR)%.bin: $(BINDIR)%
 	@mkdir -p $(dir $@)
 	$(OBJCOPY) $< $@ -O binary

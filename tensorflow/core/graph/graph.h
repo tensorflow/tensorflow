@@ -41,6 +41,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -678,6 +679,10 @@ class Graph {
   // Builds a node name to node pointer index for all nodes in the graph.
   std::unordered_map<string, Node*> BuildNodeNameIndex() const;
 
+  absl::optional<std::vector<bool>>& GetConstArgIndicesCache() const {
+    return const_arg_indices_cache_;
+  }
+
   // TODO(josh11b): uint64 hash() const;
 
  private:
@@ -750,6 +755,10 @@ class Graph {
   // nested loops). The stored contexts are usually accessed via
   // AddWhileContext() or Node::while_ctx(), but this manages the lifetime.
   std::map<string, WhileContext> while_ctxs_;
+
+  // Cache of the indices of the arguments which need to be constant for the XLA
+  // compilation.
+  mutable absl::optional<std::vector<bool>> const_arg_indices_cache_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Graph);
 };

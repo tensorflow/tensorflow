@@ -111,7 +111,7 @@ using ::tflite::gpu::ValueId;
     @"TO_ACCUM2_TYPE" : toAccumulatorType2,
     @"TO_ACCUM3_TYPE" : toAccumulatorType3,
     @"TO_ACCUM4_TYPE" : toAccumulatorType4,
-    @"BARRIER" : barrier,
+    @"SIMDGROUP_BARRIER" : barrier,
   };
 
   NSString* code = [NSString stringWithCString:desc->shader_source.c_str()

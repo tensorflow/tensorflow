@@ -63,8 +63,8 @@ cc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu/cl:cl_device",
         "//tensorflow/lite/delegates/gpu/cl:precision",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:depth_wise_conv",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:depth_wise_conv_3x3",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:depthwise_conv",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:depthwise_conv_3x3",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",

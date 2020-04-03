@@ -108,7 +108,7 @@ TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
 }
 
 // For XNNPACK delegate, see also the strong override in
-// lite/enable_xnnpack_delegate.cc.
+// lite/tflite_with_xnnpack.cc.
 TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireXNNPACKDelegate(
     int num_threads) {
   return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});

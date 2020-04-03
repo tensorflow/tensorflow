@@ -429,6 +429,18 @@ class TestSequential(keras_parameterized.TestCase):
     model.pop()
     self.assertEqual(model._layers[-1], layer)
 
+  def test_config_preserves_input_layer(self):
+    model = keras.Sequential([
+        keras.Input((None,), name='my_embedding_input', dtype='int32'),
+        keras.layers.Embedding(32, 32),
+        keras.layers.Dense(3),
+    ])
+    config = model.get_config()
+    new_model = keras.Sequential.from_config(config)
+    self.assertTrue(new_model.built)
+    self.assertEqual(new_model._layers[0].dtype, 'int32')
+    self.assertEqual(new_model._layers[0].name, 'my_embedding_input')
+
 
 class TestSequentialEagerIntegration(keras_parameterized.TestCase):
 

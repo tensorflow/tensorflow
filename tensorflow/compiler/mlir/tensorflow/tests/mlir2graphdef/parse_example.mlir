@@ -34,7 +34,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
       // CHECK-NEXT:     }
       // CHECK-NEXT:   }
       // CHECK-NEXT: attr {
-      // CHECK-NEXT:   key: "dense_shapes"
+      // CHECK:        key: "dense_shapes"
       // CHECK-NEXT:   value {
       // CHECK-NEXT:     list {
       // CHECK-NEXT:       shape {
