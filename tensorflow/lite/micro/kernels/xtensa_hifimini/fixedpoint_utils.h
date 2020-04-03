@@ -16,9 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_KERNELS_XTENSA_HIFIMINI_FIXEDPOINT_UTILS_H_
 #define TENSORFLOW_LITE_MICRO_KERNELS_XTENSA_HIFIMINI_FIXEDPOINT_UTILS_H_
 
-#include <stdint.h>
 #include <xtensa/tie/xt_hifi2.h>
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/utils.h"
 
 namespace tflite {
@@ -191,17 +195,17 @@ inline ae_q56s MultiplyByQuantizedMultiplier(ae_p24x2s x_24x2,
 //
 // Calculate quantization params for 24bit runtimes.
 //
-inline void QuantizeMultiplier(double double_multiplier,
-                               int32_t* quantized_multiplier, int* shift) {
-  if (double_multiplier == 0.) {
+inline void QuantizeMultiplier(float multiplier, int32_t* quantized_multiplier,
+                               int* shift) {
+  if (multiplier == 0.0f) {
     *quantized_multiplier = 0;
     *shift = 0;
     return;
   }
 
   // Special cased to 24bit:
-  const double q = std::frexp(double_multiplier, shift);
-  auto q_fixed = static_cast<int64_t>(TfLiteRound(q * (1 << 23)));
+  const float q = std::frexp(multiplier, shift);
+  auto q_fixed = static_cast<int64_t>(std::round(q * (1 << 23)));
 
   TFLITE_CHECK(q_fixed <= (1 << 23));
   if (q_fixed == (1 << 23)) {
@@ -221,11 +225,11 @@ inline void QuantizeMultiplier(double double_multiplier,
 // Convert a floating point number to a Q representation for 24 bit integers.
 //
 inline int CreateQConstantForInt24(int integer_bits, float f) {
-  const double min_bounds = static_cast<double>(INT24_MIN);
-  const double max_bounds = static_cast<double>(INT24_MAX);
+  const float min_bounds = static_cast<float>(INT24_MIN);
+  const float max_bounds = static_cast<float>(INT24_MAX);
 
   int fractional_bits = 23 - integer_bits;
-  double raw = std::round(f * static_cast<double>(1 << fractional_bits));
+  float raw = std::round(f * static_cast<float>(1 << fractional_bits));
   raw = std::max(raw, min_bounds);
   raw = std::min(raw, max_bounds);
   return static_cast<int>(raw);

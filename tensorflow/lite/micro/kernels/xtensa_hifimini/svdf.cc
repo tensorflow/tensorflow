@@ -167,9 +167,10 @@ void EvalIntegerSVDF(
       const int16_t* vector1_ptr = GetTensorData<int16_t>(weights_time_tensor);
       const int16_t* vector2_ptr = state_ptr + b * n_memory * n_filter;
 
-      int num_iters = n_filter / 2;
-      const ae_p16x2s* offset_vector1 = (const ae_p16x2s*)(vector1_ptr - 2);
-      const ae_p16x2s* offset_vector2 = (const ae_p16x2s*)(vector2_ptr - 2);
+      const ae_p16x2s* offset_vector1 =
+          reinterpret_cast<const ae_p16x2s*>(vector1_ptr - 2);
+      const ae_p16x2s* offset_vector2 =
+          reinterpret_cast<const ae_p16x2s*>(vector2_ptr - 2);
 
       for (int i = 0; i < n_filter; i++) {
         *scratch_ptr_batch = 0;
@@ -238,7 +239,6 @@ void EvalIntegerSVDF(
       // Cap min/max and convert to int32 (already aligned to 32bit):
       x_56 = AE_MAXQ56S(x_56, output_int8_min_56);
       x_56 = AE_MINQ56S(x_56, output_int8_max_56);
-      int32_t x_32 = AE_TRUNCA32Q48(x_56);
       GetTensorData<int8_t>(output_tensor)[i] =
           static_cast<int8_t>(AE_TRUNCA32Q48(x_56));
     }
@@ -361,12 +361,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       weights_time->quantization.params);
   auto* output_params =
       reinterpret_cast<TfLiteAffineQuantization*>(output->quantization.params);
-  const double effective_scale_1 = input_params->scale->data[0] *
-                                   weights_feature_params->scale->data[0] /
-                                   state_params->scale->data[0];
-  const double effective_scale_2 = state_params->scale->data[0] *
-                                   weight_time_params->scale->data[0] /
-                                   output_params->scale->data[0];
+  const float effective_scale_1 = input_params->scale->data[0] *
+                                  weights_feature_params->scale->data[0] /
+                                  state_params->scale->data[0];
+  const float effective_scale_2 = state_params->scale->data[0] *
+                                  weight_time_params->scale->data[0] /
+                                  output_params->scale->data[0];
   xtensa::hifimini::QuantizeMultiplier(effective_scale_1,
                                        &op_data->effective_scale_1_a,
                                        &op_data->effective_scale_1_b);
