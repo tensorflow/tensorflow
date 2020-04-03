@@ -91,6 +91,11 @@ _USE_C_SHAPES = True
 _api_usage_gauge = monitoring.BoolGauge(
     "/tensorflow/api/ops_eager_execution",
     "Whether ops.enable_eager_execution() is called.")
+
+_tensor_equality_api_usage_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/enable_tensor_equality",
+    "Whether ops.enable_tensor_equality() is called.")
+
 _control_flow_api_gauge = monitoring.BoolGauge(
     "/tensorflow/api/enable_control_flow_v2",
     "Whether enable_control_flow_v2() is called.")
@@ -279,7 +284,9 @@ def enable_tensor_equality():
   unhashable. Thus tensors can no longer be directly used in sets or as a key in
   a dictionary.
   """
+  _tensor_equality_api_usage_gauge.get_cell().set(True)
   Tensor._USE_EQUALITY = True  # pylint: disable=protected-access
+
 
 @tf_export(v1=["disable_tensor_equality"])
 def disable_tensor_equality():
@@ -287,6 +294,7 @@ def disable_tensor_equality():
 
   This is a legacy behaviour of TensorFlow and is highly discouraged.
   """
+  _tensor_equality_api_usage_gauge.get_cell().set(False)
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
 
 
