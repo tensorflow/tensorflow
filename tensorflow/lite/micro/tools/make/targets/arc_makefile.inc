@@ -46,12 +46,14 @@ endif
   ARC_EXTRA_EXECUTE_RULES = 
 
 
-  PLATFORM_FLAGS = -tcf=$(TCF_FILE_NAME)
-  PLATFORM_FLAGS += -Hnocopyr -O3 -Hpurge -Hcl -Hcrt_fast_memcpy -Hcrt_fast_memset -fslp-vectorize-aggressive -ffunction-sections -fdata-sections
-  PLATFORM_FLAGS += -tcf_core_config
+  PLATFORM_FLAGS = -tcf=$(TCF_FILE_NAME) -tcf_core_config
+  PLATFORM_FLAGS += -Hnocopyr -O3 -Hpurge -Hdense_prologue -Hon=Long_enums -fslp-vectorize-aggressive -ffunction-sections -fdata-sections 
+  
+  # Use compact CRT. It requires pre-defined heap size
+  PLATFORM_FLAGS += -Hcl -Hcrt_fast_memcpy -Hcrt_fast_memset 
   
   PLATFORM_LDFLAGS = -tcf=$(TCF_FILE_NAME) 
-  PLATFORM_LDFLAGS = -Hnocopyr -m -Hldopt=-Coutput=memory.map
+  PLATFORM_LDFLAGS += -Hnocopyr -m -Hldopt=-Coutput=memory.map -Hheap=2K 
 ifneq ($(LCF_FILE), )
   PLATFORM_LDFLAGS += $(notdir $(LCF_FILE))
   MAKE_PROJECT_FILES += $(notdir $(LCF_FILE))
