@@ -912,6 +912,7 @@ class KerasSequenceAdapter(GeneratorDataAdapter):
     self._size = len(x)
     self._shuffle_sequence = shuffle
     self._keras_sequence = x
+    self._enqueuer = None
     super(KerasSequenceAdapter, self).__init__(
         x,
         shuffle=False,  # Shuffle is handed in the _make_callable override.
@@ -929,11 +930,11 @@ class KerasSequenceAdapter(GeneratorDataAdapter):
                               max_queue_size):
     if workers > 1 or (workers > 0 and use_multiprocessing):
       def generator_fn():
-        enqueuer = data_utils.OrderedEnqueuer(
+        self._enqueuer = data_utils.OrderedEnqueuer(
             x, use_multiprocessing=use_multiprocessing,
             shuffle=self._shuffle_sequence)
-        enqueuer.start(workers=workers, max_queue_size=max_queue_size)
-        return enqueuer.get()
+        self._enqueuer.start(workers=workers, max_queue_size=max_queue_size)
+        return self._enqueuer.get()
     else:
       def generator_fn():
         order = range(len(x))
@@ -954,6 +955,8 @@ class KerasSequenceAdapter(GeneratorDataAdapter):
     return True
 
   def on_epoch_end(self):
+    if self._enqueuer:
+      self._enqueuer.stop()
     self._keras_sequence.on_epoch_end()
 
 
@@ -1102,11 +1105,22 @@ class DataHandler(object):
                max_queue_size=10,
                workers=1,
                use_multiprocessing=False,
-               model=None):
+               model=None,
+               steps_per_execution=1):
 
     self._initial_epoch = initial_epoch
     self._epochs = epochs
     self._insufficient_data = False
+    self._model = model
+    self._steps_per_execution = steps_per_execution
+
+    # This `Variable` is assigned to by `DataHandler` to allow partial
+    # executions. Save its original value here to reset after a partial
+    # execution.
+    if isinstance(steps_per_execution, int):
+      self._steps_per_execution_value = steps_per_execution
+    else:
+      self._steps_per_execution_value = steps_per_execution.numpy().item()
 
     adapter_cls = select_data_adapter(x, y)
     self._adapter = adapter_cls(
@@ -1133,21 +1147,45 @@ class DataHandler(object):
       dataset = strategy.experimental_distribute_dataset(dataset)
     self._dataset = dataset
 
+    self._current_step = 0
+    self._step_increment = self._steps_per_execution_value - 1
+    self._insufficient_data = False
+
+    self._validate_data_handler()
+
   def enumerate_epochs(self):
     """Yields `(epoch, tf.data.Iterator)`."""
-    data_iterator = iter(self._dataset)
-    for epoch in range(self._initial_epoch, self._epochs):
-      if self._insufficient_data:  # Set by `catch_stop_iteration`.
-        break
-      if self._adapter.should_recreate_iterator():
-        if ds_context.has_strategy():
-          # TODO(b/138326910): remove this when MultiDeviceIterator is a
-          # CompositeTensor (unless this is more efficient)
-          data_iterator._initializer  # pylint: disable=pointless-statement, protected-access
-        else:
-          data_iterator = iter(self._dataset)
-      yield epoch, data_iterator
-      self._adapter.on_epoch_end()
+    with self._truncate_execution_to_epoch():
+      data_iterator = iter(self._dataset)
+      for epoch in range(self._initial_epoch, self._epochs):
+        if self._insufficient_data:  # Set by `catch_stop_iteration`.
+          break
+        if self._adapter.should_recreate_iterator():
+          if ds_context.has_strategy():
+            # TODO(b/138326910): remove this when MultiDeviceIterator is a
+            # CompositeTensor (unless this is more efficient)
+            data_iterator._initializer  # pylint: disable=pointless-statement, protected-access
+          else:
+            data_iterator = iter(self._dataset)
+        yield epoch, data_iterator
+        self._adapter.on_epoch_end()
+
+  @contextlib.contextmanager
+  def _truncate_execution_to_epoch(self):
+    """Truncates steps per execution to at most one epoch."""
+    should_truncate = (
+        self._inferred_steps is not None and
+        self._steps_per_execution_value > self._inferred_steps)
+    original_value = self._steps_per_execution_value
+    try:
+      if should_truncate:
+        self._steps_per_execution.assign(self._inferred_steps)
+        self._steps_per_execution_value = self._inferred_steps
+      yield
+    finally:
+      if should_truncate:
+        self._steps_per_execution.assign(original_value)
+        self._steps_per_execution_value = original_value
 
   @contextlib.contextmanager
   def catch_stop_iteration(self):
@@ -1156,10 +1194,7 @@ class DataHandler(object):
       yield
       context.async_wait()
     except (StopIteration, errors.OutOfRangeError):
-      if (self._adapter.get_size() is None and self._inferred_steps is None and
-          self._current_step > 0):
-        # The input passed by the user ran out of batches.
-        # Now we know the cardinality of the input(dataset or generator).
+      if self._inferred_steps is None:
         self._inferred_steps = self._current_step
       else:
         self._insufficient_data = True
@@ -1180,8 +1215,30 @@ class DataHandler(object):
            self._current_step < self._inferred_steps):
       if self._insufficient_data:  # Set by `catch_stop_iteration`.
         break
-      yield self._current_step
-      self._current_step += 1
+
+      can_run_full_execution = (
+          self._steps_per_execution_value == 1 or
+          self._inferred_steps is None or
+          self._inferred_steps - self._current_step >=
+          self._steps_per_execution_value)
+
+      if can_run_full_execution:
+        self._step_increment = self._steps_per_execution_value - 1
+        yield self._current_step
+        self._current_step += self._steps_per_execution_value
+      else:
+        # Last partial execution.
+        steps_remaining = self._inferred_steps - self._current_step
+        self._steps_per_execution.assign(steps_remaining)
+        self._step_increment = steps_remaining - 1
+        yield self._current_step
+        self._current_step += steps_remaining
+        self._steps_per_execution.assign(self._steps_per_execution_value)
+
+  @property
+  def step_increment(self):
+    """The number to increment the step for `on_batch_end` methods."""
+    return self._step_increment
 
   @property
   def inferred_steps(self):
@@ -1197,6 +1254,13 @@ class DataHandler(object):
       The inferred steps per epoch of the created `Dataset`.
     """
     return self._inferred_steps
+
+  @property
+  def should_sync(self):
+    # Catch OutOfRangeError for Datasets of unknown size.
+    # This blocks until the batch has finished executing.
+    # TODO(b/150292341): Allow multiple async steps here.
+    return self._inferred_steps is None
 
   def _infer_steps(self, steps, dataset):
     """Infers steps_per_epoch needed to loop through a dataset."""
@@ -1231,6 +1295,14 @@ class DataHandler(object):
   def _samples(self):
     return self._adapter.get_samples()
 
+  def _validate_data_handler(self):
+    # TODO(b/152094471): Support this with DistIter.get_next_as_optional.
+    if self._steps_per_execution_value > 1 and self._inferred_steps is None:
+      raise ValueError(
+          "Could not infer the size of the data. With "
+          "`steps_per_execution > 1`, you must specify the number of steps "
+          "to run.")
+
 
 def _make_class_weight_map_fn(class_weight):
   """Applies class weighting to a `Dataset`.
@@ -1255,7 +1327,7 @@ def _make_class_weight_map_fn(class_weight):
     raise ValueError(error_msg)
 
   class_weight_tensor = ops.convert_to_tensor_v2(
-      [int(class_weight[c]) for c in class_ids], dtype="int64")
+      [class_weight[int(c)] for c in class_ids])
 
   def _class_weights_map_fn(*data):
     """Convert `class_weight` to `sample_weight`."""
@@ -1325,10 +1397,11 @@ def train_validation_split(arrays, validation_split, shuffle=True):
     return isinstance(t, tensor_types) or t is None
 
   flat_arrays = nest.flatten(arrays)
-  if not all(_can_split(t) for t in flat_arrays):
+  unsplitable = [type(t) for t in flat_arrays if not _can_split(t)]
+  if unsplitable:
     raise ValueError(
         "`validation_split` is only supported for Tensors or NumPy "
-        "arrays, found: {}".format(arrays))
+        "arrays, found following types in the input: {}".format(unsplitable))
 
   if all(t is None for t in flat_arrays):
     return arrays, arrays
@@ -1347,6 +1420,14 @@ def train_validation_split(arrays, validation_split, shuffle=True):
   split_at = int(math.floor(batch_dim * (1. - validation_split)))
   train_indices = indices[:split_at]
   val_indices = indices[split_at:]
+
+  if split_at == 0 or split_at == batch_dim:
+    raise ValueError(
+        "Training data contains {batch_dim} samples, which is not sufficient "
+        "to split it into a validation and training set as specified by "
+        "`validation_split={validation_split}`. Either provide more data, or a "
+        "different value for the `validation_split` argument." .format(
+            batch_dim=batch_dim, validation_split=validation_split))
 
   def _split(t, indices):
     if t is None:

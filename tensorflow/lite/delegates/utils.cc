@@ -18,9 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
-#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace delegates {
@@ -98,6 +96,8 @@ GraphPartitionHelper::GetFirstNLargestPartitions(
 
 TfLiteStatus GraphPartitionHelper::PrepareSupportedNodes(
     std::set<std::string>* unsupported_nodes_info) {
+  if (!is_node_supported_fn_) return kTfLiteOk;
+
   TfLiteIntArray* execution_plan = nullptr;
   auto status = context_->GetExecutionPlan(context_, &execution_plan);
   if (status != kTfLiteOk) {

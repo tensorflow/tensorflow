@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_C_TF_STATUS_HELPER_H_
 
 #include "tensorflow/c/tf_status.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 

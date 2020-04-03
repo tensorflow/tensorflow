@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/verifier.h"
 
 #include <climits>
+#include <complex>
 #include <cstdint>
 
 #include "absl/container/flat_hash_set.h"

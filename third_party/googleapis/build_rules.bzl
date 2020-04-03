@@ -56,7 +56,7 @@ def cc_proto_library(name, deps):
         visibility = ["//visibility:public"],
     )
 
-def cc_grpc_library(name, srcs, deps, **kwargs):
+def cc_grpc_library(name, srcs, deps, service_namespace = "grpc", **kwargs):
     """Generates a cc library with grpc implementation and cc proto headers
 
     Args:
@@ -72,6 +72,9 @@ def cc_grpc_library(name, srcs, deps, **kwargs):
     generate_cc(
         name = codegen_grpc_target,
         srcs = srcs,
+        flags = [
+            "services_namespace=" + service_namespace,
+        ],
         plugin = "@com_github_grpc_grpc//src/compiler:grpc_cpp_plugin",
         well_known_protos = True,
         generate_mocks = True,

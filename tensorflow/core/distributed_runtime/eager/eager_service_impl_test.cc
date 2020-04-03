@@ -560,13 +560,8 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
         /*thread_pool=*/nullptr, eager_cluster_flr_.get());
   }
 
-  void CheckOutputsAndClose(const int64 op_id) {
-    const tensorflow::Tensor* t = nullptr;
-    tensorflow::TensorHandle* tensor_handle;
-    TF_ASSERT_OK(eager_service_impl_.GetTensorHandle(
-        context_id_, RemoteTensorHandleInternal(2, 0), &tensor_handle));
-    TF_ASSERT_OK(tensor_handle->Tensor(&t));
-    auto actual = t->flat<float>();
+  void CheckOutputTensorAndClose(const Tensor& tensor) {
+    auto actual = tensor.flat<float>();
     EXPECT_EQ(4, actual.size());
     EXPECT_EQ(7, actual(0));
     EXPECT_EQ(10, actual(1));
@@ -581,6 +576,15 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
                                                   &close_context_response));
   }
 
+  void CheckOutputsAndClose(const int64 op_id) {
+    const tensorflow::Tensor* t = nullptr;
+    tensorflow::TensorHandle* tensor_handle;
+    TF_ASSERT_OK(eager_service_impl_.GetTensorHandle(
+        context_id_, RemoteTensorHandleInternal(2, 0), &tensor_handle));
+    TF_ASSERT_OK(tensor_handle->Tensor(&t));
+    CheckOutputTensorAndClose(*t);
+  }
+
  protected:
   const string local_device_ = "/job:localhost/replica:0/task:0/device:CPU:0";
   const string remote_device_ = "/job:localhost/replica:0/task:1/device:CPU:0";
@@ -589,10 +593,8 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
   uint64 context_id_;
   tensorflow::FunctionDef fdef_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> eager_pflr_;
-
- private:
-  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
   std::unique_ptr<EagerClusterFunctionLibraryRuntime> eager_cluster_flr_;
+  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
 };
 
 // Test executes a remote function through
@@ -649,6 +651,56 @@ TEST_F(FunctionWithRemoteInputsTest, EagerPFLRTest) {
   done.WaitForNotification();
   TF_ASSERT_OK(status);
   CheckOutputsAndClose(op_id);
+}
+
+// Test executes a remote function with local input and output tensors.
+TEST_F(FunctionWithRemoteInputsTest,
+       EagerClusterFLRTestWithLocalInputAndOutput) {
+  Init();
+  // Instantiate MatMulFunction on remote_device.
+  FunctionLibraryRuntime::Handle handle;
+  EXPECT_TRUE(MatMulHasAttrWithDefaultValue(fdef_));
+  Status status;
+  Notification instantiate_done;
+  eager_cluster_flr_->Instantiate(
+      fdef_.signature().name(), func_lib_def_, AttrSlice(&fdef_.attr()),
+      FunctionLibraryRuntime::InstantiateOptions(), &handle,
+      [&status, &instantiate_done](const Status& s) {
+        status = s;
+        instantiate_done.Notify();
+      });
+  instantiate_done.WaitForNotification();
+  TF_ASSERT_OK(status);
+  EagerContext* ctx = nullptr;
+  TF_ASSERT_OK(eager_service_impl_.GetEagerContext(context_id_, &ctx));
+  for (const string& func_name : ctx->FuncLibDef()->ListFunctionNames()) {
+    const FunctionDef* fdef = ctx->FuncLibDef()->Find(func_name);
+    EXPECT_TRUE(fdef != nullptr);
+    if (absl::StartsWith(func_name, "MatMulFunction")) {
+      EXPECT_FALSE(MatMulHasAttrWithDefaultValue(*fdef));
+    }
+  }
+  const tensorflow::Tensor* input_tensor = nullptr;
+  tensorflow::TensorHandle* tensor_handle;
+  TF_ASSERT_OK(eager_service_impl_.GetTensorHandle(
+      context_id_, RemoteTensorHandleInternal(1, 0), &tensor_handle));
+  TF_ASSERT_OK(tensor_handle->Tensor(&input_tensor));
+
+  // Send input_tensor to the remote device, execute MatMulFunction on the
+  // remote device, and send the output back.
+  FunctionLibraryRuntime::Options opts;
+  Notification execute_done;
+  std::vector<Tensor> inputs = {*input_tensor};
+  std::vector<Tensor> outputs;
+  eager_cluster_flr_->Run(opts, handle, inputs, &outputs,
+                          [&status, &execute_done](const Status& s) {
+                            status = s;
+                            execute_done.Notify();
+                          });
+  execute_done.WaitForNotification();
+  TF_ASSERT_OK(status);
+  EXPECT_EQ(outputs.size(), 1);
+  CheckOutputTensorAndClose(outputs.at(0));
 }
 
 // Test executes a remote function through KernelAndDeviceFunc.

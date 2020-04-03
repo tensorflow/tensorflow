@@ -212,6 +212,16 @@ func @int_cmp(%lhs: tensor<2x2xi32>,
 
 // -----
 
+// CHECK-LABEL: func @float_cos
+func @float_cos(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: linalg.generic
+  // CHECK: cos
+  %0 = "xla_hlo.cos"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @copy
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]
 func @copy(%input: tensor<2x4x8xf32>) -> tensor<2x4x8xf32> {

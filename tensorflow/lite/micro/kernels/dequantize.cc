@@ -33,8 +33,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   // TODO(b/140515557): Add cached dequant to improve hybrid model performance.
-  TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
-  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
 
   TF_LITE_ENSURE(context, input->type == kTfLiteUInt8 ||
                               input->type == kTfLiteInt8 ||
@@ -46,14 +46,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
-  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
-
-  tflite::DequantizationParams op_params;
-  op_params.zero_point = input->params.zero_point;
-  op_params.scale = static_cast<double>(input->params.scale);
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
 
   if (output->type == kTfLiteFloat32) {
+    tflite::DequantizationParams op_params;
+    op_params.zero_point = input->params.zero_point;
+    op_params.scale = static_cast<double>(input->params.scale);
     switch (input->type) {
       case kTfLiteUInt8:
         reference_ops::Dequantize(
@@ -77,24 +76,24 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return kTfLiteError;
     }
   } else if (output->type == kTfLiteInt32) {
+    int32_t output_multiplier;
+    int output_shift;
+    const double effective_output_scale =
+        static_cast<double>(input->params.scale) /
+        static_cast<double>(output->params.scale);
+    QuantizeMultiplier(effective_output_scale, &output_multiplier,
+                       &output_shift);
+    int flat_size =
+        MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
     switch (input->type) {
-      // TODO(b/148749335): DequantizeInteger and Requantize are hacks here.
       case kTfLiteInt16: {
-        reference_ops::DequantizeInteger(
-            op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
-            GetTensorShape(output), GetTensorData<int32_t>(output));
+        reference_ops::Requantize(
+            GetTensorData<int16_t>(input), flat_size, output_multiplier,
+            output_shift, input->params.zero_point, output->params.zero_point,
+            GetTensorData<int32_t>(output));
         break;
       }
       case kTfLiteInt8: {
-        int32_t output_multiplier;
-        int output_shift;
-        const double effective_output_scale =
-            static_cast<double>(input->params.scale) /
-            static_cast<double>(output->params.scale);
-        QuantizeMultiplier(effective_output_scale, &output_multiplier,
-                           &output_shift);
-        int flat_size =
-            MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
         reference_ops::Requantize(
             GetTensorData<int8_t>(input), flat_size, output_multiplier,
             output_shift, input->params.zero_point, output->params.zero_point,
@@ -120,9 +119,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace dequantize
 
 TfLiteRegistration* Register_DEQUANTIZE() {
-  static TfLiteRegistration r = {};
-  r.prepare = dequantize::Prepare;
-  r.invoke = dequantize::Eval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/dequantize::Prepare,
+                                 /*invoke=*/dequantize::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

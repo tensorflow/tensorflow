@@ -16,7 +16,7 @@ The next steps assume that the
 [IDF environment variables are set](https://docs.espressif.com/projects/esp-idf/en/latest/get-started/index.html#step-4-set-up-the-environment-variables) :
 * The `IDF_PATH` environment variable is set. * `idf.py` and Xtensa-esp32 tools
 (e.g., `xtensa-esp32-elf-gcc`) are in `$PATH`. * `esp32-camera` should be
-downloaded in `comopnents/` dir of example as explained in `Build the
+downloaded in `components/` dir of example as explained in `Build the
 example`(below)
 
 ## Build the example

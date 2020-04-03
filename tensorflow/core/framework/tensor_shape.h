@@ -69,8 +69,8 @@ class TensorShapeRep {
   int64 num_elements() const { return num_elements_; }
 
   /// For error messages.
-  string DebugString() const;
-  static string DebugString(const TensorShapeProto& proto);
+  std::string DebugString() const;
+  static std::string DebugString(const TensorShapeProto& proto);
 
   void DumpRep() const;  // XXX
 
@@ -397,7 +397,8 @@ class TensorShapeUtils {
   static Status MakeShape(gtl::ArraySlice<int64> shape,
                           PartialTensorShape* out);
 
-  static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
+  static std::string ShapeListString(
+      const gtl::ArraySlice<TensorShape>& shapes);
 
   /// \brief Returns true iff `shape` starts with `prefix`.
   static bool StartsWith(const TensorShape& shape, const TensorShape& prefix);
@@ -462,7 +463,7 @@ class PartialTensorShape : public TensorShapeBase<PartialTensorShape> {
 /// common predicates on a partially known tensor shape.
 class PartialTensorShapeUtils {
  public:
-  static string PartialShapeListString(
+  static std::string PartialShapeListString(
       const gtl::ArraySlice<PartialTensorShape>& shapes);
 
   static bool AreIdentical(const gtl::ArraySlice<PartialTensorShape>& shapes0,

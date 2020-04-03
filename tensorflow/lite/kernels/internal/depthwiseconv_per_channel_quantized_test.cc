@@ -290,7 +290,7 @@ void TryTestOneDepthwiseConv3x3Filter() {
   // It's hard to come up with a right multiplier, random guess basically makes
   // all the results saturated and becomes meaningfulless, so we first use
   // reference impl to poke the min/max value of the accumulation, then use that
-  // value as a guided suggestion for us to populate meaningful mulitplier &
+  // value as a guided suggestion for us to populate meaningful multiplier &
   // shift.
   PickReasonableMultiplier(
       params, output_activation_min, output_activation_max, output_depth,
@@ -305,7 +305,7 @@ void TryTestOneDepthwiseConv3x3Filter() {
       dilation_width_factor, dilation_height_factor, pad_width, pad_height,
       depth_multiplier, output_shape_inference, 0, output_shift.data()));
 
-  // The following tests compare referene impl and Neon general impl agrees,
+  // The following tests compare reference impl and Neon general impl agrees,
   // and reference impl loosely agrees with fast kernel since they use different
   // rounding strategy.
   reference_integer_ops::DepthwiseConvPerChannel(

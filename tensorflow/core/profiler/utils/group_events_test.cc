@@ -97,6 +97,52 @@ TEST(GroupEventsTest, GroupHostTrainingLoopTest) {
   EXPECT_EQ(event_group_name_map[0], "10");
 }
 
+TEST(GroupEventsTest, GroupFunctionalOp) {
+  XSpace space;
+  XPlane* host_plane = space.add_planes();
+  XPlaneBuilder host_plane_builder(host_plane);
+  host_plane_builder.SetName(kHostThreads);
+  host_plane_builder.ReserveLines(2);
+
+  auto main_thread = host_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
+               0, 200, {{StatType::kStepNum, 123}});
+  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
+               10, 190, {{StatType::kStepId, 0}});
+
+  auto tf_executor_thread = host_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&host_plane_builder, &tf_executor_thread,
+               HostEventType::kExecutorStateProcess, 20, 80,
+               {{StatType::kStepId, 0}});
+  CreateXEvent(&host_plane_builder, &tf_executor_thread,
+               HostEventType::kRemoteCallOp, 30, 70,
+               {{StatType::kFunctionStepId, 1}});
+  CreateXEvent(&host_plane_builder, &tf_executor_thread,
+               HostEventType::kExecutorStateProcess, 100, 150,
+               {{StatType::kStepId, 1}});
+
+  EventGroupNameMap event_group_name_map;
+  GroupTfEvents(&space, &event_group_name_map);
+  XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(host_plane);
+  // Check that RemoteCallOp is grouped correctly so that all events belong
+  // to the same group.
+  host_plane_visitor.ForEachLine(
+      [&](const tensorflow::profiler::XLineVisitor& line) {
+        line.ForEachEvent(
+            [&](const tensorflow::profiler::XEventVisitor& event) {
+              absl::optional<int64> group_id;
+              event.ForEachStat(
+                  [&](const tensorflow::profiler::XStatVisitor& stat) {
+                    if (stat.Type() == StatType::kGroupId) {
+                      group_id = stat.IntValue();
+                    }
+                  });
+              EXPECT_TRUE(group_id.has_value());
+              EXPECT_EQ(*group_id, 0);
+            });
+      });
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tensorflow

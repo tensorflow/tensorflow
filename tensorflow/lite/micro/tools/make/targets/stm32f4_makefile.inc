@@ -34,6 +34,7 @@ ifeq ($(TARGET), stm32f4)
     -fno-delete-null-pointer-checks \
     -fomit-frame-pointer \
     -fpermissive \
+    -fno-use-cxa-atexit \
     -g \
     -Os
   CXXFLAGS += $(PLATFORM_FLAGS)
@@ -76,6 +77,8 @@ ifeq ($(TARGET), stm32f4)
     tensorflow/lite/micro/kernels/dequantize_test.cc \
     tensorflow/lite/micro/kernels/unpack_test.cc \
     tensorflow/lite/micro/kernels/split_test.cc \
+    tensorflow/lite/micro/kernels/conv_test.cc \
+    tensorflow/lite/micro/kernels/depthwise_conv_test.cc \
     tensorflow/lite/micro/simple_tensor_allocator_test.cc
   MICROLITE_TEST_SRCS := $(filter-out $(EXCLUDED_TESTS), $(MICROLITE_TEST_SRCS))
   EXCLUDED_EXAMPLE_TESTS := \

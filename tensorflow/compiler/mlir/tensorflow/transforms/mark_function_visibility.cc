@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
 #define DEBUG_TYPE "tf-shape-inference"
@@ -74,11 +74,11 @@ LogicalResult MarkFunctionVisibilityUsingEntryFunctionSpecification(
 
 namespace {
 struct MarkFunctionVisibilityUsingEntryFunctionSpecificationPass
-    : public ModulePass<
-          MarkFunctionVisibilityUsingEntryFunctionSpecificationPass> {
-  void runOnModule() override {
+    : public OperationPass<
+          MarkFunctionVisibilityUsingEntryFunctionSpecificationPass, ModuleOp> {
+  void runOnOperation() override {
     if (failed(MarkFunctionVisibilityUsingEntryFunctionSpecification(
-            getModule()))) {
+            getOperation()))) {
       signalPassFailure();
     }
   }
@@ -110,9 +110,10 @@ static LogicalResult MarkFunctionVisibilityUsingSavedModelLinkage(
 
 namespace {
 struct MarkFunctionVisibilityUsingSavedModelLinkagePass
-    : public ModulePass<MarkFunctionVisibilityUsingSavedModelLinkagePass> {
-  void runOnModule() override {
-    if (failed(MarkFunctionVisibilityUsingSavedModelLinkage(getModule()))) {
+    : public OperationPass<MarkFunctionVisibilityUsingSavedModelLinkagePass,
+                           ModuleOp> {
+  void runOnOperation() override {
+    if (failed(MarkFunctionVisibilityUsingSavedModelLinkage(getOperation()))) {
       signalPassFailure();
     }
   }

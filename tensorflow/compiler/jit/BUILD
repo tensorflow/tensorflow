@@ -118,8 +118,8 @@ cc_library(
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla/service:gpu_plugin",  # buildcleaner: keep
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:gpu_init",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/gpu:gpu_init",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
@@ -338,6 +338,7 @@ cc_library(
     deps = [
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
+        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
@@ -421,6 +422,7 @@ cc_library(
         "xla_kernel_creator.h",
     ],
     deps = [
+        ":compilability_check_util",
         ":flags",
         ":jit_compilation_passes",
         ":xla_kernel_creator_util",
@@ -590,6 +592,7 @@ cc_library(
         "encapsulate_subgraphs_pass.cc",
         "encapsulate_xla_computations_pass.cc",
         "extract_outside_compilation_pass.cc",
+        "force_xla_constants_on_host_pass.cc",
         "increase_dynamism_for_auto_jit_pass.cc",
         "introduce_floating_point_jitter_pass.cc",
         "mark_for_compilation_pass.cc",
@@ -605,6 +608,7 @@ cc_library(
         "encapsulate_subgraphs_pass.h",
         "encapsulate_xla_computations_pass.h",
         "extract_outside_compilation_pass.h",
+        "force_xla_constants_on_host_pass.h",
         "increase_dynamism_for_auto_jit_pass.h",
         "introduce_floating_point_jitter_pass.h",
         "mark_for_compilation_pass.h",
@@ -773,6 +777,7 @@ tf_cc_test(
         "encapsulate_subgraphs_pass_test.cc",
         "encapsulate_xla_computations_pass_test.cc",
         "extract_outside_compilation_pass_test.cc",
+        "force_xla_constants_on_host_pass_test.cc",
         "increase_dynamism_for_auto_jit_pass_test.cc",
         "introduce_floating_point_jitter_pass_internal.h",
         "introduce_floating_point_jitter_pass_test.cc",
@@ -785,6 +790,7 @@ tf_cc_test(
     tags = ["nomsan"] + tf_cuda_tests_tags(),
     deps = [
         ":common",
+        ":compilability_check_util",
         ":compilation_passes",
         ":compilation_passes_test_main",
         ":encapsulate_util",

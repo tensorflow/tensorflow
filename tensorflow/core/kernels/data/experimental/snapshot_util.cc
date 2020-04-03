@@ -406,10 +406,17 @@ Status WriteMetadataFile(const string& hash_dir,
 }
 
 Status ReadMetadataFile(const string& hash_dir,
-                        experimental::SnapshotMetadataRecord* metadata) {
+                        experimental::SnapshotMetadataRecord* metadata,
+                        bool* file_exists) {
   string metadata_filename = io::JoinPath(hash_dir, kMetadataFilename);
-  TF_RETURN_IF_ERROR(Env::Default()->FileExists(metadata_filename));
-  return ReadBinaryProto(Env::Default(), metadata_filename, metadata);
+  Status s = Env::Default()->FileExists(metadata_filename);
+  *file_exists = s.ok();
+
+  if (*file_exists) {
+    return ReadBinaryProto(Env::Default(), metadata_filename, metadata);
+  } else {
+    return Status::OK();
+  }
 }
 
 Status DumpDatasetGraph(const std::string& path, uint64 hash,
@@ -424,15 +431,14 @@ Status DumpDatasetGraph(const std::string& path, uint64 hash,
   return WriteTextProto(Env::Default(), graph_file, *graph);
 }
 
-Status DetermineOpState(const std::string& mode_string,
-                        const Status& file_status,
+Status DetermineOpState(const std::string& mode_string, bool file_exists,
                         const experimental::SnapshotMetadataRecord* metadata,
                         const uint64 pending_snapshot_expiry_seconds,
                         Mode* mode) {
   if (mode_string == kModeRead) {
     // In read mode, we should expect a metadata file is written.
-    if (errors::IsNotFound(file_status)) {
-      return file_status;
+    if (!file_exists) {
+      return errors::NotFound("Metadata file does not exist.");
     }
     LOG(INFO) << "Overriding mode to reader.";
     *mode = READER;
@@ -451,13 +457,9 @@ Status DetermineOpState(const std::string& mode_string,
     return Status::OK();
   }
 
-  if (errors::IsNotFound(file_status)) {
+  if (!file_exists) {
     *mode = WRITER;
     return Status::OK();
-  }
-
-  if (!file_status.ok()) {
-    return file_status;
   }
 
   if (metadata->finalized()) {

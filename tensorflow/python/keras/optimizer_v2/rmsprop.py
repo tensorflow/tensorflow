@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""RMSprop for TensorFlow."""
+"""RMSprop optimizer implementation."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -34,36 +35,37 @@ from tensorflow.python.util.tf_export import keras_export
 class RMSprop(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the RMSprop algorithm.
 
-  A detailed description of rmsprop.
-    - maintain a moving (discounted) average of the square of gradients
-    - divide gradient by the root of this average
+  The gist of RMSprop is to:
 
-  The default settings does not use momentum:
-
-  $$rms_t = \rho * rms_{t-1} + (1-\rho) * g_t^2$$
-  $$\theta_t = \theta_{t-1} - \mathrm{learning\_rate} *
-                              g_t / \sqrt{rms_t + \epsilon}$$
-
-  Since  $x/x^2 = sign(x)$, this  is an smoothed approximation of:
-
-  $$ \theta_t = \theta_{t-1} - \mathrm{learning\_rate} * sign(g_t) $$
-
-  With momentum the update is:
-
-  $$rms_t = \rho * rms_{t-1} + (1-\rho) * g_t^2$$
-  $$mom_t = \mathrm{momentum} * mom_{t-1} + g_t / \sqrt{rms_t + \epsilon}$$
-  $$\theta_t = \theta_{t-1} - \mathrm{learning\_rate} * mom_t$$
+  - Maintain a moving (discounted) average of the square of gradients
+  - Divide the gradient by the root of this average
 
   This implementation of RMSprop uses plain momentum, not Nesterov momentum.
 
   The centered version additionally maintains a moving average of the
-  gradients, and uses that average to estimate the variance:
+  gradients, and uses that average to estimate the variance.
 
-  $$mg_t = \rho * mg_{t-1} + (1-\rho) * g_t$$
-  $$rms_t = \rho * rms_{t-1} + (1-\rho) * g_t^2$$
-  $$mom_t = \mathrm{momentum} * mom_{t-1} +
-      \mathrm{learning\_rate} * g_t / sqrt(rms_t - mg_t^2 + \epsilon)$$
-  $$\theta_t = \theta_{t-1} - mom_t$$
+  Args:
+    learning_rate: A `Tensor`, floating point value, or a schedule that is a
+      `tf.keras.optimizers.schedules.LearningRateSchedule`, or a callable
+      that takes no arguments and returns the actual value to use. The
+      learning rate. Defeaults to 0.001.
+    rho: Discounting factor for the history/coming gradient. Defaults to 0.9.
+    momentum: A scalar or a scalar `Tensor`. Defaults to 0.0.
+    epsilon: A small constant for numerical stability. This epsilon is
+      "epsilon hat" in the Kingma and Ba paper (in the formula just before
+      Section 2.1), not the epsilon in Algorithm 1 of the paper. Defaults to
+      1e-7.
+    centered: Boolean. If `True`, gradients are normalized by the estimated
+      variance of the gradient; if False, by the uncentered second moment.
+      Setting this to `True` may help with training, but is slightly more
+      expensive in terms of computation and memory. Defaults to `False`.
+    name: Optional name prefix for the operations created when applying
+      gradients. Defaults to `"RMSprop"`.
+    **kwargs: Keyword arguments. Allowed to be one of
+      `"clipnorm"` or `"clipvalue"`.
+      `"clipnorm"` (float) clips gradients by norm; `"clipvalue"` (float) clips
+      gradients by value.
 
   Note that in the dense implementation of this algorithm, variables and their
   corresponding accumulators (momentum, gradient moving average, square
@@ -81,17 +83,17 @@ class RMSprop(optimizer_v2.OptimizerV2):
 
   >>> opt = tf.keras.optimizers.RMSprop(learning_rate=0.1)
   >>> var1 = tf.Variable(10.0)
-  >>> loss = lambda: (var1 ** 2)/2.0                # d(loss)/d(var1) = var1
+  >>> loss = lambda: (var1 ** 2) / 2.0    # d(loss) / d(var1) = var1
   >>> step_count = opt.minimize(loss, [var1]).numpy()
   >>> var1.numpy()
   9.683772
 
-  References
-    See ([pdf]
-      http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
+  Reference:
+    - [Hinton, 2012](
+      http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf)
   """
 
-  _HAS_ALL_REDUCE_SUM_GRAD = True
+  _HAS_AGGREGATE_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,

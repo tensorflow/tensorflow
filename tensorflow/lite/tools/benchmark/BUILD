@@ -154,7 +154,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/experimental/ruy/profiler",
+        "@ruy//ruy/profiler",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/profiling:platform_profiler",
         "//tensorflow/lite/profiling:profiler",

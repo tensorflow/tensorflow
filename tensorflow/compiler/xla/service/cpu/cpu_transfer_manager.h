@@ -44,6 +44,12 @@ class CpuTransferManager : public GenericTransferManager {
                                     const Shape& literal_shape,
                                     MutableBorrowingLiteral literal) override;
 
+  bool CanShapedBufferBeAccessedNow(
+      se::StreamExecutor* executor,
+      const ShapedBuffer& device_buffer) const override {
+    return true;
+  }
+
  private:
   Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
                                 const void* source);

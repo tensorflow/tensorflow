@@ -18,11 +18,11 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/Support/ToolOutputFile.h"
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/FileUtilities.h"  // TF:llvm-project
-#include "mlir/Transforms/ViewOpGraph.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "mlir/Transforms/ViewOpGraph.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
@@ -261,7 +261,7 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
 
 Status ConvertMLIRToTFLiteFlatBuffer(const toco::TocoFlags& toco_flags,
                                      mlir::OwningModuleRef module,
-                                     mlir::TFL::QuantizationSpecs quant_specs,
+                                     const mlir::TFL::PassConfig& pass_config,
                                      string* result) {
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
   bool emit_select_tf_ops = toco_flags.enable_select_tf_ops();
@@ -275,9 +275,6 @@ Status ConvertMLIRToTFLiteFlatBuffer(const toco::TocoFlags& toco_flags,
   }
 
   mlir::PassManager pm(module->getContext());
-  mlir::TFL::PassConfig pass_config(quant_specs);
-  pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
-  pass_config.lower_tensor_list_ops = true;
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
   // Convert back to outlined while format for export back to flatbuffer.
@@ -288,7 +285,8 @@ Status ConvertMLIRToTFLiteFlatBuffer(const toco::TocoFlags& toco_flags,
 
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, quant_specs, result, &pm);
+      emit_select_tf_ops, emit_custom_ops, pass_config.quant_specs, result,
+      &pm);
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         // rename once we enable the new converter feature flag.

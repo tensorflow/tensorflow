@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_HEXAGON_BUILDERS_OP_BUILDER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_HEXAGON_BUILDERS_OP_BUILDER_H_
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -123,6 +124,24 @@ class OpBuilder {
     }
   }
 
+  TfLiteStatus ComputeMinAndMaxQuantValues(const TfLiteTensor& tensor,
+                                           float* min, float* max) {
+    if (tensor.type == kTfLiteUInt8) {
+      return ComputeMinAndMaxQuantValues(tensor, min, max,
+                                         std::numeric_limits<uint8_t>::min(),
+                                         std::numeric_limits<uint8_t>::max());
+    } else if (tensor.type == kTfLiteInt8) {
+      return ComputeMinAndMaxQuantValues(tensor, min, max,
+                                         std::numeric_limits<int8_t>::min(),
+                                         std::numeric_limits<int8_t>::max());
+    } else if (tensor.type == kTfLiteInt32) {
+      return ComputeMinAndMaxQuantValues(tensor, min, max,
+                                         std::numeric_limits<int32_t>::min(),
+                                         std::numeric_limits<int32_t>::max());
+    }
+    return kTfLiteError;
+  }
+
   template <typename T>
   TfLiteStatus ComputeMinAndMaxQuantValues(const TfLiteTensor& tensor,
                                            float* min, float* max, T min_value,
@@ -136,10 +155,6 @@ class OpBuilder {
     }
     const TfLiteAffineQuantization* params =
         static_cast<const TfLiteAffineQuantization*>(quant.params);
-    if (params->quantized_dimension != 0) {
-      printf("Quantized dimensions not 0 for tensor: %s\n", tensor.name);
-      return kTfLiteError;
-    }
     float scale = params->scale->data[0];
     float zero_point = static_cast<float>(params->zero_point->data[0]);
     *min = scale * (static_cast<float>(min_value) - zero_point);

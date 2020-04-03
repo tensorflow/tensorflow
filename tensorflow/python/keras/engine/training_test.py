@@ -1342,7 +1342,7 @@ class TrainingTest(keras_parameterized.TestCase):
     class _Optimizer(optimizer_v2.gradient_descent.SGD):
       """Mock optimizer to check if _aggregate_gradient is called."""
 
-      _HAS_ALL_REDUCE_SUM_GRAD = True
+      _HAS_AGGREGATE_GRAD = True
 
       def __init__(self):
         self.aggregate_gradients_called = False
@@ -1367,10 +1367,10 @@ class TrainingTest(keras_parameterized.TestCase):
       """Override apply_gradients.
 
       To test the case where the optimizer does not define the
-      all_reduce_sum_gradients parameter.
+      experimental_aggregate_gradients parameter.
       """
 
-      _HAS_ALL_REDUCE_SUM_GRAD = False
+      _HAS_AGGREGATE_GRAD = False
 
       def apply_gradients(self, grads_and_vars, name=None):  # pylint: disable=useless-super-delegation
         return super(_OptimizerOverrideApplyGradients,
@@ -1382,6 +1382,30 @@ class TrainingTest(keras_parameterized.TestCase):
     x, y = np.ones((10, 10)), np.ones((10, 10))
     model.fit(x, y)
     self.assertEqual(model.optimizer.aggregate_gradients_called, True)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_gradients_are_none(self):
+
+    class DenseWithExtraWeight(layers_module.Dense):
+
+      def build(self, input_shape):
+        # Gradients w.r.t. extra_weights are None
+        self.extra_weight_1 = self.add_weight('extra_weight_1', shape=(),
+                                              initializer='ones')
+        super(DenseWithExtraWeight, self).build(input_shape)
+        self.extra_weight_2 = self.add_weight('extra_weight_2', shape=(),
+                                              initializer='ones')
+
+    model = sequential.Sequential([DenseWithExtraWeight(4, input_shape=(4,))])
+    # Test clipping can handle None gradients
+    opt = optimizer_v2.adam.Adam(clipnorm=1.0, clipvalue=1.0)
+    model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    inputs = np.random.normal(size=(64, 4))
+    targets = np.random.normal(size=(64, 4))
+    old_kernel = model.get_weights()[1]
+    model.fit(inputs, targets)
+    new_kernel = model.get_weights()[1]
+    self.assertNotAllEqual(old_kernel, new_kernel)
 
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
@@ -1429,7 +1453,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
     batch_size = 5
     epochs = 10
     weighted_class = 3
-    weight = 10.
+    weight = .5
     train_samples = 1000
     test_samples = 1000
     input_dim = 5

@@ -223,6 +223,33 @@ TEST(GraphPartitionHelper, CheckPrepareErrors) {
   EXPECT_EQ(kTfLiteError, helper.Partition(nullptr));
 }
 
+TEST(GraphPartitionHelper, CheckPartitionsWithSupportedNodeList) {
+  // The mocked TfLiteContext has 4 partitions: {1}, {0,3,7,8}, {2,4,9}, {5,6}.
+  // So, we simply create a list of supported nodes as {0,1,2,...,8,9}
+  MockTfLiteContext mocked_context;
+  std::vector<int> supported_nodes = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+  GraphPartitionHelper helper(&mocked_context, supported_nodes);
+  EXPECT_EQ(kTfLiteOk, helper.Partition(nullptr));
+  EXPECT_EQ(10, helper.num_total_nodes());
+  EXPECT_EQ(4, helper.num_partitions());
+
+  auto partitions = helper.GetFirstNLargestPartitions(1, 0);
+  EXPECT_EQ(1, partitions.size());
+  auto nodes = GetNodesToReplaceFromPartitions(partitions);
+  EXPECT_THAT(nodes, testing::ElementsAreArray({0, 3, 7, 8}));
+
+  // Get the largest partition but requiring at least 5 nodes, so empty result.
+  partitions = helper.GetFirstNLargestPartitions(1, 5);
+  EXPECT_TRUE(partitions.empty());
+
+  partitions = helper.GetFirstNLargestPartitions(10, 3);
+  EXPECT_EQ(2, partitions.size());
+  EXPECT_EQ(4, partitions[0]->nodes_to_replace->size);
+  EXPECT_EQ(3, partitions[1]->nodes_to_replace->size);
+  nodes = GetNodesToReplaceFromPartitions(partitions);
+  EXPECT_THAT(nodes, testing::ElementsAreArray({0, 3, 7, 8, 2, 4, 9}));
+}
+
 }  // namespace
 }  // namespace delegates
 }  // namespace tflite

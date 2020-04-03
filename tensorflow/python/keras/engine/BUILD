@@ -47,6 +47,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras:activations",
@@ -288,8 +289,10 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 20,
     tags = [
+        "manual",
         "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
+        "notap",  # TODO(b/152990697)
         "notsan",
     ],
     deps = [

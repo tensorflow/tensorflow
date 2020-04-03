@@ -37,6 +37,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "//tensorflow/core/profiler/utils:time_utils",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
@@ -103,6 +104,7 @@ cc_library(
     hdrs = ["op_stats_to_input_pipeline_analysis.h"],
     deps = [
         ":op_metrics_to_record",
+        ":step_events_to_steps_db",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:logging",
@@ -157,7 +159,7 @@ cc_library(
     hdrs = ["trace_events_to_json.h"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@jsoncpp_git//:jsoncpp",
@@ -170,9 +172,9 @@ tf_cc_test(
     deps = [
         ":trace_events_to_json",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
         "@jsoncpp_git//:jsoncpp",
     ],
 )
@@ -303,7 +305,7 @@ cc_library(
     hdrs = ["xplane_to_trace_events.h"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:tf_xplane_visitor",
         "//tensorflow/core/profiler/utils:xplane_schema",

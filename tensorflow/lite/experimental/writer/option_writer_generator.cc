@@ -16,7 +16,7 @@ limitations under the License.
 #include <iostream>
 #include <unordered_map>
 #include <unordered_set>
-#include "flatbuffers/minireflect.h"  // TF:flatbuffers
+#include "flatbuffers/minireflect.h"  // from @flatbuffers
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
 
 namespace tflite {

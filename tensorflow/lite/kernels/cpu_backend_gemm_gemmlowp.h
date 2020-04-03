@@ -22,7 +22,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "public/gemmlowp.h"
-#include "tensorflow/lite/experimental/ruy/ruy.h"
+#include "ruy/ruy.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_ruy.h"

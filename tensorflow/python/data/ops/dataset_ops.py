@@ -158,7 +158,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
   Elements can be nested structures of tuples, named tuples, and dictionaries.
   Element components can be of any type representable by `tf.TypeSpec`,
-  including `tf.Tensor`, `tf.data.Dataset`, `tf.SparseTensor`,
+  including `tf.Tensor`, `tf.data.Dataset`, `tf.sparse.SparseTensor`,
   `tf.RaggedTensor`, and `tf.TensorArray`.
 
   >>> a = 1 # Integer element
@@ -1344,7 +1344,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Raises:
       InvalidArgumentError: if `num_shards` or `index` are illegal values.
-      
+
         Note: error checking is done on a best-effort basis, and errors aren't
         guaranteed to be caught upon dataset creation. (e.g. providing in a
         placeholder tensor bypasses the early checking, and will instead result
@@ -1456,7 +1456,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       array([[ 10, 100], [ 11,  12]], dtype=int32))]
 
     See also `tf.data.experimental.dense_to_sparse_batch`, which combines
-    elements that may have different shapes into a `tf.SparseTensor`.
+    elements that may have different shapes into a `tf.sparse.SparseTensor`.
 
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
@@ -1588,6 +1588,23 @@ name=None))
     ...           inp=[x], Tout=tf.string))
     >>> list(d.as_numpy_iterator())
     [b'HELLO', b'WORLD']
+
+    3) Use `tf.numpy_function`, which also allows you to write arbitrary
+    Python code. Note that `tf.py_function` accepts `tf.Tensor` whereas
+    `tf.numpy_function` accepts numpy arrays and returns only numpy arrays.
+    For example:
+
+    >>> d = tf.data.Dataset.from_tensor_slices(['hello', 'world'])
+    >>> def upper_case_fn(t: np.ndarray):
+    ...   return t.decode('utf-8').upper()
+    >>> d = d.map(lambda x: tf.numpy_function(func=upper_case_fn,
+    ...           inp=[x], Tout=tf.string))
+    >>> list(d.as_numpy_iterator())
+    [b'HELLO', b'WORLD']
+
+    Note that the use of `tf.numpy_function` and `tf.py_function`
+    in general precludes the possibility of executing user-defined
+    transformations in parallel (because of Python GIL).
 
     Performance can often be improved by setting `num_parallel_calls` so that
     `map` will use multiple threads to process elements. If deterministic order
@@ -2266,10 +2283,10 @@ class DatasetV1(DatasetV2):
   @staticmethod
   @deprecation.deprecated(None, "Use `tf.data.Dataset.from_tensor_slices()`.")
   def from_sparse_tensor_slices(sparse_tensor):
-    """Splits each rank-N `tf.SparseTensor` in this dataset row-wise.
+    """Splits each rank-N `tf.sparse.SparseTensor` in this dataset row-wise.
 
     Args:
-      sparse_tensor: A `tf.SparseTensor`.
+      sparse_tensor: A `tf.sparse.SparseTensor`.
 
     Returns:
       Dataset: A `Dataset` of rank-(N-1) sparse tensors.
@@ -2874,14 +2891,14 @@ class TensorSliceDataset(DatasetSource):
 
 
 class SparseTensorSliceDataset(DatasetSource):
-  """A `Dataset` that splits a rank-N `tf.SparseTensor` into its rows."""
+  """A `Dataset` that splits a rank-N `tf.sparse.SparseTensor` into its rows."""
 
   def __init__(self, sparse_tensor):
     """See `Dataset.from_sparse_tensor_slices()` for details."""
     if not isinstance(sparse_tensor, sparse_tensor_lib.SparseTensor):
       raise TypeError(
-          "`sparse_tensor` must be a `tf.SparseTensor` object. Was {}.".format(
-              sparse_tensor))
+          "`sparse_tensor` must be a `tf.sparse.SparseTensor` object."
+          "Was {}.".format(sparse_tensor))
     self._sparse_tensor = sparse_tensor
 
     indices_shape = self._sparse_tensor.indices.get_shape()
@@ -4228,7 +4245,7 @@ class ParallelInterleaveDataset(UnaryDataset):
           f=self._map_func.function,
           deterministic=deterministic_string,
           **self._flat_structure)
-    elif deterministic is not None or compat.forward_compatible(2020, 2, 20):
+    else:
       variant_tensor = gen_dataset_ops.parallel_interleave_dataset_v3(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
           self._map_func.function.captured_inputs,  # pylint: disable=protected-access
@@ -4237,15 +4254,6 @@ class ParallelInterleaveDataset(UnaryDataset):
           self._num_parallel_calls,
           f=self._map_func.function,
           deterministic=deterministic_string,
-          **self._flat_structure)
-    else:
-      variant_tensor = gen_dataset_ops.parallel_interleave_dataset_v2(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,  # pylint: disable=protected-access
-          self._cycle_length,
-          self._block_length,
-          self._num_parallel_calls,
-          f=self._map_func.function,
           **self._flat_structure)
     super(ParallelInterleaveDataset, self).__init__(input_dataset,
                                                     variant_tensor)

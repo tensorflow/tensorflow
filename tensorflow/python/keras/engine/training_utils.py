@@ -56,6 +56,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -1049,11 +1050,21 @@ def has_symbolic_tensors(ls):
 
 
 def has_tensors(ls):
+  """Returns true if `ls` contains tensors."""
+  # Note: at some point in time ragged tensors didn't count as tensors, so this
+  # returned false for ragged tensors. Making this return true fails some tests
+  # which would then require a steps_per_epoch argument.
   if isinstance(ls, (list, tuple)):
-    return any(tensor_util.is_tensor(v) for v in ls)
+    return any(
+        tensor_util.is_tensor(v) and
+        not isinstance(v, ragged_tensor.RaggedTensor) for v in ls)
   if isinstance(ls, dict):
-    return any(tensor_util.is_tensor(v) for _, v in six.iteritems(ls))
-  return tensor_util.is_tensor(ls)
+    return any(
+        tensor_util.is_tensor(v) and
+        not isinstance(v, ragged_tensor.RaggedTensor)
+        for _, v in six.iteritems(ls))
+  return tensor_util.is_tensor(ls) and not isinstance(
+      ls, ragged_tensor.RaggedTensor)
 
 
 def get_metric_name(metric, weighted=False):

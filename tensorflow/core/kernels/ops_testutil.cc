@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/node_properties.h"
 #ifdef GOOGLE_CUDA
 #define EIGEN_USE_GPU
 #include "tensorflow/core/common_runtime/gpu/gpu_managed_allocator.h"
@@ -137,11 +138,16 @@ Status OpsTestBase::InitOp() {
 }
 
 Status OpsTestBase::InitOpWithGraphVersion(int graph_def_version) {
-  Status status;
-  kernel_ = CreateOpKernel(device_type_, device_, allocator(), node_def_,
-                           graph_def_version, &status);
-  if (kernel_ != nullptr) input_types_ = kernel_->input_types();
-  return status;
+  std::shared_ptr<const NodeProperties> props;
+  TF_RETURN_IF_ERROR(NodeProperties::CreateFromNodeDef(
+      node_def_, OpRegistry::Global(), &props));
+  OpKernel* kernel;
+  TF_RETURN_IF_ERROR(CreateOpKernel(
+      device_type_, device_, allocator(), /*flib=*/nullptr,
+      device_->resource_manager(), props, graph_def_version, &kernel));
+  kernel_.reset(kernel);
+  input_types_ = kernel_->input_types();
+  return Status::OK();
 }
 
 Status OpsTestBase::RunOpKernel() {

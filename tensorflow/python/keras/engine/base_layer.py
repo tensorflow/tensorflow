@@ -55,6 +55,7 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
+from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
@@ -102,6 +103,38 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   either in the constructor `__init__()` or in the `build()` method.
 
   Users will just instantiate a layer and then treat it as a callable.
+
+  Arguments:
+    trainable: Boolean, whether the layer's variables should be trainable.
+    name: String name of the layer.
+    dtype: The dtype of the layer's computations and weights (default of
+      `None` means use `tf.keras.backend.floatx` in TensorFlow 2, or the type
+      of the first input in TensorFlow 1).
+    dynamic: Set this to `True` if your layer should only be run eagerly, and
+      should not be used to generate a static computation graph.
+      This would be the case for a Tree-RNN or a recursive network,
+      for example, or generally for any layer that manipulates tensors
+      using Python control flow. If `False`, we assume that the layer can
+      safely be used to generate a static computation graph.
+
+  Attributes:
+    name: The name of the layer (string).
+    dtype: The dtype of the layer's computations and weights. If mixed
+      precision is used with a `tf.keras.mixed_precision.experimental.Policy`,
+      this is instead just the dtype of the layer's weights, as the computations
+      are done in a different dtype.
+    losses: List of losses added to this layer (via `self.add_loss()`).
+    metrics: List of metrics added to this layer (via `self.add_metric()`)..
+    trainable_weights: List of variables to be included in backprop.
+    non_trainable_weights: List of variables that should not be
+      included in backprop.
+    weights: The concatenation of the lists trainable_weights and
+      non_trainable_weights (in this order).
+    trainable: Whether the layer should be trained (boolean), i.e. whether
+      its potentially-trainable weights should be returned as part of
+      `layer.trainable_weights`.
+    input_spec: Optional (list of) `InputSpec` object(s) specifying the
+      constraints on inputs that can be accepted by the layer.
 
   We recommend that descendants of `Layer` implement the following methods:
 
@@ -222,35 +255,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   [Writing custom layers and models with Keras](
     https://www.tensorflow.org/guide/keras/custom_layers_and_models)
 
-  Arguments:
-    trainable: Boolean, whether the layer's variables should be trainable.
-    name: String name of the layer.
-    dtype: The dtype of the layer's computations and weights (default of
-      `None` means use `tf.keras.backend.floatx` in TensorFlow 2, or the type
-      of the first input in TensorFlow 1).
-    dynamic: Set this to `True` if your layer should only be run eagerly, and
-      should not be used to generate a static computation graph.
-      This would be the case for a Tree-RNN or a recursive network,
-      for example, or generally for any layer that manipulates tensors
-      using Python control flow. If `False`, we assume that the layer can
-      safely be used to generate a static computation graph.
-
-  Attributes:
-    name: The name of the layer (string).
-    dtype: The dtype of the layer's computations and weights. If mixed
-      precision is used with a `tf.keras.mixed_precision.experimental.Policy`,
-      this is instead just the dtype of the layer's weights, as the computations
-      are done in a different dtype.
-    updates: List of update ops of this layer.
-    losses: List of losses added by this layer.
-    trainable_weights: List of variables to be included in backprop.
-    non_trainable_weights: List of variables that should not be
-      included in backprop.
-    weights: The concatenation of the lists trainable_weights and
-      non_trainable_weights (in this order).
-    trainable: Whether the layer should be trained (boolean).
-    input_spec: Optional (list of) `InputSpec` object(s) specifying the
-      constraints on inputs that can be accepted by the layer.
+  About the layer's `dtype` attribute:
 
   Each layer has a dtype, which is typically the dtype of the layer's
   computations and variables. A layer's dtype can be queried via the
@@ -399,7 +404,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         `TensorShape` if the layer expects a list of inputs
         (one instance per input).
     """
-    # Only record the build input shapes of overridden the build methods.
+    # Only record the build input shapes of overridden build methods.
     if not hasattr(self.build, '_is_default'):
       self._build_input_shape = input_shape
     self.built = True
@@ -537,11 +542,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     if initializer is None:
       # If dtype is DT_FLOAT, provide a uniform unit scaling initializer
       if dtype.is_floating:
-        initializer = initializers.glorot_uniform()
+        initializer = initializers.get('glorot_uniform')
       # If dtype is DT_INT/DT_UINT, provide a default value `zero`
       # If dtype is DT_BOOL, provide a default value `FALSE`
       elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
-        initializer = initializers.zeros()
+        initializer = initializers.get('zeros')
       # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
       else:
         raise ValueError('An initializer for variable %s of type %s is required'
@@ -1129,13 +1134,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           continue
         for u in layer._updates:
           if callable(u):
-            try:
-              u = u()
-            except errors.InaccessibleTensorError:
-              base_layer_utils.check_graph_consistency(
-                  method='add_update', force_raise=True)
-              raise  # check_graph_consistency may not always raise.
-          base_layer_utils.check_graph_consistency(u, method='add_update')
+            u = u()
           collected_updates.append(u)
     return collected_updates
 
@@ -1268,7 +1267,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if (tf_utils.is_symbolic_tensor(loss) and
           not base_layer_utils.is_in_tf_function()):
         symbolic_losses.append(_tag_unconditional(loss))
-        base_layer_utils.check_graph_consistency(loss, method='add_loss')
       elif tensor_util.is_tensor(loss):
         eager_losses.append(_tag_unconditional(loss))
 
@@ -1363,8 +1361,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # If a metric was added in a Layer's `call` or `build`.
     if in_call_context or not getattr(self, '_is_graph_network', False):
       # TF Function path should take the eager path.
-      if is_symbolic and not base_layer_utils.is_in_tf_function():
-        base_layer_utils.check_graph_consistency(value, method='add_metric')
       self._add_metric(value, aggregation, name)
     else:
       if from_metric_obj:
@@ -1989,6 +1985,18 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       self._dtype_policy = policy.Policy(dtypes.as_dtype(dtype).name)
     else:
       self._dtype_policy = policy.global_policy()
+    if (self._dtype_policy.name == 'mixed_float16' and
+        not loss_scale_optimizer.strategy_supports_loss_scaling()):
+      # Although only loss scaling doesn't support certain strategies, to avoid
+      # confusion, we disallow the 'mixed_float16' policy with unsupported
+      # strategies. This is because 'mixed_float16' requires loss scaling for
+      # numeric stability.
+      strategy = ds_context.get_strategy()
+      raise ValueError('Mixed precision is not supported with the '
+                       'tf.distribute.Strategy: %s. Either stop using mixed '
+                       'precision by removing the use of the "%s" policy or '
+                       'use a different Strategy, e.g. a MirroredStrategy.' %
+                       (strategy.__class__.__name__, self._dtype_policy.name))
 
     # This has no impact on the layer behavior, and is only used for printing
     # warnings.
@@ -2172,8 +2180,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
               array_ops.shape(output)[0], activity_loss.dtype)
           # Make activity regularization strength batch-agnostic.
           mean_activity_loss = activity_loss / batch_size
-          base_layer_utils.check_graph_consistency(
-              mean_activity_loss, method='activity_regularizer')
           self.add_loss(mean_activity_loss, inputs=inputs)
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):

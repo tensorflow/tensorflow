@@ -18,20 +18,31 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import keras
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
+from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_strategy_util
 
 
@@ -213,6 +224,277 @@ class TPUStrategyTest(test.TestCase):
     self.assertLen(second_core_strategy.extended.worker_devices, 1)
     self.assertEndsWith(second_core_strategy.extended.worker_devices[0],
                         "device:TPU:1")
+
+  def test_tpu_tf_function_same_device(self):
+    with ops.device("/device:TPU:0"):
+      a = variables.Variable(1)
+
+    @function.defun_with_attributes(attributes={"_noinline": True})
+    def get_a_plus_one():
+      return a + 1
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    def foo(x):
+      with ops.device("/device:TPU:0"):
+        b = x + get_a_plus_one()
+      return b + 1
+
+    result = foo(a)
+    self.assertAllEqual(4, result)
+
+  def test_tpu_return_int32(self):
+    with ops.device("/device:TPU:0"):
+      a = variables.Variable(0)
+
+    @def_function.function
+    def foo():
+      return a + 1
+
+    @def_function.function
+    def bar():
+      with ops.device("/device:TPU:1"):
+        return foo()
+
+    with ops.device("/device:CPU:0"):
+      result = bar() + 1
+      self.assertAllEqual(result, 2)
+
+  def test_control_output_in_while_body_fn(self):
+    strategy = get_tpu_strategy()
+
+    with strategy.scope():
+      v = variables.Variable(
+          0.0, aggregation=variables.VariableAggregation.MEAN)
+
+    @def_function.function
+    def train_step():
+
+      def step_fn():
+        v.assign_add(1)
+
+      for _ in math_ops.range(2):
+        strategy.run(step_fn)
+
+    train_step()
+    self.assertEqual(2.0, v.numpy())
+
+  def test_cluster_in_graph_and_while_body_fn(self):
+    strategy = get_tpu_strategy()
+
+    @def_function.function
+    def train_step():
+
+      def step_fn(prev):
+        s = prev + 1
+        return s
+
+      def init_fn():
+        return array_ops.zeros(shape=())
+
+      prev = strategy.run(init_fn)
+      for _ in math_ops.range(10):
+        prev = strategy.run(step_fn, args=(prev,))
+      return strategy.reduce(reduce_util.ReduceOp.SUM, prev, axis=None)
+
+    sum_val = train_step().numpy().astype(float)
+    self.assertEqual(sum_val, strategy.num_replicas_in_sync * 10)
+
+  def test_two_clusters_with_same_fn(self):
+    strategy = get_tpu_strategy()
+
+    @def_function.function
+    def foo(x):
+      return strategy.run(lambda x: x + 1, (x,))
+
+    @def_function.function
+    def bar(x):
+      foo(x)
+      return foo(x)
+
+    bar(1)
+
+  def test_using_external_variable_inside_tf_function(self):
+    strategy = get_tpu_strategy()
+    dataset = dataset_ops.Dataset.range(
+        strategy.num_replicas_in_sync * 2,
+        output_type=dtypes.float32).batch(strategy.num_replicas_in_sync)
+    input_iterator = iter(strategy.experimental_distribute_dataset(dataset))
+
+    v = variables.Variable(2.0)
+
+    @def_function.function
+    def train_step(data):
+      def computation(inputs):
+        return inputs + v
+      return strategy.run(computation, args=(data,))
+
+    expected_result = [[x + 2.] for x in range(0, strategy.num_replicas_in_sync)
+                      ]
+    self.assertAllEqual(
+        expected_result,
+        strategy.experimental_local_results(train_step(next(input_iterator))))
+
+  def test_keras_metric_outside_strategy_scope_per_replica(self):
+    strategy = get_tpu_strategy()
+    metric = keras.metrics.Mean("test_metric", dtype=dtypes.float32)
+
+    dataset = dataset_ops.Dataset.range(strategy.num_replicas_in_sync *
+                                        2).batch(2)
+    dataset = strategy.experimental_distribute_dataset(dataset)
+
+    @def_function.function
+    def step_fn(i):
+      metric.update_state(i)
+
+    with self.assertRaisesRegex(ValueError, "Trying to run metric.update_state "
+                                            "in replica context"):
+      with strategy.scope():
+        for i in dataset:
+          strategy.run(step_fn, args=(i,))
+
+  # TODO(b/145574622): Remove this test once it is re-enabled in values_test.py.
+  def test_all_reduce_on_sync_on_read_variable(self):
+    strategy = get_tpu_strategy()
+    dataset = dataset_ops.Dataset.range(
+        strategy.num_replicas_in_sync, output_type=dtypes.float32).batch(
+            strategy.num_replicas_in_sync, drop_remainder=True)
+    input_iterator = iter(strategy.experimental_distribute_dataset(dataset))
+
+    with strategy.scope():
+      w = variables.Variable(
+          (0.,),
+          shape=(1,),
+          trainable=False,
+          synchronization=variables.VariableSynchronization.ON_READ,
+          aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA)
+
+    @def_function.function
+    def run(iterator):
+
+      def computation(x):
+        w.assign(x + w)
+        return w
+
+      def all_reduce(x):
+        ctx = distribution_strategy_context.get_replica_context()
+        return ctx.all_reduce("SUM", w) + x
+
+      outputs = strategy.run(computation, args=(next(iterator),))
+      outputs2 = strategy.experimental_local_results(
+          strategy.run(all_reduce, args=(outputs,)))
+      return outputs2
+
+    data = range(0, strategy.num_replicas_in_sync)
+    data_sum = sum(data)
+    expected_result = [
+        [x + data_sum] for x in range(0, strategy.num_replicas_in_sync)
+    ]
+    self.assertAllEqual(expected_result, run(input_iterator))
+    self.assertAllEqual((0.,), w.read_value())
+
+  # TODO(b/140633529): Re-enable the test.
+  def disable_test_experimental_run_output_on_device(self):
+    strategy = get_tpu_strategy()
+
+    def computation(x):
+      return math_ops.square(x)
+
+    @def_function.function
+    def train_step():
+      outputs = strategy.experimental_local_results(
+          strategy.run(computation, args=(2,)))
+      return outputs
+
+    results = train_step()
+    self.assertAllEqual([4., 4.], results)
+    self.assertAllEqual("/job:localhost/replica:0/task:0/device:TPU:0",
+                        results[0].backing_device)
+    self.assertAllEqual("/job:localhost/replica:0/task:0/device:TPU:1",
+                        results[1].backing_device)
+
+  def test_composite_input(self):
+    strategy = get_tpu_strategy()
+    if strategy.num_replicas_in_sync != 2:
+      self.skipTest("Test assumes two replicas.")
+
+    with strategy.scope():
+      table = variables.Variable(
+          initial_value=[[0.0, 1.0], [3.0, 7.0]], dtype=dtypes.float32)
+
+    @def_function.function
+    def sparse_lookup(iterator):
+
+      def tpu_function(sparse):
+        # Assumes dense_shape is (2, *)
+        looked_up = array_ops.gather(table, sparse.values)
+        return math_ops.unsorted_segment_sum(looked_up, sparse.indices[:, 0], 2)
+
+      return strategy.experimental_local_results(
+          strategy.run(tpu_function, args=(next(iterator),)))
+
+    def dataset_fn(_):
+      dataset = dataset_ops.Dataset.range(2)
+
+      def make_sparse(_):
+        return sparse_tensor.SparseTensor(
+            indices=array_ops.constant([[0, 0], [1, 0], [1, 1]],
+                                       dtype=dtypes.int64),
+            values=array_ops.constant([0, 0, 1], dtype=dtypes.int32),
+            dense_shape=array_ops.constant([2, 2], dtype=dtypes.int64))
+
+      return dataset.map(make_sparse)
+
+    strategy.extended._set_prefetch_on_host(True)  # pylint: disable=protected-access
+    dataset = iter(
+        strategy.experimental_distribute_datasets_from_function(dataset_fn))
+
+    result = sparse_lookup(dataset)
+    self.assertAllEqual(result,
+                        [[[0.0, 1.0], [3.0, 8.0]], [[0.0, 1.0], [3.0, 8.0]]])
+
+  def test_composite_input_dynamic_shapes_outside_compilation(self):
+    strategy = get_tpu_strategy()
+    if strategy.num_replicas_in_sync != 2:
+      self.skipTest("Test assumes two replicas.")
+
+    table = variables.Variable(
+        initial_value=[[0.0, 1.0], [3.0, 7.0]], dtype=dtypes.float32)
+
+    @def_function.function
+    def sparse_lookup(iterator):
+
+      def tpu_function(sparse):
+        lookup = tpu.outside_compilation(
+            embedding_ops.safe_embedding_lookup_sparse, table, sparse)
+        return math_ops.reduce_sum(lookup, axis=0)
+
+      return strategy.experimental_local_results(
+          strategy.run(tpu_function, args=(next(iterator),)))
+
+    def dataset_fn(_):
+      dataset = dataset_ops.Dataset.range(2)
+
+      def make_sparse(i):
+        indices = array_ops.constant([[0, 0], [1, 0], [1, 1]],
+                                     dtype=dtypes.int64)[0:2 + i]
+        values = array_ops.constant([0, 0, 1], dtype=dtypes.int32)[0:2 + i]
+        shape = [
+            array_ops.constant([2], dtype=dtypes.int64),
+            array_ops.expand_dims(1 + i, axis=0)
+        ]
+        dense_shape = array_ops.concat(shape, axis=0)
+        return sparse_tensor.SparseTensor(
+            indices=indices, values=values, dense_shape=dense_shape)
+
+      return dataset.map(make_sparse)
+
+    strategy.extended._set_prefetch_on_host(True)  # pylint: disable=protected-access
+    dataset = iter(
+        strategy.experimental_distribute_datasets_from_function(dataset_fn))
+
+    result = sparse_lookup(dataset)
+    self.assertAllEqual(result, [[0.0, 2.0], [1.5, 5.0]])
 
 
 if __name__ == "__main__":
