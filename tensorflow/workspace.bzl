@@ -39,6 +39,7 @@ load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
 load("//third_party/psimd:workspace.bzl", psimd = "repo")
 load("//third_party/pthreadpool:workspace.bzl", pthreadpool = "repo")
+load("//third_party/ruy:workspace.bzl", ruy = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
 load("//third_party/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
@@ -65,6 +66,7 @@ def initialize_third_party():
     pthreadpool()
     sobol_data()
     vulkan_headers()
+    ruy()
 
 # Sanitize a dependency so that it works correctly from code that includes
 # TensorFlow as a submodule.

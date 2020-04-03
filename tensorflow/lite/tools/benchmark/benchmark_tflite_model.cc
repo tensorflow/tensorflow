@@ -28,7 +28,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
-#include "tensorflow/lite/experimental/ruy/ruy/profiler/profiler.h"
+#include "ruy/profiler/profiler.h"  // from @ruy
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
