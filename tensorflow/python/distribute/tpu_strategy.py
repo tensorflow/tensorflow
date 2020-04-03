@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import atexit
 import collections
 import contextlib
 import copy
@@ -326,6 +327,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._prefetch_on_host = False
 
     self._logical_device_stack = [0]
+
+    if context.executing_eagerly():
+      # In async remote eager, we want to sync the exectors before exiting the
+      # program.
+      atexit.register(context.async_wait)
 
   # TODO(bfontain): Remove once a proper dataset API exists for prefetching
   # a dataset to multiple devices exists.
