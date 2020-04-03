@@ -29,11 +29,6 @@ tf_cuda_library(
         "c_api_experimental.h",
         "c_api_internal.h",
         "c_api_unified_experimental.h",
-        "context_interface.cc",
-        "context_interface.h",
-        "operation_interface.cc",
-        "operation_interface.h",
-        "tensor_handle_interface.h",
     ],
     hdrs = ["c_api.h"],
     copts = tf_copts() + tfe_xla_copts(),
@@ -43,29 +38,30 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            ":context_interface",
+            ":operation_interface",
+            ":tensor_handle_interface",
             "@com_google_absl//absl/algorithm:container",
             "@com_google_absl//absl/container:fixed_array",
+            "@com_google_absl//absl/types:span",
+            "@com_google_absl//absl/types:variant",
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
             "//tensorflow/c:tf_tensor_internal",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core/common_runtime/eager:attr_builder",
             "//tensorflow/core/common_runtime/eager:context",
+            "//tensorflow/core/common_runtime/eager:core",
             "//tensorflow/core/common_runtime/eager:eager_executor",
             "//tensorflow/core/common_runtime/eager:execute",
-            "//tensorflow/core/common_runtime/eager:kernel_and_device",
             "//tensorflow/core/common_runtime/eager:tensor_handle",
-            "//tensorflow/core/common_runtime/eager:copy_to_device_node",
             "//tensorflow/core:core_cpu_internal",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
-            "//tensorflow/core/platform:casts",
-            "//tensorflow/core/platform:errors",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/profiler/lib:traceme",
-            "@com_google_absl//absl/types:variant",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [
@@ -116,9 +112,6 @@ tf_cuda_library(
     srcs = [
         "c_api_experimental.h",
         "c_api_unified_experimental.h",
-        "context_interface.h",
-        "operation_interface.h",
-        "tensor_handle_interface.h",
     ],
     hdrs = ["c_api_internal.h"],
     visibility = [
@@ -127,6 +120,9 @@ tf_cuda_library(
     ],
     deps = [
         ":c_api",
+        ":context_interface",
+        ":operation_interface",
+        ":tensor_handle_interface",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/core:core_cpu",
@@ -137,12 +133,52 @@ tf_cuda_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/common_runtime/eager:attr_builder",
-        "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:eager_executor",
-        "//tensorflow/core/common_runtime/eager:eager_operation",
-        "//tensorflow/core/common_runtime/eager:kernel_and_device",
-        "//tensorflow/core/common_runtime/eager:tensor_handle",
-        "@com_google_absl//absl/container:fixed_array",
+    ],
+)
+
+cc_library(
+    name = "tensor_handle_interface",
+    hdrs = ["tensor_handle_interface.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/c:tensor_interface",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "operation_interface",
+    hdrs = ["operation_interface.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":tensor_handle_interface",
+        "//tensorflow/c:tensor_interface",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "context_interface",
+    hdrs = ["context_interface.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":operation_interface",
+        ":tensor_handle_interface",
+        "//tensorflow/c:tensor_interface",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -187,6 +223,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -213,6 +251,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "@com_google_absl//absl/strings",
     ],
@@ -243,6 +282,7 @@ tf_cuda_library(
             "//tensorflow/core/common_runtime/eager:attr_builder",
             "//tensorflow/core/common_runtime/eager:context",
             "//tensorflow/core/common_runtime/eager:eager_executor",
+            "//tensorflow/core/common_runtime/eager:eager_operation",
             "//tensorflow/core/common_runtime/eager:execute",
             "//tensorflow/core/common_runtime/eager:kernel_and_device",
             "//tensorflow/core/common_runtime/eager:tensor_handle",
@@ -265,7 +305,6 @@ tf_cuda_library(
     }) + [
         "@com_google_absl//absl/memory",
         "//tensorflow/c:tf_status_helper",
-        "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime/eager:eager_client",
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
@@ -388,6 +427,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
         "@dlpack",
     ],
     alwayslink = 1,

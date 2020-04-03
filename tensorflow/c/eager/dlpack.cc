@@ -18,6 +18,7 @@ limitations under the License.
 #include "include/dlpack/dlpack.h"  // from @dlpack
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/platform/logging.h"
@@ -40,9 +41,8 @@ struct TfDlManagedTensorCtx {
 
 // Gets tensor from eager tensor handle.
 const Tensor* GetTensorFromHandle(TFE_TensorHandle* h, TF_Status* status) {
-  if (h == nullptr || !h->handle->IsValid(&status->status)) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "The passed in handle is a nullptr");
+  if (h == nullptr || h->handle == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
     return nullptr;
   }
   tensorflow::TensorHandle* handle =

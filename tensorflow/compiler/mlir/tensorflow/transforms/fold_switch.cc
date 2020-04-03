@@ -202,7 +202,7 @@ static void MatchSwitchFoldOps(tf_executor::SwitchOp switch_op,
 static LogicalResult FoldMergeNodes(FuncOp function, const DeadQueue& queue) {
   // Create builder for val_index of MergeOp.
   auto* block = &function.getBlocks().front();
-  OpBuilder builder(block);
+  OpBuilder builder = OpBuilder::atBlockEnd(block);
   auto type = builder.getIntegerType(32);
   auto build_index = [&](Location loc, int value) {
     return builder.create<ConstantOp>(loc, type,

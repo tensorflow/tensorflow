@@ -79,7 +79,7 @@ std::string GetSrcValue(const TensorCodeGenerator& src_tensor,
   return c;
 }
 
-std::string GenerateDepthWiseConvolution3DCode(
+std::string GenerateDepthwiseConvolution3DCode(
     const OperationDef& op_def, bool stride_correction,
     const LinearStorage& biases, int channel_multiplier,
     bool weights_are_buffer,
@@ -208,7 +208,7 @@ std::string GenerateDepthWiseConvolution3DCode(
 }
 }  // namespace
 
-DepthWiseConvolution3D::DepthWiseConvolution3D(
+DepthwiseConvolution3D::DepthwiseConvolution3D(
     const OperationDef& definition,
     const DepthwiseConvolution3DAttributes& attr, const CLDevice& device)
     : GPUOperation(definition),
@@ -222,8 +222,8 @@ DepthWiseConvolution3D::DepthWiseConvolution3D(
       channel_multiplier_(attr.weights.shape.o),
       work_group_size_(8, 8, 1) {}
 
-DepthWiseConvolution3D::DepthWiseConvolution3D(
-    DepthWiseConvolution3D&& operation)
+DepthwiseConvolution3D::DepthwiseConvolution3D(
+    DepthwiseConvolution3D&& operation)
     : GPUOperation(std::move(operation)),
       weights_tex2d_(std::move(operation.weights_tex2d_)),
       weights_buf_(std::move(operation.weights_buf_)),
@@ -237,8 +237,8 @@ DepthWiseConvolution3D::DepthWiseConvolution3D(
       kernel_(std::move(operation.kernel_)),
       work_group_size_(operation.work_group_size_) {}
 
-DepthWiseConvolution3D& DepthWiseConvolution3D::operator=(
-    DepthWiseConvolution3D&& operation) {
+DepthwiseConvolution3D& DepthwiseConvolution3D::operator=(
+    DepthwiseConvolution3D&& operation) {
   if (this != &operation) {
     weights_tex2d_ = std::move(operation.weights_tex2d_);
     weights_buf_ = std::move(operation.weights_buf_);
@@ -256,11 +256,11 @@ DepthWiseConvolution3D& DepthWiseConvolution3D::operator=(
   return *this;
 }
 
-absl::Status DepthWiseConvolution3D::Compile(
+absl::Status DepthwiseConvolution3D::Compile(
     const CreationContext& creation_context) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
-  const auto code = GenerateDepthWiseConvolution3DCode(
+  const auto code = GenerateDepthwiseConvolution3DCode(
       definition_, stride_correction, biases_, channel_multiplier_,
       weights_are_buffer_, linked_operations_, *creation_context.device);
   return creation_context.cache->GetOrCreateCLKernel(
@@ -268,7 +268,7 @@ absl::Status DepthWiseConvolution3D::Compile(
       *creation_context.device, &kernel_);
 }
 
-absl::Status DepthWiseConvolution3D::BindArguments() {
+absl::Status DepthwiseConvolution3D::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   if (weights_are_buffer_) {
@@ -298,28 +298,28 @@ absl::Status DepthWiseConvolution3D::BindArguments() {
   return absl::OkStatus();
 }
 
-int3 DepthWiseConvolution3D::GetGridSize() const {
+int3 DepthwiseConvolution3D::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
   const int grid_z = dst_[0]->Slices() * dst_[0]->Depth();
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status DepthWiseConvolution3D::Tune(const TuningParameters& params) {
+absl::Status DepthwiseConvolution3D::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-absl::Status DepthWiseConvolution3D::AddToQueue(CLCommandQueue* queue) {
+absl::Status DepthwiseConvolution3D::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
-absl::Status CreateDepthWiseConvolution3D(
+absl::Status CreateDepthwiseConvolution3D(
     const CreationContext& creation_context, const OperationDef& definition,
     const DepthwiseConvolution3DAttributes& attr,
-    DepthWiseConvolution3D* result) {
-  *result = DepthWiseConvolution3D(definition, attr, *creation_context.device);
+    DepthwiseConvolution3D* result) {
+  *result = DepthwiseConvolution3D(definition, attr, *creation_context.device);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
   LinearStorageCreateInfo create_info;

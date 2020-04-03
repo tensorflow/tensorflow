@@ -73,7 +73,7 @@ std::string GetSrcValue(const TensorCodeGenerator& src_tensor,
   return c;
 }
 
-std::string GenerateDepthWiseConvolutionCode(
+std::string GenerateDepthwiseConvolutionCode(
     const OperationDef& op_def, bool stride_correction,
     const LinearStorage& biases, int channel_multiplier,
     bool weights_are_buffer,
@@ -179,7 +179,7 @@ std::string GenerateDepthWiseConvolutionCode(
 }
 }  // namespace
 
-DepthWiseConvolution::DepthWiseConvolution(
+DepthwiseConvolution::DepthwiseConvolution(
     const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr, bool weights_are_buffer)
     : GPUOperation(definition),
@@ -191,7 +191,7 @@ DepthWiseConvolution::DepthWiseConvolution(
       channel_multiplier_(attr.weights.shape.o),
       work_group_size_(8, 8, 1) {}
 
-DepthWiseConvolution::DepthWiseConvolution(DepthWiseConvolution&& operation)
+DepthwiseConvolution::DepthwiseConvolution(DepthwiseConvolution&& operation)
     : GPUOperation(std::move(operation)),
       weights_are_buffer_(operation.weights_are_buffer_),
       weights_tex2d_(std::move(operation.weights_tex2d_)),
@@ -206,8 +206,8 @@ DepthWiseConvolution::DepthWiseConvolution(DepthWiseConvolution&& operation)
       kernel_(std::move(operation.kernel_)),
       work_group_size_(operation.work_group_size_) {}
 
-DepthWiseConvolution& DepthWiseConvolution::operator=(
-    DepthWiseConvolution&& operation) {
+DepthwiseConvolution& DepthwiseConvolution::operator=(
+    DepthwiseConvolution&& operation) {
   if (this != &operation) {
     std::swap(weights_are_buffer_, operation.weights_are_buffer_);
     weights_tex2d_ = std::move(operation.weights_tex2d_);
@@ -226,11 +226,11 @@ DepthWiseConvolution& DepthWiseConvolution::operator=(
   return *this;
 }
 
-absl::Status DepthWiseConvolution::Compile(
+absl::Status DepthwiseConvolution::Compile(
     const CreationContext& creation_context) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
-  const auto code = GenerateDepthWiseConvolutionCode(
+  const auto code = GenerateDepthwiseConvolutionCode(
       definition_, stride_correction, biases_, channel_multiplier_,
       weights_are_buffer_, linked_operations_, *creation_context.device);
   return creation_context.cache->GetOrCreateCLKernel(
@@ -238,7 +238,7 @@ absl::Status DepthWiseConvolution::Compile(
       *creation_context.device, &kernel_);
 }
 
-absl::Status DepthWiseConvolution::BindArguments() {
+absl::Status DepthwiseConvolution::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_));
@@ -259,29 +259,29 @@ absl::Status DepthWiseConvolution::BindArguments() {
   return absl::OkStatus();
 }
 
-int3 DepthWiseConvolution::GetGridSize() const {
+int3 DepthwiseConvolution::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
   const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status DepthWiseConvolution::Tune(const TuningParameters& params) {
+absl::Status DepthwiseConvolution::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-absl::Status DepthWiseConvolution::AddToQueue(CLCommandQueue* queue) {
+absl::Status DepthwiseConvolution::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
-absl::Status CreateDepthWiseConvolution(
+absl::Status CreateDepthwiseConvolution(
     const CreationContext& creation_context, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& attr,
-    DepthWiseConvolution* result) {
+    DepthwiseConvolution* result) {
   bool weights_are_buffer = creation_context.device->IsMali();
-  *result = DepthWiseConvolution(definition, attr, weights_are_buffer);
+  *result = DepthwiseConvolution(definition, attr, weights_are_buffer);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
   LinearStorageCreateInfo create_info;

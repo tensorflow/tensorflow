@@ -239,6 +239,7 @@ class CuptiTracer {
 
   // Only one profile session can be live in the same time.
   bool IsAvailable() const;
+  bool NeedRootAccess() const { return need_root_access_; }
 
   void Enable(const CuptiTracerOptions& option, CuptiTraceCollector* collector);
   void Disable();
@@ -270,6 +271,9 @@ class CuptiTracer {
   absl::optional<CuptiTracerOptions> option_;
   CuptiInterface* cupti_interface_ = nullptr;
   CuptiTraceCollector* collector_ = nullptr;
+
+  // CUPTI 10.1 and higher need root access to profile.
+  bool need_root_access_ = false;
 
   bool api_tracing_enabled_ = false;
   // Cupti handle for driver or runtime API callbacks. Cupti permits a single

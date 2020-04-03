@@ -1059,7 +1059,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                return_dict=False):
     """Returns the loss value & metrics values for the model in test mode.
 
-    Computation is done in batches.
+    Computation is done in batches (see the `batch_size` arg.)
 
     Arguments:
         x: Input data. It could be: - A Numpy array (or array-like), or a list
@@ -1077,10 +1077,11 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           `x` is a dataset, generator or `keras.utils.Sequence` instance, `y`
           should not be specified (since targets will be obtained from the
           iterator/dataset).
-        batch_size: Integer or `None`. Number of samples per gradient update. If
-          unspecified, `batch_size` will default to 32. Do not specify the
-          `batch_size` if your data is in the form of a dataset, generators,
-          or `keras.utils.Sequence` instances (since they generate batches).
+        batch_size: Integer or `None`. Number of samples per batch of
+          computation. If unspecified, `batch_size` will default to 32. Do not
+          specify the `batch_size` if your data is in the form of a dataset,
+          generators, or `keras.utils.Sequence` instances (since they generate
+          batches).
         verbose: 0 or 1. Verbosity mode. 0 = silent, 1 = progress bar.
         sample_weight: Optional Numpy array of weights for the test samples,
           used for weighting the loss function. You can either pass a flat (1D)

@@ -631,6 +631,7 @@ tf_python_pybind_extension(
         "//tensorflow/c:headers",
         "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/c/eager:headers",
+        "//tensorflow/c/eager:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime:pywrap_required_hdrs",
         "//tensorflow/core/distributed_runtime/eager:pywrap_required_hdrs",
@@ -856,9 +857,10 @@ tf_python_pybind_extension(
     ],
     module_name = "_pywrap_py_exception_registry",
     deps = [
-        "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
         "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/container:fixed_array",
         "@pybind11",
     ],
 )
@@ -907,6 +909,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:script_ops_op_lib",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
@@ -1001,6 +1005,8 @@ cc_library(
         ":numpy_lib",
         ":py_util",
         ":safe_ptr",
+        "//tensorflow/c:tensor_interface",
+        "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -1958,6 +1964,13 @@ py_library(
 py_library(
     name = "is_xla_test_true",
     srcs = ["framework/is_xla_test_true.py"],
+    srcs_version = "PY2AND3",
+)
+
+# Including this as a dependency will result in tests to use TFRT.
+py_library(
+    name = "is_tfrt_test_true",
+    srcs = ["framework/is_tfrt_test_true.py"],
     srcs_version = "PY2AND3",
 )
 
@@ -7934,7 +7947,10 @@ tf_python_pybind_extension(
     deps = [
         ":pybind11_lib",
         ":pybind11_status",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
         "//third_party/python_runtime:headers",
+        "@com_google_absl//absl/container:fixed_array",
         "@pybind11",
     ],
 )

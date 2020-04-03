@@ -95,6 +95,24 @@ std::unique_ptr<Pass> createLhloCopyRemovalPass();
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 
 }  // namespace xla_lhlo
+
+namespace xla {
+
+/// Moves alloc nodes (and their associated dealloc nodes - if any) into the
+/// right positions. If there is no associated dealloc node for a given alloc
+/// node, this pass will automatically insert a proper dealloc node in the right
+/// place. The intended use case of this pass is to store SSA values into
+/// buffers using load/store operations. For this purpose, you need to know
+/// proper positions to place the required allocs and deallocs.
+/// 1) Note that the function signatures and all types for which buffers should
+/// be allocated need to be converted in advance.
+/// 2) All required alloc nodes have the be inserted in advance.
+/// 3) Note that the current implementation does not support loops.
+/// Refer to the class mlir::xla::BufferAssignmentLegalizer for more
+/// information.
+std::unique_ptr<OpPassBase<FuncOp>> createBufferAssignmentPass();
+
+}  // namespace xla
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_PASSES_H_

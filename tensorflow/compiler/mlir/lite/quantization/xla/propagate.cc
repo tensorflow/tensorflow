@@ -69,7 +69,7 @@ void PropagateQuantPass::runOnFunction() {
   CpuDeviceTarget spec(&getContext());
   quant::QuantizeContext ctx(func, spec);
 
-  std::vector<quant::QuantizeRegionOp> work_list(ctx.GetAllOps());
+  std::vector<quant::QuantizeRegionOp> work_list = ctx.GetAllOps();
   bool changed = false;
   while (!work_list.empty()) {
     quant::QuantizeRegionOp op = work_list.back();

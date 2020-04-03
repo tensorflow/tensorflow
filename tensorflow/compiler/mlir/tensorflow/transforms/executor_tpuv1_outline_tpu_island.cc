@@ -123,7 +123,7 @@ void TPUBridgeExecutorIslandOutlining::runOnModule() {
 
     // The function is in place in the nested module, create a call and yield in
     // the original island.
-    OpBuilder builder(&island_op.GetBody());
+    OpBuilder builder = OpBuilder::atBlockEnd(&island_op.GetBody());
     auto call_op = builder.create<mlir::TF::PartitionedCallOp>(
         island_op.getLoc(), func_result_types, operands.getArrayRef(),
         builder.getSymbolRefAttr(

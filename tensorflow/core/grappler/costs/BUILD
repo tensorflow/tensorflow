@@ -66,6 +66,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":utils",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:optional",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/grappler/utils:topological_sort",
@@ -161,6 +162,7 @@ tf_cuda_library(
     deps = [
         ":cost_estimator",
         "//third_party/eigen3",
+        "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "//tensorflow/core:framework",

@@ -226,7 +226,8 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
         yield_operands.push_back(std::get<1>(result));
     }
   }
-  OpBuilder(&island_body).create<YieldOp>(new_island.getLoc(), yield_operands);
+  OpBuilder::atBlockEnd(&island_body)
+      .create<YieldOp>(new_island.getLoc(), yield_operands);
 
   // remap results of the new islands to the user outside of the island.
   int current_result = 0;
