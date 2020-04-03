@@ -41,12 +41,13 @@ namespace {
 // the IR is in correct form for inference backends (like lite) that do not
 // support resources/variables . Further, this contract also ensures that this
 // pass lowers from saved model to pure TF. Hence it fails, if it cannot lower.
-struct FreezeGlobalTensorsPass : public ModulePass<FreezeGlobalTensorsPass> {
-  void runOnModule() override;
+struct FreezeGlobalTensorsPass
+    : public OperationPass<FreezeGlobalTensorsPass, ModuleOp> {
+  void runOnOperation() override;
 };
 
-void FreezeGlobalTensorsPass::runOnModule() {
-  auto module = getModule();
+void FreezeGlobalTensorsPass::runOnOperation() {
+  auto module = getOperation();
   SymbolTable symbol_table(module);
   DenseSet<Operation*> frozen_global_tensors;
 

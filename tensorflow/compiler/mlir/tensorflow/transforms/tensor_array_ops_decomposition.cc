@@ -68,8 +68,8 @@ using std::string;
 // shape.
 //
 struct TensorArrayOpsDecompositionPass
-    : public ModulePass<TensorArrayOpsDecompositionPass> {
-  void runOnModule() override;
+    : public OperationPass<TensorArrayOpsDecompositionPass, ModuleOp> {
+  void runOnOperation() override;
 };
 
 // Infers the element type and count for a TensorArraySplitV3Op. Requires
@@ -873,8 +873,8 @@ LogicalResult DecomposeTensorArrayOps(
   return success();
 }
 
-void TensorArrayOpsDecompositionPass::runOnModule() {
-  auto module = getModule();
+void TensorArrayOpsDecompositionPass::runOnOperation() {
+  auto module = getOperation();
   auto main = module.lookupSymbol<FuncOp>("main");
   if (!main) return;
   llvm::SmallDenseMap<Value, TensorArrayStats> stats;
