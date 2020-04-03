@@ -33,8 +33,9 @@ namespace gpu {
 namespace metal {
 namespace {
 std::string GetSoftmax1x1Code(const DeviceInfo& device_info) {
-  const std::string barrier =
-      device_info.IsAppleGPU() ? "BARRIER" : "threadgroup_barrier";
+  const std::string barrier = device_info.IsWaveSizeEqualTo32()
+                                  ? "SIMDGROUP_BARRIER"
+                                  : "threadgroup_barrier";
   std::string code = R"(
 #include <metal_stdlib>
 using namespace metal;

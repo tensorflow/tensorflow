@@ -35,31 +35,31 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class DepthWiseConv3x3 : public GPUOperation {
+class DepthwiseConv3x3 : public GPUOperation {
  public:
-  DepthWiseConv3x3() = default;
+  DepthwiseConv3x3() = default;
   absl::Status AddToQueue(CLCommandQueue* queue) override;
   absl::Status Tune(const TuningParameters& params) override;
 
   absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
-  DepthWiseConv3x3(DepthWiseConv3x3&& operation);
-  DepthWiseConv3x3& operator=(DepthWiseConv3x3&& operation);
-  DepthWiseConv3x3(const DepthWiseConv3x3&) = delete;
-  DepthWiseConv3x3& operator=(const DepthWiseConv3x3&) = delete;
+  DepthwiseConv3x3(DepthwiseConv3x3&& operation);
+  DepthwiseConv3x3& operator=(DepthwiseConv3x3&& operation);
+  DepthwiseConv3x3(const DepthwiseConv3x3&) = delete;
+  DepthwiseConv3x3& operator=(const DepthwiseConv3x3&) = delete;
 
  private:
-  explicit DepthWiseConv3x3(const OperationDef& definition,
+  explicit DepthwiseConv3x3(const OperationDef& definition,
                             bool weights_are_buffer, bool local_mem_uploads);
   template <DataType T>
   absl::Status UploadWeightsAndBiases(
       const tflite::gpu::Tensor<OHWI, T>& weights,
       const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context);
 
-  friend absl::Status CreateDepthWiseConv3x3(
+  friend absl::Status CreateDepthwiseConv3x3(
       const CreationContext& creation_context, const OperationDef& definition,
-      const DepthwiseConvolution2DAttributes& attr, DepthWiseConv3x3* result);
+      const DepthwiseConvolution2DAttributes& attr, DepthwiseConv3x3* result);
 
   template <DataType S, typename T>
   void RearrangeWeightsAndBiasesData(
@@ -80,7 +80,7 @@ class DepthWiseConv3x3 : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status DepthWiseConv3x3::UploadWeightsAndBiases(
+absl::Status DepthwiseConv3x3::UploadWeightsAndBiases(
     const tflite::gpu::Tensor<OHWI, T>& weights,
     const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
@@ -126,7 +126,7 @@ absl::Status DepthWiseConv3x3::UploadWeightsAndBiases(
 }
 
 template <DataType S, typename T>
-void DepthWiseConv3x3::RearrangeWeightsAndBiasesData(
+void DepthwiseConv3x3::RearrangeWeightsAndBiasesData(
     const tflite::gpu::Tensor<OHWI, S>& weights,
     const tflite::gpu::Tensor<Linear, S>& biases, absl::Span<T> dst) {
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
@@ -158,11 +158,11 @@ void DepthWiseConv3x3::RearrangeWeightsAndBiasesData(
   }
 }
 
-bool IsDepthWiseConv3x3Supported(const DepthwiseConvolution2DAttributes& attr);
+bool IsDepthwiseConv3x3Supported(const DepthwiseConvolution2DAttributes& attr);
 
-absl::Status CreateDepthWiseConv3x3(
+absl::Status CreateDepthwiseConv3x3(
     const CreationContext& creation_context, const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr, DepthWiseConv3x3* result);
+    const DepthwiseConvolution2DAttributes& attr, DepthwiseConv3x3* result);
 
 }  // namespace cl
 }  // namespace gpu

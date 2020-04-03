@@ -107,6 +107,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleScatter(HloInstruction* hlo) override;
 
+  Status HandleDomain(HloInstruction* hlo) override;
+
  private:
   using DimensionConstraint = DynamicDimensionInference::DimensionConstraint;
   using OperandDynamicDimensionFn = std::function<Status(
@@ -211,7 +213,8 @@ Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size,
                DimensionConstraint constraint) {
-        if (hlo->custom_call_target() != "SliceToDynamic" ||
+        if ((hlo->custom_call_target() != "SliceToDynamic" &&
+             hlo->custom_call_target() != "Sharding") ||
             absl::StartsWith(hlo->custom_call_target(), "Resize")) {
           return Unimplemented(
               "CustomCall is not supported to have a dynamic dimension");
@@ -575,6 +578,10 @@ Status DynamicDimensionInferenceVisitor::PassThroughDynamicDimension(
                                 constraint);
         return Status::OK();
       });
+}
+
+Status DynamicDimensionInferenceVisitor::HandleDomain(HloInstruction* hlo) {
+  return PassThroughDynamicDimension(hlo);
 }
 
 Status DynamicDimensionInferenceVisitor::HandleElementwiseUnary(

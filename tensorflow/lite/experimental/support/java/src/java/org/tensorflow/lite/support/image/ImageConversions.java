@@ -16,6 +16,7 @@ limitations under the License.
 package org.tensorflow.lite.support.image;
 
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import java.util.Arrays;
 import org.tensorflow.lite.DataType;
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer;
@@ -68,10 +69,10 @@ class ImageConversions {
     int[] intValues = new int[w * h];
     int[] rgbValues = buffer.getIntArray();
     for (int i = 0, j = 0; i < intValues.length; i++) {
-      byte r = (byte) rgbValues[j++];
-      byte g = (byte) rgbValues[j++];
-      byte b = (byte) rgbValues[j++];
-      intValues[i] = ((r << 16) | (g << 8) | b);
+      int r = rgbValues[j++];
+      int g = rgbValues[j++];
+      int b = rgbValues[j++];
+      intValues[i] = Color.rgb(r, g, b);
     }
     bitmap.setPixels(intValues, 0, w, 0, 0, w, h);
   }

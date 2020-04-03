@@ -397,11 +397,11 @@ kernel void ComputeFunction(
     const int total_work_items = params.work_group_size.x *
                                  params.work_group_size.y *
                                  params.work_group_size.z;
-    c += "    BARRIER(mem_flags::mem_none);\n";
+    c += "    SIMDGROUP_BARRIER(mem_flags::mem_none);\n";
     c += GenerateUploadByThreads("weights_cache", "tmp",
                                  /*global_offset_name*/ "", "tid",
                                  total_work_items, local_mem_size);
-    c += "    BARRIER(mem_flags::mem_threadgroup);\n";
+    c += "    SIMDGROUP_BARRIER(mem_flags::mem_threadgroup);\n";
   } else if (use_simd_broadcast) {
     int parts = local_mem_size / simd_size;
     int reminder = local_mem_size % simd_size;

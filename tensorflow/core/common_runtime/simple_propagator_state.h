@@ -123,7 +123,7 @@ class SimplePropagatorState {
   // same address while the iteration is live.
   Entry* GetInputTensors(const TaggedNode& tagged_node)
       TF_NO_THREAD_SAFETY_ANALYSIS {
-    return &input_tensors_[tagged_node.node_item->input_start];
+    return input_tensors_.data() + tagged_node.node_item->input_start;
   }
 
   FrameAndIter GetFrameAndIter(const TaggedNode& tagged_node) const {

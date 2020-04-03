@@ -1,5 +1,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
 )
@@ -259,7 +260,7 @@ tf_cuda_library(
 # -----------------------------------------------------------------------------
 # Tests
 
-tf_cc_tests_gpu(
+tf_cc_test(
     name = "gpu_device_on_non_gpu_machine_test",
     size = "small",
     srcs = ["gpu_device_on_non_gpu_machine_test.cc"],

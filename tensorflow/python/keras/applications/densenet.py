@@ -166,10 +166,17 @@ def DenseNet(
       It should have exactly 3 inputs channels,
       and width and height should be no smaller than 32.
       E.g. `(200, 200, 3)` would be one valid value.
-    pooling: optional pooling mode for feature extraction when `include_top` is
-      `False`. If `'max'` or `'avg'` pooling is applied, output of the model
-      will be a 2D tensor. `None` will directly output the last convolutional
-      layer, a 4D tensor.
+    pooling: optional pooling mode for feature extraction
+      when `include_top` is `False`.
+      - `None` means that the output of the model will be
+          the 4D tensor output of the
+          last convolutional block.
+      - `avg` means that global average pooling
+          will be applied to the output of the
+          last convolutional block, and thus
+          the output of the model will be a 2D tensor.
+      - `max` means that global max pooling will
+          be applied.
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
@@ -390,55 +397,23 @@ DOC = """
       It should have exactly 3 inputs channels,
       and width and height should be no smaller than 32.
       E.g. `(200, 200, 3)` would be one valid value.
-    pooling: optional pooling mode for feature extraction when `include_top` is
-      `False`. If `'max'` or `'avg'` pooling is applied, the output of the model
-      will be a 2D tensor. `None` will directly output the last convolutional
-      layer, a 4D tensor.
+    pooling: Optional pooling mode for feature extraction
+      when `include_top` is `False`.
+      - `None` means that the output of the model will be
+          the 4D tensor output of the
+          last convolutional block.
+      - `avg` means that global average pooling
+          will be applied to the output of the
+          last convolutional block, and thus
+          the output of the model will be a 2D tensor.
+      - `max` means that global max pooling will
+          be applied.
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
 
   Returns:
     A Keras model instance.
-
-  ```python
-  #Extract image features with DenseNet121
-  from tensorflow.keras.applications.densenet import DenseNet121
-  from tensorflow.keras.preprocessing import image
-  from tensorflow.keras.applications.densenet import preprocess_input
-  import numpy as np
-
-  #create a DenseNet121 model pre-trained on imagenet
-  model = DenseNet121(weights='imagenet', include_top=False)
-
-  #process the input
-  img_path = 'elephant_example.jpg'
-  img = image.load_img(img_path, target_size=(224, 224))
-  x = image.img_to_array(img)
-  x = np.expand_dims(x, axis=0)
-  x = preprocess_input(x)
-
-  #extract the features
-  features = model.predict(x)
-  ```
-
-  >>> model = DenseNet121(weights = None)
-  >>> model.name
-  'densenet121'
-
-  >>> model = DenseNet169(weights = None)
-  >>> model.name
-  'densenet169'
-
-  >>> model = DenseNet201(weights = None)
-  >>> model.name
-  'densenet201'
-
-  Raises:
-    ValueError: in case of invalid argument for `weights`,
-      or invalid input shape.
-    ValueError: if `classifier_activation` is not `softmax` or `None` when
-      using a pretrained top layer.
 """
 
 setattr(DenseNet121, '__doc__', DenseNet121.__doc__ + DOC)

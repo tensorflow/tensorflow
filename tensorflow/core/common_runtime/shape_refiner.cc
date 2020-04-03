@@ -85,8 +85,8 @@ Status InferShapesForFunctionSubNode(const Node* node, ShapeRefiner* refiner,
     // TODO(b/134547156): TEMPORARY WORKAROUND. If input shape handle is not set
     // in outer context, set _Arg node output shape to unknown.
     if (outer_context->input(index).SameHandle(ShapeHandle())) {
-      LOG(WARNING) << "Function instantiation has undefined input shape at "
-                   << "index: " << index << " in the outer inference context.";
+      VLOG(1) << "Function instantiation has undefined input shape at "
+              << "index: " << index << " in the outer inference context.";
       node_context->set_output(0, node_context->UnknownShape());
     } else {
       node_context->set_output(0, outer_context->input(index));
