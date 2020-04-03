@@ -84,7 +84,7 @@ class KernelMappingScheme {
     // Thread reads a few consecutive elements then take a strided
     // step. This can trigger vectorized reads and keep memory
     // coalescing.
-    LinearStridedIndexingX
+    StridedLinearIndexingX
   };
 
   KernelMappingScheme(absl::Span<const int64> dims_in_elems,
@@ -101,7 +101,7 @@ class KernelMappingScheme {
     CHECK_EQ(tile_sizes[2] % num_threads_x_, 0);
     VLOG(10) << "dims_in_elems_ = " << absl::StrJoin(dims_in_elems_, ",");
     if (indexing_order != LinearIndexingX) {
-      // StridedIndexingX, and LinearStridedIndexingX
+      // StridedIndexingX, and StridedLinearIndexingX
       // is for the purpose of vectorization, which requires
       // GetTileSizeFor(DimX) to be a multiplier of num_threads_x_.
       CHECK_EQ(GetTileSizeFor(DimX) % num_threads_x_, 0);
