@@ -167,7 +167,7 @@ tf_cuda_library(
         "@com_google_absl//absl/strings:str_format",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
-        "//tensorflow/core:gpu_id",
+        "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
