@@ -68,6 +68,8 @@ DBG_ARGS ?=
 
 RUN_ARGS ?= 
 
+EXT_CFLAGS ?=
+
 CXXFLAGS += %{CXX_FLAGS}%
 
 CCFLAGS += %{CC_FLAGS}%
@@ -93,10 +95,10 @@ $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(SRCS)))
 .PHONY: all app flash clean run debug
 
 %.o: %.cc
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(EXT_CFLAGS) $(INCLUDES) -c $< -o $@
 
 %.o: %.c
-	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
+	$(CC) $(CCFLAGS) $(EXT_CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(OUT_NAME): $(OBJS)
 	$(LD) $(CXXFLAGS) -o $@ -Ccrossref $(OBJS) $(LDFLAGS)

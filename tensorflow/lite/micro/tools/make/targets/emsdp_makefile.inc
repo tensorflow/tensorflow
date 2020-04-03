@@ -33,24 +33,32 @@ ifeq ($(TARGET), emsdp)
   TCF_FILE = $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp/emsdp_em11d_dfss.tcf
   LCF_FILE = $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp/emsdp.lcf
 
-  MAKE_PROJECT_FILES += emsdp_em11d_dfss.tcf emsdp.lcf uboot.env
+  MAKE_PROJECT_FILES += $(notdir $(TCF_FILE)) $(notdir $(LCF_FILE)) uboot.env
 
-  ARC_TARGET_FILES_DIRS := $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp
+  ARC_TARGET_FILES_DIRS = $(dir $(TCF_FILE))
+ifneq ($(dir $(TCF_FILE)), $(dir $(LCF_FILE)))
+  ARC_TARGET_FILES_DIRS += $(dir $(LCF_FILE))
+endif
 
 # TODO: LESS TCF/LCF Variables
 # The variable TCF_FILE_NAME stores the TCF file name (including .tcf extension), this variable is used later to add the option to the linker/compiler flags.
 # This condition also handles the case when the user/makefile specifies the configuration bundled with MWDT (usually without .tcf extension) and that doesn't require copying.
   TCF_FILE_NAME = $(notdir $(TCF_FILE))
 
-#  THIRD_PARTY_CC_HDRS += $(TCF_FILE_NAME)
+  PLATFORM_FLAGS = -tcf=$(TCF_FILE_NAME) -tcf_core_config
+  PLATFORM_FLAGS += -Hnocopyr -O3 -Hpurge -Hdense_prologue -Hon=Long_enums -fslp-vectorize-aggressive -ffunction-sections -fdata-sections 
+  
+  # Use compact CRT. It requires pre-defined heap size
+  PLATFORM_FLAGS += -Hcl -Hcrt_fast_memcpy -Hcrt_fast_memset 
+  
+  PLATFORM_LDFLAGS = -tcf=$(TCF_FILE_NAME) -Hnocopyr -m -Hldopt=-Coutput=memory.map  -Hheap=2K
 
-  PLATFORM_FLAGS = -tcf=$(TCF_FILE_NAME) -Hnocopyr -O3 -Hpurge -Hcl -Hcrt_fast_memcpy -Hcrt_fast_memset -fslp-vectorize-aggressive -ffunction-sections -fdata-sections
-  PLATFORM_FLAGS += -tcf_core_config
-  PLATFORM_LDFLAGS = -tcf=$(TCF_FILE_NAME) -Hnocopyr -m -Hldopt=-Coutput=memory.map 
+  # for default EMSD configuration we can use defaul em9d rt libs
+  # for better performance runime should be rebuilt for emsdp configuration
+  PLATFORM_LDFLAGS += -Hlib=em9d_voice_audio
 
 #  DMITRYZ: I think we need to move it to target specific LCF file.
   PLATFORM_LDFLAGS += $(notdir $(LCF_FILE))
-#  THIRD_PARTY_CC_HDRS += $(notdir $(LCF_FILE))
 
   CXXFLAGS += $(PLATFORM_FLAGS)
   CXXFLAGS:=$(filter-out -std=c++11,$(CXXFLAGS))
