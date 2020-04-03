@@ -1,14 +1,16 @@
 # Settings for arc processors
 ifeq ($(TARGET), emsdp)
 
-  TARGET_ARCH = arc
+  TARGET_ARCH := arc
+  ARC_TOOLCHAIN := mwdt
+
+  TCF_FILE := $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp/emsdp_em11d_dfss.tcf
+  LCF_FILE := $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp/emsdp.lcf
+  UBOOT_FILE := $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp/uboot.env
+  UBOOT_FILE_NAME := $(notdir $(UBOOT_FILE))
+
+include $(MAKEFILE_DIR)/targets/arc/arc_common.inc
   
-  CC_TOOL = ccac
-  AR_TOOL = arac
-  CXX_TOOL = ccac
-  LD_TOOL = ccac
-  
-   DLR = $$$$
    ARC_EXTRA_APP_SETTINGS = \
       BIN_DIR = .$(DLR)\(PS\)bin\n\
       BIN_FILE = $(DLR)\(BIN_DIR\)$(DLR)\(PS\)app.elf\n
@@ -16,7 +18,7 @@ ifeq ($(TARGET), emsdp)
    ARC_EXTRA_APP_RULES = \
      $(DLR)\(BIN_FILE\): $(DLR)\(BIN_DIR\) $(DLR)\(OUT_NAME\)\
      \n\t\@$(DLR)\(CP\) $(DLR)\(OUT_NAME\) $(DLR)\(BIN_FILE\)\
-     \n\t\@$(DLR)\(CP\) uboot.env $(DLR)\(BIN_DIR\)$(DLR)\(PS)uboot.env\
+     \n\t\@$(DLR)\(CP\) $(UBOOT_FILE_NAME) $(DLR)\(BIN_DIR\)$(DLR)\(PS\)$(UBOOT_FILE_NAME)\
      \n \
      \n$(DLR)\(BIN_DIR\):\
      \n\t\@$(DLR)\(MKDIR\) $(DLR)\(BIN_DIR\)\
@@ -26,135 +28,17 @@ ifeq ($(TARGET), emsdp)
    ARC_BIN_DEPEND = $(DLR)\(BIN_DIR\) $(DLR)\(BIN_FILE\)
    ARC_BIN_RULE = \t@echo Copy content of $(DLR)\(BIN_DIR\) into the root of SD card and follow instructions
    
-   ARC_APP_RUN_CMD = mdb -run -digilent -nooptions $(DLR)\(DBG_ARGS)
-   ARC_APP_DEBUG_CMD = mdb -OK -digilent -nooptions $(DLR)\(DBG_ARGS)
+   ARC_APP_RUN_CMD = mdb -run -digilent -nooptions $(DLR)\(DBG_ARGS\)
+   ARC_APP_DEBUG_CMD = mdb -OK -digilent -nooptions $(DLR)\(DBG_ARGS\)
    ARC_EXTRA_EXECUTE_RULES = 
 
-  TCF_FILE = $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp/emsdp_em11d_dfss.tcf
-  LCF_FILE = $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp/emsdp.lcf
-
-  MAKE_PROJECT_FILES += $(notdir $(TCF_FILE)) $(notdir $(LCF_FILE)) uboot.env
-
-  ARC_TARGET_FILES_DIRS = $(dir $(TCF_FILE))
-ifneq ($(dir $(TCF_FILE)), $(dir $(LCF_FILE)))
-  ARC_TARGET_FILES_DIRS += $(dir $(LCF_FILE))
+  MAKE_PROJECT_FILES += $(UBOOT_FILE_NAME)
+ifeq ($(filter $(ARC_TARGET_FILES_DIRS), $(dir $(UBOOT_FILE))),)
+  ARC_TARGET_FILES_DIRS += $(dir $(UBOOT_FILE))
 endif
-
-# TODO: LESS TCF/LCF Variables
-# The variable TCF_FILE_NAME stores the TCF file name (including .tcf extension), this variable is used later to add the option to the linker/compiler flags.
-# This condition also handles the case when the user/makefile specifies the configuration bundled with MWDT (usually without .tcf extension) and that doesn't require copying.
-  TCF_FILE_NAME = $(notdir $(TCF_FILE))
-
-  PLATFORM_FLAGS = -tcf=$(TCF_FILE_NAME) -tcf_core_config
-  PLATFORM_FLAGS += -Hnocopyr -O3 -Hpurge -Hdense_prologue -Hon=Long_enums -fslp-vectorize-aggressive -ffunction-sections -fdata-sections 
-  
-  # Use compact CRT. It requires pre-defined heap size
-  PLATFORM_FLAGS += -Hcl -Hcrt_fast_memcpy -Hcrt_fast_memset 
-  
-  PLATFORM_LDFLAGS = -tcf=$(TCF_FILE_NAME) -Hnocopyr -m -Hldopt=-Coutput=memory.map  -Hheap=2K
 
   # for default EMSD configuration we can use defaul em9d rt libs
-  # for better performance runime should be rebuilt for emsdp configuration
+  # for better performance runtime should be built for emsdp configuration
   PLATFORM_LDFLAGS += -Hlib=em9d_voice_audio
-
-#  DMITRYZ: I think we need to move it to target specific LCF file.
-  PLATFORM_LDFLAGS += $(notdir $(LCF_FILE))
-
-  CXXFLAGS += $(PLATFORM_FLAGS)
-  CXXFLAGS:=$(filter-out -std=c++11,$(CXXFLAGS))
-  CCFLAGS += $(PLATFORM_FLAGS)
-  CCFLAGS:=$(filter-out -std=c11,$(CCFLAGS))
-  LDFLAGS += $(PLATFORM_LDFLAGS)
-
-  MICROLITE_LIBS := $(filter-out -lm,$(MICROLITE_LIBS))
-
-  #  DMITRYZ: Here we need to check tags on "no_embarc_mli".
-  USE_EMBARC_MLI ?= true
-
-ifeq ($(USE_EMBARC_MLI), true)
-  ALL_TAGS += arc
-
-ifeq ($(PRE_COMPILED_MLI),true)
-  $(eval $(call add_third_party_download,$(EMBARC_OSP_URL),$(EMBARC_OSP_MD5),embarc_osp,))
-
-  MLI_INCLUDE_FOLDER = embarc_osp/library/embarc_mli/include
-  MLI_LIB = third_party/embarc_osp/library/embarc_mli/lib/arcem9d/libmli_iotdk.a
-
-  THIRD_PARTY_CC_HDRS += \
-    third_party/embarc_osp/LICENSE
-else
-  MLI_LIB_DIR = embarc_mli_$(basename $(TCF_FILE_NAME))
-
-  $(eval $(call add_third_party_download,$(EMBARC_MLI_URL),$(EMBARC_MLI_MD5),$(MLI_LIB_DIR),build_embarc_mli,$(TCF_FILE)))
-
-  MLI_INCLUDE_FOLDER = $(MLI_LIB_DIR)/include
-  MLI_LIB = third_party/$(MLI_LIB_DIR)/bin/libmli.a
-  MICROLITE_LIBS += $(MAKEFILE_DIR)/downloads/$(MLI_LIB_DIR)/bin/libmli.a
-
-  THIRD_PARTY_CC_HDRS += \
-    third_party/$(MLI_LIB_DIR)/LICENSE
-endif
-
-  THIRD_PARTY_CC_HDRS += $(MLI_LIB)
-  GENERATED_PROJECT_LIBS += $(MLI_LIB)
-
-  INCLUDES += \
-    -I$(MAKEFILE_DIR)/downloads/$(MLI_INCLUDE_FOLDER) \
-    -I$(MAKEFILE_DIR)/downloads/$(MLI_INCLUDE_FOLDER)/api
-
-  GENERATED_PROJECT_INCLUDES += \
-    -I. \
-    -I./third_party/$(MLI_INCLUDE_FOLDER) \
-    -I./third_party/$(MLI_INCLUDE_FOLDER)/api
-
-
-  THIRD_PARTY_CC_HDRS += \
-    third_party/$(MLI_INCLUDE_FOLDER)/mli_api.h \
-    third_party/$(MLI_INCLUDE_FOLDER)/mli_config.h \
-    third_party/$(MLI_INCLUDE_FOLDER)/mli_types.h \
-    third_party/$(MLI_INCLUDE_FOLDER)/api/mli_helpers_api.h \
-    third_party/$(MLI_INCLUDE_FOLDER)/api/mli_kernels_api.h \
-    third_party/$(MLI_INCLUDE_FOLDER)/api/mli_krn_avepool_spec_api.h \
-    third_party/$(MLI_INCLUDE_FOLDER)/api/mli_krn_conv2d_spec_api.h \
-    third_party/$(MLI_INCLUDE_FOLDER)/api/mli_krn_depthwise_conv2d_spec_api.h \
-    third_party/$(MLI_INCLUDE_FOLDER)/api/mli_krn_maxpool_spec_api.h \
-    third_party/$(MLI_INCLUDE_FOLDER)/api/mli_mov_api.h
-
-    MICROLITE_CC_HDRS += tensorflow/lite/micro/kernels/arc/scratch_buffers.h
-    MICROLITE_CC_SRCS += tensorflow/lite/micro/kernels/arc/scratch_buffers.cc
-    MICROLITE_CC_HDRS += tensorflow/lite/micro/kernels/arc/scratch_buf_mgr.h
-    MICROLITE_CC_SRCS += tensorflow/lite/micro/kernels/arc/scratch_buf_mgr.cc
-    MICROLITE_CC_HDRS += tensorflow/lite/micro/kernels/arc/mli_slicers.h
-    MICROLITE_CC_SRCS += tensorflow/lite/micro/kernels/arc/mli_slicers.cc
-    MICROLITE_CC_HDRS += tensorflow/lite/micro/kernels/arc/mli_tf_utils.h
-
-    MICROLITE_CC_HDRS += tensorflow/lite/micro/tools/make/targets/arc/memory.lcf
-
-endif # USE_EMBARC_MLI
-
-# We overwrite project generator to exclude everything not relevant to ARC platform
-define generate_microlite_projects
-$(call generate_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(MICROLITE_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
-$(call generate_arc_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(GENERATED_PROJECT_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
-endef
-
-# Copy rule generator to do file copyes changing paths in generated project
-# Arguments are:
-# 1 - Path files in generated project.
-# 2 - Path files in the source repo
-# Used in helper_functions.inc for arc projects to copy files
-define path_changing_copy_file
-$(1)/%: $(2)/%
-	@mkdir -p $$(dir $$@)
-	@cp $$< $$@
-endef
-
-
-
-# These are microcontroller-specific rules for converting the ELF output
-# of the linker into a binary image that can be loaded directly.
-
-# Not applicable for ARC, leaving it empty.
-$(BINDIR)%.bin:
 
 endif

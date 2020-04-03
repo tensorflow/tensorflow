@@ -1,0 +1,185 @@
+# Common Settings for ARC platform and it's projects. 
+# Might be reused across different targets
+
+ifeq ($(TARGET_ARCH), arc)
+
+  DLR := $$$$
+
+  # List of folders to search project files for copy with path changing
+  # For instance, TCF and LCF files are copyed into the root of generated project
+  ARC_TARGET_FILES_DIRS ?=
+
+  # For the following variables see arc_app_makefile.tpl for usage
+
+  # Additional text into application settings section of arc makefile project 
+  ARC_EXTRA_APP_SETTINGS ?=
+
+  # Additional text into application general rules of arc makefile project 
+  ARC_EXTRA_APP_RULES ?=
+  
+  # additional arguments for RM command of "clean" target rule ("make clean" command)
+  ARC_EXTRA_RM_TARGETS ?=
+
+  # Dependencies of "flash" target rule ("make flash" command)
+  ARC_BIN_DEPEND ?=
+  
+  # Commands in "flash" target rule ("make flash" command)
+  ARC_BIN_RULE ?= \t$(DLR)\(error Flash rule isnt defined for this ARC target\)
+  
+  # Command to run app on "make run" command of generated project
+  ARC_APP_RUN_CMD ?= 
+  
+  # Command to run app on "make debug" command of generated project
+  ARC_APP_DEBUG_CMD ?= 
+  
+  # Additional text into application execution rules of arc makefile project 
+  ARC_EXTRA_EXECUTE_RULES ?= 
+
+# We overwrite project generator to exclude everything not relevant to ARC platform.
+# ARC targets doesn't can't work with mbed, keil or other architecture specific development tools
+# Basic make project is updated to be applicable for general ARC platform
+define generate_microlite_projects
+$(call generate_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(MICROLITE_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
+$(call generate_arc_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(GENERATED_PROJECT_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
+endef
+
+# Copy rule generator to do file copyes with changing paths in generated project
+# Arguments are:
+# 1 - Path files in generated project.
+# 2 - Path files in the source repo
+# Used in helper_functions.inc for arc projects to copy files
+define path_changing_copy_file
+$(1)/%: $(2)/%
+	@mkdir -p $$(dir $$@)
+	@cp $$< $$@
+endef
+
+# These are microcontroller-specific rules for converting the ELF output
+# of the linker into a binary image that can be loaded directly.
+# Not applicable for ARC, leaving it empty.
+$(BINDIR)%.bin:
+
+
+ifeq ($(ARC_TOOLCHAIN), mwdt)
+  CC_TOOL := ccac
+  AR_TOOL := arac
+  CXX_TOOL := ccac
+  LD_TOOL := ccac
+
+  ARC_APP_RUN_CMD = mdb -run -jit -tcf=$(TCF_FILE_NAME) $(DLR)\(DBG_ARGS\)
+  ARC_APP_DEBUG_CMD = mdb -OK -jit -tcf=$(TCF_FILE_NAME) $(DLR)\(DBG_ARGS\)
+
+  # The variable TCF_FILE stores path to Tool Configuration File (*.tcf). 
+  # This file is used by MWDT toolchain to properly compile/run code
+  TCF_FILE ?= 
+
+  LCF_FILE ?= 
+
+# The variable TCF_FILE_NAME stores the TCF file name (including .tcf extension), 
+# this variable is used later to add the option to the linker/compiler flags.
+# This condition also handles the case when the user/makefile specifies 
+# the configuration bundled with MWDT (usually without .tcf extension) and that doesn't require copying.
+ifneq (,$(findstring .tcf,$(TCF_FILE)))
+  TCF_FILE_NAME = $(notdir $(TCF_FILE))
+  ARC_TARGET_FILES_DIRS = $(dir $(TCF_FILE))
+  MAKE_PROJECT_FILES += $(TCF_FILE_NAME)
+else
+  TCF_FILE_NAME = $(TCF_FILE)
+endif
+
+  PLATFORM_FLAGS = -tcf=$(TCF_FILE_NAME) -tcf_core_config
+  
+  PLATFORM_FLAGS += -Hnocopyr -O3 -Hpurge -Hdense_prologue -Hon=Long_enums -fslp-vectorize-aggressive -ffunction-sections -fdata-sections 
+  
+  # Use compact CRT. It requires pre-defined heap size
+  PLATFORM_FLAGS += -Hcl -Hcrt_fast_memcpy -Hcrt_fast_memset 
+  
+  PLATFORM_LDFLAGS = -tcf=$(TCF_FILE_NAME) 
+  
+  PLATFORM_LDFLAGS += -Hnocopyr -m -Hldopt=-Coutput=memory.map -Hheap=2K 
+
+ifneq ($(LCF_FILE), )
+  PLATFORM_LDFLAGS += $(notdir $(LCF_FILE))
+  MAKE_PROJECT_FILES += $(notdir $(LCF_FILE))
+ifeq ($(filter $(ARC_TARGET_FILES_DIRS), $(dir $(LCF_FILE))),)
+  ARC_TARGET_FILES_DIRS += $(dir $(LCF_FILE))
+endif
+endif
+
+  CXXFLAGS := $(filter-out -std=c++11,$(CXXFLAGS))
+  CCFLAGS := $(filter-out -std=c11,$(CCFLAGS))
+  MICROLITE_LIBS := $(filter-out -lm,$(MICROLITE_LIBS))
+
+  CXXFLAGS += $(PLATFORM_FLAGS)
+  CCFLAGS += $(PLATFORM_FLAGS)
+  LDFLAGS += $(PLATFORM_LDFLAGS)
+
+
+  # TODO: Move/organize embarc_mli usage in an implied way (see ext_libs/cmsis.inc for example
+  USE_EMBARC_MLI ?= true
+
+ifeq ($(USE_EMBARC_MLI), true)
+  # TODO: To understand why it's done here. The same is performed in the higher level MakeFile.
+  ALL_TAGS += arc
+
+ifeq ($(PRE_COMPILED_MLI),true)
+  $(eval $(call add_third_party_download,$(EMBARC_OSP_URL),$(EMBARC_OSP_MD5),embarc_osp,))
+
+  MLI_INCLUDE_FOLDER = embarc_osp/library/embarc_mli/include
+  MLI_LIB = third_party/embarc_osp/library/embarc_mli/lib/arcem9d/libmli_iotdk.a
+
+  THIRD_PARTY_CC_HDRS += \
+    third_party/embarc_osp/LICENSE
+else
+  MLI_LIB_DIR = embarc_mli_$(basename $(TCF_FILE_NAME))
+
+  $(eval $(call add_third_party_download,$(EMBARC_MLI_URL),$(EMBARC_MLI_MD5),$(MLI_LIB_DIR),build_embarc_mli,$(TCF_FILE)))
+
+  MLI_INCLUDE_FOLDER = $(MLI_LIB_DIR)/include
+  MLI_LIB = third_party/$(MLI_LIB_DIR)/bin/libmli.a
+  MICROLITE_LIBS += $(MAKEFILE_DIR)/downloads/$(MLI_LIB_DIR)/bin/libmli.a
+
+  THIRD_PARTY_CC_HDRS += \
+    third_party/$(MLI_LIB_DIR)/LICENSE
+endif
+
+  THIRD_PARTY_CC_HDRS += $(MLI_LIB)
+  GENERATED_PROJECT_LIBS += $(MLI_LIB)
+
+  INCLUDES += \
+    -I$(MAKEFILE_DIR)/downloads/$(MLI_INCLUDE_FOLDER) \
+    -I$(MAKEFILE_DIR)/downloads/$(MLI_INCLUDE_FOLDER)/api
+
+  GENERATED_PROJECT_INCLUDES += \
+    -I. \
+    -I./third_party/$(MLI_INCLUDE_FOLDER) \
+    -I./third_party/$(MLI_INCLUDE_FOLDER)/api
+
+
+  THIRD_PARTY_CC_HDRS += \
+    third_party/$(MLI_INCLUDE_FOLDER)/mli_api.h \
+    third_party/$(MLI_INCLUDE_FOLDER)/mli_config.h \
+    third_party/$(MLI_INCLUDE_FOLDER)/mli_types.h \
+    third_party/$(MLI_INCLUDE_FOLDER)/api/mli_helpers_api.h \
+    third_party/$(MLI_INCLUDE_FOLDER)/api/mli_kernels_api.h \
+    third_party/$(MLI_INCLUDE_FOLDER)/api/mli_krn_avepool_spec_api.h \
+    third_party/$(MLI_INCLUDE_FOLDER)/api/mli_krn_conv2d_spec_api.h \
+    third_party/$(MLI_INCLUDE_FOLDER)/api/mli_krn_depthwise_conv2d_spec_api.h \
+    third_party/$(MLI_INCLUDE_FOLDER)/api/mli_krn_maxpool_spec_api.h \
+    third_party/$(MLI_INCLUDE_FOLDER)/api/mli_mov_api.h
+
+    MICROLITE_CC_HDRS += tensorflow/lite/micro/kernels/arc/scratch_buffers.h
+    MICROLITE_CC_SRCS += tensorflow/lite/micro/kernels/arc/scratch_buffers.cc
+    MICROLITE_CC_HDRS += tensorflow/lite/micro/kernels/arc/scratch_buf_mgr.h
+    MICROLITE_CC_SRCS += tensorflow/lite/micro/kernels/arc/scratch_buf_mgr.cc
+    MICROLITE_CC_HDRS += tensorflow/lite/micro/kernels/arc/mli_slicers.h
+    MICROLITE_CC_SRCS += tensorflow/lite/micro/kernels/arc/mli_slicers.cc
+    MICROLITE_CC_HDRS += tensorflow/lite/micro/kernels/arc/mli_tf_utils.h
+
+    MICROLITE_CC_HDRS += tensorflow/lite/micro/tools/make/targets/arc/memory.lcf
+
+endif # USE_EMBARC_MLI
+
+endif # ARC_TOOLCHAIN
+endif  # TARGET_ARCH
+
