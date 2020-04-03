@@ -944,7 +944,8 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
                                          /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kIndex), index_));
         return Status::OK();

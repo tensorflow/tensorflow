@@ -294,8 +294,8 @@ table Content {
 
 // Parameters that are used when normalizing the tensor.
 table NormalizationOptions{
-  // mean and std are normalization parameters. Tensor values are normailzed
-  // per-channelly by,
+  // mean and std are normalization parameters. Tensor values are normalized
+  // on a per-channel basis, by the formula
   //   (x - mean) / std.
   // For example, a float MobileNet model will have
   //   mean = 127.5f and std = 127.5f.
@@ -404,7 +404,7 @@ table TensorMetadata {
   // A description of the tensor.
   description:string;
 
-  // A list of names of the dimensions in this tentor. The length of
+  // A list of names of the dimensions in this tensor. The length of
   // dimension_names need to match the number of dimensions in this tensor.
   //
   // <Codegen usage>:

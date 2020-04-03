@@ -365,6 +365,7 @@ tf_py_test(
     name = "preprocessing_stage_test",
     srcs = ["preprocessing_stage_test.py"],
     python_version = "PY3",
+    tags = ["no_windows"],  # TODO(b/152991402)
     deps = [
         ":preprocessing_stage",
         "//tensorflow/python:client_testlib",

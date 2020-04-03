@@ -105,7 +105,7 @@ Run the model with NNAPI delegate (`-a 1`), `adb shell
 then you should see something like the followings: `Loaded model
 /data/local/tmp/mobilenet_v1_1.0_224.tflite resolved reporter INFO: Initialized
 TensorFlow Lite runtime. INFO: Created TensorFlow Lite delegate for NNAPI.
-Applied NNAPI delegate.invoked average time: 10.348 ms 0.905401: 653 military
+Applied NNAPI delegate. invoked average time:10.348 ms 0.905401: 653 military
 uniform 0.0379589: 907 Windsor tie 0.00735866: 466 bulletproof vest 0.00605307:
 458 bow tie 0.00422573: 514 cornet`
 
@@ -124,5 +124,14 @@ remote_handle_control available and used Applied Hexagon delegate.invoked
 average time: 8.307 ms 0.729412: 653 military uniform 0.0980392: 907 Windsor tie
 0.0313726: 466 bulletproof vest 0.0313726: 458 bow tie 0.0117647: 700 panpipe
 ```
+
+Run the model with the XNNPACK delegate (`-x 1`), `adb shell
+"/data/local/tmp/label_image \ -m /data/local/tmp/mobilenet_v1_1.0_224.tflite \
+-i /data/local/tmp/grace_hopper.bmp \ -l /data/local/tmp/labels.txt -x 1"` then
+you should see something like the followings: `Loaded model
+/data/local/tmp/mobilenet_v1_1.0_224.tflite resolved reporter INFO: Initialized
+TensorFlow Lite runtime. Applied XNNPACK delegate.invoked average time: 11.0237
+ms 0.90707: 653 military uniform 0.0372418: 907 Windsor tie 0.0073376: 466
+bulletproof vest 0.00592856: 458 bow tie 0.00414093: 514 cornet`
 
 See the `label_image.cc` source code for other command line options.

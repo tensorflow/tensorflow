@@ -27,6 +27,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
 
@@ -38,16 +39,16 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/kernels/internal/round.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -1108,7 +1109,7 @@ inline void Mean(const tflite::MeanParams& op_params,
     MeanImpl(op_params, input_shape, input_data, multiplier, shift, bias,
              output_shape, output_data, 0, output_depth);
   } else {
-    // Instead parrallel for batch, we loop for the output_depth since batch
+    // Instead parallel for batch, we loop for the output_depth since batch
     // is typical 1.
     std::vector<MeanWorkerTask> tasks;
     // TODO(b/131746020) don't create new heap allocations every time.
@@ -1127,6 +1128,48 @@ inline void Mean(const tflite::MeanParams& op_params,
     cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
                                     cpu_backend_context);
   }
+}
+
+template <typename T, typename U>
+inline bool MeanGeneral(const T* input_data, const int* input_dims,
+                        const int input_num_dims, T* output_data,
+                        const int* output_dims, const int output_num_dims,
+                        const int* axis, const int num_axis_dimensions,
+                        bool keep_dims, int* temp_index, int* resolved_axis,
+                        U* temp_sum) {
+  return reference_ops::Mean(input_data, input_dims, input_num_dims,
+                             output_data, output_dims, output_num_dims, axis,
+                             num_axis_dimensions, keep_dims, temp_index,
+                             resolved_axis, temp_sum);
+}
+
+template <>
+inline bool MeanGeneral<float, float>(
+    const float* input_data, const int* input_dims, const int input_num_dims,
+    float* output_data, const int* output_dims, const int output_num_dims,
+    const int* axis, const int num_axis_dimensions, bool keep_dims,
+    int* temp_index, int* resolved_axis, float* temp_sum) {
+  // Handle reduce_mean for the last dimensions.
+  if (num_axis_dimensions == 1 && axis[0] == (input_num_dims - 1)) {
+    ruy::profiler::ScopeLabel label("MeanLastDim/Float");
+    int output_size = 1;
+    for (int i = 0; i < input_num_dims - 1; ++i) {
+      output_size *= input_dims[i];
+    }
+    const int last_input_dim = input_dims[axis[0]];
+
+    // TODO(b/152563685): Consider use eigen to cover more general cases.
+    const MatrixMap<const float> in_mat(input_data, last_input_dim,
+                                        output_size);
+    VectorMap<float> out(output_data, output_size, 1);
+    out = (in_mat.array().colwise().sum()) / static_cast<float>(last_input_dim);
+    return true;
+  }
+
+  return reference_ops::Mean(input_data, input_dims, input_num_dims,
+                             output_data, output_dims, output_num_dims, axis,
+                             num_axis_dimensions, keep_dims, temp_index,
+                             resolved_axis, temp_sum);
 }
 
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
@@ -4080,20 +4123,20 @@ inline void PopulateSoftmaxLookupTable(SoftmaxParams* data, float input_scale,
   }
 }
 
-template <typename T>
+template <typename In, typename Out>
 inline void Softmax(const SoftmaxParams& params,
-                    const RuntimeShape& input_shape, const T* input_data,
-                    const RuntimeShape& output_shape, T* output_data) {
+                    const RuntimeShape& input_shape, const In* input_data,
+                    const RuntimeShape& output_shape, Out* output_data) {
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int excluding_last_dim =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
   const int last_dim =
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
-  const int32_t clamp_max = std::numeric_limits<T>::max();
-  const int32_t clamp_min = std::numeric_limits<T>::min();
+  const int32_t clamp_max = std::numeric_limits<Out>::max();
+  const int32_t clamp_min = std::numeric_limits<Out>::min();
   for (int i = 0; i < excluding_last_dim; ++i) {
-    int32_t max_val = std::numeric_limits<T>::min();
+    int32_t max_val = std::numeric_limits<In>::min();
     // Find max quantized value.
     for (int j = 0; j < last_dim; ++j) {
       max_val = std::max(max_val, static_cast<int32_t>(input_data[j]));
@@ -4112,8 +4155,8 @@ inline void Softmax(const SoftmaxParams& params,
     for (int j = 0; j < last_dim; ++j) {
       const float prob_rescaled = table_offset[input_data[j]] * inv_sum_exp;
       const int32_t prob_quantized =
-          QuantizeSoftmaxOutput<T>(prob_rescaled, params.zero_point);
-      output_data[j] = static_cast<T>(
+          QuantizeSoftmaxOutput<Out>(prob_rescaled, params.zero_point);
+      output_data[j] = static_cast<Out>(
           std::max(std::min(clamp_max, prob_quantized), clamp_min));
     }
     input_data += last_dim;
@@ -5699,7 +5742,7 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
   //          ....
   //
   // In order to minimize the reload of the multipliers & shifts, once we load
-  // the multipliers & shifts, we load & quantize the raw accumualtrs for every
+  // the multipliers & shifts, we load & quantize the raw accumulators for every
   // row.
 #ifdef USE_NEON
   const int32x4_t output_offset_vec = vdupq_n_s32(output_zp);
@@ -6354,7 +6397,7 @@ inline void HardSwish(const HardSwishParams& params,
   // Unfortunately, the Intel arm_neon_sse.h implementation of vqshl* is
   // buggy in the case of zero shift amounts, see b/137199585. That is why
   // this NEON code path is restricted to true ARM NEON, excluding
-  // arm_neon_sse.h. Anyway, the arm_neon_sse.h implemenation of saturating
+  // arm_neon_sse.h. Anyway, the arm_neon_sse.h implementation of saturating
   // left shifts is slow scalar code, so there may not be much benefit in
   // running that over just plain reference code.
   //
@@ -7024,7 +7067,7 @@ inline void ClampWithRangeAndStore(int8_t* output_dst, int8x16_t input_val,
 
 #endif  // GEMMLOWP_NEON
 
-inline void Tanh16bitPercision(const TanhParams& params,
+inline void Tanh16bitPrecision(const TanhParams& params,
                                const RuntimeShape& input_shape,
                                const uint8* input_data,
                                const RuntimeShape& output_shape,
@@ -7131,7 +7174,7 @@ inline void Tanh16bitPercision(const TanhParams& params,
   }
 }
 
-inline void Tanh16bitPercision(const TanhParams& params,
+inline void Tanh16bitPrecision(const TanhParams& params,
                                const RuntimeShape& input_shape,
                                const int8* input_data,
                                const RuntimeShape& output_shape,
@@ -7224,7 +7267,7 @@ inline void Tanh16bitPercision(const TanhParams& params,
   }
 }
 
-inline void Logistic16bitPercision(const LogisticParams& params,
+inline void Logistic16bitPrecision(const LogisticParams& params,
                                    const RuntimeShape& input_shape,
                                    const uint8* input_data,
                                    const RuntimeShape& output_shape,
@@ -7316,7 +7359,7 @@ inline void Logistic16bitPercision(const LogisticParams& params,
   }
 }
 
-inline void Logistic16bitPercision(const LogisticParams& params,
+inline void Logistic16bitPrecision(const LogisticParams& params,
                                    const RuntimeShape& input_shape,
                                    const int8* input_data,
                                    const RuntimeShape& output_shape,
@@ -7651,7 +7694,7 @@ inline void Transpose3D(const TransposeParams& params,
   }
 }
 
-template <typename T>
+template <typename T, int N>
 void TransposeImpl(const TransposeParams& params,
                    const RuntimeShape& input_shape, const T* input_data,
                    const RuntimeShape& output_shape, T* output_data) {
@@ -7682,19 +7725,19 @@ void TransposeImpl(const TransposeParams& params,
 
   // Reroute to the reference version if an optimized method for the given data
   // is not available.
-  reference_ops::Transpose(params, input_shape, input_data, output_shape,
-                           output_data);
+  reference_ops::Transpose<T, N>(params, input_shape, input_data, output_shape,
+                                 output_data);
 }
 
-template <typename T>
+template <typename T, int N = 5>
 void Transpose(const TransposeParams& unshrinked_params,
                const RuntimeShape& unshrinked_input_shape, const T* input_data,
                const RuntimeShape& unshrinked_output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Transpose");
 
   const int output_size = unshrinked_output_shape.DimensionsCount();
-  TFLITE_DCHECK_LE(unshrinked_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(output_size, 4);
+  TFLITE_DCHECK_LE(unshrinked_input_shape.DimensionsCount(), N);
+  TFLITE_DCHECK_LE(output_size, N);
   TFLITE_DCHECK_EQ(output_size, unshrinked_params.perm_count);
 
   RuntimeShape shrinked_input_shape = RuntimeShape(unshrinked_input_shape);
@@ -7735,15 +7778,16 @@ void Transpose(const TransposeParams& unshrinked_params,
     TFLITE_DCHECK_NE(non_flatten_params.perm[0], 0);
 
     for (int i = 0; i < total_size; i += non_flatten_size) {
-      TransposeImpl(non_flatten_params, non_flatten_input_shape, input_data + i,
-                    non_flatten_output_shape, output_data + i);
+      TransposeImpl<T, N>(non_flatten_params, non_flatten_input_shape,
+                          input_data + i, non_flatten_output_shape,
+                          output_data + i);
     }
     return;
   }
 
   // Call non-flattened case.
-  TransposeImpl(shrinked_params, shrinked_input_shape, input_data,
-                shrinked_output_shape, output_data);
+  TransposeImpl<T, N>(shrinked_params, shrinked_input_shape, input_data,
+                      shrinked_output_shape, output_data);
 }
 
 }  // namespace optimized_ops

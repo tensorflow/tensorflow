@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_metrics_to_record.h"
+#include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
@@ -163,8 +164,8 @@ InputPipelineAnalysisResult ComputeGenericInputPipelineAnalysisResult(
   Stat<double> input_summary_stats_in_percent;
   for (const auto& coreid_stepinfo_map : grouped_by_step) {
     // Iterates over each step.
-    const auto* ptr =
-        gtl::FindOrNull(coreid_stepinfo_map.step_info_per_core(), 0);
+    const auto* ptr = gtl::FindOrNull(coreid_stepinfo_map.step_info_per_core(),
+                                      kDefaultGpuLocalCoreId);
     if (ptr == nullptr) {
       // For generic hardware, all step-info is put under core-0. If ptr
       // is nullptr, it means there is no step at all.

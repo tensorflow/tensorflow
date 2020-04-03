@@ -296,6 +296,10 @@ TF_CAPI_EXPORT extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetLazyRemoteInputsCopy(
     TFE_ContextOptions*, bool lazy_copy);
 
+// Sets whether to use TFRT
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
+                                                     bool use_tfrt);
+
 // -----------------------------------------------------------------------------
 // Cancellation APIs.
 
@@ -387,12 +391,6 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
 // combined status.
 TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context* ctx,
                                                 TF_Status* status);
-
-// If the TensorHandle is copied to another device as part of an op execution,
-// the copy is destroyed after the op has executed. Enabling implicit mirroring
-// causes the copy to be held as a mirror for the lifetime of the TensorHandle.
-TF_CAPI_EXPORT extern void TFE_TensorHandleEnableImplicitMirroring(
-    TFE_TensorHandle*, TF_Status*);
 
 // This function will block till the operation that produces `h` has
 // completed. This is only valid on local TFE_TensorHandles. The pointer

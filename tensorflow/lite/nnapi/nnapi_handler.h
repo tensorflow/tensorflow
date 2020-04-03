@@ -252,7 +252,29 @@ class NnApiHandler {
     nnapi_->ANeuralNetworksModel_getSupportedOperationsForDevices = stub;
   }
 
-  void SetAndroidSdkVersion(int version);
+  template <int Value>
+  void ExecutionStartComputeReturns() {
+    nnapi_->ANeuralNetworksExecution_startCompute =
+        [](ANeuralNetworksExecution* execution, ANeuralNetworksEvent** event) {
+          *event = reinterpret_cast<ANeuralNetworksEvent*>(1);
+          return Value;
+        };
+  }
+
+  template <int Value>
+  void EventWaitReturns() {
+    nnapi_->ANeuralNetworksEvent_wait = [](ANeuralNetworksEvent* event) {
+      return Value;
+    };
+  }
+
+  /*
+   * Sets the SDK Version in the nnapi structure.
+   * If set_unsupported_ops_to_null is set to true, all the functions not
+   * available at the given sdk level will be set to null too.
+   */
+  void SetAndroidSdkVersion(int version,
+                            bool set_unsupported_ops_to_null = false);
 
   const NnApi* GetNnApi() { return nnapi_; }
 

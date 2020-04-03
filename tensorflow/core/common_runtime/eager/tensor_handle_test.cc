@@ -38,15 +38,10 @@ TEST(TensorHandle_ShapeTest, AsyncShape) {
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       tensorflow::ContextMirroringPolicy::MIRRORING_NONE, false, false,
       &device_mgr, false, nullptr, nullptr, nullptr);
-  TensorHandle* sync_th;
-  EXPECT_TRUE(TensorHandle::CreateLocalHandle(std::move(t), nullptr, nullptr,
-                                              ctx, &sync_th)
-                  .ok());
-  TensorHandle* async_th;
-  EXPECT_TRUE(TensorHandle::CreateEmptyLocalHandle(nullptr, nullptr, nullptr,
-                                                   DataType::DT_UINT16, ctx,
-                                                   &async_th)
-                  .ok());
+  TensorHandle* sync_th =
+      TensorHandle::CreateLocalHandle(std::move(t), nullptr, nullptr, ctx);
+  TensorHandle* async_th = TensorHandle::CreateEmptyLocalHandle(
+      nullptr, nullptr, nullptr, DataType::DT_UINT16, ctx);
 
   EXPECT_TRUE(async_th->CopyInferenceShape(sync_th).ok());
 

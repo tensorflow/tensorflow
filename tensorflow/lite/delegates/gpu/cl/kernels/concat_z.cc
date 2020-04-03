@@ -25,8 +25,8 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-
 namespace {
+
 bool IsAllChannelsX4(const std::vector<int>& channels) {
   for (int channel : channels) {
     if (channel % 4 != 0) {
@@ -146,6 +146,7 @@ std::string GetConcatKernelCode(
   c += "}\n";
   return c;
 }
+
 }  // namespace
 
 ConcatZ::ConcatZ(ConcatZ&& kernel)
@@ -164,7 +165,7 @@ ConcatZ& ConcatZ::operator=(ConcatZ&& kernel) {
   return *this;
 }
 
-Status ConcatZ::Compile(const CreationContext& creation_context) {
+absl::Status ConcatZ::Compile(const CreationContext& creation_context) {
   const auto code =
       GetConcatKernelCode(definition_, channels_, linked_operations_);
   std::vector<CompilerOptions> options;
@@ -186,7 +187,7 @@ Status ConcatZ::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-Status ConcatZ::BindArguments() {
+absl::Status ConcatZ::BindArguments() {
   kernel_.ResetBindingCounter();
   for (int i = 0; i < channels_.size(); ++i) {
     RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[i]->GetMemoryPtr()));
@@ -197,7 +198,7 @@ Status ConcatZ::BindArguments() {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[i]->Slices()));
   }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 ConcatZ::GetGridSize() const {
@@ -207,12 +208,12 @@ int3 ConcatZ::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status ConcatZ::Tune(const TuningParameters& params) {
+absl::Status ConcatZ::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Status ConcatZ::AddToQueue(CLCommandQueue* queue) {
+absl::Status ConcatZ::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }

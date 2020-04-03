@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
@@ -412,6 +413,14 @@ TEST_F(ExecutorTest, RecvInvalidRefDtype) {
   rendez->Unref();
 }
 
+TEST_F(ExecutorTest, NoInputTensors) {
+  // Create a graph where none of the nodes have input tensors.
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  test::graph::Constant(g.get(), V(1.0));
+  Create(std::move(g));
+  TF_ASSERT_OK(Run(rendez_));
+}
+
 // Create a graph that is 'depth' deep. At each level, fan-in and fan-out a
 // maximum of 'width' nodes. All nodes are no-ops and all dependencies are
 // control dependencies.
@@ -452,6 +461,7 @@ static void BM_executor(int iters, int width, int depth) {
   SetBenchmarkLabel(strings::StrCat("Nodes = ", cur));
   SetBenchmarkItemsProcessed(cur * static_cast<int64>(iters));
 #endif  // PLATFORM_GOOGLE
+  FixupSourceAndSinkEdges(g);
   testing::StartTiming();
   test::Benchmark("cpu", g).Run(iters);
 }
@@ -487,6 +497,7 @@ static void BM_FeedInputFetchOutput(int iters) {
 #ifdef PLATFORM_GOOGLE
   SetBenchmarkItemsProcessed(static_cast<int64>(iters));
 #endif  // PLATFORM_GOOGLE
+  FixupSourceAndSinkEdges(g);
   testing::StartTiming();
   test::Benchmark("cpu", g).RunWithRendezvousArgs({{x_key, val}, {y_key, val}},
                                                   {z_key}, iters);

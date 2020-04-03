@@ -16,7 +16,9 @@ ifeq ($(TARGET), xtensa-xpg)
     -ffunction-sections \
     -fno-exceptions \
     -fno-unwind-tables \
-    -fmessage-length=0
+    -fno-use-cxa-atexit \
+    -fmessage-length=0 \
+    -fno-threadsafe-statics
 
   TARGET_TOOLCHAIN_PREFIX := xt-
   CXX_TOOL := clang++

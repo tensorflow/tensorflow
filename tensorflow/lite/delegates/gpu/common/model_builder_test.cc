@@ -356,7 +356,7 @@ TEST(ModelBuilderTest, GetOpsToReplaceKeepsFp16DequantizeNodes) {
         params->output_tensors->data[0] = 1;
 
         // Second partition for DequantNode (t2->t3)
-        params = interpreter_fp16_add_op->add_delegate_params();
+        params = interpreter_fp16_gt_op->add_delegate_params();
         params->nodes_to_replace = TfLiteIntArrayCreate(1);
         params->nodes_to_replace->data[0] = 0;
         params->input_tensors = TfLiteIntArrayCreate(1);

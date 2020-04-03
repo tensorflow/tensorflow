@@ -320,10 +320,7 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
           end = {k, std::min(i * block_size, n)};
         }
 
-        if (!left_side) {
-          std::swap(end[0], end[1]);
-        }
-        if (transpose_a) {
+        if (!left_side ^ transpose_a) {
           std::swap(start[0], start[1]);
           std::swap(end[0], end[1]);
         }
@@ -337,16 +334,12 @@ XlaOp SolveWithInvertedDiagonalBlocks(XlaOp a, XlaOp b, XlaOp inv_diag_blocks,
       }
 
       XlaOp x_update;
-      auto zero = Zero(builder, S32);
-      auto start_index = ConstantR0WithType(builder, S32, j * block_size);
-      std::vector<XlaOp> update_starts = {start_index, zero};
       if (left_side) {
         x_update =
             BatchDot(inv_block, transpose_a, remainder, false, precision);
       } else {
         x_update =
             BatchDot(remainder, false, inv_block, transpose_a, precision);
-        std::swap(update_starts[0], update_starts[1]);
       }
 
       if (i == 0) {

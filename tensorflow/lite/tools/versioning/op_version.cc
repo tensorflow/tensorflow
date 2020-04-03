@@ -185,6 +185,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_TRANSPOSE:
+      if (op_sig.options.single_input_op.num_dims > 4) {
+        return 4;
+      }
       // If the op takes bool input, it is version 3.
       if (op_sig.input_types.at(0) == TensorType_BOOL) {
         return 3;
@@ -228,10 +231,11 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_SPLIT:
       // If the op take int8 input, it is version 2, for int32 it's version 3.
-      if (op_sig.input_types.at(0) == TensorType_INT32) {
+      // The input tensor is at index 1 not 0, 0 is the axis.
+      if (op_sig.input_types.at(1) == TensorType_INT32) {
         return 3;
       }
-      if (op_sig.input_types.at(0) == TensorType_INT8) {
+      if (op_sig.input_types.at(1) == TensorType_INT8) {
         return 2;
       }
       return 1;
@@ -304,7 +308,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_STRIDED_SLICE:
-      if (op_sig.options.strided_slice.num_dims > 4) {
+      if (op_sig.options.single_input_op.num_dims > 4) {
         return 4;
       }
       // If the op takes bool input, it is version 3.
@@ -330,13 +334,16 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_MAXIMUM:
     case BuiltinOperator_MINIMUM:
-      if (op_sig.input_types.at(0) == TensorType_INT8) {
-        return 2;
-      }
-
       if (op_sig.input_types.at(0) == TensorType_INT16 &&
           op_sig.output_types.at(0) == TensorType_INT16) {
+        return 4;
+      }
+      if (op_sig.options.broadcast.need_broadcast &&
+          op_sig.options.broadcast.num_dims > 4) {
         return 3;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
       }
       return 1;
 
@@ -360,7 +367,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_BATCH_TO_SPACE_ND:
-      if (op_sig.options.space_batch.num_dims != 4) {
+      if (op_sig.options.single_input_op.num_dims != 4) {
         return 3;
       }
       if (op_sig.input_types.at(0) == TensorType_INT8) {
@@ -369,8 +376,8 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SUB:
-      if (op_sig.options.sub.need_broadcast &&
-          op_sig.options.sub.num_dims > 4) {
+      if (op_sig.options.broadcast.need_broadcast &&
+          op_sig.options.broadcast.num_dims > 4) {
         return 3;
       }
       if (op_sig.input_types.at(0) == TensorType_INT8) {
@@ -510,18 +517,19 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       }
     } break;
     // TODO(b/150176627): Add tests for GetOpSignature.
-    case BuiltinOperator_STRIDED_SLICE: {
-      op_sig.options.strided_slice.num_dims = GetNumDims(subgraph, op, 0);
-    } break;
-
+    case BuiltinOperator_STRIDED_SLICE:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
-    case BuiltinOperator_BATCH_TO_SPACE_ND: {
-      op_sig.options.space_batch.num_dims = GetNumDims(subgraph, op, 0);
+    case BuiltinOperator_BATCH_TO_SPACE_ND:
+    case BuiltinOperator_TRANSPOSE: {
+      op_sig.options.single_input_op.num_dims = GetNumDims(subgraph, op, 0);
     } break;
 
-    case BuiltinOperator_SUB: {
-      op_sig.options.sub.need_broadcast = !HaveSameShapes(subgraph, op, 0, 1);
-      op_sig.options.sub.num_dims =
+    case BuiltinOperator_SUB:
+    case BuiltinOperator_MAXIMUM:
+    case BuiltinOperator_MINIMUM: {
+      op_sig.options.broadcast.need_broadcast =
+          !HaveSameShapes(subgraph, op, 0, 1);
+      op_sig.options.broadcast.num_dims =
           std::max(GetNumDims(subgraph, op, 0), GetNumDims(subgraph, op, 1));
     } break;
 

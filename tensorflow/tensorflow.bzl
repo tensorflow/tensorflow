@@ -262,6 +262,17 @@ def if_nccl(if_true, if_false = []):
         "//conditions:default": if_true,
     })
 
+# Linux systems may required -lrt linker flag for e.g. clock_gettime
+# see https://github.com/tensorflow/tensorflow/issues/15129
+def lrt_if_needed():
+    lrt = ["-lrt"]
+    return select({
+        clean_dep("//tensorflow:linux_aarch64"): lrt,
+        clean_dep("//tensorflow:linux_x86_64"): lrt,
+        clean_dep("//tensorflow:linux_ppc64le"): lrt,
+        "//conditions:default": [],
+    })
+
 def get_win_copts(is_external = False):
     WINDOWS_COPTS = [
         "/DPLATFORM_WINDOWS",
@@ -537,7 +548,7 @@ def tf_cc_shared_object(
         srcs = [],
         deps = [],
         data = [],
-        linkopts = [],
+        linkopts = lrt_if_needed(),
         framework_so = tf_binary_additional_srcs(),
         soversion = None,
         kernels = [],
@@ -641,7 +652,7 @@ def tf_cc_binary(
         srcs = [],
         deps = [],
         data = [],
-        linkopts = [],
+        linkopts = lrt_if_needed(),
         copts = tf_copts(),
         kernels = [],
         per_os_targets = False,  # Generate targets with SHARED_LIBRARY_NAME_PATTERNS
@@ -737,7 +748,7 @@ def tf_gen_op_wrapper_cc(
     tf_cc_binary(
         name = tool,
         copts = tf_copts(),
-        linkopts = if_not_windows(["-lm", "-Wl,-ldl"]),
+        linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + lrt_if_needed(),
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         deps = [op_gen] + deps,
     )
@@ -910,7 +921,7 @@ def tf_gen_op_wrapper_py(
         hidden_file = None,
         generated_target_name = None,
         op_whitelist = [],
-        cc_linkopts = [],
+        cc_linkopts = lrt_if_needed(),
         api_def_srcs = []):
     _ = require_shape_functions  # Unused.
 
@@ -1221,7 +1232,7 @@ def tf_cc_tests(
         tags = [],
         size = "medium",
         args = None,
-        linkopts = [],
+        linkopts = lrt_if_needed(),
         kernels = [],
         create_named_test_suite = False,
         visibility = None):
@@ -2196,6 +2207,7 @@ def tf_py_test(
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False,
+        tfrt_enabled = False,
         **kwargs):
     """Create one or more python tests with extra tensorflow dependencies."""
     xla_test_true_list = []
@@ -2212,6 +2224,8 @@ def tf_py_test(
         deps = deps + tf_additional_xla_deps_py()
     if grpc_enabled:
         deps = deps + tf_additional_grpc_deps_py()
+    if tfrt_enabled:
+        deps = deps + ["//tensorflow/python:is_tfrt_test_true"]
 
     # NOTE(ebrevdo): This is a workaround for depset() not being able to tell
     # the difference between 'dep' and 'clean_dep(dep)'.
@@ -2370,6 +2384,7 @@ def py_tests(
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False,
+        tfrt_enabled = False,
         **kwargs):
     if "additional_deps" in kwargs:
         fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
@@ -2389,6 +2404,7 @@ def py_tests(
             tags = tags,
             xla_enabled = xla_enabled,
             xla_enable_strict_auto_jit = xla_enable_strict_auto_jit,
+            tfrt_enabled = tfrt_enabled,
             **kwargs
         )
 
@@ -2786,3 +2802,9 @@ def filegroup_as_file(name, dep, visibility = []):
         srcs = [name],
         visibility = visibility,
     )
+
+def tf_grpc_dependency():
+    return "//tensorflow:grpc"
+
+def tf_grpc_cc_dependency():
+    return "//tensorflow:grpc++"

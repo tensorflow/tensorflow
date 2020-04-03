@@ -96,25 +96,25 @@ class GpuRng : public rng::RngSupport {
 };
 
 template <typename T>
-string TypeString();
+std::string TypeString();
 
 template <>
-string TypeString<float>() {
+std::string TypeString<float>() {
   return "float";
 }
 
 template <>
-string TypeString<double>() {
+std::string TypeString<double>() {
   return "double";
 }
 
 template <>
-string TypeString<std::complex<float>>() {
+std::string TypeString<std::complex<float>>() {
   return "std::complex<float>";
 }
 
 template <>
-string TypeString<std::complex<double>>() {
+std::string TypeString<std::complex<double>>() {
   return "std::complex<double>";
 }
 

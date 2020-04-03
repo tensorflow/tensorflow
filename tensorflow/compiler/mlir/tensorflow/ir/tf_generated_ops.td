@@ -49,6 +49,47 @@ an output element, this operation computes \\(y = |x|\\).
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_AcosOp : TF_Op<"Acos", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes acos of x element-wise.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_AcoshOp : TF_Op<"Acosh", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes inverse hyperbolic cosine of x element-wise.";
+
+  let description = [{
+Given an input tensor, the function computes inverse hyperbolic cosine of every element.
+Input range is `[1, inf]`. It returns `nan` if the input lies outside the range.
+
+```python
+x = tf.constant([-2, -0.5, 1, 1.2, 200, 10000, float("inf")])
+tf.math.acosh(x) ==> [nan nan 0. 0.62236255 5.9914584 9.903487 inf]
+```
+  }];
+
+  let arguments = (ins
+    TF_FpOrComplexTensor:$x
+  );
+
+  let results = (outs
+    TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_AddOp : TF_Op<"Add", [NoSideEffect, ResultsBroadcastableShape, TF_LayoutAgnostic]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x + y element-wise.";
@@ -147,6 +188,41 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let verifier = [{ return Verify(*this); }];
+}
+
+def TF_AngleOp : TF_Op<"Angle", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Returns the argument of a complex number.";
+
+  let description = [{
+Given a tensor `input` of complex numbers, this operation returns a tensor of
+type `float` that is the argument of each element in `input`. All elements in
+`input` must be complex numbers of the form \\(a + bj\\), where *a*
+is the real part and *b* is the imaginary part.
+
+The argument returned by this operation is of the form \\(atan2(b, a)\\).
+
+For example:
+
+```
+# tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+tf.angle(input) ==> [2.0132, 1.056]
+```
+
+@compatibility(numpy)
+Equivalent to np.angle.
+@end_compatibility
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_AnyOp : TF_Op<"Any", [NoSideEffect]> {
@@ -278,6 +354,63 @@ array([b'3.14', b'2.72'], dtype=object)
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_AsinOp : TF_Op<"Asin", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes the trignometric inverse sine of x element-wise.";
+
+  let description = [{
+The `tf.math.asin` operation returns the inverse of `tf.math.sin`, such that
+if `y = tf.math.sin(x)` then, `x = tf.math.asin(y)`.
+
+**Note**: The output of `tf.math.asin` will lie within the invertible range
+of sine, i.e [-pi/2, pi/2].
+
+For example:
+
+```python
+# Note: [1.047, 0.785] ~= [(pi/3), (pi/4)]
+x = tf.constant([1.047, 0.785])
+y = tf.math.sin(x) # [0.8659266, 0.7068252]
+
+tf.math.asin(y) # [1.047, 0.785] = x
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_AsinhOp : TF_Op<"Asinh", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes inverse hyperbolic sine of x element-wise.";
+
+  let description = [{
+Given an input tensor, this function computes inverse hyperbolic sine
+  for every element in the tensor. Both input and output has a range of
+  `[-inf, inf]`.
+
+  ```python
+  x = tf.constant([-float("inf"), -2, -0.5, 1, 1.2, 200, 10000, float("inf")])
+  tf.math.asinh(x) ==> [-inf -1.4436355 -0.4812118 0.8813736 1.0159732 5.991471 9.903487 inf]
+  ```
+  }];
+
+  let arguments = (ins
+    TF_FpOrComplexTensor:$x
+  );
+
+  let results = (outs
+    TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_AssertOp : TF_Op<"Assert", []> {
   let summary = "Asserts that the given condition is true.";
 
@@ -354,6 +487,38 @@ this value or a subsequent newer value of the variable.
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_AtanOp : TF_Op<"Atan", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes the trignometric inverse tangent of x element-wise.";
+
+  let description = [{
+The `tf.math.atan` operation returns the inverse of `tf.math.tan`, such that
+if `y = tf.math.tan(x)` then, `x = tf.math.atan(y)`.
+
+**Note**: The output of `tf.math.atan` will lie within the invertible range
+of tan, i.e (-pi/2, pi/2).
+
+For example:
+
+```python
+# Note: [1.047, 0.785] ~= [(pi/3), (pi/4)]
+x = tf.constant([1.047, 0.785])
+y = tf.math.tan(x) # [1.731261, 0.99920404]
+
+tf.math.atan(y) # [1.047, 0.785] = x
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_Atan2Op : TF_Op<"Atan2", [NoSideEffect, ResultsBroadcastableShape]>,
                  WithBroadcastableBinOpBuilder {
   let summary = [{
@@ -375,6 +540,33 @@ where \(r = \sqrt(x^2 + y^2) \).
 
   let results = (outs
     TF_FpTensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_AtanhOp : TF_Op<"Atanh", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes inverse hyperbolic tangent of x element-wise.";
+
+  let description = [{
+Given an input tensor, this function computes inverse hyperbolic tangent
+  for every element in the tensor. Input range is `[-1,1]` and output range is
+  `[-inf, inf]`. If input is `-1`, output will be `-inf` and if the
+  input is `1`, output will be `inf`. Values outside the range will have
+  `nan` as output.
+
+  ```python
+  x = tf.constant([-float("inf"), -1, -0.5, 1, 0, 0.5, 10, float("inf")])
+  tf.math.atanh(x) ==> [nan -inf -0.54930615 inf  0. 0.54930615 nan nan]
+  ```
+  }];
+
+  let arguments = (ins
+    TF_FpOrComplexTensor:$x
+  );
+
+  let results = (outs
+    TF_FpOrComplexTensor:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -544,6 +736,48 @@ reverse of SpaceToBatch.  See below for a precise description.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tcrops = TF_DerivedOperandTypeAttr<2>;
   TF_DerivedOperandTypeAttr Tblock_shape = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_BesselI0eOp : TF_Op<"BesselI0e", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes the Bessel i0e function of `x` element-wise.";
+
+  let description = [{
+Exponentially scaled modified Bessel function of order 0 defined as
+`bessel_i0e(x) = exp(-abs(x)) bessel_i0(x)`.
+
+This function is faster and numerically stabler than `bessel_i0(x)`.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_BesselI1eOp : TF_Op<"BesselI1e", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes the Bessel i1e function of `x` element-wise.";
+
+  let description = [{
+Exponentially scaled modified Bessel function of order 0 defined as
+`bessel_i1e(x) = exp(-abs(x)) bessel_i1(x)`.
+
+This function is faster and numerically stabler than `bessel_i1(x)`.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect]> {
@@ -748,6 +982,44 @@ for dtype in dtype_list:
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_BitwiseXorOp : TF_Op<"BitwiseXor", [Commutative, NoSideEffect, ResultsBroadcastableShape]>,
+                      WithBroadcastableBinOpBuilder {
+  let summary = "Elementwise computes the bitwise XOR of `x` and `y`.";
+
+  let description = [{
+The result will have those bits set, that are different in `x` and `y`. The
+computation is performed on the underlying representations of `x` and `y`.
+
+For example:
+
+```python
+import tensorflow as tf
+from tensorflow.python.ops import bitwise_ops
+dtype_list = [tf.int8, tf.int16, tf.int32, tf.int64,
+              tf.uint8, tf.uint16, tf.uint32, tf.uint64]
+
+for dtype in dtype_list:
+  lhs = tf.constant([0, 5, 3, 14], dtype=dtype)
+  rhs = tf.constant([5, 0, 7, 11], dtype=dtype)
+  exp = tf.constant([5, 5, 4, 5],  dtype=tf.float32)
+
+  res = bitwise_ops.bitwise_xor(lhs, rhs)
+  tf.assert_equal(tf.cast(res, tf.float32), exp) # TRUE
+```
+  }];
+
+  let arguments = (ins
+    TF_IntTensor:$x,
+    TF_IntTensor:$y
+  );
+
+  let results = (outs
+    TF_IntTensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_BroadcastGradientArgsOp : TF_Op<"BroadcastGradientArgs", [NoSideEffect]> {
   let summary = [{
 Return the reduction indices for computing gradients of s0 op s1 with broadcast.
@@ -866,6 +1138,29 @@ that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
 
   let results = (outs
     TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_ClipByValueOp : TF_Op<"ClipByValue", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Clips tensor values to a specified min and max.";
+
+  let description = [{
+Given a tensor `t`, this operation returns a tensor of the same type and
+shape as `t` with its values clipped to `clip_value_min` and `clip_value_max`.
+Any values less than `clip_value_min` are set to `clip_value_min`. Any values
+greater than `clip_value_max` are set to `clip_value_max`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$t,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$clip_value_min,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$clip_value_max
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1235,6 +1530,31 @@ Given an input tensor, this function computes cosine of every
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_CoshOp : TF_Op<"Cosh", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes hyperbolic cosine of x element-wise.";
+
+  let description = [{
+Given an input tensor, this function computes hyperbolic cosine of every
+  element in the tensor. Input range is `[-inf, inf]` and output range
+  is `[1, inf]`.
+
+  ```python
+  x = tf.constant([-float("inf"), -9, -0.5, 1, 1.2, 2, 10, float("inf")])
+  tf.math.cosh(x) ==> [inf 4.0515420e+03 1.1276259e+00 1.5430807e+00 1.8106556e+00 3.7621956e+00 1.1013233e+04 inf]
+  ```
+  }];
+
+  let arguments = (ins
+    TF_FpOrComplexTensor:$x
+  );
+
+  let results = (outs
+    TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_CrossReplicaSumOp : TF_Op<"CrossReplicaSum", [AllTypesMatch<["input", "output"]>, NoSideEffect]> {
   let summary = "An Op to sum inputs across replicated TPU instances.";
 
@@ -1259,7 +1579,7 @@ and `B, D, F, H` as group 1. Thus we get the outputs:
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_CumsumOp : TF_Op<"Cumsum", [NoSideEffect]> {
+def TF_CumsumOp : TF_Op<"Cumsum", [AllTypesMatch<["x", "out"]>, NoSideEffect]> {
   let summary = "Compute the cumulative sum of the tensor `x` along `axis`.";
 
   let description = [{
@@ -1449,13 +1769,34 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
     TF_FpTensor:$filter,
 
     I64ArrayAttr:$strides,
-    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    TF_AnyStrAttrOf<["SAME", "VALID", "EXPLICIT"]>:$padding,
+    DefaultValuedAttr<I64ArrayAttr, "{}">:$explicit_paddings,
     DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
     DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations
   );
 
   let results = (outs
     TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_DigammaOp : TF_Op<"Digamma", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = [{
+Computes Psi, the derivative of Lgamma (the log of the absolute value of
+  }];
+
+  let description = [{
+`Gamma(x)`), element-wise.
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1755,6 +2096,59 @@ tf.math.equal(x, y) ==> array([True,  True])
   }];
 }
 
+def TF_ErfOp : TF_Op<"Erf", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes the Gauss error function of `x` element-wise.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_ErfcOp : TF_Op<"Erfc", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = [{
+Computes the complementary error function of `x` element-wise.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_ErfinvOp : TF_Op<"Erfinv", [NoSideEffect]> {
+  let summary = "";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ExpOp : TF_Op<"Exp", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = [{
 Computes exponential of x element-wise.  \\(y = e^x\\).
@@ -1852,6 +2246,36 @@ size 1.
     OpBuilder<"Builder* builder, OperationState& result, Value  condition, "
               "Value  dim">
   ];
+}
+
+def TF_Expm1Op : TF_Op<"Expm1", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes `exp(x) - 1` element-wise.";
+
+  let description = [{
+i.e. `exp(x) - 1` or `e^(x) - 1`, where `x` is the input tensor.
+  `e` denotes Euler's number and is approximately equal to 2.718281.
+
+  ```python
+  x = tf.constant(2.0)
+  tf.math.expm1(x) ==> 6.389056
+
+  x = tf.constant([2.0, 8.0])
+  tf.math.expm1(x) ==> array([6.389056, 2979.958], dtype=float32)
+
+  x = tf.constant(1 + 1j)
+  tf.math.expm1(x) ==> (0.46869393991588515+2.2873552871788423j)
+  ```
+  }];
+
+  let arguments = (ins
+    TF_FpOrComplexTensor:$x
+  );
+
+  let results = (outs
+    TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_FakeQuantWithMinMaxArgsOp : TF_Op<"FakeQuantWithMinMaxArgs", [NoSideEffect, SameOperandsAndResultType]> {
@@ -2082,12 +2506,12 @@ with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
   }];
 
   let arguments = (ins
-    TF_FpOrI32OrI64Tensor:$x,
-    TF_FpOrI32OrI64Tensor:$y
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Uint64]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Uint64]>:$y
   );
 
   let results = (outs
-    TF_FpOrI32OrI64Tensor:$z
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Uint64]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2191,7 +2615,7 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
   TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<3>;
 }
 
-def TF_FusedBatchNormGradV3Op : TF_Op<"FusedBatchNormGradV3", [NoSideEffect]> {
+def TF_FusedBatchNormGradV3Op : TF_Op<"FusedBatchNormGradV3", [NoSideEffect, TF_LayoutSensitiveInterface]> {
   let summary = "Gradient for batch normalization.";
 
   let description = [{
@@ -2222,9 +2646,17 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<3>;
+
+  let extraClassDeclaration = [{
+    // TF_LayoutSensitiveInterface:
+    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0, 1}; }
+    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
+    StringRef GetOptimalLayout(const RuntimeDevices& devices);
+    LogicalResult UpdateDataFormat(StringRef data_format);
+  }];
 }
 
-def TF_FusedBatchNormV3Op : TF_Op<"FusedBatchNormV3", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
+def TF_FusedBatchNormV3Op : TF_Op<"FusedBatchNormV3", [NoSideEffect, TF_FoldOperandsTransposeInterface, TF_LayoutSensitiveInterface]> {
   let summary = "Batch normalization.";
 
   let description = [{
@@ -2261,6 +2693,10 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
     SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
     SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
     LogicalResult FoldOperandsPermutation(ArrayRef<int64_t> permutation);
+
+    // TF_LayoutSensitiveInterface:
+    StringRef GetOptimalLayout(const RuntimeDevices& devices);
+    LogicalResult UpdateDataFormat(StringRef data_format);
   }];
 }
 
@@ -2613,6 +3049,92 @@ def ApplyG(op, dy, _):
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 }
 
+def TF_IgammaOp : TF_Op<"Igamma", [NoSideEffect, ResultsBroadcastableShape]>,
+                  WithBroadcastableBinOpBuilder {
+  let summary = [{
+Compute the lower regularized incomplete Gamma function `P(a, x)`.
+  }];
+
+  let description = [{
+The lower regularized incomplete Gamma function is defined as:
+
+
+\\(P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\\)
+
+where
+
+\\(gamma(a, x) = \\int_{0}^{x} t^{a-1} exp(-t) dt\\)
+
+is the lower incomplete Gamma function.
+
+Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
+Gamma function.
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$a,
+    TF_F32OrF64Tensor:$x
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_IgammaGradAOp : TF_Op<"IgammaGradA", [NoSideEffect, ResultsBroadcastableShape]>,
+                       WithBroadcastableBinOpBuilder {
+  let summary = "Computes the gradient of `igamma(a, x)` wrt `a`.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$a,
+    TF_F32OrF64Tensor:$x
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_IgammacOp : TF_Op<"Igammac", [NoSideEffect, ResultsBroadcastableShape]>,
+                   WithBroadcastableBinOpBuilder {
+  let summary = [{
+Compute the upper regularized incomplete Gamma function `Q(a, x)`.
+  }];
+
+  let description = [{
+The upper regularized incomplete Gamma function is defined as:
+
+\\(Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)\\)
+
+where
+
+\\(Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt\\)
+
+is the upper incomplete Gama function.
+
+Note, above `P(a, x)` (`Igamma`) is the lower regularized complete
+Gamma function.
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$a,
+    TF_F32OrF64Tensor:$x
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ImagOp : TF_Op<"Imag", [NoSideEffect, SameOperandsAndResultShape]> {
   let summary = "Returns the imaginary part of a complex number.";
 
@@ -2785,6 +3307,60 @@ Example:
 ```python
 x = tf.constant([5.0, 4.8, 6.8, np.inf, np.nan])
 tf.math.is_finite(x) ==> [True, True, True, False, False]
+```
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    I1Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_IsInfOp : TF_Op<"IsInf", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Returns which elements of x are Inf.";
+
+  let description = [{
+@compatibility(numpy)
+Equivalent to np.isinf
+@end_compatibility
+
+Example:
+
+```python
+x = tf.constant([5.0, np.inf, 6.8, np.inf])
+tf.math.is_inf(x) ==> [False, True, False, True]
+```
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    I1Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_IsNanOp : TF_Op<"IsNan", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Returns which elements of x are NaN.";
+
+  let description = [{
+@compatibility(numpy)
+Equivalent to np.isnan
+@end_compatibility
+
+Example:
+
+```python
+x = tf.constant([5.0, np.nan, 6.8, np.nan, np.inf])
+tf.math.is_nan(x) ==> [False, True, False, True, False]
 ```
   }];
 
@@ -3001,6 +3577,34 @@ tf.math.less_equal(x, y) ==> [True, True, True]
 
   let results = (outs
     I1Tensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_LgammaOp : TF_Op<"Lgamma", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = [{
+Computes the log of the absolute value of `Gamma(x)` element-wise.
+  }];
+
+  let description = [{
+For positive numbers, this function computes log((input - 1)!) for every element in the tensor.
+  `lgamma(5) = log((5-1)!) = log(4!) = log(24) = 3.1780539`
+
+Example:
+
+```python
+x = tf.constant([0, 0.5, 1, 4.5, -4, -5.6])
+tf.math.lgamma(x) ==> [inf, 0.5723649, 0., 2.4537368, inf, -4.6477685]
+```
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -3254,7 +3858,7 @@ cublas.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_MatrixBandPartOp : TF_Op<"MatrixBandPart", [NoSideEffect, AllTypesMatch<["input", "band"]>]> {
+def TF_MatrixBandPartOp : TF_Op<"MatrixBandPart", [AllTypesMatch<["input", "band"]>, NoSideEffect]> {
   let summary = [{
 Copy a tensor setting everything outside a central band in each innermost matrix
 to zero.
@@ -4135,6 +4739,32 @@ graph_def = foo.get_concrete_function(tf.TensorSpec([10], tf.float32), tf.Tensor
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
 }
 
+def TF_ModOp : TF_Op<"Mod", [NoSideEffect, ResultsBroadcastableShape]>,
+               WithBroadcastableBinOpBuilder {
+  let summary = [{
+Returns element-wise remainder of division. This emulates C semantics in that
+  }];
+
+  let description = [{
+the result here is consistent with a truncating divide. E.g.
+`tf.truncatediv(x, y) * y + truncate_mod(x, y) = x`.
+
+*NOTE*: `Mod` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+  }];
+
+  let arguments = (ins
+    TF_FpOrI32OrI64Tensor:$x,
+    TF_FpOrI32OrI64Tensor:$y
+  );
+
+  let results = (outs
+    TF_FpOrI32OrI64Tensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_MulOp : TF_Op<"Mul", [Commutative, NoSideEffect, ResultsBroadcastableShape]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x * y element-wise.";
@@ -4174,6 +4804,45 @@ Returns x * y element-wise. Returns zero if y is zero, even if x if infinite or 
 
   let results = (outs
     TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MultinomialOp : TF_Op<"Multinomial", []> {
+  let summary = "Draws samples from a multinomial distribution.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_IntOrFpTensor:$logits,
+    I32Tensor:$num_samples,
+
+    DefaultValuedAttr<I64Attr, "0">:$seed,
+    DefaultValuedAttr<I64Attr, "0">:$seed2
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr output_dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_NdtriOp : TF_Op<"Ndtri", [NoSideEffect]> {
+  let summary = "";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -4632,6 +5301,8 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasFolder = 1;
 }
 
 def TF_PreventGradientOp : TF_Op<"PreventGradient", [NoSideEffect, SameOperandsAndResultType]> {
@@ -4860,6 +5531,27 @@ the dimension is padded with zeros.
 
   TF_DerivedOperandTypeAttr Treal = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tcomplex = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_RandomGammaGradOp : TF_Op<"RandomGammaGrad", [NoSideEffect, ResultsBroadcastableShape]>,
+                           WithBroadcastableBinOpBuilder {
+  let summary = [{
+Computes the derivative of a Gamma random sample w.r.t. `alpha`.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$alpha,
+    TF_F32OrF64Tensor:$sample
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_RandomShuffleOp : TF_Op<"RandomShuffle", [SameOperandsAndResultType]> {
@@ -5108,6 +5800,26 @@ I.e., \\(y = 1 / x\\).
   let hasCanonicalizer = 1;
 }
 
+def TF_ReciprocalGradOp : TF_Op<"ReciprocalGrad", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes the gradient for the inverse of `x` wrt its input.";
+
+  let description = [{
+Specifically, `grad = -dy * y*y`, where `y = 1/x`, and `dy`
+is the corresponding input gradient.
+  }];
+
+  let arguments = (ins
+    TF_FpOrComplexTensor:$y,
+    TF_FpOrComplexTensor:$dy
+  );
+
+  let results = (outs
+    TF_FpOrComplexTensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ReluOp : TF_Op<"Relu", [NoSideEffect, SameOperandsAndResultType, TF_LayoutAgnostic]> {
   let summary = "Computes rectified linear: `max(features, 0)`.";
 
@@ -5294,6 +6006,30 @@ Resize `images` to `size` using nearest neighbor interpolation.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_ResourceApplyAdagradV2Op : TF_Op<"ResourceApplyAdagradV2", []> {
+  let summary = "Update '*var' according to the adagrad scheme.";
+
+  let description = [{
+accum += grad * grad
+var -= lr * grad * (1 / (sqrt(accum) + epsilon))
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$var,
+    TF_ResourceTensor:$accum,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$epsilon,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$grad,
+
+    DefaultValuedAttr<BoolAttr, "false">:$use_locking,
+    DefaultValuedAttr<BoolAttr, "true">:$update_slots
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
 }
 
 def TF_ResourceApplyAdamOp : TF_Op<"ResourceApplyAdam", []> {
@@ -5627,6 +6363,32 @@ bitwise_ops.right_shift(lhs, rhs)
 
   let results = (outs
     TF_IntTensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_RintOp : TF_Op<"Rint", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Returns element-wise integer closest to x.";
+
+  let description = [{
+If the result is midway between two representable values,
+the even representable is chosen.
+For example:
+
+```
+rint(-1.5) ==> -2.0
+rint(0.5000001) ==> 1.0
+rint([-1.7, -1.5, -0.2, 0.2, 1.5, 1.7, 2.0]) ==> [-2., -2., -0., 0., 2., 2., 2.]
+```
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -6057,6 +6819,26 @@ Specifically, `y = 1 / (1 + exp(-x))`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_SigmoidGradOp : TF_Op<"SigmoidGrad", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes the gradient of the sigmoid of `x` wrt its input.";
+
+  let description = [{
+Specifically, `grad = dy * y * (1 - y)`, where `y = sigmoid(x)`, and
+`dy` is the corresponding input gradient.
+  }];
+
+  let arguments = (ins
+    TF_FpOrComplexTensor:$y,
+    TF_FpOrComplexTensor:$dy
+  );
+
+  let results = (outs
+    TF_FpOrComplexTensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_SignOp : TF_Op<"Sign", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns an element-wise indication of the sign of a number.";
 
@@ -6092,6 +6874,31 @@ Given an input tensor, this function computes sine of every
   ```python
   x = tf.constant([-float("inf"), -9, -0.5, 1, 1.2, 200, 10, float("inf")])
   tf.math.sin(x) ==> [nan -0.4121185 -0.47942555 0.84147096 0.9320391 -0.87329733 -0.54402107 nan]
+  ```
+  }];
+
+  let arguments = (ins
+    TF_FpOrComplexTensor:$x
+  );
+
+  let results = (outs
+    TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SinhOp : TF_Op<"Sinh", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes hyperbolic sine of x element-wise.";
+
+  let description = [{
+Given an input tensor, this function computes hyperbolic sine of every
+  element in the tensor. Input range is `[-inf,inf]` and output range
+  is `[-inf,inf]`.
+
+  ```python
+  x = tf.constant([-float("inf"), -9, -0.5, 1, 1.2, 2, 10, float("inf")])
+  tf.math.sinh(x) ==> [-inf -4.0515420e+03 -5.2109528e-01 1.1752012e+00 1.5094614e+00 3.6268604e+00 1.1013232e+04 inf]
   ```
   }];
 
@@ -6246,6 +7053,59 @@ def TF_SoftplusOp : TF_Op<"Softplus", [NoSideEffect, SameOperandsAndResultType]>
 
   let results = (outs
     TF_FpTensor:$activations
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SoftplusGradOp : TF_Op<"SoftplusGrad", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes softplus gradients for a softplus operation.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$gradients,
+    TF_FpTensor:$features
+  );
+
+  let results = (outs
+    TF_FpTensor:$backprops
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SoftsignOp : TF_Op<"Softsign", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes softsign: `features / (abs(features) + 1)`.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$features
+  );
+
+  let results = (outs
+    TF_FpTensor:$activations
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SoftsignGradOp : TF_Op<"SoftsignGrad", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes softsign gradients for a softsign operation.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$gradients,
+    TF_FpTensor:$features
+  );
+
+  let results = (outs
+    TF_FpTensor:$backprops
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -6887,12 +7747,12 @@ def TF_SubOp : TF_Op<"Sub", [NoSideEffect, ResultsBroadcastableShape]>,
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint32, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint32, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint32, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -7135,6 +7995,32 @@ variables.
   let results = (outs);
 
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
+def TF_TanOp : TF_Op<"Tan", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes tan of x element-wise.";
+
+  let description = [{
+Given an input tensor, this function computes tangent of every
+  element in the tensor. Input range is `(-inf, inf)` and
+  output range is `(-inf, inf)`. If input lies outside the boundary, `nan`
+  is returned.
+
+  ```python
+  x = tf.constant([-float("inf"), -9, -0.5, 1, 1.2, 200, 10000, float("inf")])
+  tf.math.tan(x) ==> [nan 0.45231566 -0.5463025 1.5574077 2.572152 -1.7925274 0.32097113 nan]
+  ```
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType, TF_LayoutAgnostic]> {
@@ -7969,6 +8855,32 @@ Python Semantics.
   let hasCanonicalizer = 1;
 }
 
+def TF_TruncateModOp : TF_Op<"TruncateMod", [NoSideEffect, ResultsBroadcastableShape]>,
+                       WithBroadcastableBinOpBuilder {
+  let summary = [{
+Returns element-wise remainder of division. This emulates C semantics in that
+  }];
+
+  let description = [{
+the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
+y + truncate_mod(x, y) = x`.
+
+*NOTE*: `TruncateMod` supports broadcasting. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+  }];
+
+  let arguments = (ins
+    TF_FpOrI32OrI64Tensor:$x,
+    TF_FpOrI32OrI64Tensor:$y
+  );
+
+  let results = (outs
+    TF_FpOrI32OrI64Tensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_UniqueOp : TF_Op<"Unique", [NoSideEffect]> {
   let summary = "Finds unique elements in a 1-D tensor.";
 
@@ -8373,25 +9285,6 @@ def TF_XdivyOp : TF_Op<"Xdivy", [NoSideEffect, ResultsBroadcastableShape]>,
   let hasCanonicalizer = 1;
 }
 
-def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect]> {
-  let summary = [{
-An op which shards the input based on the given sharding attribute.
-  }];
-
-  let description = [{
-  }];
-
-  let arguments = (ins
-    TF_Tensor:$input
-  );
-
-  let results = (outs
-    TF_Tensor:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
 def TF_XlaDynamicUpdateSliceOp : TF_Op<"XlaDynamicUpdateSlice", [NoSideEffect]> {
   let summary = "Wraps the XLA DynamicUpdateSlice operator, documented at";
 
@@ -8418,6 +9311,62 @@ Handling of out-of-bounds slice indices is implementation-defined.
   );
 
   TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<2>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect]> {
+  let summary = [{
+An op which shards the input based on the given sharding attribute.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_Xlog1pyOp : TF_Op<"Xlog1py", [NoSideEffect]> {
+  let summary = "Returns 0 if x == 0, and x * log1p(y) otherwise, elementwise.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$x,
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$y
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_XlogyOp : TF_Op<"Xlogy", [NoSideEffect, ResultsBroadcastableShape]>,
+                 WithBroadcastableBinOpBuilder {
+  let summary = "Returns 0 if x == 0, and x * log(y) otherwise, elementwise.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$x,
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$y
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$z
+  );
+
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 

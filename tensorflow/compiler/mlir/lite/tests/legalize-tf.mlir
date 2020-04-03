@@ -192,11 +192,11 @@ func @argmin(%arg0: tensor<3xi32>, %arg1: tensor<i32>) -> tensor<i32> {
 // CHECK:  "tfl.arg_min"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<i32>
 }
 
-func @sigmoid(%arg0: tensor<?x88xf16>) -> tensor<?x88xf16> {
-  %0 = "tf.Sigmoid"(%arg0) : (tensor<?x88xf16>) -> tensor<?x88xf16>
-  return %0 : tensor<?x88xf16>
+func @sigmoid(%arg0: tensor<?x88xf32>) -> tensor<?x88xf32> {
+  %0 = "tf.Sigmoid"(%arg0) : (tensor<?x88xf32>) -> tensor<?x88xf32>
+  return %0 : tensor<?x88xf32>
 // CHECK-LABEL: sigmoid
-// CHECK:  "tfl.logistic"(%arg0) : (tensor<?x88xf16>) -> tensor<?x88xf16>
+// CHECK:  "tfl.logistic"(%arg0) : (tensor<?x88xf32>) -> tensor<?x88xf32>
 }
 
 func @sqrt(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
@@ -829,6 +829,14 @@ func @pack3Tensors(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>, %arg2 : tensor<2x
 // CHECK: "tfl.pack"(%arg0, %arg1, %arg2) {axis = 1 : i32, values_count = 3 : i32} : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x3xi32>
 }
 
+func @packStringWithFlex(%arg0: tensor<2x!tf.string>, %arg1: tensor<2x!tf.string>) -> tensor<2x2x!tf.string> {
+  %0 = "tf.Pack"(%arg0, %arg1) : (tensor<2x!tf.string>, tensor<2x!tf.string>) -> tensor<2x2x!tf.string>
+  return %0 : tensor<2x2x!tf.string>
+
+// CHECK-LABEL: packStringWithFlex
+// CHECK: "tf.Pack"(%arg0, %arg1) : (tensor<2x!tf.string>, tensor<2x!tf.string>) -> tensor<2x2x!tf.string>
+}
+
 func @packNegAxis(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>, %arg2 : tensor<2xi32>) -> tensor<2x3xi32> {
   %0 = "tf.Pack"(%arg0, %arg1, %arg2) {axis = -1 : i64} : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x3xi32>
   return %0 : tensor<2x3xi32>
@@ -1316,16 +1324,6 @@ func @assert_remove(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi1> 
   // CHECK: return
 }
 
-func @reciprocal_f16(%arg0: tensor<8xf16>) -> tensor<8xf16> {
-  %0 = "tf.Reciprocal"(%arg0) : (tensor<8xf16>) -> tensor<8xf16>
-  return %0: tensor<8xf16>
-
-// CHECK-LABEL: reciprocal_f16
-// CHECK:  %cst = constant dense<1.000000e+00> : tensor<f16>
-// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<f16>, tensor<8xf16>) -> tensor<8xf16>
-// CHECK:  return
-}
-
 func @reciprocal_f32(%arg0: tensor<8xf32>) -> tensor<8xf32> {
   %0 = "tf.Reciprocal"(%arg0) : (tensor<8xf32>) -> tensor<8xf32>
   return %0: tensor<8xf32>
@@ -1336,16 +1334,6 @@ func @reciprocal_f32(%arg0: tensor<8xf32>) -> tensor<8xf32> {
 // CHECK:  return
 }
 
-func @reciprocal_complex_f32(%arg0: tensor<8xcomplex<f32>>) -> tensor<8xcomplex<f32>> {
-  %0 = "tf.Reciprocal"(%arg0) : (tensor<8xcomplex<f32>>) -> tensor<8xcomplex<f32>>
-  return %0: tensor<8xcomplex<f32>>
-
-// CHECK-LABEL: reciprocal_complex_f32
-// CHECK:  %cst = constant opaque<"tf", "0x746674656E736F722464747970653A2044545F434F4D504C455836342074656E736F725F7368617065207B2064696D207B2073697A653A2031207D207D2074656E736F725F636F6E74656E743A20225C3030305C3030305C3230303F5C3030305C3030305C3030305C30303022"> : tensor<complex<f32>>
-// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<complex<f32>>, tensor<8xcomplex<f32>>) -> tensor<8xcomplex<f32>>
-// CHECK:  return
-}
-
 func @reciprocal_i32(%arg0: tensor<8xi32>) -> tensor<8xi32> {
   %0 = "tf.Reciprocal"(%arg0) : (tensor<8xi32>) -> tensor<8xi32>
   return %0: tensor<8xi32>
@@ -1353,16 +1341,6 @@ func @reciprocal_i32(%arg0: tensor<8xi32>) -> tensor<8xi32> {
 // CHECK-LABEL: reciprocal_i32
 // CHECK:  %cst = constant dense<1> : tensor<i32>
 // CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<i32>, tensor<8xi32>) -> tensor<8xi32>
-// CHECK:  return
-}
-
-func @reciprocal_i64(%arg0: tensor<8xi64>) -> tensor<8xi64> {
-  %0 = "tf.Reciprocal"(%arg0) : (tensor<8xi64>) -> tensor<8xi64>
-  return %0: tensor<8xi64>
-
-// CHECK-LABEL: reciprocal_i64
-// CHECK:  %cst = constant dense<1> : tensor<i64>
-// CHECK:  "tfl.div"(%cst, %arg0) {fused_activation_function = "NONE"} : (tensor<i64>, tensor<8xi64>) -> tensor<8xi64>
 // CHECK:  return
 }
 

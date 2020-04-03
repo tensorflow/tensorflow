@@ -29,6 +29,9 @@ import org.tensorflow.lite.support.metadata.schema.TensorMetadata;
 
 /** Extracts model metadata information out of TFLite metadata FlatBuffer. */
 final class ModelMetadataInfo {
+  /** The root handler for the model metadata. */
+  private final ModelMetadata modelMetadata;
+
   /** Metadata array of input tensors. */
   private final List</* @Nullable */ TensorMetadata> inputsMetadata;
 
@@ -45,7 +48,7 @@ final class ModelMetadataInfo {
   ModelMetadataInfo(ByteBuffer buffer) {
     checkNotNull(buffer, "Metadata flatbuffer cannot be null.");
 
-    ModelMetadata modelMetadata = ModelMetadata.getRootAsModelMetadata(buffer);
+    modelMetadata = ModelMetadata.getRootAsModelMetadata(buffer);
     checkArgument(
         modelMetadata.subgraphMetadataLength() > 0,
         "The metadata flatbuffer does not contain any subgraph metadata.");
@@ -71,6 +74,11 @@ final class ModelMetadataInfo {
         inputIndex >= 0 && inputIndex < inputsMetadata.size(),
         "The inputIndex specified is invalid.");
     return inputsMetadata.get(inputIndex);
+  }
+
+  /** Gets the root handler for the model metadata. */
+  ModelMetadata getModelMetadata() {
+    return modelMetadata;
   }
 
   /** Gets the count of output tensors with metadata in the metadata FlatBuffer. */

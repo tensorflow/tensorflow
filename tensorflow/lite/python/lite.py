@@ -37,6 +37,7 @@ from tensorflow.lite.experimental.tensorboard.ops_util import get_potentially_su
 from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
+from tensorflow.lite.python.convert import mlir_quantize as _mlir_quantize
 from tensorflow.lite.python.convert import OpsSet
 from tensorflow.lite.python.convert import toco_convert  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import toco_convert_graph_def as _toco_convert_graph_def
@@ -280,8 +281,8 @@ class TFLiteConverterBase(object):
     self.optimizations = []
     self.representative_dataset = None
     self.experimental_new_converter = _USE_EXPERIMENTAL_NEW_CONVERTER
-    self.experimental_new_quantizer = False
-    self.experimental_calibrate_only = False
+    self._experimental_new_quantizer = False
+    self._experimental_calibrate_only = False
     # The 'GraphDebugInfo'  contains the stack traces of all the original nodes
     # in the `GraphDef` to the converter.
     self._debug_info = None
@@ -310,16 +311,23 @@ class TFLiteConverterBase(object):
 
   def _calibrate_quantize_model(self, result, inference_input_type,
                                 inference_output_type, allow_float):
+    """Calibrate and quantize the model."""
     if not isinstance(self.representative_dataset, RepresentativeDataset):
       self.representative_dataset = RepresentativeDataset(
           self.representative_dataset)
     calibrate_quantize = _calibrator.Calibrator(result)
-    if self.experimental_calibrate_only:
-      return calibrate_quantize.calibrate(self.representative_dataset.input_gen)
+    if self._experimental_calibrate_only or self._experimental_new_quantizer:
+      calibrated = calibrate_quantize.calibrate(
+          self.representative_dataset.input_gen)
+
+    if self._experimental_calibrate_only:
+      return calibrated
+    elif self._experimental_new_quantizer:
+      return _mlir_quantize(calibrated)
     else:
       return calibrate_quantize.calibrate_and_quantize(
           self.representative_dataset.input_gen, inference_input_type,
-          inference_output_type, allow_float, self.experimental_new_quantizer)
+          inference_output_type, allow_float)
 
   def _is_unknown_shapes_allowed(self, fp32_execution):
     # TODO(b/128319310): Investigate which quantization methods work.
@@ -370,11 +378,6 @@ class TFLiteConverterV2(TFLiteConverterBase):
       target ops.
     experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
-    experimental_new_quantizer: Experimental flag, subject to change.
-      Enables MLIR-based post-training quantization.
-    experimental_calibrate_only: Experimental flag, subject to change.
-      Calibrates the converted model with representative dataset, but not
-      quantize it.
   Example usage:
 
     ```python
@@ -698,11 +701,6 @@ class TFLiteConverter(TFLiteConverterBase):
       the dataset to evaluate different optimizations.
     experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
-    experimental_new_quantizer: Experimental flag, subject to change.
-      Enables MLIR-based post-training quantization.
-    experimental_calibrate_only: Experimental flag, subject to change.
-      Calibrates the converted model with representative dataset, but not
-      quantize it.
   Example usage:
 
     ```python

@@ -1263,7 +1263,9 @@ filegroup(
     name = "lib_hdrs",
     srcs = [
         "abi.h",
+        "base64.h",
         "casts.h",
+        "coding.h",
         "context.h",
         "cord.h",
         "cpu_feature_guard.h",
@@ -1291,6 +1293,7 @@ filegroup(
         "profile_utils/cpu_utils.h",
         "profile_utils/i_cpu_utils_helper.h",
         "protobuf.h",
+        "random.h",
         "resource.h",
         "stacktrace.h",
         "stacktrace_handler.h",

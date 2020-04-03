@@ -46,11 +46,7 @@ cc_library(
         "test_helpers.h",
     ],
     build_for_embedded = True,
-    copts = [
-        "-Werror",
-        "-Wdouble-promotion",
-        "-Wsign-compare",
-    ],
+    copts = micro_copts(),
     deps = [
         ":micro_compatibility",
         ":micro_string",

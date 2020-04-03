@@ -4128,7 +4128,9 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
     return ReplaceInstruction(transpose, operand);
   }
 
-  if (options_.is_layout_sensitive() && TransposeIsBitcast(transpose)) {
+  if (options_.is_layout_sensitive() &&
+      options_.replace_transpose_with_bitcast() &&
+      TransposeIsBitcast(transpose)) {
     ReplaceWithBitcast(transpose);
     return Status::OK();
   }

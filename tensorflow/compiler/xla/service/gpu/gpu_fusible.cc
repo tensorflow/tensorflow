@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 
+#include <algorithm>
 #include <iterator>
 #include <stack>
 #include <vector>
@@ -66,6 +67,25 @@ bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   return false;
 }
 
+std::vector<int64> ExtractRelativeOrderOfNontrivialDims(const Shape& shape) {
+  std::vector<int64> relative_order;
+  for (int64 dim : LayoutUtil::MinorToMajor(shape)) {
+    if (shape.dimensions(dim) > 1) {
+      relative_order.push_back(dim);
+    }
+  }
+  // Now normalize the dimensions to values between 0 and true rank - 1.
+  std::vector<int64> sorted_dims = relative_order;
+  std::sort(sorted_dims.begin(), sorted_dims.end());
+  for (int64& dim : relative_order) {
+    int64 sorted_index = std::distance(
+        sorted_dims.begin(),
+        std::lower_bound(sorted_dims.begin(), sorted_dims.end(), dim));
+    dim = sorted_index;
+  }
+  return relative_order;
+}
+
 }  // namespace
 
 bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
@@ -73,17 +93,20 @@ bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
   std::vector<HloInstruction*> params;
   AppendParams(producer, &params);
   AppendParams(reduce, &params);
-  int64 max_rank = -1;
-  const Layout* max_rank_layout;
+  int64 max_true_rank = -1;
+  std::vector<int64> max_rank_order;
   for (HloInstruction* param : params) {
-    if (param->shape().IsArray() && param->shape().rank() > max_rank) {
-      max_rank = param->shape().rank();
-      max_rank_layout = &param->shape().layout();
+    if (param->shape().IsArray() &&
+        ShapeUtil::TrueRank(param->shape()) > max_true_rank) {
+      max_true_rank = ShapeUtil::TrueRank(param->shape());
+      max_rank_order = ExtractRelativeOrderOfNontrivialDims(param->shape());
     }
   }
   return absl::c_all_of(params, [&](HloInstruction* param) {
-    return (!param->shape().IsArray()) || (param->shape().rank() < max_rank) ||
-           (LayoutUtil::Equal(param->shape().layout(), *max_rank_layout));
+    return !param->shape().IsArray() ||
+           ShapeUtil::TrueRank(param->shape()) < max_true_rank ||
+           ExtractRelativeOrderOfNontrivialDims(param->shape()) ==
+               max_rank_order;
   });
 }
 
@@ -237,13 +260,6 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
   // from poor data locality (due to unfriendly input layouts).
   if (IsInputFusibleReduction(consumer) &&
       !LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
-    return false;
-  }
-  // We can't fuse library calls, so if a user of such an op could become a
-  // bitcast, leave it unfused. See `xla::InstructionFusion::ShouldFuse` for
-  // further rationale.
-  if (producer.CouldBeBitcast() &&
-      ImplementedAsLibraryCall(*producer.operand(0))) {
     return false;
   }
   // Fuse scalar constants into loop fusion nodes. This reduces the number of

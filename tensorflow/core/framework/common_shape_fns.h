@@ -129,8 +129,17 @@ Status Conv2DShape(shape_inference::InferenceContext* c);
 // Shape function for Conv3D-like operations.
 Status Conv3DShape(shape_inference::InferenceContext* c);
 
-// Shape function for DepthwiseConv2D-like operations.
+// Shape function for DepthwiseConv2D-like operations that support explicit
+// padding.
+Status DepthwiseConv2DNativeShapeWithExplicitPadding(
+    shape_inference::InferenceContext* c);
+
+// Shape function for DepthwiseConv2D-like operations that do not support
+// explicit padding.
 Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c);
+
+// Shape function for Conv2DBackpropInput.
+Status Conv2DBackpropInputShape(shape_inference::InferenceContext* c);
 
 // Shape function for AvgPool-like operations.
 Status AvgPoolShape(shape_inference::InferenceContext* c);

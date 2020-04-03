@@ -34,6 +34,10 @@ limitations under the License.
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+#include "tensorflow/lite/experimental/tf_runtime/public/eager_interpreter.h"
+#endif
+
 namespace tflite {
 
 class InterpreterTest;
@@ -548,7 +552,11 @@ class Interpreter {
 
 }  // namespace impl
 
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+using Interpreter = tflrt::EagerInterpreter;
+#else
 using Interpreter = impl::Interpreter;
+#endif
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_INTERPRETER_H_

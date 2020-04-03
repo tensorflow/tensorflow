@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
 namespace mlir {
@@ -34,7 +34,9 @@ class RuntimeTypeVerifyPass : public mlir::FunctionPass<RuntimeTypeVerifyPass> {
 
 void RuntimeTypeVerifyPass::runOnFunction() {
   getFunction().walk([&](TflRuntimeVerifyOpInterface op) {
-    if (failed(op.VerifyTflRuntimeTypes(op.getOperation())))
+    if (failed(op.VerifyTflRuntimeTypes(
+            op.getOperation(),
+            /*failure_on_operand_type_mismatch=*/true)))
       signalPassFailure();
   });
 }

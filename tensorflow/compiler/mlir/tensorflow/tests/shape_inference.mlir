@@ -183,7 +183,7 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
 
   // CHECK-LABEL: func @reused_if_then_branch
   // CHECK-SAME: (%arg0: tensor<*xf32>) -> tensor<*xf32>
-	// expected-error @+1 {{expected control flow function reused_if_then_branch to have exactly 1 use}}
+	// expected-warning @+1 {{expected control flow function reused_if_then_branch to have exactly 1 use}}
   func @reused_if_then_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK: return
     // CHECK-SAME: tensor<*xf32>
@@ -192,7 +192,7 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
 
   // CHECK-LABEL: func @reused_if_else_branch
   // CHECK-SAME: (%arg0: tensor<*xf32>) -> tensor<*xf32>
-	// expected-error @+1 {{expected control flow function reused_if_else_branch to have exactly 1 use}}
+	// expected-warning @+1 {{expected control flow function reused_if_else_branch to have exactly 1 use}}
   func @reused_if_else_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Identity"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
     %0 = "tf.Identity"(%arg0) : (tensor<*xf32>) -> (tensor<*xf32>)
@@ -277,5 +277,24 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
   // CHECK-LABEL: func @variant_body_func
   func @variant_body_func(%arg0: tensor<!tf.variant<tensor<16x1xf32>>>) -> tensor<!tf.variant<tensor<16x1xf32>>> {
     return %arg0 : tensor<!tf.variant<tensor<16x1xf32>>>
+  }
+
+  // Test propagation from called functions to the call site.
+  // CHECK-LABEL: func @stateful_partitioned_call(
+  // CHECK-SAME: -> tensor<20xi32>
+  func @stateful_partitioned_call(%arg0: tensor<20xi32>) -> tensor<*xi32> {
+    // CHECK: tf.PartitionedCall
+    // CHECK-SAME: (tensor<20xi32>) -> tensor<20xi32>
+    %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @a_called_func} : (tensor<20xi32>) -> (tensor<*xi32>)
+    // CHECK: tf.StatefulPartitionedCall
+    // CHECK-SAME: (tensor<20xi32>) -> tensor<20xi32>
+    %1 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @stateful_partitioned_call_func} : (tensor<20xi32>) -> (tensor<*xi32>)
+    return %0 : tensor<*xi32>
+  }
+  func @a_called_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
+    return %arg0 : tensor<?xi32>
+  }
+  func @stateful_partitioned_call_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
+    return %arg0 : tensor<?xi32>
   }
 }

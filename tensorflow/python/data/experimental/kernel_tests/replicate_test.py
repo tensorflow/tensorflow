@@ -262,10 +262,9 @@ class RemoteReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
     with ops.device(self._device2):
       self.assertDatasetProduces(dataset2, range(0, 200, 2))
 
-  # TODO(b/150821179): Re-enable this test.
   @combinations.generate(
       combinations.combine(tf_api_version=[2], mode=["eager"]))
-  def _testVariableInput(self):
+  def testVariableInput(self):
     with ops.device(self._device0):
       counter_var = variable_scope.get_variable(
           "counter", (), dtypes.int32, use_resource=True)

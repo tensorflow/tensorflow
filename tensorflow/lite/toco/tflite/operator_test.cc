@@ -37,7 +37,7 @@ class OperatorTest : public ::testing::Test {
     static auto* by_name = new OpsByName(BuildOperatorByNameMap());
     static auto* by_type = new OpsByType(BuildOperatorByTypeMap());
 
-    // Make sure the two maps were consitently built.
+    // Make sure the two maps were consistently built.
     CHECK(by_name->count(name)) << "No operator for '" << name << "'.";
     BaseOperator* op1 = by_name->at(name).get();
     CHECK(op1->type() == type) << "while verifying '" << name << "'.";

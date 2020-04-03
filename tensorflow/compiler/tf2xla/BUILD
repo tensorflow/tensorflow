@@ -180,6 +180,8 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
     ],
 )
 
@@ -610,10 +612,12 @@ tf_cc_test(
         ":xla_compiler",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/compiler/jit:xla_cluster_util",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

@@ -70,9 +70,8 @@ TEST_F(RemoteMgrTest, SerializeLocalTensorHandleWithRemoteMirror) {
   RemoteMgr remote_mgr(false, ctx_);
   Tensor t(DT_FLOAT, TensorShape({0}));
 
-  TensorHandle* handle;
-  TF_ASSERT_OK(TensorHandle::CreateLocalHandle(std::move(t), local_device_,
-                                               local_device_, ctx_, &handle));
+  TensorHandle* handle = TensorHandle::CreateLocalHandle(
+      std::move(t), local_device_, local_device_, ctx_);
   const uint64 op_id = 2;
   const int output_num = 3;
   TF_ASSERT_OK(handle->AddUnshapedRemoteMirror(remote_device_, op_id,
@@ -91,10 +90,9 @@ TEST_F(RemoteMgrTest, SerializeRemoteTensorHandle) {
 
   const uint64 op_id = 3;
   const int output_num = 1;
-  TensorHandle* handle;
-  TF_ASSERT_OK(TensorHandle::CreateUnshapedRemoteHandle(
+  TensorHandle* handle = TensorHandle::CreateUnshapedRemoteHandle(
       op_id, output_num,
-      /*remote_task=*/"", DT_FLOAT, remote_device_, ctx_, &handle));
+      /*remote_task=*/"", DT_FLOAT, remote_device_, ctx_);
   RemoteTensorHandle remote_handle;
   TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
       handle, &remote_handle, remote_device_, remote_device_->name()));

@@ -76,7 +76,10 @@ exports_files(
         "tracking_allocator.h",
         "versions.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/common_runtime:__pkg__",
+    ],
 )
 
 # List of exported test source files that do not yet have local build rules.
@@ -381,7 +384,6 @@ filegroup(
         "shape_inference.cc",
         "shape_inference.h",
         "stats_aggregator.h",
-        "tensor_interface.h",
         "tensor_reference.h",
         "tensor_slice.cc",
         "tensor_slice.h",

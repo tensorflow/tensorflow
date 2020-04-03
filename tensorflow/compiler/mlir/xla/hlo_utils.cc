@@ -17,10 +17,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 
-#include "mlir/IR/AffineMap.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
+#include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/literal.h"
 
 namespace xla {
@@ -108,12 +108,12 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
 }
 
 mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
-    const llvm::ArrayRef<int64> vector, mlir::Builder builder) {
+    const llvm::ArrayRef<int64> vector, mlir::Builder builder,
+    llvm::ArrayRef<int64_t> shape) {
   return mlir::DenseIntElementsAttr::get(
-             mlir::RankedTensorType::get(vector.size(),
-                                         builder.getIntegerType(64)),
-             vector)
-      .cast<mlir::DenseIntElementsAttr>();
+      mlir::RankedTensorType::get(shape.empty() ? vector.size() : shape,
+                                  builder.getIntegerType(64)),
+      vector);
 }
 
 StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,

@@ -39,6 +39,24 @@ TfLiteStatus ModifyModelInterface(const string& input_file,
                                   const TensorType& input_type,
                                   const TensorType& output_type);
 
+// Adds uint8 quantize ops for specified inputs and uint8 dequantize ops for
+// specified outputs for a float model. The scale and zero point of uint8
+// tensors are provided through quant_params.
+//   - input_quant_params has a map between tensor name and the
+//     <scale and zero_point> pair for inputs.
+//   - output_quant_params has a map between tensor name and the
+//     <scale and zero_point> pair for inputs.
+// For the inputs/output tensors for the model, if its quantization parameters
+// are not provided, that tensor is not affected.
+//
+// Note: This is a private API, subject to change.
+TfLiteStatus Uint8QuantizeModelInputsOutputs(
+    flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
+    const std::unordered_map<string, std::pair<float, int32_t>>&
+        input_quant_params,
+    const std::unordered_map<string, std::pair<float, int32_t>>&
+        output_quant_params);
+
 }  // namespace optimize
 }  // namespace tflite
 
