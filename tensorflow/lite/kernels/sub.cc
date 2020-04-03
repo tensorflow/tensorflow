@@ -64,7 +64,7 @@ struct OpData {
   // This parameter is used to indicate whether
   // parameter scale is power of two.
   // It is used in 16-bit -> 16-bit quantization.
-  bool pot_scale_16bit;
+  bool pot_scale_int16;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -225,7 +225,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // 8bit -> 8bit general quantized path, with general rescalings
   // as well as, 16bit -> 16bit with general rescalings
-  bool pot_scale_16bit = true;
+  bool pot_scale_int16 = true;
 
   bool input1_scale_is_pot = false;
   bool input2_scale_is_pot = false;
@@ -241,7 +241,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // the scale parameter is a general number
     // the scale parameter is POT and
     // zero_point is zero for inputs/output.
-    pot_scale_16bit = (input1->params.zero_point == 0) &&
+    pot_scale_int16 = (input1->params.zero_point == 0) &&
                       (input2->params.zero_point == 0) &&
                       (output->params.zero_point == 0);
 
@@ -254,14 +254,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     output_scale_is_pot =
         CheckedLog2(output->params.scale, &output_scale_log2_rounded);
 
-    pot_scale_16bit &=
-        input1_scale_is_pot && input2_scale_is_pot && output_scale_is_pot;
+    pot_scale_int16 &= input1_scale_is_pot && input2_scale_is_pot &&
+                      output_scale_is_pot;
   }
 
-  data->pot_scale_16bit = pot_scale_16bit;
+  data->pot_scale_int16 = pot_scale_int16;
 
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
-      !pot_scale_16bit) {
+      !pot_scale_int16) {
     TF_LITE_ENSURE_OK(context, PrepareGeneralSubOp(context, input1, input2,
                                                    output, params, data, -1));
   } else if (output->type == kTfLiteInt16) {
@@ -355,7 +355,7 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     } else {
       TF_LITE_SUB(reference_integer_ops, Add, int8_t);
     }
-  } else if (!data->pot_scale_16bit) {
+  } else if (!data->pot_scale_int16) {
     if (need_broadcast) {
       TF_LITE_SUB(reference_ops, BroadcastAdd4DSlow, int16_t);
     } else {

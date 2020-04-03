@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/quantization_util.h"
 
 namespace tflite {
 namespace {
@@ -509,42 +508,17 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       }
     } break;
 
-    case BuiltinOperator_ADD:
+    case BuiltinOperator_ADD: {
+      auto add_option = op->builtin_options_as_AddOptions();
+      if (add_option) {
+        op_sig.options.addsub.pot_scale_int16 = add_option->pot_scale_int16();
+      }
+    } break;
+
     case BuiltinOperator_SUB: {
-      op_sig.options.addsub.pot_scale_int16 = false;
-      const Tensor* input1_tensor =
-          subgraph->tensors()->Get(op->inputs()->Get(0));
-      const Tensor* input2_tensor =
-          subgraph->tensors()->Get(op->inputs()->Get(1));
-      const Tensor* output_tensor =
-          subgraph->tensors()->Get(op->outputs()->Get(0));
-      const QuantizationParameters* input1_quant =
-          input1_tensor->quantization();
-      const QuantizationParameters* input2_quant =
-          input2_tensor->quantization();
-      const QuantizationParameters* output_quant =
-          output_tensor->quantization();
-      if (input1_quant && input1_quant->scale() &&
-          input1_quant->scale()->Length() && input2_quant &&
-          input2_quant->scale() && input2_quant->scale()->Length() &&
-          output_quant && output_quant->scale() &&
-          output_quant->scale()->Length()) {
-        float input1_scale = input1_quant->scale()->Get(0);
-        float input2_scale = input2_quant->scale()->Get(0);
-        float output_scale = output_quant->scale()->Get(0);
-
-        int scale_log2_rounded = 0;
-        bool input1_scale_is_pot =
-            CheckedLog2(input1_scale, &scale_log2_rounded);
-
-        bool input2_scale_is_pot =
-            CheckedLog2(input2_scale, &scale_log2_rounded);
-
-        bool output_scale_is_pot =
-            CheckedLog2(output_scale, &scale_log2_rounded);
-
-        op_sig.options.addsub.pot_scale_int16 =
-            input1_scale_is_pot && input2_scale_is_pot && output_scale_is_pot;
+      auto sub_option = op->builtin_options_as_SubOptions();
+      if (sub_option) {
+        op_sig.options.addsub.pot_scale_int16 = sub_option->pot_scale_int16();
       }
 
       if (op_code->builtin_code() == BuiltinOperator_SUB) {
@@ -553,7 +527,6 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
         op_sig.options.broadcast.num_dims =
             std::max(GetNumDims(subgraph, op, 0), GetNumDims(subgraph, op, 1));
       }
-
     } break;
 
     case BuiltinOperator_LSTM: {

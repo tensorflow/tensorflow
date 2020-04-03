@@ -377,6 +377,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       if (const auto* schema_params = op->builtin_options_as_AddOptions()) {
         params->activation =
             parse_activation(schema_params->fused_activation_function());
+        params->pot_scale_int16 = schema_params->pot_scale_int16();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -395,6 +396,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       if (const auto* schema_params = op->builtin_options_as_SubOptions()) {
         params->activation =
             parse_activation(schema_params->fused_activation_function());
+        params->pot_scale_int16 = schema_params->pot_scale_int16();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
