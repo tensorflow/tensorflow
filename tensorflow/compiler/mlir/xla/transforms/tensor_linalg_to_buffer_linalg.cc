@@ -54,33 +54,41 @@ class GenericOpConverter
     SmallVector<Value, 4> args(operands.begin(), operands.end());
 
     // Update all types to memref types.
-    auto result = op.getOperation()->getResult(0);
-    auto type = result.getType().cast<ShapedType>();
-    auto memref_type = MemRefType::get(type.getShape(), type.getElementType());
-    auto position = bufferAssignment->computeAllocPosition(result);
+    auto results = op.getOperation()->getResults();
+    for (auto result : results) {
+      auto type = result.getType().cast<ShapedType>();
+      if (!type)
+        op.emitOpError()
+            << "tensor to buffer conversion expects ranked results";
+      auto memrefType = MemRefType::get(type.getShape(), type.getElementType());
 
-    // Compute alloc position and insert a custom allocation node.
-    OpBuilder allocBuilder(result.getDefiningOp());
-    allocBuilder.restoreInsertionPoint(position);
-    auto alloc = allocBuilder.create<AllocOp>(loc, memref_type);
-    args.push_back(alloc);
+      // Compute alloc position and insert a custom allocation node.
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.restoreInsertionPoint(
+          bufferAssignment->computeAllocPosition(result));
+      auto alloc = rewriter.create<AllocOp>(loc, memrefType);
+      result.replaceAllUsesWith(alloc);
+      args.push_back(alloc);
+    }
 
     // Generate a new linalg operation that works on buffers.
     auto linalgOp = rewriter.create<linalg::GenericOp>(
         loc, llvm::None, args, rewriter.getI64IntegerAttr(operands.size()),
-        rewriter.getI64IntegerAttr(1), op.indexing_maps(), op.iterator_types(),
-        /*doc=*/nullptr,
-        /*fun=*/nullptr, /*library_call=*/nullptr);
+        rewriter.getI64IntegerAttr(results.size()), op.indexing_maps(),
+        op.iterator_types(), op.docAttr(), op.funAttr(), op.library_callAttr());
 
     // Move regions from the old operation to the new one.
     auto& region = linalgOp.region();
     rewriter.inlineRegionBefore(op.region(), region, region.end());
 
     // TODO(dfki): verify the internal memref-based linalg functionality.
-    region.front().addArgument(type.getElementType());
+    auto& entryBlock = region.front();
+    for (auto result : results) {
+      auto type = result.getType().cast<ShapedType>();
+      entryBlock.addArgument(type.getElementType());
+    }
 
-    // Replace the old linalg version with the new allocation.
-    rewriter.replaceOp(op, alloc.getResult());
+    rewriter.eraseOp(op);
     return success();
   }
 };
@@ -108,9 +116,10 @@ struct TensorLinalgToBufferLinalg
       };
       auto operands = op->getOperands();
       auto results = op->getResults();
-      return std::none_of(operands.begin(), operands.end(), isIllegalValue) &
+      return std::none_of(operands.begin(), operands.end(), isIllegalValue) &&
              std::none_of(results.begin(), results.end(), isIllegalValue);
     };
+    target.addLegalDialect<StandardOpsDialect>();
     target.addDynamicallyLegalDialect<linalg::LinalgDialect>(
         Optional<ConversionTarget::DynamicLegalityCallbackFn>(
             isLegalOperation));
