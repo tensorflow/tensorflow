@@ -136,7 +136,7 @@ int DependencyOptimizer::NumEdgesIfBypassed(
     // multi-input identity_n with input/output control dependencies will likely
     // increase number of edges after optimization.
     int num_edges_if_bypassed(0);
-    for (string input_node_name : node.input()) {
+    for (const string& input_node_name : node.input()) {
       if (IsControlInput(input_node_name)) {
         num_edges_if_bypassed += num_outputs;
       } else {

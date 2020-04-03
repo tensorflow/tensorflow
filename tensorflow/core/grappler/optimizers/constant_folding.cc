@@ -1053,7 +1053,7 @@ bool ConstantFolding::MaybeFoldable(const NodeDef& node,
       op.find("Reader") != string::npos) {
     return false;
   }
-  if (op.find("Quantized") != string::npos || op.find("Sparse") == 0) {
+  if (op.find("Quantized") != string::npos || absl::StartsWith(op, "Sparse")) {
     return false;
   }
 
