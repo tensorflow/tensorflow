@@ -265,6 +265,41 @@ cc_library(
 )
 
 cc_library(
+    name = "lhlo_legalize_to_loop",
+    srcs = ["transforms/lhlo_legalize_to_loop.cc"],
+    deps = [
+        ":hlo",
+        ":lhlo",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LoopOps",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "input_inline_fusion",
+    srcs = ["transforms/input_inline_fusion_pass.cc"],
+    deps = [
+        ":hlo",
+        ":lhlo",
+        ":map_xla_to_scalar_op",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LoopOps",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "lhlo_legalize_to_gpu",
     srcs = ["transforms/lhlo_legalize_to_gpu.cc"],
     deps = [

@@ -94,6 +94,12 @@ std::unique_ptr<Pass> createLhloCopyRemovalPass();
 // Lowers from LHLO dialect to parallel loops.
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeLhloToParallelLoopsPass();
 
+// Lower the (multiple) root ops in a fusion pattern from LHLO to Loops
+std::unique_ptr<OpPassBase<FuncOp>> createLhloLegalizeToLoopPass();
+
+// input inline fusion for LHLO->Loops pattern in a fusion pattern
+std::unique_ptr<OpPassBase<FuncOp>> createInputInlineFusionPass();
+
 }  // namespace xla_lhlo
 }  // namespace mlir
 
