@@ -122,10 +122,18 @@ def NASNet(
     input_tensor: Optional Keras tensor (i.e. output of
       `layers.Input()`)
       to use as image input for the model.
-    pooling: optional pooling mode for feature extraction when `include_top` is
-      `False`. If `'max'` or `'avg'` pooling is applied, the output of the
-      model will be a 2D tensor. `None` will directly output the last
-      convolutional layer, a 4D tensor.
+    pooling: Optional pooling mode for feature extraction
+      when `include_top` is `False`.
+      - `None` means that the output of the model
+          will be the 4D tensor output of the
+          last convolutional block.
+      - `avg` means that global average pooling
+          will be applied to the output of the
+          last convolutional block, and thus
+          the output of the model will be a
+          2D tensor.
+      - `max` means that global max pooling will
+          be applied.
     classes: Optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
@@ -343,39 +351,24 @@ def NASNetMobile(input_shape=None,
       input_tensor: Optional Keras tensor (i.e. output of
           `layers.Input()`)
           to use as image input for the model.
-      pooling: optional pooling mode for feature extraction when `include_top`
-          is `False`. If `'max'` or `'avg'` pooling is applied, the output of
-          the model will be a 2D tensor. `None` will directly output the last
-          convolutional layer, a 4D tensor.
+      pooling: Optional pooling mode for feature extraction
+          when `include_top` is `False`.
+          - `None` means that the output of the model
+              will be the 4D tensor output of the
+              last convolutional layer.
+          - `avg` means that global average pooling
+              will be applied to the output of the
+              last convolutional layer, and thus
+              the output of the model will be a
+              2D tensor.
+          - `max` means that global max pooling will
+              be applied.
       classes: Optional number of classes to classify images
           into, only to be specified if `include_top` is True, and
           if no `weights` argument is specified.
 
   Returns:
       A Keras model instance.
-
-  Example:
-
-  ```python
-  #Extract image features with NASNetMobile
-  from tensorflow.keras.applications.nasnet import NASNetMobile
-  from tensorflow.keras.preprocessing import image
-  from tensorflow.keras.applications.nasnet import preprocess_input
-  import numpy as np
-
-  #create a NASNetMobile model pre-trained on imagenet
-  model = NASNetMobile(weights='imagenet', include_top=False)
-
-  #process the input
-  img_path = 'elephant_example.jpg'
-  img = image.load_img(img_path, target_size=(224, 224))
-  x = image.img_to_array(img)
-  x = np.expand_dims(x, axis=0)
-  x = preprocess_input(x)
-
-  #extract the features
-  features = model.predict(x)
-  ```
 
   Raises:
       ValueError: In case of invalid argument for `weights`,
@@ -426,39 +419,24 @@ def NASNetLarge(input_shape=None,
       input_tensor: Optional Keras tensor (i.e. output of
           `layers.Input()`)
           to use as image input for the model.
-      pooling: optional pooling mode for feature extraction when `include_top`
-          is `False`. If `'max'` or `'avg'` pooling is applied, the output of
-          the model will be a 2D tensor. `None` will directly output the last
-          convolutional layer, a 4D tensor.
+      pooling: Optional pooling mode for feature extraction
+          when `include_top` is `False`.
+          - `None` means that the output of the model
+              will be the 4D tensor output of the
+              last convolutional layer.
+          - `avg` means that global average pooling
+              will be applied to the output of the
+              last convolutional layer, and thus
+              the output of the model will be a
+              2D tensor.
+          - `max` means that global max pooling will
+              be applied.
       classes: Optional number of classes to classify images
           into, only to be specified if `include_top` is True, and
           if no `weights` argument is specified.
 
   Returns:
       A Keras model instance.
-
-  Example:
-
-  ```python
-  #Extract image features with NASNetLarge
-  from tensorflow.keras.applications.nasnet import NASNetLarge
-  from tensorflow.keras.preprocessing import image
-  from tensorflow.keras.applications.nasnet import preprocess_input
-  import numpy as np
-
-  #create a NASNetLarge model pre-trained on imagenet
-  model = NASNetLarge(weights='imagenet', include_top=False)
-
-  #process the input
-  img_path = 'elephant_example.jpg'
-  img = image.load_img(img_path, target_size=(331, 331))
-  x = image.img_to_array(img)
-  x = np.expand_dims(x, axis=0)
-  x = preprocess_input(x)
-
-  #extract the features
-  features = model.predict(x)
-  ```
 
   Raises:
       ValueError: in case of invalid argument for `weights`,

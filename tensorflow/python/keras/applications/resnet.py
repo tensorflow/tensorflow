@@ -104,10 +104,17 @@ def ResNet(stack_fn,
       has to be `(224, 224, 3)` (with `channels_last` data format)
       or `(3, 224, 224)` (with `channels_first` data format).
       It should have exactly 3 inputs channels.
-    pooling: optional pooling mode for feature extraction when `include_top` is
-      `False`. If `'max'` or `'avg'` pooling is applied, the output of the
-      model will be a 2D tensor. `None` will directly output the last
-      convolutional layer, a 4D tensor.
+    pooling: optional pooling mode for feature extraction
+      when `include_top` is `False`.
+      - `None` means that the output of the model will be
+          the 4D tensor output of the
+          last convolutional layer.
+      - `avg` means that global average pooling
+          will be applied to the output of the
+          last convolutional layer, and thus
+          the output of the model will be a 2D tensor.
+      - `max` means that global max pooling will
+          be applied.
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
@@ -553,58 +560,23 @@ DOC = """
       It should have exactly 3 inputs channels,
       and width and height should be no smaller than 32.
       E.g. `(200, 200, 3)` would be one valid value.
-    pooling: optional pooling mode for feature extraction when `include_top` is
-      `False`. If `'max'` or `'avg'` pooling is applied, the output of the
-      model will be a 2D tensor. `None` will directly output the last
-      convolutional layer, a 4D tensor.
+    pooling: Optional pooling mode for feature extraction
+      when `include_top` is `False`.
+      - `None` means that the output of the model will be
+          the 4D tensor output of the
+          last convolutional block.
+      - `avg` means that global average pooling
+          will be applied to the output of the
+          last convolutional block, and thus
+          the output of the model will be a 2D tensor.
+      - `max` means that global max pooling will
+          be applied.
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
 
   Returns:
     A Keras model instance.
-
-  Example:
-
-  ```python
-  #Extract image features with ResNet50
-  from tensorflow.keras.applications.resnet import ResNet50
-  from tensorflow.keras.preprocessing import image
-  from tensorflow.keras.applications.resnet import preprocess_input
-  import numpy as np
-
-  #create a ResNet50 model pre-trained on imagenet
-  model = ResNet50(weights='imagenet', include_top=False)
-
-  #process the input
-  img_path = 'elephant_example.jpg'
-  img = image.load_img(img_path, target_size=(224, 224))
-  x = image.img_to_array(img)
-  x = np.expand_dims(x, axis=0)
-  x = preprocess_input(x)
-
-  #extract the features
-  features = model.predict(x)
-  ```
-
-  >>> model = ResNet101(weights = None)
-  >>> model.name
-  'resnet101'
-
-  >>> model = ResNet152(weights = None)
-  >>> model.name
-  'resnet152'
-
-  >>> model = ResNet50(weights = None)
-  >>> model.name
-  'resnet50'
-
-  Raises:
-    ValueError: in case of invalid argument for `weights`,
-      or invalid input shape.
-    ValueError: if `classifier_activation` is not `softmax` or `None` when
-      using a pretrained top layer.
-
 """
 
 setattr(ResNet50, '__doc__', ResNet50.__doc__ + DOC)
