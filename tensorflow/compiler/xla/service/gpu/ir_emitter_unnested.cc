@@ -1962,9 +1962,9 @@ static void UnrollInnerTileLoop(
   auto constant = [&](int64 val) {
     return llvm::ConstantInt::get(index_ty, val);
   };
+  IrArray::Index source_idx_x_base =
+      source_idx.AddOffsetToDim(y_loc, kDimY, b);
   for (int64 j = 0; j < x_num_steps / vector_size; j++) {
-    IrArray::Index source_idx_x_base =
-        source_idx.AddOffsetToDim(y_loc, kDimY, b);
     for (int64 i = 0; i < vector_size; i++) {
       int linear_index = j * vector_size + i;
       llvm::Value* x_loc = b->CreateAdd(constant(j * step_x * vector_size + i),

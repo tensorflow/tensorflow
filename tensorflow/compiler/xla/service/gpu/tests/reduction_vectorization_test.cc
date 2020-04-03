@@ -184,7 +184,7 @@ CHECK: ld.global.nc.f32
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
-TEST_F(ReductionVectorizationTest, DisableOddColumns) {
+TEST_F(ReductionVectorizationTest, DisabledOddColumns) {
   const char* hlo_text = R"(
 HloModule ReduceTileFit
 
