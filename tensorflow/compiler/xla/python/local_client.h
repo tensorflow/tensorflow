@@ -336,9 +336,6 @@ class PyLocalBuffer {
     std::shared_ptr<Literal> value;
   };
 
-  Status CopyToHostAsyncHelper(
-      se::Stream* stream, std::shared_ptr<HostValue> host_value,
-      std::shared_ptr<BufferDefinitionEvent> usage_event);
   StatusOr<std::pair<std::unique_ptr<PyLocalBuffer>,
                      std::shared_ptr<BufferDefinitionEvent>>>
   CopyToDeviceHelper(Device* dst_device, LocalDeviceState* dst_local_device,
