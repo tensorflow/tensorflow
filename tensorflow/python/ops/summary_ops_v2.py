@@ -291,6 +291,9 @@ class ResourceSummaryWriter(SummaryWriter):
       if self._v2 and context.executing_eagerly():
         self._closed = True
 
+  def is_closed(self):
+    return self._closed
+
 
 class NoopSummaryWriter(SummaryWriter):
   """A summary writer that does nothing, for create_noop_writer()."""
