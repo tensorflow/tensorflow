@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import warnings
 
 import numpy as np
 
@@ -984,6 +985,15 @@ class RNN(Layer):
   @property
   def _trackable_saved_model_saver(self):
     return layer_serialization.RNNSavedModelSaver(self)
+
+  @property
+  def weights(self):
+    if self.stateful:
+      warnings.warn(
+          'The internal states of stateful RNN layers are not included in '
+          '`layer.weights`. Please use `layer.states()` if you want to '
+          'retrieve the internal states of the layer.')
+    return super(RNN, self).weights
 
 
 @keras_export('keras.layers.AbstractRNNCell')
