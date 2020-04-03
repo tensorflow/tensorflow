@@ -323,7 +323,7 @@ void ImmutableExecutorState::InitializePending(const Graph* graph,
                                                const ControlFlowInfo& cf_info) {
   for (auto& it : cf_info.unique_frame_names) {
     FrameInfo* finfo = EnsureFrameInfo(it);
-    DCHECK_EQ(finfo->pending_counts, nullptr);
+    DCHECK_EQ(finfo->pending_counts.get(), nullptr);
     finfo->pending_counts =
         absl::make_unique<PendingCounts>(finfo->pending_counts_layout);
   }
