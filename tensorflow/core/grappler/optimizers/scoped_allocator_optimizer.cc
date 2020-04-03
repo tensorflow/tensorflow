@@ -708,7 +708,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       NodeDef* old_op = ops[op_idx];
       // Copy the output node set since we'll be modifying the version
       // maintained by NodeMap in the loop.
-      std::set<NodeDef*> output_nodes = node_map->GetOutputs(old_op->name());
+      auto output_nodes = node_map->GetOutputs(old_op->name());
       VLOG(3) << "old_op " << old_op->name() << " had " << output_nodes.size()
               << " outputs.  Moving them to the ScopedAllocatorSplit node.";
       if (VLOG_IS_ON(2)) {
