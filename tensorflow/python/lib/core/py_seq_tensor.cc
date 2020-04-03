@@ -288,8 +288,14 @@ struct Converter {
       Py_DECREF(scalar);
       if (*error != nullptr) return errors::InvalidArgument(*error);
       t = ConverterTraits<T>::CreateScalar(ctx, value);
+      if (t == nullptr) {
+        return errors::Internal("Cannot create tensor.");
+      }
     } else {
       t = ConverterTraits<T>::CreateTensor(ctx, state->inferred_shape);
+      if (t == nullptr) {
+        return errors::Internal("Cannot create tensor.");
+      }
       if (t->NumElements() > 0) {
         T* buf = static_cast<T*>(t->Data());
         *error = Helper(obj, 0, state, &buf);
