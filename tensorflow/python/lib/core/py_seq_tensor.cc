@@ -680,8 +680,8 @@ typedef Converter<bool> BoolConverter;
 // The two may share underlying storage so changes to one may reflect in the
 // other.
 TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
-  tensorflow::Tensor t;
-  tensorflow::Status status = tensorflow::NdarrayToTensor(obj, &t);
+  tensorflow::Tensor tensor;
+  tensorflow::Status status = tensorflow::NdarrayToTensor(obj, &tensor);
   if (!status.ok()) {
     PyErr_SetString(PyExc_ValueError,
                     tensorflow::strings::StrCat(
@@ -691,8 +691,8 @@ TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
     return nullptr;
   }
 
-  return new TFE_TensorHandle{
-      ctx->context->CreateLocalHandle(new TensorInterface(std::move(t)))};
+  TensorInterface t(std::move(tensor));
+  return new TFE_TensorHandle{ctx->context->CreateLocalHandle(&t)};
 }
 
 }  // namespace
@@ -874,10 +874,10 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
 
     case DT_INVALID:  // Only occurs for empty tensors.
     {
-      Tensor t(requested_dtype == DT_INVALID ? DT_FLOAT : requested_dtype,
-               TensorShape(state.inferred_shape));
-      return new TFE_TensorHandle{
-          ctx->context->CreateLocalHandle(new TensorInterface(std::move(t)))};
+      Tensor tensor(requested_dtype == DT_INVALID ? DT_FLOAT : requested_dtype,
+                    TensorShape(state.inferred_shape));
+      TensorInterface t(std::move(tensor));
+      return new TFE_TensorHandle{ctx->context->CreateLocalHandle(&t)};
     }
 
     default:
