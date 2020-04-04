@@ -523,6 +523,32 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       attributes.push_back(builder_->getNamedAttr("transpose_a", transpose_a));
       MakeAndReturn(TriangularSolveOp);
     }
+    case HloOpcode::kReduceWindow: {
+      llvm::SmallVector<int64, 4> sizes, strides, base_dilations, win_dilations;
+      llvm::SmallVector<int64_t, 8> padding;
+      for (const auto& dim : instruction->window().dimensions()) {
+        sizes.push_back(dim.size());
+        strides.push_back(dim.stride());
+        base_dilations.push_back(dim.base_dilation());
+        win_dilations.push_back(dim.window_dilation());
+        padding.push_back(dim.padding_low());
+        padding.push_back(dim.padding_high());
+      }
+      attributes.push_back(builder_->getNamedAttr("window_dimensions",
+                                                  ConvertDimensions(sizes)));
+      attributes.push_back(
+          builder_->getNamedAttr("window_strides", ConvertDimensions(strides)));
+      attributes.push_back(builder_->getNamedAttr(
+          "base_dilations", ConvertDimensions(base_dilations)));
+      attributes.push_back(builder_->getNamedAttr(
+          "window_dilations", ConvertDimensions(win_dilations)));
+      attributes.push_back(ConvertPadding(padding));
+      auto reduce = func_builder->create<mlir::xla_hlo::ReduceWindowOp>(
+          loc, result_type, operands, attributes);
+      TF_RETURN_IF_ERROR(
+          ImportComputation(instruction->to_apply(), &reduce.body()));
+      return reduce.getOperation();
+    }
     case HloOpcode::kMap: {
       auto op = func_builder->create<mlir::xla_hlo::MapOp>(
           loc, result_type, operands,
