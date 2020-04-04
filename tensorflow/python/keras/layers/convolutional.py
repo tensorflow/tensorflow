@@ -240,8 +240,10 @@ class Conv(Layer):
       return tensor_shape.TensorShape(
           [input_shape[0]] + self._spatial_output_shape(input_shape[1:-1]) +
           [self.filters])
-    return tensor_shape.TensorShape([input_shape[0], self.filters] +
-                                    self._spatial_output_shape(input_shape[2:]))
+    else:
+      return tensor_shape.TensorShape(
+          [input_shape[0], self.filters] +
+          self._spatial_output_shape(input_shape[2:]))
 
   def get_config(self):
     config = {
