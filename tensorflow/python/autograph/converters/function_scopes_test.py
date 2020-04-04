@@ -126,6 +126,15 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
       self.assertNotIn('inner_fn', first.op.name)
       self.assertIn('test_fn/inner_fn/', second.op.inputs[0].name)
 
+  def test_lambda_in_return_value(self):
+
+    def test_fn():
+      return lambda x: x + 1
+
+    with self.converted(test_fn, function_scopes, {}) as result:
+      result_l = result.test_fn()
+      self.assertTrue(result_l.fake_autograph_artifact)
+
 
 if __name__ == '__main__':
   test.main()
