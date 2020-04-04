@@ -114,6 +114,18 @@ def make_binary_op_tests(options,
       },
   ]
 
+  # float64 types are supported via flex only.
+  if options.run_with_flex and options.use_experimental_converter:
+    test_parameters = test_parameters + [
+        {
+            "dtype": [tf.float64],
+            "input_shape_1": [[7]],
+            "input_shape_2": [[7]],
+            "activation": [False],
+            "fully_quantize": [False],
+        },
+    ]
+
   # test_parameters include fully_quantize option only when
   # allow_fully_quantize is True.
   if not allow_fully_quantize:

@@ -105,6 +105,10 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
   switch (dtype) {
     case toco::IODataType::FLOAT:
       return DT_FLOAT;
+    case toco::IODataType::FLOAT16:
+      return DT_HALF;
+    case toco::IODataType::FLOAT64:
+      return DT_DOUBLE;
     case toco::IODataType::QUANTIZED_UINT8:
       return DT_QUINT8;
     case toco::IODataType::INT8:

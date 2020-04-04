@@ -51,7 +51,8 @@ namespace tflite {
       {ArrayDataType::kInt64, ::tflite::TensorType_INT64},
       {ArrayDataType::kString, ::tflite::TensorType_STRING},
       {ArrayDataType::kComplex64, ::tflite::TensorType_COMPLEX64},
-      {ArrayDataType::kFloat16, ::tflite::TensorType_FLOAT16}};
+      {ArrayDataType::kFloat16, ::tflite::TensorType_FLOAT16},
+      {ArrayDataType::kFloat64, ::tflite::TensorType_FLOAT64}};
 
   auto it = tensor_type_map.find(type);
   if (it != tensor_type_map.end()) {
