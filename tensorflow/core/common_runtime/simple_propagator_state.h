@@ -139,7 +139,8 @@ class SimplePropagatorState {
     // optional debugging support.
     if (TF_PREDICT_FALSE(vlog_) && VLOG_IS_ON(1)) {
       mutex_lock l(mu_);
-      (*active_)[tagged_node.node_item->node_id] = true;
+      counts_.mark_started(
+          immutable_state_.pending_ids()[tagged_node.node_item->node_id]);
     }
   }
   void MaybeMarkCompleted(const TaggedNode& tagged_node) {
@@ -147,7 +148,8 @@ class SimplePropagatorState {
     // optional debugging support.
     if (TF_PREDICT_FALSE(vlog_) && VLOG_IS_ON(1)) {
       mutex_lock l(mu_);
-      (*active_)[tagged_node.node_item->node_id] = false;
+      counts_.mark_completed(
+          immutable_state_.pending_ids()[tagged_node.node_item->node_id]);
     }
   }
 
@@ -160,8 +162,10 @@ class SimplePropagatorState {
   const int64 step_id_;
   const bool vlog_;
 
+  mutex mu_;
+
   // The i-th node's j-th input is stored at
-  // `input_tensors[impl_->nodes[i].input_start + j]`.
+  // `input_tensors_[impl_->nodes[i].input_start + j]`.
   //
   // NOTE: No need to protect input_tensors[i] by any locks because it
   // is resized once. Each element of input_tensors is written once by the
@@ -170,14 +174,11 @@ class SimplePropagatorState {
   // is never concurrent access to the same entry.
   std::vector<Entry> input_tensors_;
 
-  std::unique_ptr<std::atomic<int32>[]> pending_;
-
-  // If `vlog_` is true, this stores a bit vector of active nodes, indexed by
-  // node ID.
-  mutex mu_;
-  std::unique_ptr<std::vector<bool>> active_ TF_GUARDED_BY(mu_);
+  PendingCounts counts_ TF_GUARDED_BY(mu_);
 
   const std::vector<const NodeItem*>* const nodes_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(SimplePropagatorState);
 };
 
 }  // namespace tensorflow
