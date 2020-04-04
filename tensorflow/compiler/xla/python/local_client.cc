@@ -606,7 +606,7 @@ PyLocalBuffer::PyLocalBuffer(Shape on_host_shape, Shape on_device_shape,
 PyLocalBuffer::~PyLocalBuffer() { Delete(); }
 
 StatusOr<std::shared_ptr<SharedDeviceBuffer>> PyLocalBuffer::Release(
-    bool wait_for_reads_to_complete) {
+    bool wait_for_operations_to_complete) {
   std::shared_ptr<SharedDeviceBuffer> device_buffer;
   {
     absl::MutexLock lock(&mu_);
@@ -619,7 +619,7 @@ StatusOr<std::shared_ptr<SharedDeviceBuffer>> PyLocalBuffer::Release(
   SharedDeviceBuffer::StreamAndEventContainer events =
       device_buffer->LockUseAndTransferUsageEvents();
   LocalDeviceState* local_device_state = device_->local_device_state();
-  if (wait_for_reads_to_complete) {
+  if (wait_for_operations_to_complete) {
     std::unique_ptr<se::Stream> stream;
     for (const auto& stream_and_event : events) {
       if (!stream_and_event.event->IsComplete()) {
@@ -670,7 +670,7 @@ StatusOr<std::shared_ptr<SharedDeviceBuffer>> PyLocalBuffer::Release(
 
 void PyLocalBuffer::Delete() {
   // When wait_for_reads_to_complete is false, Release should never fail.
-  TF_CHECK_OK(Release(/*wait_for_reads_to_complete=*/false).status());
+  TF_CHECK_OK(Release(/*wait_for_operations_to_complete=*/false).status());
 }
 
 bool PyLocalBuffer::IsDeleted() {
