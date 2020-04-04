@@ -407,7 +407,7 @@ class Sum(Reduce):
   Usage:
 
   >>> m = tf.keras.metrics.Sum()
-  >>> _ = m.update_state([1, 3, 5, 7])
+  >>> m.update_state([1, 3, 5, 7])
   >>> m.result().numpy()
   16.0
 
@@ -446,11 +446,11 @@ class Mean(Reduce):
   Usage:
 
   >>> m = tf.keras.metrics.Mean()
-  >>> _ = m.update_state([1, 3, 5, 7])
+  >>> m.update_state([1, 3, 5, 7])
   >>> m.result().numpy()
   4.0
   >>> m.reset_states()
-  >>> _ = m.update_state([1, 3, 5, 7], sample_weight=[1, 1, 0, 0])
+  >>> m.update_state([1, 3, 5, 7], sample_weight=[1, 1, 0, 0])
   >>> m.result().numpy()
   2.0
 
@@ -488,7 +488,7 @@ class MeanRelativeError(Mean):
   Usage:
 
   >>> m = tf.keras.metrics.MeanRelativeError(normalizer=[1, 3, 2, 3])
-  >>> _ = m.update_state([1, 3, 2, 3], [2, 4, 6, 8])
+  >>> m.update_state([1, 3, 2, 3], [2, 4, 6, 8])
 
   >>> # metric = mean(|y_pred - y_true| / normalizer)
   >>> #        = mean([1, 1, 4, 5] / [1, 3, 2, 3]) = mean([1, 1/3, 2, 5/3])
@@ -641,12 +641,12 @@ class Accuracy(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.Accuracy()
-  >>> _ = m.update_state([[1], [2], [3], [4]], [[0], [2], [3], [4]])
+  >>> m.update_state([[1], [2], [3], [4]], [[0], [2], [3], [4]])
   >>> m.result().numpy()
   0.75
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[1], [2], [3], [4]], [[0], [2], [3], [4]],
+  >>> m.update_state([[1], [2], [3], [4]], [[0], [2], [3], [4]],
   ...                    sample_weight=[1, 1, 0, 0])
   >>> m.result().numpy()
   0.5
@@ -684,12 +684,12 @@ class BinaryAccuracy(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.BinaryAccuracy()
-  >>> _ = m.update_state([[1], [1], [0], [0]], [[0.98], [1], [0], [0.6]])
+  >>> m.update_state([[1], [1], [0], [0]], [[0.98], [1], [0], [0.6]])
   >>> m.result().numpy()
   0.75
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[1], [1], [0], [0]], [[0.98], [1], [0], [0.6]],
+  >>> m.update_state([[1], [1], [0], [0]], [[0.98], [1], [0], [0.6]],
   ...                    sample_weight=[1, 0, 0, 1])
   >>> m.result().numpy()
   0.5
@@ -732,13 +732,13 @@ class CategoricalAccuracy(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.CategoricalAccuracy()
-  >>> _ = m.update_state([[0, 0, 1], [0, 1, 0]], [[0.1, 0.9, 0.8],
+  >>> m.update_state([[0, 0, 1], [0, 1, 0]], [[0.1, 0.9, 0.8],
   ...                     [0.05, 0.95, 0]])
   >>> m.result().numpy()
   0.5
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[0, 0, 1], [0, 1, 0]], [[0.1, 0.9, 0.8],
+  >>> m.update_state([[0, 0, 1], [0, 1, 0]], [[0.1, 0.9, 0.8],
   ...                     [0.05, 0.95, 0]],
   ...                    sample_weight=[0.7, 0.3])
   >>> m.result().numpy()
@@ -786,12 +786,12 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.SparseCategoricalAccuracy()
-  >>> _ = m.update_state([[2], [1]], [[0.1, 0.6, 0.3], [0.05, 0.95, 0]])
+  >>> m.update_state([[2], [1]], [[0.1, 0.6, 0.3], [0.05, 0.95, 0]])
   >>> m.result().numpy()
   0.5
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[2], [1]], [[0.1, 0.6, 0.3], [0.05, 0.95, 0]],
+  >>> m.update_state([[2], [1]], [[0.1, 0.6, 0.3], [0.05, 0.95, 0]],
   ...                    sample_weight=[0.7, 0.3])
   >>> m.result().numpy()
   0.3
@@ -825,13 +825,13 @@ class TopKCategoricalAccuracy(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.TopKCategoricalAccuracy(k=1)
-  >>> _ = m.update_state([[0, 0, 1], [0, 1, 0]],
+  >>> m.update_state([[0, 0, 1], [0, 1, 0]],
   ...                    [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
   >>> m.result().numpy()
   0.5
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[0, 0, 1], [0, 1, 0]],
+  >>> m.update_state([[0, 0, 1], [0, 1, 0]],
   ...                    [[0.1, 0.9, 0.8], [0.05, 0.95, 0]],
   ...                    sample_weight=[0.7, 0.3])
   >>> m.result().numpy()
@@ -863,12 +863,12 @@ class SparseTopKCategoricalAccuracy(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.SparseTopKCategoricalAccuracy(k=1)
-  >>> _ = m.update_state([2, 1], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
+  >>> m.update_state([2, 1], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
   >>> m.result().numpy()
   0.5
 
   >>> m.reset_states()
-  >>> _ = m.update_state([2, 1], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]],
+  >>> m.update_state([2, 1], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]],
   ...                    sample_weight=[0.7, 0.3])
   >>> m.result().numpy()
   0.3
@@ -978,12 +978,12 @@ class FalsePositives(_ConfusionMatrixConditionCount):
   Usage:
 
   >>> m = tf.keras.metrics.FalsePositives()
-  >>> _ = m.update_state([0, 1, 0, 0], [0, 0, 1, 1])
+  >>> m.update_state([0, 1, 0, 0], [0, 0, 1, 1])
   >>> m.result().numpy()
   2.0
 
   >>> m.reset_states()
-  >>> _ = m.update_state([0, 1, 0, 0], [0, 0, 1, 1], sample_weight=[0, 0, 1, 0])
+  >>> m.update_state([0, 1, 0, 0], [0, 0, 1, 1], sample_weight=[0, 0, 1, 0])
   >>> m.result().numpy()
   1.0
 
@@ -1026,12 +1026,12 @@ class FalseNegatives(_ConfusionMatrixConditionCount):
   Usage:
 
   >>> m = tf.keras.metrics.FalseNegatives()
-  >>> _ = m.update_state([0, 1, 1, 1], [0, 1, 0, 0])
+  >>> m.update_state([0, 1, 1, 1], [0, 1, 0, 0])
   >>> m.result().numpy()
   2.0
 
   >>> m.reset_states()
-  >>> _ = m.update_state([0, 1, 1, 1], [0, 1, 0, 0], sample_weight=[0, 0, 1, 0])
+  >>> m.update_state([0, 1, 1, 1], [0, 1, 0, 0], sample_weight=[0, 0, 1, 0])
   >>> m.result().numpy()
   1.0
 
@@ -1074,12 +1074,12 @@ class TrueNegatives(_ConfusionMatrixConditionCount):
   Usage:
 
   >>> m = tf.keras.metrics.TrueNegatives()
-  >>> _ = m.update_state([0, 1, 0, 0], [1, 1, 0, 0])
+  >>> m.update_state([0, 1, 0, 0], [1, 1, 0, 0])
   >>> m.result().numpy()
   2.0
 
   >>> m.reset_states()
-  >>> _ = m.update_state([0, 1, 0, 0], [1, 1, 0, 0], sample_weight=[0, 0, 1, 0])
+  >>> m.update_state([0, 1, 0, 0], [1, 1, 0, 0], sample_weight=[0, 0, 1, 0])
   >>> m.result().numpy()
   1.0
 
@@ -1122,12 +1122,12 @@ class TruePositives(_ConfusionMatrixConditionCount):
   Usage:
 
   >>> m = tf.keras.metrics.TruePositives()
-  >>> _ = m.update_state([0, 1, 1, 1], [1, 0, 1, 1])
+  >>> m.update_state([0, 1, 1, 1], [1, 0, 1, 1])
   >>> m.result().numpy()
   2.0
 
   >>> m.reset_states()
-  >>> _ = m.update_state([0, 1, 1, 1], [1, 0, 1, 1], sample_weight=[0, 0, 1, 0])
+  >>> m.update_state([0, 1, 1, 1], [1, 0, 1, 1], sample_weight=[0, 0, 1, 0])
   >>> m.result().numpy()
   1.0
 
@@ -1186,24 +1186,24 @@ class Precision(Metric):
   Usage:
 
   >>> m = tf.keras.metrics.Precision()
-  >>> _ = m.update_state([0, 1, 1, 1], [1, 0, 1, 1])
+  >>> m.update_state([0, 1, 1, 1], [1, 0, 1, 1])
   >>> m.result().numpy()
   0.6666667
 
   >>> m.reset_states()
-  >>> _ = m.update_state([0, 1, 1, 1], [1, 0, 1, 1], sample_weight=[0, 0, 1, 0])
+  >>> m.update_state([0, 1, 1, 1], [1, 0, 1, 1], sample_weight=[0, 0, 1, 0])
   >>> m.result().numpy()
   1.0
 
   >>> # With top_k=2, it will calculate precision over y_true[:2] and y_pred[:2]
   >>> m = tf.keras.metrics.Precision(top_k=2)
-  >>> _ = m.update_state([0, 0, 1, 1], [1, 1, 1, 1])
+  >>> m.update_state([0, 0, 1, 1], [1, 1, 1, 1])
   >>> m.result().numpy()
   0.0
 
   >>> # With top_k=4, it will calculate precision over y_true[:4] and y_pred[:4]
   >>> m = tf.keras.metrics.Precision(top_k=4)
-  >>> _ = m.update_state([0, 0, 1, 1], [1, 1, 1, 1])
+  >>> m.update_state([0, 0, 1, 1], [1, 1, 1, 1])
   >>> m.result().numpy()
   0.5
 
@@ -1322,12 +1322,12 @@ class Recall(Metric):
   Usage:
 
   >>> m = tf.keras.metrics.Recall()
-  >>> _ = m.update_state([0, 1, 1, 1], [1, 0, 1, 1])
+  >>> m.update_state([0, 1, 1, 1], [1, 0, 1, 1])
   >>> m.result().numpy()
   0.6666667
 
   >>> m.reset_states()
-  >>> _ = m.update_state([0, 1, 1, 1], [1, 0, 1, 1], sample_weight=[0, 0, 1, 0])
+  >>> m.update_state([0, 1, 1, 1], [1, 0, 1, 1], sample_weight=[0, 0, 1, 0])
   >>> m.result().numpy()
   1.0
 
@@ -1532,12 +1532,12 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
   Usage:
 
   >>> m = tf.keras.metrics.SensitivityAtSpecificity(0.5)
-  >>> _ = m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8])
+  >>> m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8])
   >>> m.result().numpy()
   0.5
 
   >>> m.reset_states()
-  >>> _ = m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8],
+  >>> m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8],
   ...                    sample_weight=[1, 1, 2, 2, 1])
   >>> m.result().numpy()
   0.333333
@@ -1608,12 +1608,12 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
   Usage:
 
   >>> m = tf.keras.metrics.SpecificityAtSensitivity(0.5)
-  >>> _ = m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8])
+  >>> m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8])
   >>> m.result().numpy()
   0.66666667
 
   >>> m.reset_states()
-  >>> _ = m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8],
+  >>> m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8],
   ...                    sample_weight=[1, 1, 2, 2, 2])
   >>> m.result().numpy()
   0.5
@@ -1676,12 +1676,12 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
   Usage:
 
   >>> m = tf.keras.metrics.PrecisionAtRecall(0.5)
-  >>> _ = m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8])
+  >>> m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8])
   >>> m.result().numpy()
   0.5
 
   >>> m.reset_states()
-  >>> _ = m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8],
+  >>> m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8],
   ...                    sample_weight=[2, 2, 2, 1, 1])
   >>> m.result().numpy()
   0.33333333
@@ -1747,12 +1747,12 @@ class RecallAtPrecision(SensitivitySpecificityBase):
   Usage:
 
   >>> m = tf.keras.metrics.RecallAtPrecision(0.8)
-  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
+  >>> m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
   >>> m.result().numpy()
   0.5
 
   >>> m.reset_states()
-  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9],
+  >>> m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9],
   ...                    sample_weight=[1, 0, 0, 1])
   >>> m.result().numpy()
   1.0
@@ -1864,7 +1864,7 @@ class AUC(Metric):
   Usage:
 
   >>> m = tf.keras.metrics.AUC(num_thresholds=3)
-  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
+  >>> m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
   >>> # threshold values are [0 - 1e-7, 0.5, 1 + 1e-7]
   >>> # tp = [2, 1, 0], fp = [2, 0, 0], fn = [0, 1, 2], tn = [0, 2, 2]
   >>> # recall = [1, 0.5, 0], fp_rate = [1, 0, 0]
@@ -1873,7 +1873,7 @@ class AUC(Metric):
   0.75
 
   >>> m.reset_states()
-  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9],
+  >>> m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9],
   ...                    sample_weight=[1, 0, 0, 1])
   >>> m.result().numpy()
   1.0
@@ -2247,12 +2247,12 @@ class CosineSimilarity(MeanMetricWrapper):
   >>> # result = mean(sum(l2_norm(y_true) . l2_norm(y_pred), axis=1))
   >>> #        = ((0. + 0.) +  (0.5 + 0.5)) / 2
   >>> m = tf.keras.metrics.CosineSimilarity(axis=1)
-  >>> _ = m.update_state([[0., 1.], [1., 1.]], [[1., 0.], [1., 1.]])
+  >>> m.update_state([[0., 1.], [1., 1.]], [[1., 0.], [1., 1.]])
   >>> m.result().numpy()
   0.49999997
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[0., 1.], [1., 1.]], [[1., 0.], [1., 1.]],
+  >>> m.update_state([[0., 1.], [1., 1.]], [[1., 0.], [1., 1.]],
   ...                    sample_weight=[0.3, 0.7])
   >>> m.result().numpy()
   0.6999999
@@ -2284,12 +2284,12 @@ class MeanAbsoluteError(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.MeanAbsoluteError()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
+  >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
   >>> m.result().numpy()
   0.25
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
+  >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
   ...                    sample_weight=[1, 0])
   >>> m.result().numpy()
   0.5
@@ -2319,12 +2319,12 @@ class MeanAbsolutePercentageError(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.MeanAbsolutePercentageError()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
+  >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
   >>> m.result().numpy()
   250000000.0
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
+  >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
   ...                    sample_weight=[1, 0])
   >>> m.result().numpy()
   500000000.0
@@ -2356,12 +2356,12 @@ class MeanSquaredError(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.MeanSquaredError()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
+  >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
   >>> m.result().numpy()
   0.25
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
+  >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
   ...                    sample_weight=[1, 0])
   >>> m.result().numpy()
   0.5
@@ -2391,12 +2391,12 @@ class MeanSquaredLogarithmicError(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.MeanSquaredLogarithmicError()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
+  >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
   >>> m.result().numpy()
   0.12011322
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
+  >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
   ...                    sample_weight=[1, 0])
   >>> m.result().numpy()
   0.24022643
@@ -2431,12 +2431,12 @@ class Hinge(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.Hinge()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]])
+  >>> m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]])
   >>> m.result().numpy()
   1.3
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
+  >>> m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
   ...                    sample_weight=[1, 0])
   >>> m.result().numpy()
   1.1
@@ -2467,12 +2467,12 @@ class SquaredHinge(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.SquaredHinge()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]])
+  >>> m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]])
   >>> m.result().numpy()
   1.86
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
+  >>> m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
   ...                    sample_weight=[1, 0])
   >>> m.result().numpy()
   1.46
@@ -2503,12 +2503,12 @@ class CategoricalHinge(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.CategoricalHinge()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]])
+  >>> m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]])
   >>> m.result().numpy()
   1.4000001
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
+  >>> m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
   ...                    sample_weight=[1, 0])
   >>> m.result().numpy()
   1.2
@@ -2535,12 +2535,12 @@ class RootMeanSquaredError(Mean):
   Usage:
 
   >>> m = tf.keras.metrics.RootMeanSquaredError()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
+  >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
   >>> m.result().numpy()
   0.5
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
+  >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
   ...                    sample_weight=[1, 0])
   >>> m.result().numpy()
   0.70710677
@@ -2597,12 +2597,12 @@ class LogCoshError(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.LogCoshError()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
+  >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
   >>> m.result().numpy()
   0.10844523
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
+  >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
   ...                    sample_weight=[1, 0])
   >>> m.result().numpy()
   0.21689045
@@ -2632,12 +2632,12 @@ class Poisson(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.Poisson()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
+  >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]])
   >>> m.result().numpy()
   0.49999997
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
+  >>> m.update_state([[0, 1], [0, 0]], [[1, 1], [0, 0]],
   ...                    sample_weight=[1, 0])
   >>> m.result().numpy()
   0.99999994
@@ -2667,12 +2667,12 @@ class KLDivergence(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.KLDivergence()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]])
+  >>> m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]])
   >>> m.result().numpy()
   0.45814306
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
+  >>> m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
   ...                    sample_weight=[1, 0])
   >>> m.result().numpy()
   0.9162892
@@ -2719,12 +2719,12 @@ class MeanIoU(Metric):
   >>> # iou = true_positives / (sum_row + sum_col - true_positives))
   >>> # result = (1 / (2 + 2 - 1) + 1 / (2 + 2 - 1)) / 2 = 0.33
   >>> m = tf.keras.metrics.MeanIoU(num_classes=2)
-  >>> _ = m.update_state([0, 0, 1, 1], [0, 1, 0, 1])
+  >>> m.update_state([0, 0, 1, 1], [0, 1, 0, 1])
   >>> m.result().numpy()
   0.33333334
 
   >>> m.reset_states()
-  >>> _ = m.update_state([0, 0, 1, 1], [0, 1, 0, 1],
+  >>> m.update_state([0, 0, 1, 1], [0, 1, 0, 1],
   ...                    sample_weight=[0.3, 0.3, 0.3, 0.1])
   >>> m.result().numpy()
   0.23809525
@@ -2839,12 +2839,12 @@ class MeanTensor(Metric):
   Usage:
 
   >>> m = tf.keras.metrics.MeanTensor()
-  >>> _ = m.update_state([0, 1, 2, 3])
-  >>> _ = m.update_state([4, 5, 6, 7])
+  >>> m.update_state([0, 1, 2, 3])
+  >>> m.update_state([4, 5, 6, 7])
   >>> m.result().numpy()
   array([2., 3., 4., 5.], dtype=float32)
 
-  >>> _ = m.update_state([12, 10, 8, 6], sample_weight= [0, 0.2, 0.5, 1])
+  >>> m.update_state([12, 10, 8, 6], sample_weight= [0, 0.2, 0.5, 1])
   >>> m.result().numpy()
   array([2.       , 3.6363635, 4.8      , 5.3333335], dtype=float32)
   """
@@ -2954,12 +2954,12 @@ class BinaryCrossentropy(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.BinaryCrossentropy()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]])
+  >>> m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]])
   >>> m.result().numpy()
   0.81492424
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
+  >>> m.update_state([[0, 1], [0, 0]], [[0.6, 0.4], [0.4, 0.6]],
   ...                    sample_weight=[1, 0])
   >>> m.result().numpy()
   0.9162905
@@ -3017,13 +3017,13 @@ class CategoricalCrossentropy(MeanMetricWrapper):
   >>> #      = [0.051, 2.302]
   >>> # Reduced xent = (0.051 + 2.302) / 2
   >>> m = tf.keras.metrics.CategoricalCrossentropy()
-  >>> _ = m.update_state([[0, 1, 0], [0, 0, 1]],
+  >>> m.update_state([[0, 1, 0], [0, 0, 1]],
   ...                    [[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
   >>> m.result().numpy()
   1.1769392
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[0, 1, 0], [0, 0, 1]],
+  >>> m.update_state([[0, 1, 0], [0, 0, 1]],
   ...                    [[0.05, 0.95, 0], [0.1, 0.8, 0.1]],
   ...                    sample_weight=tf.constant([0.3, 0.7]))
   >>> m.result().numpy()
@@ -3089,13 +3089,13 @@ class SparseCategoricalCrossentropy(MeanMetricWrapper):
   >>> # xent = [0.0513, 2.3026]
   >>> # Reduced xent = (0.0513 + 2.3026) / 2
   >>> m = tf.keras.metrics.SparseCategoricalCrossentropy()
-  >>> _ = m.update_state([1, 2],
+  >>> m.update_state([1, 2],
   ...                    [[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
   >>> m.result().numpy()
   1.1769392
 
   >>> m.reset_states()
-  >>> _ = m.update_state([1, 2],
+  >>> m.update_state([1, 2],
   ...                    [[0.05, 0.95, 0], [0.1, 0.8, 0.1]],
   ...                    sample_weight=tf.constant([0.3, 0.7]))
   >>> m.result().numpy()
