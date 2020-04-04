@@ -403,9 +403,12 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostBuffer(
     const void* data, const Shape& shape, bool force_copy,
     std::shared_ptr<void> buffer_reference, PyLocalClient* client,
     Device* device) {
-  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::FromLiterals");
-  VLOG(2) << "PyLocalBuffer::FromLiterals: shape: " << shape.ToString()
+  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::FromHostBuffer");
+  VLOG(2) << "PyLocalBuffer::FromHostBuffer: shape: " << shape.ToString()
           << " device: " << device->DebugString();
+  if (shape.IsTuple()) {
+    return InvalidArgument("Use FromHostLiteral to transfer a tuple");
+  }
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
 
@@ -500,6 +503,60 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostBuffer(
     local_device->ThenRelease(
         local_device->host_to_device_stream(),
         std::make_pair(buffer_reference, std::move(staging_buffer)));
+  };
+  client->h2d_transfer_pool()->Schedule(transfer_h2d);
+  return py_buffer;
+}
+
+/* static */
+StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostLiteral(
+    const LiteralSlice& literal, PyLocalClient* client, Device* device) {
+  tensorflow::profiler::TraceMe traceme("PyLocalBuffer::FromHostLiteral");
+  VLOG(2) << "PyLocalBuffer::FromHostLiteral: shape: "
+          << literal.shape().ToString() << " device: " << device->DebugString();
+  TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
+                      device->GetLocalDeviceState());
+
+  TransferManager* transfer_manager =
+      client->client()->backend().transfer_manager();
+  TF_ASSIGN_OR_RETURN(
+      Shape compact_shape,
+      transfer_manager->ChooseCompactLayoutForShape(literal.shape()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<PyLocalBuffer> py_buffer,
+      AllocateDestinationBuffer(compact_shape, device, local_device,
+                                local_device->host_to_device_stream(), client));
+
+  SharedDeviceBuffer::ScopedUsage device_buffer(
+      py_buffer->GetBufferWithUsageHold());
+  CHECK(device_buffer.IsValid());
+
+  // The host to device transfer is performed on a thread pool, mostly because
+  // it includes linearization that may be slow.
+  // TODO(misard) assess if it would be preferable to introduce a heuristic to
+  // put the transfer into the calling thread for small literals.
+  auto transfer_h2d = [client, transfer_manager, local_device,
+                       device_buffer_ref{device_buffer.Release()}, literal,
+                       compact_shape,
+                       on_device_shape{py_buffer->on_device_shape()}]() {
+    SharedDeviceBuffer::ScopedUsage device_buffer;
+    device_buffer.Transfer(device_buffer_ref);
+    // This function uses TF_CHECK_OK and ValueOrDie() since we have no way
+    // to report failures from a callback. However, the operations here are
+    // unlikely to fail and not recoverable even if we were to fail: DMAs to
+    // memory that has already been allocated, and a possible Event
+    // allocation.
+
+    ShapedBuffer buffer = device_buffer->AsShapedBuffer(
+        compact_shape, on_device_shape, client->client()->platform());
+    TF_CHECK_OK(transfer_manager->TransferLiteralToDeviceAsync(
+        local_device->host_to_device_stream(), literal, buffer));
+
+    std::shared_ptr<BufferDefinitionEvent> event =
+        device_buffer->definition_events()[0];
+    TF_CHECK_OK(AddDestinationBufferSynchronization(
+        local_device, std::move(device_buffer), event,
+        local_device->host_to_device_stream()));
   };
   client->h2d_transfer_pool()->Schedule(transfer_h2d);
   return py_buffer;

@@ -215,6 +215,9 @@ class PyLocalBuffer {
       std::shared_ptr<void> buffer_reference, PyLocalClient* client,
       Device* device);
 
+  static StatusOr<std::unique_ptr<PyLocalBuffer>> FromHostLiteral(
+      const LiteralSlice& literal, PyLocalClient* client, Device* device);
+
   // Asynchronously makes a vector of PyLocalBuffers that can be used to receive
   // cross host transfers using `client` on `device'. `shapes` must be the exact
   // shapes, with identical layouts, corresponding to the buffers that will be
