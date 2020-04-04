@@ -1485,5 +1485,6 @@ sh_test(
     ],
     tags = [
         "no_windows",
+        "noasan",  # TODO(b/153204233) Re-enable after fixing memory leak.
     ],
 )
