@@ -79,8 +79,9 @@ struct MappedIvs {
   SmallVector<Value, 2> ivs;
 };
 
-MappedIvs MapWindowIvsToInput(ReduceWindowOp op, ArrayRef<Value> ivs,
-                              ArrayRef<Value> window_ivs, OpBuilder* b) {
+MappedIvs MapWindowIvsToInput(ReduceWindowOp op, ArrayRef<BlockArgument> ivs,
+                              ArrayRef<BlockArgument> window_ivs,
+                              OpBuilder* b) {
   MappedIvs mapped_ivs;
 
   if (!op.window_strides().hasValue()) {
@@ -418,9 +419,8 @@ class ReduceWindowOpConverter
     auto xla_operand_type = xla_operand.getType().cast<MemRefType>();
 
     MappedIvs mapped_ivs = MapWindowIvsToInput(
-        xla_reduce_window_op,
-        SmallVector<Value, 2>{output_loop.getInductionVars()},
-        SmallVector<Value, 2>{window_loop.getInductionVars()}, rewriter);
+        xla_reduce_window_op, output_loop.getInductionVars(),
+        window_loop.getInductionVars(), rewriter);
 
     auto elem_or_init = rewriter->create<loop::IfOp>(
         loc, xla_operand_type.getElementType(), mapped_ivs.in_bounds,
