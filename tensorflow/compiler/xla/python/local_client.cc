@@ -776,7 +776,9 @@ PyLocalBuffer::CopyToDeviceHelper(
     return copy_event_or.status();
   }
 
-  return std::pair(std::move(py_buffer), copy_event_or.ConsumeValueOrDie());
+  return std::pair<std::unique_ptr<PyLocalBuffer>,
+                   std::shared_ptr<BufferDefinitionEvent>>(
+      std::move(py_buffer), copy_event_or.ConsumeValueOrDie());
 }
 
 StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
