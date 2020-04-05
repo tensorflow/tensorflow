@@ -226,13 +226,14 @@ class Conv(Layer):
     return outputs
 
   def _spatial_output_shape(self, spatial_input_shape):
-    return [conv_utils.conv_output_length(
-                length,
-                self.kernel_size[i],
-                padding=self.padding,
-                stride=self.strides[i],
-                dilation=self.dilation_rate[i])
-            for i, length in enumerate(spatial_input_shape)]
+    return [
+        conv_utils.conv_output_length(
+            length,
+            self.kernel_size[i],
+            padding=self.padding,
+            stride=self.strides[i],
+            dilation=self.dilation_rate[i])
+        for i, length in enumerate(spatial_input_shape)]
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
