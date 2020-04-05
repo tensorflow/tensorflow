@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for function_scopes module."""
+"""Tests for functions module."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph.converters import function_scopes
+from tensorflow.python.autograph.converters import functions
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import converter_testing
@@ -28,7 +28,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-class FunctionBodyTransformerTest(converter_testing.TestCase):
+class FunctionTransformer(converter_testing.TestCase):
 
   @test_util.run_deprecated_v1
   def test_basic(self):
@@ -39,7 +39,7 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
       l += a
       return l
 
-    with self.converted(test_fn, function_scopes, {}) as result:
+    with self.converted(test_fn, functions, {}) as result:
       result_op = result.test_fn(constant_op.constant(1))
       self.assertIn('test_fn/', result_op.op.name)
       self.assertEqual('Docstring.', result.test_fn.__doc__)
@@ -56,7 +56,7 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
       """
       return tf.constant(1)
 
-    with self.converted(test_fn, function_scopes, {},
+    with self.converted(test_fn, functions, {},
                         (constant_op.constant,)) as result:
       result_op = result.test_fn()
       self.assertIn('test_fn/', result_op.op.name)
@@ -74,7 +74,7 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
       l += 1
       return l, inner_fn(l)
 
-    with self.converted(test_fn, function_scopes, {},
+    with self.converted(test_fn, functions, {},
                         (ops.name_scope,)) as result:
       first, second = result.test_fn(constant_op.constant(1))
       self.assertIn('test_fn/', first.op.name)
@@ -100,7 +100,7 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
         'ag_ctx': ag_ctx,
         'converter': converter
     }
-    with self.converted(test_fn, function_scopes, ns) as result:
+    with self.converted(test_fn, functions, ns) as result:
       result.test_fn()
 
   @test_util.run_deprecated_v1
@@ -118,7 +118,7 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
 
     ns = {'TestClass': TestClass}
     node, ctx = self.prepare(TestClass, ns)
-    node = function_scopes.transform(node, ctx)
+    node = functions.transform(node, ctx)
 
     with self.compiled(node, {}, (ops.name_scope,)) as result:
       first, second = result.TestClass().test_fn(constant_op.constant(1))
@@ -131,7 +131,7 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
     def test_fn():
       return lambda x: x + 1
 
-    with self.converted(test_fn, function_scopes, {}) as result:
+    with self.converted(test_fn, functions, {}) as result:
       result_l = result.test_fn()
       self.assertTrue(result_l.fake_autograph_artifact)
 

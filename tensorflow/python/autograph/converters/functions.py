@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Wraps the body of a converted function with auxiliary constructs."""
+"""Converts function definitions and lambdas by adding necessary boilerplate."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,6 +22,7 @@ import gast
 
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.pyct import anno
+from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct.static_analysis import annos
 
@@ -32,7 +33,7 @@ class _Function(object):
     self.context_name = None
 
 
-class FunctionBodyTransformer(converter.Base):
+class FunctionTransformer(converter.Base):
   """Wraps function bodies around autograph-specific boilerplate."""
 
   def visit_Return(self, node):
@@ -60,10 +61,7 @@ class FunctionBodyTransformer(converter.Base):
     with self.state[_Function] as fn_scope:
       node = self.generic_visit(node)
 
-      # Only wrap the top-level function. Theoretically, we can and should wrap
-      # everything, but that can lead to excessive boilerplate when lambdas are
-      # nested.
-      # TODO(mdan): Looks more closely for use cases that actually require this.
+      # TODO(mdan): Fix the tests so that we can always add this decorator.
       if fn_scope.level > 2:
         return templates.replace_as_expression(
             'ag__.autograph_artifact(l)', l=node)
@@ -98,6 +96,19 @@ class FunctionBodyTransformer(converter.Base):
 
       node = self.generic_visit(node)
 
+      if fn_scope.level <= 2:
+        # Top-level functions lose their decorator because the conversion is
+        # always just-in-time and by the time it happens the decorators are
+        # already set to be applied.
+        node.decorator_list = []
+      else:
+        # TODO(mdan): Fix the tests so that we can always add this decorator.
+        # Inner functions are converted already, so we insert a decorator to
+        # prevent double conversion. Double conversion would work too, but this
+        # saves the overhead.
+        node.decorator_list.append(
+            parser.parse_expression('ag__.autograph_artifact'))
+
       docstring_node = None
       if node.body:
         first_statement = node.body[0]
@@ -128,4 +139,4 @@ class FunctionBodyTransformer(converter.Base):
 
 
 def transform(node, ctx):
-  return FunctionBodyTransformer(ctx).visit(node)
+  return FunctionTransformer(ctx).visit(node)
