@@ -7,7 +7,7 @@ func @invalid_type() -> !tf_executor.foobar
 
 // Check that tf_executor.graph does not accept any operand.
 func @graph_with_invalid_op(%arg0: tensor<*xf32>) {
-  "tf_executor.graph" (%arg0) : (tensor<*xf32>) -> ()
+  "tf_executor.graph" (%arg0) ({}) : (tensor<*xf32>) -> ()
 // expected-error@-1 {{'tf_executor.graph' op requires zero operands}}
   return
 }
