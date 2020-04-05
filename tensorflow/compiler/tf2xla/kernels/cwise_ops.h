@@ -18,10 +18,17 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_CWISE_OPS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_CWISE_OPS_H_
 
+#include <utility>
+#include <vector>
+
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/bcast.h"
 
 namespace tensorflow {
