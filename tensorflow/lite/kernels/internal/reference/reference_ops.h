@@ -2170,33 +2170,33 @@ inline void BatchToSpaceND(
   }
 }
 
+// Helper function for Slice Op to calculate the slice recursively
+template <typename T>
+void compute_slice(const tflite::SliceParams& op_params,
+                   const RuntimeShape& input_shape,
+                   SequentialTensorWriter<T>* writer, int axis,
+                   int curr_indices) {
+  if (axis == (input_shape.DimensionsCount() - 1)) {
+    for (int in_x = op_params.begin[axis]; in_x < op_params.size[axis];
+         in_x++) {
+      int index = in_x + curr_indices;
+      writer->Write(index);
+    }
+  } else {
+    for (int in_x = op_params.begin[axis]; in_x < op_params.size[axis];
+         in_x++) {
+      int indices = (in_x + curr_indices) * input_shape.Dims(axis + 1);
+      compute_slice(op_params, input_shape, writer, axis + 1, indices);
+    }
+  }
+}
+
 template <typename T>
 inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape,
                   const RuntimeShape& output_shape,
                   SequentialTensorWriter<T>* writer) {
-  const int slice_dimensions = input_shape.DimensionsCount();
-
-  // Store as std::function to allow recursion.
-  std::function<void(int, int)> compute_slice =
-      [&compute_slice, slice_dimensions, writer, input_shape, op_params](
-          int axis, int curr_indices) {
-        if (axis == (slice_dimensions - 1)) {
-          for (int in_x = op_params.begin[axis]; in_x < op_params.size[axis];
-               in_x++) {
-            int index = in_x + curr_indices;
-            writer->Write(index);
-          }
-        } else {
-          for (int in_x = op_params.begin[axis]; in_x < op_params.size[axis];
-               in_x++) {
-            int indices = (in_x + curr_indices) * input_shape.Dims(axis + 1);
-            compute_slice(axis + 1, indices);
-          }
-        }
-      };
-
-  compute_slice(0, 0);
+  compute_slice<T>(op_params, input_shape, writer, 0, 0);
 }
 
 template <typename T>

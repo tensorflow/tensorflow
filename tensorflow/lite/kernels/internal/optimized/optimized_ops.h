@@ -5303,32 +5303,33 @@ inline void PadImageStyle(const tflite::PadParams& op_params,
   }
 }
 
+// Helper function for Slice Op to calculate the slice recursively
+template <typename T>
+void compute_slice(const tflite::SliceParams& op_params,
+                   const RuntimeShape& input_shape,
+                   SequentialTensorWriter<T>* writer, int axis,
+                   int curr_indices) {
+  if (axis == (input_shape.DimensionsCount() - 1)) {
+    int final_axis = input_shape.DimensionsCount() - 1;
+    int copy_len = op_params.size[final_axis] - op_params.begin[final_axis];
+    if (copy_len > 0)
+      writer->WriteN(curr_indices + op_params.begin[final_axis], copy_len);
+  } else {
+    for (int in_x = op_params.begin[axis]; in_x < op_params.size[axis];
+         in_x++) {
+      int indices = (in_x + curr_indices) * input_shape.Dims(axis + 1);
+      compute_slice(op_params, input_shape, writer, axis + 1, indices);
+    }
+  }
+}
+
 template <typename T>
 inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape,
                   const RuntimeShape& output_shape,
                   SequentialTensorWriter<T>* writer) {
   ruy::profiler::ScopeLabel label("Slice");
-  int final_axis = input_shape.DimensionsCount() - 1;
-  int copy_len = op_params.size[final_axis] - op_params.begin[final_axis];
-  int begin_fin = op_params.begin[final_axis];
-
-  // Store as std::function to allow recursion.
-  std::function<void(int, int)> compute_slice =
-      [&compute_slice, final_axis, copy_len, begin_fin, writer, input_shape,
-       op_params](int axis, int curr_indices) {
-        if (axis == final_axis) {
-          if (copy_len > 0) writer->WriteN(curr_indices + begin_fin, copy_len);
-        } else {
-          for (int in_x = op_params.begin[axis]; in_x < op_params.size[axis];
-               in_x++) {
-            int indices = (in_x + curr_indices) * input_shape.Dims(axis + 1);
-            compute_slice(axis + 1, indices);
-          }
-        }
-      };
-
-  compute_slice(0, 0);
+  compute_slice<T>(op_params, input_shape, writer, 0, 0);
 }
 
 template <typename T>
