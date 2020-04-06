@@ -1561,6 +1561,40 @@ inline void Gather(const tflite::GatherParams& op_params,
   }
 }
 
+// Common subroutine for both `GatherNd` and `GatherNdString`.
+struct GatherNdHelperResult {
+  int n_slices;
+  int slice_size;
+  int indices_nd;
+  std::vector<int> dims_to_count;
+};
+
+// Returns common values being used on both `GatherNd` and `GatherNdString`.
+inline GatherNdHelperResult GatherNdHelper(const RuntimeShape& params_shape,
+                                           const RuntimeShape& indices_shape) {
+  GatherNdHelperResult ret;
+  ret.n_slices = 1;
+  ret.slice_size = 1;
+  const int indices_dims = indices_shape.DimensionsCount();
+  ret.indices_nd = indices_shape.Dims(indices_dims - 1);
+  const int params_dims = params_shape.DimensionsCount();
+  for (int i = 0; i < indices_dims - 1; ++i) {
+    ret.n_slices *= indices_shape.Dims(i);
+  }
+  for (int i = ret.indices_nd; i < params_dims; ++i) {
+    ret.slice_size *= params_shape.Dims(i);
+  }
+
+  int remain_flat_size = params_shape.FlatSize();
+  ret.dims_to_count = std::vector<int>(ret.indices_nd, 0);
+  for (int i = 0; i < ret.indices_nd; ++i) {
+    ret.dims_to_count[i] = remain_flat_size / params_shape.Dims(i);
+    remain_flat_size = ret.dims_to_count[i];
+  }
+
+  return ret;
+}
+
 template <typename ParamsT, typename IndicesT = int32>
 inline void GatherNd(const RuntimeShape& params_shape,
                      const ParamsT* params_data,
@@ -1569,33 +1603,38 @@ inline void GatherNd(const RuntimeShape& params_shape,
                      const RuntimeShape& output_shape, ParamsT* output_data) {
   ruy::profiler::ScopeLabel label("GatherNd");
 
-  int n_slices = 1;
-  int slice_size = 1;
-  const int indices_dims = indices_shape.DimensionsCount();
-  const int indices_nd = indices_shape.Dims(indices_dims - 1);
-  const int params_dims = params_shape.DimensionsCount();
-  for (int i = 0; i < indices_dims - 1; ++i) {
-    n_slices *= indices_shape.Dims(i);
-  }
-  for (int i = indices_nd; i < params_dims; ++i) {
-    slice_size *= params_shape.Dims(i);
-  }
-
-  int remain_flat_size = params_shape.FlatSize();
-  std::vector<int> dims_to_count(indices_nd, 0);
-  for (int i = 0; i < indices_nd; ++i) {
-    dims_to_count[i] = remain_flat_size / params_shape.Dims(i);
-    remain_flat_size = dims_to_count[i];
-  }
-
-  for (int i = 0; i < n_slices; ++i) {
+  const GatherNdHelperResult res = GatherNdHelper(params_shape, indices_shape);
+  for (int i = 0; i < res.n_slices; ++i) {
     int from_pos = 0;
-    for (int j = 0; j < indices_nd; ++j) {
-      from_pos += indices_data[i * indices_nd + j] * dims_to_count[j];
+    for (int j = 0; j < res.indices_nd; ++j) {
+      from_pos += indices_data[i * res.indices_nd + j] * res.dims_to_count[j];
     }
-    std::memcpy(output_data + i * slice_size, params_data + from_pos,
-                sizeof(ParamsT) * slice_size);
+    std::memcpy(output_data + i * res.slice_size, params_data + from_pos,
+                sizeof(ParamsT) * res.slice_size);
   }
+}
+
+template <typename IndicesT = int32>
+inline void GatherNdString(const RuntimeShape& params_shape,
+                           const TfLiteTensor* params_data,
+                           const RuntimeShape& indices_shape,
+                           const IndicesT* indices_data,
+                           const RuntimeShape& output_shape,
+                           TfLiteTensor* output_data) {
+  ruy::profiler::ScopeLabel label("GatherNdString");
+
+  const GatherNdHelperResult res = GatherNdHelper(params_shape, indices_shape);
+  DynamicBuffer buffer;
+  for (int i = 0; i < res.n_slices; ++i) {
+    int from_pos = 0;
+    for (int j = 0; j < res.indices_nd; ++j) {
+      from_pos += indices_data[i * res.indices_nd + j] * res.dims_to_count[j];
+    }
+    for (int j = 0; j < res.slice_size; ++j) {
+      buffer.AddString(GetString(params_data, from_pos + j));
+    }
+  }
+  buffer.WriteToTensor(output_data, /*new_shape=*/nullptr);
 }
 
 template <typename IndicesT, typename UpdatesT>
