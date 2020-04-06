@@ -205,6 +205,109 @@ StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
 // needed. Thread-safe.
 class PyLocalBuffer {
  public:
+  // Helper class to retain a "hold" on a PyLocalBuffer. A ScopedHold may not
+  // outlive its parent PyLocalBuffer.
+  //
+  // There are two types of hold, as follows:
+  //
+  // 1) Usage hold: a transient hold while an operation using the buffer is
+  //    being enqueued onto a stream.
+  // A client acquires a usage hold by calling
+  // PyLocalBuffer::GetBufferWithHold(kUsage) or the convenience wrapper
+  // GetBufferWithUsageHold(). If the enqueue completes successfully the hold
+  // should be released using a call to ConvertUsageHold. If the ScopedHold is
+  // deleted without ConvertUsageHold being called, e.g., on error, the hold is
+  // dropped. It is legal to drop a usage hold instead of calling
+  // ConvertUsageHold, even if the buffer was successfully enqueued, as long as
+  // the client ensures that all necessary synchronization has been done.
+  //
+  // 2) External hold: a potentially long-lived hold while the buffer is being
+  //    shared by an external framework, e.g., NumPy.
+  // A client acquires an external hold by calling
+  // PyLocalBuffer::GetBufferWithHold(kExternal) or the convenience wrapper
+  // GetBufferWithExternalReference and releases it by deleting the ScopedHold.
+  // The external framework should not modify the underlying buffer unless it is
+  // confident via its own synchronization that modifications do not race with
+  // reads from the PyLocalBuffer.
+  //
+  // Calls to PyLocalBuffer::Release (and transitively to
+  // PyLocalBuffer::Delete() and ~PyLocalBuffer()) will block until all usage
+  // holds are either deleted or converted.
+  class ScopedHold {
+   public:
+    enum Type { kUsage = 0, KExternalReference, kMaxValue };
+
+    ~ScopedHold();
+    ScopedHold(ScopedHold&& other);
+    ScopedHold(const ScopedHold&) = delete;
+    ScopedHold& operator=(const ScopedHold&) = delete;
+
+    Type type() const { return type_; }
+
+    Status status() const { return buffer_or_.status(); }
+    bool ok() const { return buffer_or_.ok(); }
+
+    // Access to the underlying device buffer storage. Requires this->ok().
+    const std::shared_ptr<SharedDeviceBuffer>& buffer() const {
+      CHECK_NE(buffer_or_.ValueOrDie(), nullptr);
+      return buffer_or_.ValueOrDie();
+    }
+    SharedDeviceBuffer* operator->() const { return buffer().get(); }
+    const SharedDeviceBuffer& operator*() const { return *buffer(); }
+
+    // Converts the hold into a usage event. Only valid for holds of type
+    // kUsage.
+    //
+    //   usage_stream:   the stream that the buffer was used on.
+    //   event:          an event that has been recorded on usage_stream after
+    //                   the buffer was used.
+    //   reference_held: true if and only if the caller has caused a
+    //                   reference to this->buffer() to stay live until after
+    //                   the host is sure that the usage (transfer or execution)
+    //                   has completed.
+    void ConvertUsageHold(se::Stream* usage_stream,
+                          std::shared_ptr<BufferDefinitionEvent> event,
+                          bool reference_held);
+
+   private:
+    friend class PyLocalBuffer;
+
+    // Helper struct that makes it possible to move a ScopedHold through a
+    // closure.
+    using ForClosure =
+        std::tuple<PyLocalBuffer*, Type,
+                   StatusOr<std::shared_ptr<SharedDeviceBuffer>>>;
+
+    ScopedHold(PyLocalBuffer* parent, Type type)
+        : parent_(parent), type_(type) {
+      SetError(InvalidArgument("Buffer has not been initialized"));
+    }
+    explicit ScopedHold(const ForClosure& closure_helper)
+        : parent_(std::get<0>(closure_helper)),
+          type_(std::get<1>(closure_helper)),
+          buffer_or_(std::get<2>(closure_helper)) {
+      // Check the buffer is not in an error state.
+      CHECK(buffer_or_.ValueOrDie() != nullptr);
+    }
+
+    // Sets error status.
+    void SetError(Status s) { buffer_or_ = s; }
+
+    // Sets buffer_or_. Called by parent_ to initialize the hold.
+    void Acquire(StatusOr<std::shared_ptr<SharedDeviceBuffer>>&& buffer_or);
+    // Releases the contents of *this, so *this can subsequently be
+    // deleted without releasing the parent's hold. Should be passed to the
+    // appropriate constructor of another ScopedHold, e.g., when a hold must be
+    // passed through a closure that is incompatible with std::move.
+    ForClosure ToClosure();
+
+    PyLocalBuffer* const parent_;
+    const Type type_;
+    // There is an invariant that if buffer_or_.ok() then
+    // buffer_or_.ValueOrDie() != nullptr.
+    StatusOr<std::shared_ptr<SharedDeviceBuffer>> buffer_or_;
+  };
+
   // If `force_copy` is true, forces a copy of the input buffer on CPU.
   // Otherwise the library is free to alias the output buffer with `data`.
   // `buffer_reference` is an optional shared pointer that should be kept alive
@@ -282,6 +385,9 @@ class PyLocalBuffer {
   // wait_for_operations_to_complete=true the host will block until any
   // potentially outstanding asynchronous operations have completed before
   // returning, in which case it is safe to read or mutate the returned buffer.
+  // If the buffer was shared via an external reference it is the client's
+  // responsibility that accesses via that reference do not interfere with
+  // accesses via the buffer returned from Release.
   StatusOr<std::shared_ptr<SharedDeviceBuffer>> Release(
       bool wait_for_operations_to_complete);
 
@@ -292,20 +398,15 @@ class PyLocalBuffer {
   // PyLocalBuffer retains ownership of the device buffers.
   StatusOr<ShapedBuffer> AsShapedBuffer() const;
 
-  // Returns a 'usage hold' on the SharedDeviceBuffer holding the device
-  // buffers. The hold ensures that the device buffers can't be deleted until
-  // the hold is dropped or converted. GetBufferWithUsageHold is called
-  // before enqueueing the buffer on any stream operation, and the usage hold is
-  // dropped or converted after the enqueue is complete. The buffer in the hold
-  // is nullptr if Delete or Release has been called.
-  SharedDeviceBuffer::ScopedUsage GetBufferWithUsageHold();
-
-  // Returns the SharedDeviceBuffer holding the device buffers, after adding an
-  // external reference ensuring that the device buffers can't be deleted until
-  // the reference is dropped. GetBufferWithExernalReference is called when an
-  // external framework wants to share the device buffers temporarily. Returns
-  // nullptr if Delete or Release has been called.
-  std::shared_ptr<SharedDeviceBuffer> GetBufferWithExternalReference();
+  // Returns a hold on the SharedDeviceBuffer holding the device
+  // buffers. See comment on ScopedHold.
+  ScopedHold GetBufferWithHold(ScopedHold::Type type);
+  ScopedHold GetBufferWithUsageHold() {
+    return GetBufferWithHold(ScopedHold::kUsage);
+  }
+  ScopedHold GetBufferWithExternalReference() {
+    return GetBufferWithHold(ScopedHold::KExternalReference);
+  }
 
   // Copies the buffer to device `dst_device`. Returns an error if the buffer is
   // already on dst_device.
@@ -339,6 +440,27 @@ class PyLocalBuffer {
     std::shared_ptr<Literal> value;
   };
 
+  // If device_buffer_ is non-null, adds a hold of 'type' and returns
+  // device_buffer_. Otherwise returns an error.
+  StatusOr<std::shared_ptr<SharedDeviceBuffer>> GetBufferForHoldLocked(
+      ScopedHold::Type type) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // If device_buffer_ is non-null, adds a hold of hold->type() and initializes
+  // `hold` with device_buffer_. Otherwise initializes `hold` with an error
+  // status.
+  void AcquireHoldLocked(ScopedHold* hold) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Drops a usage hold and calls device_buffer_->AddUsageEvent. Does a sanity
+  // check that buffer==device_buffer_ or device_buffer_==nullptr. Called after
+  // device_buffer_ was successfully enqueued on a stream.
+  void ConvertUsageHold(SharedDeviceBuffer* buffer, se::Stream* usage_stream,
+                        std::shared_ptr<BufferDefinitionEvent> event,
+                        bool reference_held);
+
+  // Drops a hold without taking any other action. Does a sanity check that
+  // buffer==device_buffer_ or device_buffer_==nullptr.
+  void DropHold(ScopedHold::Type type, SharedDeviceBuffer* buffer);
+
   StatusOr<std::pair<std::unique_ptr<PyLocalBuffer>,
                      std::shared_ptr<BufferDefinitionEvent>>>
   CopyToDeviceHelper(Device* dst_device, LocalDeviceState* dst_local_device,
@@ -354,6 +476,8 @@ class PyLocalBuffer {
   mutable absl::Mutex mu_;
   std::shared_ptr<SharedDeviceBuffer> device_buffer_ TF_GUARDED_BY(mu_);
   std::shared_ptr<HostValue> host_value_ TF_GUARDED_BY(mu_);
+  // Count of holds on the buffer.
+  std::array<int, ScopedHold::Type::kMaxValue> holds_ TF_GUARDED_BY(mu_);
 };
 
 struct CompileOptions {
@@ -441,7 +565,7 @@ class PyLocalExecutable {
       absl::Span<PyLocalBuffer* const> argument_handles, int replica,
       int partition, int executable_idx, const RunId& run_id,
       const ExecuteOptions& options, Device* device,
-      std::vector<SharedDeviceBuffer::ScopedUsage>* device_buffers) const;
+      std::vector<PyLocalBuffer::ScopedHold>* device_buffers) const;
   StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> ExecuteHelper(
       absl::Span<PyLocalBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options) const;
