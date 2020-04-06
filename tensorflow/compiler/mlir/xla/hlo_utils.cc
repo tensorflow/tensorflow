@@ -75,6 +75,11 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
                           literal.shape(), builder));
 
   auto element_type = literal.shape().element_type();
+
+
+
+
+
   switch (element_type) {
     case PrimitiveType::PRED:
       return CreateDenseAttrFromLiteral<bool>(type, literal);
