@@ -209,5 +209,33 @@ class FunctionTest(tf.test.TestCase):
     model = ModelWithOptimizer()
     model(x, y)  # pylint:disable=not-callable
 
+
+class AutomaticControlDependenciesTest(tf.test.TestCase):
+
+  def testVariableInitializersCanBeLifted(self):
+    # The initializer is a stateful op, but using it inside a function should
+    # *not* create additional dependencies.  That's what we're testing.
+    layer = tf.keras.layers.Dense(1, kernel_initializer='glorot_uniform')
+
+    @tf.function
+    def fn(x):
+      # Stateful operation
+      tf.debugging.Assert(x, ['Error'])
+      # Variable initialization should be lifted.  Prior to the change that
+      # added this test, the lifting would crash because of an auto control dep
+      # added on `x`.  Note, the error did not happen if we
+      # manually created a tf.Variable outside of function and used it
+      # here.  Alternatively, creating a tf.Variable inside fn() causes
+      # a different sort of error that is out of scope for this test.
+      return layer(tf.convert_to_tensor([[1.0, 1.0]]))
+
+    true = tf.convert_to_tensor(True)
+
+    concrete = fn.get_concrete_function(
+        tf.TensorSpec(shape=(), dtype=tf.bool))
+    self.evaluate(concrete(true))
+    self.evaluate(fn(True))
+
+
 if __name__ == '__main__':
   tf.test.main()
