@@ -1452,7 +1452,8 @@ mlir::Operation* ImporterBase::createOperation(
       result.location, types, control_operands,
       mlir::ArrayRef<mlir::NamedAttribute>{});
   island.body().push_back(new mlir::Block);
-  mlir::OpBuilder island_builder(&island.GetBody());
+  mlir::OpBuilder island_builder =
+      mlir::OpBuilder::atBlockEnd(&island.GetBody());
 
   // Create the operation inside the island now.
   mlir::Operation* inner_op;

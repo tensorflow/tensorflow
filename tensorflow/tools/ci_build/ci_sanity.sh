@@ -366,6 +366,7 @@ do_external_licenses_check(){
     -e "@com_github_googlecloudplatform_google_cloud_cpp//google" \
     -e "@com_github_grpc_grpc//src/compiler" \
     -e "@platforms//os" \
+    -e "@ruy//" \
     -v ${MISSING_LICENSES_FILE} > temp.txt
   mv temp.txt ${MISSING_LICENSES_FILE}
 
@@ -383,6 +384,7 @@ do_external_licenses_check(){
     -e "@com_github_googlecloudplatform_google_cloud_cpp//" \
     -e "@embedded_jdk//" \
     -e "^//$" \
+    -e "@ruy//" \
     -v ${EXTRA_LICENSES_FILE} > temp.txt
   mv temp.txt ${EXTRA_LICENSES_FILE}
 

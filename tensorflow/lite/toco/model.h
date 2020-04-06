@@ -234,6 +234,7 @@ enum class ArrayDataType : uint8 {
   kString,
   kComplex64,
   kFloat16,
+  kFloat64,
 };
 
 // Compile-time logic to map ArrayDataType to the corresponding C++ scalar type

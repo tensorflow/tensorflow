@@ -24,11 +24,14 @@ namespace tflite {
 namespace delegates {
 namespace coreml {
 
+enum class ConvolutionType { kConv, kDepthwiseConv, kTransposeConv };
+
 // Layer that provides convolution and depthwise convolution.
 class ConvolutionOpBuilder : public OpBuilder {
  public:
-  explicit ConvolutionOpBuilder(GraphBuilder* graph_builder, bool is_depthwise)
-      : OpBuilder(graph_builder), is_depthwise_(is_depthwise) {}
+  explicit ConvolutionOpBuilder(GraphBuilder* graph_builder,
+                                ConvolutionType conv_type)
+      : OpBuilder(graph_builder), conv_type_(conv_type) {}
 
   const char* DebugName() override;
 
@@ -43,6 +46,8 @@ class ConvolutionOpBuilder : public OpBuilder {
   void SetWeights(TfLiteTensor* weights);
 
   void SetBias(TfLiteTensor* bias);
+
+  void SetOutputShape(TfLiteTensor* output_shape);
 
   void SetParams(void* builtin_data);
 
@@ -63,12 +68,14 @@ class ConvolutionOpBuilder : public OpBuilder {
   uint64_t output_channels_;
   uint64_t n_groups_ = 1;
 
-  bool is_depthwise_ = false;
+  ConvolutionType conv_type_;
 
   // using default dilation_factor (1, 1)
   // CoreML ConvolutionLayerParams.isDeconvolution == false
   TfLiteTensor* weights_ = nullptr;
   TfLiteTensor* bias_ = nullptr;
+  // Only used for TransposeConv.
+  TfLiteTensor* output_shape_ = nullptr;
 };
 
 }  // namespace coreml

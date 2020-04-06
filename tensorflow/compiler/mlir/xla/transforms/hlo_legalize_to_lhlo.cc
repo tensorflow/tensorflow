@@ -324,8 +324,8 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 //   "xla_lhlo.terminator"() : () -> ()
 // }
 
-struct HloLegalizeToLhlo : public ModulePass<HloLegalizeToLhlo> {
-  void runOnModule() override {
+struct HloLegalizeToLhlo : public OperationPass<HloLegalizeToLhlo, ModuleOp> {
+  void runOnOperation() override {
     OwningRewritePatternList patterns;
     auto& context = getContext();
     ConversionTarget target(context);
@@ -344,7 +344,7 @@ struct HloLegalizeToLhlo : public ModulePass<HloLegalizeToLhlo> {
                          [](Type input) { return input.isa<MemRefType>(); });
     });
 
-    auto module = getModule();
+    auto module = getOperation();
     populateHLOToLHLOConversionPattern(module.getContext(), &patterns);
 
     // Do partial conversion so we can have unknown ops in tests.

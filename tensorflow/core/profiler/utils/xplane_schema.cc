@@ -25,10 +25,12 @@ namespace profiler {
 const absl::string_view kHostThreads = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
+const absl::string_view kMetadataPlane = "/host:metadata";
 
 const int32 kHostPlaneId = 49;
 const int32 kGpuPlaneBaseId = 0;
 const int32 kCuptiDriverApiPlaneId = 50;
+const int32 kMetadataPlaneId = 51;
 
 namespace {
 
@@ -149,6 +151,7 @@ const StatTypeMap& GetStatTypeMap() {
       // XLA metadata map related.
       {"SELF_DURATION_PS", kSelfDurationPs},
       {"MIN_DURATION_PS", kMinDurationPs},
+      {"Hlo Proto", kHloProto},
       // Device capability related.
       {"clock_rate", kDevCapClockRateKHz},
       {"core_count", kDevCapCoreCount},

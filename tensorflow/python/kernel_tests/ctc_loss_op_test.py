@@ -31,7 +31,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import ctc_ops
 from tensorflow.python.ops import gradients_impl
@@ -942,8 +941,8 @@ class CTCLossTestV2(test.TestCase):
           [[1.0, 2.0], [5.0, 8.0], [14.0, 20.0]], out)
 
 
-@keras_parameterized.run_all_keras_modes
-class CTCLossTestV3(keras_parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class CTCLossTestV3(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([False, True])
   @test_util.run_v2_only
@@ -955,6 +954,8 @@ class CTCLossTestV3(keras_parameterized.TestCase):
     """
     if not test.is_gpu_available():
       self.skipTest("Need GPU for testing.")
+    if not context.executing_eagerly():
+      self.skipTest("Need eager execution for testing.")
     random_seed.set_random_seed(5)
 
     batch_size = 8

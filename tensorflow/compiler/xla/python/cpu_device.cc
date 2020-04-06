@@ -42,7 +42,7 @@ StatusOr<std::shared_ptr<PyLocalClient>> GetCpuClient(bool asynchronous) {
     se::StreamExecutor* executor =
         client->backend().stream_executor(i).ValueOrDie();
     auto device_state = absl::make_unique<LocalDeviceState>(
-        executor, client, /*synchronous_deallocation=*/true, asynchronous,
+        executor, client, LocalDeviceState::kSynchronous, asynchronous,
         /*allow_event_reuse=*/false);
     auto device = absl::make_unique<CpuDevice>(i, std::move(device_state));
     devices.push_back(std::move(device));

@@ -28,6 +28,14 @@ namespace ph = std::placeholders;
 CpuDeviceTarget::CpuDeviceTarget(MLIRContext* ctx) : DeviceTarget(ctx) {
   RegisterKernel("generic.concat", {qi8_, qi8_, qi8_},
                  quant::ScaleConstraintType::OutputInputSameScale);
+
+  // TODO(fengliuai): All the combinations are required to list. We need to
+  // improve this.
+  RegisterKernel("generic.reshape", {qi8_, any_},
+                 quant::ScaleConstraintType::OutputInputSameScale);
+  RegisterKernel("generic.reshape", {any_, qi8_},
+                 quant::ScaleConstraintType::OutputInputSameScale);
+
   RegisterKernel("generic.mul", {qi8_, qi8_, qi8_},
                  quant::ScaleConstraintType::OutputInputFreeScale);
   RegisterKernel("generic.mul_add", {qi8_, qi8n_, any_, qi8_},

@@ -115,8 +115,6 @@ class TensorHandle : public AbstractTensorHandleInterface,
 
   AbstractTensorHandleInterface* Copy() override;
 
-  void EnableImplicitMirroring() override { implicit_mirroring_ = true; }
-
   // Return the Tensor from the default device.
   Status Tensor(const tensorflow::Tensor** t) const;
   // Return the Tensor from the specified device which could be either the
@@ -207,7 +205,6 @@ class TensorHandle : public AbstractTensorHandleInterface,
   const tensorflow::DataType dtype;
 
   bool IsRemote() const;
-  bool ImplicitMirroring() const { return implicit_mirroring_; }
 
   string DebugString() const;
 
@@ -276,7 +273,6 @@ class TensorHandle : public AbstractTensorHandleInterface,
   // Does not need synchronization because it can be accessed only after
   // WaitReady() has returned. At that point, is_poisoned_ is immutable.
   Status is_poisoned_;
-  bool implicit_mirroring_;
 
   // If this TensorHandle 1) is a local tensor, and 2) is a resource handle or
   // refers to a remote resource handle, we store data types, shapes and allowed

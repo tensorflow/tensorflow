@@ -42,8 +42,9 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
   bool shared_memory =
       device_info.IsAppleGPU() &&
       device_info.apple_info.IsLocalMemoryPreferredOverGlobal();
-  const std::string barrier =
-      device_info.IsAppleGPU() ? "BARRIER" : "threadgroup_barrier";
+  const std::string barrier = device_info.IsWaveSizeEqualTo32()
+                                  ? "SIMDGROUP_BARRIER"
+                                  : "threadgroup_barrier";
   const int src_depth = IntegralDivideRoundUp(src_channels, 4);
   std::stringstream code;
   code << R"(
@@ -109,7 +110,7 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
     const int linear_index = ugid.x / 4;
     FLT4 value = FLT4(temp[tid.x][0], temp[tid.x + 1][0], temp[tid.x + 2][0], temp[tid.x + 3][0]) +
       biases[linear_index];
-    uint3 gid = uint3(1u, 1u, uint(linear_index));
+    uint3 gid = uint3(0u, 0u, uint(linear_index));
     $$2
     result[linear_index] = value;
   }

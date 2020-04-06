@@ -995,9 +995,7 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
     return nullptr;
   }
 
-  tensorflow::Tensor tensor = tensorflow::TensorFromInterface(t);
-  t->Release();
-  return tensorflow::TF_TensorFromTensor(tensor, &status->status);
+  return new TF_Tensor{t};
 }
 
 void* TFE_TensorHandleDevicePointer(TFE_TensorHandle* h, TF_Status* status) {

@@ -1,3 +1,4 @@
+load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
@@ -99,7 +100,6 @@ cc_library(
         ":cluster_function_library_runtime",
         ":remote_mgr",
         ":remote_tensor_handle",
-        "//tensorflow:grpc++",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:core_cpu_internal",
@@ -125,6 +125,7 @@ cc_library(
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
+        tf_grpc_cc_dependency(),
     ],
 )
 

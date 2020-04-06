@@ -335,11 +335,6 @@ class PerChannelQuantizedTransposeConvOpModel
 };
 
 TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannelSingleChannel) {
-  // TODO(b/138722124): Enable these tests on NNAPI.
-  if (SingleOpModel::GetForceUseNnapi()) {
-    return;
-  }
-
   const std::initializer_list<float> filter_data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
   PerChannelQuantizedTransposeConvOpModel model(
       GetRegistration(), {1, 4, 4, 1},
@@ -363,11 +358,6 @@ TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannelSingleChannel) {
 
 // Test data copied from the float multi-channel test above.
 TEST_P(TransposeConvOpTest, TestQuantizedPerChannelMultiChannel) {
-  // TODO(b/138722124): Enable these tests on NNAPI.
-  if (SingleOpModel::GetForceUseNnapi()) {
-    return;
-  }
-
   const std::initializer_list<float> filter_data = {
       1, 3, 5, 7, 9, 11, 13, 15, 17, 2, 4, 6, 8, 10, 12, 14, 16, 18};
   PerChannelQuantizedTransposeConvOpModel model(

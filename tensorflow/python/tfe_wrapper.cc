@@ -503,7 +503,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_ExecutorWaitForAllPendingNodes", [](TFE_Executor& exc) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
+    // NOTE: release Python GIL for pending PyFunc ops to be executed properly.
+    Py_BEGIN_ALLOW_THREADS;
     TFE_ExecutorWaitForAllPendingNodes(&exc, status.get());
+    Py_END_ALLOW_THREADS;
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
   m.def("TFE_ExecutorClearError", &TFE_ExecutorClearError);

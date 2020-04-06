@@ -234,7 +234,7 @@ def get_registered_object(name, custom_objects=None, module_objects=None):
 
 @keras_export('keras.utils.serialize_keras_object')
 def serialize_keras_object(instance):
-  """Serialize Keras object into JSON."""
+  """Serialize a Keras object into a JSON-compatible representation."""
   _, instance = tf_decorator.unwrap(instance)
   if instance is None:
     return None
@@ -327,6 +327,7 @@ def deserialize_keras_object(identifier,
                              module_objects=None,
                              custom_objects=None,
                              printable_module_name='object'):
+  """Turns the serialized form of a Keras object back into an actual object."""
   if identifier is None:
     return None
 

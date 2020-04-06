@@ -33,6 +33,9 @@ bool IsReshapeOpSupported(const TfLiteRegistration* registration,
 bool IsResizeBilinearOpSupported(const TfLiteRegistration* registration,
                                  const TfLiteNode* node,
                                  TfLiteContext* context);
+bool IsTransposeConvolutionOpSupported(const TfLiteRegistration* registration,
+                                       const TfLiteNode* node,
+                                       TfLiteContext* context);
 }  // namespace coreml
 }  // namespace delegates
 }  // namespace tflite

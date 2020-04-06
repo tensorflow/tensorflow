@@ -357,7 +357,7 @@ def freeze_graph(input_graph,
       variable_names_blacklist,
       input_meta_graph_def,
       input_saved_model_dir,
-      saved_model_tags.replace(" ", "").split(","),
+      [tag for tag in saved_model_tags.replace(" ", "").split(",") if tag],
       checkpoint_version=checkpoint_version)
 
 

@@ -26,6 +26,15 @@ namespace ops {
 namespace builtin {
 namespace rnn {
 
+namespace {
+
+struct OpData {
+  int scratch_tensor_index;
+  bool compute_row_sums = false;
+};
+
+}  // namespace
+
 constexpr int kInputTensor = 0;
 constexpr int kWeightsTensor = 1;
 constexpr int kRecurrentWeightsTensor = 2;
@@ -36,13 +45,14 @@ constexpr int kHiddenStateTensor = 4;
 constexpr int kOutputTensor = 0;
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  auto* scratch_tensor_index = new int;
-  context->AddTensors(context, /*tensors_to_add=*/3, scratch_tensor_index);
-  return scratch_tensor_index;
+  auto* op_data = new OpData();
+  context->AddTensors(context, /*tensors_to_add=*/6,
+                      &op_data->scratch_tensor_index);
+  return op_data;
 }
 
 void Free(TfLiteContext* context, void* buffer) {
-  delete reinterpret_cast<int*>(buffer);
+  delete reinterpret_cast<OpData*>(buffer);
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -89,10 +99,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Allocate temporary tensors to store quantized values of input and
   // hidden_state tensors.
   if (is_hybrid) {
-    int* scratch_tensor_index = reinterpret_cast<int*>(node->user_data);
+    auto* op_data = reinterpret_cast<OpData*>(node->user_data);
+    op_data->compute_row_sums = true;
     TfLiteIntArrayFree(node->temporaries);
-    node->temporaries = TfLiteIntArrayCreate(3);
-    node->temporaries->data[0] = *scratch_tensor_index;
+    node->temporaries = TfLiteIntArrayCreate(6);
+    node->temporaries->data[0] = op_data->scratch_tensor_index;
     TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/0);
     input_quantized->type = input_weights->type;
     input_quantized->allocation_type = kTfLiteArenaRw;
@@ -101,7 +112,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_quantized,
                                                        input_quantized_size));
     }
-    node->temporaries->data[1] = *scratch_tensor_index + 1;
+    node->temporaries->data[1] = op_data->scratch_tensor_index + 1;
     TfLiteTensor* hidden_state_quantized =
         GetTemporary(context, node, /*index=*/1);
     hidden_state_quantized->type = input_weights->type;
@@ -114,7 +125,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                         context->ResizeTensor(context, hidden_state_quantized,
                                               hidden_state_quantized_size));
     }
-    node->temporaries->data[2] = *scratch_tensor_index + 2;
+    node->temporaries->data[2] = op_data->scratch_tensor_index + 2;
     TfLiteTensor* scaling_factors = GetTemporary(context, node, /*index=*/2);
     scaling_factors->type = kTfLiteFloat32;
     scaling_factors->allocation_type = kTfLiteArenaRw;
@@ -125,8 +136,43 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
                                                        scaling_factors_size));
     }
+    node->temporaries->data[3] = op_data->scratch_tensor_index + 3;
+    TfLiteTensor* accum_scratch = GetTemporary(context, node, /*index=*/3);
+    accum_scratch->type = kTfLiteInt32;
+    accum_scratch->allocation_type = kTfLiteArenaRw;
+    int accum_scratch_dims[2] = {num_units, batch_size};
+    if (!TfLiteIntArrayEqualsArray(accum_scratch->dims, 2,
+                                   accum_scratch_dims)) {
+      TfLiteIntArray* accum_scratch_size = TfLiteIntArrayCreate(2);
+      accum_scratch_size->data[0] = accum_scratch_dims[0];
+      accum_scratch_size->data[1] = accum_scratch_dims[1];
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, accum_scratch,
+                                                       accum_scratch_size));
+    }
+    node->temporaries->data[4] = op_data->scratch_tensor_index + 4;
+    TfLiteTensor* zero_points = GetTemporary(context, node, /*index=*/4);
+    zero_points->type = kTfLiteInt32;
+    zero_points->allocation_type = kTfLiteArenaRw;
+    int zero_points_dims[1] = {batch_size};
+    if (!TfLiteIntArrayEqualsArray(zero_points->dims, 1, zero_points_dims)) {
+      TfLiteIntArray* zero_points_size = TfLiteIntArrayCreate(1);
+      zero_points_size->data[0] = batch_size;
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, zero_points,
+                                                       zero_points_size));
+    }
+    node->temporaries->data[5] = op_data->scratch_tensor_index + 5;
+    TfLiteTensor* row_sums = GetTemporary(context, node, /*index=*/5);
+    row_sums->type = kTfLiteInt32;
+    row_sums->allocation_type = kTfLiteArenaRwPersistent;
+    int row_sums_dims[2] = {2, num_units};
+    if (!TfLiteIntArrayEqualsArray(row_sums->dims, 2, row_sums_dims)) {
+      TfLiteIntArray* row_sums_size = TfLiteIntArrayCreate(2);
+      row_sums_size->data[0] = row_sums_dims[0];
+      row_sums_size->data[1] = row_sums_dims[1];
+      TF_LITE_ENSURE_OK(
+          context, context->ResizeTensor(context, row_sums, row_sums_size));
+    }
   }
-
   return kTfLiteOk;
 }
 
@@ -165,7 +211,9 @@ TfLiteStatus EvalHybrid(const TfLiteTensor* input,
                         TfLiteTensor* input_scratch,
                         TfLiteTensor* hidden_state_scratch,
                         TfLiteTensor* scaling_factors,
-                        TfLiteTensor* hidden_state, TfLiteTensor* output) {
+                        TfLiteTensor* hidden_state, TfLiteTensor* output,
+                        TfLiteTensor* zero_points, TfLiteTensor* accum_scratch,
+                        TfLiteTensor* row_sums, bool* compute_row_sums) {
   const int batch_size = input->dims->data[0];
   const int num_units = input_weights->dims->data[0];
   const int input_size = input->dims->data[1];
@@ -190,26 +238,34 @@ TfLiteStatus EvalHybrid(const TfLiteTensor* input,
   int8_t* quantized_hidden_state_ptr =
       GetTensorData<int8_t>(hidden_state_scratch);
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
-
+  int32_t* accum_scratch_ptr = GetTensorData<int32_t>(accum_scratch);
+  int32_t* zero_points_ptr = nullptr;
+  int32_t* row_sums_ptr = nullptr;
+  if (params->asymmetric_quantize_inputs) {
+    zero_points_ptr = GetTensorData<int32_t>(zero_points);
+    row_sums_ptr = GetTensorData<int32_t>(row_sums);
+  }
   kernel_utils::RnnBatchStep(
       input_ptr_batch, input_weights_ptr, input_weights_scale,
       recurrent_weights_ptr, recurrent_weights_scale, bias_ptr, input_size,
       num_units, batch_size, output_batch_leading_dim, params->activation,
       quantized_input_ptr, quantized_hidden_state_ptr, scaling_factors_ptr,
-      hidden_state_ptr_batch, output_ptr_batch);
+      hidden_state_ptr_batch, output_ptr_batch,
+      params->asymmetric_quantize_inputs, zero_points_ptr, accum_scratch_ptr,
+      row_sums_ptr, compute_row_sums);
   return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteRNNParams*>(node->builtin_data);
-
+  auto* op_data = reinterpret_cast<OpData*>(node->user_data);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* input_weights = GetInput(context, node, kWeightsTensor);
   const TfLiteTensor* recurrent_weights =
       GetInput(context, node, kRecurrentWeightsTensor);
   const TfLiteTensor* bias = GetInput(context, node, kBiasTensor);
   TfLiteTensor* hidden_state =
-      GetVariableInput(context, node, kHiddenStateTensor);
+      &context->tensors[node->inputs->data[kHiddenStateTensor]];
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // We already checked that weight types are consistent, so branch on one.
@@ -223,9 +279,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TfLiteTensor* input_quantized = GetTemporary(context, node, 0);
       TfLiteTensor* hidden_state_quantized = GetTemporary(context, node, 1);
       TfLiteTensor* scaling_factors = GetTemporary(context, node, 2);
+      TfLiteTensor* accum_scratch = GetTemporary(context, node, 3);
+      TfLiteTensor* zero_points = GetTemporary(context, node, 4);
+      TfLiteTensor* row_sums = GetTemporary(context, node, 5);
       return EvalHybrid(input, input_weights, recurrent_weights, bias, params,
                         input_quantized, hidden_state_quantized,
-                        scaling_factors, hidden_state, output);
+                        scaling_factors, hidden_state, output, zero_points,
+                        accum_scratch, row_sums, &op_data->compute_row_sums);
     }
     default:
       context->ReportError(context, "Type %d not currently supported.",

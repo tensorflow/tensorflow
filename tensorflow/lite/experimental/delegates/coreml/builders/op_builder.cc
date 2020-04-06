@@ -56,6 +56,8 @@ OpBuilder* GraphBuilder::AddBuilder(int builtin_code, const TfLiteNode* node) {
       return AddBuilder(CreateSoftmaxOpBuilder, node);
     case kTfLiteBuiltinTanh:
       return AddBuilder(CreateTanhOpBuilder, node);
+    case kTfLiteBuiltinTransposeConv:
+      return AddBuilder(CreateTransposeConvolutionOpBuilder, node);
     case kTfLiteBuiltinHardSwish:
       return AddBuilder(CreateHardSwishOpBuilder, node);
     default:

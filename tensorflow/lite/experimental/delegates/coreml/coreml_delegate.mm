@@ -49,7 +49,12 @@ bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfL
 
   // The model should not be full-integer quantized. For ops supported by Core ML delegate,
   // Testing if the first input is float is sufficient to filter full-integer quantized ops.
-  if (GetInput(context, node, 0)->type != kTfLiteFloat32) {
+  int input_tensor_index = 0;
+  // TransposeConv input: (output_shape, filters, input)
+  if (registration->builtin_code == kTfLiteBuiltinTransposeConv) {
+    input_tensor_index = 2;
+  }
+  if (GetInput(context, node, input_tensor_index)->type != kTfLiteFloat32) {
     return false;
   }
 
@@ -77,6 +82,9 @@ bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfL
     }
     case kTfLiteBuiltinDepthwiseConv2d: {
       return delegates::coreml::IsDepthwiseConvolutionOpSupported(registration, node, context);
+    }
+    case kTfLiteBuiltinHardSwish: {
+      return true;
     }
     case kTfLiteBuiltinLogistic: {
       return true;
@@ -112,8 +120,8 @@ bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfL
     case kTfLiteBuiltinTanh: {
       return true;
     }
-    case kTfLiteBuiltinHardSwish: {
-      return true;
+    case kTfLiteBuiltinTransposeConv: {
+      return delegates::coreml::IsTransposeConvolutionOpSupported(registration, node, context);
     }
     default:
       return false;
