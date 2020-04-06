@@ -176,6 +176,7 @@ py_test(
     srcs = ["distribute_lib_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":combinations",
         ":distribute_lib",
@@ -254,6 +255,36 @@ py_library(
 )
 
 py_library(
+    name = "mirrored_run",
+    srcs = ["mirrored_run.py"],
+    deps = [
+        ":device_util",
+        ":distribute_lib",
+        ":reduce_util",
+        ":shared_variable_creator",
+        ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:config",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:device",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:pywrap_tfe",
+        "//tensorflow/python:summary_ops_v2",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/autograph/core",
+        "//tensorflow/python/autograph/impl",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+    ],
+)
+
+py_library(
     name = "mirrored_strategy",
     srcs = ["mirrored_strategy.py"],
     deps = [
@@ -261,10 +292,10 @@ py_library(
         ":device_util",
         ":distribute_lib",
         ":input_lib",
+        ":mirrored_run",
         ":multi_worker_util",
         ":numpy_dataset",
         ":reduce_util",
-        ":shared_variable_creator",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -272,12 +303,7 @@ py_library(
         "//tensorflow/python:device",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:pywrap_tfe",
-        "//tensorflow/python:summary_ops_v2",
-        "//tensorflow/python:tensor_util",
-        "//tensorflow/python:training",
         "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
@@ -290,7 +316,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":input_lib",
-        ":mirrored_strategy",
+        ":mirrored_run",
         ":numpy_dataset",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -1214,10 +1240,12 @@ cuda_py_test(
     ],
     deps = [
         ":combinations",
+        ":distribute_lib",
         ":mirrored_strategy",
         ":multi_worker_test_base",
         ":strategy_combinations",
         ":strategy_test_lib",
+        ":values",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -1227,8 +1255,6 @@ cuda_py_test(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/autograph/core:test_lib",
-        "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras/layers",
@@ -1351,6 +1377,7 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":saved_model_test_base",
@@ -1383,6 +1410,7 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     deps = [
         ":saved_model_test_base",

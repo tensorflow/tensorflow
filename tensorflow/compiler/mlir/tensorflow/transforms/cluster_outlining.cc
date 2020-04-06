@@ -38,8 +38,9 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncAttr[] = "func";
 
-struct ClusterOutliningPass : public ModulePass<ClusterOutliningPass> {
-  void runOnModule() override;
+struct ClusterOutliningPass
+    : public OperationPass<ClusterOutliningPass, ModuleOp> {
+  void runOnOperation() override;
 };
 
 void ReplaceLaunchReturnWithReturn(tf_device::ReturnOp launch_return_op,
@@ -120,8 +121,8 @@ void OutlineLaunch(tf_device::LaunchOp launch_op, SymbolTable* symbol_table,
   launch_op.erase();
 }
 
-void ClusterOutliningPass::runOnModule() {
-  ModuleOp m = getModule();
+void ClusterOutliningPass::runOnOperation() {
+  ModuleOp m = getOperation();
   SymbolTable symbol_table(m);
   OpBuilder builder(m.getContext());
   m.walk([&](tf_device::LaunchOp launch) {

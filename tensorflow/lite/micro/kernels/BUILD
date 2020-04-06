@@ -61,6 +61,7 @@ cc_library(
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:common",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -133,6 +134,7 @@ cc_library(
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:common",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -504,7 +506,10 @@ tflite_micro_cc_test(
 cc_library(
     name = "activation_utils",
     hdrs = ["activation_utils.h"],
-    deps = ["//tensorflow/lite/c:common"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:cppmath",
+    ],
 )
 
 tflite_micro_cc_test(

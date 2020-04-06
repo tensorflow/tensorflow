@@ -28,9 +28,9 @@ import math
 import os
 
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.util.tf_export import keras_export
@@ -140,6 +140,8 @@ DENSE_KERNEL_INITIALIZER = {
     }
 }
 
+layers = VersionAwareLayers()
+
 
 def EfficientNet(
     width_coefficient,
@@ -157,8 +159,7 @@ def EfficientNet(
     input_shape=None,
     pooling=None,
     classes=1000,
-    classifier_activation='softmax',
-):
+    classifier_activation='softmax'):
   """Instantiates the EfficientNet architecture using given scaling coefficients.
 
   Reference paper:
@@ -664,18 +665,7 @@ def preprocess_input(x, data_format=None):  # pylint: disable=unused-argument
 
 @keras_export('keras.applications.efficientnet.decode_predictions')
 def decode_predictions(preds, top=5):
-  """Decodes the prediction result from the model.
-
-  Arguments
-    preds: Numpy tensor encoding a batch of predictions.
-    top: Integer, how many top-guesses to return.
-
-  Returns
-    A list of lists of top class prediction tuples
-    `(class_name, class_description, score)`.
-    One list of tuples per sample in batch input.
-
-  Raises
-    ValueError: In case of invalid shape of the `preds` array (must be 2D).
-  """
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

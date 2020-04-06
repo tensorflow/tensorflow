@@ -987,7 +987,6 @@ cc_library(
 tf_cc_test(
     name = "error_util_test",
     srcs = ["utils/error_util_test.cc"],
-    tags = ["no_rocm"],
     deps = [
         ":error_util",
         "//tensorflow/compiler/xla:test",
@@ -1066,6 +1065,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     ":tensorflow_dialect_registration",
     ":tensorflow_passes",
     ":translate_utils",
+    "@com_google_absl//absl/types:optional",
     "@llvm-project//llvm:support",
     "@llvm-project//mlir:IR",
     "@llvm-project//mlir:Parser",
@@ -1084,6 +1084,8 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/platform:logging",
     "//tensorflow/stream_executor/lib",
+    "//tensorflow/compiler/xla:xla_data_proto_cc",
+    "//tensorflow/compiler/xla/service:hlo",
 ]
 
 # Prefer to link 'compile_mlir_util' library that also links necessary

@@ -17,8 +17,7 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
-        "//learning/brain/experimental/mlir/...",
-        "//learning/brain/google/xla/...",
+        "//learning/brain/mlir/...",
         "//tensorflow/compiler/mlir/...",
     ],
 )
@@ -772,6 +771,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/tools/optimize:quantize_weights",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "tensorflow/c/eager/context_interface.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
-#include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -124,7 +125,7 @@ class CustomDevice {
                          int* num_retvals) = 0;
 };
 
-class EagerContext : public core::RefCounted {
+class EagerContext : public AbstractContextInterface, public core::RefCounted {
  public:
   static const uint64 kInvalidContextId = 0;
 
@@ -145,7 +146,44 @@ class EagerContext : public core::RefCounted {
                const CustomKernelCreator* custom_kernel_creator,
                DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
 
-  ~EagerContext() override;
+  void Release() override { Unref(); }
+
+  AbstractTensorInterface* CreateInt64Scalar(int64 value) override;
+  AbstractTensorInterface* CreateUint64Scalar(uint64 value) override;
+  AbstractTensorInterface* CreateInt32Scalar(int32 value) override;
+  AbstractTensorInterface* CreateFloatScalar(float value) override;
+  AbstractTensorInterface* CreateDoubleScalar(double value) override;
+  AbstractTensorInterface* CreateHalfScalar(Eigen::half value) override;
+  AbstractTensorInterface* CreateStringScalar(
+      tensorflow::tstring value) override;
+  AbstractTensorInterface* CreateComplex128Scalar(
+      tensorflow::complex128 value) override;
+  AbstractTensorInterface* CreateBoolScalar(bool value) override;
+
+  AbstractTensorInterface* CreateInt64Tensor(
+      absl::Span<const int64> dim_sizes) override;
+  AbstractTensorInterface* CreateUint64Tensor(
+      absl::Span<const int64> dim_sizes) override;
+  AbstractTensorInterface* CreateInt32Tensor(
+      absl::Span<const int64> dim_sizes) override;
+  AbstractTensorInterface* CreateFloatTensor(
+      absl::Span<const int64> dim_sizes) override;
+  AbstractTensorInterface* CreateDoubleTensor(
+      absl::Span<const int64> dim_sizes) override;
+  AbstractTensorInterface* CreateHalfTensor(
+      absl::Span<const int64> dim_sizes) override;
+  AbstractTensorInterface* CreateStringTensor(
+      absl::Span<const int64> dim_sizes) override;
+  AbstractTensorInterface* CreateComplex128Tensor(
+      absl::Span<const int64> dim_sizes) override;
+  AbstractTensorInterface* CreateBoolTensor(
+      absl::Span<const int64> dim_sizes) override;
+
+  AbstractTensorHandleInterface* CreateLocalHandle(
+      AbstractTensorInterface* t) override;
+  AbstractOperationInterface* CreateOperation() override;
+
+  void ListDevices(std::vector<DeviceAttributes>* devices) override;
 
   // Returns the function library runtime for the given device.
   FunctionLibraryRuntime* func_lib(const Device* d) const {
@@ -299,8 +337,6 @@ class EagerContext : public core::RefCounted {
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
   void ClearRunMetadata() TF_EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
 
-  void ListDevices(std::vector<tensorflow::DeviceAttributes>* devices);
-
   void StartStep();
   void EndStep();
   ScopedStepContainer* StepContainer();
@@ -453,6 +489,8 @@ class EagerContext : public core::RefCounted {
   Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
 
  private:
+  ~EagerContext() override;
+
   void InitPrioritizedDeviceTypeList();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
   Status RegisterExistingFunctionsOnRemoteWorkers(
@@ -645,6 +683,10 @@ class EagerContext : public core::RefCounted {
   // to this context.
   std::function<void()> resource_deallocator_ = nullptr;
 };
+
+inline EagerContext* ContextFromInterface(AbstractContextInterface* context) {
+  return down_cast<EagerContext*>(context);
+}
 
 }  // namespace tensorflow
 

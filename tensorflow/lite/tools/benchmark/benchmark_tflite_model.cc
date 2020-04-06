@@ -28,7 +28,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
-#include "tensorflow/lite/experimental/ruy/profiler/profiler.h"
+#include "ruy/profiler/profiler.h"  // from @ruy
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
@@ -496,6 +496,10 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
                         << " of type FLOAT16 is disabled.";
 #endif  // TFLITE_ENABLE_FP16_CPU_BENCHMARKS
       break;
+    }
+    case kTfLiteFloat64: {
+      return CreateInputTensorData<double>(
+          num_elements, std::uniform_real_distribution<double>(-0.5, 0.5));
     }
     case kTfLiteInt64: {
       int low = has_value_range ? low_range : 0;

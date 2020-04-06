@@ -16,7 +16,6 @@ py_library(
         "__init__.py",
         "estimator/__init__.py",
         "keras_parameterized.py",
-        "ops.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -189,7 +188,9 @@ py_library(
 py_library(
     name = "initializers",
     srcs = [
-        "initializers.py",
+        "initializers/__init__.py",
+        "initializers/initializers_v1.py",
+        "initializers/initializers_v2.py",
     ],
     srcs_version = "PY2AND3",
     deps = [

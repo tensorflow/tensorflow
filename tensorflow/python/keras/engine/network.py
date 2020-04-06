@@ -547,6 +547,9 @@ class Network(base_layer.Layer):
     """
     # TODO(fchollet): We could build a dictionary based on layer names
     # since they are constant, but we have not done that yet.
+    if index is not None and name is not None:
+      raise ValueError('Provide only a layer name or a layer index.')
+
     if index is not None:
       if len(self.layers) <= index:
         raise ValueError('Was asked to retrieve layer at index ' + str(index) +
@@ -554,13 +557,13 @@ class Network(base_layer.Layer):
                          ' layers.')
       else:
         return self.layers[index]
-    else:
-      if not name:
-        raise ValueError('Provide either a layer name or layer index.')
-    for layer in self.layers:
-      if layer.name == name:
-        return layer
-    raise ValueError('No such layer: ' + name)
+
+    if name is not None:
+      for layer in self.layers:
+        if layer.name == name:
+          return layer
+      raise ValueError('No such layer: ' + name + '.')
+    raise ValueError('Provide either a layer name or layer index.')
 
   @property
   def trainable_weights(self):
@@ -1004,10 +1007,11 @@ class Network(base_layer.Layer):
     """Saves the model to Tensorflow SavedModel or a single HDF5 file.
 
     The savefile includes:
-        - The model architecture, allowing to re-instantiate the model.
-        - The model weights.
-        - The state of the optimizer, allowing to resume training
-            exactly where you left off.
+
+    - The model architecture, allowing to re-instantiate the model.
+    - The model weights.
+    - The state of the optimizer, allowing to resume training
+        exactly where you left off.
 
     This allows you to save the entirety of the state of a model
     in a single file.
@@ -1022,7 +1026,7 @@ class Network(base_layer.Layer):
 
     Note that the model weights may have different scoped names after being
     loaded. Scoped names include the model/layer names, such as
-    "dense_1/kernel:0"`. It is recommended that you use the layer properties to
+    `"dense_1/kernel:0"`. It is recommended that you use the layer properties to
      access specific variables, e.g. `model.get_layer("dense_1").kernel`.
 
     Arguments:
@@ -1030,9 +1034,9 @@ class Network(base_layer.Layer):
         overwrite: Whether to silently overwrite any existing file at the
             target location, or provide the user with a manual prompt.
         include_optimizer: If True, save optimizer's state together.
-        save_format: Either 'tf' or 'h5', indicating whether to save the model
-            to Tensorflow SavedModel or HDF5. Defaults to 'tf' in TF 2.X, and
-            'h5' in TF 1.X.
+        save_format: Either `'tf'` or `'h5'`, indicating whether to save the
+            model to Tensorflow SavedModel or HDF5. Defaults to 'tf' in TF 2.X,
+            and 'h5' in TF 1.X.
         signatures: Signatures to save with the SavedModel. Applicable to the
             'tf' format only. Please see the `signatures` argument in
             `tf.saved_model.save` for details.

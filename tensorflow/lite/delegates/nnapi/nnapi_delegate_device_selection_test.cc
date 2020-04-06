@@ -546,6 +546,26 @@ TEST_F(UnsupportedOperationOnDeviceTest, ShouldCacheModelCompilation) {
   EXPECT_EQ(should_cache_model_compilation_model_create_count, 1);
 }
 
+TEST_F(UnsupportedOperationOnDeviceTest,
+       ShouldNotApplySupportedOperationsFilterBeforeAndroidSdk29) {
+  nnapi_mock_->SetAndroidSdkVersion(28, /*set_unsupported_ops_to_null=*/true);
+  nnapi_mock_->ModelCreateReturns<0>();
+  AddSubOpsAcceleratedModel m(
+      {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
+      {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {}},
+      ActivationFunctionType_NONE, nnapi_mock_->GetNnApi(),
+      /*accelerator_name=*/"test-device");
+  std::vector<float> input1{-2.0, 0.2, 0.7, 0.9};
+  std::vector<float> input2{0.1, 0.2, 0.3, 0.5};
+  m.PopulateTensor<float>(m.input1(), input1);
+  m.PopulateTensor<float>(m.input2(), input2);
+  m.PopulateTensor<float>(m.input3(), input2);
+  m.Invoke();
+
+  // Delegation succeded without failures and all nodes have been delegated.
+  ASSERT_EQ(m.CountOpsExecutedByCpuKernel(), 0);
+}
+
 // Model with a chain of no-op (add with zero operations)
 // interleaved with no-op custom nodes.
 class LongIdentityModel : public MultiOpModel, public AcceleratedModel {

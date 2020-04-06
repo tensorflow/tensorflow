@@ -932,6 +932,28 @@ class ConvertBF16FloorDivOp : public OpRewritePattern<TF::FloorDivOp> {
   }
 };
 
+class ConvertBroadcastToOp : public OpRewritePattern<TF::BroadcastToOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::BroadcastToOp op,
+                                PatternRewriter &rewriter) const override {
+    auto input_type = op.input().getType().dyn_cast<RankedTensorType>();
+    auto output_type = op.output().getType().dyn_cast<RankedTensorType>();
+    if (!input_type || !output_type) {
+      return rewriter.notifyMatchFailure(op, "requires ranked shape");
+    }
+    auto rank_diff = output_type.getRank() - input_type.getRank();
+    // The tf.BroadcastTo op performs "right-aligned" numpy-style broadcasting.
+    auto broadcast_dimensions = llvm::to_vector<4>(
+        llvm::seq<int64_t>(rank_diff, output_type.getRank()));
+    rewriter.replaceOpWithNewOp<DynamicBroadcastInDimOp>(
+        op, output_type, op.input(), op.shape(),
+        rewriter.getI64TensorAttr(broadcast_dimensions));
+    return success();
+  }
+};
+
 // Converts TensorFlow EinsumOp to either HLO EinsumOp or UnaryEinsumOp
 // depending on arity of the op.
 class ConvertEinsumOp : public OpRewritePattern<TF::EinsumOp> {
@@ -2110,13 +2132,23 @@ class ConvertLinSpaceOp : public OpRewritePattern<TF::LinSpaceOp> {
       return failure();
     }
 
+    DenseIntElementsAttr num_attr;
+    if (!matchPattern(op.num(), m_Constant(&num_attr))) {
+      return rewriter.notifyMatchFailure(op, "Num must be a constant scalar");
+    }
+
+    if (num_attr.begin() == num_attr.end()) {
+      return rewriter.notifyMatchFailure(op, "Num must not be empty");
+    }
+    int64_t num = (*num_attr.begin()).getSExtValue();
+
     // Calculate the scaling that needs to be applied to the iota.
     auto step_numerator = rewriter.create<SubOp>(
         op.getLoc(), op.start().getType(), op.stop(), op.start(),
         xla::getBroadcastDimensionsAttr(&rewriter, op.stop(), op.start()));
     Value step_denominator = rewriter.create<ConvertOp>(
         op.getLoc(), op.num(), result_type.getElementType());
-    if (op.num() > 1) {
+    if (num > 1) {
       Value one = GetScalarConstOfType(result_type.getElementType(),
                                        op.getLoc(), 1, &rewriter);
       step_denominator = rewriter.create<SubOp>(
@@ -3734,15 +3766,16 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
   TF::PopulateLoweringTFPatterns(context, &patterns);
   patterns.insert<
       ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBatchMatMulV2Op,
-      ConvertBF16FloorDivOp, ConvertConv2D, ConvertConv2DBackpropFilterOp,
-      ConvertConv2DBackpropInputOp, ConvertCumsumOp, ConvertEinsumOp,
-      ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
-      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op,
-      ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp, ConvertMaxOp,
-      ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPoolOp, ConvertMaxPoolGradOp,
-      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
-      ConvertProdOp, ConvertRangeOp, ConvertSelectV2Op, ConvertSigmoidOp,
-      ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertBroadcastToOp, ConvertBF16FloorDivOp, ConvertConv2D,
+      ConvertConv2DBackpropFilterOp, ConvertConv2DBackpropInputOp,
+      ConvertCumsumOp, ConvertEinsumOp, ConvertFusedBatchNormGradOp,
+      ConvertFusedBatchNormGradV2Op, ConvertFusedBatchNormGradV3Op,
+      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp,
+      ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPoolOp,
+      ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
+      ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertRangeOp,
+      ConvertSelectV2Op, ConvertSigmoidOp, ConvertSizeOp,
+      ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,

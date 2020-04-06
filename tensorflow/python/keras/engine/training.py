@@ -341,7 +341,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               on TPUs or small models with a large Python overhead. Note that if
               this value is set to `N`, `Callback.on_batch` methods will only be
               called every `N` batches. This currently defaults to `1`. At most,
-              one full epoch can be run each execution.
+              one full epoch will be run each execution. If a number larger than
+              the size of the epoch is passed, the execution will be truncated
+              to the size of the epoch.
 
     Raises:
         ValueError: In case of invalid arguments for
@@ -398,7 +400,41 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
   @property
   def metrics(self):
-    """Returns the model's metrics added using `compile`, `add_metric` APIs."""
+    """Returns the model's metrics added using `compile`, `add_metric` APIs.
+
+    Note: `metrics` are available only after a `keras.Model` has been
+    trained/evaluated on actual data.
+
+    Examples:
+
+    >>> inputs = tf.keras.layers.Input(shape=(3,))
+    >>> outputs = tf.keras.layers.Dense(2)(inputs)
+    >>> model = tf.keras.models.Model(inputs=inputs, outputs=outputs)
+    >>> model.compile(optimizer="Adam", loss="mse", metrics=["mae"])
+    >>> [m.name for m in model.metrics]
+    []
+
+    >>> x = np.random.random((2, 3))
+    >>> y = np.random.randint(0, 2, (2, 2))
+    >>> _ = model.fit(x, y, verbose=0)
+    >>> [m.name for m in model.metrics]
+    ['loss', 'mae']
+
+    >>> inputs = tf.keras.layers.Input(shape=(3,))
+    >>> d = tf.keras.layers.Dense(2, name='out')
+    >>> output_1 = d(inputs)
+    >>> output_2 = d(inputs)
+    >>> model = tf.keras.models.Model(
+    ...    inputs=inputs, outputs=[output_1, output_2])
+    >>> model.add_metric(
+    ...    tf.reduce_sum(output_2), name='mean', aggregation='mean')
+    >>> model.compile(optimizer="Adam", loss="mse", metrics=["mae", "acc"])
+    >>> _ = model.fit(x, (y, y), verbose=0)
+    >>> [m.name for m in model.metrics]
+    ['loss', 'out_loss', 'out_1_loss', 'out_mae', 'out_acc', 'out_1_mae',
+    'out_1_acc', 'mean']
+
+    """
     metrics = []
     if self._is_compiled:
       # TODO(omalleyt): Track `LossesContainer` and `MetricsContainer` objects
@@ -415,7 +451,39 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
   @property
   def metrics_names(self):
-    """Returns the model's display labels for all outputs."""
+    """Returns the model's display labels for all outputs.
+
+    Note: `metrics_names` are available only after a `keras.Model` has been
+    trained/evaluated on actual data.
+
+    Examples:
+
+    >>> inputs = tf.keras.layers.Input(shape=(3,))
+    >>> outputs = tf.keras.layers.Dense(2)(inputs)
+    >>> model = tf.keras.models.Model(inputs=inputs, outputs=outputs)
+    >>> model.compile(optimizer="Adam", loss="mse", metrics=["mae"])
+    >>> model.metrics_names
+    []
+
+    >>> x = np.random.random((2, 3))
+    >>> y = np.random.randint(0, 2, (2, 2))
+    >>> model.fit(x, y)
+    >>> model.metrics_names
+    ['loss', 'mae']
+
+    >>> inputs = tf.keras.layers.Input(shape=(3,))
+    >>> d = tf.keras.layers.Dense(2, name='out')
+    >>> output_1 = d(inputs)
+    >>> output_2 = d(inputs)
+    >>> model = tf.keras.models.Model(
+    ...    inputs=inputs, outputs=[output_1, output_2])
+    >>> model.compile(optimizer="Adam", loss="mse", metrics=["mae", "acc"])
+    >>> model.fit(x, (y, y))
+    >>> model.metrics_names
+    ['loss', 'out_loss', 'out_1_loss', 'out_mae', 'out_acc', 'out_1_mae',
+    'out_1_acc']
+
+    """
 
     # This property includes all output names including `loss` and per-output
     # losses for backward compatibility.
@@ -473,7 +541,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     """The logic for one training step.
 
     This method can be overridden to support custom training logic.
-    This method is called by `Model._make_train_function`.
+    This method is called by `Model.make_train_function`.
 
     This method should contain the mathemetical logic for one step of training.
     This typically includes the forward pass, loss calculation, backpropagation,
@@ -481,7 +549,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     Configuration details for *how* this logic is run (e.g. `tf.function` and
     `tf.distribute.Strategy` settings), should be left to
-    `Model._make_train_function`, which can also be overridden.
+    `Model.make_train_function`, which can also be overridden.
 
     Arguments:
       data: A nested structure of `Tensor`s.
@@ -523,7 +591,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     Typically, this method directly controls `tf.function` and
     `tf.distribute.Strategy` settings, and delegates the actual training
-    logic to `Model._train_step`.
+    logic to `Model.train_step`.
 
     This function is cached the first time `Model.fit` or
     `Model.train_on_batch` is called. The cache is cleared whenever
@@ -991,7 +1059,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                return_dict=False):
     """Returns the loss value & metrics values for the model in test mode.
 
-    Computation is done in batches.
+    Computation is done in batches (see the `batch_size` arg.)
 
     Arguments:
         x: Input data. It could be: - A Numpy array (or array-like), or a list
@@ -1009,10 +1077,11 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           `x` is a dataset, generator or `keras.utils.Sequence` instance, `y`
           should not be specified (since targets will be obtained from the
           iterator/dataset).
-        batch_size: Integer or `None`. Number of samples per gradient update. If
-          unspecified, `batch_size` will default to 32. Do not specify the
-          `batch_size` if your data is in the form of a dataset, generators,
-          or `keras.utils.Sequence` instances (since they generate batches).
+        batch_size: Integer or `None`. Number of samples per batch of
+          computation. If unspecified, `batch_size` will default to 32. Do not
+          specify the `batch_size` if your data is in the form of a dataset,
+          generators, or `keras.utils.Sequence` instances (since they generate
+          batches).
         verbose: 0 or 1. Verbosity mode. 0 = silent, 1 = progress bar.
         sample_weight: Optional Numpy array of weights for the test samples,
           used for weighting the loss function. You can either pass a flat (1D)

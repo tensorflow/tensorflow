@@ -119,7 +119,7 @@ class Softmax : public NodeShader {
     if (z < $depth$) {
       highp vec4 src = $input_data_0[0, 0, z]$;
       highp vec4 temp = exp(src) * sum;
-      $output_data_0[0, 0, z]$ = temp;
+      $output_data_0[0, 0, z] = temp$;
       offset += 32;
     }
     s++;

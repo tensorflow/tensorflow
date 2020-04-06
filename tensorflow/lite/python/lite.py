@@ -74,6 +74,7 @@ from tensorflow.python.lib.io import file_io as _file_io
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
 from tensorflow.python.saved_model.load import load as _load
+from tensorflow.python.saved_model.loader_impl import parse_saved_model_with_debug_info as _parse_saved_model_with_debug_info
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
@@ -280,11 +281,15 @@ class TFLiteConverterBase(object):
     self.optimizations = []
     self.representative_dataset = None
     self.experimental_new_converter = _USE_EXPERIMENTAL_NEW_CONVERTER
-    self.experimental_new_quantizer = False
-    self.experimental_calibrate_only = False
+    self._experimental_new_quantizer = False
+    self._experimental_calibrate_only = False
     # The 'GraphDebugInfo'  contains the stack traces of all the original nodes
     # in the `GraphDef` to the converter.
     self._debug_info = None
+    self._saved_model_dir = None
+    self._saved_model_tags = None
+    self._saved_model_version = None
+    self._saved_model_exported_names = []
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -314,7 +319,7 @@ class TFLiteConverterBase(object):
       self.representative_dataset = RepresentativeDataset(
           self.representative_dataset)
     calibrate_quantize = _calibrator.Calibrator(result)
-    if self.experimental_calibrate_only:
+    if self._experimental_calibrate_only:
       return calibrate_quantize.calibrate(self.representative_dataset.input_gen)
     else:
       return calibrate_quantize.calibrate_and_quantize(
@@ -346,7 +351,45 @@ class TFLiteConverterBase(object):
         "target_ops": self.target_spec.supported_ops,
         "enable_mlir_converter": self.experimental_new_converter,
     }
+
+    if self._saved_model_dir:
+      args.update({
+          "saved_model_dir": self._saved_model_dir,
+          "saved_model_version": self._saved_model_version,
+          "saved_model_tags": self._saved_model_tags,
+          "saved_model_exported_names": self._saved_model_exported_names,
+      })
+
     return args
+
+  def _contains_function_with_implements_attr(self, saved_model_proto):
+    meta_graph = saved_model_proto.meta_graphs[0]
+    for function in meta_graph.graph_def.library.function:
+      if function.attr.get("_implements", None) or function.attr.get(
+          "api_implements", None):
+        return True
+    return False
+
+  def _parse_saved_model_args(self):
+    """Parses SavedModel arguments from the given Keras/RNN SavedModel."""
+    if self._saved_model_dir:
+      try:
+        saved_model_proto, _ = (
+            _parse_saved_model_with_debug_info(self._saved_model_dir))
+      except OSError:
+        # If it fails to read the given saved model, it will fall back to the
+        # frozen graph def path.
+        self._saved_model_dir = None
+        return
+      if not self._contains_function_with_implements_attr(saved_model_proto):
+        self._saved_model_dir = None
+      else:
+        self._saved_model_exported_names = []
+        self._saved_model_version = saved_model_proto.saved_model_schema_version
+        if self._saved_model_version not in [1, 2]:
+          raise ValueError(
+              "SavedModel file format({0}) is not supported".format(
+                  self._saved_model_version))
 
 
 @_tf_export("lite.TFLiteConverter", v1=[])
@@ -370,11 +413,6 @@ class TFLiteConverterV2(TFLiteConverterBase):
       target ops.
     experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
-    experimental_new_quantizer: Experimental flag, subject to change.
-      Enables MLIR-based post-training quantization.
-    experimental_calibrate_only: Experimental flag, subject to change.
-      Calibrates the converted model with representative dataset, but not
-      quantize it.
   Example usage:
 
     ```python
@@ -392,7 +430,11 @@ class TFLiteConverterV2(TFLiteConverterBase):
     ```
   """
 
-  def __init__(self, funcs, trackable_obj=None):
+  def __init__(self,
+               funcs,
+               trackable_obj=None,
+               saved_model_dir=None,
+               saved_model_tags=None):
     """Constructor for TFLiteConverter.
 
     Args:
@@ -403,10 +445,19 @@ class TFLiteConverterV2(TFLiteConverterBase):
         get garbage collected since functions have a weak reference to
         Variables. This is only required when the tf.AutoTrackable object is not
         maintained by the user (e.g. `from_saved_model`).
+      saved_model_dir: Directory of the SavedModel. This argument can be null
+        when it creates via the from_keras_model and from_concrete_function
+        methods.
+      saved_model_tags: Set of tags identifying the MetaGraphDef within the
+        SavedModel to analyze. All tags in the tag set must be present. (default
+        set(SERVING)).  This argument will be available when the saved model dir
+        argument is set.
     """
     super(TFLiteConverterV2, self).__init__()
     self._funcs = funcs
     self._trackable_obj = trackable_obj
+    self._saved_model_dir = saved_model_dir
+    self._saved_model_tags = saved_model_tags
 
   @classmethod
   def from_concrete_functions(cls, funcs):
@@ -468,6 +519,9 @@ class TFLiteConverterV2(TFLiteConverterBase):
 
     # Ensures any graphs created in Eager mode are able to run. This is required
     # in order to create a tf.estimator.Exporter that exports a TFLite model.
+    if tags is None:
+      tags = set([_tag_constants.SERVING])
+
     with context.eager_mode():
       saved_model = _load(saved_model_dir, tags)
     if not signature_keys:
@@ -480,7 +534,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
                          "'{}'.".format(key, ",".join(saved_model.signatures)))
       funcs.append(saved_model.signatures[key])
 
-    return cls(funcs, saved_model)
+    return cls(funcs, saved_model, saved_model_dir, tags)
 
   @classmethod
   def from_keras_model(cls, model):
@@ -525,6 +579,9 @@ class TFLiteConverterV2(TFLiteConverterBase):
       raise ValueError("This converter can only convert a single "
                        "ConcreteFunction. Converting multiple functions is "
                        "under development.")
+
+    # Parses SavedModel argument.
+    self._parse_saved_model_args()
 
     # graph_def is used here to preserve the node bug information
     frozen_func, graph_def = (
@@ -698,11 +755,7 @@ class TFLiteConverter(TFLiteConverterBase):
       the dataset to evaluate different optimizations.
     experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
-    experimental_new_quantizer: Experimental flag, subject to change.
-      Enables MLIR-based post-training quantization.
-    experimental_calibrate_only: Experimental flag, subject to change.
-      Calibrates the converted model with representative dataset, but not
-      quantize it.
+
   Example usage:
 
     ```python
@@ -735,7 +788,9 @@ class TFLiteConverter(TFLiteConverterBase):
                output_tensors,
                input_arrays_with_shape=None,
                output_arrays=None,
-               experimental_debug_info_func=None):
+               experimental_debug_info_func=None,
+               saved_model_dir=None,
+               saved_model_tags=None):
     """Constructor for TFLiteConverter.
 
     Args:
@@ -753,6 +808,13 @@ class TFLiteConverter(TFLiteConverterBase):
         `output_tensors` are None. (default None)
       experimental_debug_info_func: An experimental function to retrieve the
         graph debug info for a set of nodes from the `graph_def`.
+      saved_model_dir: Directory of the SavedModel. This argument can be null
+        when it creates via the from_keras_model and from_concrete_function
+        methods.
+      saved_model_tags: Set of tags identifying the MetaGraphDef within the
+        SavedModel to analyze. All tags in the tag set must be present. (default
+        set(SERVING)).  This argument will be available when the saved model dir
+        argument is set.
 
     Raises:
       ValueError: Invalid arguments.
@@ -776,6 +838,8 @@ class TFLiteConverter(TFLiteConverterBase):
     self.conversion_summary_dir = None
     self._debug_info_func = experimental_debug_info_func
     self._custom_opdefs = None
+    self._saved_model_dir = saved_model_dir
+    self._saved_model_tags = saved_model_tags
 
     # Attributes are used by models that cannot be loaded into TensorFlow.
     if not self._has_valid_tensors():
@@ -938,7 +1002,9 @@ class TFLiteConverter(TFLiteConverterBase):
         graph_def=result[0],
         input_tensors=result[1],
         output_tensors=result[2],
-        experimental_debug_info_func=_build_debug_info_func(result[3]))
+        experimental_debug_info_func=_build_debug_info_func(result[3]),
+        saved_model_dir=saved_model_dir,
+        saved_model_tags=tag_set)
 
   @classmethod
   def from_keras_model_file(cls,
@@ -1069,6 +1135,9 @@ class TFLiteConverter(TFLiteConverterBase):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
+    # Parses SavedModel argument.
+    self._parse_saved_model_args()
+
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
                                   self.representative_dataset, self._graph_def)
 

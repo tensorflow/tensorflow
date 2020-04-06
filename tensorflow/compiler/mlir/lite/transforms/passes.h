@@ -86,7 +86,7 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateDefaultQuantParamsPass(
 std::unique_ptr<OpPassBase<FuncOp>> CreateDenseToSparsePass();
 
 // Creates function pass to legalize TF While to TFL While.
-std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeTFWhilePass();
+std::unique_ptr<OpPassBase<ModuleOp>> CreateLegalizeTFWhilePass();
 
 // Creates an instance of the TensorFlow Lite dialect WhileOp outline pass.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateWhileOutlinePass();

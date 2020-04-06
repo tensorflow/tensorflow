@@ -1453,7 +1453,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
     batch_size = 5
     epochs = 10
     weighted_class = 3
-    weight = 10.
+    weight = .5
     train_samples = 1000
     test_samples = 1000
     input_dim = 5

@@ -30,6 +30,7 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
+from tensorflow.python.training.experimental import mixed_precision
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -106,6 +107,8 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
   >>> var.numpy()
   0.25
   """
+
+  _HAS_AGGREGATE_GRAD = True
 
   def __init__(self, optimizer, loss_scale):
     """Initializes this loss scale optimizer.
@@ -271,9 +274,12 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
 
   def _apply_gradients(self, grads, wrapped_vars, name,
                        experimental_aggregate_gradients):
+    # TODO(reedwm): This will raise a fairly cryptic error message if
+    # self._optimizer.apply_gradients does not take
+    # experimental_aggregate_gradients.
     return self._optimizer.apply_gradients(
         list(zip(grads, wrapped_vars.value)), name,
-        experimental_aggregate_gradients)
+        experimental_aggregate_gradients=experimental_aggregate_gradients)
 
   def get_config(self):
     serialized_optimizer = optimizers.serialize(self._optimizer)
@@ -326,6 +332,9 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
 
   def set_weights(self, weights):
     return self._optimizer.set_weights(weights)
+
+  def _aggregate_gradients(self, grads_and_vars):
+    return self._optimizer._aggregate_gradients(grads_and_vars)  # pylint: disable=protected-access
 
   # For the most part, we only expose methods in the base OptimizerV2, not
   # individual subclasses like Adam. However, although "learning_rate" and "lr"
@@ -380,6 +389,11 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
 
   # TODO(reedwm): Maybe throw an error if mixed precision is used without this
   # optimizer being used.
+
+
+# pylint: disable=protected-access
+mixed_precision._register_wrapper_optimizer_cls(optimizer_v2.OptimizerV2,
+                                                LossScaleOptimizer)
 
 
 def _multiply_gradient(gradient, scale):

@@ -806,18 +806,6 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
   // Handle fallback.
   if (!fallback_params.empty()) strings::StrAppend(&fallback_params, ", ");
   strings::StrAppend(&fallback_params, "ctx=_ctx");
-  strings::StrAppend(&result_, "    ", "except _core._FallbackException:\n");
-  strings::StrAppend(&result_, "      try:\n");
-  strings::StrAppend(
-      &result_, "        ", "return ", function_name_, kEagerFallbackSuffix,
-      "(\n",
-      WordWrap(strings::StrCat("            "),
-               strings::StrCat(fallback_params, ")"), kRightMargin),
-      "\n");
-  strings::StrAppend(&result_, "      except _core._SymbolicException:\n");
-  strings::StrAppend(&result_,
-                     "        pass  # Add nodes to the TensorFlow graph.\n");
-  AddDispatch("      ");
 
   // Any errors thrown from execute need to be unwrapped from
   // _NotOkStatusException.
@@ -825,6 +813,20 @@ void GenEagerPythonOp::AddEagerFastPathExecute() {
                      "except _core._NotOkStatusException as e:\n");
   strings::StrAppend(&result_, "      ",
                      "_ops.raise_from_not_ok_status(e, name)\n");
+
+  strings::StrAppend(&result_, "    ", "except _core._FallbackException:\n");
+  strings::StrAppend(&result_, "      pass\n");
+  strings::StrAppend(&result_, "    try:\n");
+  strings::StrAppend(
+      &result_, "      ", "return ", function_name_, kEagerFallbackSuffix,
+      "(\n",
+      WordWrap(strings::StrCat("          "),
+               strings::StrCat(fallback_params, ")"), kRightMargin),
+      "\n");
+  strings::StrAppend(&result_, "    except _core._SymbolicException:\n");
+  strings::StrAppend(&result_,
+                     "      pass  # Add nodes to the TensorFlow graph.\n");
+  AddDispatch("    ");
 }
 
 void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {

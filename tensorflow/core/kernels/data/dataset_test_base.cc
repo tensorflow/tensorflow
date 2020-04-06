@@ -405,10 +405,11 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
       TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, thread_pool_.get(),
       /*parent=*/nullptr, /*custom_kernel_creator=*/nullptr,
       /*session_metadata=*/nullptr,
-      [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
-        *r = new IntraProcessRendezvous(device_mgr);
-        return Status::OK();
-      });
+      Rendezvous::Factory{
+          [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+            *r = new IntraProcessRendezvous(device_mgr);
+            return Status::OK();
+          }});
   flr_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   if (thread_pool_ == nullptr) {
     runner_ = [](const std::function<void()>& fn) { fn(); };
@@ -548,8 +549,7 @@ Status DatasetOpsTestBase::AddDatasetInput(
                                    inputs->size(), " vs. ", input_types.size());
   }
   bool is_ref = IsRefType(input_types[inputs->size()]);
-  std::unique_ptr<Tensor> input =
-      absl::make_unique<Tensor>(allocator_, dtype, shape);
+  auto input = absl::make_unique<Tensor>(allocator_, dtype, shape);
 
   if (is_ref) {
     DataType expected_dtype = RemoveRefType(input_types[inputs->size()]);

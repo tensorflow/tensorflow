@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import warnings
 
 import numpy as np
 
@@ -266,6 +267,12 @@ class RNN(Layer):
       RNN calculation. However, most TensorFlow data is batch-major, so by
       default this function accepts input and emits output in batch-major
       form.
+    zero_output_for_mask: Boolean (default `False`).
+      Whether the output should use zeros for the masked timesteps. Note that
+      this field is only used when `return_sequences` is True and mask is
+      provided. It can useful if you want to reuse the raw output sequence of
+      the RNN without interference from the masked timesteps, eg, merging
+      bidirectional RNNs.
 
   Call arguments:
     inputs: Input tensor.
@@ -978,6 +985,15 @@ class RNN(Layer):
   @property
   def _trackable_saved_model_saver(self):
     return layer_serialization.RNNSavedModelSaver(self)
+
+  @property
+  def weights(self):
+    if self.stateful:
+      warnings.warn(
+          'The internal states of stateful RNN layers are not included in '
+          '`layer.weights`. Please use `layer.states()` if you want to '
+          'retrieve the internal states of the layer.')
+    return super(RNN, self).weights
 
 
 @keras_export('keras.layers.AbstractRNNCell')
@@ -2340,7 +2356,7 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
         def bias_initializer(_, *args, **kwargs):
           return K.concatenate([
               self.bias_initializer((self.units,), *args, **kwargs),
-              initializers.Ones()((self.units,), *args, **kwargs),
+              initializers.get('ones')((self.units,), *args, **kwargs),
               self.bias_initializer((self.units * 2,), *args, **kwargs),
           ])
       else:

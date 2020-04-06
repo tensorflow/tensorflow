@@ -27,6 +27,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
 
@@ -37,17 +38,17 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "fixedpoint/fixedpoint.h"
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/kernels/internal/round.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -1127,6 +1128,48 @@ inline void Mean(const tflite::MeanParams& op_params,
     cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
                                     cpu_backend_context);
   }
+}
+
+template <typename T, typename U>
+inline bool MeanGeneral(const T* input_data, const int* input_dims,
+                        const int input_num_dims, T* output_data,
+                        const int* output_dims, const int output_num_dims,
+                        const int* axis, const int num_axis_dimensions,
+                        bool keep_dims, int* temp_index, int* resolved_axis,
+                        U* temp_sum) {
+  return reference_ops::Mean(input_data, input_dims, input_num_dims,
+                             output_data, output_dims, output_num_dims, axis,
+                             num_axis_dimensions, keep_dims, temp_index,
+                             resolved_axis, temp_sum);
+}
+
+template <>
+inline bool MeanGeneral<float, float>(
+    const float* input_data, const int* input_dims, const int input_num_dims,
+    float* output_data, const int* output_dims, const int output_num_dims,
+    const int* axis, const int num_axis_dimensions, bool keep_dims,
+    int* temp_index, int* resolved_axis, float* temp_sum) {
+  // Handle reduce_mean for the last dimensions.
+  if (num_axis_dimensions == 1 && axis[0] == (input_num_dims - 1)) {
+    ruy::profiler::ScopeLabel label("MeanLastDim/Float");
+    int output_size = 1;
+    for (int i = 0; i < input_num_dims - 1; ++i) {
+      output_size *= input_dims[i];
+    }
+    const int last_input_dim = input_dims[axis[0]];
+
+    // TODO(b/152563685): Consider use eigen to cover more general cases.
+    const MatrixMap<const float> in_mat(input_data, last_input_dim,
+                                        output_size);
+    VectorMap<float> out(output_data, output_size, 1);
+    out = (in_mat.array().colwise().sum()) / static_cast<float>(last_input_dim);
+    return true;
+  }
+
+  return reference_ops::Mean(input_data, input_dims, input_num_dims,
+                             output_data, output_dims, output_num_dims, axis,
+                             num_axis_dimensions, keep_dims, temp_index,
+                             resolved_axis, temp_sum);
 }
 
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
@@ -2760,29 +2803,30 @@ inline void BroadcastMulDispatch(
 // reference_ops.h. Once an optimized version is implemented and NdArrayDesc<T>
 // is no longer referenced in this file, move NdArrayDesc<T> from types.h to
 // reference_ops.h.
-template <typename T>
-void BroadcastDiv4DSlow(const ArithmeticParams& params,
-                        const RuntimeShape& unextended_input1_shape,
-                        const T* input1_data,
-                        const RuntimeShape& unextended_input2_shape,
-                        const T* input2_data,
-                        const RuntimeShape& unextended_output_shape,
-                        T* output_data) {
-  ruy::profiler::ScopeLabel label("BroadcastDiv4DSlow");
+template <typename T, int N = 5>
+void BroadcastDivSlow(const ArithmeticParams& params,
+                      const RuntimeShape& unextended_input1_shape,
+                      const T* input1_data,
+                      const RuntimeShape& unextended_input2_shape,
+                      const T* input2_data,
+                      const RuntimeShape& unextended_output_shape,
+                      T* output_data) {
+  ruy::profiler::ScopeLabel label("BroadcastDivSlow");
   T output_activation_min;
   T output_activation_max;
   GetActivationParams(params, &output_activation_min, &output_activation_max);
 
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), N);
+  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), N);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), N);
 
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
+  NdArrayDesc<N> desc1;
+  NdArrayDesc<N> desc2;
+  NdArrayDesc<N> output_desc;
   NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
                                       unextended_input2_shape, &desc1, &desc2);
+  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_output_shape),
+                 &output_desc);
 
   // In Tensorflow, the dimensions are canonically named (batch_number, row,
   // col, channel), with extents (batches, height, width, depth), with the
@@ -2795,41 +2839,38 @@ void BroadcastDiv4DSlow(const ArithmeticParams& params,
   // We name our variables by their Tensorflow convention, but generate C code
   // nesting loops such that the innermost loop has the smallest stride for the
   // best cache behavior.
-  for (int b = 0; b < output_shape.Dims(0); ++b) {
-    for (int y = 0; y < output_shape.Dims(1); ++y) {
-      for (int x = 0; x < output_shape.Dims(2); ++x) {
-        for (int c = 0; c < output_shape.Dims(3); ++c) {
-          output_data[Offset(output_shape, b, y, x, c)] =
-              ActivationFunctionWithMinMax(
-                  input1_data[SubscriptToIndex(desc1, b, y, x, c)] /
-                      input2_data[SubscriptToIndex(desc2, b, y, x, c)],
-                  output_activation_min, output_activation_max);
-        }
-      }
-    }
-  }
+  auto div_func = [&](int indexes[N]) {
+    output_data[SubscriptToIndex(output_desc, indexes)] =
+        ActivationFunctionWithMinMax(
+            input1_data[SubscriptToIndex(desc1, indexes)] /
+                input2_data[SubscriptToIndex(desc2, indexes)],
+            output_activation_min, output_activation_max);
+  };
+  NDOpsHelper<N>(output_desc, div_func);
 }
 
 // TODO: BroadcastDiv is intentionally duplicated from reference_ops.h.
 // For more details see the comment above the generic version of
-// BroadcastDiv4DSlow.
-inline void BroadcastDiv4DSlow(const ArithmeticParams& params,
-                               const RuntimeShape& unextended_input1_shape,
-                               const uint8* input1_data,
-                               const RuntimeShape& unextended_input2_shape,
-                               const uint8* input2_data,
-                               const RuntimeShape& unextended_output_shape,
-                               uint8* output_data) {
-  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+// BroadcastDivSlow.
+template <int N = 5>
+inline void BroadcastDivSlow(const ArithmeticParams& params,
+                             const RuntimeShape& unextended_input1_shape,
+                             const uint8* input1_data,
+                             const RuntimeShape& unextended_input2_shape,
+                             const uint8* input2_data,
+                             const RuntimeShape& unextended_output_shape,
+                             uint8* output_data) {
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), N);
+  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), N);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), N);
 
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
+  NdArrayDesc<N> desc1;
+  NdArrayDesc<N> desc2;
+  NdArrayDesc<N> output_desc;
   NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
                                       unextended_input2_shape, &desc1, &desc2);
+  CopyDimsToDesc(RuntimeShape::ExtendedShape(N, unextended_output_shape),
+                 &output_desc);
 
   TFLITE_DCHECK_GT(params.input1_offset, -256);
   TFLITE_DCHECK_LT(params.input1_offset, 256);
@@ -2838,39 +2879,31 @@ inline void BroadcastDiv4DSlow(const ArithmeticParams& params,
   TFLITE_DCHECK_GT(params.output_offset, -256);
   TFLITE_DCHECK_LT(params.output_offset, 256);
 
-  for (int b = 0; b < output_shape.Dims(0); ++b) {
-    for (int y = 0; y < output_shape.Dims(1); ++y) {
-      for (int x = 0; x < output_shape.Dims(2); ++x) {
-        for (int c = 0; c < output_shape.Dims(3); ++c) {
-          const int32 input1_val =
-              params.input1_offset +
-              input1_data[SubscriptToIndex(desc1, b, y, x, c)];
-          const int32 input2_val =
-              params.input2_offset +
-              input2_data[SubscriptToIndex(desc2, b, y, x, c)];
-          TFLITE_DCHECK_NE(input2_val, 0);
-          int recip_shift;
-          const int32 input2_inv =
-              (input2_val > 0) ? GetReciprocal(input2_val, 31, &recip_shift)
-                               : -GetReciprocal(-input2_val, 31, &recip_shift);
-          const int headroom = CountLeadingSignBits(input1_val);
-          const int32 unscaled_quotient =
-              MultiplyByQuantizedMultiplierGreaterThanOne(input1_val,
-                                                          input2_inv, headroom);
-          const int total_shift = params.output_shift - recip_shift - headroom;
-          const int32 unclamped_result =
-              params.output_offset +
-              MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                  unscaled_quotient, params.output_multiplier, total_shift);
-          const int32 clamped_output = std::min(
-              params.quantized_activation_max,
-              std::max(params.quantized_activation_min, unclamped_result));
-          output_data[Offset(output_shape, b, y, x, c)] =
-              static_cast<uint8>(clamped_output);
-        }
-      }
-    }
-  }
+  auto div_func = [&](int indexes[N]) {
+    const int32 input1_val =
+        params.input1_offset + input1_data[SubscriptToIndex(desc1, indexes)];
+    const int32 input2_val =
+        params.input2_offset + input2_data[SubscriptToIndex(desc2, indexes)];
+    TFLITE_DCHECK_NE(input2_val, 0);
+    int recip_shift;
+    const int32 input2_inv =
+        (input2_val > 0) ? GetReciprocal(input2_val, 31, &recip_shift)
+                         : -GetReciprocal(-input2_val, 31, &recip_shift);
+    const int headroom = CountLeadingSignBits(input1_val);
+    const int32 unscaled_quotient = MultiplyByQuantizedMultiplierGreaterThanOne(
+        input1_val, input2_inv, headroom);
+    const int total_shift = params.output_shift - recip_shift - headroom;
+    const int32 unclamped_result =
+        params.output_offset +
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            unscaled_quotient, params.output_multiplier, total_shift);
+    const int32 clamped_output =
+        std::min(params.quantized_activation_max,
+                 std::max(params.quantized_activation_min, unclamped_result));
+    output_data[SubscriptToIndex(output_desc, indexes)] =
+        static_cast<uint8>(clamped_output);
+  };
+  NDOpsHelper<N>(output_desc, div_func);
 }
 
 // TODO(aselle): This is not actually optimized yet.
@@ -4080,20 +4113,20 @@ inline void PopulateSoftmaxLookupTable(SoftmaxParams* data, float input_scale,
   }
 }
 
-template <typename T>
+template <typename In, typename Out>
 inline void Softmax(const SoftmaxParams& params,
-                    const RuntimeShape& input_shape, const T* input_data,
-                    const RuntimeShape& output_shape, T* output_data) {
+                    const RuntimeShape& input_shape, const In* input_data,
+                    const RuntimeShape& output_shape, Out* output_data) {
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int excluding_last_dim =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
   const int last_dim =
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
-  const int32_t clamp_max = std::numeric_limits<T>::max();
-  const int32_t clamp_min = std::numeric_limits<T>::min();
+  const int32_t clamp_max = std::numeric_limits<Out>::max();
+  const int32_t clamp_min = std::numeric_limits<Out>::min();
   for (int i = 0; i < excluding_last_dim; ++i) {
-    int32_t max_val = std::numeric_limits<T>::min();
+    int32_t max_val = std::numeric_limits<In>::min();
     // Find max quantized value.
     for (int j = 0; j < last_dim; ++j) {
       max_val = std::max(max_val, static_cast<int32_t>(input_data[j]));
@@ -4112,8 +4145,8 @@ inline void Softmax(const SoftmaxParams& params,
     for (int j = 0; j < last_dim; ++j) {
       const float prob_rescaled = table_offset[input_data[j]] * inv_sum_exp;
       const int32_t prob_quantized =
-          QuantizeSoftmaxOutput<T>(prob_rescaled, params.zero_point);
-      output_data[j] = static_cast<T>(
+          QuantizeSoftmaxOutput<Out>(prob_rescaled, params.zero_point);
+      output_data[j] = static_cast<Out>(
           std::max(std::min(clamp_max, prob_quantized), clamp_min));
     }
     input_data += last_dim;
@@ -7651,7 +7684,7 @@ inline void Transpose3D(const TransposeParams& params,
   }
 }
 
-template <typename T>
+template <typename T, int N>
 void TransposeImpl(const TransposeParams& params,
                    const RuntimeShape& input_shape, const T* input_data,
                    const RuntimeShape& output_shape, T* output_data) {
@@ -7682,19 +7715,19 @@ void TransposeImpl(const TransposeParams& params,
 
   // Reroute to the reference version if an optimized method for the given data
   // is not available.
-  reference_ops::Transpose(params, input_shape, input_data, output_shape,
-                           output_data);
+  reference_ops::Transpose<T, N>(params, input_shape, input_data, output_shape,
+                                 output_data);
 }
 
-template <typename T>
+template <typename T, int N = 5>
 void Transpose(const TransposeParams& unshrinked_params,
                const RuntimeShape& unshrinked_input_shape, const T* input_data,
                const RuntimeShape& unshrinked_output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("Transpose");
 
   const int output_size = unshrinked_output_shape.DimensionsCount();
-  TFLITE_DCHECK_LE(unshrinked_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(output_size, 4);
+  TFLITE_DCHECK_LE(unshrinked_input_shape.DimensionsCount(), N);
+  TFLITE_DCHECK_LE(output_size, N);
   TFLITE_DCHECK_EQ(output_size, unshrinked_params.perm_count);
 
   RuntimeShape shrinked_input_shape = RuntimeShape(unshrinked_input_shape);
@@ -7735,15 +7768,16 @@ void Transpose(const TransposeParams& unshrinked_params,
     TFLITE_DCHECK_NE(non_flatten_params.perm[0], 0);
 
     for (int i = 0; i < total_size; i += non_flatten_size) {
-      TransposeImpl(non_flatten_params, non_flatten_input_shape, input_data + i,
-                    non_flatten_output_shape, output_data + i);
+      TransposeImpl<T, N>(non_flatten_params, non_flatten_input_shape,
+                          input_data + i, non_flatten_output_shape,
+                          output_data + i);
     }
     return;
   }
 
   // Call non-flattened case.
-  TransposeImpl(shrinked_params, shrinked_input_shape, input_data,
-                shrinked_output_shape, output_data);
+  TransposeImpl<T, N>(shrinked_params, shrinked_input_shape, input_data,
+                      shrinked_output_shape, output_data);
 }
 
 }  // namespace optimized_ops

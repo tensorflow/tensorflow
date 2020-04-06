@@ -18,9 +18,9 @@ limitations under the License.
 #include "include/dlpack/dlpack.h"  // from @dlpack
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -41,15 +41,12 @@ struct TfDlManagedTensorCtx {
 
 // Gets tensor from eager tensor handle.
 const Tensor* GetTensorFromHandle(TFE_TensorHandle* h, TF_Status* status) {
-  if (h == nullptr || !h->handle->IsValid(&status->status)) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "The passed in handle is a nullptr");
+  if (h == nullptr || h->handle == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
     return nullptr;
   }
   tensorflow::TensorHandle* handle =
-      tensorflow::down_cast<tensorflow::TensorHandleInterface*>(h->handle.get())
-          ->Handle();
-
+      tensorflow::TensorHandleFromInterface(h->handle);
   if (handle->IsRemote()) {
     status->status = tensorflow::errors::InvalidArgument(
         "DLPack doesn't support remote tensor");
@@ -289,9 +286,8 @@ void* TFE_HandleToDLPack(TFE_TensorHandle* h, TF_Status* status) {
   return static_cast<void*>(dlm_tensor);
 }
 
-TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status) {
-  TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_Context* ctx = TFE_NewContext(opts, status);
+TFE_TensorHandle* TFE_HandleFromDLPack(void* dlm, TF_Status* status,
+                                       TFE_Context* ctx) {
   DLManagedTensor* dlmt = static_cast<DLManagedTensor*>(dlm);
   DLTensor* dl_tensor = &dlmt->dl_tensor;
   absl::optional<std::string> device_name =

@@ -39,6 +39,7 @@ load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
 load("//third_party/psimd:workspace.bzl", psimd = "repo")
 load("//third_party/pthreadpool:workspace.bzl", pthreadpool = "repo")
+load("//third_party/ruy:workspace.bzl", ruy = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
 load("//third_party/toolchains/remote_config:configs.bzl", "initialize_rbe_configs")
@@ -65,6 +66,7 @@ def initialize_third_party():
     pthreadpool()
     sobol_data()
     vulkan_headers()
+    ruy()
 
 # Sanitize a dependency so that it works correctly from code that includes
 # TensorFlow as a submodule.
@@ -148,11 +150,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "77a4cea07169b4d67df456d50deffaa100e587192657c68ee4f2b7c12ba133d1",
-        strip_prefix = "XNNPACK-479e78c7f93a5764ffb221bdead3f290c7fd8ea3",
+        sha256 = "2afaaf5f866ec714358985b123c3115043b9e099638100937743997f02bbd8cb",
+        strip_prefix = "XNNPACK-05702cf4099ad019ad1abb8ba656bfe04304f32a",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/479e78c7f93a5764ffb221bdead3f290c7fd8ea3.zip",
-            "https://github.com/google/XNNPACK/archive/479e78c7f93a5764ffb221bdead3f290c7fd8ea3.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/05702cf4099ad019ad1abb8ba656bfe04304f32a.zip",
+            "https://github.com/google/XNNPACK/archive/05702cf4099ad019ad1abb8ba656bfe04304f32a.zip",
         ],
     )
 
@@ -201,11 +203,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "eb50646c27d32791d6b09b0422f29f52b8ff0385354abd117f68aa66da1e2e92",  # SHARED_EIGEN_SHA
-        strip_prefix = "eigen-4da2c6b1974827b1999bab652a3d4703e1992d26",
+        sha256 = "62d1581a740caa74f1bf9db8552abebcd772bf12be035e9422bd59bfb0a2ba8e",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-deb93ed1bf359ac99923e3a2b90a2920b1101290",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/4da2c6b1974827b1999bab652a3d4703e1992d26/eigen-4da2c6b1974827b1999bab652a3d4703e1992d26.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/4da2c6b1974827b1999bab652a3d4703e1992d26/eigen-4da2c6b1974827b1999bab652a3d4703e1992d26.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/deb93ed1bf359ac99923e3a2b90a2920b1101290/eigen-deb93ed1bf359ac99923e3a2b90a2920b1101290.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/deb93ed1bf359ac99923e3a2b90a2920b1101290/eigen-deb93ed1bf359ac99923e3a2b90a2920b1101290.tar.gz",
         ],
     )
 
@@ -545,12 +547,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "curl",
         build_file = clean_dep("//third_party:curl.BUILD"),
-        sha256 = "d0393da38ac74ffac67313072d7fe75b1fa1010eb5987f63f349b024a36b7ffb",
-        strip_prefix = "curl-7.66.0",
+        sha256 = "01ae0c123dee45b01bbaef94c0bc00ed2aec89cb2ee0fd598e0d302a6b5e0a98",
+        strip_prefix = "curl-7.69.1",
         system_build_file = clean_dep("//third_party/systemlibs:curl.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.66.0.tar.gz",
-            "https://curl.haxx.se/download/curl-7.66.0.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/curl.haxx.se/download/curl-7.69.1.tar.gz",
+            "https://curl.haxx.se/download/curl-7.69.1.tar.gz",
         ],
     )
 
@@ -589,8 +591,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "a711a3a46039154c38eade8bef1138b77fdb05ee"
-    LLVM_SHA256 = "b070be6653ac61e42649afcda0a02dee027cd610c1e2929663ca67fdb1301679"
+    LLVM_COMMIT = "71305033d11564fe9c19e8e40200680daae41e89"
+    LLVM_SHA256 = "b3deb570e34de7850793e17a15e9576fbc6bc0229150a7cf0ff26a2cdb010ad0"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -622,12 +624,12 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "jsoncpp_git",
         build_file = clean_dep("//third_party:jsoncpp.BUILD"),
-        sha256 = "c49deac9e0933bcb7044f08516861a2d560988540b23de2ac1ad443b219afdb6",
-        strip_prefix = "jsoncpp-1.8.4",
+        sha256 = "77a402fb577b2e0e5d0bdc1cf9c65278915cdb25171e3452c68b6da8a561f8f0",
+        strip_prefix = "jsoncpp-1.9.2",
         system_build_file = clean_dep("//third_party/systemlibs:jsoncpp.BUILD"),
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/open-source-parsers/jsoncpp/archive/1.8.4.tar.gz",
-            "https://github.com/open-source-parsers/jsoncpp/archive/1.8.4.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/open-source-parsers/jsoncpp/archive/1.9.2.tar.gz",
+            "https://github.com/open-source-parsers/jsoncpp/archive/1.9.2.tar.gz",
         ],
     )
 
@@ -1043,6 +1045,16 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/GrahamDumpleton/wrapt/archive/1.11.1.tar.gz",
             "https://github.com/GrahamDumpleton/wrapt/archive/1.11.1.tar.gz",
+        ],
+    )
+    tf_http_archive(
+        name = "coremltools",
+        sha256 = "0d594a714e8a5fd5bd740ad112ef59155c0482e25fdc8f8efa5758f90abdcf1e",
+        strip_prefix = "coremltools-3.3",
+        build_file = clean_dep("//third_party:coremltools.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/github.com/apple/coremltools/archive/3.3.zip",
+            "https://github.com/apple/coremltools/archive/3.3.zip",
         ],
     )
 

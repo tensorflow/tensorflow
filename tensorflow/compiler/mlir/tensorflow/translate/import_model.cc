@@ -53,6 +53,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
@@ -110,8 +111,17 @@ using stream_executor::port::StatusOr;
 
 namespace {
 
-const char* disable_call_shape_inference_attribute_name =
-    "_disable_call_shape_inference";
+bool IsDisableCallShapeInferenceAttribute(const AttrValue& attr_value,
+                                          llvm::StringRef attr_name) {
+  return attr_name.compare("_disable_call_shape_inference") == 0 &&
+         attr_value.value_case() == AttrValue::kB;
+}
+
+bool IsOutputShapesAttribute(const AttrValue& attr_value,
+                             llvm::StringRef attr_name) {
+  return attr_name.compare("_output_shapes") == 0 &&
+         attr_value.value_case() == AttrValue::kList;
+}
 
 // This class is used to generate new MLIR function name strings that are both
 // unique in the TF function library `flib_` and unique among the name strings
@@ -1442,7 +1452,8 @@ mlir::Operation* ImporterBase::createOperation(
       result.location, types, control_operands,
       mlir::ArrayRef<mlir::NamedAttribute>{});
   island.body().push_back(new mlir::Block);
-  mlir::OpBuilder island_builder(&island.GetBody());
+  mlir::OpBuilder island_builder =
+      mlir::OpBuilder::atBlockEnd(&island.GetBody());
 
   // Create the operation inside the island now.
   mlir::Operation* inner_op;
@@ -1451,9 +1462,7 @@ mlir::Operation* ImporterBase::createOperation(
     for (const auto& name_and_value : node.attrs()) {
       const auto& attr_name = name_and_value.first;
       const AttrValue& attr_value = name_and_value.second;
-      if (strcmp(attr_name.c_str(),
-                 disable_call_shape_inference_attribute_name) == 0 &&
-          attr_value.value_case() == AttrValue::kB) {
+      if (IsDisableCallShapeInferenceAttribute(attr_value, attr_name)) {
         disable_call_shape_inference = attr_value.b();
       }
     }
@@ -1596,15 +1605,25 @@ Status ImporterBase::ConvertNode(const Node& node) {
   using FuncPairType = std::pair<const std::string*, const AttrValue*>;
   std::vector<FuncPairType> funcs;
   result.attributes.reserve(node.attrs().size() + 2);
+  auto abstract_op = result.name.getAbstractOperation();
+  auto derived_op =
+      abstract_op
+          ? abstract_op->getInterface<mlir::DerivedAttributeOpInterface>()
+          : nullptr;
   for (const auto& name_and_value : node.attrs()) {
     const auto& attr_name = name_and_value.first;
+    // Skip adding derived attributes to the generated op.
+    if (derived_op && derived_op->isDerivedAttribute(attr_name)) continue;
     const AttrValue& attr_value = name_and_value.second;
-    // LegacyCall can only represent _diable_call_shape_inference attribute.
-    // If a call has other attributes, can't convert it to LegacyCall.
+
+    // Remove _output_shapes attribute that will be added by the exporter.
+    if (IsOutputShapesAttribute(attr_value, attr_name)) continue;
+
+    // We represent the _diable_call_shape_inference attribute and remove
+    // the _output_shapes attribute for LegacyCall. If a call has other
+    // attributes, we can't convert it to LegacyCall.
     if (convert_to_legacy_call &&
-        (strcmp(attr_name.c_str(),
-                disable_call_shape_inference_attribute_name) ||
-         attr_value.value_case() != AttrValue::kB)) {
+        !IsDisableCallShapeInferenceAttribute(attr_value, attr_name)) {
       convert_to_legacy_call = false;
     }
     if (attr_value.value_case() == AttrValue::kFunc) {
@@ -2910,12 +2929,11 @@ class SavedModelSignatureDefImporter {
   // Converts the SavedModel to the SavedModel dialect. Creates an MLIR function
   // for each signature.
   StatusOr<mlir::OwningModuleRef> ConvertSignatures();
-  Status ConvertSignature(
-      const GraphDef& graphdef, const std::string& sig_def_key,
-      const std::map<std::string, TensorInfo>& inputs_sorted,
-      const std::map<std::string, TensorInfo>& outputs_sorted,
-      const GraphDebugInfo& debug_info,
-      const FunctionLibraryDefinition& flib_def);
+  Status ConvertSignature(const GraphDef& graphdef,
+                          const std::string& sig_def_key,
+                          const SignatureDef& signature_def,
+                          const GraphDebugInfo& debug_info,
+                          const FunctionLibraryDefinition& flib_def);
 
   // Creates GlobalTensorOp for each variable and moves each VarHandle op to
   // the enclosing function's arguments.
@@ -2930,10 +2948,7 @@ class SavedModelSignatureDefImporter {
       const llvm::SmallVectorImpl<mlir::TF::VarHandleOp>& ops);
 
   GraphImportConfig::InputArrays ParseInputArrays(
-      const std::map<std::string, TensorInfo>& inputs);
-
-  std::vector<std::string> ParseOutputArrays(
-      const std::map<std::string, TensorInfo>& outputs);
+      const std::vector<std::pair<std::string, TensorInfo>>& inputs);
 
   const SavedModelBundle& bundle_;
   mlir::OwningModuleRef module_;
@@ -2961,14 +2976,8 @@ SavedModelSignatureDefImporter::ConvertSignatures() {
       continue;
     }
 
-    // protobuf::Map doesn't provide stable iteration order so use std::map
-    std::map<std::string, TensorInfo> inputs_sorted(
-        signature_def.inputs().begin(), signature_def.inputs().end());
-    std::map<std::string, TensorInfo> outputs_sorted(
-        signature_def.outputs().begin(), signature_def.outputs().end());
-
-    TF_RETURN_IF_ERROR(ConvertSignature(graphdef, sig_def_key, inputs_sorted,
-                                        outputs_sorted, debug_info, flib_def));
+    TF_RETURN_IF_ERROR(ConvertSignature(graphdef, sig_def_key, signature_def,
+                                        debug_info, flib_def));
   }
   TF_RETURN_IF_ERROR(LiftVariables());
 
@@ -2981,13 +2990,26 @@ SavedModelSignatureDefImporter::ConvertSignatures() {
 
 Status SavedModelSignatureDefImporter::ConvertSignature(
     const GraphDef& graphdef, const std::string& sig_def_key,
-    const std::map<std::string, TensorInfo>& inputs_sorted,
-    const std::map<std::string, TensorInfo>& outputs_sorted,
-    const GraphDebugInfo& debug_info,
+    const SignatureDef& signature_def, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def) {
+  // Create local vectors for the input and output and sort them to be
+  // deterministic. We don't want anyone to really depend on the order, client
+  // should lookup argument/result mapping by attribute name.
+  // To avoid accidentally depending on the order we use an unintuitive sorting.
+  std::vector<std::pair<std::string, TensorInfo>> inputs(
+      signature_def.inputs().begin(), signature_def.inputs().end());
+  llvm::sort(inputs, [](const auto& lhs, const auto& rhs) {
+    return lhs.first.size() < rhs.first.size() || lhs.first > rhs.first;
+  });
+  std::vector<std::pair<std::string, TensorInfo>> outputs(
+      signature_def.outputs().begin(), signature_def.outputs().end());
+  llvm::sort(outputs, [](const auto& lhs, const auto& rhs) {
+    return lhs.first.size() < rhs.first.size() || lhs.first > rhs.first;
+  });
+
   GraphImportConfig specs;
-  specs.inputs = ParseInputArrays(inputs_sorted);
-  specs.outputs = ParseOutputArrays(outputs_sorted);
+  specs.inputs = ParseInputArrays(inputs);
+  for (auto& output : outputs) specs.outputs.push_back(output.second.name());
 
   // Remove unused nodes and create sub-graphdef.
   GraphDef sub_graph_def;
@@ -3023,11 +3045,11 @@ Status SavedModelSignatureDefImporter::ConvertSignature(
                   builder.getStrArrayAttr({sig_def_key}));
 
   // Transfer input and output parameter names to index_path attributes.
-  for (auto input_and_idx : llvm::enumerate(inputs_sorted)) {
+  for (auto input_and_idx : llvm::enumerate(inputs)) {
     func_op.setArgAttr(input_and_idx.index(), "tf_saved_model.index_path",
                        builder.getStrArrayAttr({input_and_idx.value().first}));
   }
-  for (auto output_and_idx : llvm::enumerate(outputs_sorted)) {
+  for (auto output_and_idx : llvm::enumerate(outputs)) {
     func_op.setResultAttr(
         output_and_idx.index(), "tf_saved_model.index_path",
         builder.getStrArrayAttr({output_and_idx.value().first}));
@@ -3162,7 +3184,7 @@ Status SavedModelSignatureDefImporter::ReadVariablesFromSession(
 }
 
 GraphImportConfig::InputArrays SavedModelSignatureDefImporter::ParseInputArrays(
-    const std::map<std::string, TensorInfo>& inputs) {
+    const std::vector<std::pair<std::string, TensorInfo>>& inputs) {
   GraphImportConfig::InputArrays results;
   for (const auto& iter : inputs) {
     const auto& tensor_info = iter.second;
@@ -3174,24 +3196,8 @@ GraphImportConfig::InputArrays SavedModelSignatureDefImporter::ParseInputArrays(
     array_info.imported_dtype = tensor_info.dtype();
     array_info.shape = tensor_info.tensor_shape();
 
-    std::vector<std::string> node_names =
-        absl::StrSplit(tensor_info.name(), ':');
-
-    results.insert(std::pair<std::string, ArrayInfo>(node_names.at(0),
+    results.insert(std::pair<std::string, ArrayInfo>(tensor_info.name(),
                                                      std::move(array_info)));
-  }
-  return results;
-}
-
-std::vector<std::string> SavedModelSignatureDefImporter::ParseOutputArrays(
-    const std::map<std::string, TensorInfo>& outputs) {
-  std::vector<std::string> results;
-  for (const auto& iter : outputs) {
-    const auto& tensor_info = iter.second;
-
-    std::vector<std::string> node_names =
-        absl::StrSplit(tensor_info.name(), ':');
-    results.push_back(node_names.at(0));
   }
   return results;
 }

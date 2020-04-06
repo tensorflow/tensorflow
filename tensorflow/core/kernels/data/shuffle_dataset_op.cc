@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
@@ -761,8 +762,16 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   int64 count = 1;
   if (op_version_ == 2) {
     SeedGenerator* seed_generator = nullptr;
-    OP_REQUIRES_OK(
-        ctx, LookupResource(ctx, HandleFromInput(ctx, 2), &seed_generator));
+    Status s = LookupResource(ctx, HandleFromInput(ctx, 2), &seed_generator);
+    if (errors::IsNotFound(s)) {
+      LOG(WARNING) << "Failed to find seed generator resource. Falling back to "
+                      "using a non-deterministically-seeded seed generator.";
+      *output =
+          new ShuffleDatasetOp::Dataset(ctx, input, buffer_size, Seeds(0, 0),
+                                        count, reshuffle_each_iteration_);
+      return;
+    }
+    OP_REQUIRES_OK(ctx, s);
 
     // Create a fresh handle for the resource because the input handle can
     // become invalid after this op executes.

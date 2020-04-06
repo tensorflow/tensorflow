@@ -360,7 +360,10 @@ an output element, this operation computes \\(y = |x|\\).
   let hasFolder = 1;
 }
 
-def TFL_AddOp : TFL_Op<"add", [ResultsBroadcastableShape, NoSideEffect, Commutative]> {
+def TFL_AddOp : TFL_Op<"add", [ResultsBroadcastableShape,
+                               NoSideEffect,
+                               Commutative,
+                               TFL_GpuTargetOp]> {
   let summary = "Addition operator";
 
   let description = [{
@@ -576,7 +579,8 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
     NoSideEffect,
     PredOpTrait<"values and output must have same element type",
       TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    SameOperandsAndResultsScale
+    SameOperandsAndResultsScale,
+    TFL_GpuTargetOp
   ]> {
   let summary = "Concatenation operator";
 
@@ -702,7 +706,10 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0> {
 }
 
 def TFL_CosOp: TFL_Op<"cos", [
-    NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
+    NoSideEffect,
+    SameOperandsAndResultType,
+    NoQuantizableResult,
+    TFL_GpuTargetOp]> {
   let summary = "Cosine operator";
 
   let description = [{
@@ -751,7 +758,8 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
     TFL_ChannelDimIndexInterface,
     AffineOpCoefficient<-1, 1>,
-    TFL_SparseOp]> {
+    TFL_SparseOp,
+    TFL_GpuTargetOp]> {
   let summary = "Fully connected op";
 
   let arguments = (ins
@@ -822,12 +830,12 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$params,
+    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8, TFL_Str]>:$params,
     TFL_I32OrI64Tensor:$indices
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$output
+    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8, TFL_Str]>:$output
   );
 }
 
@@ -1103,7 +1111,10 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
 def TFL_DivOp : TFL_Op<"div", [
   // TODO(fengliuai): NoQuantizableResult is only correct for int8
   // quantization. update to handle Uint8 quantization.
-    ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
+    ResultsBroadcastableShape,
+    NoSideEffect,
+    NoQuantizableResult,
+    TFL_GpuTargetOp]> {
   let summary = "Division operator";
 
   let description = [{
@@ -1182,7 +1193,9 @@ def TFL_EqualOp: TFL_Op<"equal", [Commutative, ResultsBroadcastableShape,
   let builders = [TFL_ComparisonBinaryBuilder];
 }
 
-def TFL_ExpOp: TFL_Op<"exp", [NoSideEffect, SameOperandsAndResultType]> {
+def TFL_ExpOp: TFL_Op<"exp", [NoSideEffect,
+                              SameOperandsAndResultType,
+                              TFL_GpuTargetOp]> {
   let summary = "Natural exponentiation operator";
 
   let description = [{
@@ -1364,7 +1377,8 @@ def TFL_GreaterOp : TFL_Op<"greater", [
 }
 
 def TFL_HardSwishOp: TFL_Op<"hard_swish", [NoSideEffect,
-                                          SameOperandsAndResultShape]> {
+                                          SameOperandsAndResultShape,
+                                          TFL_GpuTargetOp]> {
   let summary = "Hardswish activation function.";
   let description = [{
     Computes hard-swish activation function
@@ -1499,7 +1513,8 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
     // zero_point = 0
     // scale = 1. / (max_value + 1)
     FixedResultScale<Int8UniformQuantizedType<-128, 390625, -8>>,
-    FixedResultScale<UInt8UniformQuantizedType<0, 390625, -8>>]> {
+    FixedResultScale<UInt8UniformQuantizedType<0, 390625, -8>>,
+    TFL_GpuTargetOp]> {
   let summary = "Logistic operator";
 
   let description = [{
@@ -1651,7 +1666,11 @@ def TFL_MaxUnpooling2DOp :
 }
 
 def TFL_MaximumOp : TFL_Op<"maximum", [
-    ResultsBroadcastableShape, NoSideEffect, Commutative, SameOperandsAndResultsScale]> {
+    ResultsBroadcastableShape,
+    NoSideEffect,
+    Commutative,
+    SameOperandsAndResultsScale,
+    TFL_GpuTargetOp]> {
   let summary = "Max operator";
   let description = [{
     Element-wise max operation.
@@ -1849,7 +1868,11 @@ def TFL_ReduceProdOp: TFL_Op<"reduce_prod", [NoSideEffect]> {
 }
 
 def TFL_MinimumOp : TFL_Op<"minimum", [
-    ResultsBroadcastableShape, NoSideEffect, Commutative, SameOperandsAndResultsScale]> {
+    ResultsBroadcastableShape,
+    NoSideEffect,
+    Commutative,
+    SameOperandsAndResultsScale,
+    TFL_GpuTargetOp]> {
   let summary = "Min operator";
   let description = [{
     Element-wise min operation.
@@ -1869,7 +1892,10 @@ def TFL_MinimumOp : TFL_Op<"minimum", [
   let hasOptions = 0;
 }
 
-def TFL_MulOp : TFL_Op<"mul", [ResultsBroadcastableShape, NoSideEffect, Commutative]> {
+def TFL_MulOp : TFL_Op<"mul", [ResultsBroadcastableShape,
+                               NoSideEffect,
+                               Commutative,
+                               TFL_GpuTargetOp]> {
   let summary = "Multiplication operator";
 
   let description = [{
@@ -2102,7 +2128,8 @@ def TFL_RankOp: TFL_Op<"rank", [NoSideEffect]> {
 
 def TFL_ReluOp: TFL_Op<"relu", [NoSideEffect,
                                 SameOperandsAndResultShape,
-                                SameOperandsAndResultsScale]> {
+                                SameOperandsAndResultsScale,
+                                TFL_GpuTargetOp]> {
   let summary = "Relu operator";
 
   let description = [{
@@ -2117,7 +2144,8 @@ def TFL_ReluOp: TFL_Op<"relu", [NoSideEffect,
 
 def TFL_Relu6Op: TFL_Op<"relu6", [NoSideEffect,
                                   SameOperandsAndResultShape,
-                                  SameOperandsAndResultsScale]> {
+                                  SameOperandsAndResultsScale,
+                                  TFL_GpuTargetOp]> {
   let summary = "Relu6 operator";
 
   let description = [{
@@ -2146,7 +2174,7 @@ def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [NoSideEffect,
 }
 
 def TFL_ReshapeOp: TFL_Op<"reshape", [
-    NoSideEffect, SameOperandsAndResultsScale]> {
+    NoSideEffect, SameOperandsAndResultsScale, TFL_GpuTargetOp]> {
   let summary = "Reshape operator";
 
   let description = [{
@@ -2363,7 +2391,8 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
     // zero_point = 0
     // scale = 1. / (max_value + 1)
     FixedResultScale<Int8UniformQuantizedType<-128, 390625, -8>>,
-    FixedResultScale<UInt8UniformQuantizedType<0, 390625, -8>>]> {
+    FixedResultScale<UInt8UniformQuantizedType<0, 390625, -8>>,
+    TFL_GpuTargetOp]> {
   let summary = "Softmax operator";
 
   let description = [{
@@ -2903,7 +2932,7 @@ def TFL_CastOp : TFL_Op<"cast", [
 
 
 def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
-                     NoSideEffect, TFL_OperandHasRank<1, 2>]> {
+                     NoSideEffect, TFL_OperandHasRank<1, 2>, TFL_GpuTargetOp]> {
   let summary = "MirrorPad Operator. Pads a tensor with mirrored values.";
 
   let description = [{

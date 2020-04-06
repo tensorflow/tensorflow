@@ -128,6 +128,40 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(len(layer.get_updates_for(x1)), 2)
     self.assertEqual(len(layer.get_updates_for(None)), 0)
 
+  def test_get_layer(self):
+    # create a simple network
+    x = input_layer_lib.Input(shape=(32,))
+    dense_a = layers.Dense(4, name='dense_a')
+    dense_b = layers.Dense(2, name='dense_b')
+    y = dense_b(dense_a(x))
+    network = network_lib.Network(x, y, name='dense_network')
+
+    # test various get_layer by index
+    self.assertEqual(network.get_layer(index=1), dense_a)
+
+    # test invalid get_layer by index
+    with self.assertRaisesRegexp(
+        ValueError, 'Was asked to retrieve layer at index ' + str(3) +
+        ' but model only has ' + str(len(network.layers)) + ' layers.'):
+      network.get_layer(index=3)
+
+    # test that only one between name and index is requested
+    with self.assertRaisesRegexp(ValueError,
+                                 'Provide only a layer name or a layer index'):
+      network.get_layer(index=1, name='dense_b')
+
+    # test that a name or an index must be provided
+    with self.assertRaisesRegexp(ValueError,
+                                 'Provide either a layer name or layer index.'):
+      network.get_layer()
+
+    # test various get_layer by name
+    self.assertEqual(network.get_layer(name='dense_a'), dense_a)
+
+    # test invalid get_layer by name
+    with self.assertRaisesRegexp(ValueError, 'No such layer: dense_c.'):
+      network.get_layer(name='dense_c')
+
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testTopologicalAttributes(self):
     # test layer attributes / methods related to cross-layer connectivity.

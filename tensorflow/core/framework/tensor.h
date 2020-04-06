@@ -571,19 +571,19 @@ class Tensor {
       int64 begin) const;
 
   /// Render the first `max_entries` values in `*this` into a string.
-  string SummarizeValue(int64 max_entries, bool print_v2 = false) const;
+  std::string SummarizeValue(int64 max_entries, bool print_v2 = false) const;
 
   /// A human-readable summary of the tensor suitable for debugging.
   // `num_values` is the number of actual data values in the tensor
   // included in the message. If the tensor might be resident in
   // GPU/TPU memory use DeviceSafeDebugString instead.
-  string DebugString(int num_values) const;
-  string DebugString() const { return DebugString(3); }
+  std::string DebugString(int num_values) const;
+  std::string DebugString() const { return DebugString(3); }
 
   // Variant of DebugString() that should be used for possibly non-CPU tensors.
   // If the tensor is not resident on CPU, we can't read its values as
   // DebugString() does.
-  string DeviceSafeDebugString() const;
+  std::string DeviceSafeDebugString() const;
 
   /// Fill in the `TensorDescription` proto with metadata about the
   /// tensor that is useful for monitoring and debugging.

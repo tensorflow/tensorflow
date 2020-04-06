@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <xtensa/tie/xt_hifi2.h>
 
+#include <cstdint>
+
 // INT24 MIN/MAX
 #define INT24_MIN -8388608
 #define INT24_MAX 8388607
@@ -28,9 +30,9 @@ limitations under the License.
 // the "signed" or upper 8bits are discarded.
 inline ae_p24x2s AE_CONVERT_INT32_24x2(int32_t v) {
   if (v > INT24_MIN && v < INT24_MAX) {
-    return *((ae_p24s*)&v);
+    return *reinterpret_cast<ae_p24s*>(&v);
   } else {
-    return (ae_p24s) * ((ae_p24f*)&v);
+    return static_cast<ae_p24s>(*reinterpret_cast<ae_p24f*>(&v));
   }
 }
 

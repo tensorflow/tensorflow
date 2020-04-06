@@ -138,6 +138,9 @@ Status DepthwiseConv2DNativeShapeWithExplicitPadding(
 // explicit padding.
 Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c);
 
+// Shape function for Conv2DBackpropInput.
+Status Conv2DBackpropInputShape(shape_inference::InferenceContext* c);
+
 // Shape function for AvgPool-like operations.
 Status AvgPoolShape(shape_inference::InferenceContext* c);
 

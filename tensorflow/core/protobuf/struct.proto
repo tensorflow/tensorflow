@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
+import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 
@@ -60,6 +61,8 @@ message StructuredValue {
     TensorSpecProto tensor_spec_value = 33;
     // Represents a value for tf.TypeSpec.
     TypeSpecProto type_spec_value = 34;
+    // Represents a value for tf.BoundedTensorSpec.
+    BoundedTensorSpecProto bounded_tensor_spec_value = 35;
 
     // Represents a list of `Value`.
     ListValue list_value = 51;
@@ -103,11 +106,20 @@ message NamedTupleValue {
   repeated PairValue values = 2;
 }
 
-// A protobuf to tf.TensorSpec.
+// A protobuf to represent tf.TensorSpec.
 message TensorSpecProto {
   string name = 1;
   tensorflow.TensorShapeProto shape = 2;
   tensorflow.DataType dtype = 3;
+}
+
+// A protobuf to represent tf.BoundedTensorSpec.
+message BoundedTensorSpecProto {
+  string name = 1;
+  tensorflow.TensorShapeProto shape = 2;
+  tensorflow.DataType dtype = 3;
+  tensorflow.TensorProto minimum = 4;
+  tensorflow.TensorProto maximum = 5;
 }
 
 // Represents a tf.TypeSpec

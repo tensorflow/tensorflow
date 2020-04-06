@@ -92,8 +92,15 @@ class FullyConnectedBuffers : public NodeShader {
     source += "  $output_data_0[0, 0, gid.x] = value_0$;";
 
     std::vector<Variable> shared_variables = {
+#ifdef __APPLE__
+        // MoltenVK has problems with shared memory sized using the workgroup
+        // size. Fortunately with Metal a fixed workgroup size of 32 seems to
+        // give optimal results.
+        {"sh_mem", std::vector<float4>(32)},
+#else
         // The actual size of sh_mem depends on the WorkgroupSize
         {"sh_mem", std::vector<float4>(0)},
+#endif
     };
 
     *generated_code = {

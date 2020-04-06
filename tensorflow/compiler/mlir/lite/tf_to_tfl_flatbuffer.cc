@@ -160,25 +160,17 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
 }
 
 StatusOr<mlir::OwningModuleRef> ImportSavedModel(
-    bool import_saved_model, bool import_saved_model_v1,
-    const std::string& input_filename, const std::string& saved_model_tags,
-    const std::string& saved_model_exported_names, mlir::MLIRContext* context) {
-  if (import_saved_model) {
-    std::unordered_set<std::string> tags =
-        absl::StrSplit(saved_model_tags, ',');
-    std::vector<std::string> exported_names =
-        absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
-
+    const std::string& input_filename, const int saved_model_version,
+    const std::unordered_set<std::string>& tags,
+    absl::Span<std::string> exported_names, mlir::MLIRContext* context) {
+  if (saved_model_version == 2) {
     auto module = tensorflow::SavedModelObjectGraphToMlirImport(
-        input_filename, tags, absl::Span<std::string>(exported_names), context);
+        input_filename, tags, exported_names, context);
     if (!module)
       return tensorflow::errors::InvalidArgument("fail to open input file");
 
     return module;
-  } else if (import_saved_model_v1) {
-    std::unordered_set<std::string> tags =
-        absl::StrSplit(saved_model_tags, ',');
-
+  } else if (saved_model_version == 1) {
     auto module = tensorflow::SavedModelSignatureDefsToMlirImport(
         input_filename, tags, context);
 
