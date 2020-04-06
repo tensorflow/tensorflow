@@ -137,10 +137,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     to_save = root.f.get_concrete_function()
     return (to_save, calibration_gen)
 
-  @parameterized.named_parameters(
-      ('EnableMlirQuantizer', True),  # enable mlir quantizer
-      ('DisableMlirQuantizer', False))  # disable mlir quantizer
-  def testPostTrainingCalibrateAndQuantize(self, mlir_quantizer):
+  def testPostTrainingCalibrateAndQuantize(self):
     func, calibration_gen = self._getCalibrationQuantizeModel()
 
     # Convert float model.
@@ -152,7 +149,6 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.representative_dataset = calibration_gen
-    quantized_converter._experimental_new_quantizer = mlir_quantizer
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 
@@ -169,10 +165,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite), len(float_tflite))
 
-  @parameterized.named_parameters(
-      ('EnableMlirQuantizer', True),  # enable mlir quantizer
-      ('DisableMlirQuantizer', False))  # disable mlir quantizer
-  def testCalibrateAndQuantizeBuiltinInt8(self, mlir_quantizer):
+  def testCalibrateAndQuantizeBuiltinInt8(self):
     func, calibration_gen = self._getCalibrationQuantizeModel()
 
     # Convert float model.
@@ -187,7 +180,6 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
         lite.OpsSet.TFLITE_BUILTINS_INT8
     ]
     quantized_converter.representative_dataset = calibration_gen
-    quantized_converter._experimental_new_quantizer = mlir_quantizer
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 

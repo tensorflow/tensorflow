@@ -23,8 +23,8 @@ limitations under the License.
 #include <limits>
 #include <utility>
 
-#include "tensorflow/lite/experimental/ruy/ruy/detect_arm.h"
-#include "tensorflow/lite/experimental/ruy/ruy/ruy.h"
+#include "ruy/detect_arm.h"  // from @ruy
+#include "ruy/ruy.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"

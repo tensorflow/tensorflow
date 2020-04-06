@@ -1,5 +1,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
+    "cc_header_only_library",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -65,6 +66,14 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":core_cpu_internal",
+    ],
+)
+
+cc_header_only_library(
+    name = "core_cpu_headers_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":core_cpu_lib",
     ],
 )
 

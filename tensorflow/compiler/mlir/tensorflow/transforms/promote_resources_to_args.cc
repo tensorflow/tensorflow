@@ -258,13 +258,13 @@ LogicalResult PromoteResourcesToArguments(FuncOp function) {
 }
 
 class PromoteResourcesToArgsPass
-    : public ModulePass<PromoteResourcesToArgsPass> {
+    : public OperationPass<PromoteResourcesToArgsPass, ModuleOp> {
  public:
-  void runOnModule() override;
+  void runOnOperation() override;
 };
 
-void PromoteResourcesToArgsPass::runOnModule() {
-  ModuleOp module = getModule();
+void PromoteResourcesToArgsPass::runOnOperation() {
+  ModuleOp module = getOperation();
   FuncOp main_func = module.lookupSymbol<FuncOp>("main");
   if (!main_func) return;
 

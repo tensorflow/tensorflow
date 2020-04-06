@@ -171,6 +171,7 @@ filegroup(
         "//third_party/fft2d:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
         "//third_party/icu/data:LICENSE",
+        "@ruy//:LICENSE",
         "@arm_neon_2_x86_sse//:LICENSE",
         "@astunparse_archive//:LICENSE",
         "@astor_archive//:LICENSE",

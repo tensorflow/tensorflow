@@ -40,8 +40,8 @@ namespace {
 constexpr char kShardingAttr[] = "xla_hlo.sharding";
 
 struct TPUShardingIdentificationPass
-    : public ModulePass<TPUShardingIdentificationPass> {
-  void runOnModule() override;
+    : public OperationPass<TPUShardingIdentificationPass, ModuleOp> {
+  void runOnOperation() override;
 };
 
 // XlaSharding op may be direct user of inputs but it may also be followed by
@@ -176,9 +176,9 @@ void IdentifyXlaShardingForTPUComputation(Builder* builder,
                       builder->getStrArrayAttr(sharding_for_rets));
 }
 
-void TPUShardingIdentificationPass::runOnModule() {
-  Builder builder(getModule().getContext());
-  getModule().walk([&](tf_device::LaunchFuncOp launch_func) {
+void TPUShardingIdentificationPass::runOnOperation() {
+  Builder builder(getOperation().getContext());
+  getOperation().walk([&](tf_device::LaunchFuncOp launch_func) {
     IdentifyXlaShardingForTPUComputation(&builder, launch_func);
   });
 }

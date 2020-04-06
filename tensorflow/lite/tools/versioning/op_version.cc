@@ -385,6 +385,20 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_GATHER_ND:
+      if (!op_sig.input_types.empty() &&
+          op_sig.input_types.at(0) == TensorType_STRING) {
+        return 2;
+      }
+      return 1;
+
+    case BuiltinOperator_DIV:
+      if (op_sig.options.broadcast.need_broadcast &&
+          op_sig.options.broadcast.num_dims > 4) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_ADD:
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_PAD:
@@ -525,6 +539,7 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
     } break;
 
     case BuiltinOperator_SUB:
+    case BuiltinOperator_DIV:
     case BuiltinOperator_MAXIMUM:
     case BuiltinOperator_MINIMUM: {
       op_sig.options.broadcast.need_broadcast =
