@@ -156,7 +156,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
   Supported types:
 
-  Elements can be nested structures of tuples, named tuples, and dictionaries.
+  Elements can be nested structures of tuples, named tuples, attr classes, and dictionaries.
   Element components can be of any type representable by `tf.TypeSpec`,
   including `tf.Tensor`, `tf.data.Dataset`, `tf.sparse.SparseTensor`,
   `tf.RaggedTensor`, and `tf.TensorArray`.
