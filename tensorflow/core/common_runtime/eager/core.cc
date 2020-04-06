@@ -41,7 +41,7 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
     auto* custom_device = absl::get<CustomDevice*>(device());
     TensorHandle* copy;
     *status = custom_device->CopyTensorFromDevice(
-        this, "/job:localhost/task:0/replica:0/device:CPU:0", &copy);
+        this, "/job:localhost/replica:0/task:0/device:CPU:0", &copy);
     if (status->ok()) {
       return copy->Resolve(status);
     } else {
