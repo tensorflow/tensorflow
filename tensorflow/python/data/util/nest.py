@@ -35,7 +35,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import six as _six
+
+import attr
 
 from tensorflow.python import _pywrap_utils
 from tensorflow.python.framework import sparse_tensor as _sparse_tensor
@@ -73,6 +76,9 @@ def _sequence_like(instance, args):
         all(isinstance(f, _six.string_types) for f in instance._fields)):
     # This is a namedtuple
     return type(instance)(*args)
+  elif attr.has(instance):
+    # This is an attr class
+    return type(instance)(*args)
   else:
     # Not a namedtuple
     return type(instance)(args)
@@ -87,6 +93,10 @@ def _yield_value(iterable):
     # corresponding `OrderedDict` to pack it back).
     for key in _sorted(iterable):
       yield iterable[key]
+  elif attr.has(iterable):
+    d = attr.asdict(iterable, dict_factory=collections.OrderedDict)
+    for value in _six.itervalues(d):
+      yield value
   elif isinstance(iterable, _sparse_tensor.SparseTensorValue):
     yield iterable
   else:

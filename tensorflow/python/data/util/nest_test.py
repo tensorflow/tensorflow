@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 
+import attr
 import numpy as np
 
 from tensorflow.python.data.util import nest
@@ -42,6 +43,21 @@ class NestTest(test.TestCase):
                                                  ("d", "e", ("f", "g"), "h")))
     point = collections.namedtuple("Point", ["x", "y"])
     structure = (point(x=4, y=2), ((point(x=1, y=0),),))
+    flat = [4, 2, 1, 0]
+    self.assertEqual(nest.flatten(structure), flat)
+    restructured_from_flat = nest.pack_sequence_as(structure, flat)
+    self.assertEqual(restructured_from_flat, structure)
+    self.assertEqual(restructured_from_flat[0].x, 4)
+    self.assertEqual(restructured_from_flat[0].y, 2)
+    self.assertEqual(restructured_from_flat[1][0][0].x, 1)
+    self.assertEqual(restructured_from_flat[1][0][0].y, 0)
+
+    @attr.s
+    class PointAttr:
+        x = attr.ib()
+        y = attr.ib()
+
+    structure = (PointAttr(x=4, y=2), ((PointAttr(x=1, y=0),),))
     flat = [4, 2, 1, 0]
     self.assertEqual(nest.flatten(structure), flat)
     restructured_from_flat = nest.pack_sequence_as(structure, flat)

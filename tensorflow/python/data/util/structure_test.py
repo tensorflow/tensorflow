@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 
+import attr
 from absl.testing import parameterized
 import numpy as np
 import wrapt
@@ -747,6 +748,17 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
     spec = structure.type_spec_from_value(elem)
     self.assertIsInstance(spec, CustomMap)
     self.assertEqual(spec["foo"], tensor_spec.TensorSpec([], dtypes.float32))
+
+  def testAttrClass(self):
+    @attr.s
+    class AttrClass:
+        x = attr.ib()
+        y = attr.ib()
+
+    elem = AttrClass(x=constant_op.constant(1.), y=constant_op.constant(2.))
+    spec = structure.type_spec_from_value(elem)
+    self.assertIsInstance(spec, AttrClass)
+    self.assertEqual(spec.x, tensor_spec.TensorSpec([], dtypes.float32))
 
   def testObjectProxy(self):
     nt_type = collections.namedtuple("A", ["x", "y"])
