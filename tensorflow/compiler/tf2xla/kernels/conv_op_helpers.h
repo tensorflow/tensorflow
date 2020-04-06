@@ -18,17 +18,12 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 // This header exposes utilities for translating TensorFlow convolution ops into
 // XLA ops.
