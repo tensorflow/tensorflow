@@ -165,14 +165,8 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
-void* TanhInit(TfLiteContext* context, const char* buffer, size_t length) {
-  TanhOpData* data = new TanhOpData();
-  return data;
-}
-
-TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
-  TanhOpData* data = reinterpret_cast<TanhOpData*>(node->user_data);
-
+TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node,
+                         TanhOpData* data) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, 0);
@@ -233,7 +227,9 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
-  TanhOpData* data = reinterpret_cast<TanhOpData*>(node->user_data);
+  TanhOpData data;
+  TanhPrepare(context, node, &data);
+
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
   switch (input->type) {
@@ -244,7 +240,7 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
     } break;
     case kTfLiteInt16: {
       TanhParams params;
-      params.input_left_shift = data->input_left_shift;
+      params.input_left_shift = data.input_left_shift;
       reference_ops::Tanh(params, GetTensorShape(input),
                           GetTensorData<int16_t>(input), GetTensorShape(output),
                           GetTensorData<int16_t>(output));
@@ -253,10 +249,10 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteUInt8: {
       TanhParams params;
       params.input_zero_point = input->params.zero_point;
-      params.input_range_radius = data->input_range_radius;
-      params.input_multiplier = data->input_multiplier;
-      params.input_left_shift = data->input_left_shift;
-      optimized_ops::Tanh16bitPercision(
+      params.input_range_radius = data.input_range_radius;
+      params.input_multiplier = data.input_multiplier;
+      params.input_left_shift = data.input_left_shift;
+      optimized_ops::Tanh16bitPrecision(
           params, GetTensorShape(input), GetTensorData<uint8_t>(input),
           GetTensorShape(output), GetTensorData<uint8_t>(output));
 
@@ -265,10 +261,10 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8: {
       TanhParams params;
       params.input_zero_point = input->params.zero_point;
-      params.input_range_radius = data->input_range_radius;
-      params.input_multiplier = data->input_multiplier;
-      params.input_left_shift = data->input_left_shift;
-      optimized_ops::Tanh16bitPercision(
+      params.input_range_radius = data.input_range_radius;
+      params.input_multiplier = data.input_multiplier;
+      params.input_left_shift = data.input_left_shift;
+      optimized_ops::Tanh16bitPrecision(
           params, GetTensorShape(input), GetTensorData<int8_t>(input),
           GetTensorShape(output), GetTensorData<int8_t>(output));
 
@@ -310,9 +306,14 @@ TfLiteRegistration* Register_RELU6() {
 }
 
 TfLiteRegistration* Register_TANH() {
-  static TfLiteRegistration r = {activations::TanhInit,
-                                 /*free*/ nullptr, activations::TanhPrepare,
-                                 activations::TanhEval};
+  static TfLiteRegistration r = {/*init*/ nullptr,
+                                 /*free*/ nullptr,
+                                 /*prepare*/ nullptr,
+                                 activations::TanhEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 }  // namespace micro

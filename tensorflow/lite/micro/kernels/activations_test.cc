@@ -397,7 +397,7 @@ void TestRelu6Int8(const int* input_dims_data, const float* input_data,
   }
 }
 
-const std::initializer_list<float> tanh_input_vec_fp = {
+const float tanh_input_vec_fp[] = {
     -8.0000000000, -7.8181818182, -7.6363636364, -7.4545454545, -7.2727272727,
     -7.0909090909, -6.9090909091, -6.7272727273, -6.5454545455, -6.3636363636,
     -6.1818181818, -6.0000000000, -5.8181818182, -5.6363636364, -5.4545454545,
@@ -417,7 +417,7 @@ const std::initializer_list<float> tanh_input_vec_fp = {
     6.5454545455,  6.7272727273,  6.9090909091,  7.0909090909,  7.2727272727,
     7.4545454545,  7.6363636364,  7.8181818182,  8.0000000000};
 
-const std::initializer_list<float> tanh_output_vec_fp = {
+const float tanh_output_vec_fp[] = {
     -0.9999997749, -0.9999996762, -0.9999995342, -0.9999993300, -0.9999990361,
     -0.9999986134, -0.9999980053, -0.9999971306, -0.9999958722, -0.9999940619,
     -0.9999914578, -0.9999877117, -0.9999823226, -0.9999745703, -0.9999634183,
@@ -437,12 +437,12 @@ const std::initializer_list<float> tanh_output_vec_fp = {
     0.9999958722,  0.9999971306,  0.9999980053,  0.9999986134,  0.9999990361,
     0.9999993300,  0.9999995342,  0.9999996762,  0.9999997749};
 
+constexpr int tanh_vec_size = 90;
+
 void TestTanhFloat(std::initializer_list<int> input_dims_data,
-                   std::initializer_list<float> input_data,
-                   std::initializer_list<float> expected_output_data,
+                   const float* input_data, const float* expected_output_data,
                    std::initializer_list<int> output_dims_data,
-                   float* output_data, const float tolerance,
-                   const int max_errs = 0) {
+                   float* output_data, const float tolerance) {
   TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
   const int output_elements_count = ElementCount(*output_dims);
@@ -456,7 +456,7 @@ void TestTanhFloat(std::initializer_list<int> input_dims_data,
   };
 
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, &context);
+  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
@@ -492,35 +492,40 @@ void TestTanhFloat(std::initializer_list<int> input_dims_data,
     registration->free(&context, user_data);
   }
   for (int i = 0; i < output_elements_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data.begin()[i], output_data[i],
+    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data[i], output_data[i],
                               tolerance);
   }
 }
 
 template <typename T>
 void TestTanhQuantized(std::initializer_list<int> input_dims_data,
-                       std::vector<T> input_data, float input_min,
-                       float input_max, std::vector<T> expected_output_data,
+                       const float* input_data, T* input_quantized,
+                       float input_scale, int input_zero_point,
+                       const float* expected_output_data,
+                       T* expected_output_quantized,
                        std::initializer_list<int> output_dims_data,
-                       float output_min, float output_max, T* output_data,
-                       const int tolerance, const int max_errs = 0) {
+                       float output_scale, int output_zero_point,
+                       T* output_quantized, const int tolerance) {
   static_assert(sizeof(T) == 1, "Valid only for 8bit data types");
   TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
   const int output_elements_count = ElementCount(*output_dims);
 
+  tflite::AsymmetricQuantize(expected_output_data, expected_output_quantized,
+                             output_elements_count, output_scale,
+                             output_zero_point);
+
   constexpr int inputs_size = 1;
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data.data(), input_dims, "input_tensor",
-                            input_min, input_max),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max),
-  };
+      CreateQuantizedTensor(input_data, input_quantized, input_dims,
+                            input_scale, input_zero_point, "input_tensor"),
+      CreateQuantizedTensor(output_quantized, output_dims, output_scale,
+                            output_zero_point, "output_tensor")};
 
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, &context);
+  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
@@ -555,8 +560,10 @@ void TestTanhQuantized(std::initializer_list<int> input_dims_data,
   if (registration->free) {
     registration->free(&context, user_data);
   }
-  TF_LITE_MICRO_EXPECT_NEAR_COUNT(expected_output_data, output_data,
-                                  output_elements_count, tolerance, max_errs);
+  for (int i = 0; i < output_elements_count; ++i) {
+    TF_LITE_MICRO_EXPECT_NEAR(expected_output_quantized[i], output_quantized[i],
+                              tolerance);
+  }
 }
 
 }  // namespace
@@ -684,75 +691,65 @@ TF_LITE_MICRO_TEST(SimpleRelu6TestInt8) {
 TF_LITE_MICRO_TEST(SimpleTestTanhFloat) {
   using tflite::testing::tanh_input_vec_fp;
   using tflite::testing::tanh_output_vec_fp;
+  using tflite::testing::tanh_vec_size;
 
-  const int val_count = tanh_output_vec_fp.size();
-  float output_data[val_count];
+  float output_data[tanh_vec_size];
   tflite::testing::TestTanhFloat(  //
-      {2, 1, val_count},           // Input shape.
+      {2, 1, tanh_vec_size},       // Input shape.
       tanh_input_vec_fp,           // Input data
       tanh_output_vec_fp,          // Expected results.
-      {2, 1, val_count},           // Output shape.
+      {2, 1, tanh_vec_size},       // Output shape.
       output_data, 1e-7 /* tolerance */);
 }
 
 TF_LITE_MICRO_TEST(SimpleTestTanhUInt8) {
-  using tflite::testing::F2Q;
-  using tflite::testing::quantize_vec;
   using tflite::testing::tanh_input_vec_fp;
   using tflite::testing::tanh_output_vec_fp;
+  using tflite::testing::tanh_vec_size;
 
-  const float output_min = -1.f;
-  const float output_max = 127.f / 128.f;
-  const float input_min = 8 * output_min;
-  const float input_max = 8 * output_max;
-  const int val_count = tanh_output_vec_fp.size();
-  const auto q_func = [](float v, float min, float max) {
-    return F2Q(v, min, max);
-  };
-  const std::vector<uint8_t> input_vec =
-      quantize_vec<uint8_t>(tanh_input_vec_fp, input_min, input_max, q_func);
-  const std::vector<uint8_t> output_vec =
-      quantize_vec<uint8_t>(tanh_output_vec_fp, output_min, output_max, q_func);
+  const float input_scale = 16 / 256.f;
+  const int input_zero_point = 128;
+  const float output_scale = 1.99999955 / 256.f;
+  const int output_zero_point = 128;
 
-  uint8_t output_data[val_count];
-  tflite::testing::TestTanhQuantized<uint8_t>(  //
-      {2, 1, val_count},                        // Input shape.
-      input_vec,                                // Input data
-      input_min, input_max,                     // Input quantized range.
-      output_vec,                               // Expected results.
-      {2, 1, val_count},                        // Output shape.
-      output_min, output_max,                   // Output quantized range.
-      output_data, 2 /* tolerance */, 12 /* max num of errors */);
+  uint8_t input_quantized[tanh_vec_size];
+  uint8_t expected_output_quantized[tanh_vec_size];
+  uint8_t output_quantized[tanh_vec_size];
+  tflite::testing::TestTanhQuantized<uint8_t>(        //
+      {2, 1, tanh_vec_size},                          // Input shape.
+      tanh_input_vec_fp, input_quantized,             // Input data.
+      input_scale, input_zero_point,                  // Input quantized info.
+      tanh_output_vec_fp, expected_output_quantized,  // Expected results.
+      {2, 1, tanh_vec_size},                          // Output shape.
+      output_scale, output_zero_point,                // Output quantized info.
+      output_quantized,                               // Operation results
+      2                                               // Tolerance.
+  );
 }
 
-TF_LITE_MICRO_TEST(SimpleTestTanhInt8) {
-  using tflite::testing::F2QS;
-  using tflite::testing::quantize_vec;
+TF_LITE_MICRO_TEST(SimpleTestTanhUInt8) {
   using tflite::testing::tanh_input_vec_fp;
   using tflite::testing::tanh_output_vec_fp;
+  using tflite::testing::tanh_vec_size;
 
-  const float output_min = -1.f;
-  const float output_max = 127.f / 128.f;
-  const float input_min = 8 * output_min;
-  const float input_max = 8 * output_max;
-  const int val_count = tanh_output_vec_fp.size();
-  const auto q_func = [](float v, float min, float max) {
-    return F2QS(v, min, max);
-  };
-  const std::vector<int8_t> input_vec =
-      quantize_vec<int8_t>(tanh_input_vec_fp, input_min, input_max, q_func);
-  const std::vector<int8_t> output_vec =
-      quantize_vec<int8_t>(tanh_output_vec_fp, output_min, output_max, q_func);
+  const float input_scale = 16 / 256.f;
+  const int input_zero_point = 0;
+  const float output_scale = 1.99999955 / 256.f;
+  const int output_zero_point = 0;
 
-  int8_t output_data[val_count];
-  tflite::testing::TestTanhQuantized<int8_t>(  //
-      {2, 1, val_count},                       // Input shape.
-      input_vec,                               // Input data
-      input_min, input_max,                    // Input quantized range.
-      output_vec,                              // Expected results.
-      {2, 1, val_count},                       // Output shape.
-      output_min, output_max,                  // Output quantized range.
-      output_data, 2 /* tolerance */, 12 /* max num of errors */);
+  int8_t input_quantized[tanh_vec_size];
+  int8_t expected_output_quantized[tanh_vec_size];
+  int8_t output_quantized[tanh_vec_size];
+  tflite::testing::TestTanhQuantized<int8_t>(         //
+      {2, 1, tanh_vec_size},                          // Input shape.
+      tanh_input_vec_fp, input_quantized,             // Input data.
+      input_scale, input_zero_point,                  // Input quantized info.
+      tanh_output_vec_fp, expected_output_quantized,  // Expected results.
+      {2, 1, tanh_vec_size},                          // Output shape.
+      output_scale, output_zero_point,                // Output quantized info.
+      output_quantized,                               // Operation results
+      2                                               // Tolerance.
+  );
 }
 
 TF_LITE_MICRO_TESTS_END
