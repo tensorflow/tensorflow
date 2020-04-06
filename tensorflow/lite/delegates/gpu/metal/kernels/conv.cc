@@ -397,11 +397,11 @@ kernel void ComputeFunction(
     const int total_work_items = params.work_group_size.x *
                                  params.work_group_size.y *
                                  params.work_group_size.z;
-    c += "    BARRIER(mem_flags::mem_none);\n";
+    c += "    SIMDGROUP_BARRIER(mem_flags::mem_none);\n";
     c += GenerateUploadByThreads("weights_cache", "tmp",
                                  /*global_offset_name*/ "", "tid",
                                  total_work_items, local_mem_size);
-    c += "    BARRIER(mem_flags::mem_threadgroup);\n";
+    c += "    SIMDGROUP_BARRIER(mem_flags::mem_threadgroup);\n";
   } else if (use_simd_broadcast) {
     int parts = local_mem_size / simd_size;
     int reminder = local_mem_size % simd_size;
@@ -920,7 +920,7 @@ ConvParams GetConvParamsForIntel(const Convolution2DAttributes& attr,
   const int dst_slices = IntegralDivideRoundUp(dst_shape.c, 4);
   const int src_slices = IntegralDivideRoundUp(attr.weights.shape.i, 4);
   ConvParams params;
-  params.weights_upload_type = WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST;
+  params.weights_upload_type = WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST;
   params.x_kernel_is_1 = IsKernelXIs1(attr);
   params.y_kernel_is_1 = IsKernelYIs1(attr);
   params.src_depth_loop_size = 1;
@@ -1132,8 +1132,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
     }
   } else if (device_info.IsIntelGPU()) {
     params.weight_layout = WeightsInnerBlockLayout::I4O4;
-    params.weights_upload_type =
-        WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST;
+    params.weights_upload_type = WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST;
     params.work_group_size = int3(16, 1, 1);
     params.block_size = int3(1, 1, 4);
   } else if (device_info.IsAMDGPU()) {

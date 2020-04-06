@@ -138,13 +138,24 @@ int main(int argc, char **argv) {
   // TODO(b/147435528): We need to test the e2e behavior once the graph freezing
   // inside mlir is done.
   if (import_saved_model_object_graph || import_saved_model_signature_defs) {
+    int saved_model_version;
+    if (import_saved_model_object_graph) {
+      saved_model_version = 2;
+    } else {
+      saved_model_version = 1;
+    }
     if (input_mlir)
       module = tensorflow::errors::InvalidArgument(
           "Importing saved model should not have input_mlir set");
-    module = tensorflow::ImportSavedModel(import_saved_model_object_graph,
-                                          import_saved_model_signature_defs,
-                                          input_file_name, saved_model_tags,
-                                          saved_model_exported_names, &context);
+
+    std::unordered_set<std::string> tags =
+        absl::StrSplit(saved_model_tags, ',');
+    std::vector<std::string> exported_names_vector =
+        absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
+    absl::Span<std::string> exported_names(exported_names_vector);
+
+    module = tensorflow::ImportSavedModel(input_file_name, saved_model_version,
+                                          tags, exported_names, &context);
   } else {
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
@@ -196,11 +207,6 @@ int main(int argc, char **argv) {
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
   pass_config.legalize_tf_while = convert_tf_while_to_tfl_while;
-
-  // Currently we only do shape inference for saved model import.
-  if (import_saved_model_object_graph || import_saved_model_signature_defs) {
-    pass_config.shape_inference = true;
-  }
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
   // TODO(b/150901738): Move those into tf_tfl_translate.cc.

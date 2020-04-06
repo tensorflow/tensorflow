@@ -3107,7 +3107,8 @@ def sparse_placeholder(dtype, shape=None, name=None):
     print(sess.run(y, feed_dict={
       x: (indices, values, shape)}))  # Will succeed.
 
-    sp = tf.SparseTensor(indices=indices, values=values, dense_shape=shape)
+    sp = tf.sparse.SparseTensor(indices=indices, values=values,
+                                dense_shape=shape)
     sp_value = sp.eval(session=sess)
     print(sess.run(y, feed_dict={x: sp_value}))  # Will succeed.
   ```
@@ -3536,20 +3537,27 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   For the following  inputs,
 
   ```python
-  # 'hypothesis' is a tensor of shape `(2, 1)` with variable-length values:
-  hypothesis = tf.SparseTensor(
-    [[0, 0],
-     [1,0]],
-    ["a", "b"],
-    (2, 1))
+  # 'hypothesis' is a tensor of shape `[2, 1]` with variable-length values:
+  #   (0,0) = ["a"]
+  #   (1,0) = ["b"]
+  hypothesis = tf.sparse.SparseTensor(
+      [[0, 0, 0],
+       [1, 0, 0]],
+      ["a", "b"],
+      (2, 1, 1))
 
-  # 'truth' is a tensor of shape `(2, 2)` with variable-length values:
-  truth = tf.SparseTensor(
-    [[0, 1],
-     [1, 0],
-     [1, 1]],
-    ["a", ["b", "c"], "a"],
-    (2, 2))
+  # 'truth' is a tensor of shape `[2, 2]` with variable-length values:
+  #   (0,0) = []
+  #   (0,1) = ["a"]
+  #   (1,0) = ["b", "c"]
+  #   (1,1) = ["a"]
+  truth = tf.sparse.SparseTensor(
+      [[0, 1, 0],
+       [1, 0, 0],
+       [1, 0, 1],
+       [1, 1, 0]],
+      ["a", "b", "c", "a"],
+      (2, 2, 2))
 
   normalize = True
 

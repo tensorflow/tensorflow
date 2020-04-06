@@ -706,7 +706,10 @@ def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0> {
 }
 
 def TFL_CosOp: TFL_Op<"cos", [
-    NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
+    NoSideEffect,
+    SameOperandsAndResultType,
+    NoQuantizableResult,
+    TFL_GpuTargetOp]> {
   let summary = "Cosine operator";
 
   let description = [{
@@ -827,12 +830,12 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$params,
+    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8, TFL_Str]>:$params,
     TFL_I32OrI64Tensor:$indices
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$output
+    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8, TFL_Str]>:$output
   );
 }
 
@@ -1108,7 +1111,10 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
 def TFL_DivOp : TFL_Op<"div", [
   // TODO(fengliuai): NoQuantizableResult is only correct for int8
   // quantization. update to handle Uint8 quantization.
-    ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
+    ResultsBroadcastableShape,
+    NoSideEffect,
+    NoQuantizableResult,
+    TFL_GpuTargetOp]> {
   let summary = "Division operator";
 
   let description = [{
@@ -1187,7 +1193,9 @@ def TFL_EqualOp: TFL_Op<"equal", [Commutative, ResultsBroadcastableShape,
   let builders = [TFL_ComparisonBinaryBuilder];
 }
 
-def TFL_ExpOp: TFL_Op<"exp", [NoSideEffect, SameOperandsAndResultType]> {
+def TFL_ExpOp: TFL_Op<"exp", [NoSideEffect,
+                              SameOperandsAndResultType,
+                              TFL_GpuTargetOp]> {
   let summary = "Natural exponentiation operator";
 
   let description = [{
@@ -1369,7 +1377,8 @@ def TFL_GreaterOp : TFL_Op<"greater", [
 }
 
 def TFL_HardSwishOp: TFL_Op<"hard_swish", [NoSideEffect,
-                                          SameOperandsAndResultShape]> {
+                                          SameOperandsAndResultShape,
+                                          TFL_GpuTargetOp]> {
   let summary = "Hardswish activation function.";
   let description = [{
     Computes hard-swish activation function

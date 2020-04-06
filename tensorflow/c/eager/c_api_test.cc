@@ -594,7 +594,6 @@ void ExecuteAdd(bool async, bool forward_input) {
     TFE_TensorHandle* n_gpu =
         TFE_TensorHandleCopyToDevice(n, ctx, gpu_device_name.c_str(), status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-    TFE_TensorHandleEnableImplicitMirroring(n_gpu, status);
     TFE_DeleteTensorHandle(n);
     n = n_gpu;
   }

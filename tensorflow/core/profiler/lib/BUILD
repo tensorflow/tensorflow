@@ -69,6 +69,7 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core/profiler/internal/cpu:host_tracer",
+        "//tensorflow/core/profiler/internal/cpu:metadata_collector",
     ],
     alwayslink = True,
 )

@@ -76,7 +76,10 @@ exports_files(
         "tracking_allocator.h",
         "versions.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/common_runtime:__pkg__",
+    ],
 )
 
 # List of exported test source files that do not yet have local build rules.
@@ -626,7 +629,7 @@ cc_library(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/core/tfrt_delegate:__pkg__",
+        "//tensorflow/core/runtime_fallback:__pkg__",
     ],
     deps = [
         ":bounds_check",

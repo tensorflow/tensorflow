@@ -2494,9 +2494,6 @@ class Function(object):
       args, kwargs = None, None
     with self._lock:
       graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
-      if self.input_signature:
-        args = self.input_signature
-        kwargs = {}
       seen_names = set()
       captured = object_identity.ObjectIdentitySet(
           graph_function.graph.internal_captures)

@@ -48,20 +48,23 @@ INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
--I$(MAKEFILE_DIR)/downloads/flatbuffers/include
+-I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
+-I$(MAKEFILE_DIR)/downloads/ruy
 
 # Same list of paths, but now relative to the generated project files.
 GENERATED_PROJECT_INCLUDES := \
 -I. \
 -I./third_party/gemmlowp \
--I./third_party/flatbuffers/include
+-I./third_party/flatbuffers/include \
+-I./third_party/ruy
 
 # Same list of paths, but now in the format the generate_keil_project.py
 # script expects them.
 PROJECT_INCLUDES := \
 . \
 third_party/gemmlowp \
-third_party/flatbuffers/include
+third_party/flatbuffers/include \
+third_party/ruy
 
 TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 
@@ -99,7 +102,7 @@ $(wildcard tensorflow/lite/micro/kernels/*test.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*test.cc)
 
 MICROLITE_BENCHMARK_SRCS := \
-$(wildcard tensorflow/lite/micro/kernels/xtensa-hifimini/*benchmark.cc)
+$(wildcard tensorflow/lite/micro/kernels/benchmarks/*.cc)
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
@@ -132,7 +135,6 @@ tensorflow/lite/core/api/error_reporter.h \
 tensorflow/lite/core/api/flatbuffer_conversions.h \
 tensorflow/lite/core/api/op_resolver.h \
 tensorflow/lite/core/api/tensor_utils.h \
-tensorflow/lite/experimental/ruy/ruy/profiler/instrumentation.h \
 tensorflow/lite/kernels/internal/common.h \
 tensorflow/lite/kernels/internal/compatibility.h \
 tensorflow/lite/kernels/internal/optimized/neon_check.h \
@@ -192,7 +194,9 @@ third_party/gemmlowp/LICENSE \
 third_party/flatbuffers/include/flatbuffers/base.h \
 third_party/flatbuffers/include/flatbuffers/stl_emulation.h \
 third_party/flatbuffers/include/flatbuffers/flatbuffers.h \
-third_party/flatbuffers/LICENSE.txt
+third_party/flatbuffers/LICENSE.txt \
+third_party/ruy/ruy/profiler/instrumentation.h
+
 
 MAKE_PROJECT_FILES := \
   Makefile \

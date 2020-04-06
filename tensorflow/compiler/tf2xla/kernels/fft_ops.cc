@@ -15,21 +15,22 @@ limitations under the License.
 
 // XLA-specific Ops for FFT.
 
+#include <utility>
+#include <vector>
+
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/numeric_op.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/ops_util.h"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/util/padding.h"
-#include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

@@ -255,22 +255,17 @@ py_library(
 )
 
 py_library(
-    name = "mirrored_strategy",
-    srcs = ["mirrored_strategy.py"],
+    name = "mirrored_run",
+    srcs = ["mirrored_run.py"],
     deps = [
-        ":cross_device_ops",
         ":device_util",
         ":distribute_lib",
-        ":input_lib",
-        ":multi_worker_util",
-        ":numpy_dataset",
         ":reduce_util",
         ":shared_variable_creator",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:config",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:device",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -284,9 +279,33 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/autograph/core",
         "//tensorflow/python/autograph/impl",
-        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+    ],
+)
+
+py_library(
+    name = "mirrored_strategy",
+    srcs = ["mirrored_strategy.py"],
+    deps = [
+        ":cross_device_ops",
+        ":device_util",
+        ":distribute_lib",
+        ":input_lib",
+        ":mirrored_run",
+        ":multi_worker_util",
+        ":numpy_dataset",
+        ":reduce_util",
+        ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:device",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:tape",
     ],
 )
@@ -297,7 +316,7 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":input_lib",
-        ":mirrored_strategy",
+        ":mirrored_run",
         ":numpy_dataset",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",

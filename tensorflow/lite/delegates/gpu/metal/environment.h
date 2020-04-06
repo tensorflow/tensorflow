@@ -57,6 +57,9 @@ struct AppleGPUInfo {
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;
 
+  // returns true if device have fixed wave size equal to 32
+  bool IsWaveSizeEqualTo32() const;
+
   int GetComputeUnitsCount() const;
 };
 
@@ -74,6 +77,9 @@ struct DeviceInfo {
 
   // floating point rounding mode
   bool IsRoundToNearestSupported() const;
+
+  // returns true if device have fixed wave size equal to 32
+  bool IsWaveSizeEqualTo32() const;
 
   int GetComputeUnitsCount() const;
 };

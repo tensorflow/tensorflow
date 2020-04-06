@@ -1233,6 +1233,11 @@ class HloInstruction {
         const_cast<const HloInstruction*>(this)->LatestNonGteAncestor());
   }
 
+  // Returns true whether this instruction is effectively a bitcast. Currently,
+  // this means it either is a bitcast, or it is a transpose that is effectively
+  // a bitcast.
+  bool IsEffectiveBitcast() const;
+
   // Gets/sets the to_apply HloComputation for Call, Map, Reduce, etc.
   // The setter should only be called by HloModule or HloComputation methods.
   //

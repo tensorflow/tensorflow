@@ -580,12 +580,6 @@ void TFE_HostAddressSpace(TFE_Context* ctx, TF_Buffer* buf) {
   };
 }
 
-void TFE_TensorHandleEnableImplicitMirroring(TFE_TensorHandle* h,
-                                             TF_Status* status) {
-  h->handle->EnableImplicitMirroring();
-  status->status = tensorflow::Status::OK();
-}
-
 void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
                                TF_Buffer* buf, TF_Status* status) {
   tensorflow::EagerContext* context =

@@ -168,8 +168,6 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote) {
   auto* h1_task2 =
       TFE_TensorHandleCopyToDevice(h1_task0, ctx, task2_name, status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  TFE_TensorHandleEnableImplicitMirroring(h1_task2, status);
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   // Handles are on task0 (local), and task2, but op is on task1.
   TFE_Op* matmul = MatMulOp(ctx, h0_task0, h1_task2);

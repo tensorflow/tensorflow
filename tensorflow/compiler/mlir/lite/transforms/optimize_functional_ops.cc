@@ -36,8 +36,8 @@ using FuncSet = llvm::SmallSet<FuncOp, 4>;
 
 // Module pass to optimize TensorFlow functional ops.
 struct OptimizeFunctionalOpsPass
-    : public ModulePass<OptimizeFunctionalOpsPass> {
-  void runOnModule() override;
+    : public OperationPass<OptimizeFunctionalOpsPass, ModuleOp> {
+  void runOnOperation() override;
 };
 
 // Updates function return type of the given functions to match the terminator
@@ -180,13 +180,13 @@ static void EraseDeadFuncs(const FuncSet& candidate_funcs, ModuleOp module) {
   }
 }
 
-void OptimizeFunctionalOpsPass::runOnModule() {
+void OptimizeFunctionalOpsPass::runOnOperation() {
   OwningRewritePatternList patterns;
 
   FuncSet inlined_funcs;
   patterns.insert<FoldIfOp>(&getContext(), &inlined_funcs);
 
-  ModuleOp module = getModule();
+  ModuleOp module = getOperation();
   applyPatternsGreedily(module, patterns);
 
   // Erase inlined functions that don't have any references.

@@ -30,6 +30,7 @@ tf_cuda_library(
         ":eager_operation",
         ":execute",
         ":tensor_handle",
+        "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_tensor_internal",
     ],
     alwayslink = 1,
