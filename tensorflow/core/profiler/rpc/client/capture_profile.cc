@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/profiler/profiler_analysis.grpc.pb.h"
-#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
 #include "tensorflow/core/util/events_writer.h"
 
@@ -182,8 +181,8 @@ Status ValidateHostPortPair(const string& host_port) {
 // given logdir. If no trace was collected, retries tracing for
 // num_tracing_attempts.
 Status Trace(const string& service_addr, const string& logdir,
-             const string& workers_list, bool include_dataset_ops,
-             int duration_ms, int num_tracing_attempts) {
+             const string& workers_list, int duration_ms,
+             int num_tracing_attempts, const ProfileOptions& opts) {
   // Use the current timestamp as the run name.
   tensorflow::string session_id = GetCurrentTimeStampAsString();
   std::vector<string> hostnames;
@@ -193,8 +192,6 @@ Status Trace(const string& service_addr, const string& logdir,
 
   Status status = Status::OK();
   int remaining_attempts = num_tracing_attempts;
-  ProfileOptions opts;
-  opts.set_include_dataset_ops(include_dataset_ops);
   while (true) {
     std::cout << "Starting to trace for " << duration_ms << " ms. "
               << "Remaining attempt(s): " << --remaining_attempts << std::endl;

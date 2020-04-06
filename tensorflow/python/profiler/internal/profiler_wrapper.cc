@@ -137,9 +137,11 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
     tensorflow::Status status =
         tensorflow::profiler::ValidateHostPortPair(service_addr);
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
-    status = tensorflow::profiler::Trace(service_addr, logdir, worker_list,
-                                         include_dataset_ops, duration_ms,
-                                         num_tracing_attempts);
+    tensorflow::ProfileOptions opts;
+    opts.set_include_dataset_ops(include_dataset_ops);
+    status =
+        tensorflow::profiler::Trace(service_addr, logdir, worker_list,
+                                    duration_ms, num_tracing_attempts, opts);
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
   });
 
