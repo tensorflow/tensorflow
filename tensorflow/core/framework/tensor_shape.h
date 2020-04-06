@@ -167,6 +167,7 @@ class TensorShapeBase : public TensorShapeRep {
  public:
   /// \brief Construct a `TensorShapeBase` from the provided sizes.
   /// REQUIRES: `dim_sizes[i] >= 0` (or >= -1 for PartialTensorShape)
+  explicit TensorShapeBase(gtl::ArraySlice<ssize_t> dim_sizes);
   explicit TensorShapeBase(gtl::ArraySlice<int64> dim_sizes);
   TensorShapeBase(std::initializer_list<int64> dim_sizes)
       : TensorShapeBase(gtl::ArraySlice<int64>(dim_sizes)) {}

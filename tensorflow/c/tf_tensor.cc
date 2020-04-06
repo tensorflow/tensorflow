@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -69,15 +70,9 @@ void deallocate_buffer(void* data, size_t len, void* arg) {
 namespace {
 TF_Tensor* CreateTensor(TF_ManagedBuffer* buf, TF_DataType dtype,
                         const int64_t* dims, int num_dims, size_t len) {
-  std::vector<tensorflow::int64> dimvec(num_dims);
-  for (int i = 0; i < num_dims; ++i) {
-    dimvec[i] = static_cast<tensorflow::int64>(dims[i]);
-  }
-
-  // TODO(gjn): Make the choice of interface a compile-time configuration.
   tensorflow::TensorInterface ret(
       Tensor(static_cast<tensorflow::DataType>(dtype),
-             tensorflow::TensorShape(dimvec), buf));
+             tensorflow::TensorShape(absl::MakeSpan(dims, num_dims)), buf));
   buf->Unref();
   size_t elem_size = TF_DataTypeSize(dtype);
   if (elem_size > 0 && len < (elem_size * ret.NumElements())) {
