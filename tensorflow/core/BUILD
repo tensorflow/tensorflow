@@ -68,6 +68,7 @@ load(
     "cc_header_only_library",
     "if_android",
     "if_chromiumos",
+    "if_cuda_or_rocm",
     "if_ios",
     "if_mobile",
     "if_not_windows",
@@ -1076,8 +1077,9 @@ cc_library(
         "//tensorflow/core/kernels:mkl_matmul_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
         "//tensorflow/core/kernels:mkl_tmp_bf16_ops",
-    ]) + if_cuda([
+    ]) + if_cuda_or_rocm([
         "//tensorflow/core/kernels:cudnn_rnn_kernels",
+    ]) + if_cuda([
         "//tensorflow/core/grappler/optimizers:gpu_swapping_kernels",
         "//tensorflow/core/grappler/optimizers:gpu_swapping_ops",
     ]) + if_nccl([
@@ -1587,13 +1589,6 @@ alias(
 alias(
     name = "cuda",
     actual = "//tensorflow/core/common_runtime/gpu:cuda",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "rocm",
-    actual =
-        "//tensorflow/core/common_runtime/gpu:rocm",
     visibility = ["//visibility:public"],
 )
 
@@ -2251,14 +2246,6 @@ cc_header_only_library(
     ],
 )
 
-cc_header_only_library(
-    name = "core_cpu_headers_lib",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":core_cpu_lib",
-    ],
-)
-
 tf_cuda_library(
     name = "framework_internal_impl",
     srcs = [
@@ -2420,7 +2407,7 @@ tf_cuda_library(
         "//tensorflow/core/public:session.h",
     ],
     copts = tf_copts(),
-    deps = [":core_cpu_base_no_ops"] + if_static([
+    deps = ["//tensorflow/core/common_runtime:core_cpu_base_no_ops"] + if_static([
         ":function_ops_op_lib",
         ":functional_grad",
         ":functional_ops_op_lib",
@@ -2428,19 +2415,6 @@ tf_cuda_library(
         "//tensorflow/core/kernels:required",
     ]),
     alwayslink = 1,
-)
-
-alias(
-    name = "core_cpu_base_no_ops",
-    actual =
-        "//tensorflow/core/common_runtime:core_cpu_base_no_ops",
-)
-
-filegroup(
-    name = "core_cpu_lib_headers",
-    srcs = [
-        "//tensorflow/core/common_runtime:core_cpu_lib_headers",
-    ],
 )
 
 alias(
@@ -2456,33 +2430,9 @@ alias(
 )
 
 alias(
-    name = "core_cpu_lib_no_ops",
-    actual =
-        "//tensorflow/core/common_runtime:core_cpu_lib_no_ops",
-)
-
-alias(
     name = "core_cpu_internal",
     actual =
         "//tensorflow/core/common_runtime:core_cpu_internal",
-)
-
-# This is redundant with the "core_cpu_*" targets above. It's useful for
-# applications that want to depend on a minimal subset of TensorFlow (e.g. XLA).
-cc_library(
-    name = "bfc_allocator",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core/common_runtime:bfc_allocator",
-    ],
-)
-
-cc_library(
-    name = "shared_counter",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core/common_runtime:shared_counter",
-    ],
 )
 
 alias(
@@ -2522,46 +2472,9 @@ tf_proto_library_cc(
 )
 
 alias(
-    name = "gpu_id",
-    actual = "//tensorflow/core/common_runtime/gpu:gpu_id",
-)
-
-alias(
-    name = "gpu_runtime_impl",
-    actual = "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
-)
-
-alias(
     name = "gpu_runtime",
     actual =
         "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-)
-
-# This is redundant with the "gpu_runtime_*" targets above. It's useful for
-# applications that want to depend on a minimal subset of TensorFlow (e.g. XLA).
-alias(
-    name = "gpu_bfc_allocator",
-    actual =
-        "//tensorflow/core/common_runtime/gpu:gpu_bfc_allocator",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "gpu_mem_allocator",
-    actual =
-        "//tensorflow/core/common_runtime/gpu:gpu_mem_allocator",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "gpu_init",
-    actual =
-        "//tensorflow/core/common_runtime/gpu:gpu_init",
-)
-
-alias(
-    name = "sycl_runtime",
-    actual = "//tensorflow/core/common_runtime/sycl:sycl_runtime",
 )
 
 # -----------------------------------------------------------------------------

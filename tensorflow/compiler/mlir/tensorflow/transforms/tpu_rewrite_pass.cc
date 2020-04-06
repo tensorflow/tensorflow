@@ -98,8 +98,8 @@ constexpr char kBadArrayAttrLengthMsg[] =
 //    %4 = "tf.SomeOp"(%3)
 
 namespace {
-struct TPURewritePass : public ModulePass<TPURewritePass> {
-  void runOnModule() override;
+struct TPURewritePass : public OperationPass<TPURewritePass, ModuleOp> {
+  void runOnOperation() override;
 };
 
 // Creates a missing attribute error message.
@@ -747,13 +747,13 @@ LogicalResult Rewrite(
   return success();
 }
 
-void TPURewritePass::runOnModule() {
+void TPURewritePass::runOnOperation() {
   mlir::TF::RuntimeDevices devices;
-  if (failed(tensorflow::GetDevicesFromOp(getModule(), &devices)))
+  if (failed(tensorflow::GetDevicesFromOp(getOperation(), &devices)))
     return signalPassFailure();
 
   OpBuilder builder(&getContext());
-  auto result = getModule().walk([&](tf_device::LaunchFuncOp op) {
+  auto result = getOperation().walk([&](tf_device::LaunchFuncOp op) {
     if (failed(Rewrite(op, devices.device_names(), &builder)))
       return WalkResult::interrupt();
 
@@ -763,7 +763,7 @@ void TPURewritePass::runOnModule() {
   if (result.wasInterrupted()) return signalPassFailure();
 
   // Eliminate TPUCompilationResultOp now that the rewrite is complete.
-  getModule().walk([&](TF::TPUCompilationResultOp op) { op.erase(); });
+  getOperation().walk([&](TF::TPUCompilationResultOp op) { op.erase(); });
 
   // TODO(b/139377366): Remove functions that are no longer needed.
 }

@@ -138,6 +138,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
       return tflite::TensorType_FLOAT32;
     case mlir::StandardTypes::F16:
       return tflite::TensorType_FLOAT16;
+    case mlir::StandardTypes::F64:
+      return tflite::TensorType_FLOAT64;
     case mlir::TF::TensorFlowTypes::STRING:
       return tflite::TensorType_STRING;
     case mlir::TF::TensorFlowTypes::QUINT8:

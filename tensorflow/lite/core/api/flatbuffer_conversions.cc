@@ -91,11 +91,14 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
                                ErrorReporter* error_reporter) {
   *type = kTfLiteNoType;
   switch (tensor_type) {
+    case TensorType_FLOAT16:
+      *type = kTfLiteFloat16;
+      break;
     case TensorType_FLOAT32:
       *type = kTfLiteFloat32;
       break;
-    case TensorType_FLOAT16:
-      *type = kTfLiteFloat16;
+    case TensorType_FLOAT64:
+      *type = kTfLiteFloat64;
       break;
     case TensorType_INT16:
       *type = kTfLiteInt16;

@@ -13,11 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
+#include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 namespace {

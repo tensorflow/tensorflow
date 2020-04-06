@@ -982,7 +982,7 @@ ARRAY_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
     "//third_party/eigen3",
-] + if_sycl(["//tensorflow/core:sycl_runtime"])
+] + if_sycl(["//tensorflow/core/common_runtime/sycl:sycl_runtime"])
 
 tf_kernel_library(
     name = "immutable_constant_op",
@@ -5624,7 +5624,7 @@ STATE_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
-] + if_sycl(["//tensorflow/core:sycl_runtime"])
+] + if_sycl(["//tensorflow/core/common_runtime/sycl:sycl_runtime"])
 
 tf_kernel_library(
     name = "count_up_to_op",
@@ -6569,6 +6569,7 @@ filegroup(
         "data_format_ops.h",
         "depthtospace_op.h",
         "depthwise_conv_op.h",
+        "extract_image_patches_op.h",
         "fake_quant_ops_functor.h",
         "fused_batch_norm_op.h",
         "gemm_functors.h",
@@ -6752,6 +6753,7 @@ filegroup(
         "decode_bmp_op.cc",
         "depthtospace_op.cc",
         "dynamic_stitch_op.cc",
+        "extract_image_patches_op.cc",
         "fft_ops.cc",
         "in_topk_op.cc",
         "in_topk_op.h",

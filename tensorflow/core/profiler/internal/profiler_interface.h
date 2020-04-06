@@ -55,6 +55,9 @@ struct ProfilerOptions {
 
   // Whether to enable python function calls tracer.
   bool enable_python_tracer = false;
+
+  // Whether to capture HLO protos from XLA runtime.
+  bool enable_hlo_proto = true;
 };
 
 // Interface for tensorflow profiler plugins.

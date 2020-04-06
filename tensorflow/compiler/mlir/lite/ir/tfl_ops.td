@@ -830,12 +830,12 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$params,
+    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8, TFL_Str]>:$params,
     TFL_I32OrI64Tensor:$indices
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$output
+    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8, TFL_Str]>:$output
   );
 }
 

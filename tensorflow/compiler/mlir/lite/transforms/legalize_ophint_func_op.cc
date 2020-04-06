@@ -68,8 +68,9 @@ constexpr char kUnidirectionalSequenceLstm[] = "UnidirectionalSequenceLstm";
 //           |
 //           |
 //        OutputOp1
-struct LegalizeOphintFuncOpPass : public ModulePass<LegalizeOphintFuncOpPass> {
-  void runOnModule() override;
+struct LegalizeOphintFuncOpPass
+    : public OperationPass<LegalizeOphintFuncOpPass, ModuleOp> {
+  void runOnOperation() override;
 };
 
 llvm::StringMap<FuncOp> FindCompositeFuncOps(ModuleOp module) {
@@ -256,8 +257,8 @@ LogicalResult ConvertCallOps(llvm::StringMap<FuncOp>* composite_func_ops,
   return success();
 }
 
-void LegalizeOphintFuncOpPass::runOnModule() {
-  ModuleOp module = getModule();
+void LegalizeOphintFuncOpPass::runOnOperation() {
+  ModuleOp module = getOperation();
 
   // Find all composite funcs, then for every call op inside every func op
   // within the module, we go ahead and replace the callop with the tflite

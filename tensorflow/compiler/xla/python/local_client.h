@@ -215,6 +215,9 @@ class PyLocalBuffer {
       std::shared_ptr<void> buffer_reference, PyLocalClient* client,
       Device* device);
 
+  static StatusOr<std::unique_ptr<PyLocalBuffer>> FromHostLiteral(
+      const LiteralSlice& literal, PyLocalClient* client, Device* device);
+
   // Asynchronously makes a vector of PyLocalBuffers that can be used to receive
   // cross host transfers using `client` on `device'. `shapes` must be the exact
   // shapes, with identical layouts, corresponding to the buffers that will be
@@ -274,13 +277,13 @@ class PyLocalBuffer {
   // framework can take ownership of it. The buffer returned from Release may
   // be safely dropped at any time even if it still has pending async
   // operations. The client should call BlockHostUntilReady before calling
-  // Release, which will ensure that the host has synchronized past any
-  // outstanding write operations to the buffer. If wait_for_reads_to_complete
-  // is true the host will block until any potentially outstanding asynchronous
-  // read operations have completed before returning, after which it is safe to
-  // mutate the returned buffer.
+  // Release with wait_for_operations_to_complete=false, to ensure that the host
+  // has synchronized past any outstanding write operations to the buffer. If
+  // wait_for_operations_to_complete=true the host will block until any
+  // potentially outstanding asynchronous operations have completed before
+  // returning, in which case it is safe to read or mutate the returned buffer.
   StatusOr<std::shared_ptr<SharedDeviceBuffer>> Release(
-      bool wait_for_reads_to_complete);
+      bool wait_for_operations_to_complete);
 
   // True if and only if Delete or Release has previously been called.
   bool IsDeleted();
@@ -336,9 +339,6 @@ class PyLocalBuffer {
     std::shared_ptr<Literal> value;
   };
 
-  Status CopyToHostAsyncHelper(
-      se::Stream* stream, std::shared_ptr<HostValue> host_value,
-      std::shared_ptr<BufferDefinitionEvent> usage_event);
   StatusOr<std::pair<std::unique_ptr<PyLocalBuffer>,
                      std::shared_ptr<BufferDefinitionEvent>>>
   CopyToDeviceHelper(Device* dst_device, LocalDeviceState* dst_local_device,

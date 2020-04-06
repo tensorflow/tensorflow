@@ -13,6 +13,7 @@ cc_library(
         "arithmetic_builder.cc",
         "concat_builder.cc",
         "conv_2d_builder.cc",
+        "conv_2d_helpers.cc",
         "l2_normalization_builder.cc",
         "matmul_builder.cc",
         "neg_op_builder.cc",

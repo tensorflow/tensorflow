@@ -64,11 +64,13 @@ TfLiteStatus Get4DShape(unsigned int* batch_size, unsigned int* height_size,
 bool CheckOpVersion(const TfLiteRegistration* registration) {
   switch (registration->builtin_code) {
     case kTfLiteBuiltinAveragePool2d:
-    case kTfLiteBuiltinDepthwiseConv2d:
     case kTfLiteBuiltinSoftmax:
       return registration->version <= 2;
     case kTfLiteBuiltinRelu:
       return registration->version >= 2;
+    case kTfLiteBuiltinConv2d:
+    case kTfLiteBuiltinDepthwiseConv2d:
+      return registration->version <= 3;
     default:
       return registration->version == 1;
   }
@@ -182,7 +184,9 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
     }
     case kTfLiteBuiltinConv2d: {
       if (!InputsWithCorrectTypes(node, context,
-                                  {kTfLiteUInt8, kTfLiteUInt8, kTfLiteInt32}))
+                                  {kTfLiteUInt8, kTfLiteUInt8, kTfLiteInt32}) &&
+          !InputsWithCorrectTypes(node, context,
+                                  {kTfLiteInt8, kTfLiteInt8, kTfLiteInt32}))
         return false;
       const TfLiteConvParams* conv_params =
           reinterpret_cast<const TfLiteConvParams*>(node->builtin_data);
@@ -194,7 +198,9 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
     }
     case kTfLiteBuiltinDepthwiseConv2d: {
       if (!InputsWithCorrectTypes(node, context,
-                                  {kTfLiteUInt8, kTfLiteUInt8, kTfLiteInt32}))
+                                  {kTfLiteUInt8, kTfLiteUInt8, kTfLiteInt32}) &&
+          !InputsWithCorrectTypes(node, context,
+                                  {kTfLiteInt8, kTfLiteInt8, kTfLiteInt32}))
         return false;
 
       // Check dilation.

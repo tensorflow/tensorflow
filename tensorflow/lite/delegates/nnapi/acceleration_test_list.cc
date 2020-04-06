@@ -129,6 +129,7 @@ ConcatenationOpTest/FourInputsQuantizedMixedRange,29
 ConcatenationOpTest/FourInputsQuantizedMixedRangeClampingLogic,29
 
 # conv_test
+-ConvolutionOpTest/ConvolutionOpTest.SimplePerTensorTest/.+
 ConvolutionOpTest/ConvolutionOpTest.SimpleTestFloatWithDilation/.+,29
 ConvolutionOpTest/ConvolutionOpTest.SimpleTestLargeIrregularQuantized/.+,29
 ConvolutionOpTest/ConvolutionOpTest.SimpleTestQuantizedOutputMultiplierGreaterThan1/.+,29
@@ -150,6 +151,7 @@ DepthToSpaceOpModel/UInt8
 DepthToSpaceOpModel/int8
 
 # div_test
+-FloatDivOpTest/WithBroadcast5D
 FloatDivOpTest/.+
 
 # elementwise_test
@@ -364,6 +366,8 @@ TopKV2OpTest/TopKV2OpTest/.+/0,29
 TransposeTest/.+
 
 # transpose_conv_test
+-TransposeConvOpTest/TransposeConvOpTest.SimpleTestQuantizedPerChannelSingleChannel/0
+-TransposeConvOpTest/TransposeConvOpTest.TestQuantizedPerChannelMultiChannel/0
 # Const tensor only
 TransposeConvOpTest/TransposeConvOpTest/.+/0,29
 

@@ -13,17 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <numeric>
+#include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/bcast.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 namespace {
