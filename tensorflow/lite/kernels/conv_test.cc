@@ -1344,11 +1344,6 @@ class PerChannelQuantizedConvolutionOpModel : public BaseConvolutionOpModel {
 };
 
 TEST_P(ConvolutionOpTest, SimplePerTensorTest) {
-  // TODO(b/138722124): Enable these tests on NNAPI.
-  if (SingleOpModel::GetForceUseNnapi()) {
-    return;
-  }
-
   PerChannelQuantizedConvolutionOpModel m(
       GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
       {TensorType_INT8,

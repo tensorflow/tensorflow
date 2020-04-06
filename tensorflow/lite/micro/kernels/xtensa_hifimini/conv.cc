@@ -183,8 +183,6 @@ constexpr int kMaxChannels = 256;
 // https://www.tensorflow.org/lite/performance/quantization_spec
 constexpr int kConvQuantizedDimension = 0;
 
-const int kTensorNotAllocated = -1;
-
 struct OpData {
   TfLitePaddingValues padding;
   // The scaling factor from input to output (aka the 'real multiplier') can
@@ -253,7 +251,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
-  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
 
   // TODO(b/132070898): Use statically slotted OpData structures until a
   // scratch memory API is ready.

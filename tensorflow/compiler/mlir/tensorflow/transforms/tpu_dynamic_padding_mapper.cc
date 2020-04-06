@@ -48,8 +48,9 @@ constexpr char kPaddingMapAttr[] = "padding_map";
 // (user).
 
 namespace {
-struct TPUDynamicPaddingMapper : public ModulePass<TPUDynamicPaddingMapper> {
-  void runOnModule() override;
+struct TPUDynamicPaddingMapper
+    : public OperationPass<TPUDynamicPaddingMapper, ModuleOp> {
+  void runOnOperation() override;
 };
 
 // Creates a mapping from replicated input index (in `tf_device.replicate` op)
@@ -190,8 +191,8 @@ LogicalResult RemapAndAssignPaddingMaps(tf_device::LaunchFuncOp launch_func,
   return success();
 }
 
-void TPUDynamicPaddingMapper::runOnModule() {
-  ModuleOp module = getModule();
+void TPUDynamicPaddingMapper::runOnOperation() {
+  ModuleOp module = getOperation();
   SymbolTable symbol_table(module);
   module.walk([&](tf_device::LaunchFuncOp launch_func) {
     RemapAndAssignPaddingMaps(launch_func, &symbol_table);

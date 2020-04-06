@@ -66,11 +66,81 @@ void ConvertToReductionOperator(Location loc, loop::ReduceOp reduce_op,
 // Returns result of ConstantOp if `dim` is static, otherwise uses DimOp to
 // extract dimension at runtime.
 Value GetStaticOrDynamicDim(mlir::Location loc, Value shaped_value,
-                            size_t dim_index, int64_t dim,
-                            ConversionPatternRewriter* rewriter) {
+                            size_t dim_index, int64_t dim, OpBuilder* b) {
   return dim == ShapedType::kDynamicSize
-             ? rewriter->create<DimOp>(loc, shaped_value, dim_index).getResult()
-             : rewriter->create<ConstantIndexOp>(loc, dim);
+             ? b->create<DimOp>(loc, shaped_value, dim_index).getResult()
+             : b->create<ConstantIndexOp>(loc, dim);
+}
+
+struct MappedIvs {
+  // False if the mapped indices are in the padding area, true otherwise.
+  Value in_bounds;
+  // Mapped indices.
+  SmallVector<Value, 2> ivs;
+};
+
+MappedIvs MapWindowIvsToInput(ReduceWindowOp op, ArrayRef<BlockArgument> ivs,
+                              ArrayRef<BlockArgument> window_ivs,
+                              OpBuilder* b) {
+  MappedIvs mapped_ivs;
+
+  if (!op.window_strides().hasValue()) {
+    op.emitOpError("No window strides specified.");
+  }
+  auto window_strides = op.window_strides().getValue();
+
+  if (!op.padding().hasValue()) {
+    op.emitOpError("No padding specified.");
+  }
+  auto padding = op.padding().getValue();
+
+  auto loc = op.getLoc();
+  auto operand = op.operand();
+  auto operand_shape = operand.getType().cast<MemRefType>().getShape();
+
+  // `in_bounds` is false when the mapped indices are in the padding area.
+  mapped_ivs.in_bounds = b->create<mlir::ConstantOp>(
+      loc, b->getI1Type(), b->getIntegerAttr(b->getI1Type(), 1));
+  for (unsigned i = 0, e = ivs.size(); i < e; ++i) {
+    auto stride = window_strides.getValue<llvm::APInt>(i);
+    auto pad_low = padding.getValue<llvm::APInt>({i, 0});
+
+    Value stride_val = b->create<ConstantIndexOp>(loc, stride.getSExtValue());
+    Value pad_low_val = b->create<ConstantIndexOp>(loc, pad_low.getSExtValue());
+
+    Value center = b->create<MulIOp>(loc, ivs[i], stride_val);
+    Value offset = b->create<SubIOp>(loc, window_ivs[i], pad_low_val);
+    Value index = b->create<AddIOp>(loc, center, offset);
+    Value upper_bound =
+        GetStaticOrDynamicDim(loc, operand, i, operand_shape[i], b);
+    // We must check whether 0 <= index_i < shape_i, as otherwise we are in
+    // the pad and then we have to use the neutral element for reduction.
+    // Equivalently, it can be computed as the unsigned comparison index_i <
+    // shape_i, since a negative value wraps to a large positive value.
+    mapped_ivs.in_bounds = b->create<mlir::AndOp>(
+        loc, mapped_ivs.in_bounds,
+        b->create<CmpIOp>(loc, CmpIPredicate::ult, index, upper_bound));
+    mapped_ivs.ivs.push_back(index);
+  }
+  return mapped_ivs;
+}
+
+// Returns loop::Parallel over a shaped value with static or dynamic shape.
+loop::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
+                                   OpBuilder* b) {
+  Value zero = b->create<ConstantIndexOp>(loc, 0);
+  Value one = b->create<ConstantIndexOp>(loc, 1);
+
+  ArrayRef<int64_t> shape =
+      shaped_value.getType().cast<ShapedType>().getShape();
+  SmallVector<Value, 2> lower, upper, step;
+  for (auto dim : llvm::enumerate(shape)) {
+    upper.push_back(
+        GetStaticOrDynamicDim(loc, shaped_value, dim.index(), dim.value(), b));
+    lower.push_back(zero);
+    step.push_back(one);
+  }
+  return b->create<loop::ParallelOp>(loc, lower, upper, step);
 }
 
 // Converts `xla_lhlo.ReduceOp` into two loop::ParallelOp and a loop::ReduceOp.
@@ -309,20 +379,11 @@ class ReduceWindowOpConverter
 
     // Create an outer parallel loop that spans the output of ReduceWindowOp.
     Value xla_output = xla_reduce_window_op.out();
-    auto output_shape = xla_output.getType().cast<MemRefType>().getShape();
-    SmallVector<Value, 2> parallel_lower, parallel_upper, parallel_step;
-    for (auto dim : llvm::enumerate(output_shape)) {
-      parallel_upper.push_back(GetStaticOrDynamicDim(
-          loc, xla_output, dim.index(), dim.value(), rewriter));
-      parallel_lower.push_back(zero);
-      parallel_step.push_back(one);
-    }
-    auto output_loop = rewriter->create<loop::ParallelOp>(
-        loc, parallel_lower, parallel_upper, parallel_step);
+    auto output_loop = MakeLoopOverShape(loc, xla_output, rewriter);
 
     // Create a nested loop that traverses the window.
-    rewriter->setInsertionPointToStart(output_loop.getBody());
     SmallVector<Value, 2> window_lower, window_upper, window_step;
+    rewriter->setInsertionPointToStart(output_loop.getBody());
     for (const auto& window_dim : xla_reduce_window_op.window_dimensions()) {
       window_step.push_back(one);
       window_lower.push_back(zero);
@@ -347,12 +408,6 @@ class ReduceWindowOpConverter
     rewriter->setInsertionPointToStart(window_loop.getBody());
     auto loc = xla_reduce_window_op.getLoc();
 
-    if (!xla_reduce_window_op.window_strides().hasValue()) {
-      xla_reduce_window_op.emitOpError("No window strides specified.");
-    }
-    if (!xla_reduce_window_op.padding().hasValue()) {
-      xla_reduce_window_op.emitOpError("No padding specified.");
-    }
     if (xla_reduce_window_op.base_dilations().hasValue() ||
         xla_reduce_window_op.window_dilations().hasValue()) {
       xla_reduce_window_op.emitRemark(
@@ -362,51 +417,18 @@ class ReduceWindowOpConverter
 
     Value xla_operand = xla_reduce_window_op.operand();
     auto xla_operand_type = xla_operand.getType().cast<MemRefType>();
-    auto xla_operand_shape = xla_operand_type.getShape();
 
-    auto output_ivs = llvm::to_vector<2>(output_loop.getInductionVars());
-    auto window_ivs = llvm::to_vector<2>(window_loop.getInductionVars());
-    auto window_strides = xla_reduce_window_op.window_strides().getValue();
-    auto padding = xla_reduce_window_op.padding().getValue();
+    MappedIvs mapped_ivs = MapWindowIvsToInput(
+        xla_reduce_window_op, output_loop.getInductionVars(),
+        window_loop.getInductionVars(), rewriter);
 
-    SmallVector<Value, 2> operand_indices;
-    // `in_bounds` is false when the element in the reduce window is in the
-    // padding area, true otherwise.
-    Value in_bounds = rewriter->create<mlir::ConstantOp>(
-        loc, rewriter->getI1Type(),
-        rewriter->getIntegerAttr(rewriter->getI1Type(), 1));
-    for (unsigned i = 0, e = output_loop.getNumLoops(); i < e; ++i) {
-      auto stride = window_strides.getValue<llvm::APInt>(i);
-      auto pad_low = padding.getValue<llvm::APInt>({i, 0});
-
-      Value stride_val =
-          rewriter->create<ConstantIndexOp>(loc, stride.getSExtValue());
-      Value pad_low_val =
-          rewriter->create<ConstantIndexOp>(loc, pad_low.getSExtValue());
-
-      Value center = rewriter->create<MulIOp>(loc, output_ivs[i], stride_val);
-      Value offset = rewriter->create<SubIOp>(loc, window_ivs[i], pad_low_val);
-      Value index = rewriter->create<AddIOp>(loc, center, offset);
-      operand_indices.push_back(index);
-      Value upper_bound = GetStaticOrDynamicDim(loc, xla_operand, i,
-                                                xla_operand_shape[i], rewriter);
-      // We must check whether 0 <= index_i < shape_i, as otherwise we are in
-      // the pad and then we have to use the neutral element for reduction.
-      // Equivalently, it can be computed as the unsigned comparison index_i <
-      // shape_i, since a negative value wraps to a large positive value.
-      in_bounds = rewriter->create<mlir::AndOp>(
-          loc, in_bounds,
-          rewriter->create<CmpIOp>(loc, CmpIPredicate::ult, index,
-                                   upper_bound));
-    }
-
-    auto elem_or_init =
-        rewriter->create<loop::IfOp>(loc, xla_operand_type.getElementType(),
-                                     in_bounds, /*withElseRegion=*/true);
+    auto elem_or_init = rewriter->create<loop::IfOp>(
+        loc, xla_operand_type.getElementType(), mapped_ivs.in_bounds,
+        /*withElseRegion=*/true);
 
     OpBuilder then_builder = elem_or_init.getThenBodyBuilder();
     Value elem = then_builder.create<mlir::LoadOp>(
-        loc, xla_reduce_window_op.operand(), operand_indices);
+        loc, xla_reduce_window_op.operand(), mapped_ivs.ivs);
     then_builder.create<loop::YieldOp>(loc, elem);
 
     OpBuilder else_builder = elem_or_init.getElseBodyBuilder();
@@ -423,8 +445,12 @@ struct LhloLegalizeToParallelLoops
     auto func = getFunction();
 
     OwningRewritePatternList patterns;
-    patterns.insert<ReduceOpConverter, ReduceWindowOpConverter>(
-        func.getContext());
+    // clang-format off
+    patterns.insert<
+        ReduceOpConverter,
+        ReduceWindowOpConverter
+      >(func.getContext());
+    // clang-format on
 
     ConversionTarget target(getContext());
     target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,

@@ -38,15 +38,18 @@ Performs a custom computation across replicas.
 
 <b> `AllReduce(operand, computation, replica_group_ids, channel_id)` </b>
 
-| Arguments        | Type                 | Semantics                        |
-| ---------------- | -------------------- | -------------------------------- |
-| `operand`        | `XlaOp`              | Array to reduce across replicas. |
-| `computation`    | `XlaComputation`     | Reduction computation            |
-| `replica_groups` | vector of vectors of | Groups between which the         |
-:                  : `int64`              : reductions are performed         :
-| `channel_id`     | optional `int64`     | Optional channel ID for          |
-:                  :                      : cross-module communication       :
+| Arguments        | Type                 | Semantics                         |
+| ---------------- | -------------------- | --------------------------------- |
+| `operand`        | `XlaOp`              | Array or a non-empty tuple of     |
+:                  :                      : arrays to reduce across replicas. :
+| `computation`    | `XlaComputation`     | Reduction computation             |
+| `replica_groups` | vector of vectors of | Groups between which the          |
+:                  : `int64`              : reductions are performed          :
+| `channel_id`     | optional `int64`     | Optional channel ID for           |
+:                  :                      : cross-module communication        :
 
+-   When `operand` is a tuple of arrays, the all-reduce is performed on each
+    element of the tuple.
 -   `replica_groups` is a list of replica groups between which the reduction is
     performed (replica id for the current replica can be retrieved using
     [`ReplicaId`](#replicaid)). `replica_groups` must either be empty (in which
@@ -60,7 +63,8 @@ Performs a custom computation across replicas.
 The output shape is the same as the input shape. For example, if there are two
 replicas and the operand has the value `[1.0, 2.5]` and `[3.0, 5.25]`
 respectively on the two replicas, then the output value from this op and
-summation computation will be `[4.0, 7.75]` on both replicas.
+summation computation will be `[4.0, 7.75]` on both replicas. If the input is a
+tuple, the output is a tuple as well.
 
 Computing the result of `AllReduce` requires having one input from each replica,
 so if one replica executes a `AllReduce` node more times than another, then the

@@ -74,11 +74,11 @@ LogicalResult MarkFunctionVisibilityUsingEntryFunctionSpecification(
 
 namespace {
 struct MarkFunctionVisibilityUsingEntryFunctionSpecificationPass
-    : public ModulePass<
-          MarkFunctionVisibilityUsingEntryFunctionSpecificationPass> {
-  void runOnModule() override {
+    : public OperationPass<
+          MarkFunctionVisibilityUsingEntryFunctionSpecificationPass, ModuleOp> {
+  void runOnOperation() override {
     if (failed(MarkFunctionVisibilityUsingEntryFunctionSpecification(
-            getModule()))) {
+            getOperation()))) {
       signalPassFailure();
     }
   }
@@ -110,9 +110,10 @@ static LogicalResult MarkFunctionVisibilityUsingSavedModelLinkage(
 
 namespace {
 struct MarkFunctionVisibilityUsingSavedModelLinkagePass
-    : public ModulePass<MarkFunctionVisibilityUsingSavedModelLinkagePass> {
-  void runOnModule() override {
-    if (failed(MarkFunctionVisibilityUsingSavedModelLinkage(getModule()))) {
+    : public OperationPass<MarkFunctionVisibilityUsingSavedModelLinkagePass,
+                           ModuleOp> {
+  void runOnOperation() override {
+    if (failed(MarkFunctionVisibilityUsingSavedModelLinkage(getOperation()))) {
       signalPassFailure();
     }
   }

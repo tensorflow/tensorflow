@@ -111,7 +111,9 @@ bool IsSupportedNonTFOp(Operation* op) {
   return isa<tf_executor::YieldOp>(op) || isa<tf_executor::IslandOp>(op) ||
          isa<tf_executor::FetchOp>(op) || isa<tf_executor::GraphOp>(op) ||
          isa<tf_executor::NextIterationSinkOp>(op) || isa<ReturnOp>(op) ||
-         isa<tf_device::ReturnOp>(op);
+         isa<tf_device::ReturnOp>(op) || isa<tf_executor::MergeOp>(op) ||
+         isa<tf_executor::SwitchOp>(op) || isa<tf_executor::SwitchNOp>(op) ||
+         isa<tf_executor::EnterOp>(op) || isa<tf_executor::ExitOp>(op);
 }
 
 // Inserts tf.Cast operation when changing the type of a result if the user is
@@ -224,7 +226,8 @@ GetSubtypes(Type type) {
   return GetSubtypesHelper<TF::VariantType>(type);
 }
 
-// Makes result types match the operand types. Returns if anything is changed.
+// Makes result types match the operand types (the i-th result type will
+// match the i-th operand type). Returns true if anything is changed.
 bool PassThroughOperandTypes(OperandRange operands, ResultRange results) {
   bool changed = false;
   for (auto entry : llvm::zip(operands, results)) {

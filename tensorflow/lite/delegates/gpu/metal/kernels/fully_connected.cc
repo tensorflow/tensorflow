@@ -110,7 +110,7 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
     const int linear_index = ugid.x / 4;
     FLT4 value = FLT4(temp[tid.x][0], temp[tid.x + 1][0], temp[tid.x + 2][0], temp[tid.x + 3][0]) +
       biases[linear_index];
-    uint3 gid = uint3(1u, 1u, uint(linear_index));
+    uint3 gid = uint3(0u, 0u, uint(linear_index));
     $$2
     result[linear_index] = value;
   }

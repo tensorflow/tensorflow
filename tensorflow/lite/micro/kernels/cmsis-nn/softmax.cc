@@ -81,10 +81,13 @@ void SoftmaxFloat(const TfLiteTensor* input, TfLiteTensor* output,
 
 void SoftmaxQuantized(const TfLiteTensor* input, TfLiteTensor* output,
                       const SoftmaxParams& op_data) {
+  const auto input_shape = GetTensorShape(input);
+  const auto output_shape = GetTensorShape(output);
+
   if (input->type == kTfLiteUInt8) {
-    tflite::reference_ops::Softmax(
-        op_data, GetTensorShape(input), GetTensorData<uint8_t>(input),
-        GetTensorShape(output), GetTensorData<uint8_t>(output));
+    tflite::reference_ops::Softmax(op_data, input_shape,
+                                   GetTensorData<uint8_t>(input), output_shape,
+                                   GetTensorData<uint8_t>(output));
   } else {
     const unsigned int num_dims = NumDimensions(input);
 
@@ -117,7 +120,7 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
     }
     case kTfLiteInt8:
     case kTfLiteUInt8: {
-      SoftmaxQuantized(input, output, params, op_data);
+      SoftmaxQuantized(input, output, op_data);
       return kTfLiteOk;
     }
     default:

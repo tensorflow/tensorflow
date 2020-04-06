@@ -17,9 +17,9 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/experimental/ruy/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"

@@ -15,27 +15,19 @@ limitations under the License.
 
 // XLA-specific Ops for 2D convolution.
 
+#include <string>
+
 #include "tensorflow/compiler/tf2xla/kernels/conv_op_helpers.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/constants.h"
-#include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/node_def_util.h"
-#include "tensorflow/core/framework/numeric_op.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/ops_util.h"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/util/padding.h"
-#include "tensorflow/core/util/tensor_format.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 namespace {

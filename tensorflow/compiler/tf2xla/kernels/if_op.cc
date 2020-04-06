@@ -15,14 +15,34 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/if_op.h"
 
-#include "tensorflow/compiler/tf2xla/const_analysis.h"
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
-#include "tensorflow/compiler/tf2xla/xla_context.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 

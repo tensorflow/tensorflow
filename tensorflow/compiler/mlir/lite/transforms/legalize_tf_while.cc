@@ -31,11 +31,11 @@ namespace {
 
 // Legalize TF While to TFL While with calls to the original functions from the
 // cond and body regions.
-struct LegalizeWhile : public ModulePass<LegalizeWhile> {
+struct LegalizeWhile : public OperationPass<LegalizeWhile, ModuleOp> {
   void RunOnFunction(FuncOp func);
 
-  void runOnModule() override {
-    for (auto op : getModule().getOps<FuncOp>()) RunOnFunction(op);
+  void runOnOperation() override {
+    for (auto op : getOperation().getOps<FuncOp>()) RunOnFunction(op);
   }
 };
 

@@ -629,7 +629,7 @@ cc_library(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/core/tfrt_delegate:__pkg__",
+        "//tensorflow/core/runtime_fallback:__pkg__",
     ],
     deps = [
         ":bounds_check",
