@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/c/eager/operation_interface.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
 
@@ -40,7 +42,7 @@ class AbstractContextInterface {
   // destroy an instance of this class.
   virtual void Release() = 0;
 
-  // Scalar creation functions
+  // Optimized scalar creation functions
   virtual AbstractTensorInterface* CreateInt64Scalar(int64 value) = 0;
   virtual AbstractTensorInterface* CreateUint64Scalar(uint64 value) = 0;
   virtual AbstractTensorInterface* CreateInt32Scalar(int32 value) = 0;
@@ -52,24 +54,8 @@ class AbstractContextInterface {
   virtual AbstractTensorInterface* CreateBoolScalar(bool value) = 0;
 
   // Tensor creation functions
-  virtual AbstractTensorInterface* CreateInt64Tensor(
-      absl::Span<const int64> dim_sizes) = 0;
-  virtual AbstractTensorInterface* CreateUint64Tensor(
-      absl::Span<const int64> dim_sizes) = 0;
-  virtual AbstractTensorInterface* CreateInt32Tensor(
-      absl::Span<const int64> dim_sizes) = 0;
-  virtual AbstractTensorInterface* CreateFloatTensor(
-      absl::Span<const int64> dim_sizes) = 0;
-  virtual AbstractTensorInterface* CreateDoubleTensor(
-      absl::Span<const int64> dim_sizes) = 0;
-  virtual AbstractTensorInterface* CreateHalfTensor(
-      absl::Span<const int64> dim_sizes) = 0;
-  virtual AbstractTensorInterface* CreateStringTensor(
-      absl::Span<const int64> dim_sizes) = 0;
-  virtual AbstractTensorInterface* CreateComplex128Tensor(
-      absl::Span<const int64> dim_sizes) = 0;
-  virtual AbstractTensorInterface* CreateBoolTensor(
-      absl::Span<const int64> dim_sizes) = 0;
+  virtual AbstractTensorInterface* CreateTensor(
+      DataType dtype, absl::Span<const int64> dim_sizes) = 0;
 
   // Create a handle to wrap and manage a Tensor
   virtual AbstractTensorHandleInterface* CreateLocalHandle(

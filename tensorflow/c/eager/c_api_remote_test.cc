@@ -75,8 +75,8 @@ void TestRemoteExecute(bool async) {
   TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle();
-  TFE_TensorHandle* h1_task0 = TestMatrixTensorHandle();
+  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle(ctx);
+  TFE_TensorHandle* h1_task0 = TestMatrixTensorHandle(ctx);
   const char remote_device_name[] =
       "/job:localhost/replica:0/task:1/device:CPU:0";
   auto* h0_task1 =
@@ -160,8 +160,8 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote) {
   TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle();
-  TFE_TensorHandle* h1_task0 = TestMatrixTensorHandle();
+  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle(ctx);
+  TFE_TensorHandle* h1_task0 = TestMatrixTensorHandle(ctx);
   const char task1_name[] = "/job:localhost/replica:0/task:1/device:CPU:0";
   const char task2_name[] = "/job:localhost/replica:0/task:2/device:CPU:0";
 
@@ -267,8 +267,8 @@ void TestRemoteExecuteDeleteContextWithOutstandingRPC(bool async) {
 
   // Use large matrices so that RPCs don't return before we get a chance
   // to call TFE_DeleteContext.
-  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle100x100();
-  TFE_TensorHandle* h1_task0 = TestMatrixTensorHandle100x100();
+  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle100x100(ctx);
+  TFE_TensorHandle* h1_task0 = TestMatrixTensorHandle100x100(ctx);
   const char remote_device_name[] =
       "/job:localhost/replica:0/task:1/device:CPU:0";
   auto* h0_task1 =
@@ -331,7 +331,7 @@ void CheckRemoteMatMulExecutesOK(TFE_Context* ctx,
                                  const char* remote_device_name,
                                  const char* local_device_name) {
   TF_Status* status = TF_NewStatus();
-  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle();
+  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle(ctx);
 
   TFE_Op* matmul = MatMulOp(ctx, h0_task0, h0_task0);
   TFE_OpSetDevice(matmul, remote_device_name, status);
@@ -414,7 +414,7 @@ void TestRemoteExecuteChangeServerDef(bool async) {
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   // Create a new tensor_handle.
-  TFE_TensorHandle* h0_task0_new = TestMatrixTensorHandle();
+  TFE_TensorHandle* h0_task0_new = TestMatrixTensorHandle(ctx);
 
   // Check that copying it to the old remote device (named localhost) fails.
   TFE_TensorHandleCopyToDevice(h0_task0_new, ctx, remote_device_name, status);
