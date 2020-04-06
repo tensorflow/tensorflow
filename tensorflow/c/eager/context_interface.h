@@ -53,23 +53,23 @@ class AbstractContextInterface {
 
   // Tensor creation functions
   virtual AbstractTensorInterface* CreateInt64Tensor(
-      absl::Span<const ssize_t> dim_sizes) = 0;
+      absl::Span<const int64> dim_sizes) = 0;
   virtual AbstractTensorInterface* CreateUint64Tensor(
-      absl::Span<const ssize_t> dim_sizes) = 0;
+      absl::Span<const int64> dim_sizes) = 0;
   virtual AbstractTensorInterface* CreateInt32Tensor(
-      absl::Span<const ssize_t> dim_sizes) = 0;
+      absl::Span<const int64> dim_sizes) = 0;
   virtual AbstractTensorInterface* CreateFloatTensor(
-      absl::Span<const ssize_t> dim_sizes) = 0;
+      absl::Span<const int64> dim_sizes) = 0;
   virtual AbstractTensorInterface* CreateDoubleTensor(
-      absl::Span<const ssize_t> dim_sizes) = 0;
+      absl::Span<const int64> dim_sizes) = 0;
   virtual AbstractTensorInterface* CreateHalfTensor(
-      absl::Span<const ssize_t> dim_sizes) = 0;
+      absl::Span<const int64> dim_sizes) = 0;
   virtual AbstractTensorInterface* CreateStringTensor(
-      absl::Span<const ssize_t> dim_sizes) = 0;
+      absl::Span<const int64> dim_sizes) = 0;
   virtual AbstractTensorInterface* CreateComplex128Tensor(
-      absl::Span<const ssize_t> dim_sizes) = 0;
+      absl::Span<const int64> dim_sizes) = 0;
   virtual AbstractTensorInterface* CreateBoolTensor(
-      absl::Span<const ssize_t> dim_sizes) = 0;
+      absl::Span<const int64> dim_sizes) = 0;
 
   // Create a handle to wrap and manage a Tensor
   virtual AbstractTensorHandleInterface* CreateLocalHandle(

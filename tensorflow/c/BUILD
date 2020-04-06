@@ -281,7 +281,6 @@ cc_library(
             ":tf_status",
             ":tf_status_helper",
             ":tf_tensor_internal",
-            "@com_google_absl//absl/types:span",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
             "//tensorflow/core:protos_all_cc",
