@@ -16,8 +16,14 @@
   * `Model.fit` major improvements:
      * You can now use custom training logic with `Model.fit` by overriding `Model.train_step`.
      * Easily write state-of-the-art training loops without worrying about all of the features `Model.fit` handles for you (distribution strategies, callbacks, data formats, looping logic, etc)
-     * See the default [`Model.train_step`](https://github.com/tensorflow/tensorflow/blob/1381fc8e15e22402417b98e3881dfd409998daea/tensorflow/python/keras/engine/training.py#L540) for an example of what this function should look like
-     * Same applies for validation and inference via `Model.test_step` and `Model.predict_step`
+     * See the default [`Model.train_step`](https://github.com/tensorflow/tensorflow/blob/1381fc8e15e22402417b98e3881dfd409998daea/tensorflow/python/keras/engine/training.py#L540) for an example of what this function should look like. Same applies for validation and inference via `Model.test_step` and `Model.predict_step`.
+     * SavedModel uses its own `Model._saved_model_inputs_spec` attr now instead of
+       relying on `Model.inputs` and `Model.input_names`, which are no longer set for subclass Models. 
+       This attr is set in eager, `tf.function`, and graph modes. This gets rid of the need for users to 
+       manually call `Model._set_inputs` when using Custom Training Loops(CTLs).
+     * Dynamic shapes are supported for generators by calling the Model on the first batch we "peek" from the generator. 
+       This used to happen implicitly in `Model._standardize_user_data`. Long-term, a solution where the 
+       `DataAdapter` doesn't need to call the Model is probably preferable.
   * The SavedModel format now supports all Keras built-in layers (including metrics, preprocessing layers, and stateful RNN layers)
 * `tf.lite`:
   * Enable TFLite experimental new converter by default.
@@ -33,7 +39,7 @@
 * AutoGraph no longer converts functions passed to `tf.py_function`, `tf.py_func` and `tf.numpy_function`.
 * Deprecating `XLA_CPU` and `XLA_GPU` devices with this release.
 * Increasing the minimum bazel version to build TF to 2.0.0 to use Bazel's `cc_experimental_shared_library`.
-* Keras compile/fit behavior for functional and subclassed models have been unified. Model properties such as `metrics`, `metrics_names` will now be available only after **training/evaluating the model on actual data** for functional models. `metrics` will **now include** model `loss` and output losses.
+* Keras compile/fit behavior for functional and subclassed models have been unified. Model properties such as `metrics`, `metrics_names` will now be available only after **training/evaluating the model on actual data** for functional models. `metrics` will **now include** model `loss` and output losses.`loss_functions` property has been removed from the model. This was an undocumented property that was accidentally public and has now been removed.
 
 ## Known Caveats
 * Due to certain unforeseen circumstances, we are unable to release MacOS py3.8 binaries, but Windows/Linux binaries for py3.8 are available.
