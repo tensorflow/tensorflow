@@ -101,7 +101,7 @@ int32 NumIntraOpThreadsFromEnvironment() {
   const char* val = std::getenv("TF_NUM_INTRAOP_THREADS");
   return (val && strings::safe_strto32(val, &num)) ? num : 0;
 }
-
+#ifndef ENABLE_MKLDNN_THREADPOOL
 #ifdef INTEL_MKL
 int32 OMPThreadsFromEnvironment() {
   // 1) std::getenv is thread-safe (as long as no other function modifies the
@@ -123,12 +123,14 @@ int32 DefaultNumIntraOpThreads() {
   return port::MaxParallelism();
 }
 #endif  // INTEL_MKL
+#endif  // ENABLE_MKLDNN_THREADPOOL
 int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32 inter_op = options.config.inter_op_parallelism_threads();
   if (inter_op > 0) return inter_op;
   const int32 env_inter_op = GetEnvNumInterOpThreads();
   if (env_inter_op > 0) return env_inter_op;
 
+#ifndef ENABLE_MKLDNN_THREADPOOL
 #ifdef INTEL_MKL
   if (!DisableMKL()) {
     // MKL library executes ops in parallel using OMP threads.
@@ -151,6 +153,7 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
     return mkl_inter_op;
   }
 #endif  // INTEL_MKL
+#endif  // ENABLE_MKLDNN_THREADPOOL
   return DefaultNumInterOpThreads();
 }
 

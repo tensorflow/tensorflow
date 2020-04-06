@@ -146,6 +146,7 @@ filegroup(
         "mirror_pad_mode.h",
         "mkl_types.h",
         "mkl_util.h",
+        "mkl_threadpool.h",
         "overflow.h",
         "padding.h",
         "permutation_input_iterator.h",
@@ -274,6 +275,7 @@ filegroup(
     name = "mkl_util_hdrs",
     srcs = [
         "mkl_util.h",
+        "mkl_threadpool.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
