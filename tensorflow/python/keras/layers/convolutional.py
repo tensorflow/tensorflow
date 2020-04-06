@@ -138,7 +138,7 @@ class Conv(Layer):
     if filters is not None and not isinstance(filters, int):
       filters = int(filters)
     self.filters = filters
-    self.groups = groups
+    self.groups = groups or 1
     if filters is not None and filters % self.groups != 0:
       raise ValueError(
           'The number of filters must be evenly divisible by the number of '
