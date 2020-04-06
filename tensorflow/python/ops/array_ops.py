@@ -3527,7 +3527,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   array([[inf, 1. ],
          [0.5, 1. ]], dtype=float32)>
 
-  The operaton returns a dense Tensor of shape `(2, 2)` with
+  The operaton returns a dense Tensor of shape `[2, 2]` with
   edit distances normalized by `truth` lengths.
 
   **Note**: It is possible to calculate edit distance between two
