@@ -2496,3 +2496,11 @@ func @testDataFormatVecPermuteInvalid3dInput(%x: tensor<4x2x2xi32>) {
   return
 }
 
+// -----
+
+func @testSendTPUEmbeddingGradients(%x: tensor<512x256xf32>) {
+  "tf.SendTPUEmbeddingGradients"(%x) {N = 1 : i64, NN = 0 : i64, config = "", operand_segment_sizes = dense<[1, 0]> : vector<2xi32>} : (tensor<512x256xf32>) -> ()
+  return
+}
+
+
