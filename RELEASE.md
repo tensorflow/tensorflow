@@ -16,7 +16,7 @@
   * `Model.fit` major improvements:
      * You can now use custom training logic with `Model.fit` by overriding `Model.train_step`.
      * Easily write state-of-the-art training loops without worrying about all of the features `Model.fit` handles for you (distribution strategies, callbacks, data formats, looping logic, etc)
-     * See the default [`Model.train_step`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/keras/engine/training.py#L433) for an example of what this function should look like
+     * See the default [`Model.train_step`](https://github.com/tensorflow/tensorflow/blob/1381fc8e15e22402417b98e3881dfd409998daea/tensorflow/python/keras/engine/training.py#L540) for an example of what this function should look like
      * Same applies for validation and inference via `Model.test_step` and `Model.predict_step`
   * The SavedModel format now supports all Keras built-in layers (including metrics, preprocessing layers, and stateful RNN layers)
 * `tf.lite`:
