@@ -668,6 +668,12 @@ class FFTShiftTest(test.TestCase, parameterized.TestCase):
       shifted = [[-1, -3, -2], [2, 0, 1], [-4, 3, 4]]
       self.assertAllEqual(fft_ops.fftshift(freqs, axes=(0, -1)), shifted)
       self.assertAllEqual(fft_ops.ifftshift(shifted, axes=(0, -1)), freqs)
+      self.assertAllEqual(
+          fft_ops.fftshift(freqs, axes=-1),
+          fft_ops.fftshift(freqs, axes=(1,)))
+      self.assertAllEqual(
+          fft_ops.ifftshift(shifted, axes=-1),
+          fft_ops.ifftshift(shifted, axes=(1,)))
 
 
 if __name__ == "__main__":
