@@ -151,6 +151,7 @@ DepthToSpaceOpModel/UInt8
 DepthToSpaceOpModel/int8
 
 # div_test
+-FloatDivOpTest/WithBroadcast5D
 FloatDivOpTest/.+
 
 # elementwise_test

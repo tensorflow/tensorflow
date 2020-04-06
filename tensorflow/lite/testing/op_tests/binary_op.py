@@ -196,7 +196,18 @@ def make_add_tests(options):
 
 @register_make_test_function()
 def make_div_tests(options):
-  make_binary_op_tests(options, tf.compat.v1.div)
+  """Make zip tests for div op with 5D case."""
+  test_parameters = [
+      {
+          "dtype": [tf.float32],
+          "input_shape_1": [[1, 3, 3, 3, 3]],
+          "input_shape_2": [[3]],
+          "activation": [False],
+          "fully_quantize": [False],
+      },
+  ]
+  make_binary_op_tests(
+      options, tf.compat.v1.div, test_parameters=test_parameters)
 
 
 @register_make_test_function()

@@ -380,6 +380,13 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_DIV:
+      if (op_sig.options.broadcast.need_broadcast &&
+          op_sig.options.broadcast.num_dims > 4) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_AVERAGE_POOL_2D:
     case BuiltinOperator_ADD:
     case BuiltinOperator_CONCATENATION:
@@ -522,6 +529,7 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
     } break;
 
     case BuiltinOperator_SUB:
+    case BuiltinOperator_DIV:
     case BuiltinOperator_MAXIMUM:
     case BuiltinOperator_MINIMUM: {
       op_sig.options.broadcast.need_broadcast =
