@@ -416,7 +416,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     >>> x = np.random.random((2, 3))
     >>> y = np.random.randint(0, 2, (2, 2))
-    >>> _ = model.fit(x, y, verbose=0)
+    >>> model.fit(x, y, verbose=0)
     >>> [m.name for m in model.metrics]
     ['loss', 'mae']
 
@@ -429,7 +429,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     >>> model.add_metric(
     ...    tf.reduce_sum(output_2), name='mean', aggregation='mean')
     >>> model.compile(optimizer="Adam", loss="mse", metrics=["mae", "acc"])
-    >>> _ = model.fit(x, (y, y), verbose=0)
+    >>> model.fit(x, (y, y), verbose=0)
     >>> [m.name for m in model.metrics]
     ['loss', 'out_loss', 'out_1_loss', 'out_mae', 'out_acc', 'out_1_mae',
     'out_1_acc', 'mean']
