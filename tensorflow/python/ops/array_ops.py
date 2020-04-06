@@ -3508,7 +3508,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
 
   Given the following input,
   * `hypothesis` is a `tf.SparseTensor` of shape `[2, 1, 1]`
-  * `truth` is a `tf.SparseTensor` of shape `(2, 2, 2)`
+  * `truth` is a `tf.SparseTensor` of shape `[2, 2, 2]`
 
   >>> hypothesis = tf.SparseTensor(
   ...   [[0, 0, 0],
