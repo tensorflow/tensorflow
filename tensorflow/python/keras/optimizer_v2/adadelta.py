@@ -52,6 +52,21 @@ class Adadelta(optimizer_v2.OptimizerV2):
   use. This can be useful for changing these values across different
   invocations of optimizer functions.
   @end_compatibility
+  
+  Args:
+      learning_rate: A `Tensor`, floating point value, or a schedule that is a
+        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
+        To match the exact form in the original paper use 1.0.
+      rho: A `Tensor` or a floating point value. The decay rate.
+      epsilon: A `Tensor` or a floating point value.  A constant epsilon used
+               to better conditioning the grad update.
+      name: Optional name prefix for the operations created when applying
+        gradients.  Defaults to "Adadelta".
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
 
   References
   See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
@@ -70,21 +85,6 @@ class Adadelta(optimizer_v2.OptimizerV2):
 
     """Construct a new Adadelta optimizer.
 
-    Args:
-      learning_rate: A `Tensor`, floating point value, or a schedule that is a
-        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
-        To match the exact form in the original paper use 1.0.
-      rho: A `Tensor` or a floating point value. The decay rate.
-      epsilon: A `Tensor` or a floating point value.  A constant epsilon used
-               to better conditioning the grad update.
-      name: Optional name prefix for the operations created when applying
-        gradients.  Defaults to "Adadelta".
-      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
-        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
-        gradients by value, `decay` is included for backward compatibility to
-        allow time inverse decay of learning rate. `lr` is included for backward
-        compatibility, recommended to use `learning_rate` instead.
-    
     The learning rate and epsilon according to the original paper uses learning rate as 1.0 and epsilon as 1e-6.
   
     According to section 4.3 ("Effective Learning rates"), near the end of 
