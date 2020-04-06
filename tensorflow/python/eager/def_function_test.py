@@ -732,8 +732,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
   def test_pickle(self, input_signature, autograph, autograph_options,
                   implements, relax_shapes):
     """@function objects can be pickled and unpickled."""
-    # Can't pickle functions in __main__:
-    from tensorflow.python.eager.def_function_test import undecorated_function
     original_py_function = undecorated_function
 
     func = def_function.function(
