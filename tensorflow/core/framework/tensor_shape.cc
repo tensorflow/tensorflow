@@ -160,6 +160,12 @@ TensorShapeBase<Shape>::TensorShapeBase(gtl::ArraySlice<int64> dim_sizes) {
   InitDims(dim_sizes);
 }
 
+template <class Shape>
+TensorShapeBase<Shape>::TensorShapeBase(gtl::ArraySlice<ssize_t> dim_sizes)
+    : TensorShapeBase(gtl::ArraySlice<int64>(
+          reinterpret_cast<const int64*>(dim_sizes.data()), dim_sizes.size())) {
+}
+
 // Returns true iff partial is true and val is < 0.
 // REQUIRES: val < kMaxRep16
 // REQUIRES: partial || val >= 0

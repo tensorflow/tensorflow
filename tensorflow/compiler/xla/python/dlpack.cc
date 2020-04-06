@@ -241,11 +241,10 @@ StatusOr<Device*> DeviceForDLContext(const PyLocalClient& client,
 
 StatusOr<py::capsule> BufferToDLPackManagedTensor(PyLocalBuffer* buffer) {
   auto pack = absl::make_unique<DLPackTensor>();
-  TF_RETURN_IF_ERROR(buffer->BlockHostUntilReady());
-  // Block on outstanding reads, so that it is safe to mutate the returned
-  // buffer.
+  // Block on outstanding operations, so that it is safe to read or mutate the
+  // returned buffer.
   StatusOr<std::shared_ptr<SharedDeviceBuffer>> buffer_or =
-      buffer->Release(/*wait_for_reads_to_complete=*/true);
+      buffer->Release(/*wait_for_operations_to_complete=*/true);
   if (!buffer_or.ok()) {
     return InvalidArgument(
         "Buffer synchronization failed converting to DLPack tensor: %s",

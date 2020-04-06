@@ -161,23 +161,23 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   AbstractTensorInterface* CreateBoolScalar(bool value) override;
 
   AbstractTensorInterface* CreateInt64Tensor(
-      absl::Span<const int64> dim_sizes) override;
+      absl::Span<const ssize_t> dim_sizes) override;
   AbstractTensorInterface* CreateUint64Tensor(
-      absl::Span<const int64> dim_sizes) override;
+      absl::Span<const ssize_t> dim_sizes) override;
   AbstractTensorInterface* CreateInt32Tensor(
-      absl::Span<const int64> dim_sizes) override;
+      absl::Span<const ssize_t> dim_sizes) override;
   AbstractTensorInterface* CreateFloatTensor(
-      absl::Span<const int64> dim_sizes) override;
+      absl::Span<const ssize_t> dim_sizes) override;
   AbstractTensorInterface* CreateDoubleTensor(
-      absl::Span<const int64> dim_sizes) override;
+      absl::Span<const ssize_t> dim_sizes) override;
   AbstractTensorInterface* CreateHalfTensor(
-      absl::Span<const int64> dim_sizes) override;
+      absl::Span<const ssize_t> dim_sizes) override;
   AbstractTensorInterface* CreateStringTensor(
-      absl::Span<const int64> dim_sizes) override;
+      absl::Span<const ssize_t> dim_sizes) override;
   AbstractTensorInterface* CreateComplex128Tensor(
-      absl::Span<const int64> dim_sizes) override;
+      absl::Span<const ssize_t> dim_sizes) override;
   AbstractTensorInterface* CreateBoolTensor(
-      absl::Span<const int64> dim_sizes) override;
+      absl::Span<const ssize_t> dim_sizes) override;
 
   AbstractTensorHandleInterface* CreateLocalHandle(
       AbstractTensorInterface* t) override;

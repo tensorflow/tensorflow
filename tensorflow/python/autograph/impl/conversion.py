@@ -40,7 +40,7 @@ from tensorflow.python.autograph.converters import conditional_expressions
 from tensorflow.python.autograph.converters import continue_statements
 from tensorflow.python.autograph.converters import control_flow
 from tensorflow.python.autograph.converters import directives
-from tensorflow.python.autograph.converters import function_scopes
+from tensorflow.python.autograph.converters import functions
 from tensorflow.python.autograph.converters import lists
 from tensorflow.python.autograph.converters import logical_expressions
 from tensorflow.python.autograph.converters import return_statements
@@ -616,7 +616,7 @@ def node_to_graph(node, context):
   unsupported_features_checker.verify(node)
 
   node = converter.standard_analysis(node, context, is_initial=True)
-  node = converter.apply_(node, context, function_scopes)
+  node = converter.apply_(node, context, functions)
   node = converter.apply_(node, context, arg_defaults)
   node = converter.apply_(node, context, directives)
   node = converter.apply_(node, context, break_statements)

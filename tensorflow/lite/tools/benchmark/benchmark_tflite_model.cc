@@ -497,6 +497,10 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
 #endif  // TFLITE_ENABLE_FP16_CPU_BENCHMARKS
       break;
     }
+    case kTfLiteFloat64: {
+      return CreateInputTensorData<double>(
+          num_elements, std::uniform_real_distribution<double>(-0.5, 0.5));
+    }
     case kTfLiteInt64: {
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 99;

@@ -162,47 +162,47 @@ AbstractTensorInterface* EagerContext::CreateBoolScalar(bool value) {
 }
 
 AbstractTensorInterface* EagerContext::CreateInt64Tensor(
-    absl::Span<const int64> dim_sizes) {
+    absl::Span<const ssize_t> dim_sizes) {
   return new TensorInterface(Tensor(DT_INT64, TensorShape(dim_sizes)));
 }
 
 AbstractTensorInterface* EagerContext::CreateUint64Tensor(
-    absl::Span<const int64> dim_sizes) {
+    absl::Span<const ssize_t> dim_sizes) {
   return new TensorInterface(Tensor(DT_UINT64, TensorShape(dim_sizes)));
 }
 
 AbstractTensorInterface* EagerContext::CreateInt32Tensor(
-    absl::Span<const int64> dim_sizes) {
+    absl::Span<const ssize_t> dim_sizes) {
   return new TensorInterface(Tensor(DT_INT32, TensorShape(dim_sizes)));
 }
 
 AbstractTensorInterface* EagerContext::CreateFloatTensor(
-    absl::Span<const int64> dim_sizes) {
+    absl::Span<const ssize_t> dim_sizes) {
   return new TensorInterface(Tensor(DT_FLOAT, TensorShape(dim_sizes)));
 }
 
 AbstractTensorInterface* EagerContext::CreateDoubleTensor(
-    absl::Span<const int64> dim_sizes) {
+    absl::Span<const ssize_t> dim_sizes) {
   return new TensorInterface(Tensor(DT_DOUBLE, TensorShape(dim_sizes)));
 }
 
 AbstractTensorInterface* EagerContext::CreateHalfTensor(
-    absl::Span<const int64> dim_sizes) {
+    absl::Span<const ssize_t> dim_sizes) {
   return new TensorInterface(Tensor(DT_HALF, TensorShape(dim_sizes)));
 }
 
 AbstractTensorInterface* EagerContext::CreateStringTensor(
-    absl::Span<const int64> dim_sizes) {
+    absl::Span<const ssize_t> dim_sizes) {
   return new TensorInterface(Tensor(DT_STRING, TensorShape(dim_sizes)));
 }
 
 AbstractTensorInterface* EagerContext::CreateComplex128Tensor(
-    absl::Span<const int64> dim_sizes) {
+    absl::Span<const ssize_t> dim_sizes) {
   return new TensorInterface(Tensor(DT_COMPLEX128, TensorShape(dim_sizes)));
 }
 
 AbstractTensorInterface* EagerContext::CreateBoolTensor(
-    absl::Span<const int64> dim_sizes) {
+    absl::Span<const ssize_t> dim_sizes) {
   return new TensorInterface(Tensor(DT_BOOL, TensorShape(dim_sizes)));
 }
 

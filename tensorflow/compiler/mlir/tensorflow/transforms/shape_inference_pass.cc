@@ -47,9 +47,9 @@ namespace {
 
 // This transformation pass propagate shapes on the TensorFlow graph.
 // It is a ModulePass in order to be able to change function types.
-struct ShapeInference : public ModulePass<ShapeInference> {
-  void runOnModule() override {
-    auto module = getModule();
+struct ShapeInference : public OperationPass<ShapeInference, ModuleOp> {
+  void runOnOperation() override {
+    auto module = getOperation();
     auto producer_or = tensorflow::GetTfGraphProducerVersion(module);
     if (!producer_or.ok()) {
       LLVM_DEBUG(llvm::dbgs() << producer_or.status().ToString(););

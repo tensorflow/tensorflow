@@ -422,19 +422,6 @@ class Function(object):
     self._input_signature = input_signature
     self._call_counter = _CallCounter(FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY)
 
-  def __getstate__(self):
-    """Custom pickling, to omit unpickleable objects."""
-    result = self.__dict__.copy()
-    del result["_lock"]
-    del result["_descriptor_cache"]
-    return result
-
-  def __setstate__(self, state):
-    """Restore from pickled state."""
-    self.__dict__ = state
-    self._lock = threading.Lock()
-    self._descriptor_cache = weakref.WeakKeyDictionary()
-
   def _defun_with_scope(self, scope):
     """Creates a defun wrapped inside a variable creator scope."""
 

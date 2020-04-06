@@ -116,8 +116,8 @@ std::string GetRandomStateVariableName() {
 //    tf.TPUReshardVariablesOp(%rvar, %default_format, %rstate)
 //  }
 struct TPUVariableRuntimeReformattingPass
-    : public ModulePass<TPUVariableRuntimeReformattingPass> {
-  void runOnModule() override;
+    : public OperationPass<TPUVariableRuntimeReformattingPass, ModuleOp> {
+  void runOnOperation() override;
 };
 
 // Returns the earlier value of which `v` is an identity. If `skipped` is
@@ -555,8 +555,8 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
   builder.create<tf_device::ReturnOp>(while_op.getLoc(), ArrayRef<Value>{});
 }
 
-void TPUVariableRuntimeReformattingPass::runOnModule() {
-  auto module = getModule();
+void TPUVariableRuntimeReformattingPass::runOnOperation() {
+  auto module = getOperation();
   module.walk([&](TF::WhileOp while_op) {
     auto body = llvm::cast<FuncOp>(module.lookupSymbol(while_op.body()));
     tf_device::ReplicateOp replicate;

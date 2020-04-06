@@ -1392,7 +1392,7 @@ class Conv3DBackpropInputOp<GPUDevice, T> : public OpKernel {
       ProfileResult best_result;
       ProfileResult best_result_no_scratch;
       std::vector<tensorflow::AutotuneResult> results;
-      for (auto profile_algorithm : algorithms) {
+      for (const auto& profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
         DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
@@ -1880,7 +1880,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
           &algorithms));
       ProfileResult best_result;
       ProfileResult best_result_no_scratch;
-      for (auto profile_algorithm : algorithms) {
+      for (const auto& profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
         DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,

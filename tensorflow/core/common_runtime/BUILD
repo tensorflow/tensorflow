@@ -303,7 +303,6 @@ tf_cuda_library(
         "lower_if_op.cc",
         "lower_while_op.cc",
         "memory_types.cc",
-        "metrics.cc",
         "mkl_cpu_allocator.cc",
         "optimization_registry.cc",
         "parallel_concat_optimizer.cc",

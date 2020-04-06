@@ -51,9 +51,10 @@ using mlir::PassRegistration;
 namespace mlir {
 namespace xla_hlo {
 namespace {
-class LegalizeTFControlFlow : public ModulePass<LegalizeTFControlFlow> {
+class LegalizeTFControlFlow
+    : public OperationPass<LegalizeTFControlFlow, ModuleOp> {
  public:
-  void runOnModule() override;
+  void runOnOperation() override;
 };
 }  // namespace
 
@@ -164,8 +165,8 @@ void LowerWhile(TF::WhileOp op, ModuleOp module) {
 }
 }  // namespace
 
-void LegalizeTFControlFlow::runOnModule() {
-  auto module = getModule();
+void LegalizeTFControlFlow::runOnOperation() {
+  auto module = getOperation();
 
   module.walk([&](TF::WhileOp op) -> void { LowerWhile(op, module); });
   module.walk([&](TF::IfOp op) -> void { LowerIf(op, module); });

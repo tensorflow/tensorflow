@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_
 
+#include <unordered_set>
+
+#include "absl/types/span.h"
 #include "llvm/Support/SourceMgr.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
@@ -42,9 +45,9 @@ LoadFromGraphdefOrMlirSource(
 
 // Load Saved model (either v1 or v2) into MLIR.
 stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
-    bool import_saved_model, bool import_saved_model_v1,
-    const std::string& input_filename, const std::string& saved_model_tags,
-    const std::string& saved_model_exported_names, mlir::MLIRContext* context);
+    const std::string& input_filename, const int saved_model_version,
+    const std::unordered_set<std::string>& tags,
+    absl::Span<std::string> exported_names, mlir::MLIRContext* context);
 
 // Taking a MLIR module in TF executor dialect and a set of parameters,
 // applies a set of passes to convert the module to TF Lite dialect and
