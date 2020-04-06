@@ -274,10 +274,14 @@ void MergeOp::Compute(OpKernelContext* context) {
       } else {
         context->set_output(0, context->input(i));
       }
-      Tensor* value_index = nullptr;
-      OP_REQUIRES_OK(
-          context, context->allocate_output(1, TensorShape({}), &value_index));
-      value_index->scalar<int32>()() = i;
+      // The value_index output is typically used only in gradient calculations,
+      // so we can avoid allocating in many inference workloads.
+      if (context->output_required(1)) {
+        Tensor* value_index = nullptr;
+        OP_REQUIRES_OK(context, context->allocate_output(1, TensorShape({}),
+                                                         &value_index));
+        value_index->scalar<int32>()() = i;
+      }
     }
   }
 }

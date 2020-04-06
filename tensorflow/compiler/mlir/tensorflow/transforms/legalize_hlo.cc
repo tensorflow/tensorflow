@@ -40,6 +40,20 @@ class LegalizeHloToTf : public FunctionPass<LegalizeHloToTf> {
   void runOnFunction() override;
 };
 
+// Returns whether the two values are guaranteed to be broadcastable to the
+// same shape, this broadcasts size 1 tensors up to any rank.
+// TODO(jpienaar): Move this to more general location.
+static bool AreBroadcastCompatible(Value x, Value y) {
+  auto x_ranked = x.getType().dyn_cast<RankedTensorType>();
+  auto y_ranked = y.getType().dyn_cast<RankedTensorType>();
+  if (!x_ranked || !y_ranked) {
+    return true;
+  }
+  SmallVector<int64_t, 4> resultShape;
+  return OpTrait::util::getBroadcastedShape(x_ranked.getShape(),
+                                            y_ranked.getShape(), resultShape);
+}
+
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_legalize_hlo.inc"
 
 /// Performs the lowering to XLA dialect.

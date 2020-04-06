@@ -57,9 +57,9 @@ class QuantizeAndDequantize : public ElementwiseOperation {
   void SetLinkIndex(int index) override;
   std::string GetCoreCode(const LinkingContext& context) const override;
   std::string GetArgsDeclaration() const override;
-  Status BindArguments(CLKernel* kernel) override;
+  absl::Status BindArguments(CLKernel* kernel) override;
 
-  friend Status CreateQuantizeAndDequantize(
+  friend absl::Status CreateQuantizeAndDequantize(
       const CreationContext& creation_context, const OperationDef& definition,
       const QuantizeAndDequantizeAttributes& attr,
       QuantizeAndDequantize* result);
@@ -70,27 +70,26 @@ class QuantizeAndDequantize : public ElementwiseOperation {
                         CalculationsPrecision scalar_precision);
 
   template <DataType T>
-  Status UploadParameters(const ::tflite::gpu::Tensor<Linear, T>& parameters,
-                          CLContext* context);
+  absl::Status UploadParameters(
+      const tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context);
 
   FLT min_;
   FLT max_;
   FLT scale_;
 };
 
-Status CreateQuantizeAndDequantize(const CreationContext& creation_context,
-                                   const OperationDef& definition,
-                                   const QuantizeAndDequantizeAttributes& attr,
-                                   QuantizeAndDequantize* result);
+absl::Status CreateQuantizeAndDequantize(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const QuantizeAndDequantizeAttributes& attr, QuantizeAndDequantize* result);
 
 template <DataType T>
-Status QuantizeAndDequantize::UploadParameters(
-    const ::tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context) {
+absl::Status QuantizeAndDequantize::UploadParameters(
+    const tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context) {
   LinearStorageCreateInfo create_info;
   create_info.storage_type =
       DeduceLinearStorageType(definition_.GetPrimaryStorageType());
   create_info.data_type = definition_.GetPrimaryDataType();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cl

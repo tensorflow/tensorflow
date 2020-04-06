@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Adadelta for TensorFlow."""
+"""Adadelta optimizer implementation."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -34,23 +34,9 @@ class Adadelta(optimizer_v2.OptimizerV2):
 
   Adadelta optimization is a stochastic gradient descent method that is based on
   adaptive learning rate per dimension to address two drawbacks:
-    1) the continual decay of learning rates throughout training
-    2) the need for a manually selected global learning rate
 
-  Two accumulation steps are required:
-    1) the accumulation of gradients squared,
-    2) the accumulation of updates squared.
-
-  Initialization:
-
-  $$E[g^2]_0 := 0 \text{(Initialize gradient 2nd order moment vector)}$$
-  $$E[\Delta x^2]_0 := 0 \text{(Initialize 2nd order variable update)}$$
-
-  $$t := t + 1$$
-  $$E[g^2]_t := \rho * E[g^2]_{t-1} + (1 - \rho) * g^2$$
-  $$\Delta x_t = -RMS[\Delta x]_{t-1} * g_t / RMS[g]_t$$
-  $$E[\Delta x^2]_t := \rho * E[\Delta x^2]_{t-1} + (1 - \rho) * \Delta x_t^2$$
-  $$x_t := x_{t-1} + \Delta x_{t}$$
+  - The continual decay of learning rates throughout training
+  - The need for a manually selected global learning rate
 
   Adadelta is a more robust extension of Adagrad that adapts learning rates
   based on a moving window of gradient updates, instead of accumulating all
@@ -58,6 +44,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
   have been done. Compared to Adagrad, in the original version of Adadelta you
   don't have to set an initial learning rate. In this version, initial
   learning rate can be set, as in most other Keras optimizers.
+
 
   @compatibility(eager)
   When eager execution is enabled, `learning_rate`, `rho`, and `epsilon` can
@@ -72,7 +59,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
 
   """
 
-  _HAS_ALL_REDUCE_SUM_GRAD = True
+  _HAS_AGGREGATE_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,
@@ -80,6 +67,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
                epsilon=1e-7,
                name='Adadelta',
                **kwargs):
+
     """Construct a new Adadelta optimizer.
 
     Args:

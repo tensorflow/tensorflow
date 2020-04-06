@@ -31,11 +31,14 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import server_lib
@@ -98,8 +101,7 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         remote_output(constant_op.constant([1]))[0].numpy(), 2)
 
-  # TODO(b/148235520): Re-enable this test.
-  def DISABLED_testMultiDeviceFunctionAmbiguousDevice(self):
+  def testMultiDeviceFunctionAmbiguousDevice(self):
 
     @def_function.function
     def ambiguous_device(i):
@@ -167,6 +169,27 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
 
     with ops.device('/job:worker/task:0'):
       self.assertAllEqual(func(), 1)
+
+  @test_util.eager_lazy_remote_copy_on_and_off
+  def testRemoteCall(self):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    def _remote_fn(x):
+      return constant_op.constant(1) + x
+
+    remote_fn = _remote_fn.get_concrete_function()
+
+    @def_function.function
+    def func(x):
+      return functional_ops.remote_call(
+          args=[x],
+          Tout=[dtypes.int32],
+          f=remote_fn,
+          target='/job:worker/task:0')
+
+    with ops.device('/job:localhost/task:0'):
+      self.assertAllEqual(func(constant_op.constant(1)), [2])
 
 
 class RemoteAsyncTest(test.TestCase):

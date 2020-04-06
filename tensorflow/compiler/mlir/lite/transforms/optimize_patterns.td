@@ -339,11 +339,15 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
                       (ConstantOp:$rhs $a), TFL_AF_None),
             (TFL_ReshapeOp (BinaryOp $input, $rhs, TFL_AF_None), $shape),
              // The broadcasting of "BinaryOp" only happens in the lower
-             // dimensions, and the higher dimensions are same.
+             // dimensions, and the higher dimensions are same, so we know the
+             // result and input of the "BinaryOp" in the source pattern have
+             // the same shape, which is defined by `shape`.
             [(IsTailOfShape $rhs, $lhs),
              (HasOneUse $lhs),
-             // the two operands of the binary op is broadcastable
-             (AreBroadcastableTypes $rhs, $input)]>;
+             // The result of the new "BinaryOp" will have the same shape as
+             // `input`. In other words, the shape of the `Reshape` op are not
+             // changed after the transformation.
+             (IsTailOfShape $rhs, $input)]>;
 }
 
 foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
@@ -363,11 +367,15 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
                       (ConstantOp:$rhs $a)),
             (TFL_ReshapeOp (BinaryOp $input, $rhs), $shape),
              // The broadcasting of "BinaryOp" only happens in the lower
-             // dimensions, and the higher dimensions are same.
+             // dimensions, and the higher dimensions are same, so we know the
+             // result and input of the "BinaryOp" in the source pattern have
+             // the same shape, which is defined by `shape`.
             [(IsTailOfShape $rhs, $lhs),
              (HasOneUse $lhs),
-             // the two operands of the binary op is broadcastable
-             (AreBroadcastableTypes $rhs, $input)]>;
+             // The result of the new "BinaryOp" will have the same shape as
+             // `input`. In other words, the shape of the `Reshape` op are not
+             // changed after the transformation.
+             (IsTailOfShape $rhs, $input)]>;
 }
 
 // Returns shape of a ranked tensor.

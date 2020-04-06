@@ -38,13 +38,26 @@ class EventPool {
     Handle& operator=(const Handle&) = delete;
     Handle& operator=(Handle&&) = default;
 
+    // There is a total order on events handed out by the event pool. The most
+    // useful aspect of this total order is that two events returned by
+    // ThenAllocateAndRecordEvent on the same stream can be compared to see
+    // which was recorded earlier on that stream.
+    inline bool operator<(const Handle& rhs) const {
+      return sequence_number_ < rhs.sequence_number_;
+    }
+    inline bool operator>(const Handle& rhs) const { return rhs < *this; }
+    inline bool operator<=(const Handle& rhs) const { return !(*this > rhs); }
+    inline bool operator>=(const Handle& rhs) const { return !(*this < rhs); }
+
     se::Event* event() const { return event_.get(); }
+    uint64 sequence_number() const { return sequence_number_; }
 
    private:
     friend class EventPool;
 
     EventPool* pool_ = nullptr;
     std::unique_ptr<se::Event> event_;
+    uint64 sequence_number_;
   };
 
   // Initializes a new EventPool. If `allow_reuse` is true, then events will be
@@ -69,6 +82,7 @@ class EventPool {
 
   absl::Mutex mu_;
   std::stack<std::unique_ptr<se::Event>> free_events_ TF_GUARDED_BY(mu_);
+  uint64 next_sequence_number_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace xla

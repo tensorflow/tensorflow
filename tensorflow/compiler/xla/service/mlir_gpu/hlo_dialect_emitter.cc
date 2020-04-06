@@ -186,7 +186,7 @@ Status HloDialectEmitter::HandleReduce(HloInstruction* instr) {
     reduceOp.body().push_back(block);
     HloDialectEmitter emitter(emission_context_, &reduceOp.body(), arguments);
     TF_ASSIGN_OR_RETURN(auto result, emitter.EmitComputation(*computation));
-    OpBuilder body_builder(block);
+    OpBuilder body_builder = OpBuilder::atBlockEnd(block);
     body_builder.setInsertionPointToEnd(block);
     body_builder.create<hlo::ReturnOp>(getLocation(instr),
                                        ArrayRef<Value>{result});

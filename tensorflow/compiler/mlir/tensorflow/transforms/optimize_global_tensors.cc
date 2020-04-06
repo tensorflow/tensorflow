@@ -41,8 +41,8 @@ namespace mlir {
 namespace tf_saved_model {
 namespace {
 struct OptimizeGlobalTensorsPass
-    : public ModulePass<OptimizeGlobalTensorsPass> {
-  void runOnModule() override;
+    : public OperationPass<OptimizeGlobalTensorsPass, ModuleOp> {
+  void runOnOperation() override;
 };
 
 // A global tensor is bound to arguments of multiple funcs.
@@ -276,8 +276,8 @@ void EraseUnusedBoundInputs(ModuleOp module) {
   }
 }
 
-void OptimizeGlobalTensorsPass::runOnModule() {
-  auto module = getModule();
+void OptimizeGlobalTensorsPass::runOnOperation() {
+  auto module = getOperation();
   EraseUnusedBoundInputs(module);
 
   ResourceAnalyzer resource_analyzer(module);

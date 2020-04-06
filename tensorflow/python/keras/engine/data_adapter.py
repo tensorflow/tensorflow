@@ -1155,19 +1155,37 @@ class DataHandler(object):
 
   def enumerate_epochs(self):
     """Yields `(epoch, tf.data.Iterator)`."""
-    data_iterator = iter(self._dataset)
-    for epoch in range(self._initial_epoch, self._epochs):
-      if self._insufficient_data:  # Set by `catch_stop_iteration`.
-        break
-      if self._adapter.should_recreate_iterator():
-        if ds_context.has_strategy():
-          # TODO(b/138326910): remove this when MultiDeviceIterator is a
-          # CompositeTensor (unless this is more efficient)
-          data_iterator._initializer  # pylint: disable=pointless-statement, protected-access
-        else:
-          data_iterator = iter(self._dataset)
-      yield epoch, data_iterator
-      self._adapter.on_epoch_end()
+    with self._truncate_execution_to_epoch():
+      data_iterator = iter(self._dataset)
+      for epoch in range(self._initial_epoch, self._epochs):
+        if self._insufficient_data:  # Set by `catch_stop_iteration`.
+          break
+        if self._adapter.should_recreate_iterator():
+          if ds_context.has_strategy():
+            # TODO(b/138326910): remove this when MultiDeviceIterator is a
+            # CompositeTensor (unless this is more efficient)
+            data_iterator._initializer  # pylint: disable=pointless-statement, protected-access
+          else:
+            data_iterator = iter(self._dataset)
+        yield epoch, data_iterator
+        self._adapter.on_epoch_end()
+
+  @contextlib.contextmanager
+  def _truncate_execution_to_epoch(self):
+    """Truncates steps per execution to at most one epoch."""
+    should_truncate = (
+        self._inferred_steps is not None and
+        self._steps_per_execution_value > self._inferred_steps)
+    original_value = self._steps_per_execution_value
+    try:
+      if should_truncate:
+        self._steps_per_execution.assign(self._inferred_steps)
+        self._steps_per_execution_value = self._inferred_steps
+      yield
+    finally:
+      if should_truncate:
+        self._steps_per_execution.assign(original_value)
+        self._steps_per_execution_value = original_value
 
   @contextlib.contextmanager
   def catch_stop_iteration(self):
@@ -1176,14 +1194,8 @@ class DataHandler(object):
       yield
       context.async_wait()
     except (StopIteration, errors.OutOfRangeError):
-      context.async_clear_error()
       if self._inferred_steps is None:
-        # The input passed by the user ran out of batches.
-        # Now we know the cardinality of the input(dataset or generator).
-        if self._model is not None:
-          self._inferred_steps = self._model._train_counter.numpy().item()  # pylint: disable=protected-access
-        else:
-          self._inferred_steps = self._current_step
+        self._inferred_steps = self._current_step
       else:
         self._insufficient_data = True
         total_epochs = self._epochs - self._initial_epoch
@@ -1315,7 +1327,7 @@ def _make_class_weight_map_fn(class_weight):
     raise ValueError(error_msg)
 
   class_weight_tensor = ops.convert_to_tensor_v2(
-      [int(class_weight[c]) for c in class_ids], dtype="int64")
+      [class_weight[int(c)] for c in class_ids])
 
   def _class_weights_map_fn(*data):
     """Convert `class_weight` to `sample_weight`."""
@@ -1385,10 +1397,11 @@ def train_validation_split(arrays, validation_split, shuffle=True):
     return isinstance(t, tensor_types) or t is None
 
   flat_arrays = nest.flatten(arrays)
-  if not all(_can_split(t) for t in flat_arrays):
+  unsplitable = [type(t) for t in flat_arrays if not _can_split(t)]
+  if unsplitable:
     raise ValueError(
         "`validation_split` is only supported for Tensors or NumPy "
-        "arrays, found: {}".format(arrays))
+        "arrays, found following types in the input: {}".format(unsplitable))
 
   if all(t is None for t in flat_arrays):
     return arrays, arrays
@@ -1407,6 +1420,14 @@ def train_validation_split(arrays, validation_split, shuffle=True):
   split_at = int(math.floor(batch_dim * (1. - validation_split)))
   train_indices = indices[:split_at]
   val_indices = indices[split_at:]
+
+  if split_at == 0 or split_at == batch_dim:
+    raise ValueError(
+        "Training data contains {batch_dim} samples, which is not sufficient "
+        "to split it into a validation and training set as specified by "
+        "`validation_split={validation_split}`. Either provide more data, or a "
+        "different value for the `validation_split` argument." .format(
+            batch_dim=batch_dim, validation_split=validation_split))
 
   def _split(t, indices):
     if t is None:

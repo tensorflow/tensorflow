@@ -82,8 +82,8 @@ class TensorListPatternRewriter : public PatternRewriter {
 
 /// Lower TensorList ops in functions for subsequent legalization.
 struct LowerStaticTensorListPass
-    : public ModulePass<LowerStaticTensorListPass> {
-  void runOnModule() override;
+    : public OperationPass<LowerStaticTensorListPass, ModuleOp> {
+  void runOnOperation() override;
 
   // Apply type and op changes within a function.
   LogicalResult RewriteFunction(FuncOp func,
@@ -862,6 +862,11 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
   target.addLegalOp<ConstantOp>();
   target.addLegalOp<FuncOp>();
   target.addLegalOp<ReturnOp>();
+  // Register fused LSTM/RNN ops as legal.
+  target.addLegalOp<TFL::LSTMOp>();
+  target.addLegalOp<TFL::UnidirectionalSequenceLSTMOp>();
+  target.addLegalOp<TFL::UnidirectionalSequenceRNNOp>();
+  target.addLegalOp<TFL::BidirectionalSequenceLSTMOp>();
 
   OwningRewritePatternList patterns;
   populateWithGenerated(context, &patterns);
@@ -873,14 +878,14 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
   return applyFullConversion(func, target, patterns);
 }
 
-void LowerStaticTensorListPass::runOnModule() {
+void LowerStaticTensorListPass::runOnOperation() {
   // TODO(haoliang): currently we process the `main` function first, and the
   // remaining functions may be processed in arbitrary order. However, this will
   // have a potential issue when one function taking a `DT_VARIANT` is processed
   // before the function that produces the `DT_VARIANT`. We need to carefully
   // order the functions to be processed.
   std::vector<FuncOp> funcs_in_module;
-  for (auto func : getModule().getOps<FuncOp>()) {
+  for (auto func : getOperation().getOps<FuncOp>()) {
     // Always place the main function to be the first in the list.
     if (func.getName() == "main") {
       funcs_in_module.insert(funcs_in_module.begin(), func);

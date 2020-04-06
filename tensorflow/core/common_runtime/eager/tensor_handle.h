@@ -31,13 +31,12 @@ limitations under the License.
 // clang-format on
 
 #include "absl/types/variant.h"
+#include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle_data.h"
 #include "tensorflow/core/common_runtime/function.h"
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle_data.h"
 #endif  // IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/tensor.h"
@@ -49,10 +48,13 @@ limitations under the License.
 
 namespace tensorflow {
 
+class EagerContext;
+
 // Associates a Tensor and a Device, used in the eager runtime. Internal version
 // of the TFE_TensorHandle struct and the python EagerTensor class
 // (unrelated to python TensorHandle).
-class TensorHandle : public core::RefCounted {
+class TensorHandle : public AbstractTensorHandleInterface,
+                     public core::RefCounted {
   // Custom devices do many of the same things as physical Devices, but have a
   // much more restricted interface. We pass around ambiguous pointers since
   // TensorHandles may be placed either on custom or physical devices.
@@ -66,41 +68,52 @@ class TensorHandle : public core::RefCounted {
                EagerContext* ctx);
   TensorHandle(tensorflow::Tensor&& t, CustomDevice* d, EagerContext* ctx);
   TensorHandle(Device* d, Device* op_device, Device* resource_device,
-               DataType dtype, EagerContext* ctx);
+               tensorflow::DataType dtype, EagerContext* ctx);
 
 #if !defined(IS_MOBILE_PLATFORM)
   TensorHandle(int64 op_id, int32 output_num, const string& remote_task,
-               DataType dtype, Device* device, EagerContext* ctx);
-  TensorHandle(int64 op_id, int32 output_num, DataType dtype, Device* device,
-               EagerContext* ctx);
+               tensorflow::DataType dtype, Device* device, EagerContext* ctx);
+  TensorHandle(int64 op_id, int32 output_num, tensorflow::DataType dtype,
+               Device* device, EagerContext* ctx);
 #endif  // IS_MOBILE_PLATFORM
 
  public:
   // TensorHandle with no assigned device
-  static Status CreateLocalHandle(const tensorflow::Tensor& t,
-                                  TensorHandle** h);
-  static Status CreateLocalHandle(tensorflow::Tensor&& t, Device* d,
-                                  Device* op_device, EagerContext* ctx,
-                                  TensorHandle** h);
-  static Status CreateLocalHandle(tensorflow::Tensor&& t, Device* d,
-                                  Device* op_device, Device* resource_device,
-                                  EagerContext* ctx, TensorHandle** h);
-  static Status CreateLocalHandle(tensorflow::Tensor&& t, CustomDevice* d,
-                                  EagerContext* ctx, TensorHandle** h);
-  static Status CreateEmptyLocalHandle(Device* d, Device* op_device,
-                                       Device* resource_device, DataType dtype,
-                                       EagerContext* ctx, TensorHandle** h);
+  static TensorHandle* CreateLocalHandle(const tensorflow::Tensor& t);
+  static TensorHandle* CreateLocalHandle(tensorflow::Tensor&& t, Device* d,
+                                         Device* op_device, EagerContext* ctx);
+  static TensorHandle* CreateLocalHandle(tensorflow::Tensor&& t, Device* d,
+                                         Device* op_device,
+                                         Device* resource_device,
+                                         EagerContext* ctx);
+  static TensorHandle* CreateLocalHandle(tensorflow::Tensor&& t,
+                                         CustomDevice* d, EagerContext* ctx);
+  static TensorHandle* CreateEmptyLocalHandle(Device* d, Device* op_device,
+                                              Device* resource_device,
+                                              tensorflow::DataType dtype,
+                                              EagerContext* ctx);
 #if !defined(IS_MOBILE_PLATFORM)
-  static Status CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
-                                           const string& remote_task,
-                                           DataType dtype, Device* d,
-                                           EagerContext* ctx, TensorHandle** h);
-  static Status CreateLazyRemoteHandle(int64 op_id, int32 output_num,
-                                       DataType dtype, Device* d,
-                                       EagerContext* ctx, TensorHandle** h);
+  static TensorHandle* CreateUnshapedRemoteHandle(int64 op_id, int32 output_num,
+                                                  const string& remote_task,
+                                                  tensorflow::DataType dtype,
+                                                  Device* d, EagerContext* ctx);
+  static TensorHandle* CreateLazyRemoteHandle(int64 op_id, int32 output_num,
+                                              tensorflow::DataType dtype,
+                                              Device* d, EagerContext* ctx);
 #endif  // IS_MOBILE_PLATFORM
 
-  ~TensorHandle() override { DVLOG(3) << "Deleting TensorHandle " << this; }
+  void Release() override;
+
+  tensorflow::DataType DataType() const override;
+  Status NumDims(int* num_dims) const override;
+  Status NumElements(int64* num_elements) const override;
+  Status Dim(int dim_index, int64* dim) const override;
+
+  const char* DeviceName(Status* status) const override;
+  const char* BackingDeviceName(Status* status) const override;
+  AbstractTensorInterface* Resolve(Status* status) override;
+
+  AbstractTensorHandleInterface* Copy() override;
 
   // Return the Tensor from the default device.
   Status Tensor(const tensorflow::Tensor** t) const;
@@ -121,9 +134,6 @@ class TensorHandle : public core::RefCounted {
   VariantDevice DeviceOrHostCPU(const EagerContext& ctx) const;
 
   Status Shape(tensorflow::TensorShape* shape);
-  Status NumDims(int* num_dims) const;
-  Status Dim(int dim_index, int64* dim) const;
-  Status NumElements(int64* num_elements) const;
 
   Status Unprotect(const Device* d);
 
@@ -190,23 +200,11 @@ class TensorHandle : public core::RefCounted {
       const shape_inference::ShapeHandle& shape_handle);
   Status CopyInferenceShape(TensorHandle* other);
 
-  // Warning: can return nullptr for CPU tensors.
-  EagerContext* Context() { return ctx_; }
-
   // dtype for the handle. It must be the same as t.dtype() once the handle is
   // ready.
-  const DataType dtype;
-
-  bool OnHostCPU() const {
-    return (
-        device_.index() == 0 &&
-        (absl::get<Device*>(device_) == nullptr ||
-         (ctx_ != nullptr && ctx_->HostCPU() == absl::get<Device*>(device_))));
-  }
+  const tensorflow::DataType dtype;
 
   bool IsRemote() const;
-  void EnableImplicitMirroring() { implicit_mirroring_ = true; }
-  bool ImplicitMirroring() const { return implicit_mirroring_; }
 
   string DebugString() const;
 
@@ -225,6 +223,8 @@ class TensorHandle : public core::RefCounted {
   Status GetResourceAllowedDevices(std::vector<string>* result);
 
  private:
+  ~TensorHandle() override;
+
   // The TensorHandleData can either represent a local or remote tensor handle.
   // Further, it can be in a non-ready state. It would become ready with a call
   // to either SetTensor or SetRemoteShape which replaces the underlying data
@@ -273,7 +273,6 @@ class TensorHandle : public core::RefCounted {
   // Does not need synchronization because it can be accessed only after
   // WaitReady() has returned. At that point, is_poisoned_ is immutable.
   Status is_poisoned_;
-  bool implicit_mirroring_;
 
   // If this TensorHandle 1) is a local tensor, and 2) is a resource handle or
   // refers to a remote resource handle, we store data types, shapes and allowed
@@ -307,6 +306,15 @@ const absl::variant<Device*, CustomDevice*> kVariantDeviceNull =
 
 // Returns the device backing the resource. Else, returns nullptr.
 Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx);
+
+class TensorHandleInterface : public AbstractTensorHandleInterface {
+ public:
+};
+
+inline TensorHandle* TensorHandleFromInterface(
+    AbstractTensorHandleInterface* handle) {
+  return down_cast<TensorHandle*>(handle);
+}
 
 }  // namespace tensorflow
 

@@ -110,14 +110,7 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
         session_metadata_, this);
   }
 
-  DeviceMgr const* all_devices = device_mgr_;
-  if (parent_ != nullptr && parent_->remote_device_mgr() != nullptr) {
-    all_devices = parent_->remote_device_mgr();
-  }
-
-  for (auto d : all_devices->ListDevices()) {
-    device_set_.AddDevice(d);
-  }
+  InitializeDeviceSet();
 }
 
 /* static */
@@ -214,6 +207,18 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
                           "function executions");
 }
 
+void ProcessFunctionLibraryRuntime::InitializeDeviceSet() {
+  DeviceMgr const* all_devices = device_mgr_;
+  if (parent_ != nullptr && parent_->remote_device_mgr() != nullptr) {
+    all_devices = parent_->remote_device_mgr();
+  }
+
+  device_set_.reset(new DeviceSet);
+  for (auto d : all_devices->ListDevices()) {
+    device_set_->AddDevice(d);
+  }
+}
+
 FunctionLibraryRuntime* ProcessFunctionLibraryRuntime::GetFLR(
     const string& device_name) const {
   Device* device = nullptr;
@@ -225,7 +230,8 @@ FunctionLibraryRuntime* ProcessFunctionLibraryRuntime::GetFLR(
   }
   const auto& iter = flr_map_->find(device);
   if (iter == flr_map_->end()) {
-    LOG(ERROR) << "Could not find device: " << device_name;
+    VLOG(1) << "Could not find device: " << device_name
+            << "in the local process.";
     return nullptr;
   }
   return iter->second.get();
@@ -678,7 +684,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(
       SetArgShape(options.input_resource_dtypes_and_shapes, arg_nodes));
   TF_RETURN_IF_ERROR(PinArgsAndRets(
-      options.input_devices, options.output_devices, device_set_, arg_nodes,
+      options.input_devices, options.output_devices, *device_set_, arg_nodes,
       ret_nodes,
       options.config_proto.allow_soft_placement() ? default_device : nullptr));
 
@@ -691,7 +697,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   bool control_rets_updated = false;
   TF_RETURN_IF_ERROR(FunctionOptimizationPassRegistry::Global().Run(
-      device_set_, options.config_proto, &graph, &data->lib_def_,
+      *device_set_, options.config_proto, &graph, &data->lib_def_,
       &control_ret_node_names, &control_rets_updated));
 
   if (control_rets_updated) {
@@ -714,7 +720,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   optimization_options.session_options = &session_options;
   optimization_options.graph = &graph;
   optimization_options.flib_def = &data->lib_def_;
-  optimization_options.device_set = &device_set_;
+  optimization_options.device_set = device_set_.get();
   optimization_options.is_function_graph = true;
 
   DumpGraph("Before running PRE_PLACEMENT passes", graph.get());
@@ -725,7 +731,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   // exceptions/warnings in case where nested function call options are ignored.
   DumpGraph("Before calling Placer", graph.get());
   Placer placer(graph.get(), function_name, optimization_options.flib_def,
-                &device_set_, default_device,
+                device_set_.get(), default_device,
                 options.config_proto.allow_soft_placement(),
                 options.config_proto.log_device_placement());
   TF_RETURN_IF_ERROR(placer.Run());
@@ -741,7 +747,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     DumpGraph("Before running graph optimization fn", graph.get());
     Status status = options.optimize_graph_fn(
         std::move(ret_node_names), std::move(control_ret_node_names),
-        &data->lib_def_, device_set_, cpu_device, &graph);
+        &data->lib_def_, *device_set_, cpu_device, &graph);
     if (!status.ok()) {
       LOG(WARNING) << "Ignoring multi-device function optimization failure: "
                    << status.ToString();
@@ -765,7 +771,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
   TF_RETURN_IF_ERROR(
-      PartitionFunctionGraph(device_set_, std::move(graph), &subgraphs));
+      PartitionFunctionGraph(*device_set_, std::move(graph), &subgraphs));
 
   for (const auto& pair : subgraphs) {
     DumpGraph(strings::StrCat("Before running POST_PARTITIONING passes (",
@@ -841,7 +847,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       const string& target = pair.first;
 
       const string& device_type =
-          device_set_.FindDeviceByName(target)->device_type();
+          device_set_->FindDeviceByName(target)->device_type();
       Graph* subgraph = pair.second.get();
 
       status->Update(UpdateArgAndRetvalMetadata(
@@ -1258,12 +1264,18 @@ Status ProcessFunctionLibraryRuntime::ReleaseHandle(
 FunctionLibraryRuntime::DoneCallback
 ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
     std::vector<std::unique_ptr<CleanUpItem>>* items,
-    FunctionLibraryRuntime::DoneCallback done,
-    const Rendezvous* rendezvous) const {
+    FunctionLibraryRuntime::DoneCallback done, const int64 step_id,
+    const Rendezvous* created_rendezvous) const {
   return
-      [this, items, done = std::move(done), rendezvous](const Status& status) {
-        if (rendezvous) {
-          rendezvous->Unref();
+      [this, items, done = std::move(done), step_id,
+       created_rendezvous](const Status& status) {
+        if (created_rendezvous) {
+          DCHECK(rendezvous_factory_);
+          created_rendezvous->Unref();
+          Status s = rendezvous_factory_.CleanUp(step_id);
+          if (!s.ok()) {
+            LOG(ERROR) << s;
+          }
         }
         auto* local_status = new Status(status);
         CleanUp(items, [local_status, done](const Status& cleanup_status) {
@@ -1281,15 +1293,16 @@ void ProcessFunctionLibraryRuntime::Run(
     std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done) const {
   FunctionLibraryRuntime::Options new_opts = opts;
-  Rendezvous* rendezvous = nullptr;
+  Rendezvous* created_rendezvous = nullptr;
   if (!opts.rendezvous) {
     if (rendezvous_factory_) {
-      Status s = rendezvous_factory_(opts.step_id, device_mgr_, &rendezvous);
+      Status s =
+          rendezvous_factory_(opts.step_id, device_mgr_, &created_rendezvous);
       if (!s.ok()) {
         done(s);
         return;
       }
-      new_opts.rendezvous = rendezvous;
+      new_opts.rendezvous = created_rendezvous;
     } else {
       done(
           errors::FailedPrecondition("The caller does not provide a rendezvous "
@@ -1301,7 +1314,8 @@ void ProcessFunctionLibraryRuntime::Run(
   }
 
   auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
-  done = ApplyCleanUpToDoneCallback(cleanup_items, std::move(done), rendezvous);
+  done = ApplyCleanUpToDoneCallback(cleanup_items, std::move(done),
+                                    new_opts.step_id, created_rendezvous);
   bool multi_device;
   {
     tf_shared_lock l(mu_);

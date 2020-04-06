@@ -503,7 +503,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_ExecutorWaitForAllPendingNodes", [](TFE_Executor& exc) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
+    // NOTE: release Python GIL for pending PyFunc ops to be executed properly.
+    Py_BEGIN_ALLOW_THREADS;
     TFE_ExecutorWaitForAllPendingNodes(&exc, status.get());
+    Py_END_ALLOW_THREADS;
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
   m.def("TFE_ExecutorClearError", &TFE_ExecutorClearError);
@@ -713,6 +716,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         &TFE_ContextOptionsSetDevicePlacementPolicy);
   m.def("TFE_ContextOptionsSetLazyRemoteInputsCopy",
         &TFE_ContextOptionsSetLazyRemoteInputsCopy);
+  m.def("TFE_ContextOptionsSetTfrt", &TFE_ContextOptionsSetTfrt);
   m.def("TFE_ContextOptionsSetMirroringPolicy",
         &TFE_ContextOptionsSetMirroringPolicy);
   m.def("TFE_ContextOptionsSetAsync", &TFE_ContextOptionsSetAsync);
@@ -1073,7 +1077,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     return capsule;
   });
 
-  m.def("TFE_FromDlpackCapsule", [](const py::capsule& pycapsule) {
+  m.def("TFE_FromDlpackCapsule", [](const py::capsule& pycapsule,
+                                    const py::handle& context) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     if (absl::string_view(pycapsule.name()) !=
@@ -1084,8 +1089,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
           absl::string_view(pycapsule.name()));
       tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
     }
-    TFE_TensorHandle* thandle =
-        tensorflow::TFE_HandleFromDLPack(pycapsule, status.get());
+
+    TFE_TensorHandle* thandle = tensorflow::TFE_HandleFromDLPack(
+        pycapsule, status.get(), tensorflow::InputTFE_Context(context));
 
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
 

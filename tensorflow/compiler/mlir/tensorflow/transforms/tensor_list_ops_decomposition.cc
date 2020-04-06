@@ -62,8 +62,8 @@ namespace cutil = TF::collection_ops_util;
 //
 // The pass also works across control flow and functional calls.
 struct TensorListOpsDecompositionPass
-    : public ModulePass<TensorListOpsDecompositionPass> {
-  void runOnModule() override;
+    : public OperationPass<TensorListOpsDecompositionPass, ModuleOp> {
+  void runOnOperation() override;
 };
 
 // Updates func's type according to its current arguments and return values.
@@ -671,8 +671,8 @@ LogicalResult DecomposeTensorListOps(Block* block, ModuleOp module) {
                                         &decomposed_partitioned_call_callees);
 }
 
-void TensorListOpsDecompositionPass::runOnModule() {
-  auto module = getModule();
+void TensorListOpsDecompositionPass::runOnOperation() {
+  auto module = getOperation();
   auto main = module.lookupSymbol<FuncOp>("main");
   if (!main) return;
   if (failed(DecomposeTensorListOps(&main.front(), module))) {

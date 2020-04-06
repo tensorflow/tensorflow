@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
@@ -31,7 +32,9 @@ namespace mlir {
 // Multiple return values are always converted to a tuple and returned as a
 // single value.
 Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
-                           bool use_tuple_args, bool return_tuple);
+                           bool use_tuple_args, bool return_tuple,
+                           const tensorflow::XlaCompiler::ShapeRepresentationFn
+                               shape_representation_fn = nullptr);
 
 // Creates XlaOp equivalent of a given MLIR operation using the operand info
 // from `value_lowering` map.

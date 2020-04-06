@@ -24,17 +24,18 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/net.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
@@ -683,7 +684,10 @@ TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
 
   tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
-  return TFE_TensorHandle::CreateLocalHandle(tensor, status);
+
+  status->status = tensorflow::Status::OK();
+  return new TFE_TensorHandle{
+      tensorflow::TensorHandle::CreateLocalHandle(tensor)};
 }
 
 namespace {
@@ -703,7 +707,8 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
   } while (0);
 
   // New server created for new server_def. Unused if updating server_def.
-  tensorflow::EagerContext* context = ctx->context;
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(ctx->context);
   tensorflow::GrpcServer* grpc_server =
       dynamic_cast<tensorflow::GrpcServer*>(context->GetServer());
   if (grpc_server == nullptr) {
@@ -822,8 +827,7 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
   for (int i = 0; i < num_inputs; ++i) {
     node_def.add_input("dummy_input");
   }
-  tensorflow::down_cast<tensorflow::OperationInterface*>(
-      tfe_op->operation.get())
+  OperationFromInterface(tfe_op->operation)
       ->Attrs()
       .FillAttrValueMap(node_def.mutable_attr());
 

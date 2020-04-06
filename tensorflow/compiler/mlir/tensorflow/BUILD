@@ -10,6 +10,7 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
+        "//learning/brain/experimental/tfrt/...",
         "//learning/pathways/data_parallel/tf2xla/...",
         "//tensorflow/compiler/...",
         "//tensorflow/lite/experimental/tf_runtime/...",
@@ -385,6 +386,7 @@ cc_library(
         "transforms/shape_inference_pass.cc",
         "transforms/sink_constant.cc",
         "transforms/stack_ops_decomposition.cc",
+        "transforms/tensor_array_ops_decomposition.cc",
         "transforms/tensor_list_ops_decomposition.cc",
         "transforms/test_side_effect_analysis.cc",
         "transforms/tf_device_assignment.cc",
@@ -985,7 +987,6 @@ cc_library(
 tf_cc_test(
     name = "error_util_test",
     srcs = ["utils/error_util_test.cc"],
-    tags = ["no_rocm"],
     deps = [
         ":error_util",
         "//tensorflow/compiler/xla:test",
@@ -1064,6 +1065,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     ":tensorflow_dialect_registration",
     ":tensorflow_passes",
     ":translate_utils",
+    "@com_google_absl//absl/types:optional",
     "@llvm-project//llvm:support",
     "@llvm-project//mlir:IR",
     "@llvm-project//mlir:Parser",
@@ -1082,6 +1084,8 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/platform:logging",
     "//tensorflow/stream_executor/lib",
+    "//tensorflow/compiler/xla:xla_data_proto_cc",
+    "//tensorflow/compiler/xla/service:hlo",
 ]
 
 # Prefer to link 'compile_mlir_util' library that also links necessary

@@ -1042,6 +1042,7 @@ class NNAPIOpBuilder {
     int32_t nn_type = 0;
     float scale = 0.0f;
     int32_t zeroPoint = 0;
+    ANeuralNetworksSymmPerChannelQuantParams ann_perchannel_params;
     TfLiteTensor* tensor = &context_->tensors[tensor_index];
     TfLiteType tensor_type = tensor->type;
     if (hybrid_op && (tensor_type == kTfLiteUInt8)) {
@@ -1067,14 +1068,37 @@ class NNAPIOpBuilder {
                       : ANEURALNETWORKS_TENSOR_QUANT8_SYMM;
         scale = tensor->params.scale;
         zeroPoint = tensor->params.zero_point;
-        if (need_int8_conversion) {
-          zeroPoint += 128;
-          operand_mapping_->add_type_conversion(tensor_index, kTfLiteUInt8);
+        if (tensor->quantization.type == kTfLiteAffineQuantization) {
+          TfLiteAffineQuantization* quantization_params =
+              static_cast<TfLiteAffineQuantization*>(
+                  tensor->quantization.params);
+          if (quantization_params->scale->size > 1) {
+            // Set up per-channel quantization.
+            ann_perchannel_params = {
+                .channelDim = static_cast<uint32_t>(
+                    quantization_params->quantized_dimension),
+                .scaleCount =
+                    static_cast<uint32_t>(quantization_params->scale->size),
+                .scales = quantization_params->scale->data,
+            };
+            nn_type = ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL;
+            scale = 0.0f;
+            zeroPoint = 0;
+          } else if (quantization_params->scale->size == 1) {
+            scale = quantization_params->scale->data[0];
+            zeroPoint = quantization_params->zero_point->data[0];
+          }
         }
-        if (scale == 0) {
-          // TENSOR_QUANT8_ASYMM and ANEURALNETWORKS_TENSOR_QUANT8_ASYMM
-          // with zero scale are not valid in NNAPI.
-          scale = 1;
+        if (nn_type != ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL) {
+          if (need_int8_conversion) {
+            zeroPoint += 128;
+            operand_mapping_->add_type_conversion(tensor_index, kTfLiteUInt8);
+          }
+          if (scale == 0) {
+            // TENSOR_QUANT8_ASYMM and ANEURALNETWORKS_TENSOR_QUANT8_ASYMM
+            // with zero scale are not valid in NNAPI.
+            scale = 1;
+          }
         }
         break;
       case kTfLiteInt32:
@@ -1106,26 +1130,6 @@ class NNAPIOpBuilder {
     if (tensor_rank == 0) {
       // if the tensor_rank is 0, the dimension ptr must be nullptr.
       tensor_dims = nullptr;
-    }
-    ANeuralNetworksSymmPerChannelQuantParams ann_perchannel_params;
-    if (tensor_type == kTfLiteInt8 || tensor_type == kTfLiteUInt8) {
-      if (tensor->quantization.type == kTfLiteAffineQuantization) {
-        TfLiteAffineQuantization* quantization_params =
-            static_cast<TfLiteAffineQuantization*>(tensor->quantization.params);
-        if (quantization_params->scale->size > 1) {
-          // Set up per-channel quantization.
-          ann_perchannel_params = {
-              .channelDim = static_cast<uint32_t>(
-                  quantization_params->quantized_dimension),
-              .scaleCount =
-                  static_cast<uint32_t>(quantization_params->scale->size),
-              .scales = quantization_params->scale->data,
-          };
-          nn_type = ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL;
-          scale = 0.0f;
-          zeroPoint = 0;
-        }
-      }
     }
 
     ANeuralNetworksOperandType operand_type{nn_type, tensor_rank, tensor_dims,
@@ -1903,6 +1907,13 @@ bool NNAPIDelegateKernel::Validate(
       ExpectOpVersion(version, 1, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
+      Expect((node->inputs->size > 1) &&
+                 (context->tensors[node->inputs->data[0]].allocation_type ==
+                  kTfLiteMmapRo) &&
+                 (context->tensors[node->inputs->data[1]].allocation_type ==
+                  kTfLiteMmapRo),
+             NNAPIValidationFailureType::kInputTensorShouldHaveConstantShape,
+             "Dynamically-sized tensors not supported.", &val_ctx);
     } break;
     case kTfLiteBuiltinSqrt: {
       ExpectOpVersion(version, 1, &val_ctx);
@@ -2577,10 +2588,24 @@ TfLiteStatus NNAPIDelegateKernel::Map(
     case kTfLiteBuiltinTransposeConv: {
       const bool hybrid_op = IsHybridOperator(
           mapping_args.context, kTfLiteBuiltinTransposeConv, mapping_args.node);
-      mapping_args.builder->AddTensorInput(
-          mapping_args.node->inputs->data[/*kDataInputTensor*/ 2], hybrid_op);
-      mapping_args.builder->AddTensorInput(
-          mapping_args.node->inputs->data[/*kWeightsTensor*/ 1], hybrid_op);
+      int input_tensor_flags = 0;
+      const int input_tensor_id =
+          mapping_args.node->inputs->data[/*kDataInputTensor*/ 2];
+      const int weight_tensor_id =
+          mapping_args.node->inputs->data[/*kWeightsTensor*/ 1];
+      if (context->tensors[input_tensor_id].type == kTfLiteInt8) {
+        const auto& weights_tensor = context->tensors[weight_tensor_id];
+        if ((weights_tensor.type == kTfLiteInt8 ||
+             weights_tensor.type == kTfLiteUInt8) &&
+            weights_tensor.quantization.type == kTfLiteAffineQuantization) {
+          input_tensor_flags |= NN_TENSOR_FLAG_SCALAR_AS_TENSOR;
+        }
+      }
+
+      mapping_args.builder->AddTensorInput(input_tensor_id, hybrid_op,
+                                           input_tensor_flags);
+      mapping_args.builder->AddTensorInput(weight_tensor_id, hybrid_op,
+                                           input_tensor_flags);
 
       // NNAPI requires a bias tensor, so we allocate a new tensor to fill
       // it with zeroes. It is deleted with other tensors in the context
@@ -3508,6 +3533,8 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
       if (need_int8_conversion &&
           (input_pos == 0 ||
            reg->builtin_code == kTfLiteBuiltinFullyConnected ||
+           reg->builtin_code == kTfLiteBuiltinConv2d ||
+           reg->builtin_code == kTfLiteBuiltinDepthwiseConv2d ||
            reg->builtin_code == kTfLiteBuiltinAdd ||
            reg->builtin_code == kTfLiteBuiltinMul ||
            reg->builtin_code == kTfLiteBuiltinSub ||
@@ -4260,8 +4287,10 @@ TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* context,
 
   int num_partitions;
   TfLiteDelegateParams* params_array;
-  if (is_accelerator_specified) {
-    // Filtering out nodes not supported by target accelerators
+  if (is_accelerator_specified &&
+      nnapi->android_sdk_version >= kMinSdkVersionForNNAPI12) {
+    // Filtering out nodes not supported by target accelerators.
+    // Cannot query supported operation before NNAPI 1.2
     TF_LITE_ENSURE_STATUS(GetNodesSupportedByAccelerator(
         context, delegate, nnapi, supported_nodes, &nodes_to_delegate,
         &num_partitions, &params_array, nnapi_errno));

@@ -50,8 +50,8 @@ func @while_cond_10_frozen0(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>, %arg2: t
 // INLINE: ^bb0([[ARGS]]):
 // INLINE:   %cst_2 = constant
 // INLINE:   yield
-// INLINE: while_body
-// INLINE: while_cond
+// INLINE-NOT: while_body
+// INLINE-NOT: while_cond
 
 // CANON-LABEL:   func @while_main
 // CANON-SAME:         ([[VAL_0:%.*]]: tensor<?x256x256xf32>)

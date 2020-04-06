@@ -303,6 +303,10 @@ class Runner {
 // are doing is safe. We should formalize the properties here.
 class IteratorContext {
  public:
+  // Epoch IDs are only used for tf.data service datasets. Other datasets use
+  // an epoch ID value of -1.
+  static constexpr const int64 kNoEpochId = -1;
+
   struct Params {
     explicit Params(IteratorContext* ctx)
         : allocator_getter(ctx->allocator_getter()),
@@ -310,6 +314,7 @@ class IteratorContext {
           env(ctx->env()),
           flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
+          epoch_id(ctx->epoch_id()),
           resource_mgr(ctx->resource_mgr()),
           model(ctx->model()),
           runner(*(ctx->runner())),
@@ -366,6 +371,10 @@ class IteratorContext {
     // A FunctionHandleCache that owns all the function handles. Not owned.
     FunctionHandleCache* function_handle_cache = nullptr;
 
+    // Identifies the epoch this iterator was created for. It is used for
+    // reading from the tf.data service.
+    int64 epoch_id = kNoEpochId;
+
     // A resource manager for storing dataset-related state, e.g. random
     // seeds or cached tensors. Not owned.
     ResourceMgr* resource_mgr = nullptr;
@@ -414,6 +423,8 @@ class IteratorContext {
   FunctionHandleCache* function_handle_cache() {
     return params_.function_handle_cache;
   }
+
+  int64 epoch_id() { return params_.epoch_id; }
 
   ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 

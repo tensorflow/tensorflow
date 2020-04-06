@@ -41,6 +41,7 @@ ifeq ($(TARGET), bluepill)
     -fno-threadsafe-statics \
     -fomit-frame-pointer \
     -fpermissive \
+    -fno-use-cxa-atexit \
     -nostdlib \
     -g \
     -Os

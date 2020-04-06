@@ -1,5 +1,9 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_binary",
+    "tf_cc_test",
+)
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",
@@ -45,12 +49,12 @@ cc_library(
     srcs = ["grpc_service_main.cc"],
     deps = [
         ":grpc_service",
-        "//tensorflow:grpc++",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings:str_format",
+        tf_grpc_cc_dependency(),
     ],
 )
 
@@ -70,7 +74,6 @@ tf_cc_test(
     ],
     deps = [
         ":grpc_stub",
-        "//tensorflow:grpc++",
         "//tensorflow/compiler/xla/client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:literal_test_util",
@@ -79,6 +82,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings:str_format",
+        tf_grpc_cc_dependency(),
     ],
 )
 
@@ -88,9 +92,9 @@ cc_library(
     hdrs = ["grpc_service.h"],
     deps = [
         ":xla_service_proto_cc",
-        "//tensorflow:grpc++",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        tf_grpc_cc_dependency(),
     ],
 )

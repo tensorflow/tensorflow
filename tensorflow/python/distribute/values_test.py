@@ -995,7 +995,6 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
-              strategy_combinations.central_storage_strategy_with_two_gpus,
           ],
           mode=["eager"]))
   def testInitScope(self, distribution):
@@ -1842,7 +1841,6 @@ class AggregatingVariableTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(self.evaluate(aggregating._v.read_value()), 3.)
 
   def testAssignAdd(self, distribution):
-    self.skipTest("b/151250566")
     with distribution.scope():
       v = variable_scope.variable(
           1, aggregation=variables_lib.VariableAggregation.MEAN)

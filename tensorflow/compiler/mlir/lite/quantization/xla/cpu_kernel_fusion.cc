@@ -176,7 +176,7 @@ llvm::SmallVector<Value, 0> fuseOps(PatternRewriter* rewriter,
   auto* body = new Block();
   region.body().push_back(body);
 
-  OpBuilder builder(body);
+  OpBuilder builder = OpBuilder::atBlockEnd(body);
   BlockAndValueMapping mapping;
 
   // Make block arguments and add it to the block value mapping.

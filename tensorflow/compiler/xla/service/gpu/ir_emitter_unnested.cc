@@ -1363,7 +1363,7 @@ GetHloBufferSlices(const HloInstruction* hlo,
     // appear before any GTE instructions, because it's illegal to bitcast to a
     // tuple type.
     const HloInstruction* parent = instr;
-    while (parent->opcode() == HloOpcode::kBitcast) {
+    while (parent->IsEffectiveBitcast()) {
       parent = parent->operand(0);
 
       auto slice = buffer_assn.GetUniqueSlice(parent, {});

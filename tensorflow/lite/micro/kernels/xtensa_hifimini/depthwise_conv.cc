@@ -249,21 +249,12 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
 
 }  // namespace
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
 
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
-  const TfLiteTensor* bias =
-      (NumInputs(node) == 3) ? GetInput(context, node, kBiasTensor) : nullptr;
 
   // TODO(b/132070898): Use statically slotted OpData structures until a
   // scratch memory API is ready.
@@ -360,8 +351,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace depthwise_conv
 
 TfLiteRegistration* Register_DEPTHWISE_CONV_2D() {
-  static TfLiteRegistration r = {depthwise_conv::Init, depthwise_conv::Free,
-                                 depthwise_conv::Prepare, depthwise_conv::Eval};
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/depthwise_conv::Prepare,
+                                 /*invoke=*/depthwise_conv::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

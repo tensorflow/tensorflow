@@ -140,7 +140,7 @@ def save_model(model,
 
 @keras_export('keras.models.load_model')
 def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
-  """Loads a model saved via `save_model`.
+  """Loads a model saved via `model.save()`.
 
   Usage:
 
@@ -154,7 +154,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
 
   Note that the model weights may have different scoped names after being
   loaded. Scoped names include the model/layer names, such as
-  "dense_1/kernel:0"`. It is recommended that you use the layer properties to
+  `"dense_1/kernel:0"`. It is recommended that you use the layer properties to
   access specific variables, e.g. `model.get_layer("dense_1").kernel`.
 
   Arguments:

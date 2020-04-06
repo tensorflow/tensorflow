@@ -111,7 +111,9 @@ bool IsSupportedNonTFOp(Operation* op) {
   return isa<tf_executor::YieldOp>(op) || isa<tf_executor::IslandOp>(op) ||
          isa<tf_executor::FetchOp>(op) || isa<tf_executor::GraphOp>(op) ||
          isa<tf_executor::NextIterationSinkOp>(op) || isa<ReturnOp>(op) ||
-         isa<tf_device::ReturnOp>(op);
+         isa<tf_device::ReturnOp>(op) || isa<tf_executor::MergeOp>(op) ||
+         isa<tf_executor::SwitchOp>(op) || isa<tf_executor::SwitchNOp>(op) ||
+         isa<tf_executor::EnterOp>(op) || isa<tf_executor::ExitOp>(op);
 }
 
 // Inserts tf.Cast operation when changing the type of a result if the user is
@@ -224,13 +226,48 @@ GetSubtypes(Type type) {
   return GetSubtypesHelper<TF::VariantType>(type);
 }
 
-// Makes result types match the operand types. Returns if anything is changed.
+// Makes result types match the operand types (the i-th result type will
+// match the i-th operand type). Returns true if anything is changed.
 bool PassThroughOperandTypes(OperandRange operands, ResultRange results) {
   bool changed = false;
   for (auto entry : llvm::zip(operands, results)) {
     Type operand_type = std::get<0>(entry).getType();
     if (operand_type == std::get<1>(entry).getType()) continue;
     std::get<1>(entry).setType(operand_type);
+    changed = true;
+  }
+  return changed;
+}
+
+// Infers the shape from a (Stateful)PartionedCall operation by looking up the
+// called function and propagating the return type.
+bool InferShapeForCall(Operation* op) {
+  auto call_op = cast<CallOpInterface>(op);
+  CallInterfaceCallable callable = call_op.getCallableForCallee();
+  SymbolRefAttr sym = callable.dyn_cast<SymbolRefAttr>();
+  if (!sym) return false;
+  FuncOp func =
+      dyn_cast<mlir::FuncOp>(SymbolTable::lookupNearestSymbolFrom(op, sym));
+  if (!func) return false;
+
+  bool changed = false;
+  // Map each of the results of the call to the returned type of the
+  // function.
+  for (auto result : llvm::zip(op->getResults(), func.getType().getResults())) {
+    if (std::get<0>(result).getType() == std::get<1>(result)) continue;
+    // Skip already statically shaped results.
+    auto shaped_type = std::get<0>(result).getType().dyn_cast<ShapedType>();
+    if (!shaped_type || shaped_type.hasStaticShape()) continue;
+
+    auto new_type = std::get<1>(result).dyn_cast<RankedTensorType>();
+    if (!new_type) continue;
+
+    // Inserts a cast back to the original type if any user is not in the
+    // TF dialect.
+    AddCastBackForUnsupportedNonTFUses(op, std::get<0>(result),
+                                       op->getDialect(), shaped_type);
+    // Finally we inferred the shape and replace the type for this result.
+    std::get<0>(result).setType(new_type);
     changed = true;
   }
   return changed;
@@ -263,6 +300,11 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
                             << op->getName() << "'.\n";);
     return false;
   }
+
+  // Handle call operations by looking up callee and infering return shape as
+  // needed.
+  if (isa<PartitionedCallOp>(op) || isa<StatefulPartitionedCallOp>(op))
+    return InferShapeForCall(op);
 
   // tf.Cast are only inferred if they have at least one user in the tf dialect.
   // This is necessary to avoid reprocessing the tf.Cast that are inserted at
@@ -438,7 +480,7 @@ LogicalResult RefineShapeForControlFlowFunc(FuncOp func,
   auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
   int num_uses = std::distance(func_uses->begin(), func_uses->end());
   if (num_uses != 1) {
-    func.emitError(llvm::formatv(
+    func.emitWarning(llvm::formatv(
         "expected control flow function {0} to have exactly 1 use, found {1}.",
         func.getName(), num_uses));
     return failure();

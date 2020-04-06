@@ -30,9 +30,9 @@ from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import function_wrappers
-from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import loader
+from tensorflow.python.autograph.pyct import naming
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer
@@ -96,6 +96,10 @@ class TestCase(test.TestCase):
         kwargs = {}
       return f(*args, **kwargs)
 
+    def fake_autograph_artifact(f):
+      setattr(f, 'fake_autograph_artifact', True)
+      return f
+
     try:
       result, source, source_map = loader.load_ast(
           node, include_source_map=True)
@@ -111,6 +115,7 @@ class TestCase(test.TestCase):
       fake_ag.Feature = converter.Feature
       fake_ag.utils = utils
       fake_ag.FunctionScope = function_wrappers.FunctionScope
+      fake_ag.autograph_artifact = fake_autograph_artifact
       result.ag__ = fake_ag
       result.ag_source_map__ = source_map
       for k, v in namespace.items():

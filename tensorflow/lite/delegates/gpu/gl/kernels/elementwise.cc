@@ -31,8 +31,8 @@ class ElementwiseOneArgument : public NodeShader {
  public:
   explicit ElementwiseOneArgument(OperationType operation_type)
       : operation_type_(operation_type) {}
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     std::string source;
     switch (operation_type_) {
       case OperationType::ABS:
@@ -89,7 +89,8 @@ class ElementwiseOneArgument : public NodeShader {
         source = "value_0 = tanh(value_0);";
         break;
       default:
-        return InvalidArgumentError("Incorrect elementwise operation type.");
+        return absl::InvalidArgumentError(
+            "Incorrect elementwise operation type.");
     }
     *generated_code = {
         /*parameters=*/{},
@@ -101,7 +102,7 @@ class ElementwiseOneArgument : public NodeShader {
         /*input=*/IOStructure::AUTO,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:
@@ -144,8 +145,8 @@ class ElementwiseTwoArguments : public NodeShader {
     return true;
   }
 
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     std::vector<Variable> parameters;
     std::vector<std::pair<std::string, Object>> objects;
     std::string argument0, argument1;
@@ -159,15 +160,14 @@ class ElementwiseTwoArguments : public NodeShader {
       const ElementwiseAttributes* attr = absl::any_cast<ElementwiseAttributes>(
           &ctx.node->operation.attributes);
       if (!attr) {
-        return InvalidArgumentError(
+        return absl::InvalidArgumentError(
             "Couldn't read attributes for the scalar of const vector case.");
       }
       auto* tensor =
-          absl::get_if<::tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
-              &attr->param);
+          absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr->param);
       auto* scalar = absl::get_if<float>(&attr->param);
       if (!tensor && !scalar) {
-        return InvalidArgumentError(
+        return absl::InvalidArgumentError(
             "Couldn't read scalar of const vector data from the attributes.");
       }
 
@@ -208,7 +208,7 @@ class ElementwiseTwoArguments : public NodeShader {
         break;
       }
       default:
-        return InvalidArgumentError(
+        return absl::InvalidArgumentError(
             "Incorrect elementwise with scalar operation type.");
     }
     source = absl::Substitute(source, argument0, argument1);
@@ -222,7 +222,7 @@ class ElementwiseTwoArguments : public NodeShader {
         /*input=*/IOStructure::AUTO,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

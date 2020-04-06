@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_PROFILER_INTERNAL_PYTHON_HOOKS_H_
 #define TENSORFLOW_PYTHON_PROFILER_INTERNAL_PYTHON_HOOKS_H_
 
+#include <memory>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "include/pybind11/cast.h"
 #include "include/pybind11/pybind11.h"

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/event_pool.h"
 
 #include "absl/memory/memory.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {
@@ -27,7 +28,8 @@ EventPool::Handle::~Handle() {
   }
 }
 
-EventPool::EventPool(bool allow_reuse) : allow_reuse_(allow_reuse) {}
+EventPool::EventPool(bool allow_reuse)
+    : allow_reuse_(allow_reuse), next_sequence_number_(0) {}
 
 StatusOr<EventPool::Handle> EventPool::ThenAllocateAndRecordEvent(
     se::Stream* stream) {
@@ -45,7 +47,11 @@ StatusOr<EventPool::Handle> EventPool::ThenAllocateAndRecordEvent(
     event.event_ = absl::make_unique<se::Event>(stream->parent());
     TF_RET_CHECK(event.event_->Init()) << "Event initialization failed";
   }
-  stream->ThenRecordEvent(event.event_.get());
+  {
+    absl::MutexLock lock(&mu_);
+    stream->ThenRecordEvent(event.event_.get());
+    event.sequence_number_ = next_sequence_number_++;
+  }
   return event;
 }
 

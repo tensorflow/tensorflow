@@ -20,6 +20,7 @@ limitations under the License.
 #include <queue>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -74,6 +75,8 @@ bool IsShapeConsumer(const NodeDef& node) {
 
 NodeMap::NodeMap(GraphDef* graph) {
   CHECK(graph != nullptr);
+  nodes_.reserve(graph->node_size());
+  outputs_.reserve(graph->node_size());
   for (int i = 0; i < graph->node_size(); i++) {
     NodeDef* node = graph->mutable_node(i);
     const string& node_name = node->name();
@@ -88,76 +91,6 @@ NodeMap::NodeMap(GraphDef* graph) {
       outputs_[NodeName(input)].insert(canonical);
     }
   }
-}
-
-void NodeMap::RemoveNode(const string& name) {
-  nodes_.erase(NodeName(name));
-  outputs_.erase(NodeName(name));
-}
-
-NodeDef* NodeMap::GetNode(const string& name) const {
-  const string node_name = NodeName(name);
-  auto it = nodes_.find(node_name);
-  if (it == nodes_.end()) {
-    VLOG(1) << "Node could not be found: " << name;
-    return nullptr;
-  }
-  return it->second;
-}
-
-bool NodeMap::NodeExists(const string& name) const {
-  const string node_name = NodeName(name);
-  return nodes_.find(node_name) != nodes_.end();
-}
-
-const std::set<NodeDef*>& NodeMap::GetOutputs(const string& node_name) const {
-  auto it = outputs_.find(node_name);
-  if (it == outputs_.end()) {
-    return empty_set_;
-  }
-  return it->second;
-}
-
-void NodeMap::AddNode(const string& node_name, NodeDef* node) {
-  auto ret = nodes_.emplace(node_name, CHECK_NOTNULL(node));
-  CHECK(ret.second) << "Pair (" << node_name << "," << node
-                    << ") is not inserted because the same key already exists.";
-}
-
-void NodeMap::AddOutput(const string& node_name, const string& output_name) {
-  auto output_node = nodes_[NodeName(output_name)];
-  CHECK(output_node) << "Output node " << output_name
-                     << " is missing in NodeMap.";
-  outputs_[node_name].insert(output_node);
-}
-
-void NodeMap::RemoveOutput(const string& node_name, const string& output_name) {
-  outputs_[node_name].erase(nodes_[NodeName(output_name)]);
-}
-
-void NodeMap::UpdateInput(const string& node_name, const string& old_input_name,
-                          const string& new_input_name) {
-  RemoveOutput(NodeName(old_input_name), node_name);
-  AddOutput(NodeName(new_input_name), node_name);
-}
-
-void NodeMap::RemoveInputs(const string& node_name) {
-  auto node = nodes_[node_name];
-  for (const auto& input : node->input()) {
-    RemoveOutput(NodeName(input), node->name());
-  }
-}
-
-void NodeMap::RemoveOutputs(const string& node_name) {
-  outputs_.erase(node_name);
-}
-
-void NodeMap::UpdateOutput(const string& node_name,
-                           const string& old_output_name,
-                           const string& new_output_name) {
-  std::set<NodeDef*>& outputs = outputs_[node_name];
-  outputs.erase(nodes_[NodeName(old_output_name)]);
-  outputs.insert(nodes_[NodeName(new_output_name)]);
 }
 
 string TensorIdToString(const TensorId& tensor_id) {
@@ -434,7 +367,7 @@ void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
 }
 
 void DedupControlInputs(NodeDef* node) {
-  std::unordered_set<string> inputs;
+  absl::flat_hash_set<string> inputs;
   int pos = 0;
   while (pos < node->input_size()) {
     const string& input = node->input(pos);

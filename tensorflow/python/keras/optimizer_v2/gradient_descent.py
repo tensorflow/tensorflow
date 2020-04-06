@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Momentum for TensorFlow."""
+"""SGD optimizer implementation."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -27,17 +28,45 @@ from tensorflow.python.util.tf_export import keras_export
 
 @keras_export("keras.optimizers.SGD")
 class SGD(optimizer_v2.OptimizerV2):
-  r"""Stochastic gradient descent and momentum optimizer.
+  r"""Gradient descent (with momentum) optimizer.
 
-  The update rule for $\theta$ with gradient $g$ when `momentum` is 0.0:
-  $$\theta_t = \theta_{t-1} - \mathrm{learning\_rate} * g_t$$
+  Update rule for parameter `w` with gradient `g` when `momentum` is 0:
 
-  The update rule when `momentum` is larger than 0.0:
-  $$v_t = \mathrm{momentum} * v_{t-1} - \mathrm{learning\_rate} * g_t$$
-  $$\theta_t = \theta_{t-1} + v_t$$
-  if `nesterov` is False, gradient is evaluated at $\theta_t$.
-  if `nesterov` is True, gradient is evaluated at $\theta_t + momentum * v_t$,
-    and the variables always store $\theta + m v$ instead of $theta$
+  ```python
+  w = w - learning_rate * g
+  ```
+
+  Update rule when `momentum` is larger than 0:
+
+  ```python
+  velocity = momentum * velocity - learning_rate * g
+  w = w * velocity
+  ```
+
+  When `nesterov=False`, this rule becomes:
+
+  ```python
+  velocity = momentum * velocity - learning_rate * g
+  w = w + momentum * velocity - learning_rate * g
+  ```
+
+  Args:
+    learning_rate: A `Tensor`, floating point value, or a schedule that is a
+      `tf.keras.optimizers.schedules.LearningRateSchedule`, or a callable
+      that takes no arguments and returns the actual value to use. The
+      learning rate. Defaults to 0.01.
+    momentum: float hyperparameter >= 0 that accelerates gradient descent
+      in the relevant
+      direction and dampens oscillations. Defaults to 0, i.e., vanilla gradient
+      descent.
+    nesterov: boolean. Whether to apply Nesterov momentum.
+      Defaults to `False`.
+    name: Optional name prefix for the operations created when applying
+      gradients.  Defaults to `"SGD"`.
+    **kwargs: Keyword arguments. Allowed to be one of
+      `"clipnorm"` or `"clipvalue"`.
+      `"clipnorm"` (float) clips gradients by norm; `"clipvalue"` (float) clips
+      gradients by value.
 
   Usage:
 
@@ -45,7 +74,7 @@ class SGD(optimizer_v2.OptimizerV2):
   >>> var = tf.Variable(1.0)
   >>> loss = lambda: (var ** 2)/2.0         # d(loss)/d(var1) = var1
   >>> step_count = opt.minimize(loss, [var]).numpy()
-  >>> # Step is `-learning_rate*grad`
+  >>> # Step is `- learning_rate * grad`
   >>> var.numpy()
   0.9
 
@@ -53,7 +82,7 @@ class SGD(optimizer_v2.OptimizerV2):
   >>> var = tf.Variable(1.0)
   >>> val0 = var.value()
   >>> loss = lambda: (var ** 2)/2.0         # d(loss)/d(var1) = var1
-  >>> # First step is `-learning_rate*grad`
+  >>> # First step is `- learning_rate * grad`
   >>> step_count = opt.minimize(loss, [var]).numpy()
   >>> val1 = var.value()
   >>> (val0 - val1).numpy()
@@ -64,17 +93,12 @@ class SGD(optimizer_v2.OptimizerV2):
   >>> (val1 - val2).numpy()
   0.18
 
-  Some of the args below are hyperparameters, where a hyperparameter is
-  defined as a scalar Tensor, a regular Python value, or a callable (which
-  will be evaluated when `apply_gradients` is called) returning a scalar
-  Tensor or a Python value.
-
-  # References
-      nesterov = True, See [Sutskever et al., 2013](
+  Reference:
+      - For `nesterov=True`, See [Sutskever et al., 2013](
         http://jmlr.org/proceedings/papers/v28/sutskever13.pdf).
   """
 
-  _HAS_ALL_REDUCE_SUM_GRAD = True
+  _HAS_AGGREGATE_GRAD = True
 
   def __init__(self,
                learning_rate=0.01,
@@ -82,25 +106,6 @@ class SGD(optimizer_v2.OptimizerV2):
                nesterov=False,
                name="SGD",
                **kwargs):
-    """Construct a new Stochastic Gradient Descent or Momentum optimizer.
-
-    Arguments:
-      learning_rate: A `Tensor`, floating point value, or a schedule that is a
-        `tf.keras.optimizers.schedules.LearningRateSchedule`, or a callable
-        that takes no arguments and returns the actual value to use. The
-        learning rate. Defaults to 0.01.
-      momentum: float hyperparameter >= 0 that accelerates SGD in the relevant
-        direction and dampens oscillations. Defaults to 0.0, i.e., SGD.
-      nesterov: boolean. Whether to apply Nesterov momentum.
-        Defaults to `False`.
-      name: Optional name prefix for the operations created when applying
-        gradients.  Defaults to 'SGD'.
-      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
-        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
-        gradients by value, `decay` is included for backward compatibility to
-        allow time inverse decay of learning rate. `lr` is included for backward
-        compatibility, recommended to use `learning_rate` instead.
-    """
     super(SGD, self).__init__(name, **kwargs)
     self._set_hyper("learning_rate", kwargs.get("lr", learning_rate))
     self._set_hyper("decay", self._initial_decay)

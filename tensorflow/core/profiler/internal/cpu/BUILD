@@ -78,3 +78,20 @@ cc_library(
     ],
     alwayslink = True,
 )
+
+cc_library(
+    name = "metadata_collector",
+    srcs = ["metadata_collector.cc"],
+    deps = [
+        "//tensorflow/compiler/xla/service/gpu:gpu_debug_info_manager",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/internal:profiler_factory",
+        "//tensorflow/core/profiler/internal:profiler_interface",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+    ],
+    alwayslink = True,
+)

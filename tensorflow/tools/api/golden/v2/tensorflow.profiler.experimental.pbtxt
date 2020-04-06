@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "ProfilerOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Trace"
     mtype: "<type \'type\'>"
   }
@@ -18,7 +22,7 @@ tf_module {
   }
   member_method {
     name: "start"
-    argspec: "args=[\'logdir\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'logdir\', \'options\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "stop"

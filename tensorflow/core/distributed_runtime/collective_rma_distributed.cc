@@ -129,7 +129,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
         }
         AllocatorAttributes cpu_attr;
         cpu_attr.set_gpu_compatible(true);
-        MEMDEBUG_CACHE_OP(
+        auto op_annotation = ScopedMemoryDebugAnnotation(
             "CollectiveRemoteAccessDistributed::RecvFromPeer"
             "::recv_buf_callback");
         Tensor* cpu_tensor = new Tensor(cpu_dev->GetAllocator(cpu_attr),

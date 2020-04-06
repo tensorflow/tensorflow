@@ -48,6 +48,9 @@ SIFIVE_FE310_LIB_MD5 := "06ee24c4956f8e21670ab3395861fe64"
 KISSFFT_URL="https://github.com/mborgerding/kissfft/archive/v130.zip"
 KISSFFT_MD5="438ba1fef5783cc5f5f201395cc477ca"
 
+RUY_URL="https://github.com/google/ruy/archive/91d62808498cea7ccb48aa59181e218b4ad05701.zip"
+RUY_MD5="5e653ae8863408ede2a0ca104fea5b1e"
+
 PERSON_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale_2019_11_21.zip"
 PERSON_MODEL_MD5 := "fe2934bd0788f1dcc7af3f0a954542ab"
 
@@ -59,3 +62,7 @@ EMBARC_OSP_MD5 := "9eaf7b3a1ed05872a03da9796672a776"
 
 EMBARC_MLI_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/6316034d421cbbb59756239908d7c9a99075a3bb.zip"
 EMBARC_MLI_MD5 := "db0910cf0e07e43f74ae7a31de485d56"
+
+XTENSA_HIFI4_URL :="https://github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib.zip"
+XTENSA_HIFI4_MD5 :="a517b653a75b96d0271e1b99ee2a8c14"
+

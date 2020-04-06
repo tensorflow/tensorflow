@@ -166,6 +166,43 @@ def ConfigsToTest():
   ]
 
 
+def ConfigsToTestExplicit():
+  """Iterator for different convolution shapes, strides and explicit paddings.
+
+  Returns:
+    List of tuples (input_size, filter_size, out_size, stride, padding,
+    dilations), the depthwise convolution parameters.
+  """
+  def Config(input_size, filter_size, out_size, stride=1, padding=None,
+             dilations=None):
+    return input_size, filter_size, out_size, stride, padding, dilations
+  return [
+      Config([4, 5, 5, 48], [1, 1, 48, 2], [4, 8, 12, 96],
+             padding=[[1, 2], [3, 4]]),
+      Config([4, 1, 1, 3], [3, 3, 3, 2], [4, 29, 39, 6],
+             padding=[[10, 20], [15, 25]]),
+      Config([4, 9, 27, 8], [3, 3, 8, 1], [4, 14, 31, 8],
+             padding=[[3, 4], [4, 2]]),
+      Config([4, 31, 31, 7], [3, 3, 7, 1], [4, 29, 29, 7],
+             padding=[[0, 0], [0, 0]]),
+      Config([3, 299, 299, 3], [3, 2, 3, 8], [3, 150, 153, 24], 2,
+             padding=[[1, 2], [3, 5]]),
+      Config([5, 183, 183, 1], [5, 5, 1, 2], [5, 62, 60, 2], 3,
+             padding=[[3, 2], [1, 0]]),
+      Config([5, 29, 31, 1], [5, 4, 1, 2], [5, 26, 23, 2],
+             padding=[[3, 2], [1, 0]], dilations=[2, 3]),
+      # These cases test the kernels in depthwise_conv_op_gpu.h which are used
+      # if the input size is small.
+      Config([4, 5, 5, 48], [3, 3, 48, 1], [4, 5, 5, 48],
+             padding=[[0, 2], [0, 2]]),
+      Config([1, 8, 7, 2], [8, 7, 2, 1], [1, 8, 7, 2],
+             padding=[[0, 7], [3, 3]]),
+      Config([2, 4, 3, 2], [3, 2, 2, 1], [2, 4, 3, 2],
+             padding=[[2, 0], [1, 0]]),
+
+  ]
+
+
 def CheckGradConfigsToTest():
   """Iterator for different convolution shapes, strides and paddings.
 
@@ -191,6 +228,39 @@ def CheckGradConfigsToTest():
       Config([1, 3, 1, 2], [2, 1, 2, 1], [1, 3, 1, 2]),
       Config([2, 2, 3, 2], [2, 1, 2, 1], [2, 2, 3, 2]),
       Config([2, 2, 3, 1], [2, 2, 1, 1], [2, 2, 3, 1]),
+  ]
+
+
+def CheckGradConfigsToTestExplicit():
+  """Iterator for different convolution shapes, strides and explicit paddings.
+
+  compute_gradient_error() is very expensive. So the configs should be
+  relatively small.
+
+  Returns:
+    List of tuples (input_size, filter_size, out_size, stride, padding,
+    dilations), the depthwise convolution parameters.
+  """
+  def Config(input_size, filter_size, out_size, stride=1, padding=None,
+             dilations=None):
+    return input_size, filter_size, out_size, stride, padding, dilations
+  return [
+      Config([2, 5, 8, 1], [4, 4, 1, 2], [2, 3, 10, 2],
+             padding=[[0, 1], [2, 3]]),
+      Config([4, 5, 5, 1], [2, 2, 1, 2], [4, 4, 5, 2], 2,
+             padding=[[3, 1], [5, 0]]),
+      Config([2, 4, 4, 2], [3, 1, 2, 2], [2, 7, 11, 4],
+             padding=[[4, 1], [3, 4]]),
+      Config([1, 15, 15, 2], [1, 3, 2, 1], [1, 18, 23, 2],
+             padding=[[3, 0], [2, 8]]),
+      Config([2, 15, 16, 1], [3, 3, 1, 2], [2, 5, 8, 2], 3,
+             padding=[[0, 0], [10, 0]]),
+      Config([2, 5, 8, 1], [3, 4, 1, 2], [2, 5, 10, 2],
+             padding=[[3, 1], [2, 3]], dilations=[2, 1]),
+      # These cases test the kernels in depthwise_conv_op_gpu.h which are used
+      # if the input size is small.
+      Config([2, 4, 3, 2], [3, 2, 2, 1], [2, 4, 3, 2],
+             padding=[[2, 0], [1, 0]]),
   ]
 
 
@@ -235,6 +305,8 @@ class DepthwiseConv2DTest(test.TestCase):
     x2 = np.array(x2).reshape(filter_in_sizes)
     # Compute reference result
     strides = [1, stride, stride, 1]
+    if isinstance(padding, list):
+      padding = [(0, 0)] + padding + [(0, 0)]
     np_result = _DepthwiseConv2dNumpy(x1, x2, strides, padding, "NHWC",
                                       dilations)
 
@@ -255,6 +327,8 @@ class DepthwiseConv2DTest(test.TestCase):
         # Ex. [4, 5, 5, 48] to [4, 48, 5, 5]
         t1 = array_ops.transpose(t1, [0, 3, 1, 2])
         strides = [1, 1, stride, stride]
+        if isinstance(padding, list):
+          padding = [padding[0], padding[3], padding[1], padding[2]]
 
       # depthwise_conv2d_native does not support dilations except on TPUs.
       if dilations is None:
@@ -383,6 +457,23 @@ class DepthwiseConv2DTest(test.TestCase):
             use_gpu=True,
             data_format="NCHW",
             dilations=dilations)
+
+  @test_util.run_v1_only("b/120545219")
+  def testDepthwiseConv2DExplicit(self):
+    for index, (input_size, filter_size, _, stride,
+                padding, dilations) in enumerate(ConfigsToTestExplicit()):
+      tf_logging.info(
+          "Testing DepthwiseConv2D, %dth config: %r * %r, stride: %d, padding: "
+          "%s", index, input_size, filter_size, stride, padding)
+      # double datatype is currently not supported for convolution ops
+      # on the ROCm platform
+      optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
+      data_formats = ["NHWC", "NCHW"] if test.is_gpu_available() else ["NHWC"]
+      for data_type in [dtypes.float16, dtypes.float32] + optional_float64:
+        for data_format in data_formats:
+          self._VerifyValues(
+              input_size, filter_size, stride, padding, data_type, use_gpu=True,
+              data_format=data_format, dilations=dilations)
 
 # This is testing against hand calculated results.
 
@@ -530,6 +621,8 @@ class DepthwiseConv2DTest(test.TestCase):
 
       native_input = input_tensor
       strides = [1, stride, stride, 1]
+      if isinstance(padding, list):
+        padding = [(0, 0)] + padding + [(0, 0)]
       if data_format == "NCHW":
         # Transpose from NHWC input to NCHW
         # Ex. [4, 5, 5, 48] to [4, 48, 5, 5]
@@ -541,6 +634,8 @@ class DepthwiseConv2DTest(test.TestCase):
             output_shape[0], output_shape[3], output_shape[1], output_shape[2]
         ]
         strides = [1, 1, stride, stride]
+        if isinstance(padding, list):
+          padding = [padding[0], padding[3], padding[1], padding[2]]
 
       with sess.graph._kernel_label_map({
           "DepthwiseConv2dNative": "cudnn_grouped_convolution",
@@ -667,6 +762,32 @@ class DepthwiseConv2DTest(test.TestCase):
             dilations=dilations)
 
   @test_util.run_v1_only("b/120545219")
+  def testDepthwiseConv2DInputGradExplicit(self):
+    for index, (input_size, filter_size, output_size, stride, padding,
+                dilations) in enumerate(CheckGradConfigsToTestExplicit()):
+      tf_logging.info(
+          "Testing DepthwiseConv2DInputGradExplicit, %dth config: %r * %r, "
+          "stride: %d, padding: %s", index, input_size, filter_size, stride,
+          padding)
+      # double datatype is currently not supported for convolution ops
+      # on the ROCm platform
+      optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
+      data_formats = ["NHWC", "NCHW"] if test.is_gpu_available() else ["NHWC"]
+      for data_type in [dtypes.float16, dtypes.float32] + optional_float64:
+        for data_format in data_formats:
+          self._ConstructAndTestGradient(
+              input_size,
+              filter_size,
+              output_size,
+              stride,
+              padding,
+              data_type,
+              test_input=True,
+              use_gpu=True,
+              data_format=data_format,
+              dilations=dilations)
+
+  @test_util.run_v1_only("b/120545219")
   @test_util.run_cuda_only
   def testDepthwiseConv2DFilterGradCudnn(self):
     for index, (input_size, filter_size, output_size, stride,
@@ -750,10 +871,38 @@ class DepthwiseConv2DTest(test.TestCase):
             data_format="NCHW",
             dilations=dilations)
 
+  @test_util.run_v1_only("b/120545219")
+  def testDepthwiseConv2DFilterGradExplicit(self):
+    for index, (input_size, filter_size, output_size, stride, padding,
+                dilations) in enumerate(CheckGradConfigsToTestExplicit()):
+      tf_logging.info(
+          "Testing DepthwiseConv2DFilterGradExplicit, %dth config: %r * %r, "
+          "stride: %d, padding: %s", index, input_size, filter_size, stride,
+          padding)
+      # double datatype is currently not supported for convolution ops
+      # on the ROCm platform
+      optional_float64 = [] if test.is_built_with_rocm() else [dtypes.float64]
+      data_formats = ["NHWC", "NCHW"] if test.is_gpu_available() else ["NHWC"]
+      for data_type in [dtypes.float16, dtypes.float32] + optional_float64:
+        for data_format in data_formats:
+          self._ConstructAndTestGradient(
+              input_size,
+              filter_size,
+              output_size,
+              stride,
+              padding,
+              data_type,
+              test_input=False,
+              use_gpu=True,
+              data_format=data_format,
+              dilations=dilations)
+
   def _CompareBackpropInput(self, input_sizes, filter_sizes, output_sizes,
                             stride, padding, dtype):
     x1 = np.random.rand(*filter_sizes).astype(dtype)
     x2 = np.random.rand(*output_sizes).astype(dtype)
+    if isinstance(padding, list):
+      padding = [(0, 0)] + padding + [(0, 0)]
 
     def _GetVal(use_gpu):
       with self.cached_session(use_gpu=use_gpu):
@@ -788,10 +937,30 @@ class DepthwiseConv2DTest(test.TestCase):
       self._CompareBackpropInput(input_size, filter_size, output_size, stride,
                                  padding, "float64")
 
+  def testDepthwiseConv2DInputGradExplicitCompare(self):
+    for index, (input_size, filter_size, output_size, stride,
+                padding, dilations) in enumerate(ConfigsToTestExplicit()):
+      if dilations:
+        continue
+      tf_logging.info(
+          "Testing DepthwiseConv2DInputGradCompare, %dth config: %r * %r, "
+          "stride: %d, padding: %s", index, input_size, filter_size, stride,
+          padding)
+      self._CompareBackpropInput(input_size, filter_size, output_size, stride,
+                                 padding, "float32")
+      # double datatype is currently not supported for convolution ops
+      # on the ROCm platform
+      if test.is_built_with_rocm():
+        continue
+      self._CompareBackpropInput(input_size, filter_size, output_size, stride,
+                                 padding, "float64")
+
   def _CompareBackpropFilter(self, input_sizes, filter_sizes, output_sizes,
                              stride, padding, dtype):
     x0 = np.random.rand(*input_sizes).astype(dtype)
     x2 = np.random.rand(*output_sizes).astype(dtype)
+    if isinstance(padding, list):
+      padding = [(0, 0)] + padding + [(0, 0)]
 
     def _GetVal(use_gpu):
       with self.cached_session(use_gpu=use_gpu):
@@ -811,6 +980,24 @@ class DepthwiseConv2DTest(test.TestCase):
   def testDepthwiseConv2DFilterGradCompare(self):
     for index, (input_size, filter_size, output_size, stride,
                 padding, dilations) in enumerate(ConfigsToTest()):
+      if dilations:
+        continue
+      tf_logging.info(
+          "Testing DepthwiseConv2DFilterGradCompare, %dth config: %r * %r, "
+          "stride: %d, padding: %s", index, input_size, filter_size, stride,
+          padding)
+      self._CompareBackpropFilter(input_size, filter_size, output_size, stride,
+                                  padding, "float32")
+      # double datatype is currently not supported for convolution ops
+      # on the ROCm platform
+      if test.is_built_with_rocm():
+        continue
+      self._CompareBackpropFilter(input_size, filter_size, output_size, stride,
+                                  padding, "float64")
+
+  def testDepthwiseConv2DFilterGradExplicitCompare(self):
+    for index, (input_size, filter_size, output_size, stride,
+                padding, dilations) in enumerate(ConfigsToTestExplicit()):
       if dilations:
         continue
       tf_logging.info(
