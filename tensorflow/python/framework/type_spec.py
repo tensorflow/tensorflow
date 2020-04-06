@@ -19,7 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 
+import attr
 import numpy as np
 import six
 
@@ -323,6 +325,9 @@ class TypeSpec(object):
                  self.__make_cmp_key(value[key])])
           for key in sorted(value.keys())
       ])
+    if attr.has(value):
+      d = attr.asdict(value, dict_factory=collections.OrderedDict)
+      return self.__make_cmp_key(d)
     if isinstance(value, tuple):
       return tuple([self.__make_cmp_key(v) for v in value])
     if isinstance(value, list):
