@@ -1896,7 +1896,7 @@ bool MayPreventVectorization(const HloInstruction& hlo) {
       default:
         return false;
     }
-  } else if (hlo.opcode() == HloOpcode::kReduce) {
+  } else if (hlo.opcode() == HloOpcode::kReduce && hlo.shape().IsArray()) {
     // TODO: check if the to_apply() attribute contains instruction
     // that break LLVM vectorization.
     return false;
