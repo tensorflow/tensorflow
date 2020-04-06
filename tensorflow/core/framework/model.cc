@@ -711,23 +711,10 @@ void Model::AddProcessingTime(const string& name, int64 delta) {
   }
 }
 
-void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget,
-                     int64 ram_budget) {
-  switch (algorithm) {
-    case AutotuneAlgorithm::HILL_CLIMB:
-      OptimizeHillClimb(cpu_budget, ram_budget);
-      break;
-    case AutotuneAlgorithm::GRADIENT_DESCENT:
-      OptimizeGradientDescent(cpu_budget, ram_budget);
-      break;
-  }
-}
-
-void Model::RecordElement(const string& name) {
+void Model::FlushMetrics() {
   tf_shared_lock l(mu_);
-  auto node = gtl::FindOrNull(lookup_table_, name);
-  if (node) {
-    (*node)->record_element();
+  for (const auto& pair : lookup_table_) {
+    pair.second->FlushMetrics();
   }
 }
 
@@ -738,6 +725,18 @@ int64 Model::NumElements(const string& name) {
     return (*node)->num_elements();
   }
   return 0;
+}
+
+void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget,
+                     int64 ram_budget) {
+  switch (algorithm) {
+    case AutotuneAlgorithm::HILL_CLIMB:
+      OptimizeHillClimb(cpu_budget, ram_budget);
+      break;
+    case AutotuneAlgorithm::GRADIENT_DESCENT:
+      OptimizeGradientDescent(cpu_budget, ram_budget);
+      break;
+  }
 }
 
 void Model::RecordStart(const string& name, bool stop_output) {
@@ -772,7 +771,6 @@ void Model::RemoveNode(const string& name) {
       (*node)->output()->remove_input(*node);
     }
     VLOG(3) << "Removing " << (*node)->long_name();
-    remove_node_hook_(*node);
   }
   lookup_table_.erase(name);
 }

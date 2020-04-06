@@ -8437,6 +8437,31 @@ output_handle: The list.
   TF_DerivedOperandTypeAttr element_dtype = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_TensorListGatherOp : TF_Op<"TensorListGather", [NoSideEffect]> {
+  let summary = "Creates a Tensor by indexing into the TensorList.";
+
+  let description = [{
+Each row in the produced Tensor corresponds to the element in the TensorList
+specified by the given index (see `tf.gather`).
+
+input_handle: The input tensor list.
+indices: The indices used to index into the list.
+values: The tensor.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle,
+    I32Tensor:$indices,
+    I32Tensor:$element_shape
+  );
+
+  let results = (outs
+    TF_Tensor:$values
+  );
+
+  TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_TensorListGetItemOp : TF_Op<"TensorListGetItem", [NoSideEffect]> {
   let summary = "";
 

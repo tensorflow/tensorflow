@@ -51,13 +51,14 @@ std::vector<Costs::NanoSeconds> GetOrderedTimes(
     const std::unordered_map<const NodeDef*, Costs::NanoSeconds>
         completion_times) {
   std::map<Costs::NanoSeconds, std::string> ordered_completion_times;
-  for (const auto& [node_def, time] : completion_times) {
-    ordered_completion_times[time] = node_def->name();
+  for (const auto& node_def_time : completion_times) {
+    ordered_completion_times[node_def_time.second] =
+        node_def_time.first->name();
   }
 
   std::vector<Costs::NanoSeconds> ordered_times;
-  for (const auto& [time, _] : ordered_completion_times) {
-    ordered_times.push_back(time);
+  for (const auto& time_node_name : ordered_completion_times) {
+    ordered_times.push_back(time_node_name.first);
   }
 
   return ordered_times;
@@ -68,13 +69,14 @@ std::vector<std::string> GetOrderedNodeNames(
     const std::unordered_map<const NodeDef*, Costs::NanoSeconds>
         completion_times) {
   std::map<Costs::NanoSeconds, std::string> ordered_completion_times;
-  for (const auto& [node_def, time] : completion_times) {
-    ordered_completion_times[time] = node_def->name();
+  for (const auto& node_def_time : completion_times) {
+    ordered_completion_times[node_def_time.second] =
+        node_def_time.first->name();
   }
 
   std::vector<std::string> ordered_node_names;
-  for (const auto& [_, node_name] : ordered_completion_times) {
-    ordered_node_names.push_back(node_name);
+  for (const auto& time_node_name : ordered_completion_times) {
+    ordered_node_names.push_back(time_node_name.second);
   }
 
   return ordered_node_names;

@@ -26,7 +26,6 @@ from absl.testing import parameterized
 from six.moves import range
 
 from tensorflow.python.autograph.core import converter
-from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import constant_op
@@ -35,8 +34,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.layers import core
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -46,26 +43,6 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import adam
-
-
-class _ModelWithOptimizer(training.Model):
-
-  def __init__(self):
-    super(_ModelWithOptimizer, self).__init__()
-    self.dense = core.Dense(1)
-    self.optimizer = adam.AdamOptimizer(0.01)
-
-  @def_function.function(
-      input_signature=(tensor_spec.TensorSpec([None, 2], dtypes.float32),
-                       tensor_spec.TensorSpec([None], dtypes.float32)))
-  def call(self, x, y):
-    with backprop.GradientTape() as tape:
-      loss = math_ops.reduce_mean((self.dense(x) - y) ** 2.)
-    trainable_variables = self.trainable_variables
-    gradients = tape.gradient(loss, trainable_variables)
-    self.optimizer.apply_gradients(zip(gradients, trainable_variables))
-    return {'loss': loss}
 
 
 class _HasDecoratedMethod(object):
@@ -73,6 +50,7 @@ class _HasDecoratedMethod(object):
   @def_function.function
   def f(self, x):
     return x * 3.
+
 
 class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
@@ -310,12 +288,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
         lambda x, y=2: x + y,
         input_signature=[tensor_spec.TensorSpec((), dtypes.int32)])
     self.assertEqual(3, wrapped(constant_op.constant(1)).numpy())
-
-  def test_optimizer(self):
-    x = constant_op.constant([[3., 4.]])
-    y = constant_op.constant([2.])
-    model = _ModelWithOptimizer()
-    model(x, y)
 
   def test_concrete_function_from_signature(self):
 

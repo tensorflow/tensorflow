@@ -98,7 +98,7 @@ class DelegateKernel {
     thread_id_prepare_ = std::this_thread::get_id();
 
     // Extract TFLite delegate execution plan from the context and convert it
-    // into FlowGraph32.
+    // into GraphFloat32.
     GraphFloat32 graph;
     RETURN_IF_ERROR(BuildFinalModel(context, delegate_params, &graph));
 

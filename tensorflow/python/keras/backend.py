@@ -3296,11 +3296,11 @@ _VALUE_SET_CODE_STRING = """
 
   >>> v = tf.Variable(1.)
 
-  >>> _ = v.assign(2.)
+  >>> v.assign(2.)
   >>> print(v.numpy())
   2.0
 
-  >>> _ = v.assign_add(1.)
+  >>> v.assign_add(1.)
   >>> print(v.numpy())
   3.0"""[3:]  # Prune first newline and indent to match the docstring template.
 

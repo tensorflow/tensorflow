@@ -265,7 +265,11 @@ message DebugOptions {
   // Guarantee run-to-run determinism from reductions on XLA:GPU.
   bool xla_gpu_deterministic_reductions = 130;
 
-  // Next id: 135
+  // Debug options that trigger execution errors when NaN or Inf are detected.
+  bool xla_tpu_detect_nan = 135;
+  bool xla_tpu_detect_inf = 136;
+
+  // Next id: 137
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

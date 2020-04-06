@@ -1929,6 +1929,10 @@ class DepthwiseConv2D(Conv2D):
       It defaults to the `image_data_format` value found in your
       Keras config file at `~/.keras/keras.json`.
       If you never set it, then it will be 'channels_last'.
+    dilation_rate: An integer or tuple/list of 2 integers, specifying
+      the dilation rate to use for dilated convolution.
+      Currently, specifying any `dilation_rate` value != 1 is
+      incompatible with specifying any `strides` value != 1.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
@@ -1978,6 +1982,7 @@ class DepthwiseConv2D(Conv2D):
                padding='valid',
                depth_multiplier=1,
                data_format=None,
+               dilation_rate=(1, 1),
                activation=None,
                use_bias=True,
                depthwise_initializer='glorot_uniform',
@@ -1994,6 +1999,7 @@ class DepthwiseConv2D(Conv2D):
         strides=strides,
         padding=padding,
         data_format=data_format,
+        dilation_rate=dilation_rate,
         activation=activation,
         use_bias=use_bias,
         bias_regularizer=bias_regularizer,
@@ -2074,10 +2080,12 @@ class DepthwiseConv2D(Conv2D):
 
     rows = conv_utils.conv_output_length(rows, self.kernel_size[0],
                                          self.padding,
-                                         self.strides[0])
+                                         self.strides[0],
+                                         self.dilation_rate[0])
     cols = conv_utils.conv_output_length(cols, self.kernel_size[1],
                                          self.padding,
-                                         self.strides[1])
+                                         self.strides[1],
+                                         self.dilation_rate[1])
     if self.data_format == 'channels_first':
       return (input_shape[0], out_filters, rows, cols)
     elif self.data_format == 'channels_last':

@@ -1,4 +1,4 @@
-# RUN: not tfcompile --graph=%s.pbtxt --config=%s.config.pbtxt --quantize --cpp_class="::test::fadd_quant"  2>&1 | FileCheck %s -dump-input-on-failure
+# RUN: not tfcompile --graph=%s.pbtxt --config=%s.config.pbtxt --experimental_quantize --cpp_class="::test::fadd_quant"  2>&1 | FileCheck %s -dump-input-on-failure
 
 # TODO(fengliuai): update this file with the progress of the implementation
 // CHECK: func @main

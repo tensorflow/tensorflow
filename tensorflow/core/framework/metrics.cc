@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
 
@@ -61,6 +61,14 @@ auto* graph_unused_outputs = monitoring::Counter<1>::New(
 auto* tf_data_autotune_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/autotune", "tf.data autotuning", "name");
 
+auto* tf_data_bytes_consumed_counter = monitoring::Counter<1>::New(
+    "/tensorflow/data/bytes_consumed",
+    "The number of bytes consumed by a tf.data Dataset.", "name");
+
+auto* tf_data_bytes_produced_counter = monitoring::Counter<1>::New(
+    "/tensorflow/data/bytes_produced",
+    "The number of bytes produced by a tf.data Dataset.", "name");
+
 auto* tf_data_bytes_read_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/bytes_read",
     "The number of bytes read by tf.data Dataset sources.", "name");
@@ -69,17 +77,17 @@ auto* tf_data_bytes_fetched_counter = monitoring::Counter<0>::New(
     "/tensorflow/data/bytes_fetched",
     "The number of bytes fetched from tf.data Dataset iterator.");
 
-auto* tf_data_getnext_duration_counter = monitoring::Sampler<0>::New(
-    {"/tensorflow/data/getnext_duration",
-     "Microseconds spent fetching an element from tf.data Dataset iterator."},
-    // Power of 2 with bucket count 10 (1024 ms)
-    {monitoring::Buckets::Exponential(1, 2, 10)});
-
 auto* tf_data_elements_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/elements", "tf.data elements", "name");
 
 auto* tf_data_fingerprint_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/fingerprint", "tf.data fingerprint", "name");
+
+auto* tf_data_getnext_duration_counter = monitoring::Sampler<0>::New(
+    {"/tensorflow/data/getnext_duration",
+     "Microseconds spent fetching an element from tf.data Dataset iterator."},
+    // Power of 2 with bucket count 10 (1024 ms)
+    {monitoring::Buckets::Exponential(1, 2, 10)});
 
 auto* tf_data_optimization_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/optimization", "tf.data optimization", "name");
@@ -132,26 +140,34 @@ void RecordTFDataAutotune(const string& name) {
   tf_data_autotune_counter->GetCell(name)->IncrementBy(1);
 }
 
+monitoring::CounterCell* GetTFDataBytesConsumedCounter(const string& name) {
+  return tf_data_bytes_consumed_counter->GetCell(name);
+}
+
+monitoring::CounterCell* GetTFDataBytesProducedCounter(const string& name) {
+  return tf_data_bytes_produced_counter->GetCell(name);
+}
+
 monitoring::CounterCell* GetTFDataBytesReadCounter(const string& name) {
   return tf_data_bytes_read_counter->GetCell(name);
+}
+
+monitoring::CounterCell* GetTFDataElementsCounter(const string& name) {
+  return tf_data_elements_counter->GetCell(name);
 }
 
 void RecordTFDataBytesFetched(int64 num_bytes) {
   tf_data_bytes_fetched_counter->GetCell()->IncrementBy(num_bytes);
 }
 
+void RecordTFDataFingerprint(const string& name) {
+  tf_data_fingerprint_counter->GetCell(name)->IncrementBy(1);
+}
+
 void RecordTFDataGetNextDuration(uint64 duration_us) {
   static auto* tfdata_getnext_duration_cell =
       tf_data_getnext_duration_counter->GetCell();
   tfdata_getnext_duration_cell->Add(duration_us);
-}
-
-void RecordTFDataElements(const string& name, int64 num_elements) {
-  tf_data_elements_counter->GetCell(name)->IncrementBy(num_elements);
-}
-
-void RecordTFDataFingerprint(const string& name) {
-  tf_data_fingerprint_counter->GetCell(name)->IncrementBy(1);
 }
 
 void RecordTFDataOptimization(const string& name, int64 num_changes) {

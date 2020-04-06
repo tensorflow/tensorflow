@@ -22,7 +22,13 @@ namespace profiler {
 XStatVisitor::XStatVisitor(const XPlaneVisitor* plane, const XStat* stat)
     : stat_(stat),
       metadata_(plane->GetStatMetadata(stat->metadata_id())),
+      plane_(plane),
       type_(plane->GetStatType(stat->metadata_id())) {}
+
+absl::string_view XStatVisitor::RefValue() const {
+  const XStatMetadata* metadata = plane_->GetStatMetadata(stat_->ref_value());
+  return metadata ? metadata->name() : "";
+}
 
 std::string XStatVisitor::ToString() const {
   switch (stat_->value_case()) {
@@ -36,6 +42,8 @@ std::string XStatVisitor::ToString() const {
       return stat_->str_value();
     case XStat::kBytesValue:
       return "<opaque bytes>";
+    case XStat::kRefValue:
+      return plane_->GetStatMetadata(stat_->ref_value())->name();
     case XStat::VALUE_NOT_SET:
       return "";
   }

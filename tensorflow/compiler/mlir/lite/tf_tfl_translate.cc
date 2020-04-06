@@ -208,11 +208,6 @@ int main(int argc, char **argv) {
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
   pass_config.legalize_tf_while = convert_tf_while_to_tfl_while;
 
-  // Currently we only do shape inference for saved model import.
-  if (import_saved_model_object_graph || import_saved_model_signature_defs) {
-    pass_config.shape_inference = true;
-  }
-
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
   // TODO(b/150901738): Move those into tf_tfl_translate.cc.
   // Convert back to outlined while format for export back to flatbuffer.

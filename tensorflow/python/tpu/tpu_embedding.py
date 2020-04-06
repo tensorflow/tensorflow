@@ -1392,16 +1392,20 @@ class TPUEmbedding(object):
         'table_ids': [],
         'max_sequence_lengths': [],
     }
+    int_zeros = array_ops.zeros((0,), dtype=dtypes.int64)
+    float_zeros = array_ops.zeros((0,), dtype=dtypes.float32)
     for table_id, table in enumerate(self._table_to_features_dict):
       features = self._table_to_features_dict[table]
       for feature in features:
         enqueue_data = enqueue_datas[feature]
 
-        kwargs['sample_splits'].append(enqueue_data.sample_splits)
+        kwargs['sample_splits'].append(
+            enqueue_data.sample_splits
+            if enqueue_data.sample_splits is not None else int_zeros)
 
         kwargs['aggregation_weights'].append(
-            enqueue_data.aggregation_weights if enqueue_data.aggregation_weights
-            is not None else array_ops.zeros((0,), dtype=dtypes.float32))
+            enqueue_data.aggregation_weights
+            if enqueue_data.aggregation_weights is not None else float_zeros)
 
         kwargs['embedding_indices'].append(enqueue_data.embedding_indices)
 

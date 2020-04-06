@@ -241,7 +241,8 @@ llvm::Constant* IrEmitter::EmitGlobalForLiteral(const Literal& literal) {
       /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
       /*Initializer=*/initializer,
       /*Name=*/"");
-  result_global->setAlignment(MinimumAlignmentForShape(literal.shape()));
+  result_global->setAlignment(
+      llvm::Align(MinimumAlignmentForShape(literal.shape())));
   result_global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
   return llvm::ConstantExpr::getBitCast(
       result_global, IrShapeType(literal.shape())->getPointerTo());
@@ -520,12 +521,14 @@ Status IrEmitter::EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
 
   if (kind == XfeedKind::kInfeed) {
     // Copy to the program buffer address from the acquired buffer.
-    MemCpy(program_buffer_address, /*DstAlign=*/1, acquired_pointer,
-           /*SrcAlign=*/1, length_32);
+    MemCpy(program_buffer_address, /*DstAlign=*/llvm::Align(1),
+           acquired_pointer,
+           /*SrcAlign=*/llvm::Align(1), length_32);
   } else {
     // Outfeed -- copy from the in-program address to the acquired buffer.
-    MemCpy(acquired_pointer, /*DstAlign=*/1, program_buffer_address,
-           /*SrcAlign=*/1, length_32);
+    MemCpy(acquired_pointer, /*DstAlign=*/llvm::Align(1),
+           program_buffer_address,
+           /*SrcAlign=*/llvm::Align(1), length_32);
   }
 
   Call(release_func, {GetExecutableRunOptionsArgument(), b_.getInt32(length_32),
@@ -612,9 +615,9 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
           ShapeUtil::ByteSizeOfPrimitiveType(operand->shape().element_type());
       auto source_buffer = GetEmittedValueFor(operand);
       int64 size = ByteSizeOf(operand->shape());
-      MemCpy(destination_addresses[i], /*DstAlign=*/primitive_type_size,
-             source_buffer,
-             /*SrcAlign=*/primitive_type_size, size);
+      MemCpy(destination_addresses[i],
+             /*DstAlign=*/llvm::Align(primitive_type_size), source_buffer,
+             /*SrcAlign=*/llvm::Align(primitive_type_size), size);
     }
   }
 
@@ -1401,8 +1404,8 @@ Status IrEmitter::HandleAllReduceSingleReplica(HloInstruction* crs) {
     operand_ptrs.push_back(EmitBufferPointer(out_slice, operand_shape));
 
     // TODO(b/63762267): Be more aggressive about specifying alignment.
-    MemCpy(operand_ptrs.back(), /*DstAlign=*/1, in_ptr,
-           /*SrcAlign=*/1, ShapeUtil::ByteSizeOf(operand_shape));
+    MemCpy(operand_ptrs.back(), /*DstAlign=*/llvm::Align(1), in_ptr,
+           /*SrcAlign=*/llvm::Align(1), ShapeUtil::ByteSizeOf(operand_shape));
   }
   llvm_ir::EmitTuple(GetIrArrayFor(crs), operand_ptrs, &b_);
   return Status::OK();
@@ -2746,9 +2749,10 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
                      element_alignment);
     target_array.AnnotateLoadStoreInstructionWithMetadata(store_instruction);
   } else {
-    auto* memcpy_instruction = MemCpy(
-        target, /*DstAlign=*/element_alignment, source,
-        /*SrcAlign=*/element_alignment, element_count * primitive_type_size);
+    auto* memcpy_instruction =
+        MemCpy(target, /*DstAlign=*/llvm::Align(element_alignment), source,
+               /*SrcAlign=*/llvm::Align(element_alignment),
+               element_count * primitive_type_size);
 
     // The memcpy does the load and the store internally.  The aliasing related
     // metadata has to reflect that.
@@ -3316,8 +3320,8 @@ Status IrEmitter::EmitMemcpy(const HloInstruction& source,
   llvm::Value* destination_value = GetEmittedValueFor(&destination);
   int64 source_size = ByteSizeOf(source.shape());
   // TODO(b/63762267): Be more aggressive about specifying alignment.
-  MemCpy(destination_value, /*DstAlign=*/1, source_value,
-         /*SrcAlign=*/1, source_size);
+  MemCpy(destination_value, /*DstAlign=*/llvm::Align(1), source_value,
+         /*SrcAlign=*/llvm::Align(1), source_size);
   return Status::OK();
 }
 

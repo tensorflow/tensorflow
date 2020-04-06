@@ -186,9 +186,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       TF_LITE_FULLY_CONNECTED(int16_t);
       break;
     default:
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Quantized FullyConnected expects output data type uint8 or int16");
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(output->type), output->type);
       return kTfLiteError;
   }
 
@@ -241,8 +240,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                            output);
 
     default:
-      TF_LITE_KERNEL_LOG(context, "Type %d not currently supported.",
-                         filter->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input->type), input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
