@@ -305,7 +305,7 @@ class GroupedConvTest(keras_parameterized.TestCase):
   )
   def test_group_conv(self, layer, input_shape):
     if test.is_gpu_available(cuda_only=True):
-      with self.cached_session(use_gpu=True):
+      with test_util.use_gpu():
         inputs = np.random.uniform(size=input_shape)
 
         outputs = layer(16, 3, groups=4, kernel_initializer="ones")(inputs)
