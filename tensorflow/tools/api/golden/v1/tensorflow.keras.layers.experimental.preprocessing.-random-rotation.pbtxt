@@ -113,7 +113,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'factor\', \'fill_mode\', \'seed\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'nearest\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'factor\', \'fill_mode\', \'interpolation\', \'seed\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'reflect\', \'bilinear\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"

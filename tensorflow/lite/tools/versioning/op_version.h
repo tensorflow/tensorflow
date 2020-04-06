@@ -51,7 +51,11 @@ typedef struct {
     } resize_bilinear;
     struct {
       int32_t num_dims;
-    } strided_slice;
+    } single_input_op;
+    struct {
+      int32_t num_dims;
+      bool need_broadcast;
+    } broadcast;
   } options;
 } OpSignature;
 

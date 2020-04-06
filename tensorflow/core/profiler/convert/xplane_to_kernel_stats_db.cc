@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
@@ -42,6 +43,7 @@ KernelStatsDb ConvertDeviceTraceXPlaneToKernelStatsDb(
       absl::string_view tf_op_fullname;
       KernelReport kernel;
 
+      absl::string_view equation;
       event.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
         if (stat.Type() == StatType::kLevel0) {
           tf_op_fullname = stat.StrValue();
@@ -53,21 +55,25 @@ KernelStatsDb ConvertDeviceTraceXPlaneToKernelStatsDb(
           kernel.set_min_duration_ns(event.DurationNs());
           kernel.set_max_duration_ns(event.DurationNs());
           ParseKernelLaunchParams(stat.StrValue(), &kernel);
+        } else if (stat.Type() == StatType::kEquation) {
+          equation = stat.StrValue();
         }
       });
 
       if (!tf_op_fullname.empty()) {
         tensorflow::profiler::TfOp tf_op = ParseTfOpFullname(tf_op_fullname);
+
         if (kernel.total_duration_ns()) {
           kernel.set_op_name(tf_op.name.data(), tf_op.name.size());
-          bool tensor_core_eligible = IsOpTensorCoreEligible(kernel.op_name());
-#if defined(LOG_IF)
-          LOG_IF(INFO,
-                 !tensor_core_eligible && kernel.is_kernel_using_tensor_core())
-              << "Detected new Op using TensorCores: " << kernel.op_name()
-              << std::endl;
-#endif  // defined(LOG_IF)
-          tensor_core_eligible |= kernel.is_kernel_using_tensor_core();
+          bool tensor_core_eligible = IsEinsumTensorCoreEligible(equation) ||
+                                      IsOpTensorCoreEligible(kernel.op_name());
+
+          if (!tensor_core_eligible && kernel.is_kernel_using_tensor_core()) {
+            VLOG(1) << "Detected new Op using TensorCores: " << kernel.op_name()
+                    << std::endl;
+            tensor_core_eligible = true;
+          }
+
           kernel.set_is_op_tensor_core_eligible(tensor_core_eligible);
         }
       }

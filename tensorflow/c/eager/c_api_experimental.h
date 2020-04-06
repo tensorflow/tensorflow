@@ -296,6 +296,10 @@ TF_CAPI_EXPORT extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetLazyRemoteInputsCopy(
     TFE_ContextOptions*, bool lazy_copy);
 
+// Sets whether to use TFRT
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
+                                                     bool use_tfrt);
+
 // -----------------------------------------------------------------------------
 // Cancellation APIs.
 
@@ -388,12 +392,6 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
 TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context* ctx,
                                                 TF_Status* status);
 
-// If the TensorHandle is copied to another device as part of an op execution,
-// the copy is destroyed after the op has executed. Enabling implicit mirroring
-// causes the copy to be held as a mirror for the lifetime of the TensorHandle.
-TF_CAPI_EXPORT extern void TFE_TensorHandleEnableImplicitMirroring(
-    TFE_TensorHandle*, TF_Status*);
-
 // This function will block till the operation that produces `h` has
 // completed. This is only valid on local TFE_TensorHandles. The pointer
 // returned will be on the device in which the TFE_TensorHandle resides (so e.g.
@@ -458,27 +456,29 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrValueProto(const TFE_Op* op,
                                                    size_t proto_len,
                                                    TF_Status* status);
 
-#define TFE_CUSTOM_DEVICE_VERSION 1
+#define TFE_CUSTOM_DEVICE_VERSION 2
 
 // Struct to be filled in
 typedef struct TFE_CustomDevice {
   int version = TFE_CUSTOM_DEVICE_VERSION;
   // Method to copy a tensor to the custom device.
-  TFE_TensorHandle* (*copy_tensor_to_device)(TFE_TensorHandle* tensor,
+  TFE_TensorHandle* (*copy_tensor_to_device)(TFE_Context* context,
+                                             TFE_TensorHandle* tensor,
                                              TF_Status* status,
                                              void* device_info) = nullptr;
 
   // Method to copy a tensor from the custom device to a target device.
-  TFE_TensorHandle* (*copy_tensor_from_device)(TFE_TensorHandle* tensor,
+  TFE_TensorHandle* (*copy_tensor_from_device)(TFE_Context* context,
+                                               TFE_TensorHandle* tensor,
                                                const char* target_device_name,
                                                TF_Status* status,
                                                void* device_info);
 
   // Method to execute an operation.
-  void (*execute)(int num_inputs, TFE_TensorHandle** inputs,
-                  const char* operation_name, const TFE_OpAttrs* attributes,
-                  int* num_outputs, TFE_TensorHandle** outputs, TF_Status* s,
-                  void* device_info);
+  void (*execute)(TFE_Context* context, int num_inputs,
+                  TFE_TensorHandle** inputs, const char* operation_name,
+                  const TFE_OpAttrs* attributes, int* num_outputs,
+                  TFE_TensorHandle** outputs, TF_Status* s, void* device_info);
 
   // Method to delete a device.
   void (*delete_device)(void* device_info);

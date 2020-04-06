@@ -74,10 +74,12 @@ exports_files(
         "tensor_util.h",
         "thread_factory.h",
         "tracking_allocator.h",
-        "unique_tensor_references.h",
         "versions.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/common_runtime:__pkg__",
+    ],
 )
 
 # List of exported test source files that do not yet have local build rules.
@@ -218,7 +220,6 @@ filegroup(
         "type_traits.h",
         "typed_allocator.h",
         "types.h",
-        "unique_tensor_references.h",
         "variant.h",
         "variant_encode_decode.h",
         "variant_op_registry.h",
@@ -256,7 +257,6 @@ filegroup(
         "run_handler_util.cc",
         "tensor_slice.cc",
         "tensor_util.cc",
-        "unique_tensor_references.cc",
         "versions.cc",
     ],
 )
@@ -384,15 +384,12 @@ filegroup(
         "shape_inference.cc",
         "shape_inference.h",
         "stats_aggregator.h",
-        "tensor_interface.h",
         "tensor_reference.h",
         "tensor_slice.cc",
         "tensor_slice.h",
         "tensor_util.cc",
         "tensor_util.h",
         "thread_factory.h",
-        "unique_tensor_references.cc",
-        "unique_tensor_references.h",
         "versions.cc",
         "versions.h",
     ],
@@ -632,7 +629,7 @@ cc_library(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/core/tfrt_delegate:__pkg__",
+        "//tensorflow/core/runtime_fallback:__pkg__",
     ],
     deps = [
         ":bounds_check",
@@ -1039,7 +1036,6 @@ tf_cc_tests(
         "tensor_util_test.cc",
         "tracking_allocator_test.cc",
         "types_test.cc",
-        "unique_tensor_references_test.cc",
         "variant_op_registry_test.cc",
         "variant_test.cc",
     ],

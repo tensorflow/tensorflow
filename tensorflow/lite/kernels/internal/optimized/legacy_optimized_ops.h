@@ -48,7 +48,7 @@ using reference_ops::BroadcastGreaterEqual;
 using reference_ops::BroadcastLess;
 using reference_ops::BroadcastLessEqual;
 using reference_ops::BroadcastMul4DSlow;
-using reference_ops::BroadcastSub4DSlow;
+using reference_ops::BroadcastSubSlow;
 using reference_ops::Concatenation;
 using reference_ops::ConcatenationWithScaling;
 using reference_ops::DepthConcatenation;
@@ -3429,9 +3429,9 @@ void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
   tflite::ArithmeticParams op_params;
   SetActivationParams(output_activation_min, output_activation_max, &op_params);
 
-  BroadcastDiv4DSlow(op_params, DimsToShape(input1_dims), input1_data,
-                     DimsToShape(input2_dims), input2_data,
-                     DimsToShape(output_dims), output_data);
+  BroadcastDivSlow(op_params, DimsToShape(input1_dims), input1_data,
+                   DimsToShape(input2_dims), input2_data,
+                   DimsToShape(output_dims), output_data);
 }
 
 template <FusedActivationFunctionType Ac>

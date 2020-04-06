@@ -47,7 +47,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
@@ -55,7 +54,6 @@ cc_library(
     ] + if_not_android([
         ":profiler_utils",
         "//tensorflow/core/profiler/internal:profiler_factory",
-        "//tensorflow/core/profiler/convert:xplane_to_trace_events",
         "//tensorflow/core/profiler/utils:derived_timeline",
         "//tensorflow/core/profiler/utils:group_events",
         "//tensorflow/core/profiler/utils:xplane_utils",
@@ -71,6 +69,7 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core/profiler/internal/cpu:host_tracer",
+        "//tensorflow/core/profiler/internal/cpu:metadata_collector",
     ],
     alwayslink = True,
 )

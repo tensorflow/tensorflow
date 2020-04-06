@@ -36,7 +36,7 @@ TEST(DerivedTimelineTest, EmptySpaceTest) {
   EXPECT_EQ(space.planes_size(), 0);
 }
 
-// Checks that HLO module events are not expanded.
+// Checks that HLO module events are expanded.
 TEST(DerivedTimelineTest, HloModuleNameTest) {
   const absl::string_view kHloModuleName = "hlo_module";
   const absl::string_view kKernelDetails = "kernel_details";
@@ -69,7 +69,7 @@ TEST(DerivedTimelineTest, HloModuleNameTest) {
   plane_visitor.ForEachLine([&](const XLineVisitor& line_visitor) {
     if (line_visitor.Id() == 0) return;
     EXPECT_EQ(line_visitor.Id(), kThreadIdHloModule);
-    EXPECT_EQ(line_visitor.NumEvents(), 2);
+    EXPECT_EQ(line_visitor.NumEvents(), 1);
     line_visitor.ForEachEvent([&](const XEventVisitor& event_visitor) {
       EXPECT_EQ(event_visitor.Name(), kHloModuleName);
     });

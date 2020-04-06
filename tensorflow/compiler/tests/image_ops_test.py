@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import colorsys
 import math
+import os
 
 from absl.testing import parameterized
 import numpy as np
@@ -29,6 +30,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import image_ops
@@ -565,40 +567,39 @@ class ResizeBilinearTest(parameterized.TestCase, xla_test.XLATestCase):
         self.assertAllClose(expected[np.newaxis, :, :, np.newaxis], out)
 
   @parameterized.named_parameters(
-      ("1x2To3x3", 1, 2, 3, 3),
-      ("2x2To1x1", 2, 2, 1, 1),
-      ("2x2To3x3", 2, 2, 3, 3),
-      ("3x3To2x2", 3, 3, 2, 2),
-      ("4x4To3x3", 4, 4, 3, 3),
-      ("3x3To9x9", 3, 3, 9, 9),
-      ("4x4To8x8", 4, 4, 8, 8),
-      ("8x8To16x16", 8, 8, 16, 16),
-      ("64x64To512x512", 64, 64, 512, 512),
-      ("80x80To512x512", 80, 80, 512, 512),
-      ("96x96To512x512", 96, 96, 512, 512),
-      ("112x112To512x512", 112, 112, 512, 512),
-      ("256x48To2048x384", 256, 48, 2048, 384),
-      ("320x60To2048x384", 320, 60, 2048, 384),
-      ("448x84To2048x384", 448, 84, 2048, 384),
-      ("69x69To545x545", 69, 69, 545, 545),
-      ("86x86To545x545", 86, 86, 545, 545),
-      ("103x103To545x545", 103, 103, 545, 545),
-      ("120x120To545x545", 120, 120, 545, 545),
-      ("57x57To456x456", 57, 57, 456, 456),
-      ("72x72To456x456", 72, 72, 456, 456),
-      ("86x86To456x456", 86, 86, 456, 456),
-      ("100x100To456x456", 100, 100, 456, 456),
-      ("64x64To224x224", 64, 64, 224, 224),
-      ("128x128To224x224", 128, 128, 224, 224),
-      ("256x256To224x224", 256, 256, 224, 224),
-      ("512x512To224x224", 512, 512, 224, 224),
-      ("64x64To299x299", 64, 64, 299, 299),
-      ("128x128To299x299", 128, 128, 299, 299),
-      ("256x256To299x299", 256, 256, 299, 299),
-      ("512x512To299x299", 512, 512, 299, 299),
-      ("224x224To224x224", 224, 224, 224, 224),
-      ("224x224To224x224-bfloat", 224, 224, 224, 224,
-       dtypes.bfloat16.as_numpy_dtype),
+      [("1x2To3x3", 1, 2, 3, 3), ("2x2To1x1", 2, 2, 1, 1),
+       ("2x2To3x3", 2, 2, 3, 3), ("3x3To2x2", 3, 3, 2, 2),
+       ("4x4To3x3", 4, 4, 3, 3), ("3x3To9x9", 3, 3, 9, 9),
+       ("4x4To8x8", 4, 4, 8, 8), ("8x8To16x16", 8, 8, 16, 16),
+       ("64x64To512x512", 64, 64, 512, 512),
+       ("80x80To512x512", 80, 80, 512, 512),
+       ("96x96To512x512", 96, 96, 512, 512),
+       ("112x112To512x512", 112, 112, 512, 512),
+       ("256x48To2048x384", 256, 48, 2048, 384),
+       ("320x60To2048x384", 320, 60, 2048, 384),
+       ("448x84To2048x384", 448, 84, 2048, 384),
+       ("69x69To545x545", 69, 69, 545, 545),
+       ("86x86To545x545", 86, 86, 545, 545),
+       ("103x103To545x545", 103, 103, 545, 545),
+       ("120x120To545x545", 120, 120, 545, 545),
+       ("57x57To456x456", 57, 57, 456, 456),
+       ("72x72To456x456", 72, 72, 456, 456),
+       ("86x86To456x456", 86, 86, 456, 456),
+       ("100x100To456x456", 100, 100, 456, 456),
+       ("64x64To224x224", 64, 64, 224, 224),
+       ("128x128To224x224", 128, 128, 224, 224),
+       ("256x256To224x224", 256, 256, 224, 224),
+       ("512x512To224x224", 512, 512, 224, 224),
+       ("64x64To299x299", 64, 64, 299, 299),
+       ("128x128To299x299", 128, 128, 299, 299),
+       ("256x256To299x299", 256, 256, 299, 299),
+       ("512x512To299x299", 512, 512, 299, 299),
+       ("224x224To224x224", 224, 224, 224, 224)] +
+      # On windows, initialization of the following or any larger np.arrays
+      # where we set the dtype explicitly fails with:
+      #   TypeError: expected number, got int
+      ([] if os.name == "nt" else [("224x224To224x224-bfloat", 224, 224, 224,
+                                    224, dtypes.bfloat16.as_numpy_dtype)]),
       # This test is disabled because it is very slow. It is slow because
       # 383 is prime, 383 and 2047 are coprime, and 2048 is large.
       # ("Disabled_384x72To2048x384", 384, 72, 2048, 384),
@@ -976,5 +977,358 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
       self.assertAllClose(indices_tf[:num_valid], [0, 2, 4])
 
 
+class BatchedNonMaxSuppressionCorrectnessTest(xla_test.XLATestCase):
+
+  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  def testBatchedNMSFrom6(self):
+    boxes_data = [[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
+                   [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],
+                  [[0, 2, 1, 2], [0, 0.8, 1, 1.8], [0, 0.6, 1, 1.6],
+                   [0, 0.4, 1, 1.4], [0, 0.2, 1, 1.2], [0, 0, 1, 1]]]
+    scores_data = [[0.9, 0.7, 0.6, 0.5, 0.4, 0.3],
+                   [0.8, 0.7, 0.6, 0.5, 0.4, 0.3]]
+    max_output_size = 6
+    iou_threshold = 0.5
+    boxes_np = np.array(boxes_data, dtype=np.float32)
+    scores_np = np.array(scores_data, dtype=np.float32)
+
+    with self.session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+
+      with self.test_scope():
+        (indices, num_valid) = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            pad_to_max_output_size=True,
+            sorted_input=True,
+            canonicalized_coordinates=True)
+
+      inputs = {
+          boxes: boxes_np,
+          scores: scores_np
+      }
+      indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
+    invalid_index = 0
+    self.assertAllEqual([[0, 1, 2, 4, 5, invalid_index],
+                         [0, 1, 3, 5, invalid_index, invalid_index]],
+                        indices_output)
+    self.assertAllEqual([5, 4], num_valid_output)
+
+  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  def testBatchedNMSFrom6Max3(self):
+    boxes_data = [[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
+                   [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],
+                  [[0, 2, 1, 2], [0, 0.8, 1, 1.8], [0, 0.6, 1, 1.6],
+                   [0, 0.4, 1, 1.4], [0, 0.2, 1, 1.2], [0, 0, 1, 1]]]
+    scores_data = [[0.9, 0.7, 0.6, 0.5, 0.4, 0.3],
+                   [0.8, 0.7, 0.6, 0.5, 0.4, 0.3]]
+    max_output_size = 3
+    iou_threshold = 0.5
+    boxes_np = np.array(boxes_data, dtype=np.float32)
+    scores_np = np.array(scores_data, dtype=np.float32)
+
+    with self.session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      with self.test_scope():
+        (indices, num_valid) = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            pad_to_max_output_size=True,
+            sorted_input=True,
+            canonicalized_coordinates=True)
+
+      inputs = {
+          boxes: boxes_np,
+          scores: scores_np
+      }
+      indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
+    self.assertAllEqual([[0, 1, 2], [0, 1, 3]], indices_output)
+    self.assertAllEqual([3, 3], num_valid_output)
+
+  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  def testBatchedNMSSingleFrom6Max3(self):
+    boxes_data = [[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
+                  [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]]
+    scores_data = [0.9, 0.7, 0.6, 0.5, 0.4, 0.3]
+    max_output_size = 3
+    iou_threshold = 0.5
+    boxes_np = np.array(boxes_data, dtype=np.float32)
+    scores_np = np.array(scores_data, dtype=np.float32)
+
+    with self.session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      with self.test_scope():
+        (indices, num_valid) = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            pad_to_max_output_size=True,
+            sorted_input=True,
+            canonicalized_coordinates=True)
+
+      inputs = {
+          boxes: boxes_np,
+          scores: scores_np
+      }
+      indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
+    self.assertAllEqual([0, 1, 2], indices_output)
+    self.assertAllEqual(3, num_valid_output)
+
+  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  def testBatchedNMSSingleFrom6NoPad(self):
+    boxes_data = [[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
+                  [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]]
+    scores_data = [0.9, 0.7, 0.6, 0.5, 0.4, 0.3]
+    max_output_size = 6
+    iou_threshold = 0.5
+    boxes_np = np.array(boxes_data, dtype=np.float32)
+    scores_np = np.array(scores_data, dtype=np.float32)
+
+    with self.session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      with self.test_scope():
+        (indices, num_valid) = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            sorted_input=True,
+            canonicalized_coordinates=True)
+
+      inputs = {
+          boxes: boxes_np,
+          scores: scores_np
+      }
+      indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
+    self.assertAllEqual([0, 1, 2, 4, 5], indices_output)
+    self.assertAllEqual(5, num_valid_output)
+
+  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  def testBatchedNMSBatchDimsFrom6Max3(self):
+    boxes_data = [[[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
+                    [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],
+                   [[0, 2, 1, 2], [0, 0.8, 1, 1.8], [0, 0.6, 1, 1.6],
+                    [0, 0.4, 1, 1.4], [0, 0.2, 1, 1.2], [0, 0, 1, 1]]]]
+    scores_data = [[[0.9, 0.7, 0.6, 0.5, 0.4, 0.3],
+                    [0.8, 0.7, 0.6, 0.5, 0.4, 0.3]]]
+    max_output_size = 3
+    iou_threshold = 0.5
+    boxes_np = np.array(boxes_data, dtype=np.float32)
+    scores_np = np.array(scores_data, dtype=np.float32)
+
+    with self.session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      with self.test_scope():
+        (indices, num_valid) = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            pad_to_max_output_size=True,
+            sorted_input=True,
+            canonicalized_coordinates=True)
+
+      inputs = {
+          boxes: boxes_np,
+          scores: scores_np
+      }
+      indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
+    self.assertAllEqual([[[0, 1, 2], [0, 1, 3]]], indices_output)
+    self.assertAllEqual([[3, 3]], num_valid_output)
+
+  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  def testBatchedNMSScoreThresholdFrom6Max3(self):
+    boxes_data = [[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
+                   [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],
+                  [[0, 2, 1, 2], [0, 0.8, 1, 1.8], [0, 0.6, 1, 1.6],
+                   [0, 0.4, 1, 1.4], [0, 0.2, 1, 1.2], [0, 0, 1, 1]]]
+    scores_data = [[0.9, 0.7, 0.6, 0.4, 0.3, 0.2],
+                   [0.8, 0.7, 0.6, 0.4, 0.3, 0.1]]
+    max_output_size = 3
+    iou_threshold = 0.5
+    boxes_np = np.array(boxes_data, dtype=np.float32)
+    scores_np = np.array(scores_data, dtype=np.float32)
+
+    with self.session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      with self.test_scope():
+        (indices, num_valid) = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            score_threshold=0.5,
+            pad_to_max_output_size=True,
+            sorted_input=True,
+            canonicalized_coordinates=True)
+
+      inputs = {
+          boxes: boxes_np,
+          scores: scores_np
+      }
+      indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
+    invalid_index = 0
+    self.assertAllEqual([3, 2], num_valid_output)
+    self.assertAllEqual([[0, 1, 2], [0, 1, invalid_index]], indices_output)
+
+  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  def testBatchedNMSUnsortedInputFrom6(self):
+    boxes_data = [[[0, 2, 1, 2], [3, 3, 4, 4], [0, 0, 1, 1],
+                   [0, 0.4, 1, 1.4], [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8]],
+                  [[0, 0.4, 1, 1.4], [0, 2, 1, 2], [0, 0.2, 1, 1.2],
+                   [0, 0, 1, 1], [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8]]]
+    scores_data = [[0.3, 0.7, 0.9, 0.6, 0.5, 0.4],
+                   [0.5, 0.8, 0.4, 0.3, 0.6, 0.7]]
+    max_output_size = 6
+    iou_threshold = 0.5
+    boxes_np = np.array(boxes_data, dtype=np.float32)
+    scores_np = np.array(scores_data, dtype=np.float32)
+
+    with self.session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+
+      with self.test_scope():
+        (indices, num_valid) = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            pad_to_max_output_size=True,
+            canonicalized_coordinates=True)
+
+      inputs = {
+          boxes: boxes_np,
+          scores: scores_np
+      }
+      indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
+    invalid_index = 0
+    self.assertAllEqual([[2, 1, 3, 5, 0, invalid_index],
+                         [1, 5, 0, 3, invalid_index, invalid_index]],
+                        indices_output)
+    self.assertAllEqual([5, 4], num_valid_output)
+
+  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  def testBatchedNMSNoncanonicalizedInputFrom6(self):
+    boxes_data = [[[1, 0, 0, 1], [4, 3, 3, 4], [1, 0.4, 0, 1.4],
+                   [1, 0.6, 0, 1.6], [1, 0.8, 0, 1.8], [1, 2, 0, 2]],
+                  [[1, 2, 0, 2], [1, 0.8, 0, 1.8], [1, 0.6, 0, 1.6],
+                   [1, 0.4, 0, 1.4], [1, 0.2, 0, 1.2], [1, 0, 0, 1]]]
+
+    scores_data = [[0.9, 0.7, 0.6, 0.5, 0.4, 0.3],
+                   [0.8, 0.7, 0.6, 0.5, 0.4, 0.3]]
+    max_output_size = 6
+    iou_threshold = 0.5
+    boxes_np = np.array(boxes_data, dtype=np.float32)
+    scores_np = np.array(scores_data, dtype=np.float32)
+
+    with self.session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+
+      with self.test_scope():
+        (indices, num_valid) = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            pad_to_max_output_size=True,
+            sorted_input=True)
+
+      inputs = {
+          boxes: boxes_np,
+          scores: scores_np
+      }
+      indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
+    invalid_index = 0
+    self.assertAllEqual([[0, 1, 2, 4, 5, invalid_index],
+                         [0, 1, 3, 5, invalid_index, invalid_index]],
+                        indices_output)
+    self.assertAllEqual([5, 4], num_valid_output)
+
+  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  def testBatchedNMSScoreThresholdCanInputsFrom6Max3(self):
+    boxes_data = [[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
+                   [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],
+                  [[0, 2, 1, 2], [0, 0.8, 1, 1.8], [0, 0.6, 1, 1.6],
+                   [0, 0.4, 1, 1.4], [0, 0.2, 1, 1.2], [0, 0, 1, 1]]]
+    scores_data = [[0.9, 0.7, 0.6, 0.4, 0.3, 0.2],
+                   [0.8, 0.7, 0.6, 0.4, 0.3, 0.1]]
+    max_output_size = 3
+    iou_threshold = 0.5
+    boxes_np = np.array(boxes_data, dtype=np.float32)
+    scores_np = np.array(scores_data, dtype=np.float32)
+
+    with self.session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
+      scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
+      with self.test_scope():
+        (indices, num_valid) = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            score_threshold=0.5,
+            pad_to_max_output_size=True,
+            sorted_input=True,
+            canonicalized_coordinates=False)
+
+      inputs = {
+          boxes: boxes_np,
+          scores: scores_np
+      }
+      indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
+    invalid_index = 0
+    self.assertAllEqual([3, 2], num_valid_output)
+    self.assertAllEqual([[0, 1, 2], [0, 1, invalid_index]], indices_output)
+
+  @test_util.with_forward_compatibility_horizons(None, [2020, 4, 21])
+  def testBatchedNMSFrom6DynamicInput(self):
+    boxes_data = [[[0, 0, 1, 1], [3, 3, 4, 4], [0, 0.4, 1, 1.4],
+                   [0, 0.6, 1, 1.6], [0, 0.8, 1, 1.8], [0, 2, 1, 2]],
+                  [[0, 2, 1, 2], [0, 0.8, 1, 1.8], [0, 0.6, 1, 1.6],
+                   [0, 0.4, 1, 1.4], [0, 0.2, 1, 1.2], [0, 0, 1, 1]]]
+    scores_data = [[0.9, 0.7, 0.6, 0.5, 0.4, 0.3],
+                   [0.8, 0.7, 0.6, 0.5, 0.4, 0.3]]
+    max_output_size = 6
+    iou_threshold = 0.5
+    boxes_np = np.array(boxes_data, dtype=np.float32)
+    scores_np = np.array(scores_data, dtype=np.float32)
+
+    with self.session() as sess:
+      boxes = array_ops.placeholder(boxes_np.dtype)
+      scores = array_ops.placeholder(scores_np.dtype)
+
+      with self.test_scope():
+        (indices, num_valid) = image_ops.non_max_suppression_padded(
+            boxes=boxes,
+            scores=scores,
+            max_output_size=max_output_size,
+            iou_threshold=iou_threshold,
+            pad_to_max_output_size=True,
+            sorted_input=True,
+            canonicalized_coordinates=True)
+
+      inputs = {
+          boxes: boxes_np,
+          scores: scores_np
+      }
+      indices_output, num_valid_output = sess.run([indices, num_valid], inputs)
+    invalid_index = 0
+    self.assertAllEqual([[0, 1, 2, 4, 5, invalid_index],
+                         [0, 1, 3, 5, invalid_index, invalid_index]],
+                        indices_output)
+    self.assertAllEqual([5, 4], num_valid_output)
 if __name__ == "__main__":
   test.main()

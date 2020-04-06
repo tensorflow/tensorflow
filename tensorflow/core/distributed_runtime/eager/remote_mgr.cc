@@ -162,8 +162,8 @@ Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
         in.op_device().empty() ? in.device() : in.op_device();
     TF_RETURN_IF_ERROR(
         parent_->FindDeviceFromName(device_name.c_str(), &device));
-    TF_RETURN_IF_ERROR(TensorHandle::CreateLazyRemoteHandle(
-        in.op_id(), in.output_num(), in.dtype(), device, parent_, out));
+    *out = TensorHandle::CreateLazyRemoteHandle(in.op_id(), in.output_num(),
+                                                in.dtype(), device, parent_);
     TensorHandle::ResourceHandleInfo resource_handle_info;
     std::vector<DtypeAndPartialTensorShape>* dtypes_and_shapes =
         &resource_handle_info.dtypes_and_shapes;

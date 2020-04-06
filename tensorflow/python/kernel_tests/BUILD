@@ -2939,7 +2939,9 @@ cuda_py_test(
 cuda_py_test(
     name = "depthwise_conv_op_test",
     size = "medium",  # http://b/30603882
+    timeout = "long",
     srcs = ["depthwise_conv_op_test.py"],
+    shard_count = 3,
     # TODO(b/118842098): Re-enable this test in Kokoro.
     tags = ["no_oss"],
     deps = [
@@ -3409,7 +3411,6 @@ tf_py_test(
     data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
     shard_count = 20,
     tags = [
-        "no_rocm",  # flaky test
         "no_windows",
     ],
     deps = [

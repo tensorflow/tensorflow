@@ -676,17 +676,6 @@ TfLiteTensor CreateQuantizedTensor(const uint8_t* data, TfLiteIntArray* dims,
   return result;
 }
 
-// Create Quantized tensor which contains a quantized version of the supplied
-// buffer.
-TfLiteTensor CreateQuantizedTensor(const float* input, uint8_t* quantized,
-                                   TfLiteIntArray* dims, float scale,
-                                   int zero_point, const char* name,
-                                   bool is_variable) {
-  int input_size = ElementCount(*dims);
-  tflite::AsymmetricQuantize(input, quantized, input_size, scale, zero_point);
-  return CreateQuantizedTensor(quantized, dims, scale, zero_point, name);
-}
-
 TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
                                    float scale, int zero_point,
                                    const char* name, bool is_variable) {
@@ -709,15 +698,6 @@ TfLiteTensor CreateQuantizedTensor(const int16_t* data, TfLiteIntArray* dims,
   result.quantization = {kTfLiteAffineQuantization, nullptr};
   result.bytes = ElementCount(*dims) * sizeof(int16_t);
   return result;
-}
-
-TfLiteTensor CreateQuantizedTensor(const float* input, int8_t* quantized,
-                                   TfLiteIntArray* dims, float scale,
-                                   int zero_point, const char* name,
-                                   bool is_variable) {
-  int input_size = ElementCount(*dims);
-  tflite::AsymmetricQuantize(input, quantized, input_size, scale, zero_point);
-  return CreateQuantizedTensor(quantized, dims, scale, zero_point, name);
 }
 
 TfLiteTensor CreateQuantized32Tensor(const int32_t* data, TfLiteIntArray* dims,

@@ -227,6 +227,23 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset, expected_output=[b"foo", b"bar", b"baz"])
 
   @combinations.generate(test_base.default_test_combinations())
+  def testFromGeneratorDict(self):
+    def generator():
+      yield {"a": "foo", "b": [1, 2]}
+      yield {"a": "bar", "b": [3, 4]}
+      yield {"a": "baz", "b": [5, 6]}
+
+    dataset = dataset_ops.Dataset.from_generator(
+        generator,
+        output_types={"a": dtypes.string, "b": dtypes.int32},
+        output_shapes={"a": [], "b": [None]})
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[{"a": b"foo", "b": [1, 2]},
+                         {"a": b"bar", "b": [3, 4]},
+                         {"a": b"baz", "b": [5, 6]}])
+
+  @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorTypeError(self):
     def generator():
       yield np.array([1, 2, 3], dtype=np.int64)

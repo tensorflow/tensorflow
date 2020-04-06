@@ -50,7 +50,7 @@ void ArgOp::Compute(OpKernelContext* ctx) {
               errors::InvalidArgument("Type mismatch: actual ",
                                       DataTypeString(val.dtype()),
                                       " vs. expect ", DataTypeString(dtype_)));
-  ctx->set_output(0, val);
+  ctx->set_output(0, std::move(val));
 }
 
 RetvalOp::RetvalOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -279,7 +279,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
             " tensor(s), but get ", rets->size(), " tensor(s) instead."));
       } else {
         for (size_t i = 0; i < rets->size(); ++i) {
-          ctx->set_output(i, (*rets)[i]);
+          ctx->set_output(i, std::move((*rets)[i]));
         }
       }
       delete rets;
@@ -413,7 +413,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
           ctx->SetStatus(status);
         } else {
           for (size_t i = 0; i < rets->size(); ++i) {
-            ctx->set_output(i, (*rets)[i]);
+            ctx->set_output(i, std::move((*rets)[i]));
           }
         }
         delete rets;

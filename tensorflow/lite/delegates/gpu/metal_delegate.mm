@@ -198,13 +198,13 @@ class Delegate {
     }
   }
 
-  Status BindBufferToTensor(id<MTLBuffer> buffer, int tensor_index) {
+  absl::Status BindBufferToTensor(id<MTLBuffer> buffer, int tensor_index) {
     for (auto& input : graph_inputs_) {
       if (input.tensor_id == tensor_index) {
         input_output_buffers_[input.id] = buffer;
         bphwc4_buffers_[input.id] = buffer;
         input.set_externally = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
     for (auto& output : graph_outputs_) {
@@ -212,10 +212,10 @@ class Delegate {
         input_output_buffers_[output.id] = buffer;
         bphwc4_buffers_[output.id] = buffer;
         output.set_externally = true;
-        return OkStatus();
+        return absl::OkStatus();
       }
     }
-    return NotFoundError("Couldn't find tensor: " + std::to_string(tensor_index));
+    return absl::NotFoundError("Couldn't find tensor: " + std::to_string(tensor_index));
   }
 
   void SetCommandEncoder(
@@ -225,8 +225,8 @@ class Delegate {
     external_command_encoder_ = encoder;
   }
 
-  Status Prepare(TfLiteContext* context, const TfLiteDelegateParams* delegate_params) {
-    // Extract TFLite delegate execution plan from the context and convert it into FlowGraph32.
+  absl::Status Prepare(TfLiteContext* context, const TfLiteDelegateParams* delegate_params) {
+    // Extract TFLite delegate execution plan from the context and convert it into GraphFloat32.
     GraphFloat32 graph;
     RETURN_IF_ERROR(BuildModel(context, delegate_params, &graph));
 
@@ -234,7 +234,7 @@ class Delegate {
     NullTransformationReporter reporter;
     ModelTransformer transformer(&graph, &reporter);
     if (!ApplyGeneralTransformations(&transformer)) {
-      return InternalError("Graph general transformations failed");
+      return absl::InternalError("Graph general transformations failed");
     }
 
     // TODO(impjdi): Remove code duplication.
@@ -265,7 +265,7 @@ class Delegate {
       if (tensor->allocation_type == TfLiteAllocationType::kTfLiteMmapRo) continue;
       const auto* input = find_value(tensor_index);
       if (!input || tensor->type != TfLiteType::kTfLiteFloat32) {
-        return NotFoundError("Input tensor is not found in the graph.");
+        return absl::NotFoundError("Input tensor is not found in the graph.");
       }
 
       inputs_.push_back(input->id);
@@ -283,7 +283,7 @@ class Delegate {
       auto* tensor = context->tensors + tensor_index;
       const auto* output = find_value(tensor_index);
       if (!output || tensor->type != TfLiteType::kTfLiteFloat32) {
-        return NotFoundError("Output tensor is not found in the graph.");
+        return absl::NotFoundError("Output tensor is not found in the graph.");
       }
 
       outputs_.push_back(output->id);
@@ -291,21 +291,17 @@ class Delegate {
       tensor->delegate = &delegate_;
     }
 
+    std::string device_name = std::string([[metal_device_ name] UTF8String]);
+    DeviceInfo device_info(device_name);
     size_t storage_type_size;
     RuntimeOptions runtime_options;
     if (options_.allow_precision_loss) {
       storage_type_size = sizeof(HalfBits);
       runtime_options.storage_precision = RuntimeOptions::Precision::FP16;
-      const auto gpu_type = GetGpuType();
-      const bool powervr = gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8 ||
-                           gpu_type == GpuType::kA9 || gpu_type == GpuType::kA10;
-      if (powervr) {
-        // PowerVR gpus support only round to zero for floating-point operations,
-        // to increase precision we will use F32 accumulator in this case
-        runtime_options.accumulator_precision = RuntimeOptions::Precision::FP32;
-      } else {
-        // Apple own gpus support round to nearest and have better precision
+      if (device_info.IsRoundToNearestSupported()) {
         runtime_options.accumulator_precision = RuntimeOptions::Precision::FP16;
+      } else {
+        runtime_options.accumulator_precision = RuntimeOptions::Precision::FP32;
       }
     } else {
       storage_type_size = sizeof(float);
@@ -323,7 +319,9 @@ class Delegate {
       const auto& input_tensor = tensors_[input];
       const auto tensor_id = input_tensor.tensor_id;
       input_ids.push_back(input);
-      if (input_tensor.shape.b != 1) return UnimplementedError("Batching is not supported yet.");
+      if (input_tensor.shape.b != 1) {
+        return absl::UnimplementedError("Batching is not supported yet.");
+      }
       input_dimensions[input] = input_tensor.shape;
       graph_inputs_.push_back({
           input,               // .id
@@ -346,7 +344,7 @@ class Delegate {
                                              isFloat16:options_.allow_precision_loss
                                        convertToPBHWC4:true];
           if (converter_to_BPHWC4_ == nil) {
-            return InternalError("Error initialization of input buffer converter");
+            return absl::InternalError("Error initialization of input buffer converter");
           }
         }
       } else {
@@ -383,7 +381,7 @@ class Delegate {
                                              isFloat16:options_.allow_precision_loss
                                        convertToPBHWC4:false];
           if (converter_from_BPHWC4_ == nil) {
-            return InternalError("Error initialization of output buffer converter");
+            return absl::InternalError("Error initialization of output buffer converter");
           }
         }
       } else {
@@ -393,7 +391,7 @@ class Delegate {
 
     // TODO(impjdi): Merge these.
     CompiledModel compiled_model;
-    RETURN_IF_ERROR(Compile(graph, runtime_options, &compiled_model));
+    RETURN_IF_ERROR(Compile(graph, device_info, runtime_options, &compiled_model));
     CompiledModel optimized_model;
     RETURN_IF_ERROR(ValidateOptimizeModel(input_ids, output_ids, compiled_model, &optimized_model));
 
@@ -406,10 +404,10 @@ class Delegate {
     RETURN_IF_ERROR([inference_context_ setInputDimensions:input_dimensions
                                           outputDimensions:&output_dimensions
                                            taskDescriptors:optimized_model]);
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Invoke(TfLiteContext* context) {
+  absl::Status Invoke(TfLiteContext* context) {
     if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeAggressive)
       gpu_alarm_clock_->Stop();
     // We need only synchronization so volatile works better than atomic which reads from global
@@ -514,11 +512,11 @@ class Delegate {
       // External command encoder is assigned so all output buffers are controlled by a user.
       for (const auto& output : graph_outputs_) {
         if (!output.set_externally) {
-          return InternalError(
+          return absl::InternalError(
               "External command encoder is used, but not all output buffers are bound.");
         }
       }
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     // Retrieve data from GPU and convert from PHWC4 to HWC.
@@ -529,7 +527,7 @@ class Delegate {
       const void* gpu_ptr = [input_output_buffers_[output.id] contents];
       std::memcpy(tensor->data.f, gpu_ptr, output.shape.DimensionsProduct() * sizeof(float));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TfLiteDelegate* tflite_delegate() { return &delegate_; }
@@ -596,7 +594,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         const auto status = metal_delegate->Prepare(context, params);
         if (status.ok()) return metal_delegate;
         context->ReportError(context, "TfLiteGpuDelegate Prepare: %s",
-                             status.error_message().c_str());
+                             std::string(status.message()).c_str());
         return nullptr;
       },
       // .free
@@ -610,7 +608,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         const auto status = GetMetalDelegate(node)->Invoke(context);
         if (status.ok()) return kTfLiteOk;
         context->ReportError(context, "TfLiteMetalDelegate Invoke: %s",
-                             status.error_message().c_str());
+                             std::string(status.message()).c_str());
         return kTfLiteError;
       },
       nullptr,                // .profiling_string

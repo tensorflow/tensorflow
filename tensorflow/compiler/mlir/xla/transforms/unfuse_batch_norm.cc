@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
@@ -112,7 +112,7 @@ class UnfuseBatchNormInferencePattern
  public:
   using OpConversionPattern::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       xla_hlo::BatchNormInferenceOp bn_op, ArrayRef<Value> raw_operands,
       ConversionPatternRewriter& rewriter) const override {
     xla_hlo::BatchNormInferenceOpOperandAdaptor operands(raw_operands);
@@ -124,11 +124,11 @@ class UnfuseBatchNormInferencePattern
     auto variance_type =
         operands.variance().getType().dyn_cast<RankedTensorType>();
     if (!input_type || !variance_type) {
-      return matchFailure();
+      return failure();
     }
     auto fp_type = variance_type.getElementType().dyn_cast<FloatType>();
     if (!fp_type) {
-      return matchFailure();
+      return failure();
     }
     int64_t feature_dim = bn_op.feature_index().getSExtValue();
 
@@ -138,7 +138,7 @@ class UnfuseBatchNormInferencePattern
         MaterializeEpsilon(bn_op.getOperation(), bn_op.epsilonAttr(), fp_type,
                            operands.variance(), variance_type, rewriter);
     if (!epsilon) {
-      return matchFailure();
+      return failure();
     }
     Value stddev =
         rewriter.create<xla_hlo::AddOp>(bn_op.getLoc(), operands.variance(),
@@ -174,7 +174,7 @@ class UnfuseBatchNormInferencePattern
     rewriter.replaceOpWithNewOp<xla_hlo::AddOp>(bn_op, result, broadcast_offset,
                                                 nullptr);
 
-    return matchSuccess();
+    return success();
   }
 };
 

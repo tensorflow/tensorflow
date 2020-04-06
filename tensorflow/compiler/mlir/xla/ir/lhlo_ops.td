@@ -19,6 +19,7 @@ limitations under the License.
 #define LHLO_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/SideEffects.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 
 def LHLO_Dialect : Dialect {
@@ -119,18 +120,18 @@ class LHLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
 
 def LHLO_AddOp : LHLO_BinaryElementwiseOp<"add", []>, BASE_HLO_AddOp;
 
-def LHLO_DivOp : LHLO_BinaryElementwiseOp<"div", []>, BASE_HLO_DivOp;
+def LHLO_DivOp : LHLO_BinaryElementwiseOp<"divide", []>, BASE_HLO_DivOp;
 
-def LHLO_MaxOp : LHLO_BinaryElementwiseOp<"max", []>, BASE_HLO_MaxOp;
+def LHLO_MaxOp : LHLO_BinaryElementwiseOp<"maximum", []>, BASE_HLO_MaxOp;
 
-def LHLO_MinOp : LHLO_BinaryElementwiseOp<"min", []>, BASE_HLO_MinOp;
+def LHLO_MinOp : LHLO_BinaryElementwiseOp<"minimum", []>, BASE_HLO_MinOp;
 
-def LHLO_MulOp : LHLO_BinaryElementwiseOp<"mul", []>, BASE_HLO_MulOp;
+def LHLO_MulOp : LHLO_BinaryElementwiseOp<"multiply", []>, BASE_HLO_MulOp;
 
 def LHLO_RemOp :
       LHLO_BinaryElementwiseOp<"remainder", []>, BASE_HLO_RemOp;
 
-def LHLO_SubOp : LHLO_BinaryElementwiseOp<"sub", []>, BASE_HLO_SubOp;
+def LHLO_SubOp : LHLO_BinaryElementwiseOp<"subtract", []>, BASE_HLO_SubOp;
 
 def LHLO_AndOp: LHLO_BinaryElementwiseOp<"and", []>, BASE_HLO_AndOp;
 

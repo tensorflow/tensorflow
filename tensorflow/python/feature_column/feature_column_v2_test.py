@@ -41,8 +41,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import initializers
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import partitioned_variables
@@ -6662,6 +6662,9 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
     self.assertEqual([categorical_column], embedding_column.parents)
 
     config = embedding_column.get_config()
+    # initializer config contains `dtype` in v1.
+    initializer_config = initializers.serialize(initializers.truncated_normal(
+        mean=0.0, stddev=1 / np.sqrt(2)))
     self.assertEqual(
         {
             'categorical_column': {
@@ -6675,24 +6678,15 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
             'ckpt_to_load_from': None,
             'combiner': 'mean',
             'dimension': 2,
-            'initializer': {
-                'class_name': 'TruncatedNormal',
-                'config': {
-                    'dtype': 'float32',
-                    'stddev': 0.7071067811865475,
-                    'seed': None,
-                    'mean': 0.0
-                }
-            },
+            'initializer': initializer_config,
             'max_norm': None,
             'tensor_name_in_ckpt': None,
             'trainable': True,
             'use_safe_embedding_lookup': True
         }, config)
 
-    custom_objects = {'TruncatedNormal': init_ops.TruncatedNormal}
     new_embedding_column = fc.EmbeddingColumn.from_config(
-        config, custom_objects=custom_objects)
+        config, custom_objects=None)
     self.assertEqual(embedding_column.get_config(),
                      new_embedding_column.get_config())
     self.assertIsNot(categorical_column,
@@ -6700,7 +6694,7 @@ class EmbeddingColumnTest(test.TestCase, parameterized.TestCase):
 
     new_embedding_column = fc.EmbeddingColumn.from_config(
         config,
-        custom_objects=custom_objects,
+        custom_objects=None,
         columns_by_name={
             serialization._column_name_with_class_name(categorical_column):
                 categorical_column

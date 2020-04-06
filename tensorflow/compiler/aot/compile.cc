@@ -24,6 +24,7 @@ limitations under the License.
 #include "llvm-c/Target.h"
 #include "tensorflow/compiler/aot/codegen.h"
 #include "tensorflow/compiler/aot/flags.h"
+#include "tensorflow/compiler/mlir/lite/quantization/xla/quantize.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -114,6 +115,9 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
                                             client, &computation));
   } else {
     return errors::Unknown("Unknown mlir_components ", flags.mlir_components);
+  }
+  if (flags.quantize) {
+    TF_RETURN_IF_ERROR(mlir::xla_hlo::XlaQuantize(config, &computation));
   }
   if (!flags.out_session_module.empty()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloSnapshot> module,

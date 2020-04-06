@@ -116,8 +116,9 @@ class BFCAllocator : public Allocator {
       TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Add TraceMe (in memory allocation and deallocation) for memory stats
-  // profiling. The requested_bytes can be negative if it's a deallocation.
-  void AddTraceMe(absl::string_view traceme_name, int64 requested_bytes)
+  // profiling. The chunk_ptr is passed to get information such as address,
+  // chunk size and requested_size.
+  void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr)
       TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator

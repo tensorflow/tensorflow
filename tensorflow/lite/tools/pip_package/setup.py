@@ -24,9 +24,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import glob
 import multiprocessing
 import os
 import subprocess
+import sys
+import sysconfig
 
 from distutils.command.build_ext import build_ext
 import numpy
@@ -65,7 +68,7 @@ for name in ['TARGET', 'TARGET_ARCH', 'CC_PREFIX', 'EXTRA_CXXFLAGS']:
 # with more than 4GB, use all the CPUs, otherwise only 1.
 def get_build_cpus():
   physical_bytes = os.sysconf('SC_PAGESIZE') * os.sysconf('SC_PHYS_PAGES')
-  if physical_bytes < (1<<30) * 4:
+  if physical_bytes < (1 << 30) * 4:
     return 1
   else:
     return multiprocessing.cpu_count()
@@ -73,9 +76,9 @@ def get_build_cpus():
 
 def make_args(target='', quiet=True):
   """Construct make command line."""
-  args = (['make', 'SHELL=/bin/bash',
-           'BUILD_WITH_NNAPI=false', '-C', TENSORFLOW_DIR]
-          + MAKE_CROSS_OPTIONS +
+  args = ([
+      'make', 'SHELL=/bin/bash', 'BUILD_WITH_NNAPI=false', '-C', TENSORFLOW_DIR
+  ] + MAKE_CROSS_OPTIONS +
           ['-f', RELATIVE_MAKEFILE_PATH, '-j',
            str(get_build_cpus())])
   if quiet:
@@ -128,28 +131,55 @@ class CustomBuildPy(build_py, object):
     return super(CustomBuildPy, self).run()
 
 
+def get_pybind_include():
+  """pybind11 include directory is not correctly resolved.
+
+  This fixes include directory to /usr/local/pythonX.X
+
+  Returns:
+    include directories to find pybind11
+  """
+  if sys.version_info[0] == 3:
+    include_dirs = glob.glob('/usr/local/include/python3*')
+  else:
+    include_dirs = glob.glob('/usr/local/include/python2*')
+  include_dirs.append(sysconfig.get_path('include'))
+  tmp_include_dirs = []
+  pip_dir = os.path.join(TENSORFLOW_DIR, 'tensorflow', 'lite', 'tools',
+                         'pip_package', 'gen')
+  for include_dir in include_dirs:
+    tmp_include_dir = os.path.join(pip_dir, include_dir[1:])
+    tmp_include_dirs.append(tmp_include_dir)
+    try:
+      os.makedirs(tmp_include_dir)
+      os.symlink(include_dir, os.path.join(tmp_include_dir, 'include'))
+    except IOError:  # file already exists.
+      pass
+  return tmp_include_dirs
+
+
 LIB_TFLITE = 'tensorflow-lite'
 LIB_TFLITE_DIR = make_output('libdir')
 
 ext = Extension(
-    name='%s._interpreter_wrapper' % PACKAGE_NAME,
+    name='%s._pywrap_tensorflow_interpreter_wrapper' % PACKAGE_NAME,
     language='c++',
-    sources=['interpreter_wrapper/interpreter_wrapper.i',
-             'interpreter_wrapper/interpreter_wrapper.cc',
-             'interpreter_wrapper/numpy.cc',
-             'interpreter_wrapper/python_error_reporter.cc',
-             'interpreter_wrapper/python_utils.cc'],
+    sources=[
+        'interpreter_wrapper/interpreter_wrapper.cc',
+        'interpreter_wrapper/interpreter_wrapper_pybind11.cc',
+        'interpreter_wrapper/numpy.cc',
+        'interpreter_wrapper/python_error_reporter.cc',
+        'interpreter_wrapper/python_utils.cc'
+    ],
     extra_compile_args=['--std=c++11'],
-    swig_opts=['-c++',
-               '-I%s' % TENSORFLOW_DIR,
-               '-module', 'interpreter_wrapper',
-               '-outdir', PACKAGE_NAME],
-    include_dirs=[TENSORFLOW_DIR,
-                  os.path.join(TENSORFLOW_DIR, 'tensorflow', 'lite', 'tools',
-                               'pip_package'),
-                  numpy.get_include(),
-                  os.path.join(DOWNLOADS_DIR, 'flatbuffers', 'include'),
-                  os.path.join(DOWNLOADS_DIR, 'absl')],
+    include_dirs=[
+        TENSORFLOW_DIR,
+        os.path.join(TENSORFLOW_DIR, 'tensorflow', 'lite', 'tools',
+                     'pip_package'),
+        numpy.get_include(),
+        os.path.join(DOWNLOADS_DIR, 'flatbuffers', 'include'),
+        os.path.join(DOWNLOADS_DIR, 'absl')
+    ] + get_pybind_include(),
     libraries=[LIB_TFLITE],
     library_dirs=[LIB_TFLITE_DIR])
 
@@ -186,9 +216,9 @@ setup(
     ext_modules=[ext],
     install_requires=[
         'numpy >= 1.16.0',
+        'pybind11 >= 2.4.3',
     ],
     cmdclass={
         'build_ext': CustomBuildExt,
         'build_py': CustomBuildPy,
-    }
-)
+    })

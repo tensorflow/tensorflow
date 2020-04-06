@@ -112,6 +112,7 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kTranspose:
     case HloOpcode::kSort:
     case HloOpcode::kSlice:
+    case HloOpcode::kDomain:
       return nullptr;
     // Assume that custom calls created by the client are valid with padded
     // dynamic dimensions.

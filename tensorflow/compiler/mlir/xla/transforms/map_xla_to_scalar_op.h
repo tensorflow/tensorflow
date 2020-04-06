@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/map_hlo_to_lhlo_op.h"
@@ -422,12 +422,6 @@ struct XlaOpToStdScalarOp {
         op.getLoc(), comparison_direction, result_types, args, b);
   }
 };
-
-template <typename XlaOpTy>
-inline Value MapXlaOpToStdScalarOp(XlaOpTy xla_op, ArrayRef<Type> result_types,
-                                   ArrayRef<Value> args, OpBuilder* b) {
-  return XlaOpToStdScalarOp::map<XlaOpTy>(xla_op, result_types, args, b);
-}
 
 }  // namespace xla_lhlo
 }  // namespace mlir

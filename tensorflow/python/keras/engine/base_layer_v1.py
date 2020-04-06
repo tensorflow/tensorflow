@@ -47,6 +47,7 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
+from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
@@ -401,7 +402,7 @@ class Layer(base_layer.Layer):
     if initializer is None:
       # If dtype is DT_FLOAT, provide a uniform unit scaling initializer
       if dtype.is_floating:
-        initializer = initializers.glorot_uniform()
+        initializer = initializers.get('glorot_uniform')
       # If dtype is DT_INT/DT_UINT, provide a default value `zero`
       # If dtype is DT_BOOL, provide a default value `FALSE`
       elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
@@ -1733,6 +1734,18 @@ class Layer(base_layer.Layer):
       self._dtype_policy = policy.Policy(dtypes.as_dtype(dtype).name)
     else:
       self._dtype_policy = policy.global_policy()
+    if (self._dtype_policy.name == 'mixed_float16' and
+        not loss_scale_optimizer.strategy_supports_loss_scaling()):
+      # Although only loss scaling doesn't support certain strategies, to avoid
+      # confusion, we disallow the 'mixed_float16' policy with unsupported
+      # strategies. This is because 'mixed_float16' requires loss scaling for
+      # numeric stability.
+      strategy = ds_context.get_strategy()
+      raise ValueError('Mixed precision is not supported with the '
+                       'tf.distribute.Strategy: %s. Either stop using mixed '
+                       'precision by removing the use of the "%s" policy or '
+                       'use a different Strategy, e.g. a MirroredStrategy.' %
+                       (strategy.__class__.__name__, self._dtype_policy.name))
 
     # This has no impact on the layer behavior, and is only used for printing
     # warnings.

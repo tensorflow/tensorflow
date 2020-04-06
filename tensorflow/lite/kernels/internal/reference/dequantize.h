@@ -43,25 +43,6 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
   }
 }
 
-// Dequantizes into an integer with rounding.
-template <typename InputT, typename OutputT>
-inline void DequantizeInteger(const tflite::DequantizationParams& op_params,
-                              const RuntimeShape& input_shape,
-                              const InputT* input_data,
-                              const RuntimeShape& output_shape,
-                              OutputT* output_data) {
-  int32 zero_point = op_params.zero_point;
-  const double scale = op_params.scale;
-  const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
-  for (int i = 0; i < flat_size; i++) {
-    const int32 val = input_data[i];
-    const OutputT result =
-        static_cast<OutputT>(round(scale * (val - zero_point)));
-    output_data[i] = result;
-  }
-}
-
 // Dequantizes per-channel quantized tensor to float.
 template <typename T>
 inline void PerChannelDequantize(

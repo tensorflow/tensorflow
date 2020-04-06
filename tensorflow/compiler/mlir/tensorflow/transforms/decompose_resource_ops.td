@@ -22,7 +22,7 @@ class GetScalarOfType<int value> : NativeCodeCall<
   "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
 // Creates a tf.ReadVariable op that reads a resource `$2` that has the same
-// element type as `$1`. The op created will use location of `$1`.
+// element type as `$1`. The op created will use location of `$0`.
 def CreateTFReadVariableOp: NativeCodeCall<
     "$_builder.create<TF::ReadVariableOp>("
     "  $0.getLoc(),"
@@ -115,6 +115,32 @@ def DecomposeResourceApplyKerasMomentumOpNesterov :
          $grad_lr
        )
      )
+    ]
+  >;
+
+// Pattern to Decompose ResourceApplyAdagrad.
+// This decomposition is only correct inside XLA as it ignores use_locking
+// attribute.
+// accum <- accum + grad * grad
+// variable <- variable - lr * grad / (sqrt(accum) + epsilon)
+def DecomposeResourceApplyAdagradV2 :
+  Pattern<
+    (TF_ResourceApplyAdagradV2Op:$src_op
+      $var_resource, $accum_resource, $lr, $epsilon, $grad, BoolAttr:$_,
+      ConstBoolAttrTrue:$update_slots),
+    [
+      (TF_AddV2Op:$new_accum
+        (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
+        (TF_MulOp $grad, $grad)
+      ),
+      (TF_AssignSubVariableOp
+        $var_resource,
+        (TF_DivOp
+          (TF_MulOp $lr, $grad),
+          (TF_AddV2Op (TF_SqrtOp $new_accum), $epsilon)
+        )
+      ),
+      (TF_AssignVariableOp $accum_resource, $new_accum),
     ]
   >;
 

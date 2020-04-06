@@ -303,6 +303,10 @@ class Runner {
 // are doing is safe. We should formalize the properties here.
 class IteratorContext {
  public:
+  // Epoch IDs are only used for tf.data service datasets. Other datasets use
+  // an epoch ID value of -1.
+  static constexpr const int64 kNoEpochId = -1;
+
   struct Params {
     explicit Params(IteratorContext* ctx)
         : allocator_getter(ctx->allocator_getter()),
@@ -310,6 +314,7 @@ class IteratorContext {
           env(ctx->env()),
           flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
+          epoch_id(ctx->epoch_id()),
           resource_mgr(ctx->resource_mgr()),
           model(ctx->model()),
           runner(*(ctx->runner())),
@@ -366,6 +371,10 @@ class IteratorContext {
     // A FunctionHandleCache that owns all the function handles. Not owned.
     FunctionHandleCache* function_handle_cache = nullptr;
 
+    // Identifies the epoch this iterator was created for. It is used for
+    // reading from the tf.data service.
+    int64 epoch_id = kNoEpochId;
+
     // A resource manager for storing dataset-related state, e.g. random
     // seeds or cached tensors. Not owned.
     ResourceMgr* resource_mgr = nullptr;
@@ -414,6 +423,8 @@ class IteratorContext {
   FunctionHandleCache* function_handle_cache() {
     return params_.function_handle_cache;
   }
+
+  int64 epoch_id() { return params_.epoch_id; }
 
   ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
@@ -480,6 +491,25 @@ class SerializationContext {
     // Fail the serialization with an error.
     kFail = 2,
   };
+
+  // Handles the CheckExternalState status according to the external state
+  // policy.
+  Status HandleCheckExternalStateStatus(Status s) {
+    if (s.ok()) {
+      return s;
+    }
+    switch (params_.external_state_policy) {
+      case ExternalStatePolicy::kWarn:
+        LOG(WARNING) << s.ToString();
+        return Status::OK();
+      case ExternalStatePolicy::kIgnore:
+        VLOG(2) << "Ignoring error status: " << s.ToString();
+        return Status::OK();
+      case ExternalStatePolicy::kFail:
+        return s;
+    }
+    LOG(FATAL) << "Control should never reach here";
+  }
 
   struct Params {
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
@@ -589,7 +619,7 @@ class IteratorBase {
 
   // Saves the state of this iterator.
   virtual Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
-    return SaveInternal(writer);
+    return SaveInternal(ctx, writer);
   }
 
  protected:
@@ -604,9 +634,9 @@ class IteratorBase {
 
   // This is needed so that sub-classes of IteratorBase can call
   // `SaveInternal` on their input iterators.
-  Status SaveInput(IteratorStateWriter* writer,
+  Status SaveInput(SerializationContext* ctx, IteratorStateWriter* writer,
                    const std::unique_ptr<IteratorBase>& input) {
-    return input->SaveInternal(writer);
+    return input->SaveInternal(ctx, writer);
   }
 
   // This is needed so that sub-classes of IteratorBase can call
@@ -620,7 +650,8 @@ class IteratorBase {
   //
   // This method is used to store the state of the iterator in a checkpoint.
   // implementations have an override.
-  virtual Status SaveInternal(IteratorStateWriter* writer) = 0;
+  virtual Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) = 0;
 
   // Restores the state of this iterator.
   //
@@ -1035,6 +1066,8 @@ class DatasetOpKernel : public OpKernel {
   // Indicates whether the given op corresponds to an op whose kernels subclass
   // the `DatasetOpKernel` class.
   static bool IsDatasetOp(const OpDef* op_def);
+
+  string TraceString(OpKernelContext* ctx, bool verbose) override;
 
  protected:
   // Subclasses should implement this method. It will be called during Compute

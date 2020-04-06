@@ -47,6 +47,7 @@ cc_library(
         "softmax.cc",
         "split.cc",
         "strided_slice.cc",
+        "sub.cc",
         "svdf.cc",
         "unpack.cc",
     ],
@@ -60,6 +61,7 @@ cc_library(
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:common",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -118,6 +120,7 @@ cc_library(
         "softmax.cc",
         "split.cc",
         "strided_slice.cc",
+        "sub.cc",
         "svdf.cc",
         "unpack.cc",
     ],
@@ -131,6 +134,7 @@ cc_library(
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
         "//tensorflow/lite/kernels/internal:common",
+        "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
@@ -357,6 +361,19 @@ tflite_micro_cc_test(
 )
 
 tflite_micro_cc_test(
+    name = "sub_test",
+    srcs = [
+        "sub_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
     name = "arg_min_max_test",
     srcs = [
         "arg_min_max_test.cc",
@@ -489,7 +506,10 @@ tflite_micro_cc_test(
 cc_library(
     name = "activation_utils",
     hdrs = ["activation_utils.h"],
-    deps = ["//tensorflow/lite/c:common"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:cppmath",
+    ],
 )
 
 tflite_micro_cc_test(

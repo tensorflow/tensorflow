@@ -809,9 +809,14 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
       return control_flow_ops.cond(
           pred, lambda: true_fn(inputs), lambda: false_fn(inputs))
 
+    # This was needed for backwards compatibility with TF2 Estimators which
+    # rely on variable names.
+    prefix = "cond/" if context.executing_eagerly() else ""
+
     with self.assertRaisesRegexp(
         ValueError,
-        "Tensor true_branch:0 in true_fn is accessed from false_fn."):
+        "Tensor %strue_branch:0 in true_fn is accessed from false_fn." %
+        prefix):
       f()
 
   def testSwitchCaseAccessBranch1TensorInBranch4Raises(self):
@@ -836,9 +841,12 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
           [other_fn, lambda: br1_fn(inputs), other_fn, other_fn,
            lambda: br4_fn(inputs)])
 
+    # This was needed for backwards compatibility with TF2 Estimators which
+    # rely on variable names.
+    prefix = "switch_case/indexed_case/" if context.executing_eagerly() else ""
     with self.assertRaisesRegexp(
-        ValueError,
-        "Tensor br1_identity:0 in branch 1 is accessed from branch 4."):
+        ValueError, "Tensor %sbr1_identity:0 in branch 1 is "
+        "accessed from branch 4." % prefix):
       f()
 
   def testCondListOutput(self):
@@ -3002,6 +3010,25 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
         return grad
 
     self.assertAllEqual(f(), 4. * 2.**3)  # 4 * x_init ^ 3
+
+  @test_util.run_deprecated_v1
+  def testTfFunctionInV1WhileLoop(self):
+
+    # This test specifically tests that creating a Const node inside a
+    # tf.function inside a v1 while_loop while inlining is turned on works.
+    config = opt_cfg()
+    assert config.graph_options.optimizer_options.do_function_inlining
+    with session.Session(config=config):
+
+      @def_function.function
+      def loop_body(i):
+        # Here we create the const.
+        return i + 1.
+
+      loop_cond = lambda i: True
+      x = control_flow_ops.while_loop(
+          loop_cond, loop_body, [0.], maximum_iterations=5)
+      self.assertAllEqual(x, 5.)
 
   def _testNestedWhileCondWhileGrad(self, use_gpu):
 

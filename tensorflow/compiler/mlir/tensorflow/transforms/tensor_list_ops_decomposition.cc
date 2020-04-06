@@ -18,15 +18,15 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -62,8 +62,8 @@ namespace cutil = TF::collection_ops_util;
 //
 // The pass also works across control flow and functional calls.
 struct TensorListOpsDecompositionPass
-    : public ModulePass<TensorListOpsDecompositionPass> {
-  void runOnModule() override;
+    : public OperationPass<TensorListOpsDecompositionPass, ModuleOp> {
+  void runOnOperation() override;
 };
 
 // Updates func's type according to its current arguments and return values.
@@ -671,8 +671,8 @@ LogicalResult DecomposeTensorListOps(Block* block, ModuleOp module) {
                                         &decomposed_partitioned_call_callees);
 }
 
-void TensorListOpsDecompositionPass::runOnModule() {
-  auto module = getModule();
+void TensorListOpsDecompositionPass::runOnOperation() {
+  auto module = getOperation();
   auto main = module.lookupSymbol<FuncOp>("main");
   if (!main) return;
   if (failed(DecomposeTensorListOps(&main.front(), module))) {

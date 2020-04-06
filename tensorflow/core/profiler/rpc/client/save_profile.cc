@@ -28,10 +28,10 @@ limitations under the License.
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 // Windows.h #defines ERROR, but it is also used in
 // tensorflow/core/util/event.proto
 #undef ERROR
-#include "tensorflow/core/protobuf/trace_events.pb.h"
 #include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {

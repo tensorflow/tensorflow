@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import warnings
 
 import numpy as np
 
@@ -266,6 +267,12 @@ class RNN(Layer):
       RNN calculation. However, most TensorFlow data is batch-major, so by
       default this function accepts input and emits output in batch-major
       form.
+    zero_output_for_mask: Boolean (default `False`).
+      Whether the output should use zeros for the masked timesteps. Note that
+      this field is only used when `return_sequences` is True and mask is
+      provided. It can useful if you want to reuse the raw output sequence of
+      the RNN without interference from the masked timesteps, eg, merging
+      bidirectional RNNs.
 
   Call arguments:
     inputs: Input tensor.
@@ -608,16 +615,17 @@ class RNN(Layer):
         '`cell.state_size`. Received `state_spec`={}; '
         'however `cell.state_size` is '
         '{}'.format(init_state_specs, cell_state_sizes))
-    flat_cell_state_size = nest.flatten(cell_state_sizes)
-    flat_state_spec = nest.flatten(init_state_specs)
+    flat_cell_state_sizes = nest.flatten(cell_state_sizes)
+    flat_state_specs = nest.flatten(init_state_specs)
 
-    if len(flat_cell_state_size) != len(flat_state_spec):
+    if len(flat_cell_state_sizes) != len(flat_state_specs):
       raise validation_error
-    for i in range(len(flat_cell_state_size)):
+    for cell_state_spec, cell_state_size in zip(flat_state_specs,
+                                                flat_cell_state_sizes):
       if not tensor_shape.TensorShape(
           # Ignore the first axis for init_state which is for batch
-          flat_state_spec[i].shape[1:]).is_compatible_with(
-              tensor_shape.TensorShape(flat_cell_state_size[i])):
+          cell_state_spec.shape[1:]).is_compatible_with(
+              tensor_shape.TensorShape(cell_state_size)):
         raise validation_error
 
   @doc_controls.do_not_doc_inheritable
@@ -794,9 +802,10 @@ class RNN(Layer):
         zero_output_for_mask=self.zero_output_for_mask)
 
     if self.stateful:
-      updates = []
-      for state_, state in zip(nest.flatten(self.states), nest.flatten(states)):
-        updates.append(state_ops.assign(state_, state))
+      updates = [
+          state_ops.assign(self_state, state) for self_state, state in zip(
+              nest.flatten(self.states), nest.flatten(states))
+      ]
       self.add_update(updates)
 
     if self.return_sequences:
@@ -976,6 +985,15 @@ class RNN(Layer):
   @property
   def _trackable_saved_model_saver(self):
     return layer_serialization.RNNSavedModelSaver(self)
+
+  @property
+  def weights(self):
+    if self.stateful:
+      warnings.warn(
+          'The internal states of stateful RNN layers are not included in '
+          '`layer.weights`. Please use `layer.states()` if you want to '
+          'retrieve the internal states of the layer.')
+    return super(RNN, self).weights
 
 
 @keras_export('keras.layers.AbstractRNNCell')
@@ -1337,7 +1355,8 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
     if self.activation is not None:
       output = self.activation(output)
 
-    return output, [output]
+    new_state = [output] if nest.is_sequence(states) else output
+    return output, new_state
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
     return _generate_zero_filled_state_for_cell(self, inputs, batch_size, dtype)
@@ -1876,7 +1895,8 @@ class GRUCell(DropoutRNNCellMixin, Layer):
       hh = self.activation(x_h + recurrent_h)
     # previous and candidate state mixed by update gate
     h = z * h_tm1 + (1 - z) * hh
-    return h, [h]
+    new_state = [h] if nest.is_sequence(states) else h
+    return h, new_state
 
   def get_config(self):
     config = {
@@ -2336,7 +2356,7 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
         def bias_initializer(_, *args, **kwargs):
           return K.concatenate([
               self.bias_initializer((self.units,), *args, **kwargs),
-              initializers.Ones()((self.units,), *args, **kwargs),
+              initializers.get('ones')((self.units,), *args, **kwargs),
               self.bias_initializer((self.units * 2,), *args, **kwargs),
           ])
       else:

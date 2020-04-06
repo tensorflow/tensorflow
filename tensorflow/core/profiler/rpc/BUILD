@@ -1,4 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
+load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")  # buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")  # buildifier: disable=same-origin-load
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -13,7 +14,6 @@ cc_library(
         ["//tensorflow_serving/model_servers:__pkg__"],
     ),
     deps = [
-        "//tensorflow:grpc++",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
@@ -22,6 +22,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        tf_grpc_cc_dependency(),
     ],
 )
 
@@ -35,10 +36,10 @@ cc_library(
     ],
     deps = [
         ":profiler_service_impl",
-        "//tensorflow:grpc++",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
         "@com_google_absl//absl/strings",
+        tf_grpc_cc_dependency(),
     ],
 )

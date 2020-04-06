@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "google/protobuf/text_format.h"
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/lite/toco/import_tensorflow.h"
@@ -67,7 +68,8 @@ void PopulateConversionLogHelper(const toco::ModelFlags& model_flags,
   // Dump post-conversion toco logs.
   TocoConversionLog toco_log_after;
   PopulateConversionLog(*flatbuffer_model, &toco_log_after);
-  toco_log_after.set_toco_err_logs(error_message);
+  // Make sure we sanitize the error message.
+  toco_log_after.set_toco_err_logs(SanitizeErrorMessage(error_message));
   std::ofstream ostream_after(toco_flags->conversion_summary_dir() +
                               "/toco_log_after.pb");
   toco_log_after.SerializeToOstream(&ostream_after);
@@ -143,13 +145,6 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
     }
   }
 
-  tensorflow::GraphDef graph_def;
-  if (!graph_def.ParseFromString(input_contents_txt)) {
-    PyErr_SetString(PyExc_ValueError,
-                    "Failed to convert GraphDef to Python String.");
-    return nullptr;
-  }
-
   auto& dump_options = *GraphVizDumpOptions::singleton();
   if (toco_flags.has_dump_graphviz_dir()) {
     dump_options.dump_graphviz = toco_flags.dump_graphviz_dir();
@@ -164,13 +159,25 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
 
   // Convert model.
   if (enable_mlir_converter) {
-    status = tensorflow::ConvertGraphDefToTFLiteFlatBuffer(
-        model_flags, toco_flags, debug_info, graph_def,
-        &output_file_contents_txt);
-    if (!toco_flags.conversion_summary_dir().empty()) {
-      PopulateConversionLogHelper(model_flags, &toco_flags, input_contents_txt,
-                                  output_file_contents_txt,
-                                  status.error_message(), &dump_options);
+    if (!model_flags.saved_model_dir().empty()) {
+      status = tensorflow::ConvertSavedModelToTFLiteFlatBuffer(
+          model_flags, toco_flags, &output_file_contents_txt);
+    } else {
+      tensorflow::GraphDef graph_def;
+      if (!graph_def.ParseFromString(input_contents_txt)) {
+        PyErr_SetString(PyExc_ValueError,
+                        "Failed to convert GraphDef to Python String.");
+        return nullptr;
+      }
+
+      status = tensorflow::ConvertGraphDefToTFLiteFlatBuffer(
+          model_flags, toco_flags, debug_info, graph_def,
+          &output_file_contents_txt);
+      if (!toco_flags.conversion_summary_dir().empty()) {
+        PopulateConversionLogHelper(
+            model_flags, &toco_flags, input_contents_txt,
+            output_file_contents_txt, status.error_message(), &dump_options);
+      }
     }
   } else {
     status = Convert(input_contents_txt, toco_flags, model_flags,

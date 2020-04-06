@@ -223,6 +223,32 @@ public final class InterpreterTest {
   }
 
   @Test
+  public void testAllocateTensors() {
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      // Redundant allocateTensors() should have no effect.
+      interpreter.allocateTensors();
+
+      // allocateTensors() should propagate resizes.
+      int[] inputDims = {1};
+      assertThat(interpreter.getOutputTensor(0).shape()).isNotEqualTo(inputDims);
+      interpreter.resizeInput(0, inputDims);
+      assertThat(interpreter.getOutputTensor(0).shape()).isNotEqualTo(inputDims);
+      interpreter.allocateTensors();
+      assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(inputDims);
+
+      // Additional redundant calls should have no effect.
+      interpreter.allocateTensors();
+      assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(inputDims);
+
+      // Execution should succeed as expected.
+      ByteBuffer input = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());
+      ByteBuffer output = ByteBuffer.allocateDirect(4).order(ByteOrder.nativeOrder());
+      interpreter.run(input, output);
+      assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(inputDims);
+    }
+  }
+
+  @Test
   public void testUnknownDims() {
     try (Interpreter interpreter = new Interpreter(UNKNOWN_DIMS_MODEL_PATH_BUFFER)) {
       int[] inputDims = {1, 1, 3, 3};

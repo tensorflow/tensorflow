@@ -25,7 +25,7 @@ namespace tflite {
 // This is the base class for TF Lite internal backend contexts (like a
 // RUY-based cpu backend context class). A derived internal backend context is
 // generally a collection of utilities (i.e. a thread pool etc.) for TF Lite to
-// use certain keneral libraries, such as Gemmlowp, RUY, etc., to implement TF
+// use certain kernel libraries, such as Gemmlowp, RUY, etc., to implement TF
 // Lite operators.
 class TfLiteInternalBackendContext {
  public:
@@ -68,7 +68,7 @@ class TfLiteInternalBackendContext {
 // the #thread info in the global cpu backend context (i.e. 'global_ctxt' above)
 // that affects how much parallelism an interpreter invocation will use.
 // Therefore, if different number of threads are used among different
-// interpreters, don't call 'SetNumThreads' consectutively but call it
+// interpreters, don't call 'SetNumThreads' consecutively but call it
 // separately between each interpreter's invocation as illustrated above.
 //
 // Note: it is the responsibility of the user of this context (i.e. a

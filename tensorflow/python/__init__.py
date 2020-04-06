@@ -119,6 +119,7 @@ from tensorflow.python.ops import gen_boosted_trees_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import gen_rnn_ops
 from tensorflow.python.ops import gen_sendrecv_ops
+from tensorflow.python.ops import gen_tpu_ops
 
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train

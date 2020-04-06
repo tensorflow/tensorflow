@@ -29,9 +29,11 @@ cc_binary(
     }),
     deps = [
         ":bitmap_helpers",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools/evaluation:utils",
@@ -89,6 +91,7 @@ cc_test(
     ],
     deps = [
         ":bitmap_helpers",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest",
     ],
 )

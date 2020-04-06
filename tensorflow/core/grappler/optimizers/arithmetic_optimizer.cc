@@ -1586,6 +1586,10 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       const int n = node.attr().at("N").i();
       const int start = node.op() == "Concat" ? 1 : 0;
       const int end = start + n;
+      if (end > node.input_size()) {
+        return errors::FailedPrecondition("Got attr N=", n,
+                                          " without enough inputs.");
+      }
       // Set up tail pointers to point to the immediate inputs to Concat.
       for (int input_port = start; input_port < end; ++input_port) {
         if (IsControlInput(node.input(input_port))) {
@@ -1760,7 +1764,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   // Update consumers of node to take new_input as input instead.
   void UpdateConsumers(NodeDef* node, const string& new_input) {
     const string& node_name = node->name();
-    const std::set<NodeDef*> consumers = ctx().node_map->GetOutputs(node_name);
+    const auto consumers = ctx().node_map->GetOutputs(node_name);
     for (NodeDef* consumer : consumers) {
       for (int i = 0; i < consumer->input_size(); ++i) {
         if (consumer->input(i) == node_name &&
@@ -2906,7 +2910,7 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
 
   void UpdateConsumers(NodeDef* node, const string& new_input) {
     const string& node_name = node->name();
-    const std::set<NodeDef*> consumers = ctx().node_map->GetOutputs(node_name);
+    const auto consumers = ctx().node_map->GetOutputs(node_name);
     for (NodeDef* consumer : consumers) {
       for (int i = 0; i < consumer->input_size(); ++i) {
         if (consumer->input(i) == node_name &&
@@ -3557,12 +3561,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
       // consumers of `node` are already redirected to `simplified_tensor`.
       // Re-push the consumers into `nodes_to_simplify` for further
       // optimizations.
-      const std::set<NodeDef*> outputs = node_map_->GetOutputs(node->name());
-      std::vector<NodeDef*> consumers(outputs.begin(), outputs.end());
-      std::sort(consumers.begin(), consumers.end(),
-                [](const NodeDef* n1, const NodeDef* n2) {
-                  return n1->name() < n2->name();
-                });
+      const std::vector<NodeDef*> consumers =
+          node_map_->GetOutputsOrderedByNodeName(node->name());
       for (NodeDef* consumer : consumers) {
         // Update `consumer`'s use of `node` to `input`'s operand.
         for (int i = 0; i < consumer->input_size(); ++i) {

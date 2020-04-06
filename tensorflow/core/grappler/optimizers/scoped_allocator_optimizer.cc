@@ -708,7 +708,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
       NodeDef* old_op = ops[op_idx];
       // Copy the output node set since we'll be modifying the version
       // maintained by NodeMap in the loop.
-      std::set<NodeDef*> output_nodes = node_map->GetOutputs(old_op->name());
+      auto output_nodes = node_map->GetOutputs(old_op->name());
       VLOG(3) << "old_op " << old_op->name() << " had " << output_nodes.size()
               << " outputs.  Moving them to the ScopedAllocatorSplit node.";
       if (VLOG_IS_ON(2)) {
@@ -971,7 +971,7 @@ class Tree {
  public:
   Tree(const string& edge, int depth) : edge_(edge), depth_(depth) {}
   ~Tree() {
-    for (auto it : subtrees_) delete it.second;
+    for (const auto& it : subtrees_) delete it.second;
   }
 
   Tree* GetSubTree(const string& edge) {
@@ -996,7 +996,7 @@ class Tree {
 // on any non-OK Status.
 Status ApplyToAll(Tree* tree, const std::function<Status(Tree*)>& func) {
   Status s;
-  for (auto it : tree->subtrees_) {
+  for (const auto& it : tree->subtrees_) {
     s = ApplyToAll(it.second, func);
     if (!s.ok()) return s;
   }

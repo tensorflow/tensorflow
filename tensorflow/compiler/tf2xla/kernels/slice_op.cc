@@ -15,19 +15,16 @@ limitations under the License.
 
 // XLA-specific Slice Op.
 
-#include "absl/types/span.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/ops_util.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -58,18 +55,21 @@ class SliceOp : public XlaOpKernel {
     std::vector<int64> begin;
     std::vector<int64> size;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(2, &size));
+    std::vector<int64> wrapped_size(size.size());
     if (ctx->ConstantInputAsIntVector(1, &begin).ok()) {
       // `begin` is a compile-time constant.
       for (int i = 0; i < input_dims; ++i) {
         if (size[i] == -1) {
           // A size[i] of -1 means "all elements from begin[i] to dim_size(i)".
-          size[i] = input_shape.dim_size(i) - begin[i];
+          wrapped_size[i] = input_shape.dim_size(i) - begin[i];
+        } else {
+          wrapped_size[i] = size[i];
         }
       }
 
       for (int i = 0; i < input_dims; ++i) {
         int64 b = begin[i];
-        int64 s = size[i];
+        int64 s = wrapped_size[i];
         if (input_shape.dim_size(i) == 0) {
           OP_REQUIRES(ctx, b == 0 && s == 0,
                       errors::InvalidArgument(
@@ -91,10 +91,28 @@ class SliceOp : public XlaOpKernel {
       std::vector<int64> limits;
       limits.reserve(begin.size());
       for (int i = 0; i < begin.size(); ++i) {
-        limits.push_back(begin[i] + size[i]);
+        limits.push_back(begin[i] + wrapped_size[i]);
       }
       std::vector<int64> strides(begin.size(), 1);
-      ctx->SetOutput(0, xla::Slice(ctx->Input(0), begin, limits, strides));
+      auto slice = xla::Slice(ctx->Input(0), begin, limits, strides);
+      // Check for slice on dynamic dimensions.
+      ctx->set_dynamic_dimension_is_minus_one(true);
+      std::vector<int64> dynamic_size;
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(2, &dynamic_size));
+
+      for (int64 i = 0; i < size.size(); ++i) {
+        if (dynamic_size[i] == -1) {
+          if (size[i] != -1) {
+            // If there is a dynamic dimension, properly set dimension size of
+            // the slice.
+            auto dynamic_size =
+                xla::Reshape(xla::Slice(ctx->Input(2), {i}, {i + 1}, {1}), {});
+
+            slice = xla::SetDimensionSize(slice, dynamic_size, i);
+          }
+        }
+      }
+      ctx->SetOutput(0, slice);
     } else {
       // `begin` is not a compile-time constant.
       for (int i = 0; i < input_dims; ++i) {

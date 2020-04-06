@@ -16,13 +16,18 @@ limitations under the License.
 // XLA-specific reduction Ops.
 
 #include "tensorflow/compiler/tf2xla/kernels/reduction_ops.h"
-#include "tensorflow/compiler/tf2xla/type_util.h"
+
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace {
@@ -84,7 +89,21 @@ REGISTER_XLA_OP(Name("Min").CompileTimeConstantInput("reduction_indices"),
 class MaxOp : public XlaReductionOp {
  public:
   explicit MaxOp(OpKernelConstruction* ctx)
-      : XlaReductionOp(ctx, ctx->input_type(0)) {}
+      : XlaReductionOp(ctx, ctx->input_type(0)) {
+    OP_REQUIRES_OK(ctx, PrimitiveTypeCheck(xla_reduction_type_));
+  }
+
+  static Status PrimitiveTypeCheck(xla::PrimitiveType xla_reduction_type) {
+    if (xla_reduction_type == xla::C64 || xla_reduction_type == xla::C128 ||
+        xla_reduction_type == xla::TUPLE ||
+        xla_reduction_type == xla::OPAQUE_TYPE) {
+      return errors::InvalidArgument(
+          "Unsupported PrimitiveType in MaxOp: '",
+          xla::PrimitiveType_Name(xla_reduction_type), "'");
+    } else {
+      return Status::OK();
+    }
+  }
 
   xla::XlaOp InitialValue(xla::XlaBuilder* builder) override {
     return xla::MinValue(builder, xla_reduction_type_);

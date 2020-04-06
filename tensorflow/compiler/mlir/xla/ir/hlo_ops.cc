@@ -33,25 +33,25 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Dialect.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Matchers.h"  // TF:llvm-project
-#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
-#include "mlir/IR/OpImplementation.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
-#include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_utils.h"
@@ -175,6 +175,31 @@ void ConstOp::build(Builder* builder, OperationState& result, Attribute value) {
   assert(type && "unsupported attribute type for building xla_hlo.constant");
   result.types.push_back(type);
   result.addAttribute("value", value);
+}
+
+//===----------------------------------------------------------------------===//
+// DotGeneralOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(DotGeneralOp op) {
+  auto dot_dimension_numbers = op.dot_dimension_numbers();
+  int64_t lhs_batching_dimensions_size = llvm::size(
+      dot_dimension_numbers.lhs_batching_dimensions().getValues<int64_t>());
+  int64_t rhs_batching_dimensions_size = llvm::size(
+      dot_dimension_numbers.rhs_batching_dimensions().getValues<int64_t>());
+  if (lhs_batching_dimensions_size != rhs_batching_dimensions_size) {
+    return op.emitError()
+           << "lhs and rhs should have the same number of batching dimensions";
+  }
+  int64_t lhs_contracting_dimensions_size = llvm::size(
+      dot_dimension_numbers.lhs_contracting_dimensions().getValues<int64_t>());
+  int64_t rhs_contracting_dimensions_size = llvm::size(
+      dot_dimension_numbers.rhs_contracting_dimensions().getValues<int64_t>());
+  if (lhs_contracting_dimensions_size != rhs_contracting_dimensions_size) {
+    return op.emitError() << "lhs and rhs should have the same number of "
+                             "contracting dimensions";
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -500,21 +525,21 @@ struct ExtractElementFromScalarsToDimensionTensor
     : public OpRewritePattern<ExtractElementOp> {
   using OpRewritePattern<ExtractElementOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(ExtractElementOp extract,
-                                     PatternRewriter& rewriter) const override {
-    if (extract.indices().size() != 1) return matchFailure();
+  LogicalResult matchAndRewrite(ExtractElementOp extract,
+                                PatternRewriter& rewriter) const override {
+    if (extract.indices().size() != 1) return failure();
 
     if (auto scalars_to_tensor = dyn_cast_or_null<ScalarsToDimensionTensorOp>(
             extract.aggregate().getDefiningOp())) {
       APInt index;
       if (!matchPattern(*extract.indices().begin(), m_ConstantInt(&index))) {
-        return matchFailure();
+        return failure();
       }
       rewriter.replaceOp(extract,
                          scalars_to_tensor.getOperand(index.getZExtValue()));
-      return matchSuccess();
+      return success();
     }
-    return matchFailure();
+    return failure();
   }
 };
 
@@ -545,19 +570,9 @@ static LogicalResult Verify(DynamicBroadcastInDimOp op) {
   auto operandRank = operandType.getRank();
   auto resultRank = resultType.getRank();
 
-  if (!op.broadcast_dimensions()) {
-    if (operandRank == 0) {
-      return success();
-    }
-    return op.emitOpError(
-        llvm::formatv("broadcast_dimensions is absent, but required because "
-                      "operand has non-zero rank ({0})",
-                      operandRank));
-  }
-
   // Verify broadcast_dimensions.
-  auto bcastDimensions = *op.broadcast_dimensions();
-  auto bcastDimensionsType = op.broadcast_dimensions()->getType();
+  auto bcastDimensions = op.broadcast_dimensions();
+  auto bcastDimensionsType = op.broadcast_dimensions().getType();
   auto bcastDimensionsRank = bcastDimensionsType.getRank();
   // TODO(laurenzo): Update the BroadcastDimAttr to constrain its rank to 1.
   if (bcastDimensionsRank != 1) {
@@ -606,6 +621,28 @@ static LogicalResult Verify(DynamicBroadcastInDimOp op) {
   }
 
   return success();
+}
+
+// If a DynamicBroadCastInDimOp is not actually dynamic, use an ordinary
+// BroadcastInDimOp.
+class DynamicBroadcastInDimOpNotActuallyDynamic
+    : public OpRewritePattern<DynamicBroadcastInDimOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(DynamicBroadcastInDimOp op,
+                                PatternRewriter& rewriter) const override {
+    auto type = op.getType().dyn_cast<RankedTensorType>();
+    if (!type || !type.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(op, "requires static shape");
+    }
+    rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
+        op, op.getType(), op.operand(), op.broadcast_dimensions());
+    return success();
+  }
+};
+
+void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<DynamicBroadcastInDimOpNotActuallyDynamic>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1534,6 +1571,41 @@ void XlaHloDialect::printType(Type type, DialectAsmPrinter& os) const {
     return;
   }
   os << "<unknown xla_hlo type>";
+}
+
+//===----------------------------------------------------------------------===//
+// Shape inference
+//===----------------------------------------------------------------------===//
+
+LogicalResult deriveShapeFromFirstOperand(
+    OpBuilder* builder, Operation* op,
+    SmallVectorImpl<Value>* reifiedReturnShapes) {
+  Value operand = op->getOperand(0);
+  ShapedType operand_type = operand.getType().dyn_cast<ShapedType>();
+  if (!operand_type) {
+    op->emitOpError() << "first operand is not a shaped type";
+    return failure();
+  }
+  auto loc = op->getLoc();
+  SmallVector<Value, 4> shape_values;
+  shape_values.reserve(operand_type.getRank());
+  auto shape_scalar_type = builder->getIntegerType(64);
+  for (auto element : llvm::enumerate(operand_type.getShape())) {
+    if (element.value() == ShapedType::kDynamicSize) {
+      Value dim = builder->create<DimOp>(loc, operand, element.index());
+      shape_values.push_back(
+          builder->create<IndexCastOp>(loc, dim, shape_scalar_type));
+    } else {
+      shape_values.push_back(builder->create<ConstantOp>(
+          loc, builder->getI64IntegerAttr(element.value())));
+    }
+  }
+  *reifiedReturnShapes =
+      SmallVector<Value, 1>{builder->create<ScalarsToDimensionTensorOp>(
+          loc,
+          RankedTensorType::get({operand_type.getRank()}, shape_scalar_type),
+          shape_values)};
+  return success();
 }
 
 }  // namespace xla_hlo

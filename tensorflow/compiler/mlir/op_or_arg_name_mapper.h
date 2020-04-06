@@ -23,8 +23,8 @@ limitations under the License.
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 
 namespace tensorflow {
 
