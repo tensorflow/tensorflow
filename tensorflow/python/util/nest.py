@@ -160,11 +160,12 @@ def _sequence_like(instance, args):
         tf_logging.WARN, "Mapping types may not work well with tf.nest. Prefer"
         "using MutableMapping for {}".format(instance_type), 1)
     try:
-        return instance_type((key, result[key]) for key in instance)
+      return instance_type((key, result[key]) for key in instance)
     except TypeError as err:
-        raise TypeError("Error rebuilding custom mapping. Note that it must accept a single "
-                        "positional argument representing an iterable of key-value pairs, in "
-                        f"addition to self. Cause: {err}")
+      raise TypeError("Error rebuilding custom mapping. Note that it must "
+                      "accept a single positional argument representing an "
+                      "iterable of key-value pairs, in addition to self. "
+                      f"Cause: {err}")
   elif _is_mapping_view(instance):
     # We can't directly construct mapping views, so we create a list instead
     return list(args)
