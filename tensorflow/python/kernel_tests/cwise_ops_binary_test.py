@@ -949,7 +949,11 @@ class ComparisonOpTest(test.TestCase):
           f(x.astype(t), y.astype(t))
 
   def testEqualDType(self):
-    dtypes = [np.float16, np.float32, np.float64, np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64]
+    dtypes = [
+        np.float16, np.float32, np.float64,
+        np.int8, np.int16, np.int32, np.int64,
+        np.uint8, np.uint16, np.uint32, np.uint64,
+    ]
     x = np.asarray([0, 1, 2, 3, 4])
     y = np.asarray([0, 1, 2, 3, 4])
     for dtype in dtypes:
