@@ -33,6 +33,7 @@
 * AutoGraph no longer converts functions passed to `tf.py_function`, `tf.py_func` and `tf.numpy_function`.
 * Deprecating `XLA_CPU` and `XLA_GPU` devices with this release.
 * Increasing the minimum bazel version to build TF to 2.0.0 to use Bazel's `cc_experimental_shared_library`.
+* Keras compile/fit behavior for functional and subclassed models have been unified. Model properties such as `metrics`, `metrics_names` will now be available only after **training/evaluating the model on actual data** for functional models. `metrics` will **now include** model `loss` and output losses.
 
 ## Known Caveats
 * Due to certain unforeseen circumstances, we are unable to release MacOS py3.8 binaries, but Windows/Linux binaries for py3.8 are available.
@@ -60,7 +61,7 @@
 * `tf.distribute`: 
   * Support `embedding_column` with variable-length input features for `MultiWorkerMirroredStrategy`.
 * `tf.keras`:
-  * Added `all_reduce_sum_gradients` argument to `tf.keras.optimizer.Optimizer.apply_gradients`. This allows custom gradient aggregation and processing aggregated gradients in custom training loop.
+  * Added `experimental_aggregate_gradients` argument to `tf.keras.optimizer.Optimizer.apply_gradients`. This allows custom gradient aggregation and processing aggregated gradients in custom training loop.
   * Allow `pathlib.Path` paths for loading models via Keras API.
 * `tf.function`/AutoGraph:
   * AutoGraph is now available in `ReplicaContext.merge_call`, `Strategy.extended.update` and `Strategy.extended.update_non_slot`.
