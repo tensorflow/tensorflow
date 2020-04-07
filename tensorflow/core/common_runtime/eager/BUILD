@@ -420,13 +420,40 @@ tf_cc_test(
     name = "eager_op_rewrite_registry_test",
     srcs = ["eager_op_rewrite_registry_test.cc"],
     deps = [
-        ":core",
         ":eager_op_rewrite_registry",
-        ":execute",
+        ":mkl_core",
         "//tensorflow/core:lib",
         "//tensorflow/core:no_op_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+# Temporary rule until the circular dependencies issue is resolved.
+# TODO(mabuzain): remove this once original "core" package is fixed.
+cc_library(
+    name = "mkl_core",
+    srcs = [
+        "core.cc",
+        "execute.cc",
+        "execute_node.cc",
+    ],
+    hdrs = [
+        "execute.h",
+        "execute_node.h",
+    ],
+    deps = [
+        ":context",
+        ":copy_to_device_node",
+        ":eager_op_rewrite_registry",
+        ":eager_operation",
+        ":tensor_handle",
+        "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/core/distributed_runtime/eager:eager_client",
+        "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
+        "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
+        "//tensorflow/core/distributed_runtime/eager:remote_mgr",
     ],
 )
 
