@@ -263,7 +263,6 @@ class CpuAllReduceRendezvous
  protected:
   xla::StatusOr<ParticipantImplOutput> SubmitParticipantImpl(
       const xla::AllReduceParticipantData& participant) override {
-    TF_RET_CHECK(participant.buffers.size() == 1);
     xla::PrimitiveType datatype = participant.buffers.front().primitive_type;
     bool primary = [&] {
       tensorflow::mutex_lock lock(mu_);
@@ -321,60 +320,87 @@ class CpuAllReduceRendezvous
     for (const auto& p : participants_) {
       CHECK(p.reduction_kind == reduction_kind);
     }
+    int num_participants = participants_.size();
 
-    std::vector<absl::Span<T>> input_buffers;
-    std::vector<absl::Span<T>> output_buffers;
-    input_buffers.reserve(participants_.size());
-    output_buffers.reserve(participants_.size());
+    // participant_idx -> buffer_idx -> buffer.
+    std::vector<std::vector<absl::Span<T>>> input_buffers;
+    std::vector<std::vector<absl::Span<T>>> output_buffers;
+    input_buffers.reserve(num_participants);
+    output_buffers.reserve(num_participants);
+    const xla::AllReduceParticipantData& first_participant =
+        participants_.front();
 
-    for (auto& p : participants_) {
-      CHECK_EQ(p.buffers.size(), 1);
-      CHECK_EQ(p.buffers.front().element_count,
-               participants_.front().buffers.front().element_count);
-      xla::int64 element_count = participant.buffers.front().element_count;
-      input_buffers.emplace_back(
-          static_cast<T*>(p.buffers.front().source_data.opaque()),
-          element_count);
-      output_buffers.emplace_back(
-          static_cast<T*>(p.buffers.front().destination_data.opaque()),
-          element_count);
+    int buffers_per_participant = first_participant.buffers.size();
+    for (xla::AllReduceParticipantData& p : participants_) {
+      CHECK_EQ(p.buffers.size(), buffers_per_participant);
+
+      input_buffers.emplace_back();
+      output_buffers.emplace_back();
+      std::vector<absl::Span<T>>& participant_input_buffers =
+          input_buffers.back();
+      std::vector<absl::Span<T>>& participant_output_buffers =
+          output_buffers.back();
+      participant_input_buffers.reserve(p.buffers.size());
+      participant_output_buffers.reserve(p.buffers.size());
+
+      for (int buffer_idx = 0; buffer_idx < buffers_per_participant;
+           buffer_idx++) {
+        auto& participant_buffer = p.buffers[buffer_idx];
+        participant_input_buffers.emplace_back(
+            static_cast<T*>(participant_buffer.source_data.opaque()),
+            participant_buffer.element_count);
+        participant_output_buffers.emplace_back(
+            static_cast<T*>(participant_buffer.destination_data.opaque()),
+            participant_buffer.element_count);
+        CHECK_EQ(participant_buffer.element_count,
+                 first_participant.buffers[buffer_idx].element_count);
+      }
     }
-    xla::int64 element_count =
-        participants_.front().buffers.front().element_count;
 
-    auto compute = [reduction_kind](T a, T b) -> T {
-      switch (reduction_kind) {
-        case xla::ReductionKind::SUM:
-          return a + b;
-        case xla::ReductionKind::PRODUCT:
-          return a * b;
-        case xla::ReductionKind::MIN:
-          return std::min(a, b);
-        case xla::ReductionKind::MAX:
-          return std::max(a, b);
-      }
-    };
-
-    for (int idx = 0; idx < element_count; idx++) {
-      T out = [&]() -> T {
-        switch (reduction_kind) {
-          case xla::ReductionKind::SUM:
-            return static_cast<T>(0);
-          case xla::ReductionKind::PRODUCT:
-            return static_cast<T>(1);
-          case xla::ReductionKind::MIN:
-            return std::numeric_limits<T>::max();
-          case xla::ReductionKind::MAX:
-            return std::numeric_limits<T>::min();
+    for (int buffer_idx = 0; buffer_idx < buffers_per_participant;
+         buffer_idx++) {
+      int element_count = first_participant.buffers[buffer_idx].element_count;
+      for (int idx = 0; idx < element_count; idx++) {
+        T out = GetInitialValue<T>(reduction_kind);
+        for (int participant_idx = 0; participant_idx < participants_.size();
+             participant_idx++) {
+          out = PerformReductionStep<T>(
+              reduction_kind, out,
+              input_buffers[participant_idx][buffer_idx][idx]);
         }
-      }();
+        for (int participant_idx = 0; participant_idx < participants_.size();
+             participant_idx++) {
+          output_buffers[participant_idx][buffer_idx][idx] = out;
+        }
+      }
+    }
+  }
 
-      for (auto& input : input_buffers) {
-        out = compute(out, input[idx]);
-      }
-      for (auto& output : output_buffers) {
-        output[idx] = out;
-      }
+  template <typename T>
+  T GetInitialValue(xla::ReductionKind reduction_kind) {
+    switch (reduction_kind) {
+      case xla::ReductionKind::SUM:
+        return static_cast<T>(0);
+      case xla::ReductionKind::PRODUCT:
+        return static_cast<T>(1);
+      case xla::ReductionKind::MIN:
+        return std::numeric_limits<T>::max();
+      case xla::ReductionKind::MAX:
+        return std::numeric_limits<T>::min();
+    }
+  }
+
+  template <typename T>
+  T PerformReductionStep(xla::ReductionKind reduction_kind, T a, T b) {
+    switch (reduction_kind) {
+      case xla::ReductionKind::SUM:
+        return a + b;
+      case xla::ReductionKind::PRODUCT:
+        return a * b;
+      case xla::ReductionKind::MIN:
+        return std::min(a, b);
+      case xla::ReductionKind::MAX:
+        return std::max(a, b);
     }
   }
 };
@@ -392,8 +418,8 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
     const xla::ExecutableRunOptions* run_options,
     const void* replica_groups_str, xla::int32 replica_groups_str_size,
     xla::int32 channel_id_present, xla::int64 op_id, xla::int32 reduction_kind,
-    const void* shape_ptr, xla::int32 shape_length, void* input_buffer,
-    void* output_buffer) {
+    const void* shape_ptr, xla::int32 shape_length, xla::int32 num_buffers,
+    void** input_buffers, void** output_buffers) {
   absl::string_view replica_groups_serialized(
       static_cast<const char*>(replica_groups_str), replica_groups_str_size);
 
@@ -435,21 +461,25 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
 
   xla::Shape shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length).ValueOrDie();
-  CHECK(xla::LayoutUtil::IsDenseArray(shape))
-      << "All-reduce on CPU is implemented only for dense arrays";
+
+  CHECK((num_buffers > 1 && shape.IsTuple()) ||
+        (num_buffers == 1 && xla::LayoutUtil::IsDenseArray(shape)));
 
   xla::AllReduceParticipantData participant(rendezvous_key);
   participant.device_ordinal = device_ordinal;
   participant.stream = run_options->stream();
-  xla::AllReduceParticipantData::Buffer buffer;
-  buffer.element_count = xla::ShapeUtil::ElementsIn(shape);
-  buffer.primitive_type = shape.element_type();
-  buffer.source_data =
-      se::DeviceMemoryBase(input_buffer, xla::ShapeUtil::ByteSizeOf(shape));
-  buffer.destination_data =
-      se::DeviceMemoryBase(output_buffer, xla::ShapeUtil::ByteSizeOf(shape));
-  participant.buffers = {buffer};
   participant.reduction_kind = static_cast<xla::ReductionKind>(reduction_kind);
+  for (int i = 0; i < num_buffers; i++) {
+    xla::Shape subshape = num_buffers == 1 ? shape : shape.tuple_shapes(i);
+    xla::AllReduceParticipantData::Buffer buffer;
+    buffer.element_count = xla::ShapeUtil::ElementsIn(subshape);
+    buffer.primitive_type = subshape.element_type();
+    buffer.source_data = se::DeviceMemoryBase(
+        input_buffers[i], xla::ShapeUtil::ByteSizeOf(subshape));
+    buffer.destination_data = se::DeviceMemoryBase(
+        output_buffers[i], xla::ShapeUtil::ByteSizeOf(subshape));
+    participant.buffers.push_back(buffer);
+  }
 
   auto make_cpu_rendezvous = [](const xla::RendezvousKey& k) {
     return absl::make_unique<CpuAllReduceRendezvous>(k);

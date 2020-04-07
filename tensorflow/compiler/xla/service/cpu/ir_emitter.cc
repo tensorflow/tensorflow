@@ -1458,6 +1458,7 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
                                /*reduction_kind=*/int32_type,
                                /*shape_ptr=*/i8_ptr_type,
                                /*shape_length=*/int32_type,
+                               /*num_buffers=*/int32_type,
                                /*input_buffer=*/i8_ptr_type,
                                /*output_buffer=*/i8_ptr_type},
                               /*isVarArg=*/false);
@@ -1473,19 +1474,41 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
   int32 replica_groups_size = replica_groups.size();
   llvm::Value* replica_groups_v = b_.CreateGlobalStringPtr(replica_groups);
 
-  Shape shape = crs->operand(0)->shape();
+  bool is_tuple = crs->operand_count() > 1;
+  std::vector<llvm::Value*> input_buffer_ptrs;
+  std::vector<llvm::Value*> output_buffer_ptrs;
+  if (is_tuple) {
+    CHECK(crs->shape().IsTuple());
+
+    for (int64 i = 0; i < crs->operand_count(); i++) {
+      const HloInstruction* op = crs->operand(i);
+      TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_slice,
+                          assignment_.GetUniqueSlice(crs, {i}));
+      const Shape& operand_shape = crs->operand(i)->shape();
+      CHECK(operand_shape.IsArray())
+          << "Operands to all-reduce must be arrays: " << crs->ToString();
+      output_buffer_ptrs.push_back(EmitBufferPointer(out_slice, operand_shape));
+      input_buffer_ptrs.push_back(GetEmittedValueFor(op));
+    }
+  } else {
+    Shape shape = crs->operand(0)->shape();
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
+                        assignment_.GetUniqueSlice(crs->operand(0), {}));
+    TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+                        assignment_.GetUniqueSlice(crs, {}));
+    input_buffer_ptrs.push_back(EmitBufferPointer(input_slice, shape));
+    output_buffer_ptrs.push_back(EmitBufferPointer(output_slice, shape));
+  }
+
+  llvm::Value* input_buffers =
+      EncodeArrayFunctionArguments(input_buffer_ptrs, "input_buffers", &b_);
+  llvm::Value* output_buffers =
+      EncodeArrayFunctionArguments(output_buffer_ptrs, "output_buffers", &b_);
+
   int32 shape_length;
-  TF_ASSIGN_OR_RETURN(
-      llvm::Value * shape_ptr,
-      llvm_ir::EncodeSelfDescribingShapeConstant(shape, &shape_length, &b_));
-
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
-                      assignment_.GetUniqueSlice(crs->operand(0), {}));
-  llvm::Value* input_buffer = EmitBufferPointer(input_slice, shape);
-
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
-                      assignment_.GetUniqueSlice(crs, {}));
-  llvm::Value* output_buffer = EmitBufferPointer(output_slice, shape);
+  TF_ASSIGN_OR_RETURN(llvm::Value * shape_ptr,
+                      llvm_ir::EncodeSelfDescribingShapeConstant(
+                          crs->shape(), &shape_length, &b_));
 
   Call(all_reduce_func,
        {/*run_options=*/GetExecutableRunOptionsArgument(),
@@ -1498,16 +1521,14 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
         b_.getInt64(crs->channel_id().has_value()
                         ? *crs->channel_id()
                         : crs->GetModule()->unique_id()),
-
         /*reduction_kind=*/
         b_.getInt32(
             static_cast<int32>(*MatchReductionComputation(crs->to_apply()))),
-
         /*shape_ptr=*/shape_ptr,
         /*shape_length=*/b_.getInt32(shape_length),
-
-        /*input_buffer=*/b_.CreateBitCast(input_buffer, i8_ptr_type),
-        /*output_buffer=*/b_.CreateBitCast(output_buffer, i8_ptr_type)});
+        /*num_buffers=*/b_.getInt32(crs->operand_count()),
+        /*input_buffers=*/b_.CreateBitCast(input_buffers, i8_ptr_type),
+        /*output_buffers=*/b_.CreateBitCast(output_buffers, i8_ptr_type)});
 
   return Status::OK();
 }
