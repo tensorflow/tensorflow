@@ -478,7 +478,7 @@ Status SparsifyGatherInternal(
     }
 
     // Add nodes with a reference count of 0 for deletion.
-    for (auto entry : refs) {
+    for (const auto& entry : refs) {
       if (entry.second == 0) {
         removed_node_names.push_back(entry.first);
       }
