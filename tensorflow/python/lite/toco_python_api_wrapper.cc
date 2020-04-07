@@ -54,4 +54,14 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
       R"pbdoc(
       Returns a list of names of all ops potentially supported by tflite.
     )pbdoc");
+  m.def(
+      "ExperimentalMlirQuantizeModel",
+      [](py::object input_contents_txt_raw, bool fully_quantize) {
+        return tensorflow::pyo_or_throw(toco::MlirQuantizeModel(
+            input_contents_txt_raw.ptr(), fully_quantize));
+      },
+      py::arg("input_contents_txt_raw"), py::arg("fully_quantize") = true,
+      R"pbdoc(
+      Returns a quantized model.
+    )pbdoc");
 }

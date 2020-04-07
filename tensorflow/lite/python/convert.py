@@ -108,6 +108,20 @@ class ConverterError(Exception):
   pass
 
 
+def mlir_quantize(input_data_str):
+  """Quantize `input_data_str` with calibration results.
+
+  Args:
+    input_data_str: Input data in serialized form (e.g. a TFLITE model with
+                    calibration results).
+
+  Returns:
+    Quantized model in serialized form (e.g. a TFLITE model) with floating-point
+    inputs and outputs.
+  """
+  return wrap_toco.wrapped_experimental_mlir_quantize(input_data_str)
+
+
 def toco_convert_protos(model_flags_str,
                         toco_flags_str,
                         input_data_str,
