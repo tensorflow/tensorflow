@@ -463,8 +463,9 @@ void FunctionAndBlockSignatureConverter::addDynamicallyLegalFuncOp(
     ConversionTarget& target) {
   target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
     auto inputs = op.getType().getInputs();
-    return std::all_of(inputs.begin(), inputs.end(),
-                       [](Type input) { return input.isa<MemRefType>(); });
+    return std::all_of(inputs.begin(), inputs.end(), [](Type input) {
+      return input.isa<MemRefType>() || !input.isa<ShapedType>();
+    });
   });
 }
 
@@ -498,6 +499,67 @@ std::unique_ptr<OperationPass<FuncOp>> createBufferAssignmentTestPass() {
 static PassRegistration<BufferAssignmentTestPass> buffer_assignment_test_pass(
     "test-buffer-assignment",
     "Outputs debug test information for the buffer assignment analysis");
+
+/// This pass tests two provided operation converters,
+/// FunctionAndBlockSignatureConverter and NonVoidToVoidReturnOpConverter, for
+/// Buffer Assignment.
+struct BufferAssignmentConvertersTestPass
+    : mlir::PassWrapper<BufferAssignmentConvertersTestPass,FunctionPass> {
+  void runOnFunction() override {
+    OwningRewritePatternList patterns;
+    auto funcOp = getOperation();
+    auto context = funcOp.getContext();
+    ConversionTarget target(*context);
+
+    // Specifying the legal and illegal operations.
+    target.addLegalOp<BufferAssignmentTestCopyOp>();
+    // TODO(dfki): ReturnOp can also be changed to TestReturnOp like
+    // BufferAssignmentTestCopyOp.
+    target.addDynamicallyLegalOp<ReturnOp>(
+        [](ReturnOp returnOp) { return returnOp.getNumOperands() == 0; });
+    FunctionAndBlockSignatureConverter::addDynamicallyLegalFuncOp(target);
+
+    // Adding patterns for testing this pass.
+    // clang-format off
+    patterns.insert<
+        FunctionAndBlockSignatureConverter,
+        NonVoidToVoidReturnOpConverter
+          <ReturnOp, ReturnOp, BufferAssignmentTestCopyOp>
+    >(context, nullptr);
+    // clang-format on
+
+    if (failed(applyPartialConversion(funcOp, target, patterns, nullptr))) {
+      funcOp.emitOpError() << "Failed to convert the return operation or the "
+                              "block signatures of the function";
+    }
+  };
+
+  /// This dialect independent copy operation has been defined only for testing
+  /// NonVoidToVoidReturnOpConverter
+  class BufferAssignmentTestCopyOp
+      : public Op<BufferAssignmentTestCopyOp, OpTrait::ZeroResult,
+                  OpTrait::NOperands<2>::Impl> {
+   public:
+    using Op::Op;
+    static StringRef getOperationName() {
+      return "buffer_assignment_test.copy";
+    }
+    static void build(Builder* b, OperationState& state, Value from, Value to) {
+      state.addOperands(from);
+      state.addOperands(to);
+    }
+  };
+};
+
+std::unique_ptr<OperationPass<FuncOp>> createBufferAssignmentConvertersTestPass() {
+  return absl::make_unique<BufferAssignmentConvertersTestPass>();
+}
+
+static PassRegistration<BufferAssignmentConvertersTestPass>
+    buffer_assignment_converters_test_pass(
+        "test-buffer-assignment-converters",
+        "Outputs debug test information for the buffer assignment function and "
+        "block signature converter and non-void return operation converter");
 
 }  // namespace xla
 }  // namespace mlir
