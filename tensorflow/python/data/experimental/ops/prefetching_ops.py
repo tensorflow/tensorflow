@@ -76,7 +76,6 @@ def copy_to_device(target_device, source_device="/cpu:0"):
     return _CopyToDeviceDataset(
         dataset, target_device=target_device,
         source_device=source_device).with_options(options)
-        source_device=source_device)
 
   return _apply_fn
 
