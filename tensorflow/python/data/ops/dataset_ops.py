@@ -344,55 +344,49 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def _apply_options(self):
     """Apply options, such as optimization configuration, to the dataset."""
 
-    # TODO DEKHTIARJonathan: Remove when GPU OP exists
-    if "/device:GPU" in self._variant_tensor.device:
-      return self
-
     dataset = self
     options = self.options()
 
-    with ops.colocate_with(dataset._variant_tensor):
+    # (1) Apply threading options
+    if options.experimental_threading is not None:
+      t_options = options.experimental_threading
+      if t_options.max_intra_op_parallelism is not None:
+        dataset = _MaxIntraOpParallelismDataset(
+            dataset, t_options.max_intra_op_parallelism)
+      if t_options.private_threadpool_size is not None:
+        dataset = _PrivateThreadPoolDataset(dataset,
+                                            t_options.private_threadpool_size)
 
-      # (1) Apply threading options
-      if options.experimental_threading is not None:
-        t_options = options.experimental_threading
-        if t_options.max_intra_op_parallelism is not None:
-          dataset = _MaxIntraOpParallelismDataset(
-              dataset, t_options.max_intra_op_parallelism)
-        if t_options.private_threadpool_size is not None:
-          dataset = _PrivateThreadPoolDataset(dataset,
-                                              t_options.private_threadpool_size)
+    # (2) Apply graph rewrite options
+    # pylint: disable=protected-access
+    graph_rewrites = options._graph_rewrites()
+    graph_rewrite_configs = options._graph_rewrite_configs()
+    # pylint: enable=protected-access
+    if graph_rewrites:
+      if self._has_captured_ref():
+        warnings.warn(
+            "tf.data graph rewrites are not compatible with tf.Variable. "
+            "The following rewrites will be disabled: %s. To enable "
+            "rewrites, use resource variables instead by calling "
+            "`tf.enable_resource_variables()` at the start of the program." %
+            ", ".join(graph_rewrites))
+      else:
+        dataset = _OptimizeDataset(dataset, graph_rewrites,
+                                   graph_rewrite_configs)
 
-      # (2) Apply graph rewrite options
-      # pylint: disable=protected-access
-      graph_rewrites = options._graph_rewrites()
-      graph_rewrite_configs = options._graph_rewrite_configs()
-      # pylint: enable=protected-access
-      if graph_rewrites:
-        if self._has_captured_ref():
-          warnings.warn(
-              "tf.data graph rewrites are not compatible with tf.Variable. "
-              "The following rewrites will be disabled: %s. To enable "
-              "rewrites, use resource variables instead by calling "
-              "`tf.enable_resource_variables()` at the start of the program." %
-              ", ".join(graph_rewrites))
-        else:
-          dataset = _OptimizeDataset(dataset, graph_rewrites,
-                                     graph_rewrite_configs)
+    # (3) Apply autotune options
+    autotune, algorithm, cpu_budget = options._autotune_settings()  # pylint: disable=protected-access
 
-      # (3) Apply autotune options
-      autotune, algorithm, cpu_budget = options._autotune_settings()  # pylint: disable=protected-access
+    if autotune:
+      dataset = _ModelDataset(dataset, algorithm, cpu_budget)
 
-      if autotune:
-        dataset = _ModelDataset(dataset, algorithm, cpu_budget)
-
-      # (4) Apply stats aggregator options
-      if options.experimental_stats and options.experimental_stats.aggregator:  # pylint: disable=line-too-long
-        dataset = _SetStatsAggregatorDataset(  # pylint: disable=protected-access
-            dataset, options.experimental_stats.aggregator,
-            options.experimental_stats.prefix,
-            options.experimental_stats.counter_prefix)
-      return dataset
+    # (4) Apply stats aggregator options
+    if options.experimental_stats and options.experimental_stats.aggregator:  # pylint: disable=line-too-long
+      dataset = _SetStatsAggregatorDataset(  # pylint: disable=protected-access
+          dataset, options.experimental_stats.aggregator,
+          options.experimental_stats.prefix,
+          options.experimental_stats.counter_prefix)
+    return dataset
 
   def __iter__(self):
     """Creates an `Iterator` for enumerating the elements of this dataset.
