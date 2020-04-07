@@ -210,7 +210,7 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
 
       event.ForEachStat([&](const XStatVisitor& stat) {
         if (stat.Type() == StatType::kLevel0) {
-          auto tf_op_fullname = stat.ToString();
+          auto tf_op_fullname = stat.StrOrRefValue();
           if (tf_op_fullname.empty()) return;
           TfOp tf_op = ParseTfOpFullname(tf_op_fullname);
           TfOpRoofLineCostEstimator::OpRoofLineStats costs;
