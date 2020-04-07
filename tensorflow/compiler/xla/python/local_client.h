@@ -269,6 +269,17 @@ class PyLocalBuffer {
                           std::shared_ptr<BufferDefinitionEvent> event,
                           bool reference_held);
 
+    // Adds the held device buffers in order to 'iterator'. Used to add the
+    // buffers to an ExecutionInput. We require but do not verify that
+    // 'iterator' when passed in is pointing to a sub-tuple of the
+    // ExecutionInput whose on_device_shape matches that of the
+    // SharedDeviceBuffer. 'end' is used to check that 'iterator' doesn't run
+    // out of bounds.
+    void AddToInput(ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
+                    const ShapeTree<MaybeOwningDeviceMemory>::iterator& end,
+                    ExecutionInput* execution_input,
+                    se::DeviceMemoryAllocator* allocator) const;
+
    private:
     friend class PyLocalBuffer;
 

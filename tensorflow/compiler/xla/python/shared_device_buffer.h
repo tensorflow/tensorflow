@@ -131,6 +131,15 @@ class SharedDeviceBuffer {
                               const Shape& on_device_shape,
                               se::Platform* platform) const;
 
+  // Adds the owned device buffers in order to 'iterator'. Used to add the
+  // buffers to an ExecutionInput. We require but do not verify that 'iterator'
+  // when passed in is pointing to a sub-tuple of the ExecutionInput whose
+  // on_device_shape matches that of the SharedDeviceBuffer. 'end' is used to
+  // check that 'iterator' doesn't run out of bounds.
+  void AddToInputAsImmutable(
+      ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
+      const ShapeTree<MaybeOwningDeviceMemory>::iterator& end) const;
+
   se::DeviceMemoryAllocator* allocator() const { return allocator_; }
   int device_ordinal() const { return device_ordinal_; }
   absl::InlinedVector<se::DeviceMemoryBase, 1>& device_memory() {

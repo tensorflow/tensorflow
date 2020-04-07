@@ -133,6 +133,20 @@ ShapedBuffer SharedDeviceBuffer::AsShapedBuffer(const Shape& on_host_shape,
   return shaped_buffer;
 }
 
+// See comment on ExecutionInput in xla/service/executable.h to understand
+// the meaning of owned/unowned in that class.
+
+void SharedDeviceBuffer::AddToInputAsImmutable(
+    ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
+    const ShapeTree<MaybeOwningDeviceMemory>::iterator& end) const {
+  for (const se::DeviceMemoryBase& buf : device_memory_) {
+    CHECK(*iterator != end);
+    // Set buffers to be case (1) in the comment on ExecutionInput.
+    (*iterator)->second = MaybeOwningDeviceMemory(buf);
+    ++(*iterator);
+  }
+}
+
 namespace {
 
 using MoveIterator =

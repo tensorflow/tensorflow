@@ -85,6 +85,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/event_pool.h"
 #include "tensorflow/compiler/xla/python/local_device_state.h"
 #include "tensorflow/compiler/xla/python/shared_device_buffer.h"
+#include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -436,6 +438,16 @@ void PyLocalBuffer::ScopedHold::ConvertUsageHold(
   parent_->ConvertUsageHold(buffer().get(), usage_stream, std::move(event),
                             reference_held);
   SetError(InvalidArgument("Buffer has been converted"));
+}
+
+void PyLocalBuffer::ScopedHold::AddToInput(
+    ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
+    const ShapeTree<MaybeOwningDeviceMemory>::iterator& end,
+    ExecutionInput* execution_input,
+    se::DeviceMemoryAllocator* allocator) const {
+  CHECK(ok());
+  CHECK(type_ == kUsage);
+  buffer()->AddToInputAsImmutable(iterator, end);
 }
 
 /* static */
@@ -1010,10 +1022,10 @@ namespace {
 // Helper struct for the tuple that is transiently constructed to hold the
 // arguments of an execution.
 struct TupleHandle {
-  // The device buffer holding the root of the tuple table.
-  se::OwningDeviceMemory root_table;
-  // The ShapedBuffer describing the tuple. Does not own any of its buffers.
-  std::unique_ptr<ShapedBuffer> shaped_buffer;
+  // The tuple's shape on the host.
+  Shape on_host_shape;
+  // The ExecutionInput describing the tuple.
+  ExecutionInput execution_input;
   // A definition event that has been recorded on the host_to_device stream
   // after the tuple table transfer.
   std::shared_ptr<BufferDefinitionEvent> event;
@@ -1022,14 +1034,16 @@ struct TupleHandle {
 // Makes a tuple from the arguments to an execution.
 StatusOr<TupleHandle> MakeTupleHelper(
     PyLocalClient* client, LocalDeviceState* local_device,
-    absl::Span<const ShapedBuffer> shaped_buffers, int device_ordinal) {
+    absl::Span<PyLocalBuffer* const> py_buffers,
+    absl::Span<const PyLocalBuffer::ScopedHold> device_buffers,
+    int device_ordinal) {
   std::vector<Shape> host_shapes;
   std::vector<Shape> device_shapes;
-  host_shapes.reserve(shaped_buffers.size());
-  device_shapes.reserve(shaped_buffers.size());
-  for (const ShapedBuffer& buffer : shaped_buffers) {
-    host_shapes.push_back(buffer.on_host_shape());
-    device_shapes.push_back(buffer.on_device_shape());
+  host_shapes.reserve(py_buffers.size());
+  device_shapes.reserve(py_buffers.size());
+  for (const PyLocalBuffer* buffer : py_buffers) {
+    host_shapes.push_back(buffer->on_host_shape());
+    device_shapes.push_back(buffer->on_device_shape());
   }
   Shape on_host_shape = ShapeUtil::MakeTupleShape(host_shapes);
   Shape on_device_shape = ShapeUtil::MakeTupleShape(device_shapes);
@@ -1044,30 +1058,33 @@ StatusOr<TupleHandle> MakeTupleHelper(
           device_ordinal,
           transfer_manager->GetByteSizeRequirement(on_host_shape)));
 
-  // tuple_buffer holds the device buffers for all the arguments and the root
-  // table, and does not own any of them.
-  auto tuple_buffer = absl::make_unique<ShapedBuffer>(
-      on_host_shape, on_device_shape, client->client()->platform(),
-      device_ordinal);
-  tuple_buffer->set_buffer(root_table_memory.cref(), {});
-  for (int i = 0; i < shaped_buffers.size(); ++i) {
-    for (const auto& sub_buffer : shaped_buffers[i].buffers()) {
-      ShapeIndex index = sub_buffer.first;
-      index.push_front(i);
-      tuple_buffer->set_buffer(sub_buffer.second, index);
-    }
-  }
-
   if (local_device->allocation_model() ==
       LocalDeviceState::kComputeSynchronized) {
     stream->ThenWaitFor(local_device->compute_stream());
   } else {
-    DCHECK(transfer_manager->CanShapedBufferBeAccessedNow(
-        local_device->compute_stream()->parent(), *tuple_buffer));
+    // In principle we would do a DCHECK for CanShapedBufferBeAccessedNow here
+    // but that call requires a ShapedBuffer which we don't have.
   }
 
-  TF_RETURN_IF_ERROR(
-      transfer_manager->WriteRootTupleIndexTable(stream, *tuple_buffer));
+  ExecutionInput execution_input(on_device_shape);
+  ShapeTree<MaybeOwningDeviceMemory>::iterator input_iterator =
+      execution_input.MutableBuffers()->begin();
+  ShapeTree<MaybeOwningDeviceMemory>::iterator iterator_end =
+      execution_input.MutableBuffers()->end();
+  // First set the root tuple table which is the first buffer in the ShapeTree.
+  execution_input.SetBuffer(
+      input_iterator->first,
+      MaybeOwningDeviceMemory(std::move(root_table_memory)));
+  ++input_iterator;
+  // Then set each sub-tuple in turn from the parameters.
+  for (const PyLocalBuffer::ScopedHold& device_buffer : device_buffers) {
+    device_buffer.AddToInput(&input_iterator, iterator_end, &execution_input,
+                             allocator);
+  }
+  CHECK(input_iterator == iterator_end);
+
+  TF_RETURN_IF_ERROR(transfer_manager->WriteRootTupleIndexTable(
+      stream, execution_input.Buffers()));
   StatusOr<EventPool::Handle> event_or =
       local_device->event_pool().ThenAllocateAndRecordEvent(stream);
   if (!event_or.ok()) {
@@ -1077,7 +1094,7 @@ StatusOr<TupleHandle> MakeTupleHelper(
 
   auto transfer_event = std::make_shared<BufferDefinitionEvent>();
   transfer_event->SetDefinitionEvent(event_or.ConsumeValueOrDie(), stream);
-  return TupleHandle({std::move(root_table_memory), std::move(tuple_buffer),
+  return TupleHandle({std::move(on_host_shape), std::move(execution_input),
                       std::move(transfer_event)});
 }
 
@@ -1179,47 +1196,56 @@ StatusOr<ScopedShapedBuffer> PyLocalExecutable::EnqueueExecution(
           << " mapped to device ordinal for execution: " << device_ordinal;
 
   absl::flat_hash_set<BufferDefinitionEvent*> events;
-  std::vector<ShapedBuffer> argument_buffers;
-  std::vector<const ShapedBuffer*> argument_buffer_ptrs;
+  std::vector<const Shape*> argument_host_shapes;
+  std::vector<ExecutionInput> execution_inputs;
   device_buffers->reserve(argument_handles.size());
-  argument_buffers.reserve(argument_handles.size());
-  argument_buffer_ptrs.reserve(argument_handles.size());
   for (int i = 0; i < argument_handles.size(); ++i) {
     PyLocalBuffer* handle = argument_handles[i];
-    PyLocalBuffer::ScopedHold device_buffer(handle->GetBufferWithUsageHold());
-    if (!device_buffer.ok()) {
-      return InvalidArgument(
-          "Deleted buffer passed to Execute() as argument %d to replica %d", i,
-          replica);
-    }
     if (handle->device() != device) {
       return InvalidArgument(
           "Buffer passed to Execute() as argument %d to replica %d is on "
           "device %s, but replica is assigned to device %s.",
           i, replica, handle->device()->DebugString(), device->DebugString());
     }
-    ShapedBuffer shaped_buffer = device_buffer->AsShapedBuffer(
-        handle->on_host_shape(), handle->on_device_shape(),
-        handle->client()->client()->platform());
-    argument_buffers.push_back(std::move(shaped_buffer));
-    argument_buffer_ptrs.push_back(&argument_buffers.back());
+    device_buffers->emplace_back(handle->GetBufferWithUsageHold());
+    PyLocalBuffer::ScopedHold& device_buffer = device_buffers->back();
+    if (!device_buffer.ok()) {
+      return InvalidArgument(
+          "Invalid buffer passed to Execute() as argument %d to replica %d: "
+          "%s",
+          i, replica, device_buffer.status().ToString());
+    }
     GetDeviceBufferDefinitionEvents(*device_buffer, &events);
-    device_buffers->push_back(std::move(device_buffer));
-    VLOG(4) << "Argument " << i
-            << " buffer: " << argument_buffers.back().ToString();
   }
 
   LocalDeviceState* device_state = &client_->device_state(device_ordinal);
   TupleHandle tuple_handle;
   if (tuple_arguments_) {
     TF_ASSIGN_OR_RETURN(tuple_handle,
-                        MakeTupleHelper(client_, device_state, argument_buffers,
-                                        device_ordinal));
-    argument_buffer_ptrs = {tuple_handle.shaped_buffer.get()};
+                        MakeTupleHelper(client_, device_state, argument_handles,
+                                        *device_buffers, device_ordinal));
     events.insert(tuple_handle.event.get());
-    // CAUTION: a copy has been enqueued into tuple_handle.root_table so it is
-    // important not to free the root_table on error without ensuring that
-    // necessary synchronization has been done.
+    execution_inputs.emplace_back(std::move(tuple_handle.execution_input));
+    argument_host_shapes.push_back(&tuple_handle.on_host_shape);
+  } else {
+    argument_host_shapes.reserve(argument_handles.size());
+    execution_inputs.reserve(argument_handles.size());
+    for (int i = 0; i < argument_handles.size(); ++i) {
+      PyLocalBuffer* handle = argument_handles[i];
+      argument_host_shapes.push_back(&handle->on_host_shape());
+
+      const PyLocalBuffer::ScopedHold& device_buffer = (*device_buffers)[i];
+      // Make an ExecutionInput from the device buffer.
+      execution_inputs.emplace_back(handle->on_device_shape());
+      ExecutionInput& execution_input = execution_inputs.back();
+      ShapeTree<MaybeOwningDeviceMemory>::iterator input_iterator =
+          execution_input.MutableBuffers()->begin();
+      ShapeTree<MaybeOwningDeviceMemory>::iterator iterator_end =
+          execution_input.MutableBuffers()->end();
+      device_buffer.AddToInput(&input_iterator, iterator_end, &execution_input,
+                               client_->allocator());
+      CHECK(input_iterator == iterator_end);
+    }
   }
 
   for (BufferDefinitionEvent* event : events) {
@@ -1245,33 +1271,50 @@ StatusOr<ScopedShapedBuffer> PyLocalExecutable::EnqueueExecution(
   auto compute_reservation = std::make_shared<Semaphore::ScopedReservation>(
       device_state->compute_semaphore().ScopedAcquire(1));
 
-  StatusOr<ScopedShapedBuffer> result_buffer_or_status =
-      executables_[executable_idx]->RunAsync(argument_buffer_ptrs, run_options);
+  StatusOr<ExecutionOutput> result_buffer_or_status =
+      executables_[executable_idx]->RunAsync(
+          argument_host_shapes, std::move(execution_inputs), run_options);
 
   VLOG(1) << "Replica " << replica << " partition " << partition
           << " completed; ok=" << result_buffer_or_status.ok();
 
+  if (!result_buffer_or_status.ok()) {
+    return result_buffer_or_status.status();
+  }
+
   if (device_state->allocation_model() == LocalDeviceState::kSynchronous) {
-    // Free the root tuple table after execution has completed.
+    ExecutionOutput& execution_output = result_buffer_or_status.ValueOrDie();
+    // If we used a transient tuple for the arguments its root table is going to
+    // be passed back to us via the execution output. We need to ensure it isn't
+    // freed until after execution completes.
+    std::vector<se::OwningDeviceMemory> donated_memory =
+        execution_output.ConsumeToBeReleased();
+    absl::InlinedVector<se::DeviceMemoryBase, 3> donated_ptrs;
+    donated_ptrs.reserve(donated_memory.size());
+    for (se::OwningDeviceMemory& owning : donated_memory) {
+      // Release the owning memory so we can pass it to the closure.
+      donated_ptrs.push_back(owning.Release());
+    }
     device_state->ThenExecuteOnCallbackThread(
         device_state->compute_stream(),
         [references{std::make_tuple(executables_[executable_idx],
                                     compute_reservation, device_assignment_)},
-         root_buffer{tuple_handle.root_table.Release()},
-         allocator{client_->allocator()}, device_ordinal]() {
-          TF_CHECK_OK(allocator->Deallocate(device_ordinal, root_buffer));
+         donated_ptrs{std::move(donated_ptrs)}, allocator{client_->allocator()},
+         device_ordinal]() {
+          for (const auto& ptr : donated_ptrs) {
+            TF_CHECK_OK(allocator->Deallocate(device_ordinal, ptr));
+          }
         });
-
   } else {
-    // The root tuple table can be freed as soon as the computation is
-    // enqueued.
+    // Any donated memory returned by the ExecutionOutput can be immediately
+    // freed.
     device_state->ThenRelease(
         device_state->compute_stream(),
         std::make_tuple(executables_[executable_idx], compute_reservation,
                         device_assignment_));
   }
 
-  return result_buffer_or_status;
+  return result_buffer_or_status.ConsumeValueOrDie().ConsumeResult();
 }
 
 StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
