@@ -99,8 +99,8 @@ class IteratorResource : public ResourceBase {
 
   UnboundedThreadPool unbounded_thread_pool_;
   mutex mu_;
-  const std::unique_ptr<DeviceMgr> device_mgr_ GUARDED_BY(mu_);
-  std::shared_ptr<State> iterator_state_ GUARDED_BY(mu_);
+  const std::unique_ptr<DeviceMgr> device_mgr_ TF_GUARDED_BY(mu_);
+  std::shared_ptr<State> iterator_state_ TF_GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
 };
@@ -114,7 +114,7 @@ class IteratorHandleOp : public OpKernel {
   // by anyone, but it would break backward compatibility.
   ~IteratorHandleOp() override;
 
-  void Compute(OpKernelContext* context) override LOCKS_EXCLUDED(mu_);
+  void Compute(OpKernelContext* context) override TF_LOCKS_EXCLUDED(mu_);
 
  private:
   // During the first Compute(), resource is either created or looked up using
@@ -131,7 +131,7 @@ class IteratorHandleOp : public OpKernel {
 
   mutex mu_;
   ContainerInfo cinfo_;  // Written once under mu_ then constant afterwards.
-  IteratorResource* resource_ GUARDED_BY(mu_) = nullptr;
+  IteratorResource* resource_ TF_GUARDED_BY(mu_) = nullptr;
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
   const int graph_def_version_;

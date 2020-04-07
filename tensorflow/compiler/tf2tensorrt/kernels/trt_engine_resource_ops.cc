@@ -71,7 +71,7 @@ class CreateTRTResourceHandle : public OpKernel {
   string resource_name_;
   Tensor handle_;
   mutex mutex_;
-  bool initialized_ GUARDED_BY(mutex_) = false;
+  bool initialized_ TF_GUARDED_BY(mutex_) = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CreateTRTResourceHandle);
 };

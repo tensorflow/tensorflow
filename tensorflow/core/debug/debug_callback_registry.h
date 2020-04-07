@@ -61,7 +61,7 @@ class DebugCallbackRegistry {
   mutex mu_;
 
   // Maps debug_url keys to callbacks for routing observed tensors.
-  std::map<string, EventCallback> keyed_callback_ GUARDED_BY(mu_);
+  std::map<string, EventCallback> keyed_callback_ TF_GUARDED_BY(mu_);
 
   static DebugCallbackRegistry* instance_;
 };

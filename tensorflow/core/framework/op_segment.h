@@ -78,7 +78,7 @@ class OpSegment {
   typedef std::unordered_map<string, Item*> SessionMap;
 
   mutable mutex mu_;
-  SessionMap sessions_ GUARDED_BY(mu_);
+  SessionMap sessions_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpSegment);
 };

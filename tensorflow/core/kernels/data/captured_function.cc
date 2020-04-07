@@ -101,7 +101,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
   };
 
   mutex mu_;
-  int64 processing_time_ GUARDED_BY(mu_) = 0;
+  int64 processing_time_ TF_GUARDED_BY(mu_) = 0;
 };
 
 Status RunShortCircuit(const ShortCircuitInfo& info,

@@ -317,7 +317,7 @@ class ProcessFunctionLibraryRuntime {
   FunctionLibraryRuntime::Handle AddHandleLocked(
       const string& function_key, const string& device_name,
       FunctionLibraryRuntime::LocalHandle local_handle)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // For a given device_name, returns a DeviceContext for copying
   // tensors to/from the device.
@@ -423,11 +423,11 @@ class ProcessFunctionLibraryRuntime {
     mutex mu_;
 
     const string target_device_;
-    FunctionLibraryRuntime::LocalHandle local_handle_ GUARDED_BY(mu_);
+    FunctionLibraryRuntime::LocalHandle local_handle_ TF_GUARDED_BY(mu_);
     const string function_key_;
-    bool is_cross_process_ GUARDED_BY(mu_) = false;
-    bool init_started_ GUARDED_BY(mu_) = false;
-    Status init_result_ GUARDED_BY(mu_);
+    bool is_cross_process_ TF_GUARDED_BY(mu_) = false;
+    bool init_started_ TF_GUARDED_BY(mu_) = false;
+    Status init_result_ TF_GUARDED_BY(mu_);
     Notification init_done_;
   };
 
@@ -442,22 +442,22 @@ class ProcessFunctionLibraryRuntime {
 
   // Holds all the function instantiations. Maps function_keys to handles.
   std::unordered_map<string, FunctionLibraryRuntime::Handle> table_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
 
   // Function data for instantiated remote functions.
   std::unordered_map<FunctionLibraryRuntime::Handle,
                      std::unique_ptr<FunctionData>>
-      function_data_ GUARDED_BY(mu_);
+      function_data_ TF_GUARDED_BY(mu_);
 
   // Function data for instantiated multi-device functions.
   std::unordered_map<FunctionLibraryRuntime::Handle,
                      std::unique_ptr<MultiDeviceFunctionData>>
-      mdevice_data_ GUARDED_BY(mu_);
+      mdevice_data_ TF_GUARDED_BY(mu_);
 
   std::unique_ptr<
       std::unordered_map<Device*, std::unique_ptr<FunctionLibraryRuntime>>>
       flr_map_;
-  int next_handle_ GUARDED_BY(mu_);
+  int next_handle_ TF_GUARDED_BY(mu_);
   const SessionMetadata* const session_metadata_;
 };
 

@@ -269,7 +269,7 @@ size_t BFCAllocator::RoundedBytes(size_t bytes) {
 }
 
 bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes)
-    EXCLUSIVE_LOCKS_REQUIRED(lock_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
   // Do nothing if garbage collection is off.
   if (!garbage_collection_) {
     return false;
@@ -326,7 +326,7 @@ bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes)
 
 void BFCAllocator::DeallocateRegions(
     const absl::flat_hash_set<void*>& region_ptrs)
-    EXCLUSIVE_LOCKS_REQUIRED(lock_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
   // Explicitly remove the const qualifier as some compilers disallow passing
   // const_iterator to std::vector::erase(), which is used in
   // RemoveAllocationRegion().
@@ -450,7 +450,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
 #endif
 
   tensorflow::profiler::TraceMe trace_me(
-      [&]() EXCLUSIVE_LOCKS_REQUIRED(lock_) {
+      [&]() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
         AllocatorStats stats = stats_;
         int64 bytes_available =
             memory_limit_ - stats.bytes_reserved - stats.bytes_in_use;

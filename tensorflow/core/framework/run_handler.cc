@@ -351,13 +351,13 @@ class ThreadWorkSource {
   mutex blocking_queue_op_mu_;
   char pad_[128];
   mutex waiters_mu_;
-  Waiter queue_waiters_ GUARDED_BY(waiters_mu_);
+  Waiter queue_waiters_ TF_GUARDED_BY(waiters_mu_);
   std::atomic<int64> traceme_id_;
 
   mutex run_handler_waiter_mu_;
-  uint64 version_ GUARDED_BY(run_handler_waiter_mu_);
-  mutex* sub_thread_pool_waiter_mu_ GUARDED_BY(run_handler_waiter_mu_);
-  Waiter* sub_thread_pool_waiter_ GUARDED_BY(run_handler_waiter_mu_);
+  uint64 version_ TF_GUARDED_BY(run_handler_waiter_mu_);
+  mutex* sub_thread_pool_waiter_mu_ TF_GUARDED_BY(run_handler_waiter_mu_);
+  Waiter* sub_thread_pool_waiter_ TF_GUARDED_BY(run_handler_waiter_mu_);
 };
 
 class RunHandlerThreadPool {
@@ -556,7 +556,7 @@ class RunHandlerThreadPool {
     std::unique_ptr<Thread> thread;
     int current_index;
     std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>
-        new_thread_work_sources GUARDED_BY(mu);
+        new_thread_work_sources TF_GUARDED_BY(mu);
 
     uint64 current_version;
     // Should only be accessed by one thread.
@@ -924,12 +924,12 @@ class RunHandlerPool::Impl {
     return run_handler_thread_pool_.get();
   }
 
-  bool has_free_handler() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  bool has_free_handler() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     return !free_handlers_.empty();
   }
 
   std::unique_ptr<RunHandler> Get(int64 step_id, int64 timeout_in_ms)
-      LOCKS_EXCLUDED(mu_) {
+      TF_LOCKS_EXCLUDED(mu_) {
     thread_local std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>
         thread_work_sources =
             std::unique_ptr<Eigen::MaxSizeVector<ThreadWorkSource*>>(
@@ -978,7 +978,7 @@ class RunHandlerPool::Impl {
     return WrapUnique<RunHandler>(new RunHandler(handler_impl));
   }
 
-  void ReleaseHandler(RunHandler::Impl* handler) LOCKS_EXCLUDED(mu_) {
+  void ReleaseHandler(RunHandler::Impl* handler) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     DCHECK_GT(sorted_active_handlers_.size(), 0);
 
@@ -1014,7 +1014,7 @@ class RunHandlerPool::Impl {
       int num_active_requests, uint64 version,
       const Eigen::MaxSizeVector<ThreadWorkSource*>& thread_work_sources);
 
-  void LogInfo() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void LogInfo() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Maximum number of handlers pre-created during pool construction time. The
   // number has been chosen expecting each handler might at least want 1
@@ -1029,15 +1029,15 @@ class RunHandlerPool::Impl {
   // Thread compatible part used only by lock under RunHandlerPool.
   // Handlers are sorted by start time.
   // TODO(azaks): sort by the remaining latency budget.
-  std::vector<RunHandler::Impl*> sorted_active_handlers_ GUARDED_BY(mu_);
-  std::vector<RunHandler::Impl*> free_handlers_ GUARDED_BY(mu_);
-  std::vector<std::unique_ptr<RunHandler::Impl>> handlers_ GUARDED_BY(mu_);
+  std::vector<RunHandler::Impl*> sorted_active_handlers_ TF_GUARDED_BY(mu_);
+  std::vector<RunHandler::Impl*> free_handlers_ TF_GUARDED_BY(mu_);
+  std::vector<std::unique_ptr<RunHandler::Impl>> handlers_ TF_GUARDED_BY(mu_);
   // Histogram of elapsed runtime of every handler (in ms).
-  histogram::Histogram time_hist_ GUARDED_BY(mu_);
+  histogram::Histogram time_hist_ TF_GUARDED_BY(mu_);
 
-  int64 iterations_ GUARDED_BY(mu_);
+  int64 iterations_ TF_GUARDED_BY(mu_);
   mutex mu_;
-  int64 version_ GUARDED_BY(mu_);
+  int64 version_ TF_GUARDED_BY(mu_);
   const std::vector<double> sub_thread_pool_end_request_percentage_;
 };
 

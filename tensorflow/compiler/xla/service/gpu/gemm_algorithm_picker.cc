@@ -45,11 +45,11 @@ using GemmCacheKey =
     std::tuple<se::StreamExecutor*, Shape, Shape, Shape, std::string>;
 
 static tensorflow::mutex autotune_cache_mu(tensorflow::LINKER_INITIALIZED);
-static auto& autotune_cache GUARDED_BY(autotune_cache_mu) =
+static auto& autotune_cache TF_GUARDED_BY(autotune_cache_mu) =
     *new absl::flat_hash_map<GemmCacheKey,
                              absl::optional<se::blas::AlgorithmType>>();
-static int64 cache_hits GUARDED_BY(autotune_cache_mu) = 0;
-static int64 cache_misses GUARDED_BY(autotune_cache_mu) = 0;
+static int64 cache_hits TF_GUARDED_BY(autotune_cache_mu) = 0;
+static int64 cache_misses TF_GUARDED_BY(autotune_cache_mu) = 0;
 
 // Experimentally tries to pick the best algorithm for the given gemm.
 //
