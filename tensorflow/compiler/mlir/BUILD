@@ -170,7 +170,6 @@ tf_cc_binary(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TranslateClParser",
         "@llvm-project//mlir:Translation",
     ],
 )

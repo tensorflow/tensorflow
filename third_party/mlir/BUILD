@@ -722,16 +722,12 @@ cc_library(
             "lib/Support/JitRunner.cpp",
             # TODO(jpienaar): Move this out, else Support depends on Analysis/
             "lib/Support/MlirOptMain.cpp",
-            # TODO(jpienaar): Move this out, else Support depends on Analysis/
-            "lib/Support/TranslateClParser.cpp",
         ],
     ),
     hdrs = glob([
         "include/mlir/ADT/*.h",
         "include/mlir/Support/*.h",
-    ]) + [
-        "include/mlir/Translation.h",
-    ],
+    ]),
     includes = ["include"],
     deps = [
         "@llvm-project//llvm:support",
@@ -2184,9 +2180,9 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":Analysis",
         ":IR",
         ":Parser",
-        ":StandardOps",
         ":Support",
         "@llvm-project//llvm:support",
     ],
@@ -2378,21 +2374,6 @@ cc_library(
 )
 
 cc_library(
-    name = "TranslateClParser",
-    srcs = ["lib/Support/TranslateClParser.cpp"],
-    hdrs = ["include/mlir/Support/TranslateClParser.h"],
-    includes = ["include"],
-    deps = [
-        ":Analysis",
-        ":IR",
-        ":Parser",
-        ":Support",
-        ":Translation",
-        "@llvm-project//llvm:support",
-    ],
-)
-
-cc_library(
     name = "MlirTranslateMain",
     srcs = ["tools/mlir-translate/mlir-translate.cpp"],
     deps = [
@@ -2400,7 +2381,6 @@ cc_library(
         ":IR",
         ":Parser",
         ":Support",
-        ":TranslateClParser",
         ":Translation",
         "@llvm-project//llvm:support",
     ],

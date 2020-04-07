@@ -6563,6 +6563,7 @@ tf_py_test(
         # multiprocessing can be flaky in the internal google
         # environment, so we disable it there.
         "notap",
+        "no_oss_py38",
         # The multiprocessing module behaves differently on
         # windows, so we disable this test on windows.
         "no_windows",

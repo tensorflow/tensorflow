@@ -385,6 +385,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int rank = params->rank;
   const int input_size = input->dims->data[1];
   const int batch_size = input->dims->data[0];
+  // Ensure the input size is a multiple of two.  This is necessary since
+  // optimized kernels access the memory in chunks of two, and all accesses
+  // must be aligned to 16 bits.
+  // TODO(b/153202598): Remove when padding is allowed in TFLite tensors.
+  TF_LITE_ENSURE_EQ(context, input_size % 2, 0);
+
   const int num_filters = weights_feature->dims->data[0];
   TF_LITE_ENSURE_EQ(context, num_filters % rank, 0);
   const int num_units = num_filters / rank;
