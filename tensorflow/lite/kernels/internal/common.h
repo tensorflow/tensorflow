@@ -156,7 +156,7 @@ inline int32 MultiplyByQuantizedMultiplier(int32 x, int32 quantized_multiplier,
                              right_shift);
 }
 
-inline int32 MultiplyByQuantizedMultiplier(std::int64_t x,
+inline int32 MultiplyByQuantizedMultiplier(int64_t x,
                                            int32 quantized_multiplier,
                                            int shift) {
   // Inputs:
@@ -172,7 +172,7 @@ inline int32 MultiplyByQuantizedMultiplier(std::int64_t x,
 
   int32_t reduced_multiplier = (quantized_multiplier + (1 << 15)) >> 16;
   int total_shift = 15 - shift;
-  x = (x * (int64_t)reduced_multiplier) + (1 << (total_shift - 1));
+  x = (x * (int64_t)reduced_multiplier) + ((int64_t)1 << (total_shift - 1));
   int32_t result = x >> total_shift;
   return result;
 }
