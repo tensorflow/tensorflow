@@ -57,7 +57,7 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
     const std::string& key = keys[i].AsString().str();
 
     if (key.compare("stride") == 0) {
-      auto vec = values[i].AsVector();  // values represent [stride_h, stride_w]
+      const auto& vec = values[i].AsVector();  // values represent [stride_h, stride_w]
       if (stride_h) *stride_h = vec[0].AsInt32();
       if (stride_w) *stride_w = vec[1].AsInt32();
     } else if (key.compare("stride_h") == 0) {
@@ -65,12 +65,12 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
     } else if (key.compare("stride_w") == 0) {
       if (stride_w) *stride_w = values[i].AsInt32();
     } else if (key.compare("pool") == 0) {
-      auto vec = values[i].AsVector();  // values represent [pool_h, pool_w]
+      const auto& vec = values[i].AsVector();  // values represent [pool_h, pool_w]
       if (pool_h) *pool_h = vec[0].AsInt32();
       if (pool_w) *pool_w = vec[1].AsInt32();
     } else if (key.compare("unpadded_shape") == 0) {
       if (unpadded_shape) {
-        auto vec =
+        const auto& vec =
             values[i].AsVector();  // values represent [C_out, K_h, K_w, C_in]
         unpadded_shape->C_out = vec[0].AsInt32();
         unpadded_shape->K_h = vec[1].AsInt32();
@@ -79,7 +79,7 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
       }
     } else if (key.compare("pad") == 0) {
       if (pad) {
-        auto vec =
+        const auto& vec =
             values[i].AsVector();  // values represent [top, left, zero_point]
         pad->top = vec[0].AsInt32();
         pad->left = vec[1].AsInt32();
@@ -87,7 +87,7 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
       }
     } else if (key.compare("par_plan") == 0) {
       if (par_regions) {
-        auto jobs = values[i].AsVector();
+        const auto& jobs = values[i].AsVector();
         par_regions->clear();
         for (int i = 0; i < par_regions->size; i++) {
           auto region = jobs[i].AsVector();
