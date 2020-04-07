@@ -2195,7 +2195,7 @@ class DatasetV1(DatasetV2):
     if shared_name is None:
       shared_name = ""
 
-    with ops.colocate_with(self._variant_tensor):
+    with ops.device(self._variant_tensor.device):
       iterator_resource = gen_dataset_ops.iterator_v2(
         container="", shared_name=shared_name, **self._flat_structure)
 
@@ -4270,7 +4270,7 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
 
-    with ops.colocate_with(input_dataset._variant_tensor):
+    with ops.device(input_dataset._variant_tensor.device):
       variant_tensor = gen_dataset_ops.prefetch_dataset(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
           buffer_size=self._buffer_size,
