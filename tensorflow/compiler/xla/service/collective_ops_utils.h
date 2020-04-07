@@ -149,7 +149,7 @@ void WaitAndLogIfStuck(tensorflow::BlockingCounter* counter,
 
 // Encapsulates parameters to Rendezvous::SubmitParticipant.
 struct AllReduceParticipantData {
-  explicit AllReduceParticipantData(RendezvousKey rendezvous_key)
+  explicit AllReduceParticipantData(const RendezvousKey& rendezvous_key)
       : rendezvous_key(rendezvous_key) {}
 
   int64 device_ordinal;
@@ -197,19 +197,25 @@ struct AllReduceParticipantData {
 //
 // Rendezvous objects can only be used once.
 //
+// I: Participant data.
 // O: Participant output.
-template <typename O>
+template <typename I, typename O>
 class Rendezvous {
  public:
+  struct ParticipantImplOutput {
+    bool is_primary;
+    O custom_output;
+  };
+
   virtual ~Rendezvous() {}
   explicit Rendezvous(const RendezvousKey& k) : key_(k) {}
 
   // Submit a participant to the rendezvous. We get the rendezvous from
   // `rendezvous_getter`, which we can then use to drop the existing reference.
   static StatusOr<O> SubmitParticipant(
-      std::function<std::shared_ptr<Rendezvous<O>>()> rendezvous_getter,
-      AllReduceParticipantData participant) {
-    std::shared_ptr<Rendezvous<O>> rendezvous = rendezvous_getter();
+      std::function<std::shared_ptr<Rendezvous<I, O>>()> rendezvous_getter,
+      I participant) {
+    std::shared_ptr<Rendezvous<I, O>> rendezvous = rendezvous_getter();
     TF_ASSIGN_OR_RETURN(auto p, rendezvous->SubmitParticipant(participant));
 
     // Drop our reference to the Rendezvous and wait for all other threads to do
@@ -234,8 +240,8 @@ class Rendezvous {
 
  protected:
   // Returns domain-specific output O and whether this replica is primary.
-  virtual StatusOr<std::pair<O, bool>> SubmitParticipantImpl(
-      AllReduceParticipantData participant) = 0;
+  virtual StatusOr<ParticipantImplOutput> SubmitParticipantImpl(
+      const I& participant) = 0;
 
   virtual void CleanupImpl(O handle, bool is_primary) {}
 
@@ -243,7 +249,7 @@ class Rendezvous {
 
   bool initialized_ TF_GUARDED_BY(mu_) = false;
 
-  std::vector<AllReduceParticipantData> participants_ TF_GUARDED_BY(mu_);
+  std::vector<I> participants_ TF_GUARDED_BY(mu_);
 
  private:
   // Runs the all-reduce on the given thread.  If successful, returns
@@ -253,15 +259,14 @@ class Rendezvous {
   //    the caller can coordinate with the participants one last time if it
   //    chooses.  This is useful for coordinating destruction of the Rendezvous.
   StatusOr<std::pair<O, std::shared_ptr<tensorflow::BlockingCounter>>>
-  SubmitParticipant(AllReduceParticipantData participant) {
+  SubmitParticipant(const I& participant) {
     {
       tensorflow::mutex_lock lock(mu_);
       CHECK(!initialized_);
 
       // Spot check for consistent replica counts among submitting threads.
       if (!participants_.empty() &&
-          (participants_.back().buffers.size() != participant.buffers.size() ||
-           participants_.back().rendezvous_key != participant.rendezvous_key)) {
+          participants_.back().rendezvous_key != participant.rendezvous_key) {
         return InvalidArgument(
             "Mismatch among all-reduce participants.  Expected same "
             "replica-count, element-count, and rendezvous-key but were %s and "
@@ -280,20 +285,17 @@ class Rendezvous {
           participant.device_ordinal, participant.stream, key_.ToString());
     });
 
-    StatusOr<std::pair<O, bool>> p_or = SubmitParticipantImpl(participant);
+    StatusOr<ParticipantImplOutput> p_or = SubmitParticipantImpl(participant);
 
     done_.DecrementCount();
     if (!p_or.ok()) {
       return p_or.status();
     }
-    std::pair<O, bool> p = p_or.ValueOrDie();
-
-    O handle = p.first;
-    bool is_primary = p.second;
+    ParticipantImplOutput p = p_or.ValueOrDie();
 
     // The primary owns the lock on the NCCL clique.  Hold it until all threads
     // are done.  (We'll release it when we return from this function.)
-    if (is_primary) {
+    if (p.is_primary) {
       WaitAndLogIfStuck(&done_, [&] {
         return absl::StrFormat(
             "primary participant waiting for all other participants to "
@@ -302,9 +304,9 @@ class Rendezvous {
       });
     }
 
-    CleanupImpl(handle, is_primary);
+    CleanupImpl(p.custom_output, p.is_primary);
 
-    return std::make_pair(handle, returned_blocking_counter_);
+    return std::make_pair(p.custom_output, returned_blocking_counter_);
   }
   const RendezvousKey key_;
 

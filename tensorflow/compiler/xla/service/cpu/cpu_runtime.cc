@@ -254,14 +254,15 @@ __xla_cpu_runtime_ReleaseOutfeedBufferAfterPopulation(
 
 namespace {
 
-class CpuAllReduceRendezvous : public xla::Rendezvous<std::nullptr_t> {
+class CpuAllReduceRendezvous
+    : public xla::Rendezvous<xla::AllReduceParticipantData, std::nullptr_t> {
  public:
   explicit CpuAllReduceRendezvous(const xla::RendezvousKey& k)
-      : xla::Rendezvous<std::nullptr_t>(k) {}
+      : xla::Rendezvous<xla::AllReduceParticipantData, std::nullptr_t>(k) {}
 
  protected:
-  xla::StatusOr<std::pair<std::nullptr_t, bool>> SubmitParticipantImpl(
-      xla::AllReduceParticipantData participant) override {
+  xla::StatusOr<ParticipantImplOutput> SubmitParticipantImpl(
+      const xla::AllReduceParticipantData& participant) override {
     TF_RET_CHECK(participant.buffers.size() == 1);
     xla::PrimitiveType datatype = participant.buffers.front().primitive_type;
     bool primary = [&] {
@@ -307,9 +308,7 @@ class CpuAllReduceRendezvous : public xla::Rendezvous<std::nullptr_t> {
           LOG(FATAL) << "Unexpected datatype;";
       }
     }
-
-    // First element is a dummy value.
-    return std::make_pair(nullptr, primary);
+    return ParticipantImplOutput{primary, /*custom_output=*/nullptr};
   }
 
  private:
