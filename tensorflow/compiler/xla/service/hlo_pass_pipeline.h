@@ -70,6 +70,14 @@ class HloPassPipeline : public HloPassInterface {
     return *pass;
   }
 
+  // Add an invariant-checking pass to the pipeline on debug builds only.
+  template <typename T, typename... Args>
+  void AddInvariantCheckerDebug(Args&&... args) {
+#ifndef NDEBUG
+    AddInvariantChecker<T>(std::forward<Args>(args)...);
+#endif  // NDEBUG
+  }
+
   StatusOr<bool> Run(HloModule* module) override;
   StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) override;
 

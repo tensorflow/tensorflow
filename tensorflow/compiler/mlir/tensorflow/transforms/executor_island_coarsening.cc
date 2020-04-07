@@ -303,7 +303,8 @@ void InsertDummyIslandForFetch(FetchOp fetch) {
       /*control=*/ControlType::get(fetch.getContext()),
       /*controlInputs=*/control_fetches);
   island.body().push_back(new Block);
-  OpBuilder(&island.GetBody()).create<YieldOp>(fetch.getLoc(), data_fetches);
+  OpBuilder::atBlockEnd(&island.GetBody())
+      .create<YieldOp>(fetch.getLoc(), data_fetches);
   const int fetch_control_idx = data_fetches.size();
   for (int i = 0, e = fetch.getNumOperands(); i < e; i++) {
     // The fetch could have multiple control operands (all at the end of its

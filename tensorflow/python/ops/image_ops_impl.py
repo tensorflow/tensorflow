@@ -4506,7 +4506,7 @@ def non_max_suppression_padded(boxes,
   # version to give us time to fix TFLite conversion
   if (not sorted_input) and \
       (not canonicalized_coordinates) and \
-      tile_size == 512 and compat.forward_compatible(2020, 4, 20):
+      tile_size == 512 and not compat.forward_compatible(2020, 4, 20):
     return non_max_suppression_padded_v1(
         boxes, scores, max_output_size, iou_threshold, score_threshold,
         pad_to_max_output_size, name)

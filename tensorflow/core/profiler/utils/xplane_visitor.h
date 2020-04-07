@@ -55,6 +55,8 @@ class XStatVisitor {
 
   absl::string_view StrValue() const { return stat_->str_value(); }
 
+  absl::string_view RefValue() const;
+
   const XStat& RawStat() const { return *stat_; }
 
   std::string ToString() const;
@@ -62,6 +64,7 @@ class XStatVisitor {
  private:
   const XStat* stat_;
   const XStatMetadata* metadata_;
+  const XPlaneVisitor* plane_;
   absl::optional<int64> type_;
 };
 

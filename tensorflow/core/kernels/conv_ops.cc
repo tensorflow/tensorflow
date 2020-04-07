@@ -1012,7 +1012,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
     std::vector<tensorflow::AutotuneResult> results;
-    for (auto profile_algorithm : algorithms) {
+    for (const auto& profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
       se::RedzoneAllocator rz_scratch_allocator(

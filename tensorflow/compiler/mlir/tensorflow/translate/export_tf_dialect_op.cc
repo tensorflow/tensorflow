@@ -177,6 +177,13 @@ StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
     TF_RETURN_IF_ERROR(GetUnregisteredAttrs(inst, &attrs_to_ignore));
   }
 
+  if (inst->hasTrait<mlir::OpTrait::AttrSizedOperandSegments>()) {
+    // TODO(b/146937733): Don't use <void> here.
+    llvm::StringRef attr_name = mlir::OpTrait::AttrSizedOperandSegments<
+        void>::getOperandSegmentSizeAttr();
+    attrs_to_ignore.insert(attr_name.data());
+  }
+
   if (inst->hasTrait<mlir::OpTrait::AttrSizedResultSegments>()) {
     // TODO(b/146937733): Don't use <void> here.
     llvm::StringRef attr_name = mlir::OpTrait::AttrSizedResultSegments<

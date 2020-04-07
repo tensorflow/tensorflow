@@ -86,6 +86,35 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     trace_file = os.path.join(profile_dir, run, hostname + '.trace.json.gz')
     self.assertTrue(gfile.Exists(trace_file))
 
+  def test_profile_with_options(self):
+    logdir = self.get_temp_dir()
+    options = profiler.ProfilerOptions(
+        host_tracer_level=3, python_tracer_level=1)
+    profiler.start(logdir, options)
+    with traceme.TraceMe('three_times_five'):
+      three = constant_op.constant(3)
+      five = constant_op.constant(5)
+      product = three * five
+    self.assertAllEqual(15, product)
+
+    profiler.stop()
+    file_list = gfile.ListDirectory(logdir)
+    self.assertEqual(len(file_list), 2)
+
+  def test_context_manager_with_options(self):
+    logdir = self.get_temp_dir()
+    options = profiler.ProfilerOptions(
+        host_tracer_level=3, python_tracer_level=1)
+    with profiler.Profile(logdir, options):
+      with traceme.TraceMe('three_times_five'):
+        three = constant_op.constant(3)
+        five = constant_op.constant(5)
+        product = three * five
+      self.assertAllEqual(15, product)
+
+    file_list = gfile.ListDirectory(logdir)
+    self.assertEqual(len(file_list), 2)
+
 
 if __name__ == '__main__':
   test.main()

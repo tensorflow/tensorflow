@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
@@ -24,29 +25,73 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
-class EagerOperation {
+class EagerOperation : public AbstractOperationInterface {
  public:
   explicit EagerOperation(tensorflow::EagerContext* ctx) : ctx_(*ctx) {}
-  ~EagerOperation() {
+  ~EagerOperation() override {
     for (TensorHandle* h : inputs_) {
       h->Unref();
     }
   }
 
-  // An EagerOperation object can be reused for a different op by calling
-  // Clear(), and then Reset(...) with the same arguments that would have
-  // been provided to the constructor.
-  void Clear() {
-    for (TensorHandle* h : inputs_) {
-      h->Unref();
-    }
-    inputs_.clear();
-    ClearInferenceState();
+  void Release() override { delete this; }
+
+  void Clear() override;
+  Status Reset(const char* op, const char* raw_device_name) override {
+    return Reset(op, raw_device_name, false, nullptr);
   }
+
+  const string& Name() const override { return attrs_.op_name(); }
+  const string& DeviceName() const override;
+  Status SetDeviceName(const char* name) override;
+
+  Status AddInput(AbstractTensorHandleInterface* input) override;
+  Status AddInputList(
+      absl::Span<AbstractTensorHandleInterface*> inputs) override;
+  Status Execute(absl::Span<AbstractTensorHandleInterface*> retvals,
+                 int* num_retvals) override;
+  const tensorflow::OpDef* OpDef() const override { return op_def_; };
+
+  Status SetAttrString(const char* attr_name, const char* data,
+                       size_t length) override;
+  Status SetAttrInt(const char* attr_name, int64_t value) override;
+  Status SetAttrFloat(const char* attr_name, float value) override;
+  Status SetAttrBool(const char* attr_name, bool value) override;
+  Status SetAttrType(const char* attr_name, DataType value) override;
+  Status SetAttrShape(const char* attr_name, const int64_t* dims,
+                      const int num_dims) override;
+  Status SetAttrFunction(const char* attr_name,
+                         const AbstractOperationInterface* value) override;
+  Status SetAttrFunctionName(const char* attr_name, const char* data,
+                             size_t length) override;
+  Status SetAttrTensor(const char* attr_name,
+                       AbstractTensorInterface* tensor) override;
+  Status SetAttrStringList(const char* attr_name, const void* const* values,
+                           const size_t* lengths, int num_values) override;
+  Status SetAttrFloatList(const char* attr_name, const float* values,
+                          int num_values) override;
+  Status SetAttrIntList(const char* attr_name, const int64_t* values,
+                        int num_values) override;
+  Status SetAttrTypeList(const char* attr_name, const DataType* values,
+                         int num_values) override;
+  Status SetAttrBoolList(const char* attr_name, const unsigned char* values,
+                         int num_values) override;
+  Status SetAttrShapeList(const char* attr_name, const int64_t** dims,
+                          const int* num_dims, int num_values) override;
+  Status SetAttrFunctionList(
+      const char* attr_name,
+      absl::Span<const AbstractOperationInterface*> values) override;
+
+  Status InputLength(const char* input_name, int* length) override;
+  Status OutputLength(const char* output_name, int* length) override;
+
+  Status SetUseXla(bool enable) override;
 
   Status Reset(const char* op, const char* raw_device_name, bool remote,
                EagerExecutor* executor,
@@ -61,7 +106,6 @@ class EagerOperation {
 
   AttrBuilder* MutableAttrs() { return &attrs_; }
   const AttrBuilder& Attrs() const { return attrs_; }
-  const tensorflow::OpDef* OpDef() const { return op_def_; }
 
   const absl::InlinedVector<TensorHandle*, 4>& Inputs() const {
     return inputs_;
@@ -71,7 +115,6 @@ class EagerOperation {
   void AddInput(TensorHandle* h);
   void UpdateInput(int i, TensorHandle* h);
 
-  const string& Name() const { return attrs_.op_name(); }
   const AttrTypeMap* AttrTypes() const { return attr_types_; }
 
   // Like TensorHandles, EagerOperations may be placed either on a virtual
@@ -98,13 +141,10 @@ class EagerOperation {
   const DeviceNameUtils::ParsedName& GetDeviceParsedName() const {
     return device_parsed_name_;
   }
-  Status SetDeviceName(const char* device);
 
   // Indicates whether the op is assigned to a device that is local to the
   // current host.
   bool IsLocal() const;
-
-  void SetUseXla(bool use_xla) { use_xla_ = use_xla; }
 
   CancellationManager* GetCancellationManager() const {
     return cancellation_manager_;
@@ -129,6 +169,8 @@ class EagerOperation {
   Status InferInputListAttrs(int num_inputs);
 
  private:
+  const tensorflow::OpDef* GetOpDef(Status* status);
+
   void ClearInferenceState() {
     op_def_ = nullptr;
     inference_arg_idx_ = 0;
@@ -176,6 +218,12 @@ inline void EagerOperation::UpdateInput(int i, TensorHandle* h) {
     *slot = h;  // Update inputs_[i] to h
   }
 }
+
+inline EagerOperation* OperationFromInterface(
+    AbstractOperationInterface* operation) {
+  return down_cast<EagerOperation*>(operation);
+}
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_OPERATION_H_

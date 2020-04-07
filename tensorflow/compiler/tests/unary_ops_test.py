@@ -134,6 +134,38 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([[-1, 1]], dtype=dtype),
           expected=np.array([[-1, 1]], dtype=dtype))
 
+  def testLog(self):
+    for dtype in self.float_types - {dtypes.bfloat16.as_numpy_dtype}:
+      tol = 1e-4 if dtype == np.float32 else 1e-9
+      x = np.linspace(-np.e, np.e, num=1000, dtype=dtype)
+      self._assertOpOutputMatchesExpected(
+          math_ops.log, x, expected=np.log(x), atol=tol, rtol=tol)
+
+      x = np.linspace(0., np.e * 1e-30, num=1000, dtype=dtype)
+      self._assertOpOutputMatchesExpected(
+          math_ops.log, x, expected=np.log(x), atol=tol, rtol=tol)
+
+      x = np.linspace(0., np.pi * 1e30, num=1000, dtype=dtype)
+      self._assertOpOutputMatchesExpected(
+          math_ops.log, x, expected=np.log(x), atol=tol, rtol=tol)
+
+  def testSin(self):
+    for dtype in self.float_types - {dtypes.bfloat16.as_numpy_dtype}:
+      tol = 1e-3 if dtype == np.float32 else 1e-10
+
+      x = np.linspace(-4 * np.pi, 4 * np.pi, num=1000, dtype=dtype)
+      self._assertOpOutputMatchesExpected(
+          math_ops.sin, x, expected=np.sin(x), rtol=tol, atol=tol)
+
+      x = np.linspace(0., 2.71828e-30, num=1000, dtype=dtype)
+      self._assertOpOutputMatchesExpected(
+          math_ops.sin, x, expected=np.sin(x), rtol=tol, atol=tol)
+
+      if dtype == np.float64:
+        x = np.linspace(0., 3.141592e8, num=1000, dtype=dtype)
+        self._assertOpOutputMatchesExpected(
+            math_ops.sin, x, expected=np.sin(x), rtol=1e-5, atol=1e-5)
+
   def testFloatOps(self):
     for dtype in self.float_types:
       x = np.arange(-0.90, 0.90, 0.25)

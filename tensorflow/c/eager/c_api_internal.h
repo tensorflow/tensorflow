@@ -32,10 +32,7 @@ limitations under the License.
 #include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
-#include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
-#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -64,12 +61,24 @@ struct TFE_ContextOptions {
   bool use_tfrt = false;
 };
 
+// Wraps a pointer to a context implementation.
+//
+// WARNING: Since the underlying object could be ref-counted a user of this
+// interface cannot destruct the underlying context object. Instead, call
+// TFE_DeleteContext who calls Release() on the context pointer and deletes
+// the TFE_Context structure.
 struct TFE_Context {
-  std::unique_ptr<tensorflow::AbstractContextInterface> context;
+  tensorflow::AbstractContextInterface* context;
 };
 
+// Wraps a pointer to a tensor handle implementation.
+//
+// WARNING: Since the underlying object could be ref-counted a user of this
+// interface cannot destruct the underlying handle object. Instead, call
+// TFE_DeleteTensorHandle who calls Release() on the handle pointer and deletes
+// the TFE_TensorHandle structure.
 struct TFE_TensorHandle {
-  std::unique_ptr<tensorflow::AbstractTensorHandleInterface> handle;
+  tensorflow::AbstractTensorHandleInterface* handle;
 };
 
 struct TFE_TensorDebugInfo {
@@ -80,8 +89,14 @@ struct TFE_TensorDebugInfo {
   std::vector<tensorflow::int64> dev_dims;
 };
 
+// Wraps a pointer to an operation implementation.
+//
+// WARNING: Since the underlying object could be ref-counted a user of this
+// interface cannot destruct the underlying operation object. Instead, call
+// TFE_DeleteOp who calls Release() on the operation pointer and deletes
+// the TFE_Op structure.
 struct TFE_Op {
-  std::unique_ptr<tensorflow::AbstractOperationInterface> operation;
+  tensorflow::AbstractOperationInterface* operation;
 };
 
 struct TFE_MonitoringCounterCell {

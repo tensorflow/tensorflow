@@ -548,16 +548,14 @@ template <typename T>
 void dnnl_gemm_batch(const std::vector<bool>& transa,
                      const std::vector<bool>& transb, const std::vector<int>& m,
                      const std::vector<int>& n, const std::vector<int>& k,
-                     const std::vector<float>& alpha, const T** a,
-                     const std::vector<int>& lda, const T** b,
-                     const std::vector<int>& ldb,
-                     const std::vector<float>& beta, T** c,
-                     const std::vector<int>& ldc, const int group_count,
+                     const std::vector<float>& alpha, const T* a, const T* b,
+                     const std::vector<float>& beta, T* c,
+                     const int group_count,
                      const std::vector<int>& group_size) {
   // Current BatchMatMul support in Tensorflow is narrower than the one offered
   // by MKL and MKL-DNN. Current BatchMatMul support in Tensorflow uses only 1
   // group of size equal to batch_size, and all MatMul parameters (m, n, k,
-  // lda, ldb, ldc, alpha, beta) within that group are same.
+  // alpha, beta) within that group are same.
   DCHECK(group_size.size() == 1);
   DCHECK(transa.size() == group_size[0]);
   DCHECK(transb.size() == group_size[0]);
@@ -566,9 +564,6 @@ void dnnl_gemm_batch(const std::vector<bool>& transa,
   DCHECK(m.size() == group_size[0]);
   DCHECK(n.size() == group_size[0]);
   DCHECK(k.size() == group_size[0]);
-  DCHECK(lda.size() == group_size[0]);
-  DCHECK(ldb.size() == group_size[0]);
-  DCHECK(ldc.size() == group_size[0]);
   for (int64_t idx = 0; idx < group_size[0]; idx++)
     DCHECK(transa[0] == transa[idx]);
   for (int64_t idx = 0; idx < group_size[0]; idx++)
@@ -580,21 +575,24 @@ void dnnl_gemm_batch(const std::vector<bool>& transa,
   for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(m[0] == m[idx]);
   for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(n[0] == n[idx]);
   for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(k[0] == k[idx]);
-  for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(lda[0] == lda[idx]);
-  for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(ldb[0] == ldb[idx]);
-  for (int64_t idx = 0; idx < group_size[0]; idx++) DCHECK(ldc[0] == ldc[idx]);
 
   using dims = mkldnn::memory::dims;
   // Prepare strides based on the transa and transb flags: transposed
   // matrices have strides swapped BatchMatMul in MKL-DNN supports 3D metrices
   // so far. That is why strides are 3D also.
-  dims a_strides = transa[0] ? dims{lda[0], 1, 1} : dims{1, 1, lda[0]};
-  dims b_strides = transb[0] ? dims{ldb[0], 1, 1} : dims{1, 1, ldb[0]};
-  dims c_strides = dims{ldc[0], 1, 1};
+  dims a_sizes = dims{group_size[0], m[0], k[0]};
+  dims b_sizes = dims{group_size[0], k[0], n[0]};
+  dims c_sizes = dims{group_size[0], m[0], n[0]};
+  dims a_strides =
+      !transa[0] ? dims{m[0] * k[0], k[0], 1} : dims{k[0] * m[0], 1, m[0]};
+  dims b_strides =
+      !transb[0] ? dims{k[0] * n[0], n[0], 1} : dims{n[0] * k[0], 1, k[0]};
+  dims c_strides = dims{m[0] * n[0], n[0], 1};
+
   // Prepare memory descriptors
-  memory::desc a_md({group_size[0], m[0], k[0]}, MklDnnType<T>(), a_strides);
-  memory::desc b_md({group_size[0], k[0], n[0]}, MklDnnType<T>(), b_strides);
-  memory::desc c_md({group_size[0], m[0], n[0]}, MklDnnType<T>(), c_strides);
+  memory::desc a_md(a_sizes, MklDnnType<T>(), a_strides);
+  memory::desc b_md(b_sizes, MklDnnType<T>(), b_strides);
+  memory::desc c_md(c_sizes, MklDnnType<T>(), c_strides);
   // Create attributes (to handle alpha and beta if necessary)
   mkldnn::primitive_attr attr;
   if (alpha[0] != 1.f) attr.set_output_scales(/* mask */ 0, {alpha[0]});
@@ -610,7 +608,7 @@ void dnnl_gemm_batch(const std::vector<bool>& transa,
 template <typename T>
 void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
                float alpha, const T* a, int64_t lda, const T* b, int64_t ldb,
-               float beta, T* c, int64_t ldc) {
+               float beta, float* c, int64_t ldc) {
   using dims = mkldnn::memory::dims;
   // Prepare strides based on the transa and transb flags: transposed
   // matrices have strides swapped
@@ -619,7 +617,7 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
   // Prepare memory descriptors
   memory::desc a_md({m, k}, MklDnnType<T>(), a_strides);
   memory::desc b_md({k, n}, MklDnnType<T>(), b_strides);
-  memory::desc c_md({m, n}, MklDnnType<T>(), {ldc, 1});
+  memory::desc c_md({m, n}, MklDnnType<float>(), {ldc, 1});
   // Create attributes (to handle alpha and beta if necessary)
   mkldnn::primitive_attr attr;
   if (alpha != 1.f) attr.set_output_scales(/* mask */ 0, {alpha});

@@ -209,6 +209,8 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "STRING";
     case kTfLiteFloat16:
       return "FLOAT16";
+    case kTfLiteFloat64:
+      return "FLOAT64";
   }
   return "Unknown type";
 }

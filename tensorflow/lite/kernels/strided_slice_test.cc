@@ -97,6 +97,15 @@ TYPED_TEST(StridedSliceOpTest, UnsupportedArgs) {
 }
 #endif
 
+TYPED_TEST(StridedSliceOpTest, In1DEmpty) {
+  StridedSliceOpModel<TypeParam> m({0}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
+  m.SetBegin({1});
+  m.SetEnd({3});
+  m.SetStrides({1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0}));
+}
+
 TYPED_TEST(StridedSliceOpTest, In1D) {
   StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
   m.SetInput({1, 2, 3, 4});
