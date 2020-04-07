@@ -225,34 +225,27 @@ class Conv(Layer):
       return self.activation(outputs)
     return outputs
 
+  def _spatial_output_shape(self, spatial_input_shape):
+    return [
+        conv_utils.conv_output_length(
+            length,
+            self.kernel_size[i],
+            padding=self.padding,
+            stride=self.strides[i],
+            dilation=self.dilation_rate[i])
+        for i, length in enumerate(spatial_input_shape)
+    ]
+
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_last':
-      space = input_shape[1:-1]
-      new_space = []
-      for i in range(len(space)):
-        new_dim = conv_utils.conv_output_length(
-            space[i],
-            self.kernel_size[i],
-            padding=self.padding,
-            stride=self.strides[i],
-            dilation=self.dilation_rate[i])
-        new_space.append(new_dim)
-      return tensor_shape.TensorShape([input_shape[0]] + new_space +
-                                      [self.filters])
+      return tensor_shape.TensorShape(
+          [input_shape[0]] + self._spatial_output_shape(input_shape[1:-1]) +
+          [self.filters])
     else:
-      space = input_shape[2:]
-      new_space = []
-      for i in range(len(space)):
-        new_dim = conv_utils.conv_output_length(
-            space[i],
-            self.kernel_size[i],
-            padding=self.padding,
-            stride=self.strides[i],
-            dilation=self.dilation_rate[i])
-        new_space.append(new_dim)
-      return tensor_shape.TensorShape([input_shape[0], self.filters] +
-                                      new_space)
+      return tensor_shape.TensorShape(
+          [input_shape[0], self.filters] +
+          self._spatial_output_shape(input_shape[2:]))
 
   def get_config(self):
     config = {
