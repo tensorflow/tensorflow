@@ -36,9 +36,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
-#if defined(__ANDROID__)
-#include "tensorflow/lite/delegates/gpu/delegate.h"
-#endif
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/examples/label_image/bitmap_helpers.h"
@@ -48,6 +45,10 @@ limitations under the License.
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
+
+#if defined(__ANDROID__)
+#include "tensorflow/lite/delegates/gpu/delegate.h"
+#endif
 
 #define LOG(x) std::cerr
 
@@ -381,7 +382,7 @@ int Main(int argc, char** argv) {
   Settings s;
 
   int c;
-  while (1) {
+  while (true) {
     static struct option long_options[] = {
         {"accelerated", required_argument, nullptr, 'a'},
         {"old_accelerated", required_argument, nullptr, 'd'},
