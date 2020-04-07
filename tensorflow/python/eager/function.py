@@ -2229,6 +2229,7 @@ class FunctionSpec(object):
 
     if self._input_signature is None:
       inputs = _convert_numpy_inputs(inputs)
+      kwargs = _convert_numpy_inputs(kwargs)
       return inputs, kwargs
     else:
       assert not kwargs
