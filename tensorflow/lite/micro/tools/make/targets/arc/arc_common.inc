@@ -1,4 +1,18 @@
-# Common Settings for ARC platform and it's projects. 
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Common Settings for ARC platform and its projects. 
 # Might be reused across different targets
 
 ifeq ($(TARGET_ARCH), arc)
@@ -6,7 +20,7 @@ ifeq ($(TARGET_ARCH), arc)
   DLR := $$$$
 
   # List of folders to search project files for copy with path changing
-  # For instance, TCF and LCF files are copyed into the root of generated project
+  # For instance, TCF and LCF files are copied into the root of generated project
   ARC_TARGET_FILES_DIRS ?=
 
   # For the following variables see arc_app_makefile.tpl for usage
@@ -36,14 +50,14 @@ ifeq ($(TARGET_ARCH), arc)
   ARC_EXTRA_EXECUTE_RULES ?= 
 
 # We overwrite project generator to exclude everything not relevant to ARC platform.
-# ARC targets doesn't can't work with mbed, keil or other architecture specific development tools
+# ARC targets cannot work with non-ARC development tools.
 # Basic make project is updated to be applicable for general ARC platform
 define generate_microlite_projects
 $(call generate_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(MICROLITE_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
 $(call generate_arc_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(LDFLAGS) $(GENERATED_PROJECT_LIBS),$(CXXFLAGS) $(GENERATED_PROJECT_INCLUDES), $(CCFLAGS) $(GENERATED_PROJECT_INCLUDES))
 endef
 
-# Copy rule generator to do file copyes with changing paths in generated project
+# Copy rule generator to do file copies with changing paths in generated project
 # Arguments are:
 # 1 - Path files in generated project.
 # 2 - Path files in the source repo
