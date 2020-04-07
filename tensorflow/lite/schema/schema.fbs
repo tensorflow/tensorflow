@@ -969,6 +969,8 @@ table SegmentSumOptions {
 }
 
 table BatchMatMulOptions {
+  adjoint_lhs:bool;
+  adjoint_rhs:bool;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
