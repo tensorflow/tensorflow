@@ -450,7 +450,7 @@ absl::Status Compile(const GraphFloat32& graph, const DeviceInfo& device_info,
                              primary_status.message()));
       }
     }
-    for (auto task : tasks) {
+    for (const auto& task : tasks) {
       task->description = node->operation.type + "_" + std::to_string(node->id);
     }
     compiled_model->insert(compiled_model->end(), tasks.begin(), tasks.end());

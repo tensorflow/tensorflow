@@ -1002,7 +1002,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             // Book keeping to report some statistics.
             mutex_lock l(mu_);
             int64 num_bytes = 0;
-            for (auto out_tensor : *out_tensors) {
+            for (const auto& out_tensor : *out_tensors) {
               num_bytes += out_tensor.TotalBytes();
             }
 
