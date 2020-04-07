@@ -162,10 +162,10 @@ def _sequence_like(instance, args):
     try:
       return instance_type((key, result[key]) for key in instance)
     except TypeError as err:
-      raise TypeError("Error rebuilding custom mapping. Note that it must "
-                      "accept a single positional argument representing an "
-                      "iterable of key-value pairs, in addition to self. "
-                      f"Cause: {err}")
+      raise TypeError(f"Error creating an object of type {type(instance)} "
+                      f"like {instance}. Note that it must accept a single "
+                      "positional argument representing an iterable of "
+                      f"key-value pairs, in addition to self. Cause: {err}")
   elif _is_mapping_view(instance):
     # We can't directly construct mapping views, so we create a list instead
     return list(args)
