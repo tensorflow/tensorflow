@@ -160,7 +160,8 @@ download_and_extract() {
   elif [[ ${action} == "patch_kissfft" ]]; then
     patch_kissfft ${dir}
   elif [[ ${action} == "build_embarc_mli" ]]; then
-    build_embarc_mli ${dir} ${action_param1}
+    cp ${action_param1} ${dir}/hw/arc.tcf
+    build_embarc_mli ${dir} ../../hw/arc.tcf
   elif [[ ${action} ]]; then
     echo "Unknown action '${action}'"
     exit 1
