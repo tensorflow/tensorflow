@@ -954,7 +954,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     """The logic for one evaluation step.
 
     This method can be overridden to support custom evaluation logic.
-    This method is called by `Model._make_test_function`.
+    This method is called by `Model.make_test_function`.
 
     This function should contain the mathemetical logic for one step of
     evaluation.
@@ -963,7 +963,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     Configuration details for *how* this logic is run (e.g. `tf.function` and
     `tf.distribute.Strategy` settings), should be left to
-    `Model._make_test_function`, which can also be overridden.
+    `Model.make_test_function`, which can also be overridden.
 
     Arguments:
       data: A nested structure of `Tensor`s.
@@ -992,7 +992,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     Typically, this method directly controls `tf.function` and
     `tf.distribute.Strategy` settings, and delegates the actual evaluation
-    logic to `Model._test_step`.
+    logic to `Model.test_step`.
 
     This function is cached the first time `Model.evaluate` or
     `Model.test_on_batch` is called. The cache is cleared whenever
@@ -1192,14 +1192,14 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     """The logic for one inference step.
 
     This method can be overridden to support custom inference logic.
-    This method is called by `Model._make_predict_function`.
+    This method is called by `Model.make_predict_function`.
 
     This method should contain the mathemetical logic for one step of inference.
     This typically includes the forward pass.
 
     Configuration details for *how* this logic is run (e.g. `tf.function` and
     `tf.distribute.Strategy` settings), should be left to
-    `Model._make_predict_function`, which can also be overridden.
+    `Model.make_predict_function`, which can also be overridden.
 
     Arguments:
       data: A nested structure of `Tensor`s.
@@ -1220,7 +1220,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     Typically, this method directly controls `tf.function` and
     `tf.distribute.Strategy` settings, and delegates the actual evaluation
-    logic to `Model._predict_step`.
+    logic to `Model.predict_step`.
 
     This function is cached the first time `Model.predict` or
     `Model.predict_on_batch` is called. The cache is cleared whenever
