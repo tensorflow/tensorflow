@@ -60,7 +60,12 @@ struct OpData {
 
 struct SoftmaxOpData {
   struct SoftmaxParams params = {};
-  float table[256];
+  float table[256]{};
+  int16_t exp_lut[513]{};  // int16 LUT for exp(x), where x uniform distributed
+                           // between [-10.0 , 0.0]
+  int16_t one_over_one_plus_x_lut[513]{};  // int16 LUT for 1 / (1 + x), where
+                                           // x uniform distributed between
+                                           // [0.0 , 1.0]
 };
 
 struct LogSoftmaxOpData : public OpData {
@@ -543,10 +548,9 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
   if (output->type == kTfLiteInt16) {
-    TF_LITE_ENSURE(context,
-                   input->type == kTfLiteInt8 ||
-                   input->type == kTfLiteUInt8 ||
-                   input->type == kTfLiteInt16);
+    TF_LITE_ENSURE(context, input->type == kTfLiteInt8 ||
+                                input->type == kTfLiteUInt8 ||
+                                input->type == kTfLiteInt16);
   } else {
     TF_LITE_ENSURE_EQ(context, input->type, output->type);
   }
@@ -564,23 +568,23 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   if (input->type == kTfLiteInt16) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
 
+    data->params.exp_lut = data->exp_lut;
+    // exp LUT only used on nagative values
+    // we consider exp(-10.0) is insignificant to accumulation
+    gen_lut([](double value) { return std::exp(value); }, -10.0, 0.0,
+            data->params.exp_lut, 513);
+    data->params.one_over_one_plus_x_lut = data->one_over_one_plus_x_lut;
+    gen_lut([](double value) { return 1.0 / (1.0 + value); }, 0.0, 1.0,
+            data->params.one_over_one_plus_x_lut, 513);
     data->params.zero_point = output->params.zero_point;
     data->params.scale = output->params.scale;
 
-    int32 input_beta_multiplier;
-    int input_beta_left_shift;
-    static const int kScaledDiffIntegerBits = 5;
-    tflite::PreprocessSoftmaxScaling(input->params.scale, params->beta, kScaledDiffIntegerBits,
-                                    &input_beta_multiplier,
-                                    &input_beta_left_shift);
-    // diff_min has a negative value, and is used to limit the maximum magnitude
-    // of the diffs, which are <= 0.
-    const int diff_min = -tflite::CalculateInputRadius(kScaledDiffIntegerBits,
-                                                      input_beta_left_shift);
-
-    data->params.input_multiplier = input_beta_multiplier;
-    data->params.input_left_shift = input_beta_left_shift;
-    data->params.diff_min = diff_min;
+    double input_scale_beta_rescale =
+        input->params.scale * params->beta /
+        (10.0 / 65535.0);  // scale the input_diff such that [-65535, 0]
+                           // correspond to [-10.0, 0.0]
+    QuantizeMultiplier(input_scale_beta_rescale, &data->params.input_multiplier,
+                       &data->params.input_left_shift);
   }
 
   return context->ResizeTensor(context, output,
@@ -967,7 +971,7 @@ TfLiteStatus SoftmaxQuantized<int16, int16>(TfLiteContext* context,
                                      TfLiteTensor* output,
                                      SoftmaxOpData* data) {
   if (NumDimensions(input) >= 1 && NumDimensions(input) <= 4) {
-    reference_ops::Softmax(
+    reference_ops::SoftmaxInt16(
         data->params, GetTensorShape(input), GetTensorData<int16_t>(input),
         GetTensorShape(output), GetTensorData<int16_t>(output));
     return kTfLiteOk;
@@ -1026,9 +1030,9 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
     }
 
     default:
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Only float32, uint8_t ,Int8_t, Int16_t are supported currently, got %s.",
+      TF_LITE_KERNEL_LOG(context,
+                         "Only float32, uint8_t, Int8_t, Int16_t are supported "
+                         "currently, got %s.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
