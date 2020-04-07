@@ -189,6 +189,30 @@ struct AllReduceParticipantData {
   }
 };
 
+struct CollectivePermuteParticipantData {
+  explicit CollectivePermuteParticipantData(const RendezvousKey& rendezvous_key)
+      : rendezvous_key(rendezvous_key) {}
+
+  RendezvousKey rendezvous_key;
+
+  int64 device_ordinal;
+  int replica_id;
+  se::DeviceMemoryBase source_data;
+  se::DeviceMemoryBase destination_data;
+  int64 byte_size;
+  se::Stream* stream;
+  std::vector<int> replica_ids_to_copy_to;
+
+  string ToString() const {
+    return absl::StrFormat(
+        "CollectivePermuteParticipantData{replica_id=%d, "
+        "source_data=%p, destination_data=%p, byte_size=%d, "
+        "replica_ids_to_copy_to=[%s]}",
+        replica_id, source_data.opaque(), destination_data.opaque(), byte_size,
+        absl::StrJoin(replica_ids_to_copy_to, ", "));
+  }
+};
+
 // The set of threads that want to do a collective op together all pick the same
 // Rendezvous object out of the global cache and call SubmitParticipant.
 //
@@ -242,6 +266,17 @@ class Rendezvous {
   // Returns domain-specific output O and whether this replica is primary.
   virtual StatusOr<ParticipantImplOutput> SubmitParticipantImpl(
       const I& participant) = 0;
+
+  // Initialize the rendezvous by the first ("primary") thread which reaches the
+  // barrier. Returns whether this thread is primary.
+  bool InitializationBarrier() {
+    tensorflow::mutex_lock lock(mu_);
+    if (!initialized_) {
+      initialized_ = true;
+      return true;
+    }
+    return false;
+  }
 
   virtual void CleanupImpl(O handle, bool is_primary) {}
 

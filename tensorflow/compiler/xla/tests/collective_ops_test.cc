@@ -560,7 +560,7 @@ XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(CollectivePermute_Simple)) {
+XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {

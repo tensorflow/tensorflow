@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
@@ -1538,6 +1539,64 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
     return HandleAllReduceSingleReplica(crs);
   }
   return HandleAllReduceMultipleReplica(crs);
+}
+
+Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
+  auto* instr = Cast<HloCollectivePermuteInstruction>(crs);
+  std::string source_target_pairs = absl::StrJoin(
+      instr->source_target_pairs(), ",", absl::PairFormatter("="));
+  llvm::Value* source_target_pairs_v =
+      b_.CreateGlobalStringPtr(source_target_pairs);
+
+  llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
+  llvm::Type* int32_type = b_.getInt32Ty();
+  llvm::Type* int64_type = b_.getInt64Ty();
+  llvm::FunctionType* collective_permute_func_ty =
+      llvm::FunctionType::get(b_.getVoidTy(),
+                              {
+                                  /*run_options=*/i8_ptr_type,
+                                  /*channel_id_present=*/int32_type,
+                                  /*op_id=*/int64_type,
+                                  /*byte_size=*/int32_type,
+                                  /*input_buffer=*/i8_ptr_type,
+                                  /*output_buffer=*/i8_ptr_type,
+                                  /*source_target_pairs=*/i8_ptr_type,
+                                  /*source_target_pairs_size=*/int32_type,
+                              },
+                              /*isVarArg=*/false);
+
+  auto collective_permute_func = llvm::dyn_cast<llvm::Function>(
+      module_
+          ->getOrInsertFunction(runtime::kCollectivePermuteSymbolName,
+                                collective_permute_func_ty)
+          .getCallee());
+  collective_permute_func->setCallingConv(llvm::CallingConv::C);
+
+  Shape shape = crs->operand(0)->shape();
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice input_slice,
+                      assignment_.GetUniqueSlice(crs->operand(0), {}));
+  llvm::Value* input_buffer = EmitBufferPointer(input_slice, shape);
+
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_slice,
+                      assignment_.GetUniqueSlice(crs, {}));
+  llvm::Value* output_buffer = EmitBufferPointer(output_slice, shape);
+
+  Call(collective_permute_func,
+       {/*run_options=*/GetExecutableRunOptionsArgument(),
+        /*channel_id_present=*/
+        b_.getInt32(static_cast<int32>(crs->channel_id().has_value())),
+        /*op_id=*/
+        b_.getInt64(crs->channel_id().has_value()
+                        ? *crs->channel_id()
+                        : crs->GetModule()->unique_id()),
+        /*byte_size=*/b_.getInt32(ShapeUtil::ByteSizeOf(shape)),
+        /*input_buffer=*/b_.CreateBitCast(input_buffer, i8_ptr_type),
+        /*output_buffer=*/b_.CreateBitCast(output_buffer, i8_ptr_type),
+        /*source_target_pairs=*/source_target_pairs_v,
+        /*source_target_pairs_size=*/b_.getInt32(source_target_pairs.size())});
+
+  return Status::OK();
 }
 
 Status IrEmitter::HandleReplicaId(HloInstruction* hlo) {
