@@ -53,6 +53,7 @@ tf_cc_test(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/types:optional",
         "@com_google_googletest//:gtest_main",
     ],
