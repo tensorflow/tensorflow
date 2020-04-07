@@ -320,6 +320,7 @@ Status GpuCompiler::OptimizeHloModule(
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     pipeline.AddPass<AlgebraicSimplifier>(options);
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
   return Status::OK();
 }
