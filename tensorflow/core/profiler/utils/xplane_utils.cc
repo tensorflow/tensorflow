@@ -209,12 +209,16 @@ void SortXSpace(XSpace* space) {
   for (XPlane& plane : *space->mutable_planes()) SortXPlane(&plane);
 }
 
-void NormalizeTimeLine(XSpace* space, uint64 start_time_ns) {
+void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns) {
+  for (XLine& line : *plane->mutable_lines()) {
+    DCHECK_GE(line.timestamp_ns(), start_time_ns);
+    line.set_timestamp_ns(line.timestamp_ns() - start_time_ns);
+  }
+}
+
+void NormalizeTimestamps(XSpace* space, uint64 start_time_ns) {
   for (XPlane& plane : *space->mutable_planes()) {
-    for (XLine& line : *plane.mutable_lines()) {
-      DCHECK_GE(line.timestamp_ns(), start_time_ns);
-      line.set_timestamp_ns(line.timestamp_ns() - start_time_ns);
-    }
+    NormalizeTimestamps(&plane, start_time_ns);
   }
 }
 

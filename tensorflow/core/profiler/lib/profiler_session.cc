@@ -87,7 +87,7 @@ Status ProfilerSession::CollectData(profiler::XSpace* space) {
   }
   // 2. Normalize all timestamps by shifting timeline to profiling start time.
   // NOTE: this have to be done before sorting XSpace due to timestamp overflow.
-  profiler::NormalizeTimeLine(space, start_time_ns_);
+  profiler::NormalizeTimestamps(space, start_time_ns_);
   // 3. Sort each plane of the XSpace
   profiler::SortXSpace(space);
   // 4. Grouping (i.e. marking step number) events in the XSpace.
