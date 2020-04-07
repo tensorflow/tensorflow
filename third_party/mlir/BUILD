@@ -2356,7 +2356,6 @@ cc_library(
         ":NVVMDialect",
         ":Parser",
         ":Pass",
-        ":QuantizerTransforms",
         ":StandardToSPIRVConversions",
         ":StandardToStandard",
         ":Support",
@@ -2412,8 +2411,6 @@ cc_library(
         ":AffineTransforms",
         ":CFGTransforms",
         ":ConversionPassIncGen",
-        ":FxpMathOps",
-        ":FxpMathPassIncGen",
         ":GPUDialect",
         ":GPUPassIncGen",
         ":GPUToCUDATransforms",
@@ -2441,8 +2438,6 @@ cc_library(
         ":OpenMPDialect",
         ":QuantOps",
         ":QuantPassIncGen",
-        ":QuantizerPassIncGen",
-        ":QuantizerTransforms",
         ":ROCDLDialect",
         ":SDBM",
         ":SPIRVDialect",
@@ -2489,7 +2484,6 @@ cc_binary(
     name = "mlir-opt",
     deps = [
         ":Analysis",
-        ":FxpMathOps",
         ":IR",
         ":LoopsToGPUPass",
         ":MlirOptLib",
@@ -2791,85 +2785,6 @@ cc_library(
 )
 
 filegroup(
-    name = "FxpMathOpsTdFiles",
-    srcs = [
-        "include/mlir/Dialect/FxpMathOps/FxpMathOps.td",
-        "include/mlir/Dialect/Quant/QuantOpsBase.td",
-        "include/mlir/Interfaces/SideEffects.td",
-        ":OpBaseTdFiles",
-    ],
-)
-
-## FxpMathOps dialect
-gentbl(
-    name = "FxpMathOpsIncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            "-gen-op-decls",
-            "include/mlir/Dialect/FxpMathOps/FxpMathOps.h.inc",
-        ),
-        (
-            "-gen-op-defs",
-            "include/mlir/Dialect/FxpMathOps/FxpMathOps.cpp.inc",
-        ),
-        (
-            "-gen-dialect-decls -dialect=fxpmath",
-            "include/mlir/Dialect/FxpMathOps/FxpMathOpsDialect.h.inc",
-        ),
-        (
-            "-gen-op-doc",
-            "g3doc/Dialects/FxpMathOps/FxpMathOps.md",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/FxpMathOps/FxpMathOps.td",
-    td_srcs = [
-        ":FxpMathOpsTdFiles",
-    ],
-)
-
-gentbl(
-    name = "FxpMathPassIncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            "-gen-pass-decls",
-            "include/mlir/Dialect/FxpMathOps/Passes.h.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/FxpMathOps/Passes.td",
-    td_srcs = [
-        ":PassBaseTdFiles",
-    ],
-)
-
-cc_library(
-    name = "FxpMathOps",
-    srcs = [
-        "lib/Dialect/FxpMathOps/IR/FxpMathOps.cpp",
-        "lib/Dialect/FxpMathOps/Transforms/LowerUniformRealMath.cpp",
-        "lib/Dialect/FxpMathOps/Transforms/UniformKernelUtils.h",
-    ],
-    hdrs = [
-        "include/mlir/Dialect/FxpMathOps/FxpMathOps.h",
-        "include/mlir/Dialect/FxpMathOps/Passes.h",
-    ],
-    includes = ["include"],
-    deps = [
-        ":FxpMathOpsIncGen",
-        ":FxpMathPassIncGen",
-        ":IR",
-        ":Pass",
-        ":QuantOps",
-        ":SideEffects",
-        ":StandardOps",
-        "@llvm-project//llvm:support",
-    ],
-)
-
-filegroup(
     name = "LinalgOpsTdFiles",
     srcs = [
         "include/mlir/Dialect/Linalg/IR/LinalgBase.td",
@@ -3131,66 +3046,6 @@ cc_library(
         ":TransformsPassIncGen",
         ":VectorOps",
         "@llvm-project//llvm:core",
-        "@llvm-project//llvm:support",
-    ],
-)
-
-cc_library(
-    name = "QuantizerSupportLib",
-    srcs = glob([
-        "lib/Quantizer/Configurations/*.cpp",
-        "lib/Quantizer/Support/*.cpp",
-        "lib/Quantizer/Configurations/*.h",
-        "lib/Quantizer/Support/*.h",
-    ]),
-    hdrs = glob([
-        "include/mlir/Quantizer/Configurations/*.h",
-        "include/mlir/Quantizer/Support/*.h",
-    ]),
-    includes = ["include"],
-    deps = [
-        ":FxpMathOps",
-        ":IR",
-        ":QuantOps",
-        ":StandardOps",
-        ":Support",
-        "@llvm-project//llvm:support",
-    ],
-)
-
-gentbl(
-    name = "QuantizerPassIncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            "-gen-pass-decls",
-            "include/mlir/Quantizer/Transforms/Passes.h.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Quantizer/Transforms/Passes.td",
-    td_srcs = [
-        ":PassBaseTdFiles",
-    ],
-)
-
-cc_library(
-    name = "QuantizerTransforms",
-    srcs = glob([
-        "lib/Quantizer/Transforms/*.cpp",
-        "lib/Quantizer/Transforms/*.h",
-    ]),
-    hdrs = glob([
-        "include/mlir/Quantizer/Transforms/*.h",
-    ]),
-    includes = ["include"],
-    deps = [
-        ":IR",
-        ":Pass",
-        ":QuantOps",
-        ":QuantizerPassIncGen",
-        ":QuantizerSupportLib",
-        ":Support",
         "@llvm-project//llvm:support",
     ],
 )
