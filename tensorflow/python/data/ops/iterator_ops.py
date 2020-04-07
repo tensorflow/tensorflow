@@ -420,7 +420,7 @@ class Iterator(trackable.Trackable):
     if self._get_next_call_count > GET_NEXT_CALL_WARNING_THRESHOLD:
       warnings.warn(GET_NEXT_CALL_WARNING_MESSAGE)
 
-    with ops.colocate_with(self._iterator_resource):
+    with ops.device(self._iterator_resource.device):
       # pylint: disable=protected-access
       flat_ret = gen_dataset_ops.iterator_get_next(
         self._iterator_resource,
