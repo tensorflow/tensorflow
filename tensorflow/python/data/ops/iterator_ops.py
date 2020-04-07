@@ -368,7 +368,7 @@ class Iterator(trackable.Trackable):
                           "dataset with output shapes %r." %
                           (self.output_shapes, dataset_output_shapes))
 
-    with ops.colocate_with(dataset._variant_tensor):
+    with ops.device(dataset._variant_tensor.device):
       return gen_dataset_ops.make_iterator(
           dataset._variant_tensor, self._iterator_resource, name=name)  # pylint: disable=protected-access
 
