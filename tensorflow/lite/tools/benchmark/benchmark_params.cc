@@ -61,5 +61,16 @@ void BenchmarkParams::Set(const BenchmarkParams& other) {
   }
 }
 
+void BenchmarkParams::Merge(const BenchmarkParams& other, bool overwrite) {
+  for (const auto& one : other.params_) {
+    auto it = params_.find(one.first);
+    if (it == params_.end()) {
+      AddParam(one.first, one.second->Clone());
+    } else if (overwrite) {
+      it->second->Set(*one.second);
+    }
+  }
+}
+
 }  // namespace benchmark
 }  // namespace tflite
