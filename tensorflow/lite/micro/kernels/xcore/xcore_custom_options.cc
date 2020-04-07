@@ -54,7 +54,7 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
   auto keys = map.Keys();
   auto values = map.Values();
   for (int i = 0; i < map.size(); ++i) {
-    std::string key(keys[i].ToString());
+    const std::string& key = keys[i].AsString().str();
 
     if (key.compare("stride") == 0) {
       auto vec = values[i].AsVector();  // values represent [stride_h, stride_w]
@@ -97,7 +97,7 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
       }
     } else if (key.compare("padding") == 0) {
       if (padding_mode) {
-        std::string padding_mode_str = values[i].ToString();
+        const std::string& padding_mode_str = values[i].AsString().str();
         if (padding_mode_str.compare("VALID") == 0)
           *padding_mode = PADDING_VALID;
         else
