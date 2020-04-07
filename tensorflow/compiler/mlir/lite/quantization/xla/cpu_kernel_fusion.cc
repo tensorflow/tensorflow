@@ -143,7 +143,7 @@ void CollectRets(llvm::ArrayRef<Operation*> ops,
   }
 }
 
-llvm::SmallVector<Value, 0> fuseOps(PatternRewriter* rewriter,
+llvm::SmallVector<Value, 0> FuseOps(PatternRewriter* rewriter,
                                     const std::initializer_list<Value>& results,
                                     StringRef kernel) {
   // Collect all the operations to be fused.
