@@ -60,8 +60,8 @@ class Calibrator(object):
                              input_type,
                              output_type,
                              allow_float,
-                             resize_input=True,
-                             activations_type = lite_constants.INT8):
+                             activations_type=lite_constants.INT8,
+                             resize_input=True):
     """Calibrates the model with specified generator and then quantizes it.
 
     The input shapes of the calibrator are resized with the calibration data if

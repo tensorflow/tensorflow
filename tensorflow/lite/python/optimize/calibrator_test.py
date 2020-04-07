@@ -148,7 +148,9 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(ValueError, 'Size mismatch'):
       quantizer.calibrate_and_quantize(input_gen, constants.FLOAT,
-                                       constants.FLOAT, False, False)
+                                       constants.FLOAT, False,
+                                       constants.INT8,
+                                       False)
 
   def test_invalid_type_calibrator_gen(self):
     model_path = resource_loader.get_path_to_datafile(
