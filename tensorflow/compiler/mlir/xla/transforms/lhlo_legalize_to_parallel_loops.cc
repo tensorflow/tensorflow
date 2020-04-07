@@ -287,7 +287,7 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
                                                  : *outer_ivs_it++);
       }
     } else {
-      indices = ValueRange(inner.getInductionVars());
+      indices = inner.getInductionVars();
     }
 
     rewriter->setInsertionPointToStart(inner.getBody());
@@ -409,8 +409,7 @@ class ReduceWindowOpConverter
 
     Value reduction_result = *window_loop.getResults().begin();
     auto output_ivs = output_loop.getInductionVars();
-    rewriter->create<StoreOp>(loc, reduction_result, xla_output,
-                              ValueRange{output_ivs});
+    rewriter->create<StoreOp>(loc, reduction_result, xla_output, output_ivs);
     return std::make_pair(output_loop, window_loop);
   }
 
