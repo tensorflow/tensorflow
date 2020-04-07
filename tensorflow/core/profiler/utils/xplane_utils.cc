@@ -272,7 +272,7 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
       }
       event.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
         dst_event.AddStat(*dst.GetOrCreateStatMetadata(stat.Name()),
-                          stat.RawStat());
+                          stat.RawStat(), src_plane);
       });
     });
   });

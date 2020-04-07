@@ -46,6 +46,10 @@ limitations under the License.
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
+#if defined(__ANDROID__)
+#include "tensorflow/lite/delegates/gpu/delegate.h"
+#endif
+
 #define LOG(x) std::cerr
 
 namespace tflite {
@@ -378,7 +382,7 @@ int Main(int argc, char** argv) {
   Settings s;
 
   int c;
-  while (1) {
+  while (true) {
     static struct option long_options[] = {
         {"accelerated", required_argument, nullptr, 'a'},
         {"old_accelerated", required_argument, nullptr, 'd'},

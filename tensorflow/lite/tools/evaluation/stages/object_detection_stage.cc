@@ -172,7 +172,8 @@ TfLiteStatus PopulateGroundTruth(
   ObjectDetectionGroundTruth ground_truth_proto;
   google::protobuf::TextFormat::ParseFromString(proto_str, &ground_truth_proto);
 
-  for (auto image_ground_truth : ground_truth_proto.detection_results()) {
+  for (const auto& image_ground_truth :
+       ground_truth_proto.detection_results()) {
     (*ground_truth_mapping)[image_ground_truth.image_name()] =
         image_ground_truth;
   }

@@ -140,40 +140,6 @@ using MoveIterator =
 
 }  // namespace
 
-SharedDeviceBuffer::ScopedUsage::~ScopedUsage() {
-  if (parent_ != nullptr) {
-    parent_->DropUsageHold();
-  }
-}
-
-SharedDeviceBuffer::ScopedUsage& SharedDeviceBuffer::ScopedUsage::Acquire(
-    std::shared_ptr<SharedDeviceBuffer> parent) {
-  CHECK(parent_ == nullptr);
-  if (parent != nullptr) {
-    parent_ = std::move(parent);
-    parent_->AddUsageHold();
-  }
-  return *this;
-}
-
-std::shared_ptr<SharedDeviceBuffer> SharedDeviceBuffer::ScopedUsage::Release() {
-  return std::move(parent_);
-}
-
-void SharedDeviceBuffer::ScopedUsage::Transfer(
-    std::shared_ptr<SharedDeviceBuffer> parent) {
-  CHECK(parent_ == nullptr);
-  parent_ = parent;
-}
-
-void SharedDeviceBuffer::ScopedUsage::Convert(
-    se::Stream* usage_stream, std::shared_ptr<BufferDefinitionEvent> event,
-    bool reference_held) {
-  CHECK(parent_ != nullptr);
-  parent_->ConvertUsageHold(usage_stream, std::move(event), reference_held);
-  parent_ = nullptr;
-}
-
 SharedDeviceBuffer::SharedDeviceBuffer(
     se::DeviceMemoryAllocator* allocator, int device_ordinal,
     absl::Span<se::DeviceMemoryBase const> device_memory,
@@ -186,12 +152,9 @@ SharedDeviceBuffer::SharedDeviceBuffer(
           std::move_iterator<MoveIterator>(definition_events.begin()),
           std::move_iterator<MoveIterator>(definition_events.end())),
       in_use_(true),
-      usage_holds_(0),
-      external_references_(0),
       on_delete_callback_(std::move(on_delete_callback)) {}
 
 SharedDeviceBuffer::~SharedDeviceBuffer() {
-  CHECK_EQ(external_references_, 0);
   if (allocator_) {
     for (const se::DeviceMemoryBase& buffer : device_memory_) {
       Status status = allocator_->Deallocate(device_ordinal_, buffer);
@@ -205,38 +168,10 @@ SharedDeviceBuffer::~SharedDeviceBuffer() {
   }
 }
 
-void SharedDeviceBuffer::AddUsageHold() {
-  absl::MutexLock lock(&mu_);
-  CHECK(in_use_);
-  ++usage_holds_;
-}
-
-void SharedDeviceBuffer::DropUsageHold() {
-  absl::MutexLock lock(&mu_);
-  CHECK(in_use_);
-  CHECK_GT(usage_holds_, 0);
-  --usage_holds_;
-}
-
-void SharedDeviceBuffer::AddExternalReference() {
-  absl::MutexLock lock(&mu_);
-  CHECK(in_use_);
-  ++external_references_;
-}
-
-void SharedDeviceBuffer::DropExternalReference() {
-  absl::MutexLock lock(&mu_);
-  CHECK_GT(external_references_, 0);
-  --external_references_;
-}
-
-void SharedDeviceBuffer::ConvertUsageHold(
+void SharedDeviceBuffer::AddUsageEvent(
     se::Stream* usage_stream, std::shared_ptr<BufferDefinitionEvent> event,
     bool reference_held) {
-  absl::MutexLock lock(&mu_);
   CHECK(in_use_);
-  CHECK_GT(usage_holds_, 0);
-  --usage_holds_;
 
   for (auto& existing : usage_events_) {
     if (existing.stream == usage_stream) {
@@ -252,13 +187,6 @@ void SharedDeviceBuffer::ConvertUsageHold(
 
 SharedDeviceBuffer::StreamAndEventContainer
 SharedDeviceBuffer::LockUseAndTransferUsageEvents() {
-  auto holds_converted = [&]() {
-    mu_.AssertHeld();
-    return usage_holds_ == 0;
-  };
-  absl::MutexLock lock(&mu_);
-  CHECK(in_use_);
-  mu_.Await(absl::Condition(&holds_converted));
   CHECK(in_use_);
   in_use_ = false;
   return std::move(usage_events_);

@@ -191,7 +191,7 @@ class CallTreeTransformer(converter.Base):
       return node
 
     if (full_name == 'print' and
-        not self.ctx.program.options.uses(converter.Feature.BUILTIN_FUNCTIONS)):
+        not self.ctx.user.options.uses(converter.Feature.BUILTIN_FUNCTIONS)):
       return node
 
     template = """

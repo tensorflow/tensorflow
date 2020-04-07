@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/types/variant.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
-#include "tensorflow/core/common_runtime/eager/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
@@ -554,7 +553,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
 
     fdef_ = MatMulFunction();
     TF_ASSERT_OK(func_lib_def_.AddFunctionDef(fdef_));
-    eager_pflr_ = absl::make_unique<EagerProcessFunctionLibraryRuntime>(
+    eager_pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
         remote_device_mgr_.get(), Env::Default(), /*config=*/
         nullptr, TF_GRAPH_DEF_VERSION, &func_lib_def_, OptimizerOptions(),
         /*thread_pool=*/nullptr, eager_cluster_flr_.get());
@@ -598,7 +597,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
 };
 
 // Test executes a remote function through
-// EagerProcessFunctionLibraryRuntime(EagerClusterFunctionLibraryRuntime).
+// ProcessFunctionLibraryRuntime(EagerClusterFunctionLibraryRuntime).
 TEST_F(FunctionWithRemoteInputsTest, EagerPFLRTest) {
   Init();
   // Instantiate MatMulFunction on remote_device.

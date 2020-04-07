@@ -19,11 +19,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_GATHER_OP_HELPERS_H_
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/util/bcast.h"
 
 namespace tensorflow {
 

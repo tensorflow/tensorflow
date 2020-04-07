@@ -37,6 +37,7 @@ from tensorflow.lite.experimental.tensorboard.ops_util import get_potentially_su
 from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
+from tensorflow.lite.python.convert import mlir_quantize as _mlir_quantize
 from tensorflow.lite.python.convert import OpsSet
 from tensorflow.lite.python.convert import toco_convert  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import toco_convert_graph_def as _toco_convert_graph_def
@@ -333,7 +334,9 @@ class TFLiteConverterBase(object):
     """
     if not optimizers:
       optimizers = []
-    optimizers.append("constfold")
+    # MLIR converter will take care of constant folding instead of grappler.
+    if not self.experimental_new_converter:
+      optimizers.append("constfold")
 
     is_only_flex_enabled = (
         set([OpsSet.SELECT_TF_OPS]) == set(self.target_spec.supported_ops))
@@ -352,8 +355,14 @@ class TFLiteConverterBase(object):
           self.representative_dataset)
 
     calibrate_quantize = _calibrator.Calibrator(result)
+    if self._experimental_calibrate_only or self._experimental_new_quantizer:
+      calibrated = calibrate_quantize.calibrate(
+          self.representative_dataset.input_gen)
+
     if self._experimental_calibrate_only:
-      return calibrate_quantize.calibrate(self.representative_dataset.input_gen)
+      return calibrated
+    elif self._experimental_new_quantizer:
+      return _mlir_quantize(calibrated)
     else:
       return calibrate_quantize.calibrate_and_quantize(
         self.representative_dataset.input_gen, inference_input_type,
@@ -628,12 +637,17 @@ class TFLiteConverterV2(TFLiteConverterBase):
     output_tensors = frozen_func.outputs
 
     # Run a Grappler pass.
-    graph_def = _run_graph_optimizations(
-        graph_def,
-        input_tensors,
-        output_tensors,
-        config=self._grappler_config(),
-        graph=frozen_func.graph)
+    grappler_config = self._grappler_config()
+    # Skip running grappler when there are no optimizers to run. If not,
+    # grappler will run with the default optimizer set and it will lead to
+    # causing an unexpected behavior.
+    if grappler_config.graph_options.rewrite_options.optimizers:
+      graph_def = _run_graph_optimizations(
+          graph_def,
+          input_tensors,
+          output_tensors,
+          config=grappler_config,
+          graph=frozen_func.graph)
 
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
                                   self.representative_dataset, graph_def)

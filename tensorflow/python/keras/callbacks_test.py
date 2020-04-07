@@ -873,6 +873,44 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       cb_list.on_predict_batch_end(logs)
       cb_list.on_predict_end(logs)
 
+  def test_ProgbarLogger_verbose_2_nonblocking(self):
+    # Should only cause a sync block on epoch end methods.
+    callback = keras.callbacks.ProgbarLogger(count_mode='steps')
+    self.assertTrue(callback._supports_tf_logs)
+
+    model = keras.Sequential([keras.layers.Dense(1)])
+    cb_list = keras.callbacks.CallbackList([callback],
+                                           model=model,
+                                           epochs=1,
+                                           steps=10,
+                                           verbose=2)
+
+    with context.eager_mode():
+      tensor = ops.convert_to_tensor(1.)
+
+    def mock_numpy():
+      raise RuntimeError(
+          'If this error is seen, ModelCheckpoint is causing a blocking '
+          'NumPy conversion even when not checkpointing.')
+
+    with test.mock.patch.object(tensor, 'numpy', mock_numpy):
+      logs = {'metric': tensor}
+
+      cb_list.on_train_begin(logs)
+      cb_list.on_epoch_begin(0, logs)
+      cb_list.on_train_batch_begin(0, logs)
+      cb_list.on_train_batch_end(0, logs)
+
+      cb_list.on_test_begin(logs)
+      cb_list.on_test_batch_begin(0, logs)
+      cb_list.on_test_batch_end(0, logs)
+      cb_list.on_test_end(logs)
+
+      with self.assertRaisesRegexp(RuntimeError, 'NumPy conversion'):
+        # on_epoch_end should still block.
+        cb_list.on_epoch_end(0, logs)
+      cb_list.on_train_end(logs)
+
   def test_EarlyStopping(self):
     with self.cached_session():
       np.random.seed(123)

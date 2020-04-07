@@ -116,7 +116,7 @@ Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   } else {
     return errors::Unknown("Unknown mlir_components ", flags.mlir_components);
   }
-  if (flags.quantize) {
+  if (flags.experimental_quantize) {
     TF_RETURN_IF_ERROR(mlir::xla_hlo::XlaQuantize(config, &computation));
   }
   if (!flags.out_session_module.empty()) {

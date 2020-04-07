@@ -524,6 +524,23 @@ TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
                                                      TF_Buffer* buf,
                                                      TF_Status* status);
 
+// Allocate and return a new Tensor on the host.
+//
+// The caller must set the Tensor values by writing them to the pointer returned
+// by TF_TensorData with length TF_TensorByteSize.
+TF_CAPI_EXPORT extern TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx,
+                                                        TF_DataType dtype,
+                                                        const int64_t* dims,
+                                                        int num_dims,
+                                                        TF_Status* status);
+
+// Given a Tensor, wrap it with a TensorHandle
+//
+// Similar to TFE_NewTensorHandle, but includes a pointer to the TFE_Context.
+// The context should be identical to that of the Tensor.
+TF_CAPI_EXPORT TFE_TensorHandle* TFE_NewTensorHandleFromTensor(
+    TFE_Context* ctx, TF_Tensor* t, TF_Status* status);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

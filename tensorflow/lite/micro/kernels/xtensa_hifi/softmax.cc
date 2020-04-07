@@ -198,10 +198,8 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       return SoftmaxQuantized(context, input, output, op_data);
     }
     default:
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Only float32, uint8_t and int8_t input supported currently, got %d.",
-          input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input->type), input->type);
       return kTfLiteError;
   }
 }

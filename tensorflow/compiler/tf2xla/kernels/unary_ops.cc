@@ -15,14 +15,16 @@ limitations under the License.
 
 // Native XLA implementations of simple unary Ops
 
-#include <math.h>
-
-#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/kernels/cwise_ops.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
 namespace {

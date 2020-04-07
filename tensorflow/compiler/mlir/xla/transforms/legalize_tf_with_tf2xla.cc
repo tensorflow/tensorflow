@@ -81,36 +81,10 @@ static bool IsOpWhitelisted(Operation* op) {
          isa<TF::InvOp>(op) || isa<TF::SelectV2Op>(op);
 }
 
-static llvm::Optional<std::string> GetExecutionDevice(
-    const std::string& device_type, const Location& loc) {
-  if (device_type == "XLA_CPU_JIT") return std::string("XLA_CPU");
-  if (device_type == "XLA_TPU_JIT") return std::string("TPU");
-  // TODO(hinsu): Support GPU device along with a test for it.
-
-  emitError(loc) << "unsupported device for legalization with tf2xla kernels: "
-                 << device_type;
-  return llvm::None;
-}
-
 static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
     const std::string& device_type, const Location& loc) {
-  auto device_or = GetExecutionDevice(device_type, loc);
-  if (!device_or) return nullptr;
-
-  auto* factory = tensorflow::DeviceFactory::GetFactory(*device_or);
-  if (!factory) {
-    emitError(loc) << "failed to create DeviceFactory for device: "
-                   << device_type;
-    return nullptr;
-  }
-  std::vector<std::unique_ptr<tensorflow::Device>> devices;
-  auto status = factory->CreateDevices(
-      tensorflow::SessionOptions(),
-      /*name_prefix=*/"/job:localhost/replica:0/task:0", &devices);
-  if (!status.ok()) {
-    emitError(loc) << status.ToString();
-    return nullptr;
-  }
+  // Register compilation kernels for all registered XLA backends.
+  tensorflow::XlaOpRegistry::RegisterCompilationKernels();
 
   auto device = absl::make_unique<tensorflow::XlaCompilationDevice>(
       tensorflow::SessionOptions(), tensorflow::DeviceType(device_type));
