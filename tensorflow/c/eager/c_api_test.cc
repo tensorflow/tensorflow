@@ -19,10 +19,6 @@ limitations under the License.
 
 #include <string>
 
-// clang-format off
-#include "tensorflow/core/platform/platform.h"
-// clang-format on
-
 #include "absl/strings/match.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
@@ -588,10 +584,9 @@ TEST(CAPI, TensorHandleDevices) {
   TFE_DeleteContext(ctx);
 }
 
-void ExecuteAdd(bool async, bool forward_input, bool tfrt) {
+void ExecuteAdd(bool async, bool forward_input) {
   TF_Status* status = TF_NewStatus();
   TFE_ContextOptions* opts = TFE_NewContextOptions();
-  TFE_ContextOptionsSetTfrt(opts, tfrt);
   TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
   TFE_Context* ctx = TFE_NewContext(opts, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
@@ -656,6 +651,7 @@ void ExecuteAdd(bool async, bool forward_input, bool tfrt) {
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteTensorHandle(m);
   TFE_DeleteTensorHandle(retval);
+  TFE_DeleteContext(ctx);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   float result[100 * 100] = {0};
@@ -665,42 +661,12 @@ void ExecuteAdd(bool async, bool forward_input, bool tfrt) {
   for (int i = 0; i < 100 * 100; ++i) {
     EXPECT_EQ(2.0f, result[i]);
   }
-  TFE_DeleteContext(ctx);
   TF_DeleteStatus(status);
 }
-TEST(CAPI, ExecuteAdd) {
-  ExecuteAdd(
-      /*async=*/false,
-      /*forward_input*/ false,
-      /*tfrt*/ false);
-}
-TEST(CAPI, ExecuteAddAsync) {
-  ExecuteAdd(
-      /*async=*/true,
-      /*forward_input*/ false,
-      /*tfrt*/ false);
-}
-TEST(CAPI, ExecuteAddForward) {
-  ExecuteAdd(
-      /*async=*/false,
-      /*forward_input*/ true,
-      /*tfrt*/ false);
-}
-TEST(CAPI, ExecuteAddForwardAsync) {
-  ExecuteAdd(
-      /*async=*/true,
-      /*forward_input*/ true,
-      /*tfrt*/ false);
-}
-#ifdef PLATFORM_GOOGLE
-// TODO(b/153349425): Add add forwarding tests for TFRT
-TEST(CAPI, ExecuteAddTfrt) {
-  ExecuteAdd(
-      /*async=*/false,
-      /*forward_input*/ false,
-      /*tfrt*/ true);
-}
-#endif
+TEST(CAPI, ExecuteAdd) { ExecuteAdd(false, false); }
+TEST(CAPI, ExecuteAddAsync) { ExecuteAdd(true, false); }
+TEST(CAPI, ExecuteAddForward) { ExecuteAdd(false, true); }
+TEST(CAPI, ExecuteAddForwardAsync) { ExecuteAdd(true, true); }
 
 void Execute_MatMul_CPU(bool async) {
   TF_Status* status = TF_NewStatus();

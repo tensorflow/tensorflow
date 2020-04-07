@@ -164,15 +164,12 @@ def run_benchmark(func, num_iters, execution_mode=None):
 class MicroBenchmarks(test.Benchmark):
 
   def __init__(self):
-    # TODO(b/153054118): Add tf.RandomUniform
-    if not context.is_tfrt_enabled():
-      # used for multiply benchmarks
-      self._m_2 = random_ops.random_uniform([2])
+    # used for multiply benchmarks
+    self._m_2 = random_ops.random_uniform([2])
 
-      # used for matmul benchmarks
-      self._m_2_by_2 = random_ops.random_uniform((2, 2))
-      self._m_100_by_784 = random_ops.random_uniform((100, 784))
-
+    # used for matmul benchmarks
+    self._m_2_by_2 = random_ops.random_uniform((2, 2))
+    self._m_100_by_784 = random_ops.random_uniform((100, 784))
     self._num_iters_2_by_2 = 30000
     self._num_iters_100_by_784 = 30000
 

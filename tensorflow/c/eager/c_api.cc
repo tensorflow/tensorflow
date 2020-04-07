@@ -21,10 +21,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-// clang-format off
-#include "tensorflow/core/platform/platform.h"
-// clang-format on
-
 #include "absl/algorithm/container.h"
 #include "absl/container/fixed_array.h"
 #include "absl/memory/memory.h"
@@ -35,14 +31,12 @@ limitations under the License.
 #include "tensorflow/c/eager/operation_interface.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/c/tf_tensor_internal.h"
-#ifdef PLATFORM_GOOGLE
-#include "tensorflow/c/eager/c_api_tfrt.h"
-#endif
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/protobuf/device_filters.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -682,15 +676,6 @@ void TFE_ContextOptionsSetDevicePlacementPolicy(
 void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
-  if (opts->use_tfrt) {
-#ifdef PLATFORM_GOOGLE
-    status->status = tensorflow::Status::OK();
-    return new TFE_Context{new tfrt::ContextInterface()};
-#else
-    status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
-    return nullptr;
-#endif
-  }
   std::vector<std::unique_ptr<tensorflow::Device>> devices;
   status->status = tensorflow::DeviceFactory::AddDevices(
       opts->session_options.options, "/job:localhost/replica:0/task:0",
