@@ -35,16 +35,17 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<tflite::Interpreter> interpreter;
   tflite::ops::builtin::BuiltinOpResolver builtin_op_resolver;
   tflite::InterpreterBuilder(*model, builtin_op_resolver)(&interpreter);
-  tflite::InterpreterWriter writer(interpreter.get());
+  tflite::SubgraphWriter writer(&interpreter->primary_subgraph());
   std::unique_ptr<uint8_t[]> output_buffer;
   size_t output_buffer_size;
   writer.GetBuffer(&output_buffer, &output_buffer_size);
 
   // Verify the generated model.
+  std::unique_ptr<tflite::Interpreter> new_interpreter;
   model = tflite::FlatBufferModel::BuildFromBuffer(
       reinterpret_cast<char*>(output_buffer.get()), output_buffer_size);
-  tflite::InterpreterBuilder(*model, builtin_op_resolver)(&interpreter);
-  if (interpreter->AllocateTensors() != kTfLiteOk) {
+  tflite::InterpreterBuilder(*model, builtin_op_resolver)(&new_interpreter);
+  if (new_interpreter->AllocateTensors() != kTfLiteOk) {
     fprintf(stderr, "AllocateTensors failed on the round-tripped model.\n");
     return 1;
   }

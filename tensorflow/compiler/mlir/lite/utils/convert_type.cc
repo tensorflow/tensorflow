@@ -15,25 +15,33 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
+using xla::StatusOr;
+
+namespace errors = tensorflow::errors;
+
 mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
   switch (type) {
-    case tflite::TensorType_FLOAT32:
-      return builder.getF32Type();
     case tflite::TensorType_FLOAT16:
       return builder.getF16Type();
+    case tflite::TensorType_FLOAT32:
+      return builder.getF32Type();
+    case tflite::TensorType_FLOAT64:
+      return builder.getF64Type();
     case tflite::TensorType_INT32:
       return builder.getIntegerType(32);
     case tflite::TensorType_UINT8:
-      return mlir::TF::Uint8Type::get(builder.getContext());
+      return builder.getIntegerType(8, /*isSigned=*/false);
     case tflite::TensorType_INT64:
       return builder.getIntegerType(64);
     case tflite::TensorType_STRING:
@@ -59,6 +67,8 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_HALF;
     case tflite::TensorType_FLOAT32:
       return tensorflow::DT_FLOAT;
+    case tflite::TensorType_FLOAT64:
+      return tensorflow::DT_DOUBLE;
     case tflite::TensorType_INT8:
       return tensorflow::DT_INT8;
     case tflite::TensorType_INT16:
@@ -71,6 +81,33 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_STRING;
     case tflite::TensorType_UINT8:
       return tensorflow::DT_UINT8;
+  }
+}
+
+StatusOr<tflite::TensorType> TfTypeToTflType(tensorflow::DataType type) {
+  switch (type) {
+    case tensorflow::DT_BOOL:
+      return tflite::TensorType_BOOL;
+    case tensorflow::DT_COMPLEX64:
+      return tflite::TensorType_COMPLEX64;
+    case tensorflow::DT_HALF:
+      return tflite::TensorType_FLOAT16;
+    case tensorflow::DT_FLOAT:
+      return tflite::TensorType_FLOAT32;
+    case tensorflow::DT_INT8:
+      return tflite::TensorType_INT8;
+    case tensorflow::DT_INT16:
+      return tflite::TensorType_INT16;
+    case tensorflow::DT_INT32:
+      return tflite::TensorType_INT32;
+    case tensorflow::DT_INT64:
+      return tflite::TensorType_INT64;
+    case tensorflow::DT_STRING:
+      return tflite::TensorType_STRING;
+    case tensorflow::DT_UINT8:
+      return tflite::TensorType_UINT8;
+    default:
+      return errors::InvalidArgument("unsupported tensor data type", type);
   }
 }
 

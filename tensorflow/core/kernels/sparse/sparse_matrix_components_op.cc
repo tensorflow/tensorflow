@@ -15,7 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif
 
@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse/kernels.h"
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/cuda_sparse.h"
 #endif
@@ -116,7 +116,7 @@ REGISTER(CPU, double)
 REGISTER(CPU, complex64)
 REGISTER(CPU, complex128)
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER(GPU, float)
 REGISTER(GPU, double)
@@ -145,6 +145,6 @@ DECLARE_GPU_SPEC(complex128);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

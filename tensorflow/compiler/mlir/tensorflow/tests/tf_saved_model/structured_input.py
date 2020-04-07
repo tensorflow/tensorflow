@@ -38,7 +38,7 @@ class TestModule(tf.Module):
   # CHECK:      func {{@[a-zA-Z_0-9]+}}(
   # CHECK-SAME:   %arg0: tensor<1xf32> {tf_saved_model.index_path = [0]},
   # CHECK-SAME:   %arg1: tensor<2xf32> {tf_saved_model.index_path = [1]})
-  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["f0000_function_arity"]
+  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["f0000_function_arity"]
   @tf.function(input_signature=[
       tf.TensorSpec([1], tf.float32),
       tf.TensorSpec([2], tf.float32)
@@ -51,7 +51,7 @@ class TestModule(tf.Module):
   # CHECK:      func {{@[a-zA-Z_0-9]+}}(
   # CHECK-SAME:   %arg0: tensor<f32> {tf_saved_model.index_path = [0, 0]},
   # CHECK-SAME:   %arg1: tensor<f32> {tf_saved_model.index_path = [0, 1]})
-  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["f0001_list_2_elements"]
+  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["f0001_list_2_elements"]
   @tf.function(input_signature=[[
       tf.TensorSpec([], tf.float32),
       tf.TensorSpec([], tf.float32),
@@ -65,7 +65,7 @@ class TestModule(tf.Module):
   # CHECK:      func {{@[a-zA-Z_0-9]+}}(
   # CHECK-SAME:   %arg0: tensor<1xf32> {tf_saved_model.index_path = [0, "x"]},
   # CHECK-SAME:   %arg1: tensor<2xf32> {tf_saved_model.index_path = [0, "y"]})
-  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["f0002_dict_2_keys"]
+  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["f0002_dict_2_keys"]
   @tf.function(input_signature=[{
       'x': tf.TensorSpec([1], tf.float32),
       'y': tf.TensorSpec([2], tf.float32),
@@ -79,7 +79,7 @@ class TestModule(tf.Module):
   # CHECK:      func {{@[a-zA-Z_0-9]+}}(
   # CHECK-SAME:   %arg0: tensor<1xf32> {tf_saved_model.index_path = [0, "x"]},
   # CHECK-SAME:   %arg1: tensor<2xf32> {tf_saved_model.index_path = [0, "y"]})
-  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["f0003_dict_2_keys_out_of_order"]
+  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["f0003_dict_2_keys_out_of_order"]
   @tf.function(input_signature=[{
       'y': tf.TensorSpec([2], tf.float32),
       'x': tf.TensorSpec([1], tf.float32),
@@ -96,7 +96,7 @@ class TestModule(tf.Module):
   # CHECK-SAME:   %arg3: tensor<4xf32> {tf_saved_model.index_path = [0, "x"]},
   # CHECK-SAME:   %arg4: tensor<5xf32> {tf_saved_model.index_path = [0, "y"]},
   # CHECK-SAME:   %arg5: tensor<6xf32> {tf_saved_model.index_path = [0, "z"]})
-  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["f0004_dict_many_keys"]
+  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["f0004_dict_many_keys"]
   @tf.function(input_signature=[{
       'x': tf.TensorSpec([4], tf.float32),
       'y': tf.TensorSpec([5], tf.float32),
@@ -115,7 +115,7 @@ class TestModule(tf.Module):
   # CHECK-SAME:   %arg0: tensor<1xf32> {tf_saved_model.index_path = [0, "x", 0]},
   # CHECK-SAME:   %arg1: tensor<2xf32> {tf_saved_model.index_path = [0, "x", 1]},
   # CHECK-SAME:   %arg2: tensor<3xf32> {tf_saved_model.index_path = [0, "y"]})
-  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["f0005_more_complex_recursive_structure"]
+  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["f0005_more_complex_recursive_structure"]
   @tf.function(input_signature=[{
       'x': [tf.TensorSpec([1], tf.float32),
             tf.TensorSpec([2], tf.float32)],

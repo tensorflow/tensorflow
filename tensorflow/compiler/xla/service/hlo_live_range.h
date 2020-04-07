@@ -83,6 +83,12 @@ class HloLiveRange {
     return buffer_live_ranges_;
   }
 
+  // Returns the map from a computation and its time span in the schedule.
+  const absl::flat_hash_map<const HloComputation*, TimeBound>&
+  computation_span_times() const {
+    return computation_span_times_;
+  }
+
   // Returns the time stamp of the end of the program.
   LogicalTime schedule_end_time() const { return schedule_end_time_; }
 

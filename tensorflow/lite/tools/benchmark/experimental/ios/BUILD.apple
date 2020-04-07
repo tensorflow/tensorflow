@@ -1,3 +1,4 @@
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_MINIMUM_OS_VERSION")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 
@@ -18,5 +19,17 @@ ios_static_framework(
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
     deps = [
         "//tensorflow/lite/tools/benchmark/experimental/c:benchmark_c_api",
+    ],
+)
+
+# Used for building TensorFlowLiteBenchmarkC_framework framework.
+build_test(
+    name = "framework_build_test",
+    tags = [
+        "nomsan",  # b/145205324
+        "notsan",  # b/145205324
+    ],
+    targets = [
+        ":TensorFlowLiteBenchmarkC_framework",
     ],
 )

@@ -19,7 +19,7 @@ limitations under the License.
 // flatbuffer serialization format into in-memory values that are used by the
 // runtime API and interpreter.
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"

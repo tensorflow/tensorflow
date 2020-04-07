@@ -30,7 +30,7 @@ cuda_py_test(
     srcs = [
         "functional_saver_test.py",
     ],
-    additional_deps = [
+    deps = [
         ":functional_saver",
         ":saveable_hook",
         "//tensorflow/python/eager:test",

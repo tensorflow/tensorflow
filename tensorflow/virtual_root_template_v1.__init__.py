@@ -100,6 +100,8 @@ for _m in _top_level_modules:
 # We still need all the names that are toplevel on tensorflow_core
 from tensorflow_core import *
 
+_major_api_version = 1
+
 # In V1 API we need to print deprecation messages
 from tensorflow.python.util import deprecation_wrapper as _deprecation
 if not isinstance(_sys.modules[__name__], _deprecation.DeprecationWrapper):
@@ -132,7 +134,4 @@ try:
 except NameError:
   pass
 
-# Manually patch keras and estimator so tf.keras and tf.estimator work
-keras = _sys.modules["tensorflow.keras"]
-if not _root_estimator: estimator = _sys.modules["tensorflow.estimator"]
 # LINT.ThenChange(//tensorflow/virtual_root_template_v2.__init__.py.oss)

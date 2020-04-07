@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 
-// Tests cross-GPU operatons.
+// Tests cross-GPU operations.
 //
 // This test requires at least four GPUs.  For instructions on running this
 // within Google, see go/multi-gpu-unit-test.
@@ -41,7 +41,7 @@ using ::testing::UnorderedElementsAre;
 class CollectiveOpsTest : public HloTestBase {
  protected:
   std::unique_ptr<HloModule> MakeCrsModule(
-      int64 num_elems, std::vector<std::vector<int64>> replica_groups,
+      const Shape& shape, std::vector<std::vector<int64>> replica_groups,
       const HloModuleConfig& config, std::string op = "add",
       std::string datatype = "f32") {
     std::string hlo_template = R"(
@@ -54,11 +54,11 @@ class CollectiveOpsTest : public HloTestBase {
       }
 
       ENTRY test_computation {
-        p = DATATYPE[NUM_ELEMS] parameter(0)
-        p2 = DATATYPE[NUM_ELEMS] bitcast(p)
-        crs = DATATYPE[NUM_ELEMS] all-reduce(p2), replica_groups=REPLICA_GROUPS, to_apply=apply_op
-        copy = DATATYPE[NUM_ELEMS] copy(crs)
-        ROOT out = DATATYPE[NUM_ELEMS] bitcast(copy)
+        p = SHAPE parameter(0)
+        p2 = SHAPE bitcast(p)
+        crs = SHAPE all-reduce(p2), replica_groups=REPLICA_GROUPS, to_apply=apply_op
+        copy = SHAPE copy(crs)
+        ROOT out = SHAPE bitcast(copy)
       }
     )";
     std::vector<string> replica_group_strs;
@@ -66,71 +66,70 @@ class CollectiveOpsTest : public HloTestBase {
       replica_group_strs.push_back(
           absl::StrFormat("{%s}", absl::StrJoin(g, ",")));
     }
-    if (num_elems == 1) {
+    std::string shape_str = shape.ToString(/*print_layout=*/false);
+    if (shape_str == "f32[1]") {
       // Exercise the scalar codepath.
       hlo_template = absl::StrReplaceAll(
           hlo_template,
-          {{"DATATYPE[NUM_ELEMS] bitcast(p)", "DATATYPE[] bitcast(p)"},
-           {"DATATYPE[NUM_ELEMS] all-reduce", "DATATYPE[] all-reduce"},
-           {"DATATYPE[NUM_ELEMS] copy", "DATATYPE[] copy"}});
+          {{"DATATYPE[SHAPE] bitcast(p)", "DATATYPE[] bitcast(p)"},
+           {"DATATYPE[SHAPE] all-reduce", "DATATYPE[] all-reduce"},
+           {"DATATYPE[SHAPE] copy", "DATATYPE[] copy"}});
     }
-    return ParseAndReturnVerifiedModule(
-               absl::StrReplaceAll(
-                   hlo_template,
-                   {{"NUM_ELEMS", absl::StrCat(num_elems)},
-                    {"REPLICA_GROUPS",
-                     absl::StrFormat("{%s}",
-                                     absl::StrJoin(replica_group_strs, ", "))},
-                    {"OP", op},
-                    {"DATATYPE", datatype}}),
-               config)
-        .ValueOrDie();
+    std::string parameterized_hlo = absl::StrReplaceAll(
+        hlo_template,
+        {{"SHAPE", shape_str},
+         {"REPLICA_GROUPS",
+          absl::StrFormat("{%s}", absl::StrJoin(replica_group_strs, ", "))},
+         {"OP", op},
+         {"DATATYPE", datatype}});
+    return ParseAndReturnVerifiedModule(parameterized_hlo, config).ValueOrDie();
   }
 
   template <typename LiteralType>
-  void TestTwoReplicasOneOperand(std::string op,
-                                 std::vector<LiteralType> input_value,
-                                 std::vector<LiteralType> expected_value) {
+  void TestTwoReplicasOneOperand(std::string op, Literal input_value,
+                                 Literal expected_value) {
     const int kNumReplicas = 2;
     std::string dtype = primitive_util::LowercasePrimitiveTypeName(
         primitive_util::NativeToPrimitiveType<LiteralType>());
     auto config = GetModuleConfigForTest();
     config.set_replica_count(kNumReplicas);
-    auto module = MakeCrsModule(/*num_elems=*/input_value.size(),
-                                /*replica_groups=*/{}, config,
-                                /*op=*/op, /*datatype=*/dtype);
-    auto literal = LiteralUtil::CreateR1<LiteralType>(input_value);
-    auto expected = LiteralUtil::CreateR1<LiteralType>(expected_value);
+    auto module = MakeCrsModule(
+        /*shape_str=*/input_value.shape(),
+        /*replica_groups=*/{}, config,
+        /*op=*/op, /*datatype=*/dtype);
     TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                            ExecuteReplicated(std::move(module), {&literal},
+                            ExecuteReplicated(std::move(module), {&input_value},
                                               /*num_replicas=*/kNumReplicas,
                                               /*use_threads=*/true));
     for (int replica_idx = 0; replica_idx < kNumReplicas; replica_idx++) {
-      EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected, results[replica_idx],
-                                               ErrorSpec{1e-5, 1e-5}));
+      EXPECT_TRUE(LiteralTestUtil::NearOrEqual(
+          expected_value, results[replica_idx], ErrorSpec{1e-5, 1e-5}));
     }
   }
 
   template <typename LiteralType>
   void TestAllOps() {
     auto cast = [&](int value) { return static_cast<LiteralType>(value); };
-    std::vector<LiteralType> input_value = {cast(1), cast(2), cast(3)};
+    auto to_literal = [&](absl::Span<const LiteralType> values) {
+      return LiteralUtil::CreateR1<LiteralType>(values);
+    };
+    Literal input_value = to_literal({cast(1), cast(2), cast(3)});
     TestTwoReplicasOneOperand<LiteralType>(
         "add",
-        /*input_value=*/input_value,
-        /*expected_value=*/{cast(2), cast(4), cast(6)});
+        /*input_value=*/input_value.Clone(),
+        /*expected_value=*/to_literal({cast(2), cast(4), cast(6)}));
     TestTwoReplicasOneOperand<LiteralType>(
         "multiply",
-        /*input_value=*/input_value,
-        /*expected_value=*/{cast(1), cast(4), cast(9)});
+        /*input_value=*/input_value.Clone(),
+        /*expected_value=*/to_literal({cast(1), cast(4), cast(9)}));
     TestTwoReplicasOneOperand<LiteralType>(
         "maximum",
-        /*input_value=*/input_value,
-        /*expected_value=*/{cast(1), cast(2), cast(3)});
+        /*input_value=*/input_value.Clone(),
+        /*expected_value=*/to_literal({cast(1), cast(2), cast(3)}));
     TestTwoReplicasOneOperand<LiteralType>(
         "minimum",
-        /*input_value=*/input_value,
-        /*expected_value=*/{cast(1), cast(2), cast(3)});
+        /*input_value=*/input_value.Clone(),
+        /*expected_value=*/to_literal({cast(1), cast(2), cast(3)}));
   }
 };
 
@@ -160,7 +159,7 @@ DeviceAssignment MakeDeviceAssn(std::vector<int64> devices) {
 }
 
 // Shorter alias for this function.
-absl::flat_hash_set<int> OpenNcclChannels() {
+absl::flat_hash_set<GlobalDeviceId> OpenNcclChannels() {
   return gpu::NcclAllReduceThunk::DevicesWithOpenNcclChannels();
 }
 
@@ -169,10 +168,18 @@ static Eigen::half ToHalf(T value) {
   return static_cast<Eigen::half>(value);
 }
 
+XLA_TEST_F(CollectiveOpsTest, AllReduce_sum_float32_2D) {
+  TestTwoReplicasOneOperand<float>(
+      "add",
+      /*input_value=*/LiteralUtil::CreateR2<float>({{1, 2}, {3, 4}}),
+      /*expected_value=*/LiteralUtil::CreateR2<float>({{2, 4}, {6, 8}}));
+}
+
 XLA_TEST_F(CollectiveOpsTest, AllReduceSingleOutput_float32) {
-  TestTwoReplicasOneOperand<float>("add",
-                                   /*input_value=*/{1},
-                                   /*expected_value=*/{2});
+  TestTwoReplicasOneOperand<float>(
+      "add",
+      /*input_value=*/LiteralUtil::CreateR1<float>({1}),
+      /*expected_value=*/LiteralUtil::CreateR1<float>({2}));
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_int8) {
@@ -211,6 +218,88 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_half) {
   TestAllOps<Eigen::half>();
 }
 
+XLA_TEST_F(CollectiveOpsTest, AllReduceAnd_Pred) {
+  // Test with equal elements.
+  TestTwoReplicasOneOperand<bool>(
+      "and",
+      /*input_value=*/LiteralUtil::CreateR1<bool>({true, false}),
+      /*expected_value=*/LiteralUtil::CreateR1<bool>({true, false}));
+
+  // Test with {true, false}.
+  const char* hlo_module = R"(
+    HloModule test
+
+    apply_op {
+      x = pred[] parameter(0)
+      y = pred[] parameter(1)
+      ROOT apply_op = pred[] and(x, y)
+    }
+
+    ENTRY test_computation {
+      id = u32[] replica-id()
+      c = u32[] constant(0)
+      p = pred[] compare(id, c), direction=EQ
+      p2 = pred[1] bitcast(p)
+      crs = pred[1] all-reduce(p2), replica_groups={}, to_apply=apply_op
+      copy = pred[1] copy(crs)
+      ROOT out = pred[1] bitcast(copy)
+    }
+  )";
+
+  auto config = GetModuleConfigForTest();
+  config.set_replica_count(2);
+  auto module = ParseAndReturnVerifiedModule(hlo_module, config).ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {},
+                                            /*num_replicas=*/2,
+                                            /*use_threads=*/true));
+  for (int replica_idx = 0; replica_idx < 2; replica_idx++) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<bool>({false}),
+                                       results[replica_idx]));
+  }
+}
+
+XLA_TEST_F(CollectiveOpsTest, AllReduceOr_Pred) {
+  // Test with equal elements.
+  TestTwoReplicasOneOperand<bool>(
+      "or",
+      /*input_value=*/LiteralUtil::CreateR1<bool>({true, false}),
+      /*expected_value=*/LiteralUtil::CreateR1<bool>({true, false}));
+
+  // Test with {true, false}.
+  const char* hlo_module = R"(
+    HloModule test
+
+    apply_op {
+      x = pred[] parameter(0)
+      y = pred[] parameter(1)
+      ROOT apply_op = pred[] or(x, y)
+    }
+
+    ENTRY test_computation {
+      id = u32[] replica-id()
+      c = u32[] constant(0)
+      p = pred[] compare(id, c), direction=EQ
+      p2 = pred[1] bitcast(p)
+      crs = pred[1] all-reduce(p2), replica_groups={}, to_apply=apply_op
+      copy = pred[1] copy(crs)
+      ROOT out = pred[1] bitcast(copy)
+    }
+  )";
+
+  auto config = GetModuleConfigForTest();
+  config.set_replica_count(2);
+  auto module = ParseAndReturnVerifiedModule(hlo_module, config).ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {},
+                                            /*num_replicas=*/2,
+                                            /*use_threads=*/true));
+  for (int replica_idx = 0; replica_idx < 2; replica_idx++) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<bool>({true}),
+                                       results[replica_idx]));
+  }
+}
+
 // Tries all-to-all operations across all 2^kNumDevices - 1 combinations of
 // devices in sequence.
 XLA_TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
@@ -227,11 +316,12 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {
     config.set_replica_count(devices.size());
     config.set_static_device_assignment(device_assn);
 
-    auto module = MakeCrsModule(kNumElems, /*replica_groups=*/{}, config);
-
     std::vector<float> input_vec(kNumElems);
     absl::c_iota(input_vec, 0);
     auto input_literal = LiteralUtil::CreateR1<float>(input_vec);
+
+    auto module = MakeCrsModule(input_literal.shape(),
+                                /*replica_groups=*/{}, config);
 
     TF_ASSERT_OK_AND_ASSIGN(
         std::vector<Literal> results,
@@ -270,7 +360,8 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AllReduce_NcclChannelCaching)) {
     auto config = GetModuleConfigForTest();
     config.set_replica_count(devices.size());
     config.set_static_device_assignment(e.device_assn);
-    auto module = MakeCrsModule(kNumElems, /*replica_groups=*/{}, config);
+    auto module = MakeCrsModule(input_literal.shape(),
+                                /*replica_groups=*/{}, config);
     e.executable =
         test_runner_
             .CreateExecutable(std::move(module), /*run_hlo_passes=*/true)
@@ -325,20 +416,21 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
   const int64 kNumThreads = 200;
   const int64 kRunsPerThread = 10;
 
+  std::vector<float> input_vec(kNumElems);
+  absl::c_iota(input_vec, 0);
+  auto input_literal = LiteralUtil::CreateR1<float>(input_vec);
+
   auto config = GetModuleConfigForTest();
   config.set_replica_count(2);
   auto executable =
       test_runner_
-          .CreateExecutable(
-              MakeCrsModule(kNumElems, /*replica_groups=*/{}, config),
-              /*run_hlo_passes=*/true)
+          .CreateExecutable(MakeCrsModule(input_literal.shape(),
+                                          /*replica_groups=*/{}, config),
+                            /*run_hlo_passes=*/true)
           .ValueOrDie();
   std::vector<int64> devices = {0, 1};
   auto device_assn = MakeDeviceAssn(devices);
 
-  std::vector<float> input_vec(kNumElems);
-  absl::c_iota(input_vec, 0);
-  auto input_literal = LiteralUtil::CreateR1<float>(input_vec);
   HloRunner::ReplicatedExecuteOptions opts;
   opts.num_replicas = devices.size();
   opts.use_threads = true;
@@ -358,6 +450,55 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
   done.Wait();
 }
 
+// Runs the same executable many times concurrently.  The all-reduces should not
+// conflict with one another.
+XLA_TEST_F(CollectiveOpsTest, AllReduce_CombinableAllReduces) {
+  std::string hlo_string = R"(
+    HloModule test
+
+    apply_op {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT apply_op = f32[] add(x, y)
+    }
+
+    ENTRY test_computation {
+      p0 = f32[5] parameter(0)
+      p1 = f32[5] parameter(1)
+      crs0 = f32[5] all-reduce(p0), replica_groups={}, to_apply=apply_op
+      crs1 = f32[5] all-reduce(p1), replica_groups={}, to_apply=apply_op
+      ROOT out = (f32[5], f32[5]) tuple(f32[5] crs0, f32[5] crs1)
+    }
+  )";
+  static constexpr int kNumReplicas = 2;
+  auto config = GetModuleConfigForTest();
+  config.set_replica_count(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+
+  std::vector<float> input0_vec = {1., 2., 3., 4., 5.};
+  auto input0_literal = LiteralUtil::CreateR1<float>(input0_vec);
+  std::vector<float> input1_vec = {7., 3., 4., 1., 2.};
+  auto input1_literal = LiteralUtil::CreateR1<float>(input1_vec);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {&input0_literal, &input1_literal},
+                        /*num_replicas=*/kNumReplicas,
+                        /*use_threads=*/true));
+  std::vector<float> expected0_vec = {2., 4., 6., 8., 10.};
+  auto expected0_literal = LiteralUtil::CreateR1<float>(expected0_vec);
+  std::vector<float> expected1_vec = {14., 6., 8., 2., 4.};
+  auto expected1_literal = LiteralUtil::CreateR1<float>(expected1_vec);
+  for (int replica_idx = 0; replica_idx < kNumReplicas; replica_idx++) {
+    auto rs = results[replica_idx].DecomposeTuple();
+    EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected0_literal, rs[0],
+                                             ErrorSpec{1e-5, 1e-5}));
+    EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected1_literal, rs[1],
+                                             ErrorSpec{1e-5, 1e-5}));
+  }
+}
+
 // Runs an all-reduce with three partitions:
 //  {0}, {1,2}, {3}
 // meaning, the all-reduce is a nop for devices 0 and 3, and only devices 1 and
@@ -368,11 +509,12 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ThreeReplicaGroups) {
 
   auto config = GetModuleConfigForTest();
   config.set_replica_count(4);
-  auto module = MakeCrsModule(/*num_elems=*/kNumElems,
-                              /*replica_groups=*/{{0}, {1, 2}, {3}}, config);
   std::vector<float> input_vec(kNumElems);
   absl::c_iota(input_vec, 0);
   auto input_literal = LiteralUtil::CreateR1<float>(input_vec);
+  auto module = MakeCrsModule(
+      /*shape_str=*/input_literal.shape(),
+      /*replica_groups=*/{{0}, {1, 2}, {3}}, config);
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
@@ -397,7 +539,8 @@ XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
-    ROOT id = u32[] replica-id()
+    id = u32[] replica-id()
+    ROOT out = u32[] copy(id)
   }
   )";
   const int64 kNumReplicas = 4;
@@ -417,7 +560,7 @@ XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(CollectivePermute_Simple)) {
+XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -448,6 +591,53 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(CollectivePermute_Simple)) {
   // Nothing writes to replica 3, so it is memzero'ed.
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({0, 0}),
                                      results[3]));
+}
+
+XLA_TEST_F(CollectiveOpsTest, AllReduce_TupleAllReduce) {
+  std::string hlo_string = R"(
+    HloModule test
+
+    apply_op {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT apply_op = f32[] add(x, y)
+    }
+
+    ENTRY test_computation {
+      p0 = f32[5] parameter(0)
+      p1 = f32[7] parameter(1)
+      ROOT out = (f32[5], f32[7]) all-reduce(p0, p1), replica_groups={}, to_apply=apply_op
+    }
+  )";
+  static constexpr int kNumReplicas = 2;
+  auto config = GetModuleConfigForTest();
+  config.set_replica_count(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+
+  std::vector<float> input0_vec = {1., 2., 3., 4., 5.};
+  auto input0_literal = LiteralUtil::CreateR1<float>(input0_vec);
+  std::vector<float> input1_vec = {
+      7., 3., 4., 1., 2., 3., 4.,
+  };
+  auto input1_literal = LiteralUtil::CreateR1<float>(input1_vec);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {&input0_literal, &input1_literal},
+                        /*num_replicas=*/kNumReplicas,
+                        /*use_threads=*/true));
+  std::vector<float> expected0_vec = {2., 4., 6., 8., 10.};
+  auto expected0_literal = LiteralUtil::CreateR1<float>(expected0_vec);
+  std::vector<float> expected1_vec = {14., 6., 8., 2., 4., 6., 8.};
+  auto expected1_literal = LiteralUtil::CreateR1<float>(expected1_vec);
+  for (int replica_idx = 0; replica_idx < kNumReplicas; replica_idx++) {
+    auto rs = results[replica_idx].DecomposeTuple();
+    EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected0_literal, rs[0],
+                                             ErrorSpec{1e-5, 1e-5}));
+    EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected1_literal, rs[1],
+                                             ErrorSpec{1e-5, 1e-5}));
+  }
 }
 
 }  // namespace

@@ -86,6 +86,15 @@ PyObject* IsNamedtuple(PyObject* o, bool strict);
 //   True if the sequence subclasses mapping.
 bool IsMapping(PyObject* o);
 
+// Returns a true if its input is a collections.MutableMapping.
+//
+// Args:
+//   seq: the input to be checked.
+//
+// Returns:
+//   True if the sequence subclasses mapping.
+bool IsMutableMapping(PyObject* o);
+
 // Returns a true if its input is a (possibly wrapped) tuple.
 //
 // Args:
@@ -177,7 +186,7 @@ PyObject* SameNamedtuples(PyObject* o1, PyObject* o2);
 //
 // Note that namedtuples with identical name and fields are always considered
 // to have the same shallow structure (even with `check_types=True`).
-// For intance, this code will print `True`:
+// For instance, this code will print `True`:
 //
 // ```python
 // def nt(a, b):
@@ -225,7 +234,7 @@ PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types,
 //   nest: an arbitrarily nested structure or a scalar object. Note, numpy
 //       arrays are considered scalars.
 //   expand_composites: If true, then composite tensors (such as
-//       `tf.SparseTensor` and `tf.RaggedTensor` are flattened into their
+//       `tf.sparse.SparseTensor` and `tf.RaggedTensor` are flattened into their
 //       component tensors.
 //
 // Returns:

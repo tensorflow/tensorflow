@@ -36,6 +36,12 @@ class AutoShardPolicy(enum.IntEnum):
   DATA = 2
 
 
+class ExternalStatePolicy(enum.Enum):
+  WARN = 0
+  IGNORE = 1
+  FAIL = 2
+
+
 @tf_export("data.experimental.DistributeOptions")
 class DistributeOptions(options.OptionsBase):
   """Represents options for distributed data processing.

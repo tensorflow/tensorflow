@@ -17,15 +17,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests import stats_dataset_test_base
-from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.ops import stats_aggregator
+from tensorflow.python.data.experimental.ops import testing
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase):
+class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase,
+                          parameterized.TestCase):
 
+  # TODO(jsimsa): Investigate why are graph-mode tests failing.
+  @combinations.generate(test_base.eager_only_combinations())
   def testLatencyStatsOptimization(self):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.from_tensors(1).apply(

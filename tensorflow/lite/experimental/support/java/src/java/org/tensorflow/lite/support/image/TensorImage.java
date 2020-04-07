@@ -20,7 +20,7 @@ import android.graphics.Bitmap.Config;
 import java.nio.ByteBuffer;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.DataType;
-import org.tensorflow.lite.support.common.SupportPrecondtions;
+import org.tensorflow.lite.support.common.SupportPreconditions;
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer;
 
 /**
@@ -49,6 +49,17 @@ public class TensorImage {
   private final ImageContainer container;
 
   /**
+   * Initialize a TensorImage object.
+   *
+   * Note: The data type of this TensorImage is UINT8, which means it could naturally accept Bitmaps
+   * whose pixel value range is [0, 255]. However, any image with float value pixels will not be
+   * loaded correctly. In those cases, please use {@link TensorImage(DataType)}.
+   */
+  public TensorImage() {
+    this(DataType.UINT8);
+  }
+
+  /**
    * Initializes a TensorImage object with data type specified.
    *
    * <p>Note: The shape of a TensorImage is not fixed. It is determined when {@code load} methods
@@ -62,7 +73,7 @@ public class TensorImage {
    *     {@link DataType#FLOAT32}.
    */
   public TensorImage(DataType dataType) {
-    SupportPrecondtions.checkArgument(
+    SupportPreconditions.checkArgument(
         dataType == DataType.UINT8 || dataType == DataType.FLOAT32,
         "Illegal data type for TensorImage: Only FLOAT32 and UINT8 are accepted");
     container = new ImageContainer(dataType);
@@ -106,10 +117,9 @@ public class TensorImage {
    * @throws IllegalArgumentException if {@code bitmap} is not in ARGB_8888.
    */
   public void load(@NonNull Bitmap bitmap) {
-    SupportPrecondtions.checkNotNull(bitmap, "Cannot load null bitmap.");
-    SupportPrecondtions.checkArgument(
-        bitmap.getConfig().equals(Config.ARGB_8888),
-        "Only supports loading ARGB_8888 bitmaps.");
+    SupportPreconditions.checkNotNull(bitmap, "Cannot load null bitmap.");
+    SupportPreconditions.checkArgument(
+        bitmap.getConfig().equals(Config.ARGB_8888), "Only supports loading ARGB_8888 bitmaps.");
     container.set(bitmap);
   }
 
@@ -120,12 +130,10 @@ public class TensorImage {
    * will be applied.
    *
    * @param pixels The RGB pixels representing the image.
-   * @param shape The shape of the image, should have 3 dims and the last dim should be 3.
+   * @param shape The shape of the image, should either in form (h, w, 3), or in form (1, h, w, 3).
    */
   public void load(@NonNull float[] pixels, @NonNull int[] shape) {
-    SupportPrecondtions.checkArgument(
-        shape.length == 3 && shape[2] == 3,
-        "Only supports image shape in (h, w, c), and channels representing R, G, B in order.");
+    checkImageTensorShape(shape);
     TensorBuffer buffer = TensorBuffer.createDynamic(getDataType());
     buffer.loadArray(pixels, shape);
     load(buffer);
@@ -138,12 +146,10 @@ public class TensorImage {
    * into [0, 255].
    *
    * @param pixels The RGB pixels representing the image.
-   * @param shape The shape of the image, should have 3 dims and the last dim should be 3.
+   * @param shape The shape of the image, should either in form (h, w, 3), or in form (1, h, w, 3).
    */
   public void load(@NonNull int[] pixels, @NonNull int[] shape) {
-    SupportPrecondtions.checkArgument(
-        shape.length == 3 && shape[2] == 3,
-        "Only supports image shape in (h, w, c), and channels representing R, G, B in order.");
+    checkImageTensorShape(shape);
     TensorBuffer buffer = TensorBuffer.createDynamic(getDataType());
     buffer.loadArray(pixels, shape);
     load(buffer);
@@ -152,9 +158,10 @@ public class TensorImage {
   /**
    * Loads a TensorBuffer containing pixel values. The color layout should be RGB.
    *
-   * @param buffer The TensorBuffer to load.
+   * @param buffer The TensorBuffer to load. Its shape should be either (h, w, 3) or (1, h, w, 3).
    */
   public void load(TensorBuffer buffer) {
+    checkImageTensorShape(buffer.getShape());
     container.set(buffer);
   }
 
@@ -212,6 +219,17 @@ public class TensorImage {
     return container.getDataType();
   }
 
+  // Requires tensor shape [h, w, 3] or [1, h, w, 3].
+  static void checkImageTensorShape(int[] shape) {
+    SupportPreconditions.checkArgument(
+        (shape.length == 3 || (shape.length == 4 && shape[0] == 1))
+            && shape[shape.length - 3] > 0
+            && shape[shape.length - 2] > 0
+            && shape[shape.length - 1] == 3,
+        "Only supports image shape in (h, w, c) or (1, h, w, c), and channels representing R, G, B"
+            + " in order.");
+  }
+
   // Handles RGB image data storage strategy of TensorBuffer.
   private static class ImageContainer {
 
@@ -264,8 +282,8 @@ public class TensorImage {
       // Create a new bitmap and reallocate memory for it.
       if (bitmapImage == null || bitmapImage.getAllocationByteCount() < requiredAllocation) {
         int[] shape = bufferImage.getShape();
-        int w = shape[0];
-        int h = shape[1];
+        int h = shape[shape.length - 3];
+        int w = shape[shape.length - 2];
         bitmapImage = Bitmap.createBitmap(w, h, Config.ARGB_8888);
       }
       ImageConversions.convertTensorBufferToBitmap(bufferImage, bitmapImage);
@@ -279,7 +297,7 @@ public class TensorImage {
       if (isBufferUpdated) {
         return bufferImage;
       }
-      SupportPrecondtions.checkArgument(
+      SupportPreconditions.checkArgument(
           isBitmapUpdated, "Both buffer and bitmap data are obsolete.");
       int requiredFlatSize = bitmapImage.getWidth() * bitmapImage.getHeight() * 3;
       if (bufferImage == null

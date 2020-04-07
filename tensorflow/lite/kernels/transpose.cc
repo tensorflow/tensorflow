@@ -17,7 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -76,8 +76,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TransposeContext op_context(context, node);
 
   // Ensure validity of input tensor.
-  TF_LITE_ENSURE_MSG(context, NumDimensions(op_context.input) <= 4,
-                     "Transpose op only supports 1D-4D input arrays.");
+  TF_LITE_ENSURE_MSG(context, NumDimensions(op_context.input) <= 5,
+                     "Transpose op only supports 1D-5D input arrays.");
   TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
 
   if (!IsConstantTensor(op_context.perm)) {

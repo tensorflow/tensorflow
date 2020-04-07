@@ -572,7 +572,7 @@ Status Conditional::ExtractBodies(Graph* graph) {
       if (visited.at(n->id())) continue;
       visited[n->id()] = true;
 
-      // Verify output edges and record control edges exitting scope.
+      // Verify output edges and record control edges exiting scope.
       for (const Edge* e : n->out_edges()) {
         Node* dst = e->dst();
         if (IsMerge(dst)) continue;
@@ -602,7 +602,7 @@ Status Conditional::ExtractBodies(Graph* graph) {
         }
       }
 
-      // Copying incomming edges to dst node. Iterate over a copy of the edges
+      // Copying incoming edges to dst node. Iterate over a copy of the edges
       // as they could be mutated during iteration.
       std::vector<const Edge*> in_edges(n->in_edges().begin(),
                                         n->in_edges().end());
@@ -719,7 +719,7 @@ Status Conditional::ExtractBodies(Graph* graph) {
     ++index;
 
     // Connect the input to the merge_ with the retval, except if it is a
-    // Swich node, which is handled separately.
+    // Switch node, which is handled separately.
     for (auto e : m->in_edges()) {
       if (e->IsControlEdge()) continue;
       int branch_index = static_cast<int>(find_branch(e));
@@ -1139,7 +1139,7 @@ StateMap::CondId FunctionalizeCond::StateAlongEdge(const Edge* e) {
       // node. If we don't record this into CondState, branches might have
       // incorrect CondState (e.g. if the branch only has a Const data node).
       // We set it to kNeither because there is no way to tell whether it's
-      // for true branch or false branch. This node's desendents might have
+      // for true branch or false branch. This node's descendents might have
       // other incoming edges with defined BranchType, and we correctly handle
       // merging kNeither with other defined BranchType in StateAlongEdge().
       state[predicate] = BranchType::kNeither;

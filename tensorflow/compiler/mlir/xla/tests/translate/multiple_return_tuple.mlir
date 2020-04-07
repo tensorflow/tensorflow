@@ -1,5 +1,5 @@
 // RUN: tf-mlir-translate -mlir-hlo-to-hlo-text %s | FileCheck %s
-// RUN: tf-mlir-translate -mlir-hlo-to-hlo-text -emit-use-tuple-args-for-entry-function -emit-always-return-tuple %s | FileCheck %s --check-prefix=TUPLE
+// RUN: tf-mlir-translate -mlir-hlo-to-hlo-text -emit-use-tuple-args -emit-return-tuple %s | FileCheck %s --check-prefix=TUPLE
 
 // Test to verify that multiple result function with always emit return tuple
 // does not result in nested tuples.

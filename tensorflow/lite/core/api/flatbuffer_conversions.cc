@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdlib>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -64,18 +64,20 @@ TfLiteStatus FlatBufferIntVectorToArray(
     int max_size_of_buffer, const flatbuffers::Vector<int32_t>* flat_vector,
     int* buffer, ErrorReporter* error_reporter, const char* op_name) {
   if (!flat_vector) {
-    error_reporter->Report("Input array not provided for operation '%s'.\n",
-                           op_name);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Input array not provided for operation '%s'.\n",
+                         op_name);
     return kTfLiteError;
   } else {
-    int num_dimensions = flat_vector->size();
+    size_t num_dimensions = flat_vector->size();
     if (num_dimensions > max_size_of_buffer / sizeof(int)) {
-      error_reporter->Report(
+      TF_LITE_REPORT_ERROR(
+          error_reporter,
           "Found too many dimensions in the input array of operation '%s'.\n",
           op_name);
       return kTfLiteError;
     } else {
-      for (int i = 0; i < num_dimensions; ++i) {
+      for (size_t i = 0; i < num_dimensions; ++i) {
         buffer[i] = flat_vector->Get(i);
       }
     }
@@ -89,11 +91,14 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
                                ErrorReporter* error_reporter) {
   *type = kTfLiteNoType;
   switch (tensor_type) {
+    case TensorType_FLOAT16:
+      *type = kTfLiteFloat16;
+      break;
     case TensorType_FLOAT32:
       *type = kTfLiteFloat32;
       break;
-    case TensorType_FLOAT16:
-      *type = kTfLiteFloat16;
+    case TensorType_FLOAT64:
+      *type = kTfLiteFloat64;
       break;
     case TensorType_INT16:
       *type = kTfLiteInt16;
@@ -121,7 +126,8 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
       break;
   }
   if (*type == kTfLiteNoType) {
-    error_reporter->Report("Unsupported data type %d in tensor\n", tensor_type);
+    TF_LITE_REPORT_ERROR(error_reporter, "Unsupported data type %d in tensor\n",
+                         tensor_type);
     return kTfLiteError;
   }
   return kTfLiteOk;
@@ -266,6 +272,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->rank = svdf_params->rank();
         params->activation =
             parse_activation(svdf_params->fused_activation_function());
+        params->asymmetric_quantize_inputs =
+            svdf_params->asymmetric_quantize_inputs();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -277,6 +285,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(sequence_rnn_params->fused_activation_function());
         params->time_major = sequence_rnn_params->time_major();
+        params->asymmetric_quantize_inputs =
+            sequence_rnn_params->asymmetric_quantize_inputs();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -290,6 +300,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
             bidi_sequence_rnn_params->fused_activation_function());
         params->time_major = bidi_sequence_rnn_params->time_major();
         params->merge_outputs = bidi_sequence_rnn_params->merge_outputs();
+        params->asymmetric_quantize_inputs =
+            bidi_sequence_rnn_params->asymmetric_quantize_inputs();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -299,6 +311,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       if (const auto* rnn_params = op->builtin_options_as_RNNOptions()) {
         params->activation =
             parse_activation(rnn_params->fused_activation_function());
+        params->asymmetric_quantize_inputs =
+            rnn_params->asymmetric_quantize_inputs();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -320,6 +334,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation = parse_activation(
             fully_connected_params->fused_activation_function());
         params->keep_num_dims = fully_connected_params->keep_num_dims();
+        params->asymmetric_quantize_inputs =
+            fully_connected_params->asymmetric_quantize_inputs();
         switch (fully_connected_params->weights_format()) {
           case FullyConnectedOptionsWeightsFormat_DEFAULT:
             params->weights_format = kTfLiteFullyConnectedWeightsFormatDefault;
@@ -329,7 +345,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
                 kTfLiteFullyConnectedWeightsFormatShuffled4x16Int8;
             break;
           default:
-            error_reporter->Report("Unhandled fully-connected weights format.");
+            TF_LITE_REPORT_ERROR(error_reporter,
+                                 "Unhandled fully-connected weights format.");
             return kTfLiteError;
         }
       }
@@ -431,12 +448,16 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
             params->kernel_type = kTfLiteLSTMBasicKernel;
             break;
           default:
-            error_reporter->Report("Unhandled LSTM kernel type: %d",
-                                   lstm_params->kernel_type());
+            TF_LITE_REPORT_ERROR(error_reporter,
+                                 "Unhandled LSTM kernel type: %d",
+                                 lstm_params->kernel_type());
             return kTfLiteError;
         }
+        params->asymmetric_quantize_inputs =
+            lstm_params->asymmetric_quantize_inputs();
       } else {
-        error_reporter->Report("No valid LSTM builtin options exist");
+        TF_LITE_REPORT_ERROR(error_reporter,
+                             "No valid LSTM builtin options exist");
         return kTfLiteError;
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
@@ -452,6 +473,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->cell_clip = seq_lstm_params->cell_clip();
         params->proj_clip = seq_lstm_params->proj_clip();
         params->time_major = seq_lstm_params->time_major();
+        params->asymmetric_quantize_inputs =
+            seq_lstm_params->asymmetric_quantize_inputs();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -467,6 +490,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->proj_clip = bidi_lstm_params->proj_clip();
         params->merge_outputs = bidi_lstm_params->merge_outputs();
         params->time_major = bidi_lstm_params->time_major();
+        params->asymmetric_quantize_inputs =
+            bidi_lstm_params->asymmetric_quantize_inputs();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -476,6 +501,12 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       if (const auto* schema_params =
               op->builtin_options_as_ResizeBilinearOptions()) {
         params->align_corners = schema_params->align_corners();
+        params->half_pixel_centers = schema_params->half_pixel_centers();
+      } else {
+        // Some older models did not populate the ResizeBilinearOptions field in
+        // the flatbuffer, so ensure it's set to a sensible default.
+        params->align_corners = false;
+        params->half_pixel_centers = false;
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -499,10 +530,15 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       auto params = safe_allocator.Allocate<TfLiteReshapeParams>();
       if (const auto* schema_params = op->builtin_options_as_ReshapeOptions()) {
         auto* new_shape = schema_params->new_shape();
-        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
-            sizeof(params->shape), new_shape, params->shape, error_reporter,
-            "reshape"));
-        params->num_dimensions = new_shape->size();
+        // TODO(b/147203660): We need to figure out when dynamic reshape
+        // (new_shape is a tensor) happens, why the option is not a nullptr.
+        // But nonethless, we should only copy when new_shape is not a nullptr.
+        if (new_shape) {
+          TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
+              sizeof(params->shape), new_shape, params->shape, error_reporter,
+              "reshape"));
+          params->num_dimensions = new_shape->size();
+        }
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -658,7 +694,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     }
     case BuiltinOperator_DELEGATE: {
       // TODO(ycling): Revisit when supporting saving delegated models.
-      error_reporter->Report("DELEGATE op shouldn't exist in model.");
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "DELEGATE op shouldn't exist in model.");
       return kTfLiteError;
     }
     case BuiltinOperator_FAKE_QUANT: {
@@ -751,6 +788,17 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_BATCH_MATMUL: {
+      TfLiteBatchMatMulParams* params =
+          allocator->AllocatePOD<TfLiteBatchMatMulParams>();
+      if (const auto* bmm_params =
+              op->builtin_options_as_BatchMatMulOptions()) {
+        params->adjoint_lhs = bmm_params->adjoint_lhs();
+        params->adjoint_rhs = bmm_params->adjoint_rhs();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     // Below are the ops with no builtin_data structure.
     case BuiltinOperator_ABS:
     case BuiltinOperator_BATCH_TO_SPACE_ND:
@@ -791,6 +839,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_ROUND:
     case BuiltinOperator_RSQRT:
     case BuiltinOperator_SELECT:
+    case BuiltinOperator_SELECT_V2:
     case BuiltinOperator_SIN:
     case BuiltinOperator_SLICE:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
@@ -819,6 +868,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_NON_MAX_SUPPRESSION_V4:
     case BuiltinOperator_NON_MAX_SUPPRESSION_V5:
     case BuiltinOperator_SCATTER_ND:
+    case BuiltinOperator_DENSIFY:
+    case BuiltinOperator_SEGMENT_SUM:
       break;
   }
   return kTfLiteOk;

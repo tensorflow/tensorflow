@@ -95,10 +95,10 @@ class GatherOp : public OpKernel {
       if (!axis_is_set) axis = batch_dims_;
 
       OP_REQUIRES(
-          c, batch_dims_ >= -indices.dims() && batch_dims_ < indices.dims(),
+          c, batch_dims_ >= -indices.dims() && batch_dims_ <= indices.dims(),
           errors::InvalidArgument("Expected batch_dims in the range [",
                                   -indices.dims(), ", ", indices.dims(),
-                                  "), but got ", batch_dims_));
+                                  "], but got ", batch_dims_));
 
       OP_REQUIRES(c, batch_dims_ < params.dims(),
                   errors::InvalidArgument("batch_dims (", batch_dims_,
@@ -182,7 +182,7 @@ class GatherOp : public OpKernel {
 
  private:
   // The number of batch dimensions, as passed in the batch_dims attribute.
-  // It must be less than rank(indices).
+  // It must be less than or equal to rank(indices).
   int32 batch_dims_ = 0;
 };
 

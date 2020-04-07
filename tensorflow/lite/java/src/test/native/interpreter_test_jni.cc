@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <jni.h>
+
 #include <algorithm>
-#include "tensorflow/lite/c/c_api_internal.h"
+
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 #ifdef __cplusplus
@@ -31,15 +33,15 @@ Java_org_tensorflow_lite_InterpreterTest_getNativeHandleForDelegate(
       .free = nullptr,
       .prepare =
           [](TfLiteContext* context, TfLiteNode* node) {
-            TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
-            TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+            const TfLiteTensor* input = tflite::GetInput(context, node, 0);
+            TfLiteTensor* output = tflite::GetOutput(context, node, 0);
             TfLiteIntArray* output_dims = TfLiteIntArrayCopy(input->dims);
             output->type = kTfLiteFloat32;
             return context->ResizeTensor(context, output, output_dims);
           },
       .invoke =
           [](TfLiteContext* context, TfLiteNode* node) {
-            TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+            TfLiteTensor* output = tflite::GetOutput(context, node, 0);
             std::fill(output->data.f,
                       output->data.f + tflite::NumElements(output), 7.0f);
             return kTfLiteOk;

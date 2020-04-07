@@ -1,4 +1,5 @@
-load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library_cc")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library_cc")
+load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow/compiler/xla/python/tpu_driver:platform/external/tools.bzl",
     "external_deps",
@@ -58,6 +59,7 @@ cc_library(
     srcs = [
         "grpc_tpu_driver.cc",
     ],
+    hdrs = ["grpc_tpu_driver.h"],
     deps = [
         ":tpu_driver",
         "//tensorflow/core/platform:logging",
@@ -67,6 +69,26 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/python/tpu_driver:tpu_service_proto_cc",
         "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",
+        tf_grpc_cc_dependency(),
+    ] + external_deps(),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "direct_tpu_driver",
+    srcs = ["direct_tpu_driver.cc"],
+    deps = [
+        ":tpu_driver",
+        "@com_google_absl//absl/strings:str_format",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        ":tpu_service_proto_cc",
+        ":tpu_driver_proto_cc",
+        "//tensorflow/compiler/xla/python/tpu_driver/client:libtpu",
     ] + external_deps(),
     alwayslink = 1,
 )

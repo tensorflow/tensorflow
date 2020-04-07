@@ -1,14 +1,16 @@
 syntax = "proto3";
 
 package tensorflow;
+
+import "tensorflow/core/framework/attr_value.proto";
+import "tensorflow/core/framework/node_def.proto";
+import "tensorflow/core/framework/op_def.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "FunctionProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
-import "tensorflow/core/framework/attr_value.proto";
-import "tensorflow/core/framework/node_def.proto";
-import "tensorflow/core/framework/op_def.proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/function_go_proto";
 
 // A library is a set of named functions.
 message FunctionDefLibrary {
@@ -36,6 +38,17 @@ message FunctionDef {
     map<string, AttrValue> attr = 1;
   }
   map<uint32, ArgAttrs> arg_attr = 7;
+
+  // Unique IDs for each resource argument, used to track aliasing resources. If
+  // Argument A and Argument B alias each other, then
+  // resource_arg_unique_ids[A.index] == resource_arg_unique_ids[B.index].
+  //
+  // If this field is empty, none of the arguments could alias; otherwise, every
+  // resource argument should have an entry in this field.
+  //
+  // When instantiated, the unique IDs will be attached to the _Arg nodes'
+  // "_resource_arg_unique_id" attribute.
+  map<uint32, uint32> resource_arg_unique_id = 8;
 
   // NOTE: field id 2 deleted on Jan 11, 2017, GraphDef version 21.
   reserved 2;

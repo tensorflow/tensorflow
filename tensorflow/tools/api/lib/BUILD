@@ -1,7 +1,7 @@
 # Helper libraries for TensorFlow API compatibility test.
 
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
 

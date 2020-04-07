@@ -1,7 +1,7 @@
 {
   "sourceFilters" : [
     "tensorflow/lite",
-    "tensorflow/lite/experimental/c",
+    "tensorflow/lite/c",
     "tensorflow/lite/experimental/objc",
     "tensorflow/lite/experimental/objc/apis",
     "tensorflow/lite/experimental/objc/apps/TestApp/TestApp",

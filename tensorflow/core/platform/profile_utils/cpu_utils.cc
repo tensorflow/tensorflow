@@ -23,6 +23,7 @@ limitations under the License.
 #include <windows.h>
 #endif
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
 
@@ -80,13 +81,20 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
   }
   string line;
   while (std::getline(cpuinfo, line)) {
-    double bogomips;
-    const int retval_of_bogomips =
-        sscanf(line.c_str(), "bogomips : %lf", &bogomips);
-    if (retval_of_bogomips > 0) {
-      const double freq_ghz = bogomips / 1000.0 / 2.0;
-      if (retval_of_bogomips != 1 || freq_ghz < 0.01) {
-        LOG(WARNING) << "Failed to get CPU frequency: " << freq_ghz << " Hz";
+    double cpu_freq = 0.0;
+    int retval = 0;
+    double freq_factor = 2.0;
+#if (defined(__powerpc__) || \
+     defined(__ppc__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__))
+    retval = sscanf(line.c_str(), "clock              : %lfMHz", &cpu_freq);
+    freq_factor = 1.0;
+#else
+    retval = sscanf(line.c_str(), "bogomips : %lf", &cpu_freq);
+#endif
+    if (retval > 0) {
+      const double freq_ghz = cpu_freq / 1000.0 / freq_factor;
+      if (retval != 1 || freq_ghz < 0.01) {
+        LOG(WARNING) << "Failed to get CPU frequency: " << freq_ghz << " GHz";
         return INVALID_FREQUENCY;
       }
       const int64 freq_n =
@@ -95,8 +103,9 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
       return freq_n;
     }
   }
-  LOG(WARNING) << "Failed to find bogomips in /proc/cpuinfo; cannot determine "
-                  "CPU frequency";
+  LOG(WARNING)
+      << "Failed to find bogomips or clock in /proc/cpuinfo; cannot determine "
+         "CPU frequency";
   return INVALID_FREQUENCY;
 #elif defined(__APPLE__)
   int64 freq_hz;
@@ -126,8 +135,8 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
 }
 
 /* static */ ICpuUtilsHelper& CpuUtils::GetCpuUtilsHelperSingletonInstance() {
-  static std::once_flag flag;
-  std::call_once(flag, []() {
+  static absl::once_flag flag;
+  absl::call_once(flag, []() {
     if (cpu_utils_helper_instance_ != nullptr) {
       LOG(FATAL) << "cpu_utils_helper_instance_ is already instantiated.";
     }

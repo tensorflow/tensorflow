@@ -34,8 +34,8 @@ namespace {
 
 class Add : public NodeShader {
  public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     auto attr = absl::any_cast<AddAttributes>(ctx.node->operation.attributes);
     auto adds = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
     auto scalar = absl::get_if<float>(&attr.param);
@@ -47,6 +47,7 @@ class Add : public NodeShader {
           inputs[0]->tensor.shape != inputs[1]->tensor.shape &&
           inputs[1]->tensor.shape.h == 1 && inputs[1]->tensor.shape.w == 1 &&
           inputs[0]->tensor.shape.c == inputs[1]->tensor.shape.c) {
+        // TODO(b/147771327): investigate why input_data_1[gid.z] worked before
         *generated_code = {
             /*parameters=*/{},
             /*objects=*/{},
@@ -54,18 +55,18 @@ class Add : public NodeShader {
             /*workload=*/uint3(),
             /*workgroup=*/uint3(),
             /*source_code=*/
-            "value_0 = $input_data_1[gid.z]$ + $input_data_0[gid.x, gid.y, "
-            "gid.z]$;",
+            "value_0 = $input_data_0[gid.x, gid.y, gid.z]$ + "
+            "          $input_data_1[0, 0, gid.z]$;",
             /*input=*/IOStructure::ONLY_DEFINITIONS,
             /*output=*/IOStructure::AUTO,
         };
-        return OkStatus();
+        return absl::OkStatus();
       }
 
       std::string code = "value_0 = value_0";
       for (int index = 1; index < inputs.size(); ++index) {
         if (inputs[index]->tensor.shape != inputs[0]->tensor.shape) {
-          return InvalidArgumentError("Shapes are not equal");
+          return absl::InvalidArgumentError("Shapes are not equal");
         }
         absl::StrAppend(&code, " + value_", index);
       }
@@ -80,7 +81,7 @@ class Add : public NodeShader {
           /*input=*/IOStructure::AUTO,
           /*output=*/IOStructure::AUTO,
       };
-      return OkStatus();
+      return absl::OkStatus();
     }
 
     if (scalar) {
@@ -110,7 +111,7 @@ class Add : public NodeShader {
       };
     }
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

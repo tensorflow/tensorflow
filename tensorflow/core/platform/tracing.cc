@@ -18,7 +18,7 @@ limitations under the License.
 #include <array>
 #include <atomic>
 
-#include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/hash.h"
 
 namespace tensorflow {
 namespace tracing {

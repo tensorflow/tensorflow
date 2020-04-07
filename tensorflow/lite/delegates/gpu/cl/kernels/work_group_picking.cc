@@ -75,9 +75,10 @@ std::vector<int3> GenerateWorkGroupSizesXY128Linear(
   return work_groups;
 }
 
-Status GetBestWorkGroupAlignedToGrid(const TuningParameters& params,
-                                     const CLKernel& kernel, const int3& grid,
-                                     int3* best_work_group) {
+absl::Status GetBestWorkGroupAlignedToGrid(const TuningParameters& params,
+                                           const CLKernel& kernel,
+                                           const int3& grid,
+                                           int3* best_work_group) {
   std::vector<int3> work_groups;
   RETURN_IF_ERROR(GenerateWorkGroupSizesAlignedToGrid(
       grid, params.info->max_work_group_sizes, kernel.GetMaxWorkGroupSize(),
@@ -86,7 +87,7 @@ Status GetBestWorkGroupAlignedToGrid(const TuningParameters& params,
   RETURN_IF_ERROR(params.queue->GetBestWorkGroupIndex(
       kernel, *params.info, grid, work_groups, &best_work_group_index));
   *best_work_group = work_groups[best_work_group_index];
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int GetPenalty(int grid_size, int group_size) {
@@ -114,10 +115,10 @@ int GetMaxSizeWithMinPenalty(int size, int max_size) {
 int2 GetMaxSizeWithMinPenalty(int2 size, int max_size) {
   std::vector<int2> base_groups = Get2DWorkgroupsEqualTo128();
   int min_penalty = std::numeric_limits<int>::max();
-  for (auto group : base_groups) {
+  for (const auto& group : base_groups) {
     min_penalty = std::min(GetPenalty(size, group), min_penalty);
   }
-  for (auto group : base_groups) {
+  for (const auto& group : base_groups) {
     for (int y = 1; y * group.y <= max_size; ++y) {
       int new_group_y = y * group.y;
       for (int x = 1; x * group.x <= max_size; ++x) {
@@ -202,30 +203,31 @@ int3 GetWorkGroupConv(const int3& grid, int max_size, int max_z_size) {
   return int3(wg_x, wg_y, wg_z);
 }
 
-Status GetBestWorkGroupXY128(const TuningParameters& params,
-                             const CLKernel& kernel, const int3& grid,
-                             WorkGroupSizeAlignment z_alignment,
-                             int3* best_work_group) {
+absl::Status GetBestWorkGroupXY128(const TuningParameters& params,
+                                   const CLKernel& kernel, const int3& grid,
+                                   WorkGroupSizeAlignment z_alignment,
+                                   int3* best_work_group) {
   std::vector<int3> work_groups = GenerateWorkGroupSizesXY128(
       grid, kernel.GetMaxWorkGroupSize(), z_alignment);
   int best_work_group_index;
   RETURN_IF_ERROR(params.queue->GetBestWorkGroupIndex(
       kernel, *params.info, grid, work_groups, &best_work_group_index));
   *best_work_group = work_groups[best_work_group_index];
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GetBestWorkGroupXY128Linear(const TuningParameters& params,
-                                   const CLKernel& kernel, const int3& grid,
-                                   WorkGroupSizeAlignment z_alignment,
-                                   int3* best_work_group) {
+absl::Status GetBestWorkGroupXY128Linear(const TuningParameters& params,
+                                         const CLKernel& kernel,
+                                         const int3& grid,
+                                         WorkGroupSizeAlignment z_alignment,
+                                         int3* best_work_group) {
   std::vector<int3> work_groups = GenerateWorkGroupSizesXY128Linear(
       grid, kernel.GetMaxWorkGroupSize(), z_alignment);
   int best_work_group_index;
   RETURN_IF_ERROR(params.queue->GetBestWorkGroupIndex(
       kernel, *params.info, grid, work_groups, &best_work_group_index));
   *best_work_group = work_groups[best_work_group_index];
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 bool XY128RequiresMoreWorkGroupsThenXY128Linear(int width, int height) {
@@ -244,46 +246,42 @@ bool XY128RequiresMoreWorkGroupsThenXY128Linear(int width, int height) {
   return !have_equal_work_groups;
 }
 
-Status GetBestWorkGroup(const TuningParameters& params, const CLKernel& kernel,
-                        const int3& grid, int3* best_work_group) {
+absl::Status GetBestWorkGroup(const TuningParameters& params,
+                              const CLKernel& kernel, const int3& grid,
+                              int3* best_work_group) {
   switch (params.tuning_type) {
     case TuningType::FAST:
-      if (params.info->vendor != Vendor::QUALCOMM) {
-        *best_work_group = int3(8, 4, 1);
-        return OkStatus();
-      } else {
-        *best_work_group = GetWorkGroup(grid, kernel.GetMaxWorkGroupSize());
-        return OkStatus();
-      }
+      *best_work_group = GetWorkGroup(grid, kernel.GetMaxWorkGroupSize());
+      return absl::OkStatus();
     case TuningType::EXHAUSTIVE:
       return GetBestWorkGroupAlignedToGrid(params, kernel, grid,
                                            best_work_group);
     default:
       *best_work_group = {8, 4, 1};
-      return OkStatus();
+      return absl::OkStatus();
   }
 }
 
-Status GetBestWorkGroupConv(const TuningParameters& params,
-                            const CLKernel& kernel, const int3& grid,
-                            int3* best_work_group) {
+absl::Status GetBestWorkGroupConv(const TuningParameters& params,
+                                  const CLKernel& kernel, const int3& grid,
+                                  int3* best_work_group) {
   switch (params.tuning_type) {
-    case TuningType::FAST:
-      if (params.info->vendor != Vendor::QUALCOMM) {
-        *best_work_group = int3(8, 4, 1);
-        return OkStatus();
-      } else {
-        int max_z_size = params.info->adreno_info.gpu_version < 400 ? 16 : 64;
-        *best_work_group =
-            GetWorkGroupConv(grid, kernel.GetMaxWorkGroupSize(), max_z_size);
-        return OkStatus();
+    case TuningType::FAST: {
+      int max_z_size = 16;
+      if (params.info->vendor == Vendor::QUALCOMM) {
+        max_z_size = params.info->adreno_info.gpu_version < 400 ? 16 : 64;
       }
+      max_z_size = std::min(max_z_size, params.info->max_work_group_sizes.z);
+      *best_work_group =
+          GetWorkGroupConv(grid, kernel.GetMaxWorkGroupSize(), max_z_size);
+      return absl::OkStatus();
+    }
     case TuningType::EXHAUSTIVE:
       return GetBestWorkGroupAlignedToGrid(params, kernel, grid,
                                            best_work_group);
     default:
       *best_work_group = {8, 4, 1};
-      return OkStatus();
+      return absl::OkStatus();
   }
 }
 

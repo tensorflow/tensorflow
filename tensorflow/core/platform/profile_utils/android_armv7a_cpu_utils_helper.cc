@@ -28,8 +28,8 @@ limitations under the License.
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
 namespace profile_utils {

@@ -213,7 +213,7 @@ bool GpuConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
   //   BackwardFilterConv(ABCD, xyz, padding_low=1, padding_high=2)
   // is equivalent to
   //   ABCD0 = Pad(ABCD, padding_high=1)
-  //   BackwardFilterConv(ABCD0, xyz, padding_low=pading_high=1)
+  //   BackwardFilterConv(ABCD0, xyz, padding_low=padding_high=1)
   // We choose the lesser of padding_low and padding_high as the new padding.
   HloInstruction* input = backward_conv->mutable_operand(0);
   Window new_backward_conv_window = backward_conv->window();

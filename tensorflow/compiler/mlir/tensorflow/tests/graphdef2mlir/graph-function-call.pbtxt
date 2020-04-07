@@ -1,0 +1,65 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=x -tf-input-data-types=DT_INT32 -tf-input-shapes=10 -tf-output-arrays=func_call -o - | FileCheck %s
+
+node {
+  name: "x"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "func_call"
+  op: "test_func_name"
+  input: "x"
+  attr {
+    key: "_disable_call_shape_inference"
+    value {
+      b: true
+    }
+  }
+}
+library {
+  function {
+    signature {
+      name: "test_func_name"
+      input_arg {
+        name: "a_0"
+        type: DT_INT32
+      }
+      output_arg {
+        name: "a"
+        type: DT_INT32
+      }
+    }
+    ret {
+      key: "a"
+      value: "a_0"
+    }
+    attr {
+      key: "_disable_call_shape_inference"
+      value {
+        b: true
+      }
+    }
+  }
+}
+
+# CHECK: func @main
+# CHECK: "tf.LegacyCall"(%arg0) {_disable_call_shape_inference = true, f = @test_func_name0}

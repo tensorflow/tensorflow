@@ -406,12 +406,12 @@ void copy_array(VALUE_TYPE* dst, const VALUE_TYPE* src, INDEX_TYPE size) {
 }
 
 template <>
-void copy_array<string, int64>(string* dst, const string* src, int64 size) {
+void copy_array<tstring, int64>(tstring* dst, const tstring* src, int64 size) {
   slow_copy_array(dst, src, size);
 }
 
 template <>
-void copy_array<string, int32>(string* dst, const string* src, int32 size) {
+void copy_array<tstring, int32>(tstring* dst, const tstring* src, int32 size) {
   slow_copy_array(dst, src, size);
 }
 

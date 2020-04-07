@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_graph_optimization_pass.h"
 
 #include "llvm/Support/CommandLine.h"
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Identifier.h"  // TF:local_config_mlir
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -40,20 +40,20 @@ namespace tensorflow {
 // Optimization Passes and convert back to MLIR.
 // Constraints: This pass expects that all operations in the MLIR module either
 // belong to 'tf' or '_tf' dialect. The output is in '_tf' dialect.
-class GraphOptPass : public mlir::ModulePass<GraphOptPass> {
+class GraphOptPass : public mlir::OperationPass<GraphOptPass, mlir::ModuleOp> {
  public:
   explicit GraphOptPass(std::vector<tensorflow::GraphOptimizationPass*> passes)
       : passes_(std::move(passes)) {}
 
  protected:
-  void runOnModule() override;
+  void runOnOperation() override;
 
   // The passes to run on the module.
   std::vector<GraphOptimizationPass*> passes_;
 };
 
-void GraphOptPass::runOnModule() {
-  mlir::ModuleOp module_in = getModule();
+void GraphOptPass::runOnOperation() {
+  mlir::ModuleOp module_in = getOperation();
   mlir::MLIRContext& ctx = getContext();
 
   // Convert MLIR to Graph
@@ -141,7 +141,7 @@ static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
 // NOLINTNEXTLINE
 static llvm::cl::list<std::string> cl_pass_list(
     "graph-passes", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma seprarated list of GraphOptimizationPass to run."),
+    llvm::cl::desc("comma separated list of GraphOptimizationPass to run."),
     llvm::cl::CommaSeparated, llvm::cl::cat(clOptionsCategory));
 
 class GraphOptByNamePass : public GraphOptPass {
@@ -151,7 +151,7 @@ class GraphOptByNamePass : public GraphOptPass {
       : GraphOptPass(FindRegisteredPassesByName(pass_names)) {}
 
  private:
-  void runOnModule() override {
+  void runOnOperation() override {
     // Verify all passes requested were registered/found.
     for (auto pass_it : llvm::enumerate(passes_)) {
       if (pass_it.value() == nullptr) {
@@ -160,7 +160,7 @@ class GraphOptByNamePass : public GraphOptPass {
         return signalPassFailure();
       }
     }
-    return GraphOptPass::runOnModule();
+    return GraphOptPass::runOnOperation();
   }
 };
 

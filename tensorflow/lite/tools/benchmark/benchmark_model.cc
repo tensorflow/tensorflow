@@ -47,10 +47,21 @@ void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
   auto inference_us = results.inference_time_us();
   auto init_us = results.startup_latency_us();
   auto warmup_us = results.warmup_time_us();
-  TFLITE_LOG(INFO) << "Average inference timings in us: "
-                   << "Warmup: " << warmup_us.avg() << ", "
+  auto init_mem_usage = results.init_mem_usage();
+  auto overall_mem_usage = results.overall_mem_usage();
+  TFLITE_LOG(INFO) << "Inference timings in us: "
                    << "Init: " << init_us << ", "
-                   << "no stats: " << inference_us.avg();
+                   << "First inference: " << warmup_us.first() << ", "
+                   << "Warmup (avg): " << warmup_us.avg() << ", "
+                   << "Inference (avg): " << inference_us.avg();
+
+  TFLITE_LOG(INFO)
+      << "Note: as the benchmark tool itself affects memory footprint, the "
+         "following is only APPROXIMATE to the actual memory footprint of the "
+         "model at runtime. Take the information at your discretion.";
+  TFLITE_LOG(INFO) << "Peak memory footprint (MB): init="
+                   << init_mem_usage.max_rss_kb / 1024.0
+                   << " overall=" << overall_mem_usage.max_rss_kb / 1024.0;
 }
 
 std::vector<Flag> BenchmarkModel::GetFlags() {
@@ -160,6 +171,7 @@ TfLiteStatus BenchmarkModel::Run() {
 
   LogParams();
 
+  const double model_size_mb = MayGetModelFileSize() / 1e6;
   const auto start_mem_usage = profiling::memory::GetMemoryUsage();
   int64_t initialization_start_us = profiling::time::NowMicros();
   TF_LITE_ENSURE_STATUS(Init());
@@ -167,6 +179,10 @@ TfLiteStatus BenchmarkModel::Run() {
   int64_t initialization_end_us = profiling::time::NowMicros();
   int64_t startup_latency_us = initialization_end_us - initialization_start_us;
   const auto init_mem_usage = init_end_mem_usage - start_mem_usage;
+
+  if (model_size_mb > 0) {
+    TFLITE_LOG(INFO) << "The input model file size (MB): " << model_size_mb;
+  }
   TFLITE_LOG(INFO) << "Initialized session in " << startup_latency_us / 1e3
                    << "ms.";
 
@@ -188,13 +204,10 @@ TfLiteStatus BenchmarkModel::Run() {
           params_.Get<float>("max_secs"), REGULAR, &status);
   const auto overall_mem_usage =
       profiling::memory::GetMemoryUsage() - start_mem_usage;
-  listeners_.OnBenchmarkEnd({startup_latency_us, input_bytes, warmup_time_us,
-                             inference_time_us, init_mem_usage,
+
+  listeners_.OnBenchmarkEnd({model_size_mb, startup_latency_us, input_bytes,
+                             warmup_time_us, inference_time_us, init_mem_usage,
                              overall_mem_usage});
-
-  TFLITE_LOG(INFO) << "Init " << init_mem_usage << std::endl
-                   << "Overall " << overall_mem_usage;
-
   return status;
 }
 

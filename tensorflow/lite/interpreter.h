@@ -24,17 +24,25 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/c_api_internal.h"  // IWYU pragma: export
+#include "tensorflow/lite/c/common.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/experimental/resource_variable/resource_variable.h"
+#include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+#include "tensorflow/lite/experimental/tf_runtime/public/eager_interpreter.h"
+#endif
+
 namespace tflite {
+
+class InterpreterTest;
+
+namespace impl {
 
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
@@ -335,6 +343,10 @@ class Interpreter {
   void UseNNAPI(bool enable);
 
   /// Set the number of threads available to the interpreter.
+  ///
+  /// NOTE: num_threads should be >= -1.
+  /// User may pass -1 to let the TFLite interpreter set the no of threads
+  /// available to itself.
   void SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.
@@ -405,6 +417,11 @@ class Interpreter {
   /// of the profiler and must ensure its validity.
   /// WARNING: This is an experimental API and subject to change.
   void SetProfiler(Profiler* profiler);
+
+  /// Same as SetProfiler except this interpreter takes ownership
+  /// of the provided profiler.
+  /// WARNING: This is an experimental API and subject to change.
+  void SetProfiler(std::unique_ptr<Profiler> profiler);
 
   /// Gets the profiler used for op tracing.
   /// WARNING: This is an experimental API and subject to change.
@@ -485,12 +502,15 @@ class Interpreter {
 
  private:
   friend class InterpreterBuilder;
-  friend class InterpreterTest;
+  friend class tflite::InterpreterTest;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);
+
+  // Sets the profiler to all subgraphs.
+  void SetSubgraphProfiler(Profiler* profiler);
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
@@ -507,6 +527,10 @@ class Interpreter {
   // TODO(b/116667551): Use TfLiteExternalContext for storing state.
   std::vector<TfLiteDelegatePtr> owned_delegates_;
 
+  // Profiler that has been installed and is owned by this interpreter instance.
+  // Useful if client profiler ownership is burdensome.
+  std::unique_ptr<Profiler> owned_profiler_;
+
   bool allow_buffer_handle_output_ = false;
 
   // List of active external contexts.
@@ -522,10 +546,17 @@ class Interpreter {
   // Subgraphs
   std::vector<std::unique_ptr<Subgraph>> subgraphs_;
 
-  // A map of resource variables. Owned by interpreter and shared by multiple
-  // subgraphs.
-  ResourceVariableMap resource_variables_;
+  // A map of resources. Owned by interpreter and shared by multiple subgraphs.
+  resource::ResourceMap resources_;
 };
+
+}  // namespace impl
+
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+using Interpreter = tflrt::EagerInterpreter;
+#else
+using Interpreter = impl::Interpreter;
+#endif
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_INTERPRETER_H_

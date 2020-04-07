@@ -32,6 +32,7 @@ py_library(
 py_test(
     name = "anf_test",
     srcs = ["anf_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_oss"],
     deps = [

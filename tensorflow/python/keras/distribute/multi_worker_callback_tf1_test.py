@@ -87,7 +87,7 @@ def generate_callback_test_function(custom_callable):
             threading_local=kwargs['threading_local'])
 
     # Pass saving_filepath from the parent thread to ensure every worker has the
-    # same fileapth to save.
+    # same filepath to save.
     saving_filepath = os.path.join(self.get_temp_dir(),
                                    'checkpoint.' + file_format)
     barrier = dc._Barrier(2)

@@ -10,18 +10,19 @@ an image or video by estimating where key body joints are.
 <a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/posenet_mobilenet_v1_100_257x257_multi_kpt_stripped.tflite">
 Download starter model</a>
 
-Android and iOS end-to-end tutorials are coming soon. In the meantime, if you
-want to experiment this on a web browser, check out the
+If you want to experiment this on a web browser, check out the
 <a href="https://github.com/tensorflow/tfjs-models/tree/master/posenet">TensorFlow.js
 GitHub repository</a>.
 
 ### Example applications and guides
 
-There is a TensorFlow Lite sample application that demonstrates the PoseNet
-model on Android.
+We provide example TensorFlow Lite applications demonstrating the PoseNet model
+for both Android and iOS.
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/posenet/android">
-Android example</a>.
+Android example</a>
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/posenet/ios">
+iOS example</a>
 
 ## How it works
 

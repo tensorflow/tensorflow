@@ -242,13 +242,10 @@ Status CreateXlaArgs(const Graph& graph,
   return Status::OK();
 }
 
-void PopulateXlaArgsAndXlaAlias(
-    const tf2xla::Config& config, std::vector<XlaCompiler::Argument>* xla_args,
-    std::vector<xla::XlaBuilder::InputOutputAlias>* xla_aliases) {
+void PopulateXlaArgs(const tf2xla::Config& config,
+                     std::vector<XlaCompiler::Argument>* xla_args) {
   // Populate arguments with resource variables from the config. The variables
   // get turned into inputs and outputs.
-  int64 input_num = xla_args->size();
-  int64 output_num = config.fetch_size();
   for (const tf2xla::Variable& variable : config.variable()) {
     XlaCompiler::Argument arg;
     arg.type = variable.type();
@@ -258,17 +255,9 @@ void PopulateXlaArgsAndXlaAlias(
     arg.resource_kind = XlaResource::kVariable;
     arg.initialized = true;
     xla_args->push_back(std::move(arg));
-
-    if (!variable.readonly()) {
-      // We want to alias the input and output of the variable, so the updates
-      // are carried out in-place.
-      xla_aliases->push_back({/*output_index=*/{output_num},
-                              /*param_number=*/input_num, /*param_index=*/{}});
-      ++output_num;
-    }
-    ++input_num;
   }
 }
+
 Status InitGraph(const GraphDef& graph_def, const tf2xla::Config& config,
                  std::unique_ptr<Graph>* graph) {
   TF_RETURN_IF_ERROR(ValidateConfig(config));

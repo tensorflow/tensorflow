@@ -15,9 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_
 
-#include <memory>
-#include <vector>
-
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
@@ -39,8 +36,28 @@ struct ProfilerOptions {
   // DeviceType::kTpu: only CPU/TPU will be profiled.
   DeviceType device_type = DeviceType::kUnspecified;
 
-  // Inexpensive ops are not traced by default.
-  int host_tracer_level = 2;
+  // Levels of host tracing:
+  // - Level 0 is used to disable host traces.
+  // - Level 1 enables tracing of only user instrumented (or default) TraceMe.
+  // - Level 2 enables tracing of all level 1 TraceMe(s) and instrumented high
+  //           level program execution details (expensive TF ops, XLA ops, etc).
+  //           This is the default.
+  // - Level 3 enables tracing of all level 2 TraceMe(s) and more verbose
+  //           (low-level) program execution details (cheap TF ops, etc).
+  uint32 host_tracer_level = 2;
+
+  // Levels of device tracing:
+  // - Level 0 is used to disable device traces.
+  // - Level 1 is used to enable device traces.
+  // - More levels might be defined for specific device for controlling the
+  //   verbosity of the trace.
+  uint32 device_tracer_level = 1;
+
+  // Whether to enable python function calls tracer.
+  bool enable_python_tracer = false;
+
+  // Whether to capture HLO protos from XLA runtime.
+  bool enable_hlo_proto = true;
 };
 
 // Interface for tensorflow profiler plugins.
@@ -61,7 +78,7 @@ class ProfilerInterface {
   // Stops profiling.
   virtual Status Stop() = 0;
 
-  // Saves collected profile data into step_stats_collector.
+  // Saves collected profile data into run_metadata.
   // After this or the overload below are called once, subsequent calls might
   // return empty data.
   virtual Status CollectData(RunMetadata* run_metadata) = 0;
@@ -76,16 +93,6 @@ class ProfilerInterface {
 };
 
 }  // namespace profiler
-
-using ProfilerFactory = std::unique_ptr<profiler::ProfilerInterface> (*)(
-    const profiler::ProfilerOptions&);
-
-void RegisterProfilerFactory(ProfilerFactory factory);
-
-void CreateProfilers(
-    const profiler::ProfilerOptions& options,
-    std::vector<std::unique_ptr<profiler::ProfilerInterface>>* result);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_

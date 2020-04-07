@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -85,9 +85,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (output->type == kTfLiteUInt8) {
-    CalculateActivationRangeUint8(params->activation, output,
-                                  &data->output_activation_min,
-                                  &data->output_activation_max);
+    TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+        context, params->activation, output, &data->output_activation_min,
+        &data->output_activation_max));
     const double real_multiplier =
         input1->params.scale / (input2->params.scale * output->params.scale);
     QuantizeMultiplier(real_multiplier, &data->output_multiplier,
@@ -115,13 +115,13 @@ void EvalDiv(TfLiteContext* context, TfLiteNode* node, TfLiteDivParams* params,
   if (output->type == kTfLiteInt32) {
     if (kernel_type == kReference) {
       if (data->requires_broadcast) {
-        TF_LITE_DIV(reference_ops, BroadcastDiv4DSlow, int32_t);
+        TF_LITE_DIV(reference_ops, BroadcastDivSlow, int32_t);
       } else {
         TF_LITE_DIV(reference_ops, Div, int32_t);
       }
     } else {
       if (data->requires_broadcast) {
-        TF_LITE_DIV(optimized_ops, BroadcastDiv4DSlow, int32_t);
+        TF_LITE_DIV(optimized_ops, BroadcastDivSlow, int32_t);
       } else {
         TF_LITE_DIV(optimized_ops, Div, int32_t);
       }
@@ -129,13 +129,13 @@ void EvalDiv(TfLiteContext* context, TfLiteNode* node, TfLiteDivParams* params,
   } else if (output->type == kTfLiteFloat32) {
     if (kernel_type == kReference) {
       if (data->requires_broadcast) {
-        TF_LITE_DIV(reference_ops, BroadcastDiv4DSlow, float);
+        TF_LITE_DIV(reference_ops, BroadcastDivSlow, float);
       } else {
         TF_LITE_DIV(reference_ops, Div, float);
       }
     } else {
       if (data->requires_broadcast) {
-        TF_LITE_DIV(optimized_ops, BroadcastDiv4DSlow, float);
+        TF_LITE_DIV(optimized_ops, BroadcastDivSlow, float);
       } else {
         TF_LITE_DIV(optimized_ops, Div, float);
       }
@@ -168,13 +168,13 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                GetTensorData<dtype>(output))
     if (kernel_type == kReference) {
       if (need_broadcast) {
-        TF_LITE_DIV(reference_ops, BroadcastDiv4DSlow, uint8_t);
+        TF_LITE_DIV(reference_ops, BroadcastDivSlow, uint8_t);
       } else {
         TF_LITE_DIV(reference_ops, Div, uint8_t);
       }
     } else {
       if (need_broadcast) {
-        TF_LITE_DIV(optimized_ops, BroadcastDiv4DSlow, uint8_t);
+        TF_LITE_DIV(optimized_ops, BroadcastDivSlow, uint8_t);
       } else {
         TF_LITE_DIV(optimized_ops, Div, uint8_t);
       }

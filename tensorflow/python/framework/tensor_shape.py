@@ -556,7 +556,7 @@ class Dimension(object):
   def __mod__(self, other):
     """Returns `self` modulo `other`.
 
-    Dimension moduli are computed as follows:
+    Dimension modulo are computed as follows:
 
     ```python
     tf.compat.v1.Dimension(m)    % tf.compat.v1.Dimension(n)     ==
@@ -808,7 +808,14 @@ class TensorShape(object):
 
   @property
   def dims(self):
-    """Returns a list of Dimensions, or None if the shape is unspecified."""
+    """Deprecated.  Returns list of dimensions for this shape.
+
+    Suggest `TensorShape.as_list` instead.
+
+    Returns:
+      A list containing `tf.compat.v1.Dimension`s, or None if the shape is
+      unspecified.
+    """
     return self._dims
 
   @property

@@ -574,7 +574,7 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
         if i in (0, 2):
           # During runs 0 and 2, the server should have received the published
           # debug tensor delta:0:DebugIdentity. The breakpoint should have been
-          # unblocked by EventReply reponses from the server.
+          # unblocked by EventReply responses from the server.
           self.assertAllClose(
               [5.0],
               self._server_1.debug_tensor_values["delta_1:0:DebugIdentity"])
@@ -628,7 +628,7 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
         if i in (0, 2):
           # During runs 0 and 2, the server should have received the published
           # debug tensor delta:0:DebugIdentity. The breakpoint should have been
-          # unblocked by EventReply reponses from the server.
+          # unblocked by EventReply responses from the server.
           self.assertAllClose(
               [5.0],
               self._server_1.debug_tensor_values["delta_1:0:DebugIdentity"])

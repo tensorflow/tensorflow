@@ -166,7 +166,7 @@ def freeze_graph_with_def_protos(input_graph_def,
 
       # List of all partition variables. Because the condition is heuristic
       # based, the list could include false positives.
-      all_parition_variable_names = [
+      all_partition_variable_names = [
           tensor.name.split(":")[0]
           for op in sess.graph.get_operations()
           for tensor in op.values()
@@ -177,7 +177,7 @@ def freeze_graph_with_def_protos(input_graph_def,
       for key in var_to_shape_map:
         try:
           tensor = sess.graph.get_tensor_by_name(key + ":0")
-          if any(key in name for name in all_parition_variable_names):
+          if any(key in name for name in all_partition_variable_names):
             has_partition_var = True
         except KeyError:
           # This tensor doesn't exist in the graph (for example it's
@@ -357,7 +357,7 @@ def freeze_graph(input_graph,
       variable_names_blacklist,
       input_meta_graph_def,
       input_saved_model_dir,
-      saved_model_tags.replace(" ", "").split(","),
+      [tag for tag in saved_model_tags.replace(" ", "").split(",") if tag],
       checkpoint_version=checkpoint_version)
 
 

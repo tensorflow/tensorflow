@@ -261,6 +261,11 @@ class MixedPrecisionLossScaleOptimizerTest(test.TestCase,
       self.assertEqual(self.evaluate(loss_scale()), 1.)
       self.assertEqual(self.evaluate(loss_scale._num_good_steps), 1)
 
+  def testPassingNoneToLossScale(self):
+    opt = gradient_descent.GradientDescentOptimizer(1.0)
+    with self.assertRaisesRegexp(ValueError, r'loss_scale cannot be None'):
+      loss_scale_optimizer.MixedPrecisionLossScaleOptimizer(opt, None)
+
 
 if __name__ == '__main__':
   test.main()

@@ -147,10 +147,10 @@ TEST(RemoveDegenerateUpsampling, Smoke) {
   Value<TensorRef<BHWC>>* output;
   ASSERT_TRUE(AddOutput(&graph, node_to_remove, &output).ok());
   output->tensor.shape = BHWC(1, 5, 5, 1);
-  node_to_remove->operation.type = ToString(OperationType::UPSAMPLE_2D);
-  Upsample2DAttributes attr;
+  node_to_remove->operation.type = ToString(OperationType::RESIZE);
+  Resize2DAttributes attr;
   attr.new_shape = HW(5, 5);
-  attr.type = UpsamplingType::BILINEAR;
+  attr.type = SamplingType::BILINEAR;
   node_to_remove->operation.attributes = attr;
 
   Value<TensorRef<BHWC>>* link;

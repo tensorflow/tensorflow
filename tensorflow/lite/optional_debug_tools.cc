@@ -59,6 +59,8 @@ const char* TensorTypeName(TfLiteType type) {
       return "kTfLiteComplex64";
     case kTfLiteFloat16:
       return "kTfLiteFloat16";
+    case kTfLiteFloat64:
+      return "kTfLiteFloat64";
   }
   return "(invalid)";
 }
@@ -115,6 +117,14 @@ void PrintInterpreterState(Interpreter* interpreter) {
     PrintTfLiteIntVector(node.inputs);
     printf("  Outputs:");
     PrintTfLiteIntVector(node.outputs);
+    if (node.intermediates && node.intermediates->size) {
+      printf("  Intermediates:");
+      PrintTfLiteIntVector(node.intermediates);
+    }
+    if (node.temporaries && node.temporaries->size) {
+      printf("  Temporaries:");
+      PrintTfLiteIntVector(node.temporaries);
+    }
   }
 }
 

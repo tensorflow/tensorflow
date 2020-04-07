@@ -92,18 +92,22 @@ void Gemm(const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
           const MatrixParams<DstScalar>& dst_params, DstScalar* dst_data,
           const GemmParams<AccumScalar, DstScalar, quantization_flavor>& params,
           CpuBackendContext* context) {
-  gemmlowp::ScopedProfilingLabel label("cpu_backend_gemm::Gemm");
+  ruy::profiler::ScopeLabel label("cpu_backend_gemm::Gemm");
   ValidateParams(lhs_params, rhs_params, dst_params, params);
-#ifndef TFLITE_WITH_RUY_GEMV
-  if (dst_params.cols == 1) {
+  bool do_custom_gemv = dst_params.cols == 1;
+#ifdef TFLITE_WITH_RUY_GEMV
+  // Prefer a Ruy GEMM to Custom GEMV unless we are doing float math.
+  // TODO(b/148692500): Add float GEMV kernels to Ruy.
+  do_custom_gemv = do_custom_gemv && std::is_floating_point<DstScalar>::value;
+#endif
+  if (do_custom_gemv) {
     // GEMV case: try a custom fast GEMV path.
     if (detail::CustomGemv(lhs_params, lhs_data, rhs_params, rhs_data,
                            dst_params, dst_data, params, context)) {
       return;
     }
   }
-#endif
-  gemmlowp::ScopedProfilingLabel label2("cpu_backend_gemm::Gemm: general GEMM");
+  ruy::profiler::ScopeLabel label2("cpu_backend_gemm::Gemm: general GEMM");
   GemmImpl<LhsScalar, RhsScalar, AccumScalar, DstScalar,
            quantization_flavor>::Run(lhs_params, lhs_data, rhs_params, rhs_data,
                                      dst_params, dst_data, params, context);
@@ -118,12 +122,12 @@ void Gemm(const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
           const MatrixParams<int32_t>& dst_params, int32_t* dst_data,
           const GemmParams<int32_t, int32_t, quantization_flavor>& params,
           CpuBackendContext* context) {
-  gemmlowp::ScopedProfilingLabel label("cpu_backend_gemm::Gemm");
+  ruy::profiler::ScopeLabel label("cpu_backend_gemm::Gemm");
   ValidateParams(lhs_params, rhs_params, dst_params, params);
 
   // Currently, only Ruy backend supports get raw accumulator, so we use ruy
   // only.
-  gemmlowp::ScopedProfilingLabel label2("cpu_backend_gemm::Gemm: general GEMM");
+  ruy::profiler::ScopeLabel label2("cpu_backend_gemm::Gemm: general GEMM");
   detail::GemmImplUsingRuy<LhsScalar, RhsScalar, int32_t, int32_t,
                            quantization_flavor>::Run(lhs_params, lhs_data,
                                                      rhs_params, rhs_data,

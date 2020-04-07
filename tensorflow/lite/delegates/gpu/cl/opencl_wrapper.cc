@@ -31,11 +31,11 @@ namespace cl {
     function = reinterpret_cast<PFN_##function>(dlsym(libopencl, #function));  \
   }
 
-Status LoadOpenCL() {
+absl::Status LoadOpenCL() {
   void* libopencl = dlopen("libOpenCL.so", RTLD_NOW | RTLD_LOCAL);
   if (libopencl) {
     LoadOpenCLFunctions(libopencl, false);
-    return OkStatus();
+    return absl::OkStatus();
   } else {
     // Pixel phone?
     libopencl = dlopen("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
@@ -45,9 +45,9 @@ Status LoadOpenCL() {
           reinterpret_cast<enableOpenCL_t>(dlsym(libopencl, "enableOpenCL"));
       enableOpenCL();
       LoadOpenCLFunctions(libopencl, true);
-      return OkStatus();
+      return absl::OkStatus();
     } else {
-      return UnknownError(
+      return absl::UnknownError(
           absl::StrCat("OpenCL library not loaded - ", dlerror()));
     }
   }
@@ -171,6 +171,11 @@ void LoadOpenCLFunctions(void* libopencl, bool is_pixel) {
 
   // cl_khr_egl_event extension
   LoadFunction(clCreateEventFromEGLSyncKHR);
+
+  // EGL sharing
+  LoadFunction(clCreateFromEGLImageKHR);
+  LoadFunction(clEnqueueAcquireEGLObjectsKHR);
+  LoadFunction(clEnqueueReleaseEGLObjectsKHR);
 }
 
 // No OpenCL support, do not set function addresses
@@ -277,12 +282,19 @@ PFN_clCreateCommandQueue clCreateCommandQueue;
 PFN_clCreateSampler clCreateSampler;
 PFN_clEnqueueTask clEnqueueTask;
 
+// OpenGL sharing
 PFN_clCreateFromGLBuffer clCreateFromGLBuffer;
 PFN_clCreateFromGLTexture clCreateFromGLTexture;
 PFN_clEnqueueAcquireGLObjects clEnqueueAcquireGLObjects;
 PFN_clEnqueueReleaseGLObjects clEnqueueReleaseGLObjects;
 
+// cl_khr_egl_event extension
 PFN_clCreateEventFromEGLSyncKHR clCreateEventFromEGLSyncKHR;
+
+// EGL sharing
+PFN_clCreateFromEGLImageKHR clCreateFromEGLImageKHR;
+PFN_clEnqueueAcquireEGLObjectsKHR clEnqueueAcquireEGLObjectsKHR;
+PFN_clEnqueueReleaseEGLObjectsKHR clEnqueueReleaseEGLObjectsKHR;
 
 cl_mem CreateImage2DLegacy(cl_context context, cl_mem_flags flags,
                            const cl_image_format* image_format,
@@ -295,6 +307,22 @@ cl_mem CreateImage2DLegacy(cl_context context, cl_mem_flags flags,
     return clCreateImage2D(context, flags, image_format,
                            image_desc->image_width, image_desc->image_height,
                            image_desc->image_row_pitch, host_ptr, errcode_ret);
+  }
+}
+
+cl_mem CreateImage3DLegacy(cl_context context, cl_mem_flags flags,
+                           const cl_image_format* image_format,
+                           const cl_image_desc* image_desc, void* host_ptr,
+                           cl_int* errcode_ret) {
+  if (clCreateImage) {  // clCreateImage available since OpenCL 1.2
+    return clCreateImage(context, flags, image_format, image_desc, host_ptr,
+                         errcode_ret);
+  } else {
+    return clCreateImage3D(context, flags, image_format,
+                           image_desc->image_width, image_desc->image_height,
+                           image_desc->image_depth, image_desc->image_row_pitch,
+                           image_desc->image_slice_pitch, host_ptr,
+                           errcode_ret);
   }
 }
 }  // namespace cl

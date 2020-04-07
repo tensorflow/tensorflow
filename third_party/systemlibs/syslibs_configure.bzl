@@ -14,6 +14,7 @@ VALID_LIBS = [
     "boringssl",
     "com_github_googleapis_googleapis",
     "com_github_googlecloudplatform_google_cloud_cpp",
+    "com_github_grpc_grpc",
     "com_google_protobuf",
     "com_googlesource_code_re2",
     "curl",
@@ -24,12 +25,10 @@ VALID_LIBS = [
     "functools32_archive",
     "gast_archive",
     "gif",
-    "grpc",
     "hwloc",
     "icu",
-    "jpeg",
     "jsoncpp_git",
-    "keras_applications_archive",
+    "libjpeg_turbo",
     "lmdb",
     "nasm",
     "nsync",
@@ -43,7 +42,7 @@ VALID_LIBS = [
     "swig",
     "termcolor_archive",
     "wrapt",
-    "zlib_archive",
+    "zlib",
 ]
 
 def auto_configure_fail(msg):

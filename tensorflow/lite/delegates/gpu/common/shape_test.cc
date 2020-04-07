@@ -73,6 +73,9 @@ TEST(OIHW, Smoke) {
   EXPECT_EQ(ohwi.i, OIHW.i);
   EXPECT_EQ(ohwi.h, OIHW.h);
   EXPECT_EQ(ohwi.w, OIHW.w);
+
+  EXPECT_TRUE(ohwi.has(Axis::WIDTH));
+  EXPECT_FALSE(ohwi.has(Axis::DEPTH));
 }
 
 TEST(Layout, Smoke) {
@@ -90,6 +93,8 @@ TEST(Layout, Smoke) {
   EXPECT_EQ(Axis::UNKNOWN, GetAxis(Layout::OIHW, 5));
   EXPECT_EQ(-1, GetAxisIndex<Layout::OIHW>(Axis::CHANNELS));
   EXPECT_EQ(-1, GetAxisIndex<Layout::OIHW>(Axis::CHANNELS));
+  EXPECT_TRUE(HasAxis<Layout::OHWDI>(Axis::DEPTH));
+  EXPECT_FALSE(HasAxis<Layout::OHWDI>(Axis::CHANNELS));
 }
 
 TEST(Shape, Smoke) {
@@ -102,6 +107,9 @@ TEST(Shape, Smoke) {
   ASSERT_EQ(10, s.get<Axis::HEIGHT>());
   ASSERT_EQ(20, s.get(Axis::WIDTH));
   EXPECT_EQ(20, s.dimensions[3]);
+
+  EXPECT_TRUE(s.has(Axis::HEIGHT));
+  EXPECT_FALSE(s.has(Axis::DEPTH));
 
   OIHW oihw(1, 2, 10, 20);
   Shape s2 = oihw.ToShape();

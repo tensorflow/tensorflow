@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 
@@ -28,8 +27,8 @@ namespace gpu {
 absl::Span<const stream_executor::dnn::AlgorithmDesc>
 GetBlacklistedConvAlgorithms(tensorflow::ComputeCapability cc,
                              tensorflow::CudnnVersion cudnn_version,
-                             absl::string_view blas_version,
-                             absl::string_view hlo);
+                             const std::string& blas_version,
+                             const std::string& hlo);
 
 }  // namespace gpu
 }  // namespace xla

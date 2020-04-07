@@ -127,7 +127,7 @@ class CreatedContexts {
 /* static */ int64 CreatedContexts::next_id_ = 1;  // 0 means "no context"
 
 // Formats CUresult to output prettified values into a log stream.
-string ToString(CUresult result) {
+std::string ToString(CUresult result) {
   const char* error_name;
   if (cuGetErrorName(result, &error_name)) {
     return absl::StrCat("UNKNOWN ERROR (", static_cast<int>(result), ")");
@@ -167,7 +167,7 @@ port::ThreadPool* GetDriverExecutor() {
 
 }  // namespace
 
-string MemorySpaceString(MemorySpace memory_space) {
+std::string MemorySpaceString(MemorySpace memory_space) {
   switch (memory_space) {
     case MemorySpace::kHost:
       return "host";
@@ -179,44 +179,6 @@ string MemorySpaceString(MemorySpace memory_space) {
 }
 
 namespace {
-
-bool IsPointerCheckDisabled() {
-  // We want to check pointers for validity normally, but the
-  // cudaPointerGetAttributes call actually returns an error if it is given a
-  // host pointer.  This confuses tools like cuda-memcheck and cuda-gdb.
-  //
-  // TF_DISABLE_GPU_POINTER_CHECKS gives us an escape hatch for reducing logspam
-  // when using cuda-memcheck and cuda-gdb.
-  return std::getenv("TF_DISABLE_GPU_POINTER_CHECKS") != nullptr;
-}
-
-// Checks that the pointer is to a location on the device it purports to be.
-// PtrT is one of CUdeviceptr or void*.  If it's a CUdeviceptr, then
-// cudaPointerGetAttributes should not fail, and return a memoryType of
-// cudaMemoryTypeDevice.
-template <typename PtrT>
-void CheckPointerIsValid(const PtrT ptr, absl::string_view name) {
-  static bool pointer_check_disabled = IsPointerCheckDisabled();
-
-  if (pointer_check_disabled) {
-    return;
-  }
-
-  bool is_host_ptr = !std::is_same<PtrT, CUdeviceptr>::value;
-  cudaPointerAttributes attributes;
-  cudaError_t err =
-      cudaPointerGetAttributes(&attributes, reinterpret_cast<const void*>(ptr));
-  CHECK(err == cudaSuccess || err == cudaErrorInvalidValue)
-      << "Unexpected CUDA error: " << cudaGetErrorString(err);
-
-  // If we failed, reset cuda error status to avoid poisoning cuda streams.
-  if (err != cudaSuccess) cudaGetLastError();
-  bool points_to_host_memory = (err == cudaErrorInvalidValue ||
-                                attributes.memoryType != cudaMemoryTypeDevice);
-  CHECK_EQ(is_host_ptr, points_to_host_memory) << absl::StreamFormat(
-      "%s pointer is not actually on %s: %p", name, is_host_ptr ? "CPU" : "GPU",
-      reinterpret_cast<const void*>(ptr));
-}
 
 // Call cuCtxtSynchronize and crash if it doesn't succeed.
 void SynchronizeOrDie() {
@@ -290,7 +252,7 @@ namespace {
 // Returns a stringified device number associated with pointer, primarily for
 // logging purposes. Returns "?" if the device could not be successfully
 // queried.
-string CUDAPointerToDeviceString(CUdeviceptr pointer) {
+std::string CUDAPointerToDeviceString(CUdeviceptr pointer) {
   auto value = GpuDriver::GetPointerDevice(pointer);
   if (value.ok()) {
     return absl::StrCat(value.ValueOrDie());
@@ -302,7 +264,7 @@ string CUDAPointerToDeviceString(CUdeviceptr pointer) {
 // Returns a stringified memory space associated with pointer, primarily for
 // logging purposes. Returns "?" if the memory space could not be successfully
 // queried.
-string CUDAPointerToMemorySpaceString(CUdeviceptr pointer) {
+std::string CUDAPointerToMemorySpaceString(CUdeviceptr pointer) {
   auto value = GpuDriver::GetPointerMemorySpace(pointer);
   if (value.ok()) {
     return MemorySpaceString(value.ValueOrDie());
@@ -315,7 +277,7 @@ string CUDAPointerToMemorySpaceString(CUdeviceptr pointer) {
 // permitted between the "from" and "to" pointers' associated contexts,
 // primarily for logging purposes. Returns "error" if an error is encountered
 // in the process of querying.
-string CUDAPointersToCanAccessString(CUdeviceptr from, CUdeviceptr to) {
+std::string CUDAPointersToCanAccessString(CUdeviceptr from, CUdeviceptr to) {
   auto from_context = GpuDriver::GetPointerContext(from);
   if (!from_context.ok()) {
     LOG(ERROR) << "could not retrieve source pointer's context: "
@@ -373,7 +335,7 @@ static port::Status InternalInit() {
 }
 
 /* static */ port::Status GpuDriver::GetDeviceName(CUdevice device,
-                                                   string* device_name) {
+                                                   std::string* device_name) {
   static const size_t kCharLimit = 64;
   absl::InlinedVector<char, 4> chars(kCharLimit);
   RETURN_IF_CUDA_RES_ERROR(
@@ -472,7 +434,8 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
     return port::Status::OK();
   }
 
-  string message = "failed call to cuDevicePrimaryCtxRetain: " + ToString(res);
+  std::string message =
+      "failed call to cuDevicePrimaryCtxRetain: " + ToString(res);
   if (res == CUDA_ERROR_OUT_OF_MEMORY) {
     uint64 total_memory;
     if (GetDeviceTotalMemory(device, &total_memory)) {
@@ -1011,10 +974,6 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                           CUdeviceptr gpu_src,
                                                           uint64 size) {
   ScopedActivateContext activation(context);
-  if (size > 0) {
-    CheckPointerIsValid(gpu_src, "src");
-    CheckPointerIsValid(host_dst, "dst");
-  }
   RETURN_IF_CUDA_RES_ERROR(
       cuMemcpyDtoH(host_dst, gpu_src, size),
       absl::StrFormat("failed to synchronous memcpy from device to host "
@@ -1030,10 +989,6 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                           const void* host_src,
                                                           uint64 size) {
   ScopedActivateContext activation(context);
-  if (size > 0) {
-    CheckPointerIsValid(host_src, "src");
-    CheckPointerIsValid(gpu_dst, "dst");
-  }
   RETURN_IF_CUDA_RES_ERROR(
       cuMemcpyHtoD(gpu_dst, host_src, size),
       absl::StrFormat(
@@ -1049,10 +1004,6 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                           CUdeviceptr gpu_src,
                                                           uint64 size) {
   ScopedActivateContext activation(context);
-  if (size > 0) {
-    CheckPointerIsValid(gpu_src, "src");
-    CheckPointerIsValid(gpu_dst, "dst");
-  }
   RETURN_IF_CUDA_RES_ERROR(
       cuMemcpyDtoD(gpu_dst, gpu_src, size),
       absl::StrFormat(
@@ -1070,10 +1021,6 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                    uint64 size,
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
-  if (size > 0) {
-    CheckPointerIsValid(gpu_src, "src");
-    CheckPointerIsValid(host_dst, "dst");
-  }
   CUresult res = cuMemcpyDtoHAsync(host_dst, gpu_src, size, stream);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << absl::StrFormat(
@@ -1094,10 +1041,6 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                    uint64 size,
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
-  if (size > 0) {
-    CheckPointerIsValid(host_src, "src");
-    CheckPointerIsValid(gpu_dst, "dst");
-  }
   CUresult res = cuMemcpyHtoDAsync(gpu_dst, host_src, size, stream);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << absl::StrFormat(
@@ -1117,10 +1060,6 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                    uint64 size,
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
-  if (size > 0) {
-    CheckPointerIsValid(gpu_src, "src");
-    CheckPointerIsValid(gpu_dst, "dst");
-  }
   CUresult result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   if (result != CUDA_SUCCESS) {
     LOG(ERROR) << absl::StrFormat(
@@ -1453,8 +1392,8 @@ static port::StatusOr<T> GetSimpleAttribute(CUdevice device,
   return true;
 }
 
-/* static */ string GpuDriver::GetPCIBusID(CUdevice device) {
-  string pci_bus_id;
+/* static */ std::string GpuDriver::GetPCIBusID(CUdevice device) {
+  std::string pci_bus_id;
   static const int kBufferSize = 64;
   absl::InlinedVector<char, 4> chars(kBufferSize);
   chars[kBufferSize - 1] = '\0';

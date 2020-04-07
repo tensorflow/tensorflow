@@ -28,12 +28,17 @@ limitations under the License.
 namespace xla {
 
 StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
-  TF_ASSIGN_OR_RETURN(auto replication, HloReplicationAnalysis::Run(module));
+  TF_ASSIGN_OR_RETURN(
+      auto replication,
+      HloReplicationAnalysis::Run(module, /*cross_partition_spmd=*/false));
   std::vector<HloInstruction*> all_reduces_to_replace;
   for (auto computation : module->computations()) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
       if (!inst->shape().IsArray()) {
         // We currently do not change tuple-shaped all-reduce.
+        // Until XLA will support Token fed AllReduce(), the PyTorch client code
+        // uses a fake data token (constant) which relies on this pass to not
+        // optimize out (being fed within a tuple input).
         continue;
       }
       if (inst->IsCrossReplicaAllReduce() &&

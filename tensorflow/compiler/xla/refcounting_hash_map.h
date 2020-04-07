@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/node_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
@@ -41,13 +42,7 @@ template <typename K, typename V>
 class RefcountingHashMap {
  public:
   // Default-constructs new values.
-  RefcountingHashMap()
-      : value_factory_([](const K&) { return absl::make_unique<V>(); }) {}
-
-  // Constructs new values according to the given factory function.
-  explicit RefcountingHashMap(
-      std::function<std::unique_ptr<V>(const K&)> value_factory)
-      : value_factory_(std::move(value_factory)) {}
+  RefcountingHashMap() = default;
 
   // Not copyable or movable because this contains internal pointers (namely,
   // instances of Deleter contain pointers to `this` and into `map_`).
@@ -59,20 +54,28 @@ class RefcountingHashMap {
   // Gets the value for the given key.
   //
   // If the map doesn't contain a live value for the key, constructs one
-  // according to the factory passed to the map's constructor.
-  std::shared_ptr<V> operator[](const K& key) {
+  // using `value_factory`.
+  std::shared_ptr<V> GetOrCreateIfAbsent(
+      const K& key,
+      const std::function<std::unique_ptr<V>(const K&)>& value_factory) {
     absl::MutexLock lock(&mu_);
     auto it = map_.find(key);
-    if (it == map_.end()) {
-      // Create entry in the map and then set its value, so the value can
-      // contain a pointer back into the map.
-      it = map_.emplace(key, std::weak_ptr<V>()).first;
-      std::shared_ptr<V> value(value_factory_(key).release(),
-                               Deleter{&it->first, this});
-      it->second = value;  // Set the weak ptr to the shared ptr.
-      return value;
+    // We ensure that the entry has not expired in case deleter was running when
+    // we have entered this block.
+    if (it != map_.end()) {
+      if (std::shared_ptr<V> value = it->second.lock()) {
+        return value;
+      }
+      map_.erase(it);
     }
-    return it->second.lock();
+
+    // Create entry in the map and then set its value, so the value can
+    // contain a pointer back into the map.
+    it = map_.emplace(key, std::weak_ptr<V>()).first;
+    std::shared_ptr<V> value(value_factory(key).release(),
+                             Deleter{&it->first, this});
+    it->second = value;  // Set the weak ptr to the shared ptr.
+    return value;
   }
 
   // Runs a function over every key/value in the map.
@@ -99,15 +102,14 @@ class RefcountingHashMap {
       delete v;
       absl::MutexLock lock(&parent->mu_);
       auto it = parent->map_.find(*key);
-      CHECK(it != parent->map_.end());
-      CHECK(it->second.expired());
-      parent->map_.erase(it);
+      if (it != parent->map_.end() && it->second.expired()) {
+        parent->map_.erase(it);
+      }
     }
   };
 
-  std::function<std::unique_ptr<V>(const K&)> value_factory_;
   absl::Mutex mu_;
-  absl::node_hash_map<K, std::weak_ptr<V>> map_ GUARDED_BY(mu_);
+  absl::node_hash_map<K, std::weak_ptr<V>> map_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace xla

@@ -28,7 +28,7 @@ namespace gl {
 
 // This method performs multiple GL calls, therefore, egl context needs to be
 // created upfront.
-Status RequestGpuInfo(GpuInfo* gpu_info);
+absl::Status RequestGpuInfo(GpuInfo* gpu_info);
 
 }  // namespace gl
 }  // namespace gpu

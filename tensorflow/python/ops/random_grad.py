@@ -25,7 +25,7 @@ from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
 
 
-def add_leading_unit_dimensions(x, num_dimensions):
+def add_leading_unit_dimensions(x, num_dimensions):  # pylint: disable=invalid-name
   new_shape = array_ops.concat(
       [array_ops.ones([num_dimensions], dtype=dtypes.int32),
        array_ops.shape(x)], axis=0)
@@ -70,3 +70,47 @@ def _RandomGammaGrad(op, grad):  # pylint: disable=invalid-name
     # The first input is shape; the second input is alpha.
     return (None, math_ops.reduce_sum(
         grad * partial_a, axis=math_ops.range(num_sample_dimensions)))
+
+
+@ops.RegisterGradient("StatelessRandomGammaV2")
+def _StatelessRandomGammaV2Grad(op, grad):  # pylint: disable=invalid-name
+  """Returns the gradient of a Gamma sample w.r.t. alpha.
+
+  The gradient is computed using implicit differentiation
+  (Figurnov et al., 2018).
+
+  Args:
+    op: A `StatelessRandomGamma` operation. We assume that the inputs to the
+      operation are `shape`, `seed` and `alpha` tensors, and the output is the
+      `sample` tensor.
+    grad: The incoming gradient `dloss / dsample` of the same shape as
+      `op.outputs[0]`.
+
+  Returns:
+    A `Tensor` with derivatives `dloss / dalpha`.
+
+  References:
+    Implicit Reparameterization Gradients:
+      [Figurnov et al., 2018]
+      (http://papers.nips.cc/paper/7326-implicit-reparameterization-gradients)
+      ([pdf]
+      (http://papers.nips.cc/paper/7326-implicit-reparameterization-gradients.pdf))
+  """
+  shape = op.inputs[0]
+  alpha = op.inputs[2]
+  sample = op.outputs[0]
+
+  with ops.control_dependencies([grad]):
+    # Note that the shape handling is slightly different for stateless_gamma,
+    # in particular num_sample_dimensions is different.
+    num_sample_dimensions = array_ops.shape(shape)[0] - array_ops.rank(alpha)
+    # Make the parameters alpha broadcastable with samples by appending
+    # unit dimensions.
+    alpha_broadcastable = add_leading_unit_dimensions(alpha,
+                                                      num_sample_dimensions)
+    partial_a = gen_random_ops.random_gamma_grad(alpha_broadcastable, sample)
+
+    # The first two inputs are shape, seed, third input is alpha.
+    return (None, None,
+            math_ops.reduce_sum(
+                grad * partial_a, axis=math_ops.range(num_sample_dimensions)))

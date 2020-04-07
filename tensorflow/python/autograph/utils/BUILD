@@ -23,6 +23,7 @@ py_library(
     srcs = [
         "__init__.py",
         "ag_logging.py",
+        "compat_util.py",
         "context_managers.py",
         "misc.py",
         "py_func.py",
@@ -48,6 +49,7 @@ py_library(
 py_test(
     name = "context_managers_test",
     srcs = ["context_managers_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":utils",
@@ -58,6 +60,7 @@ py_test(
 py_test(
     name = "misc_test",
     srcs = ["misc_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":utils",
@@ -68,6 +71,7 @@ py_test(
 py_test(
     name = "py_func_test",
     srcs = ["py_func_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_windows"],
     deps = [
@@ -79,6 +83,7 @@ py_test(
 py_test(
     name = "type_check_test",
     srcs = ["type_check_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":utils",
@@ -89,6 +94,7 @@ py_test(
 py_test(
     name = "tensor_list_test",
     srcs = ["tensor_list_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":utils",
@@ -100,6 +106,7 @@ py_test(
 py_test(
     name = "tensors_test",
     srcs = ["tensors_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":utils",

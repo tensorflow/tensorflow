@@ -7,7 +7,8 @@ def tf_cc_logged_benchmark(
         benchmarks = "..",
         tags = [],
         test_log_output_prefix = "",
-        benchmark_type = "cpp_microbenchmark"):
+        benchmark_type = "cpp_microbenchmark",
+        **kwargs):
     if not name:
         fail("Must provide a name")
     if not target:
@@ -38,9 +39,10 @@ def tf_cc_logged_benchmark(
             target,
         ],
         main = "run_and_gather_logs.py",
-        additional_deps = [
+        deps = [
             "//tensorflow/tools/test:run_and_gather_logs",
         ],
+        **kwargs
     )
 
 # Create a benchmark test target of a TensorFlow python test (*py_tests)
@@ -49,7 +51,8 @@ def tf_py_logged_benchmark(
         target = None,
         benchmarks = "..",
         tags = [],
-        test_log_output_prefix = ""):
+        test_log_output_prefix = "",
+        **kwargs):
     # For now generating a py benchmark is the same as generating a C++
     # benchmark target. In the future this may change, so we have
     # two macros just in case
@@ -60,4 +63,5 @@ def tf_py_logged_benchmark(
         tags = tags,
         test_log_output_prefix = test_log_output_prefix,
         benchmark_type = "python_benchmark",
+        **kwargs
     )

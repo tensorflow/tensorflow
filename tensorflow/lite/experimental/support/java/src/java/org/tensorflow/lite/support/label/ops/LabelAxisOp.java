@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.support.common.FileUtil;
-import org.tensorflow.lite.support.common.SupportPrecondtions;
+import org.tensorflow.lite.support.common.SupportPreconditions;
 import org.tensorflow.lite.support.label.TensorLabel;
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer;
 
@@ -41,7 +41,7 @@ public class LabelAxisOp {
   }
 
   public TensorLabel apply(@NonNull TensorBuffer buffer) {
-    SupportPrecondtions.checkNotNull(buffer, "Tensor buffer cannot be null.");
+    SupportPreconditions.checkNotNull(buffer, "Tensor buffer cannot be null.");
     return new TensorLabel(axisLabels, buffer);
   }
 
@@ -55,8 +55,8 @@ public class LabelAxisOp {
 
     public Builder addAxisLabel(@NonNull Context context, int axis, @NonNull String filePath)
         throws IOException {
-      SupportPrecondtions.checkNotNull(context, "Context cannot be null.");
-      SupportPrecondtions.checkNotNull(filePath, "File path cannot be null.");
+      SupportPreconditions.checkNotNull(context, "Context cannot be null.");
+      SupportPreconditions.checkNotNull(filePath, "File path cannot be null.");
       List<String> labels = FileUtil.loadLabels(context, filePath);
       axisLabels.put(axis, labels);
       return this;

@@ -84,20 +84,10 @@ class _TPUPollingThread(threading.Thread):
       return
 
     while self._running:
-      response = self._cluster._fetch_cloud_tpu_metadata()  # pylint: disable=protected-access
-      logging.warning(
-          'TPUPollingThread found TPU %s in state %s, and health %s.',
-          self._cluster._tpu, response['state'],  # pylint: disable=protected-access
-          response.get('health', 'UNKNOWN'))
-
-      if 'state' in response and response['state'] in [
-          'TERMINATED', 'PREEMPTED'
-      ]:
+      recoverable = self._cluster._cloud_tpu_client.recoverable()  # pylint: disable=protected-access
+      if not recoverable:
         logging.warning(
-            'TPU node %s reached an unrecoverable state %s, '
-            'terminating training.',
-            self._cluster._tpu,  # pylint: disable=protected-access
-            response['state'])
+            'TPUPollingThread found TPU %s in state %s',
+            self._cluster._tpu, self._cluster._cloud_tpu_client.state())  # pylint: disable=protected-access
         os._exit(1)  # pylint: disable=protected-access
-
       time.sleep(self._interval)

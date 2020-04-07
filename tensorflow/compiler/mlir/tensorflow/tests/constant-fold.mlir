@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -test-constant-fold | FileCheck %s
+// RUN: tf-opt %s -canonicalize | FileCheck %s
 
 // CHECK-LABEL: func @testShape
 func @testShape(tensor<f32>, tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<0xi32>, tensor<?xi32>, tensor<?xi32>) {
@@ -16,6 +16,26 @@ func @testShape(tensor<f32>, tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<0
   %2 = "tf.Shape"(%arg2) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<?xi32>
 
   return %0, %1, %2 : tensor<0xi32>, tensor<?xi32>, tensor<?xi32>
+}
+
+// CHECK-LABEL: func @testPow
+// CHECK-SAME:(%[[ARG_0:.*]]: tensor<4xf32>, %[[ARG_1:.*]]: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>, tensor<4xf32>)
+func @testPow(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) {
+
+  %cst_zero = constant dense<0.0> : tensor<f32>
+  %cst_one = constant dense<1.0> : tensor<f32>
+
+  // CHECK-DAG: %[[RES_NO_FOLD:.*]] = "tf.Pow"(%arg0, %arg1)
+  %0 = "tf.Pow"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  // CHECK-DAG: %[[POW_ZERO:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<4xf32>} : () -> tensor<4xf32>
+  %1 = "tf.Pow"(%arg0, %cst_zero) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+
+  // CHECK-NOT: "tf.Pow"
+  %2 = "tf.Pow"(%arg0, %cst_one) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+
+  // CHECK: return %[[RES_NO_FOLD]], %[[POW_ZERO]], %[[ARG_0]]
+  return %0, %1, %2 : tensor<4xf32>, tensor<4xf32>, tensor<4xf32>
 }
 
 // CHECK-LABEL: func @testShapeN
@@ -67,6 +87,116 @@ func @testAdd() -> tensor<2x2xi32> {
   return %2: tensor<2x2xi32>
 }
 
+// CHECK-LABEL: testSimpleConcatOffset
+func @testSimpleConcatOffset() -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) {
+  %concat_dim = constant dense<1> : tensor<i32>
+  %shape0 = constant dense<[2, 2, 7]> : tensor<3xi32>
+  %shape1 = constant dense<[2, 3, 7]> : tensor<3xi32>
+  %shape2 = constant dense<[2, 5, 7]> : tensor<3xi32>
+
+  // CHECK: [[OFFSET_0:%.*]] = "tf.Const{{.*}} dense<0> : tensor<3xi32>
+  // CHECK: [[OFFSET_1:%.*]] = "tf.Const{{.*}} dense<[0, 2, 0]> : tensor<3xi32>
+  // CHECK: [[OFFSET_2:%.*]] = "tf.Const{{.*}} dense<[0, 5, 0]> : tensor<3xi32>
+
+  %offset:3 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1, %shape2) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>)
+
+  // CHECK: return [[OFFSET_0]], [[OFFSET_1]], [[OFFSET_2]]
+  return %offset#0, %offset#1, %offset#2: tensor<3xi32>, tensor<3xi32>, tensor<3xi32>
+}
+
+// CHECK-LABEL: testConcatOffsetWithZeros
+func @testConcatOffsetWithZeros() -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) {
+  %concat_dim = constant dense<1> : tensor<i32>
+  %shape0 = constant dense<0> : tensor<3xi32>
+  %shape1 = constant dense<[0, 3, 0]> : tensor<3xi32>
+  %shape2 = constant dense<[0, 5, 0]> : tensor<3xi32>
+  %shape3 = constant dense<0> : tensor<3xi32>
+
+  // CHECK: [[OFFSET_0:%.*]] = "tf.Const{{.*}} dense<0> : tensor<3xi32>
+  // CHECK: [[OFFSET_2:%.*]] = "tf.Const{{.*}} dense<[0, 3, 0]> : tensor<3xi32>
+  // CHECK: [[OFFSET_3:%.*]] = "tf.Const{{.*}} dense<[0, 8, 0]> : tensor<3xi32>
+
+  %offset:4 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1, %shape2, %shape3) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>)
+
+  // CHECK: return [[OFFSET_0]], [[OFFSET_0]], [[OFFSET_2]], [[OFFSET_3]]
+  return %offset#0, %offset#1, %offset#2, %offset#3: tensor<3xi32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>
+}
+
+// CHECK-LABEL: testConcatOffsetNegativeConcatDim
+func @testConcatOffsetNegativeConcatDim() -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) {
+  %concat_dim = constant dense<-1> : tensor<i32>
+  %shape0 = constant dense<[2, 8, 3]> : tensor<3xi32>
+  %shape1 = constant dense<[2, 8, 5]> : tensor<3xi32>
+  %shape2 = constant dense<[2, 8, 7]> : tensor<3xi32>
+
+  // CHECK: [[OFFSET_0:%.*]] = "tf.Const{{.*}} dense<0> : tensor<3xi32>
+  // CHECK: [[OFFSET_1:%.*]] = "tf.Const{{.*}} dense<[0, 0, 3]> : tensor<3xi32>
+  // CHECK: [[OFFSET_2:%.*]] = "tf.Const{{.*}} dense<[0, 0, 8]> : tensor<3xi32>
+
+  %offset:3 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1, %shape2) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>, tensor<3xi32>)
+
+  // CHECK: return [[OFFSET_0]], [[OFFSET_1]], [[OFFSET_2]]
+  return %offset#0, %offset#1, %offset#2: tensor<3xi32>, tensor<3xi32>, tensor<3xi32>
+}
+
+// CHECK-LABEL: testConcatOffsetNonConstConcatDim
+func @testConcatOffsetNonConstConcatDim(%concat_dim: tensor<i32>) -> (tensor<3xi32>, tensor<3xi32>) {
+  %shape0 = constant dense<[2, 2, 7]> : tensor<3xi32>
+  %shape1 = constant dense<[2, 3, 7]> : tensor<3xi32>
+
+  // CHECK: tf.ConcatOffset
+  %offset:2 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>)
+
+  return %offset#0, %offset#1: tensor<3xi32>, tensor<3xi32>
+}
+
+// CHECK-LABEL: testConcatOffsetNonConstShape
+func @testConcatOffsetNonConstShape(%shape1: tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>) {
+  %concat_dim = constant dense<1> : tensor<i32>
+  %shape0 = constant dense<[2, 2, 7]> : tensor<3xi32>
+
+  // CHECK: tf.ConcatOffset
+  %offset:2 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>)
+
+  return %offset#0, %offset#1: tensor<3xi32>, tensor<3xi32>
+}
+
+// CHECK-LABEL: testConcatOffsetBadNegativeConcatDim
+func @testConcatOffsetBadNegativeConcatDim() -> (tensor<3xi32>, tensor<3xi32>) {
+  %concat_dim = constant dense<-4> : tensor<i32>
+  %shape0 = constant dense<[2, 2, 7]> : tensor<3xi32>
+  %shape1 = constant dense<[2, 3, 7]> : tensor<3xi32>
+
+  // CHECK: tf.ConcatOffset
+  %offset:2 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>)
+
+  return %offset#0, %offset#1: tensor<3xi32>, tensor<3xi32>
+}
+
+// CHECK-LABEL: testConcatOffsetBadPositiveConcatDim
+func @testConcatOffsetBadPositiveConcatDim() -> (tensor<3xi32>, tensor<3xi32>) {
+  %concat_dim = constant dense<3> : tensor<i32>
+  %shape0 = constant dense<[2, 2, 7]> : tensor<3xi32>
+  %shape1 = constant dense<[2, 3, 7]> : tensor<3xi32>
+
+  // CHECK: tf.ConcatOffset
+  %offset:2 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>)
+
+  return %offset#0, %offset#1: tensor<3xi32>, tensor<3xi32>
+}
+
+// CHECK-LABEL: testConcatOffsetDifferentNonConcatDimElements
+func @testConcatOffsetDifferentNonConcatDimElements() -> (tensor<3xi32>, tensor<3xi32>) {
+  %concat_dim = constant dense<1> : tensor<i32>
+  %shape0 = constant dense<[2, 2, 7]> : tensor<3xi32>
+  %shape1 = constant dense<[2, 3, 8]> : tensor<3xi32>
+
+  // CHECK: tf.ConcatOffset
+  %offset:2 = "tf.ConcatOffset"(%concat_dim, %shape0, %shape1) : (tensor<i32>, tensor<3xi32>, tensor<3xi32>) -> (tensor<3xi32>, tensor<3xi32>)
+
+  return %offset#0, %offset#1: tensor<3xi32>, tensor<3xi32>
+}
+
 // Ops with side effects should not get constant folded.
 // CHECK-LABEL: func @testSideEffectOp() -> tensor<3xf32>
 func @testSideEffectOp() -> tensor<3xf32> {
@@ -77,7 +207,7 @@ func @testSideEffectOp() -> tensor<3xf32> {
   return %1: tensor<3xf32>
 }
 
-// Ops with unimplemnted attributes which couldn't be added to the TFE_Op.
+// Ops with unimplemented attributes which couldn't be added to the TFE_Op.
 // CHECK-LABEL: func @testUnimplementedOp() -> (tensor<i32>, tensor<i32>)
 func @testUnimplementedOp() -> (tensor<i32>, tensor<i32>) {
   %0 = constant dense<1> : tensor<i32>
@@ -102,4 +232,22 @@ func @testRemoteDevice() -> tensor<2x2xi32> {
   // CHECK:         [[cst:%.*]] = "tf.Const{{.*}} dense<{{\[\[}}1, 2], {{\[}}3, 4]]> : tensor<2x2xi32>
   // CHECK-NEXT:    return [[cst]] : tensor<2x2xi32>
   return %2: tensor<2x2xi32>
+}
+
+// Tests ops that variable shapes are correctly evaluated on static types.
+// CHECK-LABEL: func @testVariableShape
+func @testVariableShape(%arg0: tensor<!tf.resource<tensor<2x4xf32>>>) -> tensor<2xi32> {
+  %0 = "tf.VariableShape"(%arg0) : (tensor<!tf.resource<tensor<2x4xf32>>>) -> tensor<2xi32>
+  // CHECK:         [[cst:%.*]] = "tf.Const{{.*}} dense<{{\[}}2, 4]> : tensor<2xi32>
+  // CHECK-NEXT:    return [[cst]] : tensor<2xi32>
+  return %0: tensor<2xi32>
+}
+
+// Tests ops that tensor list shapes are correctly evaluated on static types.
+// CHECK-LABEL: func @testTensorListElementShape
+func @testTensorListElementShape(%arg0: tensor<!tf.variant<tensor<2x4xf32>>>) -> tensor<2xi32> {
+  %0 = "tf.TensorListElementShape"(%arg0) : (tensor<!tf.variant<tensor<2x4xf32>>>) -> tensor<2xi32>
+  // CHECK:         [[cst:%.*]] = "tf.Const{{.*}} dense<{{\[}}2, 4]> : tensor<2xi32>
+  // CHECK-NEXT:    return [[cst]] : tensor<2xi32>
+  return %0: tensor<2xi32>
 }

@@ -42,8 +42,8 @@ class SummaryScalarOp : public OpKernel {
 
     OP_REQUIRES(
         c,
-        tags.IsSameSize(values) ||
-            (IsLegacyScalar(tags.shape()) && IsLegacyScalar(values.shape())),
+        tags.IsSameSize(values) || (TensorShapeUtils::IsScalar(tags.shape()) &&
+                                    TensorShapeUtils::IsScalar(values.shape())),
         errors::InvalidArgument(
             "tags and values not the same shape: ", tags.shape().DebugString(),
             " != ", values.shape().DebugString(), SingleTag(tags)));
@@ -82,7 +82,7 @@ class SummaryHistoOp : public OpKernel {
     const Tensor& tags = c->input(0);
     const Tensor& values = c->input(1);
     const auto flat = values.flat<T>();
-    OP_REQUIRES(c, IsLegacyScalar(tags.shape()),
+    OP_REQUIRES(c, TensorShapeUtils::IsScalar(tags.shape()),
                 errors::InvalidArgument("tags must be scalar"));
     // Build histogram of values in "values" tensor
     histogram::Histogram histo;

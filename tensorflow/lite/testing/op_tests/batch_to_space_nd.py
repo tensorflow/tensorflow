@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -54,6 +54,15 @@ def make_batch_to_space_nd_tests(options):
           "crops": [[[0, 0], [0, 0], [0, 0]]],
           "constant_block_shape": [True, False],
           "constant_crops": [True, False],
+      },
+      # 3D use case.
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1, 3, 3]],
+          "block_shape": [[1]],
+          "crops": [[[0, 0]], [[1, 1]]],
+          "constant_block_shape": [True],
+          "constant_crops": [True],
       },
   ]
 

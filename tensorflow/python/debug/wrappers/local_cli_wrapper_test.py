@@ -345,7 +345,7 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertEqual(0, len(wrapped_sess.observers["debug_dumps"]))
     self.assertEqual([], wrapped_sess.observers["tf_errors"])
 
-  def testRunMixingDebugModeAndMultpleTimes(self):
+  def testRunMixingDebugModeAndMultipleTimes(self):
     wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
         [["run", "-n"], ["run", "-t", "2"], ["run"], ["run"]],
         self.sess, dump_root=self._tmp_dir)

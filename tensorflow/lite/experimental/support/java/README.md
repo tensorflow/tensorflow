@@ -114,8 +114,9 @@ try{
 }
 
 // Running inference
-if(null != tflite)
+if(null != tflite) {
     tflite.run(tImage.getBuffer(), probabilityBuffer.getBuffer());
+}
 ```
 
 ### Accessing the result
@@ -138,9 +139,9 @@ import org.tensorflow.lite.support.common.FileUtil;
 final String ASSOCIATED_AXIS_LABELS = "labels.txt";
 List<String> associatedAxisLabels = null;
 
-try{
+try {
     associatedAxisLabels = FileUtil.loadLabels(this, ASSOCIATED_AXIS_LABELS);
-} catch (IOException e){
+} catch (IOException e) {
     Log.e("tfliteSupport", "Error reading label file", e);
 }
 ```
@@ -192,11 +193,11 @@ int size = height > width ? width : height;
 ImageProcessor imageProcessor =
     new ImageProcessor.Builder()
         // Center crop the image to the largest square possible
-        .add(new ResizeWithCropOrPadOp(size , size))
+        .add(new ResizeWithCropOrPadOp(size, size))
         // Resize using Bilinear or Nearest neighbour
         .add(new ResizeOp(224, 224, ResizeOp.ResizeMethod.BILINEAR));
         // Rotation counter-clockwise in 90 degree increments
-        .add(new Rot90Op(rotateDegrees/90))
+        .add(new Rot90Op(rotateDegrees / 90))
         .build();
 ```
 
@@ -229,5 +230,5 @@ TensorProcessor probabilityProcessor =
     new TensorProcessor.Builder().add(new NormalizeOp(0, 255)).build();
 
 // Post-processor which dequantize the result
-TensorBuffer dequantizedBuffer = probabilityProcessor.process(probabilityBuffer)
+TensorBuffer dequantizedBuffer = probabilityProcessor.process(probabilityBuffer);
 ```

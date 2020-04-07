@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_TOOLS_BENCHMARK_COMMAND_LINE_FLAGS_H_
-#define TENSORFLOW_LITE_TOOLS_BENCHMARK_COMMAND_LINE_FLAGS_H_
+#ifndef TENSORFLOW_LITE_TOOLS_COMMAND_LINE_FLAGS_H_
+#define TENSORFLOW_LITE_TOOLS_COMMAND_LINE_FLAGS_H_
 
 #include <functional>
 #include <string>
@@ -64,21 +64,36 @@ namespace tflite {
 // text, and a pointer to the corresponding variable.
 class Flag {
  public:
+  enum FlagType {
+    POSITIONAL = 0,
+    REQUIRED,
+    OPTIONAL,
+  };
+
+  // The order of the positional flags is the same as they are added.
+  // Positional flags are supposed to be required.
   template <typename T>
-  static Flag CreateFlag(const char* name, T* val, const char* usage) {
-    return Flag(name, [val](const T& v) { *val = v; }, *val, usage);
+  static Flag CreateFlag(const char* name, T* val, const char* usage,
+                         FlagType flag_type = OPTIONAL) {
+    return Flag(
+        name, [val](const T& v) { *val = v; }, *val, usage, flag_type);
   }
 
   Flag(const char* name, const std::function<void(const int32_t&)>& hook,
-       int32_t default_value, const std::string& usage_text);
+       int32_t default_value, const std::string& usage_text,
+       FlagType flag_type);
   Flag(const char* name, const std::function<void(const int64_t&)>& hook,
-       int64_t default_value, const std::string& usage_text);
+       int64_t default_value, const std::string& usage_text,
+       FlagType flag_type);
   Flag(const char* name, const std::function<void(const float&)>& hook,
-       float default_value, const std::string& usage_text);
+       float default_value, const std::string& usage_text, FlagType flag_type);
   Flag(const char* name, const std::function<void(const bool&)>& hook,
-       bool default_value, const std::string& usage_text);
+       bool default_value, const std::string& usage_text, FlagType flag_type);
   Flag(const char* name, const std::function<void(const std::string&)>& hook,
-       const std::string& default_value, const std::string& usage_text);
+       const std::string& default_value, const std::string& usage_text,
+       FlagType flag_type);
+
+  FlagType GetFlagType() const { return flag_type_; }
 
  private:
   friend class Flags;
@@ -100,6 +115,7 @@ class Flag {
   std::string default_for_display_;
 
   std::string usage_text_;
+  FlagType flag_type_;
 };
 
 class Flags {
@@ -117,7 +133,6 @@ class Flags {
   static std::string Usage(const std::string& cmdline,
                            const std::vector<Flag>& flag_list);
 };
-
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_TOOLS_BENCHMARK_COMMAND_LINE_FLAGS_H_
+#endif  // TENSORFLOW_LITE_TOOLS_COMMAND_LINE_FLAGS_H_

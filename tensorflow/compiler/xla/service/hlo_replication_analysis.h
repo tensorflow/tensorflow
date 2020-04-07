@@ -25,32 +25,35 @@ limitations under the License.
 namespace xla {
 
 // An HLO pass that determines whether each instruction in the module outputs
-// the same value across replicas. It propagates sources of replicated values to
+// the same value across replicas or across partitions (depending on the value
+// `cross_partition_spmd`). It propagates sources of replicated values to
 // the rest of the module, where sources include cross-replica-sum, annotated
 // entry parameters, and constants.
 class HloReplicationAnalysis {
  public:
   // Runs the analysis on module and returns the result or an error.
   static StatusOr<std::unique_ptr<HloReplicationAnalysis>> Run(
-      const HloModule* module);
+      const HloModule* module, bool cross_partition_spmd);
 
   // Same as above, but the caller can provide additional annotations: a set of
   // while loops that are known to have the same iteration counts across
-  // replicas.
+  // replicas or partitions.
   static StatusOr<std::unique_ptr<HloReplicationAnalysis>> Run(
-      const HloModule* module, const absl::flat_hash_set<const HloInstruction*>*
-                                   loops_known_with_same_iterations);
+      const HloModule* module, bool cross_partition_spmd,
+      const absl::flat_hash_set<const HloInstruction*>*
+          loops_known_with_same_iterations);
 
   // Returns if the HLO instruction outputs the same value (i.e., replicated) at
-  // the given index across all replicas.
+  // the given index across all replicas or partitions.
   bool HloInstructionIsReplicatedAt(const HloInstruction* inst,
                                     const ShapeIndex& index) const;
 
  private:
-  HloReplicationAnalysis(const HloModule* module,
+  HloReplicationAnalysis(const HloModule* module, bool cross_partition_spmd,
                          const absl::flat_hash_set<const HloInstruction*>*
                              loops_known_with_same_iterations)
       : module_(module),
+        cross_partition_spmd_(cross_partition_spmd),
         loops_known_with_same_iterations_(*loops_known_with_same_iterations) {}
 
   // Computes hlo_replication_.
@@ -63,14 +66,25 @@ class HloReplicationAnalysis {
 
   const HloModule* module_;
 
+  // If true, run this replication analysis for replicated values across
+  // partitions (not across replicas) on an SPMD partitioned module. This means
+  // that HloInstructionIsReplicatedAt() returns true if the value is identical
+  // across partitions for each replica. The module-level parameter and root
+  // instructions may have HloSharding attributes that indicate whether values
+  // are identical across partitions.
+  //
+  // If false, HloReplicationAnalysis runs across replicas.
+  bool cross_partition_spmd_;
+
   // A set of while loops that are known to have the same iteration counts
-  // across replicas. This is provided by the caller as additional annotations.
+  // across replicas or partitions. This is provided by the caller as additional
+  // annotations.
   const absl::flat_hash_set<const HloInstruction*>&
       loops_known_with_same_iterations_;
 
   // A map from each analyzed HLO instruction to a shape tree that represents
-  // whether the instruction outputs the same value across replicas at each
-  // shape index.
+  // whether the instruction outputs the same value across replicas or
+  // partitions at each shape index.
   absl::flat_hash_map<const HloInstruction*, ShapeTree<bool>> hlo_replication_;
 };
 

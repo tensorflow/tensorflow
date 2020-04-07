@@ -1,7 +1,14 @@
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
+
 package(
     default_visibility = [
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
+        # tensorflow/core/framework references some of the headers in this package
+        "//tensorflow/core/framework:__subpackages__",
         # tensorflow/core/platform still references some of the headers in this package
         "//tensorflow/core/platform:__subpackages__",
     ],
@@ -12,11 +19,9 @@ package(
 
 cc_library(
     name = "base64",
-    srcs = ["base64.cc"],
     hdrs = ["base64.h"],
     deps = [
-        "//tensorflow/core/lib/core:errors",
-        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/platform:base64",
     ],
 )
 
@@ -92,6 +97,33 @@ cc_library(
     deps = ["//tensorflow/core/platform:stringprintf"],
 )
 
+# Export source files needed for mobile builds, which do not use granular targets.
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "proto_text_util.cc",
+        "proto_text_util.h",
+        "scanner.h",
+        "str_util.h",
+        "strcat.h",
+        "stringprintf.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "base64.h",
+        "numbers.h",
+        "ordered_code.cc",
+        "ordered_code.h",
+        "proto_serialization.cc",
+        "proto_serialization.h",
+    ],
+    visibility = ["//tensorflow/core:__pkg__"],
+)
+
 filegroup(
     name = "legacy_lib_strings_all_headers",
     srcs = [
@@ -104,17 +136,6 @@ filegroup(
         "str_util.h",
         "strcat.h",
         "stringprintf.h",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_lib_strings_all_srcs",
-    srcs = [
-        "base64.cc",
-        "ordered_code.cc",
-        "proto_serialization.cc",
-        "proto_text_util.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

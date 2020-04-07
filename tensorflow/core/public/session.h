@@ -174,6 +174,19 @@ class Session {
                      const std::vector<string>& target_node_names,
                      std::vector<Tensor>* outputs, RunMetadata* run_metadata);
 
+  /// \brief Like `Run` with `RunOptions` proto, but allows user to provide
+  /// custom threadpool implementation via ThreadPoolOptions.
+  /// NOTE: This API is still experimental and may change.
+  virtual Status Run(const RunOptions& run_options,
+                     const std::vector<std::pair<string, Tensor> >& inputs,
+                     const std::vector<string>& output_tensor_names,
+                     const std::vector<string>& target_node_names,
+                     std::vector<Tensor>* outputs, RunMetadata* run_metadata,
+                     const thread::ThreadPoolOptions& threadpool_options) {
+    return errors::Unimplemented(
+        "Run with threadpool is not supported for this session.");
+  }
+
   /// \brief Sets up a graph for partial execution. All future feeds and
   /// fetches are specified by `input_names` and `output_names`. Returns
   /// `handle` that can be used to perform a sequence of partial feeds and
@@ -245,7 +258,8 @@ class Session {
   }
 
   /// \brief Invokes the subgraph named by `handle` with the given options and
-  /// input tensors.
+  /// input tensors. User can provide custom threadpool implementation via
+  /// threadpool_options.
   ///
   /// The order of tensors in `feed_tensors` must and `fetch_tensors` will
   /// match the order of names in `CallableOptions::feed()` and

@@ -33,6 +33,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -51,6 +52,40 @@ class PyBuiltinsTest(test.TestCase):
       self.assertEqual(self.evaluate(t), 1)
       t = py_builtins.abs_(constant_op.constant([-1, 2, -3]))
       self.assertAllEqual(self.evaluate(t), [1, 2, 3])
+
+  def test_abs_dataset(self):
+    dataset = dataset_ops.DatasetV2.from_tensor_slices([-1, 2, 3])
+    dataset = py_builtins.abs_(dataset)
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+    with self.cached_session() as sess:
+      self.assertAllEqual(self.evaluate(iterator.get_next()), 1)
+      self.assertAllEqual(self.evaluate(iterator.get_next()), 2)
+      self.assertAllEqual(self.evaluate(iterator.get_next()), 3)
+
+  def test_abs_dataset_zipped(self):
+    dataset_1 = dataset_ops.DatasetV2.from_tensor_slices([-1, 2, 3])
+    dataset_2 = dataset_ops.DatasetV2.from_tensor_slices([1, -2, 3])
+    dataset = dataset_ops.DatasetV2.zip((dataset_1, dataset_2))
+    dataset = py_builtins.abs_(dataset)
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+    with self.cached_session() as sess:
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (1, 1))
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (2, 2))
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (3, 3))
+
+  def test_abs_dataset_mixed(self):
+    dataset_1 = dataset_ops.DatasetV2.from_tensor_slices([-1, 2, 3])
+    dataset_2 = dataset_ops.DatasetV2.from_tensor_slices([1, -2, 3])
+    dataset_3 = dataset_ops.DatasetV2.from_tensor_slices([-1, -2, -3])
+    dataset_4 = dataset_ops.DatasetV2.zip((dataset_1, dataset_2))
+    dataset = dataset_ops.DatasetV2.zip((dataset_3, dataset_4))
+    dataset = py_builtins.abs_(dataset)
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+    with self.cached_session() as sess:
+      for i in range(1, 4):
+        actual = self.evaluate(iterator.get_next())
+        self.assertAllEqual(actual[0], i)
+        self.assertAllEqual(actual[1], (i, i))
 
   def test_float(self):
     self.assertEqual(py_builtins.float_(10), 10.0)
@@ -338,6 +373,47 @@ class PyBuiltinsTest(test.TestCase):
     dataset_mixed = dataset_ops.DatasetV2.zip((dataset_3, dataset_4))
     with self.assertRaises(ValueError):
       py_builtins.all_(dataset_mixed)
+
+  def test_sorted(self):
+    self.assertListEqual(py_builtins.sorted_([2, 3, 1]), [1, 2, 3])
+    self.assertListEqual(
+        py_builtins.sorted_([2, 3, 1], key=lambda x: -x), [3, 2, 1])
+    self.assertListEqual(
+        py_builtins.sorted_([2, 3, 1], reverse=True), [3, 2, 1])
+    self.assertListEqual(
+        py_builtins.sorted_([2, 3, 1], key=lambda x: -x, reverse=True),
+        [1, 2, 3])
+    self.assertAllEqual(
+        py_builtins.sorted_([[4, 3], [2, 1]], key=lambda x: sum(x)),
+        [[2, 1], [4, 3]])
+
+  def test_sorted_tensor(self):
+    iterable_1 = constant_op.constant([2, 3, 1])
+    self.assertListEqual(
+        list(self.evaluate(py_builtins.sorted_(iterable_1))), [1, 2, 3])
+    self.assertListEqual(
+        list(self.evaluate(py_builtins.sorted_(iterable_1, key=lambda x: -x))),
+        [3, 2, 1])
+    self.assertListEqual(
+        list(self.evaluate(py_builtins.sorted_(iterable_1, reverse=True))),
+        [3, 2, 1])
+    self.assertListEqual(
+        list(
+            self.evaluate(
+                py_builtins.sorted_(iterable_1, key=lambda x: -x,
+                                    reverse=True))), [1, 2, 3])
+
+    iterable_2 = constant_op.constant([[4, 3], [2, 1]])
+    with self.assertRaises(ValueError):
+      py_builtins.sorted_(iterable_2)
+    with self.assertRaises(ValueError):
+      py_builtins.sorted_(iterable_2, key=lambda x: -x)
+    self.assertAllEqual(
+        list(
+            self.evaluate(
+                py_builtins.sorted_(
+                    iterable_2, key=lambda x: math_ops.reduce_sum(x)))),
+        [[2, 1], [4, 3]])
 
 
 if __name__ == '__main__':

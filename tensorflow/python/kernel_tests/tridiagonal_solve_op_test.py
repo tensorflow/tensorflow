@@ -19,11 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+
 import numpy as np
 
-from tensorflow.python.eager import backprop
 from tensorflow.python.client import session
-from tensorflow.python.compat import compat
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -41,8 +41,6 @@ from tensorflow.python.platform import test
 _sample_diags = np.array([[2, 1, 4, 0], [1, 3, 2, 2], [0, 1, -1, 1]])
 _sample_rhs = np.array([1, 2, 3, 4])
 _sample_result = np.array([-9, 5, -4, 4])
-
-FORWARD_COMPATIBLE_DATE = (2019, 10, 18)
 
 # Flag, indicating that test should be run only with partial_pivoting=True
 FLAG_REQUIRES_PIVOTING = "FLAG_REQUIRES_PIVOT"
@@ -80,8 +78,19 @@ class TridiagonalSolveOpTest(test.TestCase):
             transpose_rhs=False,
             conjugate_rhs=False):
     with self.cached_session(use_gpu=True):
-      result = linalg_impl.tridiagonal_solve(diags, rhs, diags_format,
-                                             transpose_rhs, conjugate_rhs)
+      pivoting = True
+      if hasattr(self, "pivoting"):
+        pivoting = self.pivoting
+      if test_util.is_xla_enabled() and pivoting:
+        # Pivoting is not supported by xla backends.
+        return
+      result = linalg_impl.tridiagonal_solve(
+          diags,
+          rhs,
+          diags_format,
+          transpose_rhs,
+          conjugate_rhs,
+          partial_pivoting=pivoting)
       self.assertAllClose(self.evaluate(result), expected)
 
   def _testWithLists(self,
@@ -96,8 +105,15 @@ class TridiagonalSolveOpTest(test.TestCase):
         transpose_rhs, conjugate_rhs)
 
   def _assertRaises(self, diags, rhs, diags_format="compact"):
+    pivoting = True
+    if hasattr(self, "pivoting"):
+      pivoting = self.pivoting
+    if test_util.is_xla_enabled() and pivoting:
+      # Pivoting is not supported by xla backends.
+      return
     with self.assertRaises(ValueError):
-      linalg_impl.tridiagonal_solve(diags, rhs, diags_format)
+      linalg_impl.tridiagonal_solve(
+          diags, rhs, diags_format, partial_pivoting=pivoting)
 
   # Tests with various dtypes
 
@@ -139,6 +155,9 @@ class TridiagonalSolveOpTest(test.TestCase):
     self._testWithLists(diags=[[0], [3], [0]], rhs=[6], expected=[2])
 
   def test0x0(self):
+    if test_util.is_xla_enabled():
+      # The following test crashes with XLA due to slicing 0 length tensors.
+      return
     self._test(
         diags=constant_op.constant(0, shape=(3, 0), dtype=dtypes.float32),
         rhs=constant_op.constant(0, shape=(0, 1), dtype=dtypes.float32),
@@ -155,10 +174,16 @@ class TridiagonalSolveOpTest(test.TestCase):
         diags=[[0], [3], [0]], rhs=[[6, 9, 12]], expected=[[2, 3, 4]])
 
   def test1x1NotInvertible(self):
+    if test_util.is_xla_enabled():
+      # XLA implementation does not check invertibility.
+      return
     with self.assertRaises(errors_impl.InvalidArgumentError):
       self._testWithLists(diags=[[0], [0], [0]], rhs=[[6, 9, 12]], expected=[])
 
   def test2x2NotInvertible(self):
+    if test_util.is_xla_enabled():
+      # XLA implementation does not check invertibility.
+      return
     with self.assertRaises(errors_impl.InvalidArgumentError):
       self._testWithLists(
           diags=[[3, 0], [1, 3], [0, 1]], rhs=[1, 4], expected=[])
@@ -181,7 +206,7 @@ class TridiagonalSolveOpTest(test.TestCase):
         expected=[5, -2, -5, 3])
 
   def testNotInvertible(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or test_util.is_xla_enabled():
       # CuSparse gtsv routines don't raise errors for non-invertible
       # matrices.
       return
@@ -254,8 +279,9 @@ class TridiagonalSolveOpTest(test.TestCase):
   def testSequenceFormatWithDummyElements(self):
     dummy = 20
     self._test(
-        diags=(_tfconst([2, 1, 4, dummy]), _tfconst([1, 3, 2, 2]),
-               _tfconst([dummy, 1, -1, 1])),
+        diags=(_tfconst([2, 1, 4,
+                         dummy]), _tfconst([1, 3, 2,
+                                            2]), _tfconst([dummy, 1, -1, 1])),
         rhs=_tfconst([1, 2, 3, 4]),
         expected=_tfconst([-9, 5, -4, 4]),
         diags_format="sequence")
@@ -263,8 +289,9 @@ class TridiagonalSolveOpTest(test.TestCase):
   def testSequenceFormatWithBatching(self):
     self._test(
         diags=(_tfconst([[2, 1, 4], [-2, -1, -4]]),
-               _tfconst([[1, 3, 2, 2], [-1, -3, -2, -2]]),
-               _tfconst([[1, -1, 1], [-1, 1, -1]])),
+               _tfconst([[1, 3, 2, 2],
+                         [-1, -3, -2, -2]]), _tfconst([[1, -1, 1], [-1, 1,
+                                                                    -1]])),
         rhs=_tfconst([[1, 2, 3, 4], [1, 2, 3, 4]]),
         expected=_tfconst([[-9, 5, -4, 4], [9, -5, 4, -4]]),
         diags_format="sequence")
@@ -302,13 +329,10 @@ class TridiagonalSolveOpTest(test.TestCase):
   # Tests with transpose and adjoint
 
   def testTransposeRhs(self):
-    expected = np.array([_sample_result, 2 * _sample_result])
-    if compat.forward_compatible(*FORWARD_COMPATIBLE_DATE):
-      expected = expected.T
     self._testWithLists(
         diags=_sample_diags,
         rhs=np.array([_sample_rhs, 2 * _sample_rhs]),
-        expected=expected,
+        expected=np.array([_sample_result, 2 * _sample_result]).T,
         transpose_rhs=True)
 
   def testConjugateRhs(self):
@@ -320,28 +344,22 @@ class TridiagonalSolveOpTest(test.TestCase):
         conjugate_rhs=True)
 
   def testAdjointRhs(self):
-    expected = np.array(
-        [_sample_result * (1 - 1j), _sample_result * (1 + 2j)])
-    if compat.forward_compatible(*FORWARD_COMPATIBLE_DATE):
-      expected = expected.T
     self._testWithLists(
         diags=_sample_diags,
         rhs=np.array([_sample_rhs * (1 + 1j), _sample_rhs * (1 - 2j)]),
-        expected=expected,
+        expected=np.array(
+            [_sample_result * (1 - 1j), _sample_result * (1 + 2j)]).T,
         transpose_rhs=True,
         conjugate_rhs=True)
 
   def testTransposeRhsWithBatching(self):
-    expected = np.array(
-        [[_sample_result, 2 * _sample_result],
-         [-3 * _sample_result, -4 * _sample_result]])
-    if compat.forward_compatible(*FORWARD_COMPATIBLE_DATE):
-      expected = expected.transpose(0, 2, 1)
     self._testWithLists(
         diags=np.array([_sample_diags, -_sample_diags]),
         rhs=np.array([[_sample_rhs, 2 * _sample_rhs],
                       [3 * _sample_rhs, 4 * _sample_rhs]]),
-        expected=expected,
+        expected=np.array([[_sample_result, 2 * _sample_result],
+                           [-3 * _sample_result,
+                            -4 * _sample_result]]).transpose(0, 2, 1),
         transpose_rhs=True)
 
   def testTransposeRhsWithRhsAsVector(self):
@@ -384,6 +402,9 @@ class TridiagonalSolveOpTest(test.TestCase):
       with backprop.GradientTape() as tape_rhs:
         tape_diags.watch(diags)
         tape_rhs.watch(rhs)
+        if test_util.is_xla_enabled():
+          # Pivoting is not supported by xla backends.
+          return
         x = linalg_impl.tridiagonal_solve(
             diags,
             rhs,
@@ -537,6 +558,9 @@ class TridiagonalSolveOpTest(test.TestCase):
       return
     diags = array_ops.placeholder(dtypes.float64, shape=diags_shape)
     rhs = array_ops.placeholder(dtypes.float64, shape=rhs_shape)
+    if test_util.is_xla_enabled() and self.pivoting:
+      # Pivoting is not supported by xla backends.
+      return
     x = linalg_impl.tridiagonal_solve(
         diags, rhs, diags_format, partial_pivoting=self.pivoting)
     with self.cached_session(use_gpu=True) as sess:
@@ -612,6 +636,9 @@ class TridiagonalSolveOpTest(test.TestCase):
   def testSequenceFormatWithUnknownDims(self):
     if context.executing_eagerly():
       return
+    if test_util.is_xla_enabled() and self.pivoting:
+      # Pivoting is not supported by xla backends.
+      return
     superdiag = array_ops.placeholder(dtypes.float64, shape=[None])
     diag = array_ops.placeholder(dtypes.float64, shape=[None])
     subdiag = array_ops.placeholder(dtypes.float64, shape=[None])
@@ -652,9 +679,9 @@ class TridiagonalSolveOpTest(test.TestCase):
       np.random.seed(seed)
       import scipy.sparse as sparse  # pylint:disable=g-import-not-at-top
       # By being strictly diagonally dominant, we guarantee invertibility.d
-      diag = 2* np.abs(np.random.randn(matrix_size)) + 4.1
-      subdiag = 2* np.abs(np.random.randn(matrix_size-1))
-      superdiag = 2* np.abs(np.random.randn(matrix_size-1))
+      diag = 2 * np.abs(np.random.randn(matrix_size)) + 4.1
+      subdiag = 2 * np.abs(np.random.randn(matrix_size - 1))
+      superdiag = 2 * np.abs(np.random.randn(matrix_size - 1))
       matrix = sparse.diags([superdiag, diag, subdiag], [1, 0, -1]).toarray()
       vector = np.random.randn(batch_size, matrix_size, num_rhs)
       return (variables.Variable(np.tile(matrix, (batch_size, 1, 1))),
@@ -676,6 +703,9 @@ class TridiagonalSolveOpTest(test.TestCase):
             session.Session(config=benchmark.benchmark_config()) as sess, \
             ops.device(device_id):
           diags, rhs = generate_data_fn(matrix_size, batch_size, num_rhs)
+          # Pivoting is not supported by XLA backends.
+          if test.is_xla_enabled() and pivoting:
+            return
           x = linalg_impl.tridiagonal_solve(
               diags, rhs, partial_pivoting=pivoting)
           variables.global_variables_initializer().run()
@@ -684,9 +714,9 @@ class TridiagonalSolveOpTest(test.TestCase):
               control_flow_ops.group(x),
               min_iters=10,
               store_memory_usage=False,
-              name=test_name_format_string.format(
-                  device_name, matrix_size, batch_size, num_rhs,
-                  pivoting_name))
+              name=test_name_format_string.format(device_name, matrix_size,
+                                                  batch_size, num_rhs,
+                                                  pivoting_name))
 
     def benchmarkTridiagonalSolveOp_WithMatrixInput(self):
       self._benchmark(
@@ -698,9 +728,8 @@ class TridiagonalSolveOpTest(test.TestCase):
     def benchmarkTridiagonalSolveOp(self):
       self._benchmark(
           self._generateMatrixData,
-          test_name_format_string=(
-              "tridiagonal_solve_{}_matrix_size_{}_"
-              "batch_size_{}_num_rhs_{}_{}"))
+          test_name_format_string=("tridiagonal_solve_{}_matrix_size_{}_"
+                                   "batch_size_{}_num_rhs_{}_{}"))
 
 
 if __name__ == "__main__":

@@ -31,16 +31,17 @@ from tensorflow.python.framework import test_combinations
 
 
 class EagerGraphCombination(test_combinations.TestCombination):
-  """Run the test in Graph or Eager mode.  Graph is the default.
+  """Run the test in Graph or Eager mode.
 
   The optional `mode` parameter controls the test's execution mode.  Its
   accepted values are "graph" or "eager" literals.
   """
 
   def context_managers(self, kwargs):
-    # TODO(isaprykin): Switch the default to eager.
-    mode = kwargs.pop("mode", "graph")
-    if mode == "eager":
+    mode = kwargs.pop("mode", None)
+    if mode is None:
+      return []
+    elif mode == "eager":
       return [context.eager_mode()]
     elif mode == "graph":
       return [ops.Graph().as_default(), context.graph_mode()]

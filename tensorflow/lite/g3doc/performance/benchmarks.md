@@ -7,7 +7,7 @@ These performance benchmark numbers were generated with the
 [Android TFLite benchmark binary](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark)
 and the [iOS benchmark app](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/ios).
 
-# Android performance benchmarks
+## Android performance benchmarks
 
 For Android benchmarks, the CPU affinity is set to use big cores on the device to
 reduce variance (see [details](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark#reducing-variance-between-runs-on-android)).
@@ -135,13 +135,14 @@ The performance values below are measured on Android 10.
 
  </table>
 
-# iOS benchmarks
+## iOS benchmarks
 
 To run iOS benchmarks, the
 [benchmark app](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark/ios)
 was modified to include the appropriate model and `benchmark_params.json` was
 modified to set `num_threads` to 2. For GPU delegate, `"use_gpu" : "1"` and
-`"wait_type" : "aggressive"` options were also added to `benchmark_params.json`.
+`"gpu_wait_type" : "aggressive"` options were also added to
+`benchmark_params.json`.
 
 <table>
   <thead>

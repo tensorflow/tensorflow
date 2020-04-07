@@ -22,6 +22,7 @@ import gast
 import six
 
 from tensorflow.python.autograph.pyct import anno
+from tensorflow.python.autograph.pyct import naming
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
@@ -113,11 +114,17 @@ class ScopeTest(test.TestCase):
 class ActivityAnalyzerTestBase(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
+    # TODO(mdan): Use a custom FunctionTransformer here.
     node, source = parser.parse_entity(test_fn, future_features=())
     entity_info = transformer.EntityInfo(
-        source_code=source, source_file=None, future_features=(), namespace={})
+        name=test_fn.__name__,
+        source_code=source,
+        source_file=None,
+        future_features=(),
+        namespace={})
     node = qual_names.resolve(node)
-    ctx = transformer.Context(entity_info)
+    namer = naming.Namer({})
+    ctx = transformer.Context(entity_info, namer, None)
     node = activity.resolve(node, ctx)
     return node, entity_info
 
@@ -139,6 +146,27 @@ class ActivityAnalyzerTestBase(test.TestCase):
 
 
 class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
+
+  def test_import(self):
+
+    def test_fn():
+      import a, b.x, y as c, z.u as d  # pylint:disable=g-multiple-import,g-import-not-at-top,unused-variable
+
+    node, _ = self._parse_and_analyze(test_fn)
+    scope = anno.getanno(node.body[0], anno.Static.SCOPE)
+    self.assertScopeIs(scope, (), ('a', 'b', 'c', 'd'))
+
+  def test_import_from(self):
+
+    def test_fn():
+      from x import a  # pylint:disable=g-import-not-at-top,unused-variable
+      from y import z as b  # pylint:disable=g-import-not-at-top,unused-variable
+
+    node, _ = self._parse_and_analyze(test_fn)
+    scope = anno.getanno(node.body[0], anno.Static.SCOPE)
+    self.assertScopeIs(scope, (), ('a',))
+    scope = anno.getanno(node.body[1], anno.Static.SCOPE)
+    self.assertScopeIs(scope, (), ('b',))
 
   def test_print_statement(self):
 
@@ -389,6 +417,45 @@ class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
     node, _ = self._parse_and_analyze(test_fn)
     fn_node = node
     self.assertScopeIs(anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('c',), ())
+    self.assertScopeIs(
+        anno.getanno(node.body[0], anno.Static.SCOPE), ('c',), ())
+
+  def test_raise_names_are_read(self):
+
+    def test_fn(a, b, c):  # pylint: disable=unused-argument
+      raise b
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    self.assertScopeIs(anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('b',), ())
+    self.assertScopeIs(
+        anno.getanno(node.body[0], anno.Static.SCOPE), ('b',), ())
+
+  def test_except_exposes_names(self):
+
+    def test_fn(a, b, c):  # pylint: disable=unused-argument
+      try:
+        pass
+      except:  # pylint: disable=bare-except
+        b = c
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    self.assertScopeIs(
+        anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('c',), ('b',))
+
+  def test_except_hides_exception_var_name(self):
+
+    def test_fn(a, b, c):  # pylint: disable=unused-argument
+      try:
+        pass
+      except a as e:
+        b = e
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    self.assertScopeIs(
+        anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('a',), ('b',))
 
   def test_aug_assign(self):
 
@@ -541,6 +608,8 @@ class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
     fn_node = node
     body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
     self.assertScopeIs(body_scope, ('global_b', 'c'), ('global_a',))
+    self.assertSetEqual(body_scope.globals, set(
+        (QN('global_a'), QN('global_b'))))
 
   def test_class_definition_basic(self):
 

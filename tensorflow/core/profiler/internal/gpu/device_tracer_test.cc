@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/direct_session.h"
-#include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -33,20 +32,25 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
+namespace profiler {
 
 #if GOOGLE_CUDA
-std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer(
-    const profiler::ProfilerOptions& options);
+std::unique_ptr<ProfilerInterface> CreateGpuTracer(
+    const ProfilerOptions& options);
 #else
 // We don't have device tracer for non-cuda case.
-std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer(
-    const profiler::ProfilerOptions& options) {
+std::unique_ptr<ProfilerInterface> CreateGpuTracer(
+    const ProfilerOptions& options) {
   return nullptr;
 }
 #endif
@@ -68,28 +72,25 @@ class DeviceTracerTest : public ::testing::Test {
 
     Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
     test::FillValues<float>(&a_tensor, a_values);
-    Node* a = test::graph::Constant(&graph, a_tensor);
-    a->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
+    Node* a = test::graph::HostConstant(&graph, a_tensor);
 
     Tensor x_tensor(DT_FLOAT, TensorShape({2, 1}));
     test::FillValues<float>(&x_tensor, {1, 1});
-    Node* x = test::graph::Constant(&graph, x_tensor);
-    x->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
+    Node* x = test::graph::HostConstant(&graph, x_tensor);
     x_ = x->name();
 
     // y = A * x
     Node* y = test::graph::Matmul(&graph, a, x, false, false);
-    y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
+    y->set_assigned_device_name("/device:GPU:0");
     y_ = y->name();
 
     // Use an Identity op to force a memcpy to CPU and back to GPU.
     Node* i = test::graph::Identity(&graph, y);
-    i->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
+    i->set_assigned_device_name("/cpu:0");
 
     Node* y_neg = test::graph::Unary(&graph, "Neg", i);
     y_neg_ = y_neg->name();
-    y_neg->set_assigned_device_name(
-        "/job:localhost/replica:0/task:0/device:GPU:0");
+    y_neg->set_assigned_device_name("/device:GPU:0");
 
     test::graph::ToGraphDef(&graph, &def_);
   }
@@ -242,5 +243,62 @@ TEST_F(DeviceTracerTest, RunWithTraceOption) {
   EXPECT_GE(run_metadata.step_stats().dev_stats_size(), 1);
 }
 
+TEST_F(DeviceTracerTest, TraceToXSpace) {
+  profiler::ProfilerOptions options;
+  auto tracer = CreateGpuTracer(options);
+  if (!tracer) return;
+
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<string> output_names = {y_ + ":0"};
+  std::vector<string> target_nodes = {y_neg_};
+  std::vector<Tensor> outputs;
+
+  TF_ASSERT_OK(tracer->Start());
+  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
+  TF_ASSERT_OK(s);
+
+  TF_ASSERT_OK(tracer->Stop());
+  XSpace space;
+  TF_ASSERT_OK(tracer->CollectData(&space));
+  // At least one gpu plane and one host plane for launching events.
+  const XPlane* host_plane = FindPlaneWithName(space, kCuptiDriverApiPlaneName);
+  ASSERT_NE(host_plane, nullptr);
+  EXPECT_EQ(host_plane->id(), kCuptiDriverApiPlaneId);
+
+  const XPlane* device_plane =
+      FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));
+  ASSERT_NE(device_plane, nullptr);  // Check if device plane is serialized.
+  EXPECT_EQ(device_plane->id(), kGpuPlaneBaseId);
+  // one for MemcpyH2D, one for MemcpyD2H, two for Matmul (one from Eigen, one
+  // from cudnn).
+  EXPECT_EQ(device_plane->event_metadata_size(), 4);
+  // Check if device capacity is serialized.
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
+  EXPECT_NE(plane.GetStats(kDevCapClockRateKHz), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapCoreCount), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapMemoryBandwidth), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapMemorySize), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapComputeCapMajor), nullptr);
+  EXPECT_NE(plane.GetStats(kDevCapComputeCapMinor), nullptr);
+
+  // Check if the device events timestamps are set.
+  int total_events = 0;
+  plane.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
+    line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
+      EXPECT_GT(event.TimestampNs(), 0);
+      EXPECT_GT(event.DurationNs(), 0);
+      ++total_events;
+    });
+  });
+  EXPECT_EQ(total_events, 5);
+}
+
 }  // namespace
+}  // namespace profiler
 }  // namespace tensorflow

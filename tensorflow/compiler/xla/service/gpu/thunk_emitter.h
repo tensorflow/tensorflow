@@ -25,7 +25,7 @@ namespace xla {
 namespace gpu {
 
 // Implements handling of GPU execution for HLO operations that are handed off
-// to specialzied thunks that do not require code generation. Intended to be
+// to specialized thunks that do not require code generation. Intended to be
 // mixed into GPU emitters.
 class ThunkEmitter {
  public:

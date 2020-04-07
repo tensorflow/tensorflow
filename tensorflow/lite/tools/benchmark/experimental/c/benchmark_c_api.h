@@ -82,7 +82,8 @@ extern TfLiteBenchmarkListener* TfLiteBenchmarkListenerCreate();
 extern void TfLiteBenchmarkListenerDelete(TfLiteBenchmarkListener* listener);
 
 // Sets the listener callbacks. Only non-null callback functions will be called
-// when the following events occur.
+// when the following events occur. The user_data pointer provided by the caller
+// will also be forwarded as a parameter of each callback function.
 //
 // - on_benchmark_start: Called before the (outer) inference loop begins. Note
 //     that this is called *after* the interpreter has been initialized, but
@@ -95,10 +96,13 @@ extern void TfLiteBenchmarkListenerDelete(TfLiteBenchmarkListener* listener);
 // only valid during the callback function execution, and will be destroyed
 // afterwards.
 extern void TfLiteBenchmarkListenerSetCallbacks(
-    TfLiteBenchmarkListener* listener, void (*on_benchmark_start_fn)(),
-    void (*on_single_run_start_fn)(TfLiteBenchmarkRunType runType),
-    void (*on_single_run_end_fn)(),
-    void (*on_benchmark_end_fn)(TfLiteBenchmarkResults* results));
+    TfLiteBenchmarkListener* listener, void* user_data,
+    void (*on_benchmark_start_fn)(void* user_data),
+    void (*on_single_run_start_fn)(void* user_data,
+                                   TfLiteBenchmarkRunType runType),
+    void (*on_single_run_end_fn)(void* user_data),
+    void (*on_benchmark_end_fn)(void* user_data,
+                                TfLiteBenchmarkResults* results));
 
 // -----------------------------------------------------------------------------
 // C APIs corresponding to tflite::benchmark::BenchmarkTfLiteModel type.

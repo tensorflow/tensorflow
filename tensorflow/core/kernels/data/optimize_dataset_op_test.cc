@@ -67,7 +67,7 @@ class OptimizeDatasetParams : public DatasetParams {
   std::vector<tstring> optimization_configs_;
 };
 
-class OptimizeDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class OptimizeDatasetOpTest : public DatasetOpsTestBase {};
 
 TEST_F(OptimizeDatasetOpTest, NoopElimination) {
   auto take_dataset_parmas =

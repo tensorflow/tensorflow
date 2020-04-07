@@ -103,6 +103,19 @@ TEST_F(NonMaxSuppressionOpTest, TestSelectWithNegativeScores) {
   test::ExpectTensorEqual<int>(expected, *GetOutput(0));
 }
 
+TEST_F(NonMaxSuppressionOpTest, TestFirstBoxDegenerate) {
+  MakeOp(.5);
+  AddInputFromArray<float>(TensorShape({3, 4}),
+                           {0, 0, 0, 0, 1, 1, 2, 2, 2, 2, 3, 3});
+  AddInputFromArray<float>(TensorShape({3}), {.9f, .75f, .6f});
+  AddInputFromArray<int>(TensorShape({}), {3});
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_INT32, TensorShape({3}));
+  test::FillValues<int>(&expected, {0, 1, 2});
+  test::ExpectTensorEqual<int>(expected, *GetOutput(0));
+}
+
 TEST_F(NonMaxSuppressionOpTest, TestSelectAtMostThirtyBoxesFromThreeClusters) {
   MakeOp(.5);
   AddInputFromArray<float>(
