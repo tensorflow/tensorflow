@@ -98,11 +98,13 @@ inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
   return trt_dims;
 }
 
-TensorShape TrtDimsToTensorShape(const std::vector<int>& trt_dims,
-                                 bool use_implicit_batch, int batch_size = 1);
+Status TrtDimsToTensorShape(const std::vector<int>& trt_dims,
+                            bool use_implicit_batch, int batch_size,
+                            TensorShape& shape);
 
-TensorShape TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
-                                 bool use_implicit_batch, int batch_size = 1);
+Status TrtDimsToTensorShape(const nvinfer1::Dims trt_dims,
+                            bool use_implicit_batch, int batch_size,
+                            TensorShape& shape);
 
 // Returns a string that includes compile time TensorRT library version
 // information {Maj, Min, Patch}.
