@@ -6554,28 +6554,6 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
-    name = "tf_record_multiprocessing_test",
-    size = "small",
-    srcs = ["lib/io/tf_record_multiprocessing_test.py"],
-    python_version = "PY3",
-    tags = [
-        # multiprocessing can be flaky in the internal google
-        # environment, so we disable it there.
-        "notap",
-        "no_oss_py38",
-        # The multiprocessing module behaves differently on
-        # windows, so we disable this test on windows.
-        "no_windows",
-    ],
-    deps = [
-        ":client_testlib",
-        ":errors",
-        ":lib",
-        ":util",
-    ],
-)
-
 cuda_py_test(
     name = "adam_test",
     size = "medium",
