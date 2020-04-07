@@ -59,6 +59,8 @@ class BenchmarkParam {
 
   virtual void Set(const BenchmarkParam&) {}
 
+  virtual std::unique_ptr<BenchmarkParam> Clone() const = 0;
+
  private:
   static void AssertHasSameType(ParamType a, ParamType b);
 
@@ -77,6 +79,10 @@ class TypedBenchmarkParam : public BenchmarkParam {
 
   void Set(const BenchmarkParam& other) override {
     Set(other.AsConstTyped<T>()->Get());
+  }
+
+  std::unique_ptr<BenchmarkParam> Clone() const override {
+    return std::unique_ptr<BenchmarkParam>(new TypedBenchmarkParam<T>(value_));
   }
 
  private:
@@ -116,6 +122,10 @@ class BenchmarkParams {
 
   // Set the value of all same parameters from 'other'.
   void Set(const BenchmarkParams& other);
+
+  // Merge the value of all parameters from 'other'. 'overwrite' indicates
+  // whether the value of the same paratmeter is overwrite or not.
+  void Merge(const BenchmarkParams& other, bool overwrite = false);
 
  private:
   void AssertParamExists(const std::string& name) const;

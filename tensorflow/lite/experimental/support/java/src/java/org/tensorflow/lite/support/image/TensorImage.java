@@ -130,12 +130,10 @@ public class TensorImage {
    * will be applied.
    *
    * @param pixels The RGB pixels representing the image.
-   * @param shape The shape of the image, should have 3 dims and the last dim should be 3.
+   * @param shape The shape of the image, should either in form (h, w, 3), or in form (1, h, w, 3).
    */
   public void load(@NonNull float[] pixels, @NonNull int[] shape) {
-    SupportPreconditions.checkArgument(
-        shape.length == 3 && shape[2] == 3,
-        "Only supports image shape in (h, w, c), and channels representing R, G, B in order.");
+    checkImageTensorShape(shape);
     TensorBuffer buffer = TensorBuffer.createDynamic(getDataType());
     buffer.loadArray(pixels, shape);
     load(buffer);
@@ -148,12 +146,10 @@ public class TensorImage {
    * into [0, 255].
    *
    * @param pixels The RGB pixels representing the image.
-   * @param shape The shape of the image, should have 3 dims and the last dim should be 3.
+   * @param shape The shape of the image, should either in form (h, w, 3), or in form (1, h, w, 3).
    */
   public void load(@NonNull int[] pixels, @NonNull int[] shape) {
-    SupportPreconditions.checkArgument(
-        shape.length == 3 && shape[2] == 3,
-        "Only supports image shape in (h, w, c), and channels representing R, G, B in order.");
+    checkImageTensorShape(shape);
     TensorBuffer buffer = TensorBuffer.createDynamic(getDataType());
     buffer.loadArray(pixels, shape);
     load(buffer);
@@ -162,9 +158,10 @@ public class TensorImage {
   /**
    * Loads a TensorBuffer containing pixel values. The color layout should be RGB.
    *
-   * @param buffer The TensorBuffer to load.
+   * @param buffer The TensorBuffer to load. Its shape should be either (h, w, 3) or (1, h, w, 3).
    */
   public void load(TensorBuffer buffer) {
+    checkImageTensorShape(buffer.getShape());
     container.set(buffer);
   }
 
@@ -222,6 +219,17 @@ public class TensorImage {
     return container.getDataType();
   }
 
+  // Requires tensor shape [h, w, 3] or [1, h, w, 3].
+  static void checkImageTensorShape(int[] shape) {
+    SupportPreconditions.checkArgument(
+        (shape.length == 3 || (shape.length == 4 && shape[0] == 1))
+            && shape[shape.length - 3] > 0
+            && shape[shape.length - 2] > 0
+            && shape[shape.length - 1] == 3,
+        "Only supports image shape in (h, w, c) or (1, h, w, c), and channels representing R, G, B"
+            + " in order.");
+  }
+
   // Handles RGB image data storage strategy of TensorBuffer.
   private static class ImageContainer {
 
@@ -274,8 +282,8 @@ public class TensorImage {
       // Create a new bitmap and reallocate memory for it.
       if (bitmapImage == null || bitmapImage.getAllocationByteCount() < requiredAllocation) {
         int[] shape = bufferImage.getShape();
-        int h = shape[0];
-        int w = shape[1];
+        int h = shape[shape.length - 3];
+        int w = shape[shape.length - 2];
         bitmapImage = Bitmap.createBitmap(w, h, Config.ARGB_8888);
       }
       ImageConversions.convertTensorBufferToBitmap(bufferImage, bitmapImage);

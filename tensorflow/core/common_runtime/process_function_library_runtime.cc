@@ -49,6 +49,9 @@ limitations under the License.
 #include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
+#if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
+#endif  // IS_MOBILE_PLATFORM
 
 namespace tensorflow {
 
@@ -973,14 +976,6 @@ Status ProcessFunctionLibraryRuntime::GetOutputDevices(
   return Status::OK();
 }
 
-void ProcessFunctionLibraryRuntime::RunRemoteDevice(
-    const FunctionLibraryRuntime::Options& opts,
-    FunctionLibraryRuntime::Handle local_handle,
-    gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
-    FunctionLibraryRuntime::DoneCallback done) const {
-  parent_->Run(opts, local_handle, GetLocalArgs(args), rets, std::move(done));
-}
-
 void ProcessFunctionLibraryRuntime::RunMultiDevice(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::Handle handle, std::vector<Tensor>* rets,
@@ -1426,7 +1421,7 @@ void ProcessFunctionLibraryRuntime::RunInternal(
     cleanup_item->step_id = opts.step_id;
     cleanup_item->local_handle = local_handle;
     cleanup_items->emplace_back(std::move(cleanup_item));
-    RunRemoteDevice(opts, local_handle, args, rets, std::move(done));
+    parent_->Run(opts, local_handle, args, rets, std::move(done));
     return;
   }
   done(errors::Internal("Could not find device"));
@@ -1483,8 +1478,41 @@ void ProcessFunctionLibraryRuntime::Run(
     FunctionLibraryRuntime::Handle handle, const FunctionArgsInterface& args,
     std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done) const {
-  const std::vector<Tensor> lcoal_inputs = args.GetLocalTensors();
-  Run(opts, handle, lcoal_inputs, rets, std::move(done));
+  if (!args.HasRemoteInputs()) {
+    const std::vector<Tensor> local_inputs = args.GetLocalTensors();
+    return Run(opts, handle, local_inputs, rets, std::move(done));
+  }
+
+#if defined(IS_MOBILE_PLATFORM)
+  done(errors::Unimplemented(
+      "Remote inputs are not available on mobile devices."));
+  return;
+#else   // !IS_MOBILE_PLATFORM
+  auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
+  done = ApplyCleanUpToDoneCallback(cleanup_items, done, opts.step_id,
+                                    /*rendezvous=*/nullptr);
+
+  auto get_component_args = [&args](const ComponentFunctionData& comp_data,
+                                    InternalArgs* comp_args) -> Status {
+    for (int i = 0; i < comp_data.arg_indices_.size(); ++i) {
+      const int index = comp_data.arg_indices_.at(i);
+      Tensor tensor;
+      if (args.GetLocalArg(index, &tensor).ok()) {
+        comp_args->args.push_back(std::move(tensor));
+      } else {
+        eager::RemoteTensorHandle remote_handle;
+        TF_RETURN_IF_ERROR(args.GetRemoteArg(index, &remote_handle));
+        comp_args->remote_args.emplace_back(
+            absl::make_unique<eager::RemoteTensorHandle>(
+                std::move(remote_handle)));
+        comp_args->args.push_back(comp_args->remote_args.back().get());
+      }
+    }
+    return Status::OK();
+  };
+  return RunMultiDevice(opts, handle, rets, cleanup_items, std::move(done),
+                        std::move(get_component_args));
+#endif  // !IS_MOBILE_PLATFORM
 }
 
 void ProcessFunctionLibraryRuntime::CleanUp(

@@ -42,6 +42,8 @@ using ::tflite::gpu::Tensor;
 using ::tflite::gpu::TensorFloat32;
 using ::tflite::gpu::TensorRef;
 using ::tflite::gpu::ValueId;
+using ::tflite::gpu::metal::ConvolutionGeneric;
+using ::tflite::gpu::metal::ConvolutionWino4x4To6x6;
 using ::tflite::gpu::IntegralDivideRoundUp;
 using ::tflite::gpu::metal::CompareVectors;
 using ::tflite::gpu::metal::SingleOpModel;
@@ -270,8 +272,6 @@ using ::tflite::gpu::metal::SingleOpModel;
                         attr.padding.appended.w - 2;
   int new_height = src_shape.h + attr.padding.prepended.h +
                          attr.padding.appended.h - 2;
-  std::cout << dst_shape.w << " vs " << new_width << std::endl;
-  std::cout << dst_shape.h << " vs " << new_height << std::endl;
   BHWC conv_shape;
   conv_shape.b = dst_shape.b;
   conv_shape.h = 36;
@@ -296,7 +296,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   outputs_v0[1].shape = dst_shape;
   outputs_v0[1].data.resize(dst_shape.DimensionsProduct());
 
-  auto tasks_v0 = tflite::gpu::metal::ConvolutionGeneric(0, 0, 1, dst_shape, attr, options);
+  std::string device_name = std::string([[device name] UTF8String]);
+  tflite::gpu::metal::DeviceInfo device_info(device_name);
+  auto tasks_v0 = ConvolutionGeneric(0, 0, 1, dst_shape, attr, device_info, options);
 
   auto status = RunGraph(tasks_v0, device, inputs_v0, &outputs_v0);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
@@ -311,7 +313,7 @@ using ::tflite::gpu::metal::SingleOpModel;
   wino_up_attr.padding = attr.padding;
   auto tasks_v1 = tflite::gpu::metal::Winograd4x4To36(0, 0, 2, wino_up_attr);
 
-  auto tasks_v2 = tflite::gpu::metal::ConvolutionWino4x4To6x6(1, 2, 3, conv_shape, attr, options);
+  auto tasks_v2 = ConvolutionWino4x4To6x6(1, 2, 3, conv_shape, attr, device_info, options);
 
   tflite::gpu::metal::Winograd36To4x4Attributes wino_down_attr;
   wino_down_attr.output_shape = dst_shape;

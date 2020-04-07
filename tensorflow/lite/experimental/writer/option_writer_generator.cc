@@ -28,6 +28,7 @@ namespace {
 static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteArgMaxParams",
                                       "TfLiteArgMinParams",
+                                      "TfLiteBatchMatMulParams",
                                       "TfLiteBatchToSpaceNDParams",
                                       "TfLiteBidirectionalSequenceLSTMParams",
                                       "TfLiteBidirectionalSequenceRNNParams",

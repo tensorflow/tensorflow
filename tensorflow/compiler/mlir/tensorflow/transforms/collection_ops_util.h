@@ -36,8 +36,9 @@ namespace collection_ops_util {
 // Creates an i32 scalar tf.Const.
 Value CreateScalarConst(int value, OpBuilder builder, Location loc);
 
-// Creates an i32 vector tf.Const.
-Value GetR1Const(ArrayRef<int64_t> r1, OpBuilder builder, Location loc);
+// Creates an integer vector tf.Const.
+Value GetR1Const(ArrayRef<int64_t> r1, OpBuilder builder, Location loc,
+                 int bitwidth = 32);
 
 // Returns the type of the size tensor used to track a data structure's element
 // count. It is a tensor<1xi32>, and we use R1 instead of a scalar because it is

@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+import traceback
+
 import numpy as np
 
 from tensorflow.python import pywrap_tfe
@@ -28,6 +31,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
@@ -332,6 +336,18 @@ class Tests(test.TestCase):
     # TODO(b/147828820): Converting with tensors should work.
     # _ = ops.EagerTensor([[t]], device=ctx.device_name, dtype=None)
 
+  def testFallbackErrorNotVisibleWhenFallbackMethodRaises(self):
+    ctx = context.context()
+    ctx.ensure_initialized()
+
+    try:
+      math_ops.mat_mul([[1., 1.] * 2], [[1., 1.] * 3])
+    except errors.InvalidArgumentError:
+      etype, value, tb = sys.exc_info()
+      full_exception_text = " ".join(
+          traceback.format_exception(etype, value, tb))
+
+    self.assertNotRegex(full_exception_text, "_FallbackException")
 
 if __name__ == "__main__":
   test.main()

@@ -240,7 +240,11 @@ bool IsGpuCompatibleDataType(const NodeDef* contraction,
 bool IsCpuCompatibleDataFormat(const NodeDef* conv2d) {
   DCHECK(IsConv2D(*conv2d)) << "Expected Conv2D op";
   const string& data_format = conv2d->attr().at(kDataFormat).s();
+#ifndef INTEL_MKL
   return data_format == "NHWC";
+#else
+  return data_format == "NHWC" || data_format == "NCHW";
+#endif  // !INTEL_MKL
 }
 
 bool IsGpuCompatibleDataFormat(const NodeDef* conv2d) {
@@ -1662,7 +1666,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
   TF_RETURN_IF_ERROR(mutation->Apply());
 
-  *optimized_graph = mutable_item.graph;
+  *optimized_graph = std::move(mutable_item.graph);
 
   return Status::OK();
 }

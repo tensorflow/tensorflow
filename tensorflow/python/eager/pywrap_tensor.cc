@@ -292,15 +292,6 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
     }
   }
 
-  // We always enable implicit mirroring for constants. Without this, code
-  // written previously under the assumption that
-  //
-  //   with tf.device('GPU:0'): x = tf.constant(1.0)
-  //
-  // will be placed in the GPU will suffer a non-trivial performance regression
-  // (measured at ~20% for certain benchmarks).
-  handle->handle->EnableImplicitMirroring();
-
   return handle.release();
 }
 

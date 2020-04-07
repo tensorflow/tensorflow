@@ -153,7 +153,7 @@ absl::flat_hash_map<int64, TfOp> CollectTfOpsFromHostThreadsXPlane(
     // user-inserted TraceMe's have "unknown" type. We don't count them in
     // Tf-stats.
     TfOp tf_op = ParseTfOpFullname(metadata.name());
-    if (!IsUnknownOp(tf_op.type)) {
+    if (tf_op.category != Category::kUnknown) {
       tf_ops.try_emplace(metadata.id(), tf_op);
     }
   }
@@ -208,19 +208,21 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
       first_op_offset_ps = std::min(first_op_offset_ps, event.OffsetPs());
       last_op_offset_ps = std::max(last_op_offset_ps, event.EndOffsetPs());
 
-      const XStat* stat = event.GetStats(StatType::kLevel0);
-      if (!stat) return;
-      absl::string_view tf_op_fullname = stat->str_value();
-      if (tf_op_fullname.empty()) return;
-      TfOp tf_op = ParseTfOpFullname(tf_op_fullname);
-      TfOpRoofLineCostEstimator::OpRoofLineStats costs;
-      if (tf_op.type != kUnknownOp) {
-        costs = op_level_cost_estimator.Predict(event);
-      }
-      device_op_metrics_db_builder.EnterOp(
-          /*program_id=*/0, tf_op.name, tf_op.type, tf_op_fullname,
-          /*occurrences=*/1, event.DurationPs(),
-          /*children_time_ps=*/0, costs.flops, costs.bytes_accessed);
+      event.ForEachStat([&](const XStatVisitor& stat) {
+        if (stat.Type() == StatType::kLevel0) {
+          auto tf_op_fullname = stat.ToString();
+          if (tf_op_fullname.empty()) return;
+          TfOp tf_op = ParseTfOpFullname(tf_op_fullname);
+          TfOpRoofLineCostEstimator::OpRoofLineStats costs;
+          if (tf_op.category != Category::kUnknown) {
+            costs = op_level_cost_estimator.Predict(event);
+          }
+          device_op_metrics_db_builder.EnterOp(
+              /*program_id=*/0, tf_op.name, tf_op.type, tf_op_fullname,
+              /*occurrences=*/1, event.DurationPs(),
+              /*children_time_ps=*/0, costs.flops, costs.bytes_accessed);
+        }
+      });
     });
   });
   result.set_total_time_ps(last_op_offset_ps - first_op_offset_ps);

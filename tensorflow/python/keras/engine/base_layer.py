@@ -404,7 +404,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         `TensorShape` if the layer expects a list of inputs
         (one instance per input).
     """
-    # Only record the build input shapes of overridden the build methods.
+    # Only record the build input shapes of overridden build methods.
     if not hasattr(self.build, '_is_default'):
       self._build_input_shape = input_shape
     self.built = True

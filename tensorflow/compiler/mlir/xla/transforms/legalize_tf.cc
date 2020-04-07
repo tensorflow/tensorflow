@@ -777,7 +777,7 @@ NamedAttribute GetConvDimensionNumbersAttr(
 // the paddings attribute anyway requires multiple source op attributes and
 // result op attributes. Defining it as declarative rewrite rule will introduce
 // some duplication in the C++ helper methods.
-template <typename OpT, int num_spatial_dims>
+template <typename OpT, int num_spatial_dims, bool depthwise_conv = false>
 class ConvertConv : public OpRewritePattern<OpT> {
  public:
   using OpRewritePattern<OpT>::OpRewritePattern;
@@ -868,7 +868,10 @@ class ConvertConv : public OpRewritePattern<OpT> {
     int64_t filter_channels = GetDimSize(filter_ty, num_spatial_dims);
     // TensorFlow convolution op verifies that the number of input channels is
     // divisible by the number of filter channels.
-    int64_t feature_group_count = input_channels / filter_channels;
+    // For depthwise convolution the feature_group_count argument would be set
+    // to the input feature dimension.
+    int64_t feature_group_count =
+        depthwise_conv ? input_channels : input_channels / filter_channels;
     auto feature_group_count_attr = rewriter.getNamedAttr(
         "feature_group_count", rewriter.getI64IntegerAttr(feature_group_count));
 
@@ -881,6 +884,22 @@ class ConvertConv : public OpRewritePattern<OpT> {
         "padding", DenseElementsAttr::get<int64_t>(paddings_ty, paddings));
 
     SmallVector<Value, 2> operands(op.getOperands());
+    // Reshape the filter to {spatial_dims...., 1,in_channels *
+    // channel_multiplier}
+    if (depthwise_conv) {
+      auto filter_shape = filter_ty.getShape();
+      llvm::SmallVector<int64_t, 4> new_shape(filter_shape.size());
+      for (int i = 0; i < num_spatial_dims; ++i) {
+        new_shape[i] = filter_shape[i];
+      }
+      new_shape[num_spatial_dims] = 1;
+      new_shape[num_spatial_dims + 1] =
+          filter_shape[num_spatial_dims] * filter_shape[num_spatial_dims + 1];
+      operands[1] = rewriter.create<xla_hlo::ReshapeOp>(
+          op.getLoc(),
+          RankedTensorType::get(new_shape, filter_ty.getElementType()),
+          operands[1]);
+    }
     NamedAttribute attrs[] = {rhs_dilations_attr,     window_strides_attr,
                               dimension_numbers_attr, feature_group_count_attr,
                               batch_group_count_attr, paddings_attr};
@@ -891,7 +910,9 @@ class ConvertConv : public OpRewritePattern<OpT> {
 };
 
 using ConvertConv2D = ConvertConv<TF::Conv2DOp, /*num_spatial_dims=*/2>;
-
+using ConvertDepthConv2D =
+    ConvertConv<TF::DepthwiseConv2dNativeOp, /*num_spatial_dims=*/2,
+                /*depthwise_conv=*/true>;
 // Converts BF16 FloorDiv op to have casting operators on either end as BF16
 // division can result in strange behavior.
 //
@@ -2132,13 +2153,23 @@ class ConvertLinSpaceOp : public OpRewritePattern<TF::LinSpaceOp> {
       return failure();
     }
 
+    DenseIntElementsAttr num_attr;
+    if (!matchPattern(op.num(), m_Constant(&num_attr))) {
+      return rewriter.notifyMatchFailure(op, "Num must be a constant scalar");
+    }
+
+    if (num_attr.begin() == num_attr.end()) {
+      return rewriter.notifyMatchFailure(op, "Num must not be empty");
+    }
+    int64_t num = (*num_attr.begin()).getSExtValue();
+
     // Calculate the scaling that needs to be applied to the iota.
     auto step_numerator = rewriter.create<SubOp>(
         op.getLoc(), op.start().getType(), op.stop(), op.start(),
         xla::getBroadcastDimensionsAttr(&rewriter, op.stop(), op.start()));
     Value step_denominator = rewriter.create<ConvertOp>(
         op.getLoc(), op.num(), result_type.getElementType());
-    if (op.num() > 1) {
+    if (num > 1) {
       Value one = GetScalarConstOfType(result_type.getElementType(),
                                        op.getLoc(), 1, &rewriter);
       step_denominator = rewriter.create<SubOp>(
@@ -3757,15 +3788,15 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
   patterns.insert<
       ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBatchMatMulV2Op,
       ConvertBroadcastToOp, ConvertBF16FloorDivOp, ConvertConv2D,
-      ConvertConv2DBackpropFilterOp, ConvertConv2DBackpropInputOp,
-      ConvertCumsumOp, ConvertEinsumOp, ConvertFusedBatchNormGradOp,
-      ConvertFusedBatchNormGradV2Op, ConvertFusedBatchNormGradV3Op,
-      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp,
-      ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPoolOp,
-      ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
-      ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertRangeOp,
-      ConvertSelectV2Op, ConvertSigmoidOp, ConvertSizeOp,
-      ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertDepthConv2D, ConvertConv2DBackpropFilterOp,
+      ConvertConv2DBackpropInputOp, ConvertCumsumOp, ConvertEinsumOp,
+      ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
+      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op,
+      ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp, ConvertMaxOp,
+      ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPoolOp, ConvertMaxPoolGradOp,
+      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
+      ConvertProdOp, ConvertRangeOp, ConvertSelectV2Op, ConvertSigmoidOp,
+      ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,

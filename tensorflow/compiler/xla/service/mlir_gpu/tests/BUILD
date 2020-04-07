@@ -37,6 +37,7 @@ tf_cc_test(
         "broken_add.hlo",
         "ceil.hlo",
         "compare.hlo",
+        "concatenate.hlo",
         "const.hlo",
         "copy.hlo",
         "copy_transpose.hlo",

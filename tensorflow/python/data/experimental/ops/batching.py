@@ -100,15 +100,15 @@ def dense_to_ragged_batch(batch_size,
 
 @tf_export("data.experimental.dense_to_sparse_batch")
 def dense_to_sparse_batch(batch_size, row_shape):
-  """A transformation that batches ragged elements into `tf.SparseTensor`s.
+  """A transformation that batches ragged elements into `tf.sparse.SparseTensor`s.
 
   Like `Dataset.padded_batch()`, this transformation combines multiple
   consecutive elements of the dataset, which might have different
   shapes, into a single element. The resulting element has three
   components (`indices`, `values`, and `dense_shape`), which
-  comprise a `tf.SparseTensor` that represents the same data. The
+  comprise a `tf.sparse.SparseTensor` that represents the same data. The
   `row_shape` represents the dense shape of each row in the
-  resulting `tf.SparseTensor`, to which the effective batch size is
+  resulting `tf.sparse.SparseTensor`, to which the effective batch size is
   prepended. For example:
 
   ```python
@@ -133,9 +133,9 @@ def dense_to_sparse_batch(batch_size, row_shape):
       consecutive elements of this dataset to combine in a single batch.
     row_shape: A `tf.TensorShape` or `tf.int64` vector tensor-like object
       representing the equivalent dense shape of a row in the resulting
-      `tf.SparseTensor`. Each element of this dataset must have the same rank as
-      `row_shape`, and must have size less than or equal to `row_shape` in each
-      dimension.
+      `tf.sparse.SparseTensor`. Each element of this dataset must have the same
+      rank as `row_shape`, and must have size less than or equal to `row_shape`
+      in each dimension.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -295,7 +295,7 @@ def unbatch():
 
 
 class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
-  """A `Dataset` that batches ragged dense elements into `tf.SparseTensor`s."""
+  """A `Dataset` that batches ragged dense elements into `tf.sparse.SparseTensor`s."""
 
   def __init__(self, input_dataset, batch_size, row_shape):
     """See `Dataset.dense_to_sparse_batch()` for more details."""

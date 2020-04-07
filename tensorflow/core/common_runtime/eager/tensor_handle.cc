@@ -24,9 +24,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/variant.h"
+#include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle_data.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/errors.h"
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle_data.h"
 #endif  // IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/resource_var.h"
@@ -47,13 +46,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
-
-namespace {
-#if !defined(IS_MOBILE_PLATFORM)
-const int64 kInvalidOpId = -1;
-const int32 kInvalidOutputNum = -1;
-#endif
-}  // namespace
 
 void TensorHandle::SetResourceHandleInfo(
     ResourceHandleInfo&& resource_handle_info) {
@@ -145,7 +137,6 @@ TensorHandle::TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
       op_device_(op_device),
       resource_device_(resource_device),
       ctx_(ctx),
-      implicit_mirroring_(true),
       data_(absl::in_place_type<LocalTensorHandleData>, std::move(t)) {
   DVLOG(3) << "Creating Local TensorHandle: " << this
            << " device: " << VariantDeviceDebugString(device_)
@@ -160,7 +151,6 @@ TensorHandle::TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
       resource_device_(
           GetResourceDevice(t.flat<class ResourceHandle>()(0), ctx)),
       ctx_(ctx),
-      implicit_mirroring_(true),
       resource_handle_info_(
           {t.flat<class ResourceHandle>()(0).dtypes_and_shapes(),
            t.flat<class ResourceHandle>()(0).allowed_devices()}),
@@ -177,7 +167,6 @@ TensorHandle::TensorHandle(tensorflow::Tensor&& t, CustomDevice* d,
       op_device_(nullptr),
       resource_device_(nullptr),
       ctx_(ctx),
-      implicit_mirroring_(true),
       data_(absl::in_place_type<LocalTensorHandleData>, std::move(t)) {
   // TODO(allenl): Figure out a better op_device story for custom devices,
   // since always setting it to CPU=nullptr doesn't make much sense.
@@ -188,20 +177,19 @@ TensorHandle::TensorHandle(tensorflow::Tensor&& t, CustomDevice* d,
 
 TensorHandle* TensorHandle::CreateEmptyLocalHandle(Device* d, Device* op_device,
                                                    Device* resource_device,
-                                                   DataType dtype,
+                                                   tensorflow::DataType dtype,
                                                    EagerContext* ctx) {
   return new TensorHandle(d, op_device, resource_device, dtype, ctx);
 }
 
 TensorHandle::TensorHandle(Device* d, Device* op_device,
-                           Device* resource_device, DataType dtype,
+                           Device* resource_device, tensorflow::DataType dtype,
                            EagerContext* ctx)
     : dtype(dtype),
       device_((d == ctx->HostCPU()) ? nullptr : d),
       op_device_(op_device),
       resource_device_(resource_device),
       ctx_(ctx),
-      implicit_mirroring_(true),
       data_(absl::in_place_type<LocalTensorHandleData>) {
   DVLOG(3) << "Creating empty Local TensorHandle: " << this
            << " device: " << VariantDeviceDebugString(device_);
@@ -209,20 +197,20 @@ TensorHandle::TensorHandle(Device* d, Device* op_device,
 
 #if !defined(IS_MOBILE_PLATFORM)
 TensorHandle* TensorHandle::CreateUnshapedRemoteHandle(
-    int64 op_id, int32 output_num, const string& remote_task, DataType dtype,
-    Device* d, EagerContext* ctx) {
+    int64 op_id, int32 output_num, const string& remote_task,
+    tensorflow::DataType dtype, Device* d, EagerContext* ctx) {
   return new TensorHandle(op_id, output_num, remote_task, dtype, d, ctx);
 }
 
 TensorHandle::TensorHandle(int64 op_id, int32 output_num,
-                           const string& remote_task, DataType dtype, Device* d,
+                           const string& remote_task,
+                           tensorflow::DataType dtype, Device* d,
                            EagerContext* ctx)
     : dtype(dtype),
       device_(d),
       op_device_(d),
       resource_device_(dtype == DT_RESOURCE ? d : nullptr),
       ctx_(ctx),
-      implicit_mirroring_(true),
       data_(absl::in_place_type<RemoteTensorHandleData>, op_id, output_num,
             remote_task, ctx) {
   DVLOG(3) << "Creating Unshaped Remote TensorHandle: " << this
@@ -231,25 +219,35 @@ TensorHandle::TensorHandle(int64 op_id, int32 output_num,
 
 TensorHandle* TensorHandle::CreateLazyRemoteHandle(int64 op_id,
                                                    int32 output_num,
-                                                   DataType dtype, Device* d,
+                                                   tensorflow::DataType dtype,
+                                                   Device* d,
                                                    EagerContext* ctx) {
   return new TensorHandle(op_id, output_num, dtype, d, ctx);
 }
 
-TensorHandle::TensorHandle(int64 op_id, int32 output_num, DataType dtype,
-                           Device* d, EagerContext* ctx)
+TensorHandle::TensorHandle(int64 op_id, int32 output_num,
+                           tensorflow::DataType dtype, Device* d,
+                           EagerContext* ctx)
     : dtype(dtype),
       device_(d),
       op_device_(d),
       resource_device_(dtype == DT_RESOURCE ? d : nullptr),
       ctx_(ctx),
-      implicit_mirroring_(true),
       data_(absl::in_place_type<RemoteTensorHandleData>, op_id, output_num,
             ctx->GetContextViewId()) {
   DVLOG(3) << "Creating Lazy Remote TensorHandle: " << this
            << " device: " << VariantDeviceDebugString(device_);
 }
 #endif
+
+TensorHandle::~TensorHandle() { DVLOG(3) << "Deleting tensor handle " << this; }
+
+void TensorHandle::Release() {
+  DVLOG(3) << "Releasing tensor handle " << this;
+  Unref();
+}
+
+tensorflow::DataType TensorHandle::DataType() const { return dtype; }
 
 bool TensorHandle::IsReady() const {
   return absl::visit([](auto& data) { return data.IsReady(); }, data_);
@@ -301,7 +299,13 @@ Status TensorHandle::TensorFromDevice(const Device* d,
 Status TensorHandle::TensorValue(const Device* d, tensorflow::TensorValue* t) {
   DVLOG(3) << "TensorValue on TensorHandle: " << this << " device: " << d;
 
-  if (d == absl::get<Device*>(device_)) {
+  if (VariantDeviceIsCustom(device_)) {
+    return errors::Internal(
+        "TensorHandle::TensorValue not supported for custom devices yet. "
+        "Handle device: ",
+        VariantDeviceDebugString(device_),
+        ", requested device: ", d != nullptr ? d->name() : "(nil)");
+  } else if (d == absl::get<Device*>(device_)) {
     if (IsRemote()) {
       return errors::Internal("Invalid TensorValue call on remote handle: ",
                               this);
@@ -831,6 +835,30 @@ string TensorHandle::DebugString() const {
              : "?",
       "\n");
   return out;
+}
+
+const char* TensorHandle::DeviceName(Status* status) const {
+  if (VariantDeviceIsCustom(device())) {
+    return absl::get<CustomDevice*>(device())->name().c_str();
+  }
+  tensorflow::Device* d = op_device();
+  return (d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
+                        : d->name().c_str();
+}
+
+const char* TensorHandle::BackingDeviceName(Status* status) const {
+  if (VariantDeviceIsCustom(device())) {
+    return absl::get<tensorflow::CustomDevice*>(device())->name().c_str();
+  } else {
+    tensorflow::Device* d = absl::get<tensorflow::Device*>(device());
+    return (d == nullptr) ? "/job:localhost/replica:0/task:0/device:CPU:0"
+                          : d->name().c_str();
+  }
+}
+
+tensorflow::AbstractTensorHandleInterface* TensorHandle::Copy() {
+  Ref();
+  return this;
 }
 
 }  // namespace tensorflow

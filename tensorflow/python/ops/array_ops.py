@@ -291,38 +291,54 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
 @dispatch.add_dispatch_support
 @deprecation.deprecated_args(None, "Use the `axis` argument instead", "dim")
 def expand_dims(input, axis=None, name=None, dim=None):
-  """Inserts a dimension of 1 into a tensor's shape.
+  """Returns a tensor with a length 1 axis inserted at index `axis`.
 
-  Given a tensor `input`, this operation inserts a dimension of 1 at the
-  dimension index `axis` of `input`'s shape. The dimension index `axis` starts
-  at zero; if you specify a negative number for `axis` it is counted backward
+  Given a tensor `input`, this operation inserts a dimension of length 1 at the
+  dimension index `axis` of `input`'s shape. The dimension index follows python
+  indexing rules: It's zero-based, a negative index it is counted backward
   from the end.
 
-  This operation is useful if you want to add a batch dimension to a single
-  element. For example, if you have a single image of shape `[height, width,
-  channels]`, you can make it a batch of 1 image with `expand_dims(image, 0)`,
-  which will make the shape `[1, height, width, channels]`.
+  This operation is useful to:
 
-  Other examples:
+  * Add an outer "batch" dimension to a single element.
+  * Align axes for broadcasting.
+  * To add an inner vector length axis to a tensor of scalars.
 
-  ```python
-  # 't' is a tensor of shape [2]
-  tf.shape(tf.expand_dims(t, 0))  # [1, 2]
-  tf.shape(tf.expand_dims(t, 1))  # [2, 1]
-  tf.shape(tf.expand_dims(t, -1))  # [2, 1]
+  For example:
 
-  # 't2' is a tensor of shape [2, 3, 5]
-  tf.shape(tf.expand_dims(t2, 0))  # [1, 2, 3, 5]
-  tf.shape(tf.expand_dims(t2, 2))  # [2, 3, 1, 5]
-  tf.shape(tf.expand_dims(t2, 3))  # [2, 3, 5, 1]
+  If you have a single image of shape `[height, width, channels]`:
+
+  >>> image = tf.zeros([10,10,3])
+
+  You can add an outer `batch` axis by passing `axis=0`:
+
+  >>> tf.expand_dims(image, axis=0).shape.as_list()
+  [1, 10, 10, 3]
+
+  The new axis location matches Python `list.insert(axis, 1)`:
+
+  >>> tf.expand_dims(image, axis=1).shape.as_list()
+  [10, 1, 10, 3]
+
+  Following standard python indexing rules, a negative `axis` counts from the
+  end so `axis=-1` adds an inner most dimension:
+
+  >>> tf.expand_dims(image, -1).shape.as_list()
+  [10, 10, 3, 1]
+
+  This operation requires that `axis` is a valid index for `input.shape`,
+  following python indexing rules:
+
+  ```
+  -1-tf.rank(input) <= axis <= tf.rank(input)
   ```
 
-  This operation requires that:
+  This operation is related to:
 
-  `-1-input.dims() <= dim <= input.dims()`
-
-  This operation is related to `squeeze()`, which removes dimensions of
-  size 1.
+  * `tf.squeeze`, which removes dimensions of size 1.
+  * `tf.reshape`, which provides more flexible reshaping capability.
+  * `tf.sparse.expand_dims`, which provides this functionality for
+    `tf.SparseTensor`
 
   Args:
     input: A `Tensor`.
@@ -347,54 +363,54 @@ def expand_dims(input, axis=None, name=None, dim=None):
 @tf_export("expand_dims", v1=[])
 @dispatch.add_dispatch_support
 def expand_dims_v2(input, axis, name=None):
-  """Returns a tensor with an additional dimension inserted at index `axis`.
+  """Returns a tensor with a length 1 axis inserted at index `axis`.
 
-  Given a tensor `input`, this operation inserts a dimension of size 1 at the
-  dimension index `axis` of `input`'s shape. The dimension index `axis` starts
-  at zero; if you specify a negative number for `axis` it is counted backward
+  Given a tensor `input`, this operation inserts a dimension of length 1 at the
+  dimension index `axis` of `input`'s shape. The dimension index follows python
+  indexing rules: It's zero-based, a negative index it is counted backward
   from the end.
 
-  This operation is useful if you want to add a batch dimension to a single
-  element. For example, if you have a single image of shape `[height, width,
-  channels]`, you can make it a batch of one image with `expand_dims(image, 0)`,
-  which will make the shape `[1, height, width, channels]`.
+  This operation is useful to:
 
-  Examples:
+  * Add an outer "batch" dimension to a single element.
+  * Align axes for broadcasting.
+  * To add an inner vector length axis to a tensor of scalars.
 
-  >>> t = [[1, 2, 3],[4, 5, 6]] # shape [2, 3]
+  For example:
 
-  >>> tf.expand_dims(t, 0)
-  <tf.Tensor: shape=(1, 2, 3), dtype=int32, numpy=
-  array([[[1, 2, 3],
-          [4, 5, 6]]], dtype=int32)>
+  If you have a single image of shape `[height, width, channels]`:
 
-  >>> tf.expand_dims(t, 1)
-  <tf.Tensor: shape=(2, 1, 3), dtype=int32, numpy=
-  array([[[1, 2, 3]],
-         [[4, 5, 6]]], dtype=int32)>
+  >>> image = tf.zeros([10,10,3])
 
-  >>> tf.expand_dims(t, 2)
-  <tf.Tensor: shape=(2, 3, 1), dtype=int32, numpy=
-  array([[[1],
-          [2],
-          [3]],
-         [[4],
-          [5],
-          [6]]], dtype=int32)>
+  You can add an outer `batch` axis by passing `axis=0`:
 
-  >>> tf.expand_dims(t, -1) # Last dimension index. In this case, same as 2.
-  <tf.Tensor: shape=(2, 3, 1), dtype=int32, numpy=
-  array([[[1],
-          [2],
-          [3]],
-         [[4],
-          [5],
-          [6]]], dtype=int32)>
+  >>> tf.expand_dims(image, axis=0).shape.as_list()
+  [1, 10, 10, 3]
+
+  The new axis location matches Python `list.insert(axis, 1)`:
+
+  >>> tf.expand_dims(image, axis=1).shape.as_list()
+  [10, 1, 10, 3]
+
+  Following standard python indexing rules, a negative `axis` counts from the
+  end so `axis=-1` adds an inner most dimension:
+
+  >>> tf.expand_dims(image, -1).shape.as_list()
+  [10, 10, 3, 1]
+
+  This operation requires that `axis` is a valid index for `input.shape`,
+  following python indexing rules:
+
+  ```
+  -1-tf.rank(input) <= axis <= tf.rank(input)
+  ```
 
   This operation is related to:
 
-  *   `tf.squeeze`, which removes dimensions of size 1.
-  *   `tf.reshape`, which provides more flexible reshaping capability
+  * `tf.squeeze`, which removes dimensions of size 1.
+  * `tf.reshape`, which provides more flexible reshaping capability.
+  * `tf.sparse.expand_dims`, which provides this functionality for
+    `tf.SparseTensor`
 
   Args:
     input: A `Tensor`.
@@ -3069,7 +3085,8 @@ def sparse_placeholder(dtype, shape=None, name=None):
     print(sess.run(y, feed_dict={
       x: (indices, values, shape)}))  # Will succeed.
 
-    sp = tf.SparseTensor(indices=indices, values=values, dense_shape=shape)
+    sp = tf.sparse.SparseTensor(indices=indices, values=values,
+                                dense_shape=shape)
     sp_value = sp.eval(session=sess)
     print(sess.run(y, feed_dict={x: sp_value}))  # Will succeed.
   ```
@@ -3471,7 +3488,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   # 'hypothesis' is a tensor of shape `[2, 1]` with variable-length values:
   #   (0,0) = ["a"]
   #   (1,0) = ["b"]
-  hypothesis = tf.SparseTensor(
+  hypothesis = tf.sparse.SparseTensor(
       [[0, 0, 0],
        [1, 0, 0]],
       ["a", "b"],
@@ -3482,7 +3499,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   #   (0,1) = ["a"]
   #   (1,0) = ["b", "c"]
   #   (1,1) = ["a"]
-  truth = tf.SparseTensor(
+  truth = tf.sparse.SparseTensor(
       [[0, 1, 0],
        [1, 0, 0],
        [1, 0, 1],

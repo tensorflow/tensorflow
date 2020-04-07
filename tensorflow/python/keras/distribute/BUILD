@@ -261,9 +261,12 @@ distribute_py_test(
     main = "keras_stateful_lstm_model_correctness_test.py",
     shard_count = 4,
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "no_oss",
         "no_pip",
         "no_windows_gpu",
+        "notap",  # TODO(b/153392670)
         "notsan",
     ],
     deps = [

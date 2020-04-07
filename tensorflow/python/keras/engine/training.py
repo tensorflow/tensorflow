@@ -416,7 +416,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     >>> x = np.random.random((2, 3))
     >>> y = np.random.randint(0, 2, (2, 2))
-    >>> _ = model.fit(x, y, verbose=0)
+    >>> model.fit(x, y)
     >>> [m.name for m in model.metrics]
     ['loss', 'mae']
 
@@ -429,7 +429,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     >>> model.add_metric(
     ...    tf.reduce_sum(output_2), name='mean', aggregation='mean')
     >>> model.compile(optimizer="Adam", loss="mse", metrics=["mae", "acc"])
-    >>> _ = model.fit(x, (y, y), verbose=0)
+    >>> model.fit(x, (y, y))
     >>> [m.name for m in model.metrics]
     ['loss', 'out_loss', 'out_1_loss', 'out_mae', 'out_acc', 'out_1_mae',
     'out_1_acc', 'mean']
@@ -467,7 +467,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     >>> x = np.random.random((2, 3))
     >>> y = np.random.randint(0, 2, (2, 2))
-    >>> _ = model.fit(x, y, verbose=0)
+    >>> model.fit(x, y)
     >>> model.metrics_names
     ['loss', 'mae']
 
@@ -478,7 +478,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     >>> model = tf.keras.models.Model(
     ...    inputs=inputs, outputs=[output_1, output_2])
     >>> model.compile(optimizer="Adam", loss="mse", metrics=["mae", "acc"])
-    >>> _ = model.fit(x, (y, y), verbose=0)
+    >>> model.fit(x, (y, y))
     >>> model.metrics_names
     ['loss', 'out_loss', 'out_1_loss', 'out_mae', 'out_acc', 'out_1_mae',
     'out_1_acc']
@@ -954,7 +954,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     """The logic for one evaluation step.
 
     This method can be overridden to support custom evaluation logic.
-    This method is called by `Model._make_test_function`.
+    This method is called by `Model.make_test_function`.
 
     This function should contain the mathemetical logic for one step of
     evaluation.
@@ -963,7 +963,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     Configuration details for *how* this logic is run (e.g. `tf.function` and
     `tf.distribute.Strategy` settings), should be left to
-    `Model._make_test_function`, which can also be overridden.
+    `Model.make_test_function`, which can also be overridden.
 
     Arguments:
       data: A nested structure of `Tensor`s.
@@ -992,7 +992,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     Typically, this method directly controls `tf.function` and
     `tf.distribute.Strategy` settings, and delegates the actual evaluation
-    logic to `Model._test_step`.
+    logic to `Model.test_step`.
 
     This function is cached the first time `Model.evaluate` or
     `Model.test_on_batch` is called. The cache is cleared whenever
@@ -1059,7 +1059,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                return_dict=False):
     """Returns the loss value & metrics values for the model in test mode.
 
-    Computation is done in batches.
+    Computation is done in batches (see the `batch_size` arg.)
 
     Arguments:
         x: Input data. It could be: - A Numpy array (or array-like), or a list
@@ -1077,10 +1077,11 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           `x` is a dataset, generator or `keras.utils.Sequence` instance, `y`
           should not be specified (since targets will be obtained from the
           iterator/dataset).
-        batch_size: Integer or `None`. Number of samples per gradient update. If
-          unspecified, `batch_size` will default to 32. Do not specify the
-          `batch_size` if your data is in the form of a dataset, generators,
-          or `keras.utils.Sequence` instances (since they generate batches).
+        batch_size: Integer or `None`. Number of samples per batch of
+          computation. If unspecified, `batch_size` will default to 32. Do not
+          specify the `batch_size` if your data is in the form of a dataset,
+          generators, or `keras.utils.Sequence` instances (since they generate
+          batches).
         verbose: 0 or 1. Verbosity mode. 0 = silent, 1 = progress bar.
         sample_weight: Optional Numpy array of weights for the test samples,
           used for weighting the loss function. You can either pass a flat (1D)
@@ -1191,14 +1192,14 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     """The logic for one inference step.
 
     This method can be overridden to support custom inference logic.
-    This method is called by `Model._make_predict_function`.
+    This method is called by `Model.make_predict_function`.
 
     This method should contain the mathemetical logic for one step of inference.
     This typically includes the forward pass.
 
     Configuration details for *how* this logic is run (e.g. `tf.function` and
     `tf.distribute.Strategy` settings), should be left to
-    `Model._make_predict_function`, which can also be overridden.
+    `Model.make_predict_function`, which can also be overridden.
 
     Arguments:
       data: A nested structure of `Tensor`s.
@@ -1219,7 +1220,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     Typically, this method directly controls `tf.function` and
     `tf.distribute.Strategy` settings, and delegates the actual evaluation
-    logic to `Model._predict_step`.
+    logic to `Model.predict_step`.
 
     This function is cached the first time `Model.predict` or
     `Model.predict_on_batch` is called. The cache is cleared whenever

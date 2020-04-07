@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/cc/profiler/profiler.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -46,7 +46,7 @@ TEST(UnifedCAPI, TestBasicEager) {
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Build an abstract input tensor.
-  TFE_TensorHandle* t = TestScalarTensorHandle(2.0f);
+  TFE_TensorHandle* t = TestScalarTensorHandle(eager_ctx, 2.0f);
   TF_AbstractTensor* at = TF_NewAbstractTensor();
   TF_AbstractTensorSetEagerTensor(at, t, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
@@ -162,7 +162,7 @@ TEST(UnifedCAPI, TestBasicGraph) {
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Build an abstract input tensor.
-  TFE_TensorHandle* input_eager = TestScalarTensorHandle(2.0f);
+  TFE_TensorHandle* input_eager = TestScalarTensorHandle(eager_ctx, 2.0f);
   TF_AbstractTensor* input_t = TF_NewAbstractTensor();
   TF_AbstractTensorSetEagerTensor(input_t, input_eager, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());

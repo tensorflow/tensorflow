@@ -173,7 +173,7 @@ StreamExecutor::~StreamExecutor() {
   }
 
   if (FLAGS_check_device_leaks) {
-    for (auto it : mem_allocs_) {
+    for (const auto &it : mem_allocs_) {
       LOG(INFO) << "Memory alloced at executor exit: addr: "
                 << absl::StrFormat("%p", it.first)
                 << ", bytes: " << it.second.bytes << ", trace: \n"

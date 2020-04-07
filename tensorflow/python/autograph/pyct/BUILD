@@ -24,6 +24,7 @@ py_library(
         "__init__.py",
         "anno.py",
         "ast_util.py",
+        "cache.py",
         "cfg.py",
         "error_utils.py",
         "errors.py",
@@ -38,6 +39,7 @@ py_library(
         "qual_names.py",
         "templates.py",
         "transformer.py",
+        "transpiler.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
@@ -64,6 +66,21 @@ py_test(
 py_test(
     name = "ast_util_test",
     srcs = ["ast_util_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss_py2",
+    ],
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
+        "@gast_archive//:gast",
+    ],
+)
+
+py_test(
+    name = "cache_test",
+    srcs = ["cache_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
@@ -212,5 +229,16 @@ py_test(
         ":pyct",
         "//tensorflow/python:client_testlib",
         "@gast_archive//:gast",
+    ],
+)
+
+py_test(
+    name = "transpiler_test",
+    srcs = ["transpiler_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
     ],
 )

@@ -346,14 +346,16 @@ RefcountingHashMap<NcclCliqueKey, NcclClique>& GlobalNcclCliqueMap() {
   return m;
 }
 
-class RendezvousNcclAllReduce : public Rendezvous<std::shared_ptr<NcclClique>> {
+using RendezvousBase =
+    Rendezvous<AllReduceParticipantData, std::shared_ptr<NcclClique>>;
+class RendezvousNcclAllReduce : public RendezvousBase {
  public:
   explicit RendezvousNcclAllReduce(const RendezvousKey& k)
-      : Rendezvous<std::shared_ptr<NcclClique>>(k) {}
+      : RendezvousBase(k) {}
 
  protected:
-  StatusOr<std::pair<std::shared_ptr<NcclClique>, bool>> SubmitParticipantImpl(
-      AllReduceParticipantData participant) override;
+  StatusOr<ParticipantImplOutput> SubmitParticipantImpl(
+      const AllReduceParticipantData& participant) override;
 
   void CleanupImpl(std::shared_ptr<NcclClique> handle,
                    bool is_primary) override;
@@ -372,9 +374,9 @@ GlobalRendezvousMap() {
   return m;
 }
 
-StatusOr<std::pair<std::shared_ptr<NcclClique>, bool>>
+StatusOr<RendezvousNcclAllReduce::ParticipantImplOutput>
 RendezvousNcclAllReduce::SubmitParticipantImpl(
-    AllReduceParticipantData participant) {
+    const AllReduceParticipantData& participant) {
   // We pull into our thread a) the communication handle and b) whether we're
   // the "primary" thread for this rendezvous -- the "primary" thread has some
   // additional responsibilities for setup/teardown.
@@ -465,8 +467,8 @@ RendezvousNcclAllReduce::SubmitParticipantImpl(
           << " on device: " << participant.device_ordinal;
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
   for (auto& buffer : participant.buffers) {
-    void* send_buffer = buffer.source_data.opaque();
-    void* recv_buffer = buffer.destination_data.opaque();
+    void* send_buffer = const_cast<void*>(buffer.source_data.opaque());
+    void* recv_buffer = const_cast<void*>(buffer.destination_data.opaque());
     absl::optional<ncclDataType_t> allreduce_datatype =
         DatatypeToNccl(buffer.primitive_type);
     CHECK(allreduce_datatype.has_value());
@@ -488,7 +490,7 @@ RendezvousNcclAllReduce::SubmitParticipantImpl(
           << participant.device_ordinal;
   VLOG(3) << "This thread done with all-reduce op.";
 
-  return std::make_pair(clique, primary);
+  return ParticipantImplOutput{primary, clique};
 }
 
 void RendezvousNcclAllReduce::CleanupImpl(std::shared_ptr<NcclClique> handle,

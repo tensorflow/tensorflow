@@ -679,8 +679,8 @@ LogicalResult ConvertOphintToStub(StringRef stub_name,
   return success();
 }
 
-struct ExtractOphintPass : public ModulePass<ExtractOphintPass> {
-  void runOnModule() override;
+struct ExtractOphintPass : public OperationPass<ExtractOphintPass, ModuleOp> {
+  void runOnOperation() override;
   void Verify();
 
  private:
@@ -689,8 +689,8 @@ struct ExtractOphintPass : public ModulePass<ExtractOphintPass> {
 
 // TODO(renjieliu): Current ophint extraction does not support inputs/outputs
 // cross functions, we need to do that.
-void ExtractOphintPass::runOnModule() {
-  ModuleOp module = getModule();
+void ExtractOphintPass::runOnOperation() {
+  ModuleOp module = getOperation();
   for (auto function : module.getOps<FuncOp>()) {
     // Process block by block.
     for (auto& bb : function.getBody()) {
@@ -710,7 +710,7 @@ void ExtractOphintPass::runOnModule() {
       ophint_composite_ops_count = ophint_composite_ops.size();
 
       // Convert.
-      OpBuilder builder(&bb);
+      OpBuilder builder = OpBuilder::atBlockEnd(&bb);
       for (const auto& kv : ophint_composite_ops) {
         if (failed(ConvertOphintToStub(kv.getKey(), kv.getValue(), &builder,
                                        &module))) {
@@ -724,9 +724,9 @@ void ExtractOphintPass::runOnModule() {
 }
 
 void ExtractOphintPass::Verify() {
-  ModuleOp module = getModule();
+  ModuleOp module = getOperation();
   int ophint_func_op_count = 0;
-  for (FuncOp func : getModule().getOps<FuncOp>()) {
+  for (FuncOp func : getOperation().getOps<FuncOp>()) {
     for (const NamedAttribute attr : func.getAttrs()) {
       if (attr.first == kTfLiteFunctionName) {
         ophint_func_op_count++;

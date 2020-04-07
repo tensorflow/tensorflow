@@ -40,9 +40,17 @@ namespace gpu {
 namespace metal {
 
 enum class WeightsUploadType {
+  PRIVATE_MEM_SIMD8_BROADCAST,
+  PRIVATE_MEM_SIMD16_BROADCAST,
+  PRIVATE_MEM_SIMD32_BROADCAST,
   LOCAL_MEM_BY_THREADS,
   GLOBAL_MEM,
   CONSTANT_MEM,
+};
+
+enum class WeightsInnerBlockLayout {
+  O4I4,
+  I4O4,
 };
 
 struct ConvParams {
@@ -55,6 +63,7 @@ struct ConvParams {
   bool linear_wh;
   bool linear_whs;
   WeightsUploadType weights_upload_type;
+  WeightsInnerBlockLayout weight_layout;
   bool different_weights_for_height = false;
   bool x_kernel_is_1;
   bool y_kernel_is_1;
@@ -200,6 +209,25 @@ std::string GenerateConvolution(const ConvParams& params) {
   const int local_mem_size =
       params.block_size.z * 4 * params.src_depth_loop_size;
 
+  const bool use_simd_broadcast =
+      params.weights_upload_type ==
+          WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST ||
+      params.weights_upload_type ==
+          WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST ||
+      params.weights_upload_type ==
+          WeightsUploadType::PRIVATE_MEM_SIMD32_BROADCAST;
+  int simd_size = 1;
+  if (params.weights_upload_type ==
+      WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST) {
+    simd_size = 8;
+  } else if (params.weights_upload_type ==
+             WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST) {
+    simd_size = 16;
+  } else if (params.weights_upload_type ==
+             WeightsUploadType::PRIVATE_MEM_SIMD32_BROADCAST) {
+    simd_size = 32;
+  }
+
   const bool use_filters_constants =
       !params.need_dst_loop && !params.need_src_loop && params.x_kernel_is_1 &&
       params.y_kernel_is_1;
@@ -222,16 +250,19 @@ struct uniforms {
 $0
 
 kernel void ComputeFunction(
-                            $1
-                            uint tid[[thread_index_in_threadgroup]],
-                            uint3 group_id[[threadgroup_position_in_grid]],
-                            uint3 tid3d[[thread_position_in_threadgroup]],
-                            uint3 ugid[[thread_position_in_grid]])
-{
+    $1
+    uint tid[[thread_index_in_threadgroup]],
+    uint3 group_id[[threadgroup_position_in_grid]],
+    uint3 tid3d[[thread_position_in_threadgroup]],
 )";
+  if (use_simd_broadcast) {
+    c += "    uint simd_id[[thread_index_in_simdgroup]],\n";
+  }
+  c += "    uint3 ugid[[thread_position_in_grid]]){\n";
   c += GlobalIdsGen(ids_params);
   c += "  if (Z >= params.dst_size.w) return;\n";
-  if (!use_local_mem && !params.linear_whs) {
+  bool late_xy_check = use_local_mem || use_simd_broadcast;
+  if (!late_xy_check && !params.linear_whs) {
     c += "  if (X >= params.dst_size.x || Y >= params.dst_size.y) return;\n";
   }
   for (int z = 0; z < params.block_size.z; ++z) {
@@ -366,11 +397,25 @@ kernel void ComputeFunction(
     const int total_work_items = params.work_group_size.x *
                                  params.work_group_size.y *
                                  params.work_group_size.z;
-    c += "    BARRIER(mem_flags::mem_none);\n";
+    c += "    SIMDGROUP_BARRIER(mem_flags::mem_none);\n";
     c += GenerateUploadByThreads("weights_cache", "tmp",
                                  /*global_offset_name*/ "", "tid",
                                  total_work_items, local_mem_size);
-    c += "    BARRIER(mem_flags::mem_threadgroup);\n";
+    c += "    SIMDGROUP_BARRIER(mem_flags::mem_threadgroup);\n";
+  } else if (use_simd_broadcast) {
+    int parts = local_mem_size / simd_size;
+    int reminder = local_mem_size % simd_size;
+    for (int i = 0; i < parts; ++i) {
+      c += "    FLT4 simd_w" + std::to_string(i) + " = tmp[simd_id + " +
+           std::to_string(i * simd_size) + "];\n";
+    }
+    if (reminder) {
+      c += "    FLT4 simd_w" + std::to_string(parts) + ";\n";
+      c += "    if (simd_id < " + std::to_string(reminder) + ") {\n";
+      c += "      simd_w" + std::to_string(parts) + " = tmp[simd_id + " +
+           std::to_string(parts * simd_size) + "];\n";
+      c += "    }\n";
+    }
   }
   auto declare_src = [&]() {
     for (int y = 0; y < params.block_size.y; ++y) {
@@ -410,8 +455,23 @@ kernel void ComputeFunction(
             std::string s_id = std::to_string(y) + std::to_string(x);
             std::string r_id =
                 std::to_string(z) + std::to_string(y) + std::to_string(x);
-            c += "    r" + r_id + "." + channels[ch] + " += dot(" + name + "[" +
-                 std::to_string(z * 4 + ch + offset) + "], src" + s_id + ");\n";
+            std::string f_val =
+                name + "[" + std::to_string(z * 4 + ch + offset) + "]";
+            if (use_simd_broadcast) {
+              int simd_id = (z * 4 + ch + offset) / simd_size;
+              int thread_id = (z * 4 + ch + offset) % simd_size;
+              f_val = "simd_broadcast(simd_w" + std::to_string(simd_id) + ", " +
+                      std::to_string(thread_id) + "u)";
+            }
+            std::string s_val = "src" + s_id;
+            std::string r_val = "r" + r_id;
+            if (params.weight_layout == WeightsInnerBlockLayout::O4I4) {
+              c += "    " + r_val + "." + channels[ch] + " += dot(" + f_val +
+                   ", " + s_val + ");\n";
+            } else {  // WeightsInnerBlockLayout::I404
+              c += "    " + r_val + " += " + f_val + " * " + s_val + "." +
+                   channels[ch] + ";\n";
+            }
           }
         }
       }
@@ -443,7 +503,7 @@ kernel void ComputeFunction(
     c += "  } while (y < params.kernel_dilation.y);\n";
   }
 
-  if (use_local_mem && !params.linear_whs) {
+  if (late_xy_check && !params.linear_whs) {
     c += "  if (X >= params.dst_size.x || Y >= params.dst_size.y) return;\n";
   }
 
@@ -509,22 +569,34 @@ kernel void ComputeFunction(
 }
 
 std::vector<float> ReorderWeightsForConv(
-    const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights, int z_out) {
+    const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights,
+    const ConvParams& params) {
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
-  std::vector<float> weights_reordered(weights.shape.w * weights.shape.h *
-                                       AlignByN(dst_depth, z_out) * 4 *
-                                       src_depth * 4);
+  std::vector<float> weights_reordered(
+      weights.shape.w * weights.shape.h *
+      AlignByN(dst_depth, params.block_size.z) * 4 * src_depth * 4);
+
+  bool isO4I4 = params.weight_layout == WeightsInnerBlockLayout::O4I4;
+
   int counter = 0;
-  for (int d = 0; d < IntegralDivideRoundUp(dst_depth, z_out); ++d) {
+  for (int d = 0; d < IntegralDivideRoundUp(dst_depth, params.block_size.z);
+       ++d) {
     for (int y = 0; y < weights.shape.h; ++y) {
       for (int x = 0; x < weights.shape.w; ++x) {
         for (int s = 0; s < src_depth; ++s) {
-          for (int k = 0; k < z_out; ++k) {
+          for (int k = 0; k < params.block_size.z; ++k) {
             for (int j = 0; j < 4; ++j) {
               for (int i = 0; i < 4; ++i) {
-                int src_ch = s * 4 + i;
-                int dst_ch = (d * z_out + k) * 4 + j;
+                int src_ch;
+                int dst_ch;
+                if (isO4I4) {
+                  src_ch = s * 4 + i;
+                  dst_ch = (d * params.block_size.z + k) * 4 + j;
+                } else {
+                  src_ch = s * 4 + j;
+                  dst_ch = (d * params.block_size.z + k) * 4 + i;
+                }
                 if (src_ch >= weights.shape.i || dst_ch >= weights.shape.o) {
                   weights_reordered[counter++] = 0.0f;
                 } else {
@@ -698,6 +770,7 @@ ConvParams GetConvParamsForA7A8(const AppleGPUInfo& apple_info,
   params.linear_wh = false;
   params.linear_whs = false;
   params.work_group_launch_order = int3(0, 1, 2);
+  params.weight_layout = WeightsInnerBlockLayout::O4I4;
 
   int blk_total_size = GetRecommendedBlockSize(apple_info, dst_shape);
 
@@ -796,6 +869,7 @@ ConvParams GetConvParamsForA9AndHigher(const AppleGPUInfo& apple_info,
   params.linear_whs = false;
   params.work_group_size = int3(8, 4, 1);
   params.work_group_launch_order = int3(2, 0, 1);
+  params.weight_layout = WeightsInnerBlockLayout::O4I4;
   int g1 = GetGroupsCount(dst_shape, {8, 4, 1}, block_size);
   int g2 = GetGroupsCountForLinearWH(dst_shape, {32, 1, 1}, block_size);
   int g3 = GetGroupsCountForLinearWHS(dst_shape, {32, 1, 1}, block_size);
@@ -840,13 +914,104 @@ ConvParams GetConvParamsForA9AndHigher(const AppleGPUInfo& apple_info,
   return params;
 }
 
+ConvParams GetConvParamsForIntel(const Convolution2DAttributes& attr,
+                                 const RuntimeOptions& options,
+                                 const BHWC& dst_shape) {
+  const int dst_slices = IntegralDivideRoundUp(dst_shape.c, 4);
+  const int src_slices = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+  ConvParams params;
+  params.weights_upload_type = WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST;
+  params.x_kernel_is_1 = IsKernelXIs1(attr);
+  params.y_kernel_is_1 = IsKernelYIs1(attr);
+  params.src_depth_loop_size = 1;
+  params.linear_wh = false;
+  params.linear_whs = false;
+  params.work_group_launch_order = int3(2, 0, 1);
+  params.block_size = int3(1, 1, 1);
+  if (dst_slices % 4 == 0 || dst_slices >= 8) {
+    params.block_size.z = 4;
+  } else if (dst_slices % 2 == 0 || dst_slices >= 4) {
+    params.block_size.z = 2;
+  }
+  params.work_group_size = int3(8, 2, 1);
+  if (options.storage_precision == RuntimeOptions::Precision::FP16 &&
+      options.accumulator_precision == RuntimeOptions::Precision::FP32) {
+    params.weight_layout = WeightsInnerBlockLayout::O4I4;
+  } else {
+    params.weight_layout = WeightsInnerBlockLayout::I4O4;
+  }
+
+  if (src_slices % 2 == 0) {
+    params.src_depth_loop_size = 2;
+  }
+
+  int g1 = GetGroupsCount(dst_shape, params.work_group_size, params.block_size);
+  int g2 = GetGroupsCountForLinearWH(dst_shape, {16, 1, 1}, params.block_size);
+
+  if (g2 < g1) {
+    params.linear_wh = true;
+    params.work_group_size = int3(16, 1, 1);
+    params.work_group_launch_order = int3(1, 0, 2);
+  }
+
+  return params;
+}
+
+ConvParams GetConvParamsForAMD(const Convolution2DAttributes& attr,
+                               const RuntimeOptions& options,
+                               const BHWC& dst_shape) {
+  ConvParams params;
+  params.block_size = int3(1, 1, 4);
+  params.work_group_size = int3(8, 4, 1);
+  params.work_group_launch_order = int3(2, 0, 1);
+  params.src_depth_loop_size = 1;
+  params.need_src_loop = true;
+  params.need_dst_loop = true;
+  params.linear_wh = false;
+  params.linear_whs = false;
+  params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+  params.different_weights_for_height = false;
+  params.x_kernel_is_1 = IsKernelXIs1(attr);
+  params.y_kernel_is_1 = IsKernelYIs1(attr);
+  if (options.storage_precision == RuntimeOptions::Precision::FP16 &&
+      options.accumulator_precision == RuntimeOptions::Precision::FP32) {
+    params.weight_layout = WeightsInnerBlockLayout::O4I4;
+  } else {
+    params.weight_layout = WeightsInnerBlockLayout::I4O4;
+  }
+  return params;
+}
+
 ConvParams GetConvParams(const DeviceInfo& device_info,
                          const Convolution2DAttributes& attr,
-                         const BHWC& dst_shape) {
-  if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
-    return GetConvParamsForA7A8(device_info.apple_info, attr, dst_shape);
+                         const RuntimeOptions& options, const BHWC& dst_shape) {
+  if (device_info.IsAppleGPU()) {
+    if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
+      return GetConvParamsForA7A8(device_info.apple_info, attr, dst_shape);
+    } else {
+      return GetConvParamsForA9AndHigher(device_info.apple_info, attr,
+                                         dst_shape);
+    }
+  } else if (device_info.IsIntelGPU()) {
+    return GetConvParamsForIntel(attr, options, dst_shape);
+  } else if (device_info.IsAMDGPU()) {
+    return GetConvParamsForAMD(attr, options, dst_shape);
   } else {
-    return GetConvParamsForA9AndHigher(device_info.apple_info, attr, dst_shape);
+    ConvParams params;
+    params.block_size = int3(1, 1, 4);
+    params.work_group_size = int3(8, 4, 1);
+    params.work_group_launch_order = int3(2, 0, 1);
+    params.src_depth_loop_size = 1;
+    params.need_src_loop = true;
+    params.need_dst_loop = true;
+    params.linear_wh = false;
+    params.linear_whs = false;
+    params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+    params.different_weights_for_height = false;
+    params.x_kernel_is_1 = IsKernelXIs1(attr);
+    params.y_kernel_is_1 = IsKernelYIs1(attr);
+    params.weight_layout = WeightsInnerBlockLayout::O4I4;
+    return params;
   }
 }
 
@@ -888,7 +1053,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
     int id, ValueId input_id, ValueId output_id, const BHWC& dst_shape,
     const Convolution2DAttributes& attr, const DeviceInfo& device_info,
     const metal::RuntimeOptions& options) {
-  ConvParams params = GetConvParams(device_info, attr, dst_shape);
+  ConvParams params = GetConvParams(device_info, attr, options, dst_shape);
 
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
@@ -907,8 +1072,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
         return out_shape;
       }};
 
-  auto weights_reordered =
-      ReorderWeightsForConv(attr.weights, params.block_size.z);
+  auto weights_reordered = ReorderWeightsForConv(attr.weights, params);
   std::string addr_space =
       params.weights_upload_type == WeightsUploadType::CONSTANT_MEM ? "constant"
                                                                     : "device";
@@ -955,14 +1119,32 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
   params.different_weights_for_height = true;
   params.x_kernel_is_1 = true;
   params.y_kernel_is_1 = true;
-  if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
-    params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
-    params.work_group_size = int3(32, 1, 1);
-    params.block_size = int3(4, 1, 4);
-  } else {
+  if (device_info.IsAppleGPU()) {
+    params.weight_layout = WeightsInnerBlockLayout::O4I4;
+    if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
+      params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+      params.work_group_size = int3(32, 1, 1);
+      params.block_size = int3(4, 1, 4);
+    } else {
+      params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+      params.work_group_size = int3(8, 4, 1);
+      params.block_size = int3(4, 1, 4);
+    }
+  } else if (device_info.IsIntelGPU()) {
+    params.weight_layout = WeightsInnerBlockLayout::I4O4;
+    params.weights_upload_type = WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST;
+    params.work_group_size = int3(16, 1, 1);
+    params.block_size = int3(1, 1, 4);
+  } else if (device_info.IsAMDGPU()) {
+    params.weight_layout = WeightsInnerBlockLayout::I4O4;
     params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
-    params.work_group_size = int3(8, 4, 1);
-    params.block_size = int3(4, 1, 4);
+    params.work_group_size = int3(32, 1, 1);
+    params.block_size = int3(2, 1, 4);
+  } else {
+    params.weight_layout = WeightsInnerBlockLayout::I4O4;
+    params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+    params.work_group_size = int3(32, 1, 1);
+    params.block_size = int3(2, 1, 4);
   }
 
   auto desc = std::make_shared<ComputeTaskDescriptor>();
@@ -984,8 +1166,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
 
   ::tflite::gpu::Tensor<OHWI, DataType::FLOAT32> wino_weights;
   RearrangeWeightsToWinograd4x4To6x6Weights(attr.weights, &wino_weights);
-  auto weights_reordered =
-      ReorderWeightsForConv(wino_weights, params.block_size.z);
+  auto weights_reordered = ReorderWeightsForConv(wino_weights, params);
   std::vector<float> dummy_biases(AlignByN(dst_slices, params.block_size.z) * 4,
                                   0.0f);
   desc->immutable_buffers = {

@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import combinations
@@ -41,6 +42,7 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import util as trackable_util
+from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 
 
@@ -87,6 +89,24 @@ class _ResidualLSTMCell(keras.layers.LSTMCell):
   def call(self, inputs, states, training=None):
     output, states = super(_ResidualLSTMCell, self).call(inputs, states)
     return output + inputs, states
+
+
+class _AddOneCell(keras.layers.AbstractRNNCell):
+  """Increments inputs and state by one on each call."""
+
+  @property
+  def state_size(self):
+    return 1
+
+  @property
+  def output_size(self):
+    return 1
+
+  def call(self, inputs, state):
+    inputs = math_ops.reduce_mean(inputs, axis=1, keepdims=True)
+    outputs = inputs + 1.0
+    state = nest.map_structure(lambda t: t + 1.0, state)
+    return outputs, state
 
 
 class TimeDistributedTest(keras_parameterized.TestCase):
@@ -639,6 +659,40 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       y_backward = y_backward[-n_states:]
       for state_birnn, state_inner in zip(y_merged, y_forward + y_backward):
         self.assertAllClose(state_birnn, state_inner, atol=1e-5)
+
+  @parameterized.parameters([True, False])
+  def test_Bidirectional_with_time_major_input(self, time_major):
+    batch_size, time, input_dim = 2, 3, 1
+    inputs = array_ops.zeros((batch_size, time, input_dim))
+    # length is [1 2]. Within the batch, the first element has 1 step, and the
+    # second element as 2 steps.
+    lengths = math_ops.range(1, 1 + batch_size)
+    mask = array_ops.sequence_mask(lengths, maxlen=time, dtype=dtypes.float32)
+
+    forward_cell = _AddOneCell(name='forward')
+    backward_cell = _AddOneCell(name='backward')
+
+    layer = keras.layers.Bidirectional(
+        layer=keras.layers.RNN(
+            forward_cell, time_major=time_major, return_sequences=True),
+        backward_layer=keras.layers.RNN(
+            backward_cell, time_major=time_major, return_sequences=True,
+            go_backwards=True))
+
+    # Switch to time-major.
+    if time_major:
+      inputs = array_ops.transpose(inputs, [1, 0, 2])
+      mask = array_ops.transpose(mask, [1, 0])
+
+    keras_outputs = layer(inputs, mask=mask)
+    if time_major:
+      keras_outputs = array_ops.transpose(keras_outputs, [1, 0, 2])
+
+    # expect the first element in batch has 1 step and second element in batch
+    # has 2 steps.
+    expected_result = np.array([[[1., 1.], [0., 0.], [0., 0.]],
+                                [[1., 1.], [1., 1.], [0., 0.]]])
+    self.assertAllClose(expected_result, keras_outputs)
 
   def test_Bidirectional_dropout(self):
     rnn = keras.layers.LSTM

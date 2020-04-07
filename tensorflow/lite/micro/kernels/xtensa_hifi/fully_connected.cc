@@ -92,16 +92,6 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
 
 }  // namespace
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
-
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  return kTfLiteOk;
-}
-
 TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                                TfLiteFullyConnectedParams* params, OpData* data,
                                const TfLiteTensor* input,
@@ -183,9 +173,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       TF_LITE_FULLY_CONNECTED(int16_t);
       break;
     default:
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Quantized FullyConnected expects output data type uint8 or int16");
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(output->type), output->type);
       return kTfLiteError;
   }
 
@@ -254,8 +243,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                            output);
 
     default:
-      TF_LITE_KERNEL_LOG(context, "Type %d not currently supported.",
-                         filter->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(filter->type), filter->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -264,11 +253,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace fully_connected
 
 TfLiteRegistration* Register_FULLY_CONNECTED() {
-  static TfLiteRegistration r = {};
-  r.init = fully_connected::Init;
-  r.free = fully_connected::Free;
-  r.prepare = fully_connected::Prepare;
-  r.invoke = fully_connected::Eval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/fully_connected::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

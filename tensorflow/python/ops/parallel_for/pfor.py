@@ -1217,10 +1217,10 @@ class PFor(object):
     the new dense shape will be (N, max_i(x_i), max_i(y_i), max_i(z_i)).
 
     Args:
-      y: A tf.SparseTensor.
+      y: A tf.sparse.SparseTensor.
 
     Returns:
-      A tf.SparseTensor that is the converted value corresponding to y.
+      A tf.sparse.SparseTensor that is the converted value corresponding to y.
     """
     outputs = [
         self._convert_helper(t) for t in (y.indices, y.values, y.dense_shape)
