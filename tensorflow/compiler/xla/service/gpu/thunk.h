@@ -95,8 +95,9 @@ class Thunk {
     const BufferAllocations* buffer_allocations;  // never null
     se::Stream* stream;
     RunId run_id;
-    HloExecutionProfiler* profiler;       // never null
-    const DeviceAssignment* device_assn;  // never null
+    HloExecutionProfiler* profiler;                               // never null
+    const DeviceAssignment* device_assn;                          // never null
+    std::vector<std::function<void()>>* deferred_host_callbacks;  // never null
   };
 
   // Execute the kernel for the thunk on the given stream. This method must be
@@ -114,11 +115,13 @@ class Thunk {
   // Safely copies the given buffer to the GPU, deleting it on the host only
   // after the copy has completed.
   template <typename T>
-  void SafeH2DMemcpy(se::DeviceMemory<T> dest, std::unique_ptr<T[]> buf,
-                     int64 count, se::Stream* stream) {
+  void SafeH2DMemcpy(
+      se::DeviceMemory<T> dest, std::unique_ptr<T[]> buf, int64 count,
+      se::Stream* stream,
+      std::vector<std::function<void()>>* deferred_host_callbacks) {
     stream->ThenMemcpy(&dest, buf.get(), count * sizeof(T));
     auto* buf_raw = buf.release();
-    stream->ThenRunAfterNextBlockHostUntilDone([buf_raw] { delete[] buf_raw; });
+    deferred_host_callbacks->push_back([buf_raw] { delete[] buf_raw; });
   }
 
  private:
