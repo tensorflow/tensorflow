@@ -294,8 +294,6 @@ class OptimizerV2(trackable.Trackable):
 
     Raises:
       ValueError: If name is malformed.
-      RuntimeError: If _create_slots has been overridden instead of
-          _create_vars.
     """
     allowed_kwargs = {"clipnorm", "clipvalue", "lr", "decay"}
     for k in kwargs:
@@ -510,9 +508,7 @@ class OptimizerV2(trackable.Trackable):
     with backend.name_scope(self._name):
       # Create iteration if necessary.
       with ops.init_scope():
-        _ = self.iterations
-        self._create_hypers()
-        self._create_slots(var_list)
+        self._create_all_weights(var_list)
 
       if not grads_and_vars:
         # Distribution strategy does not support reducing an empty list of
@@ -681,6 +677,23 @@ class OptimizerV2(trackable.Trackable):
 
   def _create_slots(self, var_list):
     pass
+
+  def _create_all_weights(self, var_list):
+    """Creates all weights, including iterations, hyperparameters and slot vars.
+
+    This will add newly created variables to `optimizer.weights`.
+
+    New variables are only created when this method is called the first time, or
+    when called with different variables in the var_list.
+
+    Args:
+      var_list: list or tuple of `Variable` objects that will be minimized
+        using this optimizer.
+    """
+
+    _ = self.iterations
+    self._create_hypers()
+    self._create_slots(var_list)
 
   def __getattribute__(self, name):
     """Overridden to support hyperparameter access."""

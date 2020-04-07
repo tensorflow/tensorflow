@@ -232,6 +232,9 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     grads = self._optimizer.get_gradients(loss, params)
     return self.get_unscaled_gradients(grads)
 
+  def _create_all_weights(self, var_list):
+    self._optimizer._create_all_weights(var_list)    # pylint: disable=protected-access
+
   def apply_gradients(self,
                       grads_and_vars,
                       name=None,
