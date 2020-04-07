@@ -181,14 +181,13 @@ class NamedTPUCombination(combinations_lib.TestCombination):
 
     if not number_of_required_tpus and TPUCombination.TPU_TEST:
       return (False, "Test that doesn't require TPUs.")
-    elif number_of_required_tpus and not TPUCombination.TPU_TEST:
+    if number_of_required_tpus and not TPUCombination.TPU_TEST:
       return (False, "Test requires a TPU, but it's not available.")
-    elif use_cloud_tpu and not tpu:
+    if use_cloud_tpu and not tpu:
       return (False, "Test requires a Cloud TPU, but none specified.")
-    elif not use_cloud_tpu and tpu:
+    if not use_cloud_tpu and tpu:
       return (False, "Test requires local TPU, but Cloud TPU specified.")
-    else:
-      return (True, None)
+    return (True, None)
 
   def parameter_modifiers(self):
     return [
