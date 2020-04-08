@@ -4,6 +4,7 @@ load(
 )
 load(
     "//tensorflow/lite/micro:build_def.bzl",
+    "cc_library",
     "micro_copts",
 )
 
@@ -70,7 +71,14 @@ cc_library(
         ],
     }),
     hdrs = ["micro_ops.h"],
+    build_for_embedded = True,
     copts = micro_copts(),
+    select_deps = {
+        "//conditions:default": [],
+        ":xtensa_hifimini": [
+            #"//third_party/xtensa:hifi_mini_cstub64",
+        ],
+    },
     deps = [
         ":activation_utils",
         ":micro_utils",
@@ -85,12 +93,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/micro:micro_utils",
-    ] + select({
-        "//conditions:default": [],
-        ":xtensa_hifimini": [
-            #"//third_party/xtensa:hifi_mini_cstub64",
-        ],
-    }),
+    ],
 )
 # LINT.ThenChange(//tensorflow/lite/micro/kernels/BUILD:portable_optimized_micro_ops)
 
@@ -102,6 +105,7 @@ cc_library(
     hdrs = [
         "all_ops_resolver.h",
     ],
+    build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":micro_ops",
@@ -529,6 +533,7 @@ tflite_micro_cc_test(
 cc_library(
     name = "activation_utils",
     hdrs = ["activation_utils.h"],
+    build_for_embedded = True,
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
@@ -566,6 +571,7 @@ tflite_micro_cc_test(
 cc_library(
     name = "micro_utils",
     hdrs = ["micro_utils.h"],
+    build_for_embedded = True,
 )
 
 tflite_micro_cc_test(
