@@ -1044,7 +1044,11 @@ TEST_F(AutoMixedPrecisionTest, BatchMatMul) {
 
   GraphView output_view(&output);
   EXPECT_EQ(output_view.GetNode("input")->attr().at("dtype").type(), DT_FLOAT);
+#if GOOGLE_CUDA
   if (GetCudaVersion(*virtual_cluster_.get()) >= 9010) {
+#else  // TENSORFLOW_USE_ROCM
+  if (true) {
+#endif
     EXPECT_EQ(output.node_size(), item.graph.node_size() + 2);
     EXPECT_EQ(output_view.GetNode("wht1")->attr().at("T").type(), DT_HALF);
   } else {
