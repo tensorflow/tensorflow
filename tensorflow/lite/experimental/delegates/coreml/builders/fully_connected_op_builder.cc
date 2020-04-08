@@ -53,7 +53,7 @@ void FullyConnectedOpBuilder::FillCoreMLWeights() {
   layer_->mutable_innerproduct()->set_outputchannels(weights_->dims->data[0]);
   const float* weights_data = GetTensorData<float>(weights_);
   std::copy(weights_data, weights_data + NumElements(weights_),
-            proto2::RepeatedFieldBackInserter(layer_->mutable_innerproduct()
+            google::protobuf::RepeatedFieldBackInserter(layer_->mutable_innerproduct()
                                                   ->mutable_weights()
                                                   ->mutable_floatvalue()));
 }
@@ -63,7 +63,7 @@ void FullyConnectedOpBuilder::FillCoreMLBias() {
     layer_->mutable_innerproduct()->set_hasbias(true);
     const float* bias_data = GetTensorData<float>(bias_);
     std::copy(bias_data, bias_data + NumElements(bias_),
-              proto2::RepeatedFieldBackInserter(layer_->mutable_innerproduct()
+              google::protobuf::RepeatedFieldBackInserter(layer_->mutable_innerproduct()
                                                     ->mutable_bias()
                                                     ->mutable_floatvalue()));
   }
