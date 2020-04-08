@@ -1262,6 +1262,15 @@ class TPUEmbedding(object):
   def _validate_generate_enqueue_ops_enqueue_datas_list(self,
                                                         enqueue_datas_list):
     """Validate `enqueue_datas_list`."""
+
+    def _check_agreement(data, name, feature, enqueue_data):
+      # Helper function to check device agreement
+      if (data is not None and
+          data.device != enqueue_data.embedding_indices.device):
+        raise ValueError(
+            'Device of {0} does not agree with that of'
+            'embedding_indices for feature {1}.'.format(name, feature))
+
     feature_set = set(self._feature_to_config_dict.keys())
     contiguous_device = None
     for i, enqueue_datas in enumerate(enqueue_datas_list):
@@ -1280,13 +1289,6 @@ class TPUEmbedding(object):
                          'in `feature_to_config_dict`: {}.'.format(
                              i, extra_feature_set))
 
-      def _check_agreement(data, name, feature, enqueue_data):
-        # Helper function to check device agreement
-        if (data is not None and
-            data.device != enqueue_data.embedding_indices.device):
-          raise ValueError(
-              'Device of {0} does not agree with that of'
-              'embedding_indices for feature {1}.'.format(name, feature))
 
       device = None
       device_feature = None
