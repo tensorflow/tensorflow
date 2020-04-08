@@ -163,5 +163,7 @@ message OverviewPage {
   OverviewPageAnalysis analysis = 3;
   // The recommendation made to the user.
   OverviewPageRecommendation recommendation = 4;
+  // Errors.
+  repeated string errors = 7;
   reserved 1, 5;
 }
