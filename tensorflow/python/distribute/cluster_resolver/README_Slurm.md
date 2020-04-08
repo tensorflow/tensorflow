@@ -7,7 +7,8 @@ The resolution is done by determining job configuration through a number of Slur
 By default everything is determined from the Slurm environment, hence for most uses case no manual setting of parameters is required.
 
 ## How it works
-Slurm sets a number of variables for each job and job step.
+`SlurmClusterResolver` reads the environment variables that are set inside a job step launched by Slurm.
+This means it will only work correctly for applications launched via `srun`.
 
 The process ID/rank is extracted from environment variable `SLURM_PROCID` and the total number of tasks launched is extracted from `SLURM_STEP_NUM_TASKS`.
 The hostnames are resolved by inspection `SLURM_STEP_NODELIST`.
