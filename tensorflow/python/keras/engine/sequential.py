@@ -174,6 +174,11 @@ class Sequential(training.Model):
                       'Found: ' + str(layer))
 
     tf_utils.assert_no_legacy_layers([layer])
+    if not self._is_layer_name_unique(layer):
+      raise ValueError('All layers added to a Sequential model '
+                       'should have unique names. Name "%s" is already the name'
+                       ' of a layer in this model. Update the `name` argument '
+                       'to pass a unique name.' % (layer.name,))
 
     # This allows the added layer to broadcast mutations to the current
     # layer, which is necessary to ensure cache correctness.
@@ -399,6 +404,12 @@ class Sequential(training.Model):
   @property
   def _trackable_saved_model_saver(self):
     return model_serialization.SequentialSavedModelSaver(self)
+
+  def _is_layer_name_unique(self, layer):
+    for ref_layer in self.layers:
+      if layer.name == ref_layer.name and ref_layer is not layer:
+        return False
+    return True
 
 
 def _get_shape_tuple(t):
