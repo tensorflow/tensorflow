@@ -46,7 +46,7 @@ func @mul_add_annotated(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>, %arg2: t
 // CHECK-LABEL: @reduce_window
 func @reduce_window(%arg0: tensor<1x28x28x32xf32>, %arg1: tensor<f32>) -> (tensor<1x14x14x32xf32>) {
   %0 = "xla_hlo.reduce_window"(%arg0, %arg1) ({
-  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):	// no predecessors
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
     %1 = xla_hlo.maximum %arg2, %arg3 : tensor<f32>
     "xla_hlo.return"(%1) : (tensor<f32>) -> ()
   }) {
@@ -74,7 +74,7 @@ func @reshape(%arg0: tensor<1x7x7x64xf32>) -> (tensor<1x3136xf32>) {
   %0 = "xla_hlo.reshape"(%arg0) : (tensor<1x7x7x64xf32>) -> tensor<1x3136xf32>
   return %0 : tensor<1x3136xf32>
 
-// CHECK: "quant.region"
+// CHECK: "quant.region"(%arg0)
 // CHECK: logical_kernel = "generic.reshape"
 }
 
@@ -83,7 +83,7 @@ func @broadcast(%arg0: tensor<64xf32>) -> (tensor<1x14x14x64xf32>) {
   %0 = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<3> : tensor<1xi64>} : (tensor<64xf32>) -> tensor<1x14x14x64xf32>
   return %0 : tensor<1x14x14x64xf32>
 
-// CHECK: "quant.region"
+// CHECK: "quant.region"(%arg0)
 // CHECK: logical_kernel = "generic.broadcast"
 }
 
@@ -93,7 +93,9 @@ func @biased_dot(%arg0: tensor<1x1024xf32>, %arg1: tensor<1024x10xf32>, %arg2: t
   %1 = xla_hlo.add %0, %arg2 : tensor<1x10xf32>
   return %1 : tensor<1x10xf32>
 
-// CHECK: "quant.region"
+// CHECK: "quant.region"(%arg0, %arg1, %arg2)
+// CHECK: xla_hlo.dot
+// CHECK: xla_hlo.add
 // CHECK: logical_kernel = "generic.biased_dot"
 }
 
@@ -108,7 +110,90 @@ func @biased_conv(%arg0: tensor<1x14x14x32xf32>, %arg1: tensor<5x5x32x64xf32>, %
   %1 = xla_hlo.add %0, %arg2 : tensor<1x14x14x64xf32>
   return %1 : tensor<1x14x14x64xf32>
 
-// CHECK: "quant.region"
+// CHECK: "quant.region"(%arg0, %arg1, %arg2)
+// CHECK: xla_hlo.conv
+// CHECK: xla_hlo.add
 // CHECK: logical_kernel = "generic.biased_conv"
 }
 
+// CHECK-LABEL: @biased_dot_relu
+func @biased_dot_relu(%arg0: tensor<1x1024xf32>, %arg1: tensor<1024x10xf32>, %arg2: tensor<1x10xf32>) -> (tensor<1x10xf32>) {
+  %cst = constant dense<0.0> : tensor<1x10xf32>
+  %0 = "xla_hlo.dot"(%arg0, %arg1) {precision_config = ["DEFAULT", "DEFAULT"]} : (tensor<1x1024xf32>, tensor<1024x10xf32>) -> tensor<1x10xf32>
+  %1 = xla_hlo.add %0, %arg2 : tensor<1x10xf32>
+  %2 = xla_hlo.maximum %1, %cst : tensor<1x10xf32>
+  return %2 : tensor<1x10xf32>
+
+// CHECK: "quant.region"(%arg0, %arg1, %arg2)
+// CHECK: constant
+// CHECK: xla_hlo.dot
+// CHECK: xla_hlo.add
+// CHECK: xla_hlo.maximum
+// CHECK: logical_kernel = "generic.biased_dot_relu"
+}
+
+// CHECK-LABEL: @biased_conv_relu
+func @biased_conv_relu(%arg0: tensor<1x14x14x32xf32>, %arg1: tensor<5x5x32x64xf32>, %arg2: tensor<1x14x14x64xf32>) -> (tensor<1x14x14x64xf32>) {
+  %cst = constant dense<0.0> : tensor<1x14x14x64xf32>
+  %0 = "xla_hlo.conv"(%arg0, %arg1) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64,
+    input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>, kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64,
+    kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64,
+    output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>}, feature_group_count = 1 : i64, lhs_dilations = dense<1> : tensor<2xi64>,
+    padding = dense<2> : tensor<2x2xi64>, precision_config = ["DEFAULT", "DEFAULT"], rhs_dilations = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<1x14x14x32xf32>, tensor<5x5x32x64xf32>) -> tensor<1x14x14x64xf32>
+  %1 = xla_hlo.add %0, %arg2 : tensor<1x14x14x64xf32>
+  %2 = xla_hlo.maximum %1, %cst : tensor<1x14x14x64xf32>
+  return %2 : tensor<1x14x14x64xf32>
+
+// CHECK: "quant.region"(%arg0, %arg1, %arg2)
+// CHECK: constant
+// CHECK: xla_hlo.conv
+// CHECK: xla_hlo.add
+// CHECK: xla_hlo.maximum
+// CHECK: logical_kernel = "generic.biased_conv_relu"
+}
+
+// CHECK-LABEL: @biased_conv_relu_shared
+func @biased_conv_relu_shared(%arg0: tensor<1x14x14x32xf32>, %arg1: tensor<5x5x32x64xf32>, %arg2: tensor<1x14x14x64xf32>) -> (tensor<1x14x14x64xf32>, tensor<1x14x14x64xf32>) {
+  %cst = constant dense<0.0> : tensor<1x14x14x64xf32>
+  %0 = "xla_hlo.conv"(%arg0, %arg1) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64,
+    input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>, kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64,
+    kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64,
+    output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>}, feature_group_count = 1 : i64, lhs_dilations = dense<1> : tensor<2xi64>,
+    padding = dense<2> : tensor<2x2xi64>, precision_config = ["DEFAULT", "DEFAULT"], rhs_dilations = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<1x14x14x32xf32>, tensor<5x5x32x64xf32>) -> tensor<1x14x14x64xf32>
+  %1 = xla_hlo.add %0, %arg2 : tensor<1x14x14x64xf32>
+  %2 = xla_hlo.maximum %1, %cst : tensor<1x14x14x64xf32>
+  return %cst, %2 : tensor<1x14x14x64xf32>, tensor<1x14x14x64xf32>
+
+// CHECK: "quant.region"(%arg0, %arg1, %arg2)
+// CHECK: constant
+// CHECK: xla_hlo.conv
+// CHECK: xla_hlo.add
+// CHECK: %[[max:.*]] = xla_hlo.maximum
+// CHECK: "quant.return"(%[[max]])
+// CHECK: logical_kernel = "generic.biased_conv_relu"
+}
+
+// CHECK-LABEL: @biased_conv_relu6
+func @biased_conv_relu6(%arg0: tensor<1x14x14x32xf32>, %arg1: tensor<5x5x32x64xf32>, %arg2: tensor<1x14x14x64xf32>) -> (tensor<1x14x14x64xf32>) {
+  %min = constant dense<0.0> : tensor<1x14x14x64xf32>
+  %max = constant dense<6.0> : tensor<1x14x14x64xf32>
+  %0 = "xla_hlo.conv"(%arg0, %arg1) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64,
+    input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>, kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64,
+    kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64,
+    output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>}, feature_group_count = 1 : i64, lhs_dilations = dense<1> : tensor<2xi64>,
+    padding = dense<2> : tensor<2x2xi64>, precision_config = ["DEFAULT", "DEFAULT"], rhs_dilations = dense<1> : tensor<2xi64>, window_strides = dense<1> : tensor<2xi64>
+  } : (tensor<1x14x14x32xf32>, tensor<5x5x32x64xf32>) -> tensor<1x14x14x64xf32>
+  %1 = xla_hlo.add %0, %arg2 : tensor<1x14x14x64xf32>
+  %2 = "xla_hlo.clamp"(%min, %1, %max) : (tensor<1x14x14x64xf32>, tensor<1x14x14x64xf32>, tensor<1x14x14x64xf32>) -> tensor<1x14x14x64xf32>
+  return %2 : tensor<1x14x14x64xf32>
+
+// CHECK: "quant.region"(%arg0, %arg1, %arg2)
+// CHECK: constant
+// CHECK: constant
+// CHECK: xla_hlo.conv
+// CHECK: xla_hlo.add
+// CHECK: xla_hlo.clamp
+// CHECK: logical_kernel = "generic.biased_conv_relu6"
+}
