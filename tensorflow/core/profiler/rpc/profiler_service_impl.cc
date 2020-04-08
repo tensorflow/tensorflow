@@ -53,7 +53,7 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
                          ProfileResponse* response) override {
     VLOG(1) << "Received a profile request: " << req->DebugString();
     std::unique_ptr<ProfilerSession> profiler =
-        ProfilerSession::Create(GetOptions(req->opts()));
+        ProfilerSession::Create(req->opts());
     Status status = profiler->Status();
     if (!status.ok()) {
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,
@@ -75,19 +75,6 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
     }
 
     return ::grpc::Status::OK;
-  }
-
- private:
-  profiler::ProfilerOptions GetOptions(const tensorflow::ProfileOptions& opts) {
-    profiler::ProfilerOptions options;
-    if (opts.version()) {
-      options.host_tracer_level = opts.host_tracer_level();
-      options.device_tracer_level = opts.device_tracer_level();
-      options.enable_python_tracer = opts.python_tracer_level() > 0;
-    } else {
-      // use default options value;
-    }
-    return options;
   }
 };
 

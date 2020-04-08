@@ -33,8 +33,17 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+ProfileOptions GetOptions(const ProfileOptions& opts) {
+  if (opts.version()) return opts;
+  ProfileOptions options = ProfilerSession::DefaultOptions();
+  options.set_include_dataset_ops(opts.include_dataset_ops());
+  return options;
+}
+};  // namespace
+
 /*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create(
-    const profiler::ProfilerOptions& options) {
+    const ProfileOptions& options) {
   return WrapUnique(new ProfilerSession(options));
 }
 
@@ -45,12 +54,24 @@ namespace tensorflow {
   if (!s.ok()) {
     LOG(WARNING) << "ProfilerSession: " << s.error_message();
   }
-  profiler::ProfilerOptions options;
-  options.host_tracer_level = host_tracer_level;
+  ProfileOptions options = DefaultOptions();
+  options.set_host_tracer_level(host_tracer_level);
   return Create(options);
 }
 
-Status ProfilerSession::Status() {
+/*static*/ ProfileOptions ProfilerSession::DefaultOptions() {
+  ProfileOptions options;
+  options.set_version(1);
+  options.set_device_tracer_level(1);
+  options.set_host_tracer_level(2);
+  options.set_device_type(ProfileOptions::UNSPECIFIED);
+  options.set_python_tracer_level(0);
+  options.set_enable_hlo_proto(false);
+  options.set_include_dataset_ops(true);
+  return options;
+}
+
+tensorflow::Status ProfilerSession::Status() {
   mutex_lock l(mutex_);
   return status_;
 }
@@ -122,14 +143,14 @@ Status ProfilerSession::CollectData(RunMetadata* run_metadata) {
   return Status::OK();
 }
 
-
-ProfilerSession::ProfilerSession(const profiler::ProfilerOptions& options)
+ProfilerSession::ProfilerSession(const ProfileOptions& options)
 #if !defined(IS_MOBILE_PLATFORM)
     : active_(profiler::AcquireProfilerLock()),
 #else
     : active_(false),
 #endif
-      start_time_ns_(EnvTime::NowNanos()) {
+      start_time_ns_(EnvTime::NowNanos()),
+      options_(GetOptions(options)) {
   if (!active_) {
 #if !defined(IS_MOBILE_PLATFORM)
     status_ = tensorflow::Status(error::UNAVAILABLE,
@@ -145,7 +166,7 @@ ProfilerSession::ProfilerSession(const profiler::ProfilerOptions& options)
   LOG(INFO) << "Profiler session started.";
 
 #if !defined(IS_MOBILE_PLATFORM)
-  CreateProfilers(options, &profilers_);
+  CreateProfilers(options_, &profilers_);
 #endif
   status_ = Status::OK();
 

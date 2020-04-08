@@ -74,8 +74,6 @@ class MetadataCollector : public ProfilerInterface {
     return Status::OK();
   }
 
-  DeviceType GetDeviceType() override { return DeviceType::kCpu; }
-
  private:
   std::vector<xla::gpu::GpuModuleDebugInfo> debug_info_;
   bool trace_active_ = false;
@@ -84,9 +82,9 @@ class MetadataCollector : public ProfilerInterface {
 };
 
 std::unique_ptr<ProfilerInterface> CreatMetadataCollector(
-    const profiler::ProfilerOptions& options) {
-  return options.enable_hlo_proto ? absl::make_unique<MetadataCollector>()
-                                  : nullptr;
+    const ProfileOptions& options) {
+  return options.enable_hlo_proto() ? absl::make_unique<MetadataCollector>()
+                                    : nullptr;
 }
 
 }  // namespace
