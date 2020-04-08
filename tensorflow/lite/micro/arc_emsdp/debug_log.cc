@@ -31,6 +31,24 @@ limitations under the License.
 // Memory size for symbols dump in EMSDP_LOG_TO_MEMORY destination
 #define EMSDP_LOG_TO_MEMORY_SIZE (2 * 1024)
 
+// EMSDP Debug UART related defines (registers and bits)
+#define EMSDP_DBG_UART_BASE (0xF0004000U)
+#define DW_UART_CPR_FIFO_STAT (1 << 10)
+#define DW_UART_USR_TFNF (0x02)
+#define DW_UART_LSR_TXD_EMPTY (0x20)
+
+// EMSDP UART registers map (only necessairy fields)
+typedef volatile struct dw_uart_reg {
+  uint32_t DATA; /* data in/out and DLL */
+  uint32_t RES1[4];
+  uint32_t LSR; /* Line Status Register */
+  uint32_t RES2[25];
+  uint32_t USR; /* UART status register */
+  uint32_t RES3[29];
+  uint32_t CPR; /* Component parameter register */
+} DW_UART_REG;
+
+
 
 // For simplicity we assume U-boot has already initialized debug console during 
 // application loading (or on reset). Hence, we use only status and data registers 
@@ -39,21 +57,6 @@ limitations under the License.
 // (https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_osp)
 // TODO: Consider U-Boot API to do it in a less "hacky" way.
 void DbgUartSendStr(const char* s) {
-#define EMSDP_DBG_UART_BASE     (0xF0004000U)
-#define DW_UART_CPR_FIFO_STAT   (1<<10)
-#define DW_UART_USR_TFNF        (0x02)
-#define DW_UART_LSR_TXD_EMPTY   (0x20)
-
-  typedef volatile struct dw_uart_reg {
-    uint32_t DATA;		/*!< data in/out and DLL */
-    uint32_t RES1[4];
-    uint32_t LSR;		/*!< Line Status Register */
-    uint32_t RES2[25];
-    uint32_t USR;		/*!< UART status register */
-    uint32_t RES3[29];
-    uint32_t CPR;		/*!< Component parameter register */
-  } DW_UART_REG;
-
   DW_UART_REG* uart_reg_ptr = (DW_UART_REG*)(EMSDP_DBG_UART_BASE);
   const char* src = s;
   while (*src) {
