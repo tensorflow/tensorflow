@@ -558,6 +558,10 @@ class PyLocalExecutable {
       absl::Span<PyLocalBuffer* const> argument_handles,
       const ExecuteOptions& options) const;
 
+  StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> ExecuteOnLocalDevice(
+      absl::Span<PyLocalBuffer* const> argument_handles, Device* device,
+      const ExecuteOptions& options) const;
+
   // Execute on local devices. Takes a sequence of argument lists (one argument
   // list per local device) and returns a tuple of results (one result per local
   // device). The number of argument lists must be equal to the local device
