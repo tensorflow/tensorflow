@@ -25,6 +25,8 @@
        This used to happen implicitly in `Model._standardize_user_data`. Long-term, a solution where the 
        `DataAdapter` doesn't need to call the Model is probably preferable.
   * The SavedModel format now supports all Keras built-in layers (including metrics, preprocessing layers, and stateful RNN layers)
+  * Update Keras batch normalization layer to use the running mean and average computation in the `fused_batch_norm`. You should see significant performance improvements when using `fused_batch_norm` in Eager mode.
+
 * `tf.lite`:
   * Enable TFLite experimental new converter by default.
 * XLA
