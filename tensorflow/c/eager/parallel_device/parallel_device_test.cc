@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/eager/parallel_device/parallel_device.h"
 
+#include <array>
+
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api.h"
