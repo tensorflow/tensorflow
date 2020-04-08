@@ -705,7 +705,7 @@ bool AlternateMemoryBestFitHeap::AreIntervalsReservedInAlternateMemory(
 }
 
 void AlternateMemoryBestFitHeap::UncommitPendingChunks() {
-  for (auto interval_and_chunk : pending_chunks_) {
+  for (const auto& interval_and_chunk : pending_chunks_) {
     const BufferInterval& interval = interval_and_chunk.first;
     const Chunk& chunk = interval_and_chunk.second.chunk;
     interval_tree_.Remove(interval.start, interval.end, chunk);

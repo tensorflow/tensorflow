@@ -598,8 +598,8 @@ class Permute(Layer):
 class Flatten(Layer):
   """Flattens the input. Does not affect the batch size.
 
-  If inputs are shaped `(batch,)` without a channel dimension, then flattening
-  adds an extra channel dimension and output shapes are `(batch, 1)`.
+  Note: If inputs are shaped `(batch,)` without a feature axis, then
+  flattening adds an extra channel dimension and output shape is `(batch, 1)`.
 
   Arguments:
     data_format: A string,
@@ -614,16 +614,15 @@ class Flatten(Layer):
 
   Example:
 
-  ```python
-  model = Sequential()
-  model.add(Convolution2D(64, 3, 3,
-                          border_mode='same',
-                          input_shape=(3, 32, 32)))
-  # now: model.output_shape == (None, 64, 32, 32)
+  >>> model = tf.keras.Sequential()
+  >>> model.add(tf.keras.layers.Conv2D(64, 3, 3, input_shape=(3, 32, 32)))
+  >>> model.output_shape
+  (None, 1, 10, 64)
 
-  model.add(Flatten())
-  # now: model.output_shape == (None, 65536)
-  ```
+  >>> model.add(Flatten())
+  >>> model.output_shape
+  (None, 640)
+
   """
 
   def __init__(self, data_format=None, **kwargs):

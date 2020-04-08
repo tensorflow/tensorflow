@@ -35,20 +35,20 @@ from tensorflow.python.util.tf_export import keras_export
 WHITELIST_FORMATS = ('.bmp', '.gif', '.jpeg', '.jpg', '.png')
 
 
-@keras_export('keras.preprocessing.image.dataset_from_directory', v1=[])
-def dataset_from_directory(directory,
-                           labels='inferred',
-                           label_mode='int',
-                           class_names=None,
-                           color_mode='rgb',
-                           batch_size=32,
-                           image_size=(256, 256),
-                           shuffle=True,
-                           seed=None,
-                           validation_split=None,
-                           subset=None,
-                           interpolation='bilinear',
-                           follow_links=False):
+@keras_export('keras.preprocessing.image_dataset_from_directory', v1=[])
+def image_dataset_from_directory(directory,
+                                 labels='inferred',
+                                 label_mode='int',
+                                 class_names=None,
+                                 color_mode='rgb',
+                                 batch_size=32,
+                                 image_size=(256, 256),
+                                 shuffle=True,
+                                 seed=None,
+                                 validation_split=None,
+                                 subset=None,
+                                 interpolation='bilinear',
+                                 follow_links=False):
   """Generates a Dataset from image files in a directory.
 
   If your directory structure is:

@@ -29651,6 +29651,14 @@ func ResourceSparseApplyFtrlUseLocking(value bool) ResourceSparseApplyFtrlAttr {
 	}
 }
 
+// ResourceSparseApplyFtrlMultiplyLinearByLr sets the optional multiply_linear_by_lr attribute to value.
+// If not specified, defaults to false
+func ResourceSparseApplyFtrlMultiplyLinearByLr(value bool) ResourceSparseApplyFtrlAttr {
+	return func(m optionalAttr) {
+		m["multiply_linear_by_lr"] = value
+	}
+}
+
 // Update relevant entries in '*var' according to the Ftrl-proximal scheme.
 //
 // That is for rows we have grad for, we update var, accum and linear as follows:
@@ -30661,6 +30669,14 @@ type ResourceApplyFtrlV2Attr func(optionalAttr)
 func ResourceApplyFtrlV2UseLocking(value bool) ResourceApplyFtrlV2Attr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
+	}
+}
+
+// ResourceApplyFtrlV2MultiplyLinearByLr sets the optional multiply_linear_by_lr attribute to value.
+// If not specified, defaults to false
+func ResourceApplyFtrlV2MultiplyLinearByLr(value bool) ResourceApplyFtrlV2Attr {
+	return func(m optionalAttr) {
+		m["multiply_linear_by_lr"] = value
 	}
 }
 
@@ -36051,6 +36067,14 @@ type ResourceApplyFtrlAttr func(optionalAttr)
 func ResourceApplyFtrlUseLocking(value bool) ResourceApplyFtrlAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
+	}
+}
+
+// ResourceApplyFtrlMultiplyLinearByLr sets the optional multiply_linear_by_lr attribute to value.
+// If not specified, defaults to false
+func ResourceApplyFtrlMultiplyLinearByLr(value bool) ResourceApplyFtrlAttr {
+	return func(m optionalAttr) {
+		m["multiply_linear_by_lr"] = value
 	}
 }
 
@@ -42254,6 +42278,14 @@ type ResourceSparseApplyFtrlV2Attr func(optionalAttr)
 func ResourceSparseApplyFtrlV2UseLocking(value bool) ResourceSparseApplyFtrlV2Attr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
+	}
+}
+
+// ResourceSparseApplyFtrlV2MultiplyLinearByLr sets the optional multiply_linear_by_lr attribute to value.
+// If not specified, defaults to false
+func ResourceSparseApplyFtrlV2MultiplyLinearByLr(value bool) ResourceSparseApplyFtrlV2Attr {
+	return func(m optionalAttr) {
+		m["multiply_linear_by_lr"] = value
 	}
 }
 

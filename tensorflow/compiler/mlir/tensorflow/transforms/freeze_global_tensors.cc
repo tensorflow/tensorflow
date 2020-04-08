@@ -42,7 +42,7 @@ namespace {
 // support resources/variables . Further, this contract also ensures that this
 // pass lowers from saved model to pure TF. Hence it fails, if it cannot lower.
 struct FreezeGlobalTensorsPass
-    : public OperationPass<FreezeGlobalTensorsPass, ModuleOp> {
+    : public PassWrapper<FreezeGlobalTensorsPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -113,7 +113,7 @@ static PassRegistration<FreezeGlobalTensorsPass> pass(
     "tf-saved-model-freeze-global-tensors",
     "Freeze tf_saved_model.global_tensor's in func bodies.");
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateFreezeGlobalTensorsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeGlobalTensorsPass() {
   return std::make_unique<FreezeGlobalTensorsPass>();
 }
 

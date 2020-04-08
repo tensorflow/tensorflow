@@ -249,6 +249,47 @@ struct ApplyFtrlV2<CPUDevice, T> {
 };
 
 template <typename T>
+struct ApplyFtrlV2MultiplyLinearByLr<CPUDevice, T> {
+  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::Flat linear,
+                  typename TTypes<T>::ConstFlat grad,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar l1,
+                  typename TTypes<T>::ConstScalar l2,
+                  typename TTypes<T>::ConstScalar l2_shrinkage,
+                  typename TTypes<T>::ConstScalar lr_power) {
+    auto grad_with_shrinkage = grad + static_cast<T>(2) * l2_shrinkage() * var;
+    auto new_accum = accum + grad * grad;
+    // special case for which lr_power=-0.5.
+    if (lr_power() == static_cast<T>(-0.5)) {
+      linear.device(d) +=
+          grad_with_shrinkage * lr() - (new_accum.sqrt() - accum.sqrt()) * var;
+    } else {
+      linear.device(d) +=
+          grad_with_shrinkage * lr() -
+          (new_accum.pow(-lr_power()) - accum.pow(-lr_power())) * var;
+    }
+    auto x = (linear.constant(l1() * lr()) * linear.sign() - linear);
+    if (lr_power() == static_cast<T>(-0.5)) {
+      auto y =
+          new_accum.sqrt() + linear.constant(static_cast<T>(2) * l2() * lr());
+      auto pre_shrink = x / y;
+      var.device(d) = (linear.abs() > linear.constant(l1() * lr()))
+                          .select(pre_shrink, var.constant(static_cast<T>(0)));
+
+    } else {
+      auto y = new_accum.pow(-lr_power()) +
+               linear.constant(static_cast<T>(2) * l2() * lr());
+      auto pre_shrink = x / y;
+      var.device(d) = (linear.abs() > linear.constant(l1() * lr()))
+                          .select(pre_shrink, var.constant(static_cast<T>(0)));
+    }
+    accum.device(d) += grad * grad;
+  }
+};
+
+template <typename T>
 struct ApplyFtrl<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
@@ -280,6 +321,44 @@ struct ApplyFtrl<CPUDevice, T> {
                linear.constant(static_cast<T>(2) * l2());
       auto pre_shrink = x / y;
       var.device(d) = (linear.abs() > linear.constant(l1()))
+                          .select(pre_shrink, var.constant(static_cast<T>(0)));
+    }
+    accum.device(d) += grad.square();
+  }
+};
+
+template <typename T>
+struct ApplyFtrlMultiplyLinearByLr<CPUDevice, T> {
+  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::Flat linear,
+                  typename TTypes<T>::ConstFlat grad,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar l1,
+                  typename TTypes<T>::ConstScalar l2,
+                  typename TTypes<T>::ConstScalar lr_power) {
+    auto new_accum = accum + grad.square();
+    // special case for which lr_power=-0.5.
+    if (lr_power() == static_cast<T>(-0.5)) {
+      linear.device(d) += grad * lr() - (new_accum.sqrt() - accum.sqrt()) * var;
+    } else {
+      linear.device(d) +=
+          grad * lr() -
+          (new_accum.pow(-lr_power()) - accum.pow(-lr_power())) * var;
+    }
+    auto x = (linear.constant(l1()) * lr() * linear.sign() - linear);
+    if (lr_power() == static_cast<T>(-0.5)) {
+      auto y =
+          new_accum.sqrt() + linear.constant(static_cast<T>(2) * l2() * lr());
+      auto pre_shrink = x / y;
+      var.device(d) = (linear.abs() > linear.constant(l1() * lr()))
+                          .select(pre_shrink, var.constant(static_cast<T>(0)));
+
+    } else {
+      auto y = new_accum.pow(-lr_power()) +
+               linear.constant(static_cast<T>(2) * l2() * lr());
+      auto pre_shrink = x / y;
+      var.device(d) = (linear.abs() > linear.constant(l1() * lr()))
                           .select(pre_shrink, var.constant(static_cast<T>(0)));
     }
     accum.device(d) += grad.square();
@@ -1556,16 +1635,28 @@ namespace {
 
 template <typename T>
 inline T FtrlCompute(const T& accum, const T& linear, const T& lr, const T& l1,
-                     const T& l2, const T& lr_power) {
+                     const T& l2, const T& lr_power,
+                     const bool multiply_linear_by_lr) {
   T quadratic;
-  if (lr_power == static_cast<T>(-0.5)) {
-    quadratic = Eigen::numext::sqrt(accum) / lr + static_cast<T>(2) * l2;
+  if (multiply_linear_by_lr) {
+    if (lr_power == static_cast<T>(-0.5)) {
+      quadratic = Eigen::numext::sqrt(accum) + static_cast<T>(2) * l2 * lr;
+    } else {
+      quadratic =
+          Eigen::numext::pow(accum, -lr_power) + static_cast<T>(2) * l2 * lr;
+    }
+    auto l1_reg_adjust = std::max(std::min(linear, l1 * lr), -l1 * lr);
+    return (l1_reg_adjust - linear) / quadratic;
   } else {
-    quadratic =
-        Eigen::numext::pow(accum, -lr_power) / lr + static_cast<T>(2) * l2;
+    if (lr_power == static_cast<T>(-0.5)) {
+      quadratic = Eigen::numext::sqrt(accum) / lr + static_cast<T>(2) * l2;
+    } else {
+      quadratic =
+          Eigen::numext::pow(accum, -lr_power) / lr + static_cast<T>(2) * l2;
+    }
+    auto l1_reg_adjust = std::max(std::min(linear, l1), -l1);
+    return (l1_reg_adjust - linear) / quadratic;
   }
-  auto l1_reg_adjust = std::max(std::min(linear, l1), -l1);
-  return (l1_reg_adjust - linear) / quadratic;
 }
 }  // namespace
 
@@ -2392,6 +2483,8 @@ class ApplyFtrlOp : public OpKernel {
  public:
   explicit ApplyFtrlOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("multiply_linear_by_lr", &multiply_linear_by_lr_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -2466,10 +2559,22 @@ class ApplyFtrlOp : public OpKernel {
           errors::InvalidArgument("l2 shrinkage regularization strength "
                                   "is not a scalar: ",
                                   l2_shrinkage.shape().DebugString()));
-      functor::ApplyFtrlV2<Device, T>()(
+      if (multiply_linear_by_lr_) {
+        functor::ApplyFtrlV2<Device, T>()(
+            device, var.flat<T>(), accum.flat<T>(), linear.flat<T>(),
+            grad.flat<T>(), lr.scalar<T>(), l1.scalar<T>(), l2.scalar<T>(),
+            l2_shrinkage.scalar<T>(), lr_power.scalar<T>());
+      } else {
+        functor::ApplyFtrlV2MultiplyLinearByLr<Device, T>()(
+            device, var.flat<T>(), accum.flat<T>(), linear.flat<T>(),
+            grad.flat<T>(), lr.scalar<T>(), l1.scalar<T>(), l2.scalar<T>(),
+            l2_shrinkage.scalar<T>(), lr_power.scalar<T>());
+      }
+    } else if (multiply_linear_by_lr_) {
+      functor::ApplyFtrlMultiplyLinearByLr<Device, T>()(
           device, var.flat<T>(), accum.flat<T>(), linear.flat<T>(),
           grad.flat<T>(), lr.scalar<T>(), l1.scalar<T>(), l2.scalar<T>(),
-          l2_shrinkage.scalar<T>(), lr_power.scalar<T>());
+          lr_power.scalar<T>());
     } else {
       functor::ApplyFtrl<Device, T>()(device, var.flat<T>(), accum.flat<T>(),
                                       linear.flat<T>(), grad.flat<T>(),
@@ -2482,6 +2587,7 @@ class ApplyFtrlOp : public OpKernel {
 
  private:
   bool use_exclusive_lock_;
+  bool multiply_linear_by_lr_;
 };
 
 #define REGISTER_KERNELS(D, T)                                     \
@@ -2559,7 +2665,16 @@ namespace functor {
       typename TTypes<T>::ConstScalar l1, typename TTypes<T>::ConstScalar l2, \
       typename TTypes<T>::ConstScalar l2_shrinkage,                           \
       typename TTypes<T>::ConstScalar lr_power);                              \
-  extern template struct ApplyFtrlV2<GPUDevice, T>;
+  extern template struct ApplyFtrlV2<GPUDevice, T>;                           \
+  template <>                                                                 \
+  void ApplyFtrlV2MultiplyLinearByLr<GPUDevice, T>::operator()(               \
+      const GPUDevice& d, typename TTypes<T>::Flat var,                       \
+      typename TTypes<T>::Flat accum, typename TTypes<T>::Flat linear,        \
+      typename TTypes<T>::ConstFlat grad, typename TTypes<T>::ConstScalar lr, \
+      typename TTypes<T>::ConstScalar l1, typename TTypes<T>::ConstScalar l2, \
+      typename TTypes<T>::ConstScalar l2_shrinkage,                           \
+      typename TTypes<T>::ConstScalar lr_power);                              \
+  extern template struct ApplyFtrlV2MultiplyLinearByLr<GPUDevice, T>;
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
@@ -2579,6 +2694,8 @@ class SparseApplyFtrlOp : public OpKernel {
  public:
   explicit SparseApplyFtrlOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("multiply_linear_by_lr", &multiply_linear_by_lr_));
   }
 
   void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
@@ -2714,24 +2831,53 @@ class SparseApplyFtrlOp : public OpKernel {
 // eigen tensor library.
 #define COMPUTE_FTRL(grad, grad_maybe_with_shrinkage)                          \
   auto new_accum = accum + grad.square();                                      \
-  if (lr_power_scalar == static_cast<T>(-0.5)) {                               \
-    linear += grad_maybe_with_shrinkage -                                      \
-              (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;             \
+  if (multiply_linear_by_lr_) {                                                \
+    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
+      linear += grad_maybe_with_shrinkage * lr_scalar -                        \
+                (new_accum.sqrt() - accum.sqrt()) * var;                       \
+    } else {                                                                   \
+      linear +=                                                                \
+          grad_maybe_with_shrinkage * lr_scalar -                              \
+          (new_accum.pow(-lr_power_scalar) - accum.pow(-lr_power_scalar)) *    \
+              var;                                                             \
+    }                                                                          \
   } else {                                                                     \
-    linear += grad_maybe_with_shrinkage - (new_accum.pow(-lr_power_scalar) -   \
-                                           accum.pow(-lr_power_scalar)) /      \
-                                              lr_scalar * var;                 \
+    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
+      linear += grad_maybe_with_shrinkage -                                    \
+                (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;           \
+    } else {                                                                   \
+      linear += grad_maybe_with_shrinkage - (new_accum.pow(-lr_power_scalar) - \
+                                             accum.pow(-lr_power_scalar)) /    \
+                                                lr_scalar * var;               \
+    }                                                                          \
   }                                                                            \
-  auto l1_reg_adjust = linear.cwiseMin(l1_scalar).cwiseMax(-l1_scalar);        \
+  auto l1_reg_adjust =                                                         \
+      (multiply_linear_by_lr_                                                  \
+           ? linear.cwiseMin(l1_scalar * lr_scalar)                            \
+                 .cwiseMax(-l1_scalar * lr_scalar)                             \
+           : linear.cwiseMin(l1_scalar).cwiseMax(-l1_scalar));                 \
   auto x = l1_reg_adjust - linear;                                             \
-  if (lr_power_scalar == static_cast<T>(-0.5)) {                               \
-    auto y = new_accum.sqrt() / new_accum.constant(lr_scalar) +                \
-             linear.constant(static_cast<T>(2) * l2_scalar);                   \
-    var = x / y;                                                               \
+  if (multiply_linear_by_lr_) {                                                \
+    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
+      auto y = new_accum.sqrt() +                                              \
+               linear.constant(static_cast<T>(2) * l2_scalar * lr_scalar);     \
+      var = x / y;                                                             \
+    } else {                                                                   \
+      auto y = new_accum.pow(-lr_power_scalar) +                               \
+               linear.constant(static_cast<T>(2) * l2_scalar * lr_scalar);     \
+      var = x / y;                                                             \
+    }                                                                          \
   } else {                                                                     \
-    auto y = new_accum.pow(-lr_power_scalar) / new_accum.constant(lr_scalar) + \
-             linear.constant(static_cast<T>(2) * l2_scalar);                   \
-    var = x / y;                                                               \
+    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
+      auto y = new_accum.sqrt() / new_accum.constant(lr_scalar) +              \
+               linear.constant(static_cast<T>(2) * l2_scalar);                 \
+      var = x / y;                                                             \
+    } else {                                                                   \
+      auto y =                                                                 \
+          new_accum.pow(-lr_power_scalar) / new_accum.constant(lr_scalar) +    \
+          linear.constant(static_cast<T>(2) * l2_scalar);                      \
+      var = x / y;                                                             \
+    }                                                                          \
   }                                                                            \
   accum += grad.square();
 
@@ -2781,10 +2927,13 @@ class SparseApplyFtrlOp : public OpKernel {
           T updated_a = a + grad_flat(i) * grad_flat(i);
           using Eigen::numext::pow;
           T sigma = pow(updated_a, -lr_power_scalar) - pow(a, -lr_power_scalar);
-          sigma /= lr_scalar;
-          T updated_l = l + g - sigma * v;
+          if (!multiply_linear_by_lr_) {
+            sigma /= lr_scalar;
+          }
+          T updated_l = (multiply_linear_by_lr_ ? l + g * lr_scalar - sigma * v
+                                                : l + g - sigma * v);
           v = FtrlCompute(updated_a, updated_l, lr_scalar, l1_scalar, l2_scalar,
-                          lr_power_scalar);
+                          lr_power_scalar, multiply_linear_by_lr_);
           a = updated_a;
           l = updated_l;
         }
@@ -2796,6 +2945,7 @@ class SparseApplyFtrlOp : public OpKernel {
 
  private:
   bool use_exclusive_lock_;
+  bool multiply_linear_by_lr_;
 };
 
 #define REGISTER_KERNELS(T, Tindices)                                         \

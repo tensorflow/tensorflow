@@ -33,7 +33,7 @@ namespace {
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_optimize.inc"
 
 // Canonicalize operations in functions.
-struct TFOptimizePass : public FunctionPass<TFOptimizePass> {
+struct TFOptimizePass : public PassWrapper<TFOptimizePass, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     auto func = getFunction();
@@ -71,7 +71,7 @@ void CreateTFStandardPipeline(OpPassManager &pm,
   pm.addNestedPass<FuncOp>(createCSEPass());
 }
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTFOptimizePass() {
   return std::make_unique<TFOptimizePass>();
 }
 

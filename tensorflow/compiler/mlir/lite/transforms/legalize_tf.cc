@@ -70,7 +70,7 @@ constexpr char kUnidirectionalSequenceRnn[] = "tf.UnidirectionalSequenceRnn";
 constexpr char kTfLiteInputIndices[] = "_tflite_input_indices";
 
 // Legalize operations in functions.
-struct LegalizeTF : public FunctionPass<LegalizeTF> {
+struct LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -763,7 +763,7 @@ void LegalizeTF::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeTFPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass() {
   return std::make_unique<LegalizeTF>();
 }
 

@@ -199,7 +199,6 @@ func @testAddV2OfNegLeft(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> te
   %0 = "tf.Neg"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
   %1 = "tf.AddV2"(%0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
   return %1: tensor<8x16xf32>
-
 // CHECK: %0 = "tf.Sub"(%arg1, %arg0) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
 // CHECK: return %0
 }
@@ -419,8 +418,8 @@ func @ToBool_0DScalar(%arg0: tensor<i1>) -> tensor<i1> {
   return %0 : tensor<i1>
 }
 
-// CHECK-LABEL: testReadVariableOfOfCast
-func @testReadVariableOfOfCast(%arg0: tensor<!tf.resource<tensor<8x40xf32>>>) -> tensor<8x40xf32> {
+// CHECK-LABEL: testReadVariableOpOfCast
+func @testReadVariableOpOfCast(%arg0: tensor<!tf.resource<tensor<8x40xf32>>>) -> tensor<8x40xf32> {
   %0 = "tf.Cast"(%arg0) : (tensor<!tf.resource<tensor<8x40xf32>>>) -> tensor<*x!tf.resource>
   %1 = "tf.ReadVariableOp"(%0) : (tensor<*x!tf.resource>) -> tensor<8x40xf32>
   return %1: tensor<8x40xf32>
@@ -429,8 +428,8 @@ func @testReadVariableOfOfCast(%arg0: tensor<!tf.resource<tensor<8x40xf32>>>) ->
 // CHECK: return %0
 }
 
-// CHECK-LABEL: testReadVariableOfOfCastWithTruncate
-func @testReadVariableOfOfCastWithTruncate(%arg0: tensor<!tf.resource<tensor<8x40xf32>>>) -> tensor<8x40xf32> {
+// CHECK-LABEL: testReadVariableOpOfCastWithTruncate
+func @testReadVariableOpOfCastWithTruncate(%arg0: tensor<!tf.resource<tensor<8x40xf32>>>) -> tensor<8x40xf32> {
   %0 = "tf.Cast"(%arg0) {Truncate = true} : (tensor<!tf.resource<tensor<8x40xf32>>>) -> tensor<*x!tf.resource>
   %1 = "tf.ReadVariableOp"(%0) : (tensor<*x!tf.resource>) -> tensor<8x40xf32>
   return %1: tensor<8x40xf32>
@@ -439,8 +438,8 @@ func @testReadVariableOfOfCastWithTruncate(%arg0: tensor<!tf.resource<tensor<8x4
 // CHECK: return %0
 }
 
-// CHECK-LABEL: testReadVariableOfOfCastMultiUse
-func @testReadVariableOfOfCastMultiUse(%arg0: tensor<!tf.resource<tensor<f32>>>) -> tensor<f32> {
+// CHECK-LABEL: testReadVariableOpOfCastMultiUse
+func @testReadVariableOpOfCastMultiUse(%arg0: tensor<!tf.resource<tensor<f32>>>) -> tensor<f32> {
   %0 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource>
   %1 = "tf.ReadVariableOp"(%0) : (tensor<*x!tf.resource>) -> tensor<f32>
   "tf.AssignVariableOp"(%0, %1) : (tensor<*x!tf.resource>, tensor<f32>) -> ()
@@ -452,3 +451,14 @@ func @testReadVariableOfOfCastMultiUse(%arg0: tensor<!tf.resource<tensor<f32>>>)
  // CHECK: return %1
 }
 
+// CHECK-LABEL: testMultiReadVariableOpsOfCast
+func @testMultiReadVariableOpsOfCast(%arg0: tensor<!tf.resource<tensor<f32>>>) -> tensor<f32> {
+  %0 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<!tf.resource<tensor<f32>>>) -> tensor<*x!tf.resource>
+  %1 = "tf.ReadVariableOp"(%0) : (tensor<*x!tf.resource>) -> tensor<f32>
+  %2 = "tf.ReadVariableOp"(%0) : (tensor<*x!tf.resource>) -> tensor<f32>
+  return %2: tensor<f32>
+
+ // CHECK: %0 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
+ // CHECK: %1 = "tf.ReadVariableOp"(%arg0) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<f32>
+ // CHECK: return %1
+}

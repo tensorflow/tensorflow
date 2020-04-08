@@ -50,8 +50,12 @@ class AnfTestBase(test.TestCase):
 
   def _simple_context(self):
     entity_info = transformer.EntityInfo(
-        source_code=None, source_file=None, future_features=(), namespace=None)
-    return transformer.Context(entity_info)
+        name='test_fn',
+        source_code=None,
+        source_file=None,
+        future_features=(),
+        namespace=None)
+    return transformer.Context(entity_info, None, None)
 
   def assert_same_ast(self, expected_node, node, msg=None):
     expected_source = parser.unparse(expected_node, indentation='  ')

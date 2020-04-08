@@ -243,7 +243,7 @@ bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
   // and warn when a file is not used to ease catching typo in filename.
   std::string prefix = xla::FilenameFor(*module, "", *ptx);
   std::string matched_filename;
-  for (const string full_filename :
+  for (const string& full_filename :
        module->config().debug_options().xla_gpu_ptx_file()) {
     // To ease comparing many PTX versions, accept different suffixes then
     // the original filename.

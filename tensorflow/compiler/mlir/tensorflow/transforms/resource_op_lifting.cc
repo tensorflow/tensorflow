@@ -132,7 +132,7 @@ namespace {
 // }
 //
 struct ResourceOpLiftingPass
-    : public OperationPass<ResourceOpLiftingPass, ModuleOp> {
+    : public PassWrapper<ResourceOpLiftingPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -1071,7 +1071,8 @@ void ResourceOpLiftingPass::runOnOperation() {
 }
 
 struct ResourceOpLiftingForMainFunctionPass
-    : public OperationPass<ResourceOpLiftingForMainFunctionPass, ModuleOp> {
+    : public PassWrapper<ResourceOpLiftingForMainFunctionPass,
+                         OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -1100,7 +1101,7 @@ static PassRegistration<ResourceOpLiftingPass> pass(
 }  // namespace
 
 namespace TFDevice {
-std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceOpLiftingPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateResourceOpLiftingPass() {
   return std::make_unique<ResourceOpLiftingPass>();
 }
 }  // namespace TFDevice

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -34,8 +35,8 @@ Status Monitor(const string& service_addr, int duration_ms,
 // given logdir. If no trace was collected, retries tracing for
 // num_tracing_attempts.
 Status Trace(const string& service_addr, const string& logdir,
-             const string& workers_list, bool include_dataset_ops,
-             int duration_ms, int num_tracing_attempts);
+             const string& workers_list, int duration_ms,
+             int num_tracing_attempts, const ProfileOptions& opts);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_LHLO_DIALECT_EMITTER_H_
 
 #include <memory>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -55,6 +56,7 @@ class LhloDialectEmitter : public DfsHloVisitorWithDefault,
   Status DefaultAction(HloInstruction* instr) override;
   Status HandleBroadcast(HloInstruction* instr) override;
   Status HandleCompare(HloInstruction* instr) override;
+  Status HandleConcatenate(HloInstruction* instr) override;
   Status HandleConstant(HloInstruction* instr) override;
   Status HandleCustomCall(HloInstruction* instr) override;
   Status HandleFusion(HloInstruction* instr) override;

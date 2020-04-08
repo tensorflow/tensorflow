@@ -24,7 +24,8 @@ namespace {
 
 // This pass verifies that the operands and results types are supported by
 // TFLite runtime.
-class RuntimeTypeVerifyPass : public mlir::FunctionPass<RuntimeTypeVerifyPass> {
+class RuntimeTypeVerifyPass
+    : public mlir::PassWrapper<RuntimeTypeVerifyPass, FunctionPass> {
  public:
   explicit RuntimeTypeVerifyPass() {}
 
@@ -43,7 +44,7 @@ void RuntimeTypeVerifyPass::runOnFunction() {
 }  // namespace
 
 // Verifies runtime supports types used.
-std::unique_ptr<OpPassBase<FuncOp>> CreateRuntimeTypeVerifyPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeTypeVerifyPass() {
   return std::make_unique<RuntimeTypeVerifyPass>();
 }
 

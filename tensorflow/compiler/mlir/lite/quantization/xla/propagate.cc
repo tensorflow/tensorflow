@@ -50,7 +50,8 @@ namespace {
 // - The quantization spec for the ops
 // The propagation results should assign quantization types to all the tensors
 // and the two restrictions are respected.
-struct PropagateQuantPass : public FunctionPass<PropagateQuantPass> {
+struct PropagateQuantPass
+    : public PassWrapper<PropagateQuantPass, FunctionPass> {
   explicit PropagateQuantPass() = default;
   PropagateQuantPass(const PropagateQuantPass &) {}
 
@@ -96,7 +97,7 @@ void PropagateQuantPass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the xla_hlo dialect quantization propagation pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreatePropagateQuantPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreatePropagateQuantPass() {
   return std::make_unique<PropagateQuantPass>();
 }
 

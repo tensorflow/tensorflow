@@ -1759,7 +1759,7 @@ Rounds the values of a tensor to the nearest integer, element-wise.
 }
 
 def TFL_SliceOp : TFL_Op<"slice", [
-    NoSideEffect, SameOperandsAndResultsScale]> {
+    NoSideEffect, SameOperandsAndResultsScale, TFL_GpuTargetOp]> {
   let summary = "Return a slice from 'input'.";
 
   let description = [{
@@ -1988,7 +1988,8 @@ def TFL_PadOp : TFL_Op<"pad", [
     NoSideEffect,
     SameOperandsAndResultsScale,
     TFL_OperandHasRank<1, 2>,
-    TFL_OperandRankEquals1DimOfOperand<0, 1>]> {
+    TFL_OperandRankEquals1DimOfOperand<0, 1>,
+    TFL_GpuTargetOp]> {
   let summary = "Padding operator";
 
   let description = [{
@@ -2571,7 +2572,8 @@ def TFL_TransposeOp : TFL_Op<"transpose",
    // TFL_OperandRankEquals1DimOfOperand<0, 1>,
    PredOpTrait<"input and output must have same element type",
    TCresVTEtIsSameAsOp<0, 0>>,
-   SameOperandsAndResultsScale]> {
+   SameOperandsAndResultsScale,
+   TFL_GpuTargetOp]> {
   let summary = "Transpose operator";
 
   let description = [{
@@ -2883,7 +2885,8 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice",
     NoSideEffect,
     PredOpTrait<"input and output must have same element type",
     TFL_TCresVTEtIsSameAsOp<0, 0>>,
-    SameOperandsAndResultsScale
+    SameOperandsAndResultsScale,
+    TFL_GpuTargetOp
   ]> {
   let summary = "StridedSlice Op";
 

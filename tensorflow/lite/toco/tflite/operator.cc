@@ -64,7 +64,7 @@ namespace tflite {
 ::tflite::OpSignature GetVersioningOpSig(
     const ::tflite::BuiltinOperator op, const OperatorSignature& op_signature) {
   std::vector<::tflite::TensorType> input_types, output_types;
-  for (auto input_name : op_signature.op->inputs) {
+  for (const auto& input_name : op_signature.op->inputs) {
     ::tflite::TensorType input_type = static_cast<::tflite::TensorType>(-1);
     if (op_signature.model->HasArray(input_name)) {
       const Array& input_array = op_signature.model->GetArray(input_name);
@@ -72,7 +72,7 @@ namespace tflite {
     }
     input_types.push_back(input_type);
   }
-  for (auto output_name : op_signature.op->outputs) {
+  for (const auto& output_name : op_signature.op->outputs) {
     ::tflite::TensorType output_type = static_cast<::tflite::TensorType>(-1);
     if (op_signature.model->HasArray(output_name)) {
       const Array& output_array = op_signature.model->GetArray(output_name);

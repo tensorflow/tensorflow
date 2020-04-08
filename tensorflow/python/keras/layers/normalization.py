@@ -38,6 +38,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.platform import device_context
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
@@ -546,7 +547,8 @@ class BatchNormalizationBase(Layer):
     use_fused_avg_updates = (
         compat.forward_compatible(2020, 3, 6) and
         ops.executing_eagerly_outside_functions() and
-        isinstance(self.momentum, (float, int)))
+        isinstance(self.momentum, (float, int)) and
+        device_context.enclosing_tpu_context() is None)
     if use_fused_avg_updates:
       exponential_avg_factor = 1.0 - self.momentum
     else:

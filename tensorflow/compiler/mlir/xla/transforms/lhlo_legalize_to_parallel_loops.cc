@@ -287,7 +287,7 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
                                                  : *outer_ivs_it++);
       }
     } else {
-      indices = ValueRange(inner.getInductionVars());
+      indices = inner.getInductionVars();
     }
 
     rewriter->setInsertionPointToStart(inner.getBody());
@@ -409,8 +409,7 @@ class ReduceWindowOpConverter
 
     Value reduction_result = *window_loop.getResults().begin();
     auto output_ivs = output_loop.getInductionVars();
-    rewriter->create<StoreOp>(loc, reduction_result, xla_output,
-                              ValueRange{output_ivs});
+    rewriter->create<StoreOp>(loc, reduction_result, xla_output, output_ivs);
     return std::make_pair(output_loop, window_loop);
   }
 
@@ -453,7 +452,7 @@ class ReduceWindowOpConverter
 };
 
 struct LhloLegalizeToParallelLoops
-    : public FunctionPass<LhloLegalizeToParallelLoops> {
+    : public PassWrapper<LhloLegalizeToParallelLoops, FunctionPass> {
   void runOnFunction() override {
     auto func = getFunction();
 
@@ -479,7 +478,7 @@ struct LhloLegalizeToParallelLoops
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeLhloToParallelLoopsPass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass() {
   return absl::make_unique<LhloLegalizeToParallelLoops>();
 }
 

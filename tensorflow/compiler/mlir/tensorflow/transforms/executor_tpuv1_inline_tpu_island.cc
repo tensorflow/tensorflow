@@ -43,7 +43,8 @@ constexpr llvm::StringRef kNestedModule = "_tpu_v1_compat_outlined";
 // Inlining the islands calling into the nested module that was outlined.
 // This is the end of the TPU bridge in V1 compatibility mode.
 struct TPUBridgeExecutorIslandInlining
-    : public OperationPass<TPUBridgeExecutorIslandInlining, ModuleOp> {
+    : public PassWrapper<TPUBridgeExecutorIslandInlining,
+                         OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -95,7 +96,7 @@ PassRegistration<TPUBridgeExecutorIslandInlining> tpu_pass(
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorTPUV1IslandInliningPass() {
   return std::make_unique<TPUBridgeExecutorIslandInlining>();
 }

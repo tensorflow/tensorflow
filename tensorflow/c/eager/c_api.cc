@@ -1516,7 +1516,7 @@ void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
   attrs->attributes->FillAttrValueMap(&m);
   tensorflow::EagerOperation* operation = OperationFromInterface(op->operation);
   tensorflow::AttrBuilder* destination = operation->MutableAttrs();
-  for (auto attribute : m) {
+  for (const auto& attribute : m) {
     destination->Set(attribute.first, attribute.second);
   }
 }

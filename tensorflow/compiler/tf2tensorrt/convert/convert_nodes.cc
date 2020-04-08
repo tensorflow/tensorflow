@@ -5738,7 +5738,7 @@ static void RegisterValidatableOpConverters(
        {"FusedBatchNorm", "FusedBatchNormV2", "FusedBatchNormV3"}) {
     (*registration)[normalization_op_type] = ConvertFusedBatchNorm;
   }
-  for (auto unary_op_pair : *UnaryOperationMap()) {
+  for (const auto& unary_op_pair : *UnaryOperationMap()) {
     (*registration)[unary_op_pair.first] = ConvertUnary;
   }
   for (auto reduce_op_type : {"Sum", "Prod", "Max", "Min", "Mean"}) {

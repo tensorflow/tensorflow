@@ -1989,6 +1989,8 @@ _append_init_to_versionscript = rule(
     implementation = _append_init_to_versionscript_impl,
 )
 
+# DO NOT USE! We are in the process of deprecating this. If you use
+# this rule within third_party/tensorflow you will be rolled back. b/153452665
 def tf_py_wrap_cc(
         name,
         srcs = [],

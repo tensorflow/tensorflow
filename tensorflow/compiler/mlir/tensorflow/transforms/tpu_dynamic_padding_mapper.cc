@@ -49,7 +49,7 @@ constexpr char kPaddingMapAttr[] = "padding_map";
 
 namespace {
 struct TPUDynamicPaddingMapper
-    : public OperationPass<TPUDynamicPaddingMapper, ModuleOp> {
+    : public PassWrapper<TPUDynamicPaddingMapper, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -200,7 +200,7 @@ void TPUDynamicPaddingMapper::runOnOperation() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUDynamicPaddingMapperPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicPaddingMapperPass() {
   return std::make_unique<TPUDynamicPaddingMapper>();
 }
 

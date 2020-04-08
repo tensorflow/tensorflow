@@ -179,6 +179,8 @@ cc_library(
         "//tensorflow/c:tensor_interface",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -193,6 +195,7 @@ tf_cuda_library(
     ],
     deps = [
         ":c_api",
+        ":c_api_experimental",
         "//tensorflow/c:c_test_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

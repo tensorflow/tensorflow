@@ -95,6 +95,10 @@ Following ops are supported by the Core ML delegate.
     *   Weights and bias should be constant.
 *   DepthwiseConv2D
     *   Weights and bias should be constant.
+*   FullyConnected (aka Dense or InnerProduct)
+    *   Weights and bias (if present) should be constant.
+    *   Only supports single-batch case. Input dimensions should be 1, except
+        the last dimension.
 *   Hardswish
 *   Logistic (aka Sigmoid)
 *   MaxPool2D

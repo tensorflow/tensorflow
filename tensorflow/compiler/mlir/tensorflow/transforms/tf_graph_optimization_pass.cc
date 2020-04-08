@@ -40,7 +40,9 @@ namespace tensorflow {
 // Optimization Passes and convert back to MLIR.
 // Constraints: This pass expects that all operations in the MLIR module either
 // belong to 'tf' or '_tf' dialect. The output is in '_tf' dialect.
-class GraphOptPass : public mlir::OperationPass<GraphOptPass, mlir::ModuleOp> {
+class GraphOptPass
+    : public mlir::PassWrapper<GraphOptPass,
+                               mlir::OperationPass<mlir::ModuleOp>> {
  public:
   explicit GraphOptPass(std::vector<tensorflow::GraphOptimizationPass*> passes)
       : passes_(std::move(passes)) {}
@@ -166,13 +168,13 @@ class GraphOptByNamePass : public GraphOptPass {
 
 }  // namespace tensorflow
 
-std::unique_ptr<mlir::OpPassBase<mlir::ModuleOp>>
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 tensorflow::CreateTensorFlowGraphOptimizationPass(
     std::vector<tensorflow::GraphOptimizationPass*> tf_passes) {
   return std::make_unique<GraphOptPass>(std::move(tf_passes));
 }
 
-std::unique_ptr<mlir::OpPassBase<mlir::ModuleOp>>
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 tensorflow::CreateTensorFlowGraphOptimizationPass(
     const std::vector<std::string>& pass_names) {
   return std::make_unique<GraphOptByNamePass>(pass_names);
