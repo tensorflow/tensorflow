@@ -30,7 +30,11 @@ namespace TFL {
 class QuantizationSpecs;
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass();
+// When the given run_tfl_runtime_verification value is true, it will check each
+// TFL builtin op towards the TFL runtime capability and the incompatible TF ops
+// will be left in the graph without getting legalized.
+std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass(
+    bool run_tfl_runtime_verification);
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
 std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass();
@@ -91,8 +95,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeTFWhilePass();
 // Creates an instance of the TensorFlow Lite dialect WhileOp outline pass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass();
 
-// Verifies runtime supports types used.
-std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeTypeVerifyPass();
+// Verifies runtime constraints.
+std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeVerifyPass();
 
 }  // namespace TFL
 

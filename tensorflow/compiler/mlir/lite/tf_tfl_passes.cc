@@ -173,7 +173,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(
         mlir::TFL::CreatePrepareTFPass(pass_config.unfold_batch_matmul));
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-    pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
+    pass_manager->addPass(
+        mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());
     // This pass operates on TensorFlow ops but is triggered after legalization
     // so that it can target constants introduced once TensorFlow Identity ops
@@ -255,7 +256,8 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
   // TFLite dialect passes.
   pm.addPass(mlir::TFL::CreatePrepareTFPass(true));
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::TFL::CreateLegalizeTFPass());
+  pm.addPass(
+      mlir::TFL::CreateLegalizeTFPass(/*run_tfl_runtime_verification=*/true));
   pm.addPass(mlir::TFL::CreateOptimizePass());
   pm.addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
 
@@ -268,7 +270,7 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
 
   pm.addPass(mlir::TFL::CreateWhileOutlinePass());
 
-  pm.addPass(mlir::TFL::CreateRuntimeTypeVerifyPass());
+  pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
 }
 
 // Registers a pass pipeline for the standard TFL passes.
