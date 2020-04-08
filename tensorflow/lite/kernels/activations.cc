@@ -818,9 +818,6 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
         const int size =
             MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
 
-        const int16_t* ptr_input_data = GetTensorData<int16_t>(input);
-        int16_t* ptr_output_data = GetTensorData<int16_t>(output);
-
         reference_integer_ops::Tanh(
             data->input_multiplier, data->input_left_shift, size,
             GetTensorData<int16_t>(input), GetTensorData<int16_t>(output));
@@ -895,9 +892,6 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
       if (kernel_type == kReference || (data->input_multiplier > 0)) {
         const int size =
             MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
-
-        int16_t* ptr_output_data = GetTensorData<int16_t>(output);
-        const int16_t* ptr_input_data = GetTensorData<int16_t>(input);
 
         reference_integer_ops::Logistic(data->input_multiplier, size,
                                         GetTensorData<int16_t>(input),
