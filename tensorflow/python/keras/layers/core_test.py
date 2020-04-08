@@ -430,6 +430,12 @@ class CoreLayersTest(keras_parameterized.TestCase):
         kwargs={'target_shape': (-1, 1)},
         input_shape=(None, None, 2))
 
+  def test_reshape_set_static_shape(self):
+    input_layer = keras.Input(batch_shape=(1, None))
+    reshaped = keras.layers.Reshape((1, 100))(input_layer)
+    # Make sure the batch dim is not lost after array_ops.reshape.
+    self.assertEqual(reshaped.shape, [1, 1, 100])
+
   def test_permute(self):
     testing_utils.layer_test(
         keras.layers.Permute, kwargs={'dims': (2, 1)}, input_shape=(3, 2, 4))
