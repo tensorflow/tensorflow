@@ -78,9 +78,12 @@ message GenericRecommendation {
 message OverviewPageRecommendation {
   // Possible performance bottleneck: "host", "device", "both".
   string bottleneck = 1;
-  // A statement that recommends the next steps for investigating the
+  // A statement for input that recommends the next steps for investigating the
   // bottleneck.
   string statement = 2;
+  // A statement for output that recommends the next steps for investigating the
+  // bottleneck.
+  string output_statement = 9;
   // A list of tips for improving host performance.
   repeated OverviewPageTip host_tips = 3;
   // A list of tips for improving device performance.
