@@ -31,6 +31,9 @@ std::unique_ptr<OperationPass<FuncOp>> CreatePropagateQuantPass();
 // Rewrite the graph and quantize the constant.
 std::unique_ptr<OperationPass<FuncOp>> CreateMaterializeToXlaPass();
 
+// Fuse HLO ops into quantized regions.
+std::unique_ptr<OperationPass<FuncOp>> CreateCpuKernelFusionPass();
+
 }  // namespace xla_hlo
 }  // namespace mlir
 

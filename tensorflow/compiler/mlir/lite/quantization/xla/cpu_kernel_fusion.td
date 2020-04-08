@@ -39,6 +39,11 @@ def : Pat<(HLO_AddOp:$add (HLO_MulOp:$mul $_, $_, $_), $_, $_),
           (Fused2Ops<"generic.mul_add"> $mul, $add),
           [(NeedsToBeFused $add)]>;
 
+// add
+def : Pat<(HLO_AddOp:$add $_, $_, $_),
+          (Fused1Ops<"generic.add"> $add),
+          [(NeedsToBeFused $add)]>;
+
 // reduce_window: maxpool, avgpool
 def : Pat<(HLO_ReduceWindowOp:$reduce $_, $_, $_, $_, $_, $_, $_),
           (Fused1Ops<"generic.reduce_window"> $reduce),
