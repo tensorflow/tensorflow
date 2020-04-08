@@ -781,7 +781,6 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
                      proxied_spec)
 
 
-
 class CustomMap(collections_abc.Mapping):
   """Custom, immutable map."""
 

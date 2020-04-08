@@ -359,7 +359,6 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         AttrClass(x=constant_op.constant(0)),
         AttrClass(x=tensor_spec.TensorSpec([], dtypes.int32)))
 
-
   @combinations.generate(test_base.graph_only_combinations())
   def testSameGraphError(self):
     dataset = dataset_ops.Dataset.range(10)
