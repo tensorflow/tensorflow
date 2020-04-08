@@ -7,7 +7,7 @@ namespace micro {
 namespace xcore {
 
 TfLiteRegistration* Register_Conv2D_SIDO();
-TfLiteRegistration* Register_Conv2D_DIDO();
+TfLiteRegistration* Register_Conv2D_Deep();
 TfLiteRegistration* Register_Conv2D_1x1();
 TfLiteRegistration* Register_Conv2D_depthwise();
 TfLiteRegistration* Register_FullyConnected_16();

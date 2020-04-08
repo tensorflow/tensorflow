@@ -81,53 +81,49 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 //**************************************
 //**************************************
 //**************************************
-// Conv2D_Deepin_Deepout
+// Conv2D_Deep
 //**************************************
 //**************************************
 //**************************************
-namespace dido {
+namespace deep {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  ::xcore::conv::Conv2DParams conv2d_legacy_params;
+  ::xcore::conv::Conv2DParams conv2d_params;
   ::xcore::ParRegionArray par_regions;
-  padding_mode_t padding_mode;
 
   if (buffer)
-    parse_custom_options(buffer, length, conv2d_legacy_params, nullptr,
-                         &par_regions, &padding_mode);
+    parse_custom_options(buffer, length, conv2d_params, nullptr, &par_regions);
 
   void *data = nullptr;
-  context->AllocatePersistentBuffer(context, sizeof(::xcore::conv::Conv2D_DIDO),
+  context->AllocatePersistentBuffer(context, sizeof(::xcore::conv::Conv2D_Deep),
                                     &data);
-  ::xcore::conv::Conv2D_DIDO *op = new (data)::xcore::conv::Conv2D_DIDO(
-      conv2d_legacy_params, par_regions, padding_mode);
+  ::xcore::conv::Conv2D_Deep *op =
+      new (data)::xcore::conv::Conv2D_Deep(conv2d_params, par_regions);
 
   return op;
 }
 
 TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 4);
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   const TfLiteTensor *input = GetInput(context, node, 0);
   const TfLiteTensor *weights = GetInput(context, node, 1);
-  const TfLiteTensor *bias = GetInput(context, node, 2);
   const TfLiteTensor *output = GetOutput(context, node, 0);
 
-  auto *op = reinterpret_cast<::xcore::conv::Conv2D_DIDO *>(node->user_data);
+  auto *op = reinterpret_cast<::xcore::conv::Conv2D_Deep *>(node->user_data);
 
   // set param values not parsed from custom options
   op->params.K_h = weights->dims->data[1];
   op->params.K_w = weights->dims->data[2];
 
-  op->Init(input->dims->data[1],                             // X_h
-           input->dims->data[2],                             // X_w
-           weights->dims->data[3] * weights->dims->data[5],  // C_in
-           output->dims->data[1],                            // Y_w
-           output->dims->data[2],                            // Y_h
-           weights->dims->data[0] * weights->dims->data[4],  // C_out
-           input->params.zero_point,                         // zero_point
-           weights->data.int8, bias->data.i16);
+  op->Init(input->dims->data[1],   // X_h
+           input->dims->data[2],   // X_w
+           input->dims->data[3],   // C_in
+           output->dims->data[1],  // Y_w
+           output->dims->data[2],  // Y_h
+           output->dims->data[3]   // C_out
+  );
 
   return kTfLiteOk;
 }
@@ -135,17 +131,17 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *input = GetInput(context, node, 0);
   const TfLiteTensor *weights = GetInput(context, node, 1);
-  const TfLiteTensor *shift_scale = GetInput(context, node, 3);
+  const TfLiteTensor *bss = GetInput(context, node, 2);
   TfLiteTensor *output = GetOutput(context, node, 0);
 
-  auto *op = reinterpret_cast<::xcore::conv::Conv2D_DIDO *>(node->user_data);
+  auto *op = reinterpret_cast<::xcore::conv::Conv2D_Deep *>(node->user_data);
   op->Eval(output->data.int8, input->data.int8, weights->data.int8,
-           shift_scale->data.i16);
+           bss->data.i16);
 
   return kTfLiteOk;
 }
 
-}  // namespace dido
+}  // namespace deep
 
 namespace n1x1 {
 
@@ -278,9 +274,9 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 
 }  // namespace conv
 
-TfLiteRegistration *Register_Conv2D_DIDO() {
-  static TfLiteRegistration r = {conv::dido::Init, nullptr, conv::dido::Prepare,
-                                 conv::dido::Eval};
+TfLiteRegistration *Register_Conv2D_Deep() {
+  static TfLiteRegistration r = {conv::deep::Init, nullptr, conv::deep::Prepare,
+                                 conv::deep::Eval};
   return &r;
 }
 
