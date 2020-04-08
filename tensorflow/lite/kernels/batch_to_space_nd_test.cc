@@ -176,7 +176,7 @@ TEST(BatchToSpaceNDOpTest, InvalidCropsDynamicTest) {
   m.SetInput<float>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
   m.SetBlockShape({2, 2});
   m.SetCrops({0, 0, -1, 0});
-  ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk) << "crops.i. >= 0 was not true.";
+  ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk) << "crops.* >= 0 was not true.";
 }
 
 TEST(BatchToSpaceNDOpTest, SimpleDynamicTestInt8EmptyOutput) {
@@ -225,7 +225,7 @@ TEST(BatchToSpaceNDOpTest, InvalidShapeTest) {
 
 TEST(BatchToSpaceNDOpTest, InvalidCropsConstTest) {
   EXPECT_DEATH(BatchToSpaceNDOpConstModel({3, 2, 2, 1}, {2, 2}, {0, 0, 0, -1}),
-               "crops.i. >= 0 was not true.");
+               "crops.* >= 0 was not true.");
 }
 
 TEST(BatchToSpaceNDOpTest, InvalidBlockConstTest) {
