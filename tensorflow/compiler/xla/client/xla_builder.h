@@ -493,6 +493,12 @@ class XlaBuilder {
       const Shape& shape_with_layout, const string& opaque,
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout);
 
+  XlaOp CustomCall(
+      const string& call_target_name, absl::Span<const XlaOp> operands,
+      const XlaComputation& computation, const Shape& shape_with_layout,
+      const string& opaque,
+      absl::optional<absl::Span<const Shape>> operand_shapes_with_layout);
+
   XlaOp Reduce(XlaOp operand, XlaOp init_value,
                const XlaComputation& computation,
                absl::Span<const int64> dimensions_to_reduce);
@@ -885,6 +891,12 @@ class XlaBuilder {
   friend XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
                           absl::Span<const XlaOp> operands, const Shape& shape,
                           const string& opaque);
+  friend XlaOp CustomCallWithComputation(XlaBuilder* builder,
+                                         const string& call_target_name,
+                                         absl::Span<const XlaOp> operands,
+                                         const XlaComputation& computation,
+                                         const Shape& shape,
+                                         const string& opaque);
   friend XlaOp CustomCallWithLayout(
       XlaBuilder* builder, const string& call_target_name,
       absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
@@ -1579,6 +1591,13 @@ XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
 XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
                  absl::Span<const XlaOp> operands, const Shape& shape,
                  const string& opaque = "");
+
+// Overload which constructs a custom call that applies an Xla computation.
+XlaOp CustomCallWithComputation(XlaBuilder* builder,
+                                const string& call_target_name,
+                                absl::Span<const XlaOp> operands,
+                                const XlaComputation& computation,
+                                const Shape& shape, const string& opaque = "");
 
 // Overload which constructs a custom call with fixed layouts. The operands will
 // have the layouts specified by |operand_shapes_with_layout| when provided to
