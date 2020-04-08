@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -1266,10 +1267,65 @@ static LogicalResult Verify(SplitVOp op) {
 
 static LogicalResult Verify(LSTMOp op) {
   auto operands = op.GetStatefulOperands();
-  if (operands.size() == 2 && operands[0] == 18 && operands[1] == 19) {
-    return success();
+  if (operands.size() != 2 || operands[0] != 18 || operands[1] != 19) {
+    return op.emitOpError("LSTMOp expected to have two stateful operands");
   }
-  return op.emitError("LSTMOp expected to have two stateful operands");
+
+  const auto input_type = op.input().getType().cast<ShapedType>();
+  // Since TFLite runtime generally supports dynamic shape/rank, if `input_type`
+  // doesn't have static shape, we skip the shape check below.
+  if (!input_type.hasStaticShape()) return success();
+  // The input should be at least 2D tensor since it will go through fully
+  // connected layer.
+  if (!input_type.hasRank() || input_type.getRank() < 2)
+    return op.emitOpError(
+        "the first input operand should have more than 2 dimensions.");
+
+  const auto activation_state =
+      op.input_activation_state().getType().cast<ShapedType>();
+  const auto cell_state = op.input_cell_state().getType().cast<ShapedType>();
+  const auto input_to_output_weights =
+      op.input_to_output_weights().getType().cast<ShapedType>();
+  const auto recurrent_to_output_weights =
+      op.recurrent_to_output_weights().getType().cast<ShapedType>();
+  if (activation_state.hasStaticShape() && cell_state.hasStaticShape() &&
+      input_to_output_weights.hasStaticShape() &&
+      recurrent_to_output_weights.hasStaticShape()) {
+    const int n_input = input_type.getDimSize(input_type.getRank() - 1);
+    const int n_cell = input_to_output_weights.getDimSize(0);
+    const int n_output = recurrent_to_output_weights.getDimSize(1);
+    const int output_state_size = activation_state.getNumElements();
+    const int n_batch = input_type.getRank() == 2 ? input_type.getDimSize(0)
+                                                  : input_type.getDimSize(1);
+    const int state_size = cell_state.getNumElements();
+
+    // Check if the dimension of the inputs matches.
+    if ((output_state_size != n_batch * n_output) ||
+        (state_size != n_batch * n_cell) ||
+        (input_to_output_weights.getDimSize(1) != n_input) ||
+        (recurrent_to_output_weights.getRank() != 2) ||
+        (recurrent_to_output_weights.getDimSize(0) != n_cell) ||
+        (input_to_output_weights.getRank() != 2)) {
+      return op.emitOpError("inputs don't match with the dimensions.");
+    }
+
+    const bool is_layer_norm_lstm =
+        !op.forget_layer_norm_coefficients().getType().isa<NoneType>();
+    if (is_layer_norm_lstm) {
+      const auto forget_layer_norm_coefficients =
+          op.forget_layer_norm_coefficients().getType().cast<ShapedType>();
+      // If this lstm has layer normalization, this input value,
+      // "forget_layer_norm_coefficients" should be a 1D tensor.
+      if (forget_layer_norm_coefficients.getRank() != 1 ||
+          forget_layer_norm_coefficients.getDimSize(0) != n_cell)
+        return op.emitOpError(
+            "coefficient inputs have more than 2 dimensions or "
+            "don't match the dimension with input operand "
+            "`input_to_output_weights`.");
+    }
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
