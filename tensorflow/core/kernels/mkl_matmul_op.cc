@@ -181,17 +181,18 @@ class MklMatMulOp : public OpKernel {
                    const int ldc) {
     const float alpha = 1.0f;
     const float beta = 0.0f;
-    const char* const ftrans[] = {"N", "T", "C"};
     const int index_transa = transa ? 1 : 0;
     const int index_transb = transb ? 1 : 0;
 
-#ifdef ENABLE_MKLDNN_V1
-    dnnl_gemm<bfloat16>(transa ? CblasTrans : CblasNoTrans,
-                        transb ? CblasTrans : CblasNoTrans, m, n, k, alpha, a,
-                        lda, b, ldb, beta, c, ldc);
-#else
     Tensor c_float;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, {m, n}, &c_float));
+#ifdef ENABLE_MKLDNN_V1
+    const char ftrans[] = {'N', 'T', 'C'};
+    dnnl_gemm<bfloat16>(ftrans[index_transa], ftrans[index_transb], m, n, k,
+                        alpha, a, lda, b, ldb, beta,
+                        c_float.flat<float>().data(), ldc);
+#else
+    const char* const ftrans[] = {"N", "T", "C"};
 
     // MKL-DNN only supports the Fortran API and requires column major while
     // Tensorflow uses row major so we reverse the order of A and B.
@@ -200,9 +201,8 @@ class MklMatMulOp : public OpKernel {
                             reinterpret_cast<const mkldnn_bfloat16_t*>(b), &ldb,
                             reinterpret_cast<const mkldnn_bfloat16_t*>(a), &lda,
                             &beta, c_float.flat<float>().data(), &ldc);
-
-    FloatToBFloat16(c_float.flat<float>().data(), c, c_float.NumElements());
 #endif  // ENABLE_MKLDNN_V1
+    FloatToBFloat16(c_float.flat<float>().data(), c, c_float.NumElements());
   }
 #endif  // ENABLE_INTEL_MKL_BFLOAT16
 

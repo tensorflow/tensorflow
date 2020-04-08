@@ -138,7 +138,7 @@ tf_module {
   }
   member_method {
     name: "non_max_suppression_padded"
-    argspec: "args=[\'boxes\', \'scores\', \'max_output_size\', \'iou_threshold\', \'score_threshold\', \'pad_to_max_output_size\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'None\'], "
+    argspec: "args=[\'boxes\', \'scores\', \'max_output_size\', \'iou_threshold\', \'score_threshold\', \'pad_to_max_output_size\', \'name\', \'sorted_input\', \'canonicalized_coordinates\', \'tile_size\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'None\', \'False\', \'False\', \'512\'], "
   }
   member_method {
     name: "non_max_suppression_with_scores"

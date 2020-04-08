@@ -16,11 +16,12 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "absl/time/time.h"
 #include "include/pybind11/pybind11.h"
+#include "include/pybind11/pytypes.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
+#include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
@@ -30,11 +31,6 @@ limitations under the License.
 namespace py = ::pybind11;
 
 namespace {
-
-tensorflow::string GetCurrentTimeStampAsString() {
-  return absl::FormatTime("%E4Y-%m-%d_%H:%M:%S", absl::Now(),
-                          absl::LocalTimeZone());
-}
 
 tensorflow::ProfileRequest MakeProfileRequest(
     const tensorflow::string& logdir, const tensorflow::string& session_id,
@@ -53,8 +49,8 @@ tensorflow::ProfileRequest MakeProfileRequest(
 
 class ProfilerSessionWrapper {
  public:
-  void Start(const char* logdir) {
-    session_ = tensorflow::ProfilerSession::Create();
+  void Start(const char* logdir, const py::dict& options) {
+    session_ = tensorflow::ProfilerSession::Create(GetOptions(options));
     logdir_ = logdir;
     tensorflow::MaybeRaiseRegisteredFromStatus(session_->Status());
   }
@@ -62,8 +58,10 @@ class ProfilerSessionWrapper {
   py::bytes Stop() {
     tensorflow::string content;
     if (session_ != nullptr) {
-      tensorflow::Status status = session_->SerializeToString(&content);
+      tensorflow::profiler::XSpace xspace;
+      tensorflow::Status status = session_->CollectData(&xspace);
       session_.reset();
+      tensorflow::profiler::ConvertXSpaceToTraceEventsString(xspace, &content);
       tensorflow::MaybeRaiseRegisteredFromStatus(status);
     }
     // The content is not valid UTF-8, so it must be converted to bytes.
@@ -76,15 +74,15 @@ class ProfilerSessionWrapper {
     tensorflow::Status status;
     status = session_->CollectData(&xspace);
     session_.reset();
-    if (!status.ok()) {
-      tensorflow::MaybeRaiseRegisteredFromStatus(status);
-      return;
-    }
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
+
     tensorflow::ProfileResponse response;
     tensorflow::ProfileRequest request = MakeProfileRequest(
-        logdir_, GetCurrentTimeStampAsString(), tensorflow::port::Hostname());
-    tensorflow::profiler::ConvertXSpaceToProfileResponse(xspace, request,
-                                                         &response);
+        logdir_, tensorflow::profiler::GetCurrentTimeStampAsString(),
+        tensorflow::port::Hostname());
+    status = tensorflow::profiler::ConvertXSpaceToProfileResponse(
+        xspace, request, &response);
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
 
     std::stringstream ss;  // Record LOG messages.
     status = tensorflow::profiler::SaveTensorboardProfile(
@@ -95,6 +93,23 @@ class ProfilerSessionWrapper {
   }
 
  private:
+  tensorflow::ProfileOptions GetOptions(const py::dict& opts) {
+    tensorflow::ProfileOptions options =
+        tensorflow::ProfilerSession::DefaultOptions();
+    for (const auto& kw : opts) {
+      std::string key = py::cast<std::string>(kw.first);
+      if (key == "host_tracer_level") {
+        options.set_host_tracer_level(py::cast<int>(kw.second));
+        VLOG(1) << "host_tracer_level set to " << options.host_tracer_level();
+      } else if (key == "python_tracer_level") {
+        options.set_python_tracer_level(py::cast<int>(kw.second));
+        VLOG(1) << "enable_python_tracer set to "
+                << options.python_tracer_level();
+      }
+    }
+    return options;
+  }
+
   std::unique_ptr<tensorflow::ProfilerSession> session_;
   tensorflow::string logdir_;
 };
@@ -123,9 +138,11 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
     tensorflow::Status status =
         tensorflow::profiler::ValidateHostPortPair(service_addr);
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
-    status = tensorflow::profiler::Trace(service_addr, logdir, worker_list,
-                                         include_dataset_ops, duration_ms,
-                                         num_tracing_attempts);
+    tensorflow::ProfileOptions opts;
+    opts.set_include_dataset_ops(include_dataset_ops);
+    status =
+        tensorflow::profiler::Trace(service_addr, logdir, worker_list,
+                                    duration_ms, num_tracing_attempts, opts);
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
   });
 

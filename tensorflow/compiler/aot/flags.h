@@ -28,6 +28,8 @@ namespace tfcompile {
 
 struct MainFlags {
   string graph;
+  string debug_info;
+  string debug_info_path_begin_marker;
   string config;
   bool dump_fetch_nodes = false;
   string target_triple;
@@ -40,6 +42,7 @@ struct MainFlags {
   string out_header;
   string out_session_module;
   string mlir_components;
+  bool experimental_quantize = false;
 
   // C++ codegen options
   bool gen_name_to_index = false;

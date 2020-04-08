@@ -240,7 +240,11 @@ bool IsGpuCompatibleDataType(const NodeDef* contraction,
 bool IsCpuCompatibleDataFormat(const NodeDef* conv2d) {
   DCHECK(IsConv2D(*conv2d)) << "Expected Conv2D op";
   const string& data_format = conv2d->attr().at(kDataFormat).s();
+#ifndef INTEL_MKL
   return data_format == "NHWC";
+#else
+  return data_format == "NHWC" || data_format == "NCHW";
+#endif  // !INTEL_MKL
 }
 
 bool IsGpuCompatibleDataFormat(const NodeDef* conv2d) {
@@ -282,6 +286,10 @@ bool IsCpuCompatible(const RemapperContext& ctx, const Pattern& matched) {
 // Checks if we can rewrite a pattern to the `_FusedConv2D` on GPU device.
 bool IsGpuCompatible(const RemapperContext& ctx,
                      const ContractionWithBiasAddAndActivation& matched) {
+#if TENSORFLOW_USE_ROCM
+  // ROCm does not support _FusedConv2D
+  return false;
+#endif
   const GraphDef* graph = ctx.graph_view.graph();
   const NodeDef& contraction_node = graph->node(matched.contraction);
   if (!IsConv2D(contraction_node)) return false;
@@ -1658,7 +1666,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
   TF_RETURN_IF_ERROR(mutation->Apply());
 
-  *optimized_graph = mutable_item.graph;
+  *optimized_graph = std::move(mutable_item.graph);
 
   return Status::OK();
 }

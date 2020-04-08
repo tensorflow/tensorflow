@@ -68,8 +68,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* axis_tensor = GetInput(context, node, kAxisTensor);
   int axis = GetTensorData<int32_t>(axis_tensor)[0];
+  const int rank = NumDimensions(input);
+  if (axis < 0) {
+    axis += rank;
+  }
 
-  TF_LITE_ENSURE(context, axis >= 0 && axis < NumDimensions(input));
+  TF_LITE_ENSURE(context, axis >= 0 && axis < rank);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   switch (output->type) {

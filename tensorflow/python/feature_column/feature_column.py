@@ -1053,8 +1053,8 @@ def _bucketized_column(source_column, boundaries):
   dense_tensor = input_layer(features, columns)
   ```
 
-  `bucketized_column` can also be crossed with another categorical column using
-  `crossed_column`:
+  A `bucketized_column` can also be crossed with another categorical column
+  using `crossed_column`:
 
   ```python
   price = numeric_column('price')
@@ -1969,7 +1969,8 @@ class _CategoricalColumn(_FeatureColumn):
   WARNING: Do not subclass this layer unless you know what you are doing:
   the API is subject to future changes.
 
-  A categorical feature typically handled with a `tf.SparseTensor` of IDs.
+  A categorical feature typically handled with a `tf.sparse.SparseTensor` of
+  IDs.
   """
 
   IdWeightPair = collections.namedtuple(  # pylint: disable=invalid-name

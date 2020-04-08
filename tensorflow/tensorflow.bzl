@@ -262,6 +262,17 @@ def if_nccl(if_true, if_false = []):
         "//conditions:default": if_true,
     })
 
+# Linux systems may required -lrt linker flag for e.g. clock_gettime
+# see https://github.com/tensorflow/tensorflow/issues/15129
+def lrt_if_needed():
+    lrt = ["-lrt"]
+    return select({
+        clean_dep("//tensorflow:linux_aarch64"): lrt,
+        clean_dep("//tensorflow:linux_x86_64"): lrt,
+        clean_dep("//tensorflow:linux_ppc64le"): lrt,
+        "//conditions:default": [],
+    })
+
 def get_win_copts(is_external = False):
     WINDOWS_COPTS = [
         "/DPLATFORM_WINDOWS",
@@ -537,7 +548,7 @@ def tf_cc_shared_object(
         srcs = [],
         deps = [],
         data = [],
-        linkopts = [],
+        linkopts = lrt_if_needed(),
         framework_so = tf_binary_additional_srcs(),
         soversion = None,
         kernels = [],
@@ -641,7 +652,7 @@ def tf_cc_binary(
         srcs = [],
         deps = [],
         data = [],
-        linkopts = [],
+        linkopts = lrt_if_needed(),
         copts = tf_copts(),
         kernels = [],
         per_os_targets = False,  # Generate targets with SHARED_LIBRARY_NAME_PATTERNS
@@ -737,7 +748,7 @@ def tf_gen_op_wrapper_cc(
     tf_cc_binary(
         name = tool,
         copts = tf_copts(),
-        linkopts = if_not_windows(["-lm", "-Wl,-ldl"]),
+        linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + lrt_if_needed(),
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         deps = [op_gen] + deps,
     )
@@ -767,7 +778,7 @@ def tf_gen_op_wrapper_cc(
             out_ops_file + "_internal.cc",
         ],
         srcs = srcs,
-        tools = [":" + tool] + tf_binary_additional_srcs(),
+        exec_tools = [":" + tool] + tf_binary_additional_srcs(),
         cmd = ("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
                "$(location :" + out_ops_file + ".cc) " +
                str(include_internal_ops) + " " + api_def_args_str),
@@ -910,7 +921,7 @@ def tf_gen_op_wrapper_py(
         hidden_file = None,
         generated_target_name = None,
         op_whitelist = [],
-        cc_linkopts = [],
+        cc_linkopts = lrt_if_needed(),
         api_def_srcs = []):
     _ = require_shape_functions  # Unused.
 
@@ -969,7 +980,7 @@ def tf_gen_op_wrapper_py(
             name = name + "_pygenrule",
             outs = [out],
             srcs = api_def_srcs + [hidden_file],
-            tools = [tool_name] + tf_binary_additional_srcs(),
+            exec_tools = [tool_name] + tf_binary_additional_srcs(),
             cmd = ("$(location " + tool_name + ") " + api_def_args_str +
                    " @$(location " + hidden_file + ") > $@"),
         )
@@ -978,7 +989,7 @@ def tf_gen_op_wrapper_py(
             name = name + "_pygenrule",
             outs = [out],
             srcs = api_def_srcs,
-            tools = [tool_name] + tf_binary_additional_srcs(),
+            exec_tools = [tool_name] + tf_binary_additional_srcs(),
             cmd = ("$(location " + tool_name + ") " + api_def_args_str + " " +
                    op_list_arg + " " +
                    ("1" if op_list_is_whitelist else "0") + " > $@"),
@@ -1221,7 +1232,7 @@ def tf_cc_tests(
         tags = [],
         size = "medium",
         args = None,
-        linkopts = [],
+        linkopts = lrt_if_needed(),
         kernels = [],
         create_named_test_suite = False,
         visibility = None):
@@ -1978,6 +1989,148 @@ _append_init_to_versionscript = rule(
     implementation = _append_init_to_versionscript_impl,
 )
 
+# This macro should only be used for pywrap_tensorflow_internal.so.
+# It was copied and refined from the original tf_py_wrap_cc rule.
+# buildozer: disable=function-docstring-args
+def pywrap_tensorflow_macro(
+        name,
+        srcs = [],
+        deps = [],
+        copts = [],
+        version_script = None,
+        **kwargs):
+    """Builds the pywrap_tensorflow_internal shared object."""
+    module_name = name.split("/")[-1]
+
+    # Convert a rule name such as foo/bar/baz to foo/bar/_baz.so
+    # and use that as the name for the rule producing the .so file.
+    cc_library_base = "/".join(name.split("/")[:-1] + ["_" + module_name])
+
+    # TODO(b/137885063): tf_cc_shared_object needs to be cleaned up; we really
+    # shouldn't be passing a name qualified with .so here.
+    cc_library_name = cc_library_base + ".so"
+    cc_library_pyd_name = "/".join(
+        name.split("/")[:-1] + ["_" + module_name + ".pyd"],
+    )
+
+    # We need pybind11 to export the shared object PyInit symbol only in OSS.
+    extra_deps = ["@pybind11"]
+
+    if not version_script:
+        version_script = select({
+            "@local_config_cuda//cuda:darwin": clean_dep("//tensorflow:tf_exported_symbols.lds"),
+            "//conditions:default": clean_dep("//tensorflow:tf_version_script.lds"),
+        })
+    vscriptname = name + "_versionscript"
+    _append_init_to_versionscript(
+        name = vscriptname,
+        is_version_script = select({
+            "@local_config_cuda//cuda:darwin": False,
+            "//conditions:default": True,
+        }),
+        module_name = module_name,
+        template_file = version_script,
+    )
+    extra_linkopts = select({
+        "@local_config_cuda//cuda:darwin": [
+            "-Wl,-exported_symbols_list,$(location %s.lds)" % vscriptname,
+        ],
+        clean_dep("//tensorflow:windows"): [],
+        "//conditions:default": [
+            "-Wl,--version-script",
+            "$(location %s.lds)" % vscriptname,
+        ],
+    })
+    extra_deps += select({
+        "@local_config_cuda//cuda:darwin": [
+            "%s.lds" % vscriptname,
+        ],
+        clean_dep("//tensorflow:windows"): [],
+        "//conditions:default": [
+            "%s.lds" % vscriptname,
+        ],
+    })
+
+    # Due to b/149224972 we have to add libtensorflow_framework.so
+    # as a dependency so the linker doesn't try and optimize and
+    # remove it from pywrap_tensorflow_internal.so
+    # Issue: https://github.com/tensorflow/tensorflow/issues/34117
+    # Fix: https://github.com/tensorflow/tensorflow/commit/5caa9e83798cb510c9b49acee8a64efdb746207c
+    extra_deps += if_static(
+        extra_deps = [],
+        otherwise = [
+            clean_dep("//tensorflow:libtensorflow_framework_import_lib"),
+        ],
+    )
+
+    tf_cc_shared_object(
+        name = cc_library_name,
+        srcs = srcs,
+        # framework_so is no longer needed as libtf.so is included via the extra_deps.
+        framework_so = [],
+        copts = copts + if_not_windows([
+            "-Wno-self-assign",
+            "-Wno-sign-compare",
+            "-Wno-write-strings",
+        ]),
+        linkopts = extra_linkopts,
+        linkstatic = 1,
+        deps = deps + extra_deps,
+        **kwargs
+    )
+
+    # When a non-versioned .so is added as a 'src' to a bazel target, it uses
+    # -l%(so_name) instead of -l:%(so_file) during linking.  When -l%(so_name)
+    # is passed to ld, it will look for an associated file with the schema
+    # lib%(so_name).so.  Since pywrap_tensorflow is not explicitly versioned
+    # and is not prefixed with lib_, we add a rule for the creation of an .so
+    # file with the canonical lib schema (e.g. libNAME.so), so that
+    # -l%(so_name) is resolved during linking.
+    #
+    # See: https://github.com/bazelbuild/bazel/blob/7a6808260a733d50983c1adf0cf5a7493472267f/src/main/java/com/google/devtools/build/lib/rules/cpp/LibrariesToLinkCollector.java#L319
+    for pattern in SHARED_LIBRARY_NAME_PATTERNS:
+        name_os = pattern % (cc_library_base, "")
+        native.genrule(
+            name = name_os + "_rule",
+            srcs = [":" + cc_library_name],
+            outs = [name_os],
+            cmd = "cp $< $@",
+        )
+
+    native.genrule(
+        name = "gen_" + cc_library_pyd_name,
+        srcs = [":" + cc_library_name],
+        outs = [cc_library_pyd_name],
+        cmd = "cp $< $@",
+    )
+
+    # TODO(amitpatankar): Remove this py_library reference and
+    # move the dependencies to pywrap_tensorflow. This can
+    # eliminate one layer of Python import redundancy. We would
+    # have to change all pywrap_tensorflow imports to
+    # pywrap_tensorflow_internal.
+
+    # Bazel requires an empty .py file for pywrap_tensorflow_internal.py.
+    empty_py_file = [name + ".py"]
+    native.genrule(
+        name = "empty_py_file_rule",
+        outs = empty_py_file,
+        cmd = "touch $@",
+    )
+
+    native.py_library(
+        name = name,
+        srcs = [":" + name + ".py"],
+        srcs_version = "PY2AND3",
+        data = select({
+            clean_dep("//tensorflow:windows"): [":" + cc_library_pyd_name],
+            "//conditions:default": [":" + cc_library_name],
+        }),
+    )
+
+# DO NOT USE! We are in the process of deprecating this. If you use
+# this rule within third_party/tensorflow you will be rolled back. b/153452665
+# buildozer: enable=function-docstring-args
 def tf_py_wrap_cc(
         name,
         srcs = [],
@@ -2196,6 +2349,7 @@ def tf_py_test(
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False,
+        tfrt_enabled = False,
         **kwargs):
     """Create one or more python tests with extra tensorflow dependencies."""
     xla_test_true_list = []
@@ -2212,6 +2366,17 @@ def tf_py_test(
         deps = deps + tf_additional_xla_deps_py()
     if grpc_enabled:
         deps = deps + tf_additional_grpc_deps_py()
+    if tfrt_enabled:
+        deps = deps + ["//tensorflow/python:is_tfrt_test_true"]
+
+    # NOTE(ebrevdo): This is a workaround for depset() not being able to tell
+    # the difference between 'dep' and 'clean_dep(dep)'.
+    for to_add in [
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:gradient_checker",
+    ]:
+        if to_add not in deps and clean_dep(to_add) not in deps:
+            deps.append(clean_dep(to_add))
 
     # Python version placeholder
     kwargs.setdefault("srcs_version", "PY2AND3")
@@ -2228,10 +2393,7 @@ def tf_py_test(
         tags = tags,
         visibility = [clean_dep("//tensorflow:internal")] +
                      additional_visibility,
-        deps = depset([
-            clean_dep("//tensorflow/python:extra_py_tests_deps"),
-            clean_dep("//tensorflow/python:gradient_checker"),
-        ] + deps + xla_test_true_list),
+        deps = depset(deps + xla_test_true_list),
         **kwargs
     )
 
@@ -2255,9 +2417,6 @@ def gpu_py_test(
         xla_enabled = False,
         grpc_enabled = False,
         **kwargs):
-    # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
-    # XLA tests once enough compute resources are available.
-    _ignored = [xla_enable_strict_auto_jit]
     if main == None:
         main = name + ".py"
     if "additional_deps" in kwargs:
@@ -2266,8 +2425,26 @@ def gpu_py_test(
         test_name = name
         test_tags = tags
         if config == "gpu":
-            test_name += "_gpu"
             test_tags = test_tags + tf_gpu_tests_tags()
+        if xla_enable_strict_auto_jit:
+            tf_py_test(
+                name = test_name + "_xla_" + config,
+                size = size,
+                srcs = srcs,
+                args = args,
+                data = data,
+                flaky = flaky,
+                grpc_enabled = grpc_enabled,
+                kernels = kernels,
+                main = main,
+                shard_count = shard_count,
+                tags = test_tags + ["xla", "manual"],
+                xla_enabled = xla_enabled,
+                xla_enable_strict_auto_jit = True,
+                **kwargs
+            )
+        if config == "gpu":
+            test_name += "_gpu"
         tf_py_test(
             name = test_name,
             size = size,
@@ -2349,6 +2526,7 @@ def py_tests(
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False,
+        tfrt_enabled = False,
         **kwargs):
     if "additional_deps" in kwargs:
         fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
@@ -2368,6 +2546,7 @@ def py_tests(
             tags = tags,
             xla_enabled = xla_enabled,
             xla_enable_strict_auto_jit = xla_enable_strict_auto_jit,
+            tfrt_enabled = tfrt_enabled,
             **kwargs
         )
 
@@ -2386,10 +2565,24 @@ def gpu_py_tests(
         **kwargs):
     # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
     # XLA tests once enough compute resources are available.
-    _ignored = [xla_enable_strict_auto_jit]
     test_tags = tags + tf_gpu_tests_tags()
     if "additional_deps" in kwargs:
         fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
+    if xla_enable_strict_auto_jit:
+        py_tests(
+            name = name + "_xla",
+            size = size,
+            srcs = srcs,
+            data = data,
+            grpc_enabled = grpc_enabled,
+            kernels = kernels,
+            prefix = prefix,
+            shard_count = shard_count,
+            tags = test_tags + ["xla", "manual"],
+            xla_enabled = xla_enabled,
+            xla_enable_strict_auto_jit = True,
+            **kwargs
+        )
     py_tests(
         name = name,
         size = size,
@@ -2430,7 +2623,7 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps = []
         cmd =
             "$(location //tensorflow/tools/proto_text:gen_proto_text_functions) " +
             "$(@D) " + srcs_relative_dir + " $(SRCS)",
-        tools = [
+        exec_tools = [
             clean_dep("//tensorflow/tools/proto_text:gen_proto_text_functions"),
         ],
     )
@@ -2466,7 +2659,7 @@ def tf_version_info_genrule(name, out):
         cmd =
             "$(location //tensorflow/tools/git:gen_git_source) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
         local = 1,
-        tools = [clean_dep("//tensorflow/tools/git:gen_git_source")],
+        exec_tools = [clean_dep("//tensorflow/tools/git:gen_git_source")],
     )
 
 def tf_py_build_info_genrule(name, out, **kwargs):
@@ -2486,7 +2679,7 @@ def tf_py_build_info_genrule(name, out, **kwargs):
                 "cudnn_dll_name=cudnn64_$${TF_CUDNN_VERSION:-}.dll",
             ]), ""),
         local = 1,
-        tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info")],
+        exec_tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info")],
         **kwargs
     )
 
@@ -2520,12 +2713,14 @@ def pybind_extension(
         linkopts = [],
         deps = [],
         defines = [],
+        additional_exported_symbols = [],
         visibility = None,
         testonly = None,
         licenses = None,
         compatible_with = None,
         restricted_to = None,
-        deprecation = None):
+        deprecation = None,
+        link_in_framework = False):
     """Builds a generic Python extension module."""
     _ignore = [module_name]
     p = name.rfind("/")
@@ -2537,15 +2732,22 @@ def pybind_extension(
         prefix = name[:p + 1]
     so_file = "%s%s.so" % (prefix, sname)
     pyd_file = "%s%s.pyd" % (prefix, sname)
-    symbol = "init%s" % sname
-    symbol2 = "init_%s" % sname
-    symbol3 = "PyInit_%s" % sname
+    exported_symbols = [
+        "init%s" % sname,
+        "init_%s" % sname,
+        "PyInit_%s" % sname,
+    ] + additional_exported_symbols
+
     exported_symbols_file = "%s-exported-symbols.lds" % name
     version_script_file = "%s-version-script.lds" % name
+
+    exported_symbols_output = "\n".join(["_%s" % symbol for symbol in exported_symbols])
+    version_script_output = "\n".join([" %s;" % symbol for symbol in exported_symbols])
+
     native.genrule(
         name = name + "_exported_symbols",
         outs = [exported_symbols_file],
-        cmd = "echo '_%s\n_%s\n_%s' >$@" % (symbol, symbol2, symbol3),
+        cmd = "echo '%s' >$@" % exported_symbols_output,
         output_licenses = ["unencumbered"],
         visibility = ["//visibility:private"],
         testonly = testonly,
@@ -2554,11 +2756,17 @@ def pybind_extension(
     native.genrule(
         name = name + "_version_script",
         outs = [version_script_file],
-        cmd = "echo '{global:\n %s;\n %s;\n %s;\n local: *;};' >$@" % (symbol, symbol2, symbol3),
+        cmd = "echo '{global:\n%s\n local: *;};' >$@" % version_script_output,
         output_licenses = ["unencumbered"],
         visibility = ["//visibility:private"],
         testonly = testonly,
     )
+
+    # If we are to link to libtensorflow_framework.so, add
+    # it as a source.
+    if link_in_framework:
+        srcs += tf_binary_additional_srcs()
+
     cc_binary(
         name = so_file,
         srcs = srcs + hdrs,
@@ -2636,12 +2844,14 @@ def tf_python_pybind_extension(
         visibility = None):
     """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
 
+    Please do not use it anywhere else as it may behave unexpectedly. b/146445820
+
     It is used for targets under //third_party/tensorflow/python that link
     against libtensorflow_framework.so and pywrap_tensorflow_internal.so.
     """
     pybind_extension(
         name,
-        srcs + tf_binary_additional_srcs(),
+        srcs,
         module_name,
         features = features,
         copts = copts,
@@ -2649,6 +2859,7 @@ def tf_python_pybind_extension(
         deps = deps + tf_binary_pybind_deps() + mkl_deps(),
         defines = defines,
         visibility = visibility,
+        link_in_framework = True,
     )
 
 def tf_pybind_cc_library_wrapper(name, deps, visibility = None):
@@ -2733,3 +2944,9 @@ def filegroup_as_file(name, dep, visibility = []):
         srcs = [name],
         visibility = visibility,
     )
+
+def tf_grpc_dependency():
+    return "//tensorflow:grpc"
+
+def tf_grpc_cc_dependency():
+    return "//tensorflow:grpc++"

@@ -81,10 +81,6 @@ class NodeExecStatsInterface {
   // output slot.
   virtual void SetOutput(int slot, const Tensor* tensor) = 0;
 
-  // Records information about the tensors that were accessed during the
-  // execution of this node.
-  virtual void SetReferencedTensors(const TensorReferenceVector& tensors) = 0;
-
   // Records the absolute time in nanoseconds at which this node became
   // runnable (i.e. was scheduled for execution).
   virtual void SetScheduled(int64 nanos) = 0;
@@ -113,7 +109,6 @@ class NodeExecStatsWrapper : public NodeExecStatsInterface {
   bool TrackAllocations() const override { return true; }
   void SetMemory(OpKernelContext* ctx) override;
   void SetOutput(int slot, const Tensor* tensor) override;
-  void SetReferencedTensors(const TensorReferenceVector& tensors) override;
   void SetScheduled(int64 nanos) override;
 
  private:
@@ -198,14 +193,14 @@ class StepStatsCollector : public StepStatsCollectorInterface {
   typedef std::vector<std::unique_ptr<NodeExecStatsWrapper>> NodeStatsVector;
   typedef std::unordered_map<uint32, string> ThreadNamesMap;
 
-  void FinalizeInternal() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void FinalizeInternal() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutex mu_;
-  bool finalized_ GUARDED_BY(mu_);
-  std::unordered_map<string, NodeStatsVector> dev_stats_ GUARDED_BY(mu_);
-  std::unordered_map<string, ThreadNamesMap> thread_names_ GUARDED_BY(mu_);
-  StepStats* step_stats_ GUARDED_BY(mu_);
-  uint64 collected_nodes_ GUARDED_BY(mu_) = 0;
+  bool finalized_ TF_GUARDED_BY(mu_);
+  std::unordered_map<string, NodeStatsVector> dev_stats_ TF_GUARDED_BY(mu_);
+  std::unordered_map<string, ThreadNamesMap> thread_names_ TF_GUARDED_BY(mu_);
+  StepStats* step_stats_ TF_GUARDED_BY(mu_);
+  uint64 collected_nodes_ TF_GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace tensorflow

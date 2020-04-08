@@ -67,6 +67,19 @@ require writing JNI wrappers to move data between Java and C++ layers.
 See below for details about using C++ and Java, or
 follow the [Android quickstart](android.md) for a tutorial and example code.
 
+#### TensorFlow Lite Android wrapper code generator
+
+Note: TensorFlow Lite wrapper code generator is in experimental (beta) phase and
+it currently only supports Android.
+
+For TensorFlow Lite model enhanced with [metadata](../convert/metadata.md),
+developers can use the TensorFlow Lite Android wrapper code generator to create
+platform specific wrapper code. The wrapper code removes the need to interact
+directly with `ByteBuffer` on Android. Instead, developers can interact with the
+TensorFlow Lite model with typed objects such as `Bitmap` and `Rect`. For more
+information, please refer to the
+[TensorFlow Lite Android wrapper code generator](codegen.md).
+
 ### iOS
 
 On iOS, TensorFlow Lite is available with native iOS libraries written in

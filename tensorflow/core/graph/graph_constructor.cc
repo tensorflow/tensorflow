@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -457,6 +458,33 @@ class NodeDefMovingGraphConstructor : public GraphConstructor {
   std::vector<bool> is_consumed_;
 };
 
+bool ForwardCompatibilityWindowPassed(const VersionDef& versions) {
+  // TF_GRAPH_DEF_VERSION is incremented daily.
+  // TF has a 3 week forward compatibility guarantee.
+  return (versions.producer() - TF_GRAPH_DEF_VERSION) > 21;
+}
+
+Status MaybeAppendVersionWarning(const VersionDef* versions,
+                                 const Status& import_status) {
+  if (versions && ForwardCompatibilityWindowPassed(*versions)) {
+    return Status(
+        import_status.code(),
+        absl::StrCat(
+            "Converting GraphDef to Graph has failed. The binary trying to "
+            "import the GraphDef was built when GraphDef version was ",
+            TF_GRAPH_DEF_VERSION,
+            ". The GraphDef was produced by a binary built when GraphDef "
+            "version was ",
+            versions->producer(),
+            ". The difference between these versions is larger than "
+            "TensorFlow's forward compatibility guarantee. The following error "
+            "might be due to the binary trying to import the GraphDef being "
+            "too old: ",
+            import_status.error_message()));
+  }
+  return import_status;
+}
+
 /* static */ Status GraphConstructor::Construct(
     const Options& opts, NodeDefSlice node_defs, const VersionDef* versions,
     const FunctionDefLibrary* library, Graph* g, ShapeRefiner* refiner,
@@ -471,8 +499,11 @@ class NodeDefMovingGraphConstructor : public GraphConstructor {
   NodeDefCopyingGraphConstructor c(opts, node_defs, versions, library, g,
                                    refiner, return_tensors, return_nodes,
                                    missing_unused_input_map_keys);
-  const Status s = c.TryImport();
-  if (!s.ok()) c.Undo();
+  Status s = c.TryImport();
+  if (!s.ok()) {
+    c.Undo();
+    s = MaybeAppendVersionWarning(versions, s);
+  }
   return s;
 }
 
@@ -484,11 +515,15 @@ class NodeDefMovingGraphConstructor : public GraphConstructor {
   TF_RETURN_IF_ERROR(CheckVersions(graph_def.versions(), TF_GRAPH_DEF_VERSION,
                                    TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
                                    "GraphDef", "graph"));
+  VersionDef version_def = graph_def.versions();
   NodeDefMovingGraphConstructor c(opts, std::move(graph_def), g, refiner,
                                   return_tensors, return_nodes,
                                   missing_unused_input_map_keys);
-  const Status s = c.TryImport();
-  if (!s.ok()) c.Undo();
+  Status s = c.TryImport();
+  if (!s.ok()) {
+    c.Undo();
+    s = MaybeAppendVersionWarning(&version_def, s);
+  }
   return s;
 }
 
@@ -786,56 +821,10 @@ Status GraphConstructor::ValidateShape(Node* node) {
     }
     s = refiner_->SetShape(node, i, h);
     if (!s.ok()) {
-      // If the output shape is incompatible with what is inferred
-      // by the graph for a very specific whitelist of ops, then we
-      // ignore this output shape.  This can happen if there is a
-      // bug in the shape function for some operation, and the
-      // serialized graph def has the incorrect shape set when
-      // running on a newer binary with the fixed shape function.
-      // This is an escape hatch that allows us to correct shape
-      // functions that are not critical to correct execution but
-      // would cause graphs to fail if imported after correcting.
-      const string& op = node->type_string();
-      const std::vector<string> whitelist = {
-          // To be removed after 2017/03/08.
-          "RandomShuffleQueue",
-          "PaddingFIFOQueue",
-          "FIFOQueue",
-          "PriorityQueue",
-          "QueueSize",
-          "Stack",
-          "Barrier",
-          "BarrierReadySize",
-          "BarrierIncompleteSize",
-          "HashTable",
-          "MutableHashTable",
-          "MutableHashTableOfTensors",
-          "Mutex",
-          "CuckooTable",
-          "IndexTable",
-          "WholeFileReader",
-          "TextLineReader",
-          "FixedLengthRecordReader",
-          "TFRecordReader",
-          "IdentityReader",
-          "RefSwitch",
-          "RefEnter",
-          "RefNextIteration",
-          "RefMerge",
-          "RefIdentity",
-          "LMDBReader",
-          // To be removed after 2017/04/24.
-          "ConditionalAccumulator",
-          "SparseConditionalAccumulator",
-          "Table",
-      };
-      if (std::find(whitelist.begin(), whitelist.end(), op) ==
-          whitelist.end()) {
-        return errors::InvalidArgument(
-            "Node '", node->name(), "' has an ", kAttrName,
-            " attribute inconsistent with the GraphDef for output #", i, ": ",
-            s.error_message());
-      }
+      return errors::InvalidArgument(
+          "Node '", node->name(), "' has an ", kAttrName,
+          " attribute inconsistent with the GraphDef for output #", i, ": ",
+          s.error_message());
     }
   }
   node->ClearAttr(kAttrName);
@@ -1311,7 +1300,7 @@ Status GraphConstructor::Convert() {
 
 Status GraphConstructor::AddBackEdges() {
   // Add the back edges after all nodes are created.
-  for (auto e : back_edges_) {
+  for (const auto& e : back_edges_) {
     Node* src_node = gdef_nodes_[e.src_name].node;
     if (e.src_index == Graph::kControlSlot) {
       g_->AddControlEdge(src_node, e.dst_node, kDoNotCheckDuplicates);

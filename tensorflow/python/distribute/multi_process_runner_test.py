@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import json
 import os
+import threading
 import time
 from absl import logging
 from six.moves import queue as Queue
@@ -125,18 +126,20 @@ class MultiProcessRunnerTest(test.TestCase):
 
     def func_to_exit_in_15_sec():
       time.sleep(5)
-      mpr._add_return_data('foo')
+      print('foo', flush=True)
       time.sleep(20)
-      mpr._add_return_data('bar')
+      print('bar', flush=True)
 
     mpr = multi_process_runner.MultiProcessRunner(
         func_to_exit_in_15_sec,
         multi_worker_test_base.create_cluster_spec(num_workers=1),
+        list_stdout=True,
         max_run_time=15)
 
     mpr.start()
-    return_value = mpr.join().return_value
-    self.assertLen(return_value, 1)
+    stdout = mpr.join().stdout
+    self.assertLen([msg for msg in stdout if 'foo' in msg], 1)
+    self.assertLen([msg for msg in stdout if 'bar' in msg], 0)
 
   def test_signal_doesnt_fire_after_process_exits(self):
     mpr = multi_process_runner.MultiProcessRunner(
@@ -148,7 +151,8 @@ class MultiProcessRunnerTest(test.TestCase):
     with self.assertRaisesRegexp(Queue.Empty, ''):
       # If the signal was fired, another message would be added to internal
       # queue, so verifying it's empty.
-      mpr._get_process_status_queue().get(block=False)
+      multi_process_runner._resource(
+          multi_process_runner.PROCESS_STATUS_QUEUE).get(block=False)
 
   def test_termination(self):
 
@@ -255,6 +259,31 @@ class MultiProcessRunnerTest(test.TestCase):
             any('(print) {}-{}, i: {}'.format(job, task, iteration) in line
                 for line in list_to_assert))
 
+  def test_start_in_process_as(self):
+
+    def proc_func():
+      for i in range(5):
+        logging.info('%s-%d, i: %d', multi_worker_test_base.get_task_type(),
+                     self._worker_idx(), i)
+        time.sleep(1)
+
+    mpr = multi_process_runner.MultiProcessRunner(
+        proc_func,
+        multi_worker_test_base.create_cluster_spec(
+            has_chief=True, num_workers=1),
+        list_stdout=True)
+
+    def follow_ups():
+      mpr.start_single_process(task_type='evaluator', task_id=0)
+
+    threading.Thread(target=follow_ups).start()
+    mpr.start_in_process_as(as_task_type='chief', as_task_id=0)
+    list_to_assert = mpr.join().stdout
+    for job in ['worker', 'evaluator']:
+      for iteration in range(5):
+        self.assertTrue(
+            any('{}-0, i: {}'.format(job, iteration) in line
+                for line in list_to_assert))
 
 if __name__ == '__main__':
   multi_process_runner.test_main()

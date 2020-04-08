@@ -22,25 +22,25 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/IR/Visitors.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -53,8 +53,6 @@ limitations under the License.
 namespace mlir {
 
 namespace {
-
-constexpr char kDTypeAttr[] = "dtype";
 
 // This pass lifts resource variable operations outside of device computation.
 // This is useful because a lot of accelerator devices can not interact with
@@ -133,8 +131,9 @@ constexpr char kDTypeAttr[] = "dtype";
 //   return %arg0
 // }
 //
-struct ResourceOpLiftingPass : public ModulePass<ResourceOpLiftingPass> {
-  void runOnModule() override;
+struct ResourceOpLiftingPass
+    : public PassWrapper<ResourceOpLiftingPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Removes identity nodes in the block. The device computation does not need
@@ -188,7 +187,7 @@ void ForwardStoreToLoad(Block* block) {
 }
 
 // Moves resource load operations with the provided `move_load` function. This
-// assumes load-store forwarding has been performed on this launch_op such that
+// assumes load-store forwarding has been performed on this block such that
 // all loads of same resource are on its initial values. A `skip_load` functions
 // is used to indicate whether a load should be skipped. If there are multiple
 // loads on the same resource, only the first one will be moved, and the later
@@ -198,7 +197,7 @@ void HoistResourceLoads(
     llvm::function_ref<void(TF::ReadVariableOp)> move_load) {
   llvm::SmallDenseMap<Value, TF::ReadVariableOp> resource_to_read_ops;
 
-  // Only iterate through ops directly in launch_op's body as we can't handle
+  // Only iterate through ops directly in the body as we can't handle
   // ops nested deeper in regions.
   for (Operation& op : llvm::make_early_inc_range(*block)) {
     auto read_variable_op = dyn_cast<TF::ReadVariableOp>(&op);
@@ -220,28 +219,25 @@ void HoistResourceLoads(
   }
 }
 
-// If there are any stores to resource defined outside of launch_op's body
-// region, the stored values must be returned by launch_op and its return op so
-// that new values can be used by sunk resource stores.
+// If there are any stores to resource defined outside of the block then the
+// stored values must be returned so that new values can be used by sunk
+// resource stores.
 // Returns true if any resource variable stored values are appended, otherwise
 // false.
-bool AppendResourceStoreValueToReturn(tf_device::LaunchOp launch_op) {
+bool AppendResourceStoreValueToReturn(Block* body) {
   bool has_resource_store = false;
-  Block* body = &launch_op.GetBody();
   auto old_return = body->getTerminator();
 
   llvm::SmallVector<Value, 4> new_return_operands(old_return->getOperands());
 
-  // Only iterate through ops directly in launch_op's body as we can't handle
-  // ops nested deeper in regions.
-  for (Operation& op : launch_op.GetBody()) {
-    auto assign_variable_op = dyn_cast<TF::AssignVariableOp>(&op);
-    if (!assign_variable_op) continue;
+  // Only iterate through ops directly in the body as we can't handle ops nested
+  // deeper in regions.
+  for (auto assign_variable_op : body->getOps<TF::AssignVariableOp>()) {
     Value resource = assign_variable_op.resource();
     if (!resource) continue;
 
-    // Skip resources created inside of launch_op.
-    if (resource.getParentRegion() == &launch_op.body()) continue;
+    // Skip resources created inside of the body.
+    if (resource.getParentRegion() == body->getParent()) continue;
 
     // TODO(ycao): Prevent same value from being returned multiple times.
     // TODO(ycao): Do not return resource store value if it is defined outside
@@ -267,8 +263,7 @@ tf_device::LaunchOp SinkResourceStores(tf_device::LaunchOp launch_op,
                                        OpBuilder* builder) {
   // Update ReturnOp inside launch_op's body to output final values of updated
   // external resources.
-  bool has_resource_store = AppendResourceStoreValueToReturn(launch_op);
-  if (!has_resource_store) return launch_op;
+  if (!AppendResourceStoreValueToReturn(&launch_op.GetBody())) return launch_op;
 
   auto new_return_op = launch_op.GetBody().getTerminator();
   llvm::SmallVector<Type, 4> new_launch_return_types(
@@ -352,9 +347,9 @@ LogicalResult HoistResourceOpsFromLaunchOp(tf_device::LaunchOp launch_op) {
 
 // Holds information about a function's use of a resource argument.
 struct ResourceArgUseInfo {
-  bool used;
   Type data_type;
   bool updated;
+  bool used;
 };
 
 // Finds the ResourceArgUseInfo for each resource argument. Forwarding to the
@@ -501,13 +496,13 @@ void LiftArgRetResourcesForFunction(
       });
   // Record the stores in resource_arg_read.
   for (auto& op : llvm::make_early_inc_range(func_op.front())) {
-    if (auto write = llvm::dyn_cast<TF::AssignVariableOp>(&op)) {
-      auto arg = write.resource().dyn_cast<BlockArgument>();
-      if (!arg) continue;
-      // After ForwardStoreToLoad(), there should be just one store for each
-      // resource.
-      resource_arg_write[arg] = write;
-    }
+    auto write = llvm::dyn_cast<TF::AssignVariableOp>(&op);
+    if (!write) continue;
+    auto arg = write.resource().dyn_cast<BlockArgument>();
+    if (!arg) continue;
+    // After ForwardStoreToLoad(), there should be just one store for each
+    // resource.
+    resource_arg_write[arg] = write;
   }
   // Now change the input types to non-resource and remove the internal loads.
   auto new_types = llvm::to_vector<8>(func_op.getType().getInputs());
@@ -542,8 +537,8 @@ llvm::SmallVector<T, 4> FilterRange(
   llvm::SmallVector<T, 4> filtered;
   for (auto entry : llvm::enumerate(range)) {
     auto it = resource_arg_uses.find(entry.index());
-    if (it != resource_arg_uses.end() && !it->getSecond().used) continue;
-    filtered.push_back(entry.value());
+    if (it == resource_arg_uses.end() || it->getSecond().used)
+      filtered.push_back(entry.value());
   }
   return filtered;
 }
@@ -882,13 +877,6 @@ LogicalResult HandlePartitionedCallOpCallee(
   auto module = callee.getParentOfType<ModuleOp>();
   name_base += "_resource_lifted";
   auto name = name_base;
-  {
-    int64_t counter = 0;
-    while (module.lookupSymbol(name)) {
-      auto name = name_base;
-      name += "_" + std::to_string(counter++);
-    }
-  }
   callee = callee.clone();
   callee.setName(name);
   SymbolTable(module).insert(callee);
@@ -1063,13 +1051,13 @@ LogicalResult HoistForFunctionalControlFlow(
 // Lifts resource operation from tf_device.launch_func ops nested in `op`
 // outside. Returns failure if there are remaining resource-type values that can
 // not be lifted.
-void ResourceOpLiftingPass::runOnModule() {
+void ResourceOpLiftingPass::runOnOperation() {
   llvm::SmallDenseMap<FuncOp, PartitionedCallLiftingInfo>
       lifted_partitioned_call_callees;
-  auto result = getModule().walk([&](FuncOp func_op) {
+  auto result = getOperation().walk([&](FuncOp func_op) {
     return func_op.walk([&](tf_device::LaunchOp launch_op) {
       if (failed(HoistForFunctionalControlFlow(
-              &launch_op.GetBody(), getModule(),
+              &launch_op.GetBody(), getOperation(),
               &lifted_partitioned_call_callees)) ||
           failed(HoistResourceOpsFromLaunchOp(launch_op))) {
         return WalkResult::interrupt();
@@ -1083,12 +1071,13 @@ void ResourceOpLiftingPass::runOnModule() {
 }
 
 struct ResourceOpLiftingForMainFunctionPass
-    : public ModulePass<ResourceOpLiftingForMainFunctionPass> {
-  void runOnModule() override;
+    : public PassWrapper<ResourceOpLiftingForMainFunctionPass,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
-void ResourceOpLiftingForMainFunctionPass::runOnModule() {
-  ModuleOp module = getModule();
+void ResourceOpLiftingForMainFunctionPass::runOnOperation() {
+  ModuleOp module = getOperation();
   FuncOp main_func = module.lookupSymbol<FuncOp>("main");
   if (!main_func) {
     return;
@@ -1112,7 +1101,7 @@ static PassRegistration<ResourceOpLiftingPass> pass(
 }  // namespace
 
 namespace TFDevice {
-std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceOpLiftingPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateResourceOpLiftingPass() {
   return std::make_unique<ResourceOpLiftingPass>();
 }
 }  // namespace TFDevice

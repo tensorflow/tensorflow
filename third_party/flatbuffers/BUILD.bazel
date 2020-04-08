@@ -1,3 +1,7 @@
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+
+package(default_visibility = ["//visibility:public"])
+
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE.txt"])
@@ -108,11 +112,29 @@ filegroup(
         "python/flatbuffers/number_types.py",
         "python/flatbuffers/packer.py",
         "python/flatbuffers/table.py",
+        "python/flatbuffers/util.py",
     ],
 )
 
 py_library(
     name = "runtime_py",
     srcs = [":runtime_py_srcs"],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "runtime_java_srcs",
+    srcs = glob(["java/com/google/flatbuffers/**/*.java"]),
+)
+
+java_library(
+    name = "runtime_java",
+    srcs = [":runtime_java_srcs"],
+    visibility = ["//visibility:public"],
+)
+
+android_library(
+    name = "runtime_android",
+    srcs = [":runtime_java_srcs"],
     visibility = ["//visibility:public"],
 )

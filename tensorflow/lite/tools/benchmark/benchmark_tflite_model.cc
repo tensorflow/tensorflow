@@ -28,7 +28,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
-#include "tensorflow/lite/experimental/ruy/profiler/profiler.h"
+#include "ruy/profiler/profiler.h"  // from @ruy
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
@@ -101,13 +101,18 @@ std::vector<std::string> Split(const std::string& str, const char delim) {
   return results;
 }
 
-void FillRandomString(tflite::DynamicBuffer* buffer,
-                      const std::vector<int>& sizes,
-                      const std::function<std::string()>& random_func) {
+int GetNumElements(const TfLiteIntArray* dim_array) {
   int num_elements = 1;
-  for (int dim : sizes) {
-    num_elements *= dim;
+  for (size_t i = 0; i < dim_array->size; i++) {
+    num_elements *= dim_array->data[i];
   }
+  return num_elements;
+}
+
+void FillRandomString(tflite::DynamicBuffer* buffer,
+                      const TfLiteIntArray* dim_array,
+                      const std::function<std::string()>& random_func) {
+  int num_elements = GetNumElements(dim_array);
   for (int i = 0; i < num_elements; ++i) {
     auto str = random_func();
     buffer->AddString(str.data(), str.length());
@@ -233,15 +238,6 @@ TfLiteStatus PopulateInputLayerInfo(
   return kTfLiteOk;
 }
 
-std::vector<int> TfLiteIntArrayToVector(const TfLiteIntArray* int_array) {
-  std::vector<int> values;
-  values.reserve(int_array->size);
-  for (size_t i = 0; i < int_array->size; i++) {
-    values.push_back(int_array->data[i]);
-  }
-  return values;
-}
-
 std::shared_ptr<profiling::ProfileSummaryFormatter>
 CreateProfileSummaryFormatter(bool format_as_csv) {
   return format_as_csv
@@ -288,7 +284,9 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
 
 BenchmarkTfLiteModel::BenchmarkTfLiteModel(BenchmarkParams params)
     : BenchmarkModel(std::move(params)),
-      random_engine_(std::random_device()()) {}
+      random_engine_(std::random_device()()) {
+  AddListener(&log_output_);
+}
 
 void BenchmarkTfLiteModel::CleanUp() {
   // Free up any pre-allocated tensor data during PrepareInputData.
@@ -317,7 +315,9 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "of input layer name and value file path separated by ':', e.g. "
           "input1:file_path1,input2:file_path2. If the input_name appears both "
           "in input_layer_value_range and input_layer_value_files, "
-          "input_layer_value_range of the input_name will be ignored."),
+          "input_layer_value_range of the input_name will be ignored. The file "
+          "format is binary and it should be array format or null separated "
+          "strings format."),
       CreateFlag<bool>("use_legacy_nnapi", &params_, "use legacy nnapi api"),
       CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
       CreateFlag<bool>("require_full_delegation", &params_,
@@ -416,25 +416,41 @@ int64_t BenchmarkTfLiteModel::MayGetModelFileSize() {
 
 BenchmarkTfLiteModel::InputTensorData BenchmarkTfLiteModel::LoadInputTensorData(
     const TfLiteTensor& t, const std::string& input_file_path) {
+  std::ifstream value_file(input_file_path, std::ios::binary);
+  if (!value_file.good()) {
+    TFLITE_LOG(FATAL) << "Failed to read the input_layer_value_file:"
+                      << input_file_path;
+  }
   InputTensorData t_data;
   if (t.type == kTfLiteString) {
-    // TODO(b/149184079): Will update string type logic.
-  } else {
-    t_data.bytes = t.bytes;
-    std::ifstream value_file(input_file_path, std::ios::binary | std::ios::ate);
-    if (!value_file.good()) {
-      TFLITE_LOG(FATAL) << "Failed to read the input_layer_value_file:"
-                        << input_file_path;
+    t_data.data = VoidUniquePtr(
+        static_cast<void*>(new tflite::DynamicBuffer()),
+        [](void* ptr) { delete static_cast<DynamicBuffer*>(ptr); });
+    std::string line;
+    size_t num_line = 0;
+    // Read the line with the delimiter '\0'.
+    while (std::getline(value_file, line, '\0')) {
+      num_line++;
+      static_cast<DynamicBuffer*>(t_data.data.get())
+          ->AddString(line.data(), line.length());
     }
+    int num_elements = GetNumElements(t.dims);
+    if (num_line != num_elements) {
+      TFLITE_LOG(FATAL) << "The number of string in the input_layer_value_file("
+                        << input_file_path << ") is " << num_line
+                        << ". It should be " << num_elements << ".";
+    }
+  } else {
+    value_file.seekg(0, std::ios_base::end);
     if (value_file.tellg() != t.bytes) {
       TFLITE_LOG(FATAL) << "The size of " << input_file_path << " is "
                         << value_file.tellg() << " bytes. It should be "
                         << t.bytes << " bytes.";
     }
-    // Now initialize the type-erased unique_ptr (with custom deleter).
-    t_data.data = std::unique_ptr<void, void (*)(void*)>(
-        static_cast<void*>(new char[t.bytes]),
-        [](void* ptr) { delete[] static_cast<char*>(ptr); });
+    t_data.bytes = t.bytes;
+    t_data.data =
+        VoidUniquePtr(static_cast<void*>(new char[t.bytes]),
+                      [](void* ptr) { delete[] static_cast<char*>(ptr); });
     value_file.clear();
     value_file.seekg(0, std::ios_base::beg);
     value_file.read(static_cast<char*>(t_data.data.get()), t.bytes);
@@ -453,11 +469,7 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
     low_range = layer_info->low;
     high_range = layer_info->high;
   }
-  std::vector<int> sizes = TfLiteIntArrayToVector(t.dims);
-  int num_elements = 1;
-  for (int i = 0; i < sizes.size(); ++i) {
-    num_elements *= sizes[i];
-  }
+  int num_elements = GetNumElements(t.dims);
   switch (t.type) {
     case kTfLiteFloat32: {
       return CreateInputTensorData<float>(
@@ -478,12 +490,16 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
 #else
       // You need to build with -DTFLITE_ENABLE_FP16_CPU_BENCHMARKS=1 using a
       // compiler that supports __fp16 type. Note: when using Clang and *not*
-      // linking with compiler-rt, a defintion of __gnu_h2f_ieee and
+      // linking with compiler-rt, a definition of __gnu_h2f_ieee and
       // __gnu_f2h_ieee must be supplied.
       TFLITE_LOG(FATAL) << "Populating the tensor " << t.name
                         << " of type FLOAT16 is disabled.";
 #endif  // TFLITE_ENABLE_FP16_CPU_BENCHMARKS
       break;
+    }
+    case kTfLiteFloat64: {
+      return CreateInputTensorData<double>(
+          num_elements, std::uniform_real_distribution<double>(-0.5, 0.5));
     }
     case kTfLiteInt64: {
       int low = has_value_range ? low_range : 0;
@@ -564,12 +580,17 @@ TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
     int i = interpreter_inputs[j];
     TfLiteTensor* t = interpreter_->tensor(i);
     if (t->type == kTfLiteString) {
-      tflite::DynamicBuffer buffer;
-      std::vector<int> sizes = TfLiteIntArrayToVector(t->dims);
-      FillRandomString(&buffer, sizes, []() {
-        return "we're have some friends over saturday to hang out in the yard";
-      });
-      buffer.WriteToTensor(t, /*new_shape=*/nullptr);
+      if (inputs_data_[j].data) {
+        static_cast<DynamicBuffer*>(inputs_data_[j].data.get())
+            ->WriteToTensor(t, /*new_shape=*/nullptr);
+      } else {
+        tflite::DynamicBuffer buffer;
+        FillRandomString(&buffer, t->dims, []() {
+          return "we're have some friends over saturday to hang out in the "
+                 "yard";
+        });
+        buffer.WriteToTensor(t, /*new_shape=*/nullptr);
+      }
     } else {
       std::memcpy(t->data.raw, inputs_data_[j].data.get(),
                   inputs_data_[j].bytes);
@@ -600,34 +621,39 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
-  delegates_ = GetDelegates();
-  for (const auto& delegate : delegates_) {
-    if (interpreter_->ModifyGraphWithDelegate(delegate.second.get()) !=
-        kTfLiteOk) {
-      TFLITE_LOG(ERROR) << "Failed to apply " << delegate.first << " delegate.";
+  owned_delegates_.clear();
+  for (const auto& delegate_provider : GetRegisteredDelegateProviders()) {
+    auto delegate = delegate_provider->CreateTfLiteDelegate(params_);
+    // It's possible that a delegate of certain type won't be created as
+    // user-specified benchmark params tells not to.
+    if (delegate == nullptr) continue;
+    if (interpreter_->ModifyGraphWithDelegate(delegate.get()) != kTfLiteOk) {
+      TFLITE_LOG(ERROR) << "Failed to apply " << delegate_provider->GetName()
+                        << " delegate.";
       return kTfLiteError;
     } else {
-      if (params_.Get<bool>("require_full_delegation")) {
-        bool fully_delegated = true;
-        if (interpreter_->execution_plan().size() != 1) {
+      bool fully_delegated = true;
+      if (interpreter_->execution_plan().size() != 1) {
+        fully_delegated = false;
+      } else {
+        int first_node_id = interpreter_->execution_plan()[0];
+        const TfLiteNode first_node =
+            interpreter_->node_and_registration(first_node_id)->first;
+        if (delegate.get() != first_node.delegate) {
           fully_delegated = false;
-        } else {
-          int first_node_id = interpreter_->execution_plan()[0];
-          const TfLiteNode first_node =
-              interpreter_->node_and_registration(first_node_id)->first;
-          if (delegate.second.get() != first_node.delegate) {
-            fully_delegated = false;
-          }
-        }
-
-        if (!fully_delegated) {
-          TFLITE_LOG(ERROR) << "Disallowed CPU fallback detected.";
-          return kTfLiteError;
         }
       }
-
-      TFLITE_LOG(INFO) << "Applied " << delegate.first << " delegate.";
+      if (params_.Get<bool>("require_full_delegation") && !fully_delegated) {
+        TFLITE_LOG(ERROR) << "Disallowed CPU fallback detected.";
+        return kTfLiteError;
+      }
+      const std::string delegate_status =
+          fully_delegated ? "completely" : "partially";
+      TFLITE_LOG(INFO) << "Applied " << delegate_provider->GetName()
+                       << " delegate, and the model graph will be "
+                       << delegate_status << " executed w/ the delegate.";
     }
+    owned_delegates_.emplace_back(std::move(delegate));
   }
 
   auto interpreter_inputs = interpreter_->inputs();
@@ -681,19 +707,6 @@ TfLiteStatus BenchmarkTfLiteModel::LoadModel() {
   }
   TFLITE_LOG(INFO) << "Loaded model " << graph;
   return kTfLiteOk;
-}
-
-BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
-    const {
-  TfLiteDelegatePtrMap delegates;
-  for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
-    auto delegate = delegate_util->CreateTfLiteDelegate(params_);
-    if (delegate != nullptr) {
-      delegates.emplace(delegate_util->GetName(), std::move(delegate));
-    }
-  }
-
-  return delegates;
 }
 
 std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()

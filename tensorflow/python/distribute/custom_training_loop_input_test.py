@@ -87,7 +87,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
         return math_ops.square(x)
 
       outputs = distribution.experimental_local_results(
-          distribution.experimental_run_v2(computation, args=(x,)))
+          distribution.run(computation, args=(x,)))
       return outputs
 
     self.assertAllEqual(
@@ -110,7 +110,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       def assign_add():
         v.assign_add(1.0)
 
-      distribution.experimental_run_v2(assign_add)
+      distribution.run(assign_add)
       return array_ops.zeros([])
 
     train_step()
@@ -130,7 +130,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     results = []
     for x in dist_dataset:
       output = distribution.experimental_local_results(
-          distribution.experimental_run_v2(train_step, args=(x,)))
+          distribution.run(train_step, args=(x,)))
       results.append(output)
     self.assert_equal_flattened([[25., 36.], [49., 64.]], results)
 
@@ -148,7 +148,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
 
     with self.assertRaisesRegexp(NotImplementedError,
                                  "does not support pure eager execution"):
-      distribution.experimental_run_v2(train_step, args=(next(input_iterator),))
+      distribution.run(train_step, args=(next(input_iterator),))
 
   @combinations.generate(
       combinations.combine(
@@ -166,7 +166,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     results = []
     for x in dist_dataset:
       output = distribution.experimental_local_results(
-          distribution.experimental_run_v2(train_step, args=(x,)))
+          distribution.run(train_step, args=(x,)))
       results.append(output)
     self.assert_equal_flattened([[25., 36.], [49., 64.]], results)
 
@@ -184,7 +184,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     @def_function.function
     def f_train_step(input_data):
       return distribution.experimental_local_results(
-          distribution.experimental_run_v2(train_step, args=(input_data,)))
+          distribution.run(train_step, args=(input_data,)))
 
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
     results = []
@@ -214,7 +214,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
         }]
 
       inputs = next(iterator)
-      outputs = distribution.experimental_run_v2(computation, args=(inputs,))
+      outputs = distribution.run(computation, args=(inputs,))
       return nest.map_structure(distribution.experimental_local_results,
                                 outputs)
 
@@ -238,7 +238,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     @def_function.function
     def f_train_step(input_data):
       return distribution.experimental_local_results(
-          distribution.experimental_run_v2(train_step, args=(input_data,)))
+          distribution.run(train_step, args=(input_data,)))
 
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
     results = []
@@ -270,7 +270,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
             distribution.reduce("MEAN", x, axis=0), product_of_means.dtype)
 
       for y in dist_dataset:  # loop with no intermediate state
-        distribution.experimental_run_v2(train_step, args=(y,))
+        distribution.run(train_step, args=(y,))
 
       return number_of_steps, product_of_means
 
@@ -308,7 +308,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       for _ in range(2):
         elem = next(iterator)
         output = distribution.experimental_local_results(
-            distribution.experimental_run_v2(step_fn, args=(elem,)))
+            distribution.run(step_fn, args=(elem,)))
         results.append(output)
       return results
 
@@ -454,7 +454,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
         return math_ops.reduce_mean(x)
       inputs = next(iterator)
       outputs = distribution.experimental_local_results(
-          distribution.experimental_run_v2(computation, args=(inputs,)))
+          distribution.run(computation, args=(inputs,)))
       return outputs
 
     # This assumes that there are exactly 2 replicas
@@ -478,7 +478,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
 
       inputs = next(iterator)
       outputs = distribution.experimental_local_results(
-          distribution.experimental_run_v2(
+          distribution.run(
               computation, args=(inputs,), options=options))
       return outputs
 
@@ -499,7 +499,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       def computation(x):
         return math_ops.reduce_mean(x)
       outputs = distribution.experimental_local_results(
-          distribution.experimental_run_v2(computation, args=(inputs,)))
+          distribution.run(computation, args=(inputs,)))
       return outputs
 
     # This assumes that there are exactly 2 replicas
@@ -552,7 +552,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       def computation(x):
         return array_ops.size_v2(x)
       outputs = distribution.experimental_local_results(
-          distribution.experimental_run_v2(computation, args=(inputs,)))
+          distribution.run(computation, args=(inputs,)))
       return outputs
 
     # This assumes that there are exactly 2 replicas
@@ -580,7 +580,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       def computation(x):
         return math_ops.reduce_mean(x)
       outputs = distribution.experimental_local_results(
-          distribution.experimental_run_v2(computation, args=(inputs,)))
+          distribution.run(computation, args=(inputs,)))
       return outputs
 
     # This assumes that there are exactly 2 replicas
@@ -669,7 +669,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
         # Fixed size output with a dynamic sized output.
         return array_ops.zeros([3]), math_ops.square(x)
 
-      return distribution.experimental_run_v2(
+      return distribution.run(
           computation, args=(next(iterator),))
 
     results = run(input_iterator)
@@ -707,7 +707,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       for _ in range(2):
         elem = next(iterator)
         output = distribution.experimental_local_results(
-            distribution.experimental_run_v2(step_fn, args=(elem,)))
+            distribution.run(step_fn, args=(elem,)))
         results.append(output)
       return results
 
@@ -729,7 +729,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     @def_function.function
     def f_train_step(input_data):
       return distribution.experimental_local_results(
-          distribution.experimental_run_v2(train_step, args=(input_data,)))
+          distribution.run(train_step, args=(input_data,)))
 
     dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
@@ -761,12 +761,12 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       def func(inputs):
         return math_ops.square(inputs) + var
 
-      per_replica_outputs = distribution.experimental_run_v2(
+      per_replica_outputs = distribution.run(
           func, (next(input_iterator),))
       mean = distribution.reduce(
           reduce_util.ReduceOp.MEAN, per_replica_outputs, axis=None)
       for _ in dataset_ops.Dataset.range(1):
-        per_replica_outputs = distribution.experimental_run_v2(
+        per_replica_outputs = distribution.run(
             func, (next(input_iterator),))
         mean = distribution.reduce(
             reduce_util.ReduceOp.MEAN, per_replica_outputs, axis=None)
@@ -793,7 +793,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
 
     @def_function.function
     def f_train_step(iterator):
-      distribution.experimental_run_v2(train_step, args=(next(iterator),))
+      distribution.run(train_step, args=(next(iterator),))
       return a
 
     dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)

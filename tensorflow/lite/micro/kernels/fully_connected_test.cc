@@ -48,8 +48,7 @@ void TestFullyConnectedFloat(
   };
 
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, &context);
-
+  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp(tflite::BuiltinOperator_FULLY_CONNECTED, 1);
@@ -123,7 +122,7 @@ void TestFullyConnectedQuantized(
   };
 
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, &context);
+  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
@@ -329,8 +328,8 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedInt8) {
 
   const float input_min = -63.5f;
   const float input_max = 64.0f;
-  const float weights_min = -63.5f;
-  const float weights_max = 64.0f;
+  const float weights_min = -64.0f;
+  const float weights_max = 63.5f;
   const float bias_scale = 0.25f;
   const float output_min = -127.0f;
   const float output_max = 128.0f;
@@ -459,8 +458,8 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedInt8Relu) {
 
   const float input_min = -63.5f;
   const float input_max = 64.0f;
-  const float weights_min = -63.5f;
-  const float weights_max = 64.0f;
+  const float weights_min = -64.0f;
+  const float weights_max = 63.5f;
   const float bias_scale = 0.25f;
   const float output_min = -127.0f;
   const float output_max = 128.0f;
@@ -589,8 +588,8 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedInt8OutputMultiplierGreaterThan1) {
 
   const float input_min = -127.0f;
   const float input_max = 128.0f;
-  const float weights_min = -127.0f;
-  const float weights_max = 128.0f;
+  const float weights_min = -128.0f;
+  const float weights_max = 127.0f;
   const float bias_scale = 1.0f;
   const float output_min = -63.5f;
   const float output_max = 64.0f;
@@ -746,8 +745,8 @@ TF_LITE_MICRO_TEST(SimpleTest4DInputQuantizedInt8) {
 
   const float input_min = -63.5f;
   const float input_max = 64.0f;
-  const float weights_min = -63.5f;
-  const float weights_max = 64.0f;
+  const float weights_min = -64.0f;
+  const float weights_max = 63.5f;
   const float bias_scale = 0.25f;
   const float output_min = -127.0f;
   const float output_max = 128.0f;
@@ -877,8 +876,8 @@ TF_LITE_MICRO_TEST(SimpleTest4DInputQuantizedInt8OutputMultiplierGreaterThan1) {
 
   const float input_min = -127.0f;
   const float input_max = 128.0f;
-  const float weights_min = -127.0f;
-  const float weights_max = 128.0f;
+  const float weights_min = -128.0f;
+  const float weights_max = 127.0f;
   const float bias_scale = 1.0f;
   const float output_min = -63.5f;
   const float output_max = 64.0f;

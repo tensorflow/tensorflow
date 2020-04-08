@@ -32,6 +32,7 @@ from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import c_api_util
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -83,6 +84,7 @@ _TPU_REPLICATE_ATTR = "_tpu_replicate"
 _POST_DEVICE_REWRITE_ATTR = "_post_device_rewrite"
 _TPU_COMPILATION_STATUS_ATTR = "_tpu_compilation_status"
 _OUTSIDE_COMPILATION_ATTR = "_xla_outside_compilation"
+_PIVOT_FOR_CLUSTER = "_pivot_for_cluster"
 
 
 def _tpu_system_device_name(job):
@@ -116,9 +118,20 @@ def initialize_system(embedding_config=None,
   config_string = ("" if embedding_config is None else
                    embedding_config.SerializeToString())
   with ops.device(_tpu_system_device_name(job)):
-    return tpu_ops.configure_distributed_tpu(
-        embedding_config=config_string,
+    topology = tpu_ops.configure_distributed_tpu(
         compilation_failure_closes_chips=compilation_failure_closes_chips)
+
+    if embedding_config is None:
+      return topology
+
+    # This set of control dependencies is needed as this function is expected to
+    # return an op which will return the topology when executed, but we need to
+    # call the embedding initialization op between initializing the TPU and
+    # returning the topology.
+    with ops.control_dependencies([topology]):
+      embedding_init = tpu_ops.configure_tpu_embedding(config=config_string)
+    with ops.control_dependencies([embedding_init]):
+      return array_ops.identity(topology, name="tpu_init_identity")
 
 
 def initialize_system_for_tpu_embedding(embedding_config, job=None):
@@ -221,7 +234,7 @@ def tpu_replicated_input_resolver(op, resource_reads, resource_writes):
       return False
   # Replace tensors in `resource_inputs` which are outputs of TPUReplicatedInput
   # with the actual replicated inputs. This allows ACD to correct add control
-  # deps when there are multiple calls to `experimental_run_v2` in a
+  # deps when there are multiple calls to `run` in a
   # `tf.function`.
   def replace_with_unreplicated_resources(resource_inputs):
     """Replaces handles in `resource_inputs` with their unreplicated inputs."""
@@ -312,7 +325,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       # Note that the order of devices for replicas for the variable and the
       # device assignment might not match.
       job_name = pydev.DeviceSpec.from_string(vars_[0].device).job
-      devices_to_vars = {v.device: v for v in vars_}
+      devices_to_vars = {device_util.canonicalize(v.device): v for v in vars_}
       replicated_vars = []
       for replica_id in range(device_assignment.num_replicas):
         for logical_core in range(device_assignment.num_cores_per_replica):
@@ -686,7 +699,7 @@ def outside_compilation(computation, *args, **kwargs):
   `tf.tpu.outside_compilation()` should be called inside a function that is
   passed to `tpu.split_compile_and_replicate()` -- this is implied when
   outside compilation is invoked inside a function passed to TPUStrategy
-  `experimental_run_v2()`. If invoked outside of TPUReplicateContext,
+  `run()`. If invoked outside of TPUReplicateContext,
   then this simply returns the result of `computation`, and therefore,
   would be a no-op. Note that outside compilation is different from
   `tf.distribute.experimental.TPUStrategy.merge_call()` as logic in
@@ -910,7 +923,8 @@ def _pad_all_input(inputs, padded_shapes, padding_spec):
 
   Args:
     inputs: The original inputs.
-    padded_shapes: A list of padded shapes for each input.
+    padded_shapes: A list of padded shapes for each input. If an entry is None,
+      no padding is performed.
     padding_spec: An enum specified by `tpu.PaddingSpec`. This describes the
       padding policy when the `inputs` to `tf.tpu.replicate` is dynamic.
       One usage is to enable automatic bucketizing on the inputs by setting the
@@ -966,7 +980,8 @@ def _pad_all_input(inputs, padded_shapes, padding_spec):
       input_shape = input_tensor.get_shape().as_list()
       padded_shape = padded_shapes[idx]
 
-      if any(need_padding[idx]):
+      # If we have no padded_shape, then skip padding.
+      if any(need_padding[idx]) and padded_shape is not None:
         for i, s in enumerate(input_shape):
           if need_padding[idx][i]:
             if core_idx == 0:
@@ -1026,6 +1041,51 @@ def _pad_all_input(inputs, padded_shapes, padding_spec):
     padded_inputs[i].extend(real_shapes[i])
 
   return padded_inputs, padding_maps
+
+
+def _flatten_and_filter_composite(maybe_composite, non_composite_output,
+                                  composite_output=None):
+  """For an input, replaced the input by a tuple if the input is composite.
+
+  If `maybe_composite` is not composite, return the parameter
+  `non_composite_output` otherwise return a tuple which consists of the value of
+  the parameter `composite_output` the same number of times as there are
+  components of the composite tensor.
+
+  This is useful for computing a mask when flattening nested data with
+  `expand_composites=True`. For example
+
+  ```python
+  nest.flatten(data, expand_composites=True)
+  ```
+
+  and
+
+  ```python
+  nest.flatten(nest.map(
+      data, lambda x: _flatten_and_filter_composite(x, False, True)))
+  ```
+
+  will have the same length and second will be True if the tensor in the first
+  is derived from a expanding a composite tensor.
+
+  Args:
+    maybe_composite: A value to test for being a composite tensor.
+    non_composite_output: The value to return when `maybe_composite` is not a
+      composite.
+    composite_output: the value to fill the output tuple with if
+      `maybe_composite` is a composite.
+
+  Returns:
+    `non_composite_output` or a tuple with multiple copies of
+    `composite_output`.
+  """
+
+  if isinstance(maybe_composite, composite_tensor.CompositeTensor):
+    num_components = len(
+        maybe_composite._type_spec._to_components(maybe_composite))  # pylint: disable=protected-access
+    return (composite_output,) * num_components
+  return non_composite_output
 
 
 def split_compile_and_replicate(computation,
@@ -1105,8 +1165,13 @@ def split_compile_and_replicate(computation,
     }
     metadata_kwargs["num_cores_per_replica"] = (
         device_assignment.num_cores_per_replica)
+
   # This entry is used for enabling automatic outside compilation.
   metadata_kwargs["allow_soft_placement"] = config.get_soft_device_placement()
+  if config.get_soft_device_placement():
+    logging.info("Automatic outside compilation is enabled. "
+                 "Ops without XLA kernels will be automatically "
+                 "placed on CPU.")
 
   if ((not isinstance(inputs, list)) or
       any(not isinstance(inp, (list, tuple)) for inp in inputs)):
@@ -1124,10 +1189,17 @@ def split_compile_and_replicate(computation,
 
   # Flatten inputs.
   flat_inputs = [
-      nest.flatten(per_replica_input) for per_replica_input in inputs
+      nest.flatten(per_replica_input, expand_composites=True)
+      for per_replica_input in inputs
   ]
+  # Mask parallel to one replicat's inputs with True for tensors coming from
+  # composites.
+  is_composite = nest.flatten(nest.map_structure(
+      lambda x: _flatten_and_filter_composite(x, False, True), inputs[0]))
+
   # Converts inputs to Tensors.
-  flat_inputs = [[ops.convert_to_tensor(x) for x in inp] for inp in flat_inputs]
+  flat_inputs = [[ops.convert_to_tensor(x) for x in inp]
+                 for inp in flat_inputs]
 
   # Verifies that all replicas have matching numbers and types of inputs
   flat_input_types = [x.dtype for x in flat_inputs[0]]
@@ -1162,6 +1234,7 @@ def split_compile_and_replicate(computation,
                for i in inputs[0]]), infeed_queue.number_of_tuple_elements,
                                              arg_error))
 
+  dynamic_shape_inputs = False
   if maximum_shapes:
     if infeed_queue:
       raise ValueError(
@@ -1170,14 +1243,30 @@ def split_compile_and_replicate(computation,
     # Make sure maximum_shapes has the same structure as inputs.
     nest.assert_same_structure(inputs[0], maximum_shapes, check_types=False)
 
-    # Flatten padded shapes.
-    flat_maximum_shapes = nest.flatten(maximum_shapes)
+    # Flatten padded shapes:
+    # For composite tensor components, we don't want to pad them. For each
+    # entry of maximum_shapes that corresponds to a composite tensor, replace it
+    # by a tuple of Nones of the same length as the number of components of the
+    # composite tensor. When we flatten a second time, this makes
+    # flat_maximum_shapes have the same length as flat_inputs[i]. We can then
+    # avoid padding these tensors. The assumption is that they will be used by
+    # outside compilation or that the components are statically shaped and will
+    # be used by tpu compatible ops.
+    flat_maximum_shapes = nest.flatten(
+        [_flatten_and_filter_composite(x, y)
+         for x, y in zip(nest.flatten(inputs[0]),
+                         nest.flatten(maximum_shapes))])
     flat_maximum_shapes = [
-        tensor_shape.TensorShape(s) for s in flat_maximum_shapes
+        tensor_shape.TensorShape(s) if s is not None else None
+        for s in flat_maximum_shapes
     ]
+    nest.assert_same_structure(flat_inputs[0], flat_maximum_shapes,
+                               check_types=False)
 
     flat_inputs, padding_maps = _pad_all_input(flat_inputs, flat_maximum_shapes,
                                                padding_spec)
+    if padding_maps:
+      dynamic_shape_inputs = True
 
     serialized_padding_maps = []
     for padding_map in padding_maps:
@@ -1206,6 +1295,8 @@ def split_compile_and_replicate(computation,
   else:
     cluster_name = graph.unique_name("cluster")
   pivot = control_flow_ops.no_op(name=cluster_name + "/pivot")
+  pivot._set_attr(_PIVOT_FOR_CLUSTER,  # pylint: disable=protected-access
+                  attr_value_pb2.AttrValue(s=compat.as_bytes(cluster_name)))
   context = TPUReplicateContext(
       name=cluster_name, num_replicas=num_replicas, pivot=pivot)
   try:
@@ -1225,14 +1316,14 @@ def split_compile_and_replicate(computation,
           array_ops.identity(x, name="replicated_input_{}".format(i))
           for i, x in enumerate(flat_replicated_inputs)
       ]
-      for i in flat_replicated_inputs:
+      for i, composite in zip(flat_replicated_inputs, is_composite):
         # pylint: disable=protected-access
         # Add an attribute to the identity node so that they could be removed in
         # encapsulate TPU computation pass if unused. However we don't remove
         # inputs when dynamic padding is enabled.
         # TODO(rxsang): Use other ways except argument index in padding_map so
         # outside compilation can work with dynamic padding correctly.
-        if maximum_shapes is None:
+        if not dynamic_shape_inputs or composite:
           i.op._set_attr("_tpu_input_identity",
                          attr_value_pb2.AttrValue(b=True))
         # pylint: enable=protected-access
@@ -1240,7 +1331,8 @@ def split_compile_and_replicate(computation,
       # Unflatten the computation inputs to match original input structure.
       computation_inputs = nest.pack_sequence_as(
           structure=inputs[0],
-          flat_sequence=flat_replicated_inputs[:flat_input_arity])
+          flat_sequence=flat_replicated_inputs[:flat_input_arity],
+          expand_composites=True)
 
       # If there is an infeed queue, adds the dequeued values to the
       # computation's inputs.
@@ -1266,9 +1358,8 @@ def split_compile_and_replicate(computation,
           kwargs["partitioner"] = None
           logging.warning(
               "Partitioned variables are not supported on TPU. Got "
-              "`partitioner` that is {} for variable {}. "
-              "Setting `partitioner` to `None`."
-              .format(partitioner, name))
+              "`partitioner` that is %s for variable %s. "
+              "Setting `partitioner` to `None`.", partitioner, name)
         if saved_custom_getter is None:
           return getter(name, *args, **kwargs)
         else:

@@ -349,6 +349,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       explicit ParseExampleFunctor(const Dataset* dataset)
           : dataset_(dataset) {}
 
+      Status CheckExternalState() override { return Status::OK(); }
+
       void MapFunc(IteratorContext* ctx, const string& prefix,
                    std::vector<Tensor> input, std::vector<Tensor>* output,
                    StatusCallback callback) override {

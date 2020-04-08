@@ -99,7 +99,7 @@ class WorkerFreeListCache : public WorkerCacheInterface {
 
   // TODO(jeff,sanjay): Eviction when the map becomes too big.
   mutex mu_;
-  std::unordered_map<string, WorkerState> workers_ GUARDED_BY(mu_);
+  std::unordered_map<string, WorkerState> workers_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace
@@ -129,7 +129,7 @@ Status WorkerSession::UpdateWorkerCacheAndDevices(
     std::unique_ptr<WorkerCacheInterface> new_worker_cache,
     std::vector<std::unique_ptr<Device>> added_remote_devices,
     const std::vector<Device*>& removed_remote_devices) {
-  worker_cache_ = std::unique_ptr<WorkerCacheInterface>(
+  worker_cache_ = std::shared_ptr<WorkerCacheInterface>(
       new WorkerFreeListCache(std::move(new_worker_cache)));
   TF_RETURN_IF_ERROR(remote_device_mgr_->RemoveDevices(removed_remote_devices));
   TF_RETURN_IF_ERROR(

@@ -107,6 +107,20 @@ class AlgebraicSimplifierOptions {
     return metadata_.cudnn_batchnorm_forward_training_metadata;
   }
 
+  void set_enable_reduce_of_reshape(bool enable_reduce_of_reshape) {
+    enable_reduce_of_reshape_ = enable_reduce_of_reshape;
+  }
+
+  bool enable_reduce_of_reshape() const { return enable_reduce_of_reshape_; }
+
+  void set_replace_transpose_with_bitcast(bool replace_transpose_with_bitcast) {
+    replace_transpose_with_bitcast_ = replace_transpose_with_bitcast;
+  }
+
+  bool replace_transpose_with_bitcast() const {
+    return replace_transpose_with_bitcast_;
+  }
+
  private:
   // Metadata struct can be used to store any metadata information encapsulated
   // with the AlgebraicSimplierOptions that can be later used in an
@@ -126,6 +140,8 @@ class AlgebraicSimplifierOptions {
   bool enable_dot_to_multiply_rewrite_{true};
   bool enable_conv_simplification_{true};
   bool enable_window_reduce_to_reduce_replacement_{true};
+  bool enable_reduce_of_reshape_{true};
+  bool replace_transpose_with_bitcast_{true};
   int64 very_small_gather_size_{4};
   Metadata metadata_;
 };

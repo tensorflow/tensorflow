@@ -430,7 +430,9 @@ def tridiagonal_solve(diagonals,
 
   Raises:
     ValueError: An unsupported type is provided as input, or when the input
-    tensors have incorrect shapes.
+      tensors have incorrect shapes.
+    UnimplementedError: Whenever `partial_pivoting` is true and the backend is
+      XLA.
 
   [1] Nicholas J. Higham (2002). Accuracy and Stability of Numerical Algorithms:
   Second Edition. SIAM. p. 175. ISBN 978-0-89871-802-7.

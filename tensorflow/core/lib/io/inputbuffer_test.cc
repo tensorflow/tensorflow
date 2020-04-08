@@ -378,5 +378,48 @@ TEST(InputBuffer, ReadVarint64) {
   }
 }
 
+TEST(InputBuffer, Hint) {
+  Env* env = Env::Default();
+  string fname;
+  ASSERT_TRUE(env->LocalTempFilename(&fname));
+  TF_ASSERT_OK(WriteStringToFile(env, fname, "0123456789"));
+
+  for (auto buf_size : BufferSizes()) {
+    std::unique_ptr<RandomAccessFile> file;
+    TF_CHECK_OK(env->NewRandomAccessFile(fname, &file));
+    string read;
+    io::InputBuffer in(file.get(), buf_size);
+
+    TF_CHECK_OK(in.ReadNBytes(3, &read));
+    EXPECT_EQ(read, "012");
+    TF_CHECK_OK(in.Hint(4));
+    TF_CHECK_OK(in.ReadNBytes(3, &read));
+    EXPECT_EQ(read, "345");
+    TF_CHECK_OK(in.Hint(1));
+    TF_CHECK_OK(in.ReadNBytes(3, &read));
+    EXPECT_EQ(read, "678");
+
+    TF_CHECK_OK(in.Seek(0));
+    TF_CHECK_OK(in.Hint(7));
+    TF_CHECK_OK(in.ReadNBytes(3, &read));
+    EXPECT_EQ(read, "012");
+    TF_CHECK_OK(in.ReadNBytes(4, &read));
+    EXPECT_EQ(read, "3456");
+
+    TF_CHECK_OK(in.Hint(2));
+    TF_CHECK_OK(in.Seek(4));
+    TF_CHECK_OK(in.ReadNBytes(4, &read));
+    EXPECT_EQ(read, "4567");
+
+    TF_CHECK_OK(in.Seek(0));
+    TF_CHECK_OK(in.Hint(1 << 25));
+
+    TF_CHECK_OK(in.Seek(1 << 25));
+    EXPECT_TRUE(errors::IsOutOfRange(in.Hint(1)));
+
+    EXPECT_TRUE(errors::IsInvalidArgument(in.Hint(-1)));
+  }
+}
+
 }  // namespace
 }  // namespace tensorflow

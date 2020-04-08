@@ -26,8 +26,10 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
@@ -40,6 +42,7 @@ from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import util as trackable_util
+from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 
 
@@ -88,9 +91,27 @@ class _ResidualLSTMCell(keras.layers.LSTMCell):
     return output + inputs, states
 
 
+class _AddOneCell(keras.layers.AbstractRNNCell):
+  """Increments inputs and state by one on each call."""
+
+  @property
+  def state_size(self):
+    return 1
+
+  @property
+  def output_size(self):
+    return 1
+
+  def call(self, inputs, state):
+    inputs = math_ops.reduce_mean(inputs, axis=1, keepdims=True)
+    outputs = inputs + 1.0
+    state = nest.map_structure(lambda t: t + 1.0, state)
+    return outputs, state
+
+
 class TimeDistributedTest(keras_parameterized.TestCase):
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_timedistributed_dense(self):
     model = keras.models.Sequential()
     model.add(
@@ -253,7 +274,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
         self.assertAllEqual(mask_outputs_val[i], ref_mask_val[i])
       self.assertIs(mask_outputs[-1], None)  # final layer
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_TimeDistributed_with_masking_layer(self):
     # test with Masking layer
     model = keras.models.Sequential()
@@ -298,7 +319,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
         '`TimeDistributed` Layer should be passed an `input_shape `'):
       time_dist(ph)
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_TimeDistributed_reshape(self):
 
     class NoReshapeLayer(keras.layers.Layer):
@@ -319,7 +340,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     td3 = keras.layers.TimeDistributed(NoReshapeLayer())
     self.assertFalse(td3._always_use_reshape)
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_TimeDistributed_output_shape_return_types(self):
 
     class TestLayer(keras.layers.Layer):
@@ -448,7 +469,7 @@ class TimeDistributedTest(keras_parameterized.TestCase):
     self.assertAllEqual(output_ragged.to_tensor(), output_dense)
 
 
-@tf_test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(['sum', 'concat', 'ave', 'mul'])
@@ -638,6 +659,40 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       y_backward = y_backward[-n_states:]
       for state_birnn, state_inner in zip(y_merged, y_forward + y_backward):
         self.assertAllClose(state_birnn, state_inner, atol=1e-5)
+
+  @parameterized.parameters([True, False])
+  def test_Bidirectional_with_time_major_input(self, time_major):
+    batch_size, time, input_dim = 2, 3, 1
+    inputs = array_ops.zeros((batch_size, time, input_dim))
+    # length is [1 2]. Within the batch, the first element has 1 step, and the
+    # second element as 2 steps.
+    lengths = math_ops.range(1, 1 + batch_size)
+    mask = array_ops.sequence_mask(lengths, maxlen=time, dtype=dtypes.float32)
+
+    forward_cell = _AddOneCell(name='forward')
+    backward_cell = _AddOneCell(name='backward')
+
+    layer = keras.layers.Bidirectional(
+        layer=keras.layers.RNN(
+            forward_cell, time_major=time_major, return_sequences=True),
+        backward_layer=keras.layers.RNN(
+            backward_cell, time_major=time_major, return_sequences=True,
+            go_backwards=True))
+
+    # Switch to time-major.
+    if time_major:
+      inputs = array_ops.transpose(inputs, [1, 0, 2])
+      mask = array_ops.transpose(mask, [1, 0])
+
+    keras_outputs = layer(inputs, mask=mask)
+    if time_major:
+      keras_outputs = array_ops.transpose(keras_outputs, [1, 0, 2])
+
+    # expect the first element in batch has 1 step and second element in batch
+    # has 2 steps.
+    expected_result = np.array([[[1., 1.], [0., 0.], [0., 0.]],
+                                [[1., 1.], [1., 1.], [0., 0.]]])
+    self.assertAllClose(expected_result, keras_outputs)
 
   def test_Bidirectional_dropout(self):
     rnn = keras.layers.LSTM
@@ -899,6 +954,12 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
           [None, 2, 16])
 
   def test_Bidirectional_last_output_with_masking(self):
+    if test.is_built_with_rocm():
+      # testcase uses input and/or output sequences which require padding
+      # leading to the following error on ROCm platform
+      # ROCm MIOpen only supports packed input output
+      # Skip this subtest for now
+      self.skipTest('Test not supported on the ROCm platform')
     rnn = keras.layers.LSTM
     samples = 2
     dim = 5
@@ -926,6 +987,12 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([keras.layers.LSTM, keras.layers.GRU])
   def test_Bidirectional_sequence_output_with_masking(self, rnn):
+    if test.is_built_with_rocm():
+      # testcase uses input and/or output sequences which require padding
+      # leading to the following error on ROCm platform
+      # ROCm MIOpen only supports packed input output
+      # Skip this subtest for now
+      self.skipTest('Test not supported on the ROCm platform')
     samples = 2
     dim = 5
     timesteps = 3
@@ -1127,6 +1194,9 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(['ave', 'concat', 'mul'])
   def test_Bidirectional_ragged_input(self, merge_mode):
+    if test.is_built_with_rocm():
+      # ragged tenors are not supported in ROCM RNN implementation
+      self.skipTest('Test not supported on the ROCm platform')
     np.random.seed(100)
     rnn = keras.layers.LSTM
     units = 3
@@ -1175,7 +1245,7 @@ class ExampleWrapper(keras.layers.Wrapper):
     return self.layer(inputs, *args, **kwargs)
 
 
-class WrapperTest(keras_parameterized.TestCase):
+class WrapperTest(parameterized.TestCase):
 
   def test_wrapper_from_config_no_mutation(self):
     wrapper = ExampleWrapper(keras.layers.Dense(1))

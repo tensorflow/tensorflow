@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "tensorflow/c/eager/context_interface.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
@@ -42,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
-#include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -124,7 +125,7 @@ class CustomDevice {
                          int* num_retvals) = 0;
 };
 
-class EagerContext : public core::RefCounted {
+class EagerContext : public AbstractContextInterface, public core::RefCounted {
  public:
   static const uint64 kInvalidContextId = 0;
 
@@ -145,7 +146,28 @@ class EagerContext : public core::RefCounted {
                const CustomKernelCreator* custom_kernel_creator,
                DistributedFunctionLibraryRuntime* cluster_flr = nullptr);
 
-  ~EagerContext() override;
+  void Release() override { Unref(); }
+
+  AbstractTensorInterface* CreateInt64Scalar(int64 value) override;
+  AbstractTensorInterface* CreateUint64Scalar(uint64 value) override;
+  AbstractTensorInterface* CreateInt32Scalar(int32 value) override;
+  AbstractTensorInterface* CreateFloatScalar(float value) override;
+  AbstractTensorInterface* CreateDoubleScalar(double value) override;
+  AbstractTensorInterface* CreateHalfScalar(Eigen::half value) override;
+  AbstractTensorInterface* CreateStringScalar(
+      tensorflow::tstring value) override;
+  AbstractTensorInterface* CreateComplex128Scalar(
+      tensorflow::complex128 value) override;
+  AbstractTensorInterface* CreateBoolScalar(bool value) override;
+
+  AbstractTensorInterface* CreateTensor(
+      DataType dtype, absl::Span<const int64> dim_sizes) override;
+
+  AbstractTensorHandleInterface* CreateLocalHandle(
+      AbstractTensorInterface* t) override;
+  AbstractOperationInterface* CreateOperation() override;
+
+  void ListDevices(std::vector<DeviceAttributes>* devices) override;
 
   // Returns the function library runtime for the given device.
   FunctionLibraryRuntime* func_lib(const Device* d) const {
@@ -293,13 +315,11 @@ class EagerContext : public core::RefCounted {
   }
 
   // TODO(apassos) clean up RunMetadata storage.
-  mutex* MetadataMu() LOCK_RETURNED(metadata_mu_) { return &metadata_mu_; }
-  bool ShouldStoreGraphs() LOCKS_EXCLUDED(metadata_mu_);
+  mutex* MetadataMu() TF_LOCK_RETURNED(metadata_mu_) { return &metadata_mu_; }
+  bool ShouldStoreGraphs() TF_LOCKS_EXCLUDED(metadata_mu_);
   void SetShouldStoreGraphs(bool value);
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
-  void ClearRunMetadata() EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
-
-  void ListDevices(std::vector<tensorflow::DeviceAttributes>* devices);
+  void ClearRunMetadata() TF_EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
 
   void StartStep();
   void EndStep();
@@ -361,8 +381,7 @@ class EagerContext : public core::RefCounted {
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       const std::vector<string>& add_remote_contexts,
       const std::vector<string>& remove_remote_contexts, uint64 context_id,
-      Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
-      DistributedFunctionLibraryRuntime* cluster_flr);
+      Rendezvous* r);
 
   // Similar with InitializeRemoteMaster but this context will not kill remote
   // contexts in shutdown.
@@ -446,14 +465,16 @@ class EagerContext : public core::RefCounted {
   Status FindCustomDeviceFromName(const string& device_name,
                                   CustomDevice** dev) const;
 
-  void RegisterCustomDevice(const string& name,
-                            std::unique_ptr<CustomDevice> device);
+  Status RegisterCustomDevice(const string& name,
+                              std::unique_ptr<CustomDevice> device);
 
   bool OnSameTask(const Device* first, const Device* second) const;
   // Gets the CPU device on the task of device.
   Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
 
  private:
+  ~EagerContext() override;
+
   void InitPrioritizedDeviceTypeList();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
   Status RegisterExistingFunctionsOnRemoteWorkers(
@@ -511,9 +532,9 @@ class EagerContext : public core::RefCounted {
   // thread-local-object-local variable in C++11.
   mutable mutex policy_map_mu_;
   std::unordered_map<std::thread::id, ContextDevicePlacementPolicy>
-      device_placement_policy_ GUARDED_BY(policy_map_mu_);
+      device_placement_policy_ TF_GUARDED_BY(policy_map_mu_);
   std::unordered_map<std::thread::id, ContextMirroringPolicy> mirroring_policy_
-      GUARDED_BY(policy_map_mu_);
+      TF_GUARDED_BY(policy_map_mu_);
 
   OwnedOrUnownedHelper<const DeviceMgr> local_device_manager_;
 
@@ -552,14 +573,14 @@ class EagerContext : public core::RefCounted {
   };
   std::unordered_map<Fprint128, core::RefCountPtr<KernelAndDevice>,
                      Fprint128Hasher>
-      kernel_cache_ GUARDED_BY(cache_mu_);
+      kernel_cache_ TF_GUARDED_BY(cache_mu_);
   std::unordered_map<string, RegisteredFunction*> registered_functions_
-      GUARDED_BY(cache_mu_);
+      TF_GUARDED_BY(cache_mu_);
 
   // Whether we should compute RunMetadata.
   std::atomic<bool> should_store_graphs_{false};
   mutex metadata_mu_;
-  RunMetadata run_metadata_ GUARDED_BY(metadata_mu_);
+  RunMetadata run_metadata_ TF_GUARDED_BY(metadata_mu_);
   GraphCollector graph_collector_;
   // TODO(fishx): Allow update following two bool after context creation.
   const bool log_device_placement_;
@@ -567,13 +588,14 @@ class EagerContext : public core::RefCounted {
 
   // Information related to step containers.
   std::atomic<int> num_active_steps_;
-  std::unique_ptr<ScopedStepContainer> step_container_ GUARDED_BY(metadata_mu_);
+  std::unique_ptr<ScopedStepContainer> step_container_
+      TF_GUARDED_BY(metadata_mu_);
 
   EagerExecutor default_executor_;
   mutable mutex executor_map_mu_;
   // Not owned.
   std::unordered_map<std::thread::id, EagerExecutor*> thread_local_executor_
-      GUARDED_BY(executor_map_mu_);
+      TF_GUARDED_BY(executor_map_mu_);
 
   const bool log_memory_;
 
@@ -607,28 +629,28 @@ class EagerContext : public core::RefCounted {
 
   mutable mutex remote_state_mu_;
 
-  uint64 context_id_ GUARDED_BY(remote_state_mu_);
+  uint64 context_id_ TF_GUARDED_BY(remote_state_mu_);
   // The view id of an eager context should be set to 0 when context is created,
   // and continuously incremented when context with the same context_id gets
   // updated. The view id should be consistent between master and workers.
-  uint64 context_view_id_ GUARDED_BY(remote_state_mu_);
+  uint64 context_view_id_ TF_GUARDED_BY(remote_state_mu_);
   std::vector<string> remote_contexts_;
 
-  int keep_alive_secs_ GUARDED_BY(remote_state_mu_);
+  int keep_alive_secs_ TF_GUARDED_BY(remote_state_mu_);
   std::atomic<int> sleep_for_secs_;
 
   std::unique_ptr<Thread> keep_alive_thread_;
   mutex keep_alive_thread_shutdown_mu_;
   condition_variable keep_alive_thread_cv_;
-  bool shutting_down_ GUARDED_BY(keep_alive_thread_shutdown_mu_) = false;
+  bool shutting_down_ TF_GUARDED_BY(keep_alive_thread_shutdown_mu_) = false;
 
   std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
       remote_mgr_;
-  bool is_master_ GUARDED_BY(remote_state_mu_);
+  bool is_master_ TF_GUARDED_BY(remote_state_mu_);
 
   // Maps from a remote worker to a list of parsed device filters.
   std::unordered_map<string, std::vector<DeviceNameUtils::ParsedName>>
-      cluster_device_filters_ GUARDED_BY(remote_state_mu_);
+      cluster_device_filters_ TF_GUARDED_BY(remote_state_mu_);
 
 #endif  // IS_MOBILE_PLATFORM
 
@@ -645,6 +667,10 @@ class EagerContext : public core::RefCounted {
   // to this context.
   std::function<void()> resource_deallocator_ = nullptr;
 };
+
+inline EagerContext* ContextFromInterface(AbstractContextInterface* context) {
+  return down_cast<EagerContext*>(context);
+}
 
 }  // namespace tensorflow
 

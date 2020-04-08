@@ -29,7 +29,7 @@ namespace {
 // vec mat mult) on 4 parts to create more threads
 // tid.y thread process every 4-th element in vec vec dot
 // Good results for ~1024 x 1024 sizes, for other can be written more
-// otimized shaders
+// optimized shaders
 
 std::string GetFullyConnectedKernelCode(
     const OperationDef& op_def, const LinearStorage& biases,
@@ -62,6 +62,8 @@ std::string GetFullyConnectedKernelCode(
   c += "    int2 depthes                  \n";
   c += ") {\n";
   c += "  int gid = get_global_id(0);\n";
+  c += "  bool inside = gid < depthes.y;\n";
+  c += "  gid = min(gid, depthes.y - 1);\n";
   c += "  int2 tid = (int2)(get_local_id(0), get_local_id(1));\n";
   c += "  ACCUM_FLT4 s = (ACCUM_FLT4)(0.0f);\n";
   c += "  for (uint c = tid.y; c < depthes.x; c += " + wg_y + ") {\n";
@@ -75,7 +77,7 @@ std::string GetFullyConnectedKernelCode(
   c += "  __local ACCUM_FLT4 temp[" + wg_x + "][" + wg_y + "];\n";
   c += "  temp[tid.x][tid.y] = s;\n";
   c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
-  c += "  if (tid.y == 0 && gid < depthes.y) {\n";
+  c += "  if (tid.y == 0 && inside) {\n";
   for (int i = 1; i < work_group_size.y; ++i) {
     c += "    s += temp[tid.x][" + std::to_string(i) + "];\n";
   }
@@ -111,7 +113,7 @@ FullyConnected& FullyConnected::operator=(FullyConnected&& kernel) {
   return *this;
 }
 
-Status FullyConnected::Compile(const CreationContext& creation_context) {
+absl::Status FullyConnected::Compile(const CreationContext& creation_context) {
   int wg_width = 32;
   int wg_height = 4;
   int work_items;
@@ -132,10 +134,10 @@ Status FullyConnected::Compile(const CreationContext& creation_context) {
     }
     work_items = work_group_size_.x * work_group_size_.y * work_group_size_.z;
   } while (work_items > kernel_.GetMaxWorkGroupSize());
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status FullyConnected::AddToQueue(CLCommandQueue* queue) {
+absl::Status FullyConnected::AddToQueue(CLCommandQueue* queue) {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
@@ -144,15 +146,14 @@ Status FullyConnected::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(int2(src_[0]->Slices(), dst_[0]->Slices())));
-
   return queue->DispatchImplicit(kernel_, {dst_[0]->Slices(), 1, 1},
                                  work_group_size_);
 }
 
-Status CreateFullyConnected(const CreationContext& creation_context,
-                            const OperationDef& definition,
-                            const FullyConnectedAttributes& attr,
-                            FullyConnected* result) {
+absl::Status CreateFullyConnected(const CreationContext& creation_context,
+                                  const OperationDef& definition,
+                                  const FullyConnectedAttributes& attr,
+                                  FullyConnected* result) {
   *result = FullyConnected(definition);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
@@ -163,7 +164,7 @@ Status CreateFullyConnected(const CreationContext& creation_context,
   create_info.aligned_size = attr.weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(
       create_info, attr.bias, creation_context.context, &result->biases_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cl

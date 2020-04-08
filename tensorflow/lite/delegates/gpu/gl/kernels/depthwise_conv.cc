@@ -36,8 +36,8 @@ namespace {
 
 class DepthwiseConvolution : public NodeShader {
  public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     auto input = ctx.graph->FindInputs(ctx.node->id)[0];
     auto attr = absl::any_cast<const DepthwiseConvolution2DAttributes&>(
         ctx.node->operation.attributes);
@@ -146,7 +146,7 @@ class DepthwiseConvolution : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

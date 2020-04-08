@@ -126,7 +126,7 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_windows",
-        # TODO(kkimlabs): Temporay workaround since KokoroPresubmit was failing.
+        # TODO(kkb): Temporay workaround since KokoroPresubmit was failing.
         #                 cl/259400943 for more context.
         "no_oss_py2",
     ],

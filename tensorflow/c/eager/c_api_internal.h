@@ -27,26 +27,24 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/context_interface.h"
 #include "tensorflow/c/eager/operation_interface.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
-#include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
-#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/rendezvous.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/version.h"
 
@@ -59,25 +57,28 @@ struct TFE_ContextOptions {
   TFE_ContextMirroringPolicy mirroring_policy{TFE_MIRRORING_NONE};
   // If true, lazily copy the remote inputs of a function to the target devices.
   bool lazy_remote_inputs_copy = true;
+  // If true, use TFRT backend
+  bool use_tfrt = false;
 };
 
+// Wraps a pointer to a context implementation.
+//
+// WARNING: Since the underlying object could be ref-counted a user of this
+// interface cannot destruct the underlying context object. Instead, call
+// TFE_DeleteContext who calls Release() on the context pointer and deletes
+// the TFE_Context structure.
 struct TFE_Context {
-  tensorflow::EagerContext* context;
+  tensorflow::AbstractContextInterface* context;
 };
 
+// Wraps a pointer to a tensor handle implementation.
+//
+// WARNING: Since the underlying object could be ref-counted a user of this
+// interface cannot destruct the underlying handle object. Instead, call
+// TFE_DeleteTensorHandle who calls Release() on the handle pointer and deletes
+// the TFE_TensorHandle structure.
 struct TFE_TensorHandle {
-  static TFE_TensorHandle* CreateLocalHandle(const class tensorflow::Tensor& t,
-                                             TF_Status* s) {
-    tensorflow::TensorHandle* handle;
-    s->status = tensorflow::TensorHandle::CreateLocalHandle(t, &handle);
-    if (!s->status.ok()) {
-      return nullptr;
-    }
-    return new TFE_TensorHandle{
-        std::make_unique<tensorflow::TensorHandleInterface>(handle)};
-  }
-
-  std::unique_ptr<AbstractTensorHandleInterface> handle;
+  tensorflow::AbstractTensorHandleInterface* handle;
 };
 
 struct TFE_TensorDebugInfo {
@@ -88,8 +89,14 @@ struct TFE_TensorDebugInfo {
   std::vector<tensorflow::int64> dev_dims;
 };
 
+// Wraps a pointer to an operation implementation.
+//
+// WARNING: Since the underlying object could be ref-counted a user of this
+// interface cannot destruct the underlying operation object. Instead, call
+// TFE_DeleteOp who calls Release() on the operation pointer and deletes
+// the TFE_Op structure.
 struct TFE_Op {
-  std::unique_ptr<AbstractOperationInterface> operation;
+  tensorflow::AbstractOperationInterface* operation;
 };
 
 struct TFE_MonitoringCounterCell {

@@ -29,6 +29,19 @@ from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.base_preprocessing_layer import PreprocessingLayer
 
+# Image preprocessing layers.
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import CenterCrop
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomCrop
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomFlip
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomContrast
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomHeight
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomRotation
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomTranslation
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomWidth
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomZoom
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Resizing
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Rescaling
+
 # Preprocessing layers.
 if tf2.enabled():
   from tensorflow.python.keras.layers.preprocessing.normalization import Normalization
@@ -44,7 +57,6 @@ else:
   from tensorflow.python.keras.layers.preprocessing.text_vectorization_v1 import TextVectorization
   from tensorflow.python.keras.layers.preprocessing.text_vectorization import TextVectorization as TextVectorizationV2
   TextVectorizationV1 = TextVectorization
-from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Rescaling
 
 # Advanced activations.
 from tensorflow.python.keras.layers.advanced_activations import LeakyReLU
@@ -230,8 +242,27 @@ from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import DropoutWrapper
 from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import ResidualWrapper
 
 # Serialization functions
+from tensorflow.python.keras.layers import serialization
 from tensorflow.python.keras.layers.serialization import deserialize
 from tensorflow.python.keras.layers.serialization import serialize
+
+
+class VersionAwareLayers(object):
+  """Utility to be used internally to access layers in a V1/V2-aware fashion.
+
+  When using layers within the Keras codebase, under the constraint that
+  e.g. `layers.BatchNormalization` should be the `BatchNormalization` version
+  corresponding to the current runtime (TF1 or TF2), do not simply access
+  `layers.BatchNormalization` since it would ignore e.g. an early
+  `compat.v2.disable_v2_behavior()` call. Instead, use an instance
+  of `VersionAwareLayers` (which you can use just like the `layers` module).
+  """
+
+  def __getattr__(self, name):
+    serialization.populate_deserializable_objects()
+    if name in serialization.LOCAL.ALL_OBJECTS:
+      return serialization.LOCAL.ALL_OBJECTS[name]
+    return super(VersionAwareLayers, self).__getattr__(name)
 
 del absolute_import
 del division

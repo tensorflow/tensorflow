@@ -29,8 +29,6 @@ limitations under the License.
 
 using ::tflite::gpu::AlignByN;
 using ::tflite::gpu::BHWC;
-using ::tflite::gpu::InternalError;
-using ::tflite::gpu::InvalidArgumentError;
 using ::tflite::gpu::HalfBits;
 using ::tflite::gpu::metal::ComputeTaskDescriptorPtr;
 using ::tflite::gpu::metal::CreateComputeProgram;
@@ -38,8 +36,6 @@ using ::tflite::gpu::metal::DispatchParamsFunction;
 using ::tflite::gpu::metal::OutputDimensions;
 using ::tflite::gpu::metal::RuntimeOptions;
 using ::tflite::gpu::metal::UniformsFunction;
-using ::tflite::gpu::OkStatus;
-using ::tflite::gpu::Status;
 using ::tflite::gpu::uint3;
 using ::tflite::gpu::ValueId;
 
@@ -70,9 +66,9 @@ using ::tflite::gpu::ValueId;
   std::string _description;
 }
 
-- (Status)compileWithDevice:(id<MTLDevice>)device
-             taskDescriptor:(ComputeTaskDescriptorPtr)desc
-             runtimeOptions:(const RuntimeOptions&)options {
+- (absl::Status)compileWithDevice:(id<MTLDevice>)device
+                   taskDescriptor:(ComputeTaskDescriptorPtr)desc
+                   runtimeOptions:(const RuntimeOptions&)options {
   NSString* barrier;
   // simdgroup_barrier is supported on macOS 10.13+ and Metal shading language version 2.0
   if (@available(macOS 10.13, iOS 10.0, tvOS 10.0, *)) {
@@ -115,7 +111,7 @@ using ::tflite::gpu::ValueId;
     @"TO_ACCUM2_TYPE" : toAccumulatorType2,
     @"TO_ACCUM3_TYPE" : toAccumulatorType3,
     @"TO_ACCUM4_TYPE" : toAccumulatorType4,
-    @"BARRIER" : barrier,
+    @"SIMDGROUP_BARRIER" : barrier,
   };
 
   NSString* code = [NSString stringWithCString:desc->shader_source.c_str()
@@ -123,7 +119,7 @@ using ::tflite::gpu::ValueId;
   id<MTLComputePipelineState> program;
   RETURN_IF_ERROR(CreateComputeProgram(device, code, @"ComputeFunction", macros, &program));
   if (!program) {
-    return InternalError("Unknown shader compilation error");
+    return absl::InternalError("Unknown shader compilation error");
   }
   for (auto& buffer : desc->input_buffers) {
     _inputBuffers.emplace_back(InputBuffer{buffer.id, nil});
@@ -148,12 +144,13 @@ using ::tflite::gpu::ValueId;
   _resizeFunction = desc->resize_function;
   _program = program;
   _description = desc->description;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-- (Status)setInputDimensionsWithDevice:(id<MTLDevice>)device
-                            dimensions:
-                                (std::map<::tflite::gpu::ValueId, ::tflite::gpu::BHWC>*)dimensions {
+- (absl::Status)setInputDimensionsWithDevice:(id<MTLDevice>)device
+                                  dimensions:
+                                      (std::map<::tflite::gpu::ValueId, ::tflite::gpu::BHWC>*)
+                                          dimensions {
   // Re-calculate output buffers dimensions
   for (auto& buffer : _outputBuffers) {
     auto outputDimensions = buffer.dimensionsFunction(*dimensions);
@@ -180,23 +177,23 @@ using ::tflite::gpu::ValueId;
     error += "is larger than the MTLDevice can support: ";
     error += std::to_string(threadsPerGroup.width) + ", " + std::to_string(threadsPerGroup.height) +
              ", " + std::to_string(threadsPerGroup.depth);
-    return InvalidArgumentError(error);
+    return absl::InvalidArgumentError(error);
   }
   _groupsCount = workGroups.second;
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-- (Status)assignBuffers:(std::map<::tflite::gpu::ValueId, id<MTLBuffer>>*)buffers
-              outputIds:(const std::vector<::tflite::gpu::ValueId>&)outputIds
-         usageRecordIds:(const std::map<ValueId, size_t>&)usageRecordIds
-        sharedBufferIds:(const std::vector<size_t>&)sharedBufferIds
-          sharedBuffers:(const std::vector<id<MTLBuffer>>&)sharedBuffers {
+- (absl::Status)assignBuffers:(std::map<::tflite::gpu::ValueId, id<MTLBuffer>>*)buffers
+                    outputIds:(const std::vector<::tflite::gpu::ValueId>&)outputIds
+               usageRecordIds:(const std::map<ValueId, size_t>&)usageRecordIds
+              sharedBufferIds:(const std::vector<size_t>&)sharedBufferIds
+                sharedBuffers:(const std::vector<id<MTLBuffer>>&)sharedBuffers {
   for (auto& buffer : _outputBuffers) {
     // If the buffer is intermediate: set its metalHandle from sharedBuffers
     if (std::find(outputIds.begin(), outputIds.end(), buffer.uid) == outputIds.end()) {
       auto usageRecordIt = usageRecordIds.find(buffer.uid);
       if (usageRecordIt == usageRecordIds.end()) {
-        return InternalError("TensorUsageRecord for intermediate tensor is not found.");
+        return absl::InternalError("TensorUsageRecord for intermediate tensor is not found.");
       }
       buffer.metalHandle = sharedBuffers.at(sharedBufferIds.at(usageRecordIt->second));
       (*buffers)[buffer.uid] = buffer.metalHandle;
@@ -207,7 +204,7 @@ using ::tflite::gpu::ValueId;
   for (auto& buffer : _inputBuffers) {
     buffer.metalHandle = (*buffers)[buffer.uid];
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 - (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)encoder

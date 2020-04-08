@@ -22,13 +22,13 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -45,7 +45,7 @@ namespace {
 // otherwise _tf operations are wrapped in an island and the _ prefix is
 // removed. Control dependencies are moved to be handled by the island itself.
 struct ControlToExecutorDialectConversion
-    : public FunctionPass<ControlToExecutorDialectConversion> {
+    : public PassWrapper<ControlToExecutorDialectConversion, FunctionPass> {
   void runOnFunction() override;
 
  private:
@@ -218,7 +218,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
       }
 
       // Create the operation inside the island
-      OpBuilder island_builder(&island.GetBody());
+      OpBuilder island_builder = OpBuilder::atBlockEnd(&island.GetBody());
       Operation *inner_op = island_builder.createOperation(result);
       inner_op->setAttrs(op.getAttrList());
 
@@ -237,7 +237,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
   }
 }
 
-OpPassBase<FuncOp> *CreateTFControlToExecutorDialectConversion() {
+OperationPass<FuncOp> *CreateTFControlToExecutorDialectConversion() {
   return new ControlToExecutorDialectConversion();
 }
 

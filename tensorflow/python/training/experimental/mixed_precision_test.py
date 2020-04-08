@@ -194,10 +194,13 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_error_if_policy_is_set(self):
     with policy.policy_scope('mixed_float16'):
       with self.assertRaisesRegexp(
-          ValueError, 'a keras mixed precision Policy has been set'):
+          ValueError, 'the global Keras dtype Policy has been set'):
         enable_mixed_precision_graph_rewrite(gradient_descent_v2.SGD(1.0))
-    # Test no error is thrown when the policy is current the default.
+    # Test no error is thrown when the policy is currently the default.
     enable_mixed_precision_graph_rewrite(gradient_descent_v2.SGD(1.0))
+    # Test no error is thrown when the policy is a non-mixed policy.
+    with policy.policy_scope('float64'):
+      enable_mixed_precision_graph_rewrite(gradient_descent_v2.SGD(1.0))
 
 
 if __name__ == '__main__':

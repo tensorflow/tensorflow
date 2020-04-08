@@ -18,21 +18,21 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/STLExtras.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/STLExtras.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -73,7 +73,8 @@ constexpr char kDeviceAttr[] = "device";
 // %copy_to_device. There will not be send/recv ops added by later passes,
 // because tf.TPUCopyWithLayout accepts a host input and produces a device
 // output.
-struct TPUDynamicLayoutPass : public FunctionPass<TPUDynamicLayoutPass> {
+struct TPUDynamicLayoutPass
+    : public PassWrapper<TPUDynamicLayoutPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -244,8 +245,7 @@ void TPUDynamicLayoutPass::runOnFunction() {
     if (!compile || !compile->getResult(1).hasOneUse()) return;
     auto compile_launch = llvm::dyn_cast<tf_device::LaunchOp>(compile);
     if (!compile_launch || !compile_launch.WrapsSingleOp() ||
-        compile_launch.GetBody().front().getName().getStringRef() !=
-            "tf._TPUCompileMlir")
+        !llvm::isa<TF::_TPUCompileMlirOp>(compile_launch.GetBody().front()))
       return;
     executes_and_compiles.emplace_back(execute, compile_launch);
   });
@@ -257,7 +257,7 @@ void TPUDynamicLayoutPass::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTPUDynamicLayoutPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUDynamicLayoutPass() {
   return std::make_unique<TPUDynamicLayoutPass>();
 }
 

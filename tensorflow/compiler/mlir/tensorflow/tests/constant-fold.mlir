@@ -18,6 +18,26 @@ func @testShape(tensor<f32>, tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<0
   return %0, %1, %2 : tensor<0xi32>, tensor<?xi32>, tensor<?xi32>
 }
 
+// CHECK-LABEL: func @testPow
+// CHECK-SAME:(%[[ARG_0:.*]]: tensor<4xf32>, %[[ARG_1:.*]]: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>, tensor<4xf32>)
+func @testPow(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>, tensor<4xf32>) {
+
+  %cst_zero = constant dense<0.0> : tensor<f32>
+  %cst_one = constant dense<1.0> : tensor<f32>
+
+  // CHECK-DAG: %[[RES_NO_FOLD:.*]] = "tf.Pow"(%arg0, %arg1)
+  %0 = "tf.Pow"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  // CHECK-DAG: %[[POW_ZERO:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<4xf32>} : () -> tensor<4xf32>
+  %1 = "tf.Pow"(%arg0, %cst_zero) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+
+  // CHECK-NOT: "tf.Pow"
+  %2 = "tf.Pow"(%arg0, %cst_one) : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+
+  // CHECK: return %[[RES_NO_FOLD]], %[[POW_ZERO]], %[[ARG_0]]
+  return %0, %1, %2 : tensor<4xf32>, tensor<4xf32>, tensor<4xf32>
+}
+
 // CHECK-LABEL: func @testShapeN
 func @testShapeN(%arg0: tensor<f32>, %arg1: tensor<1x32x32x16xf32>, %arg2: tensor<*xf32>) -> (tensor<0xi64>, tensor<4xi64>, tensor<4xi64>, tensor<?xi64>) {
 
@@ -212,4 +232,22 @@ func @testRemoteDevice() -> tensor<2x2xi32> {
   // CHECK:         [[cst:%.*]] = "tf.Const{{.*}} dense<{{\[\[}}1, 2], {{\[}}3, 4]]> : tensor<2x2xi32>
   // CHECK-NEXT:    return [[cst]] : tensor<2x2xi32>
   return %2: tensor<2x2xi32>
+}
+
+// Tests ops that variable shapes are correctly evaluated on static types.
+// CHECK-LABEL: func @testVariableShape
+func @testVariableShape(%arg0: tensor<!tf.resource<tensor<2x4xf32>>>) -> tensor<2xi32> {
+  %0 = "tf.VariableShape"(%arg0) : (tensor<!tf.resource<tensor<2x4xf32>>>) -> tensor<2xi32>
+  // CHECK:         [[cst:%.*]] = "tf.Const{{.*}} dense<{{\[}}2, 4]> : tensor<2xi32>
+  // CHECK-NEXT:    return [[cst]] : tensor<2xi32>
+  return %0: tensor<2xi32>
+}
+
+// Tests ops that tensor list shapes are correctly evaluated on static types.
+// CHECK-LABEL: func @testTensorListElementShape
+func @testTensorListElementShape(%arg0: tensor<!tf.variant<tensor<2x4xf32>>>) -> tensor<2xi32> {
+  %0 = "tf.TensorListElementShape"(%arg0) : (tensor<!tf.variant<tensor<2x4xf32>>>) -> tensor<2xi32>
+  // CHECK:         [[cst:%.*]] = "tf.Const{{.*}} dense<{{\[}}2, 4]> : tensor<2xi32>
+  // CHECK-NEXT:    return [[cst]] : tensor<2xi32>
+  return %0: tensor<2xi32>
 }

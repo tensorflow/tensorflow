@@ -88,6 +88,9 @@ TensorFlow coding style.
     submitting PRs to fix one typo, one warning,etc. We recommend fixing the
     same issue at the file level at least (e.g.: fix all typos in a file, fix
     all compiler warning in a file, etc.)
+*   Tests should follow the
+    [testing best practices](https://www.tensorflow.org/community/contribute/tests)
+    guide.
 
 #### License
 

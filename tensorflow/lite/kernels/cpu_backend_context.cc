@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 #include "public/gemmlowp.h"
-#include "tensorflow/lite/experimental/ruy/context.h"
+#include "ruy/context.h"  // from @ruy
 #include "tensorflow/lite/kernels/op_macros.h"
 
 namespace {

@@ -342,6 +342,11 @@ class BinaryOpTest(test.TestCase):
     # _MOD for int32 on GPU by calling _compareGpu
     self._compareGpu(x, y, np.mod, _MOD)
 
+  def testUint32Basic(self):
+    x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.int32)
+    y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int32)
+    self._compareBoth(x, y, np.add, math_ops.add)
+
   def testInt64Basic(self):
     x = np.arange(1 << 40, 13 << 40, 2 << 40).reshape(1, 3, 2).astype(np.int64)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int64)

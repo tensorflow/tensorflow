@@ -99,6 +99,10 @@ class XlaOpKernelContext {
   // Returns input `name` as a XlaOp.
   xla::XlaOp Input(absl::string_view name);
 
+  // Returns the xla input shape for a given index.
+  xla::StatusOr<xla::Shape> InputXlaShape(int index);
+  xla::StatusOr<xla::Shape> InputXlaShape(absl::string_view name);
+
   // Returns true if all inputs are the same shape, otherwise sets the
   // status to a non-OK value and returns false.
   // Usage: if (!context->ValidateInputsAreSameShape(this)) return;
@@ -277,6 +281,13 @@ class XlaOpKernelContext {
   // XlaContext since it may be used by multiple Ops. There is a
   // separate specialization of the computation for each DataType.
   const xla::XlaComputation* GetOrCreateMul(const DataType type);
+
+  // Assigns an XlaExpression to a tensor on an XLA compilation device.
+  static void AssignExpressionToTensor(const XlaExpression& value,
+                                       Tensor* tensor);
+
+  // Retrieves an XlaExpression that was assigned to the specified tensor.
+  static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor);
 
  private:
   // Returns the tensor of input `name`.

@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <queue>
+
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -191,7 +192,8 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
         return model::MakeSourceNode(std::move(args));
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(
             full_name("current_pattern_index"), current_pattern_index_));
@@ -267,7 +269,7 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
      private:
       Status UpdateIterator(IteratorContext* ctx, FileSystem* fs,
                             const string& dir, const string& eval_pattern)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         StringPiece fixed_prefix =
             StringPiece(eval_pattern)
                 .substr(0, eval_pattern.find_first_of("*?[\\"));
@@ -362,11 +364,11 @@ class MatchingFilesDatasetOp : public DatasetOpKernel {
       typedef std::pair<string, bool> PathStatus;
       std::priority_queue<PathStatus, std::vector<PathStatus>,
                           std::greater<PathStatus>>
-          filepath_queue_ GUARDED_BY(mu_);
-      size_t current_pattern_index_ GUARDED_BY(mu_) = 0;
-      tstring current_pattern_ GUARDED_BY(mu_);
-      bool hasMatch_ GUARDED_BY(mu_) = false;
-      bool isWindows_ GUARDED_BY(mu_) = false;
+          filepath_queue_ TF_GUARDED_BY(mu_);
+      size_t current_pattern_index_ TF_GUARDED_BY(mu_) = 0;
+      tstring current_pattern_ TF_GUARDED_BY(mu_);
+      bool hasMatch_ TF_GUARDED_BY(mu_) = false;
+      bool isWindows_ TF_GUARDED_BY(mu_) = false;
     };
 
     const std::vector<tstring> patterns_;

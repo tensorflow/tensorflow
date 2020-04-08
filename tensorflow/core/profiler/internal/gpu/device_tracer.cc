@@ -490,8 +490,9 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     }
 
     mutex m;
-    std::vector<CuptiTracerEvent> events GUARDED_BY(m);
-    absl::flat_hash_map<uint32, CorrelationInfo> correlation_info GUARDED_BY(m);
+    std::vector<CuptiTracerEvent> events TF_GUARDED_BY(m);
+    absl::flat_hash_map<uint32, CorrelationInfo> correlation_info
+        TF_GUARDED_BY(m);
   };
   absl::FixedArray<PerDeviceCollector> per_device_collector_;
 
@@ -512,9 +513,6 @@ class GpuTracer : public profiler::ProfilerInterface {
   Status Stop() override;
   Status CollectData(RunMetadata* run_metadata) override;
   Status CollectData(XSpace* space) override;
-  profiler::DeviceType GetDeviceType() override {
-    return profiler::DeviceType::kGpu;
-  }
 
  private:
   Status DoStart();
@@ -678,9 +676,9 @@ Status GpuTracer::CollectData(XSpace* space) {
 
 // Not in anonymous namespace for testing purposes.
 std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer(
-    const profiler::ProfilerOptions& options) {
-  if (options.device_type != profiler::DeviceType::kGpu &&
-      options.device_type != profiler::DeviceType::kUnspecified)
+    const ProfileOptions& options) {
+  if (options.device_type() != ProfileOptions::GPU &&
+      options.device_type() != ProfileOptions::UNSPECIFIED)
     return nullptr;
   profiler::CuptiTracer* cupti_tracer =
       profiler::CuptiTracer::GetCuptiTracerSingleton();

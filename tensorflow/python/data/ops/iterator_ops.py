@@ -450,7 +450,7 @@ class Iterator(trackable.Trackable):
   def output_classes(self):
     """Returns the class of each component of an element of this iterator.
 
-    The expected values are `tf.Tensor` and `tf.SparseTensor`.
+    The expected values are `tf.Tensor` and `tf.sparse.SparseTensor`.
 
     Returns:
       A nested structure of Python `type` objects corresponding to each
@@ -679,7 +679,7 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
   def output_classes(self):
     """Returns the class of each component of an element of this iterator.
 
-    The expected values are `tf.Tensor` and `tf.SparseTensor`.
+    The expected values are `tf.Tensor` and `tf.sparse.SparseTensor`.
 
     Returns:
       A nested structure of Python `type` objects corresponding to each
@@ -745,7 +745,17 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
   def _gather_saveables_for_checkpoint(self):
 
     def _saveable_factory(name):
-      return _IteratorSaveable(self._iterator_resource, name)
+      """Returns a SaveableObject for serialization/deserialization."""
+      policy = None
+      if self._dataset:
+        policy = self._dataset.options().experimental_external_state_policy
+      if policy:
+        return _IteratorSaveable(
+            self._iterator_resource,
+            name,
+            external_state_policy=policy)
+      else:
+        return _IteratorSaveable(self._iterator_resource, name)
 
     return {"ITERATOR": _saveable_factory}
 

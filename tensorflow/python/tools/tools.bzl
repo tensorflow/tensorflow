@@ -1,6 +1,6 @@
 """Definitions for using tools like saved_model_cli."""
 
-load("//tensorflow:tensorflow.bzl", "if_xla_available")
+load("//tensorflow:tensorflow.bzl", "clean_dep", "if_xla_available")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "target_llvm_triple")
 
 def _maybe_force_compile(args, force_compile):
@@ -121,12 +121,15 @@ def saved_model_compile_aot(
             "{}_makefile.inc".format(name),
         ],
         cmd = (
-            "$(location :saved_model_cli) aot_compile_cpu " +
+            "$(location {}) aot_compile_cpu ".format(
+                clean_dep("//tensorflow/python/tools:saved_model_cli"),
+            ) +
             "--dir \"$$(dirname $(location {}))\" ".format(saved_model) +
             checkpoint_cmd_args +
             "--output_prefix $(@D)/{} ".format(name) +
             "--cpp_class {} ".format(cpp_class) +
             "--variables_to_feed {} ".format(variables_to_feed) +
+            "--signature_def_key {} ".format(signature_def) +
             "--target_triple " + target_triple + " " +
             "--tag_set {} ".format(tag_set)
         ),

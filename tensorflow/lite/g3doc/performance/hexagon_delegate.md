@@ -1,6 +1,6 @@
-# Tensorflow Lite Hexagon delegate
+# TensorFlow Lite Hexagon delegate
 
-This document explains how to use the Tensorflow Lite Hexagon Delegate in your
+This document explains how to use the TensorFlow Lite Hexagon Delegate in your
 application using the Java and/or C API. The delegate leverages the Qualcomm
 Hexagon library to execute quantized kernels on the DSP. Note that the delegate
 is intended to *complement* NNAPI functionality, particularly for devices where

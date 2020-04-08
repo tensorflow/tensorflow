@@ -103,6 +103,15 @@ std::pair<TfGpuId, PlatformGpuId> GetFirstValidDeviceId() {
   return std::make_pair(TfGpuId(-1), PlatformGpuId(-1));
 }
 
+// Returns false for const nodes (we intend to drop control edges from those).
+bool ShallKeepControlEdgeFrom(const Node* input_node) {
+  if (!input_node) {
+    LOG(ERROR) << "Node pointer is null, this should not happen";
+    return false;
+  }
+  return input_node->type_string() != "Const";
+}
+
 // Function to get subsegment information structure.
 Status GetEngineInfo(const Graph* g,
                      const grappler::GraphProperties& graph_properties,
@@ -172,7 +181,7 @@ Status GetEngineInfo(const Graph* g,
         continue;
       }
       if (edge->IsControlEdge()) {
-        if (input_node->type_string() != "Const") {
+        if (ShallKeepControlEdgeFrom(input_node)) {
           // Non-Const control input.
           info->connections.emplace_back(input_node->name(), input_node->id(),
                                          node_name, node_id,
@@ -221,9 +230,11 @@ Status GetEngineInfo(const Graph* g,
       }
       if (edge->IsControlEdge()) {
         // Control output.
-        info->connections.emplace_back(output_node->name(), output_node->id(),
-                                       node_name, node_id,
-                                       /*input_edge=*/false);
+        if (ShallKeepControlEdgeFrom(node)) {
+          info->connections.emplace_back(output_node->name(), output_node->id(),
+                                         node_name, node_id,
+                                         /*input_edge=*/false);
+        }
       } else {
         // Data output.
         int port = Graph::kControlSlot - 1;
@@ -606,6 +617,11 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
   return std::make_pair(cuda_device_id, dev_allocator);
 }
 
+int64 GetNextGraphSequenceNumber() {
+  static std::atomic<int64> graph_sequence_num;
+  return graph_sequence_num++;
+}
+
 // Entry function from optimization pass.
 Status ConvertAfterShapes(const ConversionParams& params) {
   // Sanity checks.
@@ -625,7 +641,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   // Segment the graph into subgraphs that can be converted to TensorRT
   segment::SegmentOptions segment_options;
   // TODO(ben,jie,sami): exclude output nodes (DISCUSS IT)
-  for (auto node : *(params.output_names)) {
+  for (const auto& node : *(params.output_names)) {
     segment_options.exclude_node_list.insert(node);
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
@@ -655,10 +671,12 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   std::vector<size_t> engine_bytes_size;
   segment::SegmentNodesVector converted_segments;
   converted_segments.reserve(initial_segments.size());
+  string engine_name_prefix =
+      StrCat("TRTEngineOp_", GetNextGraphSequenceNumber(), "_");
   for (size_t t = 0; t < initial_segments.size(); t++) {
     auto& curr_segment = initial_segments.at(t);
     EngineInfo curr_engine;
-    curr_engine.engine_name = StrCat("TRTEngineOp_", t);
+    curr_engine.engine_name = StrCat(engine_name_prefix, t);
     Status status =
         GetEngineInfo(&graph, *params.graph_properties, curr_segment, node_map,
                       reverse_topo_order, &curr_engine);
