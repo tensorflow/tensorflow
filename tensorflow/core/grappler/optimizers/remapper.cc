@@ -885,6 +885,7 @@ void CopyFusedBatchNormAttributes(const NodeDef& fused_batch_norm,
   (*attr)["is_training"] = src_attr.at("is_training");
   (*attr)["data_format"] = src_attr.at("data_format");
   (*attr)["epsilon"] = src_attr.at("epsilon");
+  (*attr)["exponential_avg_factor"] = src_attr.at("exponential_avg_factor");
 
   // FusedBatchNormV2 and V3 have an extra type parameter.
   if (fused_batch_norm.op() != "FusedBatchNorm") {
