@@ -109,3 +109,15 @@ job {
 The value of `job_name` will be `ps` for `t02n13:1337` and `worker` for all others.
 There will be no GPU allocation done by the cluster resolver, so this has to be done manually which is useful if e.g. GPUs 0 should go to the first process and GPU 3 to the second process on each node.
 Also note that only 1 GPU will be used per task.
+
+## Extension points
+
+The class `SlurmClusterResolver` provides some methods that are meant to be overwritten by deriving classes:
+
+ - `_resolve_own_rank`
+ - `_resolve_num_tasks`
+ - `_resolve_hostlist`
+ - `_resolve_task_configuration`
+
+ Those can be used to implement a cluster resolver that gets information from a different source, e.g. via MPI, a file or other environment variables.
+ See the documentation of these methods on what to return.
