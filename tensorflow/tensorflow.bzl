@@ -1989,8 +1989,148 @@ _append_init_to_versionscript = rule(
     implementation = _append_init_to_versionscript_impl,
 )
 
+# This macro should only be used for pywrap_tensorflow_internal.so.
+# It was copied and refined from the original tf_py_wrap_cc rule.
+# buildozer: disable=function-docstring-args
+def pywrap_tensorflow_macro(
+        name,
+        srcs = [],
+        deps = [],
+        copts = [],
+        version_script = None,
+        **kwargs):
+    """Builds the pywrap_tensorflow_internal shared object."""
+    module_name = name.split("/")[-1]
+
+    # Convert a rule name such as foo/bar/baz to foo/bar/_baz.so
+    # and use that as the name for the rule producing the .so file.
+    cc_library_base = "/".join(name.split("/")[:-1] + ["_" + module_name])
+
+    # TODO(b/137885063): tf_cc_shared_object needs to be cleaned up; we really
+    # shouldn't be passing a name qualified with .so here.
+    cc_library_name = cc_library_base + ".so"
+    cc_library_pyd_name = "/".join(
+        name.split("/")[:-1] + ["_" + module_name + ".pyd"],
+    )
+
+    # We need pybind11 to export the shared object PyInit symbol only in OSS.
+    extra_deps = ["@pybind11"]
+
+    if not version_script:
+        version_script = select({
+            "@local_config_cuda//cuda:darwin": clean_dep("//tensorflow:tf_exported_symbols.lds"),
+            "//conditions:default": clean_dep("//tensorflow:tf_version_script.lds"),
+        })
+    vscriptname = name + "_versionscript"
+    _append_init_to_versionscript(
+        name = vscriptname,
+        is_version_script = select({
+            "@local_config_cuda//cuda:darwin": False,
+            "//conditions:default": True,
+        }),
+        module_name = module_name,
+        template_file = version_script,
+    )
+    extra_linkopts = select({
+        "@local_config_cuda//cuda:darwin": [
+            "-Wl,-exported_symbols_list,$(location %s.lds)" % vscriptname,
+        ],
+        clean_dep("//tensorflow:windows"): [],
+        "//conditions:default": [
+            "-Wl,--version-script",
+            "$(location %s.lds)" % vscriptname,
+        ],
+    })
+    extra_deps += select({
+        "@local_config_cuda//cuda:darwin": [
+            "%s.lds" % vscriptname,
+        ],
+        clean_dep("//tensorflow:windows"): [],
+        "//conditions:default": [
+            "%s.lds" % vscriptname,
+        ],
+    })
+
+    # Due to b/149224972 we have to add libtensorflow_framework.so
+    # as a dependency so the linker doesn't try and optimize and
+    # remove it from pywrap_tensorflow_internal.so
+    # Issue: https://github.com/tensorflow/tensorflow/issues/34117
+    # Fix: https://github.com/tensorflow/tensorflow/commit/5caa9e83798cb510c9b49acee8a64efdb746207c
+    extra_deps += if_static(
+        extra_deps = [],
+        otherwise = [
+            clean_dep("//tensorflow:libtensorflow_framework_import_lib"),
+        ],
+    )
+
+    tf_cc_shared_object(
+        name = cc_library_name,
+        srcs = srcs,
+        # framework_so is no longer needed as libtf.so is included via the extra_deps.
+        framework_so = [],
+        copts = copts + if_not_windows([
+            "-Wno-self-assign",
+            "-Wno-sign-compare",
+            "-Wno-write-strings",
+        ]),
+        linkopts = extra_linkopts,
+        linkstatic = 1,
+        deps = deps + extra_deps,
+        **kwargs
+    )
+
+    # When a non-versioned .so is added as a 'src' to a bazel target, it uses
+    # -l%(so_name) instead of -l:%(so_file) during linking.  When -l%(so_name)
+    # is passed to ld, it will look for an associated file with the schema
+    # lib%(so_name).so.  Since pywrap_tensorflow is not explicitly versioned
+    # and is not prefixed with lib_, we add a rule for the creation of an .so
+    # file with the canonical lib schema (e.g. libNAME.so), so that
+    # -l%(so_name) is resolved during linking.
+    #
+    # See: https://github.com/bazelbuild/bazel/blob/7a6808260a733d50983c1adf0cf5a7493472267f/src/main/java/com/google/devtools/build/lib/rules/cpp/LibrariesToLinkCollector.java#L319
+    for pattern in SHARED_LIBRARY_NAME_PATTERNS:
+        name_os = pattern % (cc_library_base, "")
+        native.genrule(
+            name = name_os + "_rule",
+            srcs = [":" + cc_library_name],
+            outs = [name_os],
+            cmd = "cp $< $@",
+        )
+
+    native.genrule(
+        name = "gen_" + cc_library_pyd_name,
+        srcs = [":" + cc_library_name],
+        outs = [cc_library_pyd_name],
+        cmd = "cp $< $@",
+    )
+
+    # TODO(amitpatankar): Remove this py_library reference and
+    # move the dependencies to pywrap_tensorflow. This can
+    # eliminate one layer of Python import redundancy. We would
+    # have to change all pywrap_tensorflow imports to
+    # pywrap_tensorflow_internal.
+
+    # Bazel requires an empty .py file for pywrap_tensorflow_internal.py.
+    empty_py_file = [name + ".py"]
+    native.genrule(
+        name = "empty_py_file_rule",
+        outs = empty_py_file,
+        cmd = "touch $@",
+    )
+
+    native.py_library(
+        name = name,
+        srcs = [":" + name + ".py"],
+        srcs_version = "PY2AND3",
+        data = select({
+            clean_dep("//tensorflow:windows"): [":" + cc_library_pyd_name],
+            "//conditions:default": [":" + cc_library_name],
+        }),
+    )
+
 # DO NOT USE! We are in the process of deprecating this. If you use
 # this rule within third_party/tensorflow you will be rolled back. b/153452665
+# buildozer: enable=function-docstring-args
 def tf_py_wrap_cc(
         name,
         srcs = [],

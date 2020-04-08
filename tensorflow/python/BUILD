@@ -13,7 +13,7 @@ load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+load("//tensorflow:tensorflow.bzl", "pywrap_tensorflow_macro")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
@@ -5828,20 +5828,14 @@ py_library(
     name = "pywrap_tensorflow",
     srcs = [
         "pywrap_tensorflow.py",
-    ] + if_static(
-        ["pywrap_dlopen_global_flags.py"],
-        # Import will fail, indicating no global dlopen flags
-        otherwise = [],
-    ),
+    ],
     srcs_version = "PY2AND3",
     deps = [":pywrap_tensorflow_internal"],
 )
 
-# TODO(b/137885063): This macro should be cleaned up to be just
-# a py_binary/library shared object. We have removed the source
-# SWIG file to prevent people from adding SWIG code.
-tf_py_wrap_cc(
+pywrap_tensorflow_macro(
     name = "pywrap_tensorflow_internal",
+    srcs = ["pywrap_tensorflow_internal.cc"],
     # add win_def_file for pywrap_tensorflow
     win_def_file = select({
         "//tensorflow:windows": ":pywrap_tensorflow_filtered_def_file",
