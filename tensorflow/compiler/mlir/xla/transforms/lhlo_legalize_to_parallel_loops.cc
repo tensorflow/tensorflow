@@ -452,7 +452,7 @@ class ReduceWindowOpConverter
 };
 
 struct LhloLegalizeToParallelLoops
-    : public FunctionPass<LhloLegalizeToParallelLoops> {
+    : public PassWrapper<LhloLegalizeToParallelLoops, FunctionPass> {
   void runOnFunction() override {
     auto func = getFunction();
 
@@ -478,7 +478,7 @@ struct LhloLegalizeToParallelLoops
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeLhloToParallelLoopsPass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass() {
   return absl::make_unique<LhloLegalizeToParallelLoops>();
 }
 

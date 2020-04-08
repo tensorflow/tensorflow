@@ -531,7 +531,8 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
 //     iterator_types = ["parallel", "parallel"],
 //   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 // }
-struct LhloLegalizeToLinalg : public FunctionPass<LhloLegalizeToLinalg> {
+struct LhloLegalizeToLinalg
+    : public PassWrapper<LhloLegalizeToLinalg, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
@@ -545,7 +546,8 @@ struct LhloLegalizeToLinalg : public FunctionPass<LhloLegalizeToLinalg> {
   }
 };
 
-struct HloLegalizeToLinalg : public FunctionPass<HloLegalizeToLinalg> {
+struct HloLegalizeToLinalg
+    : public PassWrapper<HloLegalizeToLinalg, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
@@ -562,7 +564,7 @@ struct HloLegalizeToLinalg : public FunctionPass<HloLegalizeToLinalg> {
 }  // namespace
 
 namespace xla_lhlo {
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeLhloToLinalgPass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToLinalgPass() {
   return absl::make_unique<LhloLegalizeToLinalg>();
 }
 
@@ -599,7 +601,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_hlo::TanhOp, false>>(context);
 }
 
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeHloToLinalgPass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass() {
   return absl::make_unique<HloLegalizeToLinalg>();
 }
 

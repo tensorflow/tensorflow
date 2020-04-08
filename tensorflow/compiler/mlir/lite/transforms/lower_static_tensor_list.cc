@@ -82,7 +82,7 @@ class TensorListPatternRewriter : public PatternRewriter {
 
 /// Lower TensorList ops in functions for subsequent legalization.
 struct LowerStaticTensorListPass
-    : public OperationPass<LowerStaticTensorListPass, ModuleOp> {
+    : public PassWrapper<LowerStaticTensorListPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 
   // Apply type and op changes within a function.
@@ -906,7 +906,8 @@ void LowerStaticTensorListPass::runOnOperation() {
 
 /// Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 /// pass.
-std::unique_ptr<OpPassBase<ModuleOp>> TFL::CreateLowerStaticTensorListPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+TFL::CreateLowerStaticTensorListPass() {
   return std::make_unique<LowerStaticTensorListPass>();
 }
 

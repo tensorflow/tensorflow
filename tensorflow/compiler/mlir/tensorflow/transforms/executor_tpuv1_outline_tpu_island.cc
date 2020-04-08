@@ -44,7 +44,8 @@ constexpr llvm::StringRef kOutlinedFuncPrefix = "_tpu_v1_compat_outlined_func";
 // This is only intended for V1 compatibility mode where the bridge runs without
 // feed/fetches on session create/extend.
 struct TPUBridgeExecutorIslandOutlining
-    : public OperationPass<TPUBridgeExecutorIslandOutlining, ModuleOp> {
+    : public PassWrapper<TPUBridgeExecutorIslandOutlining,
+                         OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -160,7 +161,7 @@ PassRegistration<TPUBridgeExecutorIslandOutlining> tpu_pass(
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorTPUV1IslandOutliningPass() {
   return std::make_unique<TPUBridgeExecutorIslandOutlining>();
 }

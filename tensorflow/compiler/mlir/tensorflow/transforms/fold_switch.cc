@@ -58,7 +58,7 @@ limitations under the License.
 namespace mlir {
 namespace {
 
-class SwitchFoldPass : public mlir::FunctionPass<SwitchFoldPass> {
+class SwitchFoldPass : public mlir::PassWrapper<SwitchFoldPass, FunctionPass> {
  public:
   void runOnFunction() override;
 };
@@ -279,7 +279,7 @@ void SwitchFoldPass::runOnFunction() {
 }  // namespace mlir
 
 namespace tf_executor {
-std::unique_ptr<OpPassBase<FuncOp>> CreateSwitchFoldPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateSwitchFoldPass() {
   return std::make_unique<SwitchFoldPass>();
 }
 }  // namespace tf_executor

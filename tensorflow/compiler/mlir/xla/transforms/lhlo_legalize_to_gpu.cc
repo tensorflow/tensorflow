@@ -168,7 +168,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
   };
 };
 
-struct LhloLegalizeToGpu : public FunctionPass<LhloLegalizeToGpu> {
+struct LhloLegalizeToGpu : public PassWrapper<LhloLegalizeToGpu, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
@@ -186,7 +186,7 @@ struct LhloLegalizeToGpu : public FunctionPass<LhloLegalizeToGpu> {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToGpuPass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeToGpuPass() {
   return absl::make_unique<LhloLegalizeToGpu>();
 }
 

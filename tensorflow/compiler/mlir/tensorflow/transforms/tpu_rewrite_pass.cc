@@ -98,7 +98,8 @@ constexpr char kBadArrayAttrLengthMsg[] =
 //    %4 = "tf.SomeOp"(%3)
 
 namespace {
-struct TPURewritePass : public OperationPass<TPURewritePass, ModuleOp> {
+struct TPURewritePass
+    : public PassWrapper<TPURewritePass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -770,7 +771,7 @@ void TPURewritePass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTPURewritePass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass() {
   return std::make_unique<TPURewritePass>();
 }
 

@@ -55,7 +55,7 @@ namespace mlir {
 namespace xla_hlo {
 namespace {
 
-class LegalizeTF : public FunctionPass<LegalizeTF> {
+class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
  public:
   LegalizeTF() = default;
   LegalizeTF(const LegalizeTF &) {}
@@ -3829,7 +3829,7 @@ static PassRegistration<LegalizeTF> pass(
 
 }  // end namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeTFPass(
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion) {
   return std::make_unique<LegalizeTF>(allow_partial_conversion);
 }

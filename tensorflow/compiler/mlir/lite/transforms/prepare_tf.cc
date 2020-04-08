@@ -71,7 +71,7 @@ namespace TFL {
 namespace {
 
 // Prepare TF operations in functions for subsequent legalization.
-class PrepareTFPass : public FunctionPass<PrepareTFPass> {
+class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
  public:
   explicit PrepareTFPass() : unfold_batch_matmul_(true) {}
   explicit PrepareTFPass(bool unfold_batch_matmul)
@@ -652,7 +652,7 @@ void PrepareTFPass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareTFPass(
+std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
     bool unfold_batch_matmul) {
   return std::make_unique<PrepareTFPass>(unfold_batch_matmul);
 }

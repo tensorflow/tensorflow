@@ -39,7 +39,7 @@ constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncAttr[] = "func";
 
 struct ClusterOutliningPass
-    : public OperationPass<ClusterOutliningPass, ModuleOp> {
+    : public PassWrapper<ClusterOutliningPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -132,7 +132,7 @@ void ClusterOutliningPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateClusterOutliningPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass() {
   return std::make_unique<ClusterOutliningPass>();
 }
 

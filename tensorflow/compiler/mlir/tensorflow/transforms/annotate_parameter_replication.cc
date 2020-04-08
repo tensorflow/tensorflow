@@ -39,7 +39,8 @@ constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
 // Analyzes the inputs to LaunchFuncOps in the module, and annotates their
 // invoked functions whether each input has the same data across replicas.
 struct AnnotateParameterReplication
-    : public OperationPass<AnnotateParameterReplication, ModuleOp> {
+    : public PassWrapper<AnnotateParameterReplication,
+                         OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -90,7 +91,8 @@ void AnnotateParameterReplication::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateAnnotateParameterReplicationPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateAnnotateParameterReplicationPass() {
   return std::make_unique<AnnotateParameterReplication>();
 }
 

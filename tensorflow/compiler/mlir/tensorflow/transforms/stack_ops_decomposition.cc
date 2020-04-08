@@ -85,7 +85,7 @@ namespace cutil = TF::collection_ops_util;
 //
 // The pass also works across control flow and functional calls.
 struct StackOpsDecompositionPass
-    : public OperationPass<StackOpsDecompositionPass, ModuleOp> {
+    : public PassWrapper<StackOpsDecompositionPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -568,7 +568,7 @@ static PassRegistration<StackOpsDecompositionPass> pass(
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OpPassBase<ModuleOp>> CreateStackOpsDecompositionPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateStackOpsDecompositionPass() {
   return std::make_unique<StackOpsDecompositionPass>();
 }
 

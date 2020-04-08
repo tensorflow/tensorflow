@@ -36,7 +36,8 @@ namespace {
 
 // LayoutAssignmentPass assigns optimal data layout (data format) for all
 // layout sensitive operations.
-class LayoutAssignmentPass : public FunctionPass<LayoutAssignmentPass> {
+class LayoutAssignmentPass
+    : public PassWrapper<LayoutAssignmentPass, FunctionPass> {
  public:
   LayoutAssignmentPass() = default;
   explicit LayoutAssignmentPass(const std::string& force_data_format) {
@@ -57,7 +58,8 @@ class LayoutAssignmentPass : public FunctionPass<LayoutAssignmentPass> {
 // MoveTransposesPass moves all Transpose ops to the beginning or to the end of
 // the basic block where they are defined. This will allow canonicalzer to
 // delete redundant transposes.
-class MoveTransposesPass : public FunctionPass<MoveTransposesPass> {
+class MoveTransposesPass
+    : public PassWrapper<MoveTransposesPass, FunctionPass> {
  public:
   enum class Direction { kBegin, kEnd };
 

@@ -315,7 +315,8 @@ llvm::SmallVector<Value, 0> FuseOps(PatternRewriter* rewriter,
   return new_values;
 }
 
-struct CpuKernelFusionPass : public FunctionPass<CpuKernelFusionPass> {
+struct CpuKernelFusionPass
+    : public PassWrapper<CpuKernelFusionPass, FunctionPass> {
   explicit CpuKernelFusionPass() = default;
   CpuKernelFusionPass(const CpuKernelFusionPass&) {}
 
@@ -335,7 +336,7 @@ void CpuKernelFusionPass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the xla_hlo cpu kernel fusion pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateCpuKernelFusionPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateCpuKernelFusionPass() {
   return std::make_unique<CpuKernelFusionPass>();
 }
 

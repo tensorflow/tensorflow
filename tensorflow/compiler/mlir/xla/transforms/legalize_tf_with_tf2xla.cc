@@ -333,7 +333,7 @@ LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
   return success();
 }
 
-class LegalizeTF : public FunctionPass<LegalizeTF> {
+class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
  public:
   LegalizeTF() = default;
 

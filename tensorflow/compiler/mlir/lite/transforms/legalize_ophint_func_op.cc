@@ -69,7 +69,7 @@ constexpr char kUnidirectionalSequenceLstm[] = "UnidirectionalSequenceLstm";
 //           |
 //        OutputOp1
 struct LegalizeOphintFuncOpPass
-    : public OperationPass<LegalizeOphintFuncOpPass, ModuleOp> {
+    : public PassWrapper<LegalizeOphintFuncOpPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -284,7 +284,7 @@ void LegalizeOphintFuncOpPass::runOnOperation() {
 
 /// Creates an instance of the TensorFlow Lite dialect LegalizeOphintFuncOpPass
 /// pass.
-std::unique_ptr<OpPassBase<ModuleOp>> CreateLegalizeOphintFuncOpPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeOphintFuncOpPass() {
   return std::make_unique<LegalizeOphintFuncOpPass>();
 }
 

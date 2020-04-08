@@ -68,7 +68,8 @@ using std::string;
 // shape.
 //
 struct TensorArrayOpsDecompositionPass
-    : public OperationPass<TensorArrayOpsDecompositionPass, ModuleOp> {
+    : public PassWrapper<TensorArrayOpsDecompositionPass,
+                         OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -893,7 +894,8 @@ static PassRegistration<TensorArrayOpsDecompositionPass> pass(
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTensorArrayOpsDecompositionPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTensorArrayOpsDecompositionPass() {
   return std::make_unique<TensorArrayOpsDecompositionPass>();
 }
 

@@ -40,7 +40,8 @@ namespace {
 constexpr char kShardingAttr[] = "xla_hlo.sharding";
 
 struct TPUShardingIdentificationPass
-    : public OperationPass<TPUShardingIdentificationPass, ModuleOp> {
+    : public PassWrapper<TPUShardingIdentificationPass,
+                         OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -185,7 +186,7 @@ void TPUShardingIdentificationPass::runOnOperation() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUShardingIdentificationPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUShardingIdentificationPass() {
   return std::make_unique<TPUShardingIdentificationPass>();
 }
 

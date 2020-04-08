@@ -258,7 +258,7 @@ LogicalResult PromoteResourcesToArguments(FuncOp function) {
 }
 
 class PromoteResourcesToArgsPass
-    : public OperationPass<PromoteResourcesToArgsPass, ModuleOp> {
+    : public PassWrapper<PromoteResourcesToArgsPass, OperationPass<ModuleOp>> {
  public:
   void runOnOperation() override;
 };
@@ -285,7 +285,7 @@ void PromoteResourcesToArgsPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreatePromoteResourcesToArgsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass() {
   return std::make_unique<PromoteResourcesToArgsPass>();
 }
 

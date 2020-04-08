@@ -62,7 +62,8 @@ namespace cutil = TF::collection_ops_util;
 //
 // The pass also works across control flow and functional calls.
 struct TensorListOpsDecompositionPass
-    : public OperationPass<TensorListOpsDecompositionPass, ModuleOp> {
+    : public PassWrapper<TensorListOpsDecompositionPass,
+                         OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -728,7 +729,8 @@ static PassRegistration<TensorListOpsDecompositionPass> pass(
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTensorListOpsDecompositionPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTensorListOpsDecompositionPass() {
   return std::make_unique<TensorListOpsDecompositionPass>();
 }
 }  // namespace TF
