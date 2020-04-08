@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import warnings
 
+import attr
 from absl.testing import parameterized
 import numpy as np
 
@@ -346,6 +347,18 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self._testDatasetSpec(
         optional_ops.Optional.from_value(37.0),
         optional_ops.OptionalSpec(tensor_spec.TensorSpec([], dtypes.float32)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testAttrClassDatasetSpec(self):
+
+    @attr.s
+    class AttrClass:
+      x = attr.ib()
+
+    self._testDatasetSpec(
+        AttrClass(x=constant_op.constant(0)),
+        AttrClass(x=tensor_spec.TensorSpec([], dtypes.int32)))
+
 
   @combinations.generate(test_base.graph_only_combinations())
   def testSameGraphError(self):

@@ -759,6 +759,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
     spec = structure.type_spec_from_value(elem)
     self.assertIsInstance(spec, AttrClass)
     self.assertEqual(spec.x, tensor_spec.TensorSpec([], dtypes.float32))
+    self.assertEqual(spec.y, tensor_spec.TensorSpec([], dtypes.float32))
 
   def testObjectProxy(self):
     nt_type = collections.namedtuple("A", ["x", "y"])
@@ -766,6 +767,19 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
     proxied_spec = structure.type_spec_from_value(proxied)
     self.assertEqual(structure.type_spec_from_value(nt_type(1, 2)),
                      proxied_spec)
+
+  def testAttrClassProxy(self):
+    @attr.s
+    class AttrClass:
+        x = attr.ib()
+        y = attr.ib()
+
+    elem = AttrClass(x=constant_op.constant(1.), y=constant_op.constant(2.))
+    proxied_elem = wrapt.ObjectProxy(elem)
+    proxied_spec = structure.type_spec_from_value(proxied_elem)
+    self.assertEqual(structure.type_spec_from_value(attr.evolve(elem)),
+                     proxied_spec)
+
 
 
 class CustomMap(collections_abc.Mapping):
