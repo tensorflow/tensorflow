@@ -1289,7 +1289,6 @@ class TPUEmbedding(object):
                          'in `feature_to_config_dict`: {}.'.format(
                              i, extra_feature_set))
 
-
       device = None
       device_feature = None
       for feature, enqueue_data in six.iteritems(enqueue_datas):
