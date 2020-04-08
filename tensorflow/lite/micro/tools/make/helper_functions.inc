@@ -124,27 +124,31 @@ endef
 # 6 - Linker flags required.
 # 7 - C++ compilation flags needed.
 # 8 - C compilation flags needed.
-
 # Calling eval on the output will create a <Name>_makefile target that you
 # can invoke to create the standalone project.
 define generate_arc_project
 
 ifeq ($(TARGET_ARCH), arc)
-$(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/Makefile.tpl
+$(PRJDIR)$(3)/$(1)/Makefile: tensorflow/lite/micro/tools/make/templates/arc/arc_app_makefile.tpl
 	@mkdir -p $$(dir $$@)
 	@sed -E 's#\%\{SRCS\}\%#$(4)#g' $$< | \
-	sed -E '1 i\CC = ccac\nCXX = ccac\nLD = ccac\n' | \
+	sed -E 's#\%\{CC\}\%#$(CC_TOOL)#g' | \
+	sed -E 's#\%\{CXX\}\%#$(CXX_TOOL)#g' | \
+	sed -E 's#\%\{LD\}\%#$(LD_TOOL)#g' | \
 	sed -E 's#\%\{EXECUTABLE\}\%#$(3).elf#g' | \
 	sed -E 's#\%\{LINKER_FLAGS\}\%#$(6)#g' | \
 	sed -E 's#\%\{CXX_FLAGS\}\%#$(7)#g' | \
-	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' > $$@
+	sed -E 's#\%\{CC_FLAGS\}\%#$(8)#g' | \
+	sed -E 's#\%\{EXTRA_APP_SETTINGS\}\%#$(ARC_EXTRA_APP_SETTINGS)#g' | \
+	sed -E 's#\%\{EXTRA_APP_RULES\}\%#$(ARC_EXTRA_APP_RULES)#g' | \
+	sed -E 's#\%\{BIN_DEPEND\}\%#$(ARC_BIN_DEPEND)#g' | \
+	sed -E 's#\%\{BIN_RULE\}\%#$(ARC_BIN_RULE)#g' | \
+	sed -E 's#\%\{EXTRA_RM_TARGETS\}\%#$(ARC_EXTRA_RM_TARGETS)#g' | \
+	sed -E 's#\%\{APP_RUN_CMD\}\%#$(ARC_APP_RUN_CMD)#g' | \
+	sed -E 's#\%\{APP_DEBUG_CMD\}\%#$(ARC_APP_DEBUG_CMD)#g' | \
+	sed -E 's#\%\{EXTRA_EXECUTE_RULES\}\%#$(ARC_EXTRA_EXECUTE_RULES)#g' > $$@
 
-
-# Special rule to copy TCF in case the local filesystem file name has been defined
-ifneq ($(TCF_FILE_NAME), )
-$(PRJDIR)$(3)/$(1)/$(TCF_FILE_NAME): $(TCF_FILE)
-	@cp $$< $$@
-endif
+$(foreach var,$(ARC_TARGET_FILES_DIRS),$(eval $(call path_changing_copy_file,$(PRJDIR)$(3)/$(1),$(var))))
 endif
 endef
 
