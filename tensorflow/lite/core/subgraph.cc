@@ -802,7 +802,7 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
     EnsureTensorsVectorCapacity();
-    if (OpPrepare(registration, &node) == kTfLiteError) {
+    if (OpPrepare(registration, &node) != kTfLiteOk) {
       return ReportOpError(&context_, node, registration, node_index,
                            "failed to prepare");
     }
@@ -909,7 +909,7 @@ TfLiteStatus Subgraph::Invoke() {
 
     EnsureTensorsVectorCapacity();
     tensor_resized_since_op_invoke_ = false;
-    if (OpInvoke(registration, &node) == kTfLiteError) {
+    if (OpInvoke(registration, &node) != kTfLiteOk) {
       return ReportOpError(&context_, node, registration, node_index,
                            "failed to invoke");
     }

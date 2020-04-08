@@ -230,7 +230,7 @@ int main() {
   TfLiteStatus status = tflite::testing::ValidateConvGoldens(
       tensors, num_tensors, &conv_params, kQuantizationTolerance,
       output_dims_count, golden_quantized);
-  if (status == kTfLiteError) {
+  if (status != kTfLiteOk) {
     printf("Model invoke failed\n");
   }
   return 0;
