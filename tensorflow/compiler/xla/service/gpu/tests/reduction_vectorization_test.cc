@@ -294,6 +294,67 @@ CHECK-NOT: ld.global.u64
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
 
+class ReductionVectorizationNoOptTest : public GpuCodegenTest {
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
+    // The test MultiOutputStore contain a MOF fusion and XLA optimizer pass doesn't like this.
+    debug_options.set_xla_disable_all_hlo_passes(true);
+    return debug_options;
+  }
+};
+
+TEST_F(ReductionVectorizationNoOptTest, MultiOutputStore) {
+  const char* hlo_text = R"(
+HloModule MultiOutputStore
+
+%add_f32 {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(%x, %y)
+}
+
+%fused_computation {
+  %param_0 = f32[2,384,1024] parameter(0)
+  %param_1 = f32[2,384] parameter(1)
+  %constant0 = f32[] constant(0.0009765625)
+  %broadcast0 = f32[2,384] broadcast(%constant0), dimensions={}
+  %multiply0 = f32[2,384] multiply(%param_1, %broadcast0)
+  %broadcast1 = f32[2,384,1024] broadcast(%multiply0), dimensions={0,1}
+  %subtract = f32[2,384,1024] subtract(%param_0, %broadcast1)
+  %multiply1 = f32[2,384,1024] multiply(%subtract, %subtract)
+  %constant1 = f32[] constant(0)
+  %reduce = f32[2,384] reduce(%multiply1, %constant1), dimensions={2}, to_apply=%add_f32
+  ROOT %tuple = (f32[2,384], f32[2,384,1024], f32[2,384,1024]) tuple(%reduce, %subtract, %broadcast1)
+}
+
+ENTRY %cluster {
+  %param0 = f32[2,384,1024] parameter(0)
+  %param1 =  f32[2,384] parameter(1)
+  ROOT %fusion = (f32[2,384], f32[2,384,1024], f32[2,384,1024]) fusion(%param0, %param1), kind=kInput, calls=%fused_computation
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  CompileAndOptionallyVerifyPtx(std::move(optimized_module),
+                                R"(
+CHECK: ld.global.nc.v2.f32
+CHECK: st.global.v2.f32
+CHECK: st.global.v2.f32
+CHECK: ld.global.nc.v2.f32
+CHECK: st.global.v2.f32
+CHECK: st.global.v2.f32
+CHECK: ld.global.nc.v2.f32
+CHECK: st.global.v2.f32
+CHECK: st.global.v2.f32
+CHECK: ld.global.nc.v2.f32
+CHECK: st.global.v2.f32
+CHECK: st.global.v2.f32
+)");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
