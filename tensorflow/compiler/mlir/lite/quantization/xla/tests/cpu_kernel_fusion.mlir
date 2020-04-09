@@ -101,7 +101,7 @@ func @biased_dot(%arg0: tensor<1x1024xf32>, %arg1: tensor<1024x10xf32>, %arg2: t
 
 // CHECK-LABEL: @biased_conv
 func @biased_conv(%arg0: tensor<1x14x14x32xf32>, %arg1: tensor<5x5x32x64xf32>, %arg2: tensor<1x14x14x64xf32>) -> (tensor<1x14x14x64xf32>) {
-  %0 = "xla_hlo.conv"(%arg0, %arg1) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64,
+  %0 = "xla_hlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64,
     input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>, kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64,
     kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64,
     output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>}, feature_group_count = 1 : i64, lhs_dilations = dense<1> : tensor<2xi64>,
@@ -111,7 +111,7 @@ func @biased_conv(%arg0: tensor<1x14x14x32xf32>, %arg1: tensor<5x5x32x64xf32>, %
   return %1 : tensor<1x14x14x64xf32>
 
 // CHECK: "quant.region"(%arg0, %arg1, %arg2)
-// CHECK: xla_hlo.conv
+// CHECK: xla_hlo.convolution
 // CHECK: xla_hlo.add
 // CHECK: logical_kernel = "generic.biased_conv"
 }
@@ -135,7 +135,7 @@ func @biased_dot_relu(%arg0: tensor<1x1024xf32>, %arg1: tensor<1024x10xf32>, %ar
 // CHECK-LABEL: @biased_conv_relu
 func @biased_conv_relu(%arg0: tensor<1x14x14x32xf32>, %arg1: tensor<5x5x32x64xf32>, %arg2: tensor<1x14x14x64xf32>) -> (tensor<1x14x14x64xf32>) {
   %cst = constant dense<0.0> : tensor<1x14x14x64xf32>
-  %0 = "xla_hlo.conv"(%arg0, %arg1) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64,
+  %0 = "xla_hlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64,
     input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>, kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64,
     kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64,
     output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>}, feature_group_count = 1 : i64, lhs_dilations = dense<1> : tensor<2xi64>,
@@ -147,7 +147,7 @@ func @biased_conv_relu(%arg0: tensor<1x14x14x32xf32>, %arg1: tensor<5x5x32x64xf3
 
 // CHECK: "quant.region"(%arg0, %arg1, %arg2)
 // CHECK: constant
-// CHECK: xla_hlo.conv
+// CHECK: xla_hlo.convolution
 // CHECK: xla_hlo.add
 // CHECK: xla_hlo.maximum
 // CHECK: logical_kernel = "generic.biased_conv_relu"
@@ -156,7 +156,7 @@ func @biased_conv_relu(%arg0: tensor<1x14x14x32xf32>, %arg1: tensor<5x5x32x64xf3
 // CHECK-LABEL: @biased_conv_relu_shared
 func @biased_conv_relu_shared(%arg0: tensor<1x14x14x32xf32>, %arg1: tensor<5x5x32x64xf32>, %arg2: tensor<1x14x14x64xf32>) -> (tensor<1x14x14x64xf32>, tensor<1x14x14x64xf32>) {
   %cst = constant dense<0.0> : tensor<1x14x14x64xf32>
-  %0 = "xla_hlo.conv"(%arg0, %arg1) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64,
+  %0 = "xla_hlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64,
     input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>, kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64,
     kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64,
     output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>}, feature_group_count = 1 : i64, lhs_dilations = dense<1> : tensor<2xi64>,
@@ -168,7 +168,7 @@ func @biased_conv_relu_shared(%arg0: tensor<1x14x14x32xf32>, %arg1: tensor<5x5x3
 
 // CHECK: "quant.region"(%arg0, %arg1, %arg2)
 // CHECK: constant
-// CHECK: xla_hlo.conv
+// CHECK: xla_hlo.convolution
 // CHECK: xla_hlo.add
 // CHECK: %[[max:.*]] = xla_hlo.maximum
 // CHECK: "quant.return"(%[[max]])
@@ -179,7 +179,7 @@ func @biased_conv_relu_shared(%arg0: tensor<1x14x14x32xf32>, %arg1: tensor<5x5x3
 func @biased_conv_relu6(%arg0: tensor<1x14x14x32xf32>, %arg1: tensor<5x5x32x64xf32>, %arg2: tensor<1x14x14x64xf32>) -> (tensor<1x14x14x64xf32>) {
   %min = constant dense<0.0> : tensor<1x14x14x64xf32>
   %max = constant dense<6.0> : tensor<1x14x14x64xf32>
-  %0 = "xla_hlo.conv"(%arg0, %arg1) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64,
+  %0 = "xla_hlo.convolution"(%arg0, %arg1) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64,
     input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>, kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64,
     kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64,
     output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>}, feature_group_count = 1 : i64, lhs_dilations = dense<1> : tensor<2xi64>,
@@ -192,7 +192,7 @@ func @biased_conv_relu6(%arg0: tensor<1x14x14x32xf32>, %arg1: tensor<5x5x32x64xf
 // CHECK: "quant.region"(%arg0, %arg1, %arg2)
 // CHECK: constant
 // CHECK: constant
-// CHECK: xla_hlo.conv
+// CHECK: xla_hlo.convolution
 // CHECK: xla_hlo.add
 // CHECK: xla_hlo.clamp
 // CHECK: logical_kernel = "generic.biased_conv_relu6"

@@ -767,7 +767,7 @@ NamedAttribute GetConvDimensionNumbersAttr(
 //
 // Sample result for Conv2D:
 //
-//   %conv = "xla_hlo.conv"(%input, %filter) {
+//   %conv = "xla_hlo.convolution"(%input, %filter) {
 //     strides = [1, 2],
 //     paddings = [[1, 0], [1, 1]],
 //     ...
@@ -1525,7 +1525,7 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
 //    %sub = "xla_hlo.subtract"(%inp, %max) {broadcast_dimensions = 0}
 //            : (tensor<BxNxf16>, tensor<Bxf16>) -> tensor<BxNxf16>
 //
-//    %exp = "xla_hlo.exp"(%sub) : (tensor<BxNxf16>) -> tensor<BxNxf16>
+//    %exp = "xla_hlo.exponential"(%sub) : (tensor<BxNxf16>) -> tensor<BxNxf16>
 //    %sum = "tf.Sum"(%exp, %reduce_dim)
 //            : (tensor<BxNxf32>, tensor<1xi64>) -> tensor<Bxf32>
 //
@@ -2660,7 +2660,7 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
 
 // Converts hlo.Conv2DBackpropInputOp into:
 //   %rev_filter = "xla_hlo.reverse"(%filter)
-//   %result = "xla_hlo.conv"(%out_backprop, %rev_filter)
+//   %result = "xla_hlo.convolution"(%out_backprop, %rev_filter)
 class ConvertConv2DBackpropInputOp
     : public OpRewritePattern<TF::Conv2DBackpropInputOp> {
  public:
@@ -2803,7 +2803,7 @@ class ConvertConv2DBackpropInputOp
 };
 
 // Converts tf.Conv2DBackpropFilterOp into:
-//   %result = "xla_hlo.conv"(%input, %out_backprop)
+//   %result = "xla_hlo.convolution"(%input, %out_backprop)
 class ConvertConv2DBackpropFilterOp
     : public OpRewritePattern<TF::Conv2DBackpropFilterOp> {
  public:
