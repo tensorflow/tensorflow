@@ -119,6 +119,8 @@ enum StatType {
   kRequestedBytes,
   kAllocationBytes,
   kAddress,
+  kRegionType,
+  kDataType,
   kTensorShapes,
   // Device trace arguments.
   kDeviceId,

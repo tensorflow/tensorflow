@@ -126,6 +126,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"requested_bytes", kRequestedBytes},
       {"allocation_bytes", kAllocationBytes},
       {"addr", kAddress},
+      {"region_type", kRegionType},
+      {"data_type", kDataType},
       {"shape", kTensorShapes},
       // Device trace arguments.
       {"device_id", kDeviceId},
