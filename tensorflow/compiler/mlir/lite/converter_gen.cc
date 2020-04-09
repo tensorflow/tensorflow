@@ -441,7 +441,7 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
 
     mlir::tblgen::FmtContext verify_ctx;
     os << "::mlir::LogicalResult " << op.getCppClassName()
-       << "::VerifyTflRuntimeConstraints(::mlir::Operation *op, bool "
+       << "::VerifyTflRuntimeTypes(::mlir::Operation *op, bool "
           "failure_on_operand_type_mismatch) {\n";
     os << "  auto top = cast<" << op.getCppClassName() << ">(op); (void)top;\n";
     verify_ctx.withOp("top");
@@ -466,25 +466,6 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
                              "operand");
     GenOperandResultVerifier(os, def->getValueAsDag("results")->getArgs(),
                              "result");
-
-    for (auto &trait : op.getTraits()) {
-      if (!trait.getDef().isSubClassOf("GenInternalOpTrait")) {
-        continue;
-      }
-      if (trait.getDef().getValueAsString("trait") !=
-          "OpTrait::TFLRuntimeOpTrait") {
-        continue;
-      }
-
-      auto *val = trait.getDef().getValue("tflRuntimePredicate");
-      if (!val) continue;
-
-      mlir::tblgen::Pred pred(dyn_cast<llvm::DefInit>(val->getValue()));
-      os << tgfmt(
-          "  if (!($0)) {\n    "
-          "    return ::mlir::LogicalResult::Failure;\n  }\n",
-          &verify_ctx, tgfmt(pred.getCondition(), &verify_ctx));
-    }
     os << "  return top.verify();\n}\n";
   }
 

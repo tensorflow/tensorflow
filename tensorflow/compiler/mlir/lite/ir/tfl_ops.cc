@@ -46,30 +46,6 @@ namespace mlir {
 #include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 namespace TFL {
 
-// Returns true when the given two types have the same shape or broadcastable
-// shape within the given rank. If any given shapes are non-static, this method
-// returns true.
-bool IsBinaryOperandsHaveSameShapesOrBroadcastableShape(Type lhs, Type rhs,
-                                                        int max_bcast_rank) {
-  // Ignore shape checking on the non-static shapes for model compatibility.
-  auto lhs_shaped_type = lhs.dyn_cast<ShapedType>();
-  if (!lhs_shaped_type || !lhs_shaped_type.hasStaticShape()) return true;
-  auto rhs_shaped_type = rhs.dyn_cast<ShapedType>();
-  if (!rhs_shaped_type || !rhs_shaped_type.hasStaticShape()) return true;
-
-  if (lhs_shaped_type.getShape().equals(rhs_shaped_type.getShape()))
-    return true;
-
-  SmallVector<int64_t, 4> result_shape;
-  if (!OpTrait::util::getBroadcastedShape(lhs_shaped_type.getShape(),
-                                          rhs_shaped_type.getShape(),
-                                          result_shape)) {
-    return false;
-  }
-  return lhs_shaped_type.getRank() <= max_bcast_rank &&
-         rhs_shaped_type.getRank() <= max_bcast_rank;
-}
-
 //===----------------------------------------------------------------------===//
 // TensorFlowLiteDialect
 //===----------------------------------------------------------------------===//

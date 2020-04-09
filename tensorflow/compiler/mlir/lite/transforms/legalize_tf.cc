@@ -70,21 +70,8 @@ constexpr char kUnidirectionalSequenceRnn[] = "tf.UnidirectionalSequenceRnn";
 constexpr char kTfLiteInputIndices[] = "_tflite_input_indices";
 
 // Legalize operations in functions.
-class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
- public:
-  LegalizeTF() = default;
-  LegalizeTF(const LegalizeTF&) {}
-  explicit LegalizeTF(bool run_tfl_runtime_verification) {
-    run_tfl_runtime_verification_ = run_tfl_runtime_verification;
-  }
-
-  /// Performs the lowering to TFLite dialect.
+struct LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   void runOnFunction() override;
-
- private:
-  Option<bool> run_tfl_runtime_verification_{
-      *this, "run-tfl-runtime-verification",
-      llvm::cl::desc("Allow tfl runtime verification."), llvm::cl::init(true)};
 };
 
 // Returns true if all tensor value in `values` has static shape and same shape.
@@ -754,19 +741,13 @@ void LegalizeTF::runOnFunction() {
   // graph.
   target.addLegalOp<mlir::ConstantOp>();
   target.addLegalOp<ConstOp>();
-  if (run_tfl_runtime_verification_) {
-    target.addDynamicallyLegalDialect<TensorFlowLiteDialect>(
-        Optional<ConversionTarget::DynamicLegalityCallbackFn>(
-            [](Operation* op) {
-              auto tfl_op = dyn_cast_or_null<TflRuntimeVerifyOpInterface>(op);
-              if (!tfl_op) return false;
-              return succeeded(tfl_op.VerifyTflRuntimeConstraints(
-                  tfl_op.getOperation(),
-                  /*failure_on_operand_type_mismatch=*/false));
-            }));
-  } else {
-    target.addLegalDialect<TensorFlowLiteDialect>();
-  }
+  target.addDynamicallyLegalDialect<TensorFlowLiteDialect>(
+      Optional<ConversionTarget::DynamicLegalityCallbackFn>([](Operation* op) {
+        auto tfl_op = dyn_cast_or_null<TflRuntimeVerifyOpInterface>(op);
+        if (!tfl_op) return false;
+        return succeeded(tfl_op.VerifyTflRuntimeTypes(
+            tfl_op.getOperation(), /*failure_on_operand_type_mismatch=*/false));
+      }));
   // Keep trying to convert.
   // TODO(karimnosseir): This is similar to what apply greedy patterns does.
   // Look if there is a function that tries until it converge.
@@ -782,9 +763,8 @@ void LegalizeTF::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
-std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass(
-    bool run_tfl_runtime_verification) {
-  return std::make_unique<LegalizeTF>(run_tfl_runtime_verification);
+std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass() {
+  return std::make_unique<LegalizeTF>();
 }
 
 static PassRegistration<LegalizeTF> pass(
