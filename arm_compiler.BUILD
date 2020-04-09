@@ -2,58 +2,42 @@ package(default_visibility = ["//visibility:public"])
 
 filegroup(
     name = "gcc",
-    srcs = [
-        "bin/arm-rpi-linux-gnueabihf-gcc",
-    ],
+    srcs = glob(["bin/*-gcc"]),
 )
 
 filegroup(
     name = "ar",
-    srcs = [
-        "bin/arm-rpi-linux-gnueabihf-ar",
-    ],
+    srcs = glob(["bin/*-ar"]),
 )
 
 filegroup(
     name = "ld",
-    srcs = [
-        "bin/arm-rpi-linux-gnueabihf-ld",
-    ],
+    srcs = glob(["bin/*-ld"]),
 )
 
 filegroup(
     name = "nm",
-    srcs = [
-        "bin/arm-rpi-linux-gnueabihf-nm",
-    ],
+    srcs = glob(["bin/*-nm"]),
 )
 
 filegroup(
     name = "objcopy",
-    srcs = [
-        "bin/arm-rpi-linux-gnueabihf-objcopy",
-    ],
+    srcs = glob(["bin/*-objcopy"]),
 )
 
 filegroup(
     name = "objdump",
-    srcs = [
-        "bin/arm-rpi-linux-gnueabihf-objdump",
-    ],
+    srcs = glob(["bin/*-objdump"]),
 )
 
 filegroup(
     name = "strip",
-    srcs = [
-        "bin/arm-rpi-linux-gnueabihf-strip",
-    ],
+    srcs = glob(["bin/*-strip"]),
 )
 
 filegroup(
     name = "as",
-    srcs = [
-        "bin/arm-rpi-linux-gnueabihf-as",
-    ],
+    srcs = glob(["bin/*-as"]),
 )
 
 filegroup(
