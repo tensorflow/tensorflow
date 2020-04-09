@@ -2360,8 +2360,15 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         else:
           self._dtype_policy = policy.Policy(dtype)
       input_shapes = None
+      # Converts Tensors / CompositeTensors to TensorShapes.
       if all(hasattr(x, 'shape') for x in input_list):
-        input_shapes = nest.map_structure(lambda x: x.shape, inputs)
+        input_shapes = tf_utils.get_shapes(inputs)
+      else:
+        # Converts input shape to TensorShapes.
+        try:
+          input_shapes = tf_utils.convert_shapes(inputs, to_tuples=False)
+        except ValueError:
+          pass
       # Only call `build` if the user has manually overridden the build method.
       if not hasattr(self.build, '_is_default'):
         # Any setup work performed only once should happen in an `init_scope`
