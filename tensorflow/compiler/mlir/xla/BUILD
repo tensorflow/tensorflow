@@ -160,8 +160,6 @@ cc_library(
     deps = [
         ":hlo",
         ":mlir_hlo_builder",
-        "//tensorflow/compiler/jit:xla_cpu_device",
-        "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",

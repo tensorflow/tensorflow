@@ -105,6 +105,10 @@ DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
   switch (dtype) {
     case toco::IODataType::FLOAT:
       return DT_FLOAT;
+    case toco::IODataType::FLOAT16:
+      return DT_HALF;
+    case toco::IODataType::FLOAT64:
+      return DT_DOUBLE;
     case toco::IODataType::QUANTIZED_UINT8:
       return DT_QUINT8;
     case toco::IODataType::INT8:
@@ -261,7 +265,7 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
 
 Status ConvertMLIRToTFLiteFlatBuffer(const toco::TocoFlags& toco_flags,
                                      mlir::OwningModuleRef module,
-                                     mlir::TFL::QuantizationSpecs quant_specs,
+                                     const mlir::TFL::PassConfig& pass_config,
                                      string* result) {
   bool emit_builtin_tflite_ops = !toco_flags.force_select_tf_ops();
   bool emit_select_tf_ops = toco_flags.enable_select_tf_ops();
@@ -275,20 +279,18 @@ Status ConvertMLIRToTFLiteFlatBuffer(const toco::TocoFlags& toco_flags,
   }
 
   mlir::PassManager pm(module->getContext());
-  mlir::TFL::PassConfig pass_config(quant_specs);
-  pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
-  pass_config.lower_tensor_list_ops = true;
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
   // Convert back to outlined while format for export back to flatbuffer.
   if (pass_config.legalize_tf_while) {
     pm.addPass(mlir::TFL::CreateWhileOutlinePass());
   }
-  pm.addPass(mlir::TFL::CreateRuntimeTypeVerifyPass());
+  pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
 
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, quant_specs, result, &pm);
+      emit_select_tf_ops, emit_custom_ops, pass_config.quant_specs, result,
+      &pm);
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
         // rename once we enable the new converter feature flag.

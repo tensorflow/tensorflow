@@ -123,6 +123,8 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
       return builder.getI1Type();
     case PrimitiveType::F16:
       return builder.getF16Type();
+    case PrimitiveType::BF16:
+      return builder.getBF16Type();
     case PrimitiveType::F32:
       return builder.getF32Type();
     case PrimitiveType::F64:

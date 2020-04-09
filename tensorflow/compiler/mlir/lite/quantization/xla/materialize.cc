@@ -141,7 +141,8 @@ class RewriteDequantize : public OpRewritePattern<quant::DequantizeCastOp> {
 };
 
 // Materialize the quantization results by hlo primitive ops.
-struct MaterializeToXlaPass : public FunctionPass<MaterializeToXlaPass> {
+struct MaterializeToXlaPass
+    : public PassWrapper<MaterializeToXlaPass, FunctionPass> {
   explicit MaterializeToXlaPass() = default;
   MaterializeToXlaPass(const MaterializeToXlaPass &) {}
 
@@ -162,7 +163,7 @@ void MaterializeToXlaPass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the xla_hlo dialect quantization propagation pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateMaterializeToXlaPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateMaterializeToXlaPass() {
   return std::make_unique<MaterializeToXlaPass>();
 }
 

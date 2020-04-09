@@ -34,8 +34,8 @@ func @dynamic_operand(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 
 // CHECK-LABEL: multiple_dialect_ops
 func @multiple_dialect_ops(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK: xla_hlo.neg
-  %0 = "xla_hlo.neg"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: xla_hlo.negate
+  %0 = "xla_hlo.negate"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   // CHECK: xla_hlo.abs
   %1 = "tf.Abs"(%0) : (tensor<2xf32>) -> tensor<2xf32>
 

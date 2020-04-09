@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/quantization/xla/quantize.h"
 
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
@@ -22,6 +23,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/xla/passes.h"
 #include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
@@ -34,6 +36,7 @@ static void RegisterDialects() {
   static bool init_once = []() {
     mlir::registerDialect<mlir::xla_hlo::XlaHloDialect>();
     mlir::registerDialect<mlir::StandardOpsDialect>();
+    mlir::registerDialect<mlir::quant::QuantizationDialect>();
     return true;
   }();
   (void)init_once;
@@ -60,12 +63,13 @@ tensorflow::Status XlaQuantize(const tensorflow::tf2xla::Config& config,
   pm.addPass(createInlinerPass());
   pm.addPass(createSymbolDCEPass());
   pm.addNestedPass<FuncOp>(createCSEPass());
+  pm.addNestedPass<FuncOp>(CreateCpuKernelFusionPass());
 
   mlir::StatusScopedDiagnosticHandler diag_handler(&context);
   LogicalResult result = pm.run(module.get());
   (void)result;
 
-  module->dump();
+  module->walk([&](quant::QuantizeRegionOp op) { op.dump(); });
 
   return tensorflow::Status::OK();
 }

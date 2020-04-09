@@ -57,7 +57,7 @@ struct IslandResult {
 };
 
 struct ExecutorIslandCoarsening
-    : public FunctionPass<ExecutorIslandCoarsening> {
+    : public PassWrapper<ExecutorIslandCoarsening, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -346,7 +346,7 @@ void ExecutorIslandCoarsening::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorIslandCoarseningPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorIslandCoarseningPass() {
   return std::make_unique<ExecutorIslandCoarsening>();
 }
 

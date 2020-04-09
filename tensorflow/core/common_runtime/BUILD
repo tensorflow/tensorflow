@@ -1,5 +1,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
+    "cc_header_only_library",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -65,6 +66,14 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":core_cpu_internal",
+    ],
+)
+
+cc_header_only_library(
+    name = "core_cpu_headers_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":core_cpu_lib",
     ],
 )
 
@@ -294,7 +303,6 @@ tf_cuda_library(
         "lower_if_op.cc",
         "lower_while_op.cc",
         "memory_types.cc",
-        "metrics.cc",
         "mkl_cpu_allocator.cc",
         "optimization_registry.cc",
         "parallel_concat_optimizer.cc",
@@ -421,6 +429,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":shared_counter",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",

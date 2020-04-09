@@ -1476,30 +1476,48 @@ mlir::Operation* ImporterBase::createOperation(
     inner_op = island_builder.createOperation(result);
   }
 
-  if (inner_op->hasTrait<mlir::OpTrait::AttrSizedResultSegments>()) {
-    // The op has multiple variadic outputs.
-    // Calculate result segment sizes using the OpDef.
-    NameRangeMap output_ranges;
+  // Sets operand_segment_sizes or result_segment_sizes attribute to the op.
+  const auto set_segment_sizes_attr =
+      [&](const NameRangeMap& arg_ranges,
+          const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
+          llvm::StringRef attr_name) {
+        std::vector<mlir::Attribute> values;
+        values.reserve(args.size());
+        for (const auto& arg : args) {
+          auto range = arg_ranges.at(arg.name());
+          values.push_back(
+              island_builder.getI32IntegerAttr(range.second - range.first));
+        }
+        auto attr_type =
+            mlir::VectorType::get(args.size(), builder_.getIntegerType(32));
+        auto attr_value = mlir::DenseElementsAttr::get(attr_type, values);
+        inner_op->setAttr(attr_name, attr_value);
+      };
+
+  if (inner_op->hasTrait<mlir::OpTrait::AttrSizedOperandSegments>() ||
+      inner_op->hasTrait<mlir::OpTrait::AttrSizedResultSegments>()) {
+    // The op has multiple variadic operands or results.
+    // Calculate operand and result segment sizes using the OpDef.
+    NameRangeMap input_ranges, output_ranges;
     // This will fail only if the OpDef is syntactically invalid.
     // TODO(jpienaar): Convert this CHECK into a properly propagated error.
     TF_CHECK_OK(
-        NameRangesForNode(node, node.op_def(), nullptr, &output_ranges));
-    std::vector<mlir::Attribute> values;
-    values.reserve(node.op_def().output_arg_size());
-    for (const auto& output_arg : node.op_def().output_arg()) {
-      auto range = output_ranges[output_arg.name()];
-      values.push_back(
-          island_builder.getI32IntegerAttr(range.second - range.first));
+        NameRangesForNode(node, node.op_def(), &input_ranges, &output_ranges));
+    if (inner_op->hasTrait<mlir::OpTrait::AttrSizedOperandSegments>()) {
+      // Add derived "operand_segment_sizes" attr to the created operation.
+      // TODO(b/146937733): Don't use <void> here.
+      set_segment_sizes_attr(input_ranges, node.op_def().input_arg(),
+                             mlir::OpTrait::AttrSizedOperandSegments<
+                                 void>::getOperandSegmentSizeAttr());
     }
 
-    // Add derived "result_segment_sizes" attr to the created operation.
-    // TODO(b/146937733): Don't use <void> here.
-    llvm::StringRef attr_name = mlir::OpTrait::AttrSizedResultSegments<
-        void>::getResultSegmentSizeAttr();
-    auto attr_type = mlir::VectorType::get(node.op_def().output_arg_size(),
-                                           builder_.getIntegerType(32));
-    auto attr_value = mlir::DenseElementsAttr::get(attr_type, values);
-    inner_op->setAttr(attr_name, attr_value);
+    if (inner_op->hasTrait<mlir::OpTrait::AttrSizedResultSegments>()) {
+      // Add derived "result_segment_sizes" attr to the created operation.
+      // TODO(b/146937733): Don't use <void> here.
+      set_segment_sizes_attr(output_ranges, node.op_def().output_arg(),
+                             mlir::OpTrait::AttrSizedResultSegments<
+                                 void>::getResultSegmentSizeAttr());
+    }
   }
 
   // Add the terminator for the island
@@ -2845,6 +2863,7 @@ StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphImporter::Convert(
       saved_model->debug_info() ? *saved_model->debug_info() : dummy_debug_info;
 
   GraphImportConfig specs;
+  specs.prune_unused_nodes = true;
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
@@ -2869,6 +2888,8 @@ StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphImporter::Convert(
   SavedModelObjectGraphImporter importer(graph.flib_def(), debug_info, specs,
                                          module.get(), &tf_name_to_mlir_name,
                                          &function_name_uniquifier);
+
+  TF_RETURN_IF_ERROR(importer.PrepareConvert(graph));
 
   auto fn_names = graph.flib_def().ListFunctionNames();
   for (const auto& fn_name : fn_names) {
@@ -3008,6 +3029,7 @@ Status SavedModelSignatureDefImporter::ConvertSignature(
   });
 
   GraphImportConfig specs;
+  specs.prune_unused_nodes = true;
   specs.inputs = ParseInputArrays(inputs);
   for (auto& output : outputs) specs.outputs.push_back(output.second.name());
 

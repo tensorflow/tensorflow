@@ -893,7 +893,6 @@ tf_cc_test_mkl(
     srcs = ["mkl_remapper_test.cc"],
     tags = [
         "no_mac",
-        "no_oss",
     ],
     deps = [
         ":remapper",

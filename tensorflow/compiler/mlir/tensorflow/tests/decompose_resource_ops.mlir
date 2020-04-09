@@ -87,6 +87,61 @@ func @decompose_resource_apply_gradient_descent(%arg0: tensor<f32>) -> () {
 
 // -----
 
+// Tests that composite tf.ResourceApplyMomentum (non-Nesterov) operation
+// is decomposed.
+
+// CHECK-LABEL: func @decompose_resource_apply_momentum_non_nesterov
+// CHECK-SAME:  [[LR:%.*]]: tensor<f32>, [[GRAD:%.*]]: tensor<f32>, [[MOMENTUM:%.*]]: tensor<f32>
+func @decompose_resource_apply_momentum_non_nesterov(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> () {
+
+  // CHECK: [[VAR_HANDLE:%.*]] = "tf.VarHandleOp"
+  // CHECK: [[ACCUM_HANDLE:%.*]] = "tf.VarHandleOp"
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+  %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+
+  // CHECK: [[ACCUM:%.*]] = "tf.ReadVariableOp"([[ACCUM_HANDLE]])
+  // CHECK: [[ACCUM_MOMENTUM:%.*]] = "tf.Mul"([[ACCUM]], [[MOMENTUM]])
+  // CHECK: [[ACCUM_NEW:%.*]] = "tf.Add"([[ACCUM_MOMENTUM]], [[GRAD]])
+  // CHECK: "tf.AssignVariableOp"([[ACCUM_HANDLE]], [[ACCUM_NEW]])
+  // CHECK: [[ACCUM_NEW_LR:%.*]] = "tf.Mul"([[ACCUM_NEW]], [[LR]])
+  // CHECK: [[VAR:%.*]] = "tf.ReadVariableOp"([[VAR_HANDLE]])
+  // CHECK: [[VAR_NEW:%.*]] = "tf.Sub"([[VAR]], [[ACCUM_NEW_LR]])
+  // CHECK: "tf.AssignVariableOp"([[VAR_HANDLE]], [[VAR_NEW]])
+  "tf.ResourceApplyMomentum"(%0, %1, %arg0, %arg1, %arg2) {use_locking = false, use_nesterov = false} : (tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<f32>, tensor<f32>, tensor<f32>) -> ()
+  return
+}
+
+// -----
+
+// Tests that composite tf.ResourceApplyMomentum (with Nesterov) operation
+// is decomposed.
+
+// CHECK-LABEL: func @decompose_resource_apply_momentum_nesterov
+// CHECK-SAME:  [[LR:%.*]]: tensor<f32>, [[GRAD:%.*]]: tensor<f32>, [[MOMENTUM:%.*]]: tensor<f32>
+func @decompose_resource_apply_momentum_nesterov(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>) -> () {
+
+  // CHECK: [[VAR_HANDLE:%.*]] = "tf.VarHandleOp"
+  // CHECK: [[ACCUM_HANDLE:%.*]] = "tf.VarHandleOp"
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+  %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+
+  // CHECK: [[ACCUM:%.*]] = "tf.ReadVariableOp"([[ACCUM_HANDLE]])
+  // CHECK: [[ACCUM_MOMENTUM:%.*]] = "tf.Mul"([[ACCUM]], [[MOMENTUM]])
+  // CHECK: [[ACCUM_NEW:%.*]] = "tf.Add"([[ACCUM_MOMENTUM]], [[GRAD]])
+  // CHECK: "tf.AssignVariableOp"([[ACCUM_HANDLE]], [[ACCUM_NEW]])
+  // CHECK: [[GRAD_LR:%.*]] = "tf.Mul"([[GRAD]], [[LR]])
+  // CHECK: [[MOMENTUM_LR:%.*]] = "tf.Mul"([[MOMENTUM]], [[LR]])
+  // CHECK: [[ACCUM_NEW_MOMENTUM_LR:%.*]] = "tf.Mul"([[ACCUM_NEW]], [[MOMENTUM_LR]])
+  // CHECK: [[DELTA:%.*]] = "tf.Add"([[GRAD_LR]], [[ACCUM_NEW_MOMENTUM_LR]])
+  // CHECK: [[VAR:%.*]] = "tf.ReadVariableOp"([[VAR_HANDLE]])
+  // CHECK: [[VAR_NEW:%.*]] = "tf.Sub"([[VAR]], [[DELTA]])
+  // CHECK: "tf.AssignVariableOp"([[VAR_HANDLE]], [[VAR_NEW]])
+  "tf.ResourceApplyMomentum"(%0, %1, %arg0, %arg1, %arg2) {use_locking = false, use_nesterov = true} : (tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<f32>, tensor<f32>, tensor<f32>) -> ()
+  return
+}
+
+// -----
+
 // Tests that composite tf.ResourceApplyKerasMomentum (non-Nesterov) operation
 // is decomposed.
 

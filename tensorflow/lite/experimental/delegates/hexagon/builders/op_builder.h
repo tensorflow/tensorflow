@@ -134,6 +134,10 @@ class OpBuilder {
       return ComputeMinAndMaxQuantValues(tensor, min, max,
                                          std::numeric_limits<int8_t>::min(),
                                          std::numeric_limits<int8_t>::max());
+    } else if (tensor.type == kTfLiteInt32) {
+      return ComputeMinAndMaxQuantValues(tensor, min, max,
+                                         std::numeric_limits<int32_t>::min(),
+                                         std::numeric_limits<int32_t>::max());
     }
     return kTfLiteError;
   }
@@ -151,10 +155,6 @@ class OpBuilder {
     }
     const TfLiteAffineQuantization* params =
         static_cast<const TfLiteAffineQuantization*>(quant.params);
-    if (params->quantized_dimension != 0) {
-      printf("Quantized dimensions not 0 for tensor: %s\n", tensor.name);
-      return kTfLiteError;
-    }
     float scale = params->scale->data[0];
     float zero_point = static_cast<float>(params->zero_point->data[0]);
     *min = scale * (static_cast<float>(min_value) - zero_point);

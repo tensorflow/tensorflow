@@ -474,7 +474,7 @@ GrpcTpuStream::~GrpcTpuStream() {
   {
     // Mark all remaining events invalid.
     absl::MutexLock lock(&events_mutex_);
-    for (auto e : events_) {
+    for (const auto& e : events_) {
       if (!e.second.done) {
         LOG(ERROR) << "Resetting: " << e.first;
         UpdateEventStatus(e.first, xla::Status(tensorflow::error::Code::ABORTED,
@@ -669,7 +669,7 @@ void GrpcTpuStream::StreamReaderFn() {
   StreamResponse resp;
   while (stream_->Read(&resp)) {
     VLOG(2) << "Received response: " << resp.DebugString();
-    for (const StreamResponse::Entry entry : resp.entry()) {
+    for (const StreamResponse::Entry& entry : resp.entry()) {
       EventId event_id = EventId::FromInt(entry.operation_id());
       VLOG(1) << "Received response for: " << event_id;
 

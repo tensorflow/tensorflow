@@ -26,10 +26,13 @@ namespace xla_hlo {
 
 // Propagate the quantization information to all the tensors according to the
 // op quant spec.
-std::unique_ptr<OpPassBase<FuncOp>> CreatePropagateQuantPass();
+std::unique_ptr<OperationPass<FuncOp>> CreatePropagateQuantPass();
 
 // Rewrite the graph and quantize the constant.
-std::unique_ptr<OpPassBase<FuncOp>> CreateMaterializeToXlaPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateMaterializeToXlaPass();
+
+// Fuse HLO ops into quantized regions.
+std::unique_ptr<OperationPass<FuncOp>> CreateCpuKernelFusionPass();
 
 }  // namespace xla_hlo
 }  // namespace mlir

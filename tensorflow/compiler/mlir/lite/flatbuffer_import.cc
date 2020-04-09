@@ -353,6 +353,22 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
       }
       return DenseElementsAttr::get(shaped_type, ArrayRef<float>(values));
     }
+    case 64: {
+      assert(bytes_len % 8 == 0);
+      size_t elem_count = bytes_len / 8;
+      std::vector<double> values;
+      values.reserve(elem_count);
+
+      const char* data = reinterpret_cast<const char*>(buffer.data());
+
+      for (int i = 0; i < elem_count; i++) {
+        uint64_t bit_repr =
+            llvm::support::endian::readNext<uint64_t, llvm::support::little,
+                                            llvm::support::unaligned>(data);
+        values.push_back(absl::bit_cast<double>(bit_repr));
+      }
+      return DenseElementsAttr::get(shaped_type, ArrayRef<double>(values));
+    }
   }
   return errors::InvalidArgument("unsupported bit width", elem_type.getWidth());
 }

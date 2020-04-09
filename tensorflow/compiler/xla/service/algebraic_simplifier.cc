@@ -706,6 +706,140 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
                      add->shape(), HloOpcode::kAdd, a, b)),
                  c));
   }
+
+  if (options_.is_layout_sensitive()) {
+    return Status::OK();
+  }
+
+  HloInstruction* lhs_scatter_operand = nullptr;
+  HloInstruction* rhs_scatter_operand = nullptr;
+  HloInstruction* lhs_scatter_update = nullptr;
+  HloInstruction* rhs_scatter_update = nullptr;
+  HloInstruction* lhs_scatter_index = nullptr;
+  HloInstruction* rhs_scatter_index = nullptr;
+  bool lhs_scatter = Match(lhs, m::Scatter(m::Op(&lhs_scatter_operand),
+                                           m::Op(&lhs_scatter_index),
+                                           m::Op(&lhs_scatter_update))
+                                    .WithOneUse()) &&
+                     Match(lhs->to_apply()->root_instruction(),
+                           m::Add(m::Parameter(), m::Parameter()));
+  bool rhs_scatter = Match(rhs, m::Scatter(m::Op(&rhs_scatter_operand),
+                                           m::Op(&rhs_scatter_index),
+                                           m::Op(&rhs_scatter_update))
+                                    .WithOneUse()) &&
+                     Match(rhs->to_apply()->root_instruction(),
+                           m::Add(m::Parameter(), m::Parameter()));
+  if (rhs_scatter && lhs_scatter) {
+    const auto& lhs_dnums = lhs->scatter_dimension_numbers();
+    const auto& rhs_dnums = rhs->scatter_dimension_numbers();
+    absl::optional<int64> index_concat_dimension;
+    absl::optional<int64> update_concat_dimension;
+    // Don't try to combine scatters of different ranks.
+    if (lhs_scatter_index->shape().rank() !=
+        rhs_scatter_index->shape().rank()) {
+      return Status::OK();
+    }
+
+    int64 first_index_dim;
+    int64 first_update_dim;
+    // Find a dimension where it is possible to concatenate the indices and
+    // updates. This is the first and only non-equal dimension or the first
+    // equally sized dimension.
+    for (int64 d = lhs_scatter_index->shape().rank() - 1,
+               update_dim = lhs_scatter_update->shape().rank() - 1;
+         d >= 0; --d, --update_dim) {
+      if (d == lhs_dnums.index_vector_dim()) {
+        continue;
+      }
+      while (
+          absl::c_linear_search(lhs_dnums.update_window_dims(), update_dim)) {
+        --update_dim;
+      }
+      if (lhs_scatter_index->shape().dimensions(d) ==
+          rhs_scatter_index->shape().dimensions(d)) {
+        first_index_dim = d;
+        first_update_dim = update_dim;
+        continue;
+      }
+      // More than one dimension of unequal size was found, bail out.
+      if (index_concat_dimension) {
+        return Status::OK();
+      }
+      index_concat_dimension = d;
+      update_concat_dimension = update_dim;
+    }
+    if (!index_concat_dimension) {
+      index_concat_dimension = first_index_dim;
+      update_concat_dimension = first_update_dim;
+    }
+    const bool update_concat_is_cheap =
+        ShapeUtil::ElementsIn(rhs_scatter_update->shape()) +
+            ShapeUtil::ElementsIn(lhs_scatter_update->shape()) <
+        ShapeUtil::ElementsIn(lhs->shape());
+    if (!update_concat_is_cheap) {
+      return Status::OK();
+    }
+    const bool same_dimension_numbers =
+        lhs_dnums.index_vector_dim() == rhs_dnums.index_vector_dim() &&
+        absl::c_equal(lhs_dnums.scatter_dims_to_operand_dims(),
+                      rhs_dnums.scatter_dims_to_operand_dims()) &&
+        absl::c_equal(lhs_dnums.inserted_window_dims(),
+                      rhs_dnums.inserted_window_dims()) &&
+        absl::c_equal(lhs_dnums.update_window_dims(),
+                      rhs_dnums.update_window_dims());
+    const bool index_concat_is_safe =
+        !lhs->unique_indices() && !rhs->unique_indices() &&
+        !DynCast<HloScatterInstruction>(lhs)->indices_are_sorted() &&
+        !DynCast<HloScatterInstruction>(rhs)->indices_are_sorted();
+
+    Shape lhs_update_window = ShapeUtil::FilterDimensions(
+        [&](int64 dim) {
+          return absl::c_linear_search(lhs_dnums.update_window_dims(), dim);
+        },
+        lhs_scatter_update->shape());
+    Shape rhs_update_window = ShapeUtil::FilterDimensions(
+        [&](int64 dim) {
+          return absl::c_linear_search(rhs_dnums.update_window_dims(), dim);
+        },
+        rhs_scatter_update->shape());
+    // Concatenate the indices and updates
+    if (index_concat_is_safe && same_dimension_numbers &&
+        index_concat_dimension &&
+        ShapeUtil::SameDimensions(lhs_update_window, rhs_update_window)) {
+      TF_ASSIGN_OR_RETURN(HloInstruction * new_operand,
+                          MakeBinaryHlo(HloOpcode::kAdd, lhs_scatter_operand,
+                                        rhs_scatter_operand));
+      TF_ASSIGN_OR_RETURN(HloInstruction * new_index,
+                          MakeConcatHlo({lhs_scatter_index, rhs_scatter_index},
+                                        *index_concat_dimension));
+      TF_ASSIGN_OR_RETURN(
+          HloInstruction * new_update,
+          MakeConcatHlo({lhs_scatter_update, rhs_scatter_update},
+                        *update_concat_dimension));
+      return ReplaceWithNewInstruction(
+          add, HloInstruction::CreateScatter(
+                   add->shape(), new_operand, new_index, new_update,
+                   lhs->to_apply(), lhs_dnums, false, false));
+    }
+    TF_ASSIGN_OR_RETURN(HloInstruction * new_operand,
+                        MakeBinaryHlo(HloOpcode::kAdd, lhs_scatter_operand,
+                                      rhs_scatter_operand));
+    TF_RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, new_operand));
+    TF_RETURN_IF_ERROR(lhs->ReplaceOperandWith(0, rhs));
+    return ReplaceInstruction(add, lhs);
+  } else if (rhs_scatter) {
+    TF_ASSIGN_OR_RETURN(
+        HloInstruction * new_operand,
+        MakeBinaryHlo(HloOpcode::kAdd, lhs, rhs_scatter_operand));
+    TF_RETURN_IF_ERROR(rhs->ReplaceOperandWith(0, new_operand));
+    return ReplaceInstruction(add, rhs);
+  } else if (lhs_scatter) {
+    TF_ASSIGN_OR_RETURN(
+        HloInstruction * new_operand,
+        MakeBinaryHlo(HloOpcode::kAdd, lhs_scatter_operand, rhs));
+    TF_RETURN_IF_ERROR(lhs->ReplaceOperandWith(0, new_operand));
+    return ReplaceInstruction(add, lhs);
+  }
   return Status::OK();
 }
 

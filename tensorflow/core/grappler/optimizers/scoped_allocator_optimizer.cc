@@ -971,7 +971,7 @@ class Tree {
  public:
   Tree(const string& edge, int depth) : edge_(edge), depth_(depth) {}
   ~Tree() {
-    for (auto it : subtrees_) delete it.second;
+    for (const auto& it : subtrees_) delete it.second;
   }
 
   Tree* GetSubTree(const string& edge) {
@@ -996,7 +996,7 @@ class Tree {
 // on any non-OK Status.
 Status ApplyToAll(Tree* tree, const std::function<Status(Tree*)>& func) {
   Status s;
-  for (auto it : tree->subtrees_) {
+  for (const auto& it : tree->subtrees_) {
     s = ApplyToAll(it.second, func);
     if (!s.ok()) return s;
   }

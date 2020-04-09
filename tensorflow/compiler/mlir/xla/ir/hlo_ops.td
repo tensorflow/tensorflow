@@ -144,11 +144,11 @@ def HLO_ClzOp: HLO_UnaryElementwiseOp<"count_leading_zeros",
     [NoSideEffect, SameOperandsAndResultType], HLO_IntTensor>,
     BASE_HLO_ClzOp;
 
-def HLO_CosOp: HLO_UnaryElementwiseOp<"cos",
+def HLO_CosOp: HLO_UnaryElementwiseOp<"cosine",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
     BASE_HLO_CosOp;
 
-def HLO_ExpOp: HLO_UnaryElementwiseOp<"exp",
+def HLO_ExpOp: HLO_UnaryElementwiseOp<"exponential",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
     BASE_HLO_ExpOp;
 
@@ -178,7 +178,7 @@ def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
     [NoSideEffect, SameOperandsAndResultType], HLO_PredOrIntTensor>,
     BASE_HLO_NotOp;
 
-def HLO_NegOp: HLO_UnaryElementwiseOp<"neg",
+def HLO_NegOp: HLO_UnaryElementwiseOp<"negate",
     [NoSideEffect, SameOperandsAndResultType], HLO_IntFpOrComplexTensor>,
     BASE_HLO_NegOp;
 
@@ -186,7 +186,7 @@ def HLO_PopulationCountOp: HLO_UnaryElementwiseOp<"popcnt",
     [NoSideEffect, SameOperandsAndResultType], HLO_IntTensor>,
     BASE_HLO_PopulationCountOp;
 
-def HLO_RoundOp: HLO_UnaryElementwiseOp<"round",
+def HLO_RoundOp: HLO_UnaryElementwiseOp<"round_nearest_afz",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_RoundOp;
 
 def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
@@ -197,7 +197,7 @@ def HLO_SignOp: HLO_UnaryElementwiseOp<"sign",
     [NoSideEffect, SameOperandsAndResultType], HLO_IntFpOrComplexTensor>,
     BASE_HLO_SignOp;
 
-def HLO_SinOp: HLO_UnaryElementwiseOp<"sin",
+def HLO_SinOp: HLO_UnaryElementwiseOp<"sine",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
     BASE_HLO_SinOp;
 
@@ -300,7 +300,7 @@ def HLO_MinOp : HLO_BinaryElementwiseOp<"minimum",
 def HLO_MulOp : HLO_BinaryElementwiseOp<"multiply",
       [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MulOp;
 
-def HLO_PowOp : HLO_BinaryElementwiseOp<"pow",
+def HLO_PowOp : HLO_BinaryElementwiseOp<"power",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_PowOp;
 
 def HLO_RemOp : HLO_BinaryElementwiseOp<"remainder",
@@ -872,7 +872,7 @@ def ConvDimensionNumbers : StructAttr<"ConvDimensionNumbers", HLO_Dialect, [
   let description = "Structure of dimension information for conv op";
 }
 
-def HLO_ConvOp : HLO_Op<"conv", [NoSideEffect]>, BASE_HLO_ConvOp {
+def HLO_ConvOp : HLO_Op<"convolution", [NoSideEffect]>, BASE_HLO_ConvOp {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,

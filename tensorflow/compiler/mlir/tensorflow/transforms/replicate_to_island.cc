@@ -43,7 +43,8 @@ namespace TFDevice {
 namespace {
 constexpr char kDeviceAttr[] = "device";
 
-struct ReplicateToIslandPass : public FunctionPass<ReplicateToIslandPass> {
+struct ReplicateToIslandPass
+    : public PassWrapper<ReplicateToIslandPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -237,7 +238,7 @@ void ReplicateToIslandPass::runOnFunction() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateToIslandPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateReplicateToIslandPass() {
   return std::make_unique<ReplicateToIslandPass>();
 }
 

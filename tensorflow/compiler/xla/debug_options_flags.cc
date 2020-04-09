@@ -535,6 +535,16 @@ static void AllocateFlags() {
           bool_setter_for(&DebugOptions::set_xla_gpu_deterministic_reductions),
           flag_values->xla_gpu_deterministic_reductions(),
           "Always run deterministic reductions on GPU"),
+      tensorflow::Flag(
+          "xla_tpu_detect_nan",
+          bool_setter_for(&DebugOptions::set_xla_tpu_detect_nan),
+          flag_values->xla_tpu_detect_nan(),
+          "Trigger error on execution on TPU if a NAN value is detected"),
+      tensorflow::Flag(
+          "xla_tpu_detect_inf",
+          bool_setter_for(&DebugOptions::set_xla_tpu_detect_inf),
+          flag_values->xla_tpu_detect_inf(),
+          "Trigger error on execution on TPU if a INF value is detected"),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

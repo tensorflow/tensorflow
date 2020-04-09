@@ -575,13 +575,11 @@ cuda_py_test(
         ":context",
         ":forwardprop",
         ":function",
-        ":profiler",
         ":remote",
         ":test",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )

@@ -295,7 +295,7 @@ func @main() -> tensor<2x2x1x1xf32> {
 
 // CHECK:  HloModule
 func @main(%arg0 : tensor<100x26x26x32xf32>, %arg1 : tensor<3x3x1x32xf32>) -> tensor<100x28x28x1xf32> {
-  %result = "xla_hlo.conv"(%arg0, %arg1) {
+  %result = "xla_hlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
     dimension_numbers = {
       input_batch_dimension = 0 : i64,

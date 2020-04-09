@@ -250,6 +250,17 @@ class MergeLayersTest(keras_parameterized.TestCase):
 
     self.assertAllEqual(out_dense, out_ragged)
 
+  @parameterized.named_parameters(
+      *tf_test_util.generate_combinations_with_testcase_name(
+          layer=[keras.layers.Add, keras.layers.Subtract,
+                 keras.layers.Multiply, keras.layers.Minimum,
+                 keras.layers.Maximum, keras.layers.Average]))
+  def test_merge_with_scalar_input(self, layer):
+    x1 = np.array((1))
+    x2 = np.array((2))
+    out = layer()([x1, x2])
+    self.assertEqual(out.shape, ())
+
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class MergeLayersTestNoExecution(test.TestCase):

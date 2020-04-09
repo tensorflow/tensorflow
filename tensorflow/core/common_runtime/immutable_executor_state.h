@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_IMMUTABLE_EXECUTOR_STATE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_IMMUTABLE_EXECUTOR_STATE_H_
 
+#include <atomic>
 #include <deque>
 #include <memory>
 #include <vector>
@@ -95,6 +96,21 @@ class ImmutableExecutorState {
 
   bool requires_control_flow_support() const { return requires_control_flow_; }
 
+  // Copies the pending counts for nodes in this graph to the given array.
+  //
+  // This method provides a more efficient way of initializing
+  // `SimplePropagatorState` than individually accessing the pending counts from
+  // `get_root_frame_info().counts`.
+  //
+  // REQUIRES: `!requires_control_flow_support && len(dest) ==
+  // graph_view().num_nodes()`.
+  void copy_pending_counts(std::atomic<int32>* dest) const {
+    DCHECK(!requires_control_flow_);
+    memcpy(dest, atomic_pending_counts_.get(),
+           graph_view().num_nodes() * sizeof(std::atomic<int32>));
+    std::atomic_thread_fence(std::memory_order_release);
+  }
+
  private:
   struct ControlFlowInfo {
     gtl::FlatSet<string> unique_frame_names;
@@ -121,6 +137,10 @@ class ImmutableExecutorState {
   // the overhead of constructing it for each executor instance.
   gtl::FlatMap<string, FrameInfo*> frame_info_;
   const FrameInfo* root_frame_info_;  // Not owned.
+
+  // If `requires_control_flow_` is false, this points to an array of initial
+  // pending counts for the nodes in the graph, indexed by node ID.
+  std::unique_ptr<std::atomic<int32>[]> atomic_pending_counts_;
 
   // Shallow copies of the constant tensors used in the graph.
   std::vector<Tensor> const_tensors_;

@@ -91,7 +91,7 @@ func @and(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
 // CHECK-LABEL: func @exp
 func @exp(%input: memref<2x2xf32>,
           %result: memref<2x2xf32>) {
-  "xla_lhlo.exp"(%input, %result)
+  "xla_lhlo.exponential"(%input, %result)
       : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
@@ -376,7 +376,7 @@ func @convert_f32_to_f32(%input: memref<2x2xf32>,
 // CHECK-LABEL: func @cos
 func @cos(%input: memref<2x2xf32>,
           %result: memref<2x2xf32>) {
-  "xla_lhlo.cos"(%input, %result)
+  "xla_lhlo.cosine"(%input, %result)
       : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
@@ -390,7 +390,7 @@ func @cos(%input: memref<2x2xf32>,
 // CHECK-LABEL: func @neg
 func @neg(%input: memref<2x2xf32>,
           %result: memref<2x2xf32>) {
-  "xla_lhlo.neg"(%input, %result)
+  "xla_lhlo.negate"(%input, %result)
       : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }

@@ -425,9 +425,10 @@ kernel void ComputeFunction($1
   c += R"(
   FLT4 t0 = I1 + I2;
   FLT4 t1 = I3 + I4;
+  FLT4 bias_val = biases[DST_Z];
   int dst_adress = (DST_Z * U.dst_size.y + tile_y) * U.dst_size.x + tile_x;
   if (tile_x < U.dst_size.x) {
-    FLT4 value = I0 + t0 + t1;
+    FLT4 value = I0 + t0 + t1 + bias_val;
     uint3 gid = uint3(tile_x, tile_y, global_ids.z);
     int linear_index = dst_adress;
     $2;
@@ -436,21 +437,21 @@ kernel void ComputeFunction($1
   FLT4 t2 = I1 - I2;
   FLT4 t3 = I3 - I4;
   if (tile_x + 1 < U.dst_size.x) {
-    FLT4 value = t2 * At[7] + t3 * At[9];
+    FLT4 value = t2 * At[7] + t3 * At[9] + bias_val;
     uint3 gid = uint3(tile_x + 1, tile_y, global_ids.z);
     int linear_index = dst_adress + 1;
     $2;
     dst_buffer[linear_index] = value;
   }
   if (tile_x + 2 < U.dst_size.x) {
-    FLT4 value = t0 * At[13] + t1 * At[15];
+    FLT4 value = t0 * At[13] + t1 * At[15] + bias_val;
     uint3 gid = uint3(tile_x + 2, tile_y, global_ids.z);
     int linear_index = dst_adress + 2;
     $2;
     dst_buffer[linear_index] = value;
   }
   if (tile_x + 3 < U.dst_size.x) {
-    FLT4 value = t2 * At[19] + t3 * At[21] + I5;
+    FLT4 value = t2 * At[19] + t3 * At[21] + I5 + bias_val;
     uint3 gid = uint3(tile_x + 3, tile_y, global_ids.z);
     int linear_index = dst_adress + 3;
     $2;

@@ -19,7 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl.testing import absltest
+import unittest
+
 from absl.testing import parameterized
 
 from tensorflow.python.distribute import combinations
@@ -87,9 +88,9 @@ class ClusterParametersTest(test.TestCase, parameterized.TestCase):
     pass
 
 
-# absltest.expectedFailure doesn't work with parameterized test methods, so we
+# unittest.expectedFailure doesn't work with parameterized test methods, so we
 # have to decorate the class instead.
-@absltest.expectedFailure
+@unittest.expectedFailure
 class ClusterParametersShouldFailTest(test.TestCase, parameterized.TestCase):
 
   @framework_combinations.generate(
@@ -107,9 +108,9 @@ class ClusterParametersShouldFailTest(test.TestCase, parameterized.TestCase):
 
 # Tests that we *actually* run the test method in multiple workers instead of
 # just passing silently. More importantly, it verifies that the test can fail.
-# Note that absltest.expectedFailure doesn't work with parameterized test
+# Note that unittest.expectedFailure doesn't work with parameterized test
 # methods, so we have to decorate the class instead.
-@absltest.expectedFailure
+@unittest.expectedFailure
 class CombinationsExpectedFailureTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
@@ -127,9 +128,9 @@ class CombinationsExpectedFailureTest(test.TestCase, parameterized.TestCase):
 
 # Tests that we *actually* run the test method in multiple workers instead of
 # just passing silently. More importantly, it verifies that the test can fail.
-# Note that absltest.expectedFailure doesn't work with parameterized test
+# Note that unittest.expectedFailure doesn't work with parameterized test
 # methods, so we have to decorate the class instead.
-@absltest.expectedFailure
+@unittest.expectedFailure
 @combinations.generate(
     combinations.combine(distribution=[
         combinations.NamedDistribution(

@@ -16,11 +16,11 @@ limitations under the License.
 #include <memory>
 
 #include "Python.h"
-#include "include/pybind11/chrono.h"
-#include "include/pybind11/complex.h"
-#include "include/pybind11/functional.h"
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/stl.h"
+#include "pybind11/chrono.h"
+#include "pybind11/complex.h"
+#include "pybind11/functional.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -503,7 +503,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_ExecutorWaitForAllPendingNodes", [](TFE_Executor& exc) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
+    // NOTE: release Python GIL for pending PyFunc ops to be executed properly.
+    Py_BEGIN_ALLOW_THREADS;
     TFE_ExecutorWaitForAllPendingNodes(&exc, status.get());
+    Py_END_ALLOW_THREADS;
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
   m.def("TFE_ExecutorClearError", &TFE_ExecutorClearError);

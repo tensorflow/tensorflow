@@ -91,11 +91,14 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
                                ErrorReporter* error_reporter) {
   *type = kTfLiteNoType;
   switch (tensor_type) {
+    case TensorType_FLOAT16:
+      *type = kTfLiteFloat16;
+      break;
     case TensorType_FLOAT32:
       *type = kTfLiteFloat32;
       break;
-    case TensorType_FLOAT16:
-      *type = kTfLiteFloat16;
+    case TensorType_FLOAT64:
+      *type = kTfLiteFloat64;
       break;
     case TensorType_INT16:
       *type = kTfLiteInt16;
@@ -785,6 +788,17 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_BATCH_MATMUL: {
+      TfLiteBatchMatMulParams* params =
+          allocator->AllocatePOD<TfLiteBatchMatMulParams>();
+      if (const auto* bmm_params =
+              op->builtin_options_as_BatchMatMulOptions()) {
+        params->adjoint_lhs = bmm_params->adjoint_lhs();
+        params->adjoint_rhs = bmm_params->adjoint_rhs();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     // Below are the ops with no builtin_data structure.
     case BuiltinOperator_ABS:
     case BuiltinOperator_BATCH_TO_SPACE_ND:
@@ -856,7 +870,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_SCATTER_ND:
     case BuiltinOperator_DENSIFY:
     case BuiltinOperator_SEGMENT_SUM:
-    case BuiltinOperator_BATCH_MATMUL:
       break;
   }
   return kTfLiteOk;

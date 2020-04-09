@@ -194,6 +194,13 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
         name="_variant_tracker")
     self._graph_attr = ops.get_default_graph()
 
+    # Initialize the options for this dataset and its inputs.
+    self._options_attr = Options()
+    for input_dataset in self._inputs():
+      input_options = input_dataset.options()
+      if input_options is not None:
+        self._options_attr = self._options_attr.merge(input_options)
+
   @property
   def _variant_tensor(self):
     return self._variant_tensor_attr
@@ -332,12 +339,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     Returns:
       A `tf.data.Options` object representing the dataset options.
     """
-    options = Options()
-    for input_dataset in self._inputs():
-      input_options = input_dataset.options()
-      if input_options is not None:
-        options = options.merge(input_options)
-    return options
+    return self._options_attr
 
   def _apply_options(self):
     """Apply options, such as optimization configuration, to the dataset."""
@@ -2103,15 +2105,40 @@ class DatasetV1(DatasetV2):
     raise NotImplementedError("Dataset._as_variant_tensor")
 
   @deprecation.deprecated(
-      None, "Use `for ... in dataset:` to iterate over a dataset. If using "
-      "`tf.estimator`, return the `Dataset` object directly from your input "
-      "function. As a last resort, you can use "
-      "`tf.compat.v1.data.make_one_shot_iterator(dataset)`.")
+      None, "This is a deprecated API that should only be used in TF 1 graph "
+      "mode and legacy TF 2 graph mode available through `tf.compat.v1`. In "
+      "all other situations -- namely, eager mode and inside `tf.function` -- "
+      "you can consume dataset elements using `for elem in dataset: ...` or "
+      "by explicitly creating iterator via `iterator = iter(dataset)` and "
+      "fetching its elements via `values = next(iterator)`. Furthermore, "
+      "this API is not available in TF 2. During the transition from TF 1 "
+      "to TF 2 you can use `tf.compat.v1.data.make_one_shot_iterator(dataset)` "
+      "to create a TF 1 graph mode style iterator for a dataset created "
+      "through TF 2 APIs. Note that this should be a transient state of your "
+      "code base as there are in general no guarantees about the "
+      "interoperability of TF 1 and TF 2 code.")
   def make_one_shot_iterator(self):
     """Creates an `Iterator` for enumerating the elements of this dataset.
 
     Note: The returned iterator will be initialized automatically.
-    A "one-shot" iterator does not currently support re-initialization.
+    A "one-shot" iterator does not currently support re-initialization. For
+    that see `make_initializable_iterator`.
+
+    Example:
+
+    ```python
+    # Building graph ...
+    dataset = ...
+    next_value = dataset.make_one_shot_iterator().get_next()
+
+    # ... from within a session ...
+    try:
+      while True:
+        value = sess.run(next_value)
+        ...
+    except tf.errors.OutOfRangeError:
+        pass
+    ```
 
     Returns:
       An `Iterator` over the elements of this dataset.
@@ -2170,10 +2197,19 @@ class DatasetV1(DatasetV2):
         get_legacy_output_classes(self))
 
   @deprecation.deprecated(
-      None, "Use `for ... in dataset:` to iterate over a dataset. If using "
-      "`tf.estimator`, return the `Dataset` object directly from your input "
-      "function. As a last resort, you can use "
-      "`tf.compat.v1.data.make_initializable_iterator(dataset)`.")
+      None, "This is a deprecated API that should only be used in TF 1 graph "
+      "mode and legacy TF 2 graph mode available through `tf.compat.v1`. "
+      "In all other situations -- namely, eager mode and inside `tf.function` "
+      "-- you can consume dataset elements using `for elem in dataset: ...` "
+      "or by explicitly creating iterator via `iterator = iter(dataset)` "
+      "and fetching its elements via `values = next(iterator)`. "
+      "Furthermore, this API is not available in TF 2. During the transition "
+      "from TF 1 to TF 2 you can use "
+      "`tf.compat.v1.data.make_initializable_iterator(dataset)` to create a TF "
+      "1 graph mode style iterator for a dataset created through TF 2 APIs. "
+      "Note that this should be a transient state of your code base as there "
+      "are in general no guarantees about the interoperability of TF 1 and TF "
+      "2 code.")
   def make_initializable_iterator(self, shared_name=None):
     """Creates an `Iterator` for enumerating the elements of this dataset.
 
@@ -2181,10 +2217,19 @@ class DatasetV1(DatasetV2):
     and you must run the `iterator.initializer` operation before using it:
 
     ```python
+    # Building graph ...
     dataset = ...
     iterator = dataset.make_initializable_iterator()
-    # ...
+    next_value = iterator.get_next()  # This is a Tensor.
+
+    # ... from within a session ...
     sess.run(iterator.initializer)
+    try:
+      while True:
+        value = sess.run(next_value)
+        ...
+    except tf.errors.OutOfRangeError:
+        pass
     ```
 
     Args:
@@ -2198,7 +2243,6 @@ class DatasetV1(DatasetV2):
     Raises:
       RuntimeError: If eager execution is enabled.
     """
-
     return self._make_initializable_iterator(shared_name)
 
   def _make_initializable_iterator(self, shared_name=None):  # pylint: disable=missing-docstring
@@ -4371,16 +4415,16 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset, options):
     self._input_dataset = input_dataset
-    self._options = input_dataset.options()
-    if self._options:
-      self._options = self._options.merge(options)
-    else:
-      self._options = options
     variant_tensor = input_dataset._variant_tensor  # pylint: disable=protected-access
     super(_OptionsDataset, self).__init__(input_dataset, variant_tensor)
 
+    if self._options_attr:
+      self._options_attr = self._options_attr.merge(options)
+    else:
+      self._options_attr = options
+
   def options(self):
-    return self._options
+    return self._options_attr
 
 
 class _ModelDataset(UnaryUnchangedStructureDataset):

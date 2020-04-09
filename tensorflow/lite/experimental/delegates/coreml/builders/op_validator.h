@@ -28,6 +28,9 @@ bool IsConvolutionOpSupported(const TfLiteRegistration* registration,
 bool IsDepthwiseConvolutionOpSupported(const TfLiteRegistration* registration,
                                        const TfLiteNode* node,
                                        TfLiteContext* context);
+bool IsFullyConnectedOpSupported(const TfLiteRegistration* registration,
+                                 const TfLiteNode* node,
+                                 TfLiteContext* context);
 bool IsReshapeOpSupported(const TfLiteRegistration* registration,
                           const TfLiteNode* node, TfLiteContext* context);
 bool IsResizeBilinearOpSupported(const TfLiteRegistration* registration,

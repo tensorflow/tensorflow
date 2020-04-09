@@ -291,12 +291,6 @@ void NoActivation() {
 
 template <TensorType tensor_type, typename integer_dtype>
 void NoActivationLargeMultiplier() {
-  // TODO(b/138722124): Remove this after setting the appropriate op version (3)
-  // for dependent tests.
-  if (SingleOpModel::GetForceUseNnapi()) {
-    // NNAPI doesn't currently support Mul with multiplier>1.
-    return;
-  }
   // Intentionally pathological output range much narrower than needed
   // to represent input values to exercise the multiplier>1 case.
   QuantizedMulOpModel m({tensor_type, {1, 2, 2, 1}, -100, 100},

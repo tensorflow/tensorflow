@@ -85,30 +85,34 @@ TfLiteCoreMlDelegateDelete(delegate);
 
 Following ops are supported by the Core ML delegate.
 
-*   `raw_ops.Add`
+*   Add
     *   Only certain shapes are broadcastable. In Core ML tensor layout,
         following tensor shapes are broadcastable. `[B, C, H, W]`, `[B, C, 1,
         1]`, `[B, 1, H, W]`, `[B, 1, 1, 1]`.
-*   `raw_ops.AveragePool2D`
-*   `raw_ops.Concat`
-*   `raw_ops.Conv2D`
+*   AveragePool2D
+*   Concat
+*   Conv2D
     *   Weights and bias should be constant.
-*   `raw_ops.DepthwiseConv2D`
+*   DepthwiseConv2D
     *   Weights and bias should be constant.
-*   `raw_ops.Hardswish`
-*   `raw_ops.Logistic` (aka Sigmoid)
-*   `raw_ops.MaxPool2D`
-*   `raw_ops.Mul`
+*   FullyConnected (aka Dense or InnerProduct)
+    *   Weights and bias (if present) should be constant.
+    *   Only supports single-batch case. Input dimensions should be 1, except
+        the last dimension.
+*   Hardswish
+*   Logistic (aka Sigmoid)
+*   MaxPool2D
+*   Mul
     *   Only certain shapes are broadcastable. In Core ML tensor layout,
         following tensor shapes are broadcastable. `[B, C, H, W]`, `[B, C, 1,
         1]`, `[B, 1, H, W]`, `[B, 1, 1, 1]`.
-*   `raw_ops.Relu`
-*   `raw_ops.ReluN1To1`
-*   `raw_ops.Relu6`
-*   `raw_ops.Reshape`
-*   `raw_ops.ResizeBilinear`
-*   `raw_ops.SoftMax`
-*   `raw_ops.Tanh`
+*   Relu
+*   ReluN1To1
+*   Relu6
+*   Reshape
+*   ResizeBilinear
+*   SoftMax
+*   Tanh
 
 ## Feedback
 

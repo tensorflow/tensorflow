@@ -45,6 +45,19 @@ class Adadelta(optimizer_v2.OptimizerV2):
   don't have to set an initial learning rate. In this version, initial
   learning rate can be set, as in most other Keras optimizers.
 
+  According to section 4.3 ("Effective Learning rates"), near the end of
+  training step sizes converge to 1 which is effectively a high learning
+  rate which would cause divergence. This occurs only near the end of the
+  training as gradients and step sizes are small, and the epsilon constant
+  in the numerator and denominator dominate past gradients and parameter
+  updates which converge the learning rate to 1.
+
+  According to section 4.4("Speech Data"),where a large neural network with
+  4 hidden layers was trained on a corpus of US English data, ADADELTA was
+  used with 100 network replicas.The epsilon used is 1e-6 with rho=0.95
+  which converged faster than ADAGRAD, by the following construction:
+  def __init__(self, lr=1.0, rho=0.95, epsilon=1e-6, decay=0., **kwargs):
+
   Args:
     learning_rate: A `Tensor`, floating point value, or a schedule that is a
       `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.

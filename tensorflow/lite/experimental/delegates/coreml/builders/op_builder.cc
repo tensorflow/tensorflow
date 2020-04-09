@@ -36,6 +36,8 @@ OpBuilder* GraphBuilder::AddBuilder(int builtin_code, const TfLiteNode* node) {
       return AddBuilder(CreateConvolutionOpBuilder, node);
     case kTfLiteBuiltinDepthwiseConv2d:
       return AddBuilder(CreateDepthwiseConvolutionOpBuilder, node);
+    case kTfLiteBuiltinFullyConnected:
+      return AddBuilder(CreateFullyConnectedOpBuilder, node);
     case kTfLiteBuiltinLogistic:
       return AddBuilder(CreateLogisticOpBuilder, node);
     case kTfLiteBuiltinMaxPool2d:

@@ -42,7 +42,7 @@ namespace mlir {
 
 namespace {
 
-struct BreakUpIslands : FunctionPass<BreakUpIslands> {
+struct BreakUpIslands : PassWrapper<BreakUpIslands, FunctionPass> {
   void runOnFunction() final;
 
   void BreakUpIsland(tf_executor::IslandOp island_op,
@@ -325,7 +325,7 @@ void BreakUpIslands::BreakUpIsland(
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateBreakUpIslandsPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateBreakUpIslandsPass() {
   return std::make_unique<BreakUpIslands>();
 }
 

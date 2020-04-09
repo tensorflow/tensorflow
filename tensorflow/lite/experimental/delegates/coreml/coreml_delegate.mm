@@ -42,6 +42,10 @@ bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfL
       case kTfLiteBuiltinDepthwiseConv2d:
         if (registration->version > 2) return false;
         break;
+      // FullyConnected without bias is supported starting from version 6.
+      case kTfLiteBuiltinFullyConnected:
+        if (registration->version > 6) return false;
+        break;
       default:
         return false;
     }
@@ -82,6 +86,9 @@ bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfL
     }
     case kTfLiteBuiltinDepthwiseConv2d: {
       return delegates::coreml::IsDepthwiseConvolutionOpSupported(registration, node, context);
+    }
+    case kTfLiteBuiltinFullyConnected: {
+      return delegates::coreml::IsFullyConnectedOpSupported(registration, node, context);
     }
     case kTfLiteBuiltinHardSwish: {
       return true;

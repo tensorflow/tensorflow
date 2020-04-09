@@ -295,7 +295,9 @@ std::string GetDeconvolution4x4(const int2& block_size,
       int4 src_size;
       int4 dst_size;
       int filter_offset;
-      int3 dummy_0;
+      int dummy_0;
+      int dummy_1;
+      int dummy_2;
     };
 )";
   c += R"(

@@ -445,7 +445,7 @@ TfLiteStatus QuantizeOpInput(
         }
         if (utils::QuantizeWeight(model, tensor, tensor_property.per_axis,
                                   tensor_property.per_axis_index,
-                                  error_reporter) == kTfLiteError) {
+                                  error_reporter) != kTfLiteOk) {
           TF_LITE_REPORT_ERROR(
               error_reporter,
               "Unable to quantize buffer or min/max value for input %d "

@@ -1642,5 +1642,16 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
   return Status::OK();
 }
 
+/*static*/ std::string CuptiTracer::ErrorIfAny() {
+  if (CuptiTracer::NumGpus() == 0) {
+    return "No GPU detected.";
+  } else if (CuptiTracer::GetCuptiTracerSingleton()->NeedRootAccess()) {
+    return "Insufficient privilege to run libcupti (you need root permission).";
+  } else if (CuptiTracer::GetTimestamp() == 0) {
+    return "Failed to load libcupti (is it installed and accessible?)";
+  }
+  return "";
+}
+
 }  // namespace profiler
 }  // namespace tensorflow

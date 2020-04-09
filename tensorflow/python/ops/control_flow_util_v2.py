@@ -46,9 +46,17 @@ def in_defun():
 
   graph = ops.get_default_graph()
   while (isinstance(graph, CondBranchFuncGraph) or
-         isinstance(graph, WhileBodyFuncGraph)):
+         isinstance(graph, WhileBodyFuncGraph) or
+         isinstance(graph, WhileCondFuncGraph)):
     graph = graph.outer_graph
   return isinstance(graph, FuncGraph)
+
+
+def in_while_loop_defun(graph):
+  """Returns if the graph is a while loop FuncGraph."""
+  if context.executing_eagerly(): return False
+  return (isinstance(graph, WhileCondFuncGraph) or
+          isinstance(graph, WhileBodyFuncGraph))
 
 
 def create_new_tf_function(func_graph):

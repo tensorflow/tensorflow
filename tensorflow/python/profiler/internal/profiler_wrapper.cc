@@ -16,8 +16,8 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/pytypes.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
@@ -93,17 +93,18 @@ class ProfilerSessionWrapper {
   }
 
  private:
-  tensorflow::profiler::ProfilerOptions GetOptions(const py::dict& opts) {
-    tensorflow::profiler::ProfilerOptions options;
+  tensorflow::ProfileOptions GetOptions(const py::dict& opts) {
+    tensorflow::ProfileOptions options =
+        tensorflow::ProfilerSession::DefaultOptions();
     for (const auto& kw : opts) {
       std::string key = py::cast<std::string>(kw.first);
       if (key == "host_tracer_level") {
-        options.host_tracer_level = py::cast<int>(kw.second);
-        VLOG(1) << "host_tracer_level set to " << options.host_tracer_level;
+        options.set_host_tracer_level(py::cast<int>(kw.second));
+        VLOG(1) << "host_tracer_level set to " << options.host_tracer_level();
       } else if (key == "python_tracer_level") {
-        options.enable_python_tracer = py::cast<int>(kw.second) > 0;
+        options.set_python_tracer_level(py::cast<int>(kw.second));
         VLOG(1) << "enable_python_tracer set to "
-                << options.enable_python_tracer;
+                << options.python_tracer_level();
       }
     }
     return options;
@@ -137,9 +138,11 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
     tensorflow::Status status =
         tensorflow::profiler::ValidateHostPortPair(service_addr);
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
-    status = tensorflow::profiler::Trace(service_addr, logdir, worker_list,
-                                         include_dataset_ops, duration_ms,
-                                         num_tracing_attempts);
+    tensorflow::ProfileOptions opts;
+    opts.set_include_dataset_ops(include_dataset_ops);
+    status =
+        tensorflow::profiler::Trace(service_addr, logdir, worker_list,
+                                    duration_ms, num_tracing_attempts, opts);
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
   });
 

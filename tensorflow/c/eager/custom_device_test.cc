@@ -156,7 +156,7 @@ TEST(CUSTOM_DEVICE, RegisterSimpleDevice) {
   const char* name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
   RegisterLoggingDevice(context, name, &arrived, &executed, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-  TFE_TensorHandle* hcpu = TestMatrixTensorHandle();
+  TFE_TensorHandle* hcpu = TestMatrixTensorHandle(context);
   ASSERT_FALSE(arrived);
   TFE_TensorHandle* hdevice =
       TFE_TensorHandleCopyToDevice(hcpu, context, name, status.get());
@@ -245,7 +245,7 @@ TEST(CUSTOM_DEVICE, MakeVariable) {
 
   // Assign to the variable, copying to the custom device.
   std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)> one(
-      TestScalarTensorHandle(111.f), TFE_DeleteTensorHandle);
+      TestScalarTensorHandle(context.get(), 111.f), TFE_DeleteTensorHandle);
   op.reset(TFE_NewOp(context.get(), "AssignVariableOp", status.get()));
   TFE_OpSetAttrType(op.get(), "dtype", TF_FLOAT);
   TFE_OpAddInput(op.get(), var_handle, status.get());
@@ -331,7 +331,7 @@ TEST(CUSTOM_DEVICE, AccessVariableOnWrongDevice) {
 
   // Assign to the variable, copying to the custom device.
   std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)> one(
-      TestScalarTensorHandle(111.f), TFE_DeleteTensorHandle);
+      TestScalarTensorHandle(context.get(), 111.f), TFE_DeleteTensorHandle);
   op.reset(TFE_NewOp(context.get(), "AssignVariableOp", status.get()));
   TFE_OpSetAttrType(op.get(), "dtype", TF_FLOAT);
   TFE_OpAddInput(op.get(), var_handle, status.get());

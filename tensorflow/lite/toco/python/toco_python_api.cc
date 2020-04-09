@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "google/protobuf/text_format.h"
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"
@@ -170,13 +171,25 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
 
   // Convert model.
   if (enable_mlir_converter) {
-    status = tensorflow::ConvertGraphDefToTFLiteFlatBuffer(
-        model_flags, toco_flags, debug_info, graph_def,
-        &output_file_contents_txt);
-    if (!toco_flags.conversion_summary_dir().empty()) {
-      PopulateConversionLogHelper(model_flags, &toco_flags, input_contents_txt,
-                                  output_file_contents_txt,
-                                  status.error_message(), &dump_options);
+    if (!model_flags.saved_model_dir().empty()) {
+      status = tensorflow::ConvertSavedModelToTFLiteFlatBuffer(
+          model_flags, toco_flags, &output_file_contents_txt);
+    } else {
+      tensorflow::GraphDef graph_def;
+      if (!graph_def.ParseFromString(input_contents_txt)) {
+        PyErr_SetString(PyExc_ValueError,
+                        "Failed to convert GraphDef to Python String.");
+        return nullptr;
+      }
+
+      status = tensorflow::ConvertGraphDefToTFLiteFlatBuffer(
+          model_flags, toco_flags, debug_info, graph_def,
+          &output_file_contents_txt);
+      if (!toco_flags.conversion_summary_dir().empty()) {
+        PopulateConversionLogHelper(
+            model_flags, &toco_flags, input_contents_txt,
+            output_file_contents_txt, status.error_message(), &dump_options);
+      }
     }
   } else {
     status = Convert(input_contents_txt, toco_flags, model_flags,
