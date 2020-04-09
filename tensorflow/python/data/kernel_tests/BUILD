@@ -341,6 +341,7 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/compat",
+        "//tensorflow/python/data/experimental/ops:prefetching_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:readers",

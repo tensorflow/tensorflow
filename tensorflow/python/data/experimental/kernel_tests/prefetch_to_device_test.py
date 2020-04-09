@@ -148,14 +148,24 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
     device_dataset = host_dataset.apply(
         prefetching_ops.prefetch_to_device("/gpu:0"))
 
+    self.assertDatasetProduces(device_dataset, list(range(10)))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testPrefetchToDeviceCorrectPlacement(self):
+
+    if not test_util.is_gpu_available():
+      self.skipTest("No GPU available")
+
+    host_dataset = dataset_ops.Dataset.range(10)
+    device_dataset = host_dataset.apply(
+        prefetching_ops.prefetch_to_device("/gpu:0"))
+
     self.assertTrue((
       "" == host_dataset._variant_tensor.device or
       "CPU:0" in host_dataset._variant_tensor.device
     ))
 
     self.assertTrue("GPU:0" in device_dataset._variant_tensor.device)
-
-    self.assertDatasetProduces(device_dataset, list(range(10)))
 
   @combinations.generate(test_base.graph_only_combinations())
   def testPrefetchToDeviceWithReInit(self):
@@ -196,9 +206,6 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     iterator = dataset_ops.make_initializable_iterator(device_dataset)
     next_element = iterator.get_next()
-
-    self.assertEqual(device_dataset._variant_tensor.device, '/device:GPU:0')
-    self.assertEqual(next_element.device, '/device:GPU:0')
 
     with self.cached_session(
         config=config_pb2.ConfigProto(allow_soft_placement=False)):

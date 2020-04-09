@@ -399,7 +399,8 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       RuntimeError: If not inside of tf.function and not executing eagerly.
     """
     if context.executing_eagerly() or ops.inside_function():
-      return iterator_ops.OwnedIterator(self)
+      with ops.device(self._variant_tensor.device):
+        return iterator_ops.OwnedIterator(self)
     else:
       raise RuntimeError("__iter__() is only supported inside of tf.function "
                          "or when eager execution is enabled.")
@@ -474,13 +475,15 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     if not context.executing_eagerly():
       raise RuntimeError("as_numpy_iterator() is not supported while tracing "
                          "functions")
+
     for component_spec in nest.flatten(self.element_spec):
       if not isinstance(component_spec, tensor_spec.TensorSpec):
         raise TypeError(
             "Dataset.as_numpy_iterator() does not support datasets containing "
             + str(component_spec.value_type))
 
-    return _NumpyIterator(self)
+    with ops.device(self._variant_tensor.device):
+      return _NumpyIterator(self)
 
   @property
   def _flat_shapes(self):
@@ -2144,8 +2147,10 @@ class DatasetV1(DatasetV2):
     return self._make_one_shot_iterator()
 
   def _make_one_shot_iterator(self):  # pylint: disable=missing-docstring
+
     if context.executing_eagerly():
-      return iterator_ops.OwnedIterator(self)
+      with ops.device(self._variant_tensor.device):
+        return iterator_ops.OwnedIterator(self)
 
     _ensure_same_dataset_graph(self)
     # Now that we create datasets at python object creation time, the capture
@@ -2187,12 +2192,13 @@ class DatasetV1(DatasetV2):
       else:
         six.reraise(ValueError, err)
 
-    # pylint: disable=protected-access
-    return iterator_ops.Iterator(
-        gen_dataset_ops.one_shot_iterator(
-            dataset_factory=_make_dataset, **self._flat_structure), None,
-        get_legacy_output_types(self), get_legacy_output_shapes(self),
-        get_legacy_output_classes(self))
+    with ops.device(self._variant_tensor.device):
+      # pylint: disable=protected-access
+      return iterator_ops.Iterator(
+          gen_dataset_ops.one_shot_iterator(
+              dataset_factory=_make_dataset, **self._flat_structure), None,
+          get_legacy_output_types(self), get_legacy_output_shapes(self),
+          get_legacy_output_classes(self))
 
   @deprecation.deprecated(
       None, "This is a deprecated API that should only be used in TF 1 graph "
