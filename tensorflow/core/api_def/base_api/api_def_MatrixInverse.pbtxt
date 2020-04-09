@@ -29,5 +29,16 @@ The op uses LU decomposition with partial pivoting to compute the inverses.
 If a matrix is not invertible there is no guarantee what the op does. It
 may detect the condition and raise an exception or it may simply return a
 garbage result.
+
+For example:
+
+```
+>>> a = tf.constant([1,2,3])
+>>> b = tf.constant([4,5,6])
+>>> tf.linalg.cross(a,b)
+<tf.Tensor: shape=(3,), dtype=int32, numpy=
+array([-3,  6, -3], dtype=int32)>
+```
+
 END
 }
