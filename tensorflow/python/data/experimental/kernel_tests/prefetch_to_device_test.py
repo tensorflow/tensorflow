@@ -162,10 +162,10 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertTrue((
       "" == host_dataset._variant_tensor.device or
-      "CPU:0" in host_dataset._variant_tensor.device
+      "cpu:0" in host_dataset._variant_tensor.device.lower()
     ))
 
-    self.assertTrue("GPU:0" in device_dataset._variant_tensor.device)
+    self.assertTrue("gpu:0" in device_dataset._variant_tensor.device.lower())
 
   @combinations.generate(test_base.graph_only_combinations())
   def testPrefetchToDeviceWithReInit(self):

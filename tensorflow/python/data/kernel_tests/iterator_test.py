@@ -1021,21 +1021,24 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
   def assert_dataset_placement(self, host_dataset, host_iterator, host_tensor,
                                device_dataset, device_iterator, device_tensor):
 
-    def assert_host_placement(_obj):
-      try:
-        self.assertIn("CPU:0", _obj)
-      except AssertionError:
-        self.assertEqual(_obj, "")
+    self.assertTrue(
+      "cpu:0" in host_dataset._variant_tensor.device.lower() or
+      host_dataset._variant_tensor.device == ""
+    )
+    self.assertTrue(
+      "cpu:0" in host_tensor._variant_tensor.device.lower() or
+      host_tensor._variant_tensor.device == ""
+    )
 
-    assert_host_placement(host_dataset._variant_tensor.device)
-    assert_host_placement(host_tensor.device)
-
-    self.assertIn("GPU:0", device_dataset._variant_tensor.device)
-    self.assertIn("GPU:0", device_tensor.device)
+    self.assertIn("gpu:0", device_dataset._variant_tensor.device.lower())
+    self.assertIn("gpu:0", device_tensor.device.lower())
 
     if not tf2.enabled() or context.executing_eagerly():
-      assert_host_placement(host_iterator._device)
-      self.assertIn("GPU:0", device_iterator._device)
+      self.assertTrue(
+        "cpu:0" in host_iterator._variant_tensor.device.lower() or
+        host_iterator._variant_tensor.device == ""
+      )
+      self.assertIn("gpu:0", device_iterator._device.lower())
 
   @combinations.generate(test_base.eager_only_combinations())
   def testIteratorOnDeviceEagerMode(self):
