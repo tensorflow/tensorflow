@@ -31,7 +31,6 @@ may detect the condition and raise an exception or it may simply return a
 garbage result.
 
 For example:
-
 ```
 >>> a = tf.constant([1,2],[3,4], dtype=tf.float32)
 >>> tf.linalg.inv(a)
