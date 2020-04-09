@@ -214,7 +214,7 @@ int main(int argc, char **argv) {
   if (pass_config.legalize_tf_while) {
     pm.addPass(mlir::TFL::CreateWhileOutlinePass());
   }
-  pm.addPass(mlir::TFL::CreateRuntimeTypeVerifyPass());
+  pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
 
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(
