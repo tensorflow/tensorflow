@@ -33,12 +33,11 @@ garbage result.
 For example:
 
 ```
->>> a = tf.constant([1,2,3])
->>> b = tf.constant([4,5,6])
->>> tf.linalg.cross(a,b)
-<tf.Tensor: shape=(3,), dtype=int32, numpy=
-array([-3,  6, -3], dtype=int32)>
+>>> a = tf.constant([1,2],[3,4], dtype=tf.float32)
+>>> tf.linalg.inv(a)
+<tf.Tensor: shape=(2, 2), dtype=float32, numpy=
+array([[-2.0000002 ,  1.0000001 ],
+       [ 1.5000001 , -0.50000006]], dtype=float32)>
 ```
-
 END
 }

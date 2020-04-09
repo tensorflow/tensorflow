@@ -23,5 +23,14 @@ END
 `a` and `b` must be the same shape; they can either be simple 3-element vectors,
 or any shape where the innermost dimension is 3. In the latter case, each pair
 of corresponding 3-element vectors is cross-multiplied independently.
+
+For example:
+```
+>>> a = tf.constant([1,2,3])
+>>> b = tf.constant([4,5,6])
+>>> tf.linalg.cross(a,b)
+<tf.Tensor: shape=(3,), dtype=int32, numpy=
+array([-3,  6, -3], dtype=int32)>
+```
 END
 }
