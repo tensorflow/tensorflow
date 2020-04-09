@@ -55,7 +55,7 @@ namespace mlir {
 namespace xla_hlo {
 namespace {
 
-class LegalizeTF : public FunctionPass<LegalizeTF> {
+class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
  public:
   LegalizeTF() = default;
   LegalizeTF(const LegalizeTF &) {}
@@ -767,7 +767,7 @@ NamedAttribute GetConvDimensionNumbersAttr(
 //
 // Sample result for Conv2D:
 //
-//   %conv = "xla_hlo.conv"(%input, %filter) {
+//   %conv = "xla_hlo.convolution"(%input, %filter) {
 //     strides = [1, 2],
 //     paddings = [[1, 0], [1, 1]],
 //     ...
@@ -777,7 +777,7 @@ NamedAttribute GetConvDimensionNumbersAttr(
 // the paddings attribute anyway requires multiple source op attributes and
 // result op attributes. Defining it as declarative rewrite rule will introduce
 // some duplication in the C++ helper methods.
-template <typename OpT, int num_spatial_dims>
+template <typename OpT, int num_spatial_dims, bool depthwise_conv = false>
 class ConvertConv : public OpRewritePattern<OpT> {
  public:
   using OpRewritePattern<OpT>::OpRewritePattern;
@@ -868,7 +868,10 @@ class ConvertConv : public OpRewritePattern<OpT> {
     int64_t filter_channels = GetDimSize(filter_ty, num_spatial_dims);
     // TensorFlow convolution op verifies that the number of input channels is
     // divisible by the number of filter channels.
-    int64_t feature_group_count = input_channels / filter_channels;
+    // For depthwise convolution the feature_group_count argument would be set
+    // to the input feature dimension.
+    int64_t feature_group_count =
+        depthwise_conv ? input_channels : input_channels / filter_channels;
     auto feature_group_count_attr = rewriter.getNamedAttr(
         "feature_group_count", rewriter.getI64IntegerAttr(feature_group_count));
 
@@ -881,6 +884,22 @@ class ConvertConv : public OpRewritePattern<OpT> {
         "padding", DenseElementsAttr::get<int64_t>(paddings_ty, paddings));
 
     SmallVector<Value, 2> operands(op.getOperands());
+    // Reshape the filter to {spatial_dims...., 1,in_channels *
+    // channel_multiplier}
+    if (depthwise_conv) {
+      auto filter_shape = filter_ty.getShape();
+      llvm::SmallVector<int64_t, 4> new_shape(filter_shape.size());
+      for (int i = 0; i < num_spatial_dims; ++i) {
+        new_shape[i] = filter_shape[i];
+      }
+      new_shape[num_spatial_dims] = 1;
+      new_shape[num_spatial_dims + 1] =
+          filter_shape[num_spatial_dims] * filter_shape[num_spatial_dims + 1];
+      operands[1] = rewriter.create<xla_hlo::ReshapeOp>(
+          op.getLoc(),
+          RankedTensorType::get(new_shape, filter_ty.getElementType()),
+          operands[1]);
+    }
     NamedAttribute attrs[] = {rhs_dilations_attr,     window_strides_attr,
                               dimension_numbers_attr, feature_group_count_attr,
                               batch_group_count_attr, paddings_attr};
@@ -891,7 +910,9 @@ class ConvertConv : public OpRewritePattern<OpT> {
 };
 
 using ConvertConv2D = ConvertConv<TF::Conv2DOp, /*num_spatial_dims=*/2>;
-
+using ConvertDepthConv2D =
+    ConvertConv<TF::DepthwiseConv2dNativeOp, /*num_spatial_dims=*/2,
+                /*depthwise_conv=*/true>;
 // Converts BF16 FloorDiv op to have casting operators on either end as BF16
 // division can result in strange behavior.
 //
@@ -1504,7 +1525,7 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
 //    %sub = "xla_hlo.subtract"(%inp, %max) {broadcast_dimensions = 0}
 //            : (tensor<BxNxf16>, tensor<Bxf16>) -> tensor<BxNxf16>
 //
-//    %exp = "xla_hlo.exp"(%sub) : (tensor<BxNxf16>) -> tensor<BxNxf16>
+//    %exp = "xla_hlo.exponential"(%sub) : (tensor<BxNxf16>) -> tensor<BxNxf16>
 //    %sum = "tf.Sum"(%exp, %reduce_dim)
 //            : (tensor<BxNxf32>, tensor<1xi64>) -> tensor<Bxf32>
 //
@@ -2639,7 +2660,7 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
 
 // Converts hlo.Conv2DBackpropInputOp into:
 //   %rev_filter = "xla_hlo.reverse"(%filter)
-//   %result = "xla_hlo.conv"(%out_backprop, %rev_filter)
+//   %result = "xla_hlo.convolution"(%out_backprop, %rev_filter)
 class ConvertConv2DBackpropInputOp
     : public OpRewritePattern<TF::Conv2DBackpropInputOp> {
  public:
@@ -2782,7 +2803,7 @@ class ConvertConv2DBackpropInputOp
 };
 
 // Converts tf.Conv2DBackpropFilterOp into:
-//   %result = "xla_hlo.conv"(%input, %out_backprop)
+//   %result = "xla_hlo.convolution"(%input, %out_backprop)
 class ConvertConv2DBackpropFilterOp
     : public OpRewritePattern<TF::Conv2DBackpropFilterOp> {
  public:
@@ -3767,15 +3788,15 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
   patterns.insert<
       ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBatchMatMulV2Op,
       ConvertBroadcastToOp, ConvertBF16FloorDivOp, ConvertConv2D,
-      ConvertConv2DBackpropFilterOp, ConvertConv2DBackpropInputOp,
-      ConvertCumsumOp, ConvertEinsumOp, ConvertFusedBatchNormGradOp,
-      ConvertFusedBatchNormGradV2Op, ConvertFusedBatchNormGradV3Op,
-      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp,
-      ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPoolOp,
-      ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
-      ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertRangeOp,
-      ConvertSelectV2Op, ConvertSigmoidOp, ConvertSizeOp,
-      ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertDepthConv2D, ConvertConv2DBackpropFilterOp,
+      ConvertConv2DBackpropInputOp, ConvertCumsumOp, ConvertEinsumOp,
+      ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
+      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op,
+      ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp, ConvertMaxOp,
+      ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPoolOp, ConvertMaxPoolGradOp,
+      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
+      ConvertProdOp, ConvertRangeOp, ConvertSelectV2Op, ConvertSigmoidOp,
+      ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
@@ -3808,7 +3829,7 @@ static PassRegistration<LegalizeTF> pass(
 
 }  // end namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeTFPass(
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion) {
   return std::make_unique<LegalizeTF>(allow_partial_conversion);
 }

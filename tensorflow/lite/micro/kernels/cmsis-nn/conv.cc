@@ -115,8 +115,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   return raw;
 }
 
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 #if defined(__ARM_FEATURE_DSP)
   OpData data;
@@ -408,8 +406,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace conv
 
 TfLiteRegistration* Register_CONV_2D() {
-  static TfLiteRegistration r = {conv::Init, conv::Free, conv::Prepare,
-                                 conv::Eval};
+  static TfLiteRegistration r = {/*init=*/conv::Init,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/conv::Prepare,
+                                 /*invoke=*/conv::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

@@ -1078,6 +1078,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
     "//tensorflow/compiler/mlir/xla:type_to_shape",
     "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
+    "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
     "//tensorflow/compiler/tf2xla:common",
     "//tensorflow/compiler/tf2xla:xla_compiler",
     "//tensorflow/core:framework",
@@ -1118,6 +1119,7 @@ tf_cc_test(
     srcs = ["utils/compile_mlir_util_test.cc"],
     deps = [
         ":compile_mlir_util",
+        "//tensorflow/compiler/jit",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:test",

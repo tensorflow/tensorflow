@@ -545,13 +545,44 @@ LogicalResult Verify(SwitchNOp switchn) {
            << "expect `num_outs` (" << num_outs.getInt() << ") results but got "
            << (switchn.getNumResults() - 1);
 
+  // Check that operand can be broadcasted to each output type.
   auto operand0_type = switchn.getOperand(0).getType();
-  for (Value result : switchn.outputs())
-    if (operand0_type != result.getType())
-      return switchn.emitOpError()
-             << "type mismatch between data operand and result: "
-             << operand0_type << " vs " << result.getType();
+  TensorType operand0_tensor_type = operand0_type.dyn_cast<TensorType>();
+  if (!operand0_tensor_type) {
+    return switchn.emitOpError()
+           << "expects data operand to have tensor type but got "
+           << operand0_type;
+  }
+  for (Type output_type : switchn.getResultTypes()) {
+    if (output_type.isa<ControlType>()) break;
 
+    TensorType output_tensor_type = output_type.dyn_cast<TensorType>();
+    if (!output_tensor_type) {
+      return switchn.emitOpError()
+             << "expects outputs to have tensor type but got " << output_type;
+    }
+
+    // If the output type is a ref type, then the operand type should also be of
+    // the same ref type. However, if the output type is a non-ref type T, then
+    // the operand can be tensor of type T or T_REF.
+    bool is_output_ref =
+        output_tensor_type.getElementType().isa<TF::TensorFlowRefType>();
+    if (is_output_ref &&
+        !operand0_tensor_type.getElementType().isa<TF::TensorFlowRefType>()) {
+      return switchn.emitOpError()
+             << "expects same operand and output element type but got "
+             << operand0_tensor_type << " vs " << output_tensor_type;
+    }
+    Type broadcasted_type = OpTrait::util::getBroadcastedType(
+        DropRefType(DropTypeSubTypes(operand0_tensor_type)),
+        DropRefType(DropTypeSubTypes(output_tensor_type)));
+    if (!broadcasted_type) {
+      return switchn.emitOpError()
+             << "expects data operand to be broadcastable with all output types"
+             << " but got " << operand0_tensor_type << " vs "
+             << output_tensor_type;
+    }
+  }
   return success();
 }
 

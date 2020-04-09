@@ -191,7 +191,7 @@ CudaSolver::CudaSolver(OpKernelContext* context) : context_(context) {
 }
 
 CudaSolver::~CudaSolver() {
-  for (auto tensor_ref : scratch_tensor_refs_) {
+  for (const auto& tensor_ref : scratch_tensor_refs_) {
     tensor_ref.Unref();
   }
 }

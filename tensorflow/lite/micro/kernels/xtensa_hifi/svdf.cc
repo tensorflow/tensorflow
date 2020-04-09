@@ -361,12 +361,6 @@ constexpr int kInputActivationStateTensor = 4;
 // Output tensor.
 constexpr int kOutputTensor = 0;
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const auto* params = reinterpret_cast<TfLiteSVDFParams*>(node->builtin_data);
 
@@ -391,6 +385,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int rank = params->rank;
   const int input_size = input->dims->data[1];
   const int batch_size = input->dims->data[0];
+  // Ensure the input size is a multiple of two.  This is necessary since
+  // optimized kernels access the memory in chunks of two, and all accesses
+  // must be aligned to 16 bits.
+  // TODO(b/153202598): Remove when padding is allowed in TFLite tensors.
+  TF_LITE_ENSURE_EQ(context, input_size % 2, 0);
+
   const int num_filters = weights_feature->dims->data[0];
   TF_LITE_ENSURE_EQ(context, num_filters % rank, 0);
   const int num_units = num_filters / rank;
@@ -566,11 +566,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace svdf
 
 TfLiteRegistration* Register_SVDF() {
-  static TfLiteRegistration r = {};
-  r.init = svdf::Init;
-  r.free = svdf::Free;
-  r.prepare = svdf::Prepare;
-  r.invoke = svdf::Eval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/svdf::Prepare,
+                                 /*invoke=*/svdf::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
+
   return &r;
 }
 

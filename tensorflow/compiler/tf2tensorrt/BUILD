@@ -68,7 +68,7 @@ tf_cuda_cc_test(
         "nomac",
     ],
     deps = [
-        "//tensorflow/core:gpu_init",
+        "//tensorflow/core/common_runtime/gpu:gpu_init",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor",
         "//tensorflow/core:test",
@@ -98,7 +98,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/core:core_cpu_lib_no_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
@@ -106,6 +105,7 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:stream_executor",
         "//tensorflow/core:stream_executor_headers_lib",
+        "//tensorflow/core/common_runtime:core_cpu_lib_no_ops",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/stream_executor/lib",
     ] + if_tensorrt([":tensorrt_lib"]) + tf_custom_op_library_additional_deps(),
@@ -216,7 +216,7 @@ cc_library(
     deps = [
         ":get_calibration_data_op_op_lib",
         ":trt_engine_op_op_lib",
-        ":trt_engine_utils"
+        ":trt_engine_utils",
     ],
 )
 
@@ -451,6 +451,8 @@ tf_cuda_cc_test(
         ":trt_logging",
         ":trt_conversion",
         ":trt_plugins",
+        ":trt_engine_utils",
+        ":utils",
         "@com_google_googletest//:gtest",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

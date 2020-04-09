@@ -18,7 +18,8 @@ namespace mlir {
 namespace TFL {
 namespace {
 
-struct IdentifyDilatedConvPass : public FunctionPass<IdentifyDilatedConvPass> {
+struct IdentifyDilatedConvPass
+    : public PassWrapper<IdentifyDilatedConvPass, FunctionPass> {
   void runOnFunction() override;
 };
 

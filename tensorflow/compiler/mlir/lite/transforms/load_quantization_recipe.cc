@@ -42,7 +42,8 @@ namespace {
 // AnyQuantizedType, thus bitwidth, narrow_range, etc are included. The op also
 // defines the op quantization traits, which are used to propagate the
 // quantization parameters by the following passes.
-struct LoadQuantizationRecipe : public FunctionPass<LoadQuantizationRecipe> {
+struct LoadQuantizationRecipe
+    : public PassWrapper<LoadQuantizationRecipe, FunctionPass> {
   void runOnFunction() override;
 
  private:
@@ -215,7 +216,7 @@ void LoadQuantizationRecipe::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect LoadQuantizationRecipe
 // pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateLoadQuantizationRecipePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateLoadQuantizationRecipePass() {
   return absl::make_unique<LoadQuantizationRecipe>();
 }
 

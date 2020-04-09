@@ -35,7 +35,7 @@ namespace {
 // GpuOpFusionPass is a pass performing fusion specific to GPU targets.
 // This is an ad-hoc pass for now, but should be integrated with some notion
 // of "target" in the MLIR pipeline in the future.
-class GpuOpFusionPass : public FunctionPass<GpuOpFusionPass> {
+class GpuOpFusionPass : public PassWrapper<GpuOpFusionPass, FunctionPass> {
  public:
   void runOnFunction() final;
 };
@@ -123,7 +123,7 @@ void GpuOpFusionPass::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateGpuOpFusionPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass() {
   return std::make_unique<GpuOpFusionPass>();
 }
 

@@ -76,10 +76,10 @@ TfOpRoofLineCostEstimator::OpRoofLineStats TfOpRoofLineCostEstimator::Predict(
   std::vector<std::string> input_tensors;
   event.ForEachStat([&](const XStatVisitor& stat) {
     if (stat.Type() == StatType::kLevel0) {
-      tf_op = ParseTfOpFullname(stat.StrValue());
+      tf_op = ParseTfOpFullname(stat.StrOrRefValue());
     } else if (stat.Type() == StatType::kTensorShapes) {
       has_shape_stats = true;
-      auto shapes_stats = stat.StrValue();
+      auto shapes_stats = stat.StrOrRefValue();
       absl::ConsumePrefix(&shapes_stats, "(");
       absl::ConsumeSuffix(&shapes_stats, ")");
       input_tensors = absl::StrSplit(shapes_stats, ';');

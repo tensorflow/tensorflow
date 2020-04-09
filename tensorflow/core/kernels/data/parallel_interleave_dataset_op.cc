@@ -449,7 +449,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           initial_elements_created_ = true;
         }
       }
-      for (auto element : future_elements_) {
+      for (const auto& element : future_elements_) {
         element->initialized = true;
       }
       last_valid_current_element_ = current_elements_.size() - 1;
@@ -538,7 +538,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       cancelled_ = true;
       // Wake up all threads so that they can exit. This will also wake up any
       // threads waiting in GetNextInternal.
-      for (auto element : current_elements_) {
+      for (const auto& element : current_elements_) {
         if (element) {
           element->cond_var.notify_all();
         }

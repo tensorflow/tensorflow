@@ -58,6 +58,11 @@ cc_library(
         "//tensorflow/python:__subpackages__",
     ],
     deps = [
+        "@llvm-project//mlir:Affine",
+        "@llvm-project//mlir:QuantOps",
+        # Link jit lib to link JIT devices required to run
+        # xla-legalize-tf-with-tf2xla pass.
+        "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_dialect_registration",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",
@@ -72,6 +77,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
+        "//tensorflow/compiler/mlir/xla:buffer_assignment",
         "//tensorflow/compiler/mlir/xla:hlo",
         "//tensorflow/compiler/mlir/xla:hlo_legalize_to_lhlo",
         "//tensorflow/compiler/mlir/xla:lhlo",
@@ -89,8 +95,6 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_lower",
         "//tensorflow/compiler/mlir/xla:xla_materialize_broadcasts",
         "//tensorflow/compiler/mlir/xla:xla_test_passes",
-        "@llvm-project//mlir:Affine",
-        "@llvm-project//mlir:QuantOps",
     ],
 )
 
@@ -169,7 +173,6 @@ tf_cc_binary(
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
-        "@llvm-project//mlir:TranslateClParser",
         "@llvm-project//mlir:Translation",
     ],
 )

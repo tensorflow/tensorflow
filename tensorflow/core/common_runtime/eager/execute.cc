@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
+#include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -156,9 +157,9 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
                             " to ", expected_input_device->name());
       },
       profiler::TraceMeLevel::kInfo);
-  Status status = EagerCopyToDevice(
-      handle, ctx, &op->Executor(), expected_input_device,
-      handle->ImplicitMirroring() || ctx->MirrorTensors(), &result_handle);
+  Status status =
+      EagerCopyToDevice(handle, ctx, &op->Executor(), expected_input_device,
+                        /* mirror= */ true, &result_handle);
   activity.Stop();
   if (!status.ok()) {
     return errors::Internal("Failed copying input tensor from ",
@@ -373,7 +374,10 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
 //    running without an explicitly requested device.
 Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                          int* num_retvals) {
-  auto op_annotation = ScopedMemoryDebugAnnotation(op->op_name());
+  ScopedMemoryDebugAnnotation op_annotation(
+      op->op_name(), op->remote_func_params().has_value()
+                         ? op->remote_func_params().value().step_id.value_or(0)
+                         : 0);
   profiler::TraceMe activity(
       [&] { return absl::StrCat("EagerLocalExecute: ", op->Name()); },
       profiler::TraceMeLevel::kInfo);
@@ -415,7 +419,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
         TensorHandle* handle = nullptr;
         TF_RETURN_IF_ERROR(EagerCopyToDevice(
             input, &ctx, &executor, device == nullptr ? ctx.HostCPU() : device,
-            input->ImplicitMirroring() || ctx.MirrorTensors(), &handle));
+            /* mirror= */ true, &handle));
         op->UpdateInput(i, handle);
         // Unref handle since it has a ref as an input now
         handle->Unref();
@@ -1198,4 +1202,5 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
 #endif  // !IS_MOBILE_PLATFORM
   }
 }
+
 }  // namespace tensorflow

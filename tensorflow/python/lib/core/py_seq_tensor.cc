@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/tensor_interface.h"
+#include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -278,7 +280,7 @@ struct Converter {
   static Status Convert(TFE_Context* ctx, PyObject* obj, ConverterState* state,
                         TFE_TensorHandle** h, const char** error) {
     // TODO(josh11b): Allocator & attributes
-    std::unique_ptr<AbstractTensorInterface> t;
+    AbstractTensorInterface* t;
     if (state->inferred_shape.empty()) { /* Scalar case */
       T value;
       auto scalar = ZeroDimArrayToScalar(obj, state);
@@ -286,15 +288,25 @@ struct Converter {
       Py_DECREF(scalar);
       if (*error != nullptr) return errors::InvalidArgument(*error);
       t = ConverterTraits<T>::CreateScalar(ctx, value);
+      if (t == nullptr) {
+        return errors::Internal("Cannot create tensor.");
+      }
     } else {
       t = ConverterTraits<T>::CreateTensor(ctx, state->inferred_shape);
+      if (t == nullptr) {
+        return errors::Internal("Cannot create tensor.");
+      }
       if (t->NumElements() > 0) {
         T* buf = static_cast<T*>(t->Data());
         *error = Helper(obj, 0, state, &buf);
-        if (*error != nullptr) return errors::InvalidArgument(*error);
+        if (*error != nullptr) {
+          t->Release();
+          return errors::InvalidArgument(*error);
+        }
       }
     }
-    *h = new TFE_TensorHandle{ctx->context->CreateLocalHandle(std::move(t))};
+    *h = new TFE_TensorHandle{ctx->context->CreateLocalHandle(t)};
+    t->Release();
     return Status::OK();
   }
 };
@@ -303,14 +315,13 @@ struct Converter {
 
 template <>
 struct ConverterTraits<int64> {
-  static std::unique_ptr<AbstractTensorInterface> CreateScalar(TFE_Context* ctx,
-                                                               int64 value) {
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, int64 value) {
     return ctx->context->CreateInt64Scalar(value);
   }
 
-  static std::unique_ptr<AbstractTensorInterface> CreateTensor(
+  static AbstractTensorInterface* CreateTensor(
       TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
-    return ctx->context->CreateInt64Tensor(dim_sizes);
+    return ctx->context->CreateTensor(DT_INT64, dim_sizes);
   }
 
   static const char* ConvertScalar(PyObject* v, int64* out) {
@@ -344,14 +355,13 @@ typedef Converter<int64> Int64Converter;
 
 template <>
 struct ConverterTraits<uint64> {
-  static std::unique_ptr<AbstractTensorInterface> CreateScalar(TFE_Context* ctx,
-                                                               uint64 value) {
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, uint64 value) {
     return ctx->context->CreateUint64Scalar(value);
   }
 
-  static std::unique_ptr<AbstractTensorInterface> CreateTensor(
+  static AbstractTensorInterface* CreateTensor(
       TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
-    return ctx->context->CreateUint64Tensor(dim_sizes);
+    return ctx->context->CreateTensor(DT_UINT64, dim_sizes);
   }
 
   static const char* ConvertScalar(PyObject* v, uint64* out) {
@@ -382,14 +392,13 @@ typedef Converter<uint64> UInt64Converter;
 
 template <>
 struct ConverterTraits<int32> {
-  static std::unique_ptr<AbstractTensorInterface> CreateScalar(TFE_Context* ctx,
-                                                               int32 value) {
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, int32 value) {
     return ctx->context->CreateInt32Scalar(value);
   }
 
-  static std::unique_ptr<AbstractTensorInterface> CreateTensor(
+  static AbstractTensorInterface* CreateTensor(
       TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
-    return ctx->context->CreateInt32Tensor(dim_sizes);
+    return ctx->context->CreateTensor(DT_INT32, dim_sizes);
   }
 
   static const char* ConvertScalar(PyObject* v, int32* out) {
@@ -490,14 +499,13 @@ static const char* ConvertOneFloat(PyObject* v, T* out) {
 
 template <>
 struct ConverterTraits<float> {
-  static std::unique_ptr<AbstractTensorInterface> CreateScalar(TFE_Context* ctx,
-                                                               float value) {
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, float value) {
     return ctx->context->CreateFloatScalar(value);
   }
 
-  static std::unique_ptr<AbstractTensorInterface> CreateTensor(
+  static AbstractTensorInterface* CreateTensor(
       TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
-    return ctx->context->CreateFloatTensor(dim_sizes);
+    return ctx->context->CreateTensor(DT_FLOAT, dim_sizes);
   }
 
   static const char* ConvertScalar(PyObject* v, float* out) {
@@ -507,14 +515,13 @@ struct ConverterTraits<float> {
 
 template <>
 struct ConverterTraits<double> {
-  static std::unique_ptr<AbstractTensorInterface> CreateScalar(TFE_Context* ctx,
-                                                               double value) {
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, double value) {
     return ctx->context->CreateDoubleScalar(value);
   }
 
-  static std::unique_ptr<AbstractTensorInterface> CreateTensor(
+  static AbstractTensorInterface* CreateTensor(
       TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
-    return ctx->context->CreateDoubleTensor(dim_sizes);
+    return ctx->context->CreateTensor(DT_DOUBLE, dim_sizes);
   }
 
   static const char* ConvertScalar(PyObject* v, double* out) {
@@ -527,14 +534,14 @@ typedef Converter<float> FloatConverter;
 
 template <>
 struct ConverterTraits<Eigen::half> {
-  static std::unique_ptr<AbstractTensorInterface> CreateScalar(
-      TFE_Context* ctx, Eigen::half value) {
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx,
+                                               Eigen::half value) {
     return ctx->context->CreateHalfScalar(value);
   }
 
-  static std::unique_ptr<AbstractTensorInterface> CreateTensor(
+  static AbstractTensorInterface* CreateTensor(
       TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
-    return ctx->context->CreateHalfTensor(dim_sizes);
+    return ctx->context->CreateTensor(DT_HALF, dim_sizes);
   }
 
   static const char* ConvertScalar(PyObject* v, Eigen::half* out) {
@@ -548,14 +555,14 @@ typedef Converter<Eigen::half> NumpyHalfConverter;
 
 template <>
 struct ConverterTraits<tstring> {
-  static std::unique_ptr<AbstractTensorInterface> CreateScalar(TFE_Context* ctx,
-                                                               tstring value) {
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx,
+                                               tstring value) {
     return ctx->context->CreateStringScalar(value);
   }
 
-  static std::unique_ptr<AbstractTensorInterface> CreateTensor(
+  static AbstractTensorInterface* CreateTensor(
       TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
-    return ctx->context->CreateStringTensor(dim_sizes);
+    return ctx->context->CreateTensor(DT_STRING, dim_sizes);
   }
 
   static const char* ConvertScalar(PyObject* v, tstring* out) {
@@ -615,14 +622,14 @@ bool IsPyDimension(PyObject* obj) {
 
 template <>
 struct ConverterTraits<complex128> {
-  static std::unique_ptr<AbstractTensorInterface> CreateScalar(
-      TFE_Context* ctx, complex128 value) {
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx,
+                                               complex128 value) {
     return ctx->context->CreateComplex128Scalar(value);
   }
 
-  static std::unique_ptr<AbstractTensorInterface> CreateTensor(
+  static AbstractTensorInterface* CreateTensor(
       TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
-    return ctx->context->CreateComplex128Tensor(dim_sizes);
+    return ctx->context->CreateTensor(DT_COMPLEX128, dim_sizes);
   }
 
   static const char* ConvertScalar(PyObject* v, complex128* out) {
@@ -644,14 +651,13 @@ typedef Converter<complex128> Complex128Converter;
 
 template <>
 struct ConverterTraits<bool> {
-  static std::unique_ptr<AbstractTensorInterface> CreateScalar(TFE_Context* ctx,
-                                                               bool value) {
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, bool value) {
     return ctx->context->CreateBoolScalar(value);
   }
 
-  static std::unique_ptr<AbstractTensorInterface> CreateTensor(
+  static AbstractTensorInterface* CreateTensor(
       TFE_Context* ctx, absl::Span<const int64> dim_sizes) {
-    return ctx->context->CreateBoolTensor(dim_sizes);
+    return ctx->context->CreateTensor(DT_BOOL, dim_sizes);
   }
 
   static const char* ConvertScalar(PyObject* v, bool* out) {
@@ -674,9 +680,8 @@ typedef Converter<bool> BoolConverter;
 // The two may share underlying storage so changes to one may reflect in the
 // other.
 TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
-  std::unique_ptr<AbstractTensorHandleInterface> handle;
-  tensorflow::Tensor t;
-  tensorflow::Status status = tensorflow::NdarrayToTensor(obj, &t);
+  tensorflow::Tensor tensor;
+  tensorflow::Status status = tensorflow::NdarrayToTensor(obj, &tensor);
   if (!status.ok()) {
     PyErr_SetString(PyExc_ValueError,
                     tensorflow::strings::StrCat(
@@ -686,8 +691,8 @@ TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
     return nullptr;
   }
 
-  return new TFE_TensorHandle{ctx->context->CreateLocalHandle(
-      std::make_unique<TensorInterface>(std::move(t)))};
+  TensorInterface t(std::move(tensor));
+  return new TFE_TensorHandle{ctx->context->CreateLocalHandle(&t)};
 }
 
 }  // namespace
@@ -869,10 +874,10 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
 
     case DT_INVALID:  // Only occurs for empty tensors.
     {
-      Tensor t(requested_dtype == DT_INVALID ? DT_FLOAT : requested_dtype,
-               TensorShape(state.inferred_shape));
-      return new TFE_TensorHandle{ctx->context->CreateLocalHandle(
-          std::make_unique<TensorInterface>(std::move(t)))};
+      Tensor tensor(requested_dtype == DT_INVALID ? DT_FLOAT : requested_dtype,
+                    TensorShape(state.inferred_shape));
+      TensorInterface t(std::move(tensor));
+      return new TFE_TensorHandle{ctx->context->CreateLocalHandle(&t)};
     }
 
     default:

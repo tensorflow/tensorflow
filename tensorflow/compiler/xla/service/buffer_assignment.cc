@@ -99,6 +99,9 @@ std::vector<int64> ColorInterferenceGraph(
 bool HloBufferIsReadOnly(const HloBuffer& buffer) {
   for (const HloValue* value : buffer.values()) {
     const HloInstruction* instruction = value->instruction();
+    if (instruction->opcode() == HloOpcode::kConstant) {
+      return true;
+    }
     const HloModule* module = instruction->parent()->parent();
     const bool is_entry_parameter =
         instruction->opcode() == HloOpcode::kParameter &&

@@ -39,7 +39,7 @@ namespace mlir {
 
 namespace {
 struct ExecutorToControlDialectConversion
-    : public FunctionPass<ExecutorToControlDialectConversion> {
+    : public PassWrapper<ExecutorToControlDialectConversion, FunctionPass> {
   void runOnFunction() override;
 };
 }  // end anonymous namespace
@@ -68,7 +68,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
 
   Block &body = getFunction().front();
   auto graph = cast<tf_executor::GraphOp>(body.front());
-  OpBuilder builder(&body);
+  OpBuilder builder = OpBuilder::atBlockEnd(&body);
   SmallString<64> new_op_name;
   for (auto &op : llvm::make_early_inc_range(llvm::reverse(graph.GetBody()))) {
     LLVM_DEBUG(llvm::dbgs() << "Process: " << op.getName() << "\n");
@@ -230,7 +230,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
   graph.erase();
 }
 
-std::unique_ptr<OpPassBase<FuncOp>>
+std::unique_ptr<OperationPass<FuncOp>>
 CreateTFExecutorToControlDialectConversion() {
   return std::make_unique<ExecutorToControlDialectConversion>();
 }

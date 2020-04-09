@@ -1624,7 +1624,7 @@ Status DirectSession::CreateGraphs(
   // Update our current state based on the execution_state's
   // placements.  If there are any mismatches for a node,
   // we should fail, as this should never happen.
-  for (auto placement_pair : current_stateful_placements) {
+  for (const auto& placement_pair : current_stateful_placements) {
     const string& node_name = placement_pair.first;
     const string& placement = placement_pair.second;
     auto iter = stateful_placements_.find(node_name);

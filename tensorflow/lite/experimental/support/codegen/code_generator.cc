@@ -42,7 +42,7 @@ void ResolveConflictedNamesByAddingIndex(std::vector<std::string>* names_ptr) {
       names[i].append(std::to_string(indexes[names[i]]));
     }
   }
-  for (const auto it : first_appearance) {
+  for (const auto& it : first_appearance) {
     const auto& name = it.first;
     const auto i = it.second;
     if (indexes[name] > 1) {
@@ -148,11 +148,11 @@ void CodeGenerator::ResolveConflictedInputAndOutputNames(
   std::unordered_set<std::string> io_conflict;
   auto& input_names = *inputs;
   auto& output_names = *outputs;
-  for (const auto input : input_names) {
+  for (const auto& input : input_names) {
     if (io_conflict.find(input) != io_conflict.end()) {
       continue;
     }
-    for (const auto output : output_names) {
+    for (const auto& output : output_names) {
       if (input == output) {
         io_conflict.insert(input);
         break;

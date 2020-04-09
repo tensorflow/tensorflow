@@ -177,13 +177,11 @@ constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
-constexpr int kMaxChannels = 256;
+constexpr int kMaxChannels = 8;
 
 // Conv is quantized along dimension 0:
 // https://www.tensorflow.org/lite/performance/quantization_spec
 constexpr int kConvQuantizedDimension = 0;
-
-const int kTensorNotAllocated = -1;
 
 struct OpData {
   TfLitePaddingValues padding;
@@ -206,7 +204,7 @@ struct OpData {
 // These constants represent constants specific to the music detect model.
 // They exist until (b/132070898) is fixed.
 static const int kMaxOpDataSize = 6;
-static int kStaticOpDataCounter = 0;
+static int op_data_counter = 0;
 static OpData kStaticOpData[kMaxOpDataSize];
 
 TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
@@ -247,11 +245,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
   return kTfLiteOk;
 }
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
+void Free(TfLiteContext* context, void* buffer) { op_data_counter = 0; }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
@@ -259,11 +253,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
-  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
 
   // TODO(b/132070898): Use statically slotted OpData structures until a
   // scratch memory API is ready.
-  OpData* op_data = &kStaticOpData[kStaticOpDataCounter++];
+  OpData* op_data = &kStaticOpData[op_data_counter++];
   node->user_data = op_data;
 
   int input_width = input->dims->data[2];
@@ -352,8 +345,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace conv
 
 TfLiteRegistration* Register_CONV_2D() {
-  static TfLiteRegistration r = {conv::Init, conv::Free, conv::Prepare,
-                                 conv::Eval};
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/conv::Free,
+                                 /*prepare=*/conv::Prepare,
+                                 /*invoke=*/conv::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

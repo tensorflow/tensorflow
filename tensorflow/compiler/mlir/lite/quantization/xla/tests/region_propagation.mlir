@@ -52,3 +52,18 @@ func @mul_add_annotated(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>, %arg2: tenso
 // CHECK: input_specs = [!quant.uniform<i8:f32, 1.000000e+00:-128>, !quant.uniform<i8<-127:127>:f32, 1.000000e+00:-128>, !quant.uniform<i32:f32, 1.000000e+00>]
 // CHECK-SAME: output_specs = [!quant.uniform<i8:f32, 1.000000e+00:-128>]
 }
+
+// -----
+
+// CHECK-LABEL: @same_scale_1_1
+func @same_scale_1_1(%arg0: tensor<1x7x7x64xf32>) -> (tensor<1x3136xf32>) {
+  %region = "quant.region"(%arg0) ( {
+    ^bb0(%arg1: tensor<1x7x7x64xf32>):	// no predecessors
+    %r = "xla_hlo.reshape"(%arg1) : (tensor<1x7x7x64xf32>) -> (tensor<1x3136xf32>)
+    "quant.return"(%r) : (tensor<1x3136xf32>) -> ()
+  }) {input_specs = [!quant.uniform<i8:f32, 1.0>], logical_kernel = "generic.reshape", output_specs = [f32]} : (tensor<1x7x7x64xf32>) -> tensor<1x3136xf32>
+  return %region : tensor<1x3136xf32>
+
+// CHECK: input_specs = [!quant.uniform<i8:f32, 1.000000e+00>]
+// CHECK-SAME: output_specs = [!quant.uniform<i8:f32, 1.000000e+00>]
+}

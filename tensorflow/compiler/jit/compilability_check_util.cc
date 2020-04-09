@@ -518,4 +518,50 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
   }
 }
 
+bool CanCreateXlaKernel(const NodeDef& node_def) {
+  // If kXlaMustCompileAttr is set on the node_def, use its value.
+  const auto& it = node_def.attr().find(kXlaMustCompileAttr);
+  return it != node_def.attr().end() && it->second.b();
+}
+
+Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
+                                       const NodeDef& node_def,
+                                       const FunctionBody** fbody,
+                                       std::vector<int>* constant_arg_indices,
+                                       std::vector<int>* resource_arg_indices) {
+  FunctionLibraryRuntime::Handle handle;
+  // If node_def is not instantiable, e.g., the function does not exist,
+  // simply bail out.
+  NameAttrList function;
+  TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node_def, &function));
+
+  TF_RETURN_IF_ERROR(
+      flr->Instantiate(function.name(), AttrSlice(&function.attr()), &handle));
+  *fbody = flr->GetFunctionBody(handle);
+  CHECK(*fbody);  // Can't be nullptr since we just instantiated it.
+  const DataTypeVector& arg_types = (*fbody)->arg_types;
+  std::vector<bool> const_args(arg_types.size());
+  // If we can't analyze the const args. Bail out.
+  TF_RETURN_IF_ERROR(
+      BackwardsConstAnalysis(*((*fbody)->graph), &const_args,
+                             /*compile_time_const_nodes=*/nullptr, flr));
+
+  for (size_t i = 0; i < const_args.size(); ++i) {
+    if (const_args[i]) {
+      constant_arg_indices->push_back(i);
+    }
+  }
+
+  // There can be hundreds of resource variables. Reserve the space for them.
+  // We don't reserve for constants above as they are usually few.
+  resource_arg_indices->reserve(arg_types.size());
+  for (size_t i = 0; i < arg_types.size(); ++i) {
+    if (arg_types[i] == DT_RESOURCE) {
+      resource_arg_indices->push_back(i);
+    }
+  }
+
+  return Status::OK();
+}
+
 }  // namespace tensorflow

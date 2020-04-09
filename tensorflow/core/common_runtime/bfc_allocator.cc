@@ -29,6 +29,7 @@ limitations under the License.
 #ifdef TENSORFLOW_MEM_DEBUG
 #include "tensorflow/core/platform/stacktrace.h"
 #endif
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/bfc_memory_map.pb.h"
@@ -427,11 +428,13 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   // Dump the memory log for analysis.
   MaybeWriteMemoryMap();
   if (dump_log_on_failure) {
-    LOG(WARNING) << "Allocator (" << Name() << ") ran out of memory trying "
-                 << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
-                 << " (rounded to " << rounded_bytes << ")"
-                 << "requested by op " << pending_op_name
-                 << "\nCurrent allocation summary follows.";
+    LOG(WARNING)
+        << "Allocator (" << Name() << ") ran out of memory trying "
+        << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
+        << " (rounded to " << rounded_bytes << ")"
+        << "requested by op "
+        << ScopedMemoryDebugAnnotation::CurrentAnnotation().pending_op_name
+        << "\nCurrent allocation summary follows.";
     DumpMemoryLog(rounded_bytes);
     LOG(WARNING) << RenderOccupancy();
   }
@@ -453,6 +456,11 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
             memory_limit_ - stats.bytes_reserved - stats.bytes_in_use;
         BFCAllocator::Chunk* chunk =
             ChunkFromHandle(region_manager_.get_handle(chunk_ptr));
+        const auto& annotation =
+            ScopedMemoryDebugAnnotation::CurrentAnnotation();
+        std::string tensor_shape = annotation.pending_shape
+                                       ? annotation.pending_shape->DebugString()
+                                       : "";
 
         return absl::StrCat(traceme_name, "#allocator_name=", name_,
                             ",bytes_reserved=", stats.bytes_reserved,
@@ -462,8 +470,11 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                             ",requested_bytes=", chunk->requested_size,
                             ",allocation_bytes=", chunk->size,
                             ",addr=", reinterpret_cast<uint64>(chunk_ptr),
-                            ",tf_op=", pending_op_name, ",id=", pending_step_id,
-                            "#");
+                            ",tf_op=", annotation.pending_op_name,
+                            ",id=", annotation.pending_step_id,
+                            ",region_type=", annotation.pending_region_type,
+                            ",data_type=", annotation.pending_data_type,
+                            ",shape=", tensor_shape, "#");
       },
       traceme_level);
 }
@@ -516,17 +527,20 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
 
 #ifdef TENSORFLOW_MEM_DEBUG
         if (ShouldRecordOpName()) {
-          if (pending_op_name != nullptr) {
-            chunk->op_name = pending_op_name;
+          const auto& annotation =
+              ScopedMemoryDebugAnnotation::CurrentAnnotation();
+          if (annotation.pending_op_name != nullptr) {
+            chunk->op_name = annotation.pending_op_name;
           } else {
             LOG(INFO) << "missing pending_op_name for " << Name()
                       << " reading addr "
-                      << static_cast<const void*>(&pending_op_name) << "\n"
+                      << static_cast<const void*>(&annotation.pending_op_name)
+                      << "\n"
                       << CurrentStackTrace();
             chunk->op_name = nullptr;
           }
           chunk->action_count = ++action_counter_;
-          chunk->step_id = pending_step_id;
+          chunk->step_id = annotation.pending_step_id;
           int slot = chunk->action_count % MEM_DEBUG_SIZE_HISTORY_SIZE;
           size_history_[slot] = stats_.bytes_in_use;
         }

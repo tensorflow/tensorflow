@@ -103,8 +103,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   return raw;
 }
 
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 #if defined(__ARM_FEATURE_DSP)
   auto* params =
@@ -391,8 +389,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace depthwise_conv
 
 TfLiteRegistration* Register_DEPTHWISE_CONV_2D() {
-  static TfLiteRegistration r = {depthwise_conv::Init, depthwise_conv::Free,
-                                 depthwise_conv::Prepare, depthwise_conv::Eval};
+  static TfLiteRegistration r = {/*init=*/depthwise_conv::Init,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/depthwise_conv::Prepare,
+                                 /*invoke=*/depthwise_conv::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

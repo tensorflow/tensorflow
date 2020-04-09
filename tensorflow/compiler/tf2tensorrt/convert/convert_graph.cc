@@ -617,6 +617,11 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
   return std::make_pair(cuda_device_id, dev_allocator);
 }
 
+int64 GetNextGraphSequenceNumber() {
+  static std::atomic<int64> graph_sequence_num;
+  return graph_sequence_num++;
+}
+
 // Entry function from optimization pass.
 Status ConvertAfterShapes(const ConversionParams& params) {
   // Sanity checks.
@@ -636,7 +641,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   // Segment the graph into subgraphs that can be converted to TensorRT
   segment::SegmentOptions segment_options;
   // TODO(ben,jie,sami): exclude output nodes (DISCUSS IT)
-  for (auto node : *(params.output_names)) {
+  for (const auto& node : *(params.output_names)) {
     segment_options.exclude_node_list.insert(node);
   }
   segment_options.minimum_segment_size = params.minimum_segment_size;
@@ -666,10 +671,12 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   std::vector<size_t> engine_bytes_size;
   segment::SegmentNodesVector converted_segments;
   converted_segments.reserve(initial_segments.size());
+  string engine_name_prefix =
+      StrCat("TRTEngineOp_", GetNextGraphSequenceNumber(), "_");
   for (size_t t = 0; t < initial_segments.size(); t++) {
     auto& curr_segment = initial_segments.at(t);
     EngineInfo curr_engine;
-    curr_engine.engine_name = StrCat("TRTEngineOp_", t);
+    curr_engine.engine_name = StrCat(engine_name_prefix, t);
     Status status =
         GetEngineInfo(&graph, *params.graph_properties, curr_segment, node_map,
                       reverse_topo_order, &curr_engine);

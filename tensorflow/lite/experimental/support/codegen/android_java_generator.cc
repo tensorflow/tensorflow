@@ -275,7 +275,7 @@ bool GenerateWrapperImports(CodeWriter* code_writer, const ModelInfo& model,
   }
 
   std::sort(imports.begin(), imports.end());
-  for (const auto target : imports) {
+  for (const auto& target : imports) {
     code_writer->SetTokenValue("TARGET", target);
     code_writer->Append("import {{TARGET}};");
   }

@@ -413,6 +413,14 @@ TEST_F(ExecutorTest, RecvInvalidRefDtype) {
   rendez->Unref();
 }
 
+TEST_F(ExecutorTest, NoInputTensors) {
+  // Create a graph where none of the nodes have input tensors.
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
+  test::graph::Constant(g.get(), V(1.0));
+  Create(std::move(g));
+  TF_ASSERT_OK(Run(rendez_));
+}
+
 // Create a graph that is 'depth' deep. At each level, fan-in and fan-out a
 // maximum of 'width' nodes. All nodes are no-ops and all dependencies are
 // control dependencies.

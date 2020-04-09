@@ -73,7 +73,8 @@ constexpr char kDeviceAttr[] = "device";
 // %copy_to_device. There will not be send/recv ops added by later passes,
 // because tf.TPUCopyWithLayout accepts a host input and produces a device
 // output.
-struct TPUDynamicLayoutPass : public FunctionPass<TPUDynamicLayoutPass> {
+struct TPUDynamicLayoutPass
+    : public PassWrapper<TPUDynamicLayoutPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -256,7 +257,7 @@ void TPUDynamicLayoutPass::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTPUDynamicLayoutPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUDynamicLayoutPass() {
   return std::make_unique<TPUDynamicLayoutPass>();
 }
 

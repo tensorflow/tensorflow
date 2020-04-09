@@ -275,7 +275,18 @@ std::string GetDeconvolutionShared(const ConvolutionTransposedAttributes& attr,
       src_local_size_x, src_local_size_y, workgroup_x, workgroup_y);
 }
 
-std::string GetDeconvolution4x4(const int2& block_size, bool use_local_mem) {
+std::string GetDeconvolution4x4(const int2& block_size,
+                                const DeviceInfo& device_info) {
+  bool use_local_mem = false;
+  if (device_info.IsAppleGPU() && device_info.apple_info.IsBionic()) {
+    use_local_mem = true;
+  }
+  if (device_info.IsIntelGPU()) {
+    use_local_mem = true;
+  }
+  const std::string barrier = device_info.IsWaveSizeEqualTo32()
+                                  ? "SIMDGROUP_BARRIER"
+                                  : "threadgroup_barrier";
   std::string c = R"(
     #include <metal_stdlib>
     using namespace metal;
@@ -284,7 +295,9 @@ std::string GetDeconvolution4x4(const int2& block_size, bool use_local_mem) {
       int4 src_size;
       int4 dst_size;
       int filter_offset;
-      int3 dummy_0;
+      int dummy_0;
+      int dummy_1;
+      int dummy_2;
     };
 )";
   c += R"(
@@ -349,7 +362,7 @@ std::string GetDeconvolution4x4(const int2& block_size, bool use_local_mem) {
   }
   c += "  for (int s = 0; s < params.src_size.z; ++s) {\n";
   if (use_local_mem) {
-    c += "    BARRIER(mem_flags::mem_none);\n";
+    c += "    " + barrier + "(mem_flags::mem_none);\n";
     c += "    weights_cache[local_id] = filters[f_offset + local_id];\n";
     c += "    weights_cache[local_id + 32] = filters[f_offset + local_id + "
          "32];\n";
@@ -365,7 +378,7 @@ std::string GetDeconvolution4x4(const int2& block_size, bool use_local_mem) {
   }
   c += "    f_offset += 64;\n";
   if (use_local_mem) {
-    c += "    BARRIER(mem_flags::mem_threadgroup);\n";
+    c += "    " + barrier + "(mem_flags::mem_threadgroup);\n";
   }
   for (int i = 0; i < 16; ++i) {
     const int result_sub_pixel_id = i % 4;
@@ -595,12 +608,20 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
   desc->id = id;
   desc->is_linkable = false;
 
-  const bool recommended_2x =
-      device_info.apple_info.IsBionic() &&
-      options.storage_precision == RuntimeOptions::Precision::FP16;
-  const bool use_local_mem = !device_info.apple_info.IsBionic();
+  bool recommended_2x = false;
+  if (device_info.IsAppleGPU()) {
+    if (device_info.apple_info.IsBionic() &&
+        options.storage_precision == RuntimeOptions::Precision::FP16) {
+      recommended_2x = true;
+    }
+  } else {
+    if (options.storage_precision == RuntimeOptions::Precision::FP16) {
+      recommended_2x = true;
+    }
+  }
+
   const int2 block_size(recommended_2x ? 2 : 1, 1);
-  desc->shader_source = GetDeconvolution4x4(block_size, use_local_mem);
+  desc->shader_source = GetDeconvolution4x4(block_size, device_info);
 
   desc->input_buffers = {
       {input_id, "device FLT4* const src_buffer"},
