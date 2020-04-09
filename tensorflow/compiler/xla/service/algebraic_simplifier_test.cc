@@ -6348,5 +6348,83 @@ TEST_F(AlgebraicSimplifierTest, ScatterAddCombinedWeirdDnums) {
                             m::Concatenate(m::Parameter(3), m::Parameter(4)))));
 }
 
+TEST_F(AlgebraicSimplifierTest, ScatterAddCombinedWeirdDnums2) {
+  const char* hlo_string = R"(
+  HloModule m
+  apply {
+   a = f32[] parameter(0)
+   b = f32[] parameter(1)
+   ROOT c = f32[] add(a, b)
+  }
+  test {
+    z  = f32[] constant(0)
+    init = f32[100,4] broadcast(z), dimensions={}
+    shared = f32[100,4] parameter(0)
+    index0 = s32[4,3,1] parameter(1)
+    index1 = s32[4,5,1] parameter(2)
+    update0 = f32[4,4,3] parameter(3)
+    update1 = f32[4,4,5] parameter(4)
+    scatter.0 = f32[100,4] scatter(init, index0, update0),
+              to_apply=apply,
+              update_window_dims={0},
+              inserted_window_dims={0},
+              scatter_dims_to_operand_dims={0},
+              index_vector_dim=2
+    scatter.1 = f32[100,4] scatter(init, index1, update1),
+              to_apply=apply,
+              update_window_dims={0},
+              inserted_window_dims={0},
+              scatter_dims_to_operand_dims={0},
+              index_vector_dim=2
+    ROOT add.1 = f32[100,4] add(scatter.0, scatter.1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  // Combine Scatters
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  // Simplify Add
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Scatter(m::Broadcast(),
+                            m::Concatenate(m::Parameter(1), m::Parameter(2)),
+                            m::Concatenate(m::Parameter(3), m::Parameter(4)))));
+}
+
+TEST_F(AlgebraicSimplifierTest, ScalarScatter) {
+  const char* hlo_string = R"(
+  HloModule m
+  apply {
+   a = f32[] parameter(0)
+   b = f32[] parameter(1)
+   ROOT c = f32[] add(a, b)
+  }
+  test {
+    z  = f32[] constant(0)
+    init = f32[100,4,20] broadcast(z), dimensions={}
+    shared = f32[100,4,20] parameter(0)
+    index0 = s32[1] parameter(1)
+    index1 = s32[1] parameter(2)
+    update0 = f32[4,20] parameter(3)
+    update1 = f32[4,20] parameter(4)
+    scatter.0 = f32[100,4,20] scatter(init, index0, update0),
+              to_apply=apply,
+              update_window_dims={0, 1},
+              inserted_window_dims={0},
+              scatter_dims_to_operand_dims={0},
+              index_vector_dim=0
+    scatter.1 = f32[100,4,20] scatter(init, index1, update1),
+              to_apply=apply,
+              update_window_dims={0, 1},
+              inserted_window_dims={0},
+              scatter_dims_to_operand_dims={0},
+              index_vector_dim=0
+    ROOT add.1 = f32[100,4,20] add(scatter.0, scatter.1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  // Combine Scatters
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
 }  // namespace
 }  // namespace xla
