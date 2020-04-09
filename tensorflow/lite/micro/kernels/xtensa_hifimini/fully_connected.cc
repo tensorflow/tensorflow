@@ -55,8 +55,8 @@ inline void FullyConnected(
   const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
   const int accum_depth_iters = accum_depth / 2;
 
-  ae_p24x2s offsets_input_24x2 = AE_MOVPA24X2(input_offset, input_offset);
-  ae_p24x2s offsets_filter_24x2 = AE_MOVPA24X2(filter_offset, filter_offset);
+  ae_p24x2s offsets_input_24x2 = AE_MOVPA24(input_offset);
+  ae_p24x2s offsets_filter_24x2 = AE_MOVPA24(filter_offset);
   ae_q56s output_offset_56 = AE_CVTQ48A32S(output_offset);
   ae_q56s output_activation_max_56 = AE_CVTQ48A32S(output_activation_max);
   ae_q56s output_activation_min_56 = AE_CVTQ48A32S(output_activation_min);
