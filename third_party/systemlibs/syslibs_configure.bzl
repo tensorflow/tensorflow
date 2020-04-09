@@ -38,6 +38,7 @@ VALID_LIBS = [
     "pasta",
     "pcre",
     "png",
+    "pybind11",
     "six_archive",
     "snappy",
     "swig",
