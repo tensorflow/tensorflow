@@ -1293,6 +1293,41 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "dump_graph",
+    srcs = ["utils/dump_graph.cc"],
+    hdrs = ["utils/dump_graph.h"],
+    deps = [
+        ":convert_graphdef",
+        ":error_util",
+        ":tensorflow",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+tf_cc_test(
+    name = "dump_graph_test",
+    size = "small",
+    srcs = ["utils/dump_graph_test.cc"],
+    deps = [
+        ":dump_graph",
+        ":tensorflow",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+    ],
+)
+
+cc_library(
     name = "bridge_logger",
     srcs = ["utils/bridge_logger.cc"],
     hdrs = ["utils/bridge_logger.h"],
