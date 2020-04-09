@@ -31,6 +31,12 @@ class TraceMeWrapper {
 
   void Enter() { traceme_.emplace(std::move(name_)); }
 
+  void SetMetadata(const tensorflow::string& new_metadata) {
+    if (TF_PREDICT_TRUE(traceme_)) {
+      traceme_->SetMetadata(new_metadata);
+    }
+  }
+
   void Exit() { traceme_.reset(); }
 
   static bool IsEnabled() { return tensorflow::profiler::TraceMe::Active(); }
@@ -47,5 +53,6 @@ PYBIND11_MODULE(_pywrap_traceme, m) {
   traceme_class.def(py::init<const tensorflow::string&>())
       .def("Enter", &TraceMeWrapper::Enter)
       .def("Exit", &TraceMeWrapper::Exit)
+      .def("SetMetadata", &TraceMeWrapper::SetMetadata)
       .def_static("IsEnabled", &TraceMeWrapper::IsEnabled);
 };
