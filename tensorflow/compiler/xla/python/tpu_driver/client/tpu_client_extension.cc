@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/client/tpu_client.h"
 #include "tensorflow/compiler/xla/python/types.h"
