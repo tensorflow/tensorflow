@@ -372,6 +372,22 @@ tf_cuda_cc_test(
     ],
 )
 
+cc_library(
+    name = "custom_device_testutil",
+    testonly = True,
+    srcs = ["custom_device_testutil.cc"],
+    hdrs = ["custom_device_testutil.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_test_util",
+        "//tensorflow/c:c_api",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
 tf_cc_test(
     name = "custom_device_test",
     size = "small",
@@ -382,6 +398,7 @@ tf_cc_test(
         ":c_api",
         ":c_api_experimental",
         ":c_api_test_util",
+        ":custom_device_testutil",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/cc/profiler",
