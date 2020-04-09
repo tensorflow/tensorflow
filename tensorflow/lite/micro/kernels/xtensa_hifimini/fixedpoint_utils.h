@@ -32,22 +32,6 @@ namespace xtensa {
 namespace hifimini {
 
 //
-// Product of two fixed-point 24bit integers with right shift.
-//
-// Two 24bit integers from the HH side of a PR register entry are MAC into a QR
-// register. That value will be right shifted if |shift_length| is greater than
-// 0.
-//
-inline ae_q56s SaturatingMultiply(ae_p24x2s a_56, ae_p24x2s b_56,
-                                  int shift_length) {
-  ae_q56s result_56 = AE_MULP24S_HH(a_56, b_56);
-  if (shift_length > 0) {
-    return AE_Q56S_SRA(result_56, shift_length);
-  }
-  return result_56;
-}
-
-//
 // Multiply 32bit value by a quantized multiplier (w/ shift) and returns a 48bit
 // aligned value in the QR register.
 //
@@ -57,7 +41,7 @@ inline ae_q56s MultiplyByQuantizedMultiplier(int32_t x,
   // These boolean factors will carry an additional 2^8 (e.g 256) factor
   // throughout the equation to cover the missing 8 bits of precision when a
   // 32bit integer is outside the bounds of INT24. The additional scaling factor
-  // will be adjusted on the final SaturatingMultiply() call in this method.
+  // will be adjusted after the final multiplication in this method.
   //
   // The Q-notation comments in this method describe the calculations that take
   // place when both |x| and the shifted value of |1| overflow the INT24 limits.
@@ -110,8 +94,10 @@ inline ae_q56s MultiplyByQuantizedMultiplier(int32_t x,
   // to 48bit aligned.
   // (Q23.0 / 2^16) * Q23.0 = Q47.0 / 2^16
   // (Q47.0 / 2^16) >> 7 = Q47.0
-  ae_q56s result_56 =
-      SaturatingMultiply(x_24x2, quantized_multiplier_24x2, shift_amount);
+  ae_q56s result_56 = AE_MULP24S_HH(x_24x2, quantized_multiplier_24x2);
+  if (shift_amount > 0) {
+    result_56 = AE_Q56S_SRA(result_56, shift_amount);
+  }
 
   if (shift < 0) {
     // Handle any negative shift directly on the 48 bit value.
@@ -134,8 +120,7 @@ inline ae_q56s MultiplyByQuantizedMultiplier(ae_p24x2s x_24x2,
   // the limits of INT24, which requires |AE_CONVERT_INT32_24x2()| to load the
   // left-most 24 bits of a 32bit integer. When this occurs, all Q values here
   // carry an additional division of 2^8 to account for this loss in precision.
-  // This division will be applied to the final shift of the result in
-  // |SaturatingMultiply()|.
+  // This division will be applied to the final shift after multiplication.
   //
   // The Q-notation comments in this method describe the calculations that take
   // place when both |x| and the shifted value of |1| overflow the INT24 limits.
@@ -176,8 +161,8 @@ inline ae_q56s MultiplyByQuantizedMultiplier(ae_p24x2s x_24x2,
   // function:
   // (Q23.0 / 2^8) * Q23.0 = Q47.0 / 2^8
   // (Q47.0 / 2^8) >> 7 = Q47.0
-  ae_q56s result = SaturatingMultiply(x_shifted_24x2, quantized_multiplier_24x2,
-                                      shift_exceeds_24bits ? 15 : 23);
+  ae_q56s result = AE_MULP24S_HH(x_shifted_24x2, quantized_multiplier_24x2);
+  result = AE_Q56S_SRA(result, shift_exceeds_24bits ? 15 : 23);
 
   if (shift < 0) {
     // Handle any negative shift directly on the 48 bit value.
