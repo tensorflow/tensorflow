@@ -110,7 +110,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     arm_compiler_configure(
         name = "local_config_arm_compiler",
         build_file = clean_dep("//third_party/toolchains/cpus/arm:BUILD"),
-        remote_config_repo = "../arm_compiler",
+        remote_config_repo_arm = "../arm_compiler",
+        remote_config_repo_aarch64 = "../aarch64_compiler",
     )
 
     mkl_repository(
@@ -219,6 +220,20 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         urls = [
             "https://storage.googleapis.com/mirror.tensorflow.org/github.com/rvagg/rpi-newer-crosstools/archive/eb68350c5c8ec1663b7fe52c742ac4271e3217c5.tar.gz",
             "https://github.com/rvagg/rpi-newer-crosstools/archive/eb68350c5c8ec1663b7fe52c742ac4271e3217c5.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
+        # This is the latest `aarch64-none-linux-gnu` compiler provided by ARM
+        # See https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-a/downloads
+        # The archive contains GCC version 9.2.1
+        name = "aarch64_compiler",
+        build_file = "//:arm_compiler.BUILD",
+        sha256 = "8dfe681531f0bd04fb9c53cf3c0a3368c616aa85d48938eebe2b516376e06a66",
+        strip_prefix = "gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/developer.arm.com/-/media/Files/downloads/gnu-a/9.2-2019.12/binrel/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.xz",
+            "https://developer.arm.com/-/media/Files/downloads/gnu-a/9.2-2019.12/binrel/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.xz",
         ],
     )
 
