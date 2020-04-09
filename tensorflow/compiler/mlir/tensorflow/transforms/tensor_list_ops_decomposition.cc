@@ -384,7 +384,7 @@ LogicalResult GetConstShapeValue(Value shape_value,
   if (!shape_op) return failure();
   auto shape_const_op = llvm::dyn_cast<TF::ConstOp>(shape_op);
   if (!shape_const_op) return failure();
-  for (auto v : shape_const_op.value().getValues<APInt>()) {
+  for (const auto& v : shape_const_op.value().getValues<APInt>()) {
     shape->push_back(v.getSExtValue());
   }
   return success();

@@ -224,7 +224,7 @@ LogicalResult SetMetadataProtoPaddingMap(
   if (!padding_map)
     return op.emitOpError(CreateMissingAttributeMsg(kPaddingMapAttr));
 
-  for (const auto padding_and_idx : llvm::enumerate(padding_map)) {
+  for (const auto& padding_and_idx : llvm::enumerate(padding_map)) {
     auto& padding_attr = padding_and_idx.value();
     auto padding_attr_str = padding_attr.dyn_cast<StringAttr>();
     if (!padding_attr_str)

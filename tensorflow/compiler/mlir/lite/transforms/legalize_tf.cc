@@ -327,7 +327,7 @@ Value PadStridedSliceAttributeArray(Operation* op, PatternRewriter& rewriter,
     // can't do any padding. Instead we just return it.
     return attribute;
   }
-  for (auto idx : dense_elem_attr.getIntValues()) {
+  for (const auto& idx : dense_elem_attr.getIntValues()) {
     padded_val.push_back(idx.getSExtValue());
   }
   auto attr_dim_count = ranked_attr_type.getShape()[0];
@@ -453,7 +453,7 @@ bool ConvertTFMatrixDiagV2orV3(Operation* op, PatternRewriter* rewriter) {
   if (!matchPattern(tf_matrix_diag_v2_or_v3_op.padding_value(),
                     m_Constant(&padding_value)))
     return false;
-  for (auto value : padding_value.getValues<APInt>()) {
+  for (const auto& value : padding_value.getValues<APInt>()) {
     if (value != 0) return false;
   }
 

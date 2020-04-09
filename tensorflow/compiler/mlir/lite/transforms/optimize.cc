@@ -650,7 +650,7 @@ struct ConvertTrivialTransposeOpToReshapeOp
 
     auto input_shape = input_type.getShape();
     SmallVector<int64_t, 8> perm_values;
-    for (auto dim : perm_values_attr.getIntValues())
+    for (const auto &dim : perm_values_attr.getIntValues())
       perm_values.push_back(dim.getSExtValue());
 
     // This should never happen unless the input graph is malformed.

@@ -318,7 +318,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list) {
     SmallVector<int64_t, 8> permutation;
 
     auto attr = permutation_op.value().cast<DenseElementsAttr>();
-    for (auto value : attr.getIntValues())
+    for (const auto& value : attr.getIntValues())
       permutation.push_back(value.getSExtValue());
 
     if (failed(fold_operands.FoldOperandsPermutation(permutation))) return;

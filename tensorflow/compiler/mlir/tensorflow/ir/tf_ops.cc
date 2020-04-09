@@ -208,7 +208,7 @@ static Type InferReductionOpType(Value input, Value reduction_indices,
 
   int64_t num_reduce_dim = 0;
   llvm::SmallVector<bool, 4> is_reduce_dim(rank, false);
-  for (APInt index : indices.getValues<APInt>()) {
+  for (const APInt &index : indices.getValues<APInt>()) {
     int64_t dim = GetDimForAxis(index.getSExtValue(), rank);
     // Invalid input.
     if (dim < 0 || dim >= rank) return UnrankedTensorType::get(element_ty);
@@ -404,11 +404,11 @@ static bool AreCancellablePermutations(DenseIntElementsAttr perm0,
   if (perm0.getNumElements() != perm1.getNumElements()) return false;
 
   SmallVector<int64_t, 8> perm0_values;
-  for (auto value : perm0.getIntValues())
+  for (const auto &value : perm0.getIntValues())
     perm0_values.push_back(value.getSExtValue());
 
   SmallVector<int64_t, 8> perm1_values;
-  for (auto value : perm1.getIntValues())
+  for (const auto &value : perm1.getIntValues())
     perm1_values.push_back(value.getSExtValue());
 
   for (int i = 0; i < perm0_values.size(); ++i) {
@@ -2587,7 +2587,7 @@ static LogicalResult Verify(SliceOp op) {
     bool constant_slice_sizes =
         matchPattern(op.size(), m_Constant(&slice_sizes));
     int dim = 0;
-    for (APInt raw_begin_index : begin_indices.getValues<APInt>()) {
+    for (const APInt &raw_begin_index : begin_indices.getValues<APInt>()) {
       int64_t begin_index = raw_begin_index.getSExtValue();
       int64_t input_size = input_ty ? input_ty.getShape()[dim] : -1;
       int64_t slice_size = constant_slice_sizes
@@ -3340,7 +3340,7 @@ void TransposeOp::build(Builder *builder, OperationState &result, Value x,
           x_type.getDimSize((*attr_shape.begin()).getSExtValue()));
     } else {
       const_shape.reserve(attr_shape.getNumElements());
-      for (auto dim : attr_shape)
+      for (const auto &dim : attr_shape)
         const_shape.push_back(x_type.getDimSize(dim.getSExtValue()));
     }
     return TransposeOp::build(

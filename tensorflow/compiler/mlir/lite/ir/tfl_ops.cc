@@ -340,7 +340,7 @@ Attribute ConstFoldUnaryOp(Type result_type, Attribute operand,
     const int num_elements = result_shape_type.getNumElements();
     new_values.reserve(num_elements);
 
-    for (APFloat old_value : dense_elements.getValues<APFloat>()) {
+    for (const APFloat &old_value : dense_elements.getValues<APFloat>()) {
       new_values.push_back(calculate(old_value));
     }
 
@@ -868,7 +868,7 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
       if (!shape_elements) return nullptr;
 
       SmallVector<int64_t, 4> shape_data;
-      for (auto it : shape_elements.getValues<APInt>()) {
+      for (const auto &it : shape_elements.getValues<APInt>()) {
         shape_data.push_back(it.getSExtValue());
       }
       result_type =
@@ -1822,7 +1822,7 @@ static LogicalResult Verify(TransposeOp op) {
 
   int index = 0;
   llvm::SmallVector<int64_t, 4> axes;
-  for (auto axis_int : perm.getValues<APInt>()) {
+  for (const auto &axis_int : perm.getValues<APInt>()) {
     const int64_t axis = axis_int.getSExtValue();
     if (axis < 0 || (input_type.hasRank() && axis >= input_type.getRank())) {
       return op.emitOpError(
