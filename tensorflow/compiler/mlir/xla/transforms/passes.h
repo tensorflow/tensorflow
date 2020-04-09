@@ -38,6 +38,11 @@ namespace xla_hlo {
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion = false);
 
+/// Lowers from TF dialect to HLO dialect using tf2xla op kernels for the
+/// specified device type.
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
+    llvm::StringRef device_type);
+
 /// Lowers from TF dialect's control flow to HLO dialect's control flow.
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFControlFlowPass();
 
