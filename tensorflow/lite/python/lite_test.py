@@ -529,7 +529,9 @@ class FromSessionTest(TestModels, parameterized.TestCase):
           shape=[1, 16, 16, 3], dtype=dtypes.float32)
       var = variable_scope.get_variable(
           'weights', shape=[1, 16, 16, 3], dtype=dtypes.float32)
-      out_tensor = in_tensor + var
+      # Get the second output to ensure freezing properly processes tensor names
+      # like 'X:1'.
+      out_tensor = nn_ops.top_k(in_tensor + var, name='top_k')[1]
       sess = session.Session()
       sess.run(_global_variables_initializer())
 
@@ -552,9 +554,9 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
-    self.assertEqual('add', output_details[0]['name'])
-    self.assertEqual(np.float32, output_details[0]['dtype'])
-    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+    self.assertEqual('top_k:1', output_details[0]['name'])
+    self.assertEqual(np.int32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 1] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
   def testGraphviz(self):
