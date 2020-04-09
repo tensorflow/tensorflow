@@ -633,37 +633,24 @@ static bool ArgTypesMatchCallee(mlir::Operation *op, OperandRange args,
 static bool CanBeTranslatedToDynamicSlice(Value input, Value start_indices,
                                           DenseIntElementsAttr slice_sizes) {
   auto input_ty = input.getType().dyn_cast<RankedTensorType>();
+  if (!input_ty) return false;
+  auto start_indices_ty = start_indices.getType().dyn_cast<RankedTensorType>();
+  if (!start_indices_ty) return false;
+
   int64_t input_rank = input_ty.getRank();
   ArrayRef<int64_t> input_shape = input_ty.getShape();
   DenseIntElementsAttr constant_start_indices;
-  if (!matchPattern(start_indices, m_Constant(&constant_start_indices))) {
-    for (int64_t i = 0; i < input_rank; ++i) {
-      int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
-      int64_t input_size = input_shape[i];
-      if (slice_size < 0 || (input_size != -1 && slice_size > input_size)) {
-        return false;
-      }
-    }
-    return true;
-  }
+  bool is_constant_start =
+      matchPattern(start_indices, m_Constant(&constant_start_indices));
 
   for (int64_t i = 0; i < input_rank; ++i) {
     int64_t input_size = input_shape[i];
-    int64_t start_index =
-        constant_start_indices.getValue<IntegerAttr>(i).getInt();
     int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
-    if (start_index < 0) return false;
     // A slice_size of -1 means "all elements from start_index to the end".
-    // We can't support this semantics for dynamic shapes.
-    if (slice_size == -1) {
-      if (input_size == -1) return false;
-      slice_size = input_size - start_index;
-    }
-    if (input_size != -1 && start_index + slice_size > input_size) {
-      return false;
-    }
+    // In order to support these semantics, we need to know both the start index
+    // and the shape of the input dimension.
+    if (slice_size < 0 && (!is_constant_start || input_size < 0)) return false;
   }
-
   return true;
 }
 

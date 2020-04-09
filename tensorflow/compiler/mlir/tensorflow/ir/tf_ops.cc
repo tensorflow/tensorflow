@@ -2548,12 +2548,15 @@ static LogicalResult Verify(SizeOp op) {
 // SliceOp
 //===----------------------------------------------------------------------===//
 
-// Verifies that,
+// Verifies that:
 //
 // - operands begin and size are 1D with the same number of elements.
 // - if the input is a ranked tensor, the rank of the input equals the number
 //   of elements in operands begin and size.
-// - if begin are constants, 0 <= begin[i] < input_ty.getShape()[i]
+// - if begin are constants, that
+//   0 <= begin[i] <= begin[i] + size[i] <= input_ty.getShape()[i]
+// - if begins aren't constant but the input is a ranked tensor, that
+//   size[i] <= input_ty.getShape()[i]
 //
 static LogicalResult Verify(SliceOp op) {
   RankedTensorType begin_ty = GetRankedTensorTypeForOperand(op.begin());
@@ -2602,6 +2605,20 @@ static LogicalResult Verify(SliceOp op) {
                << "requires 0 <= begin[i] <= begin[i] + size[i] <= Di";
       }
       ++dim;
+    }
+  } else if (input_ty) {
+    // If the inputs are ranked, we can do a few more sanity checks.
+    DenseIntElementsAttr slice_sizes;
+    if (matchPattern(op.size(), m_Constant(&slice_sizes))) {
+      auto input_shape = input_ty.getShape();
+      for (int64_t i = 0; i < input_ty.getRank(); ++i) {
+        int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
+        int64_t input_size = input_shape[i];
+        if (slice_size != -1 && input_size != -1 && slice_size > input_size) {
+          return op.emitOpError() << "requires size[i] <= Di, even if begin[i] "
+                                     "is unknown at compile time";
+        }
+      }
     }
   }
 
