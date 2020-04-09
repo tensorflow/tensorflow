@@ -2814,7 +2814,6 @@ def pybind_extension(
         deprecation = deprecation,
         restricted_to = restricted_to,
         compatible_with = compatible_with,
-        testonly = testonly,
     )
     native.py_library(
         name = name,
@@ -2842,8 +2841,7 @@ def tf_python_pybind_extension(
         hdrs = [],
         deps = [],
         defines = [],
-        visibility = None,
-        testonly = None):
+        visibility = None):
     """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
 
     Please do not use it anywhere else as it may behave unexpectedly. b/146445820
@@ -2862,7 +2860,6 @@ def tf_python_pybind_extension(
         defines = defines,
         visibility = visibility,
         link_in_framework = True,
-        testonly = testonly,
     )
 
 def tf_pybind_cc_library_wrapper(name, deps, visibility = None):

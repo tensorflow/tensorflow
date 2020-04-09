@@ -515,11 +515,6 @@ typedef struct TFE_CustomDevice {
 // This API is highly experimental, and in particular is expected to change when
 // it starts supporting operations with attributes and when tf.function support
 // is added.
-//
-// TODO(allenl): Currently custom devices need to know their device name, and
-// this separately needs to be fed to the registration. It would be nice if that
-// duplication wasn't necessary because custom devices could be written without
-// knowing their name.
 void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
                               const char* device_name, void* device_info,
                               TF_Status* status);
