@@ -703,8 +703,6 @@ Status OpKernelContext::allocate_tensor(
     DataType type, const TensorShape& shape, Tensor* out_tensor,
     AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
   Allocator* a = get_allocator(attr);
-  auto op_annotation =
-      ScopedMemoryDebugAnnotation(op_kernel().name_view().data(), step_id());
   Tensor new_tensor(a, type, shape,
                     AllocationAttributes(allocation_attr.no_retry_on_failure,
                                          /* allocation_will_be_logged= */ true,
@@ -758,6 +756,8 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
           " more than once.  Try turning off the ScopedAllocator optimizer.");
     }
   }
+  ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
+                                            step_id(), "output", type, &shape);
   auto output_tensor = MakeUnique<Tensor>();
   Status s = allocate_tensor(type, shape, output_tensor.get(), attr);
   if (s.ok()) {
@@ -787,6 +787,8 @@ Status OpKernelContext::allocate_temp(
             << ".  Switch to allocate_output to avoid performance penalty.";
     allocator_attr.scope_id = -1;
   }
+  ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
+                                            step_id(), "temp", type, &shape);
   Status s =
       allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
   if (track_allocations() && s.ok() && out_temp->TotalBytes() > 0) {
@@ -815,6 +817,8 @@ Status OpKernelContext::allocate_persistent(DataType type,
     return errors::Internal(
         "Unexpected call to allocate_persistent with scope_id ", attr.scope_id);
   }
+  ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
+                                            step_id(), "persist", type, &shape);
   Tensor persistent;
   Status s = allocate_tensor(type, shape, &persistent, attr);
   if (s.ok()) {
@@ -921,6 +925,9 @@ bool OpKernelContext::maybe_set_output_by_allocate_and_copy(
             << " params_->forward_from_array[index] "
             << params_->forward_from_array[index] << " alloc_attr.scope_id "
             << output_alloc_attr(index).scope_id;
+    ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
+                                              step_id(), "output",
+                                              tensor.dtype(), &tensor.shape());
     auto new_tensor = MakeUnique<Tensor>();
     Status s = allocate_tensor(tensor.dtype(), tensor.shape(), new_tensor.get(),
                                output_alloc_attr(index));
