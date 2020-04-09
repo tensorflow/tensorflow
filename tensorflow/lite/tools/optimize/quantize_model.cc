@@ -1001,9 +1001,20 @@ TfLiteStatus FillQuantizationParams(
           // Dynamic tensor.
         } else if (!utils::HasMinMax(tensor) &&
                    !utils::HasBuffer(model, subgraph, tensor_idx)) {
-          TF_LITE_REPORT_ERROR(error_reporter,
-                               "Max and min for dynamic tensors should be"
-                               " recorded during calibration");
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
+              "Max and min for dynamic tensors should be"
+              " recorded during calibration: Failed for tensor %s\n",
+              tensor->name.c_str());
+          if (tensor->quantization == nullptr) {
+            TF_LITE_REPORT_ERROR(error_reporter,
+                                 "No quantization params for tensor %s",
+                                 tensor->name.c_str());
+          } else if (tensor->quantization->min.empty() ||
+                     tensor->quantization->max.empty()) {
+            TF_LITE_REPORT_ERROR(error_reporter, "Empty min/max for tensor %s",
+                                 tensor->name.c_str());
+          }
           return kTfLiteError;
         }
 
