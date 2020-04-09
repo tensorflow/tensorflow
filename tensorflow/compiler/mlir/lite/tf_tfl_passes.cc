@@ -134,6 +134,10 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   pass_manager->addPass(
       mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
 
+  if (pass_config.shape_inference) {
+    // Add a shape inference pass to optimize away the unnecessary casts.
+    pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
+  }
   // Legalize while early to allow further constant folding.
   // TODO(jpienaar): This may not actually matter as we do canonicalization
   // after the legalize below, for now it needs to be below the above passes
@@ -159,11 +163,6 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   // This pass 'freezes' immutable global tensors and inlines them as tf
   // constant ops.
   pass_manager->addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass());
-
-  if (pass_config.shape_inference) {
-    // Add a shape inference pass to optimize away the unnecessary casts.
-    pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
-  }
 
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
