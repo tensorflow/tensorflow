@@ -1264,7 +1264,7 @@ class TPUEmbedding(object):
     """Validate `enqueue_datas_list`."""
 
     def _check_agreement(data, name, feature, enqueue_data):
-      # Helper function to check device agreement
+      """Helper function to check device agreement."""
       if (data is not None and
           data.device != enqueue_data.embedding_indices.device):
         raise ValueError(
