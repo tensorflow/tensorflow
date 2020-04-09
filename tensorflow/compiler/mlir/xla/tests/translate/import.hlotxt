@@ -988,3 +988,16 @@ add {
   // CHECK:  xla_hlo.shift_right_logical [[VAL_0]], [[VAL_1]]
   ROOT %shiftright.logical = s32[4] shift-right-logical(s32[4] %Arg_0.1, s32[4] %Arg_1.2)
 }
+
+// CHECK-LABEL:  func @complex_type
+// CHECK-SAME:    (%[[ARG0:.*]]: tensor<2xcomplex<f32>>, %[[ARG1:.*]]: tensor<2xcomplex<f64>>) -> tuple<tensor<2xf32>, tensor<2xf64>>
+%complex_type (Arg_0.1: c64[2], Arg_1.2: c128[2]) -> (f32[2], f64[2]) {
+  %Arg_0.1 = c64[2] parameter(0)
+  %abs.3 = f32[2] abs(c64[2] %Arg_0.1)
+  %Arg_1.2 = c128[2] parameter(1)
+  %abs.4 = f64[2] abs(c128[2] %Arg_1.2)
+
+  // CHECK:  "xla_hlo.abs"(%[[ARG0]]) {name = "{{.*}}"} : (tensor<2xcomplex<f32>>) -> tensor<2xf32>
+  // CHECK:  "xla_hlo.abs"(%[[ARG1]]) {name = "{{.*}}"} : (tensor<2xcomplex<f64>>) -> tensor<2xf64>
+  ROOT %tuple.5 = (f32[2], f64[2]) tuple(f32[2] %abs.3, f64[2] %abs.4)
+}

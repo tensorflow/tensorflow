@@ -139,6 +139,8 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
       return builder.getIntegerType(64);
     case PrimitiveType::C64:
       return mlir::ComplexType::get(builder.getF32Type());
+    case PrimitiveType::C128:
+      return mlir::ComplexType::get(builder.getF64Type());
     // TODO(b/130356985): Support unsigned primitive types.
     default:
       return tensorflow::errors::Internal(
