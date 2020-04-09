@@ -1026,8 +1026,7 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       host_dataset._variant_tensor.device == ""
     )
     self.assertTrue(
-      "cpu:0" in host_tensor._variant_tensor.device.lower() or
-      host_tensor._variant_tensor.device == ""
+      "cpu:0" in host_tensor.device.lower() or host_tensor.device == ""
     )
 
     self.assertIn("gpu:0", device_dataset._variant_tensor.device.lower())
@@ -1035,8 +1034,7 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     if not tf2.enabled() or context.executing_eagerly():
       self.assertTrue(
-        "cpu:0" in host_iterator._variant_tensor.device.lower() or
-        host_iterator._variant_tensor.device == ""
+        "cpu:0" in host_iterator._device.lower() or host_iterator._device == ""
       )
       self.assertIn("gpu:0", device_iterator._device.lower())
 
