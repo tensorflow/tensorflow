@@ -170,8 +170,12 @@ download_and_extract() {
   elif [[ ${action} == "patch_cifar10_dataset" ]]; then
     patch_cifar10_dataset ${dir}
   elif [[ ${action} == "build_embarc_mli" ]]; then
-    cp ${action_param1} ${dir}/hw/arc.tcf
-    build_embarc_mli ${dir} ../../hw/arc.tcf
+    if [[ "${action_param1}" == *.tcf ]]; then
+      cp ${action_param1} ${dir}/hw/arc.tcf
+      build_embarc_mli ${dir} ../../hw/arc.tcf
+    else
+      build_embarc_mli ${dir} ${action_param1}
+    fi
   elif [[ ${action} ]]; then
     echo "Unknown action '${action}'"
     exit 1
