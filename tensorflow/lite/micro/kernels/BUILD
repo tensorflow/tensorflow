@@ -71,14 +71,9 @@ cc_library(
         ],
     }),
     hdrs = ["micro_ops.h"],
-    build_for_embedded = True,
+    # TODO(b/153609488): enable embedded build once we can properly support it.
+    #build_for_embedded = True,
     copts = micro_copts(),
-    select_deps = {
-        "//conditions:default": [],
-        ":xtensa_hifimini": [
-            #"//third_party/xtensa:hifi_mini_cstub64",
-        ],
-    },
     deps = [
         ":activation_utils",
         ":micro_utils",
@@ -93,7 +88,12 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/micro:micro_utils",
-    ],
+    ] + select({
+        "//conditions:default": [],
+        ":xtensa_hifimini": [
+            #"//third_party/xtensa:hifi_mini_cstub64",
+        ],
+    }),
 )
 # LINT.ThenChange(//tensorflow/lite/micro/kernels/BUILD:portable_optimized_micro_ops)
 
@@ -105,7 +105,8 @@ cc_library(
     hdrs = [
         "all_ops_resolver.h",
     ],
-    build_for_embedded = True,
+    # TODO(b/153609488): enable embedded build once we can properly support it.
+    #build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":micro_ops",
