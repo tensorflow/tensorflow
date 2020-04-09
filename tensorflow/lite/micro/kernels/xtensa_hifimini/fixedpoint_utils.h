@@ -40,8 +40,7 @@ namespace hifimini {
 //
 inline ae_q56s SaturatingMultiply(ae_p24x2s a_56, ae_p24x2s b_56,
                                   int shift_length) {
-  ae_q56s result_56 = AE_ZEROQ56();
-  AE_MULAS56P24S_HH(result_56, a_56, b_56);
+  ae_q56s result_56 = AE_MULP24S_HH(a_56, b_56);
   if (shift_length > 0) {
     return AE_Q56S_SRA(result_56, shift_length);
   }
@@ -78,10 +77,8 @@ inline ae_q56s MultiplyByQuantizedMultiplier(int32_t x,
     // Q31.0 -> Q23.0 / 2^8
     ae_p24x2s shifted_24x2 = AE_CONVERT_INT32_24x2(shifted);
 
-    // Multiply/accumulate sum and multiplier:
     // (Q23.0 / 2^8) * (Q23.0 / 2^8) = Q47.0 / 2^16
-    ae_q56s sum_56 = AE_ZEROQ56();
-    AE_MULAS56P24S_HH(sum_56, x_24x2, shifted_24x2);
+    ae_q56s sum_56 = AE_MULP24S_HH(x_24x2, shifted_24x2);
 
     // Shift left into 24bit space:
     // ((Q47.0 / 2^16) << 24) = Q23.24 / 2^16
@@ -154,11 +151,8 @@ inline ae_q56s MultiplyByQuantizedMultiplier(ae_p24x2s x_24x2,
     // Q31.0 -> Q23.0 / 2^8
     ae_p24x2s shifted_24x2 = AE_CONVERT_INT32_24x2(shifted);
 
-    // Multiply/accumulate sum and multiplier:
-    ae_q56s sum_56 = AE_ZEROQ56();
-    // Multiply/accumulate sum and multiplier:
     // Q23.0 * (Q23.0 / 2^8) = Q47.0 / 2^8
-    AE_MULAS56P24S_HH(sum_56, x_24x2, shifted_24x2);
+    ae_q56s sum_56 = AE_MULP24S_HH(x_24x2, shifted_24x2);
 
     // Shift left into 24bit space:
     // ((Q47.0 / 2^8) << 24) = Q23.24 / 2^8
