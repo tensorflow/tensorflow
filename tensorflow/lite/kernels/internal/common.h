@@ -200,7 +200,7 @@ inline int CountLeadingSignBits(T integer_input) {
 // generate INT16 LUT for function(), e.g., table exp(x) and 1/(1+x) used in
 // softmax
 inline void gen_lut(const std::function<double(double)>& func, double min,
-                    double max, int16_t* table, size_t num) {
+                    double max, int16_t* table, const size_t num) {
   // size of table should equal to num + 1
   // last element only for slope calculation
   double step = (max - min) / (num - 1);

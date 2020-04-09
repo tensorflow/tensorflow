@@ -61,6 +61,7 @@ struct OpData {
 struct SoftmaxOpData {
   struct SoftmaxParams params = {};
   float table[256]{};
+  const size_t size_of_lut = 513;
   int16_t exp_lut[513]{};  // int16 LUT for exp(x), where x uniform distributed
                            // between [-10.0 , 0.0]
   int16_t one_over_one_plus_x_lut[513]{};  // int16 LUT for 1 / (1 + x), where
@@ -575,10 +576,10 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
     // exp LUT only used on nagative values
     // we consider exp(-10.0) is insignificant to accumulation
     gen_lut([](double value) { return std::exp(value); }, -10.0, 0.0,
-            data->params.exp_lut, 513);
+            data->params.exp_lut, data->size_of_lut);
     data->params.one_over_one_plus_x_lut = data->one_over_one_plus_x_lut;
     gen_lut([](double value) { return 1.0 / (1.0 + value); }, 0.0, 1.0,
-            data->params.one_over_one_plus_x_lut, 513);
+            data->params.one_over_one_plus_x_lut, data->size_of_lut);
     data->params.zero_point = output->params.zero_point;
     data->params.scale = output->params.scale;
 
@@ -975,18 +976,19 @@ TfLiteStatus SoftmaxQuantized(TfLiteContext* context, const TfLiteTensor* input,
 
 template <>
 TfLiteStatus SoftmaxQuantized<int16, int16>(TfLiteContext* context,
-                                     const TfLiteTensor* input,
-                                     TfLiteTensor* output,
-                                     SoftmaxOpData* data) {
+                                            const TfLiteTensor* input,
+                                            TfLiteTensor* output,
+                                            SoftmaxOpData* data) {
   if (NumDimensions(input) >= 1 && NumDimensions(input) <= 4) {
     reference_ops::SoftmaxInt16(
         data->params, GetTensorShape(input), GetTensorData<int16_t>(input),
         GetTensorShape(output), GetTensorData<int16_t>(output));
     return kTfLiteOk;
   } else {
-    context->ReportError(
-        context, "Only 1D, 2D, 3D and 4D tensors supported currently, got %dD.",
-        NumDimensions(input));
+    context->ReportError(context,
+                         "Only 1D, 2D, 3D and 4D tensors supported for int16 "
+                         "input with int16 output, got %dD.",
+                         NumDimensions(input));
     return kTfLiteError;
   }
 }
@@ -1041,7 +1043,7 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_KERNEL_LOG(context,
                          "Only float32, uint8_t, Int8_t, Int16_t are supported "
                          "currently, got %s.",
-          TfLiteTypeGetName(input->type));
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }
