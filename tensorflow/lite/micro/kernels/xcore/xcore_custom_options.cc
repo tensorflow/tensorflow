@@ -89,8 +89,8 @@ void parse_custom_options(const char *buffer, size_t length, int32_t *stride_h,
       if (par_regions) {
         const auto& jobs = values[i].AsVector();
         par_regions->clear();
-        for (int i = 0; i < par_regions->size; i++) {
-          auto region = jobs[i].AsVector();
+        for (int i = 0; i < jobs.size(); i++) {
+          auto region = jobs[i].AsVector(); // values represent [top, left, rows, cols]
           par_regions->append({region[0].AsInt32(), region[1].AsInt32(),
                               region[2].AsInt32(), region[3].AsInt32()});
         }
