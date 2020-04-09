@@ -410,6 +410,14 @@ def eigvals(tensor, name=None):
   eigenvectors are used to compute the gradient w.r.t. the eigenvalues. See
   _SelfAdjointEigV2Grad in linalg_grad.py.
 
+  For example:
+  ```
+  >>> a = tf.constant([[1,2],[3,4]], dtype=tf.float32)
+  >>> tf.linalg.eigvalsh(a)
+  <tf.Tensor: shape=(2,), dtype=float32, numpy=
+  array([-0.8541021,  5.854102 ], dtype=float32)>
+  ```
+
   Args:
     tensor: `Tensor` of shape `[..., N, N]`.
     name: string, optional name of the operation.
