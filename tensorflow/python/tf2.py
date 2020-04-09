@@ -42,6 +42,7 @@ def disable():
 
 def enabled():
   """Returns True iff TensorFlow 2.0 behavior should be enabled."""
+  global _force_enable
   if _force_enable is None:
     return os.getenv("TF2_BEHAVIOR", "0") != "0"
   else:
