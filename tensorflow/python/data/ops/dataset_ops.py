@@ -152,14 +152,18 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     Elements may be nested structures containing multiple components. For
     example, the element `(1, (3, "apple"))` has one tuple nested in another
     tuple. The components are `1`, `3`, and `"apple"`.
+
   **Component**: The leaf in the nested structure of an element.
 
   Supported types:
 
   Elements can be nested structures of tuples, named tuples, and dictionaries.
-  Element components can be of any type representable by `tf.TypeSpec`,
-  including `tf.Tensor`, `tf.data.Dataset`, `tf.sparse.SparseTensor`,
-  `tf.RaggedTensor`, and `tf.TensorArray`.
+  Note that Python lists are *not* treated as nested structures of components.
+  Instead, lists are converted to tensors and treated as components. For
+  example, the element `(1, [1, 2, 3])` has only two components; the tensor `1`
+  and the tensor `[1, 2, 3]`. Element components can be of any type
+  representable by `tf.TypeSpec`, including `tf.Tensor`, `tf.data.Dataset`,
+  `tf.sparse.SparseTensor`, `tf.RaggedTensor`, and `tf.TensorArray`.
 
   >>> a = 1 # Integer element
   >>> b = 2.0 # Float element
