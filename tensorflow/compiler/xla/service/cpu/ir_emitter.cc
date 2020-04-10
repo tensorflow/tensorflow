@@ -182,11 +182,8 @@ StatusOr<llvm::Function*> IrEmitter::EmitComputation(
                     arch_type_ == llvm::Triple::ArchType::x86_64;
   profiling_state_ = ProfilingState(use_rdtscp);
 
-  bool emit_tracing =
-      hlo_module_config_.hlo_profiling_enabled() &&
-      hlo_module_config_.debug_options().xla_backend_extra_options().count(
-          "xla_hlo_trace");
-  tracing_state_.set_enabled(emit_tracing);
+  tracing_state_.set_enabled(
+      computation->parent()->config().cpu_traceme_enabled());
 
   TF_RETURN_IF_ERROR(computation->AcceptOrdered(this, instruction_order));
   llvm::Function* ir_function = compute_function_->function();
