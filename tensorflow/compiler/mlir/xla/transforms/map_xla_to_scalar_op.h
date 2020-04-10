@@ -125,7 +125,8 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::AbsOp>(
         loc, result_types, args, b);
   }
   if (element_type.isa<IntegerType>()) {
-    const auto& lhs = args[0];
+    // xla_lhlo.abs(x, result) ->  result = select((x > 0), x, sub(0, x))
+    Value lhs = args[0];
     auto integer_type = element_type.dyn_cast<IntegerType>();
 
     auto zero_intval = b->create<::mlir::ConstantIntOp>(loc, 0, integer_type.getWidth());
@@ -348,7 +349,8 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::NegOp>(
 
   }
   if (element_type.isa<IntegerType>()) {
-    const auto& lhs = args[0];
+    // xla_lhlo.neg(x, result) -> result = sub(0, x)
+    Value lhs = args[0];
     auto integer_type = element_type.dyn_cast<IntegerType>();
 
     auto zero_intval = b->create<::mlir::ConstantIntOp>(loc, 0, integer_type.getWidth());
