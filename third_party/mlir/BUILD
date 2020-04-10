@@ -342,7 +342,6 @@ cc_library(
         ":Transforms",
         "@llvm-project//llvm:support",
     ],
-    alwayslink = 1,
 )
 
 filegroup(
@@ -850,7 +849,6 @@ cc_library(
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -1770,7 +1768,6 @@ cc_library(
         ":Translation",
         "@llvm-project//llvm:support",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -2251,7 +2248,6 @@ cc_library(
         "@llvm-project//llvm:ir_reader",
         "@llvm-project//llvm:support",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -2275,7 +2271,6 @@ cc_library(
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -2299,7 +2294,6 @@ cc_library(
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],
-    alwayslink = 1,
 )
 
 # TODO(zinenko): Update these so that we can simplify mapping to cmake.
@@ -2389,10 +2383,22 @@ cc_library(
 )
 
 cc_library(
+    name = "AllTranslations",
+    hdrs = ["include/mlir/InitAllTranslations.h"],
+    deps = [
+        ":SPIRVTranslateRegistration",
+        ":TargetLLVMIR",
+        ":TargetNVVMIR",
+        ":TargetROCDLIR",
+    ],
+)
+
+cc_library(
     name = "MlirTranslateMain",
     srcs = ["tools/mlir-translate/mlir-translate.cpp"],
     deps = [
         ":AllPassesAndDialectsNoRegistration",
+        ":AllTranslations",
         ":IR",
         ":Parser",
         ":Support",
@@ -2405,10 +2411,6 @@ cc_binary(
     name = "mlir-translate",
     deps = [
         ":MlirTranslateMain",
-        ":SPIRVTranslateRegistration",
-        ":TargetLLVMIR",
-        ":TargetNVVMIR",
-        ":TargetROCDLIR",
     ],
 )
 
