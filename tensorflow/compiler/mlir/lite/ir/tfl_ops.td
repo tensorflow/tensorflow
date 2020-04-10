@@ -360,7 +360,10 @@ class TFL_ConvOp<string mnemonic, string opSummary, int index> :
 // TFL op definitions.
 //===----------------------------------------------------------------------===//
 def TFL_AbsOp : TFL_Op<"abs", [
-    NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
+    NoSideEffect,
+    SameOperandsAndResultType,
+    NoQuantizableResult,
+    TFL_GpuTargetOp]> {
   let summary = "Absolute value operator";
 
   let description = [{
@@ -1542,7 +1545,10 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
 }
 
 def TFL_LogOp: TFL_Op<"log", [
-    NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
+    NoSideEffect,
+    SameOperandsAndResultType,
+    NoQuantizableResult,
+    TFL_GpuTargetOp]> {
   let summary = "Natural logarithm operator";
 
   let description = [{
@@ -2087,7 +2093,10 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
   let hasOptions = 1;
 }
 
-def TFL_PowOp : TFL_Op<"pow", [ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
+def TFL_PowOp : TFL_Op<"pow", [ResultsBroadcastableShape,
+                               NoSideEffect,
+                               NoQuantizableResult,
+                               TFL_GpuTargetOp]> {
   let summary = "Power operator";
 
   let description = [{
@@ -2107,7 +2116,7 @@ def TFL_PowOp : TFL_Op<"pow", [ResultsBroadcastableShape, NoSideEffect, NoQuanti
   let builders = [TFL_BroadcastableBinaryBuilder];
 }
 
-def TFL_PReluOp : TFL_Op<"prelu", [NoSideEffect]> {
+def TFL_PReluOp : TFL_Op<"prelu", [NoSideEffect, TFL_GpuTargetOp]> {
   let summary = "Parameterized Relu operator";
 
   let description = [{
