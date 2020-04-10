@@ -55,7 +55,7 @@ limitations under the License.
 
 #else
 // If no platform specified, use:
-#define PLATFORM_POSIX
+#define PLATFORM_GOOGLE
 
 #endif
 #endif
