@@ -3268,7 +3268,7 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
         /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
         /*AddressSpace=*/global_address_space,
         /*isExternallyInitialized=*/false);
-    global_for_const->setAlignment(kConstantBufferAlignBytes);
+    global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
     ir_emitter_context_->llvm_module()->getGlobalList().push_back(
         global_for_const);
   }

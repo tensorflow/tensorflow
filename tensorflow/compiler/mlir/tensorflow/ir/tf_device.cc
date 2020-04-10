@@ -108,8 +108,6 @@ TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.cc.inc"
       >();
 
-  addOperations<ParallelExecuteOp>();
-
   addInterfaces<TFInlinerInterface>();
 }
 
@@ -161,22 +159,8 @@ LogicalResult Verify(ParallelExecuteOp op) {
   int output_index = 0;
   for (auto& region_and_index : llvm::enumerate(regions)) {
     auto& region = region_and_index.value();
-    auto region_index = region_and_index.index();
-
-    // Each region must include a single block of ops and must not be empty.
-    if (region.empty()) {
-      return op.emitOpError()
-             << "regions must not be empty. "
-             << "Found an empty region (" << region_index << ").";
-    }
-
-    if (!has_single_element(region)) {
-      return op.emitOpError()
-             << "regions must be composed of a single block of operations."
-             << "Expected region (" << region_index << ") with 1 block.";
-    }
-
     auto* region_terminator = region.front().getTerminator();
+
     // Check that output types of regions match return operand types.
     for (auto result_type : region_terminator->getOperandTypes()) {
       if (result_type !=
@@ -213,8 +197,6 @@ void ParallelExecuteOp::build(Builder* builder, OperationState& state,
   }
   state.addTypes(output_types);
 }
-
-LogicalResult ParallelExecuteOp::verify() { return Verify(*this); }
 
 Block& ParallelExecuteOp::GetRegionBlockWithIndex(unsigned index) {
   return getOperation()->getRegion(index).front();

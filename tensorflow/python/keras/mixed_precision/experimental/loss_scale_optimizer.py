@@ -21,6 +21,7 @@ from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import one_device_strategy
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend
@@ -232,6 +233,9 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     grads = self._optimizer.get_gradients(loss, params)
     return self.get_unscaled_gradients(grads)
 
+  def _create_all_weights(self, var_list):
+    self._optimizer._create_all_weights(var_list)    # pylint: disable=protected-access
+
   def apply_gradients(self,
                       grads_and_vars,
                       name=None,
@@ -301,10 +305,18 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
   def _raise_if_strategy_unsupported(self):
     if not strategy_supports_loss_scaling():
       strategy = distribution_strategy_context.get_strategy()
-      raise ValueError('Loss scaling is not supported with the '
-                       'tf.distribute.Strategy: %s. Try using a different '
-                       'Strategy, e.g. a MirroredStrategy' %
-                       strategy.__class__.__name__)
+      if isinstance(strategy,
+                    (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+        raise ValueError(
+            'Loss scaling is not supported with TPUStrategy. Loss scaling is '
+            'unnecessary with TPUs, since they support bfloat16 instead of '
+            'float16 and bfloat16 does not require loss scaling. You should '
+            'remove the use of the LossScaleOptimizer when TPUs are used.')
+      else:
+        raise ValueError('Loss scaling is not supported with the '
+                         'tf.distribute.Strategy: %s. Try using a different '
+                         'Strategy, e.g. a MirroredStrategy' %
+                         strategy.__class__.__name__)
 
   # Delegations: We delegate most OptimizerV2 methods to the wrapped optimizer
   # below.

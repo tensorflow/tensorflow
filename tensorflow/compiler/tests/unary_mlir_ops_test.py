@@ -67,9 +67,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
         equality_test(result, expected, rtol=rtol, atol=atol)
 
   def testNumericOps(self):
-    # TODO(hinsu): Enable complex types after fixing the failure in export to
-    # HLOModule.
-    for dtype in self.numeric_types - {np.int8, np.uint8} - self.complex_types:
+    for dtype in self.numeric_types - {np.int8, np.uint8}:
       self._assertOpOutputMatchesExpected(
           math_ops.abs,
           np.array([[2, -1]], dtype=dtype),

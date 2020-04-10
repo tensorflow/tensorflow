@@ -71,6 +71,56 @@ def DecomposeResourceApplyGradientDescentOp :
 
 // This decomposition is only correct inside XLA as it ignores use_locking
 // attribute.
+// accum = accum * momentum + grad;
+// var -= accum * lr
+def DecomposeResourceApplyMomentumOpNonNesterov :
+  Pattern<
+    (TF_ResourceApplyMomentumOp:$src_op
+       $var_resource, $accum_resource, $lr, $grad, $momentum,
+       BoolAttr:$_, ConstBoolAttrFalse:$use_nesterov
+    ),
+    [(TF_AddOp:$accum_new
+      (TF_MulOp
+        (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
+        $momentum
+      ),
+      $grad
+     ),
+     (TF_AssignVariableOp $accum_resource, $accum_new),
+     (TF_AssignSubVariableOp $var_resource, (TF_MulOp $accum_new, $lr))
+    ]
+  >;
+
+// This decomposition is only correct inside XLA as it ignores use_locking
+// attribute.
+// accum = accum * momentum + grad;
+// var -= grad * lr + accum * momentum * lr
+def DecomposeResourceApplyMomentumOpNesterov :
+  Pattern<
+    (TF_ResourceApplyMomentumOp:$src_op
+       $var_resource, $accum_resource, $lr, $grad, $momentum,
+       BoolAttr:$_, ConstBoolAttrTrue:$use_nesterov
+    ),
+    [(TF_AddOp:$accum_new
+       (TF_MulOp
+         (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
+         $momentum
+       ),
+       $grad
+     ),
+     (TF_AssignVariableOp $accum_resource, $accum_new),
+     (TF_AssignSubVariableOp
+       $var_resource,
+       (TF_AddOp
+         (TF_MulOp $grad, $lr),
+         (TF_MulOp $accum_new, (TF_MulOp $momentum, $lr))
+       )
+     )
+    ]
+  >;
+
+// This decomposition is only correct inside XLA as it ignores use_locking
+// attribute.
 // accum = accum * momentum - lr * grad
 // var += accum
 def DecomposeResourceApplyKerasMomentumOpNonNesterov :
@@ -80,13 +130,14 @@ def DecomposeResourceApplyKerasMomentumOpNonNesterov :
        BoolAttr:$_, ConstBoolAttrFalse:$use_nesterov
     ),
     [(TF_SubOp:$accum_new
-      (TF_MulOp
-        (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
-        $momentum
-      ),
-      (TF_MulOp $grad, $lr)),
-      (TF_AssignVariableOp $accum_resource, $accum_new),
-      (TF_AssignAddVariableOp $var_resource, $accum_new)
+       (TF_MulOp
+         (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
+         $momentum
+       ),
+       (TF_MulOp $grad, $lr)
+     ),
+     (TF_AssignVariableOp $accum_resource, $accum_new),
+     (TF_AssignAddVariableOp $var_resource, $accum_new)
     ]
   >;
 
@@ -101,11 +152,11 @@ def DecomposeResourceApplyKerasMomentumOpNesterov :
       BoolAttr:$_, ConstBoolAttrTrue:$use_nesterov
     ),
     [(TF_SubOp:$accum_new
-      (TF_MulOp
-        (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
-        $momentum
-      ),
-      (TF_MulOp:$grad_lr $grad, $lr)
+       (TF_MulOp
+         (CreateTFReadVariableOp $src_op, $grad, $accum_resource),
+         $momentum
+       ),
+       (TF_MulOp:$grad_lr $grad, $lr)
      ),
      (TF_AssignVariableOp $accum_resource, $accum_new),
      (TF_AssignAddVariableOp

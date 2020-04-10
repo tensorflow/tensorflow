@@ -343,7 +343,8 @@ class BufferAssignmentAnalysis {
 /// the right positions. It uses the algorithm described at the top of the file.
 // TODO(dfki): create a templated version that allows to match dialect-specific
 // alloc/dealloc nodes and to insert dialect-specific dealloc node.
-struct BufferAssignmentPass : mlir::FunctionPass<BufferAssignmentPass> {
+struct BufferAssignmentPass
+    : mlir::PassWrapper<BufferAssignmentPass, FunctionPass> {
   void runOnFunction() override {
     // Get required analysis information first.
     auto& analysis = getAnalysis<BufferAssignmentAnalysis>();
@@ -471,7 +472,7 @@ void FunctionAndBlockSignatureConverter::addDynamicallyLegalFuncOp(
 // Buffer assignment pass registrations
 //===----------------------------------------------------------------------===//
 
-std::unique_ptr<OpPassBase<FuncOp>> createBufferAssignmentPass() {
+std::unique_ptr<OperationPass<FuncOp>> createBufferAssignmentPass() {
   return absl::make_unique<BufferAssignmentPass>();
 }
 
@@ -482,14 +483,15 @@ static PassRegistration<BufferAssignmentPass> buffer_assignment_pass(
 
 /// A simple pass to print debug/test information for the buffer assignment
 /// analysis.
-struct BufferAssignmentTestPass : mlir::FunctionPass<BufferAssignmentTestPass> {
+struct BufferAssignmentTestPass
+    : mlir::PassWrapper<BufferAssignmentTestPass, FunctionPass> {
   void runOnFunction() override {
     llvm::outs() << "Testing : " << getFunction().getName() << "\n";
     getAnalysis<BufferAssignmentAnalysis>().print(llvm::outs());
   };
 };
 
-std::unique_ptr<OpPassBase<FuncOp>> createBufferAssignmentTestPass() {
+std::unique_ptr<OperationPass<FuncOp>> createBufferAssignmentTestPass() {
   return absl::make_unique<BufferAssignmentTestPass>();
 }
 

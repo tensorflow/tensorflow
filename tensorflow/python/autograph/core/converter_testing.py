@@ -168,12 +168,12 @@ class TestCase(test.TestCase):
         options=converter.ConversionOptions(recursive=recursive),
         autograph_module=None)
     entity_info = transformer.EntityInfo(
+        name=test_fn.__name__,
         source_code=source,
         source_file='<fragment>',
         future_features=future_features,
         namespace=namespace)
-    ctx = converter.EntityContext(
-        namer, entity_info, program_ctx, 'test_fn')
+    ctx = transformer.Context(entity_info, namer, program_ctx)
     origin_info.resolve_entity(node, source, test_fn)
     node = converter.standard_analysis(node, ctx, is_initial=True)
     return node, ctx

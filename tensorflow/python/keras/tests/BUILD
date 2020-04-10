@@ -2,6 +2,7 @@
 #   Contains Keras test utils and integration tests.
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
     default_visibility = [
@@ -36,6 +37,21 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "eager_benchmarks_test",
+    srcs = ["eager_benchmarks_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:training_lib",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:profiler",
+        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -125,6 +141,30 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "memory_test",
+    size = "medium",
+    srcs = ["memory_test.py"],
+    tags = [
+        "manual",
+        "no_oss",
+        "notap",  #TODO(b/140640597): this test is flaky at the moment
+        "optonly",  # The test is too slow in non-opt mode
+    ],
+    # TODO(b/140065350): Re-enable
+    xla_enable_strict_auto_jit = False,
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/eager/memory_tests:memory_test_util",
+        "//tensorflow/python/keras",
+        "@six_archive//:six",
     ],
 )
 

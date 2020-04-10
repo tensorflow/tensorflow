@@ -81,36 +81,10 @@ static bool IsOpWhitelisted(Operation* op) {
          isa<TF::InvOp>(op) || isa<TF::SelectV2Op>(op);
 }
 
-static llvm::Optional<std::string> GetExecutionDevice(
-    const std::string& device_type, const Location& loc) {
-  if (device_type == "XLA_CPU_JIT") return std::string("XLA_CPU");
-  if (device_type == "XLA_TPU_JIT") return std::string("TPU");
-  // TODO(hinsu): Support GPU device along with a test for it.
-
-  emitError(loc) << "unsupported device for legalization with tf2xla kernels: "
-                 << device_type;
-  return llvm::None;
-}
-
 static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
     const std::string& device_type, const Location& loc) {
-  auto device_or = GetExecutionDevice(device_type, loc);
-  if (!device_or) return nullptr;
-
-  auto* factory = tensorflow::DeviceFactory::GetFactory(*device_or);
-  if (!factory) {
-    emitError(loc) << "failed to create DeviceFactory for device: "
-                   << device_type;
-    return nullptr;
-  }
-  std::vector<std::unique_ptr<tensorflow::Device>> devices;
-  auto status = factory->CreateDevices(
-      tensorflow::SessionOptions(),
-      /*name_prefix=*/"/job:localhost/replica:0/task:0", &devices);
-  if (!status.ok()) {
-    emitError(loc) << status.ToString();
-    return nullptr;
-  }
+  // Register compilation kernels for all registered XLA backends.
+  tensorflow::XlaOpRegistry::RegisterCompilationKernels();
 
   auto device = absl::make_unique<tensorflow::XlaCompilationDevice>(
       tensorflow::SessionOptions(), tensorflow::DeviceType(device_type));
@@ -359,9 +333,13 @@ LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
   return success();
 }
 
-class LegalizeTF : public FunctionPass<LegalizeTF> {
+class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
  public:
   LegalizeTF() = default;
+
+  explicit LegalizeTF(llvm::StringRef device_type) {
+    device_type_ = device_type.str();
+  }
 
   LegalizeTF(const LegalizeTF&) {}
 
@@ -384,6 +362,11 @@ static PassRegistration<LegalizeTF> pass(
     "Legalize from TensorFlow to the HLO dialect using tf2xla kernels");
 
 }  // end namespace
+
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
+    llvm::StringRef device_type) {
+  return std::make_unique<LegalizeTF>(device_type);
+}
 
 }  // end namespace xla_hlo
 }  // end namespace mlir

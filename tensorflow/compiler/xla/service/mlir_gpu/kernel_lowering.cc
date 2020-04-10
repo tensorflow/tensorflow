@@ -63,7 +63,8 @@ using ::mlir::xla_lhlo::FusionOp;
 // This is needed, as these ops are not closed from above and hence nested pass
 // managers can not be applied.
 struct NestedHloRegionsConverter
-    : public mlir::FunctionPass<NestedHloRegionsConverter> {
+    : public mlir::PassWrapper<NestedHloRegionsConverter,
+                               ::mlir::FunctionPass> {
   void runOnFunction() override {
     auto& ctx = getContext();
     mlir::OwningRewritePatternList patterns;
@@ -83,7 +84,8 @@ struct NestedHloRegionsConverter
 };
 
 // Replaces a FusionOp by the operations contained in its region.
-struct FusionOpRemover : public mlir::FunctionPass<FusionOpRemover> {
+struct FusionOpRemover
+    : public mlir::PassWrapper<FusionOpRemover, ::mlir::FunctionPass> {
   void runOnFunction() override {
     getFunction().walk([&](FusionOp op) {
       mlir::OpBuilder builder(op);
@@ -105,7 +107,7 @@ struct FusionOpRemover : public mlir::FunctionPass<FusionOpRemover> {
 // Rewrite the single-trip loops we get out of linalg into just their bodies.
 // TODO(herhut): Make this a general pattern.
 struct SingleTripLoopRemoval
-    : public mlir::FunctionPass<SingleTripLoopRemoval> {
+    : public mlir::PassWrapper<SingleTripLoopRemoval, ::mlir::FunctionPass> {
   void runOnFunction() override {
     auto getConstantValue = [](mlir::Value value) -> llvm::Optional<int64_t> {
       auto definingOp = value.getDefiningOp();
@@ -142,7 +144,8 @@ struct SingleTripLoopRemoval
 
 // Simple pass that replaces a load that immediately follows a store to the
 // same address with the stored value. This needs generalization.
-struct StoreForwardingPass : mlir::FunctionPass<StoreForwardingPass> {
+struct StoreForwardingPass
+    : mlir::PassWrapper<StoreForwardingPass, ::mlir::FunctionPass> {
   void runOnFunction() override {
     llvm::DenseMap<mlir::Value, mlir::Operation*> memrefToAllocOp;
 
@@ -208,7 +211,8 @@ struct StoreForwardingPass : mlir::FunctionPass<StoreForwardingPass> {
 // never read from or that are read but the read value is not used.
 // Needs an analysis that proves that loads and stores are side-effect free
 // (in bounds, no aliasing, etc.).
-struct DeadTempBufferRemoval : mlir::FunctionPass<DeadTempBufferRemoval> {
+struct DeadTempBufferRemoval
+    : mlir::PassWrapper<DeadTempBufferRemoval, ::mlir::FunctionPass> {
   bool operationConsideredDead(mlir::Operation* op) {
     for (auto result : op->getResults()) {
       if (!llvm::all_of(result.getUsers(), [&](mlir::Operation* op) {
@@ -325,7 +329,8 @@ namespace {
 /// A pass that does the final lowering to NVVM. It collects all the patterns
 /// that are currently required, currently mixing std, linalg and gpu.
 class LowerToNVVMPass
-    : public ::mlir::OperationPass<LowerToNVVMPass, ::mlir::gpu::GPUModuleOp> {
+    : public ::mlir::PassWrapper<
+          LowerToNVVMPass, ::mlir::OperationPass<::mlir::gpu::GPUModuleOp>> {
  public:
   void runOnOperation() override {
     ::mlir::gpu::GPUModuleOp m = getOperation();

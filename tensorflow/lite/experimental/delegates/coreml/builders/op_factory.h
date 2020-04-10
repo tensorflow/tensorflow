@@ -28,6 +28,7 @@ OpBuilder* CreateAveragePool2dOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateConcatenationOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateConvolutionOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateDepthwiseConvolutionOpBuilder(GraphBuilder* graph_builder);
+OpBuilder* CreateFullyConnectedOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateHardSwishOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateLogisticOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateMaxPool2dOpBuilder(GraphBuilder* graph_builder);

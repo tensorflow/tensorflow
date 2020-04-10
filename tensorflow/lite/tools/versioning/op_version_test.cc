@@ -554,4 +554,18 @@ TEST(OpVersionTest, VersioningDivTest) {
   fake_op_sig.options.broadcast.num_dims = 4;
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
+TEST(OpVersionTEst, VersioningFillTest) {
+  OpSignature fake_op_sig = {.op = BuiltinOperator_FILL,
+                             .input_types = std::vector<TensorType>{
+                                 TensorType_INT32, TensorType_BOOL}};
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+  fake_op_sig = {.op = BuiltinOperator_FILL,
+                 .input_types = std::vector<TensorType>{TensorType_INT32,
+                                                        TensorType_STRING}};
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+  fake_op_sig = {.op = BuiltinOperator_FILL,
+                 .input_types = std::vector<TensorType>{TensorType_INT32,
+                                                        TensorType_INT32}};
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+}
 }  // namespace tflite

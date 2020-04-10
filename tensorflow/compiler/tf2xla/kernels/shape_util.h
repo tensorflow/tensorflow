@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_SHAPE_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_SHAPE_UTIL_H_
 
+#include <limits>
+
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 

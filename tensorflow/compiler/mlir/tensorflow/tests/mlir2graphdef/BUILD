@@ -7,6 +7,7 @@ glob_lit_tests(
     driver = "@llvm-project//mlir:run_lit.sh",
     tags_override = {
         "preserve-entry-func-names.mlir": ["nomac"],  # TODO(b/148403706): flaky on Mac, to be fixed.
+        "tf_add.mlir": ["nomac"],  # TODO(b/148403706): flaky on Mac, to be fixed.
     },
     test_file_exts = ["mlir"],
 )

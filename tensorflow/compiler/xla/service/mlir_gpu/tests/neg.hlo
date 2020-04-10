@@ -5,5 +5,5 @@ ENTRY %Neg (val: f32[2,2]) -> f32[2,2] {
 }
 
 //  CHECK: func @negate(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
-//  CHECK:   "xla_lhlo.neg"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
+//  CHECK:   "xla_lhlo.negate"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
 //  CHECK: }

@@ -445,6 +445,30 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertAllEqual([20], self.evaluate(get_next()))
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testTypeIsListError(self):
+
+    def generator():
+      for _ in range(10):
+        yield [20]
+
+    with self.assertRaisesRegexp(
+        TypeError, r"Cannot convert value \[tf.int64\] to a TensorFlow DType"):
+      dataset_ops.Dataset.from_generator(
+          generator, output_types=[dtypes.int64])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDimensionIsListError(self):
+
+    def generator():
+      for _ in range(10):
+        yield [20]
+
+    with self.assertRaisesRegexp(
+        TypeError, r"Failed to convert '\[\[1\]\]' to a shape"):
+      dataset_ops.Dataset.from_generator(
+          generator, output_types=(dtypes.int64), output_shapes=[[1]])
+
 
 if __name__ == "__main__":
   test.main()

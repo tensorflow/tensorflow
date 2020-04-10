@@ -211,6 +211,11 @@ typedef struct {
 } TfLiteBatchToSpaceNDParams;
 
 typedef struct {
+  bool adjoint_lhs;
+  bool adjoint_rhs;
+} TfLiteBatchMatMulParams;
+
+typedef struct {
   TfLiteFusedActivation activation;
 } TfLiteMulParams;
 

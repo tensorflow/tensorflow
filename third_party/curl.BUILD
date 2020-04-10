@@ -186,6 +186,7 @@ cc_library(
         "lib/smtp.h",
         "lib/sockaddr.h",
         "lib/socketpair.h",
+        "lib/socketpair.c",
         "lib/socks.c",
         "lib/socks.h",
         "lib/speedcheck.c",

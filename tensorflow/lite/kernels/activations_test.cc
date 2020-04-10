@@ -764,19 +764,19 @@ TEST_P(TanhOpTest, TanhInt16) {
   const float kMax = 32767.f / 32768.f;
   QuantizedActivationsOpModel m(
       GetRegistration(), BuiltinOperator_TANH,
-      /*input=*/{TensorType_INT16, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
-      /*output=*/{TensorType_INT16, {1, 2, 4, 1}, kMin, kMax});
-  m.SetInput<int16_t>({
-      0, -6, 2, 4,   //
-      -4, -2, 8, 1,  //
-  });
+      /*input=*/{TensorType_INT16, {1, 2, 8, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT16, {1, 2, 8, 1}, kMin, kMax});
+  m.SetInput<int16_t>({0, -6, 2, 4,   //
+                       -4, -2, 8, 1,  //
+                       7, -8, 3, -5,  //
+                       6, -1, -3, 5});
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
-                  {
-                      0.0, -0.999987, 0.964027, 0.999329,     //
-                      -0.999329, -0.96402, 0.99999, 0.76159,  //
-                  },
+                  {0.0, -0.999987, 0.964027, 0.999329,                //
+                   -0.999329, -0.96402, 0.99999, 0.76159,             //
+                   0.999998337, -0.99999, 0.995054754, -0.999909204,  //
+                   0.999999996, -0.76159, -0.995054754, 0.999909204},
                   kQuantizedToleranceInt16)));
 }
 
@@ -905,18 +905,18 @@ TEST_P(LogisticOpTest, SigmoidInt16) {
   const float kMax = 32767.f / 32768.f;
   QuantizedActivationsOpModel m(
       GetRegistration(), BuiltinOperator_LOGISTIC,
-      /*input=*/{TensorType_INT16, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
-      /*output=*/{TensorType_INT16, {1, 2, 4, 1}, kMin, kMax});
-  m.SetInput<int16_t>({
-      0, -6, 2, 4,   //
-      3, -2, 10, 1,  //
-  });
+      /*input=*/{TensorType_INT16, {1, 2, 6, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT16, {1, 2, 6, 1}, kMin, kMax});
+  m.SetInput<int16_t>({0, -6, 2, 4,  //
+                       3, -2, 8, 1,  //
+                       5, -8, 7, -3});
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
                       0.5, 0.002473, 0.880797, 0.982014,       //
-                      0.952574, 0.119203, 0.999955, 0.731059,  //
+                      0.952574, 0.119203, 0.9995, 0.731059,    //
+                      0.993307, 0.0003535, 0.999089, 0.047426  //
                   },
                   kQuantizedToleranceInt16)));
 }

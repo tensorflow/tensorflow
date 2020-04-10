@@ -13,7 +13,7 @@ load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+load("//tensorflow:tensorflow.bzl", "pywrap_tensorflow_macro")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
@@ -1686,7 +1686,6 @@ tf_py_test(
     deps = [
         ":auto_control_deps",
         ":client_testlib",
-        "//tensorflow/python/keras",
     ],
 )
 
@@ -4244,6 +4243,7 @@ py_library(
         ":array_ops",
         ":control_flow_ops",
         ":control_flow_util",
+        ":control_flow_util_v2",
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":rnn_cell",
@@ -5832,16 +5832,14 @@ py_library(
         ["pywrap_dlopen_global_flags.py"],
         # Import will fail, indicating no global dlopen flags
         otherwise = [],
-    ),
+    ),  # b/153585257
     srcs_version = "PY2AND3",
     deps = [":pywrap_tensorflow_internal"],
 )
 
-# TODO(b/137885063): This macro should be cleaned up to be just
-# a py_binary/library shared object. We have removed the source
-# SWIG file to prevent people from adding SWIG code.
-tf_py_wrap_cc(
+pywrap_tensorflow_macro(
     name = "pywrap_tensorflow_internal",
+    srcs = ["pywrap_tensorflow_internal.cc"],
     # add win_def_file for pywrap_tensorflow
     win_def_file = select({
         "//tensorflow:windows": ":pywrap_tensorflow_filtered_def_file",
@@ -6547,27 +6545,6 @@ tf_py_test(
     size = "small",
     srcs = ["lib/io/tf_record_test.py"],
     python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":errors",
-        ":lib",
-        ":util",
-    ],
-)
-
-tf_py_test(
-    name = "tf_record_multiprocessing_test",
-    size = "small",
-    srcs = ["lib/io/tf_record_multiprocessing_test.py"],
-    python_version = "PY3",
-    tags = [
-        # multiprocessing can be flaky in the internal google
-        # environment, so we disable it there.
-        "notap",
-        # The multiprocessing module behaves differently on
-        # windows, so we disable this test on windows.
-        "no_windows",
-    ],
     deps = [
         ":client_testlib",
         ":errors",

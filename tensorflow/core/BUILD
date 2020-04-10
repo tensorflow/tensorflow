@@ -238,6 +238,7 @@ FRAMEWORK_PROTO_SRCS = [
 
 PROFILER_PROTO_SRCS = [
     "//tensorflow/core/profiler/protobuf:xplane.proto",
+    "//tensorflow/core/profiler:profiler_options.proto",
 ]
 
 ERROR_CODES_PROTO_SRCS = [
@@ -2162,6 +2163,7 @@ tf_proto_library(
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/lib/core:error_codes_proto",
         "//tensorflow/core/profiler/protobuf:xplane_proto",
+        "//tensorflow/core/profiler:profiler_options_proto",
         "//tensorflow/core/util:protos_all",
         "//tensorflow/core/util:test_log_proto_impl",
     ],
@@ -2194,7 +2196,8 @@ filegroup(
 filegroup(
     name = "framework_internal_public_headers",
     srcs = [
-        "//tensorflow/core/framework:model.h",  # only needed for tests
+        "//tensorflow/core/framework:metrics.h",
+        "//tensorflow/core/framework:model.h",
         "//tensorflow/core/framework:op_segment.h",
         "//tensorflow/core/framework:rendezvous.h",  # only needed for tests
         "//tensorflow/core/framework:resource_var.h",

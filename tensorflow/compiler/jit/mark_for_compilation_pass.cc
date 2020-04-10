@@ -1161,7 +1161,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   std::vector<string> vall_ops = XlaOpRegistry::GetAllRegisteredOps();
   absl::flat_hash_set<string> all_ops(vall_ops.begin(), vall_ops.end());
   // Check that user's provided TF operation really exists.
-  for (auto s : whitelist) {
+  for (const auto& s : whitelist) {
     if (!all_ops.contains(string(s))) {
       return errors::InvalidArgument(
           "The operation '", s,
@@ -1475,7 +1475,7 @@ void MarkForCompilationPassImpl::VLogClusteringSummary() {
           << RatioToString(auto_clustering_info.clustered_node_count(),
                            graph_->num_nodes());
 
-  for (XlaAutoClusteringSummary::Cluster cluster :
+  for (const XlaAutoClusteringSummary::Cluster& cluster :
        auto_clustering_info.clusters()) {
     absl::string_view cluster_name = cluster.name();
     int size = cluster.size();

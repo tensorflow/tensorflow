@@ -3,10 +3,10 @@
 // CHECK-LABEL: func @attrs
 func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
-  %tensor_result = "xla_hlo.exp"(%tensor_operand)
+  %tensor_result = "xla_hlo.exponential"(%tensor_operand)
       {some_attr_1 = "exp.1", some_attr_2 = dense<1> : tensor<1xi64>}
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
-  // CHECK: "xla_lhlo.exp"(%{{.*}}, %{{.*}}) {some_attr_1 = "exp.1", some_attr_2 = dense<1> : tensor<1xi64>}
+  // CHECK: "xla_lhlo.exponential"(%{{.*}}, %{{.*}}) {some_attr_1 = "exp.1", some_attr_2 = dense<1> : tensor<1xi64>}
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }
@@ -83,9 +83,9 @@ func @copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 // CHECK-LABEL: func @exp
 func @exp(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
-  %tensor_result = "xla_hlo.exp"(%tensor_operand)
+  %tensor_result = "xla_hlo.exponential"(%tensor_operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
-  // CHECK: "xla_lhlo.exp"(%{{.*}}, %{{.*}})
+  // CHECK: "xla_lhlo.exponential"(%{{.*}}, %{{.*}})
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }
@@ -222,9 +222,9 @@ func @convert(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 // CHECK-LABEL: func @cos
 func @cos(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
-  %tensor_result = "xla_hlo.cos"(%tensor_operand)
+  %tensor_result = "xla_hlo.cosine"(%tensor_operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
-  // CHECK: "xla_lhlo.cos"(%{{.*}}, %{{.*}})
+  // CHECK: "xla_lhlo.cosine"(%{{.*}}, %{{.*}})
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }
@@ -234,9 +234,9 @@ func @cos(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 // CHECK-LABEL: func @neg
 func @neg(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
-  %tensor_result = "xla_hlo.neg"(%tensor_operand)
+  %tensor_result = "xla_hlo.negate"(%tensor_operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
-  // CHECK: "xla_lhlo.neg"(%{{.*}}, %{{.*}})
+  // CHECK: "xla_lhlo.negate"(%{{.*}}, %{{.*}})
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }

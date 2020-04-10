@@ -501,6 +501,9 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
       PopulateLookupTable<int8_t>(data, input, output, [](float value) {
         return 1.0f / (1.0f + std::exp(-value));
       });
+    } else if (input->type == kTfLiteInt16) {
+      TF_LITE_ENSURE(context, output->params.scale == 1. / 32768);
+      TF_LITE_ENSURE(context, output->params.zero_point == 0);
     }
   }
 
@@ -795,9 +798,12 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
       TanhParams params;
       params.input_left_shift = data->input_left_shift;
       if (kernel_type == kReference) {
-        reference_ops::Tanh(
-            params, GetTensorShape(input), GetTensorData<int16_t>(input),
-            GetTensorShape(output), GetTensorData<int16_t>(output));
+        const int size =
+            MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
+
+        reference_integer_ops::Tanh(data->input_left_shift, size,
+                                    GetTensorData<int16_t>(input),
+                                    GetTensorData<int16_t>(output));
       } else {
         optimized_ops::Tanh(
             params, GetTensorShape(input), GetTensorData<int16_t>(input),
@@ -867,9 +873,11 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt16: {
       LogisticParams params;
       if (kernel_type == kReference) {
-        reference_ops::Logistic(
-            params, GetTensorShape(input), GetTensorData<int16_t>(input),
-            GetTensorShape(output), GetTensorData<int16_t>(output));
+        const int size =
+            MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
+
+        reference_integer_ops::Logistic(size, GetTensorData<int16_t>(input),
+                                        GetTensorData<int16_t>(output));
       } else {
         optimized_ops::Logistic(
             params, GetTensorShape(input), GetTensorData<int16_t>(input),

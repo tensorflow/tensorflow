@@ -1691,7 +1691,7 @@ class ConcreteFunction(object):
       default_graph.mark_as_unsaveable(self._func_graph.saving_errors)
 
     if (tape.could_possibly_record() or
-        hasattr(ops.get_default_graph(), "watch_variable")):
+        hasattr(default_graph, "watch_variable")):
       for v in self._func_graph.variables:
         resource_variable_ops.variable_accessed(v)
 
@@ -1754,7 +1754,7 @@ class ConcreteFunction(object):
           ctx, args_with_tangents,
           cancellation_manager=cancellation_manager)
     else:
-      with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
+      with default_graph._override_gradient_function(  # pylint: disable=protected-access
           {"PartitionedCall": self._get_gradient_function(),
            "StatefulPartitionedCall": self._get_gradient_function()}):
         flat_outputs = forward_function.call(ctx, args_with_tangents)
@@ -2229,6 +2229,7 @@ class FunctionSpec(object):
 
     if self._input_signature is None:
       inputs = _convert_numpy_inputs(inputs)
+      kwargs = _convert_numpy_inputs(kwargs)
       return inputs, kwargs
     else:
       assert not kwargs

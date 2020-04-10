@@ -296,10 +296,10 @@ Status XlaCompilationCache::CompileSingleOp(
       arg_shapes.push_back(absl::get<TensorShape>(arg.shape));
     }
     GraphDebugInfo debug_info;
-    return CompileGraphToXlaHlo(*graph, {arg_shapes.data(), arg_shapes.size()},
-                                compile_options.use_tuple_arg,
-                                *options.flib_def, debug_info,
-                                options.shape_representation_fn, result);
+    return CompileGraphToXlaHlo(
+        *graph, {arg_shapes.data(), arg_shapes.size()},
+        options.device_type.type_string(), compile_options.use_tuple_arg,
+        *options.flib_def, debug_info, options.shape_representation_fn, result);
   };
   return CompileImpl(options, name, args, compile_op,
                      /*compile_threshold=*/absl::nullopt,

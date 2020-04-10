@@ -783,7 +783,10 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 8,
     tags = [
+        "manual",
+        "no_oss",
         "no_windows",  # TODO(b/142475891): Enable this test on Windows.
+        "notap",  # TODO(b/153671240)
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
@@ -1463,7 +1466,7 @@ sh_test(
         ":debug_errors",
         ":debug_fibonacci",
         ":debug_keras",
-        ":debug_mnist",
+        ":debug_mnist_v1",
         ":debug_tflearn_iris",
         ":offline_analyzer",
     ],

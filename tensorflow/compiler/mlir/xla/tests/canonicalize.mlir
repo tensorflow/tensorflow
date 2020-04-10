@@ -90,3 +90,68 @@ func @fold_copy(%arg : tensor<1x4xf32>) -> tensor<1x4xf32> {
   %0 = "xla_hlo.copy"(%arg) : (tensor<1x4xf32>) -> tensor<1x4xf32>
   return %0 : tensor<1x4xf32>
 }
+
+// CHECK-LABEL: func @fold_pad_into_conv_f32
+func @fold_pad_into_conv_f32(%arg0 : tensor<1x32x32x3xf32>,
+                         %arg1 : tensor<7x7x3x64xf32>)
+    -> tensor<1x16x16x64xf32> {
+  //  CHECK-NOT: xla_hlo.pad
+  //      CHECK: xla_hlo.convolution
+  // CHECK-SAME: padding = dense<3> : tensor<2x2xi64>
+  %0 = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+  %1 = "xla_hlo.pad"(%arg0, %0) {
+    edge_padding_high = dense<[0, 3, 3, 0]> : tensor<4xi64>,
+    edge_padding_low = dense<[0, 3, 3, 0]> : tensor<4xi64>,
+    interior_padding = dense<0> : tensor<4xi64>
+  } : (tensor<1x32x32x3xf32>, tensor<f32>) -> tensor<1x38x38x3xf32>
+  %2 = "xla_hlo.convolution"(%1, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = {
+      input_batch_dimension = 0 : i64,
+      input_feature_dimension = 3 : i64,
+      input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
+      kernel_input_feature_dimension = 2 : i64,
+      kernel_output_feature_dimension = 3 : i64,
+      kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
+      output_batch_dimension = 0 : i64,
+      output_feature_dimension = 3 : i64,
+      output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>
+    },
+    feature_group_count = 1 : i64,
+    padding = dense<0> : tensor<2x2xi64>,
+    window_strides = dense<2> : tensor<2xi64>
+  } : (tensor<1x38x38x3xf32>, tensor<7x7x3x64xf32>) -> tensor<1x16x16x64xf32>
+  return %2 : tensor<1x16x16x64xf32>
+}
+
+// CHECK-LABEL: func @fold_pad_into_conv_i32
+func @fold_pad_into_conv_i32(%arg0 : tensor<1x32x32x3xi32>,
+                         %arg1 : tensor<7x7x3x64xi32>)
+    -> tensor<1x16x16x64xi32> {
+  //  CHECK-NOT: xla_hlo.pad
+  //      CHECK: xla_hlo.convolution
+  // CHECK-SAME: padding = dense<3> : tensor<2x2xi64>
+  %0 = xla_hlo.constant dense<0> : tensor<i32>
+  %1 = "xla_hlo.pad"(%arg0, %0) {
+    edge_padding_high = dense<[0, 3, 3, 0]> : tensor<4xi64>,
+    edge_padding_low = dense<[0, 3, 3, 0]> : tensor<4xi64>,
+    interior_padding = dense<0> : tensor<4xi64>
+  } : (tensor<1x32x32x3xi32>, tensor<i32>) -> tensor<1x38x38x3xi32>
+  %2 = "xla_hlo.convolution"(%1, %arg1) {
+    batch_group_count = 1 : i64,
+    dimension_numbers = {
+      input_batch_dimension = 0 : i64,
+      input_feature_dimension = 3 : i64,
+      input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>,
+      kernel_input_feature_dimension = 2 : i64,
+      kernel_output_feature_dimension = 3 : i64,
+      kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>,
+      output_batch_dimension = 0 : i64,
+      output_feature_dimension = 3 : i64,
+      output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>
+    },
+    feature_group_count = 1 : i64,
+    window_strides = dense<2> : tensor<2xi64>
+  } : (tensor<1x38x38x3xi32>, tensor<7x7x3x64xi32>) -> tensor<1x16x16x64xi32>
+  return %2 : tensor<1x16x16x64xi32>
+}

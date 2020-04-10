@@ -54,7 +54,7 @@ constexpr char kFuncDeviceAttr[] = "tf.device";
 // This pass changes the module by adding "tf.device" attribute to function
 // arguments and adding "device" attribute to TF ops.
 struct ResourceDeviceInference
-    : public OperationPass<ResourceDeviceInference, ModuleOp> {
+    : public PassWrapper<ResourceDeviceInference, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -266,7 +266,7 @@ void ResourceDeviceInference::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceDeviceInferencePass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateResourceDeviceInferencePass() {
   return std::make_unique<ResourceDeviceInference>();
 }
 
