@@ -104,10 +104,6 @@ class HloModuleConfig {
     return debug_options_.xla_hlo_profile();
   }
 
-  bool cpu_traceme_enabled() const {
-    return debug_options_.xla_cpu_enable_xprof_traceme();
-  }
-
   // Sets/returns the module seed set during execution.
   void set_seed(uint64 seed) { seed_ = seed; }
   uint64 seed() const { return seed_; }
