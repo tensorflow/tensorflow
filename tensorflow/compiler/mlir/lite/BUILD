@@ -537,6 +537,15 @@ tf_native_cc_binary(
     ],
 )
 
+tf_native_cc_binary(
+    name = "json_to_flatbuffer",
+    srcs = ["json_to_flatbuffer.cc"],
+    deps = [
+        "//tensorflow/lite/schema:schema_fbs",
+        "@flatbuffers",
+    ],
+)
+
 cc_library(
     name = "emit_error_reporter",
     srcs = [
