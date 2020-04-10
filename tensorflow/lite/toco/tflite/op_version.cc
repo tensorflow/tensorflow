@@ -224,7 +224,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kZerosLike, 1}, "1.12.0"},
           {{OperatorType::kAbs, 1}, "1.13.0"},
           {{OperatorType::kHardSwish, 1}, "1.15.0"},
-          {{OperatorType::kFill, 1}, "1.13.0"},
+          {{OperatorType::kFill, 2}, kPendingReleaseOpVersion},
           {{OperatorType::kReverseV2, 1}, "1.14.0"},
           {{OperatorType::kReverseV2, 2}, "2.2.0"},
           {{OperatorType::kRank, 1}, "1.14.0"},
