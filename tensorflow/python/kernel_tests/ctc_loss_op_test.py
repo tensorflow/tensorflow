@@ -1003,10 +1003,13 @@ class CTCLossTestV3(test.TestCase, parameterized.TestCase):
     self.assertAllClose(loss, ref_loss, atol=1e-6)
     self.assertAllClose(grad, ref_grad, atol=2e-6)
 
+  @test_util.run_v2_only
   def testCtcLossAlgorithmFallback(self):
     """Test if GPU CTC loss can fallback to the correct algorithm."""
     if not test.is_gpu_available():
       self.skipTest("Need GPU for testing.")
+    if not context.executing_eagerly():
+      self.skipTest("Need eager execution for testing.")
     random_seed.set_random_seed(5)
 
     batch_size = 1
@@ -1021,7 +1024,7 @@ class CTCLossTestV3(test.TestCase, parameterized.TestCase):
     logits = random_ops.random_uniform([num_frames, batch_size, num_labels])
 
     label_length = random_ops.random_uniform([batch_size],
-                                             minval=0,
+                                             minval=1,
                                              maxval=max_label_length,
                                              dtype=dtypes.int64)
     logit_length = [num_frames] * batch_size
