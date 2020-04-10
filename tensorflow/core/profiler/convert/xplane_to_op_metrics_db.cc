@@ -218,7 +218,8 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
             costs = op_level_cost_estimator.Predict(event);
           }
           device_op_metrics_db_builder.EnterOp(
-              /*program_id=*/0, tf_op.name, tf_op.type, tf_op_fullname,
+              /*program_id=*/0, absl::StrCat(tf_op.name, "/", event.Name()),
+              tf_op.type, tf_op_fullname,
               /*occurrences=*/1, event.DurationPs(),
               /*children_time_ps=*/0, costs.flops, costs.bytes_accessed);
         }
