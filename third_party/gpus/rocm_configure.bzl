@@ -203,6 +203,7 @@ def _rocm_include_path(repository_ctx, rocm_config):
     inc_dirs.append("/opt/rocm/llvm/lib/clang/8.0/include")
     inc_dirs.append("/opt/rocm/llvm/lib/clang/9.0.0/include")
     inc_dirs.append("/opt/rocm/llvm/lib/clang/10.0.0/include")
+    inc_dirs.append("/opt/rocm/llvm/lib/clang/11.0.0/include")
 
     # Add rocrand and hiprand headers
     inc_dirs.append("/opt/rocm/rocrand/include")
@@ -236,6 +237,10 @@ def _rocm_include_path(repository_ctx, rocm_config):
     # Support hcc based off clang 10.0.0, included in ROCm2.8
     inc_dirs.append("/opt/rocm/hcc/compiler/lib/clang/10.0.0/include/")
     inc_dirs.append("/opt/rocm/hcc/lib/clang/10.0.0/include")
+
+    # Support hcc based off clang 11.0.0, included in ROCm3.1
+    inc_dirs.append("/opt/rocm/hcc/compiler/lib/clang/11.0.0/include/")
+    inc_dirs.append("/opt/rocm/hcc/lib/clang/11.0.0/include")
 
     return inc_dirs
 
@@ -323,7 +328,7 @@ def _hipcc_is_hipclang(repository_ctx):
         ["grep", "HIP_COMPILER=clang", "/opt/rocm/hip/lib/.hipInfo"],
         empty_stdout_fine = True,
     )
-    result = grep_result.stdout
+    result = grep_result.stdout.strip()
     if result == "HIP_COMPILER=clang":
         return "True"
     return "False"
