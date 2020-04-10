@@ -1,3 +1,17 @@
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# =============================================================================
 """Keras octave convolution layers.
 """
 
@@ -162,6 +176,7 @@ class OctaveConv(Layer):
                           'For an optimal use of octave convolutions, set '
                           'padding to same.'.format(self.padding, self.name))
 
+        self.kernel, self.bias = [], []
         self.conv_high_to_high, self.conv_low_to_high = None, None
         self.conv_low_to_low, self.conv_high_to_low = None, None
         self.generate_convolutions()
@@ -243,15 +258,23 @@ class OctaveConv(Layer):
         if self.conv_high_to_high is not None:
             with backend.name_scope(self.conv_high_to_high.name):
                 self.conv_high_to_high.build(input_shape_high)
+                self.kernel.append(self.conv_high_to_high.kernel)
+                self.bias.append(self.conv_high_to_high.bias)
         if self.conv_low_to_high is not None:
             with backend.name_scope(self.conv_low_to_high.name):
                 self.conv_low_to_high.build(input_shape_low)
+                self.kernel.append(self.conv_low_to_high.kernel)
+                self.bias.append(self.conv_low_to_high.bias)
         if self.conv_high_to_low is not None:
             with backend.name_scope(self.conv_high_to_low.name):
                 self.conv_high_to_low.build(input_shape_high)
+                self.kernel.append(self.conv_high_to_low.kernel)
+                self.bias.append(self.conv_high_to_low.bias)
         if self.conv_low_to_low is not None:
             with backend.name_scope(self.conv_low_to_low.name):
                 self.conv_low_to_low.build(input_shape_low)
+                self.kernel.append(self.conv_low_to_low.kernel)
+                self.bias.append(self.conv_low_to_low.bias)
 
         self.built = True
 

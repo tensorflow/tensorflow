@@ -18,6 +18,7 @@ package(
 )
 
 exports_files(["LICENSE"])
+exports_files(["octave_convolutional_test.py"])
 
 # A separate build for layers without serialization to avoid circular deps
 # with feature column.
