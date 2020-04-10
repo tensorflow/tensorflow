@@ -260,7 +260,7 @@ class ResizeBicubicOpTest(test.TestCase):
     input_tensor = constant_op.constant(x, shape=in_shape)
     resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3])
     with self.cached_session():
-      grad = gradients_impl.gradients(input_tensor, [resize_out])
+      grad = gradients_impl.gradients(resize_out, [input_tensor])
       self.assertEqual([None], grad)
 
 
