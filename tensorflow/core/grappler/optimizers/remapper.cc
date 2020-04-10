@@ -221,7 +221,11 @@ bool IsCpuCompatibleDataType(const NodeDef* contraction,
   if (IsConv2D(*contraction)) {
     return dtype == DT_FLOAT || dtype == DT_DOUBLE;
   } else if (IsMatMul(*contraction)) {
+#if defined(INTEL_MKL) && defined(ENABLE_INTEL_MKL_BFLOAT16)
+    return dtype == DT_FLOAT || dtype == DT_BFLOAT16;
+#else
     return dtype == DT_FLOAT;
+#endif
   } else {
     return false;
   }

@@ -72,7 +72,7 @@ REGISTER_OP("_MklFusedMatMul")
     .Attr("is_filter_const: bool = false")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
-    .Attr("T: {float}")
+    .Attr("T: {bfloat16, float}")
     .Attr("num_args: int >= 0")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ----------- //
