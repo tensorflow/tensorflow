@@ -397,10 +397,7 @@ Status EagerOperation::SetDeviceName(const char* name) {
                                        "' in eager op: ", DebugString());
       }
       raw_device_name_ = name;
-      device_name_ =
-          DeviceNameUtils::HasSomeDetails(device_parsed_name_)
-              ? DeviceNameUtils::ParsedNameToString(device_parsed_name_)
-              : "";
+      device_name_ = DeviceNameUtils::ParsedNameToString(device_parsed_name_);
       CustomDevice* custom_device;
       if (ctx_.FindCustomDeviceFromName(device_name_, &custom_device).ok()) {
         device_ = custom_device;
