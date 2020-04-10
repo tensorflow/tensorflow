@@ -877,7 +877,6 @@ Status MaybeUpdateOpDevice(EagerOperation* op) {
         if (!allowed_devices.empty()) {
           // TODO(b/145922293): Support allowed_devices specified in wildcard
           // patterns.
-          std::vector<string> device_names;
           if (std::find(allowed_devices.begin(), allowed_devices.end(),
                         op->GetDeviceName()) != allowed_devices.end()) {
             TF_RETURN_IF_ERROR(ctx.FindDeviceFromName(
