@@ -104,6 +104,53 @@ DenseIntElementsAttr BuildSliceLimits(DenseIntElementsAttr start_indices,
   return GetI64ElementsAttr(slice_limits, builder);
 }
 
+// Returns the padding value of the given position. If padding_attr is a
+// nullptr, returns 0.
+static int64_t GetPaddingValue(DenseIntElementsAttr padding_attr,
+                               ArrayRef<uint64_t> index) {
+  if (!padding_attr) return 0;
+  return padding_attr.getValue<int64_t>(index);
+}
+
+static bool IsOnlyPaddingSpatialDims(Value lhs,
+                                     ConvDimensionNumbers dimension_numbers,
+                                     DenseIntElementsAttr edge_padding_low,
+                                     DenseIntElementsAttr edge_padding_high) {
+  const int64_t batch_dim = dimension_numbers.input_batch_dimension().getInt();
+  const int64_t feature_dim =
+      dimension_numbers.input_feature_dimension().getInt();
+  if (edge_padding_low.getValue<int64_t>(batch_dim) ||
+      edge_padding_high.getValue<int64_t>(batch_dim))
+    return false;
+  if (edge_padding_low.getValue<int64_t>(feature_dim) ||
+      edge_padding_high.getValue<int64_t>(feature_dim))
+    return false;
+  return true;
+}
+
+DenseIntElementsAttr BuildConvPaddingAttrs(
+    DenseIntElementsAttr edge_padding_low,
+    DenseIntElementsAttr edge_padding_high, DenseIntElementsAttr padding_attr,
+    ConvDimensionNumbers dimension_numbers, Builder* builder) {
+  SmallVector<int64_t, 4> padding_low, padding_high;
+  for (const auto& dim : dimension_numbers.input_spatial_dimensions()) {
+    unsigned i = dim.getZExtValue();
+    padding_low.push_back(edge_padding_low.getValue<int64_t>(i));
+    padding_high.push_back(edge_padding_high.getValue<int64_t>(i));
+  }
+
+  int rank = padding_low.size();
+  SmallVector<int64_t, 8> padding;
+  for (unsigned i = 0; i < rank; ++i) {
+    padding.push_back(GetPaddingValue(padding_attr, {i, 0}) + padding_low[i]);
+    padding.push_back(GetPaddingValue(padding_attr, {i, 1}) + padding_high[i]);
+  }
+  // padding_attr.getType() doesn't work because it is an optional attribute,
+  // which can be a nullptr.
+  auto type = RankedTensorType::get({rank, 2}, builder->getIntegerType(64));
+  return DenseIntElementsAttr::get(type, padding);
+}
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_canonicalize.inc"
 }  // namespace
 
@@ -1606,6 +1653,15 @@ LogicalResult deriveShapeFromFirstOperand(
           RankedTensorType::get({operand_type.getRank()}, shape_scalar_type),
           shape_values)};
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ConvOp
+//===----------------------------------------------------------------------===//
+
+void ConvOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                         MLIRContext* context) {
+  results.insert<FoldPadIntoConv>(context);
 }
 
 }  // namespace xla_hlo

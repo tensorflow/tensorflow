@@ -34,7 +34,7 @@ func @convert_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
 
 // CHECK-LABEL: func @exp_memref
 func @exp_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
-  "xla_lhlo.exp"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
+  "xla_lhlo.exponential"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
   return
 }
 
@@ -50,7 +50,7 @@ func @log_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
 
 // CHECK-LABEL: func @neg_memref
 func @neg_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
-  "xla_lhlo.neg"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
+  "xla_lhlo.negate"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
   return
 }
 

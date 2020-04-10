@@ -596,8 +596,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "82576d6fecfec71725eb900111c000d772002449"
-    LLVM_SHA256 = "0c5b57782029b73fb81e29dd8bf0c63bf91e385a74f7eb2ded4664e4583f82b1"
+    LLVM_COMMIT = "015dee1ac8988ed5184ef649c72ea0692f2633b3"
+    LLVM_SHA256 = "5ddd2016c669e88d89e149f96a30402f208815b71119d53109b6840cb3b16f42"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -1039,6 +1039,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         sha256 = "1eed57bc6863190e35637290f97a20c81cfe4d9090ac0a24f3bbf08f265eb71d",
         strip_prefix = "pybind11-2.4.3",
         build_file = clean_dep("//third_party:pybind11.BUILD"),
+        system_build_file = clean_dep("//third_party/systemlibs:pybind11.BUILD"),
     )
 
     tf_http_archive(

@@ -35,7 +35,7 @@ class LhloFuseLinalg : public PassWrapper<LhloFuseLinalg, FunctionPass> {
   LhloFuseLinalg() = default;
   LhloFuseLinalg(const LhloFuseLinalg&) {}
   LhloFuseLinalg(bool use_parallel_loops, llvm::ArrayRef<unsigned> tile_sizes) {
-    tile_sizes_->assign(tile_sizes.begin(), tile_sizes.end());
+    tile_sizes_ = tile_sizes;
     use_parallel_loops_.setValue(use_parallel_loops);
   }
 

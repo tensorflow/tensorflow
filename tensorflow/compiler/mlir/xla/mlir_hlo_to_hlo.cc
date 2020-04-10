@@ -261,18 +261,18 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
       dot_dimension_numbers_attr.lhs_batching_dimensions()
           .cast<mlir::DenseIntElementsAttr>();
 
-  for (auto val : rhs_contracting_dimensions) {
+  for (const auto& val : rhs_contracting_dimensions) {
     dot_dimension_numbers.add_rhs_contracting_dimensions(val.getSExtValue());
   }
-  for (auto val : lhs_contracting_dimensions) {
+  for (const auto& val : lhs_contracting_dimensions) {
     dot_dimension_numbers.add_lhs_contracting_dimensions(val.getSExtValue());
   }
 
-  for (auto val : rhs_batch_dimensions) {
+  for (const auto& val : rhs_batch_dimensions) {
     dot_dimension_numbers.add_rhs_batch_dimensions(val.getSExtValue());
   }
 
-  for (auto val : lhs_batch_dimensions) {
+  for (const auto& val : lhs_batch_dimensions) {
     dot_dimension_numbers.add_lhs_batch_dimensions(val.getSExtValue());
   }
 

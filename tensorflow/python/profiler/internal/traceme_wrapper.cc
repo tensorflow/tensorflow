@@ -16,7 +16,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/types/optional.h"
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
@@ -30,6 +30,12 @@ class TraceMeWrapper {
   explicit TraceMeWrapper(const tensorflow::string& name) : name_(name) {}
 
   void Enter() { traceme_.emplace(std::move(name_)); }
+
+  void SetMetadata(const tensorflow::string& new_metadata) {
+    if (TF_PREDICT_TRUE(traceme_)) {
+      traceme_->SetMetadata(new_metadata);
+    }
+  }
 
   void Exit() { traceme_.reset(); }
 
@@ -47,5 +53,6 @@ PYBIND11_MODULE(_pywrap_traceme, m) {
   traceme_class.def(py::init<const tensorflow::string&>())
       .def("Enter", &TraceMeWrapper::Enter)
       .def("Exit", &TraceMeWrapper::Exit)
+      .def("SetMetadata", &TraceMeWrapper::SetMetadata)
       .def_static("IsEnabled", &TraceMeWrapper::IsEnabled);
 };

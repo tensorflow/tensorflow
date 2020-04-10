@@ -37,7 +37,7 @@ void EagerOperation::Clear() {
 }
 
 const string& EagerOperation::DeviceName() const {
-  absl::variant<tensorflow::Device*, CustomDevice*> variant_device =
+  VariantDevice variant_device =
       (Device() == kVariantDeviceNull) ? EagerContext().HostCPU() : Device();
   return absl::visit([](auto* d) -> const string& { return d->name(); },
                      variant_device);

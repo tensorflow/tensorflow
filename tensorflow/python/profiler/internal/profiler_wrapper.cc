@@ -16,8 +16,8 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/pytypes.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"

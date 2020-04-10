@@ -48,7 +48,7 @@ struct OpData {
   int effective_scale_2_b;
 };
 
-static int kStaticOpDataCounter = 0;
+static int op_data_counter = 0;
 static OpData kStaticOpData[kMaxOpDataSize];
 
 /**
@@ -245,8 +245,6 @@ void EvalIntegerSVDF(
   }
 }
 
-}  // namespace
-
 // Input tensors.
 constexpr int kInputTensor = 0;
 constexpr int kWeightsFeatureTensor = 1;
@@ -257,6 +255,9 @@ constexpr int kInputActivationStateTensor = 4;
 
 // Output tensor.
 constexpr int kOutputTensor = 0;
+}  // namespace
+
+void Free(TfLiteContext* context, void* buffer) { op_data_counter = 0; }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const auto* params = reinterpret_cast<TfLiteSVDFParams*>(node->builtin_data);
@@ -353,7 +354,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(b/132070898): Use statically slotted OpData structures until a
   // scratch memory API is ready.
-  OpData* op_data = &kStaticOpData[kStaticOpDataCounter++];
+  OpData* op_data = &kStaticOpData[op_data_counter++];
   node->user_data = op_data;
 
   // Calculate effective scales.
@@ -410,7 +411,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteRegistration* Register_SVDF() {
   static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
+                                 /*free=*/svdf::Free,
                                  /*prepare=*/svdf::Prepare,
                                  /*invoke=*/svdf::Eval,
                                  /*profiling_string=*/nullptr,

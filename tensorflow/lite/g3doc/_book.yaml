@@ -136,7 +136,7 @@ upper_tabs:
         path: /lite/performance/model_optimization
       - title: "Post-training quantization"
         path: /lite/performance/post_training_quantization
-      - title: "Post-training weight quantization"
+      - title: "Post-training dynamic range quantization"
         path: /lite/performance/post_training_quant
       - title: "Post-training integer quantization"
         path: /lite/performance/post_training_integer_quant

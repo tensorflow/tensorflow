@@ -740,14 +740,14 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
       return Status::OK();
     }
 
-    int64 first_index_dim;
-    int64 first_update_dim;
+    int64 first_index_dim = lhs_scatter_index->shape().rank();
+    int64 first_update_dim = lhs_scatter_update->shape().rank();
     // Find a dimension where it is possible to concatenate the indices and
     // updates. This is the first and only non-equal dimension or the first
     // equally sized dimension.
     for (int64 d = lhs_scatter_index->shape().rank() - 1,
                update_dim = lhs_scatter_update->shape().rank() - 1;
-         d >= 0; --d, --update_dim) {
+         d >= 0; --d) {
       if (d == lhs_dnums.index_vector_dim()) {
         continue;
       }
@@ -758,7 +758,7 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
       if (lhs_scatter_index->shape().dimensions(d) ==
           rhs_scatter_index->shape().dimensions(d)) {
         first_index_dim = d;
-        first_update_dim = update_dim;
+        first_update_dim = update_dim--;
         continue;
       }
       // More than one dimension of unequal size was found, bail out.
@@ -766,11 +766,17 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
         return Status::OK();
       }
       index_concat_dimension = d;
-      update_concat_dimension = update_dim;
+      update_concat_dimension = update_dim--;
     }
     if (!index_concat_dimension) {
       index_concat_dimension = first_index_dim;
       update_concat_dimension = first_update_dim;
+    }
+
+    // A scalar scatter will require additional reshapes of the index and
+    // update.
+    if (*index_concat_dimension == lhs_scatter_index->shape().rank()) {
+      return Status::OK();
     }
     const bool update_concat_is_cheap =
         ShapeUtil::ElementsIn(rhs_scatter_update->shape()) +

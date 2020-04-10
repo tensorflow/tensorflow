@@ -125,6 +125,11 @@ class CustomDevice {
                          int* num_retvals) = 0;
 };
 
+// Custom devices do many of the same things as physical Devices, but have a
+// much more restricted interface. We pass around ambiguous pointers since
+// TensorHandles may be placed either on custom or physical devices.
+using VariantDevice = absl::variant<Device*, CustomDevice*>;
+
 class EagerContext : public AbstractContextInterface, public core::RefCounted {
  public:
   static const uint64 kInvalidContextId = 0;

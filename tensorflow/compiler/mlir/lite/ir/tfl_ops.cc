@@ -46,6 +46,30 @@ namespace mlir {
 #include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 namespace TFL {
 
+// Returns true when the given two types have the same shape or broadcastable
+// shape within the given rank. If any given shapes are non-static, this method
+// returns true.
+bool IsBinaryOperandsHaveSameShapesOrBroadcastableShape(Type lhs, Type rhs,
+                                                        int max_bcast_rank) {
+  // Ignore shape checking on the non-static shapes for model compatibility.
+  auto lhs_shaped_type = lhs.dyn_cast<ShapedType>();
+  if (!lhs_shaped_type || !lhs_shaped_type.hasStaticShape()) return true;
+  auto rhs_shaped_type = rhs.dyn_cast<ShapedType>();
+  if (!rhs_shaped_type || !rhs_shaped_type.hasStaticShape()) return true;
+
+  if (lhs_shaped_type.getShape().equals(rhs_shaped_type.getShape()))
+    return true;
+
+  SmallVector<int64_t, 4> result_shape;
+  if (!OpTrait::util::getBroadcastedShape(lhs_shaped_type.getShape(),
+                                          rhs_shaped_type.getShape(),
+                                          result_shape)) {
+    return false;
+  }
+  return lhs_shaped_type.getRank() <= max_bcast_rank &&
+         rhs_shaped_type.getRank() <= max_bcast_rank;
+}
+
 //===----------------------------------------------------------------------===//
 // TensorFlowLiteDialect
 //===----------------------------------------------------------------------===//
@@ -316,7 +340,7 @@ Attribute ConstFoldUnaryOp(Type result_type, Attribute operand,
     const int num_elements = result_shape_type.getNumElements();
     new_values.reserve(num_elements);
 
-    for (APFloat old_value : dense_elements.getValues<APFloat>()) {
+    for (const APFloat &old_value : dense_elements.getValues<APFloat>()) {
       new_values.push_back(calculate(old_value));
     }
 
@@ -844,7 +868,7 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
       if (!shape_elements) return nullptr;
 
       SmallVector<int64_t, 4> shape_data;
-      for (auto it : shape_elements.getValues<APInt>()) {
+      for (const auto &it : shape_elements.getValues<APInt>()) {
         shape_data.push_back(it.getSExtValue());
       }
       result_type =
@@ -1798,7 +1822,7 @@ static LogicalResult Verify(TransposeOp op) {
 
   int index = 0;
   llvm::SmallVector<int64_t, 4> axes;
-  for (auto axis_int : perm.getValues<APInt>()) {
+  for (const auto &axis_int : perm.getValues<APInt>()) {
     const int64_t axis = axis_int.getSExtValue();
     if (axis < 0 || (input_type.hasRank() && axis >= input_type.getRank())) {
       return op.emitOpError(

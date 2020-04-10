@@ -762,6 +762,36 @@ TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
   return ResizeTensorImpl(tensor, ConvertVectorToTfLiteIntArray(dims));
 }
 
+TfLiteStatus Subgraph::ResizeInputTensorStrict(int tensor_index,
+                                               const std::vector<int>& dims) {
+  TF_LITE_ENSURE(&context_,
+                 tensor_index < context_.tensors_size && tensor_index >= 0);
+  TfLiteTensor* tensor = &context_.tensors[tensor_index];
+
+  // Ensure that only unknown dimensions can be resized.
+  TF_LITE_ENSURE_EQ(&context_, tensor->dims->size, dims.size());
+  for (size_t idx = 0; idx < dims.size(); idx++) {
+    // `dims_signature` is not defined when no unknown dimensions are present.
+    int dim_signature;
+    if (tensor->dims_signature && tensor->dims_signature->size) {
+      dim_signature = tensor->dims_signature->data[idx];
+    } else {
+      dim_signature = tensor->dims->data[idx];
+    }
+
+    if (dim_signature != -1 && dim_signature != dims[idx]) {
+      ReportError(
+          "Attempting to resize dimension %d of tensor %d with value %d to %d. "
+          "ResizeInputTensorStrict only allows mutating unknown dimensions "
+          "identified by -1.",
+          idx, tensor_index, dim_signature, dims[idx]);
+      return kTfLiteError;
+    }
+  }
+
+  return ResizeInputTensor(tensor_index, dims);
+}
+
 TfLiteStatus Subgraph::ReleaseNonPersistentMemory() {
   if (memory_planner_) {
     TF_LITE_ENSURE_STATUS(memory_planner_->ReleaseNonPersistentMemory());
@@ -802,7 +832,7 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
     EnsureTensorsVectorCapacity();
-    if (OpPrepare(registration, &node) == kTfLiteError) {
+    if (OpPrepare(registration, &node) != kTfLiteOk) {
       return ReportOpError(&context_, node, registration, node_index,
                            "failed to prepare");
     }
@@ -909,7 +939,7 @@ TfLiteStatus Subgraph::Invoke() {
 
     EnsureTensorsVectorCapacity();
     tensor_resized_since_op_invoke_ = false;
-    if (OpInvoke(registration, &node) == kTfLiteError) {
+    if (OpInvoke(registration, &node) != kTfLiteOk) {
       return ReportOpError(&context_, node, registration, node_index,
                            "failed to invoke");
     }

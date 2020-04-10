@@ -158,7 +158,9 @@ class GraphWithDequantPartitionHelper
       TfLiteRegistration* registration = nullptr;
       GetNodeAndRegistration(context_, node_id, &node, &registration)
           .IgnoreError();
-      if (registration->builtin_code != kTfLiteBuiltinDequantize) {
+      if (registration->builtin_code != kTfLiteBuiltinDequantize ||
+          context_->tensors[node->inputs->data[0]].type !=
+              TfLiteType::kTfLiteFloat16) {
         ++it;
         continue;
       }

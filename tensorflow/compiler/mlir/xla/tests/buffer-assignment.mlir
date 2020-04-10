@@ -7,7 +7,7 @@ func @condBranch(%cond : i1, %arg0 : tensor<2xf32>) -> tensor<2xf32>{
   ^bb1:
     br ^exit(%arg0 : tensor<2xf32>)
   ^bb2:
-    %1 = "xla_hlo.exp"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+    %1 = "xla_hlo.exponential"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
     br ^exit(%1 : tensor<2xf32>)
   ^exit(%arg1: tensor<2xf32>):
     return %arg1 : tensor<2xf32>
@@ -21,7 +21,7 @@ func @criticalEdge(%cond : i1, %arg0 : tensor<2xf32>) -> tensor<2xf32>{
   // CHECK: Alloc: cond_br
     cond_br %cond, ^bb1, ^exit(%arg0 : tensor<2xf32>)
   ^bb1:
-    %0 = "xla_hlo.exp"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+    %0 = "xla_hlo.exponential"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
     br ^exit(%0 : tensor<2xf32>)
   ^exit(%arg1: tensor<2xf32>):
     return %arg1 : tensor<2xf32>
@@ -32,8 +32,8 @@ func @criticalEdge(%cond : i1, %arg0 : tensor<2xf32>) -> tensor<2xf32>{
 
 // CHECK-LABEL: Testing : invCriticalEdge
 func @invCriticalEdge(%cond : i1, %arg0 : tensor<2xf32>) -> tensor<2xf32>{
-  // CHECK: Alloc: %0 = "xla_hlo.exp"
-    %0 = "xla_hlo.exp"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: Alloc: %0 = "xla_hlo.exponential"
+    %0 = "xla_hlo.exponential"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
     cond_br %cond, ^bb1, ^exit(%arg0 : tensor<2xf32>)
   ^bb1:
     br ^exit(%0 : tensor<2xf32>)
@@ -46,18 +46,18 @@ func @invCriticalEdge(%cond : i1, %arg0 : tensor<2xf32>) -> tensor<2xf32>{
 
 // CHECK-LABEL: Testing : ifElse
 func @ifElse(%cond : i1, %arg0 : tensor<2xf32>) -> tensor<2xf32>{
-  // CHECK: Alloc: %0 = "xla_hlo.exp"(%arg1)
-    %0 = "xla_hlo.exp"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: Alloc: %0 = "xla_hlo.exponential"(%arg1)
+    %0 = "xla_hlo.exponential"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
     cond_br %cond, ^bb1(%arg0, %0: tensor<2xf32>, tensor<2xf32>), ^bb2(%0, %arg0: tensor<2xf32>, tensor<2xf32>)
   ^bb1(%arg1 : tensor<2xf32>, %arg2 : tensor<2xf32>):
     br ^exit(%arg1, %arg2 : tensor<2xf32>, tensor<2xf32>)
   ^bb2(%arg3 : tensor<2xf32>, %arg4 : tensor<2xf32>):
     br ^exit(%arg3, %arg4 : tensor<2xf32>, tensor<2xf32>)
   ^exit(%arg5 : tensor<2xf32>, %arg6 : tensor<2xf32>):
-  // CHECK-NEXT: Dealloc: %7 = "xla_hlo.exp"(%5)
-  // CHECK: Alloc: %7 = "xla_hlo.exp"(%5)
+  // CHECK-NEXT: Dealloc: %7 = "xla_hlo.exponential"(%5)
+  // CHECK: Alloc: %7 = "xla_hlo.exponential"(%5)
   // CHECK-NEXT: Dealloc: return
-    %1 = "xla_hlo.exp"(%arg5) : (tensor<2xf32>) -> tensor<2xf32>
+    %1 = "xla_hlo.exponential"(%arg5) : (tensor<2xf32>) -> tensor<2xf32>
     return %1 : tensor<2xf32>
 }
 
@@ -65,8 +65,8 @@ func @ifElse(%cond : i1, %arg0 : tensor<2xf32>) -> tensor<2xf32>{
 
 // CHECK-LABEL: Testing : ifElseNoUsers
 func @ifElseNoUsers(%cond : i1, %arg0 : tensor<2xf32>) -> tensor<2xf32>{
-  // CHECK: Alloc: %0 = "xla_hlo.exp"(%arg1)
-    %0 = "xla_hlo.exp"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: Alloc: %0 = "xla_hlo.exponential"(%arg1)
+    %0 = "xla_hlo.exponential"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
     cond_br %cond, ^bb1(%arg0, %0: tensor<2xf32>, tensor<2xf32>), ^bb2(%0, %arg0: tensor<2xf32>, tensor<2xf32>)
   ^bb1(%arg1 : tensor<2xf32>, %arg2 : tensor<2xf32>):
     br ^exit(%arg1, %arg2 : tensor<2xf32>, tensor<2xf32>)
@@ -81,8 +81,8 @@ func @ifElseNoUsers(%cond : i1, %arg0 : tensor<2xf32>) -> tensor<2xf32>{
 
 // CHECK-LABEL: Testing : ifElseNested
 func @ifElseNested(%cond : i1, %arg0 : tensor<2xf32>) -> tensor<2xf32>{
-  // CHECK: Alloc: %0 = "xla_hlo.exp"(%arg1)
-    %0 = "xla_hlo.exp"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: Alloc: %0 = "xla_hlo.exponential"(%arg1)
+    %0 = "xla_hlo.exponential"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
     cond_br %cond, ^bb1(%arg0, %0: tensor<2xf32>, tensor<2xf32>), ^bb2(%0, %arg0: tensor<2xf32>, tensor<2xf32>)
   ^bb1(%arg1 : tensor<2xf32>, %arg2 : tensor<2xf32>):
     br ^exit(%arg1, %arg2 : tensor<2xf32>, tensor<2xf32>)
@@ -93,10 +93,10 @@ func @ifElseNested(%cond : i1, %arg0 : tensor<2xf32>) -> tensor<2xf32>{
   ^bb4(%arg8 : tensor<2xf32>):
     br ^exit(%arg3, %arg8 : tensor<2xf32>, tensor<2xf32>)
   ^exit(%arg5 : tensor<2xf32>, %arg6 : tensor<2xf32>):
-  // CHECK-NEXT: Dealloc: %9 = "xla_hlo.exp"(%7)
-  // CHECK: Alloc: %9 = "xla_hlo.exp"(%7)
+  // CHECK-NEXT: Dealloc: %9 = "xla_hlo.exponential"(%7)
+  // CHECK: Alloc: %9 = "xla_hlo.exponential"(%7)
   // CHECK-NEXT: Dealloc: return
-    %1 = "xla_hlo.exp"(%arg5) : (tensor<2xf32>) -> tensor<2xf32>
+    %1 = "xla_hlo.exponential"(%arg5) : (tensor<2xf32>) -> tensor<2xf32>
     return %1 : tensor<2xf32>
 }
 

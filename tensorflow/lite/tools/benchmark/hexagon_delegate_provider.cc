@@ -14,9 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
-#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 #include "tensorflow/lite/tools/benchmark/delegate_provider.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
 #if (defined(ANDROID) || defined(__ANDROID__)) && \
@@ -29,9 +27,19 @@ namespace benchmark {
 
 class HexagonDelegateProvider : public DelegateProvider {
  public:
-  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
+  HexagonDelegateProvider() {
+#if defined(TFLITE_ENABLE_HEXAGON)
+    default_params_.AddParam("use_hexagon",
+                             BenchmarkParam::Create<bool>(false));
+    default_params_.AddParam(
+        "hexagon_lib_path",
+        BenchmarkParam::Create<std::string>("/data/local/tmp"));
+    default_params_.AddParam("hexagon_profiling",
+                             BenchmarkParam::Create<bool>(false));
+#endif
+  }
 
-  void AddParams(BenchmarkParams* params) const final;
+  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
 
   void LogParams(const BenchmarkParams& params) const final;
 
@@ -55,15 +63,6 @@ std::vector<Flag> HexagonDelegateProvider::CreateFlags(
   return flags;
 #else
   return {};
-#endif
-}
-
-void HexagonDelegateProvider::AddParams(BenchmarkParams* params) const {
-#if defined(TFLITE_ENABLE_HEXAGON)
-  params->AddParam("use_hexagon", BenchmarkParam::Create<bool>(false));
-  params->AddParam("hexagon_lib_path",
-                   BenchmarkParam::Create<std::string>("/data/local/tmp"));
-  params->AddParam("hexagon_profiling", BenchmarkParam::Create<bool>(false));
 #endif
 }
 

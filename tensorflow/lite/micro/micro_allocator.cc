@@ -407,7 +407,7 @@ TfLiteStatus MicroAllocator::Init() {
     TfLiteStatus status = internal::InitializeRuntimeTensor(
         memory_allocator_, *tensors_->Get(i), model_->buffers(),
         error_reporter_, &context_->tensors[i]);
-    if (status == kTfLiteError) {
+    if (status != kTfLiteOk) {
       TF_LITE_REPORT_ERROR(error_reporter_, "Failed to initialize tensor %d",
                            i);
       return kTfLiteError;

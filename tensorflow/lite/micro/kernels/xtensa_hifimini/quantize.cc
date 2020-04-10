@@ -55,10 +55,8 @@ void AffineQuantize(int scale_multiplier,
     inputs_24x2 = AE_P24X2S_SRAI(inputs_24x2, 8);
 
     // Q0.23 * Q16.0 == Q16.23
-    ae_q56s sum_56 = AE_ZEROQ56();
-
     {
-      AE_MULAS56P24S_HH(sum_56, scale_multiplier_24x2, inputs_24x2);
+      ae_q56s sum_56 = AE_MULP24S_HH(scale_multiplier_24x2, inputs_24x2);
 
       // Q16.23 -> Q16.0
       // Shift right only 7 bits (23 - 16). This truncated shift aligns the
@@ -78,10 +76,8 @@ void AffineQuantize(int scale_multiplier,
 
       output_data[i * 2] = static_cast<int16_t>(AE_TRUNCA32Q48(sum_56));
     }
-
-    sum_56 = AE_ZEROQ56();
     {
-      AE_MULAS56P24S_LL(sum_56, scale_multiplier_24x2, inputs_24x2);
+      ae_q56s sum_56 = AE_MULP24S_LL(scale_multiplier_24x2, inputs_24x2);
 
       // Q16.23 -> Q16.0
       // Shift right only 7 bits (23 - 16). This truncated shift aligns the

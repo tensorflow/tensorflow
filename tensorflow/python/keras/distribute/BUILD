@@ -187,9 +187,12 @@ distribute_py_test(
     # shards more evenly.
     shard_count = 19,
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "no_oss",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
+        "notap",  # TODO(b/153671866)
         "notsan",
     ],
     deps = [
@@ -243,9 +246,11 @@ distribute_py_test(
     # shards more evenly.
     shard_count = 31,
     tags = [
+        "manual",
         "multi_and_single_gpu",
         "no_oss",  # b/136660639
         "no_windows_gpu",
+        "notap",  # TODO(b/153672562)
         "notsan",
     ],
     deps = [

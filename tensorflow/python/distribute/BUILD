@@ -721,6 +721,9 @@ py_library(
 py_test(
     name = "combinations_test",
     srcs = ["combinations_test.py"],
+    tags = [
+        "notap",  # TODO(b/153646955): flaky
+    ],
     deps = [
         ":combinations",
         "//tensorflow/python:client_testlib",

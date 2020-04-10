@@ -229,7 +229,7 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
       ConversionPatternRewriter* rewriter) const {
     auto loc = xla_reduce_op.getLoc();
     DenseSet<int> reducing_dims;
-    for (auto rdim : xla_reduce_op.dimensions().getIntValues()) {
+    for (const auto& rdim : xla_reduce_op.dimensions().getIntValues()) {
       reducing_dims.insert(rdim.getSExtValue());
     }
 

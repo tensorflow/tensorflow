@@ -39,7 +39,18 @@ class ProfilerSession {
   // Creates and ProfilerSession and starts profiling.
   static std::unique_ptr<ProfilerSession> Create(const ProfileOptions& options);
   static std::unique_ptr<ProfilerSession> Create();
-  static ProfileOptions DefaultOptions();
+
+  static ProfileOptions DefaultOptions() {
+    ProfileOptions options;
+    options.set_version(1);
+    options.set_device_tracer_level(1);
+    options.set_host_tracer_level(2);
+    options.set_device_type(ProfileOptions::UNSPECIFIED);
+    options.set_python_tracer_level(0);
+    options.set_enable_hlo_proto(false);
+    options.set_include_dataset_ops(true);
+    return options;
+  }
 
   // Deletes an existing Profiler and enables starting a new one.
   ~ProfilerSession();

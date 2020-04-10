@@ -27,6 +27,7 @@ module {
 
 // CHECK-LABEL: func @tpu0_func
 // CHECK-SAME: (%[[TPU0_FUNC_ARG_0:[a-z0-9]*]]: tensor<?xi32>) -> tensor<?xi32>
+// CHECK-SAME: sym_visibility = "private"
 // CHECK: %[[TPU0_FUNC_B_OUTPUT:[0-9]*]] = "tf.B"(%[[TPU0_FUNC_ARG_0]])
 // CHECK: return %[[TPU0_FUNC_B_OUTPUT]]
 }

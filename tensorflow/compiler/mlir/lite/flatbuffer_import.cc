@@ -579,6 +579,24 @@ StatusOr<Operation*> ConvertOp(
     op_state.addTypes({type});
   }
 
+  // While the last several tensors could be optional tensors for an tfl op, the
+  // number of input operands could vary. Gets the min/max number of
+  // operands from tflite op name.
+  // Also, since the above code special-handles the `tfl.reshape` op and add an
+  // additional input, we put these function block here.
+  llvm::MinMax input_min_max = mlir::OperandNumbersMinMax(op_name);
+  int input_max_num = input_min_max.Max;
+  int op_input_num = op_state.operands.size();
+  if (input_max_num != 0 && input_max_num > op_input_num) {
+    // If the number of current inputs is less than the op definition, fill in
+    // with `none` value,
+    llvm::SmallVector<Value, 4> none_operands(
+        input_max_num - op_input_num,
+        builder.create<mlir::ConstantOp>(loc, builder.getNoneType(),
+                                         builder.getUnitAttr()));
+    op_state.addOperands(ArrayRef<Value>(none_operands));
+  }
+
   if (op_name == "tfl.lstm") {
     // TODO(b/147587779): add the right region if region is empty.
     op_state.addRegion();

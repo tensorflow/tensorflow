@@ -5,5 +5,5 @@ ENTRY %Cos (val: f32[2,2]) -> f32[2,2] {
 }
 
 //  CHECK: func @cosine(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
-//  CHECK:   "xla_lhlo.cos"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
+//  CHECK:   "xla_lhlo.cosine"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
 //  CHECK: }

@@ -119,9 +119,7 @@ class EagerOperation : public AbstractOperationInterface {
 
   // Like TensorHandles, EagerOperations may be placed either on a virtual
   // CustomDevice or on a physical Device.
-  absl::variant<tensorflow::Device*, tensorflow::CustomDevice*> Device() const {
-    return device_;
-  }
+  VariantDevice Device() const { return device_; }
 
   void SetDevice(tensorflow::Device* device) {
     device_ = device;
@@ -185,7 +183,7 @@ class EagerOperation : public AbstractOperationInterface {
   AttrBuilder attrs_;
   const AttrTypeMap* attr_types_;
   absl::InlinedVector<TensorHandle*, 4> inputs_;
-  absl::variant<tensorflow::Device*, tensorflow::CustomDevice*> device_;
+  VariantDevice device_;
   string raw_device_name_;
   string device_name_;
   DeviceNameUtils::ParsedName device_parsed_name_;

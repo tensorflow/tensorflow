@@ -263,6 +263,8 @@ FloatPoolingOpTest/L2PoolActivationRelu.*,29
 FloatPoolingOpTest/.+
 # Image is too big
 -QuantizedPoolingOpTest/AveragePoolImageSize17
+# Int16 unsupported
+-QuantizedPoolingOpTest/SymmetricAveragePool16
 QuantizedPoolingOpTest/.+
 QuantizedUInt8PoolingOpTest/.+
 
