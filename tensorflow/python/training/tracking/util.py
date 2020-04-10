@@ -1723,9 +1723,9 @@ class Checkpoint(tracking.AutoTrackable):
 
   `Checkpoint`'s constructor accepts keyword arguments whose values are types
   that contain trackable state, such as `tf.keras.optimizers.Optimizer`
-  implementations, `tf.Variable`, `tf.keras.Layer` implementations, or
-  `tf.keras.Model` implementations. It saves these values with a checkpoint, and
-  maintains a `save_counter` for numbering checkpoints.
+  implementations, `tf.Variable`s, `tf.data.Dataset` iterators, `tf.keras.Layer`
+  implementations, or `tf.keras.Model` implementations. It saves these values
+  with a checkpoint, and maintains a `save_counter` for numbering checkpoints.
 
   Example usage:
 
