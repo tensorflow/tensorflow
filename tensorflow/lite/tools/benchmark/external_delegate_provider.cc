@@ -12,9 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 #include "tensorflow/lite/tools/benchmark/delegate_provider.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
 
 #if defined(_WIN32)
 #include <Windows.h>
@@ -97,9 +95,14 @@ struct ExternalLib {
 // the generated delegates.
 class ExternalDelegateProvider : public DelegateProvider {
  public:
-  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
+  ExternalDelegateProvider() {
+    default_params_.AddParam("external_delegate_path",
+                             BenchmarkParam::Create<std::string>(""));
+    default_params_.AddParam("external_delegate_options",
+                             BenchmarkParam::Create<std::string>(""));
+  }
 
-  void AddParams(BenchmarkParams* params) const final;
+  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
 
   void LogParams(const BenchmarkParams& params) const final;
 
@@ -119,13 +122,6 @@ std::vector<Flag> ExternalDelegateProvider::CreateFlags(
           "external_delegate_options", params,
           "Comma-seperated options to be passed to the external delegate")};
   return flags;
-}
-
-void ExternalDelegateProvider::AddParams(BenchmarkParams* params) const {
-  params->AddParam("external_delegate_path",
-                   BenchmarkParam::Create<std::string>(""));
-  params->AddParam("external_delegate_options",
-                   BenchmarkParam::Create<std::string>(""));
 }
 
 void ExternalDelegateProvider::LogParams(const BenchmarkParams& params) const {

@@ -81,14 +81,13 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs,
   params.AddParam("enable_op_profiling", BenchmarkParam::Create<bool>(false));
   params.AddParam("max_profiling_buffer_entries",
                   BenchmarkParam::Create<int32_t>(1024));
-  params.AddParam("max_delegated_partitions", BenchmarkParam::Create<int>(0));
   params.AddParam("profiling_output_csv_file",
                   BenchmarkParam::Create<std::string>(""));
   params.AddParam("enable_platform_tracing",
                   BenchmarkParam::Create<bool>(false));
 
   for (const auto& delegate_provider : GetRegisteredDelegateProviders()) {
-    delegate_provider->AddParams(&params);
+    params.Merge(delegate_provider->DefaultParams());
   }
   return params;
 }
