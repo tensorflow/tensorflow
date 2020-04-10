@@ -551,6 +551,65 @@ TEST(BasicInterpreter, NoopResizingTensors) {
   ASSERT_EQ(tensor->data.f[5], 0.123f);
 }
 
+TEST(BasicInterpreter, ResizingTensorsStrictInvalid) {
+  // Tests ResizeInputTensorStrict where `dims_signature` is not specified.
+  Interpreter interpreter;
+  ASSERT_EQ(interpreter.AddTensors(1), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetOutputs({0}), kTfLiteOk);
+
+  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(
+                0, kTfLiteFloat32, "", {1, 1, 3}, TfLiteQuantizationParams()),
+            kTfLiteOk);
+
+  int t = interpreter.inputs()[0];
+  TfLiteTensor* tensor = interpreter.tensor(t);
+
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1, 1, 3}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 3 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Invalid becuase `dims_signature` is not specified.
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1, 2, 3}), kTfLiteError);
+  EXPECT_EQ(tensor->bytes, 3 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Assert that ResizeInputTensor works for this value.
+  ASSERT_EQ(interpreter.ResizeInputTensor(t, {1, 2, 3}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 6 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+}
+
+TEST(BasicInterpreter, ResizingTensorsStrict) {
+  // Tests ResizeInputTensorStrict where `dims_signature` is specified.
+  Interpreter interpreter;
+  ASSERT_EQ(interpreter.AddTensors(1), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetOutputs({0}), kTfLiteOk);
+
+  std::vector<int> dims_signature = {-1, -1, 3};
+  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(
+                0, kTfLiteFloat32, "", {1, 1, 3}, TfLiteQuantizationParams(),
+                false, &dims_signature),
+            kTfLiteOk);
+
+  int t = interpreter.inputs()[0];
+  TfLiteTensor* tensor = interpreter.tensor(t);
+
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1, 2, 3}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 6 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1, 2, 4}), kTfLiteError);
+  EXPECT_EQ(tensor->bytes, 6 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Assert that ResizeInputTensor works for this value.
+  ASSERT_EQ(interpreter.ResizeInputTensor(t, {1, 2, 4}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 8 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+}
+
 // Simple op that does input = output.
 TfLiteRegistration GetPassthroughOpRegistration() {
   TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
