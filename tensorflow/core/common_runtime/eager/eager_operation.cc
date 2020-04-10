@@ -275,7 +275,7 @@ Status EagerOperation::SetUseXla(bool enable) {
 }
 
 Status EagerOperation::Reset(
-    const char* op, const char* raw_device_name, bool remote,
+    const char* op, const char* device_name, bool remote,
     EagerExecutor* executor,
     const absl::optional<EagerRemoteFunctionParams> remote_func_params) {
   DCHECK(inputs_.empty());
@@ -311,10 +311,10 @@ Status EagerOperation::Reset(
   executor_ = executor ? executor : &ctx_.Executor();
   remote_func_params_ = remote_func_params;
   op_name_ = op;
-  if (raw_device_name != nullptr && strlen(raw_device_name) > 0) {
-    return SetDeviceName(raw_device_name);
+  if (device_name != nullptr && strlen(device_name) > 0) {
+    return SetDeviceName(device_name);
   } else {
-    raw_device_name_.clear();
+    last_set_device_name_.clear();
     device_name_.clear();
     device_parsed_name_.Clear();
     device_ = kVariantDeviceNull;
@@ -391,12 +391,12 @@ Status EagerOperation::InferInputListAttrs(int num_inputs) {
 
 Status EagerOperation::SetDeviceName(const char* name) {
   if (name != nullptr && strlen(name) > 0) {
-    if (name != raw_device_name_) {
+    if (name != last_set_device_name_) {
       if (!DeviceNameUtils::ParseFullName(name, &device_parsed_name_)) {
         return errors::InvalidArgument("Malformed device specification '", name,
                                        "' in eager op: ", DebugString());
       }
-      raw_device_name_ = name;
+      last_set_device_name_ = name;
       device_name_ = DeviceNameUtils::ParsedNameToString(device_parsed_name_);
       CustomDevice* custom_device;
       if (ctx_.FindCustomDeviceFromName(device_name_, &custom_device).ok()) {
