@@ -1100,6 +1100,39 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     return py::handle(EagerTensorFromHandle(thandle));
   });
 
+  m.def("TFE_Py_RegisterCustomDevice", [](const py::handle& context,
+                                          const py::capsule& device,
+                                          const char* device_name,
+                                          const py::capsule& device_info) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    if (absl::string_view(device.name()) != "TFE_CustomDevice") {
+      status->status = tensorflow::errors::InvalidArgument(
+          "Expected a capsule named 'TFE_CustomDevice' for the `device` "
+          "argument, got ",
+          absl::string_view(device.name()));
+      tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    }
+    if (absl::string_view(device_info.name()) !=
+        "TFE_CustomDevice_DeviceInfo") {
+      status->status = tensorflow::errors::InvalidArgument(
+          "Expected a capsule named 'TFE_CustomDevice_DeviceInfo' for "
+          "the `device_info` argument, got ",
+          absl::string_view(device_info.name()));
+      tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    }
+    // TFE_RegisterCustomDevice takes ownership
+    PyCapsule_SetDestructor(device_info.ptr(), nullptr);
+    TFE_RegisterCustomDevice(
+        tensorflow::InputTFE_Context(context),
+        *reinterpret_cast<TFE_CustomDevice*>(
+            PyCapsule_GetPointer(device.ptr(), "TFE_CustomDevice")),
+        device_name,
+        PyCapsule_GetPointer(device_info.ptr(), "TFE_CustomDevice_DeviceInfo"),
+        status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+  });
+
   // C API Enum
 
   py::enum_<TFE_ContextDevicePlacementPolicy>(
