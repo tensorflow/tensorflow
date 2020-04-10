@@ -51,7 +51,7 @@ class ProfilerTest(test_util.TensorFlowTestCase):
       self.assertIn('/device:GPU:0', devices)
     events = frozenset(event.name for event in profile_pb.trace_events)
     self.assertIn('three_times_five', events)
-    self.assertIn('Mul:Mul', events)
+    self.assertIn('Mul', events)
     with self.assertRaises(profiler.ProfilerNotRunningError):
       profiler.stop()
 
