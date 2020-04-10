@@ -600,6 +600,7 @@ RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
   RocmTracerOptions options;
 
   std::vector<uint32_t> hip_api_domain_ops{
+      HIP_API_ID_hipExtModuleLaunchKernel,
       HIP_API_ID_hipFree,
       HIP_API_ID_hipMalloc,
       HIP_API_ID_hipMemcpyDtoD,
