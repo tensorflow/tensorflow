@@ -537,9 +537,11 @@ class BatchNormalizationBase(Layer):
     # TODO(b/129279393): Support zero batch input in non DistributionStrategy
     # code as well.
     if self._support_zero_size_input():
-      inputs_size = array_ops.size(inputs)
+      # Keras assumes that batch dimension is the first dimension for Batch
+      # Normalization.
+      input_batch_size = array_ops.shape(inputs)[0]
     else:
-      inputs_size = None
+      input_batch_size = None
 
     # TODO(rmlarsen): Support using fused avg updates for non-eager execution
     # after fixing graph pattern matching and enabling fused_batch_norm to
@@ -600,10 +602,12 @@ class BatchNormalizationBase(Layer):
           data_format=self._data_format)
 
     train_op = _fused_batch_norm_training
-    if use_fused_avg_updates and inputs_size is not None:
-      train_op = lambda: tf_utils.smart_cond(inputs_size > 0,
+    if use_fused_avg_updates and input_batch_size is not None:
+      # pylint: disable=g-long-lambda
+      train_op = lambda: tf_utils.smart_cond(input_batch_size > 0,
                                              _fused_batch_norm_training,
                                              _fused_batch_norm_training_empty)
+      # pylint: enable=g-long-lambda
 
     output, mean, variance = tf_utils.smart_cond(training, train_op,
                                                  _fused_batch_norm_inference)
@@ -624,7 +628,7 @@ class BatchNormalizationBase(Layer):
           return self._assign_new_value(self.moving_mean, mean)
         else:
           return self._assign_moving_average(self.moving_mean, mean, momentum,
-                                             inputs_size)
+                                             input_batch_size)
 
       def variance_update():
         """Update self.moving_variance with the most recent data point."""
@@ -632,7 +636,7 @@ class BatchNormalizationBase(Layer):
           return self._assign_new_value(self.moving_variance, variance)
         else:
           return self._assign_moving_average(self.moving_variance, variance,
-                                             momentum, inputs_size)
+                                             momentum, input_batch_size)
 
       self.add_update(mean_update)
       self.add_update(variance_update)
@@ -706,9 +710,9 @@ class BatchNormalizationBase(Layer):
     # TODO(b/129279393): Support zero batch input in non DistributionStrategy
     # code as well.
     if self._support_zero_size_input():
-      inputs_size = array_ops.size(inputs)
-      mean = array_ops.where(inputs_size > 0, mean, K.zeros_like(mean))
-      variance = array_ops.where(inputs_size > 0, variance,
+      input_batch_size = array_ops.shape(inputs)[0]
+      mean = array_ops.where(input_batch_size > 0, mean, K.zeros_like(mean))
+      variance = array_ops.where(input_batch_size > 0, variance,
                                  K.zeros_like(variance))
     return mean, variance
 
@@ -822,12 +826,15 @@ class BatchNormalizationBase(Layer):
         new_mean, new_variance = mean, variance
 
       if self._support_zero_size_input():
-        inputs_size = array_ops.size(inputs)
+        # Keras assumes that batch dimension is the first dimension for Batch
+        # Normalization.
+        input_batch_size = array_ops.shape(inputs)[0]
       else:
-        inputs_size = None
+        input_batch_size = None
+
       if self.renorm:
         r, d, new_mean, new_variance = self._renorm_correction_and_moments(
-            new_mean, new_variance, training, inputs_size)
+            new_mean, new_variance, training, input_batch_size)
         # When training, the normalized values (say, x) will be transformed as
         # x * gamma + beta without renorm, and (x * r + d) * gamma + beta
         # = x * (r * gamma) + (d * gamma + beta) with renorm.
@@ -838,7 +845,7 @@ class BatchNormalizationBase(Layer):
       def _do_update(var, value):
         """Compute the updates for mean and variance."""
         return self._assign_moving_average(var, value, self.momentum,
-                                           inputs_size)
+                                           input_batch_size)
 
       def mean_update():
         true_branch = lambda: _do_update(self.moving_mean, new_mean)
