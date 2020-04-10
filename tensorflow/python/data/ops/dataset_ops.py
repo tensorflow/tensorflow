@@ -1675,8 +1675,8 @@ name=None))
 
   def interleave(self,
                  map_func,
-                 cycle_length=AUTOTUNE,
-                 block_length=1,
+                 cycle_length=None,
+                 block_length=None,
                  num_parallel_calls=None,
                  deterministic=None):
     """Maps `map_func` across this dataset, and interleaves the results.
@@ -1745,12 +1745,13 @@ name=None))
     Args:
       map_func: A function mapping a dataset element to a dataset.
       cycle_length: (Optional.) The number of input elements that will be
-        processed concurrently. If not specified, the value will be derived from
-        the number of available CPU cores. If the `num_parallel_calls` argument
-        is set to `tf.data.experimental.AUTOTUNE`, the `cycle_length` argument
-        also identifies the maximum degree of parallelism.
+        processed concurrently. If not set, the tf.data runtime decides what it
+        should be based on available CPU. If `num_parallel_calls` is set to
+        `tf.data.experimental.AUTOTUNE`, the `cycle_length` argument identifies
+        the maximum degree of parallelism.
       block_length: (Optional.) The number of consecutive elements to produce
-        from each input element before cycling to another input element.
+        from each input element before cycling to another input element. If not
+        set, defaults to 1.
       num_parallel_calls: (Optional.) If specified, the implementation creates a
         threadpool, which is used to fetch inputs from cycle elements
         asynchronously and in parallel. The default behavior is to fetch inputs
@@ -1767,6 +1768,12 @@ name=None))
     Returns:
       Dataset: A `Dataset`.
     """
+    if block_length is None:
+      block_length = 1
+
+    if cycle_length is None:
+      cycle_length = AUTOTUNE
+
     if num_parallel_calls is None:
       return InterleaveDataset(self, map_func, cycle_length, block_length)
     else:
@@ -4203,6 +4210,7 @@ class InterleaveDataset(UnaryDataset):
 
   def __init__(self, input_dataset, map_func, cycle_length, block_length):
     """See `Dataset.interleave()` for details."""
+
     self._input_dataset = input_dataset
     self._map_func = StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
