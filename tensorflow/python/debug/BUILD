@@ -781,12 +781,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["lib/dumping_callback_test.py"],
     python_version = "PY3",
-    shard_count = 8,
+    shard_count = 4,
     tags = [
-        "manual",
-        "no_oss",
         "no_windows",  # TODO(b/142475891): Enable this test on Windows.
-        "notap",  # TODO(b/153671240)
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
@@ -798,7 +795,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
