@@ -39,6 +39,7 @@ using mlir::MLIRContext;
 using mlir::OpRewritePattern;
 using mlir::OwningRewritePatternList;
 using mlir::PassRegistration;
+using mlir::PassWrapper;
 using mlir::PatternRewriter;
 using mlir::RankedTensorType;
 using mlir::success;
@@ -170,7 +171,8 @@ struct GeneralDotConvert
   }
 };
 
-struct LegalizeGeneralDot : public FunctionPass<LegalizeGeneralDot> {
+struct LegalizeGeneralDot
+    : public PassWrapper<LegalizeGeneralDot, FunctionPass> {
   /// Lower all general dots that can be represented as a non-batched matmul.
   void runOnFunction() override {
     OwningRewritePatternList patterns;

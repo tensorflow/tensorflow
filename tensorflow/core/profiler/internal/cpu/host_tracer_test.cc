@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -31,7 +32,7 @@ namespace tensorflow {
 namespace profiler {
 
 std::unique_ptr<ProfilerInterface> CreateHostTracer(
-    const ProfilerOptions& options);
+    const ProfileOptions& options);
 
 namespace {
 
@@ -77,7 +78,7 @@ inline ::testing::PolymorphicMatcher<NodeStatsMatcher> EqualsNodeStats(
 TEST(HostTracerTest, CollectsTraceMeEventsAsRunMetadata) {
   uint32 thread_id = Env::Default()->GetCurrentThreadId();
 
-  auto tracer = CreateHostTracer(ProfilerOptions());
+  auto tracer = CreateHostTracer(ProfilerSession::DefaultOptions());
 
   TF_ASSERT_OK(tracer->Start());
   { TraceMe traceme("hello"); }
@@ -122,7 +123,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
         ASSERT_TRUE(Env::Default()->GetCurrentThreadName(&thread_name));
         thread_id = Env::Default()->GetCurrentThreadId();
 
-        auto tracer = CreateHostTracer(ProfilerOptions());
+        auto tracer = CreateHostTracer(ProfilerSession::DefaultOptions());
 
         TF_ASSERT_OK(tracer->Start());
         { TraceMe traceme("hello"); }

@@ -66,7 +66,8 @@ namespace {
 // across ops. This step is necessary for post-training quantization and also
 // making the quantization rule for some operations in the quantization-aware
 // training quantization simpler.
-class PrepareQuantizePass : public FunctionPass<PrepareQuantizePass> {
+class PrepareQuantizePass
+    : public PassWrapper<PrepareQuantizePass, FunctionPass> {
  public:
   // Constructor used by the PassRegistration and enforce uint8 quantization.
   explicit PrepareQuantizePass() {
@@ -281,7 +282,7 @@ void PrepareQuantizePass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareQuantize pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareQuantizePass(
+std::unique_ptr<OperationPass<FuncOp>> CreatePrepareQuantizePass(
     const QuantizationSpecs& quant_specs) {
   return std::make_unique<PrepareQuantizePass>(quant_specs);
 }

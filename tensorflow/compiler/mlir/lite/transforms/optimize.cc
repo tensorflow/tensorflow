@@ -74,7 +74,7 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
-struct Optimize : public FunctionPass<Optimize> {
+struct Optimize : public PassWrapper<Optimize, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -650,7 +650,7 @@ struct ConvertTrivialTransposeOpToReshapeOp
 
     auto input_shape = input_type.getShape();
     SmallVector<int64_t, 8> perm_values;
-    for (auto dim : perm_values_attr.getIntValues())
+    for (const auto &dim : perm_values_attr.getIntValues())
       perm_values.push_back(dim.getSExtValue());
 
     // This should never happen unless the input graph is malformed.
@@ -725,7 +725,7 @@ void Optimize::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateOptimizePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass() {
   return std::make_unique<Optimize>();
 }
 

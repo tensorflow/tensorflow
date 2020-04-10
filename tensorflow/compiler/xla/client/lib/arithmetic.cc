@@ -126,7 +126,7 @@ XlaComputation CreateMinMaxComputation(XlaBuilder* outer_builder,
   XlaOp rhs_index =
       Parameter(b, 3, ShapeUtil::MakeShape(index_type, {}), "rhs_index");
 
-  auto cmp = is_min ? Lt(lhs_value, rhs_value) : Gt(lhs_value, rhs_value);
+  auto cmp = is_min ? Le(lhs_value, rhs_value) : Ge(lhs_value, rhs_value);
   XlaOp max = Select(cmp, lhs_value, rhs_value);
   XlaOp arg_max = Select(cmp, lhs_index, rhs_index);
   Tuple(b, {max, arg_max});
@@ -178,36 +178,22 @@ XlaOp ArgMinMaxTwoPass(XlaOp input, PrimitiveType output_type, int axis,
       reducer = CreateScalarMaxComputation(input_shape.element_type(), builder);
     }
 
+    XlaOp iota = Iota(
+        builder, ShapeUtil::ChangeElementType(input_shape, output_type), axis);
     XlaOp input_max = Reduce(input, init_value, reducer,
                              /*dimensions_to_reduce=*/{axis});
     std::vector<int64> broadcast_dims(input_shape.rank() - 1);
     std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
     std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
-    // Compute a mask that has 1s for elements equal to the maximum.
-    XlaOp partial_mask =
-        ConvertElementType(Eq(input, input_max, broadcast_dims), output_type);
 
-    // In order to make identity elements for a bitwise And, we:
-    //   Left shift the 1 to the leftmost bit, yielding 0x10...0
-    //   Arithmetic right shift the 1 back to the rightmost bit, yielding
-    //   0xFF...F
-    int32 bits_in_type =
-        ShapeUtil::ByteSizeOfPrimitiveType(output_type) * 8 - 1;
-    XlaOp shift_amount = ConstantR0WithType(builder, output_type, bits_in_type);
-    XlaOp full_mask = ShiftRightArithmetic(
-        ShiftLeft(partial_mask, shift_amount), shift_amount);
+    XlaOp max_idx = MaxValue(builder, output_type);
+    XlaOp select_mask = Select(Eq(input, input_max, broadcast_dims),
+                               /*on_true=*/iota,
+                               /*on_false=*/
+                               max_idx);
 
-    // And with the vector [0, 1, 2, ...] to convert each 0xFF...F into its
-    // index.
-
-    const int64 axis_size = ShapeUtil::GetDimension(input_shape, axis);
-    XlaOp iota = Iota(builder, output_type, axis_size);
-    XlaOp product = And(full_mask, iota, /*broadcast_dimensions=*/{axis});
-
-    // If there are multiple maximum elements, choose the one with the highest
-    // index.
-    return Reduce(product, MinValue(builder, output_type),
-                  CreateScalarMaxComputation(output_type, builder),
+    return Reduce(select_mask, max_idx,
+                  CreateScalarMinComputation(output_type, builder),
                   /*dimensions_to_reduce=*/{axis});
   });
 }

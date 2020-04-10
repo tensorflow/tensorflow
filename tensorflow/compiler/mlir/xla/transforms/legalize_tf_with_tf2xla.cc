@@ -333,9 +333,13 @@ LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
   return success();
 }
 
-class LegalizeTF : public FunctionPass<LegalizeTF> {
+class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
  public:
   LegalizeTF() = default;
+
+  explicit LegalizeTF(llvm::StringRef device_type) {
+    device_type_ = device_type.str();
+  }
 
   LegalizeTF(const LegalizeTF&) {}
 
@@ -358,6 +362,11 @@ static PassRegistration<LegalizeTF> pass(
     "Legalize from TensorFlow to the HLO dialect using tf2xla kernels");
 
 }  // end namespace
+
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
+    llvm::StringRef device_type) {
+  return std::make_unique<LegalizeTF>(device_type);
+}
 
 }  // end namespace xla_hlo
 }  // end namespace mlir

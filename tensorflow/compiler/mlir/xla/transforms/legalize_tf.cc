@@ -55,7 +55,7 @@ namespace mlir {
 namespace xla_hlo {
 namespace {
 
-class LegalizeTF : public FunctionPass<LegalizeTF> {
+class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
  public:
   LegalizeTF() = default;
   LegalizeTF(const LegalizeTF &) {}
@@ -633,37 +633,24 @@ static bool ArgTypesMatchCallee(mlir::Operation *op, OperandRange args,
 static bool CanBeTranslatedToDynamicSlice(Value input, Value start_indices,
                                           DenseIntElementsAttr slice_sizes) {
   auto input_ty = input.getType().dyn_cast<RankedTensorType>();
+  if (!input_ty) return false;
+  auto start_indices_ty = start_indices.getType().dyn_cast<RankedTensorType>();
+  if (!start_indices_ty) return false;
+
   int64_t input_rank = input_ty.getRank();
   ArrayRef<int64_t> input_shape = input_ty.getShape();
   DenseIntElementsAttr constant_start_indices;
-  if (!matchPattern(start_indices, m_Constant(&constant_start_indices))) {
-    for (int64_t i = 0; i < input_rank; ++i) {
-      int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
-      int64_t input_size = input_shape[i];
-      if (slice_size < 0 || (input_size != -1 && slice_size > input_size)) {
-        return false;
-      }
-    }
-    return true;
-  }
+  bool is_constant_start =
+      matchPattern(start_indices, m_Constant(&constant_start_indices));
 
   for (int64_t i = 0; i < input_rank; ++i) {
     int64_t input_size = input_shape[i];
-    int64_t start_index =
-        constant_start_indices.getValue<IntegerAttr>(i).getInt();
     int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
-    if (start_index < 0) return false;
     // A slice_size of -1 means "all elements from start_index to the end".
-    // We can't support this semantics for dynamic shapes.
-    if (slice_size == -1) {
-      if (input_size == -1) return false;
-      slice_size = input_size - start_index;
-    }
-    if (input_size != -1 && start_index + slice_size > input_size) {
-      return false;
-    }
+    // In order to support these semantics, we need to know both the start index
+    // and the shape of the input dimension.
+    if (slice_size < 0 && (!is_constant_start || input_size < 0)) return false;
   }
-
   return true;
 }
 
@@ -767,7 +754,7 @@ NamedAttribute GetConvDimensionNumbersAttr(
 //
 // Sample result for Conv2D:
 //
-//   %conv = "xla_hlo.conv"(%input, %filter) {
+//   %conv = "xla_hlo.convolution"(%input, %filter) {
 //     strides = [1, 2],
 //     paddings = [[1, 0], [1, 1]],
 //     ...
@@ -1525,7 +1512,7 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
 //    %sub = "xla_hlo.subtract"(%inp, %max) {broadcast_dimensions = 0}
 //            : (tensor<BxNxf16>, tensor<Bxf16>) -> tensor<BxNxf16>
 //
-//    %exp = "xla_hlo.exp"(%sub) : (tensor<BxNxf16>) -> tensor<BxNxf16>
+//    %exp = "xla_hlo.exponential"(%sub) : (tensor<BxNxf16>) -> tensor<BxNxf16>
 //    %sum = "tf.Sum"(%exp, %reduce_dim)
 //            : (tensor<BxNxf32>, tensor<1xi64>) -> tensor<Bxf32>
 //
@@ -2221,7 +2208,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
     // to mark the reduced dimensions.
     SmallVector<bool, 4> reduced_dimensions_bitmap(input_shape.size(), false);
     SmallVector<int64_t, 4> xla_dimensions;
-    for (APInt index_raw : dimensions.getValues<APInt>()) {
+    for (const APInt &index_raw : dimensions.getValues<APInt>()) {
       int64_t index = index_raw.getSExtValue();
       int64_t rank = input_shape.size();
       if ((index < -rank || index >= rank)) return failure();
@@ -2660,7 +2647,7 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
 
 // Converts hlo.Conv2DBackpropInputOp into:
 //   %rev_filter = "xla_hlo.reverse"(%filter)
-//   %result = "xla_hlo.conv"(%out_backprop, %rev_filter)
+//   %result = "xla_hlo.convolution"(%out_backprop, %rev_filter)
 class ConvertConv2DBackpropInputOp
     : public OpRewritePattern<TF::Conv2DBackpropInputOp> {
  public:
@@ -2803,7 +2790,7 @@ class ConvertConv2DBackpropInputOp
 };
 
 // Converts tf.Conv2DBackpropFilterOp into:
-//   %result = "xla_hlo.conv"(%input, %out_backprop)
+//   %result = "xla_hlo.convolution"(%input, %out_backprop)
 class ConvertConv2DBackpropFilterOp
     : public OpRewritePattern<TF::Conv2DBackpropFilterOp> {
  public:
@@ -3829,7 +3816,7 @@ static PassRegistration<LegalizeTF> pass(
 
 }  // end namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeTFPass(
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
     bool allow_partial_conversion) {
   return std::make_unique<LegalizeTF>(allow_partial_conversion);
 }

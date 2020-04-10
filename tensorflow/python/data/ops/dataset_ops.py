@@ -152,14 +152,18 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     Elements may be nested structures containing multiple components. For
     example, the element `(1, (3, "apple"))` has one tuple nested in another
     tuple. The components are `1`, `3`, and `"apple"`.
+
   **Component**: The leaf in the nested structure of an element.
 
   Supported types:
 
   Elements can be nested structures of tuples, named tuples, and dictionaries.
-  Element components can be of any type representable by `tf.TypeSpec`,
-  including `tf.Tensor`, `tf.data.Dataset`, `tf.sparse.SparseTensor`,
-  `tf.RaggedTensor`, and `tf.TensorArray`.
+  Note that Python lists are *not* treated as nested structures of components.
+  Instead, lists are converted to tensors and treated as components. For
+  example, the element `(1, [1, 2, 3])` has only two components; the tensor `1`
+  and the tensor `[1, 2, 3]`. Element components can be of any type
+  representable by `tf.TypeSpec`, including `tf.Tensor`, `tf.data.Dataset`,
+  `tf.sparse.SparseTensor`, `tf.RaggedTensor`, and `tf.TensorArray`.
 
   >>> a = 1 # Integer element
   >>> b = 2.0 # Float element
@@ -193,6 +197,13 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
             lambda: weak_self._trace_variant_creation()()),  # pylint: disable=unnecessary-lambda,protected-access
         name="_variant_tracker")
     self._graph_attr = ops.get_default_graph()
+
+    # Initialize the options for this dataset and its inputs.
+    self._options_attr = Options()
+    for input_dataset in self._inputs():
+      input_options = input_dataset.options()
+      if input_options is not None:
+        self._options_attr = self._options_attr.merge(input_options)
 
   @property
   def _variant_tensor(self):
@@ -332,12 +343,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     Returns:
       A `tf.data.Options` object representing the dataset options.
     """
-    options = Options()
-    for input_dataset in self._inputs():
-      input_options = input_dataset.options()
-      if input_options is not None:
-        options = options.merge(input_options)
-    return options
+    return self._options_attr
 
   def _apply_options(self):
     """Apply options, such as optimization configuration, to the dataset."""
@@ -1669,8 +1675,8 @@ name=None))
 
   def interleave(self,
                  map_func,
-                 cycle_length=AUTOTUNE,
-                 block_length=1,
+                 cycle_length=None,
+                 block_length=None,
                  num_parallel_calls=None,
                  deterministic=None):
     """Maps `map_func` across this dataset, and interleaves the results.
@@ -1739,12 +1745,13 @@ name=None))
     Args:
       map_func: A function mapping a dataset element to a dataset.
       cycle_length: (Optional.) The number of input elements that will be
-        processed concurrently. If not specified, the value will be derived from
-        the number of available CPU cores. If the `num_parallel_calls` argument
-        is set to `tf.data.experimental.AUTOTUNE`, the `cycle_length` argument
-        also identifies the maximum degree of parallelism.
+        processed concurrently. If not set, the tf.data runtime decides what it
+        should be based on available CPU. If `num_parallel_calls` is set to
+        `tf.data.experimental.AUTOTUNE`, the `cycle_length` argument identifies
+        the maximum degree of parallelism.
       block_length: (Optional.) The number of consecutive elements to produce
-        from each input element before cycling to another input element.
+        from each input element before cycling to another input element. If not
+        set, defaults to 1.
       num_parallel_calls: (Optional.) If specified, the implementation creates a
         threadpool, which is used to fetch inputs from cycle elements
         asynchronously and in parallel. The default behavior is to fetch inputs
@@ -1761,6 +1768,12 @@ name=None))
     Returns:
       Dataset: A `Dataset`.
     """
+    if block_length is None:
+      block_length = 1
+
+    if cycle_length is None:
+      cycle_length = AUTOTUNE
+
     if num_parallel_calls is None:
       return InterleaveDataset(self, map_func, cycle_length, block_length)
     else:
@@ -4197,6 +4210,7 @@ class InterleaveDataset(UnaryDataset):
 
   def __init__(self, input_dataset, map_func, cycle_length, block_length):
     """See `Dataset.interleave()` for details."""
+
     self._input_dataset = input_dataset
     self._map_func = StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
@@ -4413,16 +4427,16 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset, options):
     self._input_dataset = input_dataset
-    self._options = input_dataset.options()
-    if self._options:
-      self._options = self._options.merge(options)
-    else:
-      self._options = options
     variant_tensor = input_dataset._variant_tensor  # pylint: disable=protected-access
     super(_OptionsDataset, self).__init__(input_dataset, variant_tensor)
 
+    if self._options_attr:
+      self._options_attr = self._options_attr.merge(options)
+    else:
+      self._options_attr = options
+
   def options(self):
-    return self._options
+    return self._options_attr
 
 
 class _ModelDataset(UnaryUnchangedStructureDataset):

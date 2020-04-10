@@ -80,8 +80,7 @@ const string& DeviceNameOrUnspecified(Device* device) {
   return (device == nullptr) ? *unspecified_string : device->name();
 }
 
-const string& DeviceNameOrUnspecified(
-    absl::variant<Device*, CustomDevice*> device) {
+const string& DeviceNameOrUnspecified(VariantDevice device) {
   if (VariantDeviceIsCustom(device)) {
     return absl::get<CustomDevice*>(device)->name();
   } else {
@@ -374,7 +373,10 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
 //    running without an explicitly requested device.
 Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                          int* num_retvals) {
-  auto op_annotation = ScopedMemoryDebugAnnotation(op->op_name());
+  ScopedMemoryDebugAnnotation op_annotation(
+      op->op_name(), op->remote_func_params().has_value()
+                         ? op->remote_func_params().value().step_id.value_or(0)
+                         : 0);
   profiler::TraceMe activity(
       [&] { return absl::StrCat("EagerLocalExecute: ", op->Name()); },
       profiler::TraceMeLevel::kInfo);

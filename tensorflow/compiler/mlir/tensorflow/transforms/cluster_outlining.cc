@@ -39,7 +39,7 @@ constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncAttr[] = "func";
 
 struct ClusterOutliningPass
-    : public OperationPass<ClusterOutliningPass, ModuleOp> {
+    : public PassWrapper<ClusterOutliningPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -65,6 +65,10 @@ FuncOp BuildFunction(StringRef device, llvm::ArrayRef<Value> live_ins,
   std::string func_name_prefix = Twine(device, "_func").str();
   FuncOp outlined_func =
       FuncOp::create(launch_op.getLoc(), func_name_prefix, func_type);
+
+  // This function is not externally visible and marking it private would allow
+  // symbol-dce pass to remove it when it is not referenced anymore.
+  outlined_func.setVisibility(FuncOp::Visibility::Private);
 
   // Create function body.
   Block* outlined_func_block = outlined_func.addEntryBlock();
@@ -132,7 +136,7 @@ void ClusterOutliningPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateClusterOutliningPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass() {
   return std::make_unique<ClusterOutliningPass>();
 }
 

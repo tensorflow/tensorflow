@@ -2004,7 +2004,7 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
   llvm::SmallVector<mlir::Type, 4> arg_types;
   arg_types.reserve(specs.inputs.size());
   int i = 0;
-  for (auto it : specs.inputs) {
+  for (const auto& it : specs.inputs) {
     Node* arg_node = arg_nodes->at(i).node;
     if (arg_node == nullptr) {
       return errors::InvalidArgument("Input ", it.first,

@@ -205,12 +205,10 @@ filegroup(
         "@opt_einsum_archive//:LICENSE",
         "@org_python_pypi_backports_weakref//:LICENSE",
         "@pasta//:LICENSE",
-        "@pcre//:LICENCE",
         "@png//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@sobol_data//:LICENSE",
-        "@swig//:LICENSE",
         "@termcolor_archive//:COPYING.txt",
         "@zlib//:zlib.h",
     ] + select({

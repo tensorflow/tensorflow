@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/any.h"
 #include "absl/types/optional.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
@@ -305,8 +306,8 @@ class Model : public Graph<TensorT> {
 
     // check if this value has the same producer already
     if (node_ptr == v->producer) {
-      return absl::InvalidArgumentError(
-          "Node is already a producer of the value");
+      return absl::AlreadyExistsError(absl::StrCat(
+          "Node ", producer, " is already a producer of the value ", value));
     }
 
     // Check if the node is a consumer of this value.
@@ -389,8 +390,8 @@ class Model : public Graph<TensorT> {
 
     // check if this value has the same consumer already
     if (IsInput(consumer, value)) {
-      return absl::InvalidArgumentError(
-          "Node is already a consumer of the value");
+      return absl::AlreadyExistsError(absl::StrCat(
+          "Node ", consumer, " is already a consumer of the value ", value));
     }
 
     n->inputs.push_back(value_ptr);

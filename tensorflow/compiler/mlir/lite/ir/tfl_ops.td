@@ -106,6 +106,22 @@ class DerivedShapeAttr<code body> : DerivedAttr<"ArrayRef<int64_t>", body>;
 class DerivedTFLiteTypeAttr<code body> :
   DerivedAttr<"tflite::TensorType", body>;
 
+// TFL Runtime op trait predicate.
+class TFL_RuntimePredOpTrait<string desc, Pred pred> :
+    GenInternalOpTrait<"TFLRuntimeOpTrait"> {
+  Pred tflRuntimePredicate = pred;
+  string tflRuntimeDescription = desc;
+}
+
+class TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<
+    int i, int j, int max_bcast_rank> :
+  TFL_RuntimePredOpTrait<"operand #" # i # " and operand #" # j #
+      " have the same shape or broadcastable shapes within the rank " #
+      max_bcast_rank,
+    CPred<"TFL::IsBinaryOperandsHaveSameShapesOrBroadcastableShape("
+              "$_op.getOperand(" # i # ").getType(), $_op.getOperand(" # j #
+              ").getType(), " # max_bcast_rank # ")">>;
+
 // These additional types/type constraints here are used to decouple the ops
 // from runtime support for the ops. Prefer to use these types when defining
 // new TF_Ops for uniformity.
@@ -344,7 +360,10 @@ class TFL_ConvOp<string mnemonic, string opSummary, int index> :
 // TFL op definitions.
 //===----------------------------------------------------------------------===//
 def TFL_AbsOp : TFL_Op<"abs", [
-    NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
+    NoSideEffect,
+    SameOperandsAndResultType,
+    NoQuantizableResult,
+    TFL_GpuTargetOp]> {
   let summary = "Absolute value operator";
 
   let description = [{
@@ -360,10 +379,9 @@ an output element, this operation computes \\(y = |x|\\).
   let hasFolder = 1;
 }
 
-def TFL_AddOp : TFL_Op<"add", [ResultsBroadcastableShape,
-                               NoSideEffect,
-                               Commutative,
-                               TFL_GpuTargetOp]> {
+def TFL_AddOp : TFL_Op<"add", [
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 5>,
+    ResultsBroadcastableShape, NoSideEffect, Commutative, TFL_GpuTargetOp]> {
   let summary = "Addition operator";
 
   let description = [{
@@ -371,11 +389,11 @@ def TFL_AddOp : TFL_Op<"add", [ResultsBroadcastableShape,
   }];
 
   let arguments = (
-    ins AnyTensor:$lhs,
-    AnyTensor:$rhs,
+    ins TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$lhs,
+    TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$rhs,
     TFL_AFAttr:$fused_activation_function);
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[F32, I32, QI8, QUI8, QI16]>:$output);
 
   let hasFolder = 1;
 
@@ -1527,7 +1545,10 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
 }
 
 def TFL_LogOp: TFL_Op<"log", [
-    NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
+    NoSideEffect,
+    SameOperandsAndResultType,
+    NoQuantizableResult,
+    TFL_GpuTargetOp]> {
   let summary = "Natural logarithm operator";
 
   let description = [{
@@ -2072,7 +2093,10 @@ def TFL_PadV2Op : TFL_Op<"padv2", [
   let hasOptions = 1;
 }
 
-def TFL_PowOp : TFL_Op<"pow", [ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
+def TFL_PowOp : TFL_Op<"pow", [ResultsBroadcastableShape,
+                               NoSideEffect,
+                               NoQuantizableResult,
+                               TFL_GpuTargetOp]> {
   let summary = "Power operator";
 
   let description = [{
@@ -2092,7 +2116,7 @@ def TFL_PowOp : TFL_Op<"pow", [ResultsBroadcastableShape, NoSideEffect, NoQuanti
   let builders = [TFL_BroadcastableBinaryBuilder];
 }
 
-def TFL_PReluOp : TFL_Op<"prelu", [NoSideEffect]> {
+def TFL_PReluOp : TFL_Op<"prelu", [NoSideEffect, TFL_GpuTargetOp]> {
   let summary = "Parameterized Relu operator";
 
   let description = [{

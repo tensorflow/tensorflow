@@ -62,7 +62,8 @@ namespace cutil = TF::collection_ops_util;
 //
 // The pass also works across control flow and functional calls.
 struct TensorListOpsDecompositionPass
-    : public OperationPass<TensorListOpsDecompositionPass, ModuleOp> {
+    : public PassWrapper<TensorListOpsDecompositionPass,
+                         OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -383,7 +384,7 @@ LogicalResult GetConstShapeValue(Value shape_value,
   if (!shape_op) return failure();
   auto shape_const_op = llvm::dyn_cast<TF::ConstOp>(shape_op);
   if (!shape_const_op) return failure();
-  for (auto v : shape_const_op.value().getValues<APInt>()) {
+  for (const auto& v : shape_const_op.value().getValues<APInt>()) {
     shape->push_back(v.getSExtValue());
   }
   return success();
@@ -728,7 +729,8 @@ static PassRegistration<TensorListOpsDecompositionPass> pass(
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTensorListOpsDecompositionPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTensorListOpsDecompositionPass() {
   return std::make_unique<TensorListOpsDecompositionPass>();
 }
 }  // namespace TF

@@ -354,7 +354,8 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
 }
 
 // Transform Einsum to other TF Ops for the supported variants.
-struct TransformEinsumPass : public FunctionPass<TransformEinsumPass> {
+struct TransformEinsumPass
+    : public PassWrapper<TransformEinsumPass, FunctionPass> {
   void runOnFunction() override;
 };
 

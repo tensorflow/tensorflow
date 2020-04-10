@@ -44,11 +44,11 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_AVERAGE_POOL_2D, Register_AVERAGE_POOL_2D(),
-             /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* min_version */ 1,
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_MAX_POOL_2D, Register_MAX_POOL_2D(),
-             /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* min_version */ 1,
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_L2_POOL_2D, Register_L2_POOL_2D());
   AddBuiltin(BuiltinOperator_CONV_2D, Register_CONV_2D(),
              /* min_version = */ 1,
@@ -255,7 +255,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version = */ 1,
              /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_SQUARED_DIFFERENCE, Register_SQUARED_DIFFERENCE());
-  AddBuiltin(BuiltinOperator_FILL, Register_FILL());
+  AddBuiltin(BuiltinOperator_FILL, Register_FILL(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_MIRROR_PAD, Register_MIRROR_PAD());
   AddBuiltin(BuiltinOperator_UNIQUE, Register_UNIQUE());
   AddBuiltin(BuiltinOperator_REVERSE_V2, Register_REVERSE_V2(),

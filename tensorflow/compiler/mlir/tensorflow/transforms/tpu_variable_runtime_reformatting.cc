@@ -116,7 +116,8 @@ std::string GetRandomStateVariableName() {
 //    tf.TPUReshardVariablesOp(%rvar, %default_format, %rstate)
 //  }
 struct TPUVariableRuntimeReformattingPass
-    : public OperationPass<TPUVariableRuntimeReformattingPass, ModuleOp> {
+    : public PassWrapper<TPUVariableRuntimeReformattingPass,
+                         OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -575,7 +576,7 @@ void TPUVariableRuntimeReformattingPass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUVariableReformattingPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass() {
   return std::make_unique<TPUVariableRuntimeReformattingPass>();
 }
 

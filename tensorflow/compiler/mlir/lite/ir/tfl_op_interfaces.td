@@ -86,7 +86,7 @@ def TFL_RuntimeVerification : OpInterface<"TflRuntimeVerifyOpInterface"> {
   let methods = [
     StaticInterfaceMethod<
       [{Returns whether the op's operands/results are supported by runtime.}],
-      "LogicalResult", "VerifyTflRuntimeTypes",
+      "LogicalResult", "VerifyTflRuntimeConstraints",
       (ins "Operation*":$op, "bool":$failure_on_operand_type_mismatch)
     >,
   ];

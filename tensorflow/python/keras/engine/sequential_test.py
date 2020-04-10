@@ -441,6 +441,12 @@ class TestSequential(keras_parameterized.TestCase):
     self.assertEqual(new_model._layers[0].dtype, 'int32')
     self.assertEqual(new_model._layers[0].name, 'my_embedding_input')
 
+  def test_name_unicity(self):
+    model = keras.Sequential()
+    model.add(keras.layers.Dense(3, name='specific_name'))
+    with self.assertRaisesRegexp(ValueError, 'should have unique names'):
+      model.add(keras.layers.Dense(3, name='specific_name'))
+
 
 class TestSequentialEagerIntegration(keras_parameterized.TestCase):
 

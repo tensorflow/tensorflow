@@ -17,6 +17,9 @@ cc_library(
     name = "logging",
     hdrs = ["logging.h"],
     copts = common_copts,
+    deps = [
+        "//tensorflow/lite/tools:logging",
+    ],
 )
 
 cc_binary(
@@ -107,6 +110,7 @@ cc_test(
         ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",
         ":delegate_provider_hdr",
+        ":logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/testing:util",
@@ -128,6 +132,7 @@ cc_library(
         "//tensorflow/lite/profiling:profile_summarizer",
         "//tensorflow/lite/profiling:profile_summary_formatter",
         "//tensorflow/lite/profiling:profiler",
+        "//tensorflow/lite/tools:logging",
     ],
 )
 
@@ -142,31 +147,23 @@ cc_library(
         "//conditions:default": [],
     }),
     deps = [
-        ":profiling_listener",
         ":benchmark_model_lib",
         ":benchmark_utils",
         ":delegate_provider_hdr",
-        ":gpu_delegate_provider",
-        ":hexagon_delegate_provider",
-        ":external_delegate_provider",
         ":logging",
-        ":nnapi_delegate_provider",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
+        ":profiling_listener",
+        ":tflite_execution_providers",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
-        "@ruy//ruy/profiler",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/profiling:platform_profiler",
-        "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/profiling:profile_summary_formatter",
+        "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools/evaluation:utils",
-    ] + select({
-        "//tensorflow:fuchsia": [],
-        "//conditions:default": [
-            ":xnnpack_delegate_provider",
-        ],
-    }),
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
+        "@ruy//ruy/profiler",
+    ],
 )
 
 cc_library(
@@ -197,12 +194,9 @@ cc_library(
 
 cc_library(
     name = "benchmark_params",
-    srcs = [
-        "benchmark_params.cc",
-    ],
     hdrs = ["benchmark_params.h"],
     copts = common_copts,
-    deps = [":logging"],
+    deps = ["//tensorflow/lite/tools:tool_params"],
 )
 
 cc_library(
@@ -235,7 +229,39 @@ cc_library(
         ":benchmark_params",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools/benchmark:logging",
     ],
+)
+
+# A convenient library for all inference execution providers.
+cc_library(
+    name = "tflite_execution_providers",
+    copts = tflite_copts(),
+    deps = [
+        ":default_execution_provider",
+        ":external_delegate_provider",
+        ":gpu_delegate_provider",
+        ":hexagon_delegate_provider",
+        ":nnapi_delegate_provider",
+    ] + select({
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": [
+            ":xnnpack_delegate_provider",
+        ],
+    }),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "default_execution_provider",
+    srcs = ["default_execution_provider.cc"],
+    copts = tflite_copts(),
+    linkstatic = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":delegate_provider_hdr",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -248,10 +274,7 @@ cc_library(
         "//conditions:default": [],
     }),
     deps = [
-        ":benchmark_model_lib",
-        ":benchmark_params",
         ":delegate_provider_hdr",
-        ":logging",
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
         "//tensorflow:android": [
@@ -270,10 +293,7 @@ cc_library(
     srcs = ["nnapi_delegate_provider.cc"],
     copts = common_copts,
     deps = [
-        ":benchmark_model_lib",
-        ":benchmark_params",
         ":delegate_provider_hdr",
-        ":logging",
         "//tensorflow/lite/tools/evaluation:utils",
     ],
     alwayslink = 1,
@@ -284,10 +304,7 @@ cc_library(
     srcs = ["hexagon_delegate_provider.cc"],
     copts = common_copts,
     deps = [
-        ":benchmark_model_lib",
-        ":benchmark_params",
         ":delegate_provider_hdr",
-        ":logging",
         "//tensorflow/lite/tools/evaluation:utils",
     ],
     alwayslink = 1,
@@ -300,9 +317,7 @@ cc_library(
     linkstatic = True,
     visibility = ["//visibility:public"],
     deps = [
-        ":benchmark_model_lib",
         ":delegate_provider_hdr",
-        ":logging",
         "//tensorflow/lite/tools/evaluation:utils",
     ],
     alwayslink = 1,
@@ -315,9 +330,7 @@ cc_library(
     linkstatic = True,
     visibility = ["//visibility:public"],
     deps = [
-        ":benchmark_model_lib",
         ":delegate_provider_hdr",
-        ":logging",
     ],
     alwayslink = 1,
 )

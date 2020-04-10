@@ -39,7 +39,7 @@ namespace mlir {
 
 namespace {
 struct ExecutorToControlDialectConversion
-    : public FunctionPass<ExecutorToControlDialectConversion> {
+    : public PassWrapper<ExecutorToControlDialectConversion, FunctionPass> {
   void runOnFunction() override;
 };
 }  // end anonymous namespace
@@ -230,7 +230,7 @@ void ExecutorToControlDialectConversion::runOnFunction() {
   graph.erase();
 }
 
-std::unique_ptr<OpPassBase<FuncOp>>
+std::unique_ptr<OperationPass<FuncOp>>
 CreateTFExecutorToControlDialectConversion() {
   return std::make_unique<ExecutorToControlDialectConversion>();
 }

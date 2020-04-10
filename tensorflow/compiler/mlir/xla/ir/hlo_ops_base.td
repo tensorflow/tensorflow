@@ -37,6 +37,11 @@ def HLO_Token : Type<CPred<"$_self.isa<TokenType>()">, "token">;
 // Any integer tensor types
 def HLO_IntTensor : TensorOf<[HLO_Int]>;
 
+// Any integer tensor type with rank 0 (i.e. representing a single integer).
+def HLO_ScalarIntTensor : ShapedContainerType<
+  [HLO_Int], And<[IsTensorTypePred, HasAnyRankOfPred<[0]>]>,
+  "a 0-dim integer tensor">;
+
 // Any floating-point tensor types
 def HLO_FpTensor : TensorOf<[AnyFloat]>;
 

@@ -36,7 +36,8 @@ constexpr char kDelegateFlag[] = "delegate";
 bool EvaluateModel(const std::string& model_file_path,
                    const std::string& delegate, int num_runs,
                    const std::string& output_file_path,
-                   int num_interpreter_threads) {
+                   int num_interpreter_threads,
+                   const DelegateProviders& delegate_providers) {
   // Initialize evaluation stage.
   EvaluationStageConfig eval_config;
   eval_config.set_name("inference_profiling");
@@ -54,7 +55,7 @@ bool EvaluateModel(const std::string& model_file_path,
     return false;
   }
   InferenceProfilerStage eval(eval_config);
-  if (eval.Init() != kTfLiteOk) return false;
+  if (eval.Init(&delegate_providers) != kTfLiteOk) return false;
 
   // Run inference & check diff for specified number of runs.
   for (int i = 0; i < num_runs; ++i) {
@@ -94,8 +95,10 @@ int Main(int argc, char* argv[]) {
   };
   tflite::Flags::Parse(&argc, const_cast<const char**>(argv), flag_list);
 
+  DelegateProviders delegate_providers;
+  delegate_providers.InitFromCmdlineArgs(&argc, const_cast<const char**>(argv));
   if (!EvaluateModel(model_file_path, delegate, num_runs, output_file_path,
-                     num_interpreter_threads)) {
+                     num_interpreter_threads, delegate_providers)) {
     LOG(ERROR) << "Could not evaluate model!";
     return EXIT_FAILURE;
   }

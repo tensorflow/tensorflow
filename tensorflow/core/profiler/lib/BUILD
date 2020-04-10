@@ -26,6 +26,7 @@ cc_library(
     deps = [
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ] + if_static([
@@ -50,6 +51,7 @@ cc_library(
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/util:ptr_util",
     ] + if_not_android([
         ":profiler_utils",

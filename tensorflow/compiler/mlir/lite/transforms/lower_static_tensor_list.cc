@@ -82,7 +82,7 @@ class TensorListPatternRewriter : public PatternRewriter {
 
 /// Lower TensorList ops in functions for subsequent legalization.
 struct LowerStaticTensorListPass
-    : public OperationPass<LowerStaticTensorListPass, ModuleOp> {
+    : public PassWrapper<LowerStaticTensorListPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 
   // Apply type and op changes within a function.
@@ -720,7 +720,7 @@ struct ConvertTensorListStack
         RankedTensorType::get({-1}, rewriter.getIntegerType(32));
     auto new_shape = rewriter.create<TF::ShapeOp>(loc, shape_type, input);
     SmallVector<int64_t, 8> output_shape = {op.num_elements().getSExtValue()};
-    for (auto dim : dense_elem_attr.getIntValues())
+    for (const auto &dim : dense_elem_attr.getIntValues())
       output_shape.push_back(dim.getSExtValue());
     RankedTensorType result_type =
         RankedTensorType::get(output_shape, getElementTypeOrSelf(input));
@@ -906,7 +906,8 @@ void LowerStaticTensorListPass::runOnOperation() {
 
 /// Creates an instance of the TensorFlow Lite dialect LowerStaticTensorList
 /// pass.
-std::unique_ptr<OpPassBase<ModuleOp>> TFL::CreateLowerStaticTensorListPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+TFL::CreateLowerStaticTensorListPass() {
   return std::make_unique<LowerStaticTensorListPass>();
 }
 

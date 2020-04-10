@@ -1413,6 +1413,24 @@ PyLocalExecutable::Execute(absl::Span<PyLocalBuffer* const> argument_handles,
                        RunId(), options);
 }
 
+StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
+PyLocalExecutable::ExecuteOnLocalDevice(
+    absl::Span<PyLocalBuffer* const> argument_handles, Device* device,
+    const ExecuteOptions& options) const {
+  for (int i = 0; i < local_devices_.size(); ++i) {
+    if (local_devices_[i] == device) {
+      VLOG(1) << "Executing computation " << name();
+      return ExecuteHelper(argument_handles,
+                           /*replica=*/local_logical_device_ids_[i].first,
+                           /*partition=*/local_logical_device_ids_[i].second,
+                           RunId(), options);
+    }
+  }
+  return InvalidArgument(
+      "Attempted to execute on device id %d which is not a local device",
+      device->id());
+}
+
 StatusOr<std::vector<std::vector<std::unique_ptr<PyLocalBuffer>>>>
 PyLocalExecutable::ExecuteOnLocalDevices(
     absl::Span<const std::vector<PyLocalBuffer*>> argument_handles,
@@ -1435,8 +1453,8 @@ PyLocalExecutable::ExecuteOnLocalDevices(
 
   VLOG(1) << "Executing computation " << name()
           << "; num_replicas=" << num_replicas()
-          << " num_partitions=" << num_partitions() << " num_local_devices=8"
-          << num_local_devices;
+          << " num_partitions=" << num_partitions()
+          << " num_local_devices=" << num_local_devices;
   std::vector<StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>> results(
       num_local_devices);
   if (num_local_devices == 1) {

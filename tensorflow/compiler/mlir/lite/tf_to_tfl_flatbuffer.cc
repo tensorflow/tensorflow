@@ -40,7 +40,7 @@ limitations under the License.
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
-std::unique_ptr<OpPassBase<FuncOp>>
+std::unique_ptr<OperationPass<FuncOp>>
 CreateTFExecutorToControlDialectConversion();
 }  // namespace mlir
 

@@ -45,7 +45,7 @@ namespace {
 // otherwise _tf operations are wrapped in an island and the _ prefix is
 // removed. Control dependencies are moved to be handled by the island itself.
 struct ControlToExecutorDialectConversion
-    : public FunctionPass<ControlToExecutorDialectConversion> {
+    : public PassWrapper<ControlToExecutorDialectConversion, FunctionPass> {
   void runOnFunction() override;
 
  private:
@@ -237,7 +237,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
   }
 }
 
-OpPassBase<FuncOp> *CreateTFControlToExecutorDialectConversion() {
+OperationPass<FuncOp> *CreateTFControlToExecutorDialectConversion() {
   return new ControlToExecutorDialectConversion();
 }
 

@@ -13,21 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_XLA_QUANTIZE_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_XLA_QUANTIZE_H_
+#include "pybind11/pybind11.h"
 
-#include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
-#include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/core/platform/status.h"
-
-namespace mlir {
-namespace xla_hlo {
-
-// Quantizes the model in the computation.
-tensorflow::Status XlaQuantize(const tensorflow::tf2xla::Config& config,
-                               xla::XlaComputation* computation);
-
-}  // namespace xla_hlo
-}  // namespace mlir
-
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_XLA_QUANTIZE_H_
+// This logic allows Python to import _pywrap_tensorflow_internal.so by
+// creating a PyInit function and exposing it. It is required in opensource
+// only.
+PYBIND11_MODULE(_pywrap_tensorflow_internal, m){};

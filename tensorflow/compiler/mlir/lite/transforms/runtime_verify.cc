@@ -22,33 +22,32 @@ namespace mlir {
 namespace TFL {
 namespace {
 
-// This pass verifies that the operands and results types are supported by
-// TFLite runtime.
-class RuntimeTypeVerifyPass : public mlir::FunctionPass<RuntimeTypeVerifyPass> {
+// This pass verifies that the TFL ops meet the TFL runtime constraints.
+class RuntimeVerifyPass
+    : public mlir::PassWrapper<RuntimeVerifyPass, FunctionPass> {
  public:
-  explicit RuntimeTypeVerifyPass() {}
+  explicit RuntimeVerifyPass() {}
 
  private:
   void runOnFunction() override;
 };
 
-void RuntimeTypeVerifyPass::runOnFunction() {
+void RuntimeVerifyPass::runOnFunction() {
   getFunction().walk([&](TflRuntimeVerifyOpInterface op) {
-    if (failed(op.VerifyTflRuntimeTypes(
-            op.getOperation(),
-            /*failure_on_operand_type_mismatch=*/true)))
+    if (failed(op.VerifyTflRuntimeConstraints(
+            op.getOperation(), /*failure_on_operand_type_mismatch=*/true)))
       signalPassFailure();
   });
 }
 }  // namespace
 
-// Verifies runtime supports types used.
-std::unique_ptr<OpPassBase<FuncOp>> CreateRuntimeTypeVerifyPass() {
-  return std::make_unique<RuntimeTypeVerifyPass>();
+// Verifies TFL runtime constraints.
+std::unique_ptr<OperationPass<FuncOp>> CreateRuntimeVerifyPass() {
+  return std::make_unique<RuntimeVerifyPass>();
 }
 
-static PassRegistration<RuntimeTypeVerifyPass> pass(
-    "tfl-runtime-verify", "TFLite runtime verification");
+static PassRegistration<RuntimeVerifyPass> pass("tfl-runtime-verify",
+                                                "TFLite runtime verification");
 
 }  // namespace TFL
 }  // namespace mlir

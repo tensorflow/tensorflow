@@ -329,6 +329,9 @@ class PyLocalBuffer {
       std::shared_ptr<void> buffer_reference, PyLocalClient* client,
       Device* device);
 
+  // Note that literal must remain in scope until the transfer has completed, so
+  // the caller should, for example, wait for BlockHostUntilReady() completes on
+  // the return value before letting literal go out of scope.
   static StatusOr<std::unique_ptr<PyLocalBuffer>> FromHostLiteral(
       const LiteralSlice& literal, PyLocalClient* client, Device* device);
 
@@ -556,6 +559,10 @@ class PyLocalExecutable {
 
   StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> Execute(
       absl::Span<PyLocalBuffer* const> argument_handles,
+      const ExecuteOptions& options) const;
+
+  StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> ExecuteOnLocalDevice(
+      absl::Span<PyLocalBuffer* const> argument_handles, Device* device,
       const ExecuteOptions& options) const;
 
   // Execute on local devices. Takes a sequence of argument lists (one argument

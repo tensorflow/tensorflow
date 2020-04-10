@@ -276,7 +276,7 @@ int64_t GetFirstIfIndicesAreContiguous(Value indices) {
   if (!const_op) return -1;
   int64_t last_index = -1;
   int64_t first_index = -1;
-  for (auto ind : const_op.value().getValues<APInt>()) {
+  for (const auto& ind : const_op.value().getValues<APInt>()) {
     if (last_index == -1) {
       last_index = ind.getSExtValue();
       first_index = last_index;

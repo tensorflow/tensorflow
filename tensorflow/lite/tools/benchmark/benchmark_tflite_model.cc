@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/delegate_provider.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/benchmark/profiling_listener.h"
-#include "tensorflow/lite/tools/evaluation/utils.h"
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
 
@@ -270,13 +269,11 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<int32_t>(1024));
   default_params.AddParam("profiling_output_csv_file",
                           BenchmarkParam::Create<std::string>(""));
-  default_params.AddParam("max_delegated_partitions",
-                          BenchmarkParam::Create<int32_t>(0));
   default_params.AddParam("enable_platform_tracing",
                           BenchmarkParam::Create<bool>(false));
 
   for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
-    delegate_util->AddParams(&default_params);
+    default_params.Merge(delegate_util->DefaultParams());
   }
 
   return default_params;
@@ -296,7 +293,7 @@ void BenchmarkTfLiteModel::CleanUp() {
 BenchmarkTfLiteModel::~BenchmarkTfLiteModel() { CleanUp(); }
 
 std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
-  std::vector<Flag> flags = BenchmarkTfLiteModel::BenchmarkModel::GetFlags();
+  std::vector<Flag> flags = BenchmarkModel::GetFlags();
   std::vector<Flag> specific_flags = {
       CreateFlag<std::string>("graph", &params_, "graph file name"),
       CreateFlag<std::string>("input_layer", &params_, "input layer names"),
@@ -329,8 +326,6 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "profiling_output_csv_file", &params_,
           "File path to export profile data as CSV, if not set "
           "prints to stdout."),
-      CreateFlag<int>("max_delegated_partitions", &params_,
-                      "Max partitions to be delegated."),
       CreateFlag<bool>("enable_platform_tracing", &params_,
                        "enable platform-wide tracing, only meaningful when "
                        "--enable_op_profiling is set to true.")};
@@ -374,8 +369,6 @@ void BenchmarkTfLiteModel::LogParams() {
   TFLITE_LOG(INFO) << "CSV File to export profiling data to: ["
                    << params_.Get<std::string>("profiling_output_csv_file")
                    << "]";
-  TFLITE_LOG(INFO) << "Max number of delegated partitions : ["
-                   << params_.Get<int32_t>("max_delegated_partitions") << "]";
   TFLITE_LOG(INFO) << "Enable platform-wide tracing: ["
                    << params_.Get<bool>("enable_platform_tracing") << "]";
 

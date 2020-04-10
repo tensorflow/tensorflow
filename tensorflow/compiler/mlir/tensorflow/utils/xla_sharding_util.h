@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 
 namespace tensorflow {
 
@@ -67,6 +68,12 @@ void RemapOutputsFromLogicalDevices(
     mlir::tf_device::LaunchFuncOp launch_func,
     mlir::tf_device::ParallelExecuteOp parallel_execute,
     mlir::OpBuilder* builder);
+
+// Determines each logical core argument to metadata argument index mapping,
+// based on sharding. The return value is indexed first by logical core then by
+// argument index.
+llvm::SmallVector<llvm::SmallVector<int64_t, 4>, 4> GetMetadataArgumentMapping(
+    const tpu::TPUCompileMetadataProto& metadata);
 
 }  // namespace tensorflow
 

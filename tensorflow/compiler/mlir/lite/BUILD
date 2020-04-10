@@ -307,7 +307,7 @@ cc_library(
         "transforms/optimize_functional_ops.cc",
         "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",
-        "transforms/runtime_type_verify.cc",
+        "transforms/runtime_verify.cc",
         "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
         "transforms/while_loop_outline.cc",
@@ -533,6 +533,15 @@ tf_native_cc_binary(
     srcs = ["flatbuffer_to_string.cc"],
     deps = [
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
+        "@flatbuffers",
+    ],
+)
+
+tf_native_cc_binary(
+    name = "json_to_flatbuffer",
+    srcs = ["json_to_flatbuffer.cc"],
+    deps = [
+        "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers",
     ],
 )

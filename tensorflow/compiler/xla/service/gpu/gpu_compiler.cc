@@ -152,9 +152,11 @@ Status GpuCompiler::OptimizeHloModule(
 
     pipeline.AddPass<Convolution4DExpander>();
 
-    auto cost_model = [](HloInstruction*) {
-      // We need a cost model for GPUs. Currently, do nothing.
-      return false;
+    auto cost_model = [](HloInstruction* conv) {
+      auto operand = conv->operand(0);
+      return operand->shape().dimensions(conv->convolution_dimension_numbers()
+                                             .input_batch_dimension()) ==
+             conv->batch_group_count();
     };
     pipeline.AddPass<DepthwiseConvolutionConverter>(cost_model);
 

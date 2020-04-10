@@ -12,6 +12,7 @@ glob_lit_tests(
     test_file_exts = [
         "mlir",
         "cc",
+        "json",
     ],
 )
 
@@ -24,6 +25,8 @@ filegroup(
         ":importer_test_min_max",
         "//tensorflow/compiler/mlir/lite:flatbuffer_to_string",
         "//tensorflow/compiler/mlir/lite:flatbuffer_translate",
+        "//tensorflow/compiler/mlir/lite:json_to_flatbuffer",
+        "//tensorflow/lite/schema:schema.fbs",
         "@llvm-project//llvm:FileCheck",
     ],
 )

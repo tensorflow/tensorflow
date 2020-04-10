@@ -1568,6 +1568,51 @@ XlaOp XlaBuilder::CustomCall(
   });
 }
 
+XlaOp XlaBuilder::CustomCall(
+    const string& call_target_name, absl::Span<const XlaOp> operands,
+    const XlaComputation& computation, const Shape& shape, const string& opaque,
+    absl::optional<absl::Span<const Shape>> operand_shapes_with_layout) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    if (absl::StartsWith(call_target_name, "$")) {
+      return InvalidArgument(
+          "Invalid custom_call_target \"%s\": Call targets that start with '$' "
+          "are reserved for internal use.",
+          call_target_name);
+    }
+    *instr.mutable_shape() = shape.ToProto();
+    instr.set_custom_call_target(call_target_name);
+    instr.set_backend_config(opaque);
+    if (operand_shapes_with_layout.has_value()) {
+      if (!LayoutUtil::HasLayout(shape)) {
+        return InvalidArgument(
+            "Result shape must have layout for custom call with constrained "
+            "layout.");
+      }
+      if (operands.size() != operand_shapes_with_layout->size()) {
+        return InvalidArgument(
+            "Must specify a shape with layout for each operand for custom call "
+            "with constrained layout; given %d shapes, expected %d",
+            operand_shapes_with_layout->size(), operands.size());
+      }
+      instr.set_constrain_layout(true);
+      int64 operand_num = 0;
+      for (const Shape& operand_shape : *operand_shapes_with_layout) {
+        if (!LayoutUtil::HasLayout(operand_shape)) {
+          return InvalidArgument(
+              "No layout specified for operand %d for custom call with "
+              "constrained layout.",
+              operand_num);
+        }
+        *instr.add_operand_shapes_with_layout() = operand_shape.ToProto();
+        ++operand_num;
+      }
+    }
+    AddCalledComputation(computation, &instr);
+    return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
+  });
+}
+
 XlaOp XlaBuilder::Transpose(XlaOp operand,
                             absl::Span<const int64> permutation) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -3170,6 +3215,16 @@ XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
                  absl::Span<const XlaOp> operands, const Shape& shape,
                  const string& opaque) {
   return builder->CustomCall(call_target_name, operands, shape, opaque,
+                             /*operand_shapes_with_layout=*/absl::nullopt);
+}
+
+XlaOp CustomCallWithComputation(XlaBuilder* builder,
+                                const string& call_target_name,
+                                absl::Span<const XlaOp> operands,
+                                const XlaComputation& computation,
+                                const Shape& shape, const string& opaque) {
+  return builder->CustomCall(call_target_name, operands, computation, shape,
+                             opaque,
                              /*operand_shapes_with_layout=*/absl::nullopt);
 }
 
