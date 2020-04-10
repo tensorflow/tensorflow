@@ -14,7 +14,7 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
-        "//tensorflow/compiler/aot/...",
+        "//learning/brain/experimental/mlir/quantization/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/mlir/lite/...",
     ],
@@ -65,35 +65,6 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
-    ],
-)
-
-cc_library(
-    name = "quantize",
-    srcs = [
-        "quantize.cc",
-    ],
-    hdrs = [
-        "quantize.h",
-    ],
-    deps = [
-        ":hlo_xla_quantization_passes",
-        "//tensorflow/compiler/mlir/xla:hlo",
-        "//tensorflow/compiler/mlir/xla:hlo_to_mlir_hlo",
-        "//tensorflow/compiler/tf2xla",
-        "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
-        "//tensorflow/compiler/tf2xla:tf2xla_util",
-        "//tensorflow/compiler/tf2xla:xla_compiler",
-        "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
-        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
-        "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/core/platform:status",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Transforms",
     ],
 )
 

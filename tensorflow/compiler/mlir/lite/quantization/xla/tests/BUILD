@@ -8,9 +8,7 @@ glob_lit_tests(
         ":test_utilities",
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
-    tags_override = {
-        "fadd_quant.mlir": ["no_oss"],  # TODO(b/150957738): to be fixed on oss.
-    },
+    exclude = ["fadd_quant.mlir"],
     test_file_exts = ["mlir"],
 )
 

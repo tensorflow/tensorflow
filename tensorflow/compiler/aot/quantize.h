@@ -13,21 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_XLA_QUANTIZE_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_XLA_QUANTIZE_H_
+#ifndef TENSORFLOW_COMPILER_AOT_QUANTIZE_H_
+#define TENSORFLOW_COMPILER_AOT_QUANTIZE_H_
+
+#include <functional>
+#include <iostream>
+#include <ostream>
 
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 
-namespace mlir {
-namespace xla_hlo {
+namespace tensorflow {
+namespace tfcompile {
 
-// Quantizes the model in the computation.
-tensorflow::Status XlaQuantize(const tensorflow::tf2xla::Config& config,
-                               xla::XlaComputation* computation);
+using QuantizeXlaFn = std::function<Status(const tf2xla::Config& config,
+                                           xla::XlaComputation* computation)>;
 
-}  // namespace xla_hlo
-}  // namespace mlir
+// Set the static quantization function to the `fn` if it hasn't been set.
+// Return false if the static function has been set.
+bool RegisterQuantizeFn(const QuantizeXlaFn& fn);
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_XLA_QUANTIZE_H_
+}  // namespace tfcompile
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_COMPILER_AOT_QUANTIZE_H_
