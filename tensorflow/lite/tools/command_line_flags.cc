@@ -18,11 +18,10 @@ limitations under the License.
 #include <numeric>
 #include <sstream>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/tools/logging.h"
+#include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {
 namespace {
@@ -166,12 +165,7 @@ std::string Flag::GetTypeName() const {
 /*static*/ bool Flags::Parse(int* argc, const char** argv,
                              const std::vector<Flag>& flag_list) {
   bool result = true;
-  std::vector<bool> unknown_argvs(*argc, true);
-  // Record the list of flags that have been processed. key is the flag's name
-  // and the value is the corresponding argv index if there's one, or -1 when
-  // the argv list doesn't contain this flag.
-  std::unordered_map<std::string, int> processed_flags;
-
+  std::vector<bool> unknown_flags(*argc, true);
   // Stores indexes of flag_list in a sorted order.
   std::vector<int> sorted_idx(flag_list.size());
   std::iota(std::begin(sorted_idx), std::end(sorted_idx), 0);
@@ -180,69 +174,45 @@ std::string Flag::GetTypeName() const {
   });
   int positional_count = 0;
 
-  for (int idx = 0; idx < sorted_idx.size(); ++idx) {
-    const Flag& flag = flag_list[sorted_idx[idx]];
-
-    const auto it = processed_flags.find(flag.name_);
-    if (it != processed_flags.end()) {
-      TFLITE_LOG(WARN) << "Duplicate flags: " << flag.name_;
-      if (it->second != -1) {
-        bool value_parsing_ok;
-        flag.Parse(argv[it->second], &value_parsing_ok);
-        if (!value_parsing_ok) {
-          TFLITE_LOG(ERROR) << "Failed to parse flag '" << flag.name_
-                            << "' against argv '" << argv[it->second] << "'";
-          result = false;
-        }
-        continue;
-      } else if (flag.flag_type_ == Flag::REQUIRED) {
-        // Check if required flag not found.
-        TFLITE_LOG(ERROR) << "Required flag not provided: " << flag.name_;
-        result = false;
-        break;
-      }
-    }
-
+  for (int i = 0; i < sorted_idx.size(); ++i) {
+    const Flag& flag = flag_list[sorted_idx[i]];
     // Parses positional flags.
     if (flag.flag_type_ == Flag::POSITIONAL) {
       if (++positional_count >= *argc) {
-        TFLITE_LOG(ERROR) << "Too few command line arguments.";
+        TFLITE_LOG(TFLITE_LOG_ERROR, "Too few command line arguments");
         return false;
       }
       bool value_parsing_ok;
       flag.Parse(argv[positional_count], &value_parsing_ok);
       if (!value_parsing_ok) {
-        TFLITE_LOG(ERROR) << "Failed to parse positional flag: " << flag.name_;
+        TFLITE_LOG(TFLITE_LOG_ERROR, "Failed to parse positional flag: %s",
+                   flag.name_.c_str());
         return false;
       }
-      unknown_argvs[positional_count] = false;
-      processed_flags[flag.name_] = positional_count;
+      unknown_flags[positional_count] = false;
       continue;
     }
 
     // Parse other flags.
     bool was_found = false;
     for (int i = positional_count + 1; i < *argc; ++i) {
-      if (!unknown_argvs[i]) continue;
+      if (!unknown_flags[i]) continue;
       bool value_parsing_ok;
       was_found = flag.Parse(argv[i], &value_parsing_ok);
       if (!value_parsing_ok) {
-        TFLITE_LOG(ERROR) << "Failed to parse flag '" << flag.name_
-                          << "' against argv '" << argv[i] << "'";
+        TFLITE_LOG(TFLITE_LOG_ERROR, "Failed to parse flag: %s",
+                   flag.name_.c_str());
         result = false;
       }
       if (was_found) {
-        unknown_argvs[i] = false;
-        processed_flags[flag.name_] = i;
+        unknown_flags[i] = false;
         break;
       }
     }
-    if (!was_found) {
-      processed_flags[flag.name_] = -1;
-    }
     // Check if required flag not found.
     if (flag.flag_type_ == Flag::REQUIRED && !was_found) {
-      TFLITE_LOG(ERROR) << "Required flag not provided: " << flag.name_;
+      TFLITE_LOG(TFLITE_LOG_ERROR, "Required flag not provided: %s",
+                 flag.name_.c_str());
       result = false;
       break;
     }
@@ -250,7 +220,7 @@ std::string Flag::GetTypeName() const {
 
   int dst = 1;  // Skip argv[0]
   for (int i = 1; i < *argc; ++i) {
-    if (unknown_argvs[i]) {
+    if (unknown_flags[i]) {
       argv[dst++] = argv[i];
     }
   }
