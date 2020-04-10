@@ -91,7 +91,7 @@ cc_library(
     ] + select({
         "//conditions:default": [],
         ":xtensa_hifimini": [
-            #"//third_party/xtensa:hifi_mini_cstub64",
+            #"//third_party/xtensa/cstub64s:hifi_mini",
         ],
     }),
 )
