@@ -1684,6 +1684,8 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
 };
 }  // namespace
 
+extern "C" {
+
 void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
                               const char* device_name, void* device_info,
                               TF_Status* status) {
@@ -1694,3 +1696,5 @@ void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
   status->status =
       context->RegisterCustomDevice(device_name, std::move(custom_device));
 }
+
+}  // extern "C"
