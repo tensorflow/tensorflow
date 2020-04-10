@@ -382,6 +382,9 @@ class TFLiteConverterBase(object):
 
   def _parse_saved_model_args(self):
     """Parses SavedModel arguments from the given Keras/RNN SavedModel."""
+    if not self.experimental_new_converter:
+      self._saved_model_dir = None
+      return
     if self._saved_model_dir:
       try:
         saved_model_proto, _ = (
