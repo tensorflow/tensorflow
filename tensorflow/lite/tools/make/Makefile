@@ -111,7 +111,8 @@ PROFILE_SUMMARIZER_SRCS := \
 	tensorflow/core/util/stats_calculator.cc
 
 CMD_LINE_TOOLS_SRCS := \
-	tensorflow/lite/tools/command_line_flags.cc
+	tensorflow/lite/tools/command_line_flags.cc \
+	tensorflow/lite/tools/tool_params.cc
 
 CORE_CC_ALL_SRCS := \
 $(wildcard tensorflow/lite/*.cc) \

@@ -17,6 +17,9 @@ cc_library(
     name = "logging",
     hdrs = ["logging.h"],
     copts = common_copts,
+    deps = [
+        "//tensorflow/lite/tools:logging",
+    ],
 )
 
 cc_binary(
@@ -107,6 +110,7 @@ cc_test(
         ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",
         ":delegate_provider_hdr",
+        ":logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/testing:util",
@@ -128,6 +132,7 @@ cc_library(
         "//tensorflow/lite/profiling:profile_summarizer",
         "//tensorflow/lite/profiling:profile_summary_formatter",
         "//tensorflow/lite/profiling:profiler",
+        "//tensorflow/lite/tools:logging",
     ],
 )
 
@@ -197,12 +202,9 @@ cc_library(
 
 cc_library(
     name = "benchmark_params",
-    srcs = [
-        "benchmark_params.cc",
-    ],
     hdrs = ["benchmark_params.h"],
     copts = common_copts,
-    deps = [":logging"],
+    deps = ["//tensorflow/lite/tools:tool_params"],
 )
 
 cc_library(
