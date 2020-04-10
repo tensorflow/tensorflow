@@ -45,7 +45,7 @@
 
 ## Known Caveats
 * Due to certain unforeseen circumstances, we are unable to release MacOS py3.8 binaries, but Windows/Linux binaries for py3.8 are available.
-* The current TensorFlow release now **requires** gast version 0.3.3. 
+* The current TensorFlow release now **requires** [gast](https://pypi.org/project/gast/) version 0.3.3. 
 
 ## Bug Fixes and Other Changes
 * `tf.data`:
