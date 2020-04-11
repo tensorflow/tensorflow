@@ -97,12 +97,14 @@ def configure_callbacks(callbacks,
   if not callbacks:
     callbacks = []
 
-  # Add additional callbacks during training.
+  # Add additional callbacks during training and testing.
   if mode == ModeKeys.TRAIN:
     model.history = History()
     callbacks = [BaseLogger()] + (callbacks or []) + [model.history]
     if verbose:
       callbacks.append(ProgbarLogger(count_mode))
+  elif mode == ModeKeys.TEST and verbose:
+  	callbacks.append(ProgbarLogger(count_mode))
   callback_list = CallbackList(callbacks)
 
   # Set callback model
