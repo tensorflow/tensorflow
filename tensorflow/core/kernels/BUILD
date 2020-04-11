@@ -8516,52 +8516,6 @@ tf_cc_shared_object(
     ],
 )
 
-# Manually curated set of tests that are useful for building and testing against
-# platforms and architecures that don't support CUDA.
-# TODO(b/153737462): Automatically filter tests to create the appropriate
-# portable test list.
-test_suite(
-    name = "portable_kernel_tests",
-    tests = [
-        ":batch_matmul_op_test",
-        ":batch_norm_op_test",
-        ":broadcast_to_op_test",
-        ":cast_op_test",
-        ":concat_op_test",
-        ":control_flow_ops_test",
-        ":crop_and_resize_op_test",
-        ":cwise_ops_test",
-        ":deep_conv2d_test",
-        ":dequantize_op_test",
-        ":diag_op_test",
-        ":eigen_activations_test",
-        ":eigen_pooling_test",
-        ":eigen_spatial_convolutions_test",
-        ":gather_nd_op_test",
-        ":matmul_op_test",
-        ":mfcc_test",
-        ":multinomial_op_test",
-        ":nn_ops_test",
-        ":non_max_suppression_op_test",
-        ":quantization_utils_test",
-        ":quantize_op_test",
-        ":random_binomial_op_test",
-        ":random_op_test",
-        ":random_poisson_op_test",
-        ":reduction_ops_test",
-        ":resize_bilinear_op_test",
-        ":scatter_op_test",
-        ":segment_reduction_ops_test",
-        ":slice_op_test",
-        ":spectrogram_test",
-        ":split_op_test",
-        ":split_v_op_test",
-        ":strided_slice_op_test",
-        ":unique_op_test",
-        ":variable_ops_test",
-    ],
-)
-
 exports_files([
     "cwise_op_abs.cc",
     "cwise_op_add_1.cc",
