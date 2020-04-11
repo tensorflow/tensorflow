@@ -392,6 +392,20 @@ def _default_learning_phase():
 def set_learning_phase(value):
   """Sets the learning phase to a fixed value.
 
+  The backend learning phase affects any code that calls
+  `backend.learning_phase()`
+  In particular, all Keras built-in layers use the learning phase as the default
+  for the `training` arg to `Layer.__call__`.
+
+  User-written layers and models can achieve the same behavior with code that
+  looks like:
+
+  ```python
+    def call(self, inputs, training=None):
+      if training is None:
+        training = backend.learning_phase()
+  ```
+
   Arguments:
       value: Learning phase value, either 0 or 1 (integers).
              0 = test, 1 = train
