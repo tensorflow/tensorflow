@@ -27,6 +27,28 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "convert_to_constants_test",
+    srcs = ["convert_to_constants_test.py"],
+    python_version = "PY3",
+    shard_count = 4,
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:convert_to_constants",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/training/tracking",
+    ],
+)
+
+tf_py_test(
     name = "custom_training_loop_test",
     srcs = ["custom_training_loop_test.py"],
     python_version = "PY3",
