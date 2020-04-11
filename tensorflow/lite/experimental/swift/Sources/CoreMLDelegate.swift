@@ -22,17 +22,21 @@ public final class CoreMLDelegate: Delegate {
   public let options: Options
 
   // Conformance to the `Delegate` protocol.
-  public private(set) var cDelegate: CDelegate
+  public private(set) var cDelegate: CDelegate?
 
   /// Creates a new instance configured with the given `options`.
   ///
   /// - Parameters:
   ///   - options: Configurations for the delegate. The default is a new instance of
   ///       `CoreMLDelegate.Options` with the default configuration values.
-  public init(options: Options = Options()) {
+  public init?(options: Options = Options()) {
     self.options = options
     var delegateOptions = TfLiteCoreMlDelegateOptions()
+    delegateOptions.enabled_devices = options.enabledDevices.cEnabledDevices
     cDelegate = TfLiteCoreMlDelegateCreate(&delegateOptions)
+    if cDelegate == nil {
+      return nil
+    }
   }
 
   deinit {
@@ -40,11 +44,35 @@ public final class CoreMLDelegate: Delegate {
   }
 }
 
+
 extension CoreMLDelegate {
   /// Options for configuring the `CoreMLDelegate`.
   // TODO(b/143931022): Add preferred device support.
   public struct Options: Equatable, Hashable {
+    /// A type determines Core ML delegate initialization on devices without Neural Engine. The
+    /// default is .devicesWithNeuralEngine, where the delegate will not be created for
+    /// devices that does not have Neural Engine.
+    public var enabledDevices: CoreMLDelegateEnabledDevices = .devicesWithNeuralEngine
     /// Creates a new instance with the default values.
     public init() {}
   }
 }
+
+/// A type determines Core ML delegate initialization on devices without Neural Engine.
+public enum CoreMLDelegateEnabledDevices: Equatable, Hashable {
+  /// Creates the delegate only for devices with Neural Engine.
+  case devicesWithNeuralEngine
+  /// Creates the delegate even when Neural Engine is not available.
+  case allDevices
+
+  /// The C `TfLiteCoreMlDelegateEnabledDevices` for the current `CoreMLDelegateEnabledDevices`.
+  var cEnabledDevices: TfLiteCoreMlDelegateEnabledDevices {
+    switch self {
+    case .devicesWithNeuralEngine:
+      return TfLiteCoreMlDelegateDevicesWithNeuralEngine
+    case .allDevices:
+      return TfLiteCoreMlDelegateAllDevices
+    }
+  }
+}
+

@@ -23,7 +23,7 @@ public final class MetalDelegate: Delegate {
   public let options: Options
 
   // Conformance to the `Delegate` protocol.
-  public private(set) var cDelegate: CDelegate
+  public private(set) var cDelegate: CDelegate?
 
   /// Creates a new instance configured with the given `options`.
   ///
