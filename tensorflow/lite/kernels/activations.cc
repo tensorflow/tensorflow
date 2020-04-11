@@ -985,10 +985,9 @@ TfLiteStatus SoftmaxQuantized<int16, int16>(TfLiteContext* context,
         GetTensorShape(output), GetTensorData<int16_t>(output));
     return kTfLiteOk;
   } else {
-    context->ReportError(context,
-                         "Only 1D, 2D, 3D and 4D tensors supported for int16 "
-                         "input with int16 output, got %dD.",
-                         NumDimensions(input));
+    TF_LITE_KERNEL_LOG(context, "Only 1D, 2D, 3D and 4D tensors supported for int16 "
+                       "input with int16 output, got %dD.",
+                       NumDimensions(input));
     return kTfLiteError;
   }
 }
