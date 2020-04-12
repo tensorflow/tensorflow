@@ -268,9 +268,6 @@ TfLiteStatus EvalQuantizedPerChannel(
              (output_width % 4 == 0) && batches == 1) {
     const int32_t buf_size = arm_convolve_1_x_n_s8_get_buffer_size(
         input_depth, filter_width, filter_height);
-    if (get_cmsis_scratch_buffer(context, &buf, buf_size) != kTfLiteOk) {
-      return kTfLiteError;
-    }
     if (arm_convolve_1_x_n_s8(
             GetTensorData<int8_t>(input), input_width, input_depth, batches,
             GetTensorData<int8_t>(filter), output_depth, filter_width,
