@@ -552,7 +552,7 @@ def broadcast_static_shape(shape_x, shape_y):
 def shape_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
-  
+
   See also `tf.size`, `tf.rank`.
 
   This operation returns a 1-D integer tensor representing the shape of `input`.
@@ -672,7 +672,7 @@ def shape_n(input, out_type=dtypes.int32, name=None):
 def size_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
-  
+
   See also `tf.shape`.
 
   Returns a 0-D `Tensor` representing the number of elements in `input`
@@ -4369,6 +4369,9 @@ def where_v2(condition, x=None, y=None, name=None):
   Raises:
     ValueError: When exactly one of `x` or `y` is non-None, or the shapes
       are not all broadcastable.
+
+  Note that if the input to a tf.where contains 'NaN's, then the gradient will always
+  be 'NaN', regardless whether the input is actually used or not.
   """
   if x is None and y is None:
     with ops.name_scope(name, "Where", [condition]) as name:
@@ -5638,7 +5641,7 @@ def _with_nonzero_rank(data):
 @tf_export("repeat")
 def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-builtin
   """Repeat elements of `input`.
-  
+
   See also `tf.concat`, `tf.stack`, `tf.tile`.
 
   Args:
