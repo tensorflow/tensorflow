@@ -529,7 +529,6 @@ cc_library(
         "//tensorflow/core/platform:coding",
         "//tensorflow/core/platform:random",
         "//tensorflow/core/profiler/lib:traceme",
-        "@com_google_absl//absl/memory",
     ],
 )
 

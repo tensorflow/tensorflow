@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/inputstream_interface.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -57,10 +56,8 @@ class Writer {
   static constexpr const char* const kWriteCord = "WriteCord";
   static constexpr const char* const kSeparator = "::";
 
-  static Status Create(Env* env, const std::string& filename,
-                       const std::string& compression_type, int version,
-                       const DataTypeVector& dtypes,
-                       std::unique_ptr<Writer>* out_writer);
+  explicit Writer(WritableFile* dest, const string& compression_type,
+                  int version, const DataTypeVector& dtypes);
 
   Status WriteTensors(const std::vector<Tensor>& tensors);
 
@@ -71,27 +68,16 @@ class Writer {
   ~Writer();
 
  private:
-  explicit Writer(const std::string& filename,
-                  const std::string& compression_type, int version,
-                  const DataTypeVector& dtypes);
-
-  Status Initialize(tensorflow::Env* env);
-
   Status WriteRecord(const StringPiece& data);
 
 #if defined(PLATFORM_GOOGLE)
   Status WriteRecord(const absl::Cord& data);
 #endif  // PLATFORM_GOOGLE
 
-  std::unique_ptr<WritableFile> dest_;
-  const std::string filename_;
-  const std::string compression_type_;
+  WritableFile* dest_;
+  bool dest_is_owned_ = false;
+  const string compression_type_;
   const int version_;
-  const DataTypeVector dtypes_;
-  // We hold zlib_dest_ because we may create a ZlibOutputBuffer and put that
-  // in dest_ if we want compression. ZlibOutputBuffer doesn't own the original
-  // dest_ and so we need somewhere to store the original one.
-  std::unique_ptr<WritableFile> zlib_underlying_dest_;
   std::vector<bool> simple_tensor_mask_;  // true for simple, false for complex.
   int num_simple_ = 0;
   int num_complex_ = 0;
