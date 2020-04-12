@@ -14,20 +14,15 @@
 # ==============================================================================
 # pylint: disable=invalid-name
 """ResNet models for Keras."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from __future__ import absolute_import, division, print_function
 
 import os
 
-from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
+from tensorflow.python.keras import backend, layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.utils import data_utils
-from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import data_utils, layer_utils
 from tensorflow.python.util.tf_export import keras_export
-
 
 BASE_WEIGHTS_PATH = (
     'https://storage.googleapis.com/tensorflow/keras-applications/resnet/')
@@ -47,7 +42,7 @@ WEIGHTS_HASHES = {
     'resnext50': ('67a5b30d522ed92f75a1f16eef299d1a',
                   '62527c363bdd9ec598bed41947b379fc'),
     'resnext101': ('34fb605428fcc7aa4d62f44404c11509',
-                  '0f678c91647380debd923963594981b3')
+                   '0f678c91647380debd923963594981b3')
 }
 
 
@@ -207,7 +202,8 @@ def ResNet(stack_fn,
         BASE_WEIGHTS_PATH + file_name,
         cache_subdir='models',
         file_hash=file_hash)
-    model.load_weights(weights_path)
+    by_name = True if 'resnext' in model_name else False
+    model.load_weights(weights_path by_name=by_name)
   elif weights is not None:
     model.load_weights(weights)
 
@@ -514,7 +510,6 @@ def ResNeXt50(include_top=True,
               pooling=None,
               classes=1000,
               **kwargs):
-
   """Instantiates the ResNeXt50 architecture."""
 
   def stack_fn(x):
@@ -536,7 +531,6 @@ def ResNeXt101(include_top=True,
                pooling=None,
                classes=1000,
                **kwargs):
-
   """Instantiates the ResNeXt101 architecture."""
 
   def stack_fn(x):
@@ -544,7 +538,7 @@ def ResNeXt101(include_top=True,
     x = stack3(x, 256, 4, name='conv3')
     x = stack3(x, 512, 23, name='conv4')
     return stack3(x, 1024, 3, name='conv5')
-      
+
   return ResNet(stack_fn, False, False, 'resnext101', include_top, weights,
                 input_tensor, input_shape, pooling, classes, **kwargs)
 
