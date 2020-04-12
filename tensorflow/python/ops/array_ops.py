@@ -4352,6 +4352,18 @@ def where_v2(condition, x=None, y=None, name=None):
   <tf.Tensor: shape=(4,), dtype=int32, numpy=array([100, 100, 100, 100],
   dtype=int32)>
 
+  Note that if any of the input to a tf.where contains 'NaN's, then the gradient will always
+  be 'NaN', regardless whether the input is actually used or not. The workaround will be to
+  use an inner tf.where to ensure the function has no asymptote.
+
+  Instead of this
+
+  >>> tf.where(x_ok, ops_that_can_nan(x), safe_f(x))
+
+  Use this
+
+  >>> tf.where(x_ok, ops_that_can_nan(tf.where(x_ok, x, safe_x)), safe_f(x))
+
   Args:
     condition: A `tf.Tensor` of type `bool`
     x: If provided, a Tensor which is of the same type as `y`, and has a shape
@@ -4370,8 +4382,7 @@ def where_v2(condition, x=None, y=None, name=None):
     ValueError: When exactly one of `x` or `y` is non-None, or the shapes
       are not all broadcastable.
 
-  Note that if the input to a tf.where contains 'NaN's, then the gradient will always
-  be 'NaN', regardless whether the input is actually used or not.
+
   """
   if x is None and y is None:
     with ops.name_scope(name, "Where", [condition]) as name:
