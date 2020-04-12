@@ -1122,6 +1122,12 @@ class MicroBenchmarks(test.Benchmark):
     xs = [[[np.linspace(0, 1, 21).tolist()] * 20] * 20]
     self._run(lambda: constant_op.constant(xs, dtype=dtypes.float64), 10000)
 
+  def benchmark_list_of_zeros_to_np_array(self):
+    values = []
+    for _ in range(1000):
+      values.append(array_ops.zeros(shape=(1000,)))
+    self._run(lambda: np.array([x.numpy() for x in values]), 1000)
+
   def _benchmarkFunctionWithResourceInputs(self, num_resources, num_iters):
     @def_function.function
     def add_all(*args):
