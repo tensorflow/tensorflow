@@ -544,7 +544,7 @@ class KerasObjectLoader(tf_load.Loader):
     config = json_utils.decode(
         self._proto.nodes[model_id].user_object.metadata)['config']
     if isinstance(model, models_lib.Sequential):
-      if not isinstance(layers[0], input_layer.InputLayer):
+      if config['layers'][0]['class_name'] != 'InputLayer':
         if 'batch_input_shape' in config['layers'][0]['config']:
           batch_input_shape = config['layers'][0]['config']['batch_input_shape']
           layers.insert(0, input_layer.InputLayer(

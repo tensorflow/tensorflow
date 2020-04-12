@@ -589,3 +589,17 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+tf_py_test(
+    name = "deferred_sequential_test",
+    size = "small",
+    srcs = ["deferred_sequential_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
