@@ -851,7 +851,7 @@ TEST_F(RemapperTest, FuseConv2DWithSqueezeAndBias) {
   ASSERT_EQ(tensors.size(), 1);
   test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
 }
-#endif  // INEL_MKL
+#endif  // INTEL_MKL
 
 }  // namespace grappler
 }  // namespace tensorflow
