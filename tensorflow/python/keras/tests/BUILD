@@ -78,6 +78,22 @@ cuda_py_test(
 )
 
 tf_py_test(
+    name = "graph_util_test",
+    srcs = ["graph_util_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:graph_util",
+        "//tensorflow/python:saver",
+        "//tensorflow/python:session",
+        "//tensorflow/python:tf_optimizer",
+    ],
+)
+
+tf_py_test(
     name = "integration_test",
     size = "medium",
     srcs = ["integration_test.py"],
