@@ -292,7 +292,6 @@ tf_py_test(
         "manual",
         "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
-        "notap",  # TODO(b/152990697)
         "notsan",
     ],
     deps = [
