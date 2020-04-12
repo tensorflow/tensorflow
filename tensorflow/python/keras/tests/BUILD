@@ -191,6 +191,30 @@ cuda_py_test(
 )
 
 tf_py_test(
+    name = "memory_checker_test",
+    size = "medium",
+    srcs = ["memory_checker_test.py"],
+    python_version = "PY3",
+    shard_count = 8,
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+        "noasan",  # TODO(b/149948895): Re-enable.
+        "nomsan",  # TODO(b/149948895): Re-enable.
+        "notsan",  # TODO(b/149948895): Re-enable.
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:memory_checker",
+    ],
+)
+
+tf_py_test(
     name = "temporal_sample_weights_correctness_test",
     srcs = ["temporal_sample_weights_correctness_test.py"],
     python_version = "PY3",
