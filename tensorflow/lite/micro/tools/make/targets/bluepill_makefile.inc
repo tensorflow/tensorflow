@@ -40,6 +40,7 @@ ifeq ($(TARGET), bluepill)
     -fno-delete-null-pointer-checks \
     -fomit-frame-pointer \
     -fpermissive \
+    -fno-use-cxa-atexit \
     -nostdlib \
     -g \
     -Os

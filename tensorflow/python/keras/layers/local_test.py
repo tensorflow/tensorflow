@@ -18,12 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
@@ -80,7 +80,7 @@ _DATA_FORMAT_PADDING_IMPLEMENTATION = [{
 }]
 
 
-@tf_test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class LocallyConnected1DLayersTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(_DATA_FORMAT_PADDING_IMPLEMENTATION)
@@ -159,7 +159,7 @@ class LocallyConnected1DLayersTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(layer.bias.constraint, b_constraint)
 
 
-@tf_test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class LocallyConnected2DLayersTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(_DATA_FORMAT_PADDING_IMPLEMENTATION)
@@ -266,7 +266,7 @@ class LocallyConnected2DLayersTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(layer.bias.constraint, b_constraint)
 
 
-@tf_test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class LocallyConnectedImplementationModeTest(test.TestCase,
                                              parameterized.TestCase):
 

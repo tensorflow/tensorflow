@@ -45,7 +45,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using tensorflow::profiler::ScopedAnnotation;
+using ::tensorflow::profiler::ScopedAnnotation;
 
 }  // namespace
 
@@ -91,15 +91,8 @@ GpuExecutable::~GpuExecutable() {
 }
 
 void GpuExecutable::ComputeThunkAnnotations() {
-  CanonicalNameMap canonical_name_map;
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
-    const HloInstruction* hlo = thunk->hlo_instruction();
-    CHECK(hlo);
-    thunk_annotations_[thunk] =
-        absl::StrFormat("%s:#hlo_op=%s,hlo_module=%s#",
-                        hlo->ToStringWithCanonicalNameMap(
-                            HloPrintOptions::Canonical(), &canonical_name_map),
-                        hlo->name(), hlo->GetModule()->name());
+    thunk->ComputeAnnotations();
   }
 }
 
@@ -161,6 +154,9 @@ Status GpuExecutable::ExecuteThunks(
     sub_streams.emplace_back();
     TF_ASSIGN_OR_RETURN(sub_streams.back(),
                         run_options->BorrowStream(executor->device_ordinal()));
+    // Require substreams to wait for the main stream, otherwise substreams may
+    // execute before the program is scheduled to start on the main stream.
+    sub_streams.back()->ThenWaitFor(main_stream);
   }
 
   HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream,
@@ -172,17 +168,13 @@ Status GpuExecutable::ExecuteThunks(
       tensorflow::profiler::TraceMeLevel::kInfo);
 
   std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
-  bool scoped_annotation_enabled = ScopedAnnotation::IsEnabled();
   std::vector<std::function<void()>> deferred_host_callbacks;
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
+    CHECK(thunk->hlo_instruction());
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
     // module, we won't get any data, but that's probably an OK trade-off.
-    absl::optional<ScopedAnnotation> op_annotation;
-    CHECK(thunk->hlo_instruction());
-    if (scoped_annotation_enabled) {
-      op_annotation.emplace(FindOrDie(thunk_annotations_, thunk));
-    }
+    ScopedAnnotation annotation([&] { return thunk->profile_annotation(); });
 
     TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
     int32 stream_no =
@@ -328,7 +320,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
 
 StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
+    std::vector<ExecutionInput> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat("GpuExecutable::ExecuteAsyncOnStream(",
                                         module().name(), ")"));
@@ -367,7 +359,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
         auto param_no = allocation.parameter_number();
         se::DeviceMemoryBase buffer =
             arguments[param_no]
-                .element(allocation.param_shape_index())
+                .Buffer(allocation.param_shape_index())
                 .AsDeviceMemoryBase();
 
         // All top-level buffers and sub-buffers must have an explicit, non-null
@@ -458,16 +450,15 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
   TF_RETURN_IF_ERROR(buffer_allocations->TearDown(buffers_in_result));
 
   std::vector<se::OwningDeviceMemory> buffers_to_free;
-  for (ShapeTree<MaybeOwningDeviceMemory>& argument : arguments) {
-    for (std::pair<ShapeIndex, MaybeOwningDeviceMemory>& buffer : argument) {
-      auto maybe_owning_buffer = buffer.second.Release();
+  for (auto& argument : arguments) {
+    for (auto& index_buffer : *argument.MutableBuffers()) {
+      auto maybe_owning_buffer = index_buffer.second.Release();
       if (maybe_owning_buffer) {
         buffers_to_free.push_back(std::move(*maybe_owning_buffer));
       }
     }
   }
-  return ExecutionOutput(std::move(shaped_buffer), std::move(buffers_to_free),
-                         {}, {});
+  return ExecutionOutput(std::move(shaped_buffer), std::move(buffers_to_free));
 }
 
 const InstructionValueSet& GpuExecutable::GetRootValueSet() const {

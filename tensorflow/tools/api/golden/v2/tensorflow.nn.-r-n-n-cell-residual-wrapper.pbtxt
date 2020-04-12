@@ -1,7 +1,7 @@
 path: "tensorflow.nn.RNNCellResidualWrapper"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.layers.rnn_cell_wrapper_v2.ResidualWrapper\'>"
-  is_instance: "<class \'tensorflow.python.ops.rnn_cell_wrapper_impl.ResidualWrapperBase\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.legacy_rnn.rnn_cell_wrapper_impl.ResidualWrapperBase\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.rnn_cell_wrapper_v2._RNNCellWrapperV2\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.recurrent.AbstractRNNCell\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
@@ -132,7 +132,7 @@ tf_class {
   }
   member_method {
     name: "add_metric"
-    argspec: "args=[\'self\', \'value\', \'aggregation\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'value\', \'name\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
   }
   member_method {
     name: "add_update"

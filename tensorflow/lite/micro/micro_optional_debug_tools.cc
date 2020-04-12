@@ -77,6 +77,8 @@ const char* TensorTypeName(TfLiteType type) {
       return "kTfLiteComplex64";
     case kTfLiteFloat16:
       return "kTfLiteFloat16";
+    case kTfLiteFloat64:
+      return "kTfLiteFloat64";
   }
   return "(invalid)";
 }
@@ -100,7 +102,6 @@ const char* AllocTypeName(TfLiteAllocationType type) {
 
 // Prints a dump of what tensors and what nodes are in the interpreter.
 void PrintInterpreterState(MicroInterpreter* interpreter) {
-#ifndef NDEBUG
   printf("Interpreter has %zu tensors and %zu nodes\n",
          interpreter->tensors_size(), interpreter->operators_size());
   printf("Inputs:");
@@ -138,7 +139,6 @@ void PrintInterpreterState(MicroInterpreter* interpreter) {
     printf("  Outputs:");
     PrintTfLiteIntVector(node.outputs);
   }
-#endif
 }
 
 }  // namespace tflite

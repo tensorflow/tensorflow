@@ -20,12 +20,21 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/hexagon_implementation.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/utils.h"
+#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 
 namespace {
+
+// Used to convert int8 <-> uint8.
+constexpr int kSameScaleEffectiveMultiplier = 1 << 30;
+constexpr int kSameScaleEffectiveShift = 1;
+constexpr int kInt8Uint8ZeroPointDiff = 128;
+
 inline const char* StateToString(
     HexagonDelegateKernel::HexagonKernelState state) {
   switch (state) {
@@ -126,13 +135,34 @@ TfLiteStatus HexagonDelegateKernel::Invoke(TfLiteContext* context,
   }
   // Allocate inputs.
   std::vector<hexagon_nn_tensordef> input_tensors;
-  for (auto tensor_index : TfLiteIntArrayView(node->inputs)) {
+  for (int input_idx = 0; input_idx < node->inputs->size; ++input_idx) {
+    const auto tensor_index = node->inputs->data[input_idx];
     if (tensor_index == kTfLiteOptionalTensor) {
       continue;
     }
     TfLiteTensor* tensor = &context->tensors[tensor_index];
-    // Const tensors should be added as const nodes during graph construction.
+    // Const tensors should have been handled at delegation time..
     if (tensor->allocation_type != kTfLiteMmapRo) {
+      char* data_ptr = tensor->data.raw;
+      if (tensor->type == kTfLiteInt8) {
+        // If input is int8, we first re-quantize it to uint8 for Hexagon.
+        if (int8_to_uint8_tensors_.size() <= input_idx ||
+            !int8_to_uint8_tensors_[input_idx]) {
+          TF_LITE_KERNEL_LOG(context,
+                             "Found int8 input %d with no uint8 version",
+                             tensor_index);
+          return kTfLiteError;
+        }
+        TfLiteTensor* uint8_tensor = int8_to_uint8_tensors_[input_idx];
+        optimized_ops::Requantize(
+            tensor->data.int8, NumElements(tensor),
+            kSameScaleEffectiveMultiplier, kSameScaleEffectiveShift,
+            tensor->params.zero_point,
+            tensor->params.zero_point + kInt8Uint8ZeroPointDiff,
+            uint8_tensor->data.uint8);
+        data_ptr = uint8_tensor->data.raw;
+      }
+
       if (tensor->dims->size > 4) {
         ReportError(context, HexagonKernelState::INPUT_RANK_NOT_SUPPORTED,
                     "Only up to 4d tensor are supported.");
@@ -140,7 +170,7 @@ TfLiteStatus HexagonDelegateKernel::Invoke(TfLiteContext* context,
       }
       input_tensors.emplace_back();
       auto& input_tensor = input_tensors.back();
-      input_tensor.data = reinterpret_cast<unsigned char*>(tensor->data.raw);
+      input_tensor.data = reinterpret_cast<unsigned char*>(data_ptr);
       input_tensor.dataLen = tensor->bytes;
       input_tensor.data_valid_len = tensor->bytes;
       TF_LITE_ENSURE_STATUS(
@@ -182,6 +212,20 @@ TfLiteStatus HexagonDelegateKernel::Invoke(TfLiteContext* context,
                 "Failed to execute graph.");
     return kTfLiteError;
   }
+
+  // Requantize uint8->int8 for eligible output tensors.
+  for (auto tensor_index : TfLiteIntArrayView(node->outputs)) {
+    TfLiteTensor* tensor = &context->tensors[tensor_index];
+    if (tensor->allocation_type != kTfLiteMmapRo &&
+        tensor->type == kTfLiteInt8) {
+      optimized_ops::Requantize(
+          tensor->data.uint8, NumElements(tensor),
+          kSameScaleEffectiveMultiplier, kSameScaleEffectiveShift,
+          tensor->params.zero_point + kInt8Uint8ZeroPointDiff,
+          tensor->params.zero_point, tensor->data.int8);
+    }
+  }
+
   if (params_.print_graph_profile) {
     PrintPerformanceData(reinterpret_cast<Profiler*>(context->profiler));
   }
@@ -219,6 +263,35 @@ TfLiteStatus HexagonDelegateKernel::Prepare(TfLiteContext* context,
       ReportError(context, HexagonKernelState::INPUT_RANK_NOT_SUPPORTED,
                   "Only up to 4d tensor are supported.");
       return kTfLiteError;
+    }
+  }
+
+  // Assign temporary tensors for any input int8 tensors.
+  std::vector<int> temporary_tensors;
+  int8_to_uint8_tensors_.clear();
+  int8_to_uint8_tensors_.reserve(node->inputs->size);
+  for (auto tensor_index : TfLiteIntArrayView(node->inputs)) {
+    TfLiteTensor* tensor = &context->tensors[tensor_index];
+    // For every int8 tensor, we need to create a new temporary uint8 tensor.
+    if (tensor->allocation_type != kTfLiteMmapRo &&
+        tensor->type == kTfLiteInt8) {
+      TfLiteTensor* uint8_tensor;
+      int uint8_tensor_index;
+      TF_LITE_ENSURE_STATUS(delegates::CreateNewTensorWithDifferentType(
+          context, tensor_index, kTfLiteUInt8, &uint8_tensor,
+          &uint8_tensor_index));
+      int8_to_uint8_tensors_.push_back(uint8_tensor);
+      temporary_tensors.push_back(uint8_tensor_index);
+    } else {
+      int8_to_uint8_tensors_.push_back(nullptr);
+    }
+  }
+  if (!temporary_tensors.empty()) {
+    // This ensures the runtime allocates memory for every required temporary
+    // tensor.
+    node->temporaries = TfLiteIntArrayCreate(temporary_tensors.size());
+    for (int i = 0; i < temporary_tensors.size(); ++i) {
+      node->temporaries->data[i] = temporary_tensors[i];
     }
   }
 

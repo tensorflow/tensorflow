@@ -188,7 +188,7 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
   }
 
   mutex mu_;
-  int fail_after_ GUARDED_BY(mu_);
+  int fail_after_ TF_GUARDED_BY(mu_);
 };
 
 class HierarchicalTreeBroadcasterTest : public ::testing::Test {
@@ -725,9 +725,9 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
   std::unique_ptr<tensorflow::DeviceMgr> dev_mgr_;
   std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
-  int bcast_recv_counter_ GUARDED_BY(mu_) = 0;
-  int bcast_send_counter_ GUARDED_BY(mu_) = 0;
-  int failure_count_ GUARDED_BY(mu_) = 0;
+  int bcast_recv_counter_ TF_GUARDED_BY(mu_) = 0;
+  int bcast_send_counter_ TF_GUARDED_BY(mu_) = 0;
+  int failure_count_ TF_GUARDED_BY(mu_) = 0;
 };
 
 TEST_F(HierarchicalTreeBroadcasterTest, InitializeParams1Task8GPU) {

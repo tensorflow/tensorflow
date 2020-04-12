@@ -46,7 +46,7 @@ bool CompareBySize(const TensorUsageWithIndex<size_t>& first,
                    const TensorUsageWithIndex<size_t>& second);
 
 // TaskProfile is a vector with information about all intermediate tensors, that
-// should exist in memory during the executon of the task. Elements of the
+// should exist in memory during the execution of the task. Elements of the
 // vector must be sorted in non-increasing order of corresponding tensors sizes.
 using TaskProfile = std::vector<TensorUsageWithIndex<size_t>>;
 

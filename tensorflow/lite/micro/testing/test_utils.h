@@ -96,27 +96,9 @@ inline int32_t F2Q32(const float value, const float scale) {
 }
 
 // TODO(b/141330728): Move this method elsewhere as part clean up.
-inline void PopulateContext(TfLiteTensor* tensors, int tensors_size,
-                            TfLiteContext* context) {
-  context->tensors_size = tensors_size;
-  context->tensors = tensors;
-  context->impl_ = static_cast<void*>(micro_test::reporter);
-  context->GetExecutionPlan = nullptr;
-  context->ResizeTensor = nullptr;
-  context->ReportError = ReportOpError;
-  context->AddTensors = nullptr;
-  context->GetNodeAndRegistration = nullptr;
-  context->ReplaceNodeSubsetsWithDelegateKernels = nullptr;
-  context->recommended_num_threads = 1;
-  context->GetExternalContext = nullptr;
-  context->SetExternalContext = nullptr;
+void PopulateContext(TfLiteTensor* tensors, int tensors_size,
+                     ErrorReporter* error_reporter, TfLiteContext* context);
 
-  for (int i = 0; i < tensors_size; ++i) {
-    if (context->tensors[i].is_variable) {
-      ResetVariableTensor(&context->tensors[i]);
-    }
-  }
-}
 inline TfLiteTensor CreateFloatTensor(std::initializer_list<float> data,
                                       TfLiteIntArray* dims, const char* name,
                                       bool is_variable = false) {

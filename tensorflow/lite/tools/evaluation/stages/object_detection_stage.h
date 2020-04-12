@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_stage.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
@@ -43,7 +44,8 @@ class ObjectDetectionStage : public EvaluationStage {
   explicit ObjectDetectionStage(const EvaluationStageConfig& config)
       : EvaluationStage(config) {}
 
-  TfLiteStatus Init() override;
+  TfLiteStatus Init() override { return Init(nullptr); }
+  TfLiteStatus Init(const DelegateProviders* delegate_providers);
 
   TfLiteStatus Run() override;
 

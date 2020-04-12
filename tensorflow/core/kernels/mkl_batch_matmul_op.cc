@@ -148,37 +148,56 @@ class BatchMatMulMkl : public OpKernel {
     std::vector<MKL_INT> ldb_array(batch_size, adj_y_ ? K : N);
     std::vector<MKL_INT> ldc_array(batch_size, N);
     std::vector<MKL_INT> group_size(1, batch_size);
-    std::vector<const Scalar*> a_array;
-    std::vector<const Scalar*> b_array;
-    std::vector<Scalar*> c_array;
-    a_array.reserve(batch_size);
-    b_array.reserve(batch_size);
-    c_array.reserve(batch_size);
 
-    if (!bcast.IsBroadcastingRequired()) {
-      for (int64 i = 0; i < batch_size; i++) {
-        a_array.push_back(&lhs_reshaped(i, 0, 0));
-        b_array.push_back(&rhs_reshaped(i, 0, 0));
-        c_array.push_back(&out_reshaped(i, 0, 0));
-      }
+    if (std::is_same<Scalar, bfloat16>::value) {
+      // DNNL bfloat16 API requires a, b, and c as pointers to tensors
+      // represented as flat-byte array.
+      const Scalar* a = nullptr;
+      const Scalar* b = nullptr;
+      OP_REQUIRES(ctx, !bcast.IsBroadcastingRequired(),
+                  errors::Unimplemented("Broadcasting is not supported for "
+                                        "BFloat16 _MklBatchMatMul yet."));
+      a = &lhs_reshaped(0, 0, 0);
+      b = &rhs_reshaped(0, 0, 0);
+      Scalar* c = &out_reshaped(0, 0, 0);
+      // TODO(nhasabni): Use appropriate cast instead of passing addresses of
+      // a,b and c.
+      MklCblasGemmBatch(CblasRowMajor, adj_x_, adj_y_, m_array, n_array,
+                        k_array, &a, lda_array, &b, ldb_array, &c, ldc_array, 1,
+                        group_size);
     } else {
-      // Broadcasting is needed, so get the mapping from flattened output batch
-      // indices to x's and y's flattened batch indices.
-      const std::vector<int64>& a_batch_indices = bcast.x_batch_indices();
-      const std::vector<int64>& b_batch_indices = bcast.y_batch_indices();
+      std::vector<const Scalar*> a_array;
+      std::vector<const Scalar*> b_array;
+      std::vector<Scalar*> c_array;
+      a_array.reserve(batch_size);
+      b_array.reserve(batch_size);
+      c_array.reserve(batch_size);
 
-      for (int64 i = 0; i < batch_size; i++) {
-        a_array.push_back(&lhs_reshaped(a_batch_indices[i], 0, 0));
-        b_array.push_back(&rhs_reshaped(b_batch_indices[i], 0, 0));
-        c_array.push_back(&out_reshaped(i, 0, 0));
+      if (!bcast.IsBroadcastingRequired()) {
+        for (int64 i = 0; i < batch_size; i++) {
+          a_array.push_back(&lhs_reshaped(i, 0, 0));
+          b_array.push_back(&rhs_reshaped(i, 0, 0));
+          c_array.push_back(&out_reshaped(i, 0, 0));
+        }
+      } else {
+        // Broadcasting is needed, so get the mapping from flattened output
+        // batch indices to x's and y's flattened batch indices.
+        const std::vector<int64>& a_batch_indices = bcast.x_batch_indices();
+        const std::vector<int64>& b_batch_indices = bcast.y_batch_indices();
+
+        for (int64 i = 0; i < batch_size; i++) {
+          a_array.push_back(&lhs_reshaped(a_batch_indices[i], 0, 0));
+          b_array.push_back(&rhs_reshaped(b_batch_indices[i], 0, 0));
+          c_array.push_back(&out_reshaped(i, 0, 0));
+        }
       }
-    }
 
-    MklCblasGemmBatch<Scalar>(
-        CblasRowMajor, adj_x_, adj_y_, m_array, n_array, k_array,
-        reinterpret_cast<const void**>(&a_array[0]), lda_array,
-        reinterpret_cast<const void**>(&b_array[0]), ldb_array,
-        reinterpret_cast<void**>(&c_array[0]), ldc_array, 1, group_size);
+      // MKL CBLAS API requires a, b, and c as array of pointers, where each
+      // pointer is to 2D matrix.
+      MklCblasGemmBatch(CblasRowMajor, adj_x_, adj_y_, m_array, n_array,
+                        k_array, &a_array[0], lda_array, &b_array[0], ldb_array,
+                        &c_array[0], ldc_array, 1, group_size);
+    }
   }
 
  private:
@@ -189,14 +208,16 @@ class BatchMatMulMkl : public OpKernel {
             typename std::enable_if<(std::is_same<T, float>::value ||
                                      std::is_same<T, double>::value),
                                     int>::type = 0>
-  void MklCblasGemmBatch(
-      const CBLAS_LAYOUT Layout, const bool TransA, const bool TransB,
-      const std::vector<MKL_INT>& M_Array, const std::vector<MKL_INT>& N_Array,
-      const std::vector<MKL_INT>& K_Array, const void** A_Array,
-      const std::vector<MKL_INT>& lda_Array, const void** B_Array,
-      const std::vector<MKL_INT>& ldb_Array, void** C_Array,
-      const std::vector<MKL_INT>& ldc_Array, const MKL_INT group_count,
-      const std::vector<MKL_INT>& group_size) {
+  void MklCblasGemmBatch(const CBLAS_LAYOUT Layout, const bool TransA,
+                         const bool TransB, const std::vector<MKL_INT>& M_Array,
+                         const std::vector<MKL_INT>& N_Array,
+                         const std::vector<MKL_INT>& K_Array, const T** A_Array,
+                         const std::vector<MKL_INT>& lda_Array,
+                         const T** B_Array,
+                         const std::vector<MKL_INT>& ldb_Array, T** C_Array,
+                         const std::vector<MKL_INT>& ldc_Array,
+                         const MKL_INT group_count,
+                         const std::vector<MKL_INT>& group_size) {
     std::vector<CBLAS_TRANSPOSE> TransA_Array(
         group_size[0], TransA ? CblasTrans : CblasNoTrans);
     std::vector<CBLAS_TRANSPOSE> TransB_Array(
@@ -227,14 +248,16 @@ class BatchMatMulMkl : public OpKernel {
             typename std::enable_if<(std::is_same<T, complex64>::value ||
                                      std::is_same<T, complex128>::value),
                                     int>::type = 0>
-  void MklCblasGemmBatch(
-      const CBLAS_LAYOUT Layout, const bool TransA, const bool TransB,
-      const std::vector<MKL_INT>& M_Array, const std::vector<MKL_INT>& N_Array,
-      const std::vector<MKL_INT>& K_Array, const void** A_Array,
-      const std::vector<MKL_INT>& lda_Array, const void** B_Array,
-      const std::vector<MKL_INT>& ldb_Array, void** C_Array,
-      const std::vector<MKL_INT>& ldc_Array, const MKL_INT group_count,
-      const std::vector<MKL_INT>& group_size) {
+  void MklCblasGemmBatch(const CBLAS_LAYOUT Layout, const bool TransA,
+                         const bool TransB, const std::vector<MKL_INT>& M_Array,
+                         const std::vector<MKL_INT>& N_Array,
+                         const std::vector<MKL_INT>& K_Array, const T** A_Array,
+                         const std::vector<MKL_INT>& lda_Array,
+                         const T** B_Array,
+                         const std::vector<MKL_INT>& ldb_Array, T** C_Array,
+                         const std::vector<MKL_INT>& ldc_Array,
+                         const MKL_INT group_count,
+                         const std::vector<MKL_INT>& group_size) {
     std::vector<CBLAS_TRANSPOSE> TransA_array(
         group_size[0], TransA ? CblasConjTrans : CblasNoTrans);
     std::vector<CBLAS_TRANSPOSE> TransB_array(
@@ -252,27 +275,28 @@ class BatchMatMulMkl : public OpKernel {
             &group_size[0]);
   }
 
-#ifdef ENABLE_MKLDNN_V1_2
-  void MklCblasGemmBatch<bfloat16>(
+  // BatchMatMul BFloat16 support only exists in DNNL 1.2 onwards.
+#if defined(ENABLE_MKLDNN_V1) && defined(ENABLE_INTEL_MKL_BFLOAT16)
+  void MklCblasGemmBatch(
       const CBLAS_LAYOUT Layout, const bool TransA, const bool TransB,
       const std::vector<MKL_INT>& M_Array, const std::vector<MKL_INT>& N_Array,
-      const std::vector<MKL_INT>& K_Array, const void** A_Array,
-      const std::vector<MKL_INT>& lda_Array, const void** B_Array,
-      const std::vector<MKL_INT>& ldb_Array, void** C_Array,
+      const std::vector<MKL_INT>& K_Array, const bfloat16** A_Array,
+      const std::vector<MKL_INT>& lda_Array, const bfloat16** B_Array,
+      const std::vector<MKL_INT>& ldb_Array, bfloat16** C_Array,
       const std::vector<MKL_INT>& ldc_Array, const MKL_INT group_count,
       const std::vector<MKL_INT>& group_size) {
-    std::vector<CBLAS_TRANSPOSE> TransA_Array(group_size[0], TransA);
-    std::vector<CBLAS_TRANSPOSE> TransB_Array(group_size[0], TransB);
+    DCHECK(Layout == CblasRowMajor);
+    std::vector<bool> TransA_Array(group_size[0], TransA);
+    std::vector<bool> TransB_Array(group_size[0], TransB);
     std::vector<float> alpha_Array(group_size[0], 1.0);
     std::vector<float> beta_Array(group_size[0], 0.0);
-    dnnl_gemm_batch<bfloat16>(
-        Layout, TransA_Array, TransB_Array, M_Array, N_Array, K_Array,
-        alpha_Array, reinterpret_cast<const bfloat16**>(A_Array), lda_Array,
-        reinterpret_cast<const bfloat16**>(B_Array), ldb_Array, beta_Array,
-        reinterpret_cast<bfloat16**>(C_Array), ldc_Array, group_count,
-        group_size);
+    // TODO(nhasabni): Remove *A when we pass a, b, and c correctly.
+    // MKLDNN API does not require lda, ldb, and ldc.
+    dnnl_gemm_batch<bfloat16>(TransA_Array, TransB_Array, M_Array, N_Array,
+                              K_Array, alpha_Array, *A_Array, *B_Array,
+                              beta_Array, *C_Array, group_count, group_size);
   }
-#endif  // ENABLE_MKLDNN_V1_2
+#endif  // ENABLE_MKLDNN_V1 && ENABLE_INTEL_MKL_BFLOAT16
 };
 
 #define REGISTER_BATCH_MATMUL_MKL(TYPE)                                       \
@@ -300,10 +324,10 @@ TF_CALL_double(REGISTER_BATCH_MATMUL_MKL_V2);
 TF_CALL_complex64(REGISTER_BATCH_MATMUL_MKL_V2);
 TF_CALL_complex128(REGISTER_BATCH_MATMUL_MKL_V2);
 
-#ifdef ENABLE_MKLDNN_V1_2
+#if defined(ENABLE_MKLDNN_V1) && defined(ENABLE_INTEL_MKL_BFLOAT16)
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL_V2);
-#endif  // ENABLE_MKLDNN_V1_2
+#endif  // ENABLE_MKLDNN_V1 && ENABLE_INTEL_MKL_BFLOAT16
 #endif  // ENABLE_MKL
 
 }  // end namespace tensorflow

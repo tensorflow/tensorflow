@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file defines common C types and APIs for implementing operations,
 // delegates and other constructs in TensorFlow Lite. The actual operations and
-// delegtes can be defined using C++, but the interface between the interpreter
+// delegates can be defined using C++, but the interface between the interpreter
 // and the operations are C.
 //
 // Summary of abstractions
@@ -236,6 +236,7 @@ typedef enum {
   kTfLiteComplex64 = 8,
   kTfLiteInt8 = 9,
   kTfLiteFloat16 = 10,
+  kTfLiteFloat64 = 11,
 } TfLiteType;
 
 // Return the name of a given type, for error reporting purposes.

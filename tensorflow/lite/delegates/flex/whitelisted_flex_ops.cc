@@ -117,6 +117,7 @@ bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name) {
           "Exit",
           "Exp",
           "ExpandDims",
+          "ExtractImagePatches",
           "FakeQuantWithMinMaxArgs",
           "FakeQuantWithMinMaxArgsGradient",
           "FakeQuantWithMinMaxVars",

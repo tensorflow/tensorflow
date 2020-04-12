@@ -55,10 +55,8 @@ void AffineQuantize(int scale_multiplier,
     inputs_24x2 = AE_P24X2S_SRAI(inputs_24x2, 8);
 
     // Q0.23 * Q16.0 == Q16.23
-    ae_q56s sum_56 = AE_ZEROQ56();
-
     {
-      AE_MULAS56P24S_HH(sum_56, scale_multiplier_24x2, inputs_24x2);
+      ae_q56s sum_56 = AE_MULP24S_HH(scale_multiplier_24x2, inputs_24x2);
 
       // Q16.23 -> Q16.0
       // Shift right only 7 bits (23 - 16). This truncated shift aligns the
@@ -78,10 +76,8 @@ void AffineQuantize(int scale_multiplier,
 
       output_data[i * 2] = static_cast<int16_t>(AE_TRUNCA32Q48(sum_56));
     }
-
-    sum_56 = AE_ZEROQ56();
     {
-      AE_MULAS56P24S_LL(sum_56, scale_multiplier_24x2, inputs_24x2);
+      ae_q56s sum_56 = AE_MULP24S_LL(scale_multiplier_24x2, inputs_24x2);
 
       // Q16.23 -> Q16.0
       // Shift right only 7 bits (23 - 16). This truncated shift aligns the
@@ -113,24 +109,22 @@ struct OpData {
   int scale_multiplier = 0;
 };
 
-static OpData kStaticOpData;
-
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
+// This size will work for both the hotword (1) and ambient music (1):
+constexpr int kMaxOpDataSize = 2;
+static int kStaticOpDataCounter = 0;
+static OpData kStaticOpData[kMaxOpDataSize];
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
 
   // TODO(b/132070898): Use statically slotted OpData structures until a
   // scratch memory API is ready.
-  OpData* op_data = &kStaticOpData;
+  OpData* op_data = &kStaticOpData[kStaticOpDataCounter++];
   node->user_data = op_data;
 
-  op_data->scale_multiplier =
-      xtensa::hifimini::CreateQConstantForInt24(0, 1.f / output->params.scale);
+  op_data->scale_multiplier = xtensa::hifimini::CreateQConstantForInt24(
+      0, input->params.scale / output->params.scale);
 
   return kTfLiteOk;
 }
@@ -138,12 +132,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
-  TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
-  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
 
   tflite::QuantizationParams op_params;
   op_params.zero_point = output->params.zero_point;
-  op_params.scale = static_cast<double>(output->params.scale);
 
   if (input->type != kTfLiteInt16 && output->type != kTfLiteInt8) {
     TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
@@ -165,11 +158,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 // AffineQuantize takes scale and zero point and quantizes the float value to
 // quantized output, in int8 or uint8 format.
 TfLiteRegistration* Register_QUANTIZE() {
-  static TfLiteRegistration r = {};
-  r.init = quantize::Init;
-  r.free = quantize::Free;
-  r.prepare = quantize::Prepare;
-  r.invoke = quantize::Eval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/quantize::Prepare,
+                                 /*invoke=*/quantize::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

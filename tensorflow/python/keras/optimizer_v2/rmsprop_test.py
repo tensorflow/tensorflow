@@ -30,6 +30,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import embedding_ops
@@ -547,11 +548,11 @@ class RMSpropOptimizerTest(test.TestCase):
           self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 
 
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
 class SlotColocationTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([True, False])
   @test_util.run_gpu_only
-  @test_util.run_in_graph_and_eager_modes
   def testRunMinimizeOnGPUForCPUVariables(self, use_resource):
     with ops.device("/device:CPU:0"):
       if use_resource:

@@ -60,30 +60,31 @@ class GlBuffer {
   // Reads data from buffer into CPU memory. Data should point to a region that
   // has at least bytes_size available.
   template <typename T>
-  Status Read(absl::Span<T> data) const;
+  absl::Status Read(absl::Span<T> data) const;
 
   // Writes data to a buffer.
   template <typename T>
-  Status Write(absl::Span<const T> data);
+  absl::Status Write(absl::Span<const T> data);
 
   // Maps GPU memory to CPU address space and calls reader that may read from
   // that memory.
   template <typename T>
-  Status MappedRead(
-      const std::function<Status(absl::Span<const T>)>& reader) const;
+  absl::Status MappedRead(
+      const std::function<absl::Status(absl::Span<const T>)>& reader) const;
 
   // Maps GPU memory to CPU address space and calls writer that may write into
   // that memory.
   template <typename T>
-  Status MappedWrite(const std::function<Status(absl::Span<T>)>& writer);
+  absl::Status MappedWrite(
+      const std::function<absl::Status(absl::Span<T>)>& writer);
 
-  Status MakeView(size_t offset, size_t bytes_size, GlBuffer* gl_buffer);
+  absl::Status MakeView(size_t offset, size_t bytes_size, GlBuffer* gl_buffer);
 
   // Makes a copy without ownership of the buffer.
   GlBuffer MakeRef();
 
   // Binds a buffer to an index.
-  Status BindToIndex(uint32_t index) const;
+  absl::Status BindToIndex(uint32_t index) const;
 
   // Releases the ownership of the buffer object.
   void Release() { has_ownership_ = false; }
@@ -112,9 +113,10 @@ class GlBuffer {
   bool has_ownership_;
 };
 
-Status CopyBuffer(const GlBuffer& read_buffer, const GlBuffer& write_buffer);
+absl::Status CopyBuffer(const GlBuffer& read_buffer,
+                        const GlBuffer& write_buffer);
 
-Status GetSSBOSize(GLuint id, int64_t* size_bytes);
+absl::Status GetSSBOSize(GLuint id, int64_t* size_bytes);
 
 // Creates new shader storage buffer that will be modified and used many
 // times.
@@ -122,20 +124,20 @@ Status GetSSBOSize(GLuint id, int64_t* size_bytes);
 // See https://www.khronos.org/opengl/wiki/Shader_Storage_Buffer_Object for
 // details.
 template <typename T>
-Status CreateReadWriteShaderStorageBuffer(uint32_t num_elements,
-                                          GlBuffer* gl_buffer);
+absl::Status CreateReadWriteShaderStorageBuffer(uint32_t num_elements,
+                                                GlBuffer* gl_buffer);
 
 // Creates new shader storage buffer that will be filled with data once which
 // will be used many times.
 template <typename T>
-Status CreateReadOnlyShaderStorageBuffer(absl::Span<const T> data,
-                                         GlBuffer* gl_buffer);
+absl::Status CreateReadOnlyShaderStorageBuffer(absl::Span<const T> data,
+                                               GlBuffer* gl_buffer);
 
 // Adapts raw Buffer::Read method to read data into a vector.
 template <typename T>
-Status AppendFromBuffer(const GlBuffer& buffer, std::vector<T>* data) {
+absl::Status AppendFromBuffer(const GlBuffer& buffer, std::vector<T>* data) {
   if (buffer.bytes_size() % sizeof(T) != 0) {
-    return InvalidArgumentError("Buffer is not aligned");
+    return absl::InvalidArgumentError("Buffer is not aligned");
   }
   size_t num_elements = buffer.bytes_size() / sizeof(T);
   data->resize(data->size() + num_elements);
@@ -167,7 +169,7 @@ class GlPersistentBuffer : public GlBuffer {
 };
 
 // Creates read-write persistent buffer with valid CPU pointer
-Status CreatePersistentBuffer(size_t size, GlPersistentBuffer* gl_buffer);
+absl::Status CreatePersistentBuffer(size_t size, GlPersistentBuffer* gl_buffer);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Implementation details are below.
@@ -243,8 +245,8 @@ class BufferMapper {
 }  // namespace gl_buffer_internal
 
 template <typename T>
-Status CreateReadWriteShaderStorageBuffer(uint32_t num_elements,
-                                          GlBuffer* gl_buffer) {
+absl::Status CreateReadWriteShaderStorageBuffer(uint32_t num_elements,
+                                                GlBuffer* gl_buffer) {
   gl_buffer_internal::BufferId id;
   gl_buffer_internal::BufferBinder binder(GL_SHADER_STORAGE_BUFFER, id.id());
   // TODO(akulik): benchmark DYNAMIC vs STREAM buffer
@@ -253,12 +255,12 @@ Status CreateReadWriteShaderStorageBuffer(uint32_t num_elements,
                                      GL_STREAM_COPY));
   *gl_buffer = GlBuffer{GL_SHADER_STORAGE_BUFFER, id.Release(),
                         num_elements * sizeof(T), 0, true};
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>
-Status CreateReadOnlyShaderStorageBuffer(absl::Span<const T> data,
-                                         GlBuffer* gl_buffer) {
+absl::Status CreateReadOnlyShaderStorageBuffer(absl::Span<const T> data,
+                                               GlBuffer* gl_buffer) {
   gl_buffer_internal::BufferId id;
   gl_buffer_internal::BufferBinder binder(GL_SHADER_STORAGE_BUFFER, id.id());
   RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glBufferData, GL_SHADER_STORAGE_BUFFER,
@@ -266,26 +268,26 @@ Status CreateReadOnlyShaderStorageBuffer(absl::Span<const T> data,
                                      GL_STATIC_READ));
   *gl_buffer = GlBuffer{GL_SHADER_STORAGE_BUFFER, id.Release(),
                         data.size() * sizeof(T), 0, true};
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename T>
-Status GlBuffer::Read(absl::Span<T> data) const {
+absl::Status GlBuffer::Read(absl::Span<T> data) const {
   if (data.size() * sizeof(T) < bytes_size()) {
-    return InvalidArgumentError(
+    return absl::InvalidArgumentError(
         "Read from buffer failed. Destination data is shorter than buffer.");
   }
   // TODO(akulik): glCopyBufferSubData is actually available in ES 3.1, try it.
   return MappedRead<T>([this, data](absl::Span<const T> src) {
     std::memcpy(data.data(), src.data(), bytes_size());
-    return OkStatus();
+    return absl::OkStatus();
   });
 }
 
 template <typename T>
-Status GlBuffer::Write(absl::Span<const T> data) {
+absl::Status GlBuffer::Write(absl::Span<const T> data) {
   if (data.size() * sizeof(T) > bytes_size_) {
-    return InvalidArgumentError(
+    return absl::InvalidArgumentError(
         "Write to buffer failed. Source data is larger than buffer.");
   }
   gl_buffer_internal::BufferBinder binder(target_, id_);
@@ -294,10 +296,10 @@ Status GlBuffer::Write(absl::Span<const T> data) {
 }
 
 template <typename T>
-Status GlBuffer::MappedRead(
-    const std::function<Status(absl::Span<const T> d)>& reader) const {
+absl::Status GlBuffer::MappedRead(
+    const std::function<absl::Status(absl::Span<const T> d)>& reader) const {
   if (bytes_size_ % sizeof(T) != 0) {
-    return InvalidArgumentError("Buffer is not aligned");
+    return absl::InvalidArgumentError("Buffer is not aligned");
   }
   gl_buffer_internal::BufferBinder binder(target_, id_);
   gl_buffer_internal::BufferMapper mapper(target_, offset_, bytes_size_,
@@ -310,10 +312,10 @@ Status GlBuffer::MappedRead(
 }
 
 template <typename T>
-Status GlBuffer::MappedWrite(
-    const std::function<Status(absl::Span<T> d)>& writer) {
+absl::Status GlBuffer::MappedWrite(
+    const std::function<absl::Status(absl::Span<T> d)>& writer) {
   if (bytes_size_ % sizeof(T) != 0) {
-    return InvalidArgumentError("Buffer is not aligned");
+    return absl::InvalidArgumentError("Buffer is not aligned");
   }
   gl_buffer_internal::BufferBinder binder(target_, id_);
   gl_buffer_internal::BufferMapper mapper(target_, offset_, bytes_size_,

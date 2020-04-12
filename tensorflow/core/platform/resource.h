@@ -16,14 +16,27 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_RESOURCE_H_
 #define TENSORFLOW_CORE_PLATFORM_RESOURCE_H_
 
+#include <memory>
+
 #include "tensorflow/core/platform/stringpiece.h"
 
 namespace tensorflow {
 
-// Tracks resource usage for tagged code paths.
+// ResourceTagger objects should only be allocated on the stack.
 class ResourceTagger {
  public:
   ResourceTagger(StringPiece key, StringPiece value);
+  ~ResourceTagger();
+
+  // Do not allow copying or moving ResourceTagger
+  ResourceTagger(const ResourceTagger&) = delete;
+  ResourceTagger(ResourceTagger&&) = delete;
+  ResourceTagger& operator=(const ResourceTagger&) = delete;
+  ResourceTagger& operator=(ResourceTagger&&) = delete;
+
+ private:
+  class ResourceTaggerImpl;
+  const std::unique_ptr<ResourceTaggerImpl> impl_;
 };
 
 }  // namespace tensorflow

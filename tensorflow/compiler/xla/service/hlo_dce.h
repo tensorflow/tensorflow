@@ -35,15 +35,23 @@ namespace xla {
 // instructions cannot be deleted.
 class HloDCE : public HloModulePass {
  public:
+  HloDCE() : remove_cross_partition_collective_ops_(false) {}
+  explicit HloDCE(bool remove_cross_partition_collective_ops)
+      : remove_cross_partition_collective_ops_(
+            remove_cross_partition_collective_ops) {}
   ~HloDCE() override {}
   absl::string_view name() const override { return "dce"; }
 
   // Run DCE on a computation.
-  static StatusOr<bool> RunOnComputation(HloComputation* computation);
+  StatusOr<bool> RunOnComputation(HloComputation* computation,
+                                  bool remove_cross_partition_collective_ops);
 
   // Run the pass on the given module. Returns whether the module was changed
   // (instructions were removed).
   StatusOr<bool> Run(HloModule* module) override;
+
+ private:
+  bool remove_cross_partition_collective_ops_;
 };
 
 }  // namespace xla

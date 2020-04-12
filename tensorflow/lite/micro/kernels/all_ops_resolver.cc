@@ -22,7 +22,7 @@ namespace micro {
 // AddBuiltin(<operator ID>, <registration>, [min version], [max version])
 AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_FULLY_CONNECTED, Register_FULLY_CONNECTED(), 1, 4);
-  AddBuiltin(BuiltinOperator_MAX_POOL_2D, Register_MAX_POOL_2D());
+  AddBuiltin(BuiltinOperator_MAX_POOL_2D, Register_MAX_POOL_2D(), 1, 2);
   AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX(), 1, 2);
   AddBuiltin(BuiltinOperator_LOGISTIC, Register_LOGISTIC());
   AddBuiltin(BuiltinOperator_SVDF, Register_SVDF(), 1, 3);
@@ -65,6 +65,7 @@ AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_NEG, Register_NEG());
   AddBuiltin(BuiltinOperator_ADD, Register_ADD(), 1, 2);
   AddBuiltin(BuiltinOperator_MUL, Register_MUL(), 1, 3);
+  AddBuiltin(BuiltinOperator_SUB, Register_SUB(), 1, 2);
   AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE());
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE(), 1, 2);
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());

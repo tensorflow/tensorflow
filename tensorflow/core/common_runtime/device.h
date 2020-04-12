@@ -92,16 +92,6 @@ class Device : public DeviceBase {
     op_kernel->ComputeAsync(context, std::move(done));
   }
 
-  // Takes ownership of the references in tensors. If necessary, a
-  // device may override this method to keep a reference to the
-  // accessed tensors until the async computation has completed.
-  virtual void ConsumeListOfAccessedTensors(
-      DeviceContext* context, const TensorReferenceVector& tensors) {
-    for (const auto& ref : tensors) {
-      ref.Unref();
-    }
-  }
-
   // Blocks until all operations queued on the device at the time of
   // the call have completed.  Returns any error pending on the device
   // at completion.

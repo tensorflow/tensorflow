@@ -1,37 +1,45 @@
 # TensorFlow Lite delegates
 
-_Note: Delegate API is still experimental and is subject to change._
-
-
+Note: Delegate API is still experimental and is subject to change.
 ## What is a TensorFlow Lite delegate?
 
-A TensorFlow Lite delegate is a way to delegate part or all of graph execution to another executor.
-
+A TensorFlow Lite delegate is a way to delegate part or all of graph execution
+to another executor.
 
 ## Why should I use delegates?
 
-Running inference on compute-heavy machine learning models on mobile devices is resource demanding due to the devices' limited processing and power.
+Running inference on compute-heavy machine learning models on mobile devices is
+resource demanding due to the devices' limited processing and power.
 
-Instead of relying on the CPU, some devices have hardware accelerators, such as GPU or DSP, that allows for better performance and higher energy efficiency.
+Instead of relying on the CPU, some devices have hardware accelerators, such as
+GPU or DSP, that allows for better performance and higher energy efficiency.
 
-## Using the GPU / NNAPI delegate
+## Using the built-in delegates
 
 TensorFlow Lite provides the following delegates for hardware acceleration:
 
 *   **GPU delegate for cross platform acceleration** - The GPU delegate can be
     used on both Android and iOS. It is optimized to run 32-bit and 16-bit float
     based models where a GPU is available. For an overview of the GPU delegate,
-    see
-    [TensorFlow Lite on GPU](gpu_advanced.md).
-    For step-by-step tutorials on using the GPU delegate with Android and iOS,
-    see
+    see [TensorFlow Lite on GPU](gpu_advanced.md). For step-by-step tutorials on
+    using the GPU delegate with Android and iOS, see
     [TensorFlow Lite GPU Delegate Tutorial](gpu.md).
 *   **NNAPI delegate for newer Android devices** - The NNAPI delegate can be
     used to accelerate models on Android devices with GPU, DSP and / or NPU
     available. It is available in Android 8.1 (API 27+) or higher. For an
     overview of the NNAPI delegate, step-by-step instructions and best
-    practices, see
-    [TensorFlow Lite NNAPI delegate](nnapi.md).
+    practices, see [TensorFlow Lite NNAPI delegate](nnapi.md).
+*   **Hexagon delegate for older Android devices** - The Hexagon delegate can be
+    used to accelerate models on Android devices with Qualcomm Hexagon DSP. It
+    can be used on devices older version of Android OS that does not fully
+    support NNAPI. See [TensorFlow Lite Hexagon delegate](hexagon_delegate.md)
+    for more detail.
+*   **Core ML delegate for newer iPhones and iPads** - For newer iPhones and
+    iPads where Neural Engine is available, you can use Core ML delegate to
+    accelerate inference for 32-bit float based models. Neural Engine is
+    available Apple mobile devices with A12 SoC or higher. For an overview of
+    the Core ML delegate and step-by-step instructions, see
+    [TensorFlow Lite Core ML delegate](coreml_delegate.md).
 
 ## How do delegates work?
 
@@ -39,16 +47,25 @@ Let's say we have a simple model graph such as the following:
 
 ![Original graph](../images/performance/tflite_delegate_graph_1.png "Original Graph")
 
-If a delegate was provided for specific operations, then TensorFlow Lite will split the graph into multiple subgraphs where each subgraph will be handled by a delegate.
+If a delegate was provided for specific operations, then TensorFlow Lite will
+split the graph into multiple subgraphs where each subgraph will be handled by a
+delegate.
 
-Let's assume that there is a delegate "MyDelegate," which has a faster implementation for Conv2D and Mean operations. The resulting main graph will be updated to look like below.
+Let's assume that there is a delegate "MyDelegate," which has a faster
+implementation for Conv2D and Mean operations. The resulting main graph will be
+updated to look like below.
 
 ![Graph with delegate](../images/performance/tflite_delegate_graph_2.png "Graph with delegate")
 
-Each subgraph that is handled by a delegate will be replaced with a node that evaluates the subgraph on its invoked call.
+Each subgraph that is handled by a delegate will be replaced with a node that
+evaluates the subgraph on its invoked call.
 
-Depending on the model, the final graph can end up with one node, which means that all of the graphs were delegated or multiple nodes handled the subgraphs. In general, you don't want to have multiple subgraphs handled by the delegate, since each time you switch from delegate to the main graph, there is an overhead for passing the results from the subgraph to the main graph. It's not always safe to share memory.
-
+Depending on the model, the final graph can end up with one node, which means
+that all of the graphs were delegated or multiple nodes handled the subgraphs.
+In general, you don't want to have multiple subgraphs handled by the delegate,
+since each time you switch from delegate to the main graph, there is an overhead
+for passing the results from the subgraph to the main graph. It's not always
+safe to share memory.
 
 ## How to add a delegate
 
@@ -56,12 +73,15 @@ _Note that the API used below is experimental and is subject to change._
 
 Based on the previous section, to add a delegate, we need to do the following:
 
+1.  Define a kernel node that is responsible for evaluating the delegate
+    subgraph
+1.  Create an instance of
+    [TfLiteDelegate](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/common.h#L611),
+    which is responsible for registering the kernel node and claiming the nodes
+    that the delegate can execute
 
-
-1.  Define a kernel node that is responsible for evaluating the delegate subgraph
-1.  Create an instance of [TfLiteDelegate](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/c/common.h#L611), which is responsible for registering the kernel node and claiming the nodes that the delegate can execute
-
-To see it in code, let's define a delegate and call it "MyDelegate," which can execute Conv2D and Mean operations faster.
+To see it in code, let's define a delegate and call it "MyDelegate," which can
+execute Conv2D and Mean operations faster.
 
 ```
 // This is where the execution of the operations or whole graph happens.

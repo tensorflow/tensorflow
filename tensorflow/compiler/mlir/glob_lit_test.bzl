@@ -12,7 +12,7 @@ load("@bazel_skylib//lib:paths.bzl", "paths")
 _default_test_file_exts = ["mlir", ".pbtxt", ".td"]
 _default_driver = "@llvm-project//mlir:run_lit.sh"
 _default_size = "small"
-_default_tags = ["no_rocm"]
+_default_tags = []
 
 # These are patterns which we should never match, for tests, subdirectories, or
 # test input data files.

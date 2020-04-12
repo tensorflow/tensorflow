@@ -22,11 +22,11 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Transforms/Passes.h"  // TF:llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -39,7 +39,7 @@ namespace {
 // A pass that adds "Predecessors" and "Successors" remarks for each op based on
 // SideEffectAnalysis result. For testing purpose only.
 struct TestSideEffectAnalysis
-    : public mlir::FunctionPass<TestSideEffectAnalysis> {
+    : public mlir::PassWrapper<TestSideEffectAnalysis, FunctionPass> {
   void runOnFunction() override {
     int64_t next_id = 0;
     llvm::SmallDenseMap<Operation*, int64_t, 8> ids;

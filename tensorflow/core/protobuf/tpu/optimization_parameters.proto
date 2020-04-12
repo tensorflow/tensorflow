@@ -86,6 +86,7 @@ message FtrlParameters {
   float lr_power = 3;
   float initial_accum = 4;
   float initial_linear = 5;
+  bool multiply_linear_by_lr = 6;
 }
 
 // The Adam optimizer does not implement hyper-parameter update; use the dynamic

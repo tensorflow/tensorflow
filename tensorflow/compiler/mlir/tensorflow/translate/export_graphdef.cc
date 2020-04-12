@@ -28,19 +28,19 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Identifier.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
-#include "mlir/Support/DebugStringHelper.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -235,6 +236,7 @@ class Exporter {
   typedef absl::InlinedVector<Node*, 4> NodeVector;
   absl::flat_hash_map<Operation*, NodeVector> returns_;
   const mlir::Dialect* tf_dialect_;
+  llvm::DenseSet<Operation*> to_delete_;
 };
 
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
@@ -467,11 +469,8 @@ Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
   // If it is one of the specified input names, then the new instruction should
   // have the same name.
   op_to_name_.InitOpName(inst, op_to_name_.GetUniqueName(input));
-  for (int index : llvm::seq<int>(0, input->getNumResults())) {
-    input->getResult(index).replaceAllUsesWith(inst->getResult(index));
-  }
-  input->dropAllReferences();
-  input->erase();
+  input->replaceAllUsesWith(inst);
+  to_delete_.insert(input);
   return Status::OK();
 }
 
@@ -544,19 +543,9 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   auto graph = absl::make_unique<Graph>(OpRegistry::Global());
 
   // Extract version info.
-  auto version_attr = function.getParentOfType<mlir::ModuleOp>()
-                          .getAttrOfType<mlir::DictionaryAttr>("tf.versions");
-  if (version_attr) {
-    VersionDef versions;
-    versions.set_producer(
-        version_attr.get("producer").cast<mlir::IntegerAttr>().getInt());
-    versions.set_min_consumer(
-        version_attr.get("min_consumer").cast<mlir::IntegerAttr>().getInt());
-    for (auto bad_consumer :
-         version_attr.get("bad_consumers").cast<mlir::ArrayAttr>()) {
-      versions.mutable_bad_consumers()->Add(
-          bad_consumer.cast<mlir::IntegerAttr>().getInt());
-    }
+  VersionDef versions;
+  auto module = function.getParentOfType<mlir::ModuleOp>();
+  if (mlir::succeeded(ExtractTfVersions(module, &versions))) {
     graph->set_versions(versions);
   }
 
@@ -593,7 +582,6 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
         continue;
       }
 
-      TF_RET_CHECK(result.getResultNumber() == tensor_id.index());
       Operation* defining_op = GetIslandInnerOpOrSelf(result.getDefiningOp());
       if (output_op_to_name.insert({defining_op, name}).second) {
         TF_RET_CHECK(name_to_op.insert({name, defining_op}).second)
@@ -709,6 +697,12 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
 
   TF_RETURN_IF_ERROR(
       exporter.GetControlRetNodes(graph_op.GetFetch(), control_ret_nodes));
+
+  // Delete replaced arguments ops.
+  // Note: This is done afterwards to avoid the ops created above from reusing a
+  // memory location of an op to which a mapping has already been assigned.
+  // TODO(jpienaar): Remove this need.
+  for (auto it : exporter.to_delete_) it->erase();
 
   return graph;
 }

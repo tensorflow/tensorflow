@@ -26,6 +26,7 @@ from tensorflow.python.kernel_tests.random import util as \
 random_test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import stateless_random_ops as stateless
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -70,7 +71,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
         x = stateless.stateless_random_uniform(
             shape=[1000], seed=seed_t, maxval=maxval, dtype=dtype)
-        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
+        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
         self.assertTrue(np.all(y >= 0))
         self.assertTrue(np.all(y < maxval))
 
@@ -101,7 +102,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
         x = stateless.stateless_random_normal(
             shape=[10000], seed=seed_t, dtype=dtype)
-        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
+        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
         self.assertTrue(np.all(np.isfinite(y)))
 
   def testDistributionOfStatelessRandomNormal(self):
@@ -126,10 +127,43 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         n = 10000000
         x = stateless.stateless_truncated_normal(
             shape=[n], seed=seed_t, dtype=dtype)
-        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
+        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
         random_test_util.test_truncated_normal(
             self.assertEqual, self.assertAllClose, n, y,
             variance_rtol=6e-3 if dtype == dtypes.bfloat16 else 1e-3)
+
+
+class StatelessRandomOpsBenchmark(test.Benchmark):
+  """Microbenchmarks for the stateless random ops."""
+
+  def _benchmarkUniform(self, name, dtype, use_xla_jit):
+
+    def BuilderFn():
+      shape = (10, 1000, 1000)
+      seed_var = variables.Variable((312, 456),
+                                    dtype=dtypes.int32,
+                                    name='input')
+      random_t = stateless.stateless_random_uniform(
+          shape, seed=seed_var, dtype=dtype)
+      return '%s.shape%s' % (name, shape), [random_t]
+
+    xla_test.Benchmark(self, BuilderFn, use_xla_jit=use_xla_jit, device='cpu')
+
+  def benchmarkUniformF32(self):
+    self._benchmarkUniform(
+        'uniform_f32', dtype=dtypes.float32, use_xla_jit=False)
+
+  def benchmarkUniformF64(self):
+    self._benchmarkUniform(
+        'uniform_f64', dtype=dtypes.float64, use_xla_jit=False)
+
+  def benchmarkUniformF32XLA(self):
+    self._benchmarkUniform(
+        'uniform_f32', dtype=dtypes.float32, use_xla_jit=True)
+
+  def benchmarkUniformF64XLA(self):
+    self._benchmarkUniform(
+        'uniform_f64', dtype=dtypes.float64, use_xla_jit=True)
 
 
 if __name__ == '__main__':

@@ -244,6 +244,7 @@ cc_library(
     srcs = ["gl_interop.cc"],
     hdrs = ["gl_interop.h"],
     deps = [
+        ":cl_command_queue",
         ":cl_context",
         ":cl_device",
         ":cl_errors",
@@ -252,6 +253,7 @@ cc_library(
         ":egl_sync",
         ":environment",
         ":opencl_wrapper",
+        "//tensorflow/lite/delegates/gpu:spi",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:gl_call",

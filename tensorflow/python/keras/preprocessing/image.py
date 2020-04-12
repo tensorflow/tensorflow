@@ -28,6 +28,7 @@ except ImportError:
   pass
 
 from tensorflow.python.keras import backend
+from tensorflow.python.keras.preprocessing.image_dataset import image_dataset_from_directory  # pylint: disable=unused-import
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
@@ -41,7 +42,6 @@ random_channel_shift = image.random_channel_shift
 apply_brightness_shift = image.apply_brightness_shift
 random_brightness = image.random_brightness
 apply_affine_transform = image.apply_affine_transform
-load_img = image.load_img
 
 
 @keras_export('keras.preprocessing.image.array_to_img')
@@ -156,6 +156,44 @@ def save_img(path,
                  data_format=data_format,
                  file_format=file_format,
                  scale=scale, **kwargs)
+
+
+def load_img(path, grayscale=False, color_mode='rgb', target_size=None,
+             interpolation='nearest'):
+  """Loads an image into PIL format.
+
+  Usage:
+
+  ```
+  image = tf.keras.preprocessing.image.load_img(image_path)
+  input_arr = keras.preprocessing.image.img_to_array(image)
+  input_arr = np.array([input_arr])  # Convert single image to a batch.
+  predictions = model.predict(input_arr)
+  ```
+
+  Arguments:
+      path: Path to image file.
+      grayscale: DEPRECATED use `color_mode="grayscale"`.
+      color_mode: One of "grayscale", "rgb", "rgba". Default: "rgb".
+          The desired image format.
+      target_size: Either `None` (default to original size)
+          or tuple of ints `(img_height, img_width)`.
+      interpolation: Interpolation method used to resample the image if the
+          target size is different from that of the loaded image.
+          Supported methods are "nearest", "bilinear", and "bicubic".
+          If PIL version 1.1.3 or newer is installed, "lanczos" is also
+          supported. If PIL version 3.4.0 or newer is installed, "box" and
+          "hamming" are also supported. By default, "nearest" is used.
+
+  Returns:
+      A PIL Image instance.
+
+  Raises:
+      ImportError: if PIL is not available.
+      ValueError: if interpolation method is not supported.
+  """
+  return image.load_img(path, grayscale=grayscale, color_mode=color_mode,
+                        target_size=target_size, interpolation=interpolation)
 
 
 @keras_export('keras.preprocessing.image.Iterator')
@@ -415,8 +453,8 @@ class ImageDataGenerator(image.ImageDataGenerator):
   # (std, mean, and principal components if ZCA whitening is applied)
   datagen.fit(x_train)
   # fits the model on batches with real-time data augmentation:
-  model.fit_generator(datagen.flow(x_train, y_train, batch_size=32),
-                      steps_per_epoch=len(x_train) / 32, epochs=epochs)
+  model.fit(datagen.flow(x_train, y_train, batch_size=32),
+            steps_per_epoch=len(x_train) / 32, epochs=epochs)
   # here's a more "manual" example
   for e in range(epochs):
       print('Epoch', e)
@@ -449,7 +487,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
           target_size=(150, 150),
           batch_size=32,
           class_mode='binary')
-  model.fit_generator(
+  model.fit(
           train_generator,
           steps_per_epoch=2000,
           epochs=50,

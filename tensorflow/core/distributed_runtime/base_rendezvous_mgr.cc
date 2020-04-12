@@ -272,10 +272,8 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
     return;
   }
 
-  MEMDEBUG_CACHE_STEPID(0);
-  // Note that it would be nice to cache the step_id here, but it's not
-  // available.
-  MEMDEBUG_CACHE_OP("SameWorkerRecvDone");
+  ScopedMemoryDebugAnnotation op_annotation("SameWorkerRecvDone", step_id_,
+                                            "dynamic", in.dtype(), &in.shape());
   AllocatorAttributes attr = recv_args.alloc_attrs;
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
@@ -324,8 +322,7 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
   DCHECK(is_initialized()) << "RecvAsync called when uninitialized (key: "
                            << parsed.FullKey() << ").";
 
-  MEMDEBUG_CACHE_OP("RecvAsync");
-  MEMDEBUG_CACHE_STEPID(0);
+  ScopedMemoryDebugAnnotation op_annotation("RecvAsync", step_id_);
   // Are src and dst in the same worker?
   if (IsSameWorker(parsed.src, parsed.dst)) {
     // Recv the tensor from local_.

@@ -36,6 +36,10 @@ tf_class {
     argspec: "args=[\'self\', \'dataset_fn\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "experimental_distribute_values_from_function"
+    argspec: "args=[\'self\', \'value_fn\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "experimental_local_results"
     argspec: "args=[\'self\', \'value\'], varargs=None, keywords=None, defaults=None"
   }
@@ -74,6 +78,10 @@ tf_class {
   member_method {
     name: "reduce"
     argspec: "args=[\'self\', \'reduce_op\', \'value\', \'axis\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "run"
+    argspec: "args=[\'self\', \'fn\', \'args\', \'kwargs\', \'options\'], varargs=None, keywords=None, defaults=[\'()\', \'None\', \'None\'], "
   }
   member_method {
     name: "scope"

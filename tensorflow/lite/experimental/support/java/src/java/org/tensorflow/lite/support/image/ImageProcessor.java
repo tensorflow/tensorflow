@@ -15,7 +15,12 @@ limitations under the License.
 
 package org.tensorflow.lite.support.image;
 
+import android.graphics.PointF;
+import android.graphics.RectF;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.ListIterator;
+import org.tensorflow.lite.support.common.Operator;
 import org.tensorflow.lite.support.common.SequentialProcessor;
 import org.tensorflow.lite.support.common.SupportPreconditions;
 import org.tensorflow.lite.support.common.TensorOperator;
@@ -49,6 +54,60 @@ import org.tensorflow.lite.support.image.ops.TensorOperatorWrapper;
 public class ImageProcessor extends SequentialProcessor<TensorImage> {
   private ImageProcessor(Builder builder) {
     super(builder);
+  }
+
+  /**
+   * Transforms a point from coordinates system of the result image back to the one of the input
+   * image.
+   *
+   * @param point the point from the result coordinates system.
+   * @param inputImageHeight the height of input image.
+   * @param inputImageWidth the width of input image.
+   * @return the point with the coordinates from the coordinates system of the input image.
+   */
+  public PointF inverseTransform(PointF point, int inputImageHeight, int inputImageWidth) {
+    List<Integer> widths = new ArrayList<>();
+    List<Integer> heights = new ArrayList<>();
+    int currentWidth = inputImageWidth;
+    int currentHeight = inputImageHeight;
+    for (Operator<TensorImage> op : operatorList) {
+      widths.add(currentWidth);
+      heights.add(currentHeight);
+      ImageOperator imageOperator = (ImageOperator) op;
+      int newHeight = imageOperator.getOutputImageHeight(currentHeight, currentWidth);
+      int newWidth = imageOperator.getOutputImageWidth(currentHeight, currentWidth);
+      currentHeight = newHeight;
+      currentWidth = newWidth;
+    }
+    ListIterator<Operator<TensorImage>> opIterator = operatorList.listIterator(operatorList.size());
+    ListIterator<Integer> widthIterator = widths.listIterator(widths.size());
+    ListIterator<Integer> heightIterator = heights.listIterator(heights.size());
+    while (opIterator.hasPrevious()) {
+      ImageOperator imageOperator = (ImageOperator) opIterator.previous();
+      int height = heightIterator.previous();
+      int width = widthIterator.previous();
+      point = imageOperator.inverseTransform(point, height, width);
+    }
+    return point;
+  }
+
+  /**
+   * Transforms a rectangle from coordinates system of the result image back to the one of the input
+   * image.
+   *
+   * @param rect the rectangle from the result coordinates system.
+   * @param inputImageHeight the height of input image.
+   * @param inputImageWidth the width of input image.
+   * @return the rectangle with the coordinates from the coordinates system of the input image.
+   */
+  public RectF inverseTransform(RectF rect, int inputImageHeight, int inputImageWidth) {
+    // when rotation is involved, corner order may change - top left changes to bottom right, .etc
+    PointF p1 =
+        inverseTransform(new PointF(rect.left, rect.top), inputImageHeight, inputImageWidth);
+    PointF p2 =
+        inverseTransform(new PointF(rect.right, rect.bottom), inputImageHeight, inputImageWidth);
+    return new RectF(
+        Math.min(p1.x, p2.x), Math.min(p1.y, p2.y), Math.max(p1.x, p2.x), Math.max(p1.y, p2.y));
   }
 
   /**

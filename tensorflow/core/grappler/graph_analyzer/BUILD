@@ -62,7 +62,6 @@ cc_library(
     deps = [
         ":graph_analyzer_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:tensorflow",
         "//tensorflow/core/grappler:op_types",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_RUY_H_
 #define TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_RUY_H_
 
-#include "tensorflow/lite/experimental/ruy/path.h"
-#include "tensorflow/lite/experimental/ruy/ruy.h"
+#include "ruy/path.h"  // from @ruy
+#include "ruy/ruy.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 

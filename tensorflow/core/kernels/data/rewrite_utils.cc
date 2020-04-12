@@ -126,7 +126,7 @@ Status ApplyRewrites(OpKernelContext* ctx,
   tensorflow::ConfigProto config;
   *config.mutable_graph_options()->mutable_rewrite_options() = config_factory();
   TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
-      *grappler_item, config, ctx->device(), &cluster, graph_def));
+      std::move(*grappler_item), config, ctx->device(), &cluster, graph_def));
 
   // Remove fake sinks after optimizations are done.
   //
@@ -195,8 +195,10 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
 
   if (record_fingerprint) {
     (*ctx->runner())([graph_def = std::move(graph_def),
+                      lib_def = lib_def.release(),
                       input_list = std::move(input_list),
                       output_node = std::move(output_node)]() {
+      std::unique_ptr<FunctionLibraryDefinition> lib_def_owner(lib_def);
       const NodeDef* node_def = nullptr;
       for (const auto& node : graph_def.node()) {
         if (node.name() == output_node) {
@@ -209,7 +211,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
         return;
       }
       uint64 hash = 0;
-      Status s = HashNode(graph_def, *node_def, &hash);
+      Status s = HashNode(graph_def, *node_def, *lib_def, &hash);
       if (!s.ok()) {
         VLOG(3) << "Failed to hash graph: " << s.ToString();
         return;

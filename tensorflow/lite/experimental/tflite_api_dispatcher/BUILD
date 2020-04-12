@@ -14,7 +14,7 @@ cc_library(
         if_none = [],
     ),
     deps = [
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:framework_lib",
     ] + tflite_experimental_runtime_linkopts(),
 )
 
@@ -23,7 +23,7 @@ cc_library(
     hdrs = ["tflite_api_dispatcher.h"],
     deps = [
         ":tflite_api_dispatcher",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:framework_lib",
     ] + tflite_experimental_runtime_linkopts(
         if_eager = [
             # "//tensorflow/lite/experimental/tf_runtime/opdef:tflrt_opdefs",

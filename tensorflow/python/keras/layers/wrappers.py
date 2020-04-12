@@ -67,12 +67,7 @@ class Wrapper(Layer):
       return None
 
   def get_config(self):
-    config = {
-        'layer': {
-            'class_name': self.layer.__class__.__name__,
-            'config': self.layer.get_config()
-        }
-    }
+    config = {'layer': generic_utils.serialize_keras_object(self.layer)}
     base_config = super(Wrapper, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
@@ -80,7 +75,7 @@ class Wrapper(Layer):
   def from_config(cls, config, custom_objects=None):
     from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
     # Avoid mutating the input dict
-    config = config.copy()
+    config = copy.deepcopy(config)
     layer = deserialize_layer(
         config.pop('layer'), custom_objects=custom_objects)
     return cls(layer, **config)
@@ -426,7 +421,8 @@ class Bidirectional(Wrapper):
       # Keep the custom backward layer config, so that we can save it later. The
       # layer's name might be updated below with prefix 'backward_', and we want
       # to preserve the original config.
-      self._backward_layer_config = backward_layer.get_config()
+      self._backward_layer_config = generic_utils.serialize_keras_object(
+          backward_layer)
 
     self.forward_layer._name = 'forward_' + self.forward_layer.name
     self.backward_layer._name = 'backward_' + self.backward_layer.name
@@ -655,7 +651,8 @@ class Bidirectional(Wrapper):
       y_rev = y_rev[0]
 
     if self.return_sequences:
-      y_rev = K.reverse(y_rev, 1)
+      time_dim = 0 if getattr(self.forward_layer, 'time_major', False) else 1
+      y_rev = K.reverse(y_rev, time_dim)
     if self.merge_mode == 'concat':
       output = K.concatenate([y, y_rev])
     elif self.merge_mode == 'sum':
@@ -720,26 +717,26 @@ class Bidirectional(Wrapper):
       config['num_constants'] = self._num_constants
 
     if hasattr(self, '_backward_layer_config'):
-      config['backward_layer'] = {
-          'class_name': self.backward_layer.__class__.__name__,
-          'config': self._backward_layer_config,
-      }
+      config['backward_layer'] = self._backward_layer_config
     base_config = super(Bidirectional, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
   @classmethod
   def from_config(cls, config, custom_objects=None):
     # Instead of updating the input, create a copy and use that.
-    config = config.copy()
+    config = copy.deepcopy(config)
     num_constants = config.pop('num_constants', 0)
+    # Handle forward layer instantiation (as would parent class).
+    from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
+    config['layer'] = deserialize_layer(
+        config['layer'], custom_objects=custom_objects)
+    # Handle (optional) backward layer instantiation.
     backward_layer_config = config.pop('backward_layer', None)
     if backward_layer_config is not None:
-      from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
       backward_layer = deserialize_layer(
           backward_layer_config, custom_objects=custom_objects)
       config['backward_layer'] = backward_layer
-
-    layer = super(Bidirectional, cls).from_config(config,
-                                                  custom_objects=custom_objects)
+    # Instantiate the wrapper, adjust it and return it.
+    layer = cls(**config)
     layer._num_constants = num_constants
     return layer

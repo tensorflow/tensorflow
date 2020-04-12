@@ -44,7 +44,7 @@ TfLiteStatus ValidateDepthwiseConvGoldens(const T* expected_output_data,
                                           float tolerance, int tensors_size,
                                           TfLiteTensor* tensors) {
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, &context);
+  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =

@@ -173,7 +173,8 @@ class Env {
 
   /// \brief Returns true if the path matches the given pattern. The wildcards
   /// allowed in pattern are described in FileSystem::GetMatchingPaths.
-  virtual bool MatchPath(const string& path, const string& pattern) = 0;
+  virtual bool MatchPath(const std::string& path,
+                         const std::string& pattern) = 0;
 
   /// \brief Given a pattern, stores in *results the set of paths that matches
   /// that pattern. *results is cleared.
@@ -264,18 +265,18 @@ class Env {
 
   /// \brief Returns the absolute path of the current executable. It resolves
   /// symlinks if there is any.
-  string GetExecutablePath();
+  std::string GetExecutablePath();
 
   /// Creates a local unique temporary file name. Returns true if success.
-  bool LocalTempFilename(string* filename);
+  bool LocalTempFilename(std::string* filename);
 
   /// Creates a local unique file name that starts with |prefix| and ends with
   /// |suffix|. Returns true if success.
-  bool CreateUniqueFileName(string* prefix, const string& suffix);
+  bool CreateUniqueFileName(std::string* prefix, const std::string& suffix);
 
   /// \brief Return the runfiles directory if running under bazel. Returns
   /// the directory the executable is located in if not running under bazel.
-  virtual string GetRunfilesDir() = 0;
+  virtual std::string GetRunfilesDir() = 0;
 
   // TODO(jeff,sanjay): Add back thread/thread-pool support if needed.
   // TODO(jeff,sanjay): if needed, tighten spec so relative to epoch, or
@@ -299,7 +300,7 @@ class Env {
   /// Caller takes ownership of the result and must delete it eventually
   /// (the deletion will block until fn() stops running).
   virtual Thread* StartThread(const ThreadOptions& thread_options,
-                              const string& name,
+                              const std::string& name,
                               std::function<void()> fn) TF_MUST_USE_RESULT = 0;
 
   // Returns the thread id of calling thread.
@@ -309,7 +310,7 @@ class Env {
   virtual int32 GetCurrentThreadId() = 0;
 
   // Copies current thread name to "name". Returns true if success.
-  virtual bool GetCurrentThreadName(string* name) = 0;
+  virtual bool GetCurrentThreadName(std::string* name) = 0;
 
   // \brief Schedules the given closure on a thread-pool.
   //
@@ -349,8 +350,8 @@ class Env {
   // "name" should be name of the library.
   // "version" should be the version of the library or NULL
   // returns the name that LoadLibrary() can use
-  virtual string FormatLibraryFileName(const string& name,
-                                       const string& version) = 0;
+  virtual std::string FormatLibraryFileName(const std::string& name,
+                                            const std::string& version) = 0;
 
   // Returns a possible list of local temporary directories.
   virtual void GetLocalTempDirectories(std::vector<string>* list) = 0;
@@ -387,7 +388,7 @@ class EnvWrapper : public Env {
     return target_->RegisterFileSystem(scheme, factory);
   }
 
-  bool MatchPath(const string& path, const string& pattern) override {
+  bool MatchPath(const std::string& path, const std::string& pattern) override {
     return target_->MatchPath(path, pattern);
   }
 
@@ -395,12 +396,13 @@ class EnvWrapper : public Env {
   void SleepForMicroseconds(int64 micros) override {
     target_->SleepForMicroseconds(micros);
   }
-  Thread* StartThread(const ThreadOptions& thread_options, const string& name,
+  Thread* StartThread(const ThreadOptions& thread_options,
+                      const std::string& name,
                       std::function<void()> fn) override {
     return target_->StartThread(thread_options, name, fn);
   }
   int32 GetCurrentThreadId() override { return target_->GetCurrentThreadId(); }
-  bool GetCurrentThreadName(string* name) override {
+  bool GetCurrentThreadName(std::string* name) override {
     return target_->GetCurrentThreadName(name);
   }
   void SchedClosure(std::function<void()> closure) override {
@@ -416,12 +418,12 @@ class EnvWrapper : public Env {
                               void** symbol) override {
     return target_->GetSymbolFromLibrary(handle, symbol_name, symbol);
   }
-  string FormatLibraryFileName(const string& name,
-                               const string& version) override {
+  std::string FormatLibraryFileName(const std::string& name,
+                                    const std::string& version) override {
     return target_->FormatLibraryFileName(name, version);
   }
 
-  string GetRunfilesDir() override { return target_->GetRunfilesDir(); }
+  std::string GetRunfilesDir() override { return target_->GetRunfilesDir(); }
 
  private:
   void GetLocalTempDirectories(std::vector<string>* list) override {
@@ -520,7 +522,7 @@ namespace register_file_system {
 
 template <typename Factory>
 struct Register {
-  Register(Env* env, const string& scheme) {
+  Register(Env* env, const std::string& scheme) {
     // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
     env->RegisterFileSystem(scheme, []() -> FileSystem* { return new Factory; })
         .IgnoreError();

@@ -18,19 +18,23 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_HLO_UTILS_H_
 
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
 
 StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
-    const Literal& literal, mlir::Builder builder);
+    const LiteralBase& literal, mlir::Builder builder);
 
+// Creates an DenseIntElementsAttr using the elements of the vector and the
+// optional shape.
 mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
-    const llvm::ArrayRef<int64> vector, mlir::Builder builder);
+    const llvm::ArrayRef<int64> vector, mlir::Builder builder,
+    llvm::ArrayRef<int64_t> shape = {});
 
 StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
                                                     mlir::Builder builder);
@@ -68,6 +72,9 @@ static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
       contents.push_back(mlir_subtype);
     }
     return builder.getTupleType(contents);
+  }
+  if (shape.IsToken()) {
+    return mlir::xla_hlo::TokenType::get(builder.getContext());
   }
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }

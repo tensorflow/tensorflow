@@ -168,13 +168,17 @@ EventType ClassifyGpuEvent(absl::string_view event_name,
   return ClassifyDeviceCompute(event_name, tensor_shapes);
 }
 
-EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id) {
+EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id,
+                           bool has_device) {
   if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoD") ||
       absl::StrContains(event_name, "Infeed"))
     return HOST_TO_DEVICE;
   if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoH")) return HOST_TO_HOST;
-  if (correlation_id >= 0 ||
-      absl::StartsWithIgnoreCase(event_name, "ExecutorState::Process")) {
+  // TODO(b/150420972): Separate runtime overhead from actual compute for
+  // CPU-only.
+  if (has_device &&
+      (correlation_id >= 0 ||
+       absl::StartsWithIgnoreCase(event_name, "ExecutorState::Process"))) {
     return HOST_PREPARE;
   }
   if (absl::StartsWithIgnoreCase(event_name, "IteratorGetNext"))
@@ -309,9 +313,13 @@ Timespan StepDetails::StepTime() const {
     if (new_step_time.duration_ps() > cur_max_step_time.duration_ps())
       cur_max_step_time = new_step_time;
   }
+  // CPU-only profile.
+  if (max_device_step_time.Empty()) {
+    return max_host_step_time;
+  }
+
   // If the host step time includes the device step time, use the host step
-  // time. This covers two cases: (1) the device step marker is not available
-  // (e.g., CPU-only profiles) and (2) the device is synchronized at the end of
+  // time. This covers the case where the device is synchronized at the end of
   // each step.
   if (max_host_step_time.Includes(max_device_step_time)) {
     return max_host_step_time;

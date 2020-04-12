@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_TRACEME_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_TRACEME_H_
 
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -156,6 +158,26 @@ class TraceMe {
       }
       no_init_.name.~string();
       start_time_ = kUntracedActivity;
+    }
+#endif
+  }
+
+  // Sets new_metadata in the metadata part of no_init_.name.
+  void SetMetadata(absl::string_view new_metadata) {
+#if !defined(IS_MOBILE_PLATFORM)
+    if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
+      if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
+        absl::string_view orig = no_init_.name;
+        if (absl::EndsWith(orig, "#")) {
+          // orig does have metadata.
+          absl::ConsumeSuffix(&orig, "#");
+          absl::ConsumePrefix(&new_metadata, "#");
+          no_init_.name = absl::StrCat(orig, ",", new_metadata);
+        } else {
+          // orig does not have metadata.
+          absl::StrAppend(&no_init_.name, new_metadata);
+        }
+      }
     }
 #endif
   }

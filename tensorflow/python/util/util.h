@@ -234,7 +234,7 @@ PyObject* AssertSameStructure(PyObject* o1, PyObject* o2, bool check_types,
 //   nest: an arbitrarily nested structure or a scalar object. Note, numpy
 //       arrays are considered scalars.
 //   expand_composites: If true, then composite tensors (such as
-//       `tf.SparseTensor` and `tf.RaggedTensor` are flattened into their
+//       `tf.sparse.SparseTensor` and `tf.RaggedTensor` are flattened into their
 //       component tensors.
 //
 // Returns:

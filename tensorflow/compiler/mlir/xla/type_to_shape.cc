@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <string>
 
-#include "mlir/IR/AffineMap.h"  // TF:llvm-project
-#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Support/DebugStringHelper.h"  // TF:llvm-project
+#include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
@@ -45,6 +45,17 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
   switch (type.getKind()) {
     case mlir::StandardTypes::BF16:
       return PrimitiveType::BF16;
+    case mlir::StandardTypes::Complex: {
+      mlir::Type element_ty = type.cast<mlir::ComplexType>().getElementType();
+      switch (element_ty.getKind()) {
+        case mlir::StandardTypes::F32:
+          return PrimitiveType::C64;
+        case mlir::StandardTypes::F64:
+          return PrimitiveType::C128;
+        default:
+          return PrimitiveType::PRIMITIVE_TYPE_INVALID;
+      }
+    }
     case mlir::StandardTypes::F16:
       return PrimitiveType::F16;
     case mlir::StandardTypes::F32:

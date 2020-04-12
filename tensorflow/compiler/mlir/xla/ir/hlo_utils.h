@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_IR_HLO_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_IR_HLO_UTILS_H_
 
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 
 namespace mlir {
@@ -28,9 +28,12 @@ namespace xla {
 
 // Computes the broadcast dimensions attr for an elementwise binary operator
 // between two ranked tensors.
+// If `allow_empty` is true, then null can be returned to mean that the
+// broadcast is an "identity".
 mlir::DenseIntElementsAttr getBroadcastDimensionsAttr(mlir::Builder* b,
                                                       mlir::Value x,
-                                                      mlir::Value y);
+                                                      mlir::Value y,
+                                                      bool allow_empty = true);
 
 /// Get a constant splat for the given value type.
 template <typename T>

@@ -23,10 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/kernels/internal/optimized/integer_ops/softmax.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/string_type.h"
@@ -88,14 +86,18 @@ void CheckOutputData(const T* test_output, const T* reference_output,
   // We either check for bit exactness (against the reference quantized version)
   // or for general accuracy, allowing off-by-one (against the float reference).
   if (be_exacting) {
-    ASSERT_TRUE(std::abs(min_diff) == 0 && std::abs(max_diff) == 0);
+    ASSERT_EQ(std::abs(min_diff), 0);
+    ASSERT_EQ(std::abs(max_diff), 0);
   } else {
     // For small numbers of samples, the estimates of the means vary more.
     // Rather than widen the tolerances, we skip the smaller tests.
-    ASSERT_TRUE(((std::abs(mean_diff) < 2e-2f && mean_abs_diff < 3e-2f) ||
-                 buffer_size < 10000) &&
-                std::abs(median_diff) == 0 && std::abs(min_diff) <= 1 &&
-                std::abs(max_diff) <= 1);
+    if (buffer_size >= 10000) {
+      ASSERT_LT(std::abs(mean_diff), 2e-2f);
+      ASSERT_LT(mean_abs_diff, 3e-2f);
+    }
+    ASSERT_EQ(std::abs(median_diff), 0);
+    ASSERT_LE(std::abs(min_diff), 1);
+    ASSERT_LE(std::abs(max_diff), 1);
   }
 }
 
@@ -178,68 +180,6 @@ bool TryOneUniformSoftmax() {
   return true;
 }
 
-// Runs the Int8 quatnized Softmax and compares reference implementation with
-// optimized implementation.
-void RunOneSoftmaxTestInt8(const int8* input_data,
-                           const RuntimeShape& shape_common, int32 input_offset,
-                           const double input_scale, int stride, float beta) {
-  const int buffer_size = shape_common.FlatSize();
-  std::vector<int8> optimized_quant_softmax_output(buffer_size);
-  std::vector<int8> reference_quant_softmax_output(buffer_size);
-
-  int32 input_beta_multiplier;
-  int input_beta_left_shift;
-  static const int kScaledDiffIntegerBits = 5;
-  tflite::PreprocessSoftmaxScaling(beta, input_scale, kScaledDiffIntegerBits,
-                                   &input_beta_multiplier,
-                                   &input_beta_left_shift);
-  // diff_min has a negative value, and is used to limit the maximum magnitude
-  // of the diffs, which are <= 0.
-  const int diff_min = -tflite::CalculateInputRadius(kScaledDiffIntegerBits,
-                                                     input_beta_left_shift);
-
-  SoftmaxParams params;
-  params.input_multiplier = input_beta_multiplier;
-  params.input_left_shift = input_beta_left_shift;
-  params.diff_min = diff_min;
-  optimized_integer_ops::Softmax(params, shape_common, input_data, shape_common,
-                                 optimized_quant_softmax_output.data());
-  reference_integer_ops::Softmax(params, shape_common, input_data, shape_common,
-                                 reference_quant_softmax_output.data());
-
-  CheckOutputData<int8_t>(optimized_quant_softmax_output.data(),
-                          reference_quant_softmax_output.data(), shape_common,
-                          "Int8 quant refernece vs optimized", true);
-}
-
-// This function picks some random Softmax params, which are checked for
-// desirability.  If not acceptable, it returns false. If they're OK,
-// it runs the Softmax and test the results between reference int8 and optimized
-// int8 kernels.
-bool TryOneUniformSoftmaxInt8() {
-  // We pick mostly positive values, on the whole emphasizing smaller values and
-  // therefore faster tests.  We test a wider range of depths.  In the case of
-  // Softmax, the width and height really just create test repetitions.
-  const int batch = ExponentialRandomPositiveInt(0.9f, 3, 20);
-  const int input_depth = ExponentialRandomPositiveInt(0.75f, 175, 500);
-  const int input_width = ExponentialRandomPositiveInt(0.8f, 20, 200);
-  const int input_height = ExponentialRandomPositiveInt(0.8f, 20, 200);
-  const int stride = ExponentialRandomPositiveInt(0.9f, 3, 8);
-  const double input_scale = std::pow(10.0, UniformRandomFloat(-2.0, 1.0));
-  const int32 input_offset = UniformRandomInt(-128, 127);
-  const float beta = 1.0f + ExponentialRandomPositiveFloat(0.9f, 2, 10);
-
-  auto shape_common =
-      RuntimeShape({batch, input_height, input_width, input_depth});
-  const int buffer_size = shape_common.FlatSize();
-
-  std::vector<int8> input_data(buffer_size);
-  FillRandom(&input_data);
-  RunOneSoftmaxTestInt8(input_data.data(), shape_common, input_offset,
-                        input_scale, stride, beta);
-  return true;
-}
-
 // See TryOneUniformSoftmax() for a general description.
 //
 // Tests with "skyscraper" input patterns are included for two reasons. (a)
@@ -283,14 +223,6 @@ TEST(TestQuantizedSoftmax, UniformSoftmaxTests) {
   const int kTestsToRun = 100;
   for (int i = 0; i < kTestsToRun; i++) {
     while (!TryOneUniformSoftmax()) {
-    }
-  }
-}
-
-TEST(TestQuantizedSoftmax, UniformSoftmaxTestsInt8) {
-  const int kTestsToRun = 100;
-  for (int i = 0; i < kTestsToRun; i++) {
-    while (!TryOneUniformSoftmaxInt8()) {
     }
   }
 }

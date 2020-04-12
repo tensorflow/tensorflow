@@ -29,19 +29,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops.ragged import ragged_math_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-# Avoid circular dependencies with RaggedTensor.
-# TODO(b/141170488) Refactor ragged modules so this is unnecessary.
-ragged_tensor = LazyLoader(
-    "ragged_tensor", globals(),
-    "tensorflow.python.ops.ragged.ragged_tensor")
-ragged_math_ops = LazyLoader(
-    "ragged_math_ops", globals(),
-    "tensorflow.python.ops.ragged.ragged_math_ops")
 
 
 # TODO(b/122887740) Refactor code:
