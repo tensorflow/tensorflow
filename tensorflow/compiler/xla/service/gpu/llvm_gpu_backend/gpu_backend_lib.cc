@@ -64,6 +64,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace xla {
 namespace gpu {
@@ -570,6 +572,60 @@ static std::vector<string> GetROCDLPaths(int amdgpu_version,
   return result;
 }
 
+struct HsacoCacheEntry {
+  uint64 hash;
+  std::string ir;
+  int gfx;
+  std::vector<uint8> hsaco;
+};
+
+struct HsacoCache {
+ protected:
+  std::vector<HsacoCacheEntry> cache;
+  std::mutex m_mutex;
+  int request_count = 0;
+  int hit_count = 0;
+
+ public:
+  static bool Find(const std::string& ir, uint64_t& hash, int gfx,
+                   std::vector<uint8>& hsaco);
+  static void Add(const std::string& ir, uint64_t hash, int gfx,
+                  const std::vector<uint8>& hsaco);
+};
+
+static HsacoCache g_hsacoCache;
+
+bool HsacoCache::Find(const std::string& ir, uint64_t& hash, int gfx,
+                      std::vector<uint8>& hsaco) {
+  std::lock_guard<std::mutex> lg(g_hsacoCache.m_mutex);
+  hash = std::hash<std::string>{}(ir);
+  bool hit = false;
+  for (auto& x : g_hsacoCache.cache) {
+    if (x.hash != hash) continue;
+    if (x.gfx != gfx) continue;
+    if (x.ir != ir) continue;
+    hsaco = x.hsaco;
+    hit = true;
+    break;
+  }
+  g_hsacoCache.request_count++;
+  if (hit) g_hsacoCache.hit_count++;
+  if (!(g_hsacoCache.request_count % 50))
+    VLOG(0) << "HSACO cache: " << g_hsacoCache.request_count << " requests, "
+            << g_hsacoCache.hit_count << " hits";
+  return hit;
+}
+
+void HsacoCache::Add(const std::string& ir, uint64_t hash, int gfx,
+                     const std::vector<uint8>& hsaco) {
+  std::lock_guard<std::mutex> lg(g_hsacoCache.m_mutex);
+  g_hsacoCache.cache.resize(g_hsacoCache.cache.size() + 1);
+  g_hsacoCache.cache.back().ir = ir;
+  g_hsacoCache.cache.back().hash = hash;
+  g_hsacoCache.cache.back().gfx = gfx;
+  g_hsacoCache.cache.back().hsaco = hsaco;
+}
+
 // Emits the given module to HSA Code Object. target_machine is an initialized
 // TargetMachine for the AMDGPU target.
 StatusOr<std::vector<uint8>> EmitModuleToHsaco(
@@ -584,18 +640,29 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   std::string tempdir_name = tempdir_vector.front();
   VLOG(1) << "Compile-time artifacts located at: " << tempdir_name;
 
+  bool keep_tempfiles = false;
+  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_ROCM_XLA_TEMPFILES",
+                                             /*default_val=*/false,
+                                             &keep_tempfiles));
   // Prepare filenames for all stages of compilation:
   // IR, binary ISA, and HSACO.
-  std::string ir_filename = absl::StrCat(module->getModuleIdentifier(), ".ll");
+  std::string random_number = std::to_string(tensorflow::random::New64());
+  std::string ir_filename =
+      absl::StrCat(module->getModuleIdentifier(), random_number + ".ll");
   std::string ir_path = tensorflow::io::JoinPath(tempdir_name, ir_filename);
 
+  std::string ir_opt_filename =
+      absl::StrCat(module->getModuleIdentifier(), random_number + "_opt.ll");
+  std::string ir_opt_path =
+      tensorflow::io::JoinPath(tempdir_name, ir_opt_filename);
+
   std::string isabin_filename =
-      absl::StrCat(module->getModuleIdentifier(), ".o");
+      absl::StrCat(module->getModuleIdentifier(), random_number + ".o");
   std::string isabin_path =
       tensorflow::io::JoinPath(tempdir_name, isabin_filename);
 
   std::string hsaco_filename =
-      absl::StrCat(module->getModuleIdentifier(), ".hsaco");
+      absl::StrCat(module->getModuleIdentifier(), random_number + ".hsaco");
   std::string hsaco_path =
       tensorflow::io::JoinPath(tempdir_name, hsaco_filename);
 
@@ -613,7 +680,7 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   std::string module_id = module->getModuleIdentifier();
   IrDumpingPassManager codegen_passes(
       ReplaceFilenameExtension(tensorflow::io::Basename(module_id),
-                               "-amdgpu.dummy"),
+                               random_number + "-amdgpu.dummy"),
       "", false);
   codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
       llvm::Triple(module->getTargetTriple())));
@@ -627,6 +694,12 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   codegen_passes.run(*module);
   isabin_fs->flush();
 
+  if (keep_tempfiles) {
+    std::unique_ptr<llvm::raw_fd_ostream> ir_fs(
+        new llvm::raw_fd_ostream(ir_opt_path, ec, llvm::sys::fs::F_None));
+    module->print(*ir_fs, nullptr);
+    ir_fs->flush();
+  }
   // Locate lld.
   // TODO(whchung@gmail.com): change to tensorflow::ROCmRoot() after
   // ROCm-Device-Libs PR.
@@ -650,9 +723,8 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   int lld_result =
       llvm::sys::ExecuteAndWait(*lld_program, llvm_ir::AsArrayRef(lld_args),
                                 llvm::None, {}, 0, 0, &error_message);
-
   if (lld_result) {
-    return xla::InternalError("ld.lld execute fail: %s", error_message);
+    return xla::InternalError("ld.lld execute fail: %s, error code %d", error_message, lld_result);
   }
 
   // Read HSACO.
@@ -662,6 +734,12 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   std::vector<uint8> hsaco(hsaco_file_size);
   hsaco_file.seekg(0, std::ios::beg);
   hsaco_file.read(reinterpret_cast<char*>(&hsaco[0]), hsaco_file_size);
+  hsaco_file.close();
+  if (!keep_tempfiles) {
+    remove(ir_path.c_str());
+    remove(isabin_path.c_str());
+    remove(hsaco_path.c_str());
+  }
   return hsaco;
 }
 
@@ -726,6 +804,21 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
 
   std::vector<uint8> hsaco;
   std::unique_ptr<llvm::TargetMachine> target_machine;
+  std::string ir_str;
+  llvm::raw_string_ostream stream(ir_str);
+  stream << *module;
+  std::string str = stream.str();
+  // Delete the first two lines, since they usually vary even when the rest of
+  // the code is the same (but verify that they are what we expect).
+  if (str.size() >= 13 && str.substr(0, 13) == "; ModuleID = ") {
+    auto pos = str.find("\n");
+    if (pos != std::string::npos) str = str.substr(pos + 1);
+  }
+  if (str.size() >= 18 && str.substr(0, 18) == "source_filename = ") {
+    auto pos = str.find("\n");
+    if (pos != std::string::npos) str = str.substr(pos + 1);
+  }
+  str += hlo_module_config.compilation_cache_key();
   {
     tensorflow::profiler::TraceMe activity(
         [&] { return absl::StrCat("Compiling IR", module->getName().str()); },
@@ -736,6 +829,22 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
     if (!amdgpu_version) {
       return xla::InternalError(
           "Incompatible AMD GCN ISA version was specified.");
+    }
+    uint64_t hash;
+    if (HsacoCache::Find(str, hash, *amdgpu_version, hsaco)) {
+      VLOG(1) << "HSACO cache hit";
+      return hsaco;
+    }
+    VLOG(1) << "HSACO cache miss";
+    bool dump_lls = false;
+    if (dump_lls) {
+      static int hsaco_count = 0;
+      char name[256];
+      sprintf(name, "/tmp/%d.ll", hsaco_count);
+      hsaco_count++;
+      FILE* f = fopen(name, "w");
+      fwrite(&str[0], str.size(), 1, f);
+      fclose(f);
     }
 
     llvm::Triple default_target_triple("amdgcn--amdhsa-amdgiz");
@@ -752,6 +861,7 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
 
     // Lower optimized LLVM module to HSA code object.
     TF_ASSIGN_OR_RETURN(hsaco, EmitModuleToHsaco(module, target_machine.get()));
+    HsacoCache::Add(str, hash, *amdgpu_version, hsaco);
   }
   return hsaco;
 }
