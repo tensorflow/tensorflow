@@ -36,7 +36,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/platform.h"
@@ -66,6 +68,15 @@ GpuExecutable::GpuExecutable(
       thunk_schedule_(std::move(thunk_schedule)),
       assignment_(std::move(assignment)) {
   CHECK(has_module() && assignment_);
+#if TENSORFLOW_USE_ROCM
+  // ROCm uses hsaco hashes to distinguish between modules.
+  // Bad things happen if multiple modules with identical code are loaded.
+  binary_.resize(binary_.size() + 16);
+  *(uint64_t*)(&binary_[binary_.size() - 16]) = tensorflow::EnvTime::NowNanos();
+  *(uint64_t*)(&binary_[binary_.size() - 8]) = tensorflow::random::New64();
+  // workaround for a bug in ROCm 3.3 hipModuleLoadData
+  binary_.reserve(binary_.size() + 256);
+#endif
   GpuDebugInfoManager::Get()->RegisterModule(module().name(), shared_module(),
                                              assignment_);
   ComputeThunkAnnotations();
