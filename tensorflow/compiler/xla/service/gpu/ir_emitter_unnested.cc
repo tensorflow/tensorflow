@@ -1326,6 +1326,17 @@ Status IrEmitterUnnested::HandleAfterAll(HloInstruction* after_all) {
   return Status::OK();
 }
 
+struct HloPtrAndShapeComparator {
+  bool operator()(
+      const std::pair<const HloInstruction*, ShapeIndex>& lhs,
+      const std::pair<const HloInstruction*, ShapeIndex>& rhs) const {
+    if (lhs.first != rhs.first)
+      return HloPtrComparator()(lhs.first, rhs.first);
+    else
+      return lhs.second < rhs.second;
+  }
+};
+
 // Figures out how to access the buffers for all subshapes of hlo's operands and
 // for hlo itself (i.e. all the buffers produced by HLO).
 //
@@ -1343,11 +1354,13 @@ Status IrEmitterUnnested::HandleAfterAll(HloInstruction* after_all) {
 // This function conservatively assumes that we'll touch all sub-buffers of
 // every operand and of the output.
 static std::map<std::pair<const HloInstruction*, ShapeIndex>,
-                std::pair<BufferAllocation::Slice, ShapeIndex>>
+                std::pair<BufferAllocation::Slice, ShapeIndex>,
+                HloPtrAndShapeComparator>
 GetHloBufferSlices(const HloInstruction* hlo,
                    const BufferAssignment& buffer_assn) {
   std::map<std::pair<const HloInstruction*, ShapeIndex>,
-           std::pair<BufferAllocation::Slice, ShapeIndex>>
+           std::pair<BufferAllocation::Slice, ShapeIndex>,
+           HloPtrAndShapeComparator>
       slices;
 
   // Tries to find a slice plus an array of indices i1, ..., iN such that the
@@ -1445,9 +1458,7 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
   const BufferAssignment& buffer_assn =
       ir_emitter_context_->buffer_assignment();
 
-  std::map<std::pair<const HloInstruction*, ShapeIndex>,
-           std::pair<BufferAllocation::Slice, ShapeIndex>>
-      hlo_slices = GetHloBufferSlices(inst, buffer_assn);
+  auto hlo_slices = GetHloBufferSlices(inst, buffer_assn);
 
   // Figure out which buffer allocations need to be passed as arguments to our
   // kernel.  This is simply all of the allocations referenced in hlo_slices,
