@@ -1476,8 +1476,8 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     return true;
   };
 
-  const auto is_conv2d_candidate = [&]() -> bool {
-    if (!IsConv2D(*node_def)) return false;
+  const auto is_relu_candidate = [&]() -> bool {
+    if (!IsRelu(*node_def)) return false;
     if (GetDataTypeFromAttr(*node_def, "T") != DT_FLOAT) return false;
 
     return true;
@@ -1513,7 +1513,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     return false;
   };
 
-  return is_conv2d_candidate() || is_batch_norm_candidate() ||
+  return is_relu_candidate() || is_batch_norm_candidate() ||
          is_batch_norm_fusion_candidate();
 }
 
