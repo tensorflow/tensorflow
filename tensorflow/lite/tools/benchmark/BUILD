@@ -149,6 +149,7 @@ cc_library(
     deps = [
         ":benchmark_model_lib",
         ":benchmark_utils",
+        ":coreml_delegate_provider",
         ":delegate_provider_hdr",
         ":logging",
         ":profiling_listener",
@@ -307,6 +308,30 @@ cc_library(
         ":delegate_provider_hdr",
         "//tensorflow/lite/tools/evaluation:utils",
     ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "coreml_delegate_provider",
+    srcs = ["coreml_delegate_provider.cc"],
+    copts = common_copts + select({
+        "//tensorflow:ios": [
+            "-xobjective-c++",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":benchmark_model_lib",
+        ":benchmark_params",
+        ":delegate_provider_hdr",
+        ":logging",
+        "//tensorflow/lite/tools/evaluation:utils",
+    ] + select({
+        "//tensorflow:ios": [
+            "//tensorflow/lite/experimental/delegates/coreml:coreml_delegate",
+        ],
+        "//conditions:default": [],
+    }),
     alwayslink = 1,
 )
 

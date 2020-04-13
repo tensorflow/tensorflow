@@ -84,6 +84,9 @@ and the following optional parameters:
     Which GPU wait_type option to use, when using GPU delegate on iOS. Should be
     one of the following: passive, active, do_not_wait, aggressive. When left
     blank, passive mode is used by default.
+*   `use_coreml`: `bool` (default=false) \
+    Whether to use the [Core ML delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/delegates/coreml).
+    This option is only available in iOS.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
 *   `enable_platform_tracing`: `bool` (default=false) \
