@@ -967,7 +967,7 @@ Status DynamicShapeRemovingVisitor::HandleParameter(HloInstruction* hlo) {
 StatusOr<bool> DynamicPadder::Run(HloModule* module) {
   bool changed = false;
   VLOG(2) << "Pre DynamicPadder HLO:";
-
+  XLA_VLOG_LINES(2, module->ToString());
   // Removes dynamic dimensions on parameters if there is already a binding for
   // it. We do this because we have two different APIs to express a dynamic
   // dimension:
