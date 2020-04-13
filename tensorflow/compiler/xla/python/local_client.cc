@@ -971,7 +971,10 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
     return buffer_and_event_or.status();
   }
 
-  auto& [buffer, event] = buffer_and_event_or.ValueOrDie();
+  auto& buffer_and_event = buffer_and_event_or.ValueOrDie();
+  std::unique_ptr<PyLocalBuffer>& buffer = buffer_and_event.first;
+  std::shared_ptr<BufferDefinitionEvent>& event = buffer_and_event.second;
+
   // prefer_to_retain_reference=*/true means that, when using the
   // ComputeSynchronized allocation model, retain a reference to the
   // src_device_buffer until the copy completes. This is a heuristic; the
