@@ -1098,7 +1098,6 @@ class MklConvOp : public OpKernel {
   }
 
   // TODO(intel-mkl): This function does not seem to be called. Remove it.
-  // LOCKS_EXCLUDED annotation ensures that the lock (mu_) cannot
   // Prepare and execute net - checks for input and output reorders.
   void PrepareAndExecuteNet(const ConvFwdPd& conv_prim_desc,
                             MklDnnData<Tinput>* src,
