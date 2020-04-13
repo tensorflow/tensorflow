@@ -117,18 +117,6 @@ class BufferDefinitionEvent {
 // of memory under all of the allocation model semantics.
 class SharedDeviceBuffer {
  public:
-  // Helper object to keep track of usage of the buffer on streams.
-  struct StreamAndEvent {
-    // A stream the buffer has been used on.
-    se::Stream* stream;
-    // An event that is later than the most recent usage of the buffer on
-    // stream.
-    std::shared_ptr<BufferDefinitionEvent> event;
-    // True if and only if a reference to the buffer is kept live until after
-    // the host knows that event is complete.
-    bool reference_held;
-  };
-
   // Converts a ScopedShapedBuffer into a SharedDeviceBuffer. Takes ownership of
   // the buffers of the shaped_buffer.
   static std::shared_ptr<SharedDeviceBuffer> FromScopedShapedBuffer(
@@ -152,20 +140,6 @@ class SharedDeviceBuffer {
       ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
       const ShapeTree<MaybeOwningDeviceMemory>::iterator& end) const;
 
-  // Adds the owned device buffers in order to 'iterator', marking them as
-  // available to be donated. If donation succeeds, i.e., execution_input is
-  // subsequently successfully enqueued to a computation,
-  // this->ReleaseDeviceMemory() must be called to avoid freeing the device
-  // memory twice. We require but do not verify that 'iterator' when passed in
-  // is pointing to a sub-tuple of execution_input whose on_device_shape matches
-  // that of the SharedDeviceBuffer. 'end' is used to check that 'iterator'
-  // doesn't run out of bounds.
-  void AddToInputAsDonated(
-      ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
-      const ShapeTree<MaybeOwningDeviceMemory>::iterator& end,
-      ExecutionInput* execution_input,
-      se::DeviceMemoryAllocator* allocator) const;
-
   se::DeviceMemoryAllocator* allocator() const { return allocator_; }
   int device_ordinal() const { return device_ordinal_; }
   absl::InlinedVector<se::DeviceMemoryBase, 1>& device_memory() {
@@ -178,13 +152,6 @@ class SharedDeviceBuffer {
       const {
     return definition_events_;
   }
-  absl::Span<const StreamAndEvent> usage_events() const {
-    return usage_events_;
-  }
-
-  // Relinquishes ownership of the buffer's device memory, e.g., after the
-  // buffer is passed to a computation that aliases its inputs to outputs.
-  void ReleaseDeviceMemory() { device_memory_.clear(); }
 
   // Indicates that the buffer has been used on a stream.
   //
@@ -199,6 +166,17 @@ class SharedDeviceBuffer {
                      std::shared_ptr<BufferDefinitionEvent> event,
                      bool reference_held);
 
+  // Helper object to keep track of usage of the buffer on streams.
+  struct StreamAndEvent {
+    // A stream the buffer has been used on.
+    se::Stream* stream;
+    // An event that is later than the most recent usage of the buffer on
+    // stream.
+    std::shared_ptr<BufferDefinitionEvent> event;
+    // True if and only if a reference to the buffer is kept live until after
+    // the host knows that event is complete.
+    bool reference_held;
+  };
   using StreamAndEventContainer = absl::InlinedVector<StreamAndEvent, 3>;
   // Returns the set of streams that the buffer was used on, and for each stream
   // an event later than the last use of the buffer. After
@@ -243,12 +221,10 @@ class SharedDeviceBuffer {
   std::function<void()> on_delete_callback_;
 };
 
-// Populates 'events' with the set of buffer events for buffer. If
-// get_usage_events=true populates with the latest usage events, otherwise
-// populates with the definition events.
-void GetDeviceBufferEvents(const SharedDeviceBuffer& buffer,
-                           bool get_usage_events,
-                           absl::flat_hash_set<BufferDefinitionEvent*>* events);
+// Populates 'events' with the set of buffer definition events for buffer.
+void GetDeviceBufferDefinitionEvents(
+    const SharedDeviceBuffer& buffer,
+    absl::flat_hash_set<BufferDefinitionEvent*>* events);
 
 // Waits for all of the definition events in a buffer on 'stream'.
 void WaitForBufferDefinitionEventsOnStream(const SharedDeviceBuffer& buffer,
