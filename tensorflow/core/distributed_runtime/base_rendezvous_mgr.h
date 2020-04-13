@@ -17,16 +17,16 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_BASE_RENDEZVOUS_MGR_H_
 
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -97,7 +97,7 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
 
  private:
   // Maps step_id to rendezvous.
-  typedef gtl::FlatMap<int64, BaseRemoteRendezvous*> Table;
+  typedef absl::flat_hash_map<int64, BaseRemoteRendezvous*> Table;
 
   // Not owned.
   const WorkerEnv* const worker_env_;
