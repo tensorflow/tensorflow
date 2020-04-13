@@ -47,10 +47,14 @@ REGISTER_DELEGATE_PROVIDER(CoreMlDelegateProvider);
 
 std::vector<Flag> CoreMlDelegateProvider::CreateFlags(
     BenchmarkParams* params) const {
+#if defined(REAL_IPHONE_DEVICE)
   std::vector<Flag> flags = {
       CreateFlag<bool>("use_coreml", params, "use Core ML"),
   };
   return flags;
+#else
+  return {};
+#endif
 }
 
 void CoreMlDelegateProvider::LogParams(const BenchmarkParams& params) const {
