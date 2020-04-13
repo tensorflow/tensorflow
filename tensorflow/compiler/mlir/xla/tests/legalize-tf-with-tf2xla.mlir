@@ -23,6 +23,15 @@ func @unknown_op(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: unranked_operand
+func @unranked_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: tf.Abs
+  // expected-remark@+1 {{lowering requires static shaped operands}}
+  %0 = "tf.Abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+
+  return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: dynamic_operand
 func @dynamic_operand(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK: tf.Abs
