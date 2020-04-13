@@ -1461,6 +1461,7 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
 // shapes:
 //   (1) Splitting FusedBatchNorm into primitives.
 //   (2) Fusing side input and/or activation into FusedBatchNorm.
+//   (3) Fusing Conv2D biasadd and relu on GPU
 bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
   // Candidate for a FusedBatchNorm splitting.
   const auto* node_view = ctx.graph_view.GetNode(node_index);
@@ -1476,9 +1477,29 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     return true;
   };
 
-  const auto is_relu_candidate = [&]() -> bool {
+  const auto is_relu_biasadd_conv2d_candidate = [&]() -> bool {
     if (!IsRelu(*node_def)) return false;
     if (GetDataTypeFromAttr(*node_def, "T") != DT_FLOAT) return false;
+
+    if (node_view->NumRegularFanins() < 1) return false;
+    const auto& relu_fanin_0 = node_view->GetRegularFanin(0);
+    const auto* relu_fanin_0_node_view = relu_fanin_0.node_view();
+    const auto* relu_fanin_0_node_def = relu_fanin_0_node_view->node();
+
+    if (!IsBiasAdd(*relu_fanin_0_node_def)) return false;
+    if (GetDataTypeFromAttr(*relu_fanin_0_node_def, "T") != DT_FLOAT)
+      return false;
+
+    if (relu_fanin_0_node_view->NumRegularFanins() < 1) return false;
+
+    const auto& biasadd_fanin_0 =
+          relu_fanin_0_node_view->GetRegularFanin(0);
+    const auto* biasadd_fanin_0_node_def =
+          biasadd_fanin_0.node_view()->node();
+
+    if (!IsConv2D(*biasadd_fanin_0_node_def)) return false;
+    if (GetDataTypeFromAttr(*biasadd_fanin_0_node_def, "T") != DT_FLOAT)
+      return false;
 
     return true;
   };
@@ -1513,7 +1534,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     return false;
   };
 
-  return is_relu_candidate() || is_batch_norm_candidate() ||
+  return is_relu_biasadd_conv2d_candidate() || is_batch_norm_candidate() ||
          is_batch_norm_fusion_candidate();
 }
 
