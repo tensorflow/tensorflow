@@ -39,7 +39,9 @@ class SingleOpModelWithCoreMlDelegate : public tflite::SingleOpModel {
 
  private:
   tflite::Interpreter::TfLiteDelegatePtr delegate_;
-  TfLiteCoreMlDelegateOptions params_ = {0};
+  TfLiteCoreMlDelegateOptions params_ = {
+      .enabled_devices = TfLiteCoreMlDelegateAllDevices,
+  };
 };
 
 }  // namespace coreml

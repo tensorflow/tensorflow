@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -561,31 +562,38 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
                           AddBroadcastSequence(shape, updated_rhs));
     }
 
-    return BinaryOpNoBroadcast(binop, shape, updated_lhs, updated_rhs,
-                               direction);
-  });
-}
-
-XlaOp XlaBuilder::BinaryOpNoBroadcast(
-    HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
-    absl::optional<ComparisonDirection> direction) {
-  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-    *instr.mutable_shape() = shape.ToProto();
     if (binop == HloOpcode::kCompare) {
       if (!direction.has_value()) {
         return InvalidArgument(
             "kCompare expects a ComparisonDirection, but none provided.");
       }
-      instr.set_comparison_direction(ComparisonDirectionToString(*direction));
-    } else if (direction.has_value()) {
+      return Compare(shape, updated_lhs, updated_rhs, *direction);
+    }
+
+    if (direction.has_value()) {
       return InvalidArgument(
           "A comparison direction is provided for a non-compare opcode: %s.",
           HloOpcodeString(binop));
     }
+    return BinaryOpNoBroadcast(binop, shape, updated_lhs, updated_rhs);
+  });
+}
 
+XlaOp XlaBuilder::BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape,
+                                      XlaOp lhs, XlaOp rhs) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
     return AddInstruction(std::move(instr), binop, {lhs, rhs});
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
+                                    ComparisonDirection direction) {
+  HloInstructionProto instr;
+  instr.set_comparison_direction(ComparisonDirectionToString(direction));
+  *instr.mutable_shape() = shape.ToProto();
+  return AddInstruction(std::move(instr), HloOpcode::kCompare, {lhs, rhs});
 }
 
 XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {

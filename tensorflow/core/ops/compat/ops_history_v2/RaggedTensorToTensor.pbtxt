@@ -1,0 +1,58 @@
+op {
+  name: "RaggedTensorToTensor"
+  input_arg {
+    name: "shape"
+    type_attr: "Tshape"
+  }
+  input_arg {
+    name: "values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "default_value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "row_partition_tensors"
+    type_attr: "Tindex"
+    number_attr: "num_row_partition_tensors"
+  }
+  output_arg {
+    name: "result"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "Tindex"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_INT32
+      }
+    }
+  }
+  attr {
+    name: "Tshape"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT64
+        type: DT_INT32
+      }
+    }
+  }
+  attr {
+    name: "num_row_partition_tensors"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "row_partition_types"
+    type: "list(string)"
+  }
+}

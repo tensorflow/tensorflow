@@ -496,7 +496,7 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
       auto &value = op.getOperand(i);
       // Skip from from first variadic operands for now. Else getOperand index
       // used below doesn't match.
-      if (value.isVariadic()) break;
+      if (value.isVariableLength()) break;
       if (!value.name.empty())
         verify_ctx.addSubst(value.name, formatv("op->getOperand({0})", i));
     }
@@ -504,7 +504,7 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
       auto &value = op.getResult(i);
       // Skip from from first variadic results for now. Else getResult index
       // used below doesn't match.
-      if (value.isVariadic()) break;
+      if (value.isVariableLength()) break;
       if (!value.name.empty())
         verify_ctx.addSubst(value.name, formatv("op->getResult({0})", i));
     }

@@ -78,7 +78,8 @@ static bool IsOpWhitelisted(Operation* op) {
   // TODO(hinsu): Drop explicit whitelist when MLIR based bridge is enabled for
   // all tf2xla kernels.
   return isa<TF::AbsOp>(op) || isa<TF::Atan2Op>(op) || isa<TF::CastOp>(op) ||
-         isa<TF::InvOp>(op) || isa<TF::SelectV2Op>(op);
+         isa<TF::GreaterOp>(op) || isa<TF::InvOp>(op) ||
+         isa<TF::SelectV2Op>(op);
 }
 
 static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(

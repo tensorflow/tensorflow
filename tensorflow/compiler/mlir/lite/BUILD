@@ -55,7 +55,7 @@ gentbl(
             "ir/tfl_structs.cc.inc",
         ),
         (
-            "-gen-op-doc",
+            "-gen-dialect-doc",
             "g3doc/tfl_ops.md",
         ),
     ],

@@ -79,6 +79,10 @@ constexpr double kModeratelyAllOtherBoundThresholdInPercent = 3;
 constexpr double kHighlyAllOtherBoundThresholdInPercent = 15;
 // Section number of the host-analysis section in the input-pipeline analysis.
 constexpr int kHostAnalysisSectionNumber = 3;
+// Python-only explanation for "All Others" time.
+const char* kAllOthersPythonExplanation =
+    " % of the total step time sampled is spent on 'All Others' time. "
+    "This could be due to Python execution overhead.";
 
 template <class Collection>
 double GetTimeInMs(const Collection& type_ps, EventType event_type) {
@@ -360,33 +364,36 @@ void KernelLaunchAnalysis(double kernel_launch_percent,
     *kernel_launch_classification = "high";
     *kernel_launch_statement = absl::StrCat(
         percent_str,
-        " % of the total step time sampled is spent on Kernel Launch.");
+        " % of the total step time sampled is spent on 'Kernel Launch'.");
   } else if (kernel_launch_percent >=
              kModeratelyKernelLaunchBoundThresholdInPercent) {
     *kernel_launch_classification = "moderate";
     *kernel_launch_statement = absl::StrCat(
         percent_str,
-        " % of the total step time sampled is spent on Kernel Launch.");
+        " % of the total step time sampled is spent on 'Kernel Launch'.");
   } else {
     *kernel_launch_classification = "no";
     *kernel_launch_statement = "";
   }
 }
 
-void AllOtherAnalysis(double all_other_percent,
+void AllOtherAnalysis(bool all_other_reported, double all_other_percent,
                       string* all_other_classification,
                       string* all_other_statement) {
+  if (all_other_reported) {
+    *all_other_classification = "no";
+    *all_other_statement = "";
+    return;
+  }
   string percent_str = absl::StrFormat("%.1lf", all_other_percent);
   if (all_other_percent >= kHighlyAllOtherBoundThresholdInPercent) {
     *all_other_classification = "high";
-    *all_other_statement = absl::StrCat(
-        percent_str,
-        " % of the total step time sampled is spent on All Others time.");
+    *all_other_statement =
+        absl::StrCat(percent_str, kAllOthersPythonExplanation);
   } else if (all_other_percent >= kModeratelyAllOtherBoundThresholdInPercent) {
     *all_other_classification = "moderate";
-    *all_other_statement = absl::StrCat(
-        percent_str,
-        " % of the total step time sampled is spent on All Others time.");
+    *all_other_statement =
+        absl::StrCat(percent_str, kAllOthersPythonExplanation);
   } else {
     *all_other_classification = "no";
     *all_other_statement = "";
@@ -557,8 +564,8 @@ InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
   return result;
 }
 
-void InputAnalysis(double input_percent, string* input_classification,
-                   string* input_statement) {
+bool InputAnalysis(double input_percent, double all_other_percent,
+                   string* input_classification, string* input_statement) {
   absl::string_view non_input_time = "other time";
   string infeed_percent_str = absl::StrFormat("%.1lf", input_percent);
   if (input_percent >= kHighlyInfeedBoundThresholdInPercent) {
@@ -567,6 +574,7 @@ void InputAnalysis(double input_percent, string* input_classification,
         "Your program is HIGHLY input-bound because ", infeed_percent_str,
         "% of the total step time sampled is waiting for input. Therefore, you "
         "should first focus on reducing the input time.");
+    return false;
   } else if (input_percent >= kModeratelyInfeedBoundThresholdInPercent) {
     *input_classification = "both";
     *input_statement = absl::StrCat(
@@ -574,7 +582,20 @@ void InputAnalysis(double input_percent, string* input_classification,
         "% of the total step time sampled is waiting for input. Therefore, "
         "you would need to reduce both the input time and ",
         non_input_time, ".");
+    return false;
+  } else if (all_other_percent >= kModeratelyAllOtherBoundThresholdInPercent) {
+    // Input analysis says it is not input-bound, but "All-Other" time
+    // is significant. It could still be input-bound (or Python overhead).
+    *input_classification = "both";
+    string all_other_percent_str = absl::StrFormat("%.1lf", all_other_percent);
+    *input_statement = absl::StrCat(
+        "Your program in POTENTIALLY input-bound because ",
+        all_other_percent_str,
+        "% of the total step time sampled is spent on 'All Others' time (which "
+        "could be due to I/O or Python execution or both).");
+    return true;
   } else {
+    // Defintely not input-bound.
     *input_classification = "device";
     *input_statement = absl::StrCat(
         "Your program is NOT input-bound because only ", infeed_percent_str,
@@ -582,6 +603,7 @@ void InputAnalysis(double input_percent, string* input_classification,
         "input. Therefore, you should focus on "
         "reducing ",
         non_input_time, ".");
+    return false;
   }
 }
 
@@ -659,7 +681,9 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
   double all_other_percent = 100.0 * total_unknown_ms / total_step_time_ms;
   string input_classification;
   string input_statement;
-  InputAnalysis(input_percent, &input_classification, &input_statement);
+  bool all_other_reported =
+      InputAnalysis(input_percent, all_other_percent, &input_classification,
+                    &input_statement);
 
   string kernel_launch_classification;
   string kernel_launch_statement;
@@ -668,8 +692,8 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
 
   string all_other_classification;
   string all_other_statement;
-  AllOtherAnalysis(all_other_percent, &all_other_classification,
-                   &all_other_statement);
+  AllOtherAnalysis(all_other_reported, all_other_percent,
+                   &all_other_classification, &all_other_statement);
 
   BottleneckAnalysis analysis;
   analysis.set_input_classification(input_classification);

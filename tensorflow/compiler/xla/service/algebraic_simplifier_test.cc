@@ -638,44 +638,6 @@ TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR1Operand) {
   EXPECT_EQ(root, param0);
 }
 
-TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroWithDynamicSlice) {
-  auto m = CreateNewVerifiedModule();
-  Shape full_shape = ShapeUtil::MakeShape(F32, {1800, 12, 512});
-
-  Shape partial_shape = ShapeUtil::MakeShape(F32, {1, 12, 512});
-
-  HloComputation::Builder builder(TestName());
-  HloInstruction* full_param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, full_shape, "param0"));
-  HloInstruction* partial_param = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, partial_shape, "param1"));
-
-  HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
-  HloInstruction* index = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
-
-  HloInstruction* bcast = builder.AddInstruction(
-      HloInstruction::CreateBroadcast(full_shape, zero, {}));
-
-  HloInstruction* dynamic_update_slice =
-      builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-          full_shape, bcast, partial_param, {index, index, index}));
-
-  builder.AddInstruction(HloInstruction::CreateBinary(
-      full_shape, HloOpcode::kAdd, full_param, dynamic_update_slice));
-
-  auto computation = m->AddEntryComputation(builder.Build());
-  HloInstruction* root = computation->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
-  AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
-  root = computation->root_instruction();
-  EXPECT_THAT(root->opcode(), HloOpcode::kDynamicUpdateSlice);
-  EXPECT_THAT(root->operand(0), full_param);
-  EXPECT_THAT(root->operand(1), GmockMatch(m::Add(m::DynamicSlice(), m::Op())));
-}
-
 TEST_F(AlgebraicSimplifierTest, ConstantToBroadcast) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
@@ -5066,6 +5028,32 @@ TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceZeroUpdate) {
   AlgebraicSimplifier simplifier(default_options_);
   ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
   EXPECT_THAT(computation->root_instruction(), operand);
+}
+
+// Test that dynamic-update-slice with a scalar broadcast becomes a pad.
+TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceOfBroadcastToPad) {
+  const char* hlo_string = R"(
+HloModule AddBroadcastZeroWithDynamicSlice
+
+ENTRY AddBroadcastZeroWithDynamicSlice {
+  param0 = f32[1800,12,512]{2,1,0} parameter(0)
+  constant = f32[] constant(0)
+  broadcast = f32[1800,12,512]{2,1,0} broadcast(constant), dimensions={}
+  param1 = f32[1,12,512]{2,1,0} parameter(1)
+  constant.1 = s32[] constant(0)
+  dynamic-update-slice = f32[1800,12,512]{2,1,0} dynamic-update-slice(broadcast, param1, constant.1, constant.1, constant.1)
+  ROOT add = f32[1800,12,512]{2,1,0} add(param0, dynamic-update-slice)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  VLOG(2) << "After rewrite dus->pad\n" << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root->opcode(), HloOpcode::kAdd);
+  EXPECT_THAT(root->operand(1)->opcode(), HloOpcode::kPad);
 }
 
 INSTANTIATE_TEST_SUITE_P(DotOfConcatSimplificationTestInstantiation,

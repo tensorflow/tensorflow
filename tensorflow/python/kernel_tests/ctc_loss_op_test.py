@@ -941,6 +941,21 @@ class CTCLossTestV2(test.TestCase):
           [[1.0, 2.0], [5.0, 8.0], [14.0, 20.0]], out)
 
 
+def _ctc_loss_v3(labels, logits, label_length, logit_length, use_gpu):
+  with test_util.device(use_gpu=use_gpu):
+    sparse_labels = ctc_ops.dense_labels_to_sparse(labels, label_length)
+    with backprop.GradientTape() as t:
+      t.watch(logits)
+      ref_loss = ctc_ops.ctc_loss_v3(
+          labels=sparse_labels,
+          logits=logits,
+          label_length=label_length,
+          logit_length=logit_length,
+          blank_index=0)
+    ref_grad = t.gradient(ref_loss, [logits])
+    return ref_loss, ref_grad
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class CTCLossTestV3(test.TestCase, parameterized.TestCase):
 
@@ -978,42 +993,47 @@ class CTCLossTestV3(test.TestCase, parameterized.TestCase):
     labels *= label_mask
     logit_length = [num_frames] * batch_size
 
-    def ctc_loss_cpu(labels, logits, label_length, logit_length):
-      with test_util.device(use_gpu=False):
-        sparse_labels = ctc_ops.dense_labels_to_sparse(labels, label_length)
-        with backprop.GradientTape() as t:
-          t.watch(logits)
-          ref_loss = ctc_ops.ctc_loss_v3(
-              labels=sparse_labels,
-              logits=logits,
-              label_length=label_length,
-              logit_length=logit_length,
-              blank_index=0)
-        ref_grad = t.gradient(ref_loss, [logits])
-        return ref_loss, ref_grad
-
-    def ctc_loss_gpu(labels, logits, label_length, logit_length):
-      with test_util.device(use_gpu=True):
-        sparse_labels = ctc_ops.dense_labels_to_sparse(labels, label_length)
-        with backprop.GradientTape() as t:
-          t.watch(logits)
-          loss = ctc_ops.ctc_loss_v3(
-              labels=sparse_labels,
-              logits=logits,
-              label_length=label_length,
-              logit_length=logit_length,
-              blank_index=0)
-        grad = t.gradient(loss, [logits])
-
-        return loss, grad
-
     if run_tf_func:
-      ctc_loss_cpu = def_function.function(ctc_loss_cpu)
-      ctc_loss_gpu = def_function.function(ctc_loss_gpu)
+      ctc_loss = def_function.function(_ctc_loss_v3)
+    else:
+      ctc_loss = _ctc_loss_v3
 
-    ref_loss, ref_grad = ctc_loss_cpu(labels, logits, label_length,
-                                      logit_length)
-    loss, grad = ctc_loss_gpu(labels, logits, label_length, logit_length)
+    ref_loss, ref_grad = ctc_loss(labels, logits, label_length, logit_length,
+                                  False)
+    loss, grad = ctc_loss(labels, logits, label_length, logit_length, True)
+
+    self.assertAllClose(loss, ref_loss, atol=1e-6)
+    self.assertAllClose(grad, ref_grad, atol=2e-6)
+
+  @test_util.run_v2_only
+  def testCtcLossAlgorithmFallback(self):
+    """Test if GPU CTC loss can fallback to the correct algorithm."""
+    if not test.is_gpu_available():
+      self.skipTest("Need GPU for testing.")
+    if not context.executing_eagerly():
+      self.skipTest("Need eager execution for testing.")
+    random_seed.set_random_seed(5)
+
+    batch_size = 1
+    num_labels = 11777
+    max_label_length = 2
+    num_frames = 1
+
+    labels = random_ops.random_uniform([batch_size, max_label_length],
+                                       minval=1,
+                                       maxval=num_labels,
+                                       dtype=dtypes.int64)
+    logits = random_ops.random_uniform([num_frames, batch_size, num_labels])
+
+    label_length = random_ops.random_uniform([batch_size],
+                                             minval=1,
+                                             maxval=max_label_length,
+                                             dtype=dtypes.int64)
+    logit_length = [num_frames] * batch_size
+
+    loss, grad = _ctc_loss_v3(labels, logits, label_length, logit_length, True)
+    ref_loss, ref_grad = _ctc_loss_v3(labels, logits, label_length,
+                                      logit_length, False)
 
     self.assertAllClose(loss, ref_loss, atol=1e-6)
     self.assertAllClose(grad, ref_grad, atol=2e-6)

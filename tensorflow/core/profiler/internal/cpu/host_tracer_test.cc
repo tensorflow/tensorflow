@@ -132,6 +132,8 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
         { TraceMe traceme("good#key1=value1#"); }
         { TraceMe traceme("morning#key1=value1,key2=value2#"); }
         { TraceMe traceme("incomplete#key1=value1,key2#"); }
+        // Special cases for tf.data
+        { TraceMe traceme("Iterator::XXX::YYY::ParallelMap"); }
         TF_ASSERT_OK(tracer->Stop());
 
         TF_ASSERT_OK(tracer->CollectData(&space));
@@ -144,12 +146,12 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
   XPlaneVisitor xplane(&plane);
   ASSERT_EQ(plane.name(), kHostThreads);
   ASSERT_EQ(plane.lines_size(), 1);
-  ASSERT_EQ(plane.event_metadata_size(), 6);
+  ASSERT_EQ(plane.event_metadata_size(), 7);
   ASSERT_EQ(plane.stat_metadata_size(), 2);
   const auto& line = plane.lines(0);
   EXPECT_EQ(line.id(), thread_id);
   EXPECT_EQ(line.name(), thread_name);
-  ASSERT_EQ(line.events_size(), 6);
+  ASSERT_EQ(line.events_size(), 7);
   const auto& events = line.events();
 
   XEventVisitor e0(&xplane, &line, &events[0]);
@@ -208,12 +210,12 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
     ASSERT_TRUE(value1 && !value2);  // One of the stat key is present.
     EXPECT_EQ(*value1, "value1");    // The stat value is expected.
   }
-#if 0
-  EXPECT_EQ(events[5].metadata_id(), 6);
-  EXPECT_EQ(event_metadata.at(6).name(), "incomplete");
-  ASSERT_EQ(events[5].stats_size(), 1);
-  EXPECT_EQ(GetXStatString(events[5].stats(0), plane), "value1");
-#endif
+
+  // Dataset Ops will trim intermediate namespace.
+  XEventVisitor e6(&xplane, &line, &events[6]);
+  EXPECT_EQ(e6.Name(), "Iterator::XXX::YYY::ParallelMap");
+
+  EXPECT_EQ(e6.DisplayName(), "Iterator::ParallelMap");
 }
 
 }  // namespace

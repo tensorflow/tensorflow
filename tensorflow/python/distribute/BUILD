@@ -1104,6 +1104,9 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    tpu_tags = [
+        "no_oss",  # b/153615544.
+    ],
     deps = [
         ":combinations",
         ":strategy_combinations",

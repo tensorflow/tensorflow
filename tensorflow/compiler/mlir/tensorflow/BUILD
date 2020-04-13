@@ -69,7 +69,7 @@ gentbl(
             "ir/tf_ops.cc.inc",
         ),
         (
-            "-gen-op-doc",
+            "-gen-dialect-doc",
             "g3doc/tf_ops.md",
         ),
         (
@@ -100,7 +100,7 @@ gentbl(
             "ir/tf_saved_model.cc.inc",
         ),
         (
-            "-gen-op-doc",
+            "-gen-dialect-doc",
             "g3doc/tf_saved_model.md",
         ),
     ],
@@ -124,7 +124,7 @@ gentbl(
             "ir/tf_executor.cc.inc",
         ),
         (
-            "-gen-op-doc",
+            "-gen-dialect-doc",
             "g3doc/tf_executor.md",
         ),
     ],
@@ -148,7 +148,7 @@ gentbl(
             "ir/tf_device.cc.inc",
         ),
         (
-            "-gen-op-doc",
+            "-gen-dialect-doc",
             "g3doc/tf_device.md",
         ),
     ],

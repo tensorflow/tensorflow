@@ -88,7 +88,7 @@ void QuantizePass::runOnFunction() {
   TFL::populateWithGenerated(ctx, &patterns);
   patterns.insert<TFLFullQuantization>(
       ctx, enable_numeric_verify, error_tolerance, enable_single_layer_verify);
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 }  // namespace
 

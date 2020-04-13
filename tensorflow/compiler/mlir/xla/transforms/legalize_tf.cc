@@ -962,6 +962,78 @@ class ConvertBroadcastToOp : public OpRewritePattern<TF::BroadcastToOp> {
   }
 };
 
+// Converts TensorFlow DiagPartOp to HLO ops using reduction on masked matrix.
+// For a Rank-2 input, it creates the following ops:
+//   %1 = "xla_hlo.iota"() {iota_dimension = 0 : i64}
+//   %2 = "xla_hlo.iota"() {iota_dimension = 1 : i64}
+//   %3 = "xla_hlo.compare"(%1, %2) {comparison_direction = "EQ"}
+//   %4 = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+//   %5 = "xla_hlo.broadcast"(%4)
+//   %6 = "xla_hlo.select"(%3, %input, %5)
+//   %7 = "xla_hlo.reduce"(%6, %4) ( {
+//   ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+//     %9 = xla_hlo.add %arg1, %arg2 : tensor<f32>
+//     "xla_hlo.return"(%9) : (tensor<f32>) -> ()
+//   }) {dimensions = dense<0> : tensor<1xi64>}
+//
+// If the input's rank N is greater than 2, we will reshape it to R2 first and
+// create the above ops, then reshape it back to rank N/2.
+class ConvertDiagPartOp : public OpRewritePattern<TF::DiagPartOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::DiagPartOp op,
+                                PatternRewriter &rewriter) const override {
+    auto input_type = op.input().getType().dyn_cast<RankedTensorType>();
+    if (!input_type || !input_type.hasStaticShape()) return failure();
+    int64_t num_dims = input_type.getRank();
+    if (num_dims < 2 || num_dims % 2 != 0) return failure();
+    const int64_t out_dims = num_dims / 2;
+
+    int64_t new_size = 1;
+    llvm::SmallVector<int64_t, 4> new_dims;
+    for (int i = 0; i < out_dims; i++) {
+      if (input_type.getDimSize(i) != input_type.getDimSize(i + out_dims))
+        return op.emitOpError("invalid dimensions size");
+      new_size *= input_type.getDimSize(i);
+      new_dims.push_back(input_type.getDimSize(i));
+    }
+    Value reshaped_input = rewriter.create<xla_hlo::ReshapeOp>(
+        op.getLoc(),
+        RankedTensorType::get({new_size, new_size},
+                              input_type.getElementType()),
+        op.input());
+    auto iota_type = RankedTensorType::get({new_size, new_size},
+                                           rewriter.getIntegerType(32));
+    auto iota0 = rewriter.create<IotaOp>(op.getLoc(), iota_type,
+                                         rewriter.getI64IntegerAttr(0));
+    auto iota1 = rewriter.create<IotaOp>(op.getLoc(), iota_type,
+                                         rewriter.getI64IntegerAttr(1));
+    Value compare = rewriter.create<CompareOp>(
+        op.getLoc(), iota0, iota1,
+        /*broadcast_dimensions=*/nullptr,
+        StringAttr::get("EQ", rewriter.getContext()));
+    Value zero = GetScalarConstOfType(input_type.getElementType(), op.getLoc(),
+                                      0, &rewriter);
+    Value zero_matrix = rewriter.create<BroadcastOp>(
+        op.getLoc(), reshaped_input.getType(), zero,
+        GetI64ElementsAttr({new_size, new_size}, &rewriter));
+    Value masked =
+        rewriter.create<SelectOp>(op.getLoc(), reshaped_input.getType(),
+                                  compare, reshaped_input, zero_matrix);
+    auto reduce = rewriter.create<ReduceOp>(op.getLoc(), masked, zero,
+                                            GetI64ElementsAttr({0}, &rewriter));
+    assert(!input_type.getElementType().isInteger(1) &&
+           "data type should not be i1");
+    BuildReduceBody<AddOp>(input_type.getElementType(), &reduce.body(),
+                           &rewriter);
+    rewriter.replaceOpWithNewOp<ReshapeOp>(
+        op, RankedTensorType::get(new_dims, input_type.getElementType()),
+        reduce.getResult(0));
+    return success();
+  }
+};
+
 // Converts TensorFlow EinsumOp to either HLO EinsumOp or UnaryEinsumOp
 // depending on arity of the op.
 class ConvertEinsumOp : public OpRewritePattern<TF::EinsumOp> {
@@ -3776,14 +3848,15 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBatchMatMulV2Op,
       ConvertBroadcastToOp, ConvertBF16FloorDivOp, ConvertConv2D,
       ConvertDepthConv2D, ConvertConv2DBackpropFilterOp,
-      ConvertConv2DBackpropInputOp, ConvertCumsumOp, ConvertEinsumOp,
-      ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
-      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op,
-      ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp, ConvertMaxOp,
-      ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPoolOp, ConvertMaxPoolGradOp,
-      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
-      ConvertProdOp, ConvertRangeOp, ConvertSelectV2Op, ConvertSigmoidOp,
-      ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertConv2DBackpropInputOp, ConvertCumsumOp, ConvertDiagPartOp,
+      ConvertEinsumOp, ConvertFusedBatchNormGradOp,
+      ConvertFusedBatchNormGradV2Op, ConvertFusedBatchNormGradV3Op,
+      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp,
+      ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPoolOp,
+      ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
+      ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertRangeOp,
+      ConvertSelectV2Op, ConvertSigmoidOp, ConvertSizeOp,
+      ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,

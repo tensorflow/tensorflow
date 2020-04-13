@@ -519,6 +519,7 @@ cc_library(
         ":hlo",
         ":hlo_utils",
         ":type_to_shape",
+        "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/client:xla_builder",

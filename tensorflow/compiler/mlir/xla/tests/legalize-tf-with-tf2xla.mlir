@@ -90,6 +90,13 @@ func @constant(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: func @greater
+func @greater(%arg0: tensor<2xi32>) -> tensor<2xi1> {
+  // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg0) {comparison_direction = "GT"}
+  %0 = "tf.Greater"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  return %0: tensor<2xi1>
+}
+
 // TODO(hinsu): Add a test with variant type once one of the ops supporting
 // the type is whitelisted. It should be rejected with unsupported type remark.
 

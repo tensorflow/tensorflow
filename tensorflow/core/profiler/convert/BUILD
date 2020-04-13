@@ -41,6 +41,7 @@ tf_cc_test(
         "//tensorflow/core/profiler/utils:time_utils",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -138,6 +139,23 @@ cc_library(
         "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:time_utils",
         "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+tf_cc_test(
+    name = "op_stats_to_tf_stats_test",
+    size = "small",
+    srcs = ["op_stats_to_tf_stats_test.cc"],
+    deps = [
+        ":op_stats_to_tf_stats",
+        ":xplane_to_op_stats",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
+        "//tensorflow/core/profiler/utils:time_utils",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_schema",
     ],
 )
 

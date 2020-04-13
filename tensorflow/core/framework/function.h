@@ -274,7 +274,7 @@ class CallFrameInterface {
   virtual size_t num_args() const = 0;
   virtual size_t num_retvals() const = 0;
 
-  virtual Status GetArg(int index, Tensor* val) const = 0;
+  virtual Status GetArg(int index, const Tensor** val) = 0;
   virtual Status SetRetval(int index, const Tensor& val) = 0;
 };
 
@@ -301,7 +301,7 @@ class FunctionCallFrame : public CallFrameInterface {
   size_t num_retvals() const override { return ret_types_.size(); }
 
   // Callee methods.
-  Status GetArg(int index, Tensor* val) const override;
+  Status GetArg(int index, const Tensor** val) override;
   Status SetRetval(int index, const Tensor& val) override;
 
  private:

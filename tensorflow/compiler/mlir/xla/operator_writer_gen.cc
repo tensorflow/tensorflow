@@ -81,7 +81,7 @@ static void BuildOperator(const Operator& op, raw_ostream* output) {
     // Emit an argument for an operand.
     if (auto* operand_cst = arg.dyn_cast<NamedTypeConstraint*>()) {
       // Handle a non-variadic operand.
-      if (!operand_cst->isVariadic()) {
+      if (!operand_cst->isVariableLength()) {
         os << "    auto xla_arg_" << index
            << " = value_map[*xla_op.getODSOperands(" << operand_number++
            << ").begin()];\n";
@@ -108,7 +108,7 @@ static void BuildOperator(const Operator& op, raw_ostream* output) {
 
   // If all operands are variadic, then pass the builder explicitly to xla
   // client API call
-  if (op.getNumOperands() == op.getNumVariadicOperands()) {
+  if (op.getNumOperands() == op.getNumVariableLengthOperands()) {
     os << "lowering_context.builder";
     if (op.getNumArgs() != 0) os << ", ";
   }

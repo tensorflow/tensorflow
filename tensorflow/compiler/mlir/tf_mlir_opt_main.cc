@@ -17,6 +17,7 @@ limitations under the License.
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
@@ -64,7 +65,9 @@ static llvm::cl::opt<bool> allowUnregisteredDialects(
 int main(int argc, char **argv) {
   tensorflow::InitMlir y(&argc, &argv);
 
-  // Register any pass manager command line options.
+  // Register various MLIR command line options.
+  mlir::registerAsmPrinterCLOptions();
+  mlir::registerMLIRContextCLOptions();
   mlir::registerPassManagerCLOptions();
 
   // Parse pass names in main to ensure static initialization completed.

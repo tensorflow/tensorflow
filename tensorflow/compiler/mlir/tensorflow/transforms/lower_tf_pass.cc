@@ -29,7 +29,7 @@ struct LowerTF : public PassWrapper<LowerTF, FunctionPass> {
     OwningRewritePatternList patterns;
     mlir::TF::PopulateLoweringTFPatterns(&getContext(), &patterns);
 
-    applyPatternsGreedily(getFunction(), patterns);
+    applyPatternsAndFoldGreedily(getFunction(), patterns);
   }
 };
 

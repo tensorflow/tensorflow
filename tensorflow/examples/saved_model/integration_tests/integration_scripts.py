@@ -46,7 +46,17 @@ class TestCase(tf.test.TestCase):
   def assertCommandSucceeded(self, script_name, **flags):
     """Runs an integration test script with given flags."""
     run_script = sys.argv[0]
-    if run_script.endswith(".py"):
+
+    # sys.executable may be None in hermetic Python builds
+    # (go/hermeticpython#sysexecutable).
+    #
+    # TEST_BINARY is an undocumented part of the test environment, but it
+    # appears to be the only way to recover the path to the test binary under
+    # coverage runs - the coverage launcher script rewrites argv[0]
+    # (b/23027507).
+    if sys.executable is None and os.environ["TEST_BINARY"] is not None:
+      command_parts = [os.environ["TEST_BINARY"]]
+    elif run_script.endswith(".py"):
       command_parts = [sys.executable, run_script]
     else:
       command_parts = [run_script]

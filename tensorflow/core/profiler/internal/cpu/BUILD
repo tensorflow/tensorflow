@@ -15,6 +15,7 @@ cc_library(
         "//tensorflow/core/profiler/internal:parse_annotation",
         "//tensorflow/core/profiler/internal:traceme_recorder",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "@com_google_absl//absl/container:flat_hash_map",
     ],

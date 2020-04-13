@@ -303,9 +303,9 @@ Status RewriteDynamicReshapeSplitInput(
   auto embedded_builder = HloComputation::Builder("add");
   {
     auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeShape(operand_shape.element_type(), {}), "lhs"));
+        0, ShapeUtil::MakeShape(S32, {}), "lhs"));
     auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeShape(operand_shape.element_type(), {}), "rhs"));
+        1, ShapeUtil::MakeShape(S32, {}), "rhs"));
     embedded_builder.AddInstruction(
         HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kAdd, lhs, rhs));
   }
