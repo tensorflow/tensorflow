@@ -1504,6 +1504,59 @@ Our Conv3D implements a form of cross-correlation.
   }];
 }
 
+def TF_Conv3DBackpropFilterV2Op : TF_Op<"Conv3DBackpropFilterV2", [NoSideEffect]> {
+  let summary = [{
+Computes the gradients of 3-D convolution with respect to the filter.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$input,
+    I32Tensor:$filter_sizes,
+    TF_FpTensor:$out_backprop,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format,
+    DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_Conv3DBackpropInputV2Op : TF_Op<"Conv3DBackpropInputV2", [NoSideEffect]> {
+  let summary = [{
+Computes the gradients of 3-D convolution with respect to the input.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$input_sizes,
+    TF_FpTensor:$filter,
+    TF_FpTensor:$out_backprop,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format,
+    DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_CosOp : TF_Op<"Cos", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes cos of x element-wise.";
 
@@ -4563,6 +4616,53 @@ def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect, TF_FoldOperandsTransposeInter
     SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
     LogicalResult FoldOperandsPermutation(ArrayRef<int64_t> permutation);
   }];
+}
+
+def TF_MaxPool3DOp : TF_Op<"MaxPool3D", [NoSideEffect]> {
+  let summary = "Performs 3D max pooling on the input.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32]>:$input,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MaxPool3DGradOp : TF_Op<"MaxPool3DGrad", [NoSideEffect]> {
+  let summary = "Computes gradients of 3D max pooling function.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32]>:$orig_input,
+    TensorOf<[BF16, F16, F32]>:$orig_output,
+    TensorOf<[BF16, F16, F32]>:$grad,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr TInput = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
 }
 
 def TF_MaxPoolGradOp : TF_Op<"MaxPoolGrad", [NoSideEffect]> {
