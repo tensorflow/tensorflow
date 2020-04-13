@@ -233,7 +233,7 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
   // Currently support use cases of LHS dims \in {3,4}  RHS dims \in {2, 3, 4}
   const int dims_lhs = lhs_shape.size();
   const int dims_rhs = rhs_shape.size();
-  if (dims_lhs < 3 || dims_lhs > 4 || dims_rhs < 2 || dims_lhs > 4) {
+  if (dims_lhs < 3 || dims_lhs > 4 || dims_rhs < 2 || dims_rhs > 4) {
     return failure();
   }
 
