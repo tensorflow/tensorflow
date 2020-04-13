@@ -296,28 +296,6 @@ ROCBLAS_BLAS_ROUTINE_EACH(STREAM_EXECUTOR_ROCBLAS_V2_WRAP)
 
 }  // namespace wrap
 
-<<<<<<< HEAD
-
-template <class T>
-const typename RocBlasTypeConversionHelper<T>::mapped_type* complex_cast(const DeviceMemory<T> &a)
-{
-  return reinterpret_cast<const typename RocBlasTypeConversionHelper<T>::mapped_type*>(GpuMemory(a));
-}
-template <class T>
-const typename RocBlasTypeConversionHelper<T>::mapped_type* complex_cast(const T &a)
-{
-  return reinterpret_cast<const typename RocBlasTypeConversionHelper<T>::mapped_type*>(&a);
-}
-template <class T>
-typename RocBlasTypeConversionHelper<T>::mapped_type* complex_cast(DeviceMemory<T> *a)
-{
-  return reinterpret_cast<typename RocBlasTypeConversionHelper<T>::mapped_type*>(GpuMemoryMutable(a));
-}
-
-static void blas_log(const char* c) 
-{
-}
-=======
 template <class T>
 const typename RocBlasTypeConversionHelper<T>::mapped_type *complex_cast(
     const DeviceMemory<T> &a) {
@@ -340,7 +318,7 @@ typename RocBlasTypeConversionHelper<T>::mapped_type *complex_cast(
 }
 
 static void blas_log(const char *c) {}
->>>>>>> upstream/master
+
 
 static string ToString(rocblas_status status) {
   switch (status) {
@@ -793,26 +771,16 @@ bool ROCMBlas::DoBlasScal(Stream *stream, uint64 elem_count,
                           std::complex<float> alpha,
                           DeviceMemory<std::complex<float>> *x, int incx) {
   return DoBlasInternal(wrap::rocblas_cscal, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, elem_count, complex_cast(alpha),
-                        complex_cast(x), incx);
-=======
                         true /* = pointer_mode_host */, elem_count,
                         complex_cast(alpha), complex_cast(x), incx);
->>>>>>> upstream/master
 }
 
 bool ROCMBlas::DoBlasScal(Stream *stream, uint64 elem_count,
                           std::complex<double> alpha,
                           DeviceMemory<std::complex<double>> *x, int incx) {
   return DoBlasInternal(wrap::rocblas_zscal, stream,
-<<<<<<< HEAD
-                        true /* = pointer_mode_host */, elem_count, complex_cast(alpha),
-                        complex_cast(x), incx);
-=======
                         true /* = pointer_mode_host */, elem_count,
                         complex_cast(alpha), complex_cast(x), incx);
->>>>>>> upstream/master
 }
 
 bool ROCMBlas::DoBlasSwap(Stream *stream, uint64 elem_count,
@@ -986,15 +954,8 @@ bool ROCMBlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
   blas_log("DoBlasGemv");
   return DoBlasInternal(
       wrap::rocblas_cgemv, stream, true /* = pointer_mode_host */,
-<<<<<<< HEAD
-      ROCMBlasTranspose(trans), m, n, complex_cast(alpha), 
-      complex_cast(a), lda, 
-      complex_cast(x), incx,
-      complex_cast(beta), complex_cast(y), incy);
-=======
       ROCMBlasTranspose(trans), m, n, complex_cast(alpha), complex_cast(a), lda,
       complex_cast(x), incx, complex_cast(beta), complex_cast(y), incy);
->>>>>>> upstream/master
 }
 
 bool ROCMBlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
@@ -1006,15 +967,8 @@ bool ROCMBlas::DoBlasGemv(Stream *stream, blas::Transpose trans, uint64 m,
   blas_log("DoBlasGemv\n");
   return DoBlasInternal(
       wrap::rocblas_zgemv, stream, true /* = pointer_mode_host */,
-<<<<<<< HEAD
-      ROCMBlasTranspose(trans), m, n, complex_cast(alpha), 
-      complex_cast(a), lda, 
-      complex_cast(x), incx,
-      complex_cast(beta), complex_cast(y), incy);
-=======
       ROCMBlasTranspose(trans), m, n, complex_cast(alpha), complex_cast(a), lda,
       complex_cast(x), incx, complex_cast(beta), complex_cast(y), incy);
->>>>>>> upstream/master
 }
 
 bool ROCMBlas::DoBlasGer(Stream *stream, uint64 m, uint64 n, float alpha,
@@ -1670,14 +1624,9 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
   blas_log("DoBlasGemm");
   return DoBlasInternal(
       wrap::rocblas_cgemm, stream, true /* = pointer_mode_host */,
-<<<<<<< HEAD
-      ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k, complex_cast(alpha),
-      complex_cast(a), lda, complex_cast(b), ldb, complex_cast(beta), complex_cast(c), ldc);
-=======
       ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
       complex_cast(alpha), complex_cast(a), lda, complex_cast(b), ldb,
       complex_cast(beta), complex_cast(c), ldc);
->>>>>>> upstream/master
 }
 
 bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
@@ -1690,14 +1639,9 @@ bool ROCMBlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
   blas_log("DoBlasGemm");
   return DoBlasInternal(
       wrap::rocblas_zgemm, stream, true /* = pointer_mode_host */,
-<<<<<<< HEAD
-      ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k, complex_cast(alpha),
-      complex_cast(a), lda, complex_cast(b), ldb, complex_cast(beta), complex_cast(c), ldc);
-=======
       ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m, n, k,
       complex_cast(alpha), complex_cast(a), lda, complex_cast(b), ldb,
       complex_cast(beta), complex_cast(c), ldc);
->>>>>>> upstream/master
 }
 
 bool ROCMBlas::DoBlasGemvWithProfiling(
@@ -1918,40 +1862,6 @@ bool ROCMBlas::DoBlasGemmWithAlgorithm(
   return false;
 }
 
-<<<<<<< HEAD
-
-// This copies from source memory: raw_ptrs[i] to target memory:
-// device_memory_ptr at the interval of matrix_byte_size, or vice versa. 
-// The below algorithm tries to minimize the number of memcpy by consolidating neighboring
-// memcpy into a single request
-template <typename MAPPED_T>
-port::Status ReorganizeMemory(Stream* stream,
-      DeviceMemory<MAPPED_T> *device_memory,
-        const std::vector<MAPPED_T*>  &raw_ptrs,
-    int batch_count, uint64_t batch_stride,
-    bool gather)
-{
-  assert(batch_count > 0);
-  char *device_memory_ptr = static_cast<char *>(device_memory->opaque());
-  char* src_ptr = reinterpret_cast<char*>(raw_ptrs[0]);
-  char* dst_ptr = device_memory_ptr;
-  size_t matrix_byte_size = batch_stride * sizeof(MAPPED_T);  
-  uint64_t cur_stride_size = matrix_byte_size;
-
-  struct memory_copy_op {
-    char* src_ptr;
-    char* dst_ptr;
-    uint64_t size;
-  };
-  std::vector<memory_copy_op> write_ops;
-
-  for (int i = 1; i < batch_count; ++i) {
-    if (reinterpret_cast<char*>(raw_ptrs[i]) == src_ptr + cur_stride_size) {
-      cur_stride_size += matrix_byte_size;
-    } else {
-      write_ops.push_back(memory_copy_op{src_ptr, dst_ptr, cur_stride_size});
-      src_ptr = reinterpret_cast<char*>(raw_ptrs[i]);
-=======
 // This copies from source memory: raw_ptrs[i] to target memory:
 // device_memory_ptr at the interval of matrix_byte_size, or vice versa.
 // The below algorithm tries to minimize the number of memcpy by consolidating
@@ -1968,29 +1878,24 @@ port::Status ReorganizeMemory(Stream *stream,
   char *dst_ptr = device_memory_ptr;
   size_t matrix_byte_size = batch_stride * sizeof(MAPPED_T);
   uint64_t cur_stride_size = matrix_byte_size;
+  struct memory_copy_op {
+    char* src_ptr;
+    char* dst_ptr;
+    uint64_t size;
+  };
+  std::vector<memory_copy_op> write_ops;
 
   for (int i = 1; i < batch_count; ++i) {
-    if (reinterpret_cast<char *>(raw_ptrs[i]) == src_ptr + cur_stride_size) {
+    if (reinterpret_cast<char*>(raw_ptrs[i]) == src_ptr + cur_stride_size) {
       cur_stride_size += matrix_byte_size;
     } else {
-      DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_stride_size);
-      DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_stride_size);
-      bool a_status =
-          gather
-              ? stream->ThenMemcpy(&target_mem, src_mem, cur_stride_size).ok()
-              : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
-      if (!a_status) {
-        return port::Status(
-            port::error::INTERNAL,
-            "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
-      }
-      src_ptr = reinterpret_cast<char *>(raw_ptrs[i]);
->>>>>>> upstream/master
+      write_ops.push_back(memory_copy_op{src_ptr, dst_ptr, cur_stride_size});
+      src_ptr = reinterpret_cast<char*>(raw_ptrs[i]);
       dst_ptr = device_memory_ptr + i * matrix_byte_size;
       cur_stride_size = matrix_byte_size;
     }
   }
-<<<<<<< HEAD
+
   write_ops.push_back(memory_copy_op{src_ptr, dst_ptr, cur_stride_size});
 
   bool misaligned = (write_ops[0].size & 3)
@@ -2039,18 +1944,6 @@ port::Status ReorganizeMemory(Stream *stream,
           "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
     }
   }
-=======
-
-  DeviceMemoryBase src_mem = DeviceMemoryBase(src_ptr, cur_stride_size);
-  DeviceMemoryBase target_mem = DeviceMemoryBase(dst_ptr, cur_stride_size);
-  bool a_status =
-      gather ? stream->ThenMemcpy(&target_mem, src_mem, cur_stride_size).ok()
-             : stream->ThenMemcpy(&src_mem, target_mem, cur_stride_size).ok();
-  if (!a_status)
-    return port::Status(
-        port::error::INTERNAL,
-        "failed to copy device memory in ROCMBlas::DoBlasGemmBatched");
->>>>>>> upstream/master
   return port::Status::OK();
 }
 
@@ -2064,12 +1957,7 @@ port::Status ROCMBlas::AllocateStridedBuffer(
         typename RocBlasTypeConversionHelper<T>::mapped_type>> *temp_memory,
     DeviceMemory<typename RocBlasTypeConversionHelper<T>::mapped_type>
         *device_memory,
-<<<<<<< HEAD
-        bool copy_data,
-        bool& reallocated) {
-=======
     bool copy_data, bool &reallocated) {
->>>>>>> upstream/master
   assert(device_memory != nullptr);
 
   using MAPPED_T = typename RocBlasTypeConversionHelper<T>::mapped_type;
@@ -2114,16 +2002,10 @@ port::Status ROCMBlas::AllocateStridedBuffer(
 
   reallocated = true;
 
-<<<<<<< HEAD
-  if(copy_data)
-      return ReorganizeMemory(stream, device_memory, raw_ptrs, batch_count, batch_stride, true);
-    return port::Status::OK();
-=======
   if (copy_data)
     return ReorganizeMemory(stream, device_memory, raw_ptrs, batch_count,
                             batch_stride, true);
   return port::Status::OK();
->>>>>>> upstream/master
 }
 
 
@@ -2177,46 +2059,27 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
   // Make sure the temporary memory are in-scope before the function returns
   std::unique_ptr<TemporaryDeviceMemory<MAPPED_T>> a_temp;
   bool reallocated_a, reallocated_b, reallocated_c;
-<<<<<<< HEAD
-  //printf("DoBlasGemmBatchedInternal %d\n", batch_count);
-  port::Status a_allocation_status =
-      AllocateStridedBuffer<T>(a_raw_ptrs, batch_count, batch_stride_a,
-                               scratch_allocator, stream, &a_temp, &a, true, reallocated_a);
-=======
   port::Status a_allocation_status = AllocateStridedBuffer<T>(
       a_raw_ptrs, batch_count, batch_stride_a, scratch_allocator, stream,
       &a_temp, &a, true, reallocated_a);
->>>>>>> upstream/master
   if (a_allocation_status != port::Status::OK()) {
     return a_allocation_status;
   }
 
   DeviceMemory<MAPPED_T> b;
   std::unique_ptr<TemporaryDeviceMemory<MAPPED_T>> b_temp;
-<<<<<<< HEAD
-  port::Status b_allocation_status =
-      AllocateStridedBuffer<T>(b_raw_ptrs, batch_count, batch_stride_b,
-                               scratch_allocator, stream, &b_temp, &b, true, reallocated_b);
-=======
   port::Status b_allocation_status = AllocateStridedBuffer<T>(
       b_raw_ptrs, batch_count, batch_stride_b, scratch_allocator, stream,
       &b_temp, &b, true, reallocated_b);
->>>>>>> upstream/master
   if (b_allocation_status != port::Status::OK()) {
     return b_allocation_status;
   }
 
   DeviceMemory<MAPPED_T> c;
   std::unique_ptr<TemporaryDeviceMemory<MAPPED_T>> c_temp;
-<<<<<<< HEAD
-  port::Status c_allocation_status =
-      AllocateStridedBuffer<T>(c_raw_ptrs, batch_count, batch_stride_c,
-                               scratch_allocator, stream, &c_temp, &c, true, reallocated_c); // can disable copy if beta=0
-=======
   port::Status c_allocation_status = AllocateStridedBuffer<T>(
       c_raw_ptrs, batch_count, batch_stride_c, scratch_allocator, stream,
       &c_temp, &c, true, reallocated_c);  // can disable copy if beta=0
->>>>>>> upstream/master
   if (c_allocation_status != port::Status::OK()) {
     return c_allocation_status;
   }
@@ -2226,18 +2089,6 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
 
   bool ok;
   ok = DoBlasInternal(rocblas_func, stream, true /* = pointer_mode_host */,
-<<<<<<< HEAD
-                         ROCMBlasTranspose(transa), ROCMBlasTranspose(transb),
-                         m, n, k, GpuComplex(alpha_ptr), GpuMemory(a), lda,
-                         batch_stride_a, GpuMemory(b), ldb, batch_stride_b,
-                         GpuComplex(beta_ptr), GpuMemoryMutable(&c), ldc,
-                         batch_stride_c, batch_count);
-  if(!ok)
-    return port::Status(port::error::INTERNAL,
-                      "failed BLAS call, see log for details");
-  if(reallocated_c)
-      return ReorganizeMemory(stream, &c, c_raw_ptrs, batch_count, batch_stride_c, false);
-=======
                       ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m,
                       n, k, GpuComplex(alpha_ptr), GpuMemory(a), lda,
                       batch_stride_a, GpuMemory(b), ldb, batch_stride_b,
@@ -2249,7 +2100,6 @@ port::Status ROCMBlas::DoBlasGemmBatchedInternal(
   if (reallocated_c)
     return ReorganizeMemory(stream, &c, c_raw_ptrs, batch_count, batch_stride_c,
                             false);
->>>>>>> upstream/master
   return port::Status::OK();
 }
 
@@ -2259,11 +2109,7 @@ bool ROCMBlas::DoBlasGemmBatched(
     const port::ArraySlice<DeviceMemory<Eigen::half> *> &a, int lda,
     const port::ArraySlice<DeviceMemory<Eigen::half> *> &b, int ldb, float beta,
     const port::ArraySlice<DeviceMemory<Eigen::half> *> &c, int ldc,
-<<<<<<< HEAD
-    int batch_count, ScratchAllocator *scratch_allocator) {  
-=======
     int batch_count, ScratchAllocator *scratch_allocator) {
->>>>>>> upstream/master
   blas_log("DoBlasGemmBatched");
   const Eigen::half alpha_half(alpha);
   const Eigen::half beta_half(beta);

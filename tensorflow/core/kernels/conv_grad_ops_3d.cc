@@ -1853,11 +1853,7 @@ class Conv3DBackpropFilterOp<GPUDevice, T> : public OpKernel {
           &algorithms));
 
       std::vector<tensorflow::AutotuneResult> results;
-<<<<<<< HEAD
-      for (auto profile_algorithm : algorithms) {
-=======
       for (const auto& profile_algorithm : algorithms) {
->>>>>>> upstream/master
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
         DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,

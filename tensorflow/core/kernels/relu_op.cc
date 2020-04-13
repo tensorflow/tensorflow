@@ -234,10 +234,6 @@ REGISTER_KERNEL_BUILDER(
     Name("Relu").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
     ReluOp<GPUDevice, qint8>);
 
-<<<<<<< HEAD
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
->>>>>>> upstream/master
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL

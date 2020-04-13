@@ -1103,7 +1103,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
 
     std::vector<ProfileResult> algorithms;
-<<<<<<< HEAD
     if (TestMIOpenBFloat16Support<T>()) {
       OP_REQUIRES(
           ctx,
@@ -1128,18 +1127,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                       "because MIOpen failed to initialize, so try looking to "
                       "see if a warning log message was printed above."));
     }
-=======
-    OP_REQUIRES(
-        ctx,
-        stream->parent()->GetMIOpenConvolveAlgorithms(
-            se::dnn::ConvolutionKind::FORWARD, se::dnn::ToDataType<T>::value,
-            stream, input_desc, input_ptr, filter_desc, filter_ptr, output_desc,
-            output_ptr, conv_desc, &scratch_allocator, &algorithms),
-        errors::Unknown(
-            "Failed to get convolution algorithm. This is probably "
-            "because MIOpen failed to initialize, so try looking to "
-            "see if a warning log message was printed above."));
->>>>>>> upstream/master
     se::DeviceMemory<T> output_tensor = output_ptr;
 
     std::vector<tensorflow::AutotuneResult> results;
@@ -1160,7 +1147,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         auto profile_algorithm = miopen_algorithm.algorithm();
         ProfileResult profile_result;
         bool miopen_launch_status = false;
-<<<<<<< HEAD
         if (TestMIOpenBFloat16Support<T>()) {
           miopen_launch_status =
               stream
@@ -1183,17 +1169,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                       &profile_result)
                   .ok();
         }
-=======
-        miopen_launch_status =
-            stream
-                ->ThenConvolveWithAlgorithm(
-                    input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
-                    output_desc, &output_ptr, &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm,
-                                    miopen_algorithm.scratch_size()),
-                    &profile_result)
-                .ok();
->>>>>>> upstream/master
         if (miopen_launch_status && profile_result.is_valid()) {
           results.emplace_back();
           auto& result = results.back();

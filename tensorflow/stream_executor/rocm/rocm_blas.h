@@ -46,20 +46,12 @@ struct RocBlasTypeConversionHelper<Eigen::half> {
 };
 
 template <>
-<<<<<<< HEAD
-struct RocBlasTypeConversionHelper<std::complex<float> > {
-=======
 struct RocBlasTypeConversionHelper<std::complex<float>> {
->>>>>>> upstream/master
   using mapped_type = rocblas_float_complex;
 };
 
 template <>
-<<<<<<< HEAD
-struct RocBlasTypeConversionHelper<std::complex<double> > {
-=======
 struct RocBlasTypeConversionHelper<std::complex<double>> {
->>>>>>> upstream/master
   using mapped_type = rocblas_double_complex;
 };
 
@@ -139,13 +131,8 @@ class ROCMBlas : public blas::BlasSupport {
       std::unique_ptr<TemporaryDeviceMemory<
           typename RocBlasTypeConversionHelper<T>::mapped_type>> *temp_memory,
       DeviceMemory<typename RocBlasTypeConversionHelper<T>::mapped_type>
-<<<<<<< HEAD
-          *device_memory, bool copy_data,
-        bool& reallocated);
-=======
           *device_memory,
       bool copy_data, bool &reallocated);
->>>>>>> upstream/master
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic
   // types.

@@ -183,15 +183,10 @@ def _GetEigTest(dtype_, shape_, compute_v_):
 
 
 if __name__ == "__main__":
-<<<<<<< HEAD
-  dtypes_to_test = [dtypes_lib.float32, dtypes_lib.float64, 
-    dtypes_lib.complex64, dtypes_lib.complex128]
-=======
   dtypes_to_test = [
       dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.complex64,
       dtypes_lib.complex128
   ]
->>>>>>> upstream/master
   for compute_v in True, False:
     for dtype in dtypes_to_test:
       for size in 1, 2, 5, 10:

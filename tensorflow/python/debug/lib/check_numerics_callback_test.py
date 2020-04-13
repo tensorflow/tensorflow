@@ -100,29 +100,6 @@ class CheckNumericsCallbackTest(test_util.TensorFlowTestCase):
     self.assertAllClose(self.evaluate(iterator.get_next()), np.log([1.25, 2]))
     self.assertAllClose(self.evaluate(iterator.get_next()), np.log([3.25, 5]))
 
-<<<<<<< HEAD
-  @test_util.run_in_graph_and_eager_modes
-  def testMobileNetV2Fit(self):
-    """Test training Keras MobileNetV2 application works w/ check numerics."""
-
-    if test_lib.is_built_with_rocm():
-      # This test passes with MIOpen Find Mode (which is the default)
-      # This bug is being tracked via MLOpen Issue #2379, re-enable this
-      # test once the fix for that issue is available in a ROCm release
-      self.skipTest("MIOpen bug results in test failure")
-
-    check_numerics_callback.enable_check_numerics()
-    model = mobilenet_v2.MobileNetV2(alpha=0.1, weights=None)
-
-    xs = np.zeros([2] + list(model.input_shape[1:]))
-    ys = np.zeros([2] + list(model.output_shape[1:]))
-    model.compile(optimizer="sgd", loss="categorical_crossentropy")
-    epochs = 1
-    history = model.fit(xs, ys, epochs=epochs, verbose=0)
-    self.assertEqual(len(history.history["loss"]), epochs)
-
-=======
->>>>>>> upstream/master
 
 class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
   """Test for cases in which enable_check_numerics() catches infs or nans."""

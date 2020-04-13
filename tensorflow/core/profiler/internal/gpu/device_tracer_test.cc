@@ -45,19 +45,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-<<<<<<< HEAD
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-std::unique_ptr<ProfilerInterface> CreateGpuTracer(
-    const ProfilerOptions& options);
-#else   // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-// We don't have device tracer for non-cuda case.
-std::unique_ptr<ProfilerInterface> CreateGpuTracer(
-    const ProfilerOptions& options) {
-  return nullptr;
-}
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
-#if GOOGLE_CUDA
 extern std::unique_ptr<ProfilerInterface> CreateGpuTracer(
     const ProfileOptions& options);
 std::unique_ptr<ProfilerInterface> CreateGpuTracer() {
@@ -68,7 +56,6 @@ std::unique_ptr<ProfilerInterface> CreateGpuTracer() {
 // We don't have device tracer for non-cuda case.
 std::unique_ptr<ProfilerInterface> CreateGpuTracer() { return nullptr; }
 #endif
->>>>>>> upstream/master
 
 namespace {
 

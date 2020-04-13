@@ -25,20 +25,14 @@ namespace profiler {
 const absl::string_view kHostThreads = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
-<<<<<<< HEAD
 const absl::string_view kRocmTracerPlaneName = "/host:ROCmTRACER";
-=======
 const absl::string_view kMetadataPlane = "/host:metadata";
->>>>>>> upstream/master
 
 const int32 kHostPlaneId = 49;
 const int32 kGpuPlaneBaseId = 0;
 const int32 kCuptiDriverApiPlaneId = 50;
-<<<<<<< HEAD
 const int32 kRocmTracerPlaneId = 51;
-=======
-const int32 kMetadataPlaneId = 51;
->>>>>>> upstream/master
+const int32 kMetadataPlaneId = 52;
 
 namespace {
 
