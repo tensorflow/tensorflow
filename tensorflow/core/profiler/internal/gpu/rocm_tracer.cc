@@ -836,6 +836,17 @@ void RocmTracer::ActivityCallbackHandler(const char* begin, const char* end) {
   } else {
     LOG(WARNING) << "ActivityCallbackHandler called when "
                     "activity_tracing_enabled_ is false";
+
+    VLOG(kRocmTracerVlog1) << "Dropped Activity Records Start";
+    const roctracer_record_t* record =
+        reinterpret_cast<const roctracer_record_t*>(begin);
+    const roctracer_record_t* end_record =
+        reinterpret_cast<const roctracer_record_t*>(end);
+    while (record < end_record) {
+      DumpActivityRecord(record);
+      roctracer_next_record(record, &record);
+    }
+    VLOG(kRocmTracerVlog1) << "Dropped Activity Records End";
   }
 }
 
