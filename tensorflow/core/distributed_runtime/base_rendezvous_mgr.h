@@ -88,9 +88,6 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
   // periodically calls CleanupAll().
   void Cleanup(int64 step_id) override;
 
-  // Removed all rendezvous.
-  void CleanupAll() override;
-
  protected:
   virtual BaseRemoteRendezvous* Create(int64 step_id,
                                        const WorkerEnv* worker_env) = 0;
