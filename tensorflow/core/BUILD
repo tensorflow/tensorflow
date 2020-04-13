@@ -1599,6 +1599,12 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "rocm",
+    actual = "//tensorflow/core/common_runtime/gpu:rocm",
+    visibility = ["//visibility:public"],
+)
+
 # -----------------------------------------------------------------------------
 # Clif-related proto libraries.
 
