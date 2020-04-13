@@ -2008,11 +2008,9 @@ class Checkpoint(tracking.AutoTrackable):
 
     Args:
       save_path: The path to the checkpoint, as returned by `save` or
-        `tf.train.latest_checkpoint`. If None (as when there is no latest
-        checkpoint for `tf.train.latest_checkpoint` to return), returns an
-        object which may run initializers for objects in the dependency graph.
-        If the checkpoint was written by the name-based
-        `tf.compat.v1.train.Saver`, names are used to match variables.
+        `tf.train.latest_checkpoint`. If the checkpoint was written by the
+        name-based `tf.compat.v1.train.Saver`, names are used to match
+        variables.
 
     Returns:
       A load status object, which can be used to make assertions about the
