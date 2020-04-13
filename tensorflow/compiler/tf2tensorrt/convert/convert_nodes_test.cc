@@ -30,6 +30,8 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/tensor.h"
@@ -1213,25 +1215,11 @@ TEST_F(ConvertGraphDefToEngineTest, IdentityGraph) {
   TF_EXPECT_OK(RunConvertGraphDefToEngine(&s));
 }
 
-// Input/output data format for OpConverterTest::BuildAndRun().
-struct InputOutputData {
-  void* Buffer() const {
-    return const_cast<char*>(tensor.tensor_data().data());
-  }
-
-  size_t TotalBytes() const { return tensor.TotalBytes(); }
-
-  string name;
-  Tensor tensor;
-};
-
 template <typename T>
 Tensor ConstructTensor(int data_size, const T& value = T()) {
   std::vector<T> values(data_size, value);
   return test::AsTensor<T>(values);
 }
-
-using DataVec = std::vector<InputOutputData>;
 
 template <typename T>
 inline absl::Span<const T> GetSpanForData(const InputOutputData& data) {
@@ -1308,10 +1296,31 @@ class OpConverterTest : public ::testing::Test {
     CheckDataTypeMatches(input_data);
     CheckDataTypeMatches(*output_data);
 
-    // Execute the TRT engine.
     const int num_bindings = input_data.size() + output_data->size();
     std::vector<void*> buffers(num_bindings);
 
+    ASSERT_EQ(engine_->getNbBindings(), num_bindings);
+    TrtUniquePtrType<nvinfer1::IExecutionContext> execution_context(
+        engine_->createExecutionContext());
+
+    // Prepare input bindings.
+    TF_ASSERT_OK(SetTrtEngineInputs(engine_.get(), execution_context.get(), 0,
+                                    buffers, converter_->use_implicit_batch(),
+                                    batch_size, nullptr, &input_data));
+
+    // Prepare output bindings.
+    TF_ASSERT_OK(SetTrtEngineOutputs(engine_.get(), execution_context.get(), 0,
+                                     buffers, converter_->use_implicit_batch(),
+                                     batch_size, nullptr, output_data));
+
+    // Allocate buffers on GPU and copy data there. This is necessary because
+    // the test tensors are allocated in host memory, so the pointers that
+    // SetTrtEngin(In|Out)puts placed into buffers[] cannot be used on the GPU.
+    // We allocate the GPU buffers, copy the data there, and overwrite the
+    // addresses in the buffers array.
+    //
+    // TODO(tfeher): This step can be avoided if we allocate the Tensors in
+    // unified memory.
     for (const auto& data : input_data) {
       const int input_index = engine_->getBindingIndex(data.name.c_str());
       ASSERT_NE(-1, input_index);
@@ -1334,10 +1343,9 @@ class OpConverterTest : public ::testing::Test {
       ASSERT_EQ(0, cudaMalloc(&buffers[output_index], data.TotalBytes()));
     }
 
-    ASSERT_EQ(engine_->getNbBindings(), num_bindings);
-    TrtUniquePtrType<nvinfer1::IExecutionContext> execution_context(
-        engine_->createExecutionContext());
-    execution_context->enqueue(batch_size, buffers.data(), stream_, nullptr);
+    // Execute the TRT engine.
+    TF_ASSERT_OK(TrtEnqueue(execution_context.get(), buffers, stream_,
+                            converter_->use_implicit_batch(), batch_size));
 
     for (int i = 0; i < output_infos.size(); ++i) {
       const auto& output_info = output_infos[i];

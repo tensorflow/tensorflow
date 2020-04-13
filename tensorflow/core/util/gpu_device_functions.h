@@ -42,15 +42,24 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_cuda_alias.h"
 
+<<<<<<< HEAD
 #if GOOGLE_CUDA 
 using gpuFloatComplex = cuFloatComplex;
 using gpuDoubleComplex = cuDoubleComplex;
+=======
+#if GOOGLE_CUDA
+using gpuFloatComplex = cuFloatComplex;
+using gpuDoubleComplex = cuDoubleComplex;
+using gpuStream_t = cudaStream_t;
+using gpuEvent_t = cudaEvent_t;
+>>>>>>> upstream/master
 #define gpuEventRecord cudaEventRecord
 #define gpuEventSynchronize cudaEventSynchronize
 #define gpuEventDestroy cudaEventDestroy
 #define gpuEventCreate cudaEventCreate
 #define gpuEventCreateWithFlags cudaEventCreateWithFlags
 #define gpuEventDisableTiming cudaEventDisableTiming
+<<<<<<< HEAD
 #define gpuDeviceSynchronize cudaDeviceSynchronize
 #define gpuFree cudaFree
 typedef cudaStream_t gpuStream_t;
@@ -58,6 +67,15 @@ typedef cudaEvent_t gpuEvent_t;
 #elif TENSORFLOW_USE_ROCM
 using gpuFloatComplex = hipFloatComplex;
 using gpuDoubleComplex = hipDoubleComplex;
+=======
+#elif TENSORFLOW_USE_ROCM
+using gpuFloatComplex = hipFloatComplex;
+using gpuDoubleComplex = hipDoubleComplex;
+using gpuStream_t = hipStream_t;
+using gpuEvent_t = hipEvent_t;
+using cudaError = int;
+using cudaError_t = int;
+>>>>>>> upstream/master
 #define cudaSuccess 0
 #define cudaGetLastError hipGetLastError
 #define gpuEventRecord hipEventRecord
@@ -65,6 +83,7 @@ using gpuDoubleComplex = hipDoubleComplex;
 #define gpuEventSynchronize hipEventSynchronize
 #define gpuEventCreate hipEventCreate
 #define gpuEventCreateWithFlags hipEventCreateWithFlags
+<<<<<<< HEAD
 #define gpuEventDisableTiming hipEventDisableTiming 
 #define gpuDeviceSynchronize hipDeviceSynchronize
 #define gpuFree hipFree
@@ -76,6 +95,12 @@ static std::string cudaGetErrorString(int err) { return std::to_string(err); }
 
 #endif
 
+=======
+#define gpuEventDisableTiming hipEventDisableTiming
+static std::string cudaGetErrorString(int err) { return std::to_string(err); }
+#endif
+
+>>>>>>> upstream/master
 #define TF_RETURN_IF_CUDA_ERROR(result)                   \
   do {                                                    \
     cudaError_t error(result);                            \
@@ -936,26 +961,45 @@ __device__ inline std::complex<double> operator/(
 #endif  // GOOGLE_CUDA
 
 namespace functor {
+<<<<<<< HEAD
 // ROCm hcc(clang) has severe difficulties dealing with std::complex directly due to a header issue.
 // This template assists in casting std::complex into the corresponding internal ROCm types.
 template <class T> 
+=======
+// ROCm hcc(clang) has severe difficulties dealing with std::complex directly
+// due to a header issue. This template assists in casting std::complex into the
+// corresponding internal ROCm types.
+template <class T>
+>>>>>>> upstream/master
 struct MapComplexToHipComplex {
   typedef T TM;
 };
 
 #if TENSORFLOW_USE_ROCM
+<<<<<<< HEAD
 template <> 
+=======
+template <>
+>>>>>>> upstream/master
 struct MapComplexToHipComplex<std::complex<float> > {
   typedef hipFloatComplex TM;
 };
 
+<<<<<<< HEAD
 
 template <> 
+=======
+template <>
+>>>>>>> upstream/master
 struct MapComplexToHipComplex<std::complex<double> > {
   typedef hipDoubleComplex TM;
 };
 #endif
+<<<<<<< HEAD
 };
+=======
+};  // namespace functor
+>>>>>>> upstream/master
 
 }  // namespace tensorflow
 

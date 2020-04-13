@@ -262,8 +262,14 @@ class BatchMatMulBenchmark(test.Benchmark):
 
 
 if __name__ == "__main__":
+<<<<<<< HEAD
   dtypes_to_test = [np.float16, np.float32, np.float64, np.int32, 
     np.complex64, np.complex128]
+=======
+  dtypes_to_test = [
+      np.float16, np.float32, np.float64, np.int32, np.complex64, np.complex128
+  ]
+>>>>>>> upstream/master
   for dtype_ in dtypes_to_test:
     for adjoint_a_ in False, True:
       for adjoint_b_ in False, True:

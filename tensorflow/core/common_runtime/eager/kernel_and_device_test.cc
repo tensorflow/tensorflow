@@ -147,7 +147,7 @@ void BM_KernelAndDeviceRun(int iters) {
   const EagerKernelArgs args(std::move(inputs));
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(k.Run(args, &outputs, nullptr, absl::nullopt));
+    TF_CHECK_OK(k.Run(nullptr, args, &outputs, nullptr, absl::nullopt));
   }
 }
 BENCHMARK(BM_KernelAndDeviceRun);

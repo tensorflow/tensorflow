@@ -93,7 +93,7 @@ mlir::AffineForOp TileLoop(mlir::AffineForOp loop, int64_t size,
 
 // Sinks a segment of perfectly nested loops to the bottom. It implements this
 // by rotating the loop nest by rotate_amount.
-void SinkPerfectlyNestedLoops(absl::Span<const mlir::AffineForOp> loops,
+void SinkPerfectlyNestedLoops(llvm::MutableArrayRef<mlir::AffineForOp> loops,
                               int rotate_amount);
 
 }  // namespace mlir_gpu

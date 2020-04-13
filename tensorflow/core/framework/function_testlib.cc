@@ -53,7 +53,8 @@ NodeDef NDef(StringPiece name, StringPiece op, gtl::ArraySlice<string> inputs,
   n.set_op(string(op));
   for (const auto& in : inputs) n.add_input(in);
   n.set_device(device);
-  for (auto na : attrs) n.mutable_attr()->insert({na.first, na.second.proto});
+  for (const auto& na : attrs)
+    n.mutable_attr()->insert({na.first, na.second.proto});
   return n;
 }
 

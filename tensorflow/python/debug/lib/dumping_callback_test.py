@@ -38,10 +38,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras import models
-from tensorflow.python.keras.applications import mobilenet_v2
-from tensorflow.python.keras.layers import core
-from tensorflow.python.keras.layers import recurrent_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -50,35 +46,22 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
 
-def _create_simple_recurrent_keras_model(input_shape):
-  """Create a simple tf.keras model containing a recurrent layer for testing."""
-  model = models.Sequential()
-  model.add(recurrent_v2.LSTM(
-      10,
-      input_shape=input_shape,
-      kernel_initializer="zeros",
-      recurrent_initializer="zeros"))
-  model.add(core.Dense(1, kernel_initializer="zeros"))
-  model.compile(loss="mse", optimizer="sgd")
-  return model
-
-
 _host_name = socket.gethostname()
 _current_file_full_path = os.path.abspath(__file__)
 
 
-class TracingCallbackTest(
+class DumpingCallbackTest(
     dumping_callback_test_lib.DumpingCallbackTestBase, parameterized.TestCase):
 
   def setUp(self):
-    super(TracingCallbackTest, self).setUp()
+    super(DumpingCallbackTest, self).setUp()
     self.dump_root = tempfile.mkdtemp()
 
   def tearDown(self):
     if os.path.isdir(self.dump_root):
       shutil.rmtree(self.dump_root, ignore_errors=True)
     dumping_callback.disable_dump_debug_info()
-    super(TracingCallbackTest, self).tearDown()
+    super(DumpingCallbackTest, self).tearDown()
 
   def _verifyStackFrames(self, stack_frames):
     """Verify the correctness of the stack frames.
@@ -1261,6 +1244,9 @@ class TracingCallbackTest(
       self.assertAllClose(mul_values, [6.0, 6.0, 6.0, 6.0])
 
   def testMultiThreadedDumpingWithDifferentSettings(self):
+    gpu_name = test_util.gpu_device_name()
+    if gpu_name:
+      self.skipTest("b/153671240: test is flaky on GPUs")
     dump_root_1 = os.path.join(self.dump_root, "dump_root_1")
     dump_root_2 = os.path.join(self.dump_root, "dump_root_2")
     v1 = variables.Variable(10.0, dtype=dtypes.float32)
@@ -1355,192 +1341,6 @@ class TracingCallbackTest(
       self.assertNotEqual(less_op_digest.graph_id, sub_op_digest.graph_id)
       # The Mul and Sub ops are from the same innermost context.
       self.assertEqual(mul_op_digest.graph_id, sub_op_digest.graph_id)
-
-  @parameterized.named_parameters(
-      ("NoTensor", "NO_TENSOR"),
-      ("FullTensor", "FULL_TENSOR"),
-  )
-  @test_util.run_in_graph_and_eager_modes
-  def testSimpleKerasRecurrentModelPredict(self, tensor_debug_mode):
-    writer = dumping_callback.enable_dump_debug_info(
-        self.dump_root, tensor_debug_mode=tensor_debug_mode)
-    model = _create_simple_recurrent_keras_model([3, 4])
-    batch_size = 5
-    xs = np.ones([batch_size, 3, 4])
-    self.assertAllClose(model.predict(xs), np.zeros([batch_size, 1]))
-
-    writer.FlushNonExecutionFiles()
-    writer.FlushExecutionFiles()
-
-    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
-      reader.update()
-      if context.executing_eagerly():
-        # NOTE(b/142486213): Execution of the TF function happens with
-        # Session.run() in v1 graph mode, hence it doesn't get logged to the
-        # .execution file.
-        self.assertTrue(reader.executions(digest=True))
-
-      graph_exec_digests = reader.graph_execution_traces(digest=True)
-      executed_op_types = [digest.op_type for digest in graph_exec_digests]
-      # These are the ops that we can safely assume to have been executed during
-      # the model prediction.
-      self.assertIn("MatMul", executed_op_types)
-      self.assertIn("BiasAdd", executed_op_types)
-      # On the GPU, CudnnRNN is used in lieu of the default op-by-op
-      # implementation.
-      self.assertTrue(
-          ("Sigmoid" in executed_op_types and "Tanh" in executed_op_types or
-           "CudnnRNN" in executed_op_types))
-
-      # Under the default NO_TENSOR tensor-debug mode, the tensor_proto ought to
-      # be an empty float32 tensor.
-      tensor_values = [reader.graph_execution_trace_to_tensor_value(digest)
-                       for digest in graph_exec_digests]
-      if tensor_debug_mode == "NO_TENSOR":
-        for tensor_value in tensor_values:
-          self.assertAllEqual(tensor_value, [])
-      else:
-        # Refrain from asserting the internal implementation details of the LSTM
-        # layer.
-        self.assertTrue(any(
-            bool(tensor_value.size) for tensor_value in tensor_values))
-
-  @parameterized.named_parameters(
-      ("NoTensor", "NO_TENSOR"),
-      ("FullTensor", "FULL_TENSOR"),
-  )
-  @test_util.run_in_graph_and_eager_modes
-  def testSimpleKerasRecurrentModelFit(self, tensor_debug_mode):
-    writer = dumping_callback.enable_dump_debug_info(
-        self.dump_root, tensor_debug_mode=tensor_debug_mode)
-    model = _create_simple_recurrent_keras_model([3, 4])
-    xs = np.ones([5, 3, 4])
-    ys = np.ones([5, 1])
-
-    history = model.fit(xs, ys, epochs=3, verbose=0)
-    self.assertAllClose(
-        history.history["loss"], [1.0, 0.9603999853134155, 0.9223681688308716])
-
-    writer.FlushNonExecutionFiles()
-    writer.FlushExecutionFiles()
-
-    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
-      reader.update()
-      if context.executing_eagerly():
-        exec_digests = reader.executions(digest=True)
-        self.assertTrue(exec_digests)
-        if tensor_debug_mode == "NO_TENSOR":
-          for digest in exec_digests:
-            tensor_values = reader.execution_to_tensor_values(digest)
-            for tensor_value in tensor_values:
-              self.assertEqual(tensor_value, [])
-
-      graph_exec_digests = reader.graph_execution_traces(digest=True)
-      executed_op_types = [digest.op_type for digest in graph_exec_digests]
-      # These are the ops that we can safely assume to have been executed during
-      # the recurrent model's fit() call.
-      self.assertIn("MatMul", executed_op_types)
-      self.assertIn("BiasAdd", executed_op_types)
-
-      # On the GPU, CudnnRNN is used in lieu of the default op-by-op
-      # implementation.
-      self.assertTrue(
-          ("Sigmoid" in executed_op_types and "Tanh" in executed_op_types or
-           "CudnnRNN" in executed_op_types))
-      self.assertTrue(
-          ("SigmoidGrad" in executed_op_types and
-           "TanhGrad" in executed_op_types or
-           "CudnnRNNBackprop" in executed_op_types))
-      if tensor_debug_mode == "NO_TENSOR":
-        for digest in graph_exec_digests:
-          tensor_values = reader.graph_execution_trace_to_tensor_value(digest)
-          for tensor_value in tensor_values:
-            self.assertEqual(tensor_value, [])
-
-  @parameterized.named_parameters(
-      ("NoTensor", "NO_TENSOR"),
-      ("FullTensor", "FULL_TENSOR"),
-  )
-  @test_util.run_in_graph_and_eager_modes
-  def testMobileNetV2Fit(self, tensor_debug_mode):
-    """Test training Keras MobileNetV2 works with dumping."""
-    # Use a large circular-buffer to make sure we capture all the executed ops.
-    writer = dumping_callback.enable_dump_debug_info(
-        self.dump_root,
-        tensor_debug_mode=tensor_debug_mode,
-        circular_buffer_size=100000)
-    model = mobilenet_v2.MobileNetV2(
-        input_shape=(32, 32, 3), alpha=0.1, weights=None)
-    y = model.layers[22].output
-    y = core.Flatten()(y)
-    y = core.Dense(1)(y)
-    model = models.Model(inputs=model.inputs, outputs=y)
-
-    batch_size = 2
-    xs = np.zeros([batch_size] + list(model.input_shape[1:]))
-    ys = np.zeros([batch_size] + list(model.output_shape[1:]))
-    model.compile(optimizer="sgd", loss="mse")
-    epochs = 1
-    history = model.fit(xs, ys, epochs=epochs, verbose=0)
-    self.assertLen(history.history["loss"], epochs)
-
-    writer.FlushNonExecutionFiles()
-    writer.FlushExecutionFiles()
-
-    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
-      reader.update()
-      if context.executing_eagerly():
-        # NOTE(b/142486213): Execution of the TF function happens with
-        # Session.run() in v1 graph mode, hence it doesn't get logged to the
-        # .execution file.
-        exec_digests = reader.executions(digest=True)
-        self.assertTrue(exec_digests)
-
-      graph_exec_digests = reader.graph_execution_traces()
-      executed_op_types = [digest.op_type for digest in graph_exec_digests]
-      # These are the ops that we can safely assume to have been executed during
-      # the model's fit() call.
-      self.assertIn("Conv2D", executed_op_types)
-      self.assertIn("Relu6", executed_op_types)
-      self.assertIn("Conv2DBackpropFilter", executed_op_types)
-      self.assertIn("Relu6Grad", executed_op_types)
-
-      if tensor_debug_mode == "NO_TENSOR":
-        # Under the default NO_TENSOR tensor-debug mode, the tensor_proto ought
-        # to be an empty float32 tensor.
-        tensor_values = [
-            reader.graph_execution_trace_to_tensor_value(digest)
-            for digest in graph_exec_digests]
-        for tensor_value in tensor_values:
-          self.assertAllEqual(tensor_value, [])
-      elif tensor_debug_mode == "FULL_TENSOR":
-        conv2d_values = [
-            reader.graph_execution_trace_to_tensor_value(digest)
-            for digest in graph_exec_digests if digest.op_type == "Conv2D"]
-        self.assertTrue(conv2d_values)
-        for conv2d_value in conv2d_values:
-          self.assertGreater(len(conv2d_value.shape), 1)
-          self.assertEqual(conv2d_value.shape[0], batch_size)
-        relu6_values = [
-            reader.graph_execution_trace_to_tensor_value(digest)
-            for digest in graph_exec_digests if digest.op_type == "Relu6"]
-        self.assertTrue(relu6_values)
-        for relu6_value in relu6_values:
-          self.assertGreater(len(relu6_value.shape), 1)
-          self.assertEqual(relu6_value.shape[0], batch_size)
-        conv2d_bp_filter_values = [
-            reader.graph_execution_trace_to_tensor_value(digest)
-            for digest in graph_exec_digests
-            if digest.op_type == "Conv2DBackpropFilter"]
-        self.assertTrue(conv2d_bp_filter_values)
-        for conv2d_bp_filter_value in conv2d_bp_filter_values:
-          self.assertGreater(len(conv2d_bp_filter_value.shape), 1)
-        relu6_grad_values = [
-            reader.graph_execution_trace_to_tensor_value(digest)
-            for digest in graph_exec_digests if digest.op_type == "Relu6Grad"]
-        self.assertTrue(relu6_grad_values)
-        for relu6_grad_value in relu6_grad_values:
-          self.assertGreater(len(relu6_grad_value.shape), 1)
 
 
 if __name__ == "__main__":

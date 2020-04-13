@@ -99,6 +99,9 @@ std::vector<int64> ColorInterferenceGraph(
 bool HloBufferIsReadOnly(const HloBuffer& buffer) {
   for (const HloValue* value : buffer.values()) {
     const HloInstruction* instruction = value->instruction();
+    if (instruction->opcode() == HloOpcode::kConstant) {
+      return true;
+    }
     const HloModule* module = instruction->parent()->parent();
     const bool is_entry_parameter =
         instruction->opcode() == HloOpcode::kParameter &&
@@ -1389,23 +1392,22 @@ Status BufferAssigner::AssignPresetBuffers(
   }
 
   const HloAliasAnalysis& alias_analysis = assignment->alias_analysis();
-  const HloDataflowAnalysis& dataflow_analysis =
-      alias_analysis.dataflow_analysis();
 
   for (auto& position_and_chunk : preset_assignments_->chunks()) {
-    const HloPosition& position = position_and_chunk.first;
-    const HloValue& value = dataflow_analysis.GetUniqueValueAt(
-        position.instruction, position.index);
-    VLOG(3) << "Preset allocation for value: " << value.ToShortString();
-    const HeapSimulator::Chunk& chunk = position_and_chunk.second;
-    auto preset_allocations_iter = preset_allocations.find(value.color());
-    CHECK(preset_allocations_iter != preset_allocations.end())
-        << "No preset value allocation for color " << value.color() << " for "
-        << value.ToShortString() << " found.";
-    preset_allocations_iter->second->AddAssignment(value, chunk.offset,
-                                                   chunk.size);
+    const HloPosition& defining_position = position_and_chunk.first;
+    const HloBuffer& buffer = alias_analysis.GetUniqueBufferAt(
+        defining_position.instruction, defining_position.index);
+    for (const HloValue* value : buffer.values()) {
+      VLOG(3) << "Preset allocation for value: " << value->ToShortString();
+      const HeapSimulator::Chunk& chunk = position_and_chunk.second;
+      auto preset_allocations_iter = preset_allocations.find(value->color());
+      CHECK(preset_allocations_iter != preset_allocations.end())
+          << "No preset value allocation for color " << value->color()
+          << " for " << value->ToShortString() << " found.";
+      preset_allocations_iter->second->AddAssignment(*value, chunk.offset,
+                                                     chunk.size);
+    }
 
-    const HloBuffer& buffer = alias_analysis.GetBufferContainingValue(value);
     assigned_buffers->insert(&buffer);
   }
 

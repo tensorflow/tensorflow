@@ -221,8 +221,14 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
 
 
 if __name__ == "__main__":
+<<<<<<< HEAD
   dtypes_to_test = [np.float16, np.float32, np.float64, 
     np.complex64, np.complex128]
+=======
+  dtypes_to_test = [
+      np.float16, np.float32, np.float64, np.complex64, np.complex128
+  ]
+>>>>>>> upstream/master
   for dtype in dtypes_to_test:
     for rank_a in 1, 2, 4, 5:
       for rank_b in 1, 2, 4, 5:

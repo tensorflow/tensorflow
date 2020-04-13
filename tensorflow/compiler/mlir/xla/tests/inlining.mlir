@@ -5,7 +5,7 @@
 // CHECK-LABEL: func @caller
 // CHECK:   "xla_hlo.while"{{.*}}( {
 // CHECK:   },  {
-// CHECK:     "xla_hlo.exp"
+// CHECK:     "xla_hlo.exponential"
 // CHECK:   })
 // CHECK-LABEL: func @callee
 
@@ -23,6 +23,6 @@ func @caller(%arg0: tensor<f32>, %pred: tensor<i1>) -> tensor<f32> {
 
 
 func @callee(%arg0: tensor<f32>) -> tensor<f32> {
-  %0 = "xla_hlo.exp"(%arg0) : (tensor<f32>) -> tensor<f32>
+  %0 = "xla_hlo.exponential"(%arg0) : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }

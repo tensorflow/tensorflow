@@ -614,11 +614,14 @@ MIOpenSupport::MIOpenSupport(GpuExecutor* parent) : parent_(parent) {
   // swich to Find Mode if env var TF_ROCM_USE_IMMEDIATE_MODE is set
   tensorflow::ReadBoolFromEnvVar("TF_ROCM_USE_IMMEDIATE_MODE", false,
                                  &use_immediate_mode_);
+<<<<<<< HEAD
 
   bool enable_pooling_cache = false;
   tensorflow::ReadBoolFromEnvVar("TF_ROCM_BW_POOL_CACHE", false, &enable_pooling_cache);
   if(enable_pooling_cache)
     m_pooling_cache_allowed = true;
+=======
+>>>>>>> upstream/master
 }
 
 port::Status MIOpenSupport::Init() {
@@ -2528,7 +2531,8 @@ port::Status MIOpenSupport::DoPrepareForCtcLoss(
     absl::Span<const int> labels_data,
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data,
-    ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory) {
+    ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
+    int* ctc_loss_algo_id) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
   MIOpenCTCLossDescriptor miopen_ctc_loss_desc(ToMIOpenDataType(element_type));
@@ -2591,7 +2595,7 @@ port::Status MIOpenSupport::DoCtcLossImpl(
     absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
     const MIOpenRnnStateTensorDescriptor& grads_desc,
     DeviceMemoryBase grads_data, const MIOpenCTCLossDescriptor& ctc_loss_desc,
-    DeviceMemory<uint8> scratch_memory) {
+    DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
   int kNumTimestamps = probs_desc.num_layers();
@@ -2617,13 +2621,12 @@ port::Status MIOpenSupport::DoCtcLossImpl(
 port::Status MIOpenSupport::DoCtcLoss(
     Stream* stream, dnn::DataType element_type,
     const dnn::RnnStateTensorDescriptor& probs_desc,
-    const DeviceMemoryBase probs_data,
-
-    absl::Span<const int> labels_data,
+    const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
     const dnn::RnnStateTensorDescriptor& grads_desc,
-    DeviceMemoryBase grads_data, DeviceMemory<uint8> scratch_memory) {
+    DeviceMemoryBase grads_data, DeviceMemory<uint8> scratch_memory,
+    int ctc_loss_algo_id) {
   // Current MIOPen CTC Loss only supports the float datatype
   if (element_type != dnn::DataType::kFloat) {
     return port::Status(port::error::INVALID_ARGUMENT,
@@ -2642,7 +2645,7 @@ port::Status MIOpenSupport::DoCtcLoss(
   return DoCtcLossImpl(stream, miopen_probs_desc, probs_data, labels_data,
                        labels_lengths_data, input_lengths_data, costs_data,
                        miopen_grads_desc, grads_data, miopen_ctc_loss_desc,
-                       scratch_memory);
+                       scratch_memory, ctc_loss_algo_id);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>
@@ -3509,6 +3512,7 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
                "failed: "
             << ToString(status);
         return false;
+<<<<<<< HEAD
       }
       break;
     }
@@ -3595,6 +3599,8 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
                       "failed: "
                    << ToString(status);
         return false;
+=======
+>>>>>>> upstream/master
       }
       break;
     }
@@ -3605,6 +3611,95 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
     }
   }
 
+<<<<<<< HEAD
+=======
+  // allocate scratch memory
+  DeviceMemory<uint8> scratch_memory;
+  if (scratch_memory_size != 0) {
+    if (scratch_allocator == nullptr) {
+      LOG(FATAL)
+          << "An allocator must be specified when scratch memory is needed";
+      return false;
+    }
+    auto allocated = scratch_allocator->AllocateBytes(scratch_memory_size);
+    if (allocated.ok()) {
+      scratch_memory = allocated.ValueOrDie();
+    } else {
+      LOG(FATAL)
+          << "Failed to allocate scratch memory - "
+          << allocated.status().error_message() << "\n"
+          << "\tYou can set the env var TF_CUDNN_WORKSPACE_LIMIT_IN_MB to a "
+             "larger number (e.g. 8192) to increase the max memory limit.\n"
+          << "\tIncreasing the max memory limit might help resolve this "
+             "error";
+      return false;
+    }
+  }
+
+  // Only get the best algorithm for Find Mode
+  size_t requestedAlgorithmCount = 1;
+
+  VLOG(kConvDebugVlogLevel)
+      << "Number of conv algortihms to request: " << requestedAlgorithmCount;
+
+  miopenConvAlgoPerf_t returnedAlgorithm;
+
+  int returnedAlgorithmCount = 0;
+  bool exhaustiveSearch = false;
+
+  switch (kind) {
+    case dnn::ConvolutionKind::FORWARD: {
+      auto status = wrap::miopenFindConvolutionForwardAlgorithm(
+          miopen.handle(), input_nd.handle(), input_data.opaque(),
+          filter.handle(), filter_data.opaque(), conv.handle(),
+          output_nd.handle(), output_data.opaque(), requestedAlgorithmCount,
+          &returnedAlgorithmCount, &returnedAlgorithm, scratch_memory.opaque(),
+          scratch_memory_size, exhaustiveSearch);
+      if (status != miopenStatusSuccess) {
+        LOG(FATAL) << "call to miopenFindConvolutionForwardAlgorithm failed: "
+                   << ToString(status);
+        return false;
+      }
+      break;
+    }
+    case dnn::ConvolutionKind::BACKWARD_DATA: {
+      auto status = wrap::miopenFindConvolutionBackwardDataAlgorithm(
+          miopen.handle(), output_nd.handle(), output_data.opaque(),
+          filter.handle(), filter_data.opaque(), conv.handle(),
+          input_nd.handle(), input_data.opaque(), requestedAlgorithmCount,
+          &returnedAlgorithmCount, &returnedAlgorithm, scratch_memory.opaque(),
+          scratch_memory_size, exhaustiveSearch);
+      if (status != miopenStatusSuccess) {
+        LOG(FATAL)
+            << "call to miopenFindConvolutionBackwardDataAlgorithm failed: "
+            << ToString(status);
+        return false;
+      }
+      break;
+    }
+    case dnn::ConvolutionKind::BACKWARD_FILTER: {
+      auto status = wrap::miopenFindConvolutionBackwardWeightsAlgorithm(
+          miopen.handle(), output_nd.handle(), output_data.opaque(),
+          input_nd.handle(), input_data.opaque(), conv.handle(),
+          filter.handle(), filter_data.opaque(), requestedAlgorithmCount,
+          &returnedAlgorithmCount, &returnedAlgorithm, scratch_memory.opaque(),
+          scratch_memory_size, exhaustiveSearch);
+      if (status != miopenStatusSuccess) {
+        LOG(FATAL) << "call to miopenConvolutionBackwardWeightsAlgorithm "
+                      "failed: "
+                   << ToString(status);
+        return false;
+      }
+      break;
+    }
+    default: {
+      LOG(FATAL) << "Unexpected convolution kind " << static_cast<int>(kind);
+      return false;
+      break;
+    }
+  }
+
+>>>>>>> upstream/master
   out_algorithms->emplace_back(
       GetProfileResultFromConvAlgoPerf(kind, returnedAlgorithm));
 

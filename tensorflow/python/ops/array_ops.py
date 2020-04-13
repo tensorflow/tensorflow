@@ -199,6 +199,8 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
 def fill(dims, value, name=None):
   r"""Creates a tensor filled with a scalar value.
 
+  See also `tf.ones`, `tf.zeros`, `tf.one_hot`, `tf.eye`.
+
   This operation creates a tensor of shape `dims` and fills it with `value`.
 
   For example:
@@ -291,38 +293,54 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
 @dispatch.add_dispatch_support
 @deprecation.deprecated_args(None, "Use the `axis` argument instead", "dim")
 def expand_dims(input, axis=None, name=None, dim=None):
-  """Inserts a dimension of 1 into a tensor's shape.
+  """Returns a tensor with a length 1 axis inserted at index `axis`.
 
-  Given a tensor `input`, this operation inserts a dimension of 1 at the
-  dimension index `axis` of `input`'s shape. The dimension index `axis` starts
-  at zero; if you specify a negative number for `axis` it is counted backward
+  Given a tensor `input`, this operation inserts a dimension of length 1 at the
+  dimension index `axis` of `input`'s shape. The dimension index follows python
+  indexing rules: It's zero-based, a negative index it is counted backward
   from the end.
 
-  This operation is useful if you want to add a batch dimension to a single
-  element. For example, if you have a single image of shape `[height, width,
-  channels]`, you can make it a batch of 1 image with `expand_dims(image, 0)`,
-  which will make the shape `[1, height, width, channels]`.
+  This operation is useful to:
 
-  Other examples:
+  * Add an outer "batch" dimension to a single element.
+  * Align axes for broadcasting.
+  * To add an inner vector length axis to a tensor of scalars.
 
-  ```python
-  # 't' is a tensor of shape [2]
-  tf.shape(tf.expand_dims(t, 0))  # [1, 2]
-  tf.shape(tf.expand_dims(t, 1))  # [2, 1]
-  tf.shape(tf.expand_dims(t, -1))  # [2, 1]
+  For example:
 
-  # 't2' is a tensor of shape [2, 3, 5]
-  tf.shape(tf.expand_dims(t2, 0))  # [1, 2, 3, 5]
-  tf.shape(tf.expand_dims(t2, 2))  # [2, 3, 1, 5]
-  tf.shape(tf.expand_dims(t2, 3))  # [2, 3, 5, 1]
+  If you have a single image of shape `[height, width, channels]`:
+
+  >>> image = tf.zeros([10,10,3])
+
+  You can add an outer `batch` axis by passing `axis=0`:
+
+  >>> tf.expand_dims(image, axis=0).shape.as_list()
+  [1, 10, 10, 3]
+
+  The new axis location matches Python `list.insert(axis, 1)`:
+
+  >>> tf.expand_dims(image, axis=1).shape.as_list()
+  [10, 1, 10, 3]
+
+  Following standard python indexing rules, a negative `axis` counts from the
+  end so `axis=-1` adds an inner most dimension:
+
+  >>> tf.expand_dims(image, -1).shape.as_list()
+  [10, 10, 3, 1]
+
+  This operation requires that `axis` is a valid index for `input.shape`,
+  following python indexing rules:
+
+  ```
+  -1-tf.rank(input) <= axis <= tf.rank(input)
   ```
 
-  This operation requires that:
+  This operation is related to:
 
-  `-1-input.dims() <= dim <= input.dims()`
-
-  This operation is related to `squeeze()`, which removes dimensions of
-  size 1.
+  * `tf.squeeze`, which removes dimensions of size 1.
+  * `tf.reshape`, which provides more flexible reshaping capability.
+  * `tf.sparse.expand_dims`, which provides this functionality for
+    `tf.SparseTensor`
 
   Args:
     input: A `Tensor`.
@@ -347,54 +365,54 @@ def expand_dims(input, axis=None, name=None, dim=None):
 @tf_export("expand_dims", v1=[])
 @dispatch.add_dispatch_support
 def expand_dims_v2(input, axis, name=None):
-  """Returns a tensor with an additional dimension inserted at index `axis`.
+  """Returns a tensor with a length 1 axis inserted at index `axis`.
 
-  Given a tensor `input`, this operation inserts a dimension of size 1 at the
-  dimension index `axis` of `input`'s shape. The dimension index `axis` starts
-  at zero; if you specify a negative number for `axis` it is counted backward
+  Given a tensor `input`, this operation inserts a dimension of length 1 at the
+  dimension index `axis` of `input`'s shape. The dimension index follows python
+  indexing rules: It's zero-based, a negative index it is counted backward
   from the end.
 
-  This operation is useful if you want to add a batch dimension to a single
-  element. For example, if you have a single image of shape `[height, width,
-  channels]`, you can make it a batch of one image with `expand_dims(image, 0)`,
-  which will make the shape `[1, height, width, channels]`.
+  This operation is useful to:
 
-  Examples:
+  * Add an outer "batch" dimension to a single element.
+  * Align axes for broadcasting.
+  * To add an inner vector length axis to a tensor of scalars.
 
-  >>> t = [[1, 2, 3],[4, 5, 6]] # shape [2, 3]
+  For example:
 
-  >>> tf.expand_dims(t, 0)
-  <tf.Tensor: shape=(1, 2, 3), dtype=int32, numpy=
-  array([[[1, 2, 3],
-          [4, 5, 6]]], dtype=int32)>
+  If you have a single image of shape `[height, width, channels]`:
 
-  >>> tf.expand_dims(t, 1)
-  <tf.Tensor: shape=(2, 1, 3), dtype=int32, numpy=
-  array([[[1, 2, 3]],
-         [[4, 5, 6]]], dtype=int32)>
+  >>> image = tf.zeros([10,10,3])
 
-  >>> tf.expand_dims(t, 2)
-  <tf.Tensor: shape=(2, 3, 1), dtype=int32, numpy=
-  array([[[1],
-          [2],
-          [3]],
-         [[4],
-          [5],
-          [6]]], dtype=int32)>
+  You can add an outer `batch` axis by passing `axis=0`:
 
-  >>> tf.expand_dims(t, -1) # Last dimension index. In this case, same as 2.
-  <tf.Tensor: shape=(2, 3, 1), dtype=int32, numpy=
-  array([[[1],
-          [2],
-          [3]],
-         [[4],
-          [5],
-          [6]]], dtype=int32)>
+  >>> tf.expand_dims(image, axis=0).shape.as_list()
+  [1, 10, 10, 3]
+
+  The new axis location matches Python `list.insert(axis, 1)`:
+
+  >>> tf.expand_dims(image, axis=1).shape.as_list()
+  [10, 1, 10, 3]
+
+  Following standard python indexing rules, a negative `axis` counts from the
+  end so `axis=-1` adds an inner most dimension:
+
+  >>> tf.expand_dims(image, -1).shape.as_list()
+  [10, 10, 3, 1]
+
+  This operation requires that `axis` is a valid index for `input.shape`,
+  following python indexing rules:
+
+  ```
+  -1-tf.rank(input) <= axis <= tf.rank(input)
+  ```
 
   This operation is related to:
 
-  *   `tf.squeeze`, which removes dimensions of size 1.
-  *   `tf.reshape`, which provides more flexible reshaping capability
+  * `tf.squeeze`, which removes dimensions of size 1.
+  * `tf.reshape`, which provides more flexible reshaping capability.
+  * `tf.sparse.expand_dims`, which provides this functionality for
+    `tf.SparseTensor`
 
   Args:
     input: A `Tensor`.
@@ -535,7 +553,7 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
   
-  See also `tf.size`.
+  See also `tf.size`, `tf.rank`.
 
   This operation returns a 1-D integer tensor representing the shape of `input`.
   This represents the minimal set of known information at definition time.
@@ -758,6 +776,8 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
 def rank(input, name=None):
   # pylint: disable=redefined-builtin
   """Returns the rank of a tensor.
+
+  See also `tf.shape`.
 
   Returns a 0-D `int32` `Tensor` representing the rank of `input`.
 
@@ -990,6 +1010,8 @@ def slice(input_, begin, size, name=None):
   # pylint: disable=redefined-builtin
   """Extracts a slice from a tensor.
 
+  See also `tf.strided_slice`.
+
   This operation extracts a slice of size `size` from a tensor `input_` starting
   at the location specified by `begin`. The slice `size` is represented as a
   tensor shape, where `size[i]` is the number of elements of the 'i'th dimension
@@ -1051,6 +1073,8 @@ def strided_slice(input_,
                   var=None,
                   name=None):
   """Extracts a strided slice of a tensor (generalized python array indexing).
+
+  See also `tf.slice`.
 
   **Instead of calling this op directly most users will want to use the
   NumPy-style slicing syntax (e.g. `tensor[..., 3:4:-1, tf.newaxis, 3]`), which
@@ -1794,6 +1818,8 @@ def sparse_mask(a, mask_indices, name=None):
 def unique(x, out_idx=dtypes.int32, name=None):
   """Finds unique elements in a 1-D tensor.
 
+  See also `tf.unique_with_counts`.
+
   This operation returns a tensor `y` containing all of the unique elements
   of `x` sorted in the same order that they occur in `x`. This operation
   also returns a tensor `idx` the same size as `x` that contains the index
@@ -1838,6 +1864,8 @@ unique.__doc__ = gen_array_ops.unique.__doc__
 @tf_export("unique_with_counts")
 def unique_with_counts(x, out_idx=dtypes.int32, name=None):
   """Finds unique elements in a 1-D tensor.
+
+  See also `tf.unique`.
 
   This operation returns a tensor `y` containing all of the unique elements
   of `x` sorted in the same order that they occur in `x`. This operation
@@ -2686,6 +2714,8 @@ def _tag_zeros_tensor(fun):
 def zeros(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to zero.
 
+  See also `tf.zeros_like`, `tf.ones`, `tf.fill`, `tf.eye`.
+
   This operation returns a tensor of type `dtype` with shape `shape` and
   all elements set to zero.
 
@@ -2935,7 +2965,7 @@ def ones_like_impl(tensor, dtype, name, optimize=True):
 def ones(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to one (1).
 
-  See also `tf.ones_like`.
+  See also `tf.ones_like`, `tf.zeros`, `tf.fill`, `tf.eye`.
 
   This operation returns a tensor of type `dtype` with shape `shape` and
   all elements set to one.
@@ -3069,7 +3099,8 @@ def sparse_placeholder(dtype, shape=None, name=None):
     print(sess.run(y, feed_dict={
       x: (indices, values, shape)}))  # Will succeed.
 
-    sp = tf.SparseTensor(indices=indices, values=values, dense_shape=shape)
+    sp = tf.sparse.SparseTensor(indices=indices, values=values,
+                                dense_shape=shape)
     sp_value = sp.eval(session=sess)
     print(sess.run(y, feed_dict={x: sp_value}))  # Will succeed.
   ```
@@ -3471,7 +3502,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   # 'hypothesis' is a tensor of shape `[2, 1]` with variable-length values:
   #   (0,0) = ["a"]
   #   (1,0) = ["b"]
-  hypothesis = tf.SparseTensor(
+  hypothesis = tf.sparse.SparseTensor(
       [[0, 0, 0],
        [1, 0, 0]],
       ["a", "b"],
@@ -3482,7 +3513,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   #   (0,1) = ["a"]
   #   (1,0) = ["b", "c"]
   #   (1,1) = ["a"]
-  truth = tf.SparseTensor(
+  truth = tf.sparse.SparseTensor(
       [[0, 1, 0],
        [1, 0, 0],
        [1, 0, 1],
@@ -3859,6 +3890,8 @@ def one_hot(indices,
             dtype=None,
             name=None):
   """Returns a one-hot tensor.
+
+  See also `tf.fill`, `tf.eye`.
 
   The locations represented by indices in `indices` take value `on_value`,
   while all other locations take value `off_value`.

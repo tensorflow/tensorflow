@@ -19,8 +19,8 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/stl_bind.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl_bind.h"
 
 struct FrameSummary;  // Forward declaration.
 

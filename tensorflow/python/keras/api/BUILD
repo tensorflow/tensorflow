@@ -17,6 +17,7 @@ keras_packages = [
     "tensorflow.python.keras",
     "tensorflow.python.keras.activations",
     "tensorflow.python.keras.applications.densenet",
+    "tensorflow.python.keras.applications.efficientnet",
     "tensorflow.python.keras.applications.imagenet_utils",
     "tensorflow.python.keras.applications.inception_resnet_v2",
     "tensorflow.python.keras.applications.inception_v3",

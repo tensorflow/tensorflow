@@ -40,7 +40,8 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
                            bool use_projection_bias, bool merge_outputs,
                            bool use_aux_input, float cell_clip, float proj_clip,
                            bool quantize_weights, bool time_major,
-                           const std::vector<std::vector<int>>& input_shapes)
+                           const std::vector<std::vector<int>>& input_shapes,
+                           bool asymmetric_quantize_inputs = false)
       : n_batch_(n_batch),
         n_input_(n_input),
         n_fw_cell_(n_cell),
@@ -207,12 +208,13 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
       bw_aux_input_to_output_weights_ = AddNullInput();
     }
 
-    SetBuiltinOp(BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
-                 BuiltinOptions_BidirectionalSequenceLSTMOptions,
-                 CreateBidirectionalSequenceLSTMOptions(
-                     builder_, ActivationFunctionType_TANH, cell_clip,
-                     proj_clip, merge_outputs, time_major)
-                     .Union());
+    SetBuiltinOp(
+        BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
+        BuiltinOptions_BidirectionalSequenceLSTMOptions,
+        CreateBidirectionalSequenceLSTMOptions(
+            builder_, ActivationFunctionType_TANH, cell_clip, proj_clip,
+            merge_outputs, time_major, asymmetric_quantize_inputs)
+            .Union());
     BuildInterpreter(input_shapes);
   }
 
@@ -424,11 +426,14 @@ class BidirectionalLSTMOpModel : public SingleOpModel {
   bool quantize_weights_;
 };
 
-// Declare LSTMOpTest as a parameterized test, where the parameter is a boolean
-// indicating whether to use quantization or not.
-class LSTMOpTest : public ::testing::TestWithParam<bool> {};
+// Declare LSTMOpTest as a parameterized test.
+class LSTMOpTest
+    : public ::testing::TestWithParam<::testing::tuple<bool, bool>> {};
 
-INSTANTIATE_TEST_SUITE_P(QuantizationOrNot, LSTMOpTest, ::testing::Bool());
+INSTANTIATE_TEST_SUITE_P(QuantizationOrNot, LSTMOpTest,
+                         ::testing::Combine(
+                             /*quantize_weights*/ ::testing::Bool(),
+                             /*asymmetric_quantize_inputs*/ ::testing::Bool()));
 
 TEST_P(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
   const int n_batch = 1;
@@ -437,7 +442,9 @@ TEST_P(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
   const int n_cell = 4;
   const int n_output = 4;
   const int sequence_length = 3;
-  const bool quantize_weights = GetParam();
+  auto params = GetParam();
+  const bool quantize_weights = std::get<0>(params);
+  const bool asymmetric_quantize_inputs = std::get<1>(params);
 
   BidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length, /*use_cifg=*/false,
@@ -509,7 +516,8 @@ TEST_P(LSTMOpTest, BlackBoxTestNoCifgNoPeepholeNoProjectionNoClipping) {
           {0},                            // aux_bw_input_to_forget tensor
           {0},                            // aux_bw_input_to_cell tensor
           {0},                            // aux_bw_input_to_output tensor
-      });
+      },
+      asymmetric_quantize_inputs);
 
   lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
                                -0.34550029, 0.04266912, -0.15680569,
@@ -600,7 +608,9 @@ TEST_P(LSTMOpTest, BlackBoxTestMergedOutput) {
   const int n_cell = 4;
   const int n_output = 4;
   const int sequence_length = 3;
-  const bool quantize_weights = GetParam();
+  auto params = GetParam();
+  const bool quantize_weights = std::get<0>(params);
+  const bool asymmetric_quantize_inputs = std::get<1>(params);
 
   BidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length, /*use_cifg=*/false,
@@ -672,7 +682,8 @@ TEST_P(LSTMOpTest, BlackBoxTestMergedOutput) {
           {0},                            // aux_bw_input_to_forget tensor
           {0},                            // aux_bw_input_to_cell tensor
           {0},                            // aux_bw_input_to_output tensor
-      });
+      },
+      asymmetric_quantize_inputs);
 
   lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
                                -0.34550029, 0.04266912, -0.15680569,
@@ -2631,7 +2642,9 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInputZeroAuxWeight) {
   const int n_cell = 4;
   const int n_output = 4;
   const int sequence_length = 3;
-  const bool quantize_weights = GetParam();
+  auto params = GetParam();
+  const bool quantize_weights = std::get<0>(params);
+  const bool asymmetric_quantize_inputs = std::get<1>(params);
 
   BidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length, /*use_cifg=*/false,
@@ -2703,7 +2716,8 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInputZeroAuxWeight) {
           {n_cell, n_input},                    // aux_bw_input_to_forget tensor
           {n_cell, n_input},                    // aux_bw_input_to_cell tensor
           {n_cell, n_input},                    // aux_bw_input_to_output tensor
-      });
+      },
+      asymmetric_quantize_inputs);
 
   lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
                                -0.34550029, 0.04266912, -0.15680569,
@@ -2802,7 +2816,9 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInput) {
   const int n_cell = 4;
   const int n_output = 4;
   const int sequence_length = 3;
-  const bool quantize_weights = GetParam();
+  auto params = GetParam();
+  const bool quantize_weights = std::get<0>(params);
+  const bool asymmetric_quantize_inputs = std::get<1>(params);
 
   BidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length, /*use_cifg=*/false,
@@ -2874,7 +2890,8 @@ TEST_P(LSTMOpTest, BlackBoxTestWithAuxInput) {
           {n_cell, n_input},                    // aux_bw_input_to_forget tensor
           {n_cell, n_input},                    // aux_bw_input_to_cell tensor
           {n_cell, n_input},                    // aux_bw_input_to_output tensor
-      });
+      },
+      asymmetric_quantize_inputs);
 
   lstm.SetInputToInputWeights({-0.45018822, -0.02338299, -0.0870589,
                                -0.34550029, 0.04266912, -0.15680569,

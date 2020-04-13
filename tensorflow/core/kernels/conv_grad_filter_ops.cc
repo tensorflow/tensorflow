@@ -1051,7 +1051,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
         &algorithms));
     std::vector<tensorflow::AutotuneResult> results;
-    for (auto profile_algorithm : algorithms) {
+    for (const auto& profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
       DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
@@ -1096,6 +1096,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
                                           ctx);
 
     std::vector<ProfileResult> algorithms;
+<<<<<<< HEAD
     if (TestMIOpenBFloat16Support<T>()) {
       OP_REQUIRES(
           ctx,
@@ -1122,6 +1123,19 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
               "because MIOpen failed to initialize, so try looking to "
               "see if a warning log message was printed above."));
     }
+=======
+    OP_REQUIRES(
+        ctx,
+        stream->parent()->GetMIOpenConvolveAlgorithms(
+            se::dnn::ConvolutionKind::BACKWARD_FILTER,
+            se::dnn::ToDataType<T>::value, stream, input_desc, input_ptr,
+            filter_desc, filter_backprop_ptr, output_desc, out_backprop_ptr,
+            conv_desc, &scratch_allocator, &algorithms),
+        errors::Unknown(
+            "Failed to get convolution algorithm. This is probably "
+            "because MIOpen failed to initialize, so try looking to "
+            "see if a warning log message was printed above."));
+>>>>>>> upstream/master
 
     std::vector<tensorflow::AutotuneResult> results;
     if (algorithms.size() == 1) {
@@ -1141,6 +1155,7 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
         auto profile_algorithm = miopen_algorithm.algorithm();
         ProfileResult profile_result;
         bool miopen_launch_status = true;
+<<<<<<< HEAD
         if (TestMIOpenBFloat16Support<T>()) {
           miopen_launch_status =
               stream
@@ -1164,6 +1179,18 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
                       &profile_result)
                   .ok();
         }
+=======
+        miopen_launch_status =
+            stream
+                ->ThenConvolveBackwardFilterWithAlgorithm(
+                    input_desc, input_ptr, output_desc, out_backprop_ptr,
+                    conv_desc, filter_desc, &filter_backprop_ptr,
+                    &scratch_allocator,
+                    AlgorithmConfig(profile_algorithm,
+                                    miopen_algorithm.scratch_size()),
+                    &profile_result)
+                .ok();
+>>>>>>> upstream/master
 
         if (miopen_launch_status && profile_result.is_valid()) {
           results.emplace_back();

@@ -177,13 +177,14 @@ class ConvertIotaOp : public OpRewritePattern<xla_hlo::IotaOp> {
 }  // end anonymous namespace
 
 namespace {
-struct LegalizeToStandard : public FunctionPass<LegalizeToStandard> {
+struct LegalizeToStandard
+    : public PassWrapper<LegalizeToStandard, FunctionPass> {
   /// Perform the lowering to Standard dialect.
   void runOnFunction() override;
 };
 }  // end anonymous namespace
 
-std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>> createLegalizeToStdPass() {
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> createLegalizeToStdPass() {
   return std::make_unique<LegalizeToStandard>();
 }
 
@@ -197,7 +198,7 @@ void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
 void LegalizeToStandard::runOnFunction() {
   OwningRewritePatternList patterns;
   mlir::xla_hlo::PopulateXlaToStdPatterns(&patterns, &getContext());
-  applyPatternsGreedily(getFunction(), patterns);
+  applyPatternsAndFoldGreedily(getFunction(), patterns);
 }
 
 static PassRegistration<LegalizeToStandard> legalize_pass(

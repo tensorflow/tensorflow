@@ -83,7 +83,7 @@ namespace TFDevice {
 namespace {
 
 struct ParallelExecuteToIslandsPass
-    : public FunctionPass<ParallelExecuteToIslandsPass> {
+    : public PassWrapper<ParallelExecuteToIslandsPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -251,7 +251,7 @@ void ParallelExecuteToIslandsPass::runOnFunction() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateParallelExecuteToIslandsPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateParallelExecuteToIslandsPass() {
   return std::make_unique<ParallelExecuteToIslandsPass>();
 }
 

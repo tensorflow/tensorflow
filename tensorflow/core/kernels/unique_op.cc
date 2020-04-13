@@ -124,7 +124,7 @@ class UniqueOp : public OpKernel {
                      context->allocate_output(0, output_shape, &output));
       auto Tout = output->flat<T>();
 
-      for (auto it : uniq) {
+      for (const auto& it : uniq) {
         Tout(it.second) = it.first;
       }
     } else {

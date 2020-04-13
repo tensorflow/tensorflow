@@ -201,7 +201,7 @@ class SlurmClusterResolver(ClusterResolver):
       - SLURM_PROCID
       - (opt) SLURM_STEP_NUM_TASKS
       - (opt) SLURM_STEP_NODELIST
-      - (opt) SLURM_TASKS_PER_NODE
+      - (opt) SLURM_STEP_TASKS_PER_NODE
 
     Args:
       jobs: Dictionary with job names as key and number of tasks in the job as

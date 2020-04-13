@@ -1,5 +1,8 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
@@ -160,6 +163,47 @@ py_library(
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "custom_device_testutil",
+    testonly = True,
+    srcs = ["custom_device_testutil.cc"],
+    module_name = "custom_device_testutil",
+    deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:custom_device_testutil",
+        "//tensorflow/python:cpp_python_util",
+        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python:pybind11_status",
+        "//tensorflow/python:safe_ptr",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+py_test(
+    name = "custom_device_test",
+    size = "small",
+    srcs = ["custom_device_test.py"],
+    python_version = "PY3",
+    # Note that this currently only works with --config=monolithic, since it
+    # requires the C API which runs static initializers again.
+    #
+    # TODO(allenl): Figure out a way to allow extensions to register custom
+    # devices which works with dynamic linking.
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
+    deps = [
+        ":context",
+        ":custom_device_testutil",
+        ":test",
     ],
 )
 
@@ -575,13 +619,11 @@ cuda_py_test(
         ":context",
         ":forwardprop",
         ":function",
-        ":profiler",
         ":remote",
         ":test",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )

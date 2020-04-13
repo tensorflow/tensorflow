@@ -44,7 +44,8 @@ namespace {
 // Unrolls a BatchMatMul on the batch dimension. We need to slice each batch out
 // of the inputs, matmul them individually, then stack them all back together at
 // the end.
-struct UnrollBatchMatMulPass : public FunctionPass<UnrollBatchMatMulPass> {
+struct UnrollBatchMatMulPass
+    : public PassWrapper<UnrollBatchMatMulPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -54,7 +55,7 @@ void UnrollBatchMatMulPass::runOnFunction() {
 
   patterns.insert<ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
                   ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(&getContext());
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 
 }  // namespace
@@ -309,7 +310,7 @@ static PassRegistration<UnrollBatchMatMulPass> pass(
     "tf-unroll-batch-matmul",
     "Unroll TF BatchMatMul op into Reshape, Slice, MatMul, Pack ops.");
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateUnrollBatchMatMulPassPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateUnrollBatchMatMulPassPass() {
   return std::make_unique<UnrollBatchMatMulPass>();
 }
 

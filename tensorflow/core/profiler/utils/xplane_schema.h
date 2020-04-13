@@ -31,8 +31,13 @@ ABSL_CONST_INIT extern const absl::string_view kHostThreads;
 ABSL_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
 // Name of XPlane that contains CUPTI driver API generated events.
 ABSL_CONST_INIT extern const absl::string_view kCuptiDriverApiPlaneName;
+<<<<<<< HEAD
 // Name of XPlane that contains RocmTracer generated events.
 ABSL_CONST_INIT extern const absl::string_view kRocmTracerPlaneName;
+=======
+// Name of XPlane that contains profile metadata such as XLA debug info.
+ABSL_CONST_INIT extern const absl::string_view kMetadataPlane;
+>>>>>>> upstream/master
 
 // Id of XPlane that contains TraceMe events.
 ABSL_CONST_INIT extern const int32 kHostPlaneId;
@@ -41,9 +46,14 @@ ABSL_CONST_INIT extern const int32 kGpuPlaneBaseId;
 // Id of XPlane that contains CUPTI driver API generated events which happens
 // on CPU host threads, e.g. Kernel launch.
 ABSL_CONST_INIT extern const int32 kCuptiDriverApiPlaneId;
+<<<<<<< HEAD
 // Id of XPlane that contains RocmTracer generated events which happens
 // on CPU host threads, e.g. Kernel launch.
 ABSL_CONST_INIT extern const int32 kRocmTracerPlaneId;
+=======
+// Id of XPlane that contains profile metadata such as XLA debug info.
+ABSL_CONST_INIT extern const int32 kMetadataPlaneId;
+>>>>>>> upstream/master
 
 // Interesting event types (i.e., TraceMe names).
 enum HostEventType {
@@ -120,6 +130,8 @@ enum StatType {
   kRequestedBytes,
   kAllocationBytes,
   kAddress,
+  kRegionType,
+  kDataType,
   kTensorShapes,
   // Device trace arguments.
   kDeviceId,
@@ -145,6 +157,7 @@ enum StatType {
   // XLA metadata map related.
   kSelfDurationPs,
   kMinDurationPs,
+  kHloProto,
   // Device capability related.
   kDevCapClockRateKHz,
   kDevCapCoreCount,

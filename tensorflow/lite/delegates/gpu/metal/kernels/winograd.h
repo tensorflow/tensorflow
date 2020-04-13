@@ -33,12 +33,20 @@ std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36(
     int id, ValueId input_id, ValueId output_id,
     const Winograd4x4To36Attributes& attr);
 
+std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36TileX6(
+    int id, ValueId input_id, ValueId output_id,
+    const Winograd4x4To36Attributes& attr, const RuntimeOptions& options);
+
 struct Winograd36To4x4Attributes {
   BHWC output_shape;
   tflite::gpu::Tensor<Linear, DataType::FLOAT32> biases;
 };
 
 std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4(
+    int id, ValueId input_id, ValueId output_id, const RuntimeOptions& options,
+    const Winograd36To4x4Attributes& attr);
+
+std::vector<ComputeTaskDescriptorPtr> Winograd36To4x4Tile4x1(
     int id, ValueId input_id, ValueId output_id, const RuntimeOptions& options,
     const Winograd36To4x4Attributes& attr);
 

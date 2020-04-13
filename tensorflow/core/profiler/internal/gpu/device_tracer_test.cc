@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
@@ -44,6 +45,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+<<<<<<< HEAD
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 std::unique_ptr<ProfilerInterface> CreateGpuTracer(
     const ProfilerOptions& options);
@@ -54,6 +56,19 @@ std::unique_ptr<ProfilerInterface> CreateGpuTracer(
   return nullptr;
 }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+#if GOOGLE_CUDA
+extern std::unique_ptr<ProfilerInterface> CreateGpuTracer(
+    const ProfileOptions& options);
+std::unique_ptr<ProfilerInterface> CreateGpuTracer() {
+  ProfileOptions options = ProfilerSession::DefaultOptions();
+  return CreateGpuTracer(options);
+}
+#else
+// We don't have device tracer for non-cuda case.
+std::unique_ptr<ProfilerInterface> CreateGpuTracer() { return nullptr; }
+#endif
+>>>>>>> upstream/master
 
 namespace {
 
@@ -85,28 +100,25 @@ class DeviceTracerTest : public ::testing::Test {
 
     Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
     test::FillValues<float>(&a_tensor, a_values);
-    Node* a = test::graph::Constant(&graph, a_tensor);
-    a->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
+    Node* a = test::graph::HostConstant(&graph, a_tensor);
 
     Tensor x_tensor(DT_FLOAT, TensorShape({2, 1}));
     test::FillValues<float>(&x_tensor, {1, 1});
-    Node* x = test::graph::Constant(&graph, x_tensor);
-    x->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
+    Node* x = test::graph::HostConstant(&graph, x_tensor);
     x_ = x->name();
 
     // y = A * x
     Node* y = test::graph::Matmul(&graph, a, x, false, false);
-    y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
+    y->set_assigned_device_name("/device:GPU:0");
     y_ = y->name();
 
     // Use an Identity op to force a memcpy to CPU and back to GPU.
     Node* i = test::graph::Identity(&graph, y);
-    i->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
+    i->set_assigned_device_name("/cpu:0");
 
     Node* y_neg = test::graph::Unary(&graph, "Neg", i);
     y_neg_ = y_neg->name();
-    y_neg->set_assigned_device_name(
-        "/job:localhost/replica:0/task:0/device:GPU:0");
+    y_neg->set_assigned_device_name("/device:GPU:0");
 
     test::graph::ToGraphDef(&graph, &def_);
   }
@@ -127,24 +139,21 @@ class DeviceTracerTest : public ::testing::Test {
 };
 
 TEST_F(DeviceTracerTest, StartStop) {
-  profiler::ProfilerOptions options;
-  auto tracer = CreateGpuTracer(options);
+  auto tracer = CreateGpuTracer();
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Start());
   TF_EXPECT_OK(tracer->Stop());
 }
 
 TEST_F(DeviceTracerTest, StopBeforeStart) {
-  profiler::ProfilerOptions options;
-  auto tracer = CreateGpuTracer(options);
+  auto tracer = CreateGpuTracer();
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Stop());
   TF_EXPECT_OK(tracer->Stop());
 }
 
 TEST_F(DeviceTracerTest, CollectBeforeStart) {
-  profiler::ProfilerOptions options;
-  auto tracer = CreateGpuTracer(options);
+  auto tracer = CreateGpuTracer();
   if (!tracer) return;
   RunMetadata run_metadata;
   TF_EXPECT_OK(tracer->CollectData(&run_metadata));
@@ -152,8 +161,7 @@ TEST_F(DeviceTracerTest, CollectBeforeStart) {
 }
 
 TEST_F(DeviceTracerTest, CollectBeforeStop) {
-  profiler::ProfilerOptions options;
-  auto tracer = CreateGpuTracer(options);
+  auto tracer = CreateGpuTracer();
   if (!tracer) return;
   TF_EXPECT_OK(tracer->Start());
   RunMetadata run_metadata;
@@ -163,9 +171,8 @@ TEST_F(DeviceTracerTest, CollectBeforeStop) {
 }
 
 TEST_F(DeviceTracerTest, StartTwoTracers) {
-  profiler::ProfilerOptions options;
-  auto tracer1 = CreateGpuTracer(options);
-  auto tracer2 = CreateGpuTracer(options);
+  auto tracer1 = CreateGpuTracer();
+  auto tracer2 = CreateGpuTracer();
   if (!tracer1 || !tracer2) return;
 
   TF_EXPECT_OK(tracer1->Start());
@@ -178,8 +185,7 @@ TEST_F(DeviceTracerTest, StartTwoTracers) {
 
 TEST_F(DeviceTracerTest, RunWithTracer) {
   // On non-GPU platforms, we may not support DeviceTracer.
-  profiler::ProfilerOptions options;
-  auto tracer = CreateGpuTracer(options);
+  auto tracer = CreateGpuTracer();
   if (!tracer) return;
 
   Initialize({3, 2, -1, 0});
@@ -206,8 +212,7 @@ TEST_F(DeviceTracerTest, RunWithTracer) {
 }
 
 TEST_F(DeviceTracerTest, TraceToStepStatsCollector) {
-  profiler::ProfilerOptions options;
-  auto tracer = CreateGpuTracer(options);
+  auto tracer = CreateGpuTracer();
   if (!tracer) return;
 
   Initialize({3, 2, -1, 0});
@@ -260,8 +265,7 @@ TEST_F(DeviceTracerTest, RunWithTraceOption) {
 }
 
 TEST_F(DeviceTracerTest, TraceToXSpace) {
-  profiler::ProfilerOptions options;
-  auto tracer = CreateGpuTracer(options);
+  auto tracer = CreateGpuTracer();
   if (!tracer) return;
 
   Initialize({3, 2, -1, 0});
@@ -297,6 +301,9 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
       FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));
   ASSERT_NE(device_plane, nullptr);  // Check if device plane is serialized.
   EXPECT_EQ(device_plane->id(), kGpuPlaneBaseId);
+  // one for MemcpyH2D, one for MemcpyD2H, two for Matmul (one from Eigen, one
+  // from cudnn).
+  EXPECT_EQ(device_plane->event_metadata_size(), 4);
   // Check if device capacity is serialized.
   XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
 #if GOOGLE_CUDA
@@ -309,12 +316,15 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
 #endif
 
   // Check if the device events timestamps are set.
+  int total_events = 0;
   plane.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
     line.ForEachEvent([&](const tensorflow::profiler::XEventVisitor& event) {
       EXPECT_GT(event.TimestampNs(), 0);
       EXPECT_GT(event.DurationNs(), 0);
+      ++total_events;
     });
   });
+  EXPECT_EQ(total_events, 5);
 }
 
 }  // namespace

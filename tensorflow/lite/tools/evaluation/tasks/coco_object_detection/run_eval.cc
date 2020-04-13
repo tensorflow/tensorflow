@@ -50,7 +50,8 @@ bool EvaluateModel(const std::string& model_file_path,
                    const std::vector<std::string>& image_paths,
                    const std::string& ground_truth_proto_file,
                    std::string delegate, std::string output_file_path,
-                   int num_interpreter_threads, bool debug_mode) {
+                   int num_interpreter_threads, bool debug_mode,
+                   const DelegateProviders& delegate_providers) {
   EvaluationStageConfig eval_config;
   eval_config.set_name("object_detection");
   auto* detection_params =
@@ -74,7 +75,7 @@ bool EvaluateModel(const std::string& model_file_path,
   ObjectDetectionStage eval(eval_config);
 
   eval.SetAllLabels(model_labels);
-  if (eval.Init() != kTfLiteOk) return false;
+  if (eval.Init(&delegate_providers) != kTfLiteOk) return false;
 
   // Open output file for writing.
   std::ofstream ofile;
@@ -156,6 +157,8 @@ int Main(int argc, char* argv[]) {
                                "Must be one of {'nnapi', 'gpu'}"),
   };
   tflite::Flags::Parse(&argc, const_cast<const char**>(argv), flag_list);
+  DelegateProviders delegate_providers;
+  delegate_providers.InitFromCmdlineArgs(&argc, const_cast<const char**>(argv));
 
   // Process images in filename-sorted order.
   std::vector<std::string> image_paths;
@@ -170,7 +173,7 @@ int Main(int argc, char* argv[]) {
 
   if (!EvaluateModel(model_file_path, model_labels, image_paths,
                      ground_truth_proto_file, delegate, output_file_path,
-                     num_interpreter_threads, debug_mode)) {
+                     num_interpreter_threads, debug_mode, delegate_providers)) {
     LOG(ERROR) << "Could not evaluate model";
     return EXIT_FAILURE;
   }

@@ -324,7 +324,7 @@ absl::Status CreateProfilingCommandQueue(const CLDevice& device,
 
 absl::Duration ProfilingInfo::GetTotalTime() const {
   absl::Duration total_time;
-  for (auto dispatch : dispatches) {
+  for (const auto& dispatch : dispatches) {
     total_time += dispatch.duration;
   }
   return total_time;
@@ -335,7 +335,7 @@ std::string ProfilingInfo::GetDetailedReport() const {
   std::map<std::string, double> timing;
   result +=
       "Per kernel timing(" + std::to_string(dispatches.size()) + " kernels):\n";
-  for (auto dispatch : dispatches) {
+  for (const auto& dispatch : dispatches) {
     result += "  " + dispatch.label + " - " +
               std::to_string(absl::ToDoubleMilliseconds(dispatch.duration)) +
               "ms\n";

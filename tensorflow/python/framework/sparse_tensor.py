@@ -297,18 +297,18 @@ _pywrap_utils.RegisterType("SparseTensorValue", SparseTensorValue)
 
 @tf_export("SparseTensorSpec")
 class SparseTensorSpec(type_spec.BatchableTypeSpec):
-  """Type specification for a `tf.SparseTensor`."""
+  """Type specification for a `tf.sparse.SparseTensor`."""
 
   __slots__ = ["_shape", "_dtype"]
 
   value_type = property(lambda self: SparseTensor)
 
   def __init__(self, shape=None, dtype=dtypes.float32):
-    """Constructs a type specification for a `tf.SparseTensor`.
+    """Constructs a type specification for a `tf.sparse.SparseTensor`.
 
     Args:
-      shape: The dense shape of the `SparseTensor`, or `None` to allow
-        any dense shape.
+      shape: The dense shape of the `SparseTensor`, or `None` to allow any dense
+        shape.
       dtype: `tf.DType` of values in the `SparseTensor`.
     """
     self._shape = tensor_shape.as_shape(shape)
@@ -472,13 +472,14 @@ def convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None):
 def is_sparse(x):
   """Check whether `x` is sparse.
 
-  Check whether an object is a `tf.SparseTensor` or
+  Check whether an object is a `tf.sparse.SparseTensor` or
   `tf.compat.v1.SparseTensorValue`.
 
   Args:
     x: A python object to check.
 
   Returns:
-    `True` iff `x` is a `tf.SparseTensor` or `tf.compat.v1.SparseTensorValue`.
+    `True` iff `x` is a `tf.sparse.SparseTensor` or
+    `tf.compat.v1.SparseTensorValue`.
   """
   return isinstance(x, (SparseTensor, SparseTensorValue))

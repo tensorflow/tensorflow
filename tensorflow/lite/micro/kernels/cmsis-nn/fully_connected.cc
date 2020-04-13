@@ -77,8 +77,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   return raw;
 }
 
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 #if defined(__ARM_FEATURE_DSP)
   const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
@@ -188,9 +186,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       TF_LITE_FULLY_CONNECTED(int16_t);
       break;
     default:
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Quantized FullyConnected expects output data type uint8 or int16");
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(output->type), output->type);
       return kTfLiteError;
   }
 
@@ -243,8 +240,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                            output);
 
     default:
-      TF_LITE_KERNEL_LOG(context, "Type %d not currently supported.",
-                         filter->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input->type), input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -253,9 +250,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace fully_connected
 
 TfLiteRegistration* Register_FULLY_CONNECTED() {
-  static TfLiteRegistration r = {fully_connected::Init, fully_connected::Free,
-                                 fully_connected::Prepare,
-                                 fully_connected::Eval};
+  static TfLiteRegistration r = {/*init=*/fully_connected::Init,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/fully_connected::Prepare,
+                                 /*invoke=*/fully_connected::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

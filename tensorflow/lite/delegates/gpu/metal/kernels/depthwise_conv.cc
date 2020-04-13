@@ -502,7 +502,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
       int src_y = dst_y * U.stride.y + U.padding.y;
 
       for(int ky = 0; ky < U.kernel_size.y; ++ky) {
-        int yc = ky * U.dilation.y + src_x;
+        int yc = ky * U.dilation.y + src_y;
         if (yc < 0 || yc >= U.src_size.y) continue;
         for(int kx = 0; kx < U.kernel_size.x; ++kx) {
           int xc = kx * U.dilation.x + src_x;

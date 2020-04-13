@@ -67,7 +67,7 @@ class QuantizeContext {
   QuantizeContext(FuncOp func, const DeviceTarget &spec);
 
   // Returns all the quant region ops.
-  ArrayRef<quant::QuantizeRegionOp> GetAllOps();
+  std::vector<quant::QuantizeRegionOp> GetAllOps();
 
   // For each quant region op, propagates its quantization parameters according
   // to the kernel specification and also returns the adjcent quant region ops
@@ -106,6 +106,25 @@ class QuantizeContext {
   QuantParams GetOperandParams(Operation *op, int index) {
     return states_manager_.GetOperandParams(op, index);
   }
+
+  // A heuristic to get quantization parameters satisfies the same scale
+  // constraints:
+  // - If there are immutable states,
+  //   - use the single input, or,
+  //   - use the single output, or,
+  //   - use the first one in the collection,
+  // - use the single input if it is ready, or,
+  // - use the single output if it is ready, or,
+  // - use use the first ready one in the collection.
+  QuantParams GetQuantParamsForSameScaleConstraint(Operation *op);
+
+  // Propagate `params` to all the quantizable port of the `op`. The adjcent
+  // ops, which have the parameters propagated to, are collected by `new_items`,
+  // so they can be added to the working queue. `changed` is set to true if
+  // there are any new elements being added to `new_items`.
+  LogicalResult PropagateQuantParams(Operation *op, const QuantParams params,
+                                     AdjacentOperations *new_items,
+                                     bool *changed);
 
  private:
   class StatesManager {

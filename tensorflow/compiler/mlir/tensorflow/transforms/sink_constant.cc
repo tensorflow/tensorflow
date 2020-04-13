@@ -39,7 +39,7 @@ namespace {
 using ::mlir::TF::ConstOp;
 
 class ExecutorConstantSinking
-    : public mlir::FunctionPass<ExecutorConstantSinking> {
+    : public mlir::PassWrapper<ExecutorConstantSinking, FunctionPass> {
   void runOnFunction() override {
     getFunction().walk([](tf_device::LaunchOp launch) {
       LLVM_DEBUG(llvm::dbgs() << "Visit " << *launch.getOperation() << "\n");
@@ -89,7 +89,7 @@ static mlir::PassRegistration<ExecutorConstantSinking> pass(
 
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorConstantSinkingPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorConstantSinkingPass() {
   return std::make_unique<ExecutorConstantSinking>();
 }
 

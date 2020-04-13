@@ -82,7 +82,6 @@ load(
     "tf_features_nomodules_if_mobile",
     "tf_gen_op_libs",
     "tf_genrule_cmd_append_to_srcs",
-    "tf_openmp_copts",
     "tf_opts_nortti_if_lite_protos",
     "tf_opts_nortti_if_mobile",
     "tf_portable_full_lite_protos",
@@ -102,9 +101,6 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-
-# buildifier: disable=same-origin-load
 # Placeholder: load("//tensorflow:tensorflow.bzl", "tf_portable_proto_lib")
 
 # buildifier: disable=same-origin-load
@@ -114,7 +110,6 @@ load("//tensorflow:tensorflow.bzl", "tf_monitoring_deps")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
-    "tf_additional_core_deps",
     "tf_additional_lib_deps",
     "tf_additional_test_deps",
     "tf_jspb_proto_library",
@@ -123,9 +118,7 @@ load(
     "tf_portable_deps_no_runtime",
     "tf_proto_library",
     "tf_proto_library_cc",
-    "tf_protos_all",
     "tf_protos_all_impl",
-    "tf_protos_grappler",
     "tf_protos_grappler_impl",
     "tf_protos_profiler_impl",
     "tf_pyclif_proto_library",
@@ -178,7 +171,10 @@ exports_files([
     "ops/ops.pbtxt",
 ])
 
-package_group(name = "experimental_access")
+package_group(
+    name = "experimental_access",
+    packages = ["//tensorflow/core/common_runtime/..."],
+)
 
 # Authorized users go here.
 package_group(name = "friends")
@@ -246,6 +242,7 @@ FRAMEWORK_PROTO_SRCS = [
 
 PROFILER_PROTO_SRCS = [
     "//tensorflow/core/profiler/protobuf:xplane.proto",
+    "//tensorflow/core/profiler:profiler_options.proto",
 ]
 
 ERROR_CODES_PROTO_SRCS = [
@@ -505,7 +502,6 @@ tf_cuda_library(
         "//tensorflow/core/framework:shared_ptr_variant.h",
         "//tensorflow/core/framework:stats_aggregator.h",
         "//tensorflow/core/framework:tensor.h",
-        "//tensorflow/core/framework:tensor_interface.h",
         "//tensorflow/core/framework:tensor_shape.h",
         "//tensorflow/core/framework:tensor_slice.h",
         "//tensorflow/core/framework:tensor_types.h",
@@ -983,33 +979,17 @@ cc_library(
     alwayslink = 1,
 )
 
-tf_cuda_library(
+alias(
     name = "core_cpu",
-    hdrs = [
-        "common_runtime/device.h",
-        "common_runtime/device_factory.h",
-        "common_runtime/function.h",
-        "common_runtime/function_optimization_registry.h",
-        "common_runtime/optimization_registry.h",
-        "common_runtime/shape_refiner.h",
-        "//tensorflow/core/graph:core_cpu_headers",
-        "//tensorflow/core/public:session.h",
-        "//tensorflow/core/public:session_options.h",
-    ],
+    actual = "//tensorflow/core/common_runtime:core_cpu",
     visibility = ["//visibility:public"],
-    deps = [
-        ":core_cpu_internal",
-    ],
 )
 
-cc_library(
+alias(
     name = "core",
+    actual =
+        "//tensorflow/core/common_runtime:core",
     visibility = ["//visibility:public"],
-    deps = [
-        ":core_cpu",
-        ":gpu_runtime",
-        ":sycl_runtime",
-    ],
 )
 
 # This includes implementations of all kernels built into TensorFlow.
@@ -1185,14 +1165,11 @@ cc_library(
     name = "testlib",
     testonly = 1,
     srcs = [
-        "common_runtime/function_testlib.cc",
-        "common_runtime/kernel_benchmark_testlib.cc",
+        "//tensorflow/core/common_runtime:testlib_srcs",
         "//tensorflow/core/graph:testlib_srcs",
     ],
     hdrs = [
-        "common_runtime/function_testlib.h",
-        "common_runtime/kernel_benchmark_testlib.h",
-        "common_runtime/test_collective_executor_mgr.h",
+        "//tensorflow/core/common_runtime:testlib_headers",
         "//tensorflow/core/graph:testlib_headers",
         # TODO(josh11b): Drop this once users are depending on
         # kernels:ops_testutil instead.
@@ -1230,16 +1207,11 @@ cc_library(
     ],
 )
 
-cc_library(
+alias(
     name = "testlib_ops",
     testonly = 1,
-    srcs = ["common_runtime/testlib_ops.cc"],
-    linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
-    deps = [
-        ":framework",
-        ":lib",
-    ],
-    alwayslink = 1,
+    actual =
+        "//tensorflow/core/common_runtime:testlib_ops",
 )
 
 # This is a link-only library to provide a DirectSession
@@ -1250,7 +1222,7 @@ tf_cuda_library(
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
-        ":direct_session_internal",
+        "//tensorflow/core/common_runtime:direct_session_internal",
     ],
     alwayslink = 1,
 )
@@ -1315,6 +1287,7 @@ filegroup(
         # Sources for which we do not yet have granular targets.
         "//tensorflow/c/eager:srcs",
         "//tensorflow/c:srcs",
+        "//tensorflow/core/common_runtime:mobile_srcs_only_runtime",
         "//tensorflow/core/common_runtime/eager:srcs",
         "//tensorflow/core/framework:mobile_srcs_only_runtime",
         "//tensorflow/core/graph:mobile_srcs_only_runtime",
@@ -1338,8 +1311,6 @@ filegroup(
         "//tensorflow/core/platform:mobile_srcs_only_runtime",
     ] + glob(
         [
-            "common_runtime/**/*.cc",
-            "common_runtime/**/*.h",
             "lib/wav/*.cc",
             "lib/wav/*.h",
         ],
@@ -1348,8 +1319,6 @@ filegroup(
             "**/*testutil*",
             "**/*testlib*",
             "**/*main.cc",
-            "common_runtime/gpu/**/*",
-            "common_runtime/gpu_device_factory.*",
         ],
     ),
     visibility = ["//visibility:public"],
@@ -1611,46 +1580,23 @@ cc_library(
 # Libraries with GPU facilities that are useful for writing kernels.
 cc_library(
     name = "gpu_lib",
-    srcs = [
-        "common_runtime/gpu/gpu_event_mgr.cc",
-    ],
-    hdrs = [
-        "common_runtime/gpu/gpu_event_mgr.h",
-    ],
-    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        ":stream_executor",
+        "//tensorflow/core/common_runtime/gpu:gpu_lib",
     ],
 )
 
-cc_library(
+alias(
     name = "gpu_headers_lib",
-    hdrs = [
-        "common_runtime/gpu/gpu_event_mgr.h",
-    ],
+    actual =
+        "//tensorflow/core/common_runtime/gpu:gpu_headers_lib",
     visibility = ["//visibility:public"],
 )
 
-cc_library(
+alias(
     name = "cuda",
+    actual = "//tensorflow/core/common_runtime/gpu:cuda",
     visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core/platform/default/build_config:cuda",
-    ],
-)
-
-cc_library(
-    name = "rocm",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core/platform/default/build_config:rocm",
-    ],
 )
 
 # -----------------------------------------------------------------------------
@@ -2223,6 +2169,7 @@ tf_proto_library(
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/lib/core:error_codes_proto",
         "//tensorflow/core/profiler/protobuf:xplane_proto",
+        "//tensorflow/core/profiler:profiler_options_proto",
         "//tensorflow/core/util:protos_all",
         "//tensorflow/core/util:test_log_proto_impl",
     ],
@@ -2255,7 +2202,8 @@ filegroup(
 filegroup(
     name = "framework_internal_public_headers",
     srcs = [
-        "//tensorflow/core/framework:model.h",  # only needed for tests
+        "//tensorflow/core/framework:metrics.h",
+        "//tensorflow/core/framework:model.h",
         "//tensorflow/core/framework:op_segment.h",
         "//tensorflow/core/framework:rendezvous.h",  # only needed for tests
         "//tensorflow/core/framework:resource_var.h",
@@ -2304,14 +2252,6 @@ cc_header_only_library(
         ":version_lib",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
-    ],
-)
-
-cc_header_only_library(
-    name = "core_cpu_headers_lib",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":core_cpu_lib",
     ],
 )
 
@@ -2465,20 +2405,7 @@ tf_cuda_library(
 filegroup(
     name = "core_cpu_base_headers",
     srcs = [
-        "common_runtime/device.h",
-        "common_runtime/device_factory.h",
-        "common_runtime/device_mgr.h",
-        "common_runtime/device_set.h",
-        "common_runtime/eval_const_tensor.h",
-        "common_runtime/function.h",
-        "common_runtime/graph_runner.h",
-        "common_runtime/metrics.h",
-        "common_runtime/process_function_library_runtime.h",
-        "common_runtime/scoped_allocator.h",
-        "common_runtime/scoped_allocator_mgr.h",
-        "common_runtime/shape_refiner.h",
-        "//tensorflow/core/framework:versions.h",
-        "//tensorflow/core/graph:graph_headers",
+        "//tensorflow/core/common_runtime:core_cpu_base_headers",
     ],
 )
 
@@ -2489,7 +2416,7 @@ tf_cuda_library(
         "//tensorflow/core/public:session.h",
     ],
     copts = tf_copts(),
-    deps = [":core_cpu_base_no_ops"] + if_static([
+    deps = ["//tensorflow/core/common_runtime:core_cpu_base_no_ops"] + if_static([
         ":function_ops_op_lib",
         ":functional_grad",
         ":functional_ops_op_lib",
@@ -2499,283 +2426,22 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-tf_cuda_library(
-    name = "core_cpu_base_no_ops",
-    srcs = [
-        "common_runtime/eval_const_tensor.cc",
-        "common_runtime/graph_optimizer.h",
-        "common_runtime/scoped_allocator.cc",
-        "common_runtime/scoped_allocator_mgr.cc",
-        "common_runtime/shape_refiner.cc",
-        "//tensorflow/core/graph:core_cpu_base_no_ops_srcs",
-        "//tensorflow/core/public:session_options.h",
-        "//tensorflow/core/public:version.h",
-    ],
-    hdrs = [
-        ":core_cpu_base_headers",
-        "//tensorflow/core/public:session.h",
-    ],
-    copts = tf_copts(),
-    deps = [
-        ":graph",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "//third_party/eigen3",
-    ] + if_static([
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/strings",
-    ]),
-)
-
-filegroup(
-    name = "core_cpu_lib_headers",
-    srcs = [
-        ":core_cpu_base_headers",
-        "common_runtime/allocator_retry.h",
-        "common_runtime/shared_counter.h",
-        "common_runtime/base_collective_executor.h",
-        "common_runtime/bfc_allocator.h",
-        "common_runtime/hierarchical_tree_broadcaster.h",
-        "common_runtime/buf_rendezvous.h",
-        "common_runtime/build_graph_options.h",
-        "common_runtime/collective_executor_mgr.h",
-        "common_runtime/collective_param_resolver_local.h",
-        "common_runtime/collective_rma_local.h",
-        "common_runtime/collective_util.h",
-        "common_runtime/colocation_graph.h",
-        "common_runtime/constant_folding.h",
-        "common_runtime/copy_tensor.h",
-        "common_runtime/costmodel_manager.h",
-        "common_runtime/placer_inspection_required_ops_utils.h",
-        "common_runtime/debugger_state_interface.h",
-        "common_runtime/device_resolver_local.h",
-        "common_runtime/dma_helper.h",
-        "common_runtime/executor.h",
-        "common_runtime/executor_factory.h",
-        "common_runtime/function_optimization_registry.h",
-        "common_runtime/graph_optimizer.h",
-        "common_runtime/graph_view.h",
-        "common_runtime/input_colocation_exemption_registry.h",
-        "common_runtime/isolate_placer_inspection_required_ops_pass.h",
-        "common_runtime/local_device.h",
-        "common_runtime/lower_function_call_op.h",
-        "common_runtime/lower_if_op.h",
-        "common_runtime/lower_case_op.h",
-        "common_runtime/lower_functional_ops.h",
-        "common_runtime/lower_while_op.h",
-        "common_runtime/memory_types.h",
-        "common_runtime/mkl_cpu_allocator.h",
-        "common_runtime/optimization_registry.h",
-        "common_runtime/pending_counts.h",
-        "common_runtime/partitioning_utils.h",
-        "common_runtime/placer.h",
-        "common_runtime/process_util.h",
-        "common_runtime/inspecting_placer.h",
-        "common_runtime/profile_handler.h",
-        "common_runtime/renamed_device.h",
-        "common_runtime/rendezvous_mgr.h",
-        "common_runtime/rendezvous_util.h",
-        "common_runtime/replicate_per_replica_nodes.h",
-        "common_runtime/ring_reducer.h",
-        "common_runtime/ring_alg.h",
-        "common_runtime/ring_gatherer.h",
-        "common_runtime/session_factory.h",
-        "common_runtime/single_threaded_cpu_device.h",
-        "common_runtime/stats_publisher_interface.h",
-        "common_runtime/step_stats_collector.h",
-        "common_runtime/threadpool_device.h",
-        "common_runtime/process_state.h",
-        "common_runtime/pool_allocator.h",
-        "//tensorflow/core/graph:core_cpu_lib_headers",
-    ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util_header"]),
-)
-
-tf_cuda_library(
+alias(
     name = "core_cpu_impl",
-    srcs = [
-        "common_runtime/accumulate_n_optimizer.cc",
-        "common_runtime/base_collective_executor.cc",
-        "common_runtime/buf_rendezvous.cc",
-        "common_runtime/build_graph_options.cc",
-        "common_runtime/collective_executor_mgr.cc",
-        "common_runtime/collective_param_resolver_local.cc",
-        "common_runtime/collective_rma_local.cc",
-        "common_runtime/collective_util.cc",
-        "common_runtime/colocation_graph.cc",
-        "common_runtime/constant_folding.cc",
-        "common_runtime/copy_tensor.cc",
-        "common_runtime/costmodel_manager.cc",
-        "common_runtime/debugger_state_interface.cc",
-        "common_runtime/device.cc",
-        "common_runtime/device_factory.cc",
-        "common_runtime/device_mgr.cc",
-        "common_runtime/device_resolver_local.cc",
-        "common_runtime/device_set.cc",
-        "common_runtime/dynamic_device_mgr.cc",
-        "common_runtime/executor.cc",
-        "common_runtime/executor_factory.cc",
-        "common_runtime/function.cc",
-        "common_runtime/function_optimization_registry.cc",
-        "common_runtime/graph_optimizer.cc",
-        "common_runtime/graph_runner.cc",
-        "common_runtime/graph_view.cc",
-        "common_runtime/hierarchical_tree_broadcaster.cc",
-        "common_runtime/input_colocation_exemption_registry.cc",
-        "common_runtime/inspecting_placer.cc",
-        "common_runtime/isolate_placer_inspection_required_ops_pass.cc",
-        "common_runtime/local_device.cc",
-        "common_runtime/lower_case_op.cc",
-        "common_runtime/lower_function_call_op.cc",
-        "common_runtime/lower_functional_ops.cc",
-        "common_runtime/lower_if_op.cc",
-        "common_runtime/lower_while_op.cc",
-        "common_runtime/memory_types.cc",
-        "common_runtime/metrics.cc",
-        "common_runtime/mkl_cpu_allocator.cc",
-        "common_runtime/optimization_registry.cc",
-        "common_runtime/parallel_concat_optimizer.cc",
-        "common_runtime/partitioning_utils.cc",
-        "common_runtime/placer.cc",
-        "common_runtime/placer_inspection_required_ops_utils.cc",
-        "common_runtime/placer_inspection_required_ops_utils.h",
-        "common_runtime/pool_allocator.cc",
-        "common_runtime/process_function_library_runtime.cc",
-        "common_runtime/process_state.cc",
-        "common_runtime/process_util.cc",
-        "common_runtime/renamed_device.cc",
-        "common_runtime/rendezvous_mgr.cc",
-        "common_runtime/rendezvous_util.cc",
-        "common_runtime/replicate_per_replica_nodes.cc",
-        "common_runtime/ring_alg.cc",
-        "common_runtime/ring_gatherer.cc",
-        "common_runtime/ring_reducer.cc",
-        "common_runtime/session.cc",
-        "common_runtime/session_factory.cc",
-        "common_runtime/session_options.cc",
-        "common_runtime/session_state.cc",
-        "common_runtime/single_threaded_cpu_device.cc",
-        "common_runtime/stats_publisher_interface.cc",
-        "common_runtime/step_stats_collector.cc",
-        "common_runtime/threadpool_device.cc",
-        "common_runtime/threadpool_device_factory.cc",
-        "//tensorflow/core/graph:core_cpu_impl_srcs",
-        "//tensorflow/core/public:session.h",
-        "//tensorflow/core/public:session_options.h",
-    ],
-    hdrs = [":core_cpu_lib_headers"],
-    copts = tf_copts() + tf_openmp_copts(),
-    deps = [
-        ":bfc_allocator",
-        ":graph",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-        "@com_google_absl//absl/types:variant",
-        "//third_party/eigen3",
-        "//tensorflow/core/public:version",
-        "//tensorflow/core/grappler/utils:functions",
-        "//tensorflow/core/profiler/lib:annotated_traceme",
-        "//tensorflow/core/profiler/lib:scoped_annotation",
-        "//tensorflow/core/profiler/lib:traceme",
-    ] + mkl_deps(),
-    alwayslink = 1,
+    actual =
+        "//tensorflow/core/common_runtime:core_cpu_impl",
 )
 
-tf_cuda_library(
+alias(
     name = "core_cpu_lib",
-    hdrs = [":core_cpu_lib_headers"],
-    deps = [
-        ":core_cpu_base",
-        "//tensorflow/core/grappler:grappler_item",
-    ] + if_static([":core_cpu_impl"]) + tf_protos_all() + tf_protos_grappler(),
+    actual =
+        "//tensorflow/core/common_runtime:core_cpu_lib",
 )
 
-tf_cuda_library(
-    name = "core_cpu_lib_no_ops",
-    hdrs = [":core_cpu_lib_headers"],
-    deps = [
-        ":core_cpu_base_no_ops",
-        "//tensorflow/core/grappler:grappler_item",
-    ] + tf_protos_all() + tf_protos_grappler(),
-)
-
-tf_cuda_library(
+alias(
     name = "core_cpu_internal",
-    srcs = [
-        "common_runtime/graph_execution_state.cc",
-    ],
-    hdrs = [
-        "common_runtime/graph_execution_state.h",
-        ":core_cpu_lib_headers",
-    ],
-    copts = tf_copts(),
-    deps = [
-        ":framework",
-        ":graph",
-        ":lib",
-        ":protos_all_cc",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler/clusters:utils",
-        "//tensorflow/core/grappler/clusters:virtual_cluster",
-        "//tensorflow/core/grappler/optimizers:meta_optimizer",
-        "//third_party/eigen3",
-    ] + mkl_deps() + tf_additional_core_deps() + if_static([
-        ":core_cpu_impl",
-        ":function_ops_op_lib",
-        ":functional_grad",
-        ":functional_ops_op_lib",
-        "//tensorflow/core/kernels:required",
-    ]),
-    alwayslink = 1,
-)
-
-# This is redundant with the "core_cpu_*" targets above. It's useful for
-# applications that want to depend on a minimal subset of TensorFlow (e.g. XLA).
-cc_library(
-    name = "bfc_allocator",
-    srcs = [
-        "common_runtime/allocator_retry.cc",
-        "common_runtime/allocator_retry.h",
-        "common_runtime/bfc_allocator.cc",
-    ],
-    hdrs = ["common_runtime/bfc_allocator.h"],
-    features = ["parse_headers"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        ":shared_counter",
-        "//tensorflow/core/framework:allocator",
-        "//tensorflow/core/profiler/lib:traceme",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "shared_counter",
-    hdrs = ["common_runtime/shared_counter.h"],
-    features = ["parse_headers"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":lib",
-    ],
+    actual =
+        "//tensorflow/core/common_runtime:core_cpu_internal",
 )
 
 alias(
@@ -2790,31 +2456,10 @@ alias(
     ],
 )
 
-tf_cuda_library(
+alias(
     name = "direct_session_internal",
-    srcs = ["common_runtime/direct_session.cc"],
-    hdrs = [
-        "common_runtime/direct_session.h",
-        "//tensorflow/core/util:lib_internal_public_hdrs",
-    ],
-    copts = tf_copts(),
-    deps = [
-        ":core_cpu_internal",
-        ":framework",
-        ":framework_internal",
-        ":graph",
-        ":lib",
-        ":lib_experimental",
-        ":lib_internal",
-        ":protos_all_cc",
-        "//tensorflow/core/debug:debug_graph_utils",
-        "//tensorflow/core/kernels:function_ops",
-        "//tensorflow/core/profiler/lib:profiler_backends",
-        "//tensorflow/core/profiler/lib:profiler_session",
-        "//tensorflow/core/profiler/lib:traceme",
-        "@com_google_absl//absl/container:flat_hash_set",
-    ],
-    alwayslink = 1,
+    actual =
+        "//tensorflow/core/common_runtime:direct_session_internal",
 )
 
 alias(
@@ -2835,209 +2480,10 @@ tf_proto_library_cc(
     ],
 )
 
-cc_library(
-    name = "gpu_id",
-    hdrs = [
-        "common_runtime/gpu/gpu_id.h",
-        "common_runtime/gpu/gpu_id_manager.h",
-    ],
-    deps = [
-        ":lib",
-    ] + if_static([
-        ":gpu_id_impl",
-    ]),
-)
-
-cc_library(
-    name = "gpu_id_impl",
-    srcs = ["common_runtime/gpu/gpu_id_manager.cc"],
-    hdrs = [
-        "common_runtime/gpu/gpu_id.h",
-        "common_runtime/gpu/gpu_id_manager.h",
-    ],
-    deps = [
-        ":lib",
-    ],
-)
-
-filegroup(
-    name = "gpu_runtime_headers",
-    srcs = [
-        "common_runtime/gpu/gpu_bfc_allocator.h",
-        "common_runtime/gpu/gpu_cudamalloc_allocator.h",
-        "common_runtime/gpu/gpu_debug_allocator.h",
-        "common_runtime/gpu/gpu_device.h",
-        "common_runtime/gpu/gpu_host_allocator.h",
-        "common_runtime/gpu/gpu_id.h",
-        "common_runtime/gpu/gpu_id_manager.h",
-        "common_runtime/gpu/gpu_id_utils.h",
-        "common_runtime/gpu/gpu_init.h",
-        "common_runtime/gpu/gpu_managed_allocator.h",
-        "common_runtime/gpu/gpu_mem_allocator.h",
-        "common_runtime/gpu/gpu_process_state.h",
-        "common_runtime/gpu/gpu_stream_util.h",
-        "common_runtime/gpu/gpu_util.h",
-        "common_runtime/gpu_device_context.h",
-    ],
-    visibility = ["//visibility:private"],
-)
-
-tf_cuda_library(
-    name = "gpu_runtime_impl",
-    srcs = [
-        "common_runtime/gpu/gpu_cudamalloc_allocator.cc",
-        "common_runtime/gpu/gpu_debug_allocator.cc",
-        "common_runtime/gpu/gpu_device.cc",
-        "common_runtime/gpu/gpu_device_factory.cc",
-        "common_runtime/gpu/gpu_managed_allocator.cc",
-        "common_runtime/gpu/gpu_process_state.cc",
-        "common_runtime/gpu/gpu_stream_util.cc",
-        "common_runtime/gpu/gpu_util.cc",
-        "common_runtime/gpu/gpu_util_platform_specific.cc",
-    ],
-    hdrs = [":gpu_runtime_headers"],
-    copts = tf_copts(),
-    cuda_deps = [
-        "@local_config_cuda//cuda:cudnn_header",
-    ],
-    deps = [
-        ":core_cpu_impl",
-        ":core_cpu_lib",
-        ":framework",
-        ":framework_internal",
-        ":gpu_bfc_allocator",
-        ":gpu_id_impl",
-        ":gpu_init_impl",
-        ":gpu_lib",
-        ":graph",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        ":stream_executor",
-        "//tensorflow/core/profiler/lib:annotated_traceme",
-        "//tensorflow/core/profiler/lib:scoped_annotation",
-        "//third_party/eigen3",
-    ],
-    alwayslink = 1,
-)
-
-tf_cuda_library(
+alias(
     name = "gpu_runtime",
-    hdrs = [":gpu_runtime_headers"],
-    linkstatic = 1,
-    deps = [
-        ":core_cpu_lib",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        ":stream_executor",
-        "//third_party/eigen3",
-    ] + if_static([":gpu_runtime_impl"]),
-)
-
-# This is redundant with the "gpu_runtime_*" targets above. It's useful for
-# applications that want to depend on a minimal subset of TensorFlow (e.g. XLA).
-tf_cuda_library(
-    name = "gpu_bfc_allocator",
-    srcs = [
-        "common_runtime/gpu/gpu_bfc_allocator.cc",
-    ],
-    hdrs = ["common_runtime/gpu/gpu_bfc_allocator.h"],
-    features = ["parse_headers"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":bfc_allocator",
-        ":gpu_mem_allocator",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-    ],
-)
-
-tf_cuda_library(
-    name = "gpu_mem_allocator",
-    srcs = [
-        "common_runtime/gpu/gpu_id.h",
-    ],
-    hdrs = [
-        "common_runtime/gpu/gpu_host_allocator.h",
-        "common_runtime/gpu/gpu_mem_allocator.h",
-    ],
-    features = ["parse_headers"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":lib",
-        ":lib_internal",
-        ":stream_executor",
-        "//tensorflow/core/framework:allocator",
-    ],
-)
-
-tf_cuda_library(
-    name = "gpu_init",
-    hdrs = [
-        "common_runtime/gpu/gpu_init.h",
-    ],
-    deps = [
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":stream_executor",
-    ] + if_static(
-        [":gpu_init_impl"],
-    ),
-)
-
-tf_cuda_library(
-    name = "gpu_init_impl",
-    srcs = [
-        "common_runtime/gpu/gpu_init.cc",
-    ],
-    hdrs = [
-        "common_runtime/gpu/gpu_init.h",
-    ],
-    copts = tf_copts(),
-    linkstatic = 1,
-    deps = [
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":stream_executor",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "sycl_runtime",
-    srcs = if_not_windows([
-        "common_runtime/sycl/sycl_allocator.cc",
-        "common_runtime/sycl/sycl_device.cc",
-        "common_runtime/sycl/sycl_device_context.cc",
-        "common_runtime/sycl/sycl_device_factory.cc",
-    ]),
-    hdrs = if_not_windows([
-        "common_runtime/sycl/sycl_allocator.h",
-        "common_runtime/sycl/sycl_device.h",
-        "common_runtime/sycl/sycl_util.h",
-        "common_runtime/sycl/sycl_device_context.h",
-    ]),
-    copts = tf_copts(),
-    linkstatic = 0,
-    deps = [
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        "//third_party/eigen3",
-        "@local_config_sycl//sycl",
-    ],
-    alwayslink = 0,
+    actual =
+        "//tensorflow/core/common_runtime/gpu:gpu_runtime",
 )
 
 # -----------------------------------------------------------------------------
@@ -3230,70 +2676,10 @@ test_suite(
     ],
 )
 
-tf_cc_test(
-    name = "common_runtime_placer_test",
-    size = "small",
-    srcs = [
-        "common_runtime/placer_test.cc",
-    ],
-    linkopts = select({
-        "//tensorflow:macos": ["-headerpad_max_install_names"],
-        "//conditions:default": [],
-    }),
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["no_windows"],
-    deps = [
-        ":core",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session_internal",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":ops",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:ops",
-        "//tensorflow/cc:scope",
-        "//tensorflow/cc:sendrecv_ops",
-        "//tensorflow/cc:while_loop",
-        "//tensorflow/core/kernels:ops_util",
-        "//tensorflow/core/platform:regexp",
-        "//tensorflow/core/util:protos_test_cc",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 tf_cc_tests(
     name = "core_higher_level_tests",
     size = "small",
     srcs = [
-        "common_runtime/buf_rendezvous_test.cc",
-        "common_runtime/collective_executor_mgr_test.cc",
-        "common_runtime/collective_rma_local_test.cc",
-        "common_runtime/device_mgr_test.cc",
-        "common_runtime/device_resolver_local_test.cc",
-        "common_runtime/device_set_test.cc",
-        "common_runtime/dynamic_device_mgr_test.cc",
-        "common_runtime/function_optimization_registration_test.cc",
-        "common_runtime/function_optimization_registry_no_pass_test.cc",
-        "common_runtime/function_optimization_registry_pass_failure_test.cc",
-        "common_runtime/function_optimization_registry_test.cc",
-        "common_runtime/isolate_placer_inspection_required_ops_pass_test.cc",
-        "common_runtime/optimization_registry_test.cc",
-        "common_runtime/pending_counts_test.cc",
-        "common_runtime/placer_inspection_required_ops_utils_test.cc",
-        "common_runtime/session_test.cc",
-        "common_runtime/threadpool_device_test.cc",
         "//tensorflow/core/example:feature_util_test.cc",
         "//tensorflow/core/graph:algorithm_test.cc",
         "//tensorflow/core/graph:control_flow_test.cc",
@@ -3349,7 +2735,6 @@ tf_cc_tests(
     name = "higher_level_tests_needing_kernels",
     size = "small",
     srcs = [
-        "common_runtime/collective_param_resolver_local_test.cc",
         "//tensorflow/core/graph:higher_level_tests_needing_kernels",
     ],
     linkopts = select({
@@ -3398,23 +2783,21 @@ tf_cc_test(
     ],
 )
 
-tf_cc_tests_gpu(
-    name = "ring_reducer_test",
-    size = "medium",
+tf_cc_test_mkl(
+    name = "mkl_related_tests",
+    size = "small",
     srcs = [
-        "common_runtime/ring_reducer_test.cc",
+        "//tensorflow/core/graph:mkl_related_tests",
+        "//tensorflow/core/util:mkl_util_test_srcs",
     ],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["no_cuda_on_cpu_tap"],
+    linkstatic = 1,
     deps = [
-        ":all_kernels",
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session_internal",
         ":framework",
         ":framework_internal",
-        ":gpu_runtime",
         ":lib",
         ":lib_internal",
         ":ops",
@@ -3422,40 +2805,62 @@ tf_cc_tests_gpu(
         ":test",
         ":test_main",
         ":testlib",
-        "//tensorflow/core/util:protos_test_cc",
-        "@com_google_absl//absl/memory",
-    ],
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/core/kernels:ops_util",
+        "//third_party/eigen3",
+    ] + if_mkl([
+        "//tensorflow/core/kernels:mkl_aggregate_ops",
+        "//tensorflow/core/kernels:mkl_batch_matmul_op",
+        "//tensorflow/core/kernels:mkl_concat_op",
+        "//tensorflow/core/kernels:mkl_conv_op",
+        "//tensorflow/core/kernels:mkl_cwise_ops_common",
+        "//tensorflow/core/kernels:mkl_dequantize_op",
+        "//tensorflow/core/kernels:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels:mkl_identity_op",
+        "//tensorflow/core/kernels:mkl_input_conversion_op",
+        "//tensorflow/core/kernels:mkl_lrn_op",
+        "//tensorflow/core/kernels:mkl_matmul_op",
+        "//tensorflow/core/kernels:mkl_pooling_ops",
+        "//tensorflow/core/kernels:mkl_qmatmul_op",
+        "//tensorflow/core/kernels:mkl_quantize_op",
+        "//tensorflow/core/kernels:mkl_relu_op",
+        "//tensorflow/core/kernels:mkl_reshape_op",
+        "//tensorflow/core/kernels:mkl_slice_op",
+        "//tensorflow/core/kernels:mkl_softmax_op",
+        "//tensorflow/core/kernels:mkl_tfconv_op",
+        "//tensorflow/core/kernels:mkl_transpose_op",
+        "//tensorflow/core/kernels:mkl_tmp_bf16_ops",
+    ]),
 )
 
 tf_cc_tests_gpu(
-    name = "ring_gatherer_test",
-    size = "medium",
-    srcs = [
-        "common_runtime/ring_gatherer_test.cc",
-    ],
+    name = "gpu_related_tests",
+    size = "small",
+    srcs = glob(["user_ops/**/*_test.cc"]),
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["no_cuda_on_cpu_tap"],
+    tags = tf_cuda_tests_tags(),
     deps = [
-        ":all_kernels",
-        ":core",
         ":core_cpu",
         ":core_cpu_internal",
-        ":direct_session_internal",
+        ":direct_session",
         ":framework",
         ":framework_internal",
+        ":gpu_id",
         ":gpu_runtime",
         ":lib",
         ":lib_internal",
-        ":ops",
         ":protos_all_cc",
         ":test",
         ":test_main",
         ":testlib",
-        "//tensorflow/core/util:protos_test_cc",
-        "@com_google_absl//absl/memory",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core/kernels:ops_util",
     ],
 )
 
+<<<<<<< HEAD
 tf_cc_tests_gpu(
     name = "hierarchical_tree_broadcaster_test",
     size = "medium",
@@ -4044,190 +3449,71 @@ tf_cc_test(
 
 tf_cc_test(
     name = "common_runtime_executor_test",
+=======
+tf_cc_test_gpu(
+    name = "variant_op_copy_test",
+>>>>>>> upstream/master
     size = "small",
-    srcs = ["common_runtime/executor_test.cc"],
+    srcs = ["//tensorflow/core/framework:variant_op_copy_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
+        ":direct_session",
         ":framework",
         ":framework_internal",
+        ":gpu_runtime",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/core/kernels:array",
-        "//tensorflow/core/kernels:control_flow_ops",
-        "//tensorflow/core/kernels:math",
-        "//tensorflow/core/kernels:random_ops",
-        "//tensorflow/core/kernels:state",
-    ],
-)
-
-tf_cc_test(
-    name = "common_runtime_function_test",
-    size = "small",
-    srcs = ["common_runtime/function_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = [
-        "manual",
-        "no_oss",
-    ],
-    deps = [
-        ":core",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session_internal",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":ops",
         ":protos_all_cc",
         ":test",
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:functional_ops",
-        "//tensorflow/cc:sendrecv_ops",
-        "//tensorflow/core/kernels:cast_op",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core/kernels:array",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "framework_run_handler_util_test",
+    size = "small",
+    srcs = ["//tensorflow/core/framework:run_handler_util_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":framework_internal",
+        ":lib",
+        ":test",
+        ":test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "framework_run_handler_test",
+    size = "small",
+    srcs = ["//tensorflow/core/framework:run_handler_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core_cpu",
+        ":direct_session_internal",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:cwise_op",
-        "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:matmul_op",
-        "//tensorflow/core/kernels:partitioned_function_ops",
-        "//tensorflow/core/kernels:random_ops",
-        "//tensorflow/core/kernels:shape_ops",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-tf_cc_test(
-    name = "common_runtime_function_threadpool_test",
-    size = "small",
-    srcs = ["common_runtime/function_threadpool_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    deps = [
-        ":core",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session_internal",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":ops",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:functional_ops",
-        "//tensorflow/core/kernels:cast_op",
-        "//tensorflow/core/kernels:cwise_op",
-        "//tensorflow/core/kernels:function_ops",
-        "//tensorflow/core/kernels:matmul_op",
-        "//tensorflow/core/kernels:random_ops",
-        "//tensorflow/core/kernels:shape_ops",
-        "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
-    name = "common_runtime_scoped_allocator_mgr_test",
-    size = "small",
-    srcs = ["common_runtime/scoped_allocator_mgr_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    deps = [
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":framework",
-        ":lib",
-        ":test",
-        ":test_main",
-    ],
-)
-
-tf_cc_test_gpu(
-    name = "gpu_allocator_retry_test",
-    size = "medium",
-    srcs = ["common_runtime/gpu/gpu_allocator_retry_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session",
-        ":framework",
-        ":framework_internal",
-        ":gpu_runtime",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-    ],
-)
-
-tf_cc_test_gpu(
-    name = "gpu_debug_allocator_test",
-    size = "medium",
-    srcs = ["common_runtime/gpu/gpu_debug_allocator_test.cc"],
-    args = ["--gtest_death_test_style=threadsafe"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags(),
-    deps = [
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session",
-        ":framework",
-        ":framework_internal",
-        ":gpu_id",
-        ":gpu_runtime",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core/kernels:ops_util",
-    ],
-)
-
-tf_cc_test_gpu(
-    name = "gpu_stream_util_test",
-    size = "small",
-    srcs = ["common_runtime/gpu/gpu_stream_util_test.cc"],
-    linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["nomac"],
-    deps = [
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session",
-        ":framework",
-        ":framework_internal",
-        ":gpu_runtime",
-        ":lib",
-        ":lib_internal",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:sendrecv_ops",
-        "//tensorflow/core/kernels:matmul_op",
-        "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -4378,138 +3664,6 @@ tf_cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//third_party/eigen3",
-    ],
-)
-
-tf_cc_test(
-    name = "common_runtime_input_colocation_exemption_registry_test",
-    size = "small",
-    srcs = ["common_runtime/input_colocation_exemption_registry_test.cc"],
-    deps = [
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":test",
-        ":test_main",
-        ":testlib",
-    ],
-)
-
-tf_cc_test(
-    name = "common_runtime_lower_function_call_test",
-    size = "small",
-    srcs = ["common_runtime/lower_function_call_op_test.cc"],
-    deps = [
-        ":all_kernels",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:client_session",
-        "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:ops",
-        "//tensorflow/cc:resource_variable_ops",
-    ],
-)
-
-tf_cc_test(
-    name = "common_runtime_lower_if_op_test",
-    size = "small",
-    srcs = ["common_runtime/lower_if_op_test.cc"],
-    deps = [
-        ":all_kernels",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:client_session",
-        "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:ops",
-        "//tensorflow/cc:resource_variable_ops",
-    ],
-)
-
-tf_cc_test(
-    name = "common_runtime_lower_case_op_test",
-    size = "small",
-    srcs = ["common_runtime/lower_case_op_test.cc"],
-    deps = [
-        ":all_kernels",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:client_session",
-        "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:ops",
-        "//tensorflow/cc:resource_variable_ops",
-    ],
-)
-
-tf_cc_test(
-    name = "common_runtime_lower_while_op_test",
-    size = "small",
-    srcs = ["common_runtime/lower_while_op_test.cc"],
-    deps = [
-        ":all_kernels",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:client_session",
-        "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:ops",
-        "@com_google_absl//absl/algorithm:container",
-    ],
-)
-
-tf_cc_test(
-    name = "common_runtime_lower_functional_ops_test",
-    size = "small",
-    srcs = ["common_runtime/lower_functional_ops_test.cc"],
-    deps = [
-        ":all_kernels",
-        ":core_cpu",
-        ":core_cpu_internal",
-        ":direct_session",
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":test",
-        ":test_main",
-        ":testlib",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:cc_ops_internal",
-        "//tensorflow/cc:client_session",
-        "//tensorflow/cc:function_ops",
-        "//tensorflow/cc:ops",
     ],
 )
 

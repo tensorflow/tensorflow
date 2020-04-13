@@ -107,6 +107,7 @@ tensorflow::swig::TryFindKernelClass
 [toco_python_api] # toco_python_api
 toco::TocoConvert
 toco::TocoGetPotentiallySupportedOps
+toco::MlirQuantizeModel
 
 [transform_graph_lib] # transform_graph
 tensorflow::graph_transforms::TransformGraph

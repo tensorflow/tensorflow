@@ -161,8 +161,8 @@ class MatrixLogarithmBenchmark(test.Benchmark):
     shape = shape[-2:]
     assert shape[0] == shape[1]
     n = shape[0]
-    matrix = np.ones(shape).astype(np.complex64) / (
-        2.0 * n) + np.diag(np.ones(n).astype(np.complex64))
+    matrix = np.ones(shape).astype(np.complex64) / (2.0 * n) + np.diag(
+        np.ones(n).astype(np.complex64))
     return variables.Variable(np.tile(matrix, batch_shape + (1, 1)))
 
   def benchmarkMatrixLogarithmOp(self):
@@ -177,8 +177,7 @@ class MatrixLogarithmBenchmark(test.Benchmark):
             sess,
             control_flow_ops.group(logm),
             min_iters=25,
-            name="matrix_logarithm_cpu_{shape}".format(
-                shape=shape))
+            name="matrix_logarithm_cpu_{shape}".format(shape=shape))
 
 
 if __name__ == "__main__":

@@ -14,9 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
-#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 #include "tensorflow/lite/tools/benchmark/delegate_provider.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 #if defined(__ANDROID__)
 #include "tensorflow/lite/nnapi/nnapi_util.h"
@@ -27,9 +25,17 @@ namespace benchmark {
 
 class NnapiDelegateProvider : public DelegateProvider {
  public:
-  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
+  NnapiDelegateProvider() {
+    default_params_.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
+    default_params_.AddParam("nnapi_execution_preference",
+                             BenchmarkParam::Create<std::string>(""));
+    default_params_.AddParam("nnapi_accelerator_name",
+                             BenchmarkParam::Create<std::string>(""));
+    default_params_.AddParam("disable_nnapi_cpu",
+                             BenchmarkParam::Create<bool>(false));
+  }
 
-  void AddParams(BenchmarkParams* params) const final;
+  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
 
   void LogParams(const BenchmarkParams& params) const final;
 
@@ -55,15 +61,6 @@ std::vector<Flag> NnapiDelegateProvider::CreateFlags(
                        "Disable the NNAPI CPU device")};
 
   return flags;
-}
-
-void NnapiDelegateProvider::AddParams(BenchmarkParams* params) const {
-  params->AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
-  params->AddParam("nnapi_execution_preference",
-                   BenchmarkParam::Create<std::string>(""));
-  params->AddParam("nnapi_accelerator_name",
-                   BenchmarkParam::Create<std::string>(""));
-  params->AddParam("disable_nnapi_cpu", BenchmarkParam::Create<bool>(false));
 }
 
 void NnapiDelegateProvider::LogParams(const BenchmarkParams& params) const {

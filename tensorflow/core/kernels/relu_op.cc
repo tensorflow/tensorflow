@@ -213,7 +213,6 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <typename Device>
 class ReluOp<Device, qint8>
     : public UnaryElementWiseOp<qint8, ReluOp<Device, qint8>> {
@@ -235,7 +234,10 @@ REGISTER_KERNEL_BUILDER(
     Name("Relu").Device(DEVICE_GPU).TypeConstraint<qint8>("T"),
     ReluOp<GPUDevice, qint8>);
 
+<<<<<<< HEAD
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+>>>>>>> upstream/master
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL

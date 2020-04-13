@@ -201,7 +201,7 @@ class DisjointSet {
 
  private:
   Processor<Handle> processor_;
-  std::unordered_map<Handle, Rep*, HashHandle<Handle>, CompareHandle<Handle>>
+  absl::flat_hash_map<Handle, Rep*, HashHandle<Handle>, CompareHandle<Handle>>
       nodes_;
 };
 
@@ -297,9 +297,9 @@ bool HasAnyUnknownDimensions(const TensorShapeProto& proto) {
 // This really should be done in an external debugging tool
 void VerboseLogUnknownDimensionSources(
     const GraphDef& graph,
-    const std::unordered_map<string, std::vector<OpInfo::TensorProperties>>&
+    const absl::flat_hash_map<string, std::vector<OpInfo::TensorProperties>>&
         input_properties_map,
-    const std::unordered_map<string, std::vector<OpInfo::TensorProperties>>&
+    const absl::flat_hash_map<string, std::vector<OpInfo::TensorProperties>>&
         output_properties_map) {
   if (!VLOG_IS_ON(2)) {
     return;
@@ -497,9 +497,9 @@ class TopoQueue {
     }
   };
 
-  const std::unordered_map<const NodeDef*, int> TopoOrder(
+  const absl::flat_hash_map<const NodeDef*, int> TopoOrder(
       const std::vector<const NodeDef*>& topo_order) const {
-    std::unordered_map<const NodeDef*, int> map;
+    absl::flat_hash_map<const NodeDef*, int> map;
     map.reserve(topo_order.size());
     for (int i = 0; i < topo_order.size(); ++i) {
       map.emplace(topo_order[i], i);
@@ -507,7 +507,7 @@ class TopoQueue {
     return map;
   }
 
-  const std::unordered_map<const NodeDef*, int> topo_order_;
+  const absl::flat_hash_map<const NodeDef*, int> topo_order_;
   std::set<NodeAndId, OrderByIdAscending> queue_;
 };
 
@@ -599,7 +599,7 @@ class SymbolicShapeRefiner {
  public:
   explicit SymbolicShapeRefiner(
       const GraphView& graph,
-      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
+      const absl::flat_hash_map<string, absl::flat_hash_set<int>>& fed_ports,
       const bool aggressive_shape_inference)
       : graph_(graph),
         function_library_(OpRegistry::Global(), graph.graph()->library()),
@@ -1917,20 +1917,20 @@ class SymbolicShapeRefiner {
 
   const GraphView& graph_;
   int graph_def_version_;
-  std::unordered_map<const NodeDef*, NodeContext> node_to_context_;
-  std::unordered_map<ShapeId, ShapeHandle, HashShapeId> unknown_shapes_;
-  std::unordered_map<DimId, DimensionHandle, HashDimId> unknown_dims_;
+  absl::flat_hash_map<const NodeDef*, NodeContext> node_to_context_;
+  absl::flat_hash_map<ShapeId, ShapeHandle, HashShapeId> unknown_shapes_;
+  absl::flat_hash_map<DimId, DimensionHandle, HashDimId> unknown_dims_;
   // Store function instantiations only for valid function. If function
   // instantiation failed it will have an `absl::nullopt`.
-  std::unordered_map<string, absl::optional<GrapplerFunctionItem>>
+  absl::flat_hash_map<string, absl::optional<GrapplerFunctionItem>>
       fun_to_grappler_function_item_;
   FunctionLibraryDefinition function_library_;
-  const std::unordered_map<string, std::unordered_set<int>>& fed_ports_;
-  // Store TensorProtos for tensor value propagation. Note that we use list, not
-  // vector, as we use pointers to the TensorProtos in this container. Vector
-  // may resize and copy the objects into a new buffer, then the existing
+  const absl::flat_hash_map<string, absl::flat_hash_set<int>>& fed_ports_;
+  // Store TensorProtos for tensor value propagation. Note that we use deque,
+  // not vector, as we use pointers to the TensorProtos in this container.
+  // Vector may resize and copy the objects into a new buffer, then the existing
   // pointers become dangling pointers.
-  std::list<TensorProto> const_tensors_to_propagate_;
+  std::deque<TensorProto> const_tensors_to_propagate_;
 
   // For more aggressive shape and value inference.
   bool aggressive_shape_inference_;
@@ -2093,7 +2093,7 @@ Status GraphProperties::UpdateEnter(SymbolicShapeRefiner* shape_refiner,
 
 Status GraphProperties::UpdateShapes(
     SymbolicShapeRefiner* shape_refiner,
-    const std::unordered_map<const NodeDef*, const NodeDef*>& resource_handles,
+    const absl::flat_hash_map<const NodeDef*, const NodeDef*>& resource_handles,
     const NodeDef* n, bool* new_shapes) const {
   if (IsEnter(*n)) {
     // The Enter shape function always forwards an UnknownShape, so do the right
@@ -2122,7 +2122,7 @@ Status GraphProperties::UpdateShapes(
 // Propagates the shapes in the transitive fan-out of <new_shapes>.
 Status GraphProperties::PropagateShapes(
     SymbolicShapeRefiner* shape_refiner, TopoQueue* new_shapes,
-    const std::unordered_map<const NodeDef*, const NodeDef*>& resource_handles,
+    const absl::flat_hash_map<const NodeDef*, const NodeDef*>& resource_handles,
     int num_loops) const {
   // Limit the number of iterations to prevent infinite loops in the presence of
   // incorrect shape functions. The algorithm should converge in at most
@@ -2221,7 +2221,7 @@ Status GraphProperties::UpdateQueue(const NodeDef* queue_node,
 
 Status GraphProperties::UpdateEnqueue(
     const NodeDef* enqueue_node,
-    const std::unordered_map<const NodeDef*, const NodeDef*>& resource_handles,
+    const absl::flat_hash_map<const NodeDef*, const NodeDef*>& resource_handles,
     SymbolicShapeRefiner* shape_refiner, bool* new_shapes) {
   auto ctx = shape_refiner->GetNodeContext(enqueue_node);
   if (!ctx) {
@@ -2272,7 +2272,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
                                         bool include_output_tensor_values) {
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item_.graph.library());
-  std::unordered_map<string, std::unordered_set<int>> fed_ports;
+  absl::flat_hash_map<string, absl::flat_hash_set<int>> fed_ports;
   if (!assume_valid_feeds) {
     for (const auto& feed : item_.feed) {
       SafeTensorId tensor_id = ParseTensorName(feed.first);
@@ -2284,13 +2284,13 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
 
   // List the resources and the nodes using them. Also collect the Merge nodes,
   // fed nodes, and primary inputs.
-  std::unordered_map<const NodeDef*,
-                     std::pair<std::unordered_set<const NodeDef*>,
-                               std::unordered_set<const NodeDef*>>>
+  absl::flat_hash_map<const NodeDef*,
+                      std::pair<absl::flat_hash_set<const NodeDef*>,
+                                absl::flat_hash_set<const NodeDef*>>>
       resources;
-  std::unordered_set<const NodeDef*> merge_nodes;
-  std::unordered_set<const NodeDef*> fed_nodes;
-  std::unordered_set<const NodeDef*> primary_inputs;
+  absl::flat_hash_set<const NodeDef*> merge_nodes;
+  absl::flat_hash_set<const NodeDef*> fed_nodes;
+  absl::flat_hash_set<const NodeDef*> primary_inputs;
   int num_loops = 0;
   for (const NodeDef& node : item_.graph.node()) {
     if (IsQueue(node)) {
@@ -2327,7 +2327,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
     }
   }
 
-  std::unordered_map<const NodeDef*, const NodeDef*> resource_handles;
+  absl::flat_hash_map<const NodeDef*, const NodeDef*> resource_handles;
   std::vector<TopologicalDependency> extra_deps;
   for (const auto& resource : resources) {
     for (const NodeDef* src : resource.second.first) {
