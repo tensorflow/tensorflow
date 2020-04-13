@@ -28,6 +28,7 @@ from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import sort_ops
 from tensorflow.python.platform import test
 
 
@@ -225,14 +226,19 @@ def _GetEigGradTest(dtype_, shape_, compute_v_):
     with self.session(use_gpu=True):
       def Compute(x):
         e, v = linalg_ops.eig(x)
+
+        # We sort eigenvalues by e.real+e.imag to have consistent
+        # order between runs
+        e, v = array_ops.transpose_v2(e), array_ops.transpose_v2(v)
+        idx = sort_ops.argsort(math_ops.real(e)+math_ops.imag(e))
+        e, v = array_ops.gather(e, idx), array_ops.gather(v, idx)
+        e, v = array_ops.transpose_v2(e), array_ops.transpose_v2(v)
+
         # (complex) Eigenvectors are only unique up to an arbitrary phase
         # We normalize the vectors such that the first component has phase 0.
         top_rows = v[..., 0:1, :]
-        if dtype_.is_complex:
-          angle = -math_ops.angle(top_rows)
-          phase = math_ops.complex(math_ops.cos(angle), math_ops.sin(angle))
-        else:
-          phase = math_ops.sign(top_rows)
+        angle = -math_ops.angle(top_rows)
+        phase = math_ops.complex(math_ops.cos(angle), math_ops.sin(angle))
         v *= phase
         return e, v
 
