@@ -14,7 +14,10 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/lite/tools/evaluation/proto:evaluation_stages_py"],
+    deps = [
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_py",
+        "//tensorflow/lite/tools/evaluation/proto:preprocessing_steps_py",
+    ],
 )
 
 cc_library(

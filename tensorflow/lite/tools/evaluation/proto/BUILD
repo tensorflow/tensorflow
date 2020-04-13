@@ -95,3 +95,11 @@ java_proto_library(
     name = "preprocessing_steps_java_proto",
     deps = ["preprocessing_steps_proto"],
 )
+
+tf_proto_library_py(
+    name = "preprocessing_steps",  # bzl adds _py
+    srcs = [
+        "preprocessing_steps.proto",
+    ],
+    visibility = ["//visibility:public"],
+)
