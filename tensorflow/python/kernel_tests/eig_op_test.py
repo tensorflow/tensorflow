@@ -229,10 +229,10 @@ def _GetEigGradTest(dtype_, shape_, compute_v_):
 
         # We sort eigenvalues by e.real+e.imag to have consistent
         # order between runs
-        e, v = array_ops.transpose_v2(e), array_ops.transpose_v2(v)
-        idx = sort_ops.argsort(math_ops.real(e)+math_ops.imag(e))
-        e, v = array_ops.gather(e, idx), array_ops.gather(v, idx)
-        e, v = array_ops.transpose_v2(e), array_ops.transpose_v2(v)
+        batch_dims = len(e.shape) - 1
+        idx = sort_ops.argsort(math_ops.real(e)+math_ops.imag(e), axis=-1)
+        e = array_ops.gather(e, idx, batch_dims=batch_dims)
+        v = array_ops.gather(v, idx, batch_dims=batch_dims)
 
         # (complex) Eigenvectors are only unique up to an arbitrary phase
         # We normalize the vectors such that the first component has phase 0.
