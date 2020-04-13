@@ -39,12 +39,12 @@ func @dead_island(%arg0 : i32) -> i32 {
 // CHECK-NOT: tf_executor.island
   %0 = tf_executor.graph {
     %1:2 = tf_executor.island {
-      %a = "op.A"(%arg0) : (i32) -> i32
-      %b = "op.B"(%a) : (i32) -> i32
+      %a = "tf.opA"(%arg0) : (i32) -> i32
+      %b = "tf.opB"(%a) : (i32) -> i32
       tf_executor.yield %b : i32
     }
     %2:2 = tf_executor.island {
-      %a = "op.A"(%1#0) : (i32) -> i32
+      %a = "tf.opA"(%1#0) : (i32) -> i32
       tf_executor.yield %a : i32
     }
     tf_executor.fetch %1#0 : i32
@@ -158,7 +158,7 @@ func @control_fetch(%arg0 : i32) {
       tf_executor.yield %arg0 : i32
     }
     %2 = tf_executor.island(%0) {
-      %a = "op.A"(%1#0) : (i32) -> i32
+      %a = "tf.opA"(%1#0) : (i32) -> i32
       tf_executor.yield
     }
     tf_executor.fetch %2 : !tf_executor.control
