@@ -2485,8 +2485,8 @@ class DatasetV1(DatasetV2):
   @functools.wraps(DatasetV2.interleave)
   def interleave(self,
                  map_func,
-                 cycle_length=AUTOTUNE,
-                 block_length=1,
+                 cycle_length=None,
+                 block_length=None,
                  num_parallel_calls=None,
                  deterministic=None):
     return DatasetV1Adapter(
