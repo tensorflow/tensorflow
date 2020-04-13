@@ -1,6 +1,6 @@
 ifeq ($(TARGET_ARCH), arc)
 
-# embarc_mli Library is used by default for ARC platform whenever it's possible.
+# embarc_mli Library is used by default for ARC platform whenever it is possible.
 # To use TFLM reference implementation it should be intentionally turned off 
 # by passing 'no_embarc_mli' tag (make -f <tflm_main_makefile> TAGS=no_embarc_mli ...)
 ifeq ($(filter no_embarc_mli,$(ALL_TAGS)),)
@@ -62,6 +62,15 @@ endif
     MICROLITE_CC_HDRS += tensorflow/lite/micro/kernels/embarc_mli/mli_slicers.h
     MICROLITE_CC_SRCS += tensorflow/lite/micro/kernels/embarc_mli/mli_slicers.cc
     MICROLITE_CC_HDRS += tensorflow/lite/micro/kernels/embarc_mli/mli_tf_utils.h
+
+
+  MICROLITE_TEST_SRCS += $(wildcard tensorflow/lite/micro/kernels/embarc_mli/*test.cc)
+
+  EMBARC_MLI_TESTS := conv depthwise_conv pooling fully_connected
+  EMBARC_MLI_TESTS += $(foreach TEST,$(EMBARC_MLI_TESTS), $(TEST)_slicing)
+
+generate_embarc_mli_test_projects: $(foreach TEST,$(EMBARC_MLI_TESTS), generate_kernel_$(TEST)_test_make_project)
+
 
 endif # no_embarc_mli
 endif # TARGET_ARCH
