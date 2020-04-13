@@ -591,6 +591,7 @@ py_library(
 
 tpu_py_test(
     name = "tpu_strategy_test",
+    size = "large",
     srcs = ["tpu_strategy_test.py"],
     disable_experimental = True,
     python_version = "PY3",
