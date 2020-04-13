@@ -930,28 +930,6 @@ class MIOpenSupport : public dnn::DnnSupport {
       ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
       int* ctc_loss_algo_id) override;
 
-  bool GetMIOpenConvolveAlgorithmsImmediateMode(
-      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemoryBase filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemoryBase output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      ScratchAllocator* scratch_allocator,
-      std::vector<dnn::ProfileResult>* out_algorithms);
-
-  bool GetMIOpenConvolveAlgorithmsFindMode(
-      dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
-      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-      const dnn::FilterDescriptor& filter_descriptor,
-      DeviceMemoryBase filter_data,
-      const dnn::BatchDescriptor& output_descriptor,
-      DeviceMemoryBase output_data,
-      const dnn::ConvolutionDescriptor& convolution_descriptor,
-      ScratchAllocator* scratch_allocator,
-      std::vector<dnn::ProfileResult>* out_algorithms);
-
   template <class T>
   bool DoPoolBackwardImpl(Stream* stream,
                       const dnn::PoolingDescriptor& pooling_dimensions,

@@ -251,7 +251,6 @@ struct GeluGrad<GPUDevice, T> {
                                 feature.data(), backprop.data(), count));
   }
 };
-#endif
 
 }  // namespace functor
 
