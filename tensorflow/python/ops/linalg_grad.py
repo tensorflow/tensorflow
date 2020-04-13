@@ -678,7 +678,7 @@ def _EigGrad(op, grad_e, grad_v):
       # diagonalizable. However, in practice, vt may
       # be ill-conditioned when matrix original matrix is close to
       # non-diagonalizable one
-      grad_a = linalg_ops.solve(vt, math_ops.matmul(mid, vt))
+      grad_a = linalg_ops.matrix_solve(vt, math_ops.matmul(mid, vt))
     else:
       _, v = linalg_ops.eig(op.inputs[0])
       vt = _linalg.adjoint(v)
@@ -686,7 +686,7 @@ def _EigGrad(op, grad_e, grad_v):
       # diagonalizable. However, in practice, vt may
       # be ill-conditioned when matrix original matrix is close to
       # non-diagonalizable one
-      grad_a = linalg_ops.solve(vt,
+      grad_a = linalg_ops.matrix_solve(vt,
                                math_ops.matmul(
                                    array_ops.matrix_diag(grad_e),
                                    vt))

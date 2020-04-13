@@ -251,12 +251,10 @@ def _GetEigGradTest(dtype_, shape_, compute_v_):
   return Test
 
 if __name__ == "__main__":
-  dtypes_to_test = [dtypes_lib.complex64, dtypes_lib.complex128]
-  # TODO: is gradient_check able to deal with complex outputs of real inputs?
-  #     [
-  #     dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.complex64,
-  #     dtypes_lib.complex128
-  # ]
+  dtypes_to_test = [
+      dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.complex64,
+      dtypes_lib.complex128
+  ]
   for compute_v in True, False:
     for dtype in dtypes_to_test:
       for size in 1, 2, 5, 10:
@@ -265,8 +263,6 @@ if __name__ == "__main__":
           name = "%s_%s_%s" % (dtype.name, "_".join(map(str, shape)), compute_v)
           _AddTest(EigTest, "Eig", name, _GetEigTest(dtype, shape, compute_v))
 
-          # TODO: gradient_check gets wrong numeric output for real inputs
-          # (might be connected with the fact that outputs are complex)
           if dtype not in [dtypes_lib.float32, dtypes_lib.float64]:
             _AddTest(EigGradTest, "EigGrad", name,
                      _GetEigGradTest(dtype, shape, compute_v))
