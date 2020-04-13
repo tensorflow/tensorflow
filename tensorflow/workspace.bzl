@@ -22,7 +22,6 @@ load(
     "def_file_filter_configure",
 )
 load("//third_party/FP16:workspace.bzl", FP16 = "repo")
-load("//third_party/FXdiv:workspace.bzl", FXdiv = "repo")
 load("//third_party/aws:workspace.bzl", aws = "repo")
 load("//third_party/clog:workspace.bzl", clog = "repo")
 load("//third_party/cpuinfo:workspace.bzl", cpuinfo = "repo")
@@ -38,7 +37,6 @@ load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
 load("//third_party/psimd:workspace.bzl", psimd = "repo")
-load("//third_party/pthreadpool:workspace.bzl", pthreadpool = "repo")
 load("//third_party/ruy:workspace.bzl", ruy = "repo")
 load("//third_party/sobol_data:workspace.bzl", sobol_data = "repo")
 load("//third_party/vulkan_headers:workspace.bzl", vulkan_headers = "repo")
@@ -47,7 +45,6 @@ load("//third_party/toolchains/remote_config:configs.bzl", "initialize_rbe_confi
 def initialize_third_party():
     """ Load third party repositories.  See above load() statements. """
     FP16()
-    FXdiv()
     aws()
     clog()
     cpuinfo()
@@ -63,7 +60,6 @@ def initialize_third_party():
     opencl_headers()
     pasta()
     psimd()
-    pthreadpool()
     sobol_data()
     vulkan_headers()
     ruy()
@@ -151,11 +147,31 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "2afaaf5f866ec714358985b123c3115043b9e099638100937743997f02bbd8cb",
-        strip_prefix = "XNNPACK-05702cf4099ad019ad1abb8ba656bfe04304f32a",
+        sha256 = "246aa56afc5263f1d41fc4a3437ecd51b56f78e16421818961cf79e39431c1df",
+        strip_prefix = "XNNPACK-b9d07cfa38af15c2abf564c980e00c965857ba21",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/05702cf4099ad019ad1abb8ba656bfe04304f32a.zip",
-            "https://github.com/google/XNNPACK/archive/05702cf4099ad019ad1abb8ba656bfe04304f32a.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/b9d07cfa38af15c2abf564c980e00c965857ba21.zip",
+            "https://github.com/google/XNNPACK/archive/b9d07cfa38af15c2abf564c980e00c965857ba21.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "FXdiv",
+        sha256 = "8224ff187cdfa178b8c54d36eea70520391781eda16d13a418ab5ae53289e1ab",
+        strip_prefix = "FXdiv-561254d968e5679460e6a0a743206410284d9f46",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/Maratyszcza/FXdiv/archive/561254d968e5679460e6a0a743206410284d9f46.zip",
+            "https://github.com/Maratyszcza/FXdiv/archive/561254d968e5679460e6a0a743206410284d9f46.zip",
+        ],
+    )
+
+    tf_http_archive(
+        name = "pthreadpool",
+        sha256 = "f894d845cefc091291329712deec85ce7020546f6eaff200b690ae04b6094535",
+        strip_prefix = "pthreadpool-bfa3b9ce6cb71dc8b792e39d24717320a4f92572",
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/Maratyszcza/pthreadpool/archive/bfa3b9ce6cb71dc8b792e39d24717320a4f92572.zip",
+            "https://github.com/Maratyszcza/pthreadpool/archive/bfa3b9ce6cb71dc8b792e39d24717320a4f92572.zip",
         ],
     )
 
