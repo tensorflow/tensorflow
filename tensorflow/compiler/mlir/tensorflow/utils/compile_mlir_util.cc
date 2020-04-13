@@ -269,13 +269,19 @@ Status ConvertMLIRToXlaComputation(
   // with a tuple argument which break the assumption of resource lifting
   // inside PromoteResourcesToArgs.
   tf2xla.addPass(mlir::xla_hlo::createLegalizeTFControlFlowPass());
-  tf2xla.addPass(mlir::xla_hlo::createLegalizeTfWithTf2XlaPass(device_type));
-  // We need to run LegalizeTFPass 2 times because first
-  // LegalizeTFPass(allow_partial_conversion=true) can expose more graph pruning
-  // and canonicalization opportunities that are necessary for the second
-  // LegalizeTFPass(allow_partial_conversion=false) invocation.
+
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::xla_hlo::createLegalizeTFPass(true));
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+
+  // Leverage tf2xla kernels for ops that didn't get lowered in the previous
+  // legalization pass.
+  tf2xla.addPass(mlir::xla_hlo::createLegalizeTfWithTf2XlaPass(device_type));
+  tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+
+  // Run LegalizeTFPass again because the previous legalization passes can
+  // expose more graph pruning and canonicalization opportunities that are
+  // necessary for the second LegalizeTFPass(allow_partial_conversion=false)
+  // invocation.
   tf2xla.addNestedPass<mlir::FuncOp>(
       mlir::xla_hlo::createLegalizeTFPass(false));
 
