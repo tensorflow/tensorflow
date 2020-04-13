@@ -71,7 +71,7 @@ void LowerComplex::runOnFunction() {
   OwningRewritePatternList patterns;
   mlir::xla::PopulateComplexLoweringPatterns(&getContext(), &patterns);
 
-  applyPatternsGreedily(getFunction(), patterns);
+  applyPatternsAndFoldGreedily(getFunction(), patterns);
 }
 
 static PassRegistration<LowerComplex> pass(

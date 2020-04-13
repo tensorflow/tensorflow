@@ -364,7 +364,7 @@ void TransformEinsumPass::runOnFunction() {
   auto func = getFunction();
 
   patterns.insert<ConvertTFEinsumOp>(&getContext());
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 
 static PassRegistration<TransformEinsumPass> pass(

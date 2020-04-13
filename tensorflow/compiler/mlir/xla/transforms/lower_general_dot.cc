@@ -178,7 +178,7 @@ struct LegalizeGeneralDot
     OwningRewritePatternList patterns;
     mlir::xla_hlo::PopulateGeneralDotOpLoweringPatterns(&patterns,
                                                         &getContext());
-    applyPatternsGreedily(getFunction(), patterns);
+    applyPatternsAndFoldGreedily(getFunction(), patterns);
   }
 };
 

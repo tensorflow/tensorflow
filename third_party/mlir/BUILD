@@ -2666,6 +2666,20 @@ cc_binary(
     ],
 )
 
+cc_binary(
+    name = "mlir-linalg-ods-gen",
+    srcs = glob([
+        "tools/mlir-linalg-ods-gen/mlir-linalg-ods-gen.cpp",
+    ]),
+    deps = [
+        ":IR",
+        ":Support",
+        "@llvm-project//llvm:config",
+        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:tablegen",
+    ],
+)
+
 ## OpenMP dialect
 gentbl(
     name = "OpenMPOpsIncGen",
