@@ -1585,7 +1585,6 @@ cuda_py_test(
         ":sparse_tensor",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )

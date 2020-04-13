@@ -230,6 +230,21 @@ tf_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "op_callbacks_test",
+    srcs = ["op_callbacks_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:op_callbacks",
+        "//tensorflow/python:script_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
 tf_py_test(
     name = "temporal_sample_weights_correctness_test",
     srcs = ["temporal_sample_weights_correctness_test.py"],
