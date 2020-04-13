@@ -615,6 +615,14 @@ class MemorySpaceAssignment {
     }
   }
 
+  // Sets allocations_. Must be set before Process() is called.
+  // Uses an rvalue reference so that the caller is forced to hand over
+  // ownership of the AllocationSequence, e.g.
+  // SetAllocationSequence(std::move(my_allocation)).
+  void SetAllocationSequence(AllocationSequence&& allocations) {
+    allocations_ = std::move(allocations);
+  }
+
   // Process calls Process methods of the allocations after the allocations have
   // been finalized.
   Status Process();
