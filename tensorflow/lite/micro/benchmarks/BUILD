@@ -11,6 +11,7 @@ cc_binary(
     ],
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_time",
         "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
@@ -23,6 +24,7 @@ cc_binary(
     ],
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_time",
         "//tensorflow/lite/micro/kernels:micro_ops",
         "//tensorflow/lite/micro/testing:micro_test",
     ],
