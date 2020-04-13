@@ -82,6 +82,7 @@ Status GetXlaInputShapes(
   xla_input_shapes->clear();
 
   mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
+  TF_RET_CHECK(main_func != nullptr) << "No main function found";
   mlir::FunctionType func_type = main_func.getType();
 
   int num_args = func_type.getNumInputs();
@@ -258,6 +259,12 @@ Status ConvertMLIRToXlaComputation(
     xla::XlaComputation* xla_computation, bool use_tuple_args,
     bool return_tuple,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn) {
+  // Mark main function as public.
+  mlir::FuncOp main_func = module_op.lookupSymbol<mlir::FuncOp>("main");
+  if (main_func) {
+    main_func.setVisibility(mlir::FuncOp::Visibility::Public);
+  }
+
   mlir::PassManager tf2xla(module_op.getContext());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   tf2xla.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
@@ -265,6 +272,7 @@ Status ConvertMLIRToXlaComputation(
   tf2xla.addPass(mlir::TF::CreateTensorArrayOpsDecompositionPass());
   tf2xla.addPass(mlir::TFDevice::CreateDecomposeResourceOpsPass());
   tf2xla.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
+  tf2xla.addPass(mlir::createSymbolDCEPass());
   // LegalizeTFControlFlow encapsulates arguments for control flow operations
   // with a tuple argument which break the assumption of resource lifting
   // inside PromoteResourcesToArgs.
