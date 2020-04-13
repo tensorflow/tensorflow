@@ -715,8 +715,9 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        logs: Dict. Currently no data is passed to this argument for this method
-          but that may change in the future.
+        logs: Dict. Currently the output of the last call to `on_epoch_end()`
+          is passed to this argument for this method but that may change in
+          the future.
     """
 
   @doc_controls.for_subclass_implementers
@@ -737,7 +738,8 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        logs: Dict. Currently no data is passed to this argument for this method
+        logs: Dict. Currently the output of the last call to
+          `on_test_batch_end()` is passed to this argument for this method
           but that may change in the future.
     """
 
