@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/micro/kernels/arc/scratch_buf_mgr.h"
-#include "tensorflow/lite/micro/kernels/arc/scratch_buffers.h"
+#include "tensorflow/lite/micro/kernels/embarc_mli/scratch_buf_mgr.h"
+#include "tensorflow/lite/micro/kernels/embarc_mli/scratch_buffers.h"
 #include <limits.h>
 #define MAX(A,B) (((A) > (B))? (A): (B))
 #define MIN(A,B) (((A) > (B))? (B): (A)) 
