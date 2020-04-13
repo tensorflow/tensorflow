@@ -79,6 +79,48 @@ class _CallCounter(object):
     return len(self._calls_per_tracings)
 
 
+class _FrequentTracingDetector(object):
+  """Class for frequent retracing detection and warning."""
+
+  def __init__(self):
+    self._counters = weakref.WeakKeyDictionary()  # GUARDED_BY(self._lock)
+    self._lock = threading.Lock()
+
+  def _get_counter(self, key):
+    if key not in self._counters:
+      self._counters[key] = _CallCounter(
+          FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY)
+    return self._counters[key]
+
+  def called_without_tracing(self, key):
+    with self._lock:
+      counter = self._get_counter(key)
+      counter.called_without_tracing()
+
+  def called_with_tracing(self, key, function_name):
+    with self._lock:
+      counter = self._get_counter(key)
+      counter.called_with_tracing()
+      if counter.get_tracing_count() >= FREQUENT_TRACING_WARNING_THRESHOLD:
+        logging.warning(
+            "{} out of the last {} calls to {} triggered tf.function "
+            "retracing. Tracing is expensive and the excessive number of "
+            "tracings could be due to (1) creating @tf.function repeatedly in "
+            "a loop, (2) passing tensors with different shapes, (3) passing "
+            "Python objects instead of tensors. For (1), please  define your "
+            "@tf.function outside of the loop. For (2), @tf.function has "
+            "experimental_relax_shapes=True option that relaxes argument "
+            "shapes that can avoid unnecessary retracing. For (3), please "
+            "refer to "
+            "https://www.tensorflow.org/tutorials/customization/performance#python_or_tensor_args"
+            " and https://www.tensorflow.org/api_docs/python/tf/function for "
+            " more details.".format(counter.get_tracing_count(),
+                                    counter.call_count, function_name))
+
+
+_frequent_tracing_detector = _FrequentTracingDetector()
+
+
 class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
   """Variable which does not lift its initializer out of function context.
 
@@ -420,13 +462,14 @@ class Function(object):
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._name = name
     self._input_signature = input_signature
-    self._call_counter = _CallCounter(FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY)
+    self._key_for_call_stats = self._get_key_for_call_stats()
 
   def __getstate__(self):
     """Custom pickling, to omit unpickleable objects."""
     result = self.__dict__.copy()
     del result["_lock"]
     del result["_descriptor_cache"]
+    del result["_key_for_call_stats"]
     return result
 
   def __setstate__(self, state):
@@ -434,6 +477,30 @@ class Function(object):
     self.__dict__ = state
     self._lock = threading.Lock()
     self._descriptor_cache = weakref.WeakKeyDictionary()
+    self._key_for_call_stats = self._get_key_for_call_stats()
+
+  def _get_key_for_call_stats(self):
+    """Returns key instance to track call stats and retracings.
+
+    The key instance a best-effort to preserve global consistency.
+    """
+    target_function = self._python_function
+    # `__wrapped__` is a conventional Python attribute that a higher-order
+    # function keeps its original function's instance.  We also directly use
+    # this attribute for dealing with a class method.  See
+    # `bound_method_wrapper` in `function.py`.  If we don't use `__wrapped__`,
+    # all class methods will return the same `bound_method_wrapper` instance
+    # from this function.
+    while hasattr(target_function, "__wrapped__"):
+      target_function = target_function.__wrapped__
+
+    if hasattr(target_function, "__func__"):
+      target_function = target_function.__func__
+
+    if hasattr(target_function, "__code__"):
+      return target_function.__code__
+
+    return self._python_function
 
   def _defun_with_scope(self, scope):
     """Creates a defun wrapped inside a variable creator scope."""
@@ -621,22 +688,11 @@ class Function(object):
       result = self._call(*args, **kwds)
 
     if tracing_count == self._get_tracing_count():
-      self._call_counter.called_without_tracing()
-      return result
-
-    self._call_counter.called_with_tracing()
-    recent_tracing_count = self._call_counter.get_tracing_count()
-    if recent_tracing_count >= FREQUENT_TRACING_WARNING_THRESHOLD:
-      logging.warning(
-          "{} out of the last {} calls to {} triggered tf.function retracing. "
-          "Tracing is expensive and the excessive number of tracings is likely "
-          "due to passing python objects instead of tensors. Also, tf.function "
-          "has experimental_relax_shapes=True option that relaxes argument "
-          "shapes that can avoid unnecessary retracing. Please refer to "
-          "https://www.tensorflow.org/tutorials/customization/performance#python_or_tensor_args"
-          " and https://www.tensorflow.org/api_docs/python/tf/function for more "
-          "details.".format(recent_tracing_count, self._call_counter.call_count,
-                            self._python_function))
+      _frequent_tracing_detector.called_without_tracing(
+          self._key_for_call_stats)
+    else:
+      _frequent_tracing_detector.called_with_tracing(self._key_for_call_stats,
+                                                     self._python_function)
 
     return result
 
