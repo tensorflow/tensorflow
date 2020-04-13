@@ -687,9 +687,9 @@ def _EigGrad(op, grad_e, grad_v):
       # be ill-conditioned when matrix original matrix is close to
       # non-diagonalizable one
       grad_a = linalg_ops.matrix_solve(vt,
-                               math_ops.matmul(
-                                   array_ops.matrix_diag(grad_e),
-                                   vt))
+                                       math_ops.matmul(
+                                       array_ops.matrix_diag(grad_e),
+                                       vt))
     return math_ops.cast(grad_a, op.inputs[0].dtype)
 
 @ops.RegisterGradient("SelfAdjointEigV2")

@@ -84,7 +84,7 @@ class EigTest(test.TestCase):
             "self_adjoint_eig_fail_if_denorms_flushed.txt")).astype(np.float32)
     self.assertEqual(matrix.shape, (32, 32))
     matrix_tensor = constant_op.constant(matrix)
-    with self.session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as _:
       (e, v) = self.evaluate(linalg_ops.self_adjoint_eig(matrix_tensor))
       self.assertEqual(e.size, 32)
       self.assertAllClose(
@@ -101,9 +101,8 @@ def SortEigenValues(e):
 def SortEigenDecomposition(e, v):
   if v.ndim < 2:
     return e, v
-  else:
-    perm = np.argsort(e.real + e.imag, -1)
-    return np.take(e, perm, -1), np.take(v, perm, -1)
+  perm = np.argsort(e.real + e.imag, -1)
+  return np.take(e, perm, -1), np.take(v, perm, -1)
 
 
 def EquilibrateEigenVectorPhases(x, y):
@@ -229,10 +228,10 @@ def _GetEigGradTest(dtype_, shape_, compute_v_):
 
         # We sort eigenvalues by e.real+e.imag to have consistent
         # order between runs
-        batch_dims = len(e.shape) - 1
+        b_dims = len(e.shape) - 1
         idx = sort_ops.argsort(math_ops.real(e)+math_ops.imag(e), axis=-1)
-        e = array_ops.gather(e, idx, batch_dims=batch_dims)
-        v = array_ops.gather(v, idx, batch_dims=batch_dims)
+        e = array_ops.gather(e, idx, batch_dims=b_dims)
+        v = array_ops.gather(v, idx, batch_dims=b_dims)
 
         # (complex) Eigenvectors are only unique up to an arbitrary phase
         # We normalize the vectors such that the first component has phase 0.
