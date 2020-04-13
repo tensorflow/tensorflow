@@ -71,7 +71,12 @@ class EventNode {
 
   void AddStepName(absl::string_view step_name);
 
+  void SetIsEager(bool is_eager);
+
   bool IsNestedIn(EventNode* parent);
+
+  // Returns the closest parent of the given event type.
+  EventNode* FindParent(int64 event_type);
 
  private:
   const XPlaneVisitor* visitor_;
@@ -119,6 +124,9 @@ class EventForest {
   // new group is created with all the events reachable from the root event.
   void CreateEventGroup(
       const std::vector<int64 /*EventType*/>& root_event_types);
+
+  // Sets the is_eager stat to true for the eagerly executed kernel events.
+  void MarkEagerlyExecutedKernels();
 
   // Create virtual events of HostEventType::kHostTrainingLoopIteration and
   // event nodes for them. A virtual event is created for each iteration of the

@@ -50,6 +50,7 @@ void CreateStatMetadata(XPlane* plane) {
   XPlaneBuilder builder(plane);
   builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId));
   builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kStepName));
+  builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kIsEager));
 }
 
 // Returns event type if it is a KernelLaunch or KernelExecute event.
@@ -177,8 +178,24 @@ void EventNode::AddStepName(absl::string_view step_name) {
                      step_name, event_);
 }
 
+void EventNode::SetIsEager(bool is_eager) {
+  AddOrUpdateIntStat(*visitor_->GetStatMetadataId(StatType::kIsEager),
+                     is_eager ? 1 : 0, event_);
+}
+
 bool EventNode::IsNestedIn(EventNode* parent) {
   return parent && IsNested(GetEvent(), parent->GetEvent());
+}
+
+EventNode* EventNode::FindParent(int64 event_type) {
+  if (parent_) {
+    if (GetEventType(parent_->GetPlaneVisitor(), parent_->GetEvent()) ==
+        event_type) {
+      return parent_;
+    }
+    return parent_->FindParent(event_type);
+  }
+  return nullptr;
 }
 
 void EventForest::ConnectIntraThread(const XPlaneVisitor& visitor,
@@ -273,6 +290,19 @@ void EventForest::CreateEventGroup(
   }
 }
 
+void EventForest::MarkEagerlyExecutedKernels() {
+  auto kernel_execute_event_node_list =
+      gtl::FindOrNull(event_node_map_, HostEventType::kKernelExecute);
+  if (!kernel_execute_event_node_list) return;
+  for (auto& kernel_execute_event_node : *kernel_execute_event_node_list) {
+    // A kernel is eagerly executed if its trace context does not include the
+    // TF executor.
+    bool is_eager = kernel_execute_event_node->FindParent(
+                        HostEventType::kExecutorStateProcess) == nullptr;
+    kernel_execute_event_node->SetIsEager(is_eager);
+  }
+}
+
 void EventForest::CreateVirtualEventsForHostTrainingLoop() {
   VirtualEventNodeMap virtual_event_node_map;
   auto executor_event_node_list =
@@ -351,6 +381,7 @@ EventForest::EventForest(
     CreateVirtualEventsForAsyncExecutor();
   }
   CreateEventGroup(root_event_types);
+  MarkEagerlyExecutedKernels();
 }
 
 std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
