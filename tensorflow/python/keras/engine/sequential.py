@@ -285,7 +285,9 @@ class Sequential(training.Model):
       if (new_shape is not None and new_shape != self._inferred_input_shape):
         # A novel shape has been received: we need to rebuild the model.
         # In case we are inside a graph function, we step out of it.
-        with ops.init_scope():
+        # We also open a CPU device scope to avoid allocating memory on GPU.
+        # The graph we create here is never used for execution.
+        with ops.init_scope(), ops.device('/cpu:0'):
           inputs = input_layer.Input(
               batch_shape=new_shape,
               dtype=input_dtype,
