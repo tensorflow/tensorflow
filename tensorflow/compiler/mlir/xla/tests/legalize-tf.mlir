@@ -641,6 +641,25 @@ func @pow_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   return %0: tensor<?xf32>
 }
 
+// CHECK-LABEL: func @diag_part
+// CHECK-SAME: %[[ARG:.*]]: tensor<4x3x4x3xf32>
+func @diag_part(%arg0: tensor<4x3x4x3xf32>) -> tensor<4x3xf32> {
+  // CHECK: %[[RS:.*]] = "xla_hlo.reshape"(%[[ARG]]) : (tensor<4x3x4x3xf32>) -> tensor<12x12xf32>
+  // CHECK-DAG: %[[IOTA0:.*]] = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<12x12xi32>
+  // CHECK-DAG: %[[IOTA1:.*]] = "xla_hlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<12x12xi32>
+  // CHECK-DAG: %[[COMP:.*]] = "xla_hlo.compare"(%[[IOTA0]], %[[IOTA1]]) {comparison_direction = "EQ"} : (tensor<12x12xi32>, tensor<12x12xi32>) -> tensor<12x12xi1>
+  // CHECK-DAG: %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[ZERO_MAT:.*]] = "xla_hlo.broadcast"(%[[ZERO]]) {broadcast_sizes = dense<12> : tensor<2xi64>} : (tensor<f32>) -> tensor<12x12xf32>
+  // CHECK-DAG: %[[SEL:.*]] = "xla_hlo.select"(%[[COMP]], %[[RS]], %[[ZERO_MAT]]) : (tensor<12x12xi1>, tensor<12x12xf32>, tensor<12x12xf32>) -> tensor<12x12xf32>
+  // CHECK-DAG: %[[RED:.*]] = "xla_hlo.reduce"(%[[SEL]], %[[ZERO]])
+  // CHECK-DAG:  xla_hlo.add
+  // CHECK-DAG: {dimensions = dense<0> : tensor<1xi64>} : (tensor<12x12xf32>, tensor<f32>) -> tensor<12xf32>
+  // CHECK-DAG:  %[[RES:.*]] = "xla_hlo.reshape"(%[[RED]]) : (tensor<12xf32>) -> tensor<4x3xf32>
+  // CHECK-DAG:  return %[[RES]] : tensor<4x3xf32>
+  %0 = "tf.DiagPart"(%arg0) : (tensor<4x3x4x3xf32>) -> tensor<4x3xf32>
+  return %0: tensor<4x3xf32>
+}
+
 // CHECK-LABEL: func @einsum
 func @einsum(%arg0: tensor<2x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<2x4xf32> {
   // CHECK:  xla_hlo.einsum

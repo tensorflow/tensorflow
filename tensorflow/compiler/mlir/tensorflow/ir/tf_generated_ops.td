@@ -1782,6 +1782,41 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_DiagPartOp : TF_Op<"DiagPart", [NoSideEffect]> {
+  let summary = "Returns the diagonal part of the tensor.";
+
+  let description = [{
+This operation returns a tensor with the `diagonal` part
+of the `input`. The `diagonal` part is computed as follows:
+
+Assume `input` has dimensions `[D1,..., Dk, D1,..., Dk]`, then the output is a
+tensor of rank `k` with dimensions `[D1,..., Dk]` where:
+
+`diagonal[i1,..., ik] = input[i1, ..., ik, i1,..., ik]`.
+
+For example:
+
+```
+# 'input' is [[1, 0, 0, 0]
+              [0, 2, 0, 0]
+              [0, 0, 3, 0]
+              [0, 0, 0, 4]]
+
+tf.diag_part(input) ==> [1, 2, 3, 4]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$diagonal
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_DigammaOp : TF_Op<"Digamma", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = [{
 Computes Psi, the derivative of Lgamma (the log of the absolute value of
