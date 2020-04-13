@@ -246,6 +246,7 @@ cc_library(
         ":nnapi_delegate_provider",
     ] + select({
         "//tensorflow:fuchsia": [],
+        "//tensorflow:windows": [],
         "//conditions:default": [
             ":xnnpack_delegate_provider",
         ],
