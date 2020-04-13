@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
+from absl.testing import parameterized
+
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
@@ -35,7 +37,7 @@ from tensorflow.python.ops import array_ops
 
 @test_util.for_all_test_methods(test_util.disable_xla,
                                 'align_corners=False not supported by XLA')
-class ResizeNearestNeighborOpTest(test.TestCase):
+class ResizeNearestNeighborOpTestBase(test.TestCase):
 
   TYPES = [np.float32, np.float64]
 
@@ -111,97 +113,140 @@ class ResizeNearestNeighborOpTest(test.TestCase):
         self.assertAllClose(grad_cpu, grad_gpu, rtol=1e-5, atol=1e-5)
 
 
-class ResizeBilinearOpTest(test.TestCase):
+class ResizeBilinearOpTestBase(test.TestCase, parameterized.TestCase):
 
-  def testShapeIsCorrectAfterOp(self):
-    in_shape = [1, 2, 2, 1]
-    out_shape = [1, 4, 6, 1]
-
-    x = np.arange(0, 4).reshape(in_shape).astype(np.float32)
-
-    input_tensor = constant_op.constant(x, shape=in_shape)
-    resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
-    with self.cached_session():
-      self.assertEqual(out_shape, list(resize_out.get_shape()))
-      resize_out = self.evaluate(resize_out)
-      self.assertEqual(out_shape, list(resize_out.shape))
-
-  @test_util.run_deprecated_v1
-  def testGradFromResizeToLargerInBothDims(self):
-    in_shape = [1, 2, 3, 1]
-    out_shape = [1, 4, 6, 1]
-
-    x = np.arange(0, 6).reshape(in_shape).astype(np.float32)
-
-    with self.cached_session():
-      input_tensor = constant_op.constant(x, shape=in_shape)
-      resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
-      err = gradient_checker.compute_gradient_error(
-          input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
-    self.assertLess(err, 1e-3)
-
-  @test_util.run_deprecated_v1
-  def testGradFromResizeToSmallerInBothDims(self):
-    in_shape = [1, 4, 6, 1]
-    out_shape = [1, 2, 3, 1]
-
-    x = np.arange(0, 24).reshape(in_shape).astype(np.float32)
-
-    with self.cached_session():
-      input_tensor = constant_op.constant(x, shape=in_shape)
-      resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
-      err = gradient_checker.compute_gradient_error(
-          input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
-    self.assertLess(err, 1e-3)
-
-  @test_util.run_deprecated_v1
-  def testCompareGpuVsCpu(self):
-    in_shape = [2, 4, 6, 3]
-    out_shape = [2, 8, 16, 3]
-
-    size = np.prod(in_shape)
-    x = 1.0 / size * np.arange(0, size).reshape(in_shape).astype(np.float32)
-
-    # Align corners will be deprecated for tf2.0 and the false version is not
+  def _itGen(self, smaller_shape, larger_shape):
+    up_sample = (smaller_shape, larger_shape)
+    down_sample = (larger_shape, smaller_shape)
+    pass_through = (larger_shape, larger_shape)
+    shape_pairs = (up_sample, down_sample, pass_through)
+    # Align corners is deprecated in TF2.0, but align_corners==False is not
     # supported by XLA.
-    align_corner_options = [True
-                           ] if test_util.is_xla_enabled() else [True, False]
-    for align_corners in align_corner_options:
-      grad = {}
-      for use_gpu in [False, True]:
-        with self.cached_session(use_gpu=use_gpu):
-          input_tensor = constant_op.constant(x, shape=in_shape)
-          resized_tensor = image_ops.resize_bilinear(
-              input_tensor, out_shape[1:3], align_corners=align_corners)
-          grad[use_gpu] = gradient_checker.compute_gradient(
-              input_tensor, in_shape, resized_tensor, out_shape, x_init_value=x)
+    options = [(True, False)]
+    if not test_util.is_xla_enabled():
+      options += [(False, True), (False, False)]
+    for align_corners, half_pixel_centers in options:
+      for in_shape, out_shape in shape_pairs:
+        yield in_shape, out_shape, align_corners, half_pixel_centers
 
-      self.assertAllClose(grad[False], grad[True], rtol=1e-4, atol=1e-4)
+  def _getJacobians(self, in_shape, out_shape, align_corners=False,
+                    half_pixel_centers=False, dtype=np.float32, use_gpu=False,
+                    force_gpu=False):
+    with self.cached_session(use_gpu=use_gpu, force_gpu=force_gpu) as sess:
+      # Input values should not influence gradients
+      x = np.arange(np.prod(in_shape)).reshape(in_shape).astype(dtype)
+      input_tensor = constant_op.constant(x, shape=in_shape)
+      resized_tensor = image_ops.resize_bilinear(
+          input_tensor, out_shape[1:3], align_corners=align_corners,
+          half_pixel_centers=half_pixel_centers)
+      # compute_gradient will use a random tensor as the init value
+      return gradient_checker.compute_gradient(
+          input_tensor, in_shape, resized_tensor, out_shape)
+
+  @parameterized.parameters(
+      {'batch_size': 1, 'channel_count': 1},
+      {'batch_size': 2, 'channel_count': 3},
+      {'batch_size': 5, 'channel_count': 4})
+  @test_util.run_deprecated_v1
+  def testShapes(self, batch_size, channel_count):
+    smaller_shape = [batch_size, 2, 3, channel_count]
+    larger_shape = [batch_size, 4, 6, channel_count]
+    for in_shape, out_shape, align_corners, half_pixel_centers in \
+        self._itGen(smaller_shape, larger_shape):
+      # Input values should not influence shapes
+      x = np.arange(np.prod(in_shape)).reshape(in_shape).astype(np.float32)
+      input_tensor = constant_op.constant(x, shape=in_shape)
+      resized_tensor = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
+      self.assertEqual(out_shape, list(resized_tensor.get_shape()))
+      grad_tensor = gradients_impl.gradients(resized_tensor, input_tensor)[0]
+      self.assertEqual(in_shape, list(grad_tensor.get_shape()))
+      with self.cached_session():
+        resized_values = self.evaluate(resized_tensor)
+        self.assertEqual(out_shape, list(resized_values.shape))
+        grad_values = self.evaluate(grad_tensor)
+        self.assertEqual(in_shape, list(grad_values.shape))
+
+  @parameterized.parameters(
+      {'batch_size': 1, 'channel_count': 1},
+      {'batch_size': 4, 'channel_count': 3},
+      {'batch_size': 3, 'channel_count': 2})
+  @test_util.run_deprecated_v1
+  def testGradients(self, batch_size, channel_count):
+    smaller_shape = [batch_size, 2, 3, channel_count]
+    larger_shape = [batch_size, 5, 6, channel_count]
+    for in_shape, out_shape, align_corners, half_pixel_centers in \
+        self._itGen(smaller_shape, larger_shape):
+      jacob_a, jacob_n = self._getJacobians(
+          in_shape, out_shape, align_corners, half_pixel_centers)
+      threshold = 1e-4
+      self.assertAllClose(jacob_a, jacob_n, threshold, threshold)
 
   @test_util.run_deprecated_v1
   def testTypes(self):
     in_shape = [1, 4, 6, 1]
     out_shape = [1, 2, 3, 1]
-    x = np.arange(0, 24).reshape(in_shape)
-
     for use_gpu in [False, True]:
-      with self.cached_session(use_gpu=use_gpu) as sess:
-        for dtype in [np.float16, np.float32, np.float64]:
-          input_tensor = constant_op.constant(x.astype(dtype), shape=in_shape)
-          resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
-          grad = sess.run(gradients_impl.gradients(resize_out, input_tensor))[0]
-          self.assertAllEqual(in_shape, grad.shape)
-          # Not using gradient_checker.compute_gradient as I didn't work out
-          # the changes required to compensate for the lower precision of
-          # float16 when computing the numeric jacobian.
-          # Instead, we just test the theoretical jacobian.
-          self.assertAllEqual([[[[1.], [0.], [1.], [0.], [1.], [0.]],
-                                [[0.], [0.], [0.], [0.], [0.], [0.]],
-                                [[1.], [0.], [1.], [0.], [1.], [0.]],
-                                [[0.], [0.], [0.], [0.], [0.], [0.]]]], grad)
+      for dtype in [np.float16, np.float32, np.float64]:
+        jacob_a, jacob_n = self._getJacobians(
+            in_shape, out_shape, dtype=dtype, use_gpu=use_gpu)
+        if dtype == np.float16:
+          # Compare fp16 analytical gradients to fp32 numerical gradients,
+          # since fp16 numerical gradients are too imprecise unless great
+          # care is taken with choosing the inputs and the delta. This is
+          # a weaker, but pragmatic, check (in particular, it does not test
+          # the op itself, only its gradient).
+          _, jacob_n = self._getJacobians(
+              in_shape, out_shape, dtype=np.float32, use_gpu=use_gpu)
+        threshold = 1e-3
+        if dtype == np.float64:
+          threshold = 1e-5
+        self.assertAllClose(jacob_a, jacob_n, threshold, threshold)
+
+  @test_util.run_deprecated_v1
+  def testGradOnUnsupportedType(self):
+    in_shape = [1, 4, 6, 1]
+    out_shape = [1, 2, 3, 1]
+
+    x = np.arange(0, 24).reshape(in_shape).astype(np.uint8)
+
+    input_tensor = constant_op.constant(x, shape=in_shape)
+    resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
+    with self.cached_session():
+      grad = gradients_impl.gradients(resize_out, [input_tensor])
+      self.assertEqual([None], grad)
+
+  def _gpuVsCpuCase(self, in_shape, out_shape, align_corners,
+                    half_pixel_centers, dtype):
+    grad = {}
+    for use_gpu in [False, True]:
+      grad[use_gpu] = self._getJacobians(
+          in_shape, out_shape, align_corners, half_pixel_centers, dtype=dtype,
+          use_gpu=use_gpu)
+    threshold = 1e-4
+    # Note that this is comparing both analytical and numerical Jacobians
+    self.assertAllClose(grad[False], grad[True], rtol=threshold, atol=threshold)
+
+  @parameterized.parameters(
+      {'batch_size': 1, 'channel_count': 1},
+      {'batch_size': 2, 'channel_count': 3},
+      {'batch_size': 5, 'channel_count': 4})
+  @test_util.run_deprecated_v1
+  def testCompareGpuVsCpu(self, batch_size, channel_count):
+    smaller_shape = [batch_size, 4, 6, channel_count]
+    larger_shape = [batch_size, 8, 16, channel_count]
+    for params in self._itGen(smaller_shape, larger_shape):
+      self._gpuVsCpuCase(*params, dtype=np.float32)
+
+  @test_util.run_deprecated_v1
+  def testCompareGpuVsCpuFloat64(self):
+    in_shape = [1, 5, 7, 1]
+    out_shape = [1, 9, 11, 1]
+    # Note that there is no 16-bit floating-point format registered for GPU
+    self._gpuVsCpuCase(in_shape, out_shape, align_corners=True,
+                       half_pixel_centers=False, dtype=np.float64)
 
 
-class ResizeBicubicOpTest(test.TestCase):
+class ResizeBicubicOpTestBase(test.TestCase):
 
   def testShapeIsCorrectAfterOp(self):
     in_shape = [1, 2, 2, 1]
@@ -264,7 +309,7 @@ class ResizeBicubicOpTest(test.TestCase):
       self.assertEqual([None], grad)
 
 
-class ScaleAndTranslateOpTest(test.TestCase):
+class ScaleAndTranslateOpTestBase(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGrads(self):
@@ -328,7 +373,7 @@ class ScaleAndTranslateOpTest(test.TestCase):
         self.assertAllClose(np.ones_like(grad_v), grad_v)
 
 
-class CropAndResizeOpTest(test.TestCase):
+class CropAndResizeOpTestBase(test.TestCase):
 
   def testShapeIsCorrectAfterOp(self):
     batch = 2
@@ -457,7 +502,7 @@ class CropAndResizeOpTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RGBToHSVOpTest(test.TestCase):
+class RGBToHSVOpTestBase(test.TestCase):
 
   TYPES = [np.float32, np.float64]
 
