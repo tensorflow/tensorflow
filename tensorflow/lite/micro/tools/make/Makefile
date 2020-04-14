@@ -96,13 +96,16 @@ MICROLITE_LIB_NAME := libtensorflow-microlite.a
 
 MICRO_LITE_EXAMPLE_TESTS := $(wildcard tensorflow/lite/micro/examples/*/Makefile.inc)
 
+MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.inc)
+
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/micro/*test.cc) \
 $(wildcard tensorflow/lite/micro/kernels/*test.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*test.cc)
 
+# TODO(b/152645559): move all benchmarks to benchmarks directory.
 MICROLITE_BENCHMARK_SRCS := \
-$(wildcard tensorflow/lite/micro/kernels/benchmarks/*.cc)
+$(wildcard tensorflow/lite/micro/benchmarks/*.cc)
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
@@ -265,6 +268,9 @@ AR := $(TARGET_TOOLCHAIN_ROOT)${TARGET_TOOLCHAIN_PREFIX}${AR_TOOL}
 
 # Load the examples.
 include $(MICRO_LITE_EXAMPLE_TESTS)
+
+# Load the benchmarks.
+include $(MICRO_LITE_BENCHMARKS)
 
 # Create rules for downloading third-party dependencies.
 THIRD_PARTY_TARGETS :=
