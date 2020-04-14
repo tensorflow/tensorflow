@@ -3874,7 +3874,8 @@ def function(inputs, outputs, updates=None, name=None, **kwargs):
         msg = ('Invalid argument "%s" passed to K.function with TensorFlow '
                'backend') % key
         raise ValueError(msg)
-  return GraphExecutionFunction(inputs, outputs, updates=updates, **kwargs)
+  return GraphExecutionFunction(inputs, outputs, updates=updates, name=name,
+                                **kwargs)
 
 
 @keras_export('keras.backend.gradients')
