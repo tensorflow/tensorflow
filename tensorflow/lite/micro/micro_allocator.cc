@@ -83,10 +83,10 @@ TfLiteStatus AllocateVariables(
     TfLiteTensor* runtime_tensors, SimpleMemoryAllocator* allocator) {
   for (size_t i = 0; i < flatbuffer_tensors->size(); ++i) {
     if (flatbuffer_tensors->Get(i)->is_variable()) {
-      runtime_tensors[i].data.uint8 = allocator->AllocateFromTail(
+      runtime_tensors[i].data.data = allocator->AllocateFromTail(
           runtime_tensors[i].bytes, kBufferAlignment);
       // Allocation failure.
-      if (runtime_tensors[i].data.uint8 == nullptr) {
+      if (runtime_tensors[i].data.data == nullptr) {
         return kTfLiteError;
       }
     }
