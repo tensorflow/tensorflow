@@ -157,7 +157,7 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
     current->bytes = runtime_tensors[i].bytes;
     current->first_created = -1;
     current->last_used = -1;
-    current->needs_allocating = (runtime_tensors[i].data.raw == nullptr) &&
+    current->needs_allocating = (runtime_tensors[i].data.data == nullptr) &&
                                 (!subgraph->tensors()->Get(i)->is_variable());
   }
 
@@ -296,8 +296,8 @@ TfLiteStatus InitializeRuntimeTensor(
       if (array->size()) {
         // We've found a buffer with valid data, so update the runtime tensor
         // data structure to point to it.
-        result->data.raw =
-            const_cast<char*>(reinterpret_cast<const char*>(array->data()));
+        result->data.data =
+            const_cast<void*>(static_cast<const void*>(array->data()));
         // We set the data from a serialized buffer, so record tha.
         result->allocation_type = kTfLiteMmapRo;
       }
@@ -311,7 +311,7 @@ TfLiteStatus InitializeRuntimeTensor(
 
   // TODO(petewarden): Some of these paths aren't getting enough testing
   // coverage, so we should figure out some tests that exercise them.
-  if (!result->data.raw) {
+  if (result->data.data == nullptr) {
     // The tensor contents haven't been set from a serialized buffer, so
     // make a note that they will be allocated from memory. The actual
     // allocation won't happen until later.
