@@ -2165,6 +2165,17 @@ def TFL_ReluOp: TFL_Op<"relu", [NoSideEffect,
   let arguments = (ins TFL_TensorOf<[F32, QUI8, I8]>:$x);
 
   let results = (outs TFL_TensorOf<[F32, QUI8, I8]>:$y);
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns. Currently, it is used by the
+  // elementwise-move reordering pattern in the optimize_patterns.td
+  let builders = [OpBuilder<
+    "Builder *, OperationState &state, Value input",
+    [{
+      state.addOperands({input});
+      state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_Relu6Op: TFL_Op<"relu6", [NoSideEffect,
@@ -2181,6 +2192,17 @@ def TFL_Relu6Op: TFL_Op<"relu6", [NoSideEffect,
   let arguments = (ins TFL_TensorOf<[F32, QUI8, I8]>:$x);
 
   let results = (outs TFL_TensorOf<[F32, QUI8, I8]>:$y);
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns. Currently, it is used by the
+  // elementwise-move reordering pattern in the optimize_patterns.td
+  let builders = [OpBuilder<
+    "Builder *, OperationState &state, Value input",
+    [{
+      state.addOperands({input});
+      state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [NoSideEffect,
@@ -2196,6 +2218,17 @@ def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [NoSideEffect,
   let arguments = (ins TFL_TensorOf<[F32, QUI8, I8]>:$x);
 
   let results = (outs TFL_TensorOf<[F32, QUI8, I8]>:$y);
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns. Currently, it is used by the
+  // elementwise-move reordering pattern in the optimize_patterns.td
+  let builders = [OpBuilder<
+    "Builder *, OperationState &state, Value input",
+    [{
+      state.addOperands({input});
+      state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_ReshapeOp: TFL_Op<"reshape", [
@@ -2548,6 +2581,17 @@ def TFL_TanhOp: TFL_Op<"tanh", [
   let arguments = (ins TFL_TensorOf<[F32, I16, I8, QI8, QUI8, QI16, QUI16, TFL_Uint8]>:$x);
 
   let results = (outs TFL_TensorOf<[F32, I16, I8, QI8, QUI8, QI16, QUI16, TFL_Uint8]>:$y);
+
+  // This builder doesn't work with quantized type, so it can only be used by
+  // non-quantization tablegen patterns. Currently, it is used by the
+  // elementwise-move reordering pattern in the optimize_patterns.td
+  let builders = [OpBuilder<
+    "Builder *, OperationState &state, Value input",
+    [{
+      state.addOperands({input});
+      state.addTypes(input.getType());
+    }]>
+  ];
 }
 
 def TFL_TileOp: TFL_Op<"tile", [NoSideEffect, SameOperandsAndResultsScale,
