@@ -933,8 +933,8 @@ def unique_object_name(name,
   Example:
 
 
-  _unique_layer_name('dense')  # dense_1
-  _unique_layer_name('dense')  # dense_2
+  unique_object_name('dense')  # dense_1
+  unique_object_name('dense')  # dense_2
 
   """
   if name_uid_map is None:
