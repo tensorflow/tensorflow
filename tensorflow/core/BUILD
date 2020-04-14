@@ -1444,7 +1444,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":ios_tensorflow_lib",
-        ":portable_test_proto_lib",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//third_party/eigen3",
     ],
