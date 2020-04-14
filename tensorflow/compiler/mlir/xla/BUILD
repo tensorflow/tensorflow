@@ -1,5 +1,5 @@
 load("//third_party/mlir:tblgen.bzl", "gentbl")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
 
 package(
     default_visibility = [":friends"],
@@ -750,7 +750,7 @@ genrule(
     cmd = ("$(location :operator_writer_gen) " +
            "-I external/llvm-project/mlir/include " +
            "-I external/org_tensorflow " +
-           "$(location //tensorflow/compiler/mlir/xla:ir/hlo_ops.td) " +
+           "$(location :ir/hlo_ops.td) " +
            " -o $@"),
     tools = [":operator_writer_gen"],
 )
@@ -761,5 +761,40 @@ cc_library(
     hdrs = ["convert_op_folder.h"],
     deps = [
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "all_xla_passes_for_testing",
+    visibility = [
+        "//tensorflow/compiler/mlir:__subpackages__",
+    ],
+    deps = [
+        ":buffer_assignment",
+        ":hlo",
+        ":hlo_legalize_to_lhlo",
+        ":lhlo",
+        ":lhlo_copy_removal",
+        ":lhlo_fuse_linalg",
+        ":lhlo_legalize_to_affine",
+        ":lhlo_legalize_to_gpu",
+        ":lhlo_legalize_to_parallel_loops",
+        ":xla_dialect_registration",
+        ":xla_legalize_control_flow",
+        ":xla_legalize_tf",
+        ":xla_legalize_tf_with_tf2xla",
+        ":xla_legalize_to_linalg",
+        ":xla_legalize_to_standard",
+        ":xla_lower",
+        ":xla_materialize_broadcasts",
+        ":xla_test_passes",
+    ],
+)
+
+tf_cc_binary(
+    name = "xla-opt",
+    deps = [
+        ":all_xla_passes_for_testing",
+        "//tensorflow/compiler/mlir:tf_mlir_opt_main",
     ],
 )

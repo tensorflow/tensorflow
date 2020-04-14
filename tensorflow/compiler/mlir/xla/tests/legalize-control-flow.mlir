@@ -1,4 +1,4 @@
-// RUN: tf-opt -xla-legalize-control-flow %s -o - | FileCheck %s
+// RUN: xla-opt -xla-legalize-control-flow %s -o - | FileCheck %s
 
 // CHECK-LABEL: func @while(%arg0: tensor<i64>) -> tensor<i64> {
 func @while(%arg0: tensor<i64>) -> tensor<i64> {
