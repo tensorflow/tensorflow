@@ -35,6 +35,7 @@ filegroup(
         "ir/hlo_ops.td",
         "ir/hlo_ops_base.td",
         "ir/hlo_utils.td",
+        "ir/infer_fusibility_op_interface.td",
         "ir/lhlo_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
@@ -116,6 +117,42 @@ gentbl(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "transforms/canonicalize.td",
     td_srcs = [":hlo_ops_td_files"],
+)
+
+gentbl(
+    name = "infer_fusibility_op_interface_gen",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "ir/infer_fusibility_op_interface.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "ir/infer_fusibility_op_interface.cc.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ir/infer_fusibility_op_interface.td",
+    td_srcs = [
+        ":hlo_ops_td_files",
+    ],
+)
+
+cc_library(
+    name = "infer_fusibility_op_interface",
+    srcs = [
+        "ir/infer_fusibility_op_interface.cc",
+    ],
+    hdrs = [
+        "ir/infer_fusibility_op_interface.h",
+        "ir/infer_fusibility_op_interface.h.inc",
+    ],
+    deps = [
+        ":infer_fusibility_op_interface_gen",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -369,6 +406,40 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "cycle_detector",
+    srcs = ["transforms/cycle_detector.cc"],
+    hdrs = ["transforms/cycle_detector.h"],
+    deps = [
+        "@llvm-project//llvm:core",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "cycle_detector_test",
+    srcs = ["transforms/cycle_detector_test.cc"],
+    deps = [
+        ":cycle_detector",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "xla_hlo_fusion",
+    srcs = ["transforms/xla_hlo_fusion.cc"],
+    deps = [
+        ":cycle_detector",
+        ":hlo",
+        "@llvm-project//llvm:core",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
+)
+
 gentbl(
     name = "xla_legalize_to_standard_inc_gen",
     tbl_outs = [
@@ -555,6 +626,7 @@ cc_library(
         ":convert_op_folder",
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_inc_gen",
+        ":infer_fusibility_op_interface",
         ":xla_canonicalize_inc_gen",
         "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:support",
@@ -824,6 +896,7 @@ genrule(
         ":ir/hlo_ops.td",
         ":ir/hlo_ops_base.td",
         ":ir/hlo_utils.td",
+        ":ir/infer_fusibility_op_interface.td",
     ],
     outs = ["operator_writers.inc"],
     cmd = ("$(location :operator_writer_gen) " +
@@ -859,6 +932,7 @@ cc_library(
         ":lhlo_legalize_to_gpu",
         ":lhlo_legalize_to_parallel_loops",
         ":xla_dialect_registration",
+        ":xla_hlo_fusion",
         ":xla_hlo_to_lhlo_with_xla",
         ":xla_legalize_control_flow",
         ":xla_legalize_tf",
