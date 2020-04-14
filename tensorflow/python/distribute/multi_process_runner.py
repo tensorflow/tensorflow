@@ -89,6 +89,10 @@ BARRIER = 'barrier'
 
 _DEFAULT_MAX_SUBPROCESS_COUNT = 20
 
+# Default time out sec is selected so that it's handled before the default
+# "medium" timeout of the test runs.
+_DEFAULT_TIMEOUT_SEC = 200
+
 # Next pipe index to be global so that pipes are not reused across multiple
 # MultiProcessRunner usages.
 # TODO(rchao): Investigate possibility to remove this variable.
@@ -373,7 +377,7 @@ class MultiProcessRunner(object):
         break
     return list_to_return
 
-  def join(self, timeout=250):
+  def join(self, timeout=_DEFAULT_TIMEOUT_SEC):
     """Joins all the processes with timeout.
 
     Args:
@@ -621,7 +625,7 @@ def run(proc_func,
         grpc_fail_fast=None,
         stream_stdout=True,
         list_stdout=False,
-        timeout=250,
+        timeout=_DEFAULT_TIMEOUT_SEC,
         args=None,
         kwargs=None):  # pylint: disable=g-doc-args
   """Runs functions in local child processes.
