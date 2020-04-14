@@ -38,12 +38,17 @@ class EnsureShapeOp : public XlaOpKernel {
     const TensorShape shape = ctx->InputShape(0);
 
     // valiate shape
-    OP_REQUIRES(ctx, expected_shape_.IsCompatibleWith(shape),
-      errors::InvalidArgument("Shape of tensor ", this->def().input(0), " ", shape.DebugString(), " is not compatible with expected shape ", expected_shape_.DebugString(), "."));
+    OP_REQUIRES(
+        ctx, expected_shape_.IsCompatibleWith(shape),
+        errors::InvalidArgument("Shape of tensor ", this->def().input(0), " ",
+                                shape.DebugString(),
+                                " is not compatible with expected shape ",
+                                expected_shape_.DebugString(), "."));
 
     // If shape matches, outputs the tensor.
     ctx->SetOutput(0, ctx->Input(0));
   }
+
  private:
   PartialTensorShape expected_shape_;
 };
