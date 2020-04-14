@@ -25,12 +25,25 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
+struct ElementwiseBroadcastSettings {
+  bool width = false;
+  bool height = false;
+  bool channels = false;
+};
+
+// Two inputs are two runtime tensors
 std::vector<ComputeTaskDescriptorPtr> ElementwiseWithTwoInputs(
     int id, std::vector<ValueId> input_ids, ValueId output_id,
-    OperationType op_type);
+    OperationType op_type, const ElementwiseBroadcastSettings& settings);
 
+// One input is one runtime tensor
 std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInput(
     int id, ValueId input_id, ValueId output_id, OperationType op_type);
+
+// First input is one runtime tensor and second input is constant argument
+std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInputAndConstantArguent(
+    int id, ValueId input_id, ValueId output_id, const RuntimeOptions& options,
+    OperationType op_type, const ElementwiseAttributes& attr);
 
 }  // namespace metal
 }  // namespace gpu

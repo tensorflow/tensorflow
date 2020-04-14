@@ -267,6 +267,7 @@ py_test(
     srcs = ["test_file_v2_0.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow:tensorflow_py",
     ],

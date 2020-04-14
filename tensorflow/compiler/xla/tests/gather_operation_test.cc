@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -60,6 +61,30 @@ ENTRY main {
   Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
   Literal start_indices = LiteralUtil::CreateR1<int32>({0, 2});
+  RunTest(hlo_text, &operand, &start_indices);
+}
+
+XLA_TEST_F(GatherOperationTest, BatchDimInMiddle) {
+  // Reverse the middle dimension (dim 1).
+  const string hlo_text = R"(
+HloModule BatchDimInMiddle
+
+ENTRY main {
+  operand = s32[3, 2, 3] parameter(0)
+  indices = s32[2] parameter(1)
+  ROOT gather = s32[3, 1, 2, 3] gather(operand, indices),
+      offset_dims={0, 1, 3},
+      collapsed_slice_dims={},
+      start_index_map={1},
+      index_vector_dim=1,
+      slice_sizes={3, 1, 3}
+}
+)";
+  Literal operand =
+      LiteralUtil::CreateR3<int32>({{{1, 2, 3}, {4, 5, 6}},
+                                    {{7, 8, 9}, {10, 11, 12}},
+                                    {{13, 14, 15}, {16, 17, 18}}});
+  Literal start_indices = LiteralUtil::CreateR1<int32>({1, 0});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -283,6 +308,65 @@ ENTRY main {
   RunTest(hlo_text, &operand, &start_indices);
 }
 
+// The next 2 tests uses data types that require extra steps on some backends so
+// only run them on known good backends.
+#if defined(XLA_TEST_BACKEND_GPU) || defined(XLA_TEST_BACKEND_CPU) || \
+    defined(XLA_TEST_BACKEND_INTERPRETER)
+
+XLA_TEST_F(GatherOperationTest, OutOfBoundsIndex64Bit) {
+  // Out of bounds indices must not crash, even when the value is of a type
+  // larger than needed to access all values in the input, and the indices
+  // produce the same values across all backends.
+
+  const string hlo_text = R"(
+HloModule BatchDynamicSlice
+
+ENTRY main {
+  operand = s32[3,3]{1,0} parameter(0)
+  indices = s64[6,2]{1,0} parameter(1)
+  gather = s32[6,1,1]{2,1,0} gather(operand, indices),
+      offset_dims={1,2},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
+      index_vector_dim=1,
+      slice_sizes={1,1}
+  ROOT result = s32[6]{0} reshape(gather)
+}
+)";
+  Literal operand =
+      LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
+  Literal start_indices = LiteralUtil::CreateR2<int64>(
+      {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {21474836407, 1}, {1, 2}});
+  RunTest(hlo_text, &operand, &start_indices);
+}
+
+XLA_TEST_F(GatherOperationTest, TooSmallIndex8Bit) {
+  // Indices of a type too small to index all locations in gather should not
+  // fail.
+
+  const string hlo_text = R"(
+HloModule BatchDynamicSlice
+
+ENTRY main {
+  operand = s32[512, 512]{1,0} parameter(0)
+  indices = u8[6,2]{1,0} parameter(1)
+  gather = s32[6,1,1]{2,1,0} gather(operand, indices),
+      offset_dims={1,2},
+      collapsed_slice_dims={},
+      start_index_map={0,1},
+      index_vector_dim=1,
+      slice_sizes={1,1}
+  ROOT result = s32[6]{0} reshape(gather)
+}
+)";
+  Literal operand = LiteralUtil::MakeIdentityR2<int32>(512);
+  Literal start_indices = LiteralUtil::CreateR2<uint8>(
+      {{2, 7}, {2, 1}, {1, 1}, {5, 1}, {7, 1}, {1, 2}});
+  RunTest(hlo_text, &operand, &start_indices);
+}
+
+#endif
+
 XLA_TEST_F(GatherOperationTest, OutOfBoundsUnsignedIndex) {
   // Out of bounds indices must not crash, and the indices in range should
   // produce the same values across all backends.
@@ -330,8 +414,13 @@ ENTRY main {
 )";
   Literal operand =
       LiteralUtil::CreateR2<int32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR2<int32>(
-      {{2, -1}, {2, 1}, {1, 1}, {-500, 1}, {-2147483648, 1}, {1, 2}});
+  Literal start_indices =
+      LiteralUtil::CreateR2<int32>({{2, -1},
+                                    {2, 1},
+                                    {1, 1},
+                                    {-500, 1},
+                                    {static_cast<int32>(-2147483648), 1},
+                                    {1, 2}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 
@@ -356,8 +445,13 @@ ENTRY main {
 )";
   Literal operand =
       LiteralUtil::CreateR2<uint32>({{1, 2, 3}, {4, 5, 6}, {7, 8, 9}});
-  Literal start_indices = LiteralUtil::CreateR2<int32>(
-      {{2, -1}, {2, 1}, {1, 1}, {-500, 1}, {-2147483648, 1}, {1, 2}});
+  Literal start_indices =
+      LiteralUtil::CreateR2<int32>({{2, -1},
+                                    {2, 1},
+                                    {1, 1},
+                                    {-500, 1},
+                                    {static_cast<int32>(-2147483648), 1},
+                                    {1, 2}});
   RunTest(hlo_text, &operand, &start_indices);
 }
 

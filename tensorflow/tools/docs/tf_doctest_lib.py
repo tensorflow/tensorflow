@@ -115,8 +115,7 @@ class TfDoctestOutputChecker(doctest.OutputChecker, object):
 
   _ADDRESS_RE = re.compile(r'\bat 0x[0-9a-f]*?>')
 
-  def _allclose(self, want, got, rtol=1e-6, atol=1e-6):
-    # Same default as: tensorflow/python/framework/test_util.py "assertAllClose"
+  def _allclose(self, want, got, rtol=1e-3, atol=1e-3):
     return np.allclose(want, got, rtol=rtol, atol=atol)
 
   def check_output(self, want, got, optionflags):
@@ -146,6 +145,12 @@ class TfDoctestOutputChecker(doctest.OutputChecker, object):
     Returns:
       A bool, indicating if the check was successful or not.
     """
+
+    # If the docstring's output is empty and there is some output generated
+    # after running the snippet, return True. This is because if the user
+    # doesn't want to display output, respect that over what the doctest wants.
+    if not want and got:
+      return True
 
     # Replace python's addresses with ellipsis (`...`) since it can change on
     # each execution.

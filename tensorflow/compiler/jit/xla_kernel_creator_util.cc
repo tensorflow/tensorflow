@@ -70,58 +70,6 @@ class SinglePassSearch {
 };
 }  // namespace
 
-bool CanCreateXlaKernel(const NodeDef& node_def) {
-  // If kXlaMustCompileAttr is set on the node_def, use its value.
-  const auto& it = node_def.attr().find(kXlaMustCompileAttr);
-  return it != node_def.attr().end() && it->second.b();
-}
-
-// Given a FunctionLibraryRuntime and a NodeDef calling a function in the
-// runtime, returns this function's body in `fbody` as well as the indices
-// of its constant and resource arguments.
-// `fbody` is owned by `flr`.
-// `constant_arg_indices` and `resource_arg_indices` should be empty vector.
-// They are sorted in ascending order on this function's return.
-Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
-                                       const NodeDef& node_def,
-                                       const FunctionBody** fbody,
-                                       std::vector<int>* constant_arg_indices,
-                                       std::vector<int>* resource_arg_indices) {
-  FunctionLibraryRuntime::Handle handle;
-  // If node_def is not instantiable, e.g., the function does not exist,
-  // simply bail out.
-  NameAttrList function;
-  TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node_def, &function));
-
-  TF_RETURN_IF_ERROR(
-      flr->Instantiate(function.name(), AttrSlice(&function.attr()), &handle));
-  *fbody = flr->GetFunctionBody(handle);
-  CHECK(*fbody);  // Can't be nullptr since we just instantiated it.
-  const DataTypeVector& arg_types = (*fbody)->arg_types;
-  std::vector<bool> const_args(arg_types.size());
-  // If we can't analyze the const args. Bail out.
-  TF_RETURN_IF_ERROR(
-      BackwardsConstAnalysis(*((*fbody)->graph), &const_args,
-                             /*compile_time_const_nodes=*/nullptr, flr));
-
-  for (int i = 0; i < const_args.size(); ++i) {
-    if (const_args[i]) {
-      constant_arg_indices->push_back(i);
-    }
-  }
-
-  // There can be hundreds of resource variables. Reserve the space for them.
-  // We don't reserve for constants above as they are usually few.
-  resource_arg_indices->reserve(arg_types.size());
-  for (int i = 0; i < arg_types.size(); ++i) {
-    if (arg_types[i] == DT_RESOURCE) {
-      resource_arg_indices->push_back(i);
-    }
-  }
-
-  return Status::OK();
-}
-
 Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
                        std::unique_ptr<OpKernel>* kernel) {
   if (!CanCreateXlaKernel(node_def)) {
@@ -143,11 +91,11 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
     }
     string message = absl::StrCat(
         "Function invoked by the following node is not compilable: ",
-        node_def.ShortDebugString(), ".\n");
-    absl::StrAppend(&message, "Uncompilable nodes:\n");
+        SummarizeNodeDef(node_def), ".\n");
+    absl::StrAppend(&message, "Uncompilable nodes:");
     for (const auto& node_info : uncompilable_node_info) {
       string node_message =
-          absl::StrCat("\t", node_info.name, ": ",
+          absl::StrCat("\n", node_info.name, ": ",
                        node_info.uncompilable_reason, "\n", "\tStacktrace:\n");
       for (const auto& stack_frame : node_info.stack_trace) {
         absl::StrAppendFormat(&node_message, "\t\tNode: %s, function: %s\n",
@@ -156,7 +104,6 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
       absl::StrAppend(&message, node_message);
     }
     VLOG(1) << message;
-    // node_def is calling a function that XLA can't compile.
     return errors::InvalidArgument(message);
   }
 
@@ -178,7 +125,7 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
   // 214 variables and a similar number of activations.
   SinglePassSearch constants_search(&constant_arg_indices);
   SinglePassSearch resources_search(&resource_arg_indices);
-  for (int i = 0; i < fbody->arg_types.size(); ++i) {
+  for (size_t i = 0; i < fbody->arg_types.size(); ++i) {
     if (resources_search.ScanForValue(i) || constants_search.ScanForValue(i)) {
       // Compile-time constants and resource handles are expected to be in
       // host memory.
@@ -208,7 +155,7 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
   // XlaLaunch kernel keeps all outputs (including constants, which it copies),
   // in device memory except for resources.
   MemoryTypeVector output_memory_types(fbody->ret_types.size(), DEVICE_MEMORY);
-  for (int i = 0; i < fbody->ret_types.size(); ++i) {
+  for (size_t i = 0; i < fbody->ret_types.size(); ++i) {
     if (fbody->ret_types[i] == DT_RESOURCE) {
       output_memory_types[i] = HOST_MEMORY;
     }
@@ -219,15 +166,17 @@ Status CreateXlaKernel(FunctionLibraryRuntime* flr, const NodeDef& node_def,
   TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node_def, &function));
   Device* dev = flr->device();
   Status s;
-  OpKernelConstruction construction(
-      DeviceType(dev->device_type()), dev,
-      dev->GetAllocator(AllocatorAttributes()), &node_def,
-      &fbody->fdef.signature(), flr, dev->resource_manager(), fbody->arg_types,
-      input_memory_types, fbody->ret_types, output_memory_types,
-      flr->graph_def_version(), &s);
+  auto props = std::make_shared<NodeProperties>(
+      &fbody->fdef.signature(), node_def, fbody->arg_types, fbody->ret_types);
+  OpKernelConstruction construction(DeviceType(dev->device_type()), dev,
+                                    dev->GetAllocator(AllocatorAttributes()),
+                                    flr, dev->resource_manager(), props,
+                                    input_memory_types, output_memory_types,
+                                    flr->graph_def_version(), &s);
 
   *kernel = absl::make_unique<XlaLocalLaunchBase>(
-      &construction, constant_arg_indices, resource_arg_indices, function);
+      &construction, constant_arg_indices, resource_arg_indices, function,
+      /*has_ref_vars=*/false);
   return s;
 }
 }  // namespace tensorflow

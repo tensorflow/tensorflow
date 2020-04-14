@@ -17,7 +17,9 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
+#include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
@@ -73,8 +75,8 @@ void TestRemoteExecute(bool async) {
   TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle();
-  TFE_TensorHandle* h1_task0 = TestMatrixTensorHandle();
+  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle(ctx);
+  TFE_TensorHandle* h1_task0 = TestMatrixTensorHandle(ctx);
   const char remote_device_name[] =
       "/job:localhost/replica:0/task:1/device:CPU:0";
   auto* h0_task1 =
@@ -127,7 +129,7 @@ void TestRemoteExecute(bool async) {
 TEST(CAPI, RemoteExecute) { TestRemoteExecute(false); }
 TEST(CAPI, RemoteExecuteAsync) { TestRemoteExecute(true); }
 
-void TestRemoteExecuteSilentCopies(bool async) {
+void TestRemoteExecuteSilentCopies(bool async, bool remote) {
   tensorflow::ServerDef server_def = GetServerDef(3);
 
   // This server def has the task index set to 0.
@@ -158,8 +160,8 @@ void TestRemoteExecuteSilentCopies(bool async) {
   TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle();
-  TFE_TensorHandle* h1_task0 = TestMatrixTensorHandle();
+  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle(ctx);
+  TFE_TensorHandle* h1_task0 = TestMatrixTensorHandle(ctx);
   const char task1_name[] = "/job:localhost/replica:0/task:1/device:CPU:0";
   const char task2_name[] = "/job:localhost/replica:0/task:2/device:CPU:0";
 
@@ -169,13 +171,24 @@ void TestRemoteExecuteSilentCopies(bool async) {
 
   // Handles are on task0 (local), and task2, but op is on task1.
   TFE_Op* matmul = MatMulOp(ctx, h0_task0, h1_task2);
-  TFE_OpSetDevice(matmul, task1_name, status);
+  if (remote) {
+    TFE_OpSetDevice(matmul, task1_name, status);
+  }
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TFE_TensorHandle* retvals[1];
   int num_retvals = 1;
   TFE_Execute(matmul, &retvals[0], &num_retvals, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  // TODO(gjn): Add support for waiting on async local mirrors
+  if (!async) {
+    auto remote_arg = tensorflow::TensorHandleFromInterface(h1_task2->handle);
+    tensorflow::EagerOperation* op =
+        tensorflow::OperationFromInterface(matmul->operation);
+    // The input handles should never change since they have been mirrored.
+    ASSERT_EQ(op->Inputs()[1], remote_arg);
+  }
 
   auto* retval_task0 = TFE_TensorHandleCopyToDevice(
       retvals[0], ctx, "/job:localhost/replica:0/task:0/device:CPU:0", status);
@@ -213,9 +226,17 @@ void TestRemoteExecuteSilentCopies(bool async) {
   worker_server2.release();
 }
 
-TEST(CAPI, RemoteExecuteSilentCopies) { TestRemoteExecuteSilentCopies(false); }
+TEST(CAPI, RemoteExecuteSilentCopies) {
+  TestRemoteExecuteSilentCopies(false, true);
+}
 TEST(CAPI, RemoteExecuteSilentCopiesAsync) {
-  TestRemoteExecuteSilentCopies(true);
+  TestRemoteExecuteSilentCopies(true, true);
+}
+TEST(CAPI, RemoteExecuteSilentCopiesLocal) {
+  TestRemoteExecuteSilentCopies(false, false);
+}
+TEST(CAPI, RemoteExecuteSilentCopiesLocalAsync) {
+  TestRemoteExecuteSilentCopies(true, false);
 }
 
 void TestRemoteExecuteDeleteContextWithOutstandingRPC(bool async) {
@@ -246,8 +267,8 @@ void TestRemoteExecuteDeleteContextWithOutstandingRPC(bool async) {
 
   // Use large matrices so that RPCs don't return before we get a chance
   // to call TFE_DeleteContext.
-  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle100x100();
-  TFE_TensorHandle* h1_task0 = TestMatrixTensorHandle100x100();
+  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle100x100(ctx);
+  TFE_TensorHandle* h1_task0 = TestMatrixTensorHandle100x100(ctx);
   const char remote_device_name[] =
       "/job:localhost/replica:0/task:1/device:CPU:0";
   auto* h0_task1 =
@@ -310,7 +331,7 @@ void CheckRemoteMatMulExecutesOK(TFE_Context* ctx,
                                  const char* remote_device_name,
                                  const char* local_device_name) {
   TF_Status* status = TF_NewStatus();
-  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle();
+  TFE_TensorHandle* h0_task0 = TestMatrixTensorHandle(ctx);
 
   TFE_Op* matmul = MatMulOp(ctx, h0_task0, h0_task0);
   TFE_OpSetDevice(matmul, remote_device_name, status);
@@ -393,7 +414,7 @@ void TestRemoteExecuteChangeServerDef(bool async) {
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   // Create a new tensor_handle.
-  TFE_TensorHandle* h0_task0_new = TestMatrixTensorHandle();
+  TFE_TensorHandle* h0_task0_new = TestMatrixTensorHandle(ctx);
 
   // Check that copying it to the old remote device (named localhost) fails.
   TFE_TensorHandleCopyToDevice(h0_task0_new, ctx, remote_device_name, status);

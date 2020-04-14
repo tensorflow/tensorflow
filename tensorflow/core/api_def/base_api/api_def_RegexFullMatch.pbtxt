@@ -26,5 +26,12 @@ The boolean values (True or False) of the output tensor indicate
 if the input matches the regex pattern provided.
 
 The pattern follows the re2 syntax (https://github.com/google/re2/wiki/Syntax)
+
+Examples:
+
+>>> tf.strings.regex_full_match(["TF lib", "lib TF"], ".*lib$")
+<tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True, False])>
+>>> tf.strings.regex_full_match(["TF lib", "lib TF"], ".*TF$")
+<tf.Tensor: shape=(2,), dtype=bool, numpy=array([False,  True])>
 END
 }

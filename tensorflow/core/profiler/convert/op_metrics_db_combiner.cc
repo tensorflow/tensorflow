@@ -43,6 +43,11 @@ void CombineOpMetrics(const OpMetrics& src, OpMetrics* dst) {
   dst->set_dma_stall_ps(src.dma_stall_ps() + dst->dma_stall_ps());
 }
 
+void CombinePrecisionStats(const PrecisionStats& src, PrecisionStats* dst) {
+  dst->set_compute_16bit_ps(src.compute_16bit_ps() + dst->compute_16bit_ps());
+  dst->set_compute_32bit_ps(src.compute_32bit_ps() + dst->compute_32bit_ps());
+}
+
 }  // namespace
 
 void OpMetricsDbCombiner::Combine(const OpMetricsDb& src) {
@@ -55,6 +60,7 @@ void OpMetricsDbCombiner::Combine(const OpMetricsDb& src) {
       dst->total_host_infeed_enq_start_timestamp_ps_diff());
   dst->set_total_time_ps(src.total_time_ps() + dst->total_time_ps());
   dst->set_total_op_time_ps(src.total_op_time_ps() + dst->total_op_time_ps());
+  CombinePrecisionStats(src.precision_stats(), dst->mutable_precision_stats());
 
   for (const auto& src_metrics : src.metrics_db()) {
     auto* dst_metrics = LookupOrInsertNewOpMetrics(src_metrics.hlo_module_id(),

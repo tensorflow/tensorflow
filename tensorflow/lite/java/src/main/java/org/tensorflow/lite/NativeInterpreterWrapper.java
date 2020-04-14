@@ -175,6 +175,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   /** Resizes dimensions of a specific input. */
   void resizeInput(int idx, int[] dims) {
     if (resizeInput(interpreterHandle, errorHandle, idx, dims)) {
+      // Tensor allocation is deferred until either an explicit `allocateTensors()` call or
+      // `invoke()` avoiding redundant allocations if multiple tensors are simultaneosly resized.
       isMemoryAllocated = false;
       if (inputTensors[idx] != null) {
         inputTensors[idx].refreshShape();
@@ -184,6 +186,23 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native boolean resizeInput(
       long interpreterHandle, long errorHandle, int inputIdx, int[] dims);
+
+  /** Triggers explicit allocation of tensors. */
+  void allocateTensors() {
+    if (isMemoryAllocated) {
+      return;
+    }
+
+    isMemoryAllocated = true;
+    allocateTensors(interpreterHandle, errorHandle);
+    for (int i = 0; i < outputTensors.length; ++i) {
+      if (outputTensors[i] != null) {
+        outputTensors[i].refreshShape();
+      }
+    }
+  }
+
+  private static native long allocateTensors(long interpreterHandle, long errorHandle);
 
   void setUseNNAPI(boolean useNNAPI) {
     useNNAPI(interpreterHandle, useNNAPI);
@@ -252,24 +271,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
    */
   Long getLastNativeInferenceDurationNanoseconds() {
     return (inferenceDurationNanoseconds < 0) ? null : inferenceDurationNanoseconds;
-  }
-
-  /**
-   * Gets the quantization zero point of an output.
-   *
-   * @throws IllegalArgumentException if the output index is invalid.
-   */
-  int getOutputQuantizationZeroPoint(int index) {
-    return getOutputQuantizationZeroPoint(interpreterHandle, index);
-  }
-
-  /**
-   * Gets the quantization scale of an output.
-   *
-   * @throws IllegalArgumentException if the output index is invalid.
-   */
-  float getOutputQuantizationScale(int index) {
-    return getOutputQuantizationScale(interpreterHandle, index);
   }
 
   /** Gets the number of input tensors. */
@@ -374,10 +375,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native int getOutputDataType(long interpreterHandle, int outputIdx);
 
-  private static native int getOutputQuantizationZeroPoint(long interpreterHandle, int outputIdx);
-
-  private static native float getOutputQuantizationScale(long interpreterHandle, int outputIdx);
-
   private static final int ERROR_BUFFER_SIZE = 512;
 
   private long errorHandle;
@@ -406,8 +403,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   // List of owned delegates that must be closed when the interpreter is closed.
   private final List<AutoCloseable> ownedDelegates = new ArrayList<>();
-
-  private static native long allocateTensors(long interpreterHandle, long errorHandle);
 
   private static native boolean hasUnresolvedFlexOp(long interpreterHandle);
 

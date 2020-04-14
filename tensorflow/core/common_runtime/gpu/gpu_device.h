@@ -62,15 +62,6 @@ class BaseGPUDevice : public LocalDevice {
   // Initialize the device and return the status of initialization.
   Status Init(const SessionOptions& options);
 
-  // GPU devices require the Op Compute method to save a reference to
-  // any temporary tensors that are allocated until the Op execution
-  // completes.
-  bool RequiresRecordingAccessedTensors() const override;
-
-  void ConsumeListOfAccessedTensors(
-      DeviceContext* device_context,
-      const TensorReferenceVector& tensor_refs) override;
-
   void Compute(OpKernel* op_kernel, OpKernelContext* context) override;
 
   Status Sync() override;
@@ -157,7 +148,7 @@ class BaseGPUDevice : public LocalDevice {
   int32 pending_cap_ = 0;
   bool timestamped_allocator_ = false;
 
-  // Initialize scractch buffers used by Eigen.
+  // Initialize scratch buffers used by Eigen.
   Status InitScratchBuffers();
 
   void ReinitializeDevice(OpKernelContext* context, PerOpGpuDevice* device,
@@ -233,7 +224,7 @@ class GPUKernelTracker {
   // Caller is responsible for ensuring that RecordTerminate() is eventually
   // called with the same counter value.
   void RecordQueued(uint64 queued_count, int weight)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Takes a count value returned by RecordQueued and finds the corresponding
   // PendingKernel record in the ring buffer.  Marks the kernel as completed and
@@ -259,7 +250,7 @@ class GPUKernelTracker {
 
   // Yield current thread until number of pending kernels no longer
   // exceeds the cap.
-  void PauseWhilePendingExceeds(int cap) LOCKS_EXCLUDED(mu_) {
+  void PauseWhilePendingExceeds(int cap) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     while (num_pending_ > cap) {
       VLOG(1) << "num_pending_=" << num_pending_ << " cap=" << cap;
@@ -293,20 +284,20 @@ class GPUKernelTracker {
     PendingKernel() : queued_count(0), weight(0), terminated(false) {}
   };
   mutex mu_;
-  int32 mem_since_last_ GUARDED_BY(mu_);
-  int32 ops_since_last_ GUARDED_BY(mu_);
+  int32 mem_since_last_ TF_GUARDED_BY(mu_);
+  int32 ops_since_last_ TF_GUARDED_BY(mu_);
   // Ring buffer of PendingKernel records.
-  std::vector<PendingKernel> pending_kernels_ GUARDED_BY(mu_);
+  std::vector<PendingKernel> pending_kernels_ TF_GUARDED_BY(mu_);
   // Next unused slot in pending_kernels_.
-  int first_available_ GUARDED_BY(mu_) = 0;
+  int first_available_ TF_GUARDED_BY(mu_) = 0;
   // Last completed PendingKernel such that all prior PendingKernels are
   // also completed.  With out-of-order completion there may be a mixture
   // of completed and uncompleted entries between last_completed_ and
   // first_available_.
-  int last_completed_ GUARDED_BY(mu_) = -1;
+  int last_completed_ TF_GUARDED_BY(mu_) = -1;
   // Sum of weights of the outstanding events marking tracked kernels.
-  int num_pending_ GUARDED_BY(mu_) = 0;
-  condition_variable pending_decreased_ GUARDED_BY(mu_);
+  int num_pending_ TF_GUARDED_BY(mu_) = 0;
+  condition_variable pending_decreased_ TF_GUARDED_BY(mu_);
 };
 
 class BaseGPUDeviceFactory : public DeviceFactory {

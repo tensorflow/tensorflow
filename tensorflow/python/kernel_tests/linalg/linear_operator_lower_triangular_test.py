@@ -66,7 +66,7 @@ class LinearOperatorLowerTriangularTest(
     return operator, matrix
 
   def test_assert_non_singular(self):
-    # Singlular matrix with one positive eigenvalue and one zero eigenvalue.
+    # Singular matrix with one positive eigenvalue and one zero eigenvalue.
     with self.cached_session():
       tril = [[1., 0.], [1., 0.]]
       operator = linalg.LinearOperatorLowerTriangular(tril)

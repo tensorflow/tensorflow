@@ -18,31 +18,32 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // TF:llvm-project
-#include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"  // TF:llvm-project
-#include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"  // TF:llvm-project
-#include "mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h"  // TF:llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // TF:llvm-project
-#include "mlir/Dialect/GPU/GPUDialect.h"  // TF:llvm-project
-#include "mlir/Dialect/GPU/Passes.h"  // TF:llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // TF:llvm-project
-#include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // TF:llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:llvm-project
-#include "mlir/Dialect/Linalg/Passes.h"  // TF:llvm-project
-#include "mlir/Dialect/LoopOps/LoopOps.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/Region.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
-#include "mlir/Transforms/Passes.h"  // TF:llvm-project
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
+#include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h"  // from @llvm-project
+#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/LoopOps/LoopOps.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
@@ -57,11 +58,13 @@ using ::mlir::xla_lhlo::FusionOp;
 // Following are some small transformations that are required to clean up code
 // after lowering from linalg to loops.
 
-// A simple pass that applies lowering of HLO to LHLO only within Fusion
-// operations. This is needed, as FusionOp is not closed from above and hence
-// nested pass managers can not be applied.
-struct FusionToLhloConverter
-    : public mlir::FunctionPass<FusionToLhloConverter> {
+// A simple pass that applies lowering of HLO to LHLO only within LHLO ops that
+// contain regions with HLO ops, e.g. FusionOp, ReduceOp, SelectAndScatterOp.
+// This is needed, as these ops are not closed from above and hence nested pass
+// managers can not be applied.
+struct NestedHloRegionsConverter
+    : public mlir::PassWrapper<NestedHloRegionsConverter,
+                               ::mlir::FunctionPass> {
   void runOnFunction() override {
     auto& ctx = getContext();
     mlir::OwningRewritePatternList patterns;
@@ -69,12 +72,10 @@ struct FusionToLhloConverter
     target.addLegalDialect<::mlir::xla_lhlo::XlaLhloDialect>();
     ::mlir::xla_hlo::populateHLOToLHLOConversionPattern(&ctx, &patterns);
 
-    getFunction().walk([&](FusionOp op) {
-      if (failed(applyPartialConversion(op, target, patterns, nullptr))) {
-        signalPassFailure();
+    getFunction().walk([&](mlir::Operation* op) {
+      if (op->getNumRegions() == 0) {
+        return;
       }
-    });
-    getFunction().walk([&](mlir::xla_lhlo::ReduceOp op) {
       if (failed(applyPartialConversion(op, target, patterns, nullptr))) {
         signalPassFailure();
       }
@@ -83,7 +84,8 @@ struct FusionToLhloConverter
 };
 
 // Replaces a FusionOp by the operations contained in its region.
-struct FusionOpRemover : public mlir::FunctionPass<FusionOpRemover> {
+struct FusionOpRemover
+    : public mlir::PassWrapper<FusionOpRemover, ::mlir::FunctionPass> {
   void runOnFunction() override {
     getFunction().walk([&](FusionOp op) {
       mlir::OpBuilder builder(op);
@@ -105,7 +107,7 @@ struct FusionOpRemover : public mlir::FunctionPass<FusionOpRemover> {
 // Rewrite the single-trip loops we get out of linalg into just their bodies.
 // TODO(herhut): Make this a general pattern.
 struct SingleTripLoopRemoval
-    : public mlir::FunctionPass<SingleTripLoopRemoval> {
+    : public mlir::PassWrapper<SingleTripLoopRemoval, ::mlir::FunctionPass> {
   void runOnFunction() override {
     auto getConstantValue = [](mlir::Value value) -> llvm::Optional<int64_t> {
       auto definingOp = value.getDefiningOp();
@@ -142,7 +144,8 @@ struct SingleTripLoopRemoval
 
 // Simple pass that replaces a load that immediately follows a store to the
 // same address with the stored value. This needs generalization.
-struct StoreForwardingPass : mlir::FunctionPass<StoreForwardingPass> {
+struct StoreForwardingPass
+    : mlir::PassWrapper<StoreForwardingPass, ::mlir::FunctionPass> {
   void runOnFunction() override {
     llvm::DenseMap<mlir::Value, mlir::Operation*> memrefToAllocOp;
 
@@ -208,7 +211,8 @@ struct StoreForwardingPass : mlir::FunctionPass<StoreForwardingPass> {
 // never read from or that are read but the read value is not used.
 // Needs an analysis that proves that loads and stores are side-effect free
 // (in bounds, no aliasing, etc.).
-struct DeadTempBufferRemoval : mlir::FunctionPass<DeadTempBufferRemoval> {
+struct DeadTempBufferRemoval
+    : mlir::PassWrapper<DeadTempBufferRemoval, ::mlir::FunctionPass> {
   bool operationConsideredDead(mlir::Operation* op) {
     for (auto result : op->getResults()) {
       if (!llvm::all_of(result.getUsers(), [&](mlir::Operation* op) {
@@ -243,14 +247,19 @@ struct DeadTempBufferRemoval : mlir::FunctionPass<DeadTempBufferRemoval> {
   }
 
   void runOnFunction() override {
+    llvm::SmallVector<mlir::Operation*, 8> opsToErase;
     getFunction().walk([&](mlir::AllocOp allocOp) {
       if (!operationConsideredDead(allocOp)) {
         return;
       }
 
-      // TODO(herhut): There should be a generic helper for this.
-      recursiveErase(allocOp);
+      opsToErase.push_back(allocOp);
     });
+
+    for (auto* op : opsToErase) {
+      // TODO(herhut): There should be a generic helper for this.
+      recursiveErase(op);
+    }
   }
 };
 
@@ -258,8 +267,8 @@ void EnableIRPrinting(mlir::PassManager* passManager) {
   auto enable_if_vlog_is_on = [](mlir::Pass* pass, mlir::Operation* op) {
     return VLOG_IS_ON(1);
   };
-  passManager->enableIRPrinting(/*shouldPrintBeforePass=*/{},
-                                /*shouldPrintAfterPass=*/enable_if_vlog_is_on,
+  passManager->enableIRPrinting(/*shouldPrintBeforePass=*/enable_if_vlog_is_on,
+                                /*shouldPrintAfterPass=*/{},
                                 /*printModuleScope=*/false,
                                 /*printAfterOnlyOnChange=*/true, llvm::dbgs());
   passManager->disableMultithreading();
@@ -271,12 +280,14 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
   mlir::PassManager pm(module.getContext());
   EnableIRPrinting(&pm);
 
-  // First, lower bodies of fusion operations from hlo to lhlo.
-  pm.addPass(absl::make_unique<FusionToLhloConverter>());
+  // First, lower bodies of lhlo operations that contain hlo ops.
+  pm.addPass(absl::make_unique<NestedHloRegionsConverter>());
   // Next, we can strip the outer fusion operation.
   pm.addPass(absl::make_unique<FusionOpRemover>());
+  // Remove unnecessary Lhlo copies.
+  pm.addPass(::mlir::xla_lhlo::createLhloCopyRemovalPass());
   // Transform lhlo operations to LinAlg.
-  pm.addPass(::mlir::xla_lhlo::createLegalizeToLinalgPass());
+  pm.addPass(::mlir::xla_lhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations. This will yield a single tiled loop nest where
   // the inner loops are single trip.
   pm.addPass(::mlir::xla_lhlo::createLhloFuseLinalg());
@@ -317,31 +328,30 @@ namespace {
 
 /// A pass that does the final lowering to NVVM. It collects all the patterns
 /// that are currently required, currently mixing std, linalg and gpu.
-class LowerToNVVMPass : public ::mlir::ModulePass<LowerToNVVMPass> {
+class LowerToNVVMPass
+    : public ::mlir::PassWrapper<
+          LowerToNVVMPass, ::mlir::OperationPass<::mlir::gpu::GPUModuleOp>> {
  public:
-  void runOnModule() override {
-    ::mlir::ModuleOp m = getModule();
-    if (!m.getAttrOfType<::mlir::UnitAttr>(
-            ::mlir::gpu::GPUDialect::getKernelModuleAttrName())) {
-      return;
-    }
+  void runOnOperation() override {
+    ::mlir::gpu::GPUModuleOp m = getOperation();
 
     ::mlir::OwningRewritePatternList patterns;
-    ::mlir::LinalgTypeConverter converter(m.getContext());
+    ::mlir::LLVMTypeConverter converter(m.getContext());
     ::mlir::populateStdToLLVMConversionPatterns(converter, patterns);
     // TODO(b/145824979) Remove linalg once sliceop is in std.
     ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns,
                                                    &getContext());
     ::mlir::populateGpuToNVVMConversionPatterns(converter, patterns);
-
+    ::mlir::populateAffineToStdConversionPatterns(patterns, m.getContext());
     ::mlir::ConversionTarget target(getContext());
     target.addIllegalDialect<::mlir::gpu::GPUDialect>();
     target.addIllegalOp<::mlir::LLVM::ExpOp>();
     target.addLegalDialect<::mlir::LLVM::LLVMDialect>();
     target.addLegalDialect<::mlir::NVVM::NVVMDialect>();
     // TODO(csigg): Remove once we support replacing non-root ops.
-    target.addLegalOp<::mlir::gpu::YieldOp>();
-    if (failed(applyPartialConversion(m, target, patterns, &converter))) {
+    target.addLegalOp<::mlir::gpu::GPUModuleOp, ::mlir::gpu::ModuleEndOp,
+                      ::mlir::gpu::YieldOp>();
+    if (failed(mlir::applyFullConversion(m, target, patterns, &converter))) {
       signalPassFailure();
     }
   }
@@ -355,12 +365,13 @@ Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
   EnableIRPrinting(&pm);
 
   // Rewrite kernel functions to LLVM IR.
-  auto& kernelPm = pm.nest<::mlir::ModuleOp>();
+  auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();
   kernelPm.addPass(::mlir::createLowerToCFGPass());
   kernelPm.addPass(absl::make_unique<LowerToNVVMPass>());
   // Some basic cleanup.
   kernelPm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   kernelPm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
+  kernelPm.addPass(::mlir::createStripDebugInfoPass());
 
   if (failed(pm.run(module))) {
     return InternalError("Lowering to NVVM IR failed.");
@@ -371,12 +382,9 @@ Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
 StatusOr<mlir::ModuleOp> ExtractKernelModule(mlir::ModuleOp module) {
   auto kernelModule = ::mlir::ModuleOp::create(module.getLoc());
   // TODO(b/137624192): This also needs to resolve naming conflicts.
-  module.walk([&kernelModule](mlir::ModuleOp nestedModule) {
-    if (nestedModule.getAttrOfType<mlir::UnitAttr>(
-            mlir::gpu::GPUDialect::getKernelModuleAttrName())) {
-      for (auto& fn : nestedModule) {
-        kernelModule.push_back(fn.clone());
-      }
+  module.walk([&kernelModule](mlir::gpu::GPUModuleOp nestedModule) {
+    for (auto& fn : nestedModule.body().front()) {
+      kernelModule.push_back(fn.clone());
     }
   });
   return kernelModule;

@@ -14,19 +14,27 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate_kernel.h"
 
-#include <algorithm>
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/hexagon_implementation.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/utils.h"
+#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 
 namespace {
+
+// Used to convert int8 <-> uint8.
+constexpr int kSameScaleEffectiveMultiplier = 1 << 30;
+constexpr int kSameScaleEffectiveShift = 1;
+constexpr int kInt8Uint8ZeroPointDiff = 128;
+
 inline const char* StateToString(
     HexagonDelegateKernel::HexagonKernelState state) {
   switch (state) {
@@ -57,15 +65,6 @@ inline uint64_t GetCycles(const hexagon_nn_perfinfo& perf_info) {
   res |= perf_info.counter_lo;
   return res;
 }
-
-// Comparator for hexagon_nn_perfinfo in descending order based on
-// total cycles consumed.
-struct PerfInfoCmp {
-  bool operator()(const hexagon_nn_perfinfo& a,
-                  const hexagon_nn_perfinfo& b) const {
-    return GetCycles(a) > GetCycles(b);
-  }
-};
 }  // namespace
 
 void HexagonDelegateKernel::ReportError(TfLiteContext* context,
@@ -136,13 +135,34 @@ TfLiteStatus HexagonDelegateKernel::Invoke(TfLiteContext* context,
   }
   // Allocate inputs.
   std::vector<hexagon_nn_tensordef> input_tensors;
-  for (auto tensor_index : TfLiteIntArrayView(node->inputs)) {
+  for (int input_idx = 0; input_idx < node->inputs->size; ++input_idx) {
+    const auto tensor_index = node->inputs->data[input_idx];
     if (tensor_index == kTfLiteOptionalTensor) {
       continue;
     }
     TfLiteTensor* tensor = &context->tensors[tensor_index];
-    // Const tensors should be added as const nodes during graph construction.
+    // Const tensors should have been handled at delegation time..
     if (tensor->allocation_type != kTfLiteMmapRo) {
+      char* data_ptr = tensor->data.raw;
+      if (tensor->type == kTfLiteInt8) {
+        // If input is int8, we first re-quantize it to uint8 for Hexagon.
+        if (int8_to_uint8_tensors_.size() <= input_idx ||
+            !int8_to_uint8_tensors_[input_idx]) {
+          TF_LITE_KERNEL_LOG(context,
+                             "Found int8 input %d with no uint8 version",
+                             tensor_index);
+          return kTfLiteError;
+        }
+        TfLiteTensor* uint8_tensor = int8_to_uint8_tensors_[input_idx];
+        optimized_ops::Requantize(
+            tensor->data.int8, NumElements(tensor),
+            kSameScaleEffectiveMultiplier, kSameScaleEffectiveShift,
+            tensor->params.zero_point,
+            tensor->params.zero_point + kInt8Uint8ZeroPointDiff,
+            uint8_tensor->data.uint8);
+        data_ptr = uint8_tensor->data.raw;
+      }
+
       if (tensor->dims->size > 4) {
         ReportError(context, HexagonKernelState::INPUT_RANK_NOT_SUPPORTED,
                     "Only up to 4d tensor are supported.");
@@ -150,7 +170,7 @@ TfLiteStatus HexagonDelegateKernel::Invoke(TfLiteContext* context,
       }
       input_tensors.emplace_back();
       auto& input_tensor = input_tensors.back();
-      input_tensor.data = reinterpret_cast<unsigned char*>(tensor->data.raw);
+      input_tensor.data = reinterpret_cast<unsigned char*>(data_ptr);
       input_tensor.dataLen = tensor->bytes;
       input_tensor.data_valid_len = tensor->bytes;
       TF_LITE_ENSURE_STATUS(
@@ -192,8 +212,22 @@ TfLiteStatus HexagonDelegateKernel::Invoke(TfLiteContext* context,
                 "Failed to execute graph.");
     return kTfLiteError;
   }
+
+  // Requantize uint8->int8 for eligible output tensors.
+  for (auto tensor_index : TfLiteIntArrayView(node->outputs)) {
+    TfLiteTensor* tensor = &context->tensors[tensor_index];
+    if (tensor->allocation_type != kTfLiteMmapRo &&
+        tensor->type == kTfLiteInt8) {
+      optimized_ops::Requantize(
+          tensor->data.uint8, NumElements(tensor),
+          kSameScaleEffectiveMultiplier, kSameScaleEffectiveShift,
+          tensor->params.zero_point + kInt8Uint8ZeroPointDiff,
+          tensor->params.zero_point, tensor->data.int8);
+    }
+  }
+
   if (params_.print_graph_profile) {
-    PrintPerformanceData();
+    PrintPerformanceData(reinterpret_cast<Profiler*>(context->profiler));
   }
   return kTfLiteOk;
 }
@@ -232,6 +266,35 @@ TfLiteStatus HexagonDelegateKernel::Prepare(TfLiteContext* context,
     }
   }
 
+  // Assign temporary tensors for any input int8 tensors.
+  std::vector<int> temporary_tensors;
+  int8_to_uint8_tensors_.clear();
+  int8_to_uint8_tensors_.reserve(node->inputs->size);
+  for (auto tensor_index : TfLiteIntArrayView(node->inputs)) {
+    TfLiteTensor* tensor = &context->tensors[tensor_index];
+    // For every int8 tensor, we need to create a new temporary uint8 tensor.
+    if (tensor->allocation_type != kTfLiteMmapRo &&
+        tensor->type == kTfLiteInt8) {
+      TfLiteTensor* uint8_tensor;
+      int uint8_tensor_index;
+      TF_LITE_ENSURE_STATUS(delegates::CreateNewTensorWithDifferentType(
+          context, tensor_index, kTfLiteUInt8, &uint8_tensor,
+          &uint8_tensor_index));
+      int8_to_uint8_tensors_.push_back(uint8_tensor);
+      temporary_tensors.push_back(uint8_tensor_index);
+    } else {
+      int8_to_uint8_tensors_.push_back(nullptr);
+    }
+  }
+  if (!temporary_tensors.empty()) {
+    // This ensures the runtime allocates memory for every required temporary
+    // tensor.
+    node->temporaries = TfLiteIntArrayCreate(temporary_tensors.size());
+    for (int i = 0; i < temporary_tensors.size(); ++i) {
+      node->temporaries->data[i] = temporary_tensors[i];
+    }
+  }
+
   if (params_.print_graph_debug) {
     PrintDebuggingGraph();
   }
@@ -253,7 +316,8 @@ TfLiteStatus HexagonDelegateKernel::BuildGraph(
   for (int node_index : nodes_) {
     TF_LITE_ENSURE_STATUS(
         context->GetNodeAndRegistration(context, node_index, &node, &reg));
-    auto* op_builder = builder_->AddNodeFromTfLiteOp(reg->builtin_code, node);
+    auto* op_builder =
+        builder_->AddNodeFromTfLiteOp(reg->builtin_code, node, node_index);
     TF_LITE_ENSURE_STATUS(
         op_builder->PopulateSubGraph(node->inputs, node->outputs, context));
     TF_LITE_ENSURE_STATUS(op_builder->RegisterOutputs(node->outputs, context));
@@ -284,33 +348,23 @@ void HexagonDelegateKernel::PrintLog() {
   fflush(stdout);
 }
 
-void HexagonDelegateKernel::PrintPerformanceData() {
+void HexagonDelegateKernel::PrintPerformanceData(Profiler* profiler) {
+  if (profiler == nullptr) {
+    return;
+  }
   const int kMaxNodes = 2048;
   const int kMaxNameLen = 100;
   std::vector<hexagon_nn_perfinfo> perf_data(kMaxNodes);
   std::vector<char> op_name(kMaxNameLen);
-  uint64_t total_cycles = 0;
-  uint64_t cum_cycles = 0;
   uint64_t counter = 0;
   unsigned int num_nodes;
-  printf("------- Performance Debug Data Start -------\n");
   if (hexagon_nn_->hexagon_nn_get_perfinfo(graph_id_, perf_data.data(),
                                            kMaxNodes, &num_nodes) != 0) {
     printf("Failed fetching perf data.\n");
     return;
   }
-  printf("Total %d nodes.\n", num_nodes);
-  std::sort(perf_data.begin(), perf_data.begin() + num_nodes, PerfInfoCmp());
-  for (int i = 0; i < num_nodes; i++) {
-    total_cycles += GetCycles(perf_data[i]);
-  }
-  printf("Total %lu cycles\n", static_cast<unsigned long>(total_cycles));
-  printf(
-      "Node ID,\tOP Name,\tExecutions,\tCycles,\t%% of total,\tCummulative "
-      "cycles,\tCummulative %%\n");
   for (int i = 0; i < num_nodes; i++) {
     counter = GetCycles(perf_data[i]);
-    cum_cycles += counter;
     int op_type_id = builder_->GetOpTypeId(perf_data[i].node_id);
     if (op_type_id >= 0 && hexagon_nn_->hexagon_nn_op_id_to_name(
                                op_type_id, op_name.data(), kMaxNameLen) != 0) {
@@ -318,14 +372,13 @@ void HexagonDelegateKernel::PrintPerformanceData() {
              op_type_id);
       continue;
     }
-    printf("0x%x,\t%s,\t%d,\t%lu,\t%f %%,\t%lu,\t%f %%\n", perf_data[i].node_id,
-           (op_type_id < 0 ? "" : op_name.data()), perf_data[i].executions,
-           static_cast<unsigned long>(counter),
-           100.0 * (1.0 * counter / total_cycles),
-           static_cast<unsigned long>(cum_cycles),
-           100.0 * (1.0 * cum_cycles / total_cycles));
+    int node_id = builder_->GetTFLiteNodeID(perf_data[i].node_id);
+    if (node_id != -1 && op_type_id >= 0) {
+      profiler->AddEvent((op_type_id < 0 ? "" : op_name.data()),
+                         Profiler::EventType::OPERATOR_INVOKE_EVENT, node_id, 0,
+                         counter);
+    }
   }
-  printf("------- Performance Debug Data End -------\n");
 }
 
 void HexagonDelegateKernel::PrintDebuggingGraph() {

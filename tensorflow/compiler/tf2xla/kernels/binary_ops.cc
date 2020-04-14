@@ -256,6 +256,39 @@ XLA_MAKE_BINARY(SquaredDifference,
                 SquaredDifferenceImpl(input_type(0), lhs, rhs,
                                       extend_dimensions));
 
+xla::XlaOp IgammaImpl(xla::XlaOp x, xla::XlaOp y,
+                      const BCast& broadcast_helper) {
+  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
+  return xla::Igamma(x, y);
+}
+
+XLA_MAKE_BINARY(Igamma, IgammaImpl(lhs, rhs, broadcast_helper));
+
+xla::XlaOp IgammaGradAImpl(xla::XlaOp x, xla::XlaOp y,
+                           const BCast& broadcast_helper) {
+  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
+  return xla::IgammaGradA(x, y);
+}
+
+XLA_MAKE_BINARY(IgammaGradA, IgammaGradAImpl(lhs, rhs, broadcast_helper));
+
+xla::XlaOp RandomGammaGradImpl(xla::XlaOp x, xla::XlaOp y,
+                               const BCast& broadcast_helper) {
+  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
+  return xla::RandomGammaGrad(x, y);
+}
+
+XLA_MAKE_BINARY(RandomGammaGrad,
+                RandomGammaGradImpl(lhs, rhs, broadcast_helper));
+
+xla::XlaOp IgammacImpl(xla::XlaOp x, xla::XlaOp y,
+                       const BCast& broadcast_helper) {
+  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
+  return xla::Igammac(x, y);
+}
+
+XLA_MAKE_BINARY(Igammac, IgammacImpl(lhs, rhs, broadcast_helper));
+
 #undef XLA_MAKE_BINARY
 
 class ApproximateEqualOp : public XlaOpKernel {

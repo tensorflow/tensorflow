@@ -34,15 +34,18 @@ and the following optional parameters:
 *   `run_delay`: `float` (default=-1.0) \
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
+*   `use_xnnpack`: `bool` (default=false) \
+    Whether to use the XNNPack delegate.
 *   `use_hexagon`: `bool` (default=false) \
     Whether to use the Hexagon delegate. Not all devices may support the Hexagon
     delegate, refer to the TensorFlow Lite documentation for more information
-    about which devices/chipsets are supported and about how to get the
-    required libraries. To use the Hexagon delegate also build the
+    about which devices/chipsets are supported and about how to get the required
+    libraries. To use the Hexagon delegate also build the
     hexagon_nn:libhexagon_interface.so target and copy the library to the
     device. All libraries should be copied to /data/local/tmp on the device.
 *   `use_nnapi`: `bool` (default=false) \
-    Whether to use [Android NNAPI](https://developer.android.com/ndk/guides/neuralnetworks/).
+    Whether to use
+    [Android NNAPI](https://developer.android.com/ndk/guides/neuralnetworks/).
     This API is available on recent Android devices. Note that some Android P
     devices will fail to use NNAPI for models in `/data/local/tmp/` and this
     benchmark tool will not correctly use NNAPI. When on Android Q+, will also
@@ -53,9 +56,10 @@ and the following optional parameters:
     blank, NNAPI will automatically select which of the available accelerators
     to use.
 *   `nnapi_execution_preference`: `string` (default="") \
-    Which [NNAPI execution preference](https://developer.android.com/ndk/reference/group/neural-networks.html#group___neural_networks_1gga034380829226e2d980b2a7e63c992f18af727c25f1e2d8dcc693c477aef4ea5f5)
-    to use when executing using NNAPI. Should be one of the
-    following: fast_single_answer, sustained_speed, low_power, undefined.
+    Which
+    [NNAPI execution preference](https://developer.android.com/ndk/reference/group/neural-networks.html#group___neural_networks_1gga034380829226e2d980b2a7e63c992f18af727c25f1e2d8dcc693c477aef4ea5f5)
+    to use when executing using NNAPI. Should be one of the following:
+    fast_single_answer, sustained_speed, low_power, undefined.
 *   `use_legacy_nnapi`: `bool` (default=false) \
     Whether to use the legacy
     [Android NNAPI](https://developer.android.com/ndk/guides/neuralnetworks/)
@@ -63,15 +67,43 @@ and the following optional parameters:
     This is available on recent Android devices. Note that some Android P
     devices will fail to use NNAPI for models in `/data/local/tmp/` and this
     benchmark tool will not correctly use NNAPI.
+*   `max_delegated_partitions`: `int` (default=0, i.e. no limit) \
+    The maximum number of partitions that will be delegated. \
+    Currently supported only by the NNAPI Delegate and it won't work \
+    if `use_legacy_nnapi` has been selected.
+*   `disable_nnapi_cpu`: `bool` (default=false) \
+    Excludes the
+    [NNAPI CPU reference implementation](https://developer.android.com/ndk/guides/neuralnetworks#device-assignment)
+    from the possible devices to be used by NNAPI to execute the model. This
+    option is ignored if `nnapi_accelerator_name` is specified.
 *   `use_gpu`: `bool` (default=false) \
-    Whether to use the [GPU accelerator delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/gpu).
+    Whether to use the
+    [GPU accelerator delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/gpu).
     This option is currently only available on Android and iOS devices.
 *   `gpu_wait_type`: `str` (default="") \
     Which GPU wait_type option to use, when using GPU delegate on iOS. Should be
     one of the following: passive, active, do_not_wait, aggressive. When left
     blank, passive mode is used by default.
+*   `use_coreml`: `bool` (default=false) \
+    Whether to use the [Core ML delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/delegates/coreml).
+    This option is only available in iOS.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
+*   `enable_platform_tracing`: `bool` (default=false) \
+    Whether to enable platform-wide tracing. Needs to be combined with
+    'enable_op_profiling'. Note, the platform-wide tracing might not work if the
+    tool runs as a commandline native binary. For example, on Android, the
+    ATrace-based tracing only works when the tool is launched as an APK.
+*   `hexagon_profiling`: `bool` (default=false) \
+    Whether to profile ops running on hexagon. Needs to be combined with
+    `enable_op_profiling`. When this is set to true the profile of ops on
+    hexagon DSP will be added to the profile table. Note that, the reported data
+    on hexagon is in cycles, not in ms like on cpu.
+*   `external_delegate_path`: `string` (default="") \
+    Path to the external delegate library to use.
+*   `external_delegate_options`: `string` (default="") \
+    A list of options to be passed to the external delegate library. Options
+    should be in the format of `option1:value1;option2:value2;optionN:valueN`
 
 ## To build/install/run
 
@@ -83,8 +115,7 @@ and the following optional parameters:
 
 ```
 bazel build -c opt \
-  --config=android_arm \
-  --cxxopt='--std=c++11' \
+  --config=android_arm64 \
   tensorflow/lite/tools/benchmark:benchmark_model
 ```
 
@@ -112,7 +143,7 @@ adb push mobilenet_quant_v1_224.tflite /data/local/tmp
 That step is only needed when using the Hexagon delegate.
 
 ```
-bazel build --config=android_arm \
+bazel build --config=android_arm64 \
   tensorflow/lite/experimental/delegates/hexagon/hexagon_nn:libhexagon_interface.so
 adb push bazel-bin/tensorflow/lite/experimental/delegates/hexagon/hexagon_nn/libhexagon_interface.so /data/local/tmp
 adb push libhexagon_nn_skel*.so /data/local/tmp

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/no_op.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
@@ -64,6 +65,10 @@ class MklRequantizePerChannelOp : public OpKernel {
 
       size_t depth = input_min_vec.NumElements();
       OP_REQUIRES(
+          ctx, input.dims() == 4,
+          errors::InvalidArgument("Current RequantizePerChannel operator"
+                                  "supports 4D tensors only."));
+      OP_REQUIRES(
           ctx, input_min_vec.dim_size(0) == depth,
           errors::InvalidArgument("input_min has incorrect size, expected ",
                                   depth, " was ", input_min_vec.dim_size(0)));
@@ -96,18 +101,13 @@ class MklRequantizePerChannelOp : public OpKernel {
       memory::dims dims_mkl_order =
           TFShapeToMklDnnDimsInNCHW(input.shape(), FORMAT_NHWC);
       memory::desc input_md = memory::desc(dims_mkl_order, MklDnnType<qint32>(),
-                                           memory::format::nhwc);
+                                           MEMORY_FORMAT::nhwc);
       memory::desc output_md =
           (out_type_ == DT_QINT8)
               ? memory::desc(dims_mkl_order, MklDnnType<qint8>(),
-                             memory::format::nhwc)
+                             MEMORY_FORMAT::nhwc)
               : memory::desc(dims_mkl_order, MklDnnType<quint8>(),
-                             memory::format::nhwc);
-
-      memory::primitive_desc input_pd =
-          memory::primitive_desc(input_md, cpu_engine_);
-      memory::primitive_desc output_pd =
-          memory::primitive_desc(output_md, cpu_engine_);
+                             MEMORY_FORMAT::nhwc);
 
       void* input_buf =
           static_cast<void*>(const_cast<qint32*>(input.flat<qint32>().data()));
@@ -120,16 +120,28 @@ class MklRequantizePerChannelOp : public OpKernel {
             const_cast<quint8*>(output->flat<quint8>().data()));
       }
 
-      std::unique_ptr<memory> input_mem_prim_(new memory(input_pd, input_buf));
-      std::unique_ptr<memory> output_mem_prim_(
-          new memory(output_pd, output_buf));
+      std::unique_ptr<memory> input_mem_prim(
+          new MEMORY_CONSTRUCTOR_USING_MD(input_md, cpu_engine_, input_buf));
+      std::unique_ptr<memory> output_mem_prim(
+          new MEMORY_CONSTRUCTOR_USING_MD(output_md, cpu_engine_, output_buf));
 
       mkldnn::reorder::primitive_desc reorder_pd =
-          mkldnn::reorder::primitive_desc(input_pd, output_pd, reorder_attr);
-      std::vector<mkldnn::primitive> net;
-      net.push_back(
-          mkldnn::reorder(reorder_pd, *input_mem_prim_, *output_mem_prim_));
-      stream(stream::kind::eager).submit(net).wait();
+          REORDER_PD_CONSTRUCTOR_WITH_ATTR(
+              GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(input_mem_prim),
+              GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(output_mem_prim),
+              cpu_engine_, reorder_attr);
+      mkldnn::stream reorder_stream = CPU_STREAM(cpu_engine_);
+#ifndef ENABLE_MKLDNN_V1
+      reorder_stream.submit(
+          {mkldnn::reorder(reorder_pd, *input_mem_prim, *output_mem_prim)});
+#else
+      std::unordered_map<int, mkldnn::memory> reorder_args = {
+          {MKLDNN_ARG_FROM, *input_mem_prim},
+          {MKLDNN_ARG_TO, *output_mem_prim}};
+      std::unique_ptr<mkldnn::primitive> reorder_prim(
+          new mkldnn::reorder(reorder_pd));
+      reorder_prim->execute(reorder_stream, reorder_args);
+#endif  // !ENABLE_MKLDNN_V1
 
       Tensor* output_min = nullptr;
       Tensor* output_max = nullptr;
@@ -159,7 +171,7 @@ class MklRequantizePerChannelOp : public OpKernel {
   const int kOutputMinIndex = 1;
   const int kOutputMaxIndex = 2;
   DataType out_type_;
-  engine cpu_engine_ = engine(engine::cpu, 0);
+  engine cpu_engine_ = engine(ENGINE_CPU, 0);
 };
 
 // Registration for out_type: qint8

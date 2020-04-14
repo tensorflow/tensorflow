@@ -20,13 +20,13 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Support/CommandLine.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Identifier.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 
 // The cmd line flag to specify the whitelist of functions. Rest are trimmed
@@ -44,21 +44,22 @@ namespace {
 
 // The pass to trim functions before we legalize to TFL
 // dialect using the specified whitelist.
-class TrimFunctionsPass : public mlir::ModulePass<TrimFunctionsPass> {
+class TrimFunctionsPass
+    : public mlir::PassWrapper<TrimFunctionsPass, OperationPass<ModuleOp>> {
  public:
   explicit TrimFunctionsPass() : trim_funcs_whitelist_(trim_funcs_whitelist) {}
   explicit TrimFunctionsPass(llvm::ArrayRef<std::string> trim_funcs_whitelist)
       : trim_funcs_whitelist_(trim_funcs_whitelist) {}
 
  private:
-  void runOnModule() override;
+  void runOnOperation() override;
   bool TrimModule();
   void Verify();
 
   llvm::ArrayRef<std::string> trim_funcs_whitelist_;
 };
 
-void TrimFunctionsPass::runOnModule() {
+void TrimFunctionsPass::runOnOperation() {
   // trim the functions in the module using the trim_funcs_whitelist_
   // by removing functions not in the whitelist.
   if (TrimModule()) {
@@ -73,7 +74,7 @@ bool TrimFunctionsPass::TrimModule() {
   if (trim_funcs_whitelist_.empty()) return false;
 
   llvm::SmallVector<FuncOp, 4> funcs_to_trim;
-  for (auto func : getModule().getOps<FuncOp>()) {
+  for (auto func : getOperation().getOps<FuncOp>()) {
     if (llvm::is_contained(trim_funcs_whitelist_, func.getName())) {
       // If no main is specified in the whitelist, use the 1st func
       // in trim_funcs_whitelist as the main.
@@ -102,12 +103,12 @@ bool TrimFunctionsPass::TrimModule() {
 void TrimFunctionsPass::Verify() {
   // TODO(ashwinm): Instead, we should make sure that references to all
   // SymbolRefAttrs of all ops are present.
-  SymbolTable symbol_table = SymbolTable(getModule());
+  SymbolTable symbol_table = SymbolTable(getOperation());
   llvm::SetVector<FuncOp> reachable_funcs;
-  for (auto func : getModule().getOps<FuncOp>()) {
+  for (auto func : getOperation().getOps<FuncOp>()) {
     auto walk_result = func.walk([&](CallOp op) -> WalkResult {
       if (!symbol_table.lookup<FuncOp>(op.getCallee()))
-        return getModule().emitError()
+        return getOperation().emitError()
                << func.getName() << " is not in the funcs whitelist";
       return WalkResult::advance();
     });
@@ -119,7 +120,7 @@ void TrimFunctionsPass::Verify() {
 
 // Creates an instance of the TensorFlow Lite dialect TrimFunctions
 /// pass.
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTrimFunctionsPass(
+std::unique_ptr<OperationPass<ModuleOp>> CreateTrimFunctionsPass(
     llvm::ArrayRef<std::string> trim_funcs_whitelist) {
   return std::make_unique<TrimFunctionsPass>(trim_funcs_whitelist);
 }

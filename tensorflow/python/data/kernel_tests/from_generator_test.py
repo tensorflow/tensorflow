@@ -122,7 +122,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     # The interleave transformation is essentially a flat map that
     # draws from multiple input datasets concurrently (in a cyclic
-    # fashion). By placing `Datsaet.from_generator()` inside an
+    # fashion). By placing `Dataset.from_generator()` inside an
     # interleave, we test its behavior when multiple iterators are
     # active at the same time; by additionally prefetching inside the
     # interleave, we create the possibility of parallel (modulo GIL)
@@ -225,6 +225,24 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
         generator, output_types=dtypes.string, output_shapes=[])
     self.assertDatasetProduces(
         dataset, expected_output=[b"foo", b"bar", b"baz"])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testFromGeneratorDatastructures(self):
+    # Tests multiple datastructures.
+    def generator():
+      yield {"a": "foo", "b": [1, 2], "c": (9,)}
+      yield {"a": "bar", "b": [3], "c": (7, 6)}
+      yield {"a": "baz", "b": [5, 6], "c": (5, 4)}
+
+    dataset = dataset_ops.Dataset.from_generator(
+        generator,
+        output_types={"a": dtypes.string, "b": dtypes.int32, "c": dtypes.int32},
+        output_shapes={"a": [], "b": [None], "c": [None]})
+    self.assertDatasetProduces(
+        dataset,
+        expected_output=[{"a": b"foo", "b": [1, 2], "c": [9]},
+                         {"a": b"bar", "b": [3], "c": [7, 6]},
+                         {"a": b"baz", "b": [5, 6], "c": [5, 4]}])
 
   @combinations.generate(test_base.default_test_combinations())
   def testFromGeneratorTypeError(self):
@@ -427,6 +445,30 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset, requires_initialization=True, shared_name="shared_dataset")
 
     self.assertAllEqual([20], self.evaluate(get_next()))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testTypeIsListError(self):
+
+    def generator():
+      for _ in range(10):
+        yield [20]
+
+    with self.assertRaisesRegexp(
+        TypeError, r"Cannot convert value \[tf.int64\] to a TensorFlow DType"):
+      dataset_ops.Dataset.from_generator(
+          generator, output_types=[dtypes.int64])
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testDimensionIsListError(self):
+
+    def generator():
+      for _ in range(10):
+        yield [20]
+
+    with self.assertRaisesRegexp(
+        TypeError, r"Failed to convert '\[\[1\]\]' to a shape"):
+      dataset_ops.Dataset.from_generator(
+          generator, output_types=(dtypes.int64), output_shapes=[[1]])
 
 
 if __name__ == "__main__":

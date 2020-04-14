@@ -22,6 +22,7 @@ import sys
 
 import six
 
+from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.ops import dataset_ops
@@ -53,13 +54,16 @@ def get_distributed_dataset(dataset,
                             strategy,
                             split_batch_by=None,
                             input_context=None):
-  """Returns a wrapped tf.data.DatasetV1 or tf.data.DatasetV2 instance.
+  """Returns a distributed dataset from the given tf.data.Dataset instance.
 
-  This is a common function that is used by all strategies to return the right
-  tf.data.Dataset wrapped instance depending on the `dataset` argument type.
+  This is a common function that is used by all strategies to return a
+  distributed dataset. The distributed dataset instance returned is different
+  depending on if we are in a TF 1 or TF 2 context. The distributed dataset
+  instances returned differ from each other in the APIs supported by each of
+  them.
 
   Args:
-    dataset: a tf.data.DatasetV1 or tf.data.DatasetV2 instance.
+    dataset: a tf.data.Dataset instance.
     input_workers: an InputWorkers object which specifies devices on which
         iterators should be created.
     strategy: a `tf.distribute.Strategy` object, used to run all-reduce to
@@ -72,17 +76,17 @@ def get_distributed_dataset(dataset,
         `num_input_pipelines` in the `InputContext`.
 
   Returns:
-    A wrapped tf.data.DatasetV1 or tf.data.DatasetV2 instance.
+    A distributed dataset instance.
   """
-  if isinstance(dataset, dataset_ops.DatasetV1):
-    return DistributedDatasetV1(
+  if tf2.enabled():
+    return DistributedDataset(
         dataset,
         input_workers,
         strategy,
         split_batch_by=split_batch_by,
         input_context=input_context)
   else:
-    return DistributedDataset(
+    return DistributedDatasetV1(
         dataset,
         input_workers,
         strategy,
@@ -94,15 +98,16 @@ def get_distributed_datasets_from_function(dataset_fn,
                                            input_workers,
                                            input_contexts,
                                            strategy):
-  """Returns a wrapped tf.data.DatasetV1 or tf.data.DatasetV2 instance.
+  """Returns a distributed dataset from the given input function.
 
-  This is a common function that is used by all strategies to return the right
-  tf.data.Dataset wrapped instance depending on if we are in graph or eager
-  mode.
+  This is a common function that is used by all strategies to return a
+  distributed dataset. The distributed dataset instance returned is different
+  depending on if we are in a TF 1 or TF 2 context. The distributed dataset
+  instances returned differ from each other in the APIs supported by each of
+  them.
 
   Args:
-    dataset_fn: a function that returns a tf.data.DatasetV1 or tf.data.DatasetV2
-        instance.
+    dataset_fn: a function that returns a tf.data.Dataset instance.
     input_workers: an InputWorkers object which specifies devices on which
         iterators should be created.
     input_contexts: A list of `InputContext` instances to be passed to call(s)
@@ -112,9 +117,9 @@ def get_distributed_datasets_from_function(dataset_fn,
         handle last partial batch.
 
   Returns:
-    A wrapped tf.data.DatasetV1 or tf.data.DatasetV2 instance.
+    A distributed dataset instance.
   """
-  if ops.executing_eagerly_outside_functions():
+  if tf2.enabled():
     return DistributedDatasetsFromFunction(
         dataset_fn,
         input_workers,
@@ -176,7 +181,7 @@ def _get_next_as_optional(iterator, strategy, name=None):
     with ops.device(worker):
       worker_has_value, next_element = (
           iterator._iterators[i].get_next_as_list(new_name))  # pylint: disable=protected-access
-      # Collective all-reduce requires explict devices for inputs.
+      # Collective all-reduce requires explicit devices for inputs.
       with ops.device("/cpu:0"):
         # Converting to integers for all-reduce.
         worker_has_value = math_ops.cast(worker_has_value, dtypes.int32)
@@ -202,6 +207,30 @@ def _get_next_as_optional(iterator, strategy, name=None):
   return global_has_value, replicas
 
 
+def _is_statically_shaped(tensor_class, shape):
+  """Test if an iteratort output is statically shaped.
+
+  For sparse and ragged tensors this only tests the batch dimension.
+
+  Args:
+    tensor_class: a class from an iterator.output_classes list.
+    shape: a TensorShape from an iterator.output_shapes list.
+
+  Returns:
+    True if the shape is static, false otherwise.
+  """
+  if (tensor_class == sparse_tensor.SparseTensor or
+      isinstance(tensor_class, ragged_tensor.RaggedTensorSpec)):
+    # For sparse or ragged tensor, we should only check the first
+    # dimension in order to get_next_as_optional. This is because
+    # when these tensors get batched by dataset only the batch dimension
+    # is set.
+    if shape.rank > 0 and shape.as_list()[0] is None:
+      return False
+    return True
+  return shape.is_fully_defined()
+
+
 class DistributedIterator(object):
   """Common implementation for all input iterators."""
 
@@ -210,9 +239,10 @@ class DistributedIterator(object):
     for iterator in iterators:
       if not isinstance(iterator, _SingleWorkerDatasetIterator):
         continue
-      flattened_shapes = nest.flatten(iterator.output_shapes)
-      for output_shape in flattened_shapes:
-        if not output_shape.is_fully_defined():
+      flattened = zip(nest.flatten(iterator.output_shapes),
+                      nest.flatten(iterator.output_classes))
+      for output_shape, output_class in flattened:
+        if not _is_statically_shaped(output_class, output_shape):
           static_shape = False
           break
 
@@ -347,7 +377,7 @@ class DistributedIterator(object):
 
 
 class DistributedIteratorV1(DistributedIterator):
-  """Input Iterator for tf.data.DatasetV1."""
+  """Input Iterator for a distributed dataset instance."""
 
   @deprecated(None, "Use the iterator's `initializer` property instead.")
   def initialize(self):
@@ -426,7 +456,7 @@ class _IterableInput(object):
 
 
 class DistributedDataset(_IterableInput):
-  """Wrapped tf.data.DatasetV2 that supports prefetching to multiple devices."""
+  """Distributed dataset that supports prefetching to multiple devices."""
 
   def __init__(self,
                dataset,
@@ -530,7 +560,7 @@ class DistributedDataset(_IterableInput):
 
 
 class DistributedDatasetV1(DistributedDataset):
-  """Wrapped tf.data.DatasetV1 that supports prefetching to multiple devices."""
+  """Distributed dataset that supports prefetching to multiple devices."""
 
   def __init__(self,
                dataset,
@@ -1205,4 +1235,3 @@ def _create_distributed_tensor_spec(strategy, tensor_spec):
     return values.PerReplicaSpec(*value_specs)
 
   return nest.map_structure(_get_value_per_replica, tensor_spec)
-

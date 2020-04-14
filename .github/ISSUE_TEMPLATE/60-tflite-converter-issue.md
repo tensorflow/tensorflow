@@ -1,6 +1,7 @@
 ---
 name: TensorFlow Lite New Converter Issue
-about: Use this template for reporting issues during model conversion to TFLite.
+about: Use this template for reporting issues during model conversion to TFLite
+labels: 'TFLiteConverter'
 
 ---
 
@@ -12,6 +13,7 @@ about: Use this template for reporting issues during model conversion to TFLite.
 
 
 **Command used to run the converter or code if you’re using the Python API**
+If possible, please share a link to Colab/Jupyter/any notebook.
 
 ```
 # Copy and paste here the exact command

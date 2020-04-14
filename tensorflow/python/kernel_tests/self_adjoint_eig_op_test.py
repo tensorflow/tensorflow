@@ -104,7 +104,7 @@ def EquilibrateEigenVectorPhases(x, y):
   """Equilibrate the phase of the Eigenvectors in the columns of `x` and `y`.
 
   Eigenvectors are only unique up to an arbitrary phase. This function rotates x
-  such that it matches y. Precondition: The coluns of x and y differ by a
+  such that it matches y. Precondition: The columns of x and y differ by a
   multiplicative complex phase factor only.
 
   Args:
@@ -240,10 +240,10 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_, compute_v_):
 
 
 if __name__ == "__main__":
-  dtypes_to_test = [dtypes_lib.float32, dtypes_lib.float64]
-  if not test.is_built_with_rocm():
-    # ROCm does not support BLAS operations for complex types
-    dtypes_to_test += [dtypes_lib.complex64, dtypes_lib.complex128]
+  dtypes_to_test = [
+      dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.complex64,
+      dtypes_lib.complex128
+  ]
   for compute_v in True, False:
     for dtype in dtypes_to_test:
       for size in 1, 2, 5, 10:

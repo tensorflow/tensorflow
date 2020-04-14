@@ -291,12 +291,6 @@ void NoActivation() {
 
 template <TensorType tensor_type, typename integer_dtype>
 void NoActivationLargeMultiplier() {
-  // TODO(b/138722124): Remove this after setting the appropriate op version (3)
-  // for dependent tests.
-  if (SingleOpModel::GetForceUseNnapi()) {
-    // NNAPI doesn't currently support Mul with multiplier>1.
-    return;
-  }
   // Intentionally pathological output range much narrower than needed
   // to represent input values to exercise the multiplier>1 case.
   QuantizedMulOpModel m({tensor_type, {1, 2, 2, 1}, -100, 100},
@@ -335,6 +329,27 @@ TEST(QuantizedMulOpTest, NoActivationInt16) {
   EXPECT_THAT(m.GetDequantizedOutputInt16(),
               ElementsAreArray(ArrayFloatNear({-0.48, 0.08, 0.81, 0.56},
                                               kQuantizedToleranceInt16)));
+}
+
+TEST(QuantizedMulOpTest, NoActivationInt16Scaled) {
+  const float kMin = -2.f;
+  const float kMax = 2.f * 32767.f / 32768.f;
+  QuantizedMulOpModel m({TensorType_INT16, {1, 2, 3, 1}, kMin, kMax},
+                        {TensorType_INT16, {1, 2, 3, 1}, 2 * kMin, 2 * kMax},
+                        {TensorType_INT16, {}, 8 * kMin, 8 * kMax},
+                        ActivationFunctionType_NONE);
+  m.QuantizeAndPopulate<int16_t>(m.input1(), {-1.8, 0.2, 0.9, 1.7, 0.1, -1.95});
+  m.QuantizeAndPopulate<int16_t>(m.input2(),
+                                 {3.6, -3.4, 3.9, 0.8, -1.0, -3.95});
+  m.Invoke();
+
+  const float kQuantizedToleranceInt16Scaled =
+      6.0 * kQuantizedStepInt16 + kQuantizedStepInt16 * kQuantizedStepInt16;
+
+  EXPECT_THAT(
+      m.GetDequantizedOutputInt16(),
+      ElementsAreArray(ArrayFloatNear({-6.48, -0.68, 3.51, 1.36, -0.1, 7.7025},
+                                      kQuantizedToleranceInt16Scaled)));
 }
 
 template <TensorType tensor_type, typename integer_dtype>

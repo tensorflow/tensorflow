@@ -142,7 +142,8 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
 
   Tensor TempChunk(int i) const override {
     AllocationAttributes empty;
-    MEMDEBUG_CACHE_OP("CollectiveAdapterImpl::TempChunk");
+    ScopedMemoryDebugAnnotation op_annotation(
+        "CollectiveAdapterImpl::TempChunk");
     return Tensor(allocator_, dt_, {ChunkElts(i)}, empty);
   }
 
@@ -296,6 +297,14 @@ Status BaseCollectiveExecutor::CreateCollective(
           << col_params.instance.impl_details.collective_name;
   *col_impl = nullptr;
   switch (col_params.instance.data_type) {
+    case DT_BOOL:
+      if (col_params.instance.type == BROADCAST_COLLECTIVE) {
+        return CollectiveRegistry::Lookup(
+            col_params.instance.impl_details.collective_name, col_impl);
+      } else {
+        return errors::Internal(
+            "No collective other than broadcast supports DT_BOOL");
+      }
     case DT_INT32:
       if (col_params.group.device_type == DEVICE_GPU &&
           col_params.instance.type == REDUCTION_COLLECTIVE) {
@@ -303,8 +312,10 @@ Status BaseCollectiveExecutor::CreateCollective(
         return errors::Internal(
             "Collective all-reduce does not support datatype DT_INT32 on "
             "DEVICE_GPU");
+      } else {
+        return CollectiveRegistry::Lookup(
+            col_params.instance.impl_details.collective_name, col_impl);
       }
-      TF_FALLTHROUGH_INTENDED;
     case DT_HALF:
     case DT_FLOAT:
     case DT_DOUBLE:

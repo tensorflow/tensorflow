@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 
 import numpy as np
 import six
@@ -150,7 +151,7 @@ class TypeSpec(object):
 
     Args:
       components: A nested structure of `tf.Tensor` or `tf.CompositeTensor`,
-        compatible with `self._component_specs`.  (Caller is repsonsible for
+        compatible with `self._component_specs`.  (Caller is responsible for
         ensuring compatibility.)
 
     Returns:
@@ -373,7 +374,7 @@ class TypeSpec(object):
     * If they are both dicts with the same keys, then recursively combine
       the respective dict elements.
     * If they are both TypeSpecs, then combine using
-      TypeSpec.most_specific_comptible_type.
+      TypeSpec.most_specific_compatible_type.
     * If they are both TensorShapes, then combine using
       TensorShape.most_specific_compatible_shape.
     * If they are both TensorSpecs with the same dtype, then combine using
@@ -398,6 +399,15 @@ class TypeSpec(object):
         raise ValueError("Types are not compatible: %r vs %r" % (a, b))
       return tuple(TypeSpec.__most_specific_compatible_type_serialization(x, y)
                    for (x, y) in zip(a, b))
+    if isinstance(a, collections.OrderedDict):
+      a_keys, b_keys = a.keys(), b.keys()
+      if len(a) != len(b) or a_keys != b_keys:
+        raise ValueError("Types are not compatible: %r vs %r" % (a, b))
+      return collections.OrderedDict([
+          (k,
+           TypeSpec.__most_specific_compatible_type_serialization(a[k], b[k]))
+          for k in a_keys
+      ])
     if isinstance(a, dict):
       a_keys, b_keys = sorted(a.keys()), sorted(b.keys())
       if len(a) != len(b) or a_keys != b_keys:

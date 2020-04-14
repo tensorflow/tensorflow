@@ -84,7 +84,6 @@ struct NumTraits<tensorflow::bfloat16>
   }
 };
 
-#ifdef USE_TSTRING
 template <>
 struct NumTraits<tensorflow::tstring> : GenericNumTraits<tensorflow::tstring> {
   enum {
@@ -104,7 +103,6 @@ struct NumTraits<tensorflow::tstring> : GenericNumTraits<tensorflow::tstring> {
   static inline tensorflow::tstring infinity();
   static inline tensorflow::tstring quiet_NaN();
 };
-#endif  // USE_TSTRING
 
 using ::tensorflow::operator==;
 using ::tensorflow::operator!=;

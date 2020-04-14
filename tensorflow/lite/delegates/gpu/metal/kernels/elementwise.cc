@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/metal/kernels/elementwise.h"
 
+#include <cstddef>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
@@ -28,105 +30,92 @@ namespace metal {
 
 namespace {
 
-std::string GetElementwiseWithTwoInputsCode(int src_count,
-                                            OperationType op_type) {
-  std::string code = R"(
-    #include <metal_stdlib>
-    using namespace metal;
+std::string OneInputFunctor(OperationType op_type, const std::string& value) {
+  const std::unordered_map<OperationType, std::string> functors{
+      {OperationType::ABS, "abs($0)"},
+      {OperationType::SIN, "sin($0)"},
+      {OperationType::HARD_SWISH,
+       "$0 * clamp($0 / 6.0f + FLT4(0.5f), FLT4(0.0f), FLT4(1.0f))"},
+      {OperationType::COS, "cos($0)"},
+      {OperationType::EXP, "exp($0)"},
+      {OperationType::LOG, "log($0)"},
+      {OperationType::SQRT, "sqrt($0)"},
+      {OperationType::RSQRT, "1.0 / sqrt($0)"},
+      {OperationType::SQUARE, "$0 * $0"},
+      {OperationType::SIGMOID, "1.0 / (1.0 + exp(-1.0 * $0))"},
+      {OperationType::TANH, "tanh($0)"},
+  };
 
-    struct uniforms {
-      int4 src_size;
-    };
-
-    $0
-    kernel void ComputeFunction(
-                                $1
-                                uint3 gid[[thread_position_in_grid]]) {
-      if (static_cast<int>(gid.x) >= params.src_size.x ||
-          static_cast<int>(gid.y) >= params.src_size.y) {
-        return;
-      }
-
-      int linear_index = (int(gid.z) * params.src_size.y + int(gid.y)) *
-        params.src_size.x + int(gid.x);
-        )";
-
-  switch (op_type) {
-    case OperationType::DIV: {
-      code +=
-          " FLT4 value = src_buffer0[linear_index] / "
-          "src_buffer1[linear_index];";
-      break;
-    }
-    case OperationType::POW: {
-      code +=
-          " FLT4 value = pow(src_buffer0[linear_index], "
-          "src_buffer1[linear_index]);";
-      break;
-    }
-    case OperationType::SQUARED_DIFF: {
-      code += R"(
-     FLT4 src_0 = src_buffer0[linear_index];
-     FLT4 src_1 = src_buffer1[linear_index];
-     FLT4 value = (src_0 - src_1) * (src_0 - src_1);
-   )";
-      break;
-    }
-    case OperationType::SUB: {
-      code +=
-          " FLT4 value = src_buffer0[linear_index] - "
-          "src_buffer1[linear_index];";
-      break;
-    }
-    default: {
-      return "";
-    }
+  if (functors.find(op_type) == functors.end()) {
+    return "Error, unknown op";
   }
-  code += R"(
-      $2
-      dst_buffer[linear_index] = value;
-    })";
-  return code;
+
+  return absl::Substitute(functors.at(op_type), value);
 }
+
+std::string TwoInputFunctor(OperationType op_type, const std::string& value0,
+                            const std::string& value1) {
+  const std::unordered_map<OperationType, std::string> functors{
+      {OperationType::ADD, "$0 + $1"},
+      {OperationType::DIV, "$0 / $1"},
+      {OperationType::MAXIMUM, "max($0, $1)"},
+      {OperationType::MINIMUM, "min($0, $1)"},
+      {OperationType::MUL, "$0 * $1"},
+      {OperationType::POW, "pow($0, $1)"},
+      {OperationType::SQUARED_DIFF, "($0 - $1) * ($0 - $1)"},
+      {OperationType::SUB, "$0 - $1"},
+  };
+
+  if (functors.find(op_type) == functors.end()) {
+    return "Error, unknown op";
+  }
+
+  return absl::Substitute(functors.at(op_type), value0, value1);
+}
+
 }  // namespace
 
 std::vector<ComputeTaskDescriptorPtr> ElementwiseWithTwoInputs(
     int id, std::vector<ValueId> input_ids, ValueId output_id,
-    OperationType op_type) {
+    OperationType op_type, const ElementwiseBroadcastSettings& settings) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
-  desc->is_linkable = false;
-  desc->shader_source =
-      GetElementwiseWithTwoInputsCode(input_ids.size(), op_type);
-
-  for (int i = 0; i < input_ids.size(); ++i) {
-    const std::string buffer_name =
-        "device FLT4* const src_buffer" + std::to_string(i);
-    desc->input_buffers.push_back({input_ids[i], buffer_name});
+  desc->is_linkable = true;
+  const std::string x_coord = settings.width ? "0" : "int(gid.x)";
+  const std::string y_coord = settings.height ? "0" : "int(gid.y)";
+  const std::string s_coord = settings.channels ? "0" : "int(gid.z)";
+  std::string code =
+      "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid, device FLT4* "
+      "const second_tensor, int2 second_size) {\n";
+  code += "  int second_index = (" + s_coord + " * second_size.y + " + y_coord +
+          ") * second_size.x + " + x_coord + ";\n";
+  code += "  FLT4 src_1 = second_tensor[second_index];\n";
+  if (settings.channels) {
+    code += "  src_1.y = src_1.x;\n";
+    code += "  src_1.z = src_1.x;\n";
+    code += "  src_1.w = src_1.x;\n";
   }
+  code += "  return " + TwoInputFunctor(op_type, "value", "src_1") + ";\n";
+  code += "}\n";
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer",
-                         [input_ids](const std::map<ValueId, BHWC>& buffers) {
-                           return buffers.find(input_ids[0])->second;
-                         }};
+  desc->shader_source = code;
+
+  desc->input_buffers = {
+      {input_ids[0], "device FLT4* const"},
+      {input_ids[1], "device FLT4* const"},
+  };
+  desc->output_buffer = {output_id};
 
   desc->uniform_buffers = {
-      {"constant uniforms& params",
-       [input_ids](const std::map<ValueId, BHWC>& buffers) {
-         const auto& dimension = buffers.find(input_ids[0])->second;
-         std::vector<int> uniform_params = {dimension.w, dimension.h, 0, 0};
+      {"constant int2&",
+       [input_ids, output_id](const std::map<ValueId, BHWC>& buffers) {
+         const auto& input_dim_1 = buffers.find(input_ids[1])->second;
+         std::vector<int> uniform_params{
+             input_dim_1.w,
+             input_dim_1.h,
+         };
          return GetByteBuffer(uniform_params);
        }},
-  };
-
-  desc->resize_function = [input_ids](const std::map<ValueId, BHWC>& buffers) {
-    const auto& src_dim = buffers.find(input_ids[0])->second;
-    const uint3 groups_size{16, 16, 1};
-    int groups_x = IntegralDivideRoundUp(src_dim.w, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(src_dim.h, groups_size.y);
-    const int dst_layers = IntegralDivideRoundUp(src_dim.c, 4);
-    int groups_z = IntegralDivideRoundUp(dst_layers, groups_size.z);
-    return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
   return {desc};
 }
@@ -136,32 +125,62 @@ std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInput(
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = true;
-
-  const std::unordered_map<OperationType, std::string> functors{
-      {OperationType::ABS, "abs(value)"},
-      {OperationType::SIN, "sin(value)"},
-      {OperationType::HARD_SWISH,
-       "value * clamp(value / 6.0f + FLT4(0.5f), FLT4(0.0f), FLT4(1.0f))"},
-      {OperationType::COS, "cos(value)"},
-      {OperationType::LOG, "log(value)"},
-      {OperationType::SQRT, "sqrt(value)"},
-      {OperationType::RSQRT, "1.0 / sqrt(value)"},
-      {OperationType::SQUARE, "value * value"},
-      {OperationType::SIGMOID, "1.0 / (1.0 + exp(-1.0 * value))"},
-      {OperationType::TANH, "tanh(value)"},
-  };
-
-  if (functors.count(op_type) == 0) {
-    return {};
-  }
-
   desc->shader_source =
       "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid) {\n";
-  desc->shader_source += "    return " + functors.at(op_type) + ";\n";
+  desc->shader_source +=
+      "    return " + OneInputFunctor(op_type, "value") + ";\n";
   desc->shader_source += "  }";
 
   desc->input_buffers = {{input_id}};
   desc->output_buffer = {output_id};
+  return {desc};
+}
+
+std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInputAndConstantArguent(
+    int id, ValueId input_id, ValueId output_id, const RuntimeOptions& options,
+    OperationType op_type, const ElementwiseAttributes& attr) {
+  auto desc = std::make_shared<ComputeTaskDescriptor>();
+  desc->id = id;
+  desc->is_linkable = true;
+  auto scalar = absl::get_if<float>(&attr.param);
+  auto linear_buf =
+      absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
+  std::string param_desc;
+  if (scalar) {
+    param_desc += ", float scalar_val";
+  }
+  if (linear_buf) {
+    param_desc += ", device FLT4* const linear_buf";
+  }
+  desc->shader_source =
+      "FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid" + param_desc +
+      ") {\n";
+  if (scalar) {
+    desc->shader_source += "     FLT4 second_arg = FLT4(scalar_val);\n";
+  } else if (linear_buf) {
+    desc->shader_source += "     FLT4 second_arg = linear_buf[gid.z];\n";
+  }
+  desc->shader_source +=
+      "    return " + TwoInputFunctor(op_type, "value", "second_arg") + ";\n";
+  desc->shader_source += "  }";
+
+  desc->input_buffers = {{input_id}};
+  desc->output_buffer = {output_id};
+  if (scalar) {
+    std::vector<uint8_t> scalar_bits =
+        GetByteBuffer(std::vector<float>{*scalar});
+    desc->uniform_buffers = {
+        {"constant float&",
+         [scalar_bits](const std::map<ValueId, BHWC>& buffers) {
+           return scalar_bits;
+         }},
+    };
+  } else if (linear_buf) {
+    desc->immutable_buffers = {
+        {"device FLT4* const",
+         GetByteBufferConverted(linear_buf->data, options.storage_precision)},
+    };
+  }
   return {desc};
 }
 

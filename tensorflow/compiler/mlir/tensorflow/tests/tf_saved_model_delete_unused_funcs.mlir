@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-saved-model-delete-unused-funcs -split-input-file %s | FileCheck %s --dump-input=fail
+// RUN: tf-opt -tf-saved-model-mark-func-visibility -symbol-dce -split-input-file %s | FileCheck %s --dump-input=fail
 
 module attributes {tf_saved_model.semantics} {
 
@@ -19,7 +19,7 @@ module attributes {tf_saved_model.semantics} {
 
   // CHECK: func @root
   func @root() attributes {tf_saved_model.exported_names = ["root"]} {
-    "some_dialect.call"() { callee = @child } : () -> ()
+    "tf.some_call"() { callee = @child } : () -> ()
     return
   }
 
@@ -36,10 +36,10 @@ module attributes {tf_saved_model.semantics} {
 
   // Test case: Don't crash if attribute that doesn't reference a func.
 
-  "some_dialect.global_variable"() { sym_name = "some_global" } : () -> ()
+  "tf.some_opaque_global_variable"() { sym_name = "some_global" } : () -> ()
 
   func @root2() attributes {tf_saved_model.exported_names = ["root2"]} {
-    "some_dialect.do_something_with_a_global"() { global = @some_global } : () -> ()
+    "tf.do_something_with_a_global"() { global = @some_global } : () -> ()
     return
   }
 
@@ -51,14 +51,14 @@ module attributes {tf_saved_model.semantics} {
 
   // Test case: Delete recursively dead cycle.
 
-  // CHECK-NOT func @recursively_dead0
+  // CHECK-NOT: func @recursively_dead0
   func @recursively_dead0() {
-    "some_dialect.call"() { callee = @recursively_dead1 } : () -> ()
+    "tf.some_call"() { callee = @recursively_dead1 } : () -> ()
     return
   }
-  // CHECK-NOT func @recursively_dead1
+  // CHECK-NOT: func @recursively_dead1
   func @recursively_dead1() {
-    "some_dialect.call"() { callee = @recursively_dead0 } : () -> ()
+    "tf.some_call"() { callee = @recursively_dead0 } : () -> ()
     return
   }
 
@@ -73,7 +73,7 @@ module attributes {tf_saved_model.semantics} {
 
   // CHECK: func @root
   func @root() attributes {tf_saved_model.exported_names = ["root"]} {
-    "some_dialect.call"() {callee = {callee = {callee = @child}}} : () -> ()
+    "tf.some_call"() {callee = {callee = {callee = @child}}} : () -> ()
     return
   }
 

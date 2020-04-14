@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib
 
@@ -79,31 +79,6 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     out = tf.nn.softmax_cross_entropy_with_logits_v2(
         logits=[0.1, 0.8], labels=[0, 1])
     self.assertAllClose(out, 0.40318608)
-
-  def testLinearClassifier(self):
-    if _TEST_VERSION == 2 and self._tf_api_version == 1:
-      # Skip if we converted this file to v2 but running with tf v1.
-      # In this case, conversion script adds reference to
-      # tf.keras.losses.Reduction which is not available in v1.
-      self.skipTest(
-          'After converting to 2.0, this test does not work with '
-          'TensorFlow 1.x.')
-      return
-    feature_column = tf.feature_column.numeric_column(
-        'feature', shape=(1,))
-
-    classifier = tf.estimator.LinearClassifier(
-        n_classes=2, feature_columns=[feature_column])
-
-    data = {'feature': [1, 20, 3]}
-    target = [0, 1, 0]
-    classifier.train(
-        input_fn=lambda: (data, target),
-        steps=100)
-    scores = classifier.evaluate(
-        input_fn=lambda: (data, target),
-        steps=100)
-    self.assertGreater(scores['accuracy'], 0.99)
 
   def testUniformUnitScalingInitializer(self):
     init = tf.initializers.uniform_unit_scaling(0.5, seed=1)

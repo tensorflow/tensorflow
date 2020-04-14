@@ -33,7 +33,7 @@ limitations under the License.
 // to your function, your callers will automatically convert bools, integers,
 // and floating point values to strings for you.
 //
-// NOTE: Use of AlphaNum outside of the //strings package is unsupported except
+// NOTE: Use of AlphaNum outside of the "strings" package is unsupported except
 // for the specific case of function parameters of type "AlphaNum" or "const
 // AlphaNum &". In particular, instantiating AlphaNum directly as a stack
 // variable is not supported.
@@ -124,12 +124,8 @@ class AlphaNum {
   AlphaNum(const StringPiece &pc) : piece_(pc) {}  // NOLINT(runtime/explicit)
   AlphaNum(const tensorflow::string &str)          // NOLINT(runtime/explicit)
       : piece_(str) {}
-#ifdef USE_TSTRING
-  // TODO(dero): Temp guard to prevent duplicate declaration during tstring
-  // migration.
   AlphaNum(const tensorflow::tstring &str)  // NOLINT(runtime/explicit)
       : piece_(str) {}
-#endif
   template <typename A>
   AlphaNum(const std::basic_string<char, std::char_traits<char>, A> &str)
       : piece_(str) {}  // NOLINT(runtime/explicit)
@@ -172,30 +168,30 @@ class AlphaNum {
 // ----------------------------------------------------------------------
 
 // For performance reasons, we have specializations for <= 4 args.
-string StrCat(const AlphaNum &a) TF_MUST_USE_RESULT;
-string StrCat(const AlphaNum &a, const AlphaNum &b) TF_MUST_USE_RESULT;
-string StrCat(const AlphaNum &a, const AlphaNum &b,
-              const AlphaNum &c) TF_MUST_USE_RESULT;
-string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
-              const AlphaNum &d) TF_MUST_USE_RESULT;
+std::string StrCat(const AlphaNum &a) TF_MUST_USE_RESULT;
+std::string StrCat(const AlphaNum &a, const AlphaNum &b) TF_MUST_USE_RESULT;
+std::string StrCat(const AlphaNum &a, const AlphaNum &b,
+                   const AlphaNum &c) TF_MUST_USE_RESULT;
+std::string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
+                   const AlphaNum &d) TF_MUST_USE_RESULT;
 
 namespace internal {
 
 // Do not call directly - this is not part of the public API.
-string CatPieces(std::initializer_list<StringPiece> pieces);
-void AppendPieces(string *dest, std::initializer_list<StringPiece> pieces);
+std::string CatPieces(std::initializer_list<StringPiece> pieces);
+void AppendPieces(std::string *dest, std::initializer_list<StringPiece> pieces);
 
 }  // namespace internal
 
 // Support 5 or more arguments
 template <typename... AV>
-string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
-              const AlphaNum &d, const AlphaNum &e,
-              const AV &... args) TF_MUST_USE_RESULT;
+std::string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
+                   const AlphaNum &d, const AlphaNum &e,
+                   const AV &... args) TF_MUST_USE_RESULT;
 
 template <typename... AV>
-string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
-              const AlphaNum &d, const AlphaNum &e, const AV &... args) {
+std::string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
+                   const AlphaNum &d, const AlphaNum &e, const AV &... args) {
   return internal::CatPieces({a.Piece(), b.Piece(), c.Piece(), d.Piece(),
                               e.Piece(),
                               static_cast<const AlphaNum &>(args).Piece()...});
@@ -222,16 +218,16 @@ string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
 //    worked around as consecutive calls to StrAppend are quite efficient.
 // ----------------------------------------------------------------------
 
-void StrAppend(string *dest, const AlphaNum &a);
-void StrAppend(string *dest, const AlphaNum &a, const AlphaNum &b);
-void StrAppend(string *dest, const AlphaNum &a, const AlphaNum &b,
+void StrAppend(std::string *dest, const AlphaNum &a);
+void StrAppend(std::string *dest, const AlphaNum &a, const AlphaNum &b);
+void StrAppend(std::string *dest, const AlphaNum &a, const AlphaNum &b,
                const AlphaNum &c);
-void StrAppend(string *dest, const AlphaNum &a, const AlphaNum &b,
+void StrAppend(std::string *dest, const AlphaNum &a, const AlphaNum &b,
                const AlphaNum &c, const AlphaNum &d);
 
 // Support 5 or more arguments
 template <typename... AV>
-inline void StrAppend(string *dest, const AlphaNum &a, const AlphaNum &b,
+inline void StrAppend(std::string *dest, const AlphaNum &a, const AlphaNum &b,
                       const AlphaNum &c, const AlphaNum &d, const AlphaNum &e,
                       const AV &... args) {
   internal::AppendPieces(dest,

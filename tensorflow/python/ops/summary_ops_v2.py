@@ -1107,7 +1107,7 @@ def keras_model(name, data, step=None):
 
   Writing the Keras model configuration allows the TensorBoard graph plugin to
   render a conceptual graph, as opposed to graph of ops. In case the model fails
-  to serialze as JSON, it ignores and returns False.
+  to serialize as JSON, it ignores and returns False.
 
   Args:
     name: A name for this summary. The summary tag used for TensorBoard will be

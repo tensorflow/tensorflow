@@ -284,7 +284,7 @@ class ForwardAccumulator {
   // Temporarily push or pop transient state for this accumulator.
   //
   // Allows an accumulator which is currently processing an operation to
-  // temporarily reset its state. Without pushing and poping, accumulators
+  // temporarily reset its state. Without pushing and popping, accumulators
   // ignore operations executed as a direct result of their own jvp
   // computations.
   void PushState() { call_state_.emplace(nullptr, false); }
@@ -856,7 +856,7 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
   }
   VLOG(1) << "Final gradients size: "
           << gradients.size() - used_gradient_ids.size();
-  for (auto grad_pair : gradients) {
+  for (const auto& grad_pair : gradients) {
     if (used_gradient_ids.find(grad_pair.first) == used_gradient_ids.end()) {
       for (const auto& g : grad_pair.second) {
         vspace.DeleteGradient(g);

@@ -14,7 +14,10 @@ package(
 package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
-    packages = ["//tensorflow/compiler/mlir/..."],
+    packages = [
+        "//learning/brain/experimental/mlir/quantization/...",
+        "//tensorflow/compiler/mlir/...",
+    ],
 )
 
 exports_files([
@@ -71,18 +74,17 @@ cc_library(
         "quantization_utils.cc",
     ],
     hdrs = [
+        "quantization_traits.h",
         "quantization_utils.h",
     ],
     deps = [
+        "//tensorflow/core:lib_proto_parsing",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
-        # TODO(fengliuai): remove this dependence.
-        "//tensorflow/compiler/mlir/lite:tensorflow_lite",
-        "//tensorflow/core:lib_proto_parsing",
     ],
 )
 
@@ -110,5 +112,33 @@ tf_native_cc_binary(
         "@llvm-project//llvm:support",
         "@llvm-project//llvm:tablegen",
         "@llvm-project//mlir:TableGen",
+    ],
+)
+
+cc_library(
+    name = "device_target",
+    srcs = ["device_target.cc"],
+    hdrs = ["device_target.h"],
+    deps = [
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "quantization_context",
+    srcs = ["quantization_context.cc"],
+    hdrs = ["quantization_context.h"],
+    deps = [
+        ":device_target",
+        ":quantization_lib",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
     ],
 )

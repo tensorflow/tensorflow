@@ -17,15 +17,15 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
@@ -36,8 +36,8 @@ using FuncSet = llvm::SmallSet<FuncOp, 4>;
 
 // Module pass to optimize TensorFlow functional ops.
 struct OptimizeFunctionalOpsPass
-    : public ModulePass<OptimizeFunctionalOpsPass> {
-  void runOnModule() override;
+    : public PassWrapper<OptimizeFunctionalOpsPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Updates function return type of the given functions to match the terminator
@@ -56,6 +56,18 @@ static void UpdateFuncType(FuncOp func) {
   func.setType(updated_type);
 }
 
+// TODO(jpienaar): Remove when recursive side-effect modeling is added.
+static bool IsSideEffectFree(FuncOp func) {
+  return !func.getBody()
+              .walk([&](Operation* op) {
+                if (!MemoryEffectOpInterface::hasNoEffect(op) &&
+                    !op->isKnownTerminator())
+                  return WalkResult::interrupt();
+                return WalkResult::advance();
+              })
+              .wasInterrupted();
+}
+
 // Folds TensorFlow If op with constant conditional operand by inlining the
 // function body based on the conditional value.
 class FoldIfOp : public OpRewritePattern<TF::IfOp> {
@@ -63,36 +75,50 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
   explicit FoldIfOp(MLIRContext* context, FuncSet* inlined_funcs)
       : OpRewritePattern<TF::IfOp>(context), inlined_funcs_(inlined_funcs) {}
 
-  PatternMatchResult matchAndRewrite(TF::IfOp op,
-                                     PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(TF::IfOp op,
+                                PatternRewriter& rewriter) const override {
     // This pattern is restricted to if ops in functions with exactly one block
     // and therefore one terminator op. So, that function return type can be
     // updated if operands' shapes change after inlining. Without this
     // restriction, it would require tensor cast ops.
     FuncOp parent_op = op.getParentOfType<FuncOp>();
-    if (parent_op.getBlocks().size() != 1) return matchFailure();
+    if (parent_op.getBlocks().size() != 1) return failure();
+
+    // Find the then and else branch functions.
+    SymbolTable table(op.getParentOfType<ModuleOp>());
+    FuncOp then_branch = table.lookup<FuncOp>(op.then_branch());
+    FuncOp else_branch = table.lookup<FuncOp>(op.else_branch());
+
+    // If the If has no uses and its functions are side-effect free, then
+    // remove.
+    // TODO(jpienaar): Remove once recusive side-effects are supported.
+    if (op.use_empty() &&
+        (op.is_stateless() ||
+         (IsSideEffectFree(then_branch) && IsSideEffectFree(else_branch)))) {
+      inlined_funcs_->insert(then_branch);
+      inlined_funcs_->insert(else_branch);
+      rewriter.eraseOp(op.getOperation());
+      return success();
+    }
 
     // Extract the constant cond value.
     DenseElementsAttr cond;
-    if (!matchPattern(op.cond(), m_Constant(&cond))) return matchFailure();
+    if (!matchPattern(op.cond(), m_Constant(&cond))) return failure();
 
     // TODO(hinsu): Handle constants that are not scalar booleans.
     auto cond_type = cond.getType().dyn_cast<RankedTensorType>();
     if (!cond_type || !cond_type.getShape().equals({}) ||
         !cond_type.getElementType().isInteger(/*width=*/1))
-      return matchFailure();
-    bool cond_value = (*cond.int_value_begin()).getSExtValue();
+      return failure();
 
     // Identify the branch to inline.
-    SymbolTable table(op.getParentOfType<ModuleOp>());
-    FuncOp then_branch = table.lookup<FuncOp>(op.then_branch());
-    FuncOp else_branch = table.lookup<FuncOp>(op.else_branch());
+    bool cond_value = (*cond.int_value_begin()).getSExtValue();
     FuncOp func = cond_value ? then_branch : else_branch;
 
     // Make sure that the function has exactly one block to simplify inlining.
     // TFLite doesn't use control flow with blocks so functions with more than
     // one blocks are not encountered in practice.
-    if (func.getBody().getBlocks().size() != 1) return matchFailure();
+    if (func.getBody().getBlocks().size() != 1) return failure();
 
     BlockAndValueMapping mapper;
     for (int i = 0, e = func.getNumArguments(); i != e; ++i)
@@ -123,7 +149,7 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     // of the function.
     inlined_funcs_->insert(then_branch);
     inlined_funcs_->insert(else_branch);
-    return matchSuccess();
+    return success();
   }
 
  private:
@@ -154,14 +180,14 @@ static void EraseDeadFuncs(const FuncSet& candidate_funcs, ModuleOp module) {
   }
 }
 
-void OptimizeFunctionalOpsPass::runOnModule() {
+void OptimizeFunctionalOpsPass::runOnOperation() {
   OwningRewritePatternList patterns;
 
   FuncSet inlined_funcs;
   patterns.insert<FoldIfOp>(&getContext(), &inlined_funcs);
 
-  ModuleOp module = getModule();
-  applyPatternsGreedily(module, patterns);
+  ModuleOp module = getOperation();
+  applyPatternsAndFoldGreedily(module, patterns);
 
   // Erase inlined functions that don't have any references.
   //
@@ -172,7 +198,7 @@ void OptimizeFunctionalOpsPass::runOnModule() {
 }
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeFunctionalOpsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeFunctionalOpsPass() {
   return std::make_unique<OptimizeFunctionalOpsPass>();
 }
 

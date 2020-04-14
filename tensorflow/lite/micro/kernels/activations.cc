@@ -107,9 +107,8 @@ TfLiteStatus ReluEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     default: {
-      context->ReportError(context,
-                           "Only float32 is supported currently, got %s",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Only float32 is supported currently, got %s",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
     }
   }
@@ -149,9 +148,8 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     default: {
-      context->ReportError(context,
-                           "Only float32 is supported currently, got %s",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Only float32 is supported currently, got %s",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
     }
   }
@@ -161,15 +159,25 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteRegistration* Register_RELU() {
   static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr, activations::ReluPrepare,
-                                 activations::ReluEval};
+                                 /*free=*/nullptr,
+                                 /*prepare=*/activations::ReluPrepare,
+                                 /*invoke=*/activations::ReluEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_RELU6() {
   static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr, activations::Relu6Prepare,
-                                 activations::Relu6Eval};
+                                 /*free=*/nullptr,
+                                 /*prepare=*/activations::Relu6Prepare,
+                                 /*invoke=*/activations::Relu6Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

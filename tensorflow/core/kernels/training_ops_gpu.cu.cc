@@ -216,6 +216,41 @@ struct ApplyFtrl<GPUDevice, T> {
 };
 
 template <typename T>
+struct ApplyFtrlMultiplyLinearByLr<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::Flat linear,
+                  typename TTypes<T>::ConstFlat grad,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar l1,
+                  typename TTypes<T>::ConstScalar l2,
+                  typename TTypes<T>::ConstScalar lr_power) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+
+    auto lr_bcast = lr.reshape(single).broadcast(bcast);
+    auto l1_lr_bcast = (l1 * lr).reshape(single).broadcast(bcast);
+    auto l2_lr_bcast = (l2 * lr).reshape(single).broadcast(bcast);
+    auto lr_power_bcast = -lr_power.reshape(single).broadcast(bcast);
+    const auto two = static_cast<T>(2.0);
+
+    auto new_accum = accum + grad.square();
+    auto accum_power = accum.binaryExpr(lr_power_bcast,
+                                        Eigen::internal::scalar_pow_op<T, T>());
+    auto new_accum_power = new_accum.binaryExpr(
+        lr_power_bcast, Eigen::internal::scalar_pow_op<T, T>());
+    linear.device(d) += grad * lr_bcast - (new_accum_power - accum_power) * var;
+    auto x = (l1_lr_bcast * linear.sign() - linear);
+    auto y = new_accum_power + linear.constant(two) * l2_lr_bcast;
+    auto pre_shrink = x / y;
+    var.device(d) = (linear.abs() > l1_lr_bcast)
+                        .select(pre_shrink, var.constant(static_cast<T>(0)));
+    accum.device(d) += grad.square();
+  }
+};
+
+template <typename T>
 struct ApplyFtrlV2<GPUDevice, T> {
   void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
@@ -250,6 +285,46 @@ struct ApplyFtrlV2<GPUDevice, T> {
     auto y = (new_accum_power / lr_bcast) + linear.constant(two) * l2_bcast;
     auto pre_shrink = x / y;
     var.device(d) = (linear.abs() > l1_bcast)
+                        .select(pre_shrink, var.constant(static_cast<T>(0)));
+    accum.device(d) += grad.square();
+  }
+};
+
+template <typename T>
+struct ApplyFtrlV2MultiplyLinearByLr<GPUDevice, T> {
+  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::Flat linear,
+                  typename TTypes<T>::ConstFlat grad,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar l1,
+                  typename TTypes<T>::ConstScalar l2,
+                  typename TTypes<T>::ConstScalar l2_shrinkage,
+                  typename TTypes<T>::ConstScalar lr_power) {
+    Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
+    bcast[0] = grad.dimension(0);
+    Eigen::Sizes<1> single;
+
+    auto l2_shrinkage_bcast = l2_shrinkage.reshape(single).broadcast(bcast);
+    auto lr_bcast = lr.reshape(single).broadcast(bcast);
+    auto l1_lr_bcast = (l1 * lr).reshape(single).broadcast(bcast);
+    auto l2_lr_bcast = (l2 * lr).reshape(single).broadcast(bcast);
+    auto lr_power_bcast = -lr_power.reshape(single).broadcast(bcast);
+    const auto two = static_cast<T>(2.0);
+
+    auto new_accum = accum + grad.square();
+    auto accum_power = accum.binaryExpr(lr_power_bcast,
+                                        Eigen::internal::scalar_pow_op<T, T>());
+    auto new_accum_power = new_accum.binaryExpr(
+        lr_power_bcast, Eigen::internal::scalar_pow_op<T, T>());
+    auto grad_with_shrinkage =
+        grad + (var.constant(two) * l2_shrinkage_bcast * var);
+    linear.device(d) +=
+        grad_with_shrinkage * lr_bcast - (new_accum_power - accum_power) * var;
+    auto x = (l1_lr_bcast * linear.sign() - linear);
+    auto y = new_accum_power + linear.constant(two) * l2_lr_bcast;
+    auto pre_shrink = x / y;
+    var.device(d) = (linear.abs() > l1_lr_bcast)
                         .select(pre_shrink, var.constant(static_cast<T>(0)));
     accum.device(d) += grad.square();
   }
@@ -527,10 +602,8 @@ template struct functor::ApplyGradientDescent<GPUDevice, double>;
 #if !defined(TENSORFLOW_USE_NVCC) && \
     !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
-#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyGradientDescent<GPUDevice, complex64>;
 template struct functor::ApplyGradientDescent<GPUDevice, complex128>;
-#endif
 #endif
 
 template struct functor::ApplyAdagrad<GPUDevice, Eigen::half>;
@@ -539,10 +612,8 @@ template struct functor::ApplyAdagrad<GPUDevice, double>;
 #if !defined(TENSORFLOW_USE_NVCC) && \
     !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
-#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyAdagrad<GPUDevice, complex64>;
 template struct functor::ApplyAdagrad<GPUDevice, complex128>;
-#endif
 #endif
 
 template struct functor::ApplyAdagradV2<GPUDevice, Eigen::half>;
@@ -551,10 +622,8 @@ template struct functor::ApplyAdagradV2<GPUDevice, double>;
 #if !defined(TENSORFLOW_USE_NVCC) && \
     !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
-#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyAdagradV2<GPUDevice, complex64>;
 template struct functor::ApplyAdagradV2<GPUDevice, complex128>;
-#endif
 #endif
 
 template struct functor::ApplyAdadelta<GPUDevice, Eigen::half>;
@@ -563,19 +632,25 @@ template struct functor::ApplyAdadelta<GPUDevice, double>;
 #if !defined(TENSORFLOW_USE_NVCC) && \
     !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
-#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyAdadelta<GPUDevice, complex64>;
 template struct functor::ApplyAdadelta<GPUDevice, complex128>;
-#endif
 #endif
 
 template struct functor::ApplyFtrl<GPUDevice, Eigen::half>;
 template struct functor::ApplyFtrl<GPUDevice, float>;
 template struct functor::ApplyFtrl<GPUDevice, double>;
 
+template struct functor::ApplyFtrlMultiplyLinearByLr<GPUDevice, Eigen::half>;
+template struct functor::ApplyFtrlMultiplyLinearByLr<GPUDevice, float>;
+template struct functor::ApplyFtrlMultiplyLinearByLr<GPUDevice, double>;
+
 template struct functor::ApplyFtrlV2<GPUDevice, Eigen::half>;
 template struct functor::ApplyFtrlV2<GPUDevice, float>;
 template struct functor::ApplyFtrlV2<GPUDevice, double>;
+
+template struct functor::ApplyFtrlV2MultiplyLinearByLr<GPUDevice, Eigen::half>;
+template struct functor::ApplyFtrlV2MultiplyLinearByLr<GPUDevice, float>;
+template struct functor::ApplyFtrlV2MultiplyLinearByLr<GPUDevice, double>;
 
 template struct functor::ApplyMomentum<GPUDevice, Eigen::half>;
 template struct functor::ApplyMomentum<GPUDevice, float>;
@@ -583,10 +658,8 @@ template struct functor::ApplyMomentum<GPUDevice, double>;
 #if !defined(TENSORFLOW_USE_NVCC) && \
     !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
-#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyMomentum<GPUDevice, complex64>;
 template struct functor::ApplyMomentum<GPUDevice, complex128>;
-#endif
 #endif
 
 template struct functor::ApplyKerasMomentum<GPUDevice, Eigen::half>;
@@ -595,10 +668,8 @@ template struct functor::ApplyKerasMomentum<GPUDevice, double>;
 #if !defined(TENSORFLOW_USE_NVCC) && \
     !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
-#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyKerasMomentum<GPUDevice, complex64>;
 template struct functor::ApplyKerasMomentum<GPUDevice, complex128>;
-#endif
 #endif
 
 template struct functor::SparseApplyKerasMomentum<GPUDevice, Eigen::half,
@@ -612,12 +683,10 @@ template struct functor::SparseApplyKerasMomentum<GPUDevice, double, int64>;
 #if !defined(TENSORFLOW_USE_NVCC) && \
     !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
-#ifndef PLATFORM_WINDOWS
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex64, int32>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex64, int64>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex128, int32>;
 template struct functor::SparseApplyKerasMomentum<GPUDevice, complex128, int64>;
-#endif
 #endif
 
 template struct functor::ApplyAdam<GPUDevice, Eigen::half>;
@@ -626,10 +695,8 @@ template struct functor::ApplyAdam<GPUDevice, double>;
 #if !defined(TENSORFLOW_USE_NVCC) && \
     !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
-#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyAdam<GPUDevice, complex64>;
 template struct functor::ApplyAdam<GPUDevice, complex128>;
-#endif
 #endif
 
 template struct functor::ApplyAdamWithAmsgrad<GPUDevice, Eigen::half>;
@@ -646,10 +713,8 @@ template struct functor::ApplyRMSProp<GPUDevice, double>;
 #if !defined(TENSORFLOW_USE_NVCC) && \
     !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
-#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyRMSProp<GPUDevice, complex64>;
 template struct functor::ApplyRMSProp<GPUDevice, complex128>;
-#endif
 #endif
 
 template struct functor::ApplyCenteredRMSProp<GPUDevice, Eigen::half>;
@@ -658,10 +723,8 @@ template struct functor::ApplyCenteredRMSProp<GPUDevice, double>;
 #if !defined(TENSORFLOW_USE_NVCC) && \
     !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
                                    // complex sqrt
-#ifndef PLATFORM_WINDOWS
 template struct functor::ApplyCenteredRMSProp<GPUDevice, complex64>;
 template struct functor::ApplyCenteredRMSProp<GPUDevice, complex128>;
-#endif
 #endif
 
 template struct functor::ApplyAddSign<GPUDevice, Eigen::half>;

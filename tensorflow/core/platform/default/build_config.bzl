@@ -569,9 +569,6 @@ def tf_additional_lib_hdrs():
         ],
     })
 
-def tf_additional_monitoring_hdrs():
-    return []
-
 def tf_additional_env_hdrs():
     return []
 
@@ -592,7 +589,10 @@ def tf_protos_all():
     )
 
 def tf_protos_profiler_impl():
-    return [clean_dep("//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl")]
+    return [
+        clean_dep("//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler:profiler_options_proto_cc_impl"),
+    ]
 
 def tf_protos_grappler_impl():
     return [clean_dep("//tensorflow/core/grappler/costs:op_performance_data_cc_impl")]
@@ -715,6 +715,12 @@ def tf_fingerprint_deps():
         "@farmhash_archive//:farmhash",
     ]
 
+def tf_protobuf_full_deps():
+    return tf_protobuf_deps()
+
+def tf_protobuf_lite_deps():
+    return tf_protobuf_deps()
+
 def tf_protobuf_deps():
     return if_static(
         [
@@ -750,20 +756,17 @@ def tf_platform_alias(name):
 def tf_logging_deps():
     return ["//tensorflow/core/platform/default:logging"]
 
-def tf_monitoring_deps():
-    return ["//tensorflow/core/platform/default:monitoring"]
+def tf_resource_deps():
+    return ["//tensorflow/core/platform/default:resource"]
 
 def tf_portable_deps_no_runtime():
     return [
-        "@com_google_protobuf//:protobuf",
         "//third_party/eigen3",
         "@double_conversion//:double-conversion",
         "@nsync//:nsync_cpp",
-        "//tensorflow/core/util:stats_calculator_portable",
-        "//tensorflow/core:mobile_additional_lib_deps",
-        "//tensorflow/core:protos_all_cc_impl",
+        "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
-    ]
+    ] + tf_protobuf_deps()
 
 def tf_google_mobile_srcs_no_runtime():
     return []

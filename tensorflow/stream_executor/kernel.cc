@@ -91,7 +91,7 @@ KernelCacheConfig KernelBase::GetPreferredCacheConfig() const {
 }
 
 void KernelBase::set_name(absl::string_view name) {
-  name_ = string(name);
+  name_ = std::string(name);
 
   // CUDA splitter prefixes stub functions with __device_stub_.
   demangled_name_ =

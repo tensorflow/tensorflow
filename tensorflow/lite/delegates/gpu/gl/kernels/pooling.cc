@@ -31,14 +31,14 @@ namespace gpu {
 namespace gl {
 namespace {
 
-Status GenerateMaxPoolingCode(const Pooling2DAttributes& attr,
-                              const NodeShader::GenerationContext& ctx,
-                              GeneratedCode* generated_code) {
+absl::Status GenerateMaxPoolingCode(const Pooling2DAttributes& attr,
+                                    const NodeShader::GenerationContext& ctx,
+                                    GeneratedCode* generated_code) {
   auto input = ctx.graph->FindInputs(ctx.node->id)[0];
 
   if (attr.padding.prepended.h > attr.kernel.h ||
       attr.padding.prepended.w > attr.kernel.w) {
-    return InvalidArgumentError("Padding is bigger than kernel.");
+    return absl::InvalidArgumentError("Padding is bigger than kernel.");
   }
 
   std::vector<Variable> parameters = {
@@ -94,12 +94,12 @@ Status GenerateMaxPoolingCode(const Pooling2DAttributes& attr,
       /*input=*/IOStructure::ONLY_DEFINITIONS,
       /*output=*/IOStructure::AUTO,
   };
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GenerateAveragePoolingCode(const Pooling2DAttributes& attr,
-                                  const NodeShader::GenerationContext& ctx,
-                                  GeneratedCode* generated_code) {
+absl::Status GenerateAveragePoolingCode(
+    const Pooling2DAttributes& attr, const NodeShader::GenerationContext& ctx,
+    GeneratedCode* generated_code) {
   auto input = ctx.graph->FindInputs(ctx.node->id)[0];
 
   std::vector<Variable> parameters = {
@@ -136,13 +136,13 @@ Status GenerateAveragePoolingCode(const Pooling2DAttributes& attr,
       /*input=*/IOStructure::ONLY_DEFINITIONS,
       /*output=*/IOStructure::AUTO,
   };
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class Pooling : public NodeShader {
  public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     const auto& attr =
         absl::any_cast<Pooling2DAttributes>(ctx.node->operation.attributes);
     switch (attr.type) {
@@ -151,7 +151,7 @@ class Pooling : public NodeShader {
       case PoolingType::MAX:
         return GenerateMaxPoolingCode(attr, ctx, generated_code);
       default:
-        return InvalidArgumentError("Incorrect attributes' type.");
+        return absl::InvalidArgumentError("Incorrect attributes' type.");
     }
   }
 };

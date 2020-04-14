@@ -23,8 +23,6 @@ import collections
 import functools
 import imp
 import textwrap
-import types
-import weakref
 
 import six
 
@@ -32,7 +30,6 @@ from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct.testing import basic_definitions
 from tensorflow.python.autograph.pyct.testing import decorators
-from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
@@ -256,6 +253,21 @@ class InspectUtilsTest(test.TestCase):
     ns = inspect_utils.getnamespace(factory)
     self.assertEqual(ns['free_function'], free_function)
 
+  def test_getnamespace_closure_with_undefined_var(self):
+    if False:  # pylint:disable=using-constant-test
+      a = 1
+
+    def test_fn():
+      return a
+
+    ns = inspect_utils.getnamespace(test_fn)
+    self.assertNotIn('a', ns)
+
+    a = 2
+    ns = inspect_utils.getnamespace(test_fn)
+
+    self.assertEqual(ns['a'], 2)
+
   def test_getnamespace_hermetic(self):
 
     # Intentionally hiding the global function to make sure we don't overwrite
@@ -478,18 +490,6 @@ class InspectUtilsTest(test.TestCase):
 
     c = TestCallable()
     self.assertEqual(inspect_utils.getmethodclass(c), TestCallable)
-
-  def test_getmethodclass_weakref_mechanism(self):
-    test_obj = TestClass()
-
-    def test_fn(self):
-      return self
-
-    bound_method = types.MethodType(
-        test_fn,
-        function.TfMethodTarget(
-            weakref.ref(test_obj), test_obj.member_function))
-    self.assertEqual(inspect_utils.getmethodclass(bound_method), TestClass)
 
   def test_getmethodclass_no_bool_conversion(self):
 

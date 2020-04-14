@@ -67,7 +67,7 @@ class SingleReturnTest(converter_testing.TestCase):
     self.assertTransformedEquivalent(test_fn, 2)
     self.assertTransformedEquivalent(test_fn, -2)
 
-  def test_contitional_missing_else(self):
+  def test_conditional_missing_else(self):
 
     def test_fn(x):
       if x > 0:

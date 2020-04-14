@@ -53,13 +53,18 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
     -Wvla \
     -Wall \
     -Wextra \
+    -Wsign-compare \
+    -Wdouble-promotion \
+    -Wunused-variable \
+    -Wshadow \
+    -Wmissing-field-initializers \
     -Wno-unused-parameter \
-    -Wno-missing-field-initializers \
     -Wno-write-strings \
-    -Wno-sign-compare \
     -fno-delete-null-pointer-checks \
+    -fno-threadsafe-statics \
     -fomit-frame-pointer \
     -fpermissive \
+    -fno-use-cxa-atexit \
     -nostdlib \
     -ggdb \
     -O3

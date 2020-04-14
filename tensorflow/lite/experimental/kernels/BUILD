@@ -132,7 +132,11 @@ cc_library(
         "hashtable.cc",
         "hashtable_find.cc",
         "hashtable_import.cc",
+        "hashtable_ops.cc",
         "hashtable_size.cc",
+    ],
+    hdrs = [
+        "hashtable_ops.h",
     ],
     deps = [
         "//tensorflow/lite:framework",

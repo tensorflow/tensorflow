@@ -50,7 +50,7 @@ TEST(CreateCycleDetectionGraph, ConnectivityThroughEnterExitRegion) {
 
   GraphCycles cycles;
   TF_ASSERT_OK(CreateCycleDetectionGraph(root.graph(), &cycles).status());
-  EXPECT_FALSE(cycles.ContractEdge(a.node()->id(), b.node()->id()));
+  EXPECT_FALSE(cycles.CanContractEdge(a.node()->id(), b.node()->id()));
 }
 
 TEST(CreateCycleDetectionGraph, ConnectivityThroughMultipleEnterExitRegions) {
@@ -69,7 +69,7 @@ TEST(CreateCycleDetectionGraph, ConnectivityThroughMultipleEnterExitRegions) {
 
   GraphCycles cycles;
   TF_ASSERT_OK(CreateCycleDetectionGraph(root.graph(), &cycles).status());
-  EXPECT_FALSE(cycles.ContractEdge(a.node()->id(), b.node()->id()));
+  EXPECT_FALSE(cycles.CanContractEdge(a.node()->id(), b.node()->id()));
 }
 
 TEST(CreateCycleDetectionGraph, ReachingEnterExit) {

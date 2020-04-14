@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Adadelta for TensorFlow."""
+"""Adadelta optimizer implementation."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -34,29 +34,49 @@ class Adadelta(optimizer_v2.OptimizerV2):
 
   Adadelta optimization is a stochastic gradient descent method that is based on
   adaptive learning rate per dimension to address two drawbacks:
-    1) the continual decay of learning rates throughout training
-    2) the need for a manually selected global learning rate
 
-  Two accumulation steps are required:
-    1) the accumulation of gradients squared,
-    2) the accumulation of updates squared.
+  - The continual decay of learning rates throughout training
+  - The need for a manually selected global learning rate
 
-  Initialization:
+  Adadelta is a more robust extension of Adagrad that adapts learning rates
+  based on a moving window of gradient updates, instead of accumulating all
+  past gradients. This way, Adadelta continues learning even when many updates
+  have been done. Compared to Adagrad, in the original version of Adadelta you
+  don't have to set an initial learning rate. In this version, initial
+  learning rate can be set, as in most other Keras optimizers.
 
-  $$E[g^2]_0 := 0 \text{(Initialize gradient 2nd order moment vector)}$$
-  $$E[\Delta x^2]_0 := 0 \text{(Initialize 2nd order variable update)}$$
+  According to section 4.3 ("Effective Learning rates"), near the end of
+  training step sizes converge to 1 which is effectively a high learning
+  rate which would cause divergence. This occurs only near the end of the
+  training as gradients and step sizes are small, and the epsilon constant
+  in the numerator and denominator dominate past gradients and parameter
+  updates which converge the learning rate to 1.
 
-  $$t := t + 1$$
-  $$E[g^2]_t := \rho * E[g^2]_{t-1} + (1 - \rho) * g^2$$
-  $$\Delta x_t = -RMS[\Delta x]_{t-1} * g_t / RMS[g]_t$$
-  $$E[\Delta x^2]_t := \rho * E[\Delta x^2]_{t-1} + (1 - \rho) * \Delta x_t^2$$
-  $$x_t := x_{t-1} + \Delta x_{t}$$
+  According to section 4.4("Speech Data"),where a large neural network with
+  4 hidden layers was trained on a corpus of US English data, ADADELTA was
+  used with 100 network replicas.The epsilon used is 1e-6 with rho=0.95
+  which converged faster than ADAGRAD, by the following construction:
+  def __init__(self, lr=1.0, rho=0.95, epsilon=1e-6, decay=0., **kwargs):
 
-  References
-    See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
-      ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
+  Args:
+    learning_rate: A `Tensor`, floating point value, or a schedule that is a
+      `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
+      To match the exact form in the original paper use 1.0.
+    rho: A `Tensor` or a floating point value. The decay rate.
+    epsilon: A `Tensor` or a floating point value.  A constant epsilon used
+             to better conditioning the grad update.
+    name: Optional name prefix for the operations created when applying
+      gradients.  Defaults to `"Adadelta"`.
+    **kwargs: Keyword arguments. Allowed to be one of
+      `"clipnorm"` or `"clipvalue"`.
+      `"clipnorm"` (float) clips gradients by norm; `"clipvalue"` (float) clips
+      gradients by value.
 
+  Reference:
+    - [Zeiler, 2012](http://arxiv.org/abs/1212.5701)
   """
+
+  _HAS_AGGREGATE_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,
@@ -64,37 +84,6 @@ class Adadelta(optimizer_v2.OptimizerV2):
                epsilon=1e-7,
                name='Adadelta',
                **kwargs):
-    """Construct a new Adadelta optimizer.
-
-    Adadelta is a more robust extension of Adagrad that adapts learning rates
-    based on a moving window of gradient updates, instead of accumulating all
-    past gradients. This way, Adadelta continues learning even when many updates
-    have been done. Compared to Adagrad, in the original version of Adadelta you
-    don't have to set an initial learning rate. In this version, initial
-    learning rate can be set, as in most other Keras optimizers.
-
-    Args:
-      learning_rate: A `Tensor`, floating point value, or a schedule that is a
-        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
-        To match the exact form in the original paper use 1.0.
-      rho: A `Tensor` or a floating point value. The decay rate.
-      epsilon: A `Tensor` or a floating point value.  A constant epsilon used
-               to better conditioning the grad update.
-      name: Optional name prefix for the operations created when applying
-        gradients.  Defaults to "Adadelta".
-      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
-        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
-        gradients by value, `decay` is included for backward compatibility to
-        allow time inverse decay of learning rate. `lr` is included for backward
-        compatibility, recommended to use `learning_rate` instead.
-
-    @compatibility(eager)
-    When eager execution is enabled, `learning_rate`, `rho`, and `epsilon` can
-    each be a callable that takes no arguments and returns the actual value to
-    use. This can be useful for changing these values across different
-    invocations of optimizer functions.
-    @end_compatibility
-    """
     super(Adadelta, self).__init__(name, **kwargs)
     self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)
@@ -110,10 +99,10 @@ class Adadelta(optimizer_v2.OptimizerV2):
 
   def _prepare_local(self, var_device, var_dtype, apply_state):
     super(Adadelta, self)._prepare_local(var_device, var_dtype, apply_state)
-    apply_state[(var_device, var_dtype)].update(dict(
-        epsilon=ops.convert_to_tensor(self.epsilon, var_dtype),
-        rho=array_ops.identity(self._get_hyper('rho', var_dtype))
-    ))
+    apply_state[(var_device, var_dtype)].update(
+        dict(
+            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            rho=array_ops.identity(self._get_hyper('rho', var_dtype))))
 
   def set_weights(self, weights):
     params = self.weights

@@ -25,12 +25,13 @@ module attributes {tf_saved_model.semantics} {
   // CHECK: func @__concrete_function_run_computation
   func @__concrete_function_run_computation(
     %arg0: tensor<f32> {tf_saved_model.index_path = [0, "foo"]},
-    %arg1: tensor<f32> {tf_saved_model.bound_input = @some_constant}
+    %arg1: tensor<!tf.resource<tensor<1x64xf32>>> {tf_saved_model.bound_input = @some_constant},
+    %arg2: tensor<!tf.resource<tensor<?x64xf32>>> {tf_saved_model.bound_input = @some_variable}
   ) -> (
     tensor<f32> {tf_saved_model.index_path = [0, "bar"]}
   ) attributes { tf_saved_model.exported_names = ["some_func"] }
   {
-    "some_dialect.some_call"() {callee = @f} : () -> ()
+    "tf.some_call"() {callee = @f} : () -> ()
     return %arg0 : tensor<f32>
   }
 

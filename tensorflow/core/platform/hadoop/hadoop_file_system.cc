@@ -276,7 +276,7 @@ class HDFSRandomAccessFile : public RandomAccessFile {
   hdfsFS fs_;
 
   mutable mutex mu_;
-  mutable hdfsFile file_ GUARDED_BY(mu_);
+  mutable hdfsFile file_ TF_GUARDED_BY(mu_);
 };
 
 Status HadoopFileSystem::NewRandomAccessFile(
@@ -306,9 +306,24 @@ class HDFSWritableFile : public WritableFile {
   }
 
   Status Append(StringPiece data) override {
-    if (libhdfs()->hdfsWrite(fs_, file_, data.data(),
-                             static_cast<tSize>(data.size())) == -1) {
-      return IOError(filename_, errno);
+    size_t cur_pos = 0, write_len = 0;
+    bool retry = false;
+    // max() - 2 can avoid OutOfMemoryError in JVM .
+    static const size_t max_len_once =
+        static_cast<size_t>(std::numeric_limits<tSize>::max() - 2);
+    while (cur_pos < data.size()) {
+      write_len = std::min(data.size() - cur_pos, max_len_once);
+      tSize w = libhdfs()->hdfsWrite(fs_, file_, data.data() + cur_pos,
+                                     static_cast<tSize>(write_len));
+      if (w == -1) {
+        if (!retry && (errno == EINTR || errno == EAGAIN)) {
+          retry = true;
+        } else {
+          return IOError(filename_, errno);
+        }
+      } else {
+        cur_pos += w;
+      }
     }
     return Status::OK();
   }
@@ -473,7 +488,7 @@ Status HadoopFileSystem::DeleteDir(const string& dir) {
     libhdfs()->hdfsFreeFileInfo(info, entries);
   }
   // Due to HDFS bug HDFS-8407, we can't distinguish between an error and empty
-  // folder, expscially for Kerberos enable setup, EAGAIN is quite common when
+  // folder, especially for Kerberos enable setup, EAGAIN is quite common when
   // the call is actually successful. Check again by Stat.
   if (info == nullptr && errno != 0) {
     FileStatistics stat;

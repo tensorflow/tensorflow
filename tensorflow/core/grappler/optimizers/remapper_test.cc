@@ -69,9 +69,9 @@ TEST_F(RemapperTest, FusedBatchNorm) {
 }
 
 TEST_F(RemapperTest, FusedBatchNormNCHW) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output dflt =
       ops::Const(s.WithOpName("dflt"), {3.14f, 2.7f, 1.0f, 2.0f, 3.0f, 100.0f},

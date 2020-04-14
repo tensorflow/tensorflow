@@ -129,6 +129,30 @@ string""")
     f = self._eval_code(parser.dedent_block(code), 'f')
     self.assertEqual(f(), (1, 2, 3))
 
+  def test_dedent_block_continuation(self):
+
+    code = r"""
+    def f():
+      a = \
+          1
+      return a
+    """
+
+    f = self._eval_code(parser.dedent_block(code), 'f')
+    self.assertEqual(f(), 1)
+
+  def test_dedent_block_continuation_in_string(self):
+
+    code = r"""
+    def f():
+      a = "a \
+  b"
+      return a
+    """
+
+    f = self._eval_code(parser.dedent_block(code), 'f')
+    self.assertEqual(f(), 'a   b')
+
   def test_parse_expression(self):
     node = parser.parse_expression('a.b')
     self.assertEqual('a', node.value.id)

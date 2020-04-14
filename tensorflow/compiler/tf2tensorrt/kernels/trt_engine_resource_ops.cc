@@ -71,7 +71,7 @@ class CreateTRTResourceHandle : public OpKernel {
   string resource_name_;
   Tensor handle_;
   mutex mutex_;
-  bool initialized_ GUARDED_BY(mutex_) = false;
+  bool initialized_ TF_GUARDED_BY(mutex_) = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CreateTRTResourceHandle);
 };
@@ -140,11 +140,24 @@ class InitializeTRTResource : public OpKernel {
               engine_instance.serialized_engine().c_str(),
               engine_instance.serialized_engine().size(), nullptr));
       auto raw_engine = engine.get();
-      resource->cache_.emplace(
-          engine_input_shapes,
-          absl::make_unique<EngineContext>(
-              std::move(engine), TrtUniquePtrType<nvinfer1::IExecutionContext>(
-                                     raw_engine->createExecutionContext())));
+      std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> ctx_vec;
+      if (num_loaded_engine == 0) {
+        // Restore profiles if there are any. Currently only 1 engine is allowed
+        // in dynamic mode therefore we call this only for the 0th engine.
+        // it is a no-op in implicit batch mode.
+        OP_REQUIRES_OK(ctx, resource->profiles_.RestoreProfiles(raw_engine));
+        OP_REQUIRES_OK(ctx, resource->profiles_.CreateExecutionContexts(
+                                raw_engine, ctx_vec));
+      } else {
+        // Multiple engines are only available in static mode. For each engine
+        // we have only a single execution context.
+        TrtUniquePtrType<nvinfer1::IExecutionContext> exec_ctx(
+            raw_engine->createExecutionContext());
+        ctx_vec.push_back(std::move(exec_ctx));
+      }
+      resource->cache_.emplace(engine_input_shapes,
+                               absl::make_unique<EngineContext>(
+                                   std::move(engine), std::move(ctx_vec)));
       ++num_loaded_engine;
     } while (1);
     VLOG(1) << "Loaded " << num_loaded_engine << " TRT engines for op "

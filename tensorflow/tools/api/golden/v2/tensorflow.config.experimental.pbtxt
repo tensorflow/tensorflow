@@ -1,6 +1,10 @@
 path: "tensorflow.config.experimental"
 tf_module {
   member {
+    name: "ClusterDeviceFilters"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "VirtualDeviceConfiguration"
     mtype: "<type \'type\'>"
   }
@@ -9,7 +13,15 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "disable_mlir_graph_optimization"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "enable_mlir_bridge"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enable_mlir_graph_optimization"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {

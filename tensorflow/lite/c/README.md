@@ -30,7 +30,7 @@ provided. Assuming a working [bazel](https://bazel.build/versions/master/docs/in
 configuration, this can be built as follows:
 
 ```sh
-bazel build -c opt --cxxopt=--std=c++11 //tensorflow/lite/c:tensorflowlite_c
+bazel build -c opt //tensorflow/lite/c:tensorflowlite_c
 ```
 
 and for Android (replace `android_arm` with `android_arm64` for 64-bit),

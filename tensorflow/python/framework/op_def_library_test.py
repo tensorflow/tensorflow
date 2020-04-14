@@ -1094,7 +1094,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
         attr { key: 'M' value { i: 2 } }
         """, op.node_def)
 
-      # Empty input lists: assume defaut type for T.
+      # Empty input lists: assume default type for T.
       op = op_def_library.apply_op(
           "InPolymorphicTwice", a=[], b=[], name="r")
       self.assertProtoEquals("""

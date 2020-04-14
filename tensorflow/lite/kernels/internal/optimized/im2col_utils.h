@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_IM2COL_UTILS_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_IM2COL_UTILS_H_
 
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -111,11 +111,12 @@ inline void ExtractPatchIntoBufferColumn(const RuntimeShape& input_shape, int w,
   }
 }
 
+// Supports per-batch zero_byte for per-batch asymmetric quantized inputs.
 template <typename T>
-void DilatedIm2col(const ConvParams& params, uint8 zero_byte,
-                   const RuntimeShape& input_shape, const T* input_data,
-                   const RuntimeShape& filter_shape,
-                   const RuntimeShape& output_shape, T* im2col_data) {
+void DilatedIm2col(const ConvParams& params, const RuntimeShape& input_shape,
+                   const T* input_data, const RuntimeShape& filter_shape,
+                   const RuntimeShape& output_shape, T* im2col_data,
+                   const int32_t* zero_bytes, const int zero_bytes_len) {
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int dilation_width_factor = params.dilation_width_factor;
@@ -127,7 +128,7 @@ void DilatedIm2col(const ConvParams& params, uint8 zero_byte,
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
 
   // For dilated convolution, the input pixels are not contiguous therefore we
-  // can't use the same opitimizations as Im2Col(). Though note this code would
+  // can't use the same optimizations as Im2Col(). Though note this code would
   // work fine for the non-dilated case too (though likely a bit slower).
   ruy::profiler::ScopeLabel label("DilatedIm2col");
   TFLITE_DCHECK(dilation_width_factor != 1 || dilation_height_factor != 1);
@@ -153,6 +154,8 @@ void DilatedIm2col(const ConvParams& params, uint8 zero_byte,
 
   // Loop through the output rows (B x H x W)
   for (int batch = 0; batch < batches; ++batch) {
+    const T zero_byte = zero_bytes_len > 1 ? static_cast<T>(zero_bytes[batch])
+                                           : static_cast<T>(zero_bytes[0]);
     for (int out_y = 0; out_y < output_height; ++out_y) {
       for (int out_x = 0; out_x < output_width; ++out_x) {
         // Each im2col row is an output pixel. Arrange the input data in this
@@ -192,6 +195,16 @@ void DilatedIm2col(const ConvParams& params, uint8 zero_byte,
       }
     }
   }
+}
+
+template <typename T>
+void DilatedIm2col(const ConvParams& params, uint8 zero_byte,
+                   const RuntimeShape& input_shape, const T* input_data,
+                   const RuntimeShape& filter_shape,
+                   const RuntimeShape& output_shape, T* im2col_data) {
+  const int32_t zero_point = static_cast<int32_t>(zero_byte);
+  DilatedIm2col<T>(params, input_shape, input_data, filter_shape, output_shape,
+                   im2col_data, &zero_point, 1);
 }
 
 template <typename T>

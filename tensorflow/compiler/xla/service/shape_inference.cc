@@ -2047,7 +2047,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   // returns a tuple that contains N array shapes.
   TF_RET_CHECK(!operand_shapes.empty());
   for (int i = 0; i < operand_shapes.size(); i++) {
-    if (!ShapeUtil::Equal(*operand_shapes[0], *operand_shapes[i])) {
+    if (!Shape::Equal().IgnoreMemorySpaceInLayout()(*operand_shapes[0],
+                                                    *operand_shapes[i])) {
       return InvalidArgument(
           "HLO all-to-all has operands with different shapes: the 0th "
           "operand shape %s, but the %dth operand has shape %s.",

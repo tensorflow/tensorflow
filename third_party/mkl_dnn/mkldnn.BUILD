@@ -45,7 +45,7 @@ template_rule(
     substitutions = {
         "@MKLDNN_VERSION_MAJOR@": "0",
         "@MKLDNN_VERSION_MINOR@": "21",
-        "@MKLDNN_VERSION_PATCH@": "2",
+        "@MKLDNN_VERSION_PATCH@": "3",
         "@MKLDNN_VERSION_HASH@": "N/A",
     },
 )

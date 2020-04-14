@@ -17,14 +17,14 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Identifier.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Parser.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Parser.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -116,7 +116,7 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
   return module_or.ConsumeValueOrDie();
 }
 
-mlir::OwningModuleRef SavedModelToMlirImport(
+mlir::OwningModuleRef SavedModelObjectGraphToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context) {
@@ -137,13 +137,16 @@ mlir::OwningModuleRef SavedModelToMlirImport(
   return module_or.ConsumeValueOrDie();
 }
 
-mlir::OwningModuleRef SavedModelV1ToMlirImport(
+mlir::OwningModuleRef SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags, mlir::MLIRContext* context) {
   tensorflow::SavedModelBundle bundle;
-  auto load_status = tensorflow::LoadSavedModel(
-      /* session_options = */ {}, /* run_options = */ {},
-      std::string(saved_model_dir), tags, &bundle);
+  tensorflow::SessionOptions session_options;
+  // Force saved model states to be restored to CPU.
+  (*session_options.config.mutable_device_count())["GPU"] = 0;
+  auto load_status =
+      tensorflow::LoadSavedModel(session_options, /* run_options = */ {},
+                                 std::string(saved_model_dir), tags, &bundle);
   if (!load_status.ok()) {
     LOG(ERROR) << "Failed to load saved model v1 '" << saved_model_dir
                << "': " << load_status;

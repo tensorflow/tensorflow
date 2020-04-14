@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TESTS_EXHAUSTIVE_OP_TEST_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_TESTS_EXHAUSTIVE_OP_TEST_UTILS_H_
 
+#include <array>
 #include <cmath>
 #include <iterator>
 
@@ -28,25 +29,73 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 
 namespace xla {
+namespace exhaustive_op_test {
+
+struct ErrorSpec {
+  float abs_err;
+  float rel_err;
+
+  // If true, will consider -0 not near to +0 and vice versa.  Note that
+  // +epsilon may still be considered close to -0, depending on the error
+  // spec; this only covers the case when both `expected` and `actual` are
+  // equal to 0.
+  bool strict_signed_zeros = false;
+
+  ErrorSpec(float a, float r) : abs_err(a), rel_err(r) {}
+};
+
+// Representations of the reference function passed in by the user.
+template <typename NativeRefT, size_t K>
+struct EvaluateOpWrapper {};
+template <typename NativeRefT>
+struct EvaluateOpWrapper<NativeRefT, 1> {
+  using type = NativeRefT (*)(NativeRefT);
+};
+template <typename NativeRefT>
+struct EvaluateOpWrapper<NativeRefT, 2> {
+  using type = NativeRefT (*)(NativeRefT, NativeRefT);
+};
+
+// Representations of the reference function passed in by the user.
+template <typename XlaInputs, size_t K>
+struct EnqueueOpWrapper {};
+template <typename XlaInputs>
+struct EnqueueOpWrapper<XlaInputs, 1> {
+  using type = std::function<XlaOp(XlaOp)>;
+  static XlaOp BuildFromInputs(XlaInputs inputs, type ty) {
+    return ty(inputs[0]);
+  }
+};
+template <typename XlaInputs>
+struct EnqueueOpWrapper<XlaInputs, 2> {
+  using type = std::function<XlaOp(XlaOp, XlaOp)>;
+  static XlaOp BuildFromInputs(XlaInputs inputs, type ty) {
+    return ty(inputs[0], inputs[1]);
+  }
+};
+
+// Representations of the ErrorSpecGen function passed in by the user.
+template <PrimitiveType T, size_t K>
+struct ErrorSpecGenWrapper {};
+template <PrimitiveType T>
+struct ErrorSpecGenWrapper<T, 1> {
+  using NativeT = typename primitive_util::PrimitiveTypeToNative<T>::type;
+  using type = ErrorSpec (*)(NativeT);
+};
+template <PrimitiveType T>
+struct ErrorSpecGenWrapper<T, 2> {
+  using NativeT = typename primitive_util::PrimitiveTypeToNative<T>::type;
+  using type = ErrorSpec (*)(NativeT, NativeT);
+};
+
+template <PrimitiveType T, size_t N>
+typename ErrorSpecGenWrapper<T, N>::type GetDefaultSpecGenerator();
 
 // T: The primitive type being tested.
 // N: The number of operands that the function being tested takes.
 template <PrimitiveType T, size_t N>
 class ExhaustiveOpTestBase : public ClientLibraryTestBase {
  public:
-  struct ErrorSpec {
-    float abs_err;
-    float rel_err;
-
-    // If true, will consider -0 not near to +0 and vice versa.  Note that
-    // +epsilon may still be considered close to -0, depending on the error
-    // spec; this only covers the case when both `expected` and `actual` are
-    // equal to 0.
-    bool strict_signed_zeros = false;
-
-    ErrorSpec(float a, float r) : abs_err(a), rel_err(r) {}
-  };
-
   // Definitions depending on the primitive type T.
 
   static constexpr bool kIsComplex = (T == C128 || T == C64);
@@ -112,52 +161,10 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   // N data items representing a single input to an XLA function.
   using XlaInputs = std::array<XlaOp, N>;
 
-  // Representations of the reference function passed in by the user.
-  template <size_t K>
-  struct EvaluateOpWrapper {};
-  template <>
-  struct EvaluateOpWrapper<1> {
-    using type = NativeRefT (*)(NativeRefT);
-  };
-  template <>
-  struct EvaluateOpWrapper<2> {
-    using type = NativeRefT (*)(NativeRefT, NativeRefT);
-  };
-
-  // Representations of the reference function passed in by the user.
-  template <size_t K>
-  struct EnqueueOpWrapper {};
-  template <>
-  struct EnqueueOpWrapper<1> {
-    using type = std::function<XlaOp(XlaOp)>;
-    static XlaOp BuildFromInputs(XlaInputs inputs, type ty) {
-      return ty(inputs[0]);
-    }
-  };
-  template <>
-  struct EnqueueOpWrapper<2> {
-    using type = std::function<XlaOp(XlaOp, XlaOp)>;
-    static XlaOp BuildFromInputs(XlaInputs inputs, type ty) {
-      return ty(inputs[0], inputs[1]);
-    }
-  };
-
-  // Representations of the ErrorSpecGen function passed in by the user.
-  template <size_t K>
-  struct ErrorSpecGenWrapper {};
-  template <>
-  struct ErrorSpecGenWrapper<1> {
-    using type = ErrorSpec (*)(NativeT);
-  };
-  template <>
-  struct ErrorSpecGenWrapper<2> {
-    using type = ErrorSpec (*)(NativeT, NativeT);
-  };
-
  public:
-  using ErrorSpecGen = typename ErrorSpecGenWrapper<N>::type;
-  using EvaluateOp = typename EvaluateOpWrapper<N>::type;
-  using EnqueueOp = typename EnqueueOpWrapper<N>::type;
+  using ErrorSpecGen = typename ErrorSpecGenWrapper<T, N>::type;
+  using EvaluateOp = typename EvaluateOpWrapper<NativeRefT, N>::type;
+  using EnqueueOp = typename EnqueueOpWrapper<XlaInputs, N>::type;
 
   explicit ExhaustiveOpTestBase()
       : ty_(T), platform_(client_->platform()->Name()) {
@@ -169,7 +176,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   }
 
   void Run(EnqueueOp enqueue_op, EvaluateOp evaluate_op) {
-    Run(enqueue_op, evaluate_op, GetDefaultSpecGenerator());
+    Run(enqueue_op, evaluate_op, GetDefaultSpecGenerator<T, N>());
   }
 
   // A helper for implementing the Run method for exhaustive op tests. It
@@ -190,7 +197,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
       xla_inputs[i] =
           Parameter(&builder, i, input_literals[i].shape(), "input");
     }
-    EnqueueOpWrapper<N>::BuildFromInputs(xla_inputs, enqueue_op);
+    EnqueueOpWrapper<XlaInputs, N>::BuildFromInputs(xla_inputs, enqueue_op);
 
     TF_ASSERT_OK_AND_ASSIGN(XlaComputation comp, builder.Build());
     TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
@@ -242,7 +249,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
         [&](const Literal* input_literal) { return &input_literal->shape(); });
 
     TF_ASSIGN_OR_RETURN(
-        auto executable,
+        auto executables,
         client_->Compile(computation, input_shapes, build_opts));
 
     std::vector<ScopedShapedBuffer> input_buffers;
@@ -264,7 +271,7 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     run_opts.set_intra_op_thread_pool(
         client_->backend().eigen_intra_op_thread_pool_device());
     TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
-                        executable->Run(input_buffer_pointers, run_opts));
+                        executables[0]->Run(input_buffer_pointers, run_opts));
 
     TF_ASSIGN_OR_RETURN(Literal result_literal,
                         client_->ShapedBufferToLiteral(result));
@@ -437,200 +444,6 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     return test_values;
   }
 
-  // The number of values that can be substituted for subnormal inputs.
-  static constexpr int kNumSubnormalSubstitutionValues = 4;
-
-  // Encodings used to determine where subnormal test values are cached.
-  static constexpr int kPositiveMin = 0;
-  static constexpr int kNegativeMin = 1;
-  static constexpr int kPositiveZero = 2;
-  static constexpr int kNegativeZero = 3;
-  static constexpr int kNonSubnormal = -1;
-  static constexpr int kInvalidCacheIndex = -1;
-
-  // Since we take the cross product of all possible test values, and each
-  // component has kNumSubnormalSubstitutionValues possible test values, then
-  // the total number of different cache locations are
-  // kNumSubnormalSubstitutionValues raised to the num_components.
-  // num_components = N for the reals, and 2*N for the complex.
-  static constexpr int GetMaxCacheSize() {
-    return pow(kNumSubnormalSubstitutionValues, N * (kIsComplex ? 2 : 1));
-  }
-
-  // When we are testing a value such that all of its components are subnormal,
-  // we also need to test inputs made up of the Cartesian product of values
-  // replaced for each subnormal component. These additional test inputs are
-  // common enough where it will be efficient to just cache the results of these
-  // Cartesian products. In order to cache these values, we need a one to one
-  // mapping between these Cartesian products and cache locations.
-  //
-  // Our mapping works by assigning each component an integer in
-  // [0, kNumSubnormalSubstitutionValues) based on its test value. By lining
-  // these integers up with the n'th component corresponding to the n'th digit,
-  // then for each Cartesian product element we essentially create a unique base
-  // kNumSubnormalSubstitutionValues number. This number represents our cache
-  // index.
-  //
-  // In the event that there a component is not a subnormal, the value should
-  // not be cached, so we return a kNonSubnormal value.
-
-  static int GetCacheLocation(ComponentNativeRefT value) {
-    bool positive = !std::signbit(value);
-    if (std::abs(value) == std::numeric_limits<ComponentNativeRefT>::min()) {
-      if (positive) {
-        return kPositiveMin;
-      } else {
-        return kNegativeMin;
-      }
-    } else if (value != 0) {
-      CHECK(std::fpclassify(value) != FP_SUBNORMAL);
-      return kNonSubnormal;
-    } else if (positive) {
-      return kPositiveZero;
-    } else {
-      return kNegativeZero;
-    }
-  }
-
-  static int GetCacheLocation(std::complex<ComponentNativeRefT> value) {
-    int real_loc = GetCacheLocation(value.real());
-    int imag_loc = GetCacheLocation(value.imag());
-    if (real_loc == kNonSubnormal || imag_loc == kNonSubnormal) {
-      return kNonSubnormal;
-    } else {
-      return real_loc * kNumSubnormalSubstitutionValues + imag_loc;
-    }
-  }
-
-  static int GetCacheLocation(const NativeRefInputs& input) {
-    int location = 0;
-    int cache_size_per_element =
-        (kIsComplex
-             ? kNumSubnormalSubstitutionValues * kNumSubnormalSubstitutionValues
-             : kNumSubnormalSubstitutionValues);
-    for (int i = 0; i < N; ++i) {
-      int comp_loc = GetCacheLocation(input[i]);
-      if (i == kNonSubnormal) {
-        return kNonSubnormal;
-      }
-      location *= cache_size_per_element;
-      location += comp_loc;
-    }
-    return location;
-  }
-
-  // The inverse function of GetCacheLocation.
-
-  template <bool complex, typename RetT>
-  static RetT FromCacheLocationComponent(int cache_loc) {
-    LOG(FATAL) << "Not implemented.";
-  }
-
-  template <>
-  static ComponentNativeRefT
-  FromCacheLocationComponent<false, ComponentNativeRefT>(int cache_loc) {
-    switch (cache_loc) {
-      case kPositiveMin:
-        return std::numeric_limits<ComponentNativeRefT>::min();
-      case kNegativeMin:
-        return -std::numeric_limits<ComponentNativeRefT>::min();
-      case kPositiveZero:
-        return static_cast<ComponentNativeRefT>(0.0);
-      case kNegativeZero:
-        return static_cast<ComponentNativeRefT>(-0.0);
-      default:
-        LOG(FATAL) << "Invalid cache_loc value of " << cache_loc;
-    }
-  }
-
-  template <>
-  static std::complex<ComponentNativeRefT>
-  FromCacheLocationComponent<true, std::complex<ComponentNativeRefT>>(
-      int cache_loc) {
-    CHECK_LT(cache_loc,
-             kNumSubnormalSubstitutionValues * kNumSubnormalSubstitutionValues);
-    CHECK_GE(cache_loc, 0);
-
-    std::complex<ComponentNativeRefT> value;
-    value.real(FromCacheLocationComponent<false, ComponentNativeRefT>(
-        cache_loc / kNumSubnormalSubstitutionValues));
-    value.imag(FromCacheLocationComponent<false, ComponentNativeRefT>(
-        cache_loc % kNumSubnormalSubstitutionValues));
-    return std::move(value);
-  }
-
-  static NativeRefInputs FromCacheLocation(int cache_loc) {
-    NativeRefInputs input;
-    int cache_size_per_element =
-        (kIsComplex
-             ? kNumSubnormalSubstitutionValues * kNumSubnormalSubstitutionValues
-             : kNumSubnormalSubstitutionValues);
-    for (int i = N - 1; i >= 0; --i) {
-      input[i] = FromCacheLocationComponent<kIsComplex, NativeRefT>(
-          cache_loc % cache_size_per_element);
-      cache_loc /= cache_size_per_element;
-    }
-
-    return input;
-  }
-
-  // Returns a string that describes the test value for the actual value.
-  std::string GetSubnormalDescription(ComponentNativeRefT test_val,
-                                      ComponentNativeRefT actual_val) {
-    const string sp_min_normal = "sign-preserving min-normal-float";
-    const string sp_zero = "sign-preserving zero";
-    const string nsp_zero = "non-sign-preserving zero";
-
-    switch (GetCacheLocation(test_val)) {
-      case kNegativeMin:
-      case kPositiveMin:
-        return sp_min_normal;
-      case kNegativeZero:
-      case kPositiveZero:
-        return (std::signbit(test_val) == std::signbit(actual_val)) ? sp_zero
-                                                                    : nsp_zero;
-      default:
-        return "";
-    }
-  }
-
-  std::string GetSubnormalDescription(
-      std::complex<ComponentNativeRefT> test_val,
-      std::complex<ComponentNativeRefT> actual_val) {
-    std::string real =
-        GetSubnormalDescription(test_val.real(), actual_val.real());
-    std::string imag =
-        GetSubnormalDescription(test_val.imag(), actual_val.imag());
-
-    if (real.empty()) {
-      if (imag.empty()) {
-        return "";
-      }
-      real = "real";
-    } else if (imag.empty()) {
-      imag = "imag";
-    }
-
-    return absl::StrCat("(", real, ", ", imag, ")");
-  }
-
-  std::string GetSubnormalDescription(std::array<NativeRefT, N> test_vals,
-                                      std::array<NativeRefT, N> actual_vals) {
-    if (N == 1) {
-      return GetSubnormalDescription(test_vals[0], actual_vals[0]);
-    }
-
-    std::array<std::string, N> str_vals;
-    for (int i = 0; i < N; ++i) {
-      str_vals[i] = GetSubnormalDescription(test_vals[i], actual_vals[i]);
-      if (str_vals[i].empty()) {
-        str_vals[i] = "original";
-      }
-    }
-
-    return absl::StrCat("(", absl::StrJoin(str_vals, ", "), ")");
-  }
-
   InputLiterals CreateInputLiterals() {
     InputLiterals literals;
     for (int i = 0; i < N; ++i) {
@@ -662,26 +475,6 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     return abs_err <= spec.abs_err || rel_err <= spec.rel_err;
   }
 
-  template <typename ErrorGenerator>
-  void PrintMismatch(int64* mismatches, const ErrorGenerator& err_generator) {
-    // We send a few mismatches to gunit so they show up nicely in test logs.
-    // Then we send more to LOG(ERROR).  The remainder we squelch unless we're
-    // at vlog level 2.
-    constexpr int64 kMaxMismatchesLoggedToGunit = 10;
-    constexpr int64 kMaxMismatchesLoggedToErr = 1000;
-
-    (*mismatches)++;
-    if (*mismatches < kMaxMismatchesLoggedToGunit) {
-      FAIL() << err_generator();
-    } else if (*mismatches < kMaxMismatchesLoggedToErr || VLOG_IS_ON(2)) {
-      LOG(ERROR) << err_generator();
-    } else if (*mismatches == kMaxMismatchesLoggedToErr) {
-      LOG(ERROR) << "Not printing any more mismatches; pass "
-                    "--vmodule=exhaustive_op_test=2 to see "
-                    "all of them.";
-    }
-  }
-
   // Converts part or all bits in an uint64 to the value of the floating point
   // data type being tested.
   //
@@ -704,41 +497,6 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
     return ConvertValue(bits);
   }
 
-  static string StringifyNum(ComponentNativeT x);
-
-  static string StringifyNum(std::complex<ComponentNativeT> x) {
-    return absl::StrCat("(", StringifyNum(x.real()), ", ",
-                        StringifyNum(x.imag()), ")");
-  }
-
-  // We also stringify the NativeRefT, so we need to generate an additional
-  // version of this function when NativeRefT != NativeT.
-  template <
-      typename T1 = NativeRefT,
-      class = typename std::enable_if<!std::is_same<NativeT, T1>::value>::type>
-  static string StringifyNum(NativeRefT x) {
-    return ExhaustiveOpTestBase<RefT::value, N>::StringifyNum(x);
-  }
-
-  static string StringifyNum(const NativeInputs& inputs) {
-    if (N == 1) {
-      return StringifyNum(inputs[0]);
-    }
-
-    std::array<std::string, N> str_vals;
-    for (int i = 0; i < N; ++i) {
-      str_vals[i] = StringifyNum(inputs[i]);
-    }
-
-    return absl::StrCat("(", absl::StrJoin(str_vals, ", "), ")");
-  }
-
-  static void AppendStringifyNum(std::string* s, NativeT x) {
-    absl::StrAppend(s, StringifyNum(x));
-  }
-
-  static ErrorSpecGen GetDefaultSpecGenerator();
-
  protected:
   // The primitive type being tested.
   const PrimitiveType ty_;
@@ -759,30 +517,6 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
   //
   // XLA:GPU preserves denormal signs, but other backends don't.
   bool relaxed_denormal_signs_ = platform_ != "CUDA";
-
- private:
-  using EvaluateOpInternal = NativeRefT (*)(NativeRefInputs);
-  using ErrorSpecGenInternal = ErrorSpec (*)(NativeInputs);
-
-  template <typename Type, typename FuncPtr>
-  ErrorSpec CallErrorSpec(FuncPtr* func, const std::array<Type, 1>& in) {
-    return func(in[0]);
-  }
-
-  template <typename Type, typename FuncPtr>
-  ErrorSpec CallErrorSpec(FuncPtr* func, const std::array<Type, 2>& in) {
-    return func(in[0], in[1]);
-  }
-
-  template <typename Type, typename FuncPtr>
-  Type CallOperation(FuncPtr* func, const std::array<Type, 1>& in) {
-    return func(in[0]);
-  }
-
-  template <typename Type, typename FuncPtr>
-  Type CallOperation(FuncPtr* func, const std::array<Type, 2>& in) {
-    return func(in[0], in[1]);
-  }
 };
 
 // Represents a set of 64 bit chunks by representing the starting bit chunk,
@@ -1202,5 +936,125 @@ inline std::vector<std::pair<int64, int64>> CreateExhaustiveF32Ranges() {
   return result;
 }
 
+template <PrimitiveType T, size_t N>
+inline ErrorSpec DefaultSpecGenerator(
+    typename ExhaustiveOpTestBase<T, N>::NativeT) {
+  LOG(FATAL) << "Unhandled Type";
+}
+
+template <PrimitiveType T, size_t N>
+inline ErrorSpec DefaultSpecGenerator(
+    typename ExhaustiveOpTestBase<T, N>::NativeT,
+    typename ExhaustiveOpTestBase<T, N>::NativeT) {
+  LOG(FATAL) << "Unhandled Type";
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<C128, 1>(complex128) {
+  return ErrorSpec{0.0001, 0.0001};
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<C64, 1>(complex64) {
+  return ErrorSpec{0.0001, 0.0001};
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F64, 1>(double) {
+  return ErrorSpec{0.0001, 0.0001};
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F32, 1>(float) {
+  return ErrorSpec{0.0001, 0.0001};
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F16, 1>(Eigen::half) {
+  return ErrorSpec{0.001, 0.001};
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<BF16, 1>(bfloat16) {
+  return ErrorSpec{0.002, 0.02};
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F64, 2>(double, double) {
+  return ErrorSpec{0.001, 0.001};
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F32, 2>(float, float) {
+  return ErrorSpec{0.001, 0.001};
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<F16, 2>(Eigen::half, Eigen::half) {
+  return ErrorSpec{0.001, 0.001};
+}
+
+template <>
+inline ErrorSpec DefaultSpecGenerator<BF16, 2>(bfloat16, bfloat16) {
+  return ErrorSpec{0.002, 0.02};
+}
+
+template <PrimitiveType T, size_t N>
+typename ErrorSpecGenWrapper<T, N>::type GetDefaultSpecGenerator() {
+  return DefaultSpecGenerator<T, N>;
+}
+
+template <typename T, typename std::enable_if<
+                          std::is_same<T, float>::value ||
+                          std::is_same<T, double>::value>::type* = nullptr>
+T ReferenceMax(T x, T y) {
+  // We need to propagate NAN here because std::max may not propagate NAN.
+  if (std::fpclassify(x) == FP_NAN) {
+    return x;
+  }
+  if (std::fpclassify(y) == FP_NAN) {
+    return y;
+  }
+
+  return std::max<T>(x, y);
+}
+
+template <typename T, typename std::enable_if<
+                          std::is_same<T, float>::value ||
+                          std::is_same<T, double>::value>::type* = nullptr>
+T ReferenceMin(T x, T y) {
+  // We need to propagate NAN here because std::max may not propagate NAN.
+  if (std::fpclassify(x) == FP_NAN) {
+    return x;
+  }
+  if (std::fpclassify(y) == FP_NAN) {
+    return y;
+  }
+
+  return std::min<T>(x, y);
+}
+
+// Returns a wrapper of the given build method, which build an HLO operation
+// with an empty broadcast dimension.
+inline std::function<XlaOp(XlaOp, XlaOp)> AddEmptyBroadcastDimension(
+    std::function<XlaOp(XlaOp, XlaOp, absl::Span<const int64>)> build_method) {
+  return [&](XlaOp src0, XlaOp src1) -> XlaOp {
+    return build_method(src0, src1, {});
+  };
+}
+
+template <PrimitiveType T>
+class ExhaustiveUnaryTest : public ExhaustiveOpTestBase<T, 1> {
+ public:
+  using typename ExhaustiveOpTestBase<T, 1>::ErrorSpecGen;
+  static ErrorSpecGen GetDefaultSpecGenerator() {
+    return exhaustive_op_test::GetDefaultSpecGenerator<T, 1>();
+  }
+};
+
+template <PrimitiveType T>
+using ExhaustiveBinaryTest = ExhaustiveOpTestBase<T, 2>;
+
+}  // namespace exhaustive_op_test
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_XLA_TESTS_EXHAUSTIVE_OP_TEST_UTILS_H_

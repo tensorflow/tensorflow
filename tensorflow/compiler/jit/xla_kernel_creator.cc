@@ -14,20 +14,24 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/jit/xla_kernel_creator.h"
 
+#include "tensorflow/compiler/jit/compilability_check_util.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_kernel_creator_util.h"
 #include "tensorflow/core/common_runtime/function.h"
 
 namespace tensorflow {
 
-bool XlaKernelCreator::CanCreateKernel(const FunctionLibraryRuntime& flr,
-                                       const NodeDef& node_def) const {
-  return CanCreateXlaKernel(node_def);
+bool XlaKernelCreator::CanCreateKernel(
+    const FunctionLibraryRuntime& flr,
+    const std::shared_ptr<const NodeProperties>& props) const {
+  return CanCreateXlaKernel(props->node_def);
 }
 
-Status XlaKernelCreator::CreateKernel(FunctionLibraryRuntime* flr,
-                                      const NodeDef& node_def,
-                                      std::unique_ptr<OpKernel>* kernel) const {
-  return CreateXlaKernel(flr, node_def, kernel);
+Status XlaKernelCreator::CreateKernel(
+    FunctionLibraryRuntime* flr,
+    const std::shared_ptr<const NodeProperties>& props,
+    std::unique_ptr<OpKernel>* kernel) const {
+  return CreateXlaKernel(flr, props->node_def, kernel);
 }
 
 namespace {
@@ -39,6 +43,10 @@ bool RegisterLaunchOpCreator() {
 }
 
 static bool register_me = RegisterLaunchOpCreator();
+static bool register_xla = [] {
+  SetXlaIsEnabled();
+  return true;
+}();
 
 }  // end namespace
 }  // namespace tensorflow

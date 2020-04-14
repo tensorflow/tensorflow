@@ -144,6 +144,43 @@ class DenseFeaturesTest(test.TestCase):
       self.assertAllEqual([0, 1, 2], indexed_slice.indices)
       self.assertAllEqual([[2, 2], [2, 2], [2, 2]], gradient)
 
+  def test_dense_feature_with_training_arg(self):
+    price1 = fc.numeric_column('price1', shape=2)
+    price2 = fc.numeric_column('price2')
+
+    # Monkey patch the second numeric column to simulate a column that has
+    # different behavior by mode.
+    def training_aware_get_dense_tensor(transformation_cache,
+                                        state_manager,
+                                        training=None):
+      return transformation_cache.get(price2, state_manager, training=training)
+
+    def training_aware_transform_feature(transformation_cache,
+                                         state_manager,
+                                         training=None):
+      input_tensor = transformation_cache.get(
+          price2.key, state_manager, training=training)
+      if training:
+        return input_tensor * 10.0
+      else:
+        return input_tensor * 20.0
+
+    price2.get_dense_tensor = training_aware_get_dense_tensor
+    price2.transform_feature = training_aware_transform_feature
+    with ops.Graph().as_default():
+      features = {'price1': [[1., 2.], [5., 6.]], 'price2': [[3.], [4.]]}
+      train_mode = df.DenseFeatures([price1, price2])(features, training=True)
+      predict_mode = df.DenseFeatures([price1, price2
+                                      ])(features, training=False)
+
+      self.evaluate(variables_lib.global_variables_initializer())
+      self.evaluate(lookup_ops.tables_initializer())
+
+      self.assertAllClose([[1., 2., 30.], [5., 6., 40.]],
+                          self.evaluate(train_mode))
+      self.assertAllClose([[1., 2., 60.], [5., 6., 80.]],
+                          self.evaluate(predict_mode))
+
   def test_raises_if_empty_feature_columns(self):
     with self.assertRaisesRegexp(ValueError,
                                  'feature_columns must not be empty'):

@@ -61,7 +61,7 @@ class GreedyMemoryPlanner : public MemoryPlanner {
 
   // Returns the high-water mark of used memory. This is the minimum size of a
   // memory arena you'd need to allocate to hold these buffers.
-  int GetMaximumMemorySize() override;
+  size_t GetMaximumMemorySize() override;
 
   // How many buffers have been recorded.
   int GetBufferCount() override;

@@ -125,31 +125,42 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
 
   // Input data tensor.
   const auto& data_tensor = context->tensors[inputs->data[0]];
-  TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
-      data_tensor, &data_min_, &data_max_, std::numeric_limits<uint8_t>::min(),
-      std::numeric_limits<uint8_t>::max()));
+  int input_batch_size, input_height_size, input_width_size, input_depth_size;
+  GetDims(&input_batch_size, &input_height_size, &input_width_size,
+          &input_depth_size, data_tensor.dims);
+  float data_min = 0;
+  float data_max = 0;
+  TF_LITE_ENSURE_STATUS(
+      ComputeMinAndMaxQuantValues(data_tensor, &data_min, &data_max));
   auto* data_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), (char*)&data_min_, sizeof(data_min_));
+      quant_bound_shape.data(), reinterpret_cast<char*>(&data_min),
+      sizeof(data_min));
   auto* data_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), (char*)&data_max_, sizeof(data_max_));
+      quant_bound_shape.data(), reinterpret_cast<char*>(&data_max),
+      sizeof(data_max));
 
   // Gather information about the Convolution operations.
   TfLitePadding padding_type = kTfLitePaddingUnknown;
+  TfLiteFusedActivation activation = kTfLiteActNone;
   int stride_height = 0;
   int stride_width = 0;
   bool is_dilated_depthwise_conv = false;
+  int channel_multiplier = 1;
   if (op_node_.op_type == OP_Supernode_8x8p32to8) {
     const TfLiteConvParams* conv_params =
         reinterpret_cast<const TfLiteConvParams*>(builtin_data_);
     stride_height = conv_params->stride_height;
     stride_width = conv_params->stride_width;
     padding_type = conv_params->padding;
+    activation = conv_params->activation;
   } else if (op_node_.op_type == OP_DepthwiseSupernode_8x8p32to8) {
     const TfLiteDepthwiseConvParams* conv_params =
         reinterpret_cast<const TfLiteDepthwiseConvParams*>(builtin_data_);
     stride_height = conv_params->stride_height;
     stride_width = conv_params->stride_width;
     padding_type = conv_params->padding;
+    activation = conv_params->activation;
+    channel_multiplier = conv_params->depth_multiplier;
     // We only support dilation for DepthwiseConv.
     if (conv_params->dilation_height_factor > 1 ||
         conv_params->dilation_width_factor > 1) {
@@ -160,48 +171,8 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   }
 
   // Weights tensor
-  const auto& weights_tensor = context->tensors[inputs->data[1]];
-  if (weights_tensor.allocation_type != kTfLiteMmapRo) {
-    context->ReportError(
-        context, "Weights tensor doesn't have correct allocation type: %s",
-        weights_tensor.name);
-    return kTfLiteError;
-  }
-  int weights_batch_size, weights_height_size, weights_width_size,
-      weights_depth_size;
-  // Hexagon lib expects the weight tensor in HWCN, TFLite uses NHWC.
-  // Transpose NHWC -> HWCN
-  GetDims(&weights_batch_size, &weights_height_size, &weights_width_size,
-          &weights_depth_size, weights_tensor.dims);
-  weight_shape_ = {weights_height_size, weights_width_size, weights_depth_size,
-                   weights_batch_size};
-  RuntimeShape nhwc_shape({weights_batch_size, weights_height_size,
-                           weights_width_size, weights_depth_size});
-  RuntimeShape hwcn_shape({weights_height_size, weights_width_size,
-                           weights_depth_size, weights_batch_size});
-  std::vector<uint8_t> hwcn(NumElements(&weights_tensor));
-  TransposeParams transpose_params;
-  transpose_params.perm_count = 4;
-  transpose_params.perm[0] = 1;
-  transpose_params.perm[1] = 2;
-  transpose_params.perm[2] = 3;
-  transpose_params.perm[3] = 0;
-  optimized_ops::Transpose<uint8_t>(transpose_params, nhwc_shape,
-                                    weights_tensor.data.uint8, hwcn_shape,
-                                    hwcn.data());
-  // Quantization params for Weights tensor.
   TF_LITE_ENSURE_STATUS(
-      ComputeMinAndMaxQuantValues(weights_tensor, &weights_min_, &weights_max_,
-                                  std::numeric_limits<uint8_t>::min(),
-                                  std::numeric_limits<uint8_t>::max()));
-  auto* weights_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), (char*)&weights_min_, sizeof(weights_min_));
-  auto* weights_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), (char*)&weights_max_, sizeof(weights_max_));
-  auto* const_weights_node = graph_builder_->AddConstNodeWithData(
-      weight_shape_.data(), (char*)hwcn.data(), hwcn.size() * sizeof(hwcn[0]));
-  graph_builder_->AddTensorWithID(inputs->data[1], const_weights_node->GetID(),
-                                  0);
+      InitializeWeightsNodes(inputs, outputs, context, input_depth_size));
 
   // Stride node.
   static int dummy = 0;
@@ -214,30 +185,49 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
       output_depth_size;
   GetDims(&output_batch_size, &output_height_size, &output_width_size,
           &output_depth_size, context->tensors[outputs->data[0]].dims);
-  // Output min/max.
+  // Output bounds.
   // TODO(b/129276536): Add support for other activations here. Current
   // implementation assumes None/Relu.
+  float output_min = 0;
+  float output_max = 0;
   TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
-      context->tensors[outputs->data[0]], &output_min_, &output_max_,
-      std::numeric_limits<uint8_t>::min(),
-      std::numeric_limits<uint8_t>::max()));
-  auto* output_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), (char*)&output_min_, sizeof(output_min_));
-  auto* output_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), (char*)&output_max_, sizeof(output_max_));
+      context->tensors[outputs->data[0]], &output_min, &output_max));
+  // These denote the bounds fed to Hexagon's Conv mechanism, which will be
+  // different from the TFLite tensor bounds if there is a RELU activation.
+  float conv_output_min = output_min;
+  float conv_output_max = output_max;
+  if (activation == kTfLiteActRelu6) {
+    conv_output_min = 0;
+    conv_output_max = 6;
+  } else if (activation == kTfLiteActRelu1) {
+    conv_output_min = 0;
+    conv_output_max = 1;
+  } else if (activation == kTfLiteActRelu) {
+    conv_output_min = 0;
+  }
+  auto* conv_output_min_const = graph_builder_->AddConstNodeWithData(
+      quant_bound_shape.data(), reinterpret_cast<char*>(&conv_output_min),
+      sizeof(conv_output_min));
+  auto* conv_output_max_const = graph_builder_->AddConstNodeWithData(
+      quant_bound_shape.data(), reinterpret_cast<char*>(&conv_output_max),
+      sizeof(conv_output_max));
 
   // Bias node.
-  const auto& bias_tensor = context->tensors[inputs->data[2]];
-  auto* bias_data_node =
-      graph_builder_->AddConstNodeWithData(inputs->data[2], bias_tensor);
-  TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
-      bias_tensor, &bias_min_, &bias_max_, std::numeric_limits<int32_t>::min(),
-      std::numeric_limits<int32_t>::max()));
-  auto* bias_min_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), (char*)&bias_min_, sizeof(bias_min_));
-  auto* bias_max_const = graph_builder_->AddConstNodeWithData(
-      quant_bound_shape.data(), (char*)&bias_max_, sizeof(bias_max_));
+  TF_LITE_ENSURE_STATUS(InitializeBiasNodes(inputs, outputs, context));
 
+  // TODO(b/143759564): Simplify this method when depth_multiplier support needs
+  // generalizing.
+  if (channel_multiplier > 1 && input_depth_size == 1) {
+    // Depthwise Conv with input_depth == 1 & channel_multiplier > 1 is
+    // equivalent to Conv.
+    SetOpType(OP_Supernode_8x8p32to8);
+  } else if (channel_multiplier > 1) {
+    TF_LITE_KERNEL_LOG(
+        context, "depth_multiplier > 1 not supported with input_depth > 1");
+    return kTfLiteError;
+  }
+
+  TensorID output_tensor, output_min_tensor, output_max_tensor;
   if (is_dilated_depthwise_conv) {
     // For dilated Depthwise Conv, we convert this node into SpaceToBatchND, and
     // then chain Supernode & BatchToSpaceND after it.
@@ -245,9 +235,9 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     GetDims(&input_batch_size, &input_height_size, &input_width_size,
             &input_depth_size, data_tensor.dims);
     ComputeSpaceToBatchParams(
-        input_height_size, input_width_size, weights_height_size,
-        weights_width_size, dilation_factors_h_w_, padding_type,
-        &space_to_batch_paddings_, &batch_to_space_crops_);
+        input_height_size, input_width_size, weight_shape_[0], weight_shape_[1],
+        dilation_factors_h_w_, padding_type, &space_to_batch_paddings_,
+        &batch_to_space_crops_);
     auto* dilation_factors_const = graph_builder_->AddConstNodeWithData(
         dilation_factors_shape.data(), (char*)dilation_factors_h_w_.data(),
         dilation_factors_h_w_.size() * sizeof(stride_height));
@@ -276,20 +266,23 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     AddOutput(sizeof(float), 4, {1, 1, 1, 1});
 
     // 2. Depthwise Conv.
-    auto* conv_op = graph_builder_->AddNode();
+    auto* conv_op = graph_builder_->AddNode(GetTFLiteNodeID());
     conv_op->SetOpType(OP_DepthwiseSupernode_8x8p32to8);
     conv_op->AddInput(space_to_batch_op_out);
-    conv_op->AddInput(TensorID(const_weights_node->GetID(), 0));
+    conv_op->AddInput(TensorID(weights_data_node_->GetID(), 0));
     conv_op->AddInput(TensorID(data_min_const->GetID(), 0));
     conv_op->AddInput(TensorID(data_max_const->GetID(), 0));
-    conv_op->AddInput(TensorID(weights_min_const->GetID(), 0));
-    conv_op->AddInput(TensorID(weights_max_const->GetID(), 0));
+    conv_op->AddInput(TensorID(weights_min_node_->GetID(), 0));
+    conv_op->AddInput(TensorID(weights_max_node_->GetID(), 0));
     conv_op->AddInput(TensorID(stride_node->GetID(), 0));
-    conv_op->AddInput(TensorID(bias_data_node->GetID(), 0));
-    conv_op->AddInput(TensorID(bias_min_const->GetID(), 0));
-    conv_op->AddInput(TensorID(bias_max_const->GetID(), 0));
-    conv_op->AddInput(TensorID(output_min_const->GetID(), 0));
-    conv_op->AddInput(TensorID(output_max_const->GetID(), 0));
+    conv_op->AddInput(TensorID(bias_data_node_->GetID(), 0));
+    conv_op->AddInput(TensorID(bias_min_node_->GetID(), 0));
+    conv_op->AddInput(TensorID(bias_max_node_->GetID(), 0));
+    conv_op->AddInput(TensorID(conv_output_min_const->GetID(), 0));
+    conv_op->AddInput(TensorID(conv_output_max_const->GetID(), 0));
+    if (channel_scales_node_ != nullptr) {
+      conv_op->AddInput(TensorID(channel_scales_node_->GetID(), 0));
+    }
     // The padding is handled by the SpaceToBatch/BatchToSpace ops surrounding
     // this node. Hence, this op's padding remains VALID only.
     // tf.nn.with_space_to_batch's docs state the following pattern:
@@ -314,19 +307,21 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     conv_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
 
     // 3. BatchToSpace.
-    auto* batch_to_space_op = graph_builder_->AddNode();
+    auto* batch_to_space_op = graph_builder_->AddNode(GetTFLiteNodeID());
     batch_to_space_op->SetOpType(OP_BatchToSpaceND_8);
     batch_to_space_op->AddInput(conv_output);
     batch_to_space_op->AddInput(TensorID(dilation_factors_const->GetID(), 0));
     batch_to_space_op->AddInput(TensorID(crops_const->GetID(), 0));
-    batch_to_space_op->AddInput(TensorID(output_min_const->GetID(), 0));
-    batch_to_space_op->AddInput(TensorID(output_max_const->GetID(), 0));
-    node_output_ =
+    batch_to_space_op->AddInput(TensorID(conv_output_min_const->GetID(), 0));
+    batch_to_space_op->AddInput(TensorID(conv_output_max_const->GetID(), 0));
+    output_tensor =
         batch_to_space_op->AddOutput(sizeof(uint8_t), 4,
                                      {output_batch_size, output_height_size,
                                       output_width_size, output_depth_size});
-    batch_to_space_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-    batch_to_space_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    output_min_tensor =
+        batch_to_space_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    output_max_tensor =
+        batch_to_space_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
   } else {
     // Standard case.
     // Padding type.
@@ -337,23 +332,51 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     }
     // Inputs
     AddInput(graph_builder_->GetHexagonTensorId(inputs->data[0]));
-    AddInput(TensorID(const_weights_node->GetID(), 0));
+    AddInput(TensorID(weights_data_node_->GetID(), 0));
     AddInput(TensorID(data_min_const->GetID(), 0));
     AddInput(TensorID(data_max_const->GetID(), 0));
-    AddInput(TensorID(weights_min_const->GetID(), 0));
-    AddInput(TensorID(weights_max_const->GetID(), 0));
+    AddInput(TensorID(weights_min_node_->GetID(), 0));
+    AddInput(TensorID(weights_max_node_->GetID(), 0));
     AddInput(TensorID(stride_node->GetID(), 0));
-    AddInput(TensorID(bias_data_node->GetID(), 0));
-    AddInput(TensorID(bias_min_const->GetID(), 0));
-    AddInput(TensorID(bias_max_const->GetID(), 0));
-    AddInput(TensorID(output_min_const->GetID(), 0));
-    AddInput(TensorID(output_max_const->GetID(), 0));
+    AddInput(TensorID(bias_data_node_->GetID(), 0));
+    AddInput(TensorID(bias_min_node_->GetID(), 0));
+    AddInput(TensorID(bias_max_node_->GetID(), 0));
+    AddInput(TensorID(conv_output_min_const->GetID(), 0));
+    AddInput(TensorID(conv_output_max_const->GetID(), 0));
+    if (channel_scales_node_ != nullptr) {
+      AddInput(TensorID(channel_scales_node_->GetID(), 0));
+    }
     // Outputs
-    node_output_ = AddOutput(sizeof(uint8_t), 4,
-                             {output_batch_size, output_height_size,
-                              output_width_size, output_depth_size});
-    AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-    AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    output_tensor = AddOutput(sizeof(uint8_t), 4,
+                              {output_batch_size, output_height_size,
+                               output_width_size, output_depth_size});
+    output_min_tensor = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    output_max_tensor = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  }
+
+  // Requantize if activation was not None.
+  if (activation != kTfLiteActNone) {
+    auto* requantized_min_const = graph_builder_->AddConstNodeWithData(
+        quant_bound_shape.data(), reinterpret_cast<char*>(&output_min),
+        sizeof(output_min));
+    auto* requantized_max_const = graph_builder_->AddConstNodeWithData(
+        quant_bound_shape.data(), reinterpret_cast<char*>(&output_max),
+        sizeof(output_max));
+    auto* requantize_op = graph_builder_->AddNode(GetTFLiteNodeID());
+    requantize_op->SetOpType(OP_Requantize_8to8);
+    requantize_op->AddInput(output_tensor);
+    requantize_op->AddInput(output_min_tensor);
+    requantize_op->AddInput(output_max_tensor);
+    requantize_op->AddInput(TensorID(requantized_min_const->GetID(), 0));
+    requantize_op->AddInput(TensorID(requantized_max_const->GetID(), 0));
+    node_output_ =
+        requantize_op->AddOutput(sizeof(uint8_t), 4,
+                                 {output_batch_size, output_height_size,
+                                  output_width_size, output_depth_size});
+    requantize_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+    requantize_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  } else {
+    node_output_ = output_tensor;
   }
 
   return kTfLiteOk;

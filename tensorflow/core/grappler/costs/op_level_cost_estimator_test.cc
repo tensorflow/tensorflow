@@ -164,6 +164,10 @@ OpContext DescribeEinsum(const std::vector<int>& dims_a,
   return op_context;
 }
 
+void DescribeDummyTensor(OpInfo::TensorProperties* tensor) {
+  // Intentionally leave the tensor shape and type information missing.
+}
+
 // Wrangles the minimum number of proto fields to set up a 1D Tensor for cost
 // estimation purposes.
 void DescribeTensor1D(int dim0, OpInfo::TensorProperties* tensor) {
@@ -181,6 +185,19 @@ void DescribeTensor4D(int dim0, int dim1, int dim2, int dim3,
   shape->add_dim()->set_size(dim1);
   shape->add_dim()->set_size(dim2);
   shape->add_dim()->set_size(dim3);
+  tensor->set_dtype(DT_FLOAT);
+}
+
+// Wrangles the minimum number of proto fields to set up a 4D Tensor for cost
+// estimation purposes.
+void DescribeTensor5D(int dim0, int dim1, int dim2, int dim3, int dim4,
+                      OpInfo::TensorProperties* tensor) {
+  auto shape = tensor->mutable_shape();
+  shape->add_dim()->set_size(dim0);
+  shape->add_dim()->set_size(dim1);
+  shape->add_dim()->set_size(dim2);
+  shape->add_dim()->set_size(dim3);
+  shape->add_dim()->set_size(dim4);
   tensor->set_dtype(DT_FLOAT);
 }
 
@@ -221,7 +238,10 @@ OpContext DescribeDepthwiseConv2dNative(int batch, int ix, int iy, int iz1,
 // (batch, ix, iy, iz1), a kernel tensor with shape (kx, ky, iz2, oz), a
 // bias tensor with shape (oz), a side input tensor with shape
 // (batch, ox, oy, oz) if has_side_input is set, and two scaling tensors with
-// shape (1).
+// shape (1). If a vectorized channel format is chosen (NCHW_VECT_C, e.g.) we'll
+// default to 4 (the vector size most often used with this format on NVIDIA
+// platforms) for the major channel size, and divide the input channel size by
+// that amount.
 //
 // Note that this assumes the NHWC data format.
 OpContext DescribeFusedConv2DBiasActivation(int batch, int ix, int iy, int iz1,
@@ -229,6 +249,7 @@ OpContext DescribeFusedConv2DBiasActivation(int batch, int ix, int iy, int iz1,
                                             int oy, int oz, bool has_side_input,
                                             const string& data_format,
                                             const string& filter_format) {
+  const int kVecWidth = 4;
   OpContext op_context;
   SetCpuDevice(&op_context.op_info);
   op_context.op_info.set_op("FusedConv2DBiasActivation");
@@ -238,15 +259,25 @@ OpContext DescribeFusedConv2DBiasActivation(int batch, int ix, int iy, int iz1,
   SetAttrValue(filter_format, &(*attr_filter_format)["filter_format"]);
   if (data_format == "NHWC") {
     DescribeTensor4D(batch, ix, iy, iz1, op_context.op_info.add_inputs());
-  } else {
-    // Use the NCHW format.
+  } else if (data_format == "NCHW") {
     DescribeTensor4D(batch, iz1, ix, iy, op_context.op_info.add_inputs());
+  } else {
+    // Use the NCHW_VECT_C format.
+    EXPECT_EQ(data_format, "NCHW_VECT_C");
+    EXPECT_EQ(iz1 % kVecWidth, 0);
+    DescribeTensor5D(batch, iz1 / kVecWidth, ix, iy, kVecWidth,
+                     op_context.op_info.add_inputs());
   }
   if (filter_format == "HWIO") {
     DescribeTensor4D(kx, ky, iz2, oz, op_context.op_info.add_inputs());
-  } else {
-    // Use the OIHW format.
+  } else if (filter_format == "OIHW") {
     DescribeTensor4D(oz, iz2, kx, ky, op_context.op_info.add_inputs());
+  } else {
+    EXPECT_EQ(filter_format, "OIHW_VECT_I");
+    EXPECT_EQ(iz2 % kVecWidth, 0);
+    // Use the OIHW_VECT_I format.
+    DescribeTensor5D(oz, iz2 / kVecWidth, kx, ky, kVecWidth,
+                     op_context.op_info.add_inputs());
   }
   DescribeTensor1D(oz, op_context.op_info.add_inputs());
 
@@ -255,8 +286,13 @@ OpContext DescribeFusedConv2DBiasActivation(int batch, int ix, int iy, int iz1,
   if (has_side_input) {
     if (data_format == "NHWC") {
       DescribeTensor4D(batch, ox, oy, oz, side_input);
-    } else {
+    } else if (data_format == "NCHW") {
       DescribeTensor4D(batch, oz, ox, oy, side_input);
+    } else {
+      // Use the NCHW_VECT_C format.
+      EXPECT_EQ(data_format, "NCHW_VECT_C");
+      EXPECT_EQ(oz % kVecWidth, 0);
+      DescribeTensor5D(batch, oz / kVecWidth, ox, oy, kVecWidth, side_input);
     }
   }
 
@@ -517,7 +553,7 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
     estimator_.compute_memory_overlap_ = value;
   }
 
-  void ValidateOpDimensionsFromImputs(const int n, const int h, const int w,
+  void ValidateOpDimensionsFromInputs(const int n, const int h, const int w,
                                       const int c, const int kx, const int ky,
                                       const int sx, const int sy,
                                       const string& data_format,
@@ -567,12 +603,12 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
 TEST_F(OpLevelCostEstimatorTest, TestPersistentOpCosts) {
   OpContext op_context;
   SetCpuDevice(&op_context.op_info);
-  std::unordered_set<string> persisent_ops = {
+  std::unordered_set<string> persistent_ops = {
       "Const",       "Variable",       "VariableV2", "AutoReloadVariable",
       "VarHandleOp", "ReadVariableOp",
   };
-  // Minmum cost for all persistent ops.
-  for (const auto& op : persisent_ops) {
+  // Minimum cost for all persistent ops.
+  for (const auto& op : persistent_ops) {
     op_context.op_info.set_op(op);
     auto cost = estimator_.PredictCosts(op_context);
     EXPECT_EQ(Costs::Duration(0), cost.memory_time);
@@ -806,29 +842,40 @@ TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationNHWC_OIHW) {
   EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
 }
 
-// TODO(yaozhang): Update once NCHW_VECT_C is supported.
 TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationNCHW_VECT_C_OIHW) {
   auto cost = PredictCosts(DescribeFusedConv2DBiasActivation(
       16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true,
       "NCHW_VECT_C", "OIHW"));
-  EXPECT_EQ(Costs::Duration(0), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(0), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(0), cost.execution_time);
+  EXPECT_EQ(Costs::Duration(1416808), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(355616770), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(357033578), cost.execution_time);
   EXPECT_EQ(1, cost.num_ops_total);
-  EXPECT_TRUE(cost.inaccurate);
+  EXPECT_FALSE(cost.inaccurate);
   EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
 }
 
-// TODO(yaozhang): Update once OIHW_VECT_I is supported.
 TEST_F(OpLevelCostEstimatorTest, FusedConv2DBiasActivationNCHW_OIHW_VECT_I) {
   auto cost = PredictCosts(DescribeFusedConv2DBiasActivation(
       16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true,
       "NCHW", "OIHW_VECT_I"));
-  EXPECT_EQ(Costs::Duration(0), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(0), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(0), cost.execution_time);
+  EXPECT_EQ(Costs::Duration(1416808), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(355616770), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(357033578), cost.execution_time);
   EXPECT_EQ(1, cost.num_ops_total);
-  EXPECT_TRUE(cost.inaccurate);
+  EXPECT_FALSE(cost.inaccurate);
+  EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+}
+
+TEST_F(OpLevelCostEstimatorTest,
+       FusedConv2DBiasActivationNCHW_VECT_C_OIHW_VECT_I) {
+  auto cost = PredictCosts(DescribeFusedConv2DBiasActivation(
+      16, 19, 19, 48, 48, 5, 5, 19, 19, 256, /* has_side_input = */ true,
+      "NCHW_VECT_C", "OIHW_VECT_I"));
+  EXPECT_EQ(Costs::Duration(1416808), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(355616770), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(357033578), cost.execution_time);
+  EXPECT_EQ(1, cost.num_ops_total);
+  EXPECT_FALSE(cost.inaccurate);
   EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
 }
 
@@ -1124,10 +1171,10 @@ TEST_F(OpLevelCostEstimatorTest, OpDimensionsFromInputs) {
   for (const auto& p : paddings) {
     for (const auto& f : formats) {
       // n, h, w, c, kx, ky, sx, sy, data_format, padding.
-      ValidateOpDimensionsFromImputs(10, 20, 20, 100, 3, 3, 2, 2, f, p);
-      ValidateOpDimensionsFromImputs(10, 20, 20, 100, 1, 1, 3, 3, f, p);
-      ValidateOpDimensionsFromImputs(10, 200, 200, 100, 5, 5, 3, 3, f, p);
-      ValidateOpDimensionsFromImputs(10, 14, 14, 3840, 3, 3, 2, 2, f, p);
+      ValidateOpDimensionsFromInputs(10, 20, 20, 100, 3, 3, 2, 2, f, p);
+      ValidateOpDimensionsFromInputs(10, 20, 20, 100, 1, 1, 3, 3, f, p);
+      ValidateOpDimensionsFromInputs(10, 200, 200, 100, 5, 5, 3, 3, f, p);
+      ValidateOpDimensionsFromInputs(10, 14, 14, 3840, 3, 3, 2, 2, f, p);
     }
   }
 }
@@ -1712,6 +1759,35 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
                   .execution_time,
               PredictCosts(DescribeXlaEinsum({-1, 50}, {100, 50}, "ik,jk->ij"))
                   .execution_time);
+  }
+}
+
+TEST_F(OpLevelCostEstimatorTest, PredictResourceVariableOps) {
+  TestOpLevelCostEstimator estimator;
+  estimator.SetDeviceInfo(DeviceInfo(/*gigaops=*/1, /*gb_per_sec=*/1));
+
+  {
+    OpContext op_context;
+    op_context.op_info.set_op("AssignVariableOp");
+    DescribeDummyTensor(op_context.op_info.add_inputs());
+    DescribeTensor1D(100, op_context.op_info.add_inputs());
+    auto cost = estimator.PredictCosts(op_context);
+    EXPECT_EQ(Costs::Duration(400), cost.memory_time);
+    EXPECT_EQ(Costs::Duration(0), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(400), cost.execution_time);
+    EXPECT_FALSE(cost.inaccurate);
+  }
+
+  {
+    OpContext op_context;
+    op_context.op_info.set_op("AssignSubVariableOp");
+    DescribeDummyTensor(op_context.op_info.add_inputs());
+    DescribeTensor1D(100, op_context.op_info.add_inputs());
+    auto cost = estimator.PredictCosts(op_context);
+    EXPECT_EQ(Costs::Duration(400), cost.memory_time);
+    EXPECT_EQ(Costs::Duration(100), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(400), cost.execution_time);
+    EXPECT_FALSE(cost.inaccurate);
   }
 }
 

@@ -22,6 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+// NOTE: call GroupTfEvents before if OpStats.step_db needs to be generated.
 OpStats ConvertXSpaceToOpStats(const XSpace& space);
 
 }  // namespace profiler

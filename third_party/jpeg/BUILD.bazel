@@ -516,30 +516,30 @@ JCONFIG_NOWIN_COMMON_SUBSTITUTIONS = {
     "@JPEG_LIB_VERSION@": "62",
     "@VERSION@": "2.0.0",
     "@LIBJPEG_TURBO_VERSION_NUMBER@": "2000000",
-    "#cmakedefine C_ARITH_CODING_SUPPORTED": "#define C_ARITH_CODING_SUPPORTED",
-    "#cmakedefine D_ARITH_CODING_SUPPORTED": "#define D_ARITH_CODING_SUPPORTED",
-    "#cmakedefine MEM_SRCDST_SUPPORTED": "#define MEM_SRCDST_SUPPORTED",
+    "#cmakedefine C_ARITH_CODING_SUPPORTED 1": "#define C_ARITH_CODING_SUPPORTED 1",
+    "#cmakedefine D_ARITH_CODING_SUPPORTED 1": "#define D_ARITH_CODING_SUPPORTED 1",
+    "#cmakedefine MEM_SRCDST_SUPPORTED 1": "#define MEM_SRCDST_SUPPORTED 1",
     "@BITS_IN_JSAMPLE@": "8",
-    "#cmakedefine HAVE_LOCALE_H": "#define HAVE_LOCALE_H 1",
-    "#cmakedefine HAVE_STDDEF_H": "#define HAVE_STDDEF_H 1",
-    "#cmakedefine HAVE_STDLIB_H": "#define HAVE_STDLIB_H 1",
-    "#cmakedefine NEED_SYS_TYPES_H": "#define NEED_SYS_TYPES_H",
-    "#cmakedefine NEED_BSD_STRINGS": "",
-    "#cmakedefine HAVE_UNSIGNED_CHAR": "#define HAVE_UNSIGNED_CHAR 1",
-    "#cmakedefine HAVE_UNSIGNED_SHORT": "#define HAVE_UNSIGNED_SHORT 1",
-    "#cmakedefine INCOMPLETE_TYPES_BROKEN": "",
-    "#cmakedefine RIGHT_SHIFT_IS_UNSIGNED": "",
-    "#cmakedefine __CHAR_UNSIGNED__": "",
+    "#cmakedefine HAVE_LOCALE_H 1": "#define HAVE_LOCALE_H 1",
+    "#cmakedefine HAVE_STDDEF_H 1": "#define HAVE_STDDEF_H 1",
+    "#cmakedefine HAVE_STDLIB_H 1": "#define HAVE_STDLIB_H 1",
+    "#cmakedefine NEED_SYS_TYPES_H 1": "#define NEED_SYS_TYPES_H 1",
+    "#cmakedefine NEED_BSD_STRINGS 1": "",
+    "#cmakedefine HAVE_UNSIGNED_CHAR 1": "#define HAVE_UNSIGNED_CHAR 1",
+    "#cmakedefine HAVE_UNSIGNED_SHORT 1": "#define HAVE_UNSIGNED_SHORT 1",
+    "#cmakedefine INCOMPLETE_TYPES_BROKEN 1": "",
+    "#cmakedefine RIGHT_SHIFT_IS_UNSIGNED 1": "",
+    "#cmakedefine __CHAR_UNSIGNED__ 1": "",
     "#undef const": "",
     "#undef size_t": "",
 }
 
 JCONFIG_NOWIN_SIMD_SUBSTITUTIONS = {
-    "#cmakedefine WITH_SIMD": "#define WITH_SIMD",
+    "#cmakedefine WITH_SIMD 1": "#define WITH_SIMD 1",
 }
 
 JCONFIG_NOWIN_NOSIMD_SUBSTITUTIONS = {
-    "#cmakedefine WITH_SIMD": "",
+    "#cmakedefine WITH_SIMD 1": "",
 }
 
 JCONFIG_NOWIN_SIMD_SUBSTITUTIONS.update(JCONFIG_NOWIN_COMMON_SUBSTITUTIONS)

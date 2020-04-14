@@ -1,6 +1,10 @@
 # TensorFlow Lite 8-bit quantization specification
 
-### Specification summary
+The following document outlines the specification for TensorFlow Lite's 8-bit
+quantization scheme. This is intended to assist hardware developers in providing
+hardware support for inference with quantized TensorFlow Lite models.
+
+## Specification summary
 
 We are providing a specification, and we can only provide some guarantees on
 behaviour if the spec is followed. We also understand different hardware may
@@ -27,14 +31,14 @@ Note: In the past our quantized tooling used per-tensor, asymmetric, `uint8`
 quantization. New tooling, reference kernels, and optimized kernels for 8-bit
 quantization will use this spec.
 
-### Signed integer vs unsigned integer
+## Signed integer vs unsigned integer
 
 TensorFlow Lite quantization will primarily prioritize tooling and kernels for
 `int8` quantization for 8-bit. This is for the convenience of symmetric
 quantization being represented by zero-point equal to 0. Additionally many
 backends have additional optimizations for `int8xint8` accumulation.
 
-### Per-axis vs per-tensor
+## Per-axis vs per-tensor
 
 Per-tensor quantization means that there will be one scale and/or zero-point per
 entire tensor. Per-axis quantization means that there will be one scale and/or
@@ -56,7 +60,7 @@ without performance implications. This has large improvements to accuracy.
 TFLite has per-axis support for a growing number of operations. At the time of
 this document support exists for Conv2d and DepthwiseConv2d.
 
-### Symmetric vs asymmetric
+## Symmetric vs asymmetric
 
 Activations are asymmetric: they can have their zero-point anywhere within the
 signed `int8` range `[-128, 127]`. Many activations are asymmetric in nature and
@@ -95,7 +99,7 @@ The \\(\sum_{i=0}^{n} q_{a}^{(i)} z_b\\) term needs to be computed every inferen
 since the activation changes every inference. By enforcing weights to be
 symmetric we can remove the cost of this term.
 
-### int8 quantized operator specifications
+## int8 quantized operator specifications
 
 Below we describe the quantization requirements for our int8 tflite kernels:
 

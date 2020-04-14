@@ -44,10 +44,10 @@ import sys
 
 import tensorflow as tf
 
-from tensorflow.python.ops import gen_audio_ops as audio_ops
 import input_data
 import models
 from tensorflow.python.framework import graph_util
+from tensorflow.python.ops import gen_audio_ops as audio_ops
 
 # If it's available, load the specialized feature generator. If this doesn't
 # work, try building with bazel instead of running the Python script directly.

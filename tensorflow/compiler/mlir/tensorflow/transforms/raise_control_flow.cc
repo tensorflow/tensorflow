@@ -22,9 +22,9 @@ limitations under the License.
 // eliminating control dependencies, and results in the code being in the
 // canonical TensorFlow dialect.
 
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
@@ -32,7 +32,8 @@ namespace mlir {
 namespace TFControlFlow {
 
 namespace {
-struct RaiseTFControlFlow : public FunctionPass<RaiseTFControlFlow> {
+struct RaiseTFControlFlow
+    : public PassWrapper<RaiseTFControlFlow, FunctionPass> {
   void runOnFunction() {
     // First start by recognizing loops and reconstructing a loop tree.
     buildLoopNests();
@@ -145,7 +146,7 @@ void RaiseTFControlFlow::rewriteOps() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateRaiseTFControlFlowPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateRaiseTFControlFlowPass() {
   return std::make_unique<RaiseTFControlFlow>();
 }
 

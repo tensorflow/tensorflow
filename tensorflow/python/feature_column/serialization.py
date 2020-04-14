@@ -197,7 +197,7 @@ def _column_name_with_class_name(fc):
   Without this two FeatureColumns that have the same name and where
   one wraps the other, such as an IndicatorColumn wrapping a
   SequenceCategoricalColumn, will fail to deserialize because they will have the
-  same name in colums_by_name, causing the wrong column to be returned.
+  same name in columns_by_name, causing the wrong column to be returned.
 
   Args:
     fc: A FeatureColumn.

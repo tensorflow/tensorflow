@@ -186,7 +186,7 @@ class ForwardAccumulator(object):
 
   >>> x = tf.constant([[2.0, 3.0], [1.0, 4.0]])
   >>> dense = tf.keras.layers.Dense(1)
-  >>> dense.build([2])
+  >>> dense.build([None, 2])
   >>> with tf.autodiff.ForwardAccumulator(
   ...    primals=dense.kernel,
   ...    tangents=tf.constant([[1.], [0.]])) as acc:
@@ -210,7 +210,7 @@ class ForwardAccumulator(object):
 
   >>> x = tf.constant([[2.0, 3.0], [1.0, 4.0]])
   >>> dense = tf.keras.layers.Dense(1)
-  >>> dense.build([2])
+  >>> dense.build([None, 2])
   >>> loss_fn = lambda: tf.reduce_sum((dense(x) - tf.constant([1., -1.])) ** 2.)
   >>> kernel_fprop = []
   >>> with tf.autodiff.ForwardAccumulator(

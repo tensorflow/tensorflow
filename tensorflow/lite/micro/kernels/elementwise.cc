@@ -42,8 +42,8 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
   if (!IsSupportedType(input->type)) {
-    context->ReportError(context, "Input data type %s (%d) is not supported.",
-                         TfLiteTypeGetName(input->type), input->type);
+    TF_LITE_KERNEL_LOG(context, "Input data type %s (%d) is not supported.",
+                       TfLiteTypeGetName(input->type), input->type);
     return kTfLiteError;
   }
   return kTfLiteOk;
@@ -111,65 +111,113 @@ TfLiteStatus LogicalNotEval(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteRegistration* Register_ABS() {
   static TfLiteRegistration r = {
-      /* init */ nullptr, /* free */ nullptr,
+      /*init=*/nullptr,
+      /*free=*/nullptr,
+      /*prepare=*/
       elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
-      elementwise::AbsEval};
+      /*invoke=*/elementwise::AbsEval,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_SIN() {
   static TfLiteRegistration r = {
-      /* init */ nullptr, /* free */ nullptr,
+      /*init=*/nullptr,
+      /*free=*/nullptr,
+      /*prepare=*/
       elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
-      elementwise::SinEval};
+      /*invoke=*/elementwise::SinEval,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_COS() {
   static TfLiteRegistration r = {
-      /* init */ nullptr, /* free */ nullptr,
+      /*init=*/nullptr,
+      /*free=*/nullptr,
+      /*prepare=*/
       elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
-      elementwise::CosEval};
+      /*invoke=*/elementwise::CosEval,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_LOG() {
   static TfLiteRegistration r = {
-      /* init */ nullptr, /* free */ nullptr,
+      /*init=*/nullptr,
+      /*free=*/nullptr,
+      /*prepare=*/
       elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
-      elementwise::LogEval};
+      /*invoke=*/elementwise::LogEval,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_SQRT() {
   static TfLiteRegistration r = {
-      /* init */ nullptr, /* free */ nullptr,
+      /*init=*/nullptr,
+      /*free=*/nullptr,
+      /*prepare=*/
       elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
-      elementwise::SqrtEval};
+      /*invoke=*/elementwise::SqrtEval,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_RSQRT() {
   static TfLiteRegistration r = {
-      /* init */ nullptr, /* free */ nullptr,
+      /*init=*/nullptr,
+      /*free=*/nullptr,
+      /*prepare=*/
       elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
-      elementwise::RsqrtEval};
+      /*invoke=*/elementwise::RsqrtEval,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_SQUARE() {
   static TfLiteRegistration r = {
-      /* init */ nullptr, /* free */ nullptr,
+      /*init=*/nullptr,
+      /*free=*/nullptr,
+      /*prepare=*/
       elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
-      elementwise::SquareEval};
+      /*invoke=*/elementwise::SquareEval,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_LOGICAL_NOT() {
   static TfLiteRegistration r = {
-      /*init=*/nullptr, /*free=*/nullptr,
+      /*init=*/nullptr,
+      /*free=*/nullptr,
+      /*prepare=*/
       elementwise::GenericPrepare<elementwise::IsLogicalSupportedType>,
-      elementwise::LogicalNotEval};
+      /*invoke=*/elementwise::LogicalNotEval,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0};
   return &r;
 }
 

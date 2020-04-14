@@ -245,4 +245,4 @@ v//Fw6ZeY+HmRDFdirjD7wXtIuER4vqCryIqR6Xe9X8oJXz9L/Jhslc=
 ### Known Vulnerabilities
 
 For a list of known vulnerabilities and security advisories for TensorFlow,
-[click here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/index.md).
+[click here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/README.md).

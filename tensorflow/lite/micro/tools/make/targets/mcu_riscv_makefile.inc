@@ -14,7 +14,7 @@ ifeq ($(TARGET), riscv32_mcu)
     -fno-builtin-printf \
     -fno-exceptions \
     -DTF_LITE_MCU_DEBUG_LOG \
-    -DTF_LITE_USE_GLOBAL_ROUND \
+    -DTF_LITE_USE_GLOBAL_CMATH_FUNCTIONS \
     -fno-unwind-tables \
     -fno-builtin \
     -ffunction-sections \
@@ -23,12 +23,17 @@ ifeq ($(TARGET), riscv32_mcu)
     -Wvla \
     -Wall \
     -Wextra \
+    -Wsign-compare \
+    -Wdouble-promotion \
+    -Wshadow \
+    -Wunused-variable \
+    -Wmissing-field-initializers \
     -Wno-unused-parameter \
-    -Wno-missing-field-initializers \
     -Wno-write-strings \
-    -Wno-sign-compare \
     -fno-delete-null-pointer-checks \
+    -fno-threadsafe-statics \
     -fomit-frame-pointer \
+    -fno-use-cxa-atexit \
     -Os
 
   CXXFLAGS += $(PLATFORM_FLAGS) \

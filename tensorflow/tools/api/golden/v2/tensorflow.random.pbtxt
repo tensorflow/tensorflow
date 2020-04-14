@@ -65,12 +65,24 @@ tf_module {
     argspec: "args=[\'value\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "stateless_binomial"
+    argspec: "args=[\'shape\', \'seed\', \'counts\', \'probs\', \'output_dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
+  }
+  member_method {
     name: "stateless_categorical"
     argspec: "args=[\'logits\', \'num_samples\', \'seed\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int64\'>\", \'None\'], "
   }
   member_method {
+    name: "stateless_gamma"
+    argspec: "args=[\'shape\', \'seed\', \'alpha\', \'beta\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
     name: "stateless_normal"
     argspec: "args=[\'shape\', \'seed\', \'mean\', \'stddev\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "stateless_poisson"
+    argspec: "args=[\'shape\', \'seed\', \'lam\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
     name: "stateless_truncated_normal"

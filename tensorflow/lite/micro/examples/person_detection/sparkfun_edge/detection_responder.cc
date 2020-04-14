@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "tensorflow/lite/micro/examples/person_detection/detection_responder.h"
 
 #include "am_bsp.h"  // NOLINT
@@ -44,6 +50,8 @@ void RespondToDetection(tflite::ErrorReporter* error_reporter,
     am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_YELLOW);
   }
 
-  error_reporter->Report("Person score: %d No person score: %d", person_score,
-                         no_person_score);
+  TF_LITE_REPORT_ERROR(error_reporter, "Person score: %d No person score: %d",
+                       person_score, no_person_score);
 }
+
+#endif  // ARDUINO_EXCLUDE_CODE

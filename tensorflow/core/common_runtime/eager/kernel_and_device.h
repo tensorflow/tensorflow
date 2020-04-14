@@ -67,6 +67,7 @@ class EagerKernelArgs : public FunctionArgsInterface {
   ~EagerKernelArgs() override{};
 
   bool HasRemoteInputs() const override { return false; };
+  TensorValue* MutableInput(int i) { return &tensor_args_[i]; }
 
   Status GetLocalArg(const int index, Tensor* val) const override;
 
@@ -119,11 +120,6 @@ class KernelAndDevice : public core::RefCounted {
 
   // TODO(ashankar): Handle list-valued inputs.
   virtual Status Run(
-      const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
-      CancellationManager* cancellation_manager,
-      const absl::optional<EagerRemoteFunctionParams>& remote_func_params) = 0;
-
-  virtual Status Run(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params) = 0;
@@ -145,9 +141,9 @@ class KernelAndDevice : public core::RefCounted {
   // returns.
   Device* device() const { return device_; }
 
+  virtual const DataTypeVector& input_dtypes() const = 0;
   virtual const DataTypeVector& output_dtypes() const = 0;
 
-  virtual DataType input_type(int i) const = 0;
   virtual int num_inputs() const = 0;
   virtual int num_outputs() const = 0;
   virtual const string& name() const = 0;
@@ -168,14 +164,14 @@ class KernelAndDevice : public core::RefCounted {
 class KernelAndDeviceOp final : public KernelAndDevice {
  public:
   KernelAndDeviceOp(
-      tensorflow::Rendezvous* rendez, bool log_memory,
+      tensorflow::Rendezvous* rendezvous, bool log_memory,
       FunctionLibraryRuntime* flr,
       std::function<void(std::function<void()>)>* runner,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
       Device* host_cpu_device)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
-        rendez_(rendez),
+        rendezvous_(rendezvous),
         log_memory_(log_memory),
         step_container_(0, [this](const string& name) {
           device_->resource_manager()->Cleanup(name).IgnoreError();
@@ -184,11 +180,6 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   ~KernelAndDeviceOp() override {}
 
   Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
-
-  Status Run(const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
-             CancellationManager* cancellation_manager,
-             const absl::optional<EagerRemoteFunctionParams>&
-                 remote_func_params) override;
 
   Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
              std::vector<Tensor>* outputs,
@@ -202,7 +193,9 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   Device* OutputDevice(int idx) const override;
   Device* OutputResourceDevice(int idx) const override;
 
-  DataType input_type(int i) const override;
+  const DataTypeVector& input_dtypes() const override {
+    return kernel_->input_types();
+  }
   const DataTypeVector& output_dtypes() const override {
     return kernel_->output_types();
   }
@@ -213,8 +206,9 @@ class KernelAndDeviceOp final : public KernelAndDevice {
  private:
   std::unique_ptr<OpKernel> kernel_;
   gtl::InlinedVector<AllocatorAttributes, 4> input_alloc_attrs_;
+  std::vector<Device*> input_devices_;
   gtl::InlinedVector<AllocatorAttributes, 1> output_alloc_attrs_;
-  Rendezvous* const rendez_;
+  Rendezvous* const rendezvous_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   const bool log_memory_;
   ScopedStepContainer step_container_;
@@ -265,10 +259,6 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
 
   Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
 
-  Status Run(const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
-             CancellationManager* cancellation_manager,
-             const absl::optional<EagerRemoteFunctionParams>&
-                 remote_func_params) override;
   Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
              std::vector<Tensor>* outputs,
              CancellationManager* cancellation_manager,
@@ -281,7 +271,7 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   Device* OutputDevice(int idx) const override;
   Device* OutputResourceDevice(int idx) const override;
 
-  DataType input_type(int i) const override;
+  const DataTypeVector& input_dtypes() const override { return input_dtypes_; }
   const DataTypeVector& output_dtypes() const override {
     return output_dtypes_;
   }

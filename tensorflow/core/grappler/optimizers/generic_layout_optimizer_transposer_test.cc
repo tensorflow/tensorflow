@@ -374,9 +374,9 @@ class TransposerTest : public ::testing::Test {
 };
 
 TEST_F(TransposerTest, CreateConstPermNode) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleConv2DGraph(&item.graph));
@@ -418,9 +418,9 @@ TensorShapeProto MakeTensorShapeFromDimensions(absl::Span<const int> dims) {
 }
 
 TEST_F(TransposerTest, CreateTransposeNode) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleConv2DGraph(&item.graph));
@@ -458,9 +458,9 @@ TEST_F(TransposerTest, CreateTransposeNode) {
 }
 
 TEST_F(TransposerTest, UpdateNode) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleConv2DGraph(&item.graph));
@@ -489,9 +489,9 @@ AttrValue_ListValue MakeAttrValueListValueFromVector(
 }
 
 TEST_F(TransposerTest, UpdateStrides) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleConv2DGraph(&item.graph));
@@ -527,9 +527,9 @@ TEST_F(TransposerTest, UpdateStrides) {
 }
 
 TEST_F(TransposerTest, UpdateFaninEdgesTranspose) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleFusedBatchNormGrad(&item.graph, true));
@@ -586,9 +586,9 @@ TEST_F(TransposerTest, UpdateFaninEdgesTranspose) {
 }
 
 TEST_F(TransposerTest, UpdateFanoutEdgesTranspose) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleConv2DGraph(&item.graph));
@@ -639,9 +639,9 @@ TEST_F(TransposerTest, UpdateFanoutEdgesTranspose) {
 }
 
 TEST_F(TransposerTest, DefaultLayoutSensitiveOpTransposerTestFusedBatchNorm) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   // Use FusedBatchNorm for default transposer test
   GrapplerItem item;
   TransposeContext context;
@@ -695,9 +695,9 @@ TEST_F(TransposerTest, DefaultLayoutSensitiveOpTransposerTestFusedBatchNorm) {
 }
 
 TEST_F(TransposerTest, DefaultLayoutSensitiveOpTransposerTestConv2D) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   // Use Conv2D for default transposer test
   GrapplerItem item;
   TransposeContext context;
@@ -746,9 +746,9 @@ TEST_F(TransposerTest, DefaultLayoutSensitiveOpTransposerTestConv2D) {
 }
 
 TEST_F(TransposerTest, MaxPoolGradTransposerTest) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   for (bool use_grad_grad : {false, true}) {
     GrapplerItem item;
     TransposeContext context;
@@ -800,9 +800,9 @@ TEST_F(TransposerTest, MaxPoolGradTransposerTest) {
 }
 
 TEST_F(TransposerTest, BiasAddGradTransposerTest) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleBiasAddGrad(
@@ -872,9 +872,9 @@ TEST_F(TransposerTest, BiasAddGradTransposerIncorrectInputTest) {
 }
 
 TEST_F(TransposerTest, Conv2DBackpropFilterTransposerTest) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleConv2DBackpropFilter(&item.graph));
@@ -925,9 +925,9 @@ TEST_F(TransposerTest, Conv2DBackpropFilterTransposerTest) {
 }
 
 TEST_F(TransposerTest, NodeAttributes) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   TransposeContext context;
   TF_ASSERT_OK(
@@ -966,9 +966,9 @@ TEST_F(TransposerTest, NodeAttributes) {
 }
 
 TEST_F(TransposerTest, Conv2DBackpropInputTransposerTest) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleConv2DBackpropInput(&item.graph));
@@ -1024,9 +1024,9 @@ TEST_F(TransposerTest, Conv2DBackpropInputTransposerTest) {
 }
 
 TEST_F(TransposerTest, FusedBatchNormGradTransposerIsTrainingTest) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   TransposeContext context;
   TF_ASSERT_OK(CreateSimpleFusedBatchNormGrad(&item.graph, true));
@@ -1159,9 +1159,9 @@ TEST_F(TransposerTest, FusedBatchNormGradTransposerNotTrainingTest) {
 }
 
 TEST_F(TransposerTest, DefaultLayoutAgnosticOpTransposerIdentityTest) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto conv2d = SimpleConv2D(&scope);
@@ -1210,9 +1210,9 @@ TEST_F(TransposerTest, DefaultLayoutAgnosticOpTransposerIdentityTest) {
 }
 
 TEST_F(TransposerTest, DefaultLayoutAgnosticOpTransposerIdentityBadInputTest) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto conv2d = SimpleConv2D(&scope);
@@ -1258,9 +1258,9 @@ TEST_F(TransposerTest, DefaultLayoutAgnosticOpTransposerIdentityBadInputTest) {
 }
 
 TEST_F(TransposerTest, AddNTransposerTest) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   TF_ASSERT_OK(CreateSimpleAddN(&item.graph));
   TransposeContext context;
@@ -1373,9 +1373,9 @@ TEST_F(TransposerTest, AddNTransposerNotAfterTransformTest) {
 }
 
 TEST_F(TransposerTest, IdentityNTransposerTest) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   TF_ASSERT_OK(CreateSimpleIdentityN(&item.graph));
   TransposeContext context;
@@ -1466,9 +1466,9 @@ TEST_F(TransposerTest, IdentityNTransposerTest) {
 }
 
 TEST_F(TransposerTest, MergeTransposerTestMergeBothInputsConvertible) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto conv2d = SimpleConv2D(&scope);
@@ -1525,9 +1525,9 @@ TEST_F(TransposerTest, MergeTransposerTestMergeBothInputsConvertible) {
 }
 
 TEST_F(TransposerTest, MergeTransposerTestMergeOneInputNotConvertible) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto conv2d = SimpleConv2D(&scope);
@@ -1580,9 +1580,9 @@ TEST_F(TransposerTest, MergeTransposerTestMergeOneInputNotConvertible) {
 }
 
 TEST_F(TransposerTest, PadTransposerTest) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto conv2d = SimpleConv2D(&scope);
@@ -1640,9 +1640,9 @@ TEST_F(TransposerTest, PadTransposerTest) {
 }
 
 TEST_F(TransposerTest, SwitchTransposerTest) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto conv2d = SimpleConv2D(&scope);
@@ -1705,9 +1705,9 @@ TEST_F(TransposerTest, SwitchTransposerTest) {
 }
 
 TEST_F(TransposerTest, TernaryOpTransposerTest) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto conv2d = SimpleConv2D(&scope);
@@ -1775,9 +1775,9 @@ TEST_F(TransposerTest, TernaryOpTransposerTest) {
 }
 
 TEST_F(TransposerTest, UnaryGradTransposerTestTanhGrad) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto conv2d = SimpleConv2D(&scope);
@@ -1839,9 +1839,9 @@ TEST_F(TransposerTest, UnaryGradTransposerTestTanhGrad) {
 }
 
 TEST_F(TransposerTest, UnaryGradTransposerTestRelu6Grad) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto conv2d = SimpleConv2D(&scope);
@@ -1903,9 +1903,9 @@ TEST_F(TransposerTest, UnaryGradTransposerTestRelu6Grad) {
 }
 
 TEST_F(TransposerTest, SqueezeTransposerTest) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto input =
@@ -1958,9 +1958,9 @@ TEST_F(TransposerTest, SqueezeTransposerTest) {
 }
 
 TEST_F(TransposerTest, SqueezeTransposerTestUnsupportedInputShape) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto input =
@@ -1997,9 +1997,9 @@ TEST_F(TransposerTest, SqueezeTransposerTestUnsupportedInputShape) {
 }
 
 TEST_F(TransposerTest, SqueezeTransposerTestInvalidHWAxis) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto input =
@@ -2037,9 +2037,9 @@ TEST_F(TransposerTest, SqueezeTransposerTestInvalidHWAxis) {
 }
 
 TEST_F(TransposerTest, SqueezeTransposerTestInvalidNHWAxis) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto input =
@@ -2077,9 +2077,9 @@ TEST_F(TransposerTest, SqueezeTransposerTestInvalidNHWAxis) {
 }
 
 TEST_F(TransposerTest, SqueezeTransposerTestSqueezeDimsUpdated) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto input =
@@ -2138,9 +2138,9 @@ TEST_F(TransposerTest, SqueezeTransposerTestSqueezeDimsUpdated) {
 }
 
 TEST_F(TransposerTest, MaxPoolV2Transposer) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto input =
@@ -2196,9 +2196,9 @@ TEST_F(TransposerTest, MaxPoolV2Transposer) {
 }
 
 TEST_F(TransposerTest, MaxPoolGradV2Transposer) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   for (bool use_grad_grad : {false, true}) {
     GrapplerItem item;
     Scope scope = Scope::NewRootScope();
@@ -2280,9 +2280,9 @@ TEST_F(TransposerTest, MaxPoolGradV2Transposer) {
 }
 
 TEST_F(TransposerTest, BinaryOpTransposerAdd) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto input =
@@ -2352,9 +2352,9 @@ TEST_F(TransposerTest, BinaryOpTransposerAdd) {
 }
 
 TEST_F(TransposerTest, BinaryOpTransposerMul) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto input =
@@ -2424,9 +2424,9 @@ TEST_F(TransposerTest, BinaryOpTransposerMul) {
 }
 
 TEST_F(TransposerTest, BinaryOpTransposerPolygamma) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto input =
@@ -2511,9 +2511,9 @@ bool CreateConcatV1Op(const Scope& scope, const InputList& tensors,
 }
 
 TEST_F(TransposerTest, ConcatOpTransposerConcat) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   Output input_1 = ops::RandomUniform(scope.WithOpName("input_1"),
@@ -2589,9 +2589,9 @@ TEST_F(TransposerTest, ConcatOpTransposerConcat) {
 }
 
 TEST_F(TransposerTest, ConcatOpTransposerConcatV2) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   Output input_1 = ops::RandomUniform(scope.WithOpName("input_1"),
@@ -2666,9 +2666,9 @@ TEST_F(TransposerTest, ConcatOpTransposerConcatV2) {
 }
 
 TEST_F(TransposerTest, ReverseV2Transposer) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
 
@@ -2734,9 +2734,9 @@ TEST_F(TransposerTest, ReverseV2Transposer) {
 }
 
 TEST_F(TransposerTest, TileTransposer) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
 
@@ -2801,9 +2801,9 @@ TEST_F(TransposerTest, TileTransposer) {
 }
 
 TEST_F(TransposerTest, ShapeTransposer) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto input =
@@ -2858,9 +2858,9 @@ TEST_F(TransposerTest, ShapeTransposer) {
 }
 
 TEST_F(TransposerTest, ShapeNTransposer) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto input =
@@ -2961,9 +2961,9 @@ TEST_F(TransposerTest, ShapeNTransposer) {
 }
 
 TEST_F(TransposerTest, FillOpTransposer) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
   auto input =
@@ -3020,9 +3020,9 @@ TEST_F(TransposerTest, FillOpTransposer) {
 }
 
 TEST_F(TransposerTest, SliceTransposer) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
 
@@ -3097,9 +3097,9 @@ TEST_F(TransposerTest, SliceTransposer) {
 }
 
 TEST_F(TransposerTest, SplitTransposer) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
 
@@ -3183,9 +3183,9 @@ TEST_F(TransposerTest, SplitTransposer) {
 }
 
 TEST_F(TransposerTest, SplitVTransposer) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
 
@@ -3273,9 +3273,9 @@ TEST_F(TransposerTest, SplitVTransposer) {
 }
 
 TEST_F(TransposerTest, StridedSliceTransposer) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
 
@@ -3363,9 +3363,9 @@ TEST_F(TransposerTest, StridedSliceTransposer) {
 }
 
 TEST_F(TransposerTest, StridedSliceTransposerEllipsisMaskPresent) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
 
@@ -3425,9 +3425,9 @@ TEST_F(TransposerTest, StridedSliceTransposerEllipsisMaskPresent) {
 }
 
 TEST_F(TransposerTest, StridedSliceTransposerConstFaninBadRank) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
 
@@ -3510,9 +3510,9 @@ TEST_F(TransposerTest, StridedSliceTransposerConstFaninBadRank) {
 }
 
 TEST_F(TransposerTest, ReduceTransposerKeepDims) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
 
@@ -3577,9 +3577,9 @@ TEST_F(TransposerTest, ReduceTransposerKeepDims) {
 }
 
 TEST_F(TransposerTest, ReduceTransposerValidAxisNode) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   Scope scope = Scope::NewRootScope();
 

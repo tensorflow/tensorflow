@@ -613,7 +613,8 @@ TEST(VerifyModel, InvalidSparseTensorIndexOutOfBound) {
   scoped_model.reset(model->GetModel()->UnPack());
 
   auto* tensor = scoped_model->subgraphs[0]->tensors[0].get();
-  tensor->sparsity->dim_metadata[1]->array_indices[1] = 5;
+  tensor->sparsity->dim_metadata[1]->array_indices.AsUint8Vector()->values[1] =
+      5;
 
   flatbuffers::FlatBufferBuilder builder;
   auto model_ = Model::Pack(builder, scoped_model.get());
@@ -693,8 +694,10 @@ TEST(VerifyModel, ValidSparseTensorBCSC) {
   tensor->sparsity->dim_metadata[0]->dense_size = 2;
 
   tensor->sparsity->dim_metadata[1]->format = DimensionType_SPARSE_CSR;
-  tensor->sparsity->dim_metadata[1]->array_segments = {0, 1, 3};
-  tensor->sparsity->dim_metadata[1]->array_indices = {0, 0, 1};
+  tensor->sparsity->dim_metadata[1]->array_segments.AsUint8Vector()->values = {
+      0, 1, 3};
+  tensor->sparsity->dim_metadata[1]->array_indices.AsUint8Vector()->values = {
+      0, 0, 1};
 
   tensor->sparsity->dim_metadata[2]->format = DimensionType_DENSE;
   tensor->sparsity->dim_metadata[2]->dense_size = 2;

@@ -2865,7 +2865,7 @@ class ScopedGraphTest(test.TestCase):
       self.assertAllClose(expected, sess.run("hidden1/relu:0"))
       self.assertAllClose(expected, sess.run("hidden2/relu:0"))
 
-    # Verifies copy to differen graph.
+    # Verifies copy to different graph.
     graph2 = ops_lib.Graph()
     new_var_list_1 = meta_graph.copy_scoped_meta_graph(
         from_scope="hidden1",

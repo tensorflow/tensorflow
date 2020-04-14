@@ -227,7 +227,7 @@ tf_py_test(
     name = "map_vectorization_test",
     size = "small",
     srcs = ["map_vectorization_test.py"],
-    shard_count = 8,
+    shard_count = 16,
     tags = [
         "no_oss",
         "no_pip",

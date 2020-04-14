@@ -47,8 +47,11 @@ class HloRematerializationTest : public RematerializationTestBase {
         [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); },
         ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler));
     TF_EXPECT_OK(scheduler.Run(module).status());
-    HloRematerialization remat(ByteSizeOf, memory_limit_bytes,
-                               /*sizes=*/nullptr);
+    HloRematerialization remat(
+        ByteSizeOf, memory_limit_bytes,
+        /*sizes=*/nullptr,
+        HloRematerialization::RematerializationPass::kPreFusion,
+        /*block_size_limit=*/1);
     return remat.Run(module);
   }
 };
@@ -576,8 +579,11 @@ class CompressingRematerializationTest : public RematerializationTestBase {
   StatusOr<bool> RunHloRematerialization(int64 memory_limit_bytes,
                                          HloModule* module) {
     TF_EXPECT_OK(verifier().Run(module).status());
-    HloRematerialization remat(ShapeSizePadMinorTo64, memory_limit_bytes,
-                               /*sizes=*/nullptr, ChooseCompactLayoutForShape);
+    HloRematerialization remat(
+        ShapeSizePadMinorTo64, memory_limit_bytes,
+        /*sizes=*/nullptr,
+        HloRematerialization::RematerializationPass::kPreFusion,
+        /*block_size_limit=*/1, ChooseCompactLayoutForShape);
     return remat.Run(module);
   }
 };

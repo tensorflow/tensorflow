@@ -26,6 +26,7 @@ py_library(
     deps = [
         ":check_numerics_callback",
         ":debug_data",
+        ":debug_events_monitors",
         ":debug_events_reader",
         ":debug_events_writer",
         ":debug_gradients",
@@ -122,6 +123,18 @@ py_library(
         "//tensorflow/python:framework",
         "//tensorflow/python:lib",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "debug_events_monitors",
+    srcs = ["lib/debug_events_monitors.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:lib",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -252,6 +265,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:platform",
+        "//tensorflow/python:pywrap_tf_session",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -645,6 +659,28 @@ py_test(
 )
 
 py_test(
+    name = "debug_events_monitors_test",
+    size = "medium",
+    srcs = ["lib/debug_events_monitors_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",  # b/142475891
+    ],
+    deps = [
+        ":debug_events_monitors",
+        ":debug_events_reader",
+        ":debug_events_writer",
+        ":dumping_callback",
+        ":dumping_callback_test_lib",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "debug_events_writer_test",
     size = "medium",
     srcs = ["lib/debug_events_writer_test.py"],
@@ -698,6 +734,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["lib/check_numerics_callback_test.py"],
     python_version = "PY3",
+    tags = ["no_windows"],
     deps = [
         ":check_numerics_callback",
         "//tensorflow/python:framework_test_lib",
@@ -744,7 +781,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["lib/dumping_callback_test.py"],
     python_version = "PY3",
-    shard_count = 8,
+    shard_count = 4,
     tags = [
         "no_windows",  # TODO(b/142475891): Enable this test on Windows.
     ],
@@ -758,7 +795,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
@@ -834,6 +870,10 @@ py_test(
     srcs = ["lib/source_utils_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss_py38",  #TODO(b/151449908)
+        "no_windows",
+    ],
     deps = [
         ":debug_data",
         ":debug_utils",
@@ -888,6 +928,7 @@ py_test(
     srcs = ["wrappers/framework_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":debug_data",
         ":framework",
@@ -1108,11 +1149,13 @@ py_test(
     srcs = ["cli/debugger_cli_common_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":debugger_cli_common",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:pywrap_tf_session",
         "//third_party/py/numpy",
     ],
 )
@@ -1294,6 +1337,7 @@ cuda_py_test(
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
         "noasan",  # Times out due to size of test (b/73731462).
+        "notap",  # TODO(b/153898535) flaky
         "optonly",  # Test flaky (b/80130873)
         "oss_serial",
     ],
@@ -1419,7 +1463,7 @@ sh_test(
         ":debug_errors",
         ":debug_fibonacci",
         ":debug_keras",
-        ":debug_mnist",
+        ":debug_mnist_v1",
         ":debug_tflearn_iris",
         ":offline_analyzer",
     ],

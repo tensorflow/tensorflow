@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/pytypes.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_PYBIND11_LIB_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_PYBIND11_LIB_H_
@@ -45,7 +45,7 @@ inline py::object pyo(PyObject* ptr) {
   return py::reinterpret_steal<py::object>(ptr);
 }
 
-// Raise an exception if the PyErrOcurred flag is set or else return the Python
+// Raise an exception if the PyErrOccurred flag is set or else return the Python
 // object.
 
 inline py::object pyo_or_throw(PyObject* ptr) {

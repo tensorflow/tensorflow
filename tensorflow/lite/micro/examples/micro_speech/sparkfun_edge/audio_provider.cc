@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "tensorflow/lite/micro/examples/micro_speech/audio_provider.h"
 
 #include <limits>
@@ -67,7 +73,7 @@ void adc_start_dma(tflite::ErrorReporter* error_reporter) {
   }
   if (AM_HAL_STATUS_SUCCESS !=
       am_hal_adc_configure_dma(g_adc_handle, &ADCDMAConfig)) {
-    error_reporter->Report("Error - configuring ADC DMA failed.");
+    TF_LITE_REPORT_ERROR(error_reporter, "Error - configuring ADC DMA failed.");
   }
 
   // Reset the ADC DMA flags.
@@ -82,13 +88,14 @@ void adc_config0(tflite::ErrorReporter* error_reporter) {
 
   // Initialize the ADC and get the handle.
   if (AM_HAL_STATUS_SUCCESS != am_hal_adc_initialize(0, &g_adc_handle)) {
-    error_reporter->Report("Error - reservation of the ADC0 instance failed.");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Error - reservation of the ADC0 instance failed.");
   }
 
   // Power on the ADC.
   if (AM_HAL_STATUS_SUCCESS !=
       am_hal_adc_power_control(g_adc_handle, AM_HAL_SYSCTRL_WAKE, false)) {
-    error_reporter->Report("Error - ADC0 power on failed.");
+    TF_LITE_REPORT_ERROR(error_reporter, "Error - ADC0 power on failed.");
   }
 
   // Set up the ADC configuration parameters. These settings are reasonable
@@ -102,7 +109,7 @@ void adc_config0(tflite::ErrorReporter* error_reporter) {
   ADCConfig.ePowerMode = AM_HAL_ADC_LPMODE0;
   ADCConfig.eRepeat = AM_HAL_ADC_REPEATING_SCAN;
   if (AM_HAL_STATUS_SUCCESS != am_hal_adc_configure(g_adc_handle, &ADCConfig)) {
-    error_reporter->Report("Error - configuring ADC0 failed.");
+    TF_LITE_REPORT_ERROR(error_reporter, "Error - configuring ADC0 failed.");
   }
 
   // Set up an ADC slot (2)
@@ -113,7 +120,8 @@ void adc_config0(tflite::ErrorReporter* error_reporter) {
   ADCSlotConfig.bEnabled = true;
   if (AM_HAL_STATUS_SUCCESS !=
       am_hal_adc_configure_slot(g_adc_handle, 2, &ADCSlotConfig)) {
-    error_reporter->Report("Error - configuring ADC Slot 2 failed.");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Error - configuring ADC Slot 2 failed.");
   }
 
   // Set up an ADC slot (1)
@@ -124,7 +132,8 @@ void adc_config0(tflite::ErrorReporter* error_reporter) {
   ADCSlotConfig.bEnabled = true;
   if (AM_HAL_STATUS_SUCCESS !=
       am_hal_adc_configure_slot(g_adc_handle, 1, &ADCSlotConfig)) {
-    error_reporter->Report("Error - configuring ADC Slot 1 failed.");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Error - configuring ADC Slot 1 failed.");
   }
 
   // Configure the ADC to use DMA for the sample transfer.
@@ -137,7 +146,7 @@ void adc_config0(tflite::ErrorReporter* error_reporter) {
 
   // Enable the ADC.
   if (AM_HAL_STATUS_SUCCESS != am_hal_adc_enable(g_adc_handle)) {
-    error_reporter->Report("Error - enabling ADC0 failed.");
+    TF_LITE_REPORT_ERROR(error_reporter, "Error - enabling ADC0 failed.");
   }
 }
 
@@ -170,21 +179,25 @@ void enable_burst_mode(tflite::ErrorReporter* error_reporter) {
   if (AM_HAL_STATUS_SUCCESS ==
       am_hal_burst_mode_initialize(&eBurstModeAvailable)) {
     if (AM_HAL_BURST_AVAIL == eBurstModeAvailable) {
-      error_reporter->Report("Apollo3 Burst Mode is Available\n");
+      TF_LITE_REPORT_ERROR(error_reporter, "Apollo3 Burst Mode is Available\n");
     } else {
-      error_reporter->Report("Apollo3 Burst Mode is Not Available\n");
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Apollo3 Burst Mode is Not Available\n");
     }
   } else {
-    error_reporter->Report("Failed to Initialize for Burst Mode operation\n");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Failed to Initialize for Burst Mode operation\n");
   }
 
   // Put the MCU into "Burst" mode.
   if (AM_HAL_STATUS_SUCCESS == am_hal_burst_mode_enable(&eBurstMode)) {
     if (AM_HAL_BURST_MODE == eBurstMode) {
-      error_reporter->Report("Apollo3 operating in Burst Mode (96MHz)\n");
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Apollo3 operating in Burst Mode (96MHz)\n");
     }
   } else {
-    error_reporter->Report("Failed to Enable Burst Mode operation\n");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Failed to Enable Burst Mode operation\n");
   }
 }
 
@@ -197,13 +210,15 @@ extern "C" void am_adc_isr(void) {
   // Read the interrupt status.
   if (AM_HAL_STATUS_SUCCESS !=
       am_hal_adc_interrupt_status(g_adc_handle, &ui32IntMask, false)) {
-    g_adc_dma_error_reporter->Report("Error reading ADC0 interrupt status.");
+    TF_LITE_REPORT_ERROR(g_adc_dma_error_reporter,
+                         "Error reading ADC0 interrupt status.");
   }
 
   // Clear the ADC interrupt.
   if (AM_HAL_STATUS_SUCCESS !=
       am_hal_adc_interrupt_clear(g_adc_handle, ui32IntMask)) {
-    g_adc_dma_error_reporter->Report("Error clearing ADC0 interrupt status.");
+    TF_LITE_REPORT_ERROR(g_adc_dma_error_reporter,
+                         "Error clearing ADC0 interrupt status.");
   }
 
   // If we got a DMA complete, set the flag.
@@ -249,18 +264,21 @@ TfLiteStatus InitAudioRecording(tflite::ErrorReporter* error_reporter) {
   // Set the clock frequency.
   if (AM_HAL_STATUS_SUCCESS !=
       am_hal_clkgen_control(AM_HAL_CLKGEN_CONTROL_SYSCLK_MAX, 0)) {
-    error_reporter->Report("Error - configuring the system clock failed.");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Error - configuring the system clock failed.");
     return kTfLiteError;
   }
 
   // Set the default cache configuration and enable it.
   if (AM_HAL_STATUS_SUCCESS !=
       am_hal_cachectrl_config(&am_hal_cachectrl_defaults)) {
-    error_reporter->Report("Error - configuring the system cache failed.");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Error - configuring the system cache failed.");
     return kTfLiteError;
   }
   if (AM_HAL_STATUS_SUCCESS != am_hal_cachectrl_enable()) {
-    error_reporter->Report("Error - enabling the system cache failed.");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Error - enabling the system cache failed.");
     return kTfLiteError;
   }
 
@@ -293,7 +311,7 @@ TfLiteStatus InitAudioRecording(tflite::ErrorReporter* error_reporter) {
 
   // Trigger the ADC sampling for the first time manually.
   if (AM_HAL_STATUS_SUCCESS != am_hal_adc_sw_trigger(g_adc_handle)) {
-    error_reporter->Report("Error - triggering the ADC0 failed.");
+    TF_LITE_REPORT_ERROR(error_reporter, "Error - triggering the ADC0 failed.");
     return kTfLiteError;
   }
 
@@ -355,3 +373,5 @@ TfLiteStatus GetAudioSamples(tflite::ErrorReporter* error_reporter,
 }
 
 int32_t LatestAudioTimestamp() { return g_latest_audio_timestamp; }
+
+#endif  // ARDUINO_EXCLUDE_CODE

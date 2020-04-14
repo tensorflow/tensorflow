@@ -170,6 +170,21 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "fuse_auto_input_test",
+    srcs = ["fuse_auto_input_test.cc"],
+    tags = [
+        "local",
+    ],
+    deps = [
+        ":compiled_node",
+        ":fuse_auto_input",
+        "@com_google_absl//absl/types:any",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "variable_accessor",
     srcs = ["variable_accessor.cc"],

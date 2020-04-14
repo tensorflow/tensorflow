@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 
 namespace mlir {
@@ -23,13 +23,13 @@ namespace {
 
 // Lowers some of the TensorFlow operations that can be represented using other
 // TensorFlow operations.
-struct LowerTF : public FunctionPass<LowerTF> {
+struct LowerTF : public PassWrapper<LowerTF, FunctionPass> {
   void runOnFunction() override {
     // Add lowering patterns to the list.
     OwningRewritePatternList patterns;
     mlir::TF::PopulateLoweringTFPatterns(&getContext(), &patterns);
 
-    applyPatternsGreedily(getFunction(), patterns);
+    applyPatternsAndFoldGreedily(getFunction(), patterns);
   }
 };
 

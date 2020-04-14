@@ -46,7 +46,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // The number of dimensions of the input tensors must match, and all
   // dimensions except 'axis' must be equal.
-  TfLiteTensor* t0 = &context->tensors[node->inputs->data[0]];
+  const TfLiteTensor* t0 = GetInput(context, node, 0);
   TfLiteType input_type = t0->type;
   if (axis < 0) axis += t0->dims->size;
   TF_LITE_ENSURE(context, axis >= 0);
@@ -64,7 +64,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // will be the sum of inputs
   int sum_axis = t0->dims->data[axis];
   for (int i = 1; i < num_inputs; ++i) {
-    TfLiteTensor* t = &context->tensors[node->inputs->data[i]];
+    const TfLiteTensor* t = GetInput(context, node, i);
     TF_LITE_ENSURE_EQ(context, t->dims->size, t0->dims->size);
     TF_LITE_ENSURE_EQ(context, t->type, input_type);
     for (int d = 0; d < t0->dims->size; ++d) {
@@ -81,7 +81,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     output_size->data[d] = (d == axis) ? sum_axis : t0->dims->data[d];
   }
 
-  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  TfLiteTensor* output = GetOutput(context, node, 0);
   TF_LITE_ENSURE_EQ(context, output->type, input_type);
 
   if (input_type == kTfLiteInt8) {
@@ -89,7 +89,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // is a restriction we introduced to Int8 kernels.
     VectorOfTensors<int8_t> all_inputs(*context, *node->inputs);
     for (int i = 0; i < node->inputs->size; ++i) {
-      TfLiteTensor* t = &context->tensors[node->inputs->data[i]];
+      const TfLiteTensor* t = GetInput(context, node, i);
       TF_LITE_ENSURE_EQ(context, t->params.scale, output->params.scale);
       TF_LITE_ENSURE_EQ(context, t->params.zero_point,
                         output->params.zero_point);
@@ -104,7 +104,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteConcatenationParams*>(node->builtin_data);
   int axis = params->axis;
-  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  TfLiteTensor* output = GetOutput(context, node, 0);
   if (axis < 0) axis += output->dims->size;
 
 // TODO(ahentz): Creating 'all_inputs' below is not very efficient. We should
@@ -165,7 +165,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt64:
       TF_LITE_CONCATENATION(int64_t);
       break;
-
+    case kTfLiteInt16:
+      TF_LITE_CONCATENATION(int16_t);
+      break;
     default:
       context->ReportError(context, "Type '%s' is not supported currently.",
                            TfLiteTypeGetName(output->type));

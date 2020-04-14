@@ -123,6 +123,8 @@ TfLiteInterpreter* TfLiteInterpreterCreate(
   }
 
   if (optional_options) {
+    interpreter->UseNNAPI(optional_options->use_nnapi);
+
     if (optional_options->num_threads !=
         TfLiteInterpreterOptions::kDefaultNumThreads) {
       interpreter->SetNumThreads(optional_options->num_threads);
@@ -145,7 +147,7 @@ void TfLiteInterpreterDelete(TfLiteInterpreter* interpreter) {
 
 int32_t TfLiteInterpreterGetInputTensorCount(
     const TfLiteInterpreter* interpreter) {
-  return static_cast<int>(interpreter->impl->inputs().size());
+  return static_cast<int32_t>(interpreter->impl->inputs().size());
 }
 
 TfLiteTensor* TfLiteInterpreterGetInputTensor(
@@ -172,7 +174,7 @@ TfLiteStatus TfLiteInterpreterInvoke(TfLiteInterpreter* interpreter) {
 
 int32_t TfLiteInterpreterGetOutputTensorCount(
     const TfLiteInterpreter* interpreter) {
-  return static_cast<int>(interpreter->impl->outputs().size());
+  return static_cast<int32_t>(interpreter->impl->outputs().size());
 }
 
 const TfLiteTensor* TfLiteInterpreterGetOutputTensor(

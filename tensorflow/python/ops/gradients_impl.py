@@ -58,7 +58,7 @@ def gradients(ys,
 
   `gradients()` adds ops to the graph to output the derivatives of `ys` with
   respect to `xs`.  It returns a list of `Tensor` of length `len(xs)` where
-  each tensor is the `sum(dy/dx)` for y in `ys`.
+  each tensor is the `sum(dy/dx)` for y in `ys` and for x in `xs`.
 
   `grad_ys` is a list of tensors of the same length as `ys` that holds
   the initial gradients for each y in `ys`.  When `grad_ys` is None,
@@ -116,6 +116,19 @@ def gradients(ys,
   sess.run(g2)  # [array([[0., 0.]], dtype=float32)]
   ```
 
+  Let us take one practical example which comes during the back propogation
+  phase. This function is used to evaluate the derivatives of the cost function
+  with respect to Weights `Ws` and Biases `bs`. Below sample implementation
+  provides the exaplantion of what it is actually used for :
+
+  ```python
+  Ws = tf.constant(0.)
+  bs = 2 * Ws
+  cost = Ws + bs  # This is just an example. So, please ignore the formulas.
+  g = tf.gradients(cost, [Ws, bs])
+  dCost_dW, dCost_db = g
+  ```
+
 
   Args:
     ys: A `Tensor` or list of tensors to be differentiated.
@@ -138,7 +151,8 @@ def gradients(ys,
       `none`.
 
   Returns:
-    A list of `sum(dy/dx)` for each x in `xs`.
+    A list of `Tensor` of length `len(xs)` where each tensor is the `sum(dy/dx)`
+    for y in `ys` and for x in `xs`.
 
   Raises:
     LookupError: if one of the operations between `x` and `y` does not
@@ -176,7 +190,7 @@ def gradients_v2(ys,  # pylint: disable=invalid-name
 
   `gradients()` adds ops to the graph to output the derivatives of `ys` with
   respect to `xs`.  It returns a list of `Tensor` of length `len(xs)` where
-  each tensor is the `sum(dy/dx)` for y in `ys`.
+  each tensor is the `sum(dy/dx)` for y in `ys` and for x in `xs`.
 
   `grad_ys` is a list of tensors of the same length as `ys` that holds
   the initial gradients for each y in `ys`.  When `grad_ys` is None,
@@ -234,6 +248,19 @@ def gradients_v2(ys,  # pylint: disable=invalid-name
   sess.run(g2)  # [array([[0., 0.]], dtype=float32)]
   ```
 
+  Let us take one practical example which comes during the back propogation
+  phase. This function is used to evaluate the derivatives of the cost function
+  with respect to Weights `Ws` and Biases `bs`. Below sample implementation
+  provides the exaplantion of what it is actually used for :
+
+  ```python
+  Ws = tf.constant(0.)
+  bs = 2 * Ws
+  cost = Ws + bs  # This is just an example. So, please ignore the formulas.
+  g = tf.gradients(cost, [Ws, bs])
+  dCost_dW, dCost_db = g
+  ```
+
 
   Args:
     ys: A `Tensor` or list of tensors to be differentiated.
@@ -254,7 +281,8 @@ def gradients_v2(ys,  # pylint: disable=invalid-name
       `none`.
 
   Returns:
-    A list of `sum(dy/dx)` for each x in `xs`.
+    A list of `Tensor` of length `len(xs)` where each tensor is the `sum(dy/dx)`
+    for y in `ys` and for x in `xs`.
 
   Raises:
     LookupError: if one of the operations between `x` and `y` does not

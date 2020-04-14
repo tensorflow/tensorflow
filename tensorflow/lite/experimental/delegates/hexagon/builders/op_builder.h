@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_HEXAGON_BUILDERS_OP_BUILDER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_HEXAGON_BUILDERS_OP_BUILDER_H_
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -39,6 +40,10 @@ struct OpNode {
   hexagon_nn_padding_type padding_type = NN_PAD_NA;
   // Id of node in the Hexagon graph.
   int node_id = -1;
+  // Index/ID of node in the tflite graph.
+  // This ID can be duplicate if one TFLite node creates multiple Hexagon op
+  // nodes.
+  int tflite_node_index = -1;
 };
 
 class GraphBuilder;
@@ -63,6 +68,10 @@ class OpBuilder {
 
   void SetNodeId(int node_id) { op_node_.node_id = node_id; }
 
+  void SetTFLiteNodeId(int node_index) {
+    op_node_.tflite_node_index = node_index;
+  }
+
   void SetConstNode() { op_node_.op_type = OP_Const; }
 
   void SetPaddingType(hexagon_nn_padding_type padding_type) {
@@ -85,6 +94,8 @@ class OpBuilder {
                      const std::vector<int>& max_sizes);
 
   int GetID() const { return op_node_.node_id; }
+
+  int GetTFLiteNodeID() const { return op_node_.tflite_node_index; }
 
   int GetOpType() const { return op_node_.op_type; }
 
@@ -113,6 +124,24 @@ class OpBuilder {
     }
   }
 
+  TfLiteStatus ComputeMinAndMaxQuantValues(const TfLiteTensor& tensor,
+                                           float* min, float* max) {
+    if (tensor.type == kTfLiteUInt8) {
+      return ComputeMinAndMaxQuantValues(tensor, min, max,
+                                         std::numeric_limits<uint8_t>::min(),
+                                         std::numeric_limits<uint8_t>::max());
+    } else if (tensor.type == kTfLiteInt8) {
+      return ComputeMinAndMaxQuantValues(tensor, min, max,
+                                         std::numeric_limits<int8_t>::min(),
+                                         std::numeric_limits<int8_t>::max());
+    } else if (tensor.type == kTfLiteInt32) {
+      return ComputeMinAndMaxQuantValues(tensor, min, max,
+                                         std::numeric_limits<int32_t>::min(),
+                                         std::numeric_limits<int32_t>::max());
+    }
+    return kTfLiteError;
+  }
+
   template <typename T>
   TfLiteStatus ComputeMinAndMaxQuantValues(const TfLiteTensor& tensor,
                                            float* min, float* max, T min_value,
@@ -126,10 +155,6 @@ class OpBuilder {
     }
     const TfLiteAffineQuantization* params =
         static_cast<const TfLiteAffineQuantization*>(quant.params);
-    if (params->quantized_dimension != 0) {
-      printf("Quantized dimensions not 0 for tensor: %s\n", tensor.name);
-      return kTfLiteError;
-    }
     float scale = params->scale->data[0];
     float zero_point = static_cast<float>(params->zero_point->data[0]);
     *min = scale * (static_cast<float>(min_value) - zero_point);
@@ -158,11 +183,13 @@ class GraphBuilder {
       : hexagon_nn_(hexagon_nn), context_(context), graph_id_(graph_id) {}
 
   // Returns per OP builder. 'op_type' is the TfLite builtinOperator.
-  OpBuilder* AddNodeFromTfLiteOp(int op_type, TfLiteNode* node);
+  OpBuilder* AddNodeFromTfLiteOp(int op_type, TfLiteNode* node,
+                                 int tflite_node_index);
 
   // Add node to the graph. The caller responsible for setting correct
   // data in the Op.
-  OpBuilder* AddNode();
+  // 'tflite_node_index' is the node index in TFLite that creates this op.
+  OpBuilder* AddNode(int tflite_node_index);
 
   // Add const node that provides the data held by 'tensor'.
   OpBuilder* AddConstNodeWithData(int tensor_id, const TfLiteTensor& tensor);
@@ -247,6 +274,13 @@ class GraphBuilder {
       return -1;
     }
     return builders_[node_id - 1]->GetOpType();
+  }
+
+  int GetTFLiteNodeID(int node_id) const {
+    if (node_id > builders_.size()) {
+      return -1;
+    }
+    return builders_[node_id - 1]->GetTFLiteNodeID();
   }
 
  private:

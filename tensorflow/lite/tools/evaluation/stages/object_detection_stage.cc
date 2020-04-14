@@ -26,7 +26,8 @@ limitations under the License.
 namespace tflite {
 namespace evaluation {
 
-TfLiteStatus ObjectDetectionStage::Init() {
+TfLiteStatus ObjectDetectionStage::Init(
+    const DelegateProviders* delegate_providers) {
   // Ensure inference params are provided.
   if (!config_.specification().has_object_detection_params()) {
     LOG(ERROR) << "ObjectDetectionParams not provided";
@@ -48,7 +49,7 @@ TfLiteStatus ObjectDetectionStage::Init() {
   *tflite_inference_config.mutable_specification()
        ->mutable_tflite_inference_params() = params.inference_params();
   inference_stage_.reset(new TfliteInferenceStage(tflite_inference_config));
-  TF_LITE_ENSURE_STATUS(inference_stage_->Init());
+  TF_LITE_ENSURE_STATUS(inference_stage_->Init(delegate_providers));
 
   // Validate model inputs.
   const TfLiteModelInfo* model_info = inference_stage_->GetModelInfo();
@@ -66,15 +67,11 @@ TfLiteStatus ObjectDetectionStage::Init() {
   }
 
   // ImagePreprocessingStage
-  EvaluationStageConfig preprocessing_config;
-  preprocessing_config.set_name("image_preprocessing");
-  auto* preprocess_params = preprocessing_config.mutable_specification()
-                                ->mutable_image_preprocessing_params();
-  preprocess_params->set_image_height(input_shape->data[1]);
-  preprocess_params->set_image_width(input_shape->data[2]);
-  preprocess_params->set_cropping_fraction(1.0);
-  preprocess_params->set_output_type(static_cast<int>(input_type));
-  preprocessing_stage_.reset(new ImagePreprocessingStage(preprocessing_config));
+  tflite::evaluation::ImagePreprocessingConfigBuilder builder(
+      "image_preprocessing", input_type);
+  builder.AddResizingStep(input_shape->data[2], input_shape->data[1], false);
+  builder.AddDefaultNormalizationStep();
+  preprocessing_stage_.reset(new ImagePreprocessingStage(builder.build()));
   TF_LITE_ENSURE_STATUS(preprocessing_stage_->Init());
 
   // ObjectDetectionAveragePrecisionStage
@@ -176,7 +173,8 @@ TfLiteStatus PopulateGroundTruth(
   ObjectDetectionGroundTruth ground_truth_proto;
   google::protobuf::TextFormat::ParseFromString(proto_str, &ground_truth_proto);
 
-  for (auto image_ground_truth : ground_truth_proto.detection_results()) {
+  for (const auto& image_ground_truth :
+       ground_truth_proto.detection_results()) {
     (*ground_truth_mapping)[image_ground_truth.image_name()] =
         image_ground_truth;
   }

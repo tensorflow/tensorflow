@@ -17,8 +17,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/stl.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -126,6 +126,13 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
 
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
     return true;
+  });
+  m.def("HasAtomicMove", [](const std::string& path) {
+    bool has_atomic_move;
+    const auto status =
+        tensorflow::Env::Default()->HasAtomicMove(path, &has_atomic_move);
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
+    return has_atomic_move;
   });
 
   py::class_<tensorflow::FileStatistics>(m, "FileStatistics")

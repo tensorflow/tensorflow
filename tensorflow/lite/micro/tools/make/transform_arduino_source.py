@@ -41,7 +41,7 @@ def replace_includes(line, supplied_headers_list):
 
 
 def replace_main(line):
-  """Updates any occurences of a bare main definition to the Arduino equivalent."""
+  """Updates any occurrences of a bare main definition to the Arduino equivalent."""
   main_match = re.match(r'(.*int )(main)(\(.*)', line)
   if main_match:
     line = main_match.group(1) + 'tflite_micro_main' + main_match.group(3)
@@ -54,11 +54,11 @@ def check_ino_functions(input_text):
   # have to have a setup() and loop() function, just like their IDE expects.
   if not re.search(r'void setup\(\) \{', input_text):
     raise Exception(
-        'All examples must have a setup() function for Arduino compatiblity\n' +
-        input_text)
+        'All examples must have a setup() function for Arduino compatibility\n'
+        + input_text)
   if not re.search(r'void loop\(\) \{', input_text):
     raise Exception(
-        'All examples must have a loop() function for Arduino compatiblity')
+        'All examples must have a loop() function for Arduino compatibility')
   return input_text
 
 

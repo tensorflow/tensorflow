@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
 #include "tensorflow/core/platform/cloud/ram_file_block_cache.h"
-#include "tensorflow/core/platform/cloud/retrying_utils.h"
 #include "tensorflow/core/platform/cloud/time_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -40,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/retrying_utils.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -126,25 +126,10 @@ constexpr char kInitialTokens[] = "GCS_INITIAL_TOKENS";
 constexpr char kAllowedBucketLocations[] = "GCS_ALLOWED_BUCKET_LOCATIONS";
 // When this value is passed as an allowed location detects the zone tensorflow
 // is running in and restricts to buckets in that region.
-constexpr char kDetectZoneSentinalValue[] = "auto";
+constexpr char kDetectZoneSentinelValue[] = "auto";
 
-// TODO: DO NOT use a hardcoded path
 Status GetTmpFilename(string* filename) {
-#ifndef _WIN32
-  char buffer[] = "/tmp/gcs_filesystem_XXXXXX";
-  int fd = mkstemp(buffer);
-  if (fd < 0) {
-    return errors::Internal("Failed to create a temporary file.");
-  }
-  close(fd);
-#else
-  char buffer[] = "/tmp/gcs_filesystem_XXXXXX";
-  char* ret = _mktemp(buffer);
-  if (ret == nullptr) {
-    return errors::Internal("Failed to create a temporary file.");
-  }
-#endif
-  *filename = buffer;
+  *filename = io::GetTempFilename("");
   return Status::OK();
 }
 
@@ -323,7 +308,8 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
       : filename_(filename),
         read_fn_(std::move(read_fn)),
         buffer_size_(buffer_size),
-        buffer_start_(0) {}
+        buffer_start_(0),
+        buffer_end_is_past_eof_(false) {}
 
   Status Name(StringPiece* result) const override {
     *result = filename_;
@@ -347,9 +333,9 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
         memcpy(scratch, buffer_.data() + (offset - buffer_start_), copy_size);
         *result = StringPiece(scratch, copy_size);
       }
-      if (copy_size < n) {
-        // Try reading from the file regardless of previous read status.
-        // The file might have grown since the last read.
+      bool consumed_buffer_to_eof =
+          offset + copy_size >= buffer_end && buffer_end_is_past_eof_;
+      if (copy_size < n && !consumed_buffer_to_eof) {
         Status status = FillBuffer(offset + copy_size);
         if (!status.ok() && status.code() != errors::Code::OUT_OF_RANGE) {
           // Empty the buffer to avoid caching bad reads.
@@ -362,9 +348,11 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
         *result = StringPiece(scratch, copy_size);
       }
       if (copy_size < n) {
+        // Forget the end-of-file flag to allow for clients that poll on the
+        // same file.
+        buffer_end_is_past_eof_ = false;
         return errors::OutOfRange("EOF reached. Requested to read ", n,
-                                  " bytes from ", offset, " but only got ",
-                                  copy_size, " bytes.");
+                                  " bytes from ", offset, ".");
       }
     }
     return Status::OK();
@@ -372,12 +360,13 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
 
  private:
   Status FillBuffer(uint64 start) const
-      EXCLUSIVE_LOCKS_REQUIRED(buffer_mutex_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(buffer_mutex_) {
     buffer_start_ = start;
     buffer_.resize(buffer_size_);
     StringPiece str_piece;
     Status status = read_fn_(filename_, buffer_start_, buffer_size_, &str_piece,
                              &(buffer_[0]));
+    buffer_end_is_past_eof_ = status.code() == errors::Code::OUT_OF_RANGE;
     buffer_.resize(str_piece.size());
     return status;
   }
@@ -396,9 +385,11 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
   mutable mutex buffer_mutex_;
 
   // Offset of buffer from start of the file.
-  mutable uint64 buffer_start_ GUARDED_BY(buffer_mutex_);
+  mutable uint64 buffer_start_ TF_GUARDED_BY(buffer_mutex_);
 
-  mutable string buffer_ GUARDED_BY(buffer_mutex_);
+  mutable bool buffer_end_is_past_eof_ TF_GUARDED_BY(buffer_mutex_);
+
+  mutable string buffer_ TF_GUARDED_BY(buffer_mutex_);
 };
 
 /// \brief GCS-based implementation of a writeable file.
@@ -429,7 +420,7 @@ class GcsWritableFile : public WritableFile {
   /// \brief Constructs the writable file in append mode.
   ///
   /// tmp_content_filename should contain a path of an existing temporary file
-  /// with the content to be appended. The class takes onwnership of the
+  /// with the content to be appended. The class takes ownership of the
   /// specified tmp file and deletes it on close.
   GcsWritableFile(const string& bucket, const string& object,
                   GcsFileSystem* filesystem, const string& tmp_content_filename,
@@ -1250,7 +1241,7 @@ Status GcsFileSystem::CheckBucketLocationConstraint(const string& bucket) {
   }
 
   // Avoid calling external API's in the constructor
-  if (allowed_locations_.erase(kDetectZoneSentinalValue) == 1) {
+  if (allowed_locations_.erase(kDetectZoneSentinelValue) == 1) {
     string zone;
     TF_RETURN_IF_ERROR(zone_provider_->GetZone(&zone));
     allowed_locations_.insert(ZoneToRegion(&zone));
@@ -1346,7 +1337,7 @@ Status GcsFileSystem::GetMatchingPaths(const string& pattern,
         // Find the fixed prefix by looking for the first wildcard.
         const string& fixed_prefix =
             pattern.substr(0, pattern.find_first_of("*?[\\"));
-        const string dir(io::Dirname(fixed_prefix));
+        const string dir(this->Dirname(fixed_prefix));
         if (dir.empty()) {
           return errors::InvalidArgument(
               "A GCS pattern doesn't have a bucket name: ", pattern);
@@ -1360,8 +1351,8 @@ Status GcsFileSystem::GetMatchingPaths(const string& pattern,
 
         // Match all obtained paths to the input pattern.
         for (const auto& path : files_and_folders) {
-          const string& full_path = io::JoinPath(dir, path);
-          if (Env::Default()->MatchPath(full_path, pattern)) {
+          const string& full_path = this->JoinPath(dir, path);
+          if (this->Match(full_path, pattern)) {
             results->push_back(full_path);
           }
         }

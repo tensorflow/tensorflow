@@ -12,7 +12,7 @@ load("@bazel_skylib//lib:paths.bzl", "paths")
 _default_test_file_exts = ["mlir", ".pbtxt", ".td"]
 _default_driver = "@llvm-project//mlir:run_lit.sh"
 _default_size = "small"
-_default_tags = ["no_rocm"]
+_default_tags = []
 
 # These are patterns which we should never match, for tests, subdirectories, or
 # test input data files.
@@ -48,10 +48,11 @@ def _run_lit_test(name, data, size, tags, driver, features):
              " the driver parameter when running this test. If you require" +
              " custom driver support, please file an issue to request it.")
 
+    # Disable tests on windows for now, to enable testing rest of all xla and mlir.
     native.py_test(
         name = name,
         srcs = ["@llvm-project//llvm:lit"],
-        tags = tags,
+        tags = tags + ["no_windows"],
         args = [
             "tensorflow/compiler/mlir/" + paths.basename(data[-1]) + " --config-prefix=runlit -v",
         ] + features,
