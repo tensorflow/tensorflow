@@ -9,18 +9,7 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["logging.h"])
-
 common_copts = ["-Wall"] + tflite_copts()
-
-cc_library(
-    name = "logging",
-    hdrs = ["logging.h"],
-    copts = common_copts,
-    deps = [
-        "//tensorflow/lite/tools:logging",
-    ],
-)
 
 cc_binary(
     name = "benchmark_model",
@@ -39,7 +28,7 @@ cc_binary(
     tags = ["builder_default_android_arm64"],
     deps = [
         ":benchmark_tflite_model_lib",
-        ":logging",
+        "//tensorflow/lite/tools:logging",
     ],
 )
 
@@ -60,7 +49,7 @@ cc_binary(
     deps = [
         ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",
-        ":logging",
+        "//tensorflow/lite/tools:logging",
     ],
 )
 
@@ -83,9 +72,9 @@ tf_cc_binary(
     }),
     deps = [
         ":benchmark_tflite_model_lib",
-        ":logging",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/testing:init_tensorflow",
+        "//tensorflow/lite/tools:logging",
     ],
 )
 
@@ -110,11 +99,11 @@ cc_test(
         ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",
         ":delegate_provider_hdr",
-        ":logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
         "@com_google_absl//absl/algorithm",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
@@ -151,7 +140,6 @@ cc_library(
         ":benchmark_utils",
         ":coreml_delegate_provider",
         ":delegate_provider_hdr",
-        ":logging",
         ":profiling_listener",
         ":tflite_execution_providers",
         "//tensorflow/lite:framework",
@@ -160,6 +148,7 @@ cc_library(
         "//tensorflow/lite/profiling:platform_profiler",
         "//tensorflow/lite/profiling:profile_summary_formatter",
         "//tensorflow/lite/profiling:profiler",
+        "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools/evaluation:utils",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
@@ -178,7 +167,7 @@ cc_library(
         ":benchmark_model_lib",
         ":benchmark_params",
         ":benchmark_utils",
-        ":logging",
+        "//tensorflow/lite/tools:logging",
         "@com_google_absl//absl/memory",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite/c:common",
@@ -210,13 +199,13 @@ cc_library(
     deps = [
         ":benchmark_params",
         ":benchmark_utils",
-        ":logging",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/profiling:memory_info",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
     ],
 )
 
@@ -230,7 +219,7 @@ cc_library(
         ":benchmark_params",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/tools:command_line_flags",
-        "//tensorflow/lite/tools/benchmark:logging",
+        "//tensorflow/lite/tools:logging",
     ],
 )
 
@@ -322,10 +311,7 @@ cc_library(
         "//conditions:default": [],
     }),
     deps = [
-        ":benchmark_model_lib",
-        ":benchmark_params",
         ":delegate_provider_hdr",
-        ":logging",
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
         "//tensorflow:ios": [

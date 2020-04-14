@@ -37,8 +37,8 @@ limitations under the License.
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/delegate_provider.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/benchmark/profiling_listener.h"
+#include "tensorflow/lite/tools/logging.h"
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
 
@@ -64,7 +64,7 @@ constexpr int kOpProfilingEnabledDefault = false;
 class PlatformProfilingListener : public BenchmarkListener {
  public:
   explicit PlatformProfilingListener(Interpreter* interpreter) {
-    TFLITE_BENCHMARK_CHECK(interpreter);
+    TFLITE_TOOLS_CHECK(interpreter);
     platform_profiler_ = profiling::CreatePlatformProfiler();
     interpreter->SetProfiler(platform_profiler_.get());
   }
@@ -214,7 +214,7 @@ TfLiteStatus PopulateInputLayerInfo(
 
     input.name = names[i];
 
-    TFLITE_BENCHMARK_CHECK(util::SplitAndParse(shapes[i], ',', &input.shape))
+    TFLITE_TOOLS_CHECK(util::SplitAndParse(shapes[i], ',', &input.shape))
         << "Incorrect size string specified: " << shapes[i];
     for (int dim : input.shape) {
       if (dim == -1) {
@@ -392,7 +392,7 @@ TfLiteStatus BenchmarkTfLiteModel::ValidateParams() {
 }
 
 uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
-  TFLITE_BENCHMARK_CHECK(interpreter_);
+  TFLITE_TOOLS_CHECK(interpreter_);
   uint64_t total_input_bytes = 0;
   for (int input : interpreter_->inputs()) {
     auto* t = interpreter_->tensor(input);
@@ -652,7 +652,7 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   auto interpreter_inputs = interpreter_->inputs();
 
   if (!inputs_.empty()) {
-    TFLITE_BENCHMARK_CHECK_EQ(inputs_.size(), interpreter_inputs.size())
+    TFLITE_TOOLS_CHECK_EQ(inputs_.size(), interpreter_inputs.size())
         << "Inputs mismatch: Model inputs #:" << inputs_.size()
         << " expected: " << interpreter_inputs.size();
   }

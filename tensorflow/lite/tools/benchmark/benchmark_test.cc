@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/benchmark_performance_options.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
 #include "tensorflow/lite/tools/benchmark/delegate_provider.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/lite/tools/logging.h"
 
 namespace {
 const std::string* g_fp32_model_path = nullptr;
