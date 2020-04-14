@@ -842,6 +842,9 @@ void AlternateMemoryBestFitHeap::AddAliasedRequiredAssignmentsForSequentialCall(
   // Add aliased required assignments.
   if (use.instruction->opcode() == HloOpcode::kWhile) {
     HloComputation* while_body = use.instruction->while_body();
+    HloComputation* while_condition = use.instruction->while_condition();
+    AddAliasedRequiredAssignment(while_condition->parameter_instruction(0),
+                                 use.operand_index, aliased_allocation);
     AddAliasedRequiredAssignment(while_body->parameter_instruction(0),
                                  use.operand_index, aliased_allocation);
     AddAliasedRequiredAssignment(while_body->root_instruction(),
