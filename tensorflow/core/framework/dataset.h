@@ -59,6 +59,8 @@ namespace data {
 
 using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
 
+constexpr char kTFDataFunction[] = "_tf_data_function";
+
 constexpr int kInfiniteCardinality = -1;
 constexpr int kUnknownCardinality = -2;
 
