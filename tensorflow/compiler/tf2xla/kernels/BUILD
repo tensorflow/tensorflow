@@ -38,6 +38,7 @@ tf_kernel_library(
         "einsum_op.cc",
         "elu_op.cc",
         "elu_op.h",
+        "ensure_shape_op.cc",
         "empty_op.cc",
         "extract_image_patches_op.cc",
         "fake_param_op.cc",
