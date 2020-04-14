@@ -437,7 +437,11 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 2;
       }
       return 1;
-
+    case BuiltinOperator_MIRROR_PAD:
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
     default:
       return 1;
   }

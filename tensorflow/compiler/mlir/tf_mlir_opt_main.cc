@@ -60,7 +60,7 @@ static llvm::cl::opt<bool> verify_passes(
 static llvm::cl::opt<bool> allowUnregisteredDialects(
     "allow-unregistered-dialect",
     llvm::cl::desc("Allow operation with no registered dialects"),
-    llvm::cl::init(true));
+    llvm::cl::init(false));
 
 int main(int argc, char **argv) {
   tensorflow::InitMlir y(&argc, &argv);

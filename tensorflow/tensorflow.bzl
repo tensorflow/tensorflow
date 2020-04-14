@@ -338,6 +338,7 @@ def tf_copts(
         }) +
         select({
             clean_dep("//tensorflow:android"): android_copts,
+            clean_dep("//tensorflow:emscripten"): [],
             clean_dep("//tensorflow:macos"): [],
             clean_dep("//tensorflow:windows"): get_win_copts(is_external),
             clean_dep("//tensorflow:ios"): [],

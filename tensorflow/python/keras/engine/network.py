@@ -587,16 +587,6 @@ class Network(base_layer.Layer):
             extra_variables=self._non_trainable_weights +
             self._trainable_weights))
 
-  @property
-  def input_spec(self):
-    """Gets the network's input specs.
-
-    Returns:
-        A list of `InputSpec` instances (one per input to the model)
-            or a single instance if the model has only one input.
-    """
-    return
-
   @generic_utils.default
   def build(self, input_shape):
     """Builds the model based on input shapes received.

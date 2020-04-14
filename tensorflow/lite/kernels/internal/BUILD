@@ -30,6 +30,10 @@ NEON_FLAGS_IF_APPLICABLE = select({
         "-O3",
         "-mfpu=neon",
     ],
+    ":armhf": [
+        "-O3",
+        "-mfpu=neon",
+    ],
     ":armv7a": [
         "-O3",
         "-mfpu=neon",
@@ -87,6 +91,13 @@ config_setting(
     name = "arm64-v8a",
     values = {
         "cpu": "arm64-v8a",
+    },
+)
+
+config_setting(
+    name = "armhf",
+    values = {
+        "cpu": "armhf",
     },
 )
 
@@ -461,6 +472,7 @@ cc_library(
         "reference/reduce.h",
         "reference/reference_ops.h",
         "reference/requantize.h",
+        "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
         "reference/sparse_ops/fully_connected.h",
@@ -530,6 +542,7 @@ cc_library(
         "reference/reduce.h",
         "reference/reference_ops.h",
         "reference/requantize.h",
+        "reference/resize_nearest_neighbor.h",
         "reference/round.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
@@ -716,6 +729,9 @@ cc_library(
             ":neon_tensor_utils",
         ],
         ":armeabi-v7a": [
+            ":neon_tensor_utils",
+        ],
+        ":armhf": [
             ":neon_tensor_utils",
         ],
         ":armv7a": [

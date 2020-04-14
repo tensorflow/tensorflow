@@ -594,6 +594,7 @@ tpu_py_test(
     srcs = ["tpu_strategy_test.py"],
     disable_experimental = True,
     python_version = "PY3",
+    tags = ["no_oss"],
     deps = [
         ":tpu_strategy",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",

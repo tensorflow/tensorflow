@@ -328,6 +328,7 @@ LogicalResult HandlePartitionedCallOp(
   // Rewrite the callee on a cloned function.
   llvm::SmallDenseMap<Value, SizeInfo> callee_map;
   auto callee_clone = callee.clone();
+  callee_clone.setVisibility(SymbolTable::Visibility::Private);
   auto find_arg_buffer_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = buffer_to_size->find(call.getOperand(index));
     if (it == buffer_to_size->end()) return llvm::None;

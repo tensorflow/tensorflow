@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -test-xla-lower-complex | FileCheck %s
+// RUN: xla-opt %s -test-xla-lower-complex | FileCheck %s
 
 // CHECK-LABEL: @add
 func @add(%arg0 : tensor<2xf32>, %arg1 : tensor<2xf32>, %arg2 : tensor<2xf32>, %arg3 : tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>) {

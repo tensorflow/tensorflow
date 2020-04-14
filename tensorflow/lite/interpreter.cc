@@ -324,6 +324,13 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegatePtr delegate) {
   return ModifyGraphWithDelegate(owned_delegates_.back().get());
 }
 
+TfLiteStatus Interpreter::RemoveAllDelegates() {
+  for (auto& subgraph : subgraphs_) {
+    TF_LITE_ENSURE_STATUS(subgraph->RemoveAllDelegates());
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,
                                           TfLiteBufferHandle buffer_handle,
                                           TfLiteDelegate* delegate) {

@@ -57,7 +57,7 @@ TEST(GroupEventsTest, GroupGpuTraceTest) {
   EventGroupNameMap event_group_name_map;
   GroupTfEvents(&space, &event_group_name_map);
   XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
-  EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 2);
+  EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 3);
   EXPECT_EQ(device_plane_visitor.GetStatType(
                 device_plane->lines(0).events(0).stats(1)),
             StatType::kGroupId);
@@ -89,7 +89,7 @@ TEST(GroupEventsTest, GroupHostTrainingLoopTest) {
   EventGroupNameMap event_group_name_map;
   GroupTfEvents(&space, &event_group_name_map);
   XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
-  EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 2);
+  EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 3);
   EXPECT_EQ(device_plane_visitor.GetStatType(
                 device_plane->lines(0).events(0).stats(1)),
             StatType::kGroupId);
@@ -141,6 +141,75 @@ TEST(GroupEventsTest, GroupFunctionalOp) {
               EXPECT_EQ(*group_id, 0);
             });
       });
+}
+
+TEST(GroupEventsTest, EagerOpTest) {
+  XSpace space;
+  XPlaneBuilder host_plane_builder(space.add_planes());
+  host_plane_builder.SetName(kHostThreads);
+  host_plane_builder.ReserveLines(1);
+
+  auto main_thread = host_plane_builder.GetOrCreateLine(0);
+  // Eagerly scheduled GPU kernel.
+  CreateXEvent(&host_plane_builder, &main_thread, "matmul", 10, 100,
+               {{StatType::kCorrelationId, 100}});
+  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
+               110, 200, {{StatType::kStepId, 0}});
+
+  XPlane* device_plane = space.add_planes();
+  XPlaneBuilder device_plane_builder(device_plane);
+  device_plane_builder.ReserveLines(1);
+
+  auto stream = device_plane_builder.GetOrCreateLine(0);
+  // Eagerly executed GPU kernel.
+  CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
+               {{StatType::kCorrelationId, 100}});
+
+  GroupTfEvents(&space, /*event_group_name_map=*/nullptr);
+  XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
+  EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 2);
+  EXPECT_EQ(device_plane_visitor.GetStatType(
+                device_plane->lines(0).events(0).stats(1)),
+            StatType::kIsEager);
+  EXPECT_EQ(device_plane->lines(0).events(0).stats(1).int64_value(), 1);
+}
+
+TEST(GroupEventsTest, FunctionOpTest) {
+  XSpace space;
+  XPlaneBuilder host_plane_builder(space.add_planes());
+  host_plane_builder.SetName(kHostThreads);
+  host_plane_builder.ReserveLines(2);
+
+  auto main_thread = host_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kTraceContext,
+               0, 100, {{StatType::kStepNum, 123}});
+  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kFunctionRun,
+               10, 90, {{StatType::kStepId, 0}});
+
+  auto tf_executor_thread = host_plane_builder.GetOrCreateLine(1);
+  CreateXEvent(&host_plane_builder, &tf_executor_thread,
+               HostEventType::kExecutorStateProcess, 20, 80,
+               {{StatType::kStepId, 0}});
+  // GPU kernel scheduled inside tf.function.
+  CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70,
+               {{StatType::kCorrelationId, 100}});
+
+  XPlane* device_plane = space.add_planes();
+  XPlaneBuilder device_plane_builder(device_plane);
+  device_plane_builder.ReserveLines(1);
+
+  auto stream = device_plane_builder.GetOrCreateLine(0);
+  // GPU kernel executed as part of tf.function.
+  CreateXEvent(&device_plane_builder, &stream, "matmul", 200, 300,
+               {{StatType::kCorrelationId, 100}});
+
+  GroupTfEvents(&space, /*event_group_name_map=*/nullptr);
+  XPlaneVisitor device_plane_visitor = CreateTfXPlaneVisitor(device_plane);
+  EXPECT_EQ(device_plane->lines(0).events(0).stats_size(), 3);
+  EXPECT_EQ(device_plane_visitor.GetStatType(
+                device_plane->lines(0).events(0).stats(2)),
+            StatType::kIsEager);
+  EXPECT_EQ(device_plane->lines(0).events(0).stats(2).int64_value(), 0);
 }
 
 }  // namespace

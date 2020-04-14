@@ -270,7 +270,6 @@ cc_library(
     hdrs = [
         "cpu_backend_context.h",
     ],
-    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         ":tflite_with_ruy",

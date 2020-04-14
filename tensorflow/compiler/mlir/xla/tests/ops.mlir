@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -verify-diagnostics -split-input-file | tf-opt | FileCheck %s
+// RUN: xla-opt %s -verify-diagnostics -split-input-file | xla-opt | FileCheck %s
 
 // Tests for types, ops with custom constraints, verifiers, printer or parser
 // methods.

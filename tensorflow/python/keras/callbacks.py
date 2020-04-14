@@ -191,6 +191,7 @@ def make_logs(model, logs, outputs, mode, prefix=''):
   return logs
 
 
+@keras_export('keras.callbacks.CallbackList')
 class CallbackList(object):
   """Container abstracting a list of callbacks."""
 
@@ -200,15 +201,19 @@ class CallbackList(object):
                add_progbar=False,
                model=None,
                **params):
-    """Creates a container for `Callbacks`.
+    """Container for `Callback` instances.
+
+    This object wraps a list of `Callback` instances, making it possible
+    to call them all at once via a single endpoint
+    (e.g. `callback_list.on_epoch_end(...)`).
 
     Arguments:
       callbacks: List of `Callback` instances.
       add_history: Whether a `History` callback should be added, if one does not
-        already exist in `callback`s.
+        already exist in the `callbacks` list.
       add_progbar: Whether a `ProgbarLogger` callback should be added, if one
-        does not already exist in `callback`s.
-      model: The `Model` these `Callback`s are used with.`
+        does not already exist in the `callbacks` list.
+      model: The `Model` these callbacks are used with.
       **params: If provided, parameters will be passed to each `Callback` via
         `Callback.set_params`.
     """

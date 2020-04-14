@@ -667,6 +667,200 @@ std::shared_ptr<Node> MakeUnknownNode(Node::Args args) {
   return std::make_shared<Unknown>(std::move(args));
 }
 
+void Node::CollectTunableParameters(
+    std::map<string, std::shared_ptr<Parameter>>* parameters) const {
+  if (!autotune_) {
+    return;
+  }
+  tf_shared_lock l(mu_);
+  for (auto& pair : parameters_) {
+    if (pair.second->state->tunable) {
+      parameters->insert(std::make_pair(long_name(), pair.second));
+    }
+  }
+  for (auto& input : inputs_) {
+    input->CollectTunableParameters(parameters);
+  }
+}
+
+string Node::DebugString() const {
+  tf_shared_lock l(mu_);
+  string result;
+  strings::StrAppend(&result, long_name(), ":\n");
+  strings::StrAppend(&result, "  autotune=", autotune_.load(), "\n");
+  strings::StrAppend(&result, "  buffered_bytes=", buffered_bytes_.load(),
+                     "\n");
+  strings::StrAppend(&result, "  buffered_elements=", buffered_elements_.load(),
+                     "\n");
+  strings::StrAppend(&result, "  bytes_consumed=", bytes_consumed_.load(),
+                     "\n");
+  strings::StrAppend(&result, "  bytes_produced=", bytes_produced_.load(),
+                     "\n");
+  strings::StrAppend(&result, "  processing_time=", processing_time_, "\n");
+  strings::StrAppend(&result, "  num_elements=", num_elements_.load(), "\n");
+  string inputs;
+  for (auto& input : inputs_) {
+    strings::StrAppend(&inputs, input->long_name(), ",");
+  }
+  strings::StrAppend(&result, "  inputs={", inputs, "}\n");
+  for (auto& input : inputs_) {
+    strings::StrAppend(&result, input->DebugString());
+  }
+  return result;
+}
+
+void Node::FlushMetrics() {
+  if (!record_metrics_) {
+    return;
+  }
+  metrics_.record_bytes_consumed(bytes_consumed_);
+  metrics_.record_bytes_produced(bytes_produced_);
+  metrics_.record_num_elements(num_elements_);
+}
+
+double Node::OutputTime(std::vector<double>* input_times,
+                        std::map<string, double>* gradient) const {
+  tf_shared_lock l(mu_);
+  return OutputTimeLocked(input_times, gradient);
+}
+
+std::shared_ptr<Node> Node::Snapshot(std::shared_ptr<Node> output) {
+  tf_shared_lock l(mu_);
+  std::shared_ptr<Node> result = Clone(output);
+  {
+    result->autotune_.store(autotune_);
+    result->buffered_bytes_.store(buffered_bytes_);
+    result->buffered_elements_.store(buffered_elements_);
+    result->bytes_consumed_.store(bytes_consumed_);
+    result->bytes_produced_.store(bytes_produced_);
+    result->num_elements_.store(num_elements_);
+    result->record_metrics_.store(false);
+    mutex_lock l2(result->mu_);
+    result->parameters_ = parameters_;
+    result->processing_time_ = processing_time_;
+  }
+  for (auto& input : inputs_) {
+    result->add_input(input->Snapshot(result));
+  }
+  return result;
+}
+
+double Node::SelfProcessingTime() const {
+  tf_shared_lock l(mu_);
+  return SelfProcessingTimeLocked();
+}
+
+double Node::TotalBufferedBytes() const {
+  if (!autotune_) {
+    return 0;
+  }
+  tf_shared_lock l(mu_);
+  double result = 0;
+  auto* parameter = gtl::FindOrNull(parameters_, kBufferSize);
+  if (!parameter) {
+    parameter = gtl::FindOrNull(parameters_, kParallelism);
+  }
+  if (parameter) {
+    result = buffered_bytes_;
+  }
+  for (auto& input : inputs_) {
+    result += input->TotalBufferedBytes();
+  }
+  return result;
+}
+
+double Node::TotalMaximumBufferedBytes() const {
+  if (!autotune_) {
+    return 0;
+  }
+  tf_shared_lock l(mu_);
+  double result = 0;
+  auto* parameter = gtl::FindOrNull(parameters_, kBufferSize);
+  if (!parameter) {
+    parameter = gtl::FindOrNull(parameters_, kParallelism);
+  }
+  if (parameter) {
+    result = (*parameter)->value * AverageBufferedElementSize();
+  }
+  for (auto& input : inputs_) {
+    result += input->TotalMaximumBufferedBytes();
+  }
+  return result;
+}
+
+double Node::TotalProcessingTime(std::map<string, double>* processing_times) {
+  tf_shared_lock l(mu_);
+  return TotalProcessingTimeLocked(processing_times);
+}
+
+double Node::AverageBufferedElementSize() const {
+  if (buffered_elements_ == 0) {
+    return 0;
+  }
+  return static_cast<double>(buffered_bytes_) /
+         static_cast<double>(buffered_elements_);
+}
+
+double Node::OutputTimeForInputs(std::vector<double>* input_times,
+                                 std::map<string, double>* gradient) const {
+  double sum = 0;
+  for (auto& input : inputs_) {
+    // Inputs for which autotuning is disabled are excluded.
+    if (input->autotune()) {
+      sum += input->OutputTime(input_times, gradient);
+    }
+  }
+  return sum;
+}
+
+double Node::TotalProcessingTimeForInputs(
+    std::map<string, double>* processing_times) {
+  // If the number of elements produced by an input is smaller than this
+  // constant, then its processing time is estimated using a weighted average
+  // of the empirical processing time and processing time history.
+  constexpr int kNumElementsThreshold = 30;
+
+  // Identifies the minimum number of input processing times to collect
+  // before the processing time history is used as a prior.
+  constexpr int kCountThreshold = 30;
+
+  double sum = 0;
+  for (auto& input : inputs_) {
+    // Inputs for which autotuning is disabled are excluded.
+    if (input->autotune()) {
+      double input_processing_time =
+          input->TotalProcessingTime(processing_times);
+      int64 num_elements = input->num_elements();
+      if (num_elements < kNumElementsThreshold) {
+        if (input_processing_time_count_ < kCountThreshold) {
+          sum += input_processing_time;
+        } else {
+          // The fewer elements the input has produced so far, the more weight
+          // is assigned to the prior to reduce volatility.
+          double prior_weight = 1.0L / static_cast<double>(2 << num_elements);
+          double prior =
+              input_processing_time_sum_ / input_processing_time_count_;
+          sum += (1.0L - prior_weight) * input_processing_time +
+                 prior_weight * prior;
+        }
+      } else {
+        sum += input_processing_time;
+        input_processing_time_count_++;
+        input_processing_time_sum_ += input_processing_time;
+      }
+    }
+  }
+  return sum;
+}
+
+double Node::SelfProcessingTimeLocked() const {
+  if (num_elements_ == 0) {
+    return 0;
+  }
+  return static_cast<double>(processing_time_) /
+         static_cast<double>(num_elements_);
+}
+
 void Model::AddNode(Node::Factory factory, const string& name,
                     const string& output_name, Node** out_node) {
   // The name captures the sequence of iterators joined by `::`. We use the full

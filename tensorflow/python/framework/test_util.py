@@ -94,9 +94,21 @@ def is_xla_enabled():
 
 
 try:
-  from tensorflow.python.framework.is_xla_test_true import is_xla_enabled  # pylint: disable=g-import-not-at-top
-except:
+  from tensorflow.python.framework.is_xla_test_true import is_xla_enabled  # pylint: disable=g-import-not-at-top, unused-import
+except Exception:  # pylint: disable=broad-except
   pass
+
+
+# Uses the same mechanism as above to selectively enable MLIR compilation.
+def is_mlir_bridge_enabled():
+  return False
+
+
+try:
+  from tensorflow.python.framework.is_mlir_bridge_test_true import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
+except Exception:  # pylint: disable=broad-except
+  pass
+
 
 def _get_object_count_by_type():
   return collections.Counter([type(obj).__name__ for obj in gc.get_objects()])

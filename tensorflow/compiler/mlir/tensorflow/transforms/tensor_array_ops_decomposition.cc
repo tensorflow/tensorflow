@@ -766,6 +766,7 @@ LogicalResult HandlePartitionedCallOp(
     return it->getSecond().accumulate_on_write;
   };
   auto callee_clone = callee.clone();
+  callee_clone.setVisibility(SymbolTable::Visibility::Private);
   auto grads = AccessedGradients({callee_clone}, module);
   for (int64_t i = 0; i < callee_clone.getNumArguments(); ++i) {
     auto it = grads.find(i);

@@ -75,20 +75,20 @@ class QuantizedConcatenationOpModel : public SingleOpModelWithHexagon {
   int output_;
 };
 
-TEST(QuantizedConcatenationOpModel, FourInputsQuantizedSameRange) {
-  QuantizedConcatenationOpModel m0(
-      {{TensorType_UINT8, {2, 1, 1, 2}, -12.7, 12.8},
-       {TensorType_UINT8, {2, 1, 1, 2}, -12.7, 12.8},
-       {TensorType_UINT8, {2, 1, 1, 2}, -12.7, 12.8},
-       {TensorType_UINT8, {2, 1, 1, 2}, -12.7, 12.8}},
-      /*axis=*/3, {TensorType_UINT8, {}, -12.7, 12.8});
+template <typename integer_type, TensorType tensor_dtype>
+void FourInputsQuantizedSameRangeImpl() {
+  QuantizedConcatenationOpModel m0({{tensor_dtype, {2, 1, 1, 2}, -12.7, 12.8},
+                                    {tensor_dtype, {2, 1, 1, 2}, -12.7, 12.8},
+                                    {tensor_dtype, {2, 1, 1, 2}, -12.7, 12.8},
+                                    {tensor_dtype, {2, 1, 1, 2}, -12.7, 12.8}},
+                                   /*axis=*/3, {tensor_dtype, {}, -12.7, 12.8});
 
-  m0.SetInput<uint8_t>(0, {1.0f, 3.0f, 4.0f, 7.0f});
-  m0.SetInput<uint8_t>(1, {1.1f, 3.1f, 4.1f, 7.1f});
-  m0.SetInput<uint8_t>(2, {1.2f, 3.2f, 4.2f, 7.2f});
-  m0.SetInput<uint8_t>(3, {1.3f, 3.3f, 4.3f, 7.3f});
+  m0.SetInput<integer_type>(0, {1.0f, 3.0f, 4.0f, 7.0f});
+  m0.SetInput<integer_type>(1, {1.1f, 3.1f, 4.1f, 7.1f});
+  m0.SetInput<integer_type>(2, {1.2f, 3.2f, 4.2f, 7.2f});
+  m0.SetInput<integer_type>(3, {1.3f, 3.3f, 4.3f, 7.3f});
   m0.ApplyDelegateAndInvoke();
-  EXPECT_THAT(m0.GetDequantizedOutput<uint8_t>(),
+  EXPECT_THAT(m0.GetDequantizedOutput<integer_type>(),
               ElementsAreArray(ArrayFloatNear(
                   {
                       1.0f, 3.0f, 1.1f, 3.1f, 1.2f, 3.2f, 1.3f, 3.3f,  //
@@ -96,6 +96,16 @@ TEST(QuantizedConcatenationOpModel, FourInputsQuantizedSameRange) {
                   },
                   /*max_abs_error=*/0.2)));
 }
+
+TEST(QuantizedConcatenationOpModel, FourInputsQuantizedSameRange_UInt8) {
+  FourInputsQuantizedSameRangeImpl<uint8_t, TensorType_UINT8>();
+}
+
+TEST(QuantizedConcatenationOpModel, FourInputsQuantizedSameRange_Int8) {
+  FourInputsQuantizedSameRangeImpl<int8_t, TensorType_INT8>();
+}
+
+// NOTE: Int8 Concat does not have mixed-range support.
 
 TEST(QuantizedConcatenationOpModel, FourInputsQuantizedMixedRange) {
   QuantizedConcatenationOpModel m0(

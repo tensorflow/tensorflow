@@ -996,6 +996,56 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
+XLA_TEST_F(ExecutionTest, DynamicConditionalDimension) {
+  const string hlo_text = R"(
+HloModule module
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+true_branch {
+  true_param = (s32[<=3,2]) parameter(0)
+  param = s32[<=3, 2] get-tuple-element(true_param), index=0
+  add = s32[<=3,2] add(param, param)
+  ROOT true_tuple = (s32[<=3,2], s32[<=3,2]) tuple(add, add)
+}
+
+false_branch {
+  false_param = (s32[<=3,2]) parameter(0)
+  param = s32[<=3, 2] get-tuple-element(false_param), index=0
+  add = s32[<=3,2] add(param, param)
+  ROOT false_tuple = (s32[<=3,2], s32[<=3,2]) tuple(add, add)
+}
+
+ENTRY entry {
+  param0 = s32[3,2] parameter(0)
+  size = s32[] constant(2)
+  branch = pred[] constant(false)
+  param_dynamic = s32[<=3, 2] set-dimension-size(param0, size), dimensions={0}
+  param_tuple = (s32[<=3 ,2]) tuple(param_dynamic)
+  conditional = (s32[<=3, 2], s32[<=3, 2]) conditional(branch, param_tuple, param_tuple),
+    true_computation=true_branch, false_computation=false_branch
+  gte0 = s32[<=3,2] get-tuple-element(conditional), index=1
+  init = s32[] constant(0)
+  ROOT reduce = s32[2] reduce(gte0, init),
+    dimensions={0},
+    to_apply=update_s32
+}
+)";
+
+  Literal operand = LiteralUtil::CreateR2<int32>({{0, 1}, {2, 3}, {4, 5}});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand},
+                                 /*slice_dynamic_output=*/false);
+  Literal expected = LiteralUtil::CreateR1<int32>({4, 8});
+
+  EXPECT_EQ(result, expected);
+}
+
 XLA_TEST_F(ExecutionTest, DynamicTupleSort) {
   const string hlo_text = R"(
 HloModule TEST

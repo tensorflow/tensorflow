@@ -1,4 +1,4 @@
-// RUN: tf-opt -test-buffer-assignment -split-input-file %s | FileCheck %s -dump-input-on-failure
+// RUN: xla-opt -test-buffer-assignment -split-input-file %s | FileCheck %s -dump-input-on-failure
 
 // CHECK-LABEL: Testing : condBranch
 func @condBranch(%cond : i1, %arg0 : tensor<2xf32>) -> tensor<2xf32>{

@@ -878,6 +878,7 @@ LogicalResult HandlePartitionedCallOpCallee(
   name_base += "_resource_lifted";
   auto name = name_base;
   callee = callee.clone();
+  callee.setVisibility(SymbolTable::Visibility::Private);
   callee.setName(name);
   SymbolTable(module).insert(callee);
   result->lifted_callee = callee;

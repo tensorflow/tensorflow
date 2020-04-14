@@ -41,6 +41,7 @@ limitations under the License.
 namespace tflite {
 
 class InterpreterTest;
+class TestDelegate;
 
 namespace impl {
 
@@ -521,6 +522,7 @@ class Interpreter {
  private:
   friend class InterpreterBuilder;
   friend class tflite::InterpreterTest;
+  friend class tflite::TestDelegate;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
@@ -529,6 +531,10 @@ class Interpreter {
 
   // Sets the profiler to all subgraphs.
   void SetSubgraphProfiler(Profiler* profiler);
+
+  // Remove delegates (for fallback behaviour). The interpreter is invokable
+  // afterwards.
+  TfLiteStatus RemoveAllDelegates();
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive

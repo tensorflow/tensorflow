@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -lhlo-legalize-to-linalg -split-input-file | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt %s -lhlo-legalize-to-linalg -split-input-file | FileCheck %s --dump-input-on-failure
 
 // CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @element_wise
@@ -263,6 +263,23 @@ func @abs(%input: memref<2x2xf32>,
 
 // -----
 
+func @abs(%input: memref<2x2xi32>,
+          %result: memref<2x2xi32>) {
+  "xla_lhlo.abs"(%input, %result)
+      : (memref<2x2xi32>, memref<2x2xi32>) -> ()
+  return
+}
+
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[L0:.*]] = constant 0 : i32
+// CHECK-NEXT:   %[[L1:.*]] = cmpi "sge", %[[OPERAND_IN]], %[[L0]] : i32
+// CHECK-NEXT:   %[[L2:.*]] = subi %[[L0]], %[[OPERAND_IN]] : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = select %[[L1]], %[[OPERAND_IN]], %[[L2]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
 // CHECK-LABEL: func @ceil
 func @ceil(%input: memref<2x2xf32>,
           %result: memref<2x2xf32>) {
@@ -398,6 +415,22 @@ func @neg(%input: memref<2x2xf32>,
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
 // CHECK-NEXT:   %[[RESULT:.*]] = negf %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @neg
+func @neg(%input: memref<2x2xi32>,
+          %result: memref<2x2xi32>) {
+  "xla_lhlo.negate"(%input, %result)
+      : (memref<2x2xi32>, memref<2x2xi32>) -> ()
+  return
+}
+
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[L0:.*]] = constant 0 : i32 
+// CHECK-NEXT:   %[[RESULT:.*]] = subi %[[L0]], %[[OPERAND_IN]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
 

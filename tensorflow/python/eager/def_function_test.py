@@ -21,6 +21,7 @@ import functools
 import itertools
 import pickle
 import re
+import sys
 import weakref
 
 from absl.testing import parameterized
@@ -756,6 +757,134 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     x = array_ops.ones([])
     self.assertEqual(self.evaluate(cloned(x)), self.evaluate(func(x)))
+
+  def test_frequent_retracing_warning(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('self.assertLogs() call is not available in Python 2.')
+
+    @def_function.function
+    def f(x):
+      return x
+
+    with self.assertLogs(level='WARN') as logs:
+      f(1)
+      f(2)
+      f(3)
+      f(4)
+      self.assertEmpty(logs.output)
+      f(5)
+
+    self.assertLen(logs.output, 1)
+    self.assertIn('Tracing is expensive', logs.output[0])
+
+  def test_frequent_retracing_warning_lambda(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('self.assertLogs() call is not available in Python 2.')
+
+    f = def_function.function(lambda x: x)
+
+    with self.assertLogs(level='WARN') as logs:
+      f(1)
+      f(2)
+      f(3)
+      f(4)
+      f(5)
+
+    self.assertLen(logs.output, 1)
+    self.assertIn('Tracing is expensive', logs.output[0])
+
+  def test_frequent_retracing_warning_method(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('self.assertLogs() call is not available in Python 2.')
+
+    class Foo(object):
+
+      @def_function.function
+      def f(self, x):
+        return x
+
+    f = Foo().f
+
+    with self.assertLogs(level='WARN') as logs:
+      f(1)
+      f(2)
+      f(3)
+      f(4)
+      f(5)
+
+    self.assertLen(logs.output, 1)
+    self.assertIn('Tracing is expensive', logs.output[0])
+
+  def test_frequent_retracing_warning_two_independent_tf_functions(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('self.assertLogs() call is not available in Python 2.')
+
+    @def_function.function
+    def f(x):
+      return x
+
+    @def_function.function
+    def g(x):
+      return x
+
+    with self.assertLogs(level='WARN') as logs:
+      f(1)
+      f(2)
+      f(3)
+      f(4)
+      g(1)
+      g(2)
+      g(3)
+      g(4)
+      g(5)
+
+    self.assertLen(logs.output, 1)
+    self.assertIn('Tracing is expensive', logs.output[0])
+
+  def test_frequent_retracing_warning_nested(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('self.assertLogs() call is not available in Python 2.')
+
+    @def_function.function
+    def inner(x):
+      return x + 1
+
+    @def_function.function
+    def outer1(x):
+      return inner(x) * 2
+
+    @def_function.function
+    def outer2(x):
+      return inner(x) * 3
+
+    with self.assertLogs(level='WARN') as logs:
+      inner(1)
+      outer1(2)
+      outer2(3)
+      outer1(4)
+      outer2(5)
+
+    self.assertLen(logs.output, 1)
+    self.assertIn('Tracing is expensive', logs.output[0])
+
+  def test_frequent_retracing_warning_on_reinstantiation(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('self.assertLogs() call is not available in Python 2.')
+
+    with self.assertLogs(level='WARN') as logs:
+      for i in range(5):
+
+        @def_function.function
+        def f(x):
+          return x
+
+        f(i)
+
+        if i < 4:
+          self.assertEmpty(logs.output)
+
+    self.assertLen(logs.output, 1)
+    self.assertIn('Tracing is expensive', logs.output[0])
 
 
 if __name__ == '__main__':

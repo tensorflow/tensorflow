@@ -1965,6 +1965,14 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
+# Including this as a dependency will result in tests using
+# :framework_test_lib to use MLIR.
+py_library(
+    name = "is_mlir_bridge_test_true",
+    srcs = ["framework/is_mlir_bridge_test_true.py"],
+    srcs_version = "PY2AND3",
+)
+
 # Including this as a dependency will result in tests to use TFRT.
 py_library(
     name = "is_tfrt_test_true",

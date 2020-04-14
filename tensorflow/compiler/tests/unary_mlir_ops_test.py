@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
-from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -30,10 +29,6 @@ from tensorflow.python.platform import googletest
 
 class UnaryOpsTest(xla_test.XLATestCase):
   """Test cases for unary operators."""
-
-  def __init__(self, method_name='runTest'):
-    super(UnaryOpsTest, self).__init__(method_name)
-    context.context().enable_mlir_bridge = True
 
   def _assertOpOutputMatchesExpected(self,
                                      op,

@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import os
 import sys
 
 from tensorflow.python.distribute import strategy_combinations
@@ -36,12 +35,7 @@ _strategies = [
 # The presence of GPU strategies upsets TPU initialization,
 # despite their test instances being skipped early. This is a workaround
 # for b/145386854.
-#
-# See comments in TestCase.assertCommandSucceeded for background on these
-# sys.executable and TEST_BINARY checks.
-if ("test_tpu" in sys.argv[0] or
-    (sys.executable is None and os.environ["TEST_BINARY"] is not None and
-     "test_tpu" in os.environ["TEST_BINARY"])):
+if "test_tpu" in sys.argv[0]:
   _strategies = [s for s in _strategies if "GPU" not in str(s)]
 
 

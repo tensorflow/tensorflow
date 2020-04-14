@@ -1262,6 +1262,15 @@ class TPUEmbedding(object):
   def _validate_generate_enqueue_ops_enqueue_datas_list(self,
                                                         enqueue_datas_list):
     """Validate `enqueue_datas_list`."""
+
+    def _check_agreement(data, name, feature, enqueue_data):
+      """Helper function to check device agreement."""
+      if (data is not None and
+          data.device != enqueue_data.embedding_indices.device):
+        raise ValueError('Device of {0} does not agree with that of'
+                         'embedding_indices for feature {1}.'.format(
+                             name, feature))
+
     feature_set = set(self._feature_to_config_dict.keys())
     contiguous_device = None
     for i, enqueue_datas in enumerate(enqueue_datas_list):
@@ -1292,18 +1301,10 @@ class TPUEmbedding(object):
                 'No sample indices set for features %f table %f but '
                 'combiner is set to %s.', feature,
                 self._feature_to_config_dict[feature].table_id, combiner)
-          if (enqueue_data.sample_indices is not None and
-              enqueue_data.sample_indices.device !=
-              enqueue_data.embedding_indices.device):
-            raise ValueError(
-                'Device of sample_indices does not agree with '
-                'that of embedding_indices for feature {}.'.format(feature))
-          if (enqueue_data.aggregation_weights is not None and
-              enqueue_data.aggregation_weights.device !=
-              enqueue_data.embedding_indices.device):
-            raise ValueError(
-                'Device of aggregation_weights does not agree with '
-                'that of embedding_indices for feature {}.'.format(feature))
+          _check_agreement(enqueue_data.sample_indices, 'sample_indices',
+                           feature, enqueue_data)
+          _check_agreement(enqueue_data.aggregation_weights,
+                           'aggregation_weights', feature, enqueue_data)
 
         elif isinstance(enqueue_data, RaggedEnqueueData):
           if enqueue_data.sample_splits is None and combiner:
@@ -1311,19 +1312,10 @@ class TPUEmbedding(object):
                 'No sample splits set for features %f table %f but '
                 'combiner is set to %s.', feature,
                 self._feature_to_config_dict[feature].table_id, combiner)
-          if (enqueue_data.sample_splits is not None and
-              enqueue_data.sample_splits.device !=
-              enqueue_data.embedding_indices.device):
-            raise ValueError(
-                'Device of sample_splits does not agree with '
-                'that of embedding_indices for feature {}.'.format(feature))
-          if (enqueue_data.aggregation_weights is not None and
-              enqueue_data.aggregation_weights.device !=
-              enqueue_data.embedding_indices.device):
-            raise ValueError(
-                'Device of aggregation_weights does not agree with '
-                'that of embedding_indices for feature {}.'.format(feature))
-
+          _check_agreement(enqueue_data.sample_splits, 'sample_splits', feature,
+                           enqueue_data)
+          _check_agreement(enqueue_data.aggregation_weights,
+                           'aggregation_weights', feature, enqueue_data)
         else:
           raise ValueError(
               '`enqueue_datas_list[{}]` has a feature that is not mapped to '
@@ -2108,8 +2100,7 @@ def _get_optimization_handler(optimization_parameters):
     return _ProximalYogiHandler(optimization_parameters)
   elif isinstance(optimization_parameters, StochasticGradientDescentParameters):
     return _StochasticGradientDescentHandler(optimization_parameters)
-  else:
-    return NotImplementedError()
+  return NotImplementedError()
 
 
 def _create_ordered_dict(d):

@@ -46,7 +46,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -322,9 +321,10 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
 
     // Create tensor type for the transpose result.
     auto filter_type = filter.getType().cast<RankedTensorType>();
-    auto result_shape = functional::map(
-        [filter_type](int64_t dim) { return filter_type.getDimSize(dim); },
-        perm);
+    auto result_shape =
+        llvm::to_vector<4>(llvm::map_range(perm, [filter_type](int64_t dim) {
+          return filter_type.getDimSize(dim);
+        }));
     auto elem_type = filter_type.getElementType();
     auto result_type = RankedTensorType::get(result_shape, elem_type);
 

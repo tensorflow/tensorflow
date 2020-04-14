@@ -595,6 +595,9 @@ tf_py_test(
     size = "small",
     srcs = ["deferred_sequential_test.py"],
     python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/compat:v2_compat",

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/convert/op_stack.h"
@@ -208,22 +209,26 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
       first_op_offset_ps = std::min(first_op_offset_ps, event.OffsetPs());
       last_op_offset_ps = std::max(last_op_offset_ps, event.EndOffsetPs());
 
+      absl::string_view tf_op_full_name;
+      bool is_eager;
       event.ForEachStat([&](const XStatVisitor& stat) {
         if (stat.Type() == StatType::kLevel0) {
-          auto tf_op_fullname = stat.StrOrRefValue();
-          if (tf_op_fullname.empty()) return;
-          TfOp tf_op = ParseTfOpFullname(tf_op_fullname);
-          TfOpRoofLineCostEstimator::OpRoofLineStats costs;
-          if (tf_op.category != Category::kUnknown) {
-            costs = op_level_cost_estimator.Predict(event);
-          }
-          device_op_metrics_db_builder.EnterOp(
-              /*program_id=*/0, absl::StrCat(tf_op.name, "/", event.Name()),
-              tf_op.type, tf_op_fullname,
-              /*occurrences=*/1, event.DurationPs(),
-              /*children_time_ps=*/0, costs.flops, costs.bytes_accessed);
+          tf_op_full_name = stat.StrOrRefValue();
+        } else if (stat.Type() == StatType::kIsEager) {
+          is_eager = stat.IntValue();
         }
       });
+      if (tf_op_full_name.empty()) return;
+      TfOp tf_op = ParseTfOpFullname(tf_op_full_name);
+      TfOpRoofLineCostEstimator::OpRoofLineStats costs;
+      if (tf_op.category != Category::kUnknown) {
+        costs = op_level_cost_estimator.Predict(event);
+      }
+      device_op_metrics_db_builder.EnterOp(
+          /*program_id=*/0, absl::StrCat(tf_op.name, "/", event.Name()),
+          tf_op.type, tf_op_full_name, is_eager,
+          /*occurrences=*/1, event.DurationPs(),
+          /*children_time_ps=*/0, costs.flops, costs.bytes_accessed);
     });
   });
   result.set_total_time_ps(last_op_offset_ps - first_op_offset_ps);

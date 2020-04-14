@@ -1237,6 +1237,27 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       y_merged = ragged_tensor.convert_to_tensor_or_ragged_tensor(y_merged)
       self.assertAllClose(y_merged.flat_values, y_expected.flat_values)
 
+  def test_full_input_spec(self):
+    # See https://github.com/tensorflow/tensorflow/issues/38403
+    inputs = keras.layers.Input(batch_shape=(1, 1, 1))
+    fw_state = keras.layers.Input(batch_shape=(1, 1))
+    bw_state = keras.layers.Input(batch_shape=(1, 1))
+    states = [fw_state, bw_state]
+    bidirectional_rnn = keras.layers.Bidirectional(
+        keras.layers.SimpleRNN(1, stateful=True))
+
+    rnn_output = bidirectional_rnn(inputs, initial_state=states)
+    model = keras.Model([inputs, fw_state, bw_state], rnn_output)
+    output1 = model.predict(
+        [np.ones((1, 1, 1)), np.ones((1, 1)), np.ones((1, 1))])
+    output2 = model.predict(
+        [np.ones((1, 1, 1)), np.ones((1, 1)), np.ones((1, 1))])
+    model.reset_states()
+    output3 = model.predict(
+        [np.ones((1, 1, 1)), np.ones((1, 1)), np.ones((1, 1))])
+    self.assertAllClose(output1, output3)
+    self.assertNotAllClose(output1, output2)
+
 
 class ExampleWrapper(keras.layers.Wrapper):
   """Simple Wrapper subclass."""

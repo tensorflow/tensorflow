@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -155,6 +156,13 @@ class PyLocalClient : public std::enable_shared_from_this<PyLocalClient> {
   // function specifies which one the platform expects.
   virtual bool EnqueueD2DTransfersOnSrcStream() const { return true; }
 
+  // Some platforms allow executables to donate buffers so that they can be
+  // aliased from inputs to outputs. This function returns the list of
+  // parameters that must be donated when executable is run. tuple_inputs
+  // reflects the option that executable was compiled with.
+  virtual StatusOr<absl::flat_hash_set<int>> GetParametersThatMustBeDonated(
+      const LocalExecutable& executable, bool tuple_inputs) const;
+
  protected:
   friend class PyLocalBuffer;
   virtual void EnqueueCrossHostReceive(
@@ -199,16 +207,17 @@ StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
 
 // Holds a reference from Python to a tuple of device buffers. A PyLocalBuffer
 // can be either valid or invalid. An invalid buffer is one that has never been
-// initialized, or a buffer that has been deleted (e.g., by calling Delete). We
-// allow PyLocalBuffer objects to outlive the underlying device buffers so we
-// can decouple buffer lifetimes from the corresponding Python references if
-// needed. Thread-safe.
+// initialized, or a buffer that has been deleted (e.g., by calling Delete, or
+// by donating it to a computation that aliases an input parameter to an
+// output). We allow PyLocalBuffer objects to outlive the underlying device
+// buffers so we can decouple buffer lifetimes from the corresponding Python
+// references if needed. Thread-safe.
 class PyLocalBuffer {
  public:
   // Helper class to retain a "hold" on a PyLocalBuffer. A ScopedHold may not
   // outlive its parent PyLocalBuffer.
   //
-  // There are two types of hold, as follows:
+  // There are three types of hold, as follows:
   //
   // 1) Usage hold: a transient hold while an operation using the buffer is
   //    being enqueued onto a stream.
@@ -230,12 +239,29 @@ class PyLocalBuffer {
   // confident via its own synchronization that modifications do not race with
   // reads from the PyLocalBuffer.
   //
+  // 3) Donation hold: a transient hold while an execution that donates the
+  //    buffer is being enqueued onto the compute stream.
+  // A client acquires a donation hold by calling
+  // PyLocalBuffer::GetBufferWithHold(kDonation). If the enqueue completes
+  // successfully the hold should be released using a call to ConfirmDonation
+  // after which the buffer is invalid. If the ScopedHold is deleted without
+  // ConfirmDonation being called, e.g., on error, the hold is dropped and the
+  // buffer remains valid. If the buffer is successfully enqueued the client
+  // *must* call ConfirmDonation.
+  //
+  // Donation holds behave like exclusive write locks: when a donation hold
+  // has been acquired, any attempt to acquire another hold of any type will
+  // block until the donation hold is dropped or confirmed. Acquiring a donation
+  // hold will fail with an error if there is any outstanding external hold, and
+  // will block if there are any outstanding usage holds until those holds are
+  // dropped or converted.
+  //
   // Calls to PyLocalBuffer::Release (and transitively to
   // PyLocalBuffer::Delete() and ~PyLocalBuffer()) will block until all usage
-  // holds are either deleted or converted.
+  // and donation holds are either deleted or converted/confirmed.
   class ScopedHold {
    public:
-    enum Type { kUsage = 0, KExternalReference, kMaxValue };
+    enum Type { kUsage = 0, kExternalReference, kDonation, kMaxValue };
 
     ~ScopedHold();
     ScopedHold(ScopedHold&& other);
@@ -269,12 +295,18 @@ class PyLocalBuffer {
                           std::shared_ptr<BufferDefinitionEvent> event,
                           bool reference_held);
 
+    // Confirms that the buffer was successfully donated to an execution.
+    // Only valid for holds of type kDonation. Causes the buffer to become
+    // invalid.
+    void ConfirmDonation();
+
     // Adds the held device buffers in order to 'iterator'. Used to add the
     // buffers to an ExecutionInput. We require but do not verify that
     // 'iterator' when passed in is pointing to a sub-tuple of the
     // ExecutionInput whose on_device_shape matches that of the
     // SharedDeviceBuffer. 'end' is used to check that 'iterator' doesn't run
-    // out of bounds.
+    // out of bounds. Donates the device buffers if the hold type is kDonation,
+    // otherwise retains ownership of the device buffers.
     void AddToInput(ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
                     const ShapeTree<MaybeOwningDeviceMemory>::iterator& end,
                     ExecutionInput* execution_input,
@@ -419,7 +451,7 @@ class PyLocalBuffer {
     return GetBufferWithHold(ScopedHold::kUsage);
   }
   ScopedHold GetBufferWithExternalReference() {
-    return GetBufferWithHold(ScopedHold::KExternalReference);
+    return GetBufferWithHold(ScopedHold::kExternalReference);
   }
 
   // Copies the buffer to device `dst_device`. Returns an error if the buffer is
@@ -454,14 +486,21 @@ class PyLocalBuffer {
     std::shared_ptr<Literal> value;
   };
 
-  // If device_buffer_ is non-null, adds a hold of 'type' and returns
-  // device_buffer_. Otherwise returns an error.
+  // Blocks in mu_.Await until there are no more usage holds.
+  void WaitForOutstandingUsageHolds() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Blocks in mu_.Await until there is no donation hold.
+  void WaitForOutstandingDonationHold() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Adds a hold of 'type' and returns device_buffer_. Returns an error if
+  // device_buffer_ is null, or if a donation hold was requested when there is
+  // an outstanding external hold.
   StatusOr<std::shared_ptr<SharedDeviceBuffer>> GetBufferForHoldLocked(
       ScopedHold::Type type) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // If device_buffer_ is non-null, adds a hold of hold->type() and initializes
-  // `hold` with device_buffer_. Otherwise initializes `hold` with an error
-  // status.
+  // Adds a hold of hold->type() and initializes `hold` with device_buffer_.
+  // Initializes hold with an error if device_buffer_ is null, or if a donation
+  // hold was requested when there is an outstanding external hold.
   void AcquireHoldLocked(ScopedHold* hold) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Drops a usage hold and calls device_buffer_->AddUsageEvent. Does a sanity
@@ -470,6 +509,11 @@ class PyLocalBuffer {
   void ConvertUsageHold(SharedDeviceBuffer* buffer, se::Stream* usage_stream,
                         std::shared_ptr<BufferDefinitionEvent> event,
                         bool reference_held);
+
+  // Drops a donation hold and makes *this invalid for further use. Does a
+  // sanity check that buffer==device_buffer_. Called after device_buffer_ was
+  // successfully donated to an execution.
+  void ConfirmDonation(SharedDeviceBuffer* device_buffer);
 
   // Drops a hold without taking any other action. Does a sanity check that
   // buffer==device_buffer_ or device_buffer_==nullptr.
@@ -492,6 +536,8 @@ class PyLocalBuffer {
   std::shared_ptr<HostValue> host_value_ TF_GUARDED_BY(mu_);
   // Count of holds on the buffer.
   std::array<int, ScopedHold::Type::kMaxValue> holds_ TF_GUARDED_BY(mu_);
+  // Semaphore used to ensure there is only one outstanding donation hold.
+  Semaphore donation_semaphore_;
 };
 
 struct CompileOptions {
@@ -514,7 +560,9 @@ struct ExecuteOptions {
 
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. Wraps one or more XLA LocalExecutables (one per
-// partition, as specified by the build options).
+// partition, as specified by the build options). If any input/output alias
+// has been specified in the computation, the parameter containing the input
+// buffer will be donated when passed to the execution.
 class PyLocalExecutable {
  public:
   static StatusOr<std::unique_ptr<PyLocalExecutable>> Compile(
@@ -579,6 +627,9 @@ class PyLocalExecutable {
   const string& name() const;
 
  private:
+  // Initializes information about which arguments to which executables must be
+  // donated due to aliases that were specified by the computation.
+  Status SetUpDonation(PyLocalClient* client, bool tuple_inputs);
   StatusOr<ScopedShapedBuffer> EnqueueExecution(
       absl::Span<PyLocalBuffer* const> argument_handles, int replica,
       int partition, int executable_idx, const RunId& run_id,
@@ -594,6 +645,9 @@ class PyLocalExecutable {
   PyLocalClient* const client_;
   // One executable per partition.
   std::vector<std::shared_ptr<LocalExecutable>> executables_;
+  // Per-executable set of parameters that have any aliased buffers and thus
+  // must be donated when executing the computation.
+  std::vector<absl::flat_hash_set<int>> parameters_that_must_be_donated_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
 
   // True if the executables were compiled expecting arguments in a single
