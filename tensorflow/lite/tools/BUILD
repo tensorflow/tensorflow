@@ -235,7 +235,7 @@ cc_library(
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     copts = tflite_copts(),
-    deps = ["//tensorflow/lite:minimal_logging"],
+    deps = ["//tensorflow/lite/tools:logging"],
 )
 
 cc_test(
@@ -245,8 +245,7 @@ cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":command_line_flags",
-        "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
