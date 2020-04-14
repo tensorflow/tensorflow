@@ -146,8 +146,12 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
           R"pbdoc(
             Adds a delegate to the interpreter.
           )pbdoc")
-      .def("SetNumThreads",
-           [](InterpreterWrapper& self, int i) {
-             return tensorflow::pyo_or_throw(self.SetNumThreads(i));
-           });
+      .def(
+          "SetNumThreads",
+          [](InterpreterWrapper& self, int i) {
+            return tensorflow::pyo_or_throw(self.SetNumThreads(i));
+          },
+          R"pbdoc(
+             ask the interpreter to set the number of threads to use.
+          )pbdoc");
 }
