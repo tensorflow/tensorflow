@@ -8366,6 +8366,13 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "data_service_ops",
+    deps = [
+        "//tensorflow/core/kernels/data/experimental:data_service_kernels",
+    ],
+)
+
+tf_kernel_library(
     name = "dataset_ops",
     deps = [
         "//tensorflow/core/kernels/data",
