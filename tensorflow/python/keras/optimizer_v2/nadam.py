@@ -48,6 +48,7 @@ class Nadam(optimizer_v2.OptimizerV2):
       `"clipnorm"` or `"clipvalue"`.
       `"clipnorm"` (float) clips gradients by norm; `"clipvalue"` (float) clips
       gradients by value.
+  
   Usage Example:
     >>> opt = tf.keras.optimizers.Nadam(learning_rate=0.2)
     >>> var1 = tf.Variable(10.0)
@@ -55,6 +56,7 @@ class Nadam(optimizer_v2.OptimizerV2):
     >>> step_count = opt.minimize(loss, [var1]).numpy()
     >>> var1.numpy()
     9.8
+    
   Reference:
     - [Dozat, 2015](http://cs229.stanford.edu/proj2015/054_report.pdf).
   """
