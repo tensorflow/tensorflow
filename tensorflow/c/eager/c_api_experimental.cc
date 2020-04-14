@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/c/eager/c_api_experimental.h"
 
+#include <vector>
+
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -580,12 +582,6 @@ void TFE_HostAddressSpace(TFE_Context* ctx, TF_Buffer* buf) {
   };
 }
 
-void TFE_TensorHandleEnableImplicitMirroring(TFE_TensorHandle* h,
-                                             TF_Status* status) {
-  h->handle->EnableImplicitMirroring();
-  status->status = tensorflow::Status::OK();
-}
-
 void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
                                TF_Buffer* buf, TF_Status* status) {
   tensorflow::EagerContext* context =
@@ -605,4 +601,34 @@ void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
     tensorflow::port::Free(data);
   };
   status->status = tensorflow::Status::OK();
+}
+
+TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx, TF_DataType dtype,
+                                  const int64_t* dims, int num_dims,
+                                  TF_Status* status) {
+  std::vector<tensorflow::int64> dimvec(num_dims);
+  for (int i = 0; i < num_dims; ++i) {
+    dimvec[i] = static_cast<tensorflow::int64>(dims[i]);
+  }
+
+  if (ctx == nullptr || ctx->context == nullptr) {
+    status->status = tensorflow::errors::InvalidArgument("Invalid Context");
+    return nullptr;
+  }
+
+  tensorflow::AbstractTensorInterface* t = ctx->context->CreateTensor(
+      static_cast<tensorflow::DataType>(dtype), dimvec);
+
+  if (t == nullptr) {
+    status->status =
+        tensorflow::errors::InvalidArgument("Unsupported dtype: ", dtype);
+    return nullptr;
+  }
+
+  return new TF_Tensor{t};
+}
+
+TFE_TensorHandle* TFE_NewTensorHandleFromTensor(TFE_Context* ctx, TF_Tensor* t,
+                                                TF_Status* status) {
+  return new TFE_TensorHandle{ctx->context->CreateLocalHandle(t->tensor)};
 }

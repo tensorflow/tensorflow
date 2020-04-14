@@ -28,6 +28,7 @@ namespace {
 static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteArgMaxParams",
                                       "TfLiteArgMinParams",
+                                      "TfLiteBatchMatMulParams",
                                       "TfLiteBatchToSpaceNDParams",
                                       "TfLiteBidirectionalSequenceLSTMParams",
                                       "TfLiteBidirectionalSequenceRNNParams",
@@ -196,7 +197,7 @@ class OpOptionData {
     option_to_struct_["MirrorPadOptions"] = "TfLiteMirrorPaddingParams";
     // Now for every op, try to find an option.
     bool fatal = false;
-    for (auto op_name : ops_) {
+    for (const auto& op_name : ops_) {
       bool found_option = false;
       auto d = tflite::BuiltinOptionsTypeTable();
       std::string collapsed_option_name_guess =

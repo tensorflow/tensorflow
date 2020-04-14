@@ -49,7 +49,28 @@ class EagerOperation : public AbstractOperationInterface {
 
   const string& Name() const override { return attrs_.op_name(); }
   const string& DeviceName() const override;
+
+  const string& GetDeviceName() const { return device_name_; }
+
+  const DeviceNameUtils::ParsedName& GetDeviceParsedName() const {
+    return device_parsed_name_;
+  }
+
   Status SetDeviceName(const char* name) override;
+
+  void SetDevice(tensorflow::Device* device) {
+    device_ = device;
+    last_set_device_name_.clear();
+    device_name_ = device->name();
+    device_parsed_name_ = device->parsed_name();
+  }
+
+  void SetDevice(tensorflow::CustomDevice* device) {
+    device_ = device;
+    last_set_device_name_.clear();
+    device_name_ = device->name();
+    DeviceNameUtils::ParseFullName(device_name_, &device_parsed_name_);
+  }
 
   Status AddInput(AbstractTensorHandleInterface* input) override;
   Status AddInputList(
@@ -93,7 +114,7 @@ class EagerOperation : public AbstractOperationInterface {
 
   Status SetUseXla(bool enable) override;
 
-  Status Reset(const char* op, const char* raw_device_name, bool remote,
+  Status Reset(const char* op, const char* device_name, bool remote,
                EagerExecutor* executor,
                const absl::optional<EagerRemoteFunctionParams>
                    remote_func_params = absl::nullopt);
@@ -119,28 +140,7 @@ class EagerOperation : public AbstractOperationInterface {
 
   // Like TensorHandles, EagerOperations may be placed either on a virtual
   // CustomDevice or on a physical Device.
-  absl::variant<tensorflow::Device*, tensorflow::CustomDevice*> Device() const {
-    return device_;
-  }
-
-  void SetDevice(tensorflow::Device* device) {
-    device_ = device;
-    raw_device_name_.clear();
-    device_name_ = device->name();
-    device_parsed_name_ = device->parsed_name();
-  }
-
-  void SetDevice(tensorflow::CustomDevice* device) {
-    device_ = device;
-    raw_device_name_.clear();
-    device_name_ = device->name();
-    DeviceNameUtils::ParseFullName(device_name_, &device_parsed_name_);
-  }
-
-  const string& GetDeviceName() const { return device_name_; }
-  const DeviceNameUtils::ParsedName& GetDeviceParsedName() const {
-    return device_parsed_name_;
-  }
+  VariantDevice Device() const { return device_; }
 
   // Indicates whether the op is assigned to a device that is local to the
   // current host.
@@ -185,10 +185,18 @@ class EagerOperation : public AbstractOperationInterface {
   AttrBuilder attrs_;
   const AttrTypeMap* attr_types_;
   absl::InlinedVector<TensorHandle*, 4> inputs_;
-  absl::variant<tensorflow::Device*, tensorflow::CustomDevice*> device_;
-  string raw_device_name_;
+
+  // The last device name given to SetDeviceName.
+  // This is used to avoid having to re-process the same device in repeated
+  // calls to SetDeviceName.
+  string last_set_device_name_;
+
   string device_name_;
+
   DeviceNameUtils::ParsedName device_parsed_name_;
+
+  VariantDevice device_;
+
   bool use_xla_ = false;
   bool is_function_;  // Conceptually const, but can't be because of Reset
   bool colocation_exempt_;

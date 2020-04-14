@@ -208,7 +208,7 @@ static Type InferReductionOpType(Value input, Value reduction_indices,
 
   int64_t num_reduce_dim = 0;
   llvm::SmallVector<bool, 4> is_reduce_dim(rank, false);
-  for (APInt index : indices.getValues<APInt>()) {
+  for (const APInt &index : indices.getValues<APInt>()) {
     int64_t dim = GetDimForAxis(index.getSExtValue(), rank);
     // Invalid input.
     if (dim < 0 || dim >= rank) return UnrankedTensorType::get(element_ty);
@@ -404,11 +404,11 @@ static bool AreCancellablePermutations(DenseIntElementsAttr perm0,
   if (perm0.getNumElements() != perm1.getNumElements()) return false;
 
   SmallVector<int64_t, 8> perm0_values;
-  for (auto value : perm0.getIntValues())
+  for (const auto &value : perm0.getIntValues())
     perm0_values.push_back(value.getSExtValue());
 
   SmallVector<int64_t, 8> perm1_values;
-  for (auto value : perm1.getIntValues())
+  for (const auto &value : perm1.getIntValues())
     perm1_values.push_back(value.getSExtValue());
 
   for (int i = 0; i < perm0_values.size(); ++i) {
@@ -2154,6 +2154,27 @@ static LogicalResult VerifyPartitionedCall(OpClass op) {
 }
 
 //===----------------------------------------------------------------------===//
+// PowOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult PowOp::fold(ArrayRef<Attribute> operands) {
+  auto constant_y = operands[1].dyn_cast_or_null<DenseFPElementsAttr>();
+  if (constant_y && constant_y.isSplat()) {
+    APFloat y_value = constant_y.getSplatValue<APFloat>();
+    auto output_type = getType().cast<ShapedType>();
+    if (y_value.isZero() && output_type.hasStaticShape()) {
+      return DenseElementsAttr::get(
+          output_type,
+          FloatAttr::get(output_type.getElementType(), /*value=*/1.0));
+    }
+    if (y_value.isExactlyValue(1.0)) {
+      return x();
+    }
+  }
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // ReciprocalOp
 //===----------------------------------------------------------------------===//
 
@@ -2527,12 +2548,15 @@ static LogicalResult Verify(SizeOp op) {
 // SliceOp
 //===----------------------------------------------------------------------===//
 
-// Verifies that,
+// Verifies that:
 //
 // - operands begin and size are 1D with the same number of elements.
 // - if the input is a ranked tensor, the rank of the input equals the number
 //   of elements in operands begin and size.
-// - if begin are constants, 0 <= begin[i] < input_ty.getShape()[i]
+// - if begin are constants, that
+//   0 <= begin[i] <= begin[i] + size[i] <= input_ty.getShape()[i]
+// - if begins aren't constant but the input is a ranked tensor, that
+//   size[i] <= input_ty.getShape()[i]
 //
 static LogicalResult Verify(SliceOp op) {
   RankedTensorType begin_ty = GetRankedTensorTypeForOperand(op.begin());
@@ -2566,7 +2590,7 @@ static LogicalResult Verify(SliceOp op) {
     bool constant_slice_sizes =
         matchPattern(op.size(), m_Constant(&slice_sizes));
     int dim = 0;
-    for (APInt raw_begin_index : begin_indices.getValues<APInt>()) {
+    for (const APInt &raw_begin_index : begin_indices.getValues<APInt>()) {
       int64_t begin_index = raw_begin_index.getSExtValue();
       int64_t input_size = input_ty ? input_ty.getShape()[dim] : -1;
       int64_t slice_size = constant_slice_sizes
@@ -2581,6 +2605,20 @@ static LogicalResult Verify(SliceOp op) {
                << "requires 0 <= begin[i] <= begin[i] + size[i] <= Di";
       }
       ++dim;
+    }
+  } else if (input_ty) {
+    // If the inputs are ranked, we can do a few more sanity checks.
+    DenseIntElementsAttr slice_sizes;
+    if (matchPattern(op.size(), m_Constant(&slice_sizes))) {
+      auto input_shape = input_ty.getShape();
+      for (int64_t i = 0; i < input_ty.getRank(); ++i) {
+        int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
+        int64_t input_size = input_shape[i];
+        if (slice_size != -1 && input_size != -1 && slice_size > input_size) {
+          return op.emitOpError() << "requires size[i] <= Di, even if begin[i] "
+                                     "is unknown at compile time";
+        }
+      }
     }
   }
 
@@ -3319,7 +3357,7 @@ void TransposeOp::build(Builder *builder, OperationState &result, Value x,
           x_type.getDimSize((*attr_shape.begin()).getSExtValue()));
     } else {
       const_shape.reserve(attr_shape.getNumElements());
-      for (auto dim : attr_shape)
+      for (const auto &dim : attr_shape)
         const_shape.push_back(x_type.getDimSize(dim.getSExtValue()));
     }
     return TransposeOp::build(

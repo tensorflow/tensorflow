@@ -193,7 +193,7 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
   }
 
   auto resolver = absl::make_unique<tflite::ops::builtin::BuiltinOpResolver>();
-  for (const auto registerer : registerers) {
+  for (const auto& registerer : registerers) {
     if (!RegisterCustomOpByName(registerer.c_str(), resolver.get(), error_msg))
       return nullptr;
   }

@@ -982,7 +982,7 @@ ARRAY_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
     "//third_party/eigen3",
-] + if_sycl(["//tensorflow/core:sycl_runtime"])
+] + if_sycl(["//tensorflow/core/common_runtime/sycl:sycl_runtime"])
 
 tf_kernel_library(
     name = "immutable_constant_op",
@@ -1314,7 +1314,23 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "tile_ops",
-    srcs = ["tile_functor_cpu.cc"],
+    srcs = [
+        "tile_functor_cpu.h",
+        "tile_functor_cpu_bfloat16.cc",
+        "tile_functor_cpu_bool.cc",
+        "tile_functor_cpu_complex128.cc",
+        "tile_functor_cpu_complex64.cc",
+        "tile_functor_cpu_double.cc",
+        "tile_functor_cpu_float.cc",
+        "tile_functor_cpu_half.cc",
+        "tile_functor_cpu_int16.cc",
+        "tile_functor_cpu_int32.cc",
+        "tile_functor_cpu_int64.cc",
+        "tile_functor_cpu_int8.cc",
+        "tile_functor_cpu_tstring.cc",
+        "tile_functor_cpu_uint8.cc",
+        "tile_functor_sycl.cc",
+    ],
     hdrs = ["tile_functor.h"],
     gpu_srcs = [
         "tile_functor.h",
@@ -5209,6 +5225,15 @@ tf_cuda_cc_test(
     ],
 )
 
+cc_library(
+    name = "stateful_random_ops_header",
+    hdrs = ["stateful_random_ops.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
 tf_kernel_library(
     name = "stateful_random_ops",
     prefix = "stateful_random_ops",
@@ -5221,6 +5246,7 @@ tf_kernel_library(
         ":resource_variable_ops",
         ":scatter_functor",
         ":state",
+        ":stateful_random_ops_header",
         ":training_op_helpers",
         ":variable_ops",
         "//tensorflow/core:core_cpu",
@@ -5608,7 +5634,7 @@ STATE_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
-] + if_sycl(["//tensorflow/core:sycl_runtime"])
+] + if_sycl(["//tensorflow/core/common_runtime/sycl:sycl_runtime"])
 
 tf_kernel_library(
     name = "count_up_to_op",
@@ -6553,6 +6579,7 @@ filegroup(
         "data_format_ops.h",
         "depthtospace_op.h",
         "depthwise_conv_op.h",
+        "extract_image_patches_op.h",
         "fake_quant_ops_functor.h",
         "fused_batch_norm_op.h",
         "gemm_functors.h",
@@ -6736,6 +6763,7 @@ filegroup(
         "decode_bmp_op.cc",
         "depthtospace_op.cc",
         "dynamic_stitch_op.cc",
+        "extract_image_patches_op.cc",
         "fft_ops.cc",
         "in_topk_op.cc",
         "in_topk_op.h",
@@ -6821,7 +6849,20 @@ filegroup(
         "summary_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",
-        "tile_functor_cpu.cc",
+        "tile_functor_cpu.h",
+        "tile_functor_cpu_bfloat16.cc",
+        "tile_functor_cpu_bool.cc",
+        "tile_functor_cpu_complex128.cc",
+        "tile_functor_cpu_complex64.cc",
+        "tile_functor_cpu_double.cc",
+        "tile_functor_cpu_float.cc",
+        "tile_functor_cpu_half.cc",
+        "tile_functor_cpu_int16.cc",
+        "tile_functor_cpu_int32.cc",
+        "tile_functor_cpu_int64.cc",
+        "tile_functor_cpu_int8.cc",
+        "tile_functor_cpu_tstring.cc",
+        "tile_functor_cpu_uint8.cc",
         "tile_ops.cc",
         "tile_ops_cpu_impl_1.cc",
         "tile_ops_cpu_impl_2.cc",
@@ -6906,6 +6947,8 @@ filegroup(
             "*_gpu*",
             "*_3d*",
             "*.cu.*",
+            # Helper files for tests
+            "eigen_benchmark.h",
             # Ops already in android_srcs
             "pooling_ops_common.cc",
             # Ops which we are currently excluding because they are likely
@@ -8470,6 +8513,62 @@ tf_cc_shared_object(
     deps = [
         ":kernel_platform_strings",
         "//tensorflow/core:all_kernels_impl",
+    ],
+)
+
+# Manually curated set of tests that are useful for building and testing against
+# platforms and architecures that don't support CUDA.
+# TODO(b/153737462): Automatically filter tests to create the appropriate
+# portable test list.
+test_suite(
+    name = "portable_kernel_tests",
+    tags = [
+        "manual",  # Avoid redundancy when using wildcard test patterns.
+    ],
+    tests = [
+        ":batch_matmul_op_test",
+        ":batch_norm_op_test",
+        ":broadcast_to_op_test",
+        ":cast_op_test",
+        ":concat_op_test",
+        ":control_flow_ops_test",
+        ":crop_and_resize_op_test",
+        ":cwise_ops_test",
+        ":deep_conv2d_test",
+        ":dequantize_op_test",
+        ":diag_op_test",
+        ":eigen_activations_test",
+        ":eigen_pooling_test",
+        ":eigen_spatial_convolutions_test",
+        ":gather_nd_op_test",
+        ":matmul_op_test",
+        ":mfcc_test",
+        ":multinomial_op_test",
+        ":nn_ops_test",
+        ":non_max_suppression_op_test",
+        ":quantization_utils_test",
+        ":quantize_and_dequantize_op_test",
+        ":quantize_op_test",
+        ":quantized_activation_ops_test",
+        ":quantized_batch_norm_op_test",
+        ":quantized_conv_ops_test",
+        ":quantized_matmul_op_test",
+        ":quantized_pooling_ops_test",
+        ":random_binomial_op_test",
+        ":random_op_test",
+        ":random_poisson_op_test",
+        ":reduction_ops_test",
+        ":requantization_range_op_test",
+        ":resize_bilinear_op_test",
+        ":scatter_op_test",
+        ":segment_reduction_ops_test",
+        ":slice_op_test",
+        ":spectrogram_test",
+        ":split_op_test",
+        ":split_v_op_test",
+        ":strided_slice_op_test",
+        ":unique_op_test",
+        ":variable_ops_test",
     ],
 )
 

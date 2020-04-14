@@ -122,10 +122,12 @@ std::string GeneratePrecisionStatement(const PrecisionStats& precision_stats) {
 
 void SetCommonRecommendation(const string& input_classification,
                              const string& input_statement,
+                             const string& output_statement,
                              HardwareType hardware_type,
                              OverviewPageRecommendation* re) {
   re->set_bottleneck(input_classification);
   re->set_statement(input_statement);
+  re->set_output_statement(output_statement);
   ComputeHostTips(re);
   ComputeDeviceTips(hardware_type, re);
   ComputeDocumentationTips(re);
@@ -255,7 +257,7 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
   *overview_page.mutable_recommendation() = ComputeGenericRecommendation(
       bottleneck, op_stats.device_op_metrics_db().precision_stats());
   SetCommonRecommendation(bottleneck.input_classification(),
-                          bottleneck.input_statement(), hardware_type,
+                          bottleneck.input_statement(), "", hardware_type,
                           overview_page.mutable_recommendation());
   return overview_page;
 }

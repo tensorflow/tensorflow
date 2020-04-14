@@ -45,7 +45,7 @@ namespace {
 // otherwise _tf operations are wrapped in an island and the _ prefix is
 // removed. Control dependencies are moved to be handled by the island itself.
 struct ControlToExecutorDialectConversion
-    : public FunctionPass<ControlToExecutorDialectConversion> {
+    : public PassWrapper<ControlToExecutorDialectConversion, FunctionPass> {
   void runOnFunction() override;
 
  private:
@@ -218,7 +218,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
       }
 
       // Create the operation inside the island
-      OpBuilder island_builder(&island.GetBody());
+      OpBuilder island_builder = OpBuilder::atBlockEnd(&island.GetBody());
       Operation *inner_op = island_builder.createOperation(result);
       inner_op->setAttrs(op.getAttrList());
 
@@ -237,7 +237,7 @@ void ControlToExecutorDialectConversion::runOnFunction() {
   }
 }
 
-OpPassBase<FuncOp> *CreateTFControlToExecutorDialectConversion() {
+OperationPass<FuncOp> *CreateTFControlToExecutorDialectConversion() {
   return new ControlToExecutorDialectConversion();
 }
 

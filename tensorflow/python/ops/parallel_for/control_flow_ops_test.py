@@ -22,7 +22,6 @@ from __future__ import print_function
 import functools
 import time
 
-from absl import flags
 from absl.testing import parameterized
 import numpy as np
 
@@ -82,10 +81,8 @@ class PForTest(PForTestCase):
       return nn.top_k(x_i)
 
     with self.assertRaisesRegexp(ValueError, "No converter defined"):
-      self._test_loop_fn(loop_fn, 3)
-    flags.FLAGS.op_conversion_fallback_to_while_loop = True
-    self._test_loop_fn(loop_fn, 3)
-    flags.FLAGS.op_conversion_fallback_to_while_loop = False
+      self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=False)
+    self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=True)
 
   def test_parallel_iterations(self):
     for parallel_iterations in [2, 3, 8, 10]:

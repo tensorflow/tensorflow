@@ -94,7 +94,7 @@ func @main(%arg0: tensor<i32>) -> (tensor<f32>, tensor<10xf32>, tensor<i32>) {
 func @main(%arg0: tensor<i32>, %arg1: tensor<10xf32>) -> tensor<f32> {
   // CHECK-NEXT: "tf.Const"() {value = dense<[]> : tensor<0xi32>}
   %elem_shape = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
-  // CHECK-NEXT: %[[BUFFER:.*]] = "tf.Identity"(%arg1) : (tensor<10xf32>) -> tensor<10xf32>
+  // CHECK-NEXT: %[[BUFFER:.*]] = "tf.Identity"(%[[ARG1]]) : (tensor<10xf32>) -> tensor<10xf32>
   // CHECK-NEXT: %[[SIZE:.*]] = "tf.Const"() {value = dense<10> : tensor<1xi32>} : () -> tensor<1xi32>
   %tl = "tf.TensorListFromTensor"(%arg1, %elem_shape) : (tensor<10xf32>, tensor<0xi32>) -> tensor<!tf.variant<tensor<f32>>>
   // CHECK-NEXT: %[[SIZE_SHAPE:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>}
@@ -106,6 +106,37 @@ func @main(%arg0: tensor<i32>, %arg1: tensor<10xf32>) -> tensor<f32> {
   %get = "tf.TensorListGetItem"(%tl, %arg0, %elem_shape) : (tensor<!tf.variant<tensor<f32>>>, tensor<i32>, tensor<0xi32>) -> tensor<f32>
   // CHECK-NEXT:  return %[[ELEM]] : tensor<f32>
   return %get: tensor<f32>
+}
+
+// -----
+
+// Test tensor list element shape op.
+
+// CHECK-LABEL: func @main
+func @main(%arg0: tensor<10x8x9xf32>) -> tensor<2xi64> {
+  %elem_shape = "tf.Const"() {value = dense<[8, 9]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %tl = "tf.TensorListFromTensor"(%arg0, %elem_shape) : (tensor<10x8x9xf32>, tensor<2xi32>) -> tensor<!tf.variant<tensor<8x9xf32>>>
+  // CHECK: %[[SHAPE:.*]] = "tf.Const"() {value = dense<[8, 9]> : tensor<2xi64>} : () -> tensor<2xi64>
+  %shape = "tf.TensorListElementShape"(%tl) : (tensor<!tf.variant<tensor<8x9xf32>>>) -> tensor<2xi64>
+  // CHECK-NEXT:  return %[[SHAPE]] : tensor<2xi64>
+  return %shape: tensor<2xi64>
+}
+
+// -----
+
+// Test tensor list gather op.
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<10x8x9xf32>, %[[ARG1:.*]]: tensor<3xi32>) -> tensor<3x8x9xf32>
+func @main(%arg0: tensor<10x8x9xf32>, %arg1: tensor<3xi32>) -> tensor<3x8x9xf32> {
+  %elem_shape = "tf.Const"() {value = dense<[8, 9]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK: %[[BUFFER:.*]] = "tf.Identity"(%[[ARG0]]) : (tensor<10x8x9xf32>) -> tensor<10x8x9xf32>
+  %tl = "tf.TensorListFromTensor"(%arg0, %elem_shape) : (tensor<10x8x9xf32>, tensor<2xi32>) -> tensor<!tf.variant<tensor<8x9xf32>>>
+  // CHECK: %[[AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[GATHER:.*]] = "tf.GatherV2"(%[[BUFFER]], %[[ARG1]], %[[AXIS]]) : (tensor<10x8x9xf32>, tensor<3xi32>, tensor<i32>) -> tensor<3x8x9xf32>
+  %gather = "tf.TensorListGather"(%tl, %arg1, %elem_shape) : (tensor<!tf.variant<tensor<8x9xf32>>>, tensor<3xi32>, tensor<2xi32>) -> tensor<3x8x9xf32>
+  // CHECK-NEXT:  return %[[GATHER]] : tensor<3x8x9xf32>
+  return %gather: tensor<3x8x9xf32>
 }
 
 // -----

@@ -187,6 +187,11 @@ def map_structure_with_atomic(is_atomic_fn, map_fn, nested):
   return nest._sequence_like(nested, mapped_values)
 
 
+def get_shapes(tensors):
+  """Gets shapes from tensors."""
+  return nest.map_structure(lambda x: x.shape, tensors)
+
+
 #  pylint: enable=protected-access
 
 

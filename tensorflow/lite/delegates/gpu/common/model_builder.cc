@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <set>
 #include <string>
@@ -48,6 +49,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
+#include "tensorflow/lite/kernels/internal/reference/dequantize.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
@@ -96,6 +99,30 @@ void ConvertFloat16ToFloat32(size_t num_elements, const uint16_t* src,
   }
 }
 
+template <typename T>
+inline void DequantizeConstantTensor(const TfLiteTensor& tensor,
+                                     const T* source_data,
+                                     float* dequantized_data) {
+  TfLiteAffineQuantization* quant_params =
+      reinterpret_cast<TfLiteAffineQuantization*>(tensor.quantization.params);
+  if (quant_params->scale->size > 1) {
+    // Tensor is per-channel quantized.
+    PerChannelDequantizationParams op_params;
+    op_params.zero_point = quant_params->zero_point->data;
+    op_params.scale = quant_params->scale->data;
+    op_params.quantized_dimension = quant_params->quantized_dimension;
+    reference_ops::PerChannelDequantize(op_params, GetTensorShape(&tensor),
+                                        source_data, GetTensorShape(&tensor),
+                                        dequantized_data);
+  } else {
+    DequantizationParams op_params;
+    op_params.zero_point = tensor.params.zero_point;
+    op_params.scale = tensor.params.scale;
+    reference_ops::Dequantize(op_params, GetTensorShape(&tensor), source_data,
+                              GetTensorShape(&tensor), dequantized_data);
+  }
+}
+
 template <>
 absl::Status CreateVectorCopyData<float>(const TfLiteTensor& tensor,
                                          float* tensor_data) {
@@ -107,6 +134,15 @@ absl::Status CreateVectorCopyData<float>(const TfLiteTensor& tensor,
       ConvertFloat16ToFloat32(
           NumElements(&tensor),
           reinterpret_cast<uint16_t const*>(tensor.data.f16), tensor_data);
+      break;
+    case kTfLiteInt8:
+      DequantizeConstantTensor(tensor, tensor.data.int8, tensor_data);
+      break;
+    case kTfLiteUInt8:
+      DequantizeConstantTensor(tensor, tensor.data.uint8, tensor_data);
+      break;
+    case kTfLiteInt32:
+      DequantizeConstantTensor(tensor, tensor.data.i32, tensor_data);
       break;
     default:
       return absl::InvalidArgumentError(
@@ -210,6 +246,8 @@ DataType ToDataType(TfLiteType type) {
       return DataType::INT32;
     case kTfLiteInt64:
       return DataType::INT64;
+    case kTfLiteInt8:
+      return DataType::INT8;
     case kTfLiteUInt8:
       return DataType::UINT8;
     default:
@@ -292,17 +330,62 @@ absl::Status CheckInputsConstsOutputs(const TfLiteContext* context,
   return CheckInputsOutputs(context, tflite_node, runtime_inputs, outputs);
 }
 
+// Populates quantization parameters for non-constant UInt8/Int8 tensors.
+// This helps the delegate emulate quantized inference with
+// QuantizeAndDequantize.
+absl::Status PopulateQuantParams(const TfLiteTensor& tensor,
+                                 QuantizationParams* quant_params) {
+  const TfLiteQuantization& quant = tensor.quantization;
+  if (quant.type != TfLiteQuantizationType::kTfLiteAffineQuantization) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Tensor not quantized: ", std::string(tensor.name)));
+  }
+  const TfLiteAffineQuantization* params =
+      static_cast<const TfLiteAffineQuantization*>(quant.params);
+  if (params->scale->size > 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Non-constant per-channel quantized tensor: ",
+                     std::string(tensor.name)));
+  }
+  const float scale = params->scale->data[0];
+  const float zero_point = static_cast<float>(params->zero_point->data[0]);
+
+  float qmin_value = 0;
+  float qmax_value = 0;
+  if (tensor.type == kTfLiteUInt8) {
+    qmin_value = static_cast<float>(std::numeric_limits<uint8_t>::min());
+    qmax_value = static_cast<float>(std::numeric_limits<uint8_t>::max());
+  } else if (tensor.type == kTfLiteInt8) {
+    qmin_value = static_cast<float>(std::numeric_limits<int8_t>::min());
+    qmax_value = static_cast<float>(std::numeric_limits<int8_t>::max());
+  } else {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Type invalid for quantized tensor: ", std::string(tensor.name)));
+  }
+  quant_params->min = scale * (static_cast<float>(qmin_value) - zero_point);
+  quant_params->max = scale * (static_cast<float>(qmax_value) - zero_point);
+  quant_params->scale = scale;
+
+  return absl::OkStatus();
+}
+
+// If quantized tensors exist in the graph & quant_conversion_map is non-null,
+// the mapping between the original tensors (fixed-point) & GPU values (fp) is
+// stored in quant_conversion_map.
 class ObjectReader {
  public:
-  ObjectReader(GraphFloat32* graph, TfLiteContext* context,
-               const TfLiteNode* tflite_node,
-               std::vector<Value<TensorRef<BHWC>>*>* tensor_to_value)
+  ObjectReader(
+      GraphFloat32* graph, TfLiteContext* context,
+      const TfLiteNode* tflite_node,
+      std::unordered_map<int, Value<TensorRef<BHWC>>*>* tensor_to_value,
+      std::unordered_map<int, int>* quant_conversion_map = nullptr)
       : graph_(graph),
         context_(context),
         tflite_node_(tflite_node),
-        tensor_to_value_(tensor_to_value) {}
+        tensor_to_value_(tensor_to_value),
+        quant_conversion_map_(quant_conversion_map) {}
 
-  absl::Status ReadValue(uint32_t idx, Value<TensorRef<BHWC>>** value) const {
+  absl::Status ReadValue(uint32_t idx, Value<TensorRef<BHWC>>** value) {
     if (idx >= tflite_node_->inputs->size) {
       return absl::OutOfRangeError(
           absl::StrCat("ReadValue: input tensor index: ", idx));
@@ -368,23 +451,60 @@ class ObjectReader {
   }
 
   absl::Status ReadValueByTensorIdx(uint32_t tensor_idx,
-                                    Value<TensorRef<BHWC>>** value) const {
-    if (tensor_idx >= tensor_to_value_->size()) {
+                                    Value<TensorRef<BHWC>>** value) {
+    if (tensor_idx >= context_->tensors_size) {
       return absl::OutOfRangeError(
           absl::StrCat("ReadValue: input tensor index: ", tensor_idx));
     }
-    if ((*tensor_to_value_)[tensor_idx] == nullptr) {
+
+    if (tensor_to_value_->find(tensor_idx) == tensor_to_value_->end()) {
       const TfLiteTensor& tflite_tensor = context_->tensors[tensor_idx];
       if (tflite::IsConstantTensor(&tflite_tensor)) {
         return absl::NotFoundError(absl::StrCat(
             "ReadValue: value is a constant tensor: ", tensor_idx));
       }
-      Value<TensorRef<BHWC>>* value = graph_->NewValue();
-      RETURN_IF_ERROR(
-          ConvertTfLiteTensorToTensorRef(tflite_tensor, &value->tensor));
-      value->tensor.ref = tensor_idx;
-      (*tensor_to_value_)[tensor_idx] = value;
+
+      if ((tflite_tensor.type == kTfLiteInt8 ||
+           tflite_tensor.type == kTfLiteUInt8) &&
+          quant_conversion_map_) {
+        // Quantized case
+        if (quant_conversion_map_->find(tensor_idx) ==
+            quant_conversion_map_->end()) {
+          // Since the original tensor is fixed-point, add a new float tensor to
+          // the TFLite graph to represent the dequantized data.
+          int fp_tensor_index = 0;
+          TfLiteTensor* fp_tflite_tensor;
+          if (delegates::CreateNewTensorWithDifferentType(
+                  context_, tensor_idx, kTfLiteFloat32, &fp_tflite_tensor,
+                  &fp_tensor_index) != kTfLiteOk) {
+            return absl::InternalError("Could not add new tensor to graph");
+          }
+          // Remember this tensor for later.
+          (*quant_conversion_map_)[fp_tensor_index] = tensor_idx;
+          (*quant_conversion_map_)[tensor_idx] = fp_tensor_index;
+          // Add a new GPU Value for the new dequantized floating-point tensor.
+          Value<TensorRef<BHWC>>* value = graph_->NewValue();
+          RETURN_IF_ERROR(ConvertTfLiteTensorToTensorRef(*fp_tflite_tensor,
+                                                         &value->tensor));
+          value->tensor.ref = fp_tensor_index;
+          value->quant_params.emplace();
+          RETURN_IF_ERROR(
+              PopulateQuantParams(tflite_tensor, &value->quant_params.value()));
+          (*tensor_to_value_)[fp_tensor_index] = value;
+        }
+        // We do not use the original tensor index as reference for the GPU
+        // Value, instead pointing at the corresponding float version.
+        tensor_idx = quant_conversion_map_->at(tensor_idx);
+      } else {
+        // Floating-point case.
+        Value<TensorRef<BHWC>>* value = graph_->NewValue();
+        RETURN_IF_ERROR(
+            ConvertTfLiteTensorToTensorRef(tflite_tensor, &value->tensor));
+        value->tensor.ref = tensor_idx;
+        (*tensor_to_value_)[tensor_idx] = value;
+      }
     }
+
     *value = (*tensor_to_value_)[tensor_idx];
     return absl::OkStatus();
   }
@@ -410,9 +530,10 @@ class ObjectReader {
 
  private:
   GraphFloat32* graph_ = nullptr;
-  const TfLiteContext* context_ = nullptr;
+  TfLiteContext* context_ = nullptr;
   const TfLiteNode* tflite_node_ = nullptr;
-  std::vector<Value<TensorRef<BHWC>>*>* tensor_to_value_;
+  std::unordered_map<int, Value<TensorRef<BHWC>>*>* tensor_to_value_;
+  std::unordered_map<int, int>* quant_conversion_map_;
 };
 
 // A parser responsible for parsing TFLite operation and adding it to a graph.
@@ -725,7 +846,7 @@ class AddOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     if (tflite_node->inputs->size != 2) {
       return absl::UnimplementedError("ADD requires two input tensors.");
     }
@@ -762,7 +883,7 @@ class ConcatenationOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
 
     // TODO(eignasheva): add proper tensor availability checking
     // for (uint32_t idx = 0; idx < tflite_node->inputs->size; ++idx) {
@@ -883,7 +1004,7 @@ class Conv2DOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
@@ -967,7 +1088,7 @@ class DepthwiseConvolutionOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
@@ -1077,6 +1198,43 @@ class DepthwiseConvolutionOperationParser : public TFLiteOperationParser {
   }
 };
 
+class DequantizeOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    // 'Dequantize' is rewritten as QuantizeAndDequantize since we are dealing
+    // with floating-point versions of the original tensors.
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::QUANTIZE_AND_DEQUANTIZE);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+
+    // Quantization attributes should already be present in the input tensor.
+    auto input_value = graph->FindInputs(node->id)[0];
+    if (!input_value->quant_params) {
+      return absl::InvalidArgumentError(
+          "Encountered Dequantize input with no quant params");
+    }
+    QuantizeAndDequantizeAttributes attr;
+    attr.min = input_value->quant_params.value().min;
+    attr.max = input_value->quant_params.value().max;
+    attr.scale = input_value->quant_params.value().scale;
+
+    node->operation.attributes = attr;
+    return absl::OkStatus();
+  }
+};
+
 class ElementwiseOperationParser : public TFLiteOperationParser {
  public:
   explicit ElementwiseOperationParser(OperationType operation_type)
@@ -1085,7 +1243,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     if (IsOneArgumentOperation()) {
       RETURN_IF_ERROR(CheckInputsConstsOutputs(context, tflite_node,
                                                /*runtime_inputs=*/1,
@@ -1253,7 +1411,7 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 4));
     TfLiteFullyConnectedParams* tf_options = nullptr;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     if (tf_options->weights_format !=
@@ -1456,7 +1614,7 @@ class MulOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
     if (tflite_node->inputs->size != 2) {
       return absl::UnimplementedError("MUL requires two input tensors.");
     }
@@ -1616,7 +1774,7 @@ class PadOperationParser : public TFLiteOperationParser {
             "Only Reflective padding is supported for Mirror Pad operation.");
       }
     }
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
@@ -1663,7 +1821,7 @@ class Pooling2DOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     TfLitePoolParams* tf_options = nullptr;
     auto status = RetrieveCustomInitialData(tflite_node, &tf_options);
     if (status.ok()) {  // custom case with indices as a second output
@@ -1736,6 +1894,43 @@ class Pooling2DOperationParser : public TFLiteOperationParser {
   const PoolingType type_;
 };
 
+class QuantizeOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    // 'Quantize' is rewritten as QuantizeAndDequantize since we are dealing
+    // with floating-point versions of the original tensors.
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::QUANTIZE_AND_DEQUANTIZE);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+
+    // Quantization attributes should already be present in the output tensor.
+    auto output_value = graph->FindOutputs(node->id)[0];
+    if (!output_value->quant_params) {
+      return absl::InvalidArgumentError(
+          "Encountered Quantize output with no quant params");
+    }
+    QuantizeAndDequantizeAttributes attr;
+    attr.min = output_value->quant_params.value().min;
+    attr.max = output_value->quant_params.value().max;
+    attr.scale = output_value->quant_params.value().scale;
+
+    node->operation.attributes = attr;
+    return absl::OkStatus();
+  }
+};
+
 class ReLUOperationParser : public TFLiteOperationParser {
  public:
   explicit ReLUOperationParser(int clip) : clip_(clip) {}
@@ -1743,7 +1938,7 @@ class ReLUOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     return absl::OkStatus();
   }
 
@@ -1916,7 +2111,7 @@ class SliceOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     return absl::OkStatus();
   }
 
@@ -1996,7 +2191,7 @@ class SoftmaxOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
     TfLiteSoftmaxParams* tf_options = nullptr;
@@ -2040,7 +2235,7 @@ class SpaceToDepthOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
     // TODO(impjdi): Dims check.
@@ -2078,7 +2273,7 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     TfLiteStridedSliceParams* tf_options = nullptr;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     RETURN_IF_ERROR(CheckOptionsSupport(tf_options));
@@ -2259,7 +2454,7 @@ class TransposeConvOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
     TfLiteTransposeConvParams* tf_options = nullptr;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
@@ -2306,7 +2501,7 @@ class TransposeOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
     return absl::OkStatus();
@@ -2696,7 +2891,7 @@ class UnsupportedOperationParser : public TFLiteOperationParser {
 };
 
 std::unique_ptr<TFLiteOperationParser> NewOperationParser(
-    const TfLiteRegistration* registration) {
+    const TfLiteRegistration* registration, bool allow_quant_ops = false) {
   const auto builtin_code = registration->builtin_code;
   switch (builtin_code) {
     case kTfLiteBuiltinAbs:
@@ -2713,6 +2908,11 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return absl::make_unique<ElementwiseOperationParser>(OperationType::COS);
     case kTfLiteBuiltinDepthwiseConv2d:
       return absl::make_unique<DepthwiseConvolutionOperationParser>();
+    case kTfLiteBuiltinDequantize:
+      if (allow_quant_ops) {
+        return absl::make_unique<DequantizeOperationParser>();
+      }
+      break;
     case kTfLiteBuiltinDiv:
       return absl::make_unique<ElementwiseOperationParser>(OperationType::DIV);
     case kTfLiteBuiltinFullyConnected:
@@ -2744,6 +2944,11 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return absl::make_unique<PadOperationParser>(/*mirror_pad=*/false);
     case kTfLiteBuiltinPow:
       return absl::make_unique<ElementwiseOperationParser>(OperationType::POW);
+    case kTfLiteBuiltinQuantize:
+      if (allow_quant_ops) {
+        return absl::make_unique<QuantizeOperationParser>();
+      }
+      break;
     case kTfLiteBuiltinRelu:
       return absl::make_unique<ReLUOperationParser>(0);
     case kTfLiteBuiltinRelu6:
@@ -2826,17 +3031,23 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
 }
 
 absl::Status IsSupported(const TfLiteContext* context, TfLiteNode* node,
-                         const TfLiteRegistration* registration) {
-  return NewOperationParser(registration)
+                         const TfLiteRegistration* registration,
+                         bool allow_quant_ops = false) {
+  return NewOperationParser(registration, allow_quant_ops)
       ->IsSupported(context, node, registration);
 }
 
-bool IsAllFloatTensors(const TfLiteContext* context,
-                       const TfLiteIntArray* array) {
+bool IsAllAllowedTensors(TfLiteContext* context, const TfLiteIntArray* array,
+                         bool allow_quant_ops = false) {
   for (int i = 0; i < array->size; ++i) {
     const TfLiteTensor* t = context->tensors + array->data[i];
-    bool const type_supported =
+    bool type_supported =
         (t->type == kTfLiteFloat32 || t->type == kTfLiteFloat16);
+    if (allow_quant_ops) {
+      // Since we only check non-constant tensors, type cannot be Int32.
+      type_supported =
+          type_supported || t->type == kTfLiteInt8 || t->type == kTfLiteUInt8;
+    }
     if (t->allocation_type == kTfLiteArenaRw && !type_supported) {
       return false;
     }
@@ -2853,12 +3064,13 @@ absl::Status ConvertTfLiteTensorToTensorRef(const TfLiteTensor& tflite_tensor,
 
 // TODO(impjdi): Check number of input/output tensors and their dimensions.
 // TODO(impjdi): Check ops' parameters.
-TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
+TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops) {
   IsNodeSupportedFn node_supported_fn =
       [=](TfLiteContext* context, TfLiteNode* node,
           TfLiteRegistration* registration,
           std::string* unsupported_details) -> bool {
-    const auto status = IsSupported(context, node, registration);
+    const auto status =
+        IsSupported(context, node, registration, allow_quant_ops);
     if (!status.ok()) {
       if (unsupported_details) {
         *unsupported_details = std::string(status.message());
@@ -2866,8 +3078,8 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
       return false;
     }
 
-    if (!IsAllFloatTensors(context, node->inputs) ||
-        !IsAllFloatTensors(context, node->outputs)) {
+    if (!IsAllAllowedTensors(context, node->inputs, allow_quant_ops) ||
+        !IsAllAllowedTensors(context, node->outputs, allow_quant_ops)) {
       if (unsupported_details) {
         *unsupported_details =
             "OP is supported, but tensor type isn't matched!";
@@ -2914,7 +3126,8 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
 
 absl::Status BuildModel(TfLiteContext* context,
                         const TfLiteDelegateParams* delegate_params,
-                        GraphFloat32* graph) {
+                        GraphFloat32* graph,
+                        std::unordered_map<int, int>* quant_conversion_map) {
   std::vector<std::unique_ptr<TFLiteOperationParser>> operations;
   std::vector<int> tflite_nodes;
   for (int i = 0; i < delegate_params->nodes_to_replace->size; ++i) {
@@ -2923,11 +3136,14 @@ absl::Status BuildModel(TfLiteContext* context,
     RETURN_IF_ERROR(GetNodeAndRegistration(
         context, delegate_params->nodes_to_replace->data[i], &tflite_node,
         &registration));
-    if (registration->builtin_code == kTfLiteBuiltinDequantize) {
-      // Ignore Dequantize nodes.
+    if (registration->builtin_code == kTfLiteBuiltinDequantize &&
+        context->tensors[tflite_node->inputs->data[0]].type ==
+            TfLiteType::kTfLiteFloat16) {
+      // Ignore Fp16 Dequantize nodes.
       continue;
     }
-    auto op_parser = NewOperationParser(registration);
+    auto op_parser = NewOperationParser(
+        registration, /*allow_quant_ops=*/quant_conversion_map != nullptr);
     if (!op_parser) {
       return absl::UnimplementedError(
           absl::StrCat("Operation ", registration->builtin_code, "(",
@@ -2937,15 +3153,15 @@ absl::Status BuildModel(TfLiteContext* context,
     operations.push_back(std::move(op_parser));
     tflite_nodes.push_back(i);
   }
-  std::vector<Value<TensorRef<BHWC>>*> tensor_to_value(context->tensors_size,
-                                                       nullptr);
+  std::unordered_map<int, Value<TensorRef<BHWC>>*> tensor_to_value;
   for (int i = 0; i < operations.size(); ++i) {
     TfLiteNode* tflite_node;
     TfLiteRegistration* registration;
     RETURN_IF_ERROR(GetNodeAndRegistration(
         context, delegate_params->nodes_to_replace->data[tflite_nodes[i]],
         &tflite_node, &registration));
-    ObjectReader reader(graph, context, tflite_node, &tensor_to_value);
+    ObjectReader reader(graph, context, tflite_node, &tensor_to_value,
+                        quant_conversion_map);
     const auto status =
         operations[i]->Parse(tflite_node, registration, graph, &reader);
     if (!status.ok()) {
@@ -2956,10 +3172,11 @@ absl::Status BuildModel(TfLiteContext* context,
   return absl::OkStatus();
 }
 
-absl::Status BuildFinalModel(TfLiteContext* context,
-                             const TfLiteDelegateParams* delegate_params,
-                             GraphFloat32* graph) {
-  RETURN_IF_ERROR(BuildModel(context, delegate_params, graph));
+absl::Status BuildFinalModel(
+    TfLiteContext* context, const TfLiteDelegateParams* delegate_params,
+    GraphFloat32* graph, std::unordered_map<int, int>* quant_conversion_map) {
+  RETURN_IF_ERROR(
+      BuildModel(context, delegate_params, graph, quant_conversion_map));
 
   // Apply general transformations on the graph.
   NullTransformationReporter reporter;

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/convert/op_stack.h"
@@ -153,7 +154,7 @@ absl::flat_hash_map<int64, TfOp> CollectTfOpsFromHostThreadsXPlane(
     // user-inserted TraceMe's have "unknown" type. We don't count them in
     // Tf-stats.
     TfOp tf_op = ParseTfOpFullname(metadata.name());
-    if (!IsUnknownOp(tf_op.type)) {
+    if (tf_op.category != Category::kUnknown) {
       tf_ops.try_emplace(metadata.id(), tf_op);
     }
   }
@@ -208,17 +209,24 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
       first_op_offset_ps = std::min(first_op_offset_ps, event.OffsetPs());
       last_op_offset_ps = std::max(last_op_offset_ps, event.EndOffsetPs());
 
-      const XStat* stat = event.GetStats(StatType::kLevel0);
-      if (!stat) return;
-      absl::string_view tf_op_fullname = stat->str_value();
-      if (tf_op_fullname.empty()) return;
-      TfOp tf_op = ParseTfOpFullname(tf_op_fullname);
+      absl::string_view tf_op_full_name;
+      bool is_eager;
+      event.ForEachStat([&](const XStatVisitor& stat) {
+        if (stat.Type() == StatType::kLevel0) {
+          tf_op_full_name = stat.StrOrRefValue();
+        } else if (stat.Type() == StatType::kIsEager) {
+          is_eager = stat.IntValue();
+        }
+      });
+      if (tf_op_full_name.empty()) return;
+      TfOp tf_op = ParseTfOpFullname(tf_op_full_name);
       TfOpRoofLineCostEstimator::OpRoofLineStats costs;
-      if (tf_op.type != kUnknownOp) {
+      if (tf_op.category != Category::kUnknown) {
         costs = op_level_cost_estimator.Predict(event);
       }
       device_op_metrics_db_builder.EnterOp(
-          /*program_id=*/0, tf_op.name, tf_op.type, tf_op_fullname,
+          /*program_id=*/0, absl::StrCat(tf_op.name, "/", event.Name()),
+          tf_op.type, tf_op_full_name, is_eager,
           /*occurrences=*/1, event.DurationPs(),
           /*children_time_ps=*/0, costs.flops, costs.bytes_accessed);
     });

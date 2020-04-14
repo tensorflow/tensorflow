@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=g-import-not-at-top
+# pylint: disable=g-classes-have-attributes
 """Callbacks: utilities called at certain points during model training.
 """
 from __future__ import absolute_import
@@ -43,6 +44,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.data_utils import Sequence
 from tensorflow.python.keras.utils.generic_utils import Progbar
+from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
@@ -189,6 +191,7 @@ def make_logs(model, logs, outputs, mode, prefix=''):
   return logs
 
 
+@keras_export('keras.callbacks.CallbackList')
 class CallbackList(object):
   """Container abstracting a list of callbacks."""
 
@@ -198,15 +201,19 @@ class CallbackList(object):
                add_progbar=False,
                model=None,
                **params):
-    """Creates a container for `Callbacks`.
+    """Container for `Callback` instances.
+
+    This object wraps a list of `Callback` instances, making it possible
+    to call them all at once via a single endpoint
+    (e.g. `callback_list.on_epoch_end(...)`).
 
     Arguments:
       callbacks: List of `Callback` instances.
       add_history: Whether a `History` callback should be added, if one does not
-        already exist in `callback`s.
+        already exist in the `callbacks` list.
       add_progbar: Whether a `ProgbarLogger` callback should be added, if one
-        does not already exist in `callback`s.
-      model: The `Model` these `Callback`s are used with.`
+        does not already exist in the `callbacks` list.
+      model: The `Model` these callbacks are used with.
       **params: If provided, parameters will be passed to each `Callback` via
         `Callback.set_params`.
     """
@@ -336,8 +343,8 @@ class CallbackList(object):
     This function should only be called during TRAIN mode.
 
     Arguments:
-        epoch: integer, index of epoch.
-        logs: dict. Currently no data is passed to this argument for this method
+        epoch: Integer, index of epoch.
+        logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
     logs = logs or {}
@@ -357,8 +364,8 @@ class CallbackList(object):
     This function should only be called during TRAIN mode.
 
     Arguments:
-        epoch: integer, index of epoch.
-        logs: dict, metric results for this training epoch, and for the
+        epoch: Integer, index of epoch.
+        logs: Dict, metric results for this training epoch, and for the
           validation epoch if validation is performed. Validation result keys
           are prefixed with `val_`.
     """
@@ -376,8 +383,8 @@ class CallbackList(object):
     """Calls the `on_train_batch_begin` methods of its callbacks.
 
     Arguments:
-        batch: integer, index of batch within the current epoch.
-        logs: dict. Has keys `batch` and `size` representing the current batch
+        batch: Integer, index of batch within the current epoch.
+        logs: Dict. Has keys `batch` and `size` representing the current batch
           number and the size of the batch.
     """
     # TODO(b/150629188): Make ProgBarLogger callback not use batch hooks
@@ -389,8 +396,8 @@ class CallbackList(object):
     """Calls the `on_train_batch_end` methods of its callbacks.
 
     Arguments:
-        batch: integer, index of batch within the current epoch.
-        logs: dict. Aggregated metric results up until this batch.
+        batch: Integer, index of batch within the current epoch.
+        logs: Dict. Aggregated metric results up until this batch.
     """
     if self._should_call_train_batch_hooks:
       self._call_batch_hook(ModeKeys.TRAIN, 'end', batch, logs=logs)
@@ -399,8 +406,8 @@ class CallbackList(object):
     """Calls the `on_test_batch_begin` methods of its callbacks.
 
     Arguments:
-        batch: integer, index of batch within the current epoch.
-        logs: dict. Has keys `batch` and `size` representing the current batch
+        batch: Integer, index of batch within the current epoch.
+        logs: Dict. Has keys `batch` and `size` representing the current batch
           number and the size of the batch.
     """
     if self._should_call_test_batch_hooks:
@@ -410,8 +417,8 @@ class CallbackList(object):
     """Calls the `on_test_batch_end` methods of its callbacks.
 
     Arguments:
-        batch: integer, index of batch within the current epoch.
-        logs: dict. Aggregated metric results up until this batch.
+        batch: Integer, index of batch within the current epoch.
+        logs: Dict. Aggregated metric results up until this batch.
     """
     if self._should_call_test_batch_hooks:
       self._call_batch_hook(ModeKeys.TEST, 'end', batch, logs=logs)
@@ -420,8 +427,8 @@ class CallbackList(object):
     """Calls the `on_predict_batch_begin` methods of its callbacks.
 
     Arguments:
-        batch: integer, index of batch within the current epoch.
-        logs: dict. Has keys `batch` and `size` representing the current batch
+        batch: Integer, index of batch within the current epoch.
+        logs: Dict. Has keys `batch` and `size` representing the current batch
           number and the size of the batch.
     """
     if self._should_call_predict_batch_hooks:
@@ -431,8 +438,8 @@ class CallbackList(object):
     """Calls the `on_predict_batch_end` methods of its callbacks.
 
     Arguments:
-        batch: integer, index of batch within the current epoch.
-        logs: dict. Aggregated metric results up until this batch.
+        batch: Integer, index of batch within the current epoch.
+        logs: Dict. Aggregated metric results up until this batch.
     """
     if self._should_call_predict_batch_hooks:
       self._call_batch_hook(ModeKeys.PREDICT, 'end', batch, logs=logs)
@@ -441,7 +448,7 @@ class CallbackList(object):
     """Calls the `on_train_begin` methods of its callbacks.
 
     Arguments:
-        logs: dict. Currently no data is passed to this argument for this method
+        logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
     logs = logs or {}
@@ -458,7 +465,7 @@ class CallbackList(object):
     """Calls the `on_train_end` methods of its callbacks.
 
     Arguments:
-        logs: dict. Currently no data is passed to this argument for this method
+        logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
     logs = logs or {}
@@ -475,7 +482,7 @@ class CallbackList(object):
     """Calls the `on_test_begin` methods of its callbacks.
 
     Arguments:
-        logs: dict. Currently no data is passed to this argument for this method
+        logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
     logs = logs or {}
@@ -492,7 +499,7 @@ class CallbackList(object):
     """Calls the `on_test_end` methods of its callbacks.
 
     Arguments:
-        logs: dict. Currently no data is passed to this argument for this method
+        logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
     logs = logs or {}
@@ -509,7 +516,7 @@ class CallbackList(object):
     """Calls the 'on_predict_begin` methods of its callbacks.
 
     Arguments:
-        logs: dict. Currently no data is passed to this argument for this method
+        logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
     logs = logs or {}
@@ -526,7 +533,7 @@ class CallbackList(object):
     """Calls the `on_predict_end` methods of its callbacks.
 
     Arguments:
-        logs: dict. Currently no data is passed to this argument for this method
+        logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
     logs = logs or {}
@@ -548,32 +555,18 @@ class Callback(object):
   """Abstract base class used to build new callbacks.
 
   Attributes:
-      params: dict. Training parameters
+      params: Dict. Training parameters
           (eg. verbosity, batch size, number of epochs...).
-      model: instance of `keras.models.Model`.
+      model: Instance of `keras.models.Model`.
           Reference of the model being trained.
-      validation_data: Deprecated. Do not use.
 
   The `logs` dictionary that callback methods
   take as argument will contain keys for quantities relevant to
-  the current batch or epoch.
-
-  Currently, the `.fit()` method of the `Model` class
-  will include the following quantities in the `logs` that
-  it passes to its callbacks:
-
-      on_epoch_end: logs include `acc` and `loss`, and
-          optionally include `val_loss`
-          (if validation is enabled in `fit`), and `val_acc`
-          (if validation and accuracy monitoring are enabled).
-      on_batch_begin: logs include `size`,
-          the number of samples in the current batch.
-      on_batch_end: logs include `loss`, and optionally `acc`
-          (if accuracy monitoring is enabled).
+  the current batch or epoch (see method-specific docstrings).
   """
 
   def __init__(self):
-    self.validation_data = None
+    self.validation_data = None  # pylint: disable=g-missing-from-attributes
     self.model = None
     # Whether this Callback should only run on the chief worker in a
     # Multi-Worker setting.
@@ -605,8 +598,8 @@ class Callback(object):
     be called during TRAIN mode.
 
     Arguments:
-        epoch: integer, index of epoch.
-        logs: dict. Currently no data is passed to this argument for this method
+        epoch: Integer, index of epoch.
+        logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
 
@@ -618,8 +611,8 @@ class Callback(object):
     be called during TRAIN mode.
 
     Arguments:
-        epoch: integer, index of epoch.
-        logs: dict, metric results for this training epoch, and for the
+        epoch: Integer, index of epoch.
+        logs: Dict, metric results for this training epoch, and for the
           validation epoch if validation is performed. Validation result keys
           are prefixed with `val_`.
     """
@@ -632,8 +625,8 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        batch: integer, index of batch within the current epoch.
-        logs: dict. Has keys `batch` and `size` representing the current batch
+        batch: Integer, index of batch within the current epoch.
+        logs: Dict. Has keys `batch` and `size` representing the current batch
           number and the size of the batch.
     """
     # For backwards compatibility.
@@ -647,8 +640,8 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        batch: integer, index of batch within the current epoch.
-        logs: dict. Aggregated metric results up until this batch.
+        batch: Integer, index of batch within the current epoch.
+        logs: Dict. Aggregated metric results up until this batch.
     """
     # For backwards compatibility.
     self.on_batch_end(batch, logs=logs)
@@ -664,8 +657,8 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        batch: integer, index of batch within the current epoch.
-        logs: dict. Has keys `batch` and `size` representing the current batch
+        batch: Integer, index of batch within the current epoch.
+        logs: Dict. Has keys `batch` and `size` representing the current batch
           number and the size of the batch.
     """
 
@@ -680,8 +673,8 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        batch: integer, index of batch within the current epoch.
-        logs: dict. Aggregated metric results up until this batch.
+        batch: Integer, index of batch within the current epoch.
+        logs: Dict. Aggregated metric results up until this batch.
     """
 
   @doc_controls.for_subclass_implementers
@@ -692,8 +685,8 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        batch: integer, index of batch within the current epoch.
-        logs: dict. Has keys `batch` and `size` representing the current batch
+        batch: Integer, index of batch within the current epoch.
+        logs: Dict. Has keys `batch` and `size` representing the current batch
           number and the size of the batch.
     """
 
@@ -705,8 +698,8 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        batch: integer, index of batch within the current epoch.
-        logs: dict. Aggregated metric results up until this batch.
+        batch: Integer, index of batch within the current epoch.
+        logs: Dict. Aggregated metric results up until this batch.
     """
 
   @doc_controls.for_subclass_implementers
@@ -716,7 +709,7 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        logs: dict. Currently no data is passed to this argument for this method
+        logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
 
@@ -727,7 +720,7 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        logs: dict. Currently no data is passed to this argument for this method
+        logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
 
@@ -738,7 +731,7 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        logs: dict. Currently no data is passed to this argument for this method
+        logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
 
@@ -749,7 +742,7 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        logs: dict. Currently no data is passed to this argument for this method
+        logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
 
@@ -760,7 +753,7 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        logs: dict. Currently no data is passed to this argument for this method
+        logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
 
@@ -771,7 +764,7 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        logs: dict. Currently no data is passed to this argument for this method
+        logs: Dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
 
@@ -861,7 +854,7 @@ class ProgbarLogger(Callback):
   """Callback that prints metrics to stdout.
 
   Arguments:
-      count_mode: One of "steps" or "samples".
+      count_mode: One of `"steps"` or `"samples"`.
           Whether the progress bar should
           count samples seen or steps (batches) seen.
       stateful_metrics: Iterable of string names of metrics that
@@ -876,6 +869,7 @@ class ProgbarLogger(Callback):
 
   def __init__(self, count_mode='samples', stateful_metrics=None):
     super(ProgbarLogger, self).__init__()
+    self._supports_tf_logs = True
     if count_mode == 'samples':
       self.use_steps = False
     elif count_mode == 'steps':
@@ -944,8 +938,7 @@ class ProgbarLogger(Callback):
     self.seen = 0
     self.progbar = None
 
-  def _batch_update_progbar(self, batch, logs=None):
-    """Updates the progbar."""
+  def _maybe_init_progbar(self):
     if self.stateful_metrics is None:
       if self.model:
         self.stateful_metrics = (set(m.name for m in self.model.metrics))
@@ -959,22 +952,33 @@ class ProgbarLogger(Callback):
           stateful_metrics=self.stateful_metrics,
           unit_name='step' if self.use_steps else 'sample')
 
-    logs = copy.copy(logs) if logs else {}
-    batch_size = logs.pop('size', 0)
-    num_steps = logs.pop('num_steps', 1)  # DistStrat can run >1 steps.
-    logs.pop('batch', None)
+  def _batch_update_progbar(self, batch, logs=None):
+    """Updates the progbar."""
+    logs = logs or {}
+    self._maybe_init_progbar()
     if self.use_steps:
       self.seen = batch + 1  # One-indexed.
     else:
+      # v1 path only.
+      logs = copy.copy(logs)
+      batch_size = logs.pop('size', 0)
+      num_steps = logs.pop('num_steps', 1)
+      logs.pop('batch', None)
       add_seen = num_steps * batch_size
       self.seen += add_seen
-    self.progbar.update(self.seen, list(logs.items()), finalize=False)
+
+    if self.verbose == 1:
+      # Only block async when verbose = 1.
+      logs = tf_utils.to_numpy_or_python_type(logs)
+      self.progbar.update(self.seen, list(logs.items()), finalize=False)
 
   def _finalize_progbar(self, logs):
+    logs = logs or {}
+    self._maybe_init_progbar()
     if self.target is None:
       self.target = self.seen
       self.progbar.target = self.seen
-    logs = logs or {}
+    logs = tf_utils.to_numpy_or_python_type(logs)
     self.progbar.update(self.seen, list(logs.items()), finalize=True)
 
 
@@ -1046,12 +1050,12 @@ class ModelCheckpoint(Callback):
   ```
 
   Arguments:
-      filepath: string, path to save the model file. `filepath` can contain
-        named formatting options, which will be filled the value of `epoch` and
-        keys in `logs` (passed in `on_epoch_end`). For example: if `filepath` is
-        `weights.{epoch:02d}-{val_loss:.2f}.hdf5`, then the model checkpoints
-        will be saved with the epoch number and the validation loss in the
-        filename.
+      filepath: string or `PathLike`, path to save the model file. `filepath`
+        can contain named formatting options, which will be filled the value of
+        `epoch` and keys in `logs` (passed in `on_epoch_end`). For example: if
+        `filepath` is `weights.{epoch:02d}-{val_loss:.2f}.hdf5`, then the model
+        checkpoints will be saved with the epoch number and the validation loss
+        in the filename.
       monitor: quantity to monitor.
       verbose: verbosity mode, 0 or 1.
       save_best_only: if `save_best_only=True`, the latest best model according
@@ -1092,7 +1096,7 @@ class ModelCheckpoint(Callback):
     self._supports_tf_logs = True
     self.monitor = monitor
     self.verbose = verbose
-    self.filepath = filepath
+    self.filepath = path_to_string(filepath)
     self.save_best_only = save_best_only
     self.save_weights_only = save_weights_only
     self.save_freq = save_freq
@@ -1425,7 +1429,7 @@ class EarlyStopping(Callback):
   """Stop training when a monitored metric has stopped improving.
 
   Assuming the goal of a training is to minimize the loss. With this, the
-  metric to be monitored would be 'loss', and mode would be 'min'. A
+  metric to be monitored would be `'loss'`, and mode would be `'min'`. A
   `model.fit()` training loop will check at end of every epoch whether
   the loss is no longer decreasing, considering the `min_delta` and
   `patience` if applicable. Once it's found no longer decreasing,
@@ -1433,6 +1437,30 @@ class EarlyStopping(Callback):
 
   The quantity to be monitored needs to be available in `logs` dict.
   To make it so, pass the loss or metrics at `model.compile()`.
+
+  Arguments:
+    monitor: Quantity to be monitored.
+    min_delta: Minimum change in the monitored quantity
+        to qualify as an improvement, i.e. an absolute
+        change of less than min_delta, will count as no
+        improvement.
+    patience: Number of epochs with no improvement
+        after which training will be stopped.
+    verbose: verbosity mode.
+    mode: One of `{"auto", "min", "max"}`. In `min` mode,
+        training will stop when the quantity
+        monitored has stopped decreasing; in `"max"`
+        mode it will stop when the quantity
+        monitored has stopped increasing; in `"auto"`
+        mode, the direction is automatically inferred
+        from the name of the monitored quantity.
+    baseline: Baseline value for the monitored quantity.
+        Training will stop if the model doesn't show improvement over the
+        baseline.
+    restore_best_weights: Whether to restore model weights from
+        the epoch with the best value of the monitored quantity.
+        If False, the model weights obtained at the last step of
+        training are used.
 
   Example:
 
@@ -1456,32 +1484,6 @@ class EarlyStopping(Callback):
                mode='auto',
                baseline=None,
                restore_best_weights=False):
-    """Initialize an EarlyStopping callback.
-
-    Arguments:
-        monitor: Quantity to be monitored.
-        min_delta: Minimum change in the monitored quantity
-            to qualify as an improvement, i.e. an absolute
-            change of less than min_delta, will count as no
-            improvement.
-        patience: Number of epochs with no improvement
-            after which training will be stopped.
-        verbose: verbosity mode.
-        mode: One of `{"auto", "min", "max"}`. In `min` mode,
-            training will stop when the quantity
-            monitored has stopped decreasing; in `max`
-            mode it will stop when the quantity
-            monitored has stopped increasing; in `auto`
-            mode, the direction is automatically inferred
-            from the name of the monitored quantity.
-        baseline: Baseline value for the monitored quantity.
-            Training will stop if the model doesn't show improvement over the
-            baseline.
-        restore_best_weights: Whether to restore model weights from
-            the epoch with the best value of the monitored quantity.
-            If False, the model weights obtained at the last step of
-            training are used.
-    """
     super(EarlyStopping, self).__init__()
 
     self.monitor = monitor
@@ -1564,18 +1566,19 @@ class RemoteMonitor(Callback):
   Events are sent to `root + '/publish/epoch/end/'` by default. Calls are
   HTTP POST, with a `data` argument which is a
   JSON-encoded dictionary of event data.
-  If send_as_json is set to True, the content type of the request will be
-  application/json. Otherwise the serialized JSON will be sent within a form.
+  If `send_as_json=True`, the content type of the request will be
+  `"application/json"`.
+  Otherwise the serialized JSON will be sent within a form.
 
   Arguments:
-      root: String; root url of the target server.
-      path: String; path relative to `root` to which the events will be sent.
-      field: String; JSON field under which the data will be stored.
-          The field is used only if the payload is sent within a form
-          (i.e. send_as_json is set to False).
-      headers: Dictionary; optional custom HTTP headers.
-      send_as_json: Boolean; whether the request should be
-          sent as application/json.
+    root: String; root url of the target server.
+    path: String; path relative to `root` to which the events will be sent.
+    field: String; JSON field under which the data will be stored.
+        The field is used only if the payload is sent within a form
+        (i.e. send_as_json is set to False).
+    headers: Dictionary; optional custom HTTP headers.
+    send_as_json: Boolean; whether the request should be
+        sent as `"application/json"`.
   """
 
   def __init__(self,
@@ -1622,19 +1625,26 @@ class RemoteMonitor(Callback):
 class LearningRateScheduler(Callback):
   """Learning rate scheduler.
 
-  At the beginning of every epoch, this callback gets the learning rate
-  value from `schedule` function provided at `__init__`, with the current epoch,
-  and applies that learning rate on the optimizer.
+  At the beginning of every epoch, this callback gets the updated learning rate
+  value from `schedule` function provided at `__init__`, with the current epoch
+  and current learning rate, and applies the updated learning rate
+  on the optimizer.
+
+  Arguments:
+    schedule: a function that takes an epoch index (integer, indexed from 0)
+        and current learning rate (float) as inputs and returns a new
+        learning rate as output (float).
+    verbose: int. 0: quiet, 1: update messages.
 
   Example:
 
-  >>> # This function keeps the learning rate at 0.001 for the first ten epochs
+  >>> # This function keeps the initial learning rate for the first ten epochs
   >>> # and decreases it exponentially after that.
-  >>> def scheduler(epoch):
+  >>> def scheduler(epoch, lr):
   ...   if epoch < 10:
-  ...     return 0.001
+  ...     return lr
   ...   else:
-  ...     return 0.001 * tf.math.exp(0.1 * (10 - epoch))
+  ...     return lr * tf.math.exp(-0.1)
   >>>
   >>> model = tf.keras.models.Sequential([tf.keras.layers.Dense(10)])
   >>> model.compile(tf.keras.optimizers.SGD(), loss='mse')
@@ -1643,21 +1653,13 @@ class LearningRateScheduler(Callback):
 
   >>> callback = tf.keras.callbacks.LearningRateScheduler(scheduler)
   >>> history = model.fit(np.arange(100).reshape(5, 20), np.zeros(5),
-  ...                     epochs=2, callbacks=[callback], verbose=0)
+  ...                     epochs=15, callbacks=[callback], verbose=0)
   >>> round(model.optimizer.lr.numpy(), 5)
-  0.001
+  0.00607
 
   """
 
   def __init__(self, schedule, verbose=0):
-    """Initialize a `keras.callbacks.LearningRateScheduler` callback.
-
-    Arguments:
-      schedule: a function that takes an epoch index as input
-          (integer, indexed from 0) and returns a new
-          learning rate as output (float).
-      verbose: int. 0: quiet, 1: update messages.
-    """
     super(LearningRateScheduler, self).__init__()
     self.schedule = schedule
     self.verbose = verbose
@@ -1702,7 +1704,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   If you have installed TensorFlow with pip, you should be able
   to launch TensorBoard from the command line:
 
-  ```sh
+  ```
   tensorboard --logdir=path_to_your_logs
   ```
 
@@ -1710,24 +1712,27 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   [here](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
 
   Example (Basic):
+
   ```python
   tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir="./logs")
   model.fit(x_train, y_train, epochs=2, callbacks=[tensorboard_callback])
   # run the tensorboard command to view the visualizations.
   ```
+
   Example (Profile):
+
   ```python
   # profile a single batch, e.g. the 5th batch.
-  tensorboard_callback =
-      tf.keras.callbacks.TensorBoard(log_dir='./logs', profile_batch=5)
+  tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir='./logs',
+                                                        profile_batch=5)
   model.fit(x_train, y_train, epochs=2, callbacks=[tensorboard_callback])
-  # run the tensorboard command to view the visualizations in profile plugin.
+  # Now run the tensorboard command to view the visualizations (profile plugin).
 
   # profile a range of batches, e.g. from 10 to 20.
-  tensorboard_callback =
-      tf.keras.callbacks.TensorBoard(log_dir='./logs', profile_batch='10,20')
+  tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir='./logs',
+                                                        profile_batch='10,20')
   model.fit(x_train, y_train, epochs=2, callbacks=[tensorboard_callback])
-  # run the tensorboard command to view the visualizations in profile plugin.
+  # Now run the tensorboard command to view the visualizations (profile plugin).
   ```
 
   Arguments:
@@ -1781,7 +1786,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self._supports_tf_logs = True
     self._validate_kwargs(kwargs)
 
-    self.log_dir = log_dir
+    self.log_dir = path_to_string(log_dir)
     self.histogram_freq = histogram_freq
     self.write_graph = write_graph
     self.write_images = write_images
@@ -2133,9 +2138,6 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
                                    'keras_embedding.ckpt-{}'.format(epoch))
     self.model.save_weights(embeddings_ckpt)
 
-  def _implements_train_batch_hooks(self):
-    return not (self._start_batch == 0 and self._stop_batch == 0)
-
 
 @keras_export('keras.callbacks.ReduceLROnPlateau')
 class ReduceLROnPlateau(Callback):
@@ -2156,14 +2158,15 @@ class ReduceLROnPlateau(Callback):
 
   Arguments:
       monitor: quantity to be monitored.
-      factor: factor by which the learning rate will be reduced. new_lr = lr *
-        factor
+      factor: factor by which the learning rate will be reduced.
+        `new_lr = lr * factor`.
       patience: number of epochs with no improvement after which learning rate
         will be reduced.
       verbose: int. 0: quiet, 1: update messages.
-      mode: one of {auto, min, max}. In `min` mode, lr will be reduced when the
-        quantity monitored has stopped decreasing; in `max` mode it will be
-        reduced when the quantity monitored has stopped increasing; in `auto`
+      mode: one of `{'auto', 'min', 'max'}`. In `'min'` mode,
+        the learning rate will be reduced when the
+        quantity monitored has stopped decreasing; in `'max'` mode it will be
+        reduced when the quantity monitored has stopped increasing; in `'auto'`
         mode, the direction is automatically inferred from the name of the
         monitored quantity.
       min_delta: threshold for measuring the new optimum, to only focus on
@@ -2262,10 +2265,10 @@ class ReduceLROnPlateau(Callback):
 
 @keras_export('keras.callbacks.CSVLogger')
 class CSVLogger(Callback):
-  """Callback that streams epoch results to a csv file.
+  """Callback that streams epoch results to a CSV file.
 
   Supports all values that can be represented as a string,
-  including 1D iterables such as np.ndarray.
+  including 1D iterables such as `np.ndarray`.
 
   Example:
 
@@ -2275,15 +2278,15 @@ class CSVLogger(Callback):
   ```
 
   Arguments:
-      filename: filename of the csv file, e.g. 'run/log.csv'.
-      separator: string used to separate elements in the csv file.
-      append: True: append if file exists (useful for continuing
-          training). False: overwrite existing file,
+      filename: Filename of the CSV file, e.g. `'run/log.csv'`.
+      separator: String used to separate elements in the CSV file.
+      append: Boolean. True: append if file exists (useful for continuing
+          training). False: overwrite existing file.
   """
 
   def __init__(self, filename, separator=',', append=False):
     self.sep = separator
-    self.filename = filename
+    self.filename = path_to_string(filename)
     self.append = append
     self.writer = None
     self.keys = None
@@ -2361,12 +2364,12 @@ class LambdaCallback(Callback):
   at the appropriate time. Note that the callbacks expects positional
   arguments, as:
 
-   - `on_epoch_begin` and `on_epoch_end` expect two positional arguments:
-      `epoch`, `logs`
-   - `on_batch_begin` and `on_batch_end` expect two positional arguments:
-      `batch`, `logs`
-   - `on_train_begin` and `on_train_end` expect one positional argument:
-      `logs`
+  - `on_epoch_begin` and `on_epoch_end` expect two positional arguments:
+    `epoch`, `logs`
+  - `on_batch_begin` and `on_batch_end` expect two positional arguments:
+    `batch`, `logs`
+  - `on_train_begin` and `on_train_end` expect one positional argument:
+    `logs`
 
   Arguments:
       on_epoch_begin: called at the beginning of every epoch.

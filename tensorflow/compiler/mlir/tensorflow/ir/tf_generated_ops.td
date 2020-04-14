@@ -1504,6 +1504,59 @@ Our Conv3D implements a form of cross-correlation.
   }];
 }
 
+def TF_Conv3DBackpropFilterV2Op : TF_Op<"Conv3DBackpropFilterV2", [NoSideEffect]> {
+  let summary = [{
+Computes the gradients of 3-D convolution with respect to the filter.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$input,
+    I32Tensor:$filter_sizes,
+    TF_FpTensor:$out_backprop,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format,
+    DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_Conv3DBackpropInputV2Op : TF_Op<"Conv3DBackpropInputV2", [NoSideEffect]> {
+  let summary = [{
+Computes the gradients of 3-D convolution with respect to the input.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$input_sizes,
+    TF_FpTensor:$filter,
+    TF_FpTensor:$out_backprop,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format,
+    DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1, 1}">:$dilations
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tshape = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_CosOp : TF_Op<"Cos", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes cos of x element-wise.";
 
@@ -1777,6 +1830,41 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
 
   let results = (outs
     TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_DiagPartOp : TF_Op<"DiagPart", [NoSideEffect]> {
+  let summary = "Returns the diagonal part of the tensor.";
+
+  let description = [{
+This operation returns a tensor with the `diagonal` part
+of the `input`. The `diagonal` part is computed as follows:
+
+Assume `input` has dimensions `[D1,..., Dk, D1,..., Dk]`, then the output is a
+tensor of rank `k` with dimensions `[D1,..., Dk]` where:
+
+`diagonal[i1,..., ik] = input[i1, ..., ik, i1,..., ik]`.
+
+For example:
+
+```
+# 'input' is [[1, 0, 0, 0]
+              [0, 2, 0, 0]
+              [0, 0, 3, 0]
+              [0, 0, 0, 4]]
+
+tf.diag_part(input) ==> [1, 2, 3, 4]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$diagonal
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -4530,6 +4618,53 @@ def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect, TF_FoldOperandsTransposeInter
   }];
 }
 
+def TF_MaxPool3DOp : TF_Op<"MaxPool3D", [NoSideEffect]> {
+  let summary = "Performs 3D max pooling on the input.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32]>:$input,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MaxPool3DGradOp : TF_Op<"MaxPool3DGrad", [NoSideEffect]> {
+  let summary = "Computes gradients of 3D max pooling function.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32]>:$orig_input,
+    TensorOf<[BF16, F16, F32]>:$orig_output,
+    TensorOf<[BF16, F16, F32]>:$grad,
+
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$ksize,
+    Confined<I64ArrayAttr, [ArrayMinCount<5>]>:$strides,
+    TF_AnyStrAttrOf<["SAME", "VALID"]>:$padding,
+    DefaultValuedAttr<TF_AnyStrAttrOf<["NDHWC", "NCDHW"]>, "NDHWC">:$data_format
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr TInput = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_MaxPoolGradOp : TF_Op<"MaxPoolGrad", [NoSideEffect]> {
   let summary = "Computes gradients of the maxpooling function.";
 
@@ -5301,6 +5436,8 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasFolder = 1;
 }
 
 def TF_PreventGradientOp : TF_Op<"PreventGradient", [NoSideEffect, SameOperandsAndResultType]> {
@@ -6006,6 +6143,30 @@ Resize `images` to `size` using nearest neighbor interpolation.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_ResourceApplyAdagradV2Op : TF_Op<"ResourceApplyAdagradV2", []> {
+  let summary = "Update '*var' according to the adagrad scheme.";
+
+  let description = [{
+accum += grad * grad
+var -= lr * grad * (1 / (sqrt(accum) + epsilon))
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$var,
+    TF_ResourceTensor:$accum,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$epsilon,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$grad,
+
+    DefaultValuedAttr<BoolAttr, "false">:$use_locking,
+    DefaultValuedAttr<BoolAttr, "true">:$update_slots
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
+}
+
 def TF_ResourceApplyAdamOp : TF_Op<"ResourceApplyAdam", []> {
   let summary = "Update '*var' according to the Adam algorithm.";
 
@@ -6064,6 +6225,32 @@ Set use_nesterov = True if you want to use Nesterov momentum.
 
 accum = accum * momentum - lr * grad
 var += accum
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$var,
+    TF_ResourceTensor:$accum,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$grad,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$momentum,
+
+    DefaultValuedAttr<BoolAttr, "false">:$use_locking,
+    DefaultValuedAttr<BoolAttr, "false">:$use_nesterov
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_ResourceApplyMomentumOp : TF_Op<"ResourceApplyMomentum", []> {
+  let summary = "Update '*var' according to the momentum scheme.";
+
+  let description = [{
+Set use_nesterov = True if you want to use Nesterov momentum.
+
+accum = accum * momentum + grad
+var -= lr * accum
   }];
 
   let arguments = (ins
@@ -7711,6 +7898,28 @@ shape of `StridedSlice`'s `input`.
   }];
 }
 
+def TF_StringFormatOp : TF_Op<"StringFormat", [NoSideEffect]> {
+  let summary = "Formats a string template using a list of tensors.";
+
+  let description = [{
+Formats a string template using a list of tensors, pretty-printing tensor summaries.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs,
+
+    DefaultValuedAttr<StrAttr, "%s">:$strtemplate,
+    DefaultValuedAttr<StrAttr, "%s">:$placeholder,
+    DefaultValuedAttr<I64Attr, "3">:$summarize
+  );
+
+  let results = (outs
+    TF_StrTensor:$output
+  );
+
+  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
+}
+
 def TF_SubOp : TF_Op<"Sub", [NoSideEffect, ResultsBroadcastableShape]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x - y element-wise.";
@@ -8387,6 +8596,31 @@ output_handle: The list.
 
   TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr element_dtype = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_TensorListGatherOp : TF_Op<"TensorListGather", [NoSideEffect]> {
+  let summary = "Creates a Tensor by indexing into the TensorList.";
+
+  let description = [{
+Each row in the produced Tensor corresponds to the element in the TensorList
+specified by the given index (see `tf.gather`).
+
+input_handle: The input tensor list.
+indices: The indices used to index into the list.
+values: The tensor.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle,
+    I32Tensor:$indices,
+    I32Tensor:$element_shape
+  );
+
+  let results = (outs
+    TF_Tensor:$values
+  );
+
+  TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_TensorListGetItemOp : TF_Op<"TensorListGetItem", [NoSideEffect]> {

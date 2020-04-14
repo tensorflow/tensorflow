@@ -55,8 +55,6 @@ class HostTracer : public ProfilerInterface {
 
   Status CollectData(XSpace* space) override;
 
-  DeviceType GetDeviceType() override { return DeviceType::kCpu; }
-
  private:
   // Level of host tracing.
   const int host_trace_level_;
@@ -154,9 +152,9 @@ Status HostTracer::CollectData(XSpace* space) {
 
 // Not in anonymous namespace for testing purposes.
 std::unique_ptr<ProfilerInterface> CreateHostTracer(
-    const profiler::ProfilerOptions& options) {
-  if (options.host_tracer_level == 0) return nullptr;
-  return absl::make_unique<HostTracer>(options.host_tracer_level);
+    const ProfileOptions& options) {
+  if (options.host_tracer_level() == 0) return nullptr;
+  return absl::make_unique<HostTracer>(options.host_tracer_level());
 }
 
 auto register_host_tracer_factory = [] {

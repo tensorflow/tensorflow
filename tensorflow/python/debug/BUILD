@@ -781,7 +781,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["lib/dumping_callback_test.py"],
     python_version = "PY3",
-    shard_count = 8,
+    shard_count = 4,
     tags = [
         "no_windows",  # TODO(b/142475891): Enable this test on Windows.
     ],
@@ -795,7 +795,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
@@ -1338,6 +1337,7 @@ cuda_py_test(
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
         "noasan",  # Times out due to size of test (b/73731462).
+        "notap",  # TODO(b/153898535) flaky
         "optonly",  # Test flaky (b/80130873)
         "oss_serial",
     ],
@@ -1463,7 +1463,7 @@ sh_test(
         ":debug_errors",
         ":debug_fibonacci",
         ":debug_keras",
-        ":debug_mnist",
+        ":debug_mnist_v1",
         ":debug_tflearn_iris",
         ":offline_analyzer",
     ],

@@ -244,7 +244,7 @@ std::list<FusionSequence> SortChains(
 
       // Collect all inputs also for linked operations.
       std::vector<ValueId> elements_input_buffer_ids;
-      for (auto element : chain) {
+      for (const auto& element : chain) {
         for (const auto& buffer : element->input_buffers) {
           if (!Contains(elements_output_buffer_ids, buffer.id)) {
             elements_input_buffer_ids.push_back(buffer.id);
@@ -321,7 +321,7 @@ std::vector<ValueId> DeductOutputBufferIds(
     for (auto it2 = sorted_chains.begin(); it2 != sorted_chains.end(); ++it2) {
       if (it1 != it2) {
         std::vector<ValueId> input_ids;
-        for (auto element : *it2) {
+        for (const auto& element : *it2) {
           for (const auto& buffer : element->input_buffers) {
             input_ids.push_back(buffer.id);
           }
@@ -358,7 +358,7 @@ std::vector<int> DeleteUnusedTasks(const std::vector<ValueId>& output_ids,
     bool output_used = false;
     for (auto it2 = chains->rbegin(); it2 != chains->rend(); ++it2) {
       std::vector<ValueId> input_ids;
-      for (auto element : *it2) {
+      for (const auto& element : *it2) {
         for (const auto& buffer : element->input_buffers) {
           input_ids.push_back(buffer.id);
         }
@@ -516,7 +516,7 @@ ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
     fused_id = desc->output_buffer.id;
     invalid_id = false;
 
-    for (auto buffer : desc->immutable_buffers) {
+    for (const auto& buffer : desc->immutable_buffers) {
       std::string index = std::to_string(immutable_index);
       std::string name = (desc->is_linkable ? (" buffer" + index) : "");
       buffer_declarations +=
@@ -526,7 +526,7 @@ ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
       fused_descriptor->immutable_buffers.push_back(buffer);
     }
 
-    for (auto buffer : desc->uniform_buffers) {
+    for (const auto& buffer : desc->uniform_buffers) {
       std::string index = std::to_string(uniform_index);
       std::string name = (desc->is_linkable ? (" buffer" + index) : "");
       buffer_declarations +=

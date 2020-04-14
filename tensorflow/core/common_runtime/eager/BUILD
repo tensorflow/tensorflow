@@ -30,6 +30,7 @@ tf_cuda_library(
         ":eager_operation",
         ":execute",
         ":tensor_handle",
+        "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_tensor_internal",
     ],
     alwayslink = 1,
@@ -71,7 +72,6 @@ tf_cuda_library(
     deps = [
         ":eager_executor",
         ":kernel_and_device",
-        ":process_function_library_runtime",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/eager:context_interface",
         "//tensorflow/c/eager:tensor_handle_interface",
@@ -289,7 +289,6 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":attr_builder",
-        ":process_function_library_runtime",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
@@ -301,31 +300,6 @@ tf_cuda_library(
         "//tensorflow:windows": KERNEL_AND_DEVICE_DEPS,
         "//conditions:default": KERNEL_AND_DEVICE_DEPS + [
             "//tensorflow/compiler/jit:xla_kernel_creator_util",
-        ],
-    }),
-)
-
-tf_cuda_library(
-    name = "process_function_library_runtime",
-    srcs = [
-        "process_function_library_runtime.cc",
-    ],
-    hdrs = [
-        "process_function_library_runtime.h",
-    ],
-    visibility = ["//tensorflow:internal"],
-    deps = select({
-        "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "@com_google_absl//absl/types:optional",
-            "@com_google_absl//absl/types:variant",
-            "//tensorflow/core:core_cpu_lib",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:lib_internal",
-            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )
@@ -379,7 +353,6 @@ cc_library(
         ":eager_operation",
         ":kernel_and_device",
         ":tensor_handle",
-        ":process_function_library_runtime",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/strings",

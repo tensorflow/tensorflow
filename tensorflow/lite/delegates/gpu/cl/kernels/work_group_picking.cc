@@ -115,10 +115,10 @@ int GetMaxSizeWithMinPenalty(int size, int max_size) {
 int2 GetMaxSizeWithMinPenalty(int2 size, int max_size) {
   std::vector<int2> base_groups = Get2DWorkgroupsEqualTo128();
   int min_penalty = std::numeric_limits<int>::max();
-  for (auto group : base_groups) {
+  for (const auto& group : base_groups) {
     min_penalty = std::min(GetPenalty(size, group), min_penalty);
   }
-  for (auto group : base_groups) {
+  for (const auto& group : base_groups) {
     for (int y = 1; y * group.y <= max_size; ++y) {
       int new_group_y = y * group.y;
       for (int x = 1; x * group.x <= max_size; ++x) {

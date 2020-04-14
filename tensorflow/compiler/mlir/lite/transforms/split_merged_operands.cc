@@ -66,7 +66,8 @@ namespace mlir {
 namespace TFL {
 namespace {
 
-struct SplitMergedOperandsPass : public FunctionPass<SplitMergedOperandsPass> {
+struct SplitMergedOperandsPass
+    : public PassWrapper<SplitMergedOperandsPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -119,7 +120,7 @@ void SplitMergedOperandsPass::runOnFunction() {
 
 /// Creates an instance of the TensorFlow Lite dialect SplitMergedOperands
 /// pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateSplitMergedOperandsPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateSplitMergedOperandsPass() {
   return std::make_unique<SplitMergedOperandsPass>();
 }
 

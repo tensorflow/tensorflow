@@ -1495,8 +1495,7 @@ class ConcreteFunction(object):
   is differentiable under `tf.GradientTape` objects.
   """
 
-  def __init__(self, func_graph, attrs=None, signature=None,
-               shared_func_graph=True):
+  def __init__(self, func_graph, attrs=None, shared_func_graph=True):
     """Initialize a `ConcreteFunction`.
 
     Args:
@@ -1504,8 +1503,6 @@ class ConcreteFunction(object):
       attrs: (optional) dict mapping names of attributes to their AttrValue
         values. Attributes in `attrs` will be included in this function's
         definition.
-     signature: a nested sequence of `TensorSpec` objects specifying the input
-       signature of this function.
      shared_func_graph: If False, the ConcreteFunction takes ownership of
        `func_graph` and will break reference cycles when it is deleted. This
        makes the FuncGraph inoperable.
@@ -1550,7 +1547,6 @@ class ConcreteFunction(object):
     self._output_shapes = tuple(
         output.shape for output in self._func_graph.outputs)
     self._attrs = _parse_func_attrs(attrs or {})
-    self._signature = signature
 
     if shared_func_graph:
       self._garbage_collector = None
@@ -1607,12 +1603,6 @@ class ConcreteFunction(object):
   def _call_impl(self, args, kwargs, cancellation_manager=None):
     """See `__call__` for details."""
     if self._arg_keywords is None or self._num_positional_args is None:
-      if self._signature is not None:
-        if kwargs:
-          raise NotImplementedError(
-              "Keyword arguments not supported when calling a "
-              "wrap_function-decorated function.")
-        return self._call_flat(args, self.captured_inputs)
       raise AssertionError(
           "Tried to call a concrete function obtained from an internal API "
           "through the public interface. Use get_concrete_function instead.")
@@ -1691,7 +1681,7 @@ class ConcreteFunction(object):
       default_graph.mark_as_unsaveable(self._func_graph.saving_errors)
 
     if (tape.could_possibly_record() or
-        hasattr(ops.get_default_graph(), "watch_variable")):
+        hasattr(default_graph, "watch_variable")):
       for v in self._func_graph.variables:
         resource_variable_ops.variable_accessed(v)
 
@@ -1728,10 +1718,6 @@ class ConcreteFunction(object):
                      arg_name, arg,
                      self._func_graph.inputs[i].shape,
                      arg.shape))
-      elif (self._signature is not None and
-            isinstance(self._signature[i], tensor_spec.DenseSpec)):
-        tensor_inputs.append(
-            ops.convert_to_tensor(arg, self._signature[i].dtype))
       else:
         raise ValueError("All inputs to `ConcreteFunction`s must be Tensors; "
                          "on invocation of %s, the %d-th input (%s) was not a "
@@ -1754,7 +1740,7 @@ class ConcreteFunction(object):
           ctx, args_with_tangents,
           cancellation_manager=cancellation_manager)
     else:
-      with ops.get_default_graph()._override_gradient_function(  # pylint: disable=protected-access
+      with default_graph._override_gradient_function(  # pylint: disable=protected-access
           {"PartitionedCall": self._get_gradient_function(),
            "StatefulPartitionedCall": self._get_gradient_function()}):
         flat_outputs = forward_function.call(ctx, args_with_tangents)
@@ -2229,6 +2215,7 @@ class FunctionSpec(object):
 
     if self._input_signature is None:
       inputs = _convert_numpy_inputs(inputs)
+      kwargs = _convert_numpy_inputs(kwargs)
       return inputs, kwargs
     else:
       assert not kwargs
@@ -2494,9 +2481,6 @@ class Function(object):
       args, kwargs = None, None
     with self._lock:
       graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
-      if self.input_signature:
-        args = self.input_signature
-        kwargs = {}
       seen_names = set()
       captured = object_identity.ObjectIdentitySet(
           graph_function.graph.internal_captures)

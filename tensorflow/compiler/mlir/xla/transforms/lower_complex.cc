@@ -38,11 +38,12 @@ limitations under the License.
 using mlir::FunctionPass;
 using mlir::OwningRewritePatternList;
 using mlir::PassRegistration;
+using mlir::PassWrapper;
 
 namespace {
-class LowerComplex : public FunctionPass<LowerComplex> {
+class LowerComplex : public PassWrapper<LowerComplex, FunctionPass> {
  public:
-  explicit LowerComplex() : FunctionPass<LowerComplex>() {}
+  explicit LowerComplex() : PassWrapper<LowerComplex, FunctionPass>() {}
 
   /// Performs the lowering to XLA dialect.
   void runOnFunction() override;
@@ -70,7 +71,7 @@ void LowerComplex::runOnFunction() {
   OwningRewritePatternList patterns;
   mlir::xla::PopulateComplexLoweringPatterns(&getContext(), &patterns);
 
-  applyPatternsGreedily(getFunction(), patterns);
+  applyPatternsAndFoldGreedily(getFunction(), patterns);
 }
 
 static PassRegistration<LowerComplex> pass(

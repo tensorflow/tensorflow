@@ -70,8 +70,21 @@ constexpr char kUnidirectionalSequenceRnn[] = "tf.UnidirectionalSequenceRnn";
 constexpr char kTfLiteInputIndices[] = "_tflite_input_indices";
 
 // Legalize operations in functions.
-struct LegalizeTF : public FunctionPass<LegalizeTF> {
+class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
+ public:
+  LegalizeTF() = default;
+  LegalizeTF(const LegalizeTF&) {}
+  explicit LegalizeTF(bool run_tfl_runtime_verification) {
+    run_tfl_runtime_verification_ = run_tfl_runtime_verification;
+  }
+
+  /// Performs the lowering to TFLite dialect.
   void runOnFunction() override;
+
+ private:
+  Option<bool> run_tfl_runtime_verification_{
+      *this, "run-tfl-runtime-verification",
+      llvm::cl::desc("Allow tfl runtime verification."), llvm::cl::init(true)};
 };
 
 // Returns true if all tensor value in `values` has static shape and same shape.
@@ -314,7 +327,7 @@ Value PadStridedSliceAttributeArray(Operation* op, PatternRewriter& rewriter,
     // can't do any padding. Instead we just return it.
     return attribute;
   }
-  for (auto idx : dense_elem_attr.getIntValues()) {
+  for (const auto& idx : dense_elem_attr.getIntValues()) {
     padded_val.push_back(idx.getSExtValue());
   }
   auto attr_dim_count = ranked_attr_type.getShape()[0];
@@ -440,7 +453,7 @@ bool ConvertTFMatrixDiagV2orV3(Operation* op, PatternRewriter* rewriter) {
   if (!matchPattern(tf_matrix_diag_v2_or_v3_op.padding_value(),
                     m_Constant(&padding_value)))
     return false;
-  for (auto value : padding_value.getValues<APInt>()) {
+  for (const auto& value : padding_value.getValues<APInt>()) {
     if (value != 0) return false;
   }
 
@@ -741,12 +754,19 @@ void LegalizeTF::runOnFunction() {
   // graph.
   target.addLegalOp<mlir::ConstantOp>();
   target.addLegalOp<ConstOp>();
-  target.addDynamicallyLegalDialect<TensorFlowLiteDialect>(
-      Optional<ConversionTarget::DynamicLegalityCallbackFn>([](Operation* op) {
-        auto tfl_op = dyn_cast_or_null<TflRuntimeVerifyOpInterface>(op);
-        if (!tfl_op) return false;
-        return succeeded(tfl_op.VerifyTflRuntimeTypes(tfl_op.getOperation()));
-      }));
+  if (run_tfl_runtime_verification_) {
+    target.addDynamicallyLegalDialect<TensorFlowLiteDialect>(
+        Optional<ConversionTarget::DynamicLegalityCallbackFn>(
+            [](Operation* op) {
+              auto tfl_op = dyn_cast_or_null<TflRuntimeVerifyOpInterface>(op);
+              if (!tfl_op) return false;
+              return succeeded(tfl_op.VerifyTflRuntimeConstraints(
+                  tfl_op.getOperation(),
+                  /*failure_on_operand_type_mismatch=*/false));
+            }));
+  } else {
+    target.addLegalDialect<TensorFlowLiteDialect>();
+  }
   // Keep trying to convert.
   // TODO(karimnosseir): This is similar to what apply greedy patterns does.
   // Look if there is a function that tries until it converge.
@@ -762,8 +782,9 @@ void LegalizeTF::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect LegalizeTF pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeTFPass() {
-  return std::make_unique<LegalizeTF>();
+std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeTFPass(
+    bool run_tfl_runtime_verification) {
+  return std::make_unique<LegalizeTF>(run_tfl_runtime_verification);
 }
 
 static PassRegistration<LegalizeTF> pass(

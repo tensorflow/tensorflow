@@ -1585,7 +1585,7 @@ class ComputationBuilder(object):
     """
     operands = (
         list(operands)
-        if isinstance(operands, collections.Sequence) else [operands])
+        if isinstance(operands, collections.abc.Sequence) else [operands])
     return ops.Sort(self._builder, operands, dimension,
                     comparator.computation if comparator else None)
 

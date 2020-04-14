@@ -2160,6 +2160,13 @@ Status HloInstruction::ReplaceAllUsesWithDifferentShape(
   return Status::OK();
 }
 
+bool HloInstruction::IsEffectiveBitcast() const {
+  return opcode_ == HloOpcode::kBitcast ||
+         (opcode_ == HloOpcode::kTranspose &&
+          ShapeUtil::TransposeIsBitcast(operand(0)->shape(), shape(),
+                                        dimensions()));
+}
+
 HloComputation* HloInstruction::to_apply() const {
   switch (opcode_) {
     case HloOpcode::kCall:

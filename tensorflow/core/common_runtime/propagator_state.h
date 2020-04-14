@@ -74,6 +74,7 @@ class PropagatorState {
     const NodeItem& get_node_item() const { return *node_item; }
 
     bool get_is_dead() const { return is_dead; }
+    int64 get_iter_num() const { return input_iter; }
   };
 
   // A drop-in replacement for std::deque<TaggedNode>.  We typically don't
@@ -428,25 +429,14 @@ class PropagatorState {
   void CleanupFramesIterations(FrameState* frame, int64 iter,
                                TaggedNodeSeq* ready);
 
-  // Provide debugging output about an outstanding node in the executor.
-  void DumpPendingNodeState(const int node_id, const Entry* input_vector,
-                            bool show_nodes_with_no_ready_inputs);
-  void DumpActiveNodeState(const int node_id, const Entry* input_vector);
-
   // Provide debugging output about an outstanding iteration in the executor.
   void DumpIterationState(const FrameState* frame, IterationState* iteration);
-
-  const Tensor* GetTensorValueForDump(const Entry& input);
 
   const ImmutableExecutorState& immutable_state_;
   const int64 step_id_;
   const bool vlog_;
 
   mutex mu_;
-
-  // A flag that is set on error after the frame state has been
-  // dumped for diagnostic purposes.
-  bool dumped_on_error_ TF_GUARDED_BY(mu_) = false;
 
   // The root frame in which the execution of this step is started.
   FrameState* root_frame_;

@@ -272,8 +272,6 @@ using ::tflite::gpu::metal::SingleOpModel;
                         attr.padding.appended.w - 2;
   int new_height = src_shape.h + attr.padding.prepended.h +
                          attr.padding.appended.h - 2;
-  std::cout << dst_shape.w << " vs " << new_width << std::endl;
-  std::cout << dst_shape.h << " vs " << new_height << std::endl;
   BHWC conv_shape;
   conv_shape.b = dst_shape.b;
   conv_shape.h = 36;

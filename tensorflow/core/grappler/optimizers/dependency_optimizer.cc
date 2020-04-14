@@ -136,7 +136,7 @@ int DependencyOptimizer::NumEdgesIfBypassed(
     // multi-input identity_n with input/output control dependencies will likely
     // increase number of edges after optimization.
     int num_edges_if_bypassed(0);
-    for (string input_node_name : node.input()) {
+    for (const string& input_node_name : node.input()) {
       if (IsControlInput(input_node_name)) {
         num_edges_if_bypassed += num_outputs;
       } else {
@@ -233,7 +233,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
   // Constant nodes with no input control dependency are always executed early,
   // so we can prune all their output control dependencies.
   if (IsConstant(*node) && node->input_size() == 0) {
-    const std::set<NodeDef*> output_nodes = node_map_->GetOutputs(node_name);
+    const auto output_nodes = node_map_->GetOutputs(node_name);
     for (NodeDef* fanout : output_nodes) {
       bool optimize_fanout = false;
       bool data_connection = false;

@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -648,17 +647,11 @@ def transform(images,
                        'new_height, new_width, instead got '
                        '{}'.format(output_shape))
 
-    if compat.forward_compatible(2020, 3, 25):
-      return image_ops.image_projective_transform_v2(
-          images,
-          output_shape=output_shape,
-          transforms=transforms,
-          fill_mode=fill_mode.upper(),
-          interpolation=interpolation.upper())
     return image_ops.image_projective_transform_v2(
         images,
         output_shape=output_shape,
         transforms=transforms,
+        fill_mode=fill_mode.upper(),
         interpolation=interpolation.upper())
 
 

@@ -70,21 +70,6 @@ struct ResourceInfo {
 using ArgOrName = llvm::PointerUnion<BlockArgument, Attribute>;
 using ResourceMap = llvm::SmallDenseMap<ArgOrName, ResourceInfo>;
 
-LogicalResult VerifyNoPotentialNestedResourceAccesses(ModuleOp module) {
-  auto result = module.walk([&](FuncOp func) -> WalkResult {
-    // Skip main function as resources can be passed in as arguments.
-    if (func.getName() == "main") return WalkResult::advance();
-
-    for (auto type : func.getType().getInputs())
-      if (getElementTypeOrSelf(type).isa<TF::ResourceType>())
-        return func.emitError("potential nested resource accesses in function");
-
-    return WalkResult::advance();
-  });
-
-  return failure(result.wasInterrupted());
-}
-
 LogicalResult PromoteResourcesToArguments(FuncOp function) {
   Block& block = function.front();
 
@@ -258,13 +243,13 @@ LogicalResult PromoteResourcesToArguments(FuncOp function) {
 }
 
 class PromoteResourcesToArgsPass
-    : public ModulePass<PromoteResourcesToArgsPass> {
+    : public PassWrapper<PromoteResourcesToArgsPass, OperationPass<ModuleOp>> {
  public:
-  void runOnModule() override;
+  void runOnOperation() override;
 };
 
-void PromoteResourcesToArgsPass::runOnModule() {
-  ModuleOp module = getModule();
+void PromoteResourcesToArgsPass::runOnOperation() {
+  ModuleOp module = getOperation();
   FuncOp main_func = module.lookupSymbol<FuncOp>("main");
   if (!main_func) return;
 
@@ -278,14 +263,13 @@ void PromoteResourcesToArgsPass::runOnModule() {
   }
 
   if (failed(ResourceLiftingForFunctionalControlFlow(main_func)) ||
-      failed(VerifyNoPotentialNestedResourceAccesses(module)) ||
       failed(PromoteResourcesToArguments(main_func)))
     return signalPassFailure();
 }
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreatePromoteResourcesToArgsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreatePromoteResourcesToArgsPass() {
   return std::make_unique<PromoteResourcesToArgsPass>();
 }
 

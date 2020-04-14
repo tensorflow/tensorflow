@@ -134,6 +134,55 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([[-1, 1]], dtype=dtype),
           expected=np.array([[-1, 1]], dtype=dtype))
 
+  def testLog(self):
+    for dtype in self.float_types - {dtypes.bfloat16.as_numpy_dtype}:
+      tol = 1e-4 if dtype == np.float32 else 1e-9
+      x = np.linspace(-np.e, np.e, num=1000, dtype=dtype)
+      self._assertOpOutputMatchesExpected(
+          math_ops.log, x, expected=np.log(x), atol=tol, rtol=tol)
+
+      x = np.linspace(0., np.e * 1e-30, num=1000, dtype=dtype)
+      self._assertOpOutputMatchesExpected(
+          math_ops.log, x, expected=np.log(x), atol=tol, rtol=tol)
+
+      x = np.linspace(0., np.pi * 1e30, num=1000, dtype=dtype)
+      self._assertOpOutputMatchesExpected(
+          math_ops.log, x, expected=np.log(x), atol=tol, rtol=tol)
+
+  def testSin(self):
+    for dtype in self.float_types - {dtypes.bfloat16.as_numpy_dtype}:
+      tol = 1e-6 if dtype == np.float32 else 1e-12
+
+      x = np.linspace(-4 * np.e, 4 * np.e, num=1000, dtype=dtype)
+      self._assertOpOutputMatchesExpected(
+          math_ops.sin, x, expected=np.sin(x), rtol=tol, atol=tol)
+
+      x = np.linspace(0., np.e * 1e-30, num=1000, dtype=dtype)
+      self._assertOpOutputMatchesExpected(
+          math_ops.sin, x, expected=np.sin(x), rtol=tol, atol=tol)
+
+      if dtype == np.float64:
+        x = np.linspace(0., np.e * 1e8, num=1000, dtype=dtype)
+        self._assertOpOutputMatchesExpected(
+            math_ops.sin, x, expected=np.sin(x), rtol=tol, atol=1e-5)
+
+  def testCos(self):
+    for dtype in self.float_types - {dtypes.bfloat16.as_numpy_dtype}:
+      tol = 1e-6 if dtype == np.float32 else 1e-12
+
+      x = np.linspace(-4 * np.e, 4 * np.e, num=1000, dtype=dtype)
+      self._assertOpOutputMatchesExpected(
+          math_ops.cos, x, expected=np.cos(x), rtol=tol, atol=tol)
+
+      x = np.linspace(0., np.e * 1e-30, num=1000, dtype=dtype)
+      self._assertOpOutputMatchesExpected(
+          math_ops.cos, x, expected=np.cos(x), rtol=tol, atol=tol)
+
+      if dtype == np.float64:
+        x = np.linspace(0., np.e * 1e8, num=1000, dtype=dtype)
+        self._assertOpOutputMatchesExpected(
+            math_ops.cos, x, expected=np.cos(x), rtol=tol, atol=1e-5)
+
   def testFloatOps(self):
     for dtype in self.float_types:
       x = np.arange(-0.90, 0.90, 0.25)
@@ -776,23 +825,50 @@ class UnaryOpsTest(xla_test.XLATestCase):
 
   def testCast(self):
     shapes = [[], [4], [2, 3], [2, 0, 4]]
-    types = (
-        set([dtypes.bool, dtypes.int32, dtypes.float32])
-        | self.complex_tf_types)
-    for shape in shapes:
-      for src_type in types:
-        for dst_type in types:
-          src = np.arange(np.prod(shape)).astype(src_type.as_numpy_dtype)
-          if src_type in self.complex_tf_types:
-            src += (np.arange(np.prod(shape)) * 2j).astype(
-                src_type.as_numpy_dtype)
-          src = src.reshape(shape)
+    types = {
+        dtypes.bool, dtypes.float32, dtypes.float64, dtypes.complex64,
+        dtypes.int32, dtypes.int64, dtypes.uint32, dtypes.uint64
+    }
+    for src_type in types:
+      for dst_type in types:
+        src_np_dtype = src_type.as_numpy_dtype
+        dst_np_dtype = dst_type.as_numpy_dtype
 
-          dst = src.astype(dst_type.as_numpy_dtype)
+        for shape in shapes:
+          src = np.arange(np.prod(shape)).astype(src_np_dtype)
+
+          if src_type in self.complex_tf_types:
+            src += (np.arange(np.prod(shape)) * 2j).astype(src_np_dtype)
+          src = src.reshape(shape)
+          dst = src.astype(dst_np_dtype)
           self._assertOpOutputMatchesExpected(
               lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
               src,
               expected=dst)
+
+        # Check special values.
+        if src_type.is_integer:
+          imin = np.iinfo(src_np_dtype).min
+          imax = np.iinfo(src_np_dtype).max
+          src = np.array([imin, imax, 0, 1, -1], dtype=src_np_dtype)
+        elif src_type in self.float_tf_types:
+          if dst_type.is_integer:
+            imin = np.iinfo(dst_np_dtype).min
+            imax = np.iinfo(dst_np_dtype).max // 2
+            src = np.array([imin, imax, 0, 1], dtype=src_np_dtype)
+          elif dst_type in self.float_tf_types:
+            fmin = np.finfo(dst_np_dtype).min
+            fmax = np.finfo(dst_np_dtype).max
+            tiny = np.finfo(dst_np_dtype).tiny
+            eps = np.finfo(dst_np_dtype).eps
+            src = np.array(
+                [fmin, fmax, np.nan, eps, -eps, tiny, -tiny, np.inf, -np.inf],
+                dtype=src_np_dtype)
+        dst = src.astype(dst_np_dtype)
+        self._assertOpOutputMatchesExpected(
+            lambda x, dst_type=dst_type: math_ops.cast(x, dst_type),
+            src,
+            expected=dst)
 
   def testBitcast(self):
     self._assertOpOutputMatchesExpected(

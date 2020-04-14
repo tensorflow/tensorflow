@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -lhlo-legalize-to-parallel-loops -canonicalize -split-input-file | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt %s -lhlo-legalize-to-parallel-loops -canonicalize -split-input-file | FileCheck %s --dump-input-on-failure
 
 func @reduce(%arg: memref<100x10x5xf32>,
              %init: memref<f32>,
@@ -31,11 +31,12 @@ func @reduce(%arg: memref<100x10x5xf32>,
 // CHECK:      loop.reduce([[ELEM_TO_REDUCE]]) : f32 {
 // CHECK:      ^bb0([[ELEM:%.*]]: f32, [[ACC:%.*]]: f32):
 // CHECK:        [[ELEM_BUF:%.*]] = alloc() : memref<f32>
-// CHECK:        store [[ELEM]], [[ELEM_BUF]][] : memref<f32>
 // CHECK:        [[ACC_BUF:%.*]] = alloc() : memref<f32>
+// CHECK:        [[ACC_OUT_BUF:%.*]] = alloc() : memref<f32>
+// CHECK:        store [[ELEM]], [[ELEM_BUF]][] : memref<f32>
 // CHECK:        store [[ACC]], [[ACC_BUF]][] : memref<f32>
-// CHECK:        "xla_lhlo.add"([[ELEM_BUF]], [[ACC_BUF]], [[ACC_BUF]])
-// CHECK:        [[ACC_RESULT:%.*]] = load [[ACC_BUF]][] : memref<f32>
+// CHECK:        "xla_lhlo.add"([[ELEM_BUF]], [[ACC_BUF]], [[ACC_OUT_BUF]])
+// CHECK:        [[ACC_RESULT:%.*]] = load [[ACC_OUT_BUF]][] : memref<f32>
 // CHECK:        loop.reduce.return [[ACC_RESULT]] : f32
 // CHECK:      }
 // CHECK:      loop.yield
@@ -71,11 +72,12 @@ func @reduce_no_outer_loop(%arg: memref<100xf32>,
 // CHECK:        loop.reduce([[ELEM_TO_REDUCE]]) : f32 {
 // CHECK:        ^bb0([[ELEM:%.*]]: f32, [[ACC:%.*]]: f32):
 // CHECK:          [[ELEM_BUF:%.*]] = alloc() : memref<f32>
-// CHECK:          store [[ELEM]], [[ELEM_BUF]][] : memref<f32>
 // CHECK:          [[ACC_BUF:%.*]] = alloc() : memref<f32>
+// CHECK:          [[ACC_OUT_BUF:%.*]] = alloc() : memref<f32>
+// CHECK:          store [[ELEM]], [[ELEM_BUF]][] : memref<f32>
 // CHECK:          store [[ACC]], [[ACC_BUF]][] : memref<f32>
-// CHECK:          "xla_lhlo.add"([[ELEM_BUF]], [[ACC_BUF]], [[ACC_BUF]])
-// CHECK:          [[ACC_RESULT:%.*]] = load [[ACC_BUF]][] : memref<f32>
+// CHECK:          "xla_lhlo.add"([[ELEM_BUF]], [[ACC_BUF]], [[ACC_OUT_BUF]])
+// CHECK:          [[ACC_RESULT:%.*]] = load [[ACC_OUT_BUF]][] : memref<f32>
 // CHECK:          loop.reduce.return [[ACC_RESULT]]
 // CHECK:        }
 // CHECK:        loop.yield
@@ -114,11 +116,12 @@ func @dynamic_reduce(%arg: memref<?x?x?xf32>,
 // CHECK:      loop.reduce([[ELEM_TO_REDUCE]]) : f32 {
 // CHECK:      ^bb0([[ELEM:%.*]]: f32, [[ACC:%.*]]: f32):
 // CHECK:        [[ELEM_BUF:%.*]] = alloc() : memref<f32>
-// CHECK:        store [[ELEM]], [[ELEM_BUF]][] : memref<f32>
 // CHECK:        [[ACC_BUF:%.*]] = alloc() : memref<f32>
+// CHECK:        [[ACC_OUT_BUF:%.*]] = alloc() : memref<f32>
+// CHECK:        store [[ELEM]], [[ELEM_BUF]][] : memref<f32>
 // CHECK:        store [[ACC]], [[ACC_BUF]][] : memref<f32>
-// CHECK:        "xla_lhlo.add"([[ELEM_BUF]], [[ACC_BUF]], [[ACC_BUF]])
-// CHECK:        [[ACC_RESULT:%.*]] = load [[ACC_BUF]][] : memref<f32>
+// CHECK:        "xla_lhlo.add"([[ELEM_BUF]], [[ACC_BUF]], [[ACC_OUT_BUF]])
+// CHECK:        [[ACC_RESULT:%.*]] = load [[ACC_OUT_BUF]][] : memref<f32>
 // CHECK:        loop.reduce.return [[ACC_RESULT]] : f32
 // CHECK:      }
 // CHECK:      loop.yield
@@ -185,11 +188,12 @@ func @reduce_window(%arg: memref<112x112xf32>,
 // CHECK:          loop.reduce([[ELEM_TO_REDUCE]])  : f32 {
 // CHECK:          ^bb0([[ELEM:%.*]]: f32, [[ACC:%.*]]: f32):
 // CHECK:            [[ELEM_BUF:%.*]] = alloc() : memref<f32>
-// CHECK:            store [[ELEM]], [[ELEM_BUF]][] : memref<f32>
 // CHECK:            [[ACC_BUF:%.*]] = alloc() : memref<f32>
+// CHECK:            [[ACC_OUT_BUF:%.*]] = alloc() : memref<f32>
+// CHECK:            store [[ELEM]], [[ELEM_BUF]][] : memref<f32>
 // CHECK:            store [[ACC]], [[ACC_BUF]][] : memref<f32>
-// CHECK:            "xla_lhlo.maximum"([[ELEM_BUF]], [[ACC_BUF]], [[ACC_BUF]])
-// CHECK:            [[ACC_RESULT:%.*]] = load [[ACC_BUF]][] : memref<f32>
+// CHECK:            "xla_lhlo.maximum"([[ELEM_BUF]], [[ACC_BUF]], [[ACC_OUT_BUF]])
+// CHECK:            [[ACC_RESULT:%.*]] = load [[ACC_OUT_BUF]][] : memref<f32>
 // CHECK:            loop.reduce.return [[ACC_RESULT]] : f32
 // CHECK:          }
 // CHECK:          loop.yield

@@ -26,12 +26,17 @@ limitations under the License.
 namespace tflite {
 namespace delegates {
 namespace hexagon {
+namespace {
+
+constexpr uint8_t k8BitSignFlipConstant = 0x80;
+
+}  // namespace
+
 // The TFLite 'Fully-connected' quantized op corresponds to the following
 // subgraph in Hexagon:
-// Data (uint8), Weights (const, uint8) => MatMul => MatMul out (int32)
-// Bias (const, int32) => Quantize => Bias (uint8)
-// MatMul out (int32) => Quantize => MatMul out (uint8)
-// MatMul out (uint8), Bias (uint8) => QuantizedAdd => Output (uint8)
+// Data (8-bit), Weights (const, 8-bit) => MatMul => MatMul out (int32)
+// MatMul out (int32), Bias (int32) => QuantizedBiasAdd => BiasAdd out (int32)
+// BiasAdd out (int32) => Requantize_32to8 => Output (8-bit)
 // TODO(b/129276536): Add activation support.
 TfLiteStatus MatMulOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
                                                const TfLiteIntArray* outputs,
@@ -41,9 +46,8 @@ TfLiteStatus MatMulOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   // Data tensor.
   int data_tensor_id = inputs->data[0];
   const auto& data_tensor = context->tensors[data_tensor_id];
-  TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
-      data_tensor, &data_min_, &data_max_, std::numeric_limits<uint8_t>::min(),
-      std::numeric_limits<uint8_t>::max()));
+  TF_LITE_ENSURE_STATUS(
+      ComputeMinAndMaxQuantValues(data_tensor, &data_min_, &data_max_));
   auto* data_min_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape, reinterpret_cast<char*>(&data_min_),
       sizeof(data_min_));
@@ -76,17 +80,26 @@ TfLiteStatus MatMulOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   transpose_params.perm[1] = 1;
   transpose_params.perm[2] = 3;
   transpose_params.perm[3] = 2;
-  optimized_ops::Transpose<uint8_t>(transpose_params, nhwc_shape,
-                                    weights_tensor.data.uint8, nhcw_shape,
-                                    nhcw.data());
+  if (weights_tensor.type == kTfLiteInt8) {
+    optimized_ops::Transpose<int8_t>(transpose_params, nhwc_shape,
+                                     weights_tensor.data.int8, nhcw_shape,
+                                     reinterpret_cast<int8_t*>(nhcw.data()));
+    // Flip bits on the weight values so that the int8 values are treated
+    // as uint8.
+    for (int i = 0; i < nhcw.size(); ++i) {
+      nhcw[i] = nhcw[i] ^ k8BitSignFlipConstant;
+    }
+  } else {
+    optimized_ops::Transpose<uint8_t>(transpose_params, nhwc_shape,
+                                      weights_tensor.data.uint8, nhcw_shape,
+                                      nhcw.data());
+  }
   auto* const_weights_node = graph_builder_->AddConstNodeWithData(
       weights_shape_.data(), reinterpret_cast<char*>(nhcw.data()),
       weights_tensor.bytes);
   graph_builder_->AddTensorWithID(weights_tensor_id,
                                   const_weights_node->GetID(), 0);
-  ComputeMinAndMaxQuantValues(weights_tensor, &weights_min_, &weights_max_,
-                              std::numeric_limits<uint8_t>::min(),
-                              std::numeric_limits<uint8_t>::max());
+  ComputeMinAndMaxQuantValues(weights_tensor, &weights_min_, &weights_max_);
   auto* weights_min_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape, reinterpret_cast<char*>(&weights_min_),
       sizeof(weights_min_));
@@ -114,80 +127,60 @@ TfLiteStatus MatMulOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   const auto& matmul_out_min = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
   const auto& matmul_out_max = AddOutput(sizeof(float), 4, {1, 1, 1, 1});
 
-  // Quantize the MatMul output to quint8.
-  auto* quantize_matmul_op = graph_builder_->AddNode(GetTFLiteNodeID());
-  quantize_matmul_op->SetOpType(OP_QuantizeDownAndShrinkRange_32to8);
-  quantize_matmul_op->AddInput(matmul_out);
-  quantize_matmul_op->AddInput(matmul_out_min);
-  quantize_matmul_op->AddInput(matmul_out_max);
-  const auto& quantized_matmul_out =
-      quantize_matmul_op->AddOutput(sizeof(uint8_t), 4,
-                                    {output_batch_size, output_height_size,
-                                     output_width_size, output_depth_size});
-  const auto& quantized_matmul_out_min =
-      quantize_matmul_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  const auto& quantized_matmul_out_max =
-      quantize_matmul_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-
   // Bias tensor.
   int bias_tensor_id = inputs->data[2];
   const auto& bias_tensor = context->tensors[bias_tensor_id];
   auto* const_bias_node =
       graph_builder_->AddConstNodeWithData(bias_tensor_id, bias_tensor);
   graph_builder_->AddTensorWithID(bias_tensor_id, const_bias_node->GetID(), 0);
-  ComputeMinAndMaxQuantValues(bias_tensor, &bias_min_, &bias_max_,
-                              std::numeric_limits<int32_t>::min(),
-                              std::numeric_limits<int32_t>::max());
+  ComputeMinAndMaxQuantValues(bias_tensor, &bias_min_, &bias_max_);
   auto* bias_min_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape, reinterpret_cast<char*>(&bias_min_),
       sizeof(bias_min_));
   auto* bias_max_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape, reinterpret_cast<char*>(&bias_max_),
       sizeof(bias_max_));
-  // Quantize bias
-  auto* quantize_bias_op = graph_builder_->AddNode(GetTFLiteNodeID());
-  quantize_bias_op->SetOpType(OP_QuantizeDownAndShrinkRange_32to8);
-  quantize_bias_op->AddInput(
-      graph_builder_->GetHexagonTensorId(bias_tensor_id));
-  quantize_bias_op->AddInput(TensorID(bias_min_const->GetID(), 0));
-  quantize_bias_op->AddInput(TensorID(bias_max_const->GetID(), 0));
-  const auto& quantized_bias_out =
-      quantize_bias_op->AddOutput(sizeof(uint8_t), 4,
-                                  {output_batch_size, output_height_size,
-                                   output_width_size, output_depth_size});
-  const auto& quantized_bias_out_min =
-      quantize_bias_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  const auto& quantized_bias_out_max =
-      quantize_bias_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
 
-  // Output min/max.
+  // MatMul + Bias.
+  auto* bias_add_op = graph_builder_->AddNode(GetTFLiteNodeID());
+  bias_add_op->SetOpType(OP_QuantizedBiasAdd_32p32to32);
+  bias_add_op->AddInput(matmul_out);
+  bias_add_op->AddInput(graph_builder_->GetHexagonTensorId(bias_tensor_id));
+  bias_add_op->AddInput(matmul_out_min);
+  bias_add_op->AddInput(matmul_out_max);
+  bias_add_op->AddInput(TensorID(bias_min_const->GetID(), 0));
+  bias_add_op->AddInput(TensorID(bias_max_const->GetID(), 0));
+  const auto& bias_add_out =
+      bias_add_op->AddOutput(sizeof(int32_t), 4,
+                             {output_batch_size, output_height_size,
+                              output_width_size, output_depth_size});
+  const auto& bias_add_out_min =
+      bias_add_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  const auto& bias_add_out_max =
+      bias_add_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+
+  // Quantize 32-bit result into 8-bit format using output tensor min/max.
   ComputeMinAndMaxQuantValues(context->tensors[outputs->data[0]], &output_min_,
-                              &output_max_, std::numeric_limits<uint8_t>::min(),
-                              std::numeric_limits<uint8_t>::max());
-
+                              &output_max_);
   auto* output_min_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape, reinterpret_cast<char*>(&output_min_),
       sizeof(output_min_));
   auto* output_max_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape, reinterpret_cast<char*>(&output_max_),
       sizeof(output_max_));
-
-  // MatMul + Bias.
-  auto* bias_add_op = graph_builder_->AddNode(GetTFLiteNodeID());
-  bias_add_op->SetOpType(OP_QuantizedAdd_8p8to8);
-  bias_add_op->AddInput(quantized_matmul_out);
-  bias_add_op->AddInput(quantized_bias_out);
-  bias_add_op->AddInput(quantized_matmul_out_min);
-  bias_add_op->AddInput(quantized_matmul_out_max);
-  bias_add_op->AddInput(quantized_bias_out_min);
-  bias_add_op->AddInput(quantized_bias_out_max);
-  bias_add_op->AddInput(TensorID(output_min_const->GetID(), 0));
-  bias_add_op->AddInput(TensorID(output_max_const->GetID(), 0));
-  node_output_ = bias_add_op->AddOutput(sizeof(uint8_t), 4,
-                                        {output_batch_size, output_height_size,
-                                         output_width_size, output_depth_size});
-  bias_add_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
-  bias_add_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  auto* quantize_biasadd_op = graph_builder_->AddNode(GetTFLiteNodeID());
+  quantize_biasadd_op->SetOpType(OP_Requantize_32to8);
+  quantize_biasadd_op->AddInput(bias_add_out);
+  quantize_biasadd_op->AddInput(bias_add_out_min);
+  quantize_biasadd_op->AddInput(bias_add_out_max);
+  quantize_biasadd_op->AddInput(TensorID(output_min_const->GetID(), 0));
+  quantize_biasadd_op->AddInput(TensorID(output_max_const->GetID(), 0));
+  node_output_ =
+      quantize_biasadd_op->AddOutput(sizeof(uint8_t), 4,
+                                     {output_batch_size, output_height_size,
+                                      output_width_size, output_depth_size});
+  quantize_biasadd_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
+  quantize_biasadd_op->AddOutput(sizeof(float), 4, {1, 1, 1, 1});
 
   return kTfLiteOk;
 }

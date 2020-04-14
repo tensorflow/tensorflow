@@ -27,11 +27,11 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 // CHECK: %[[MUL:.*]] = "tf.Mul"{{.*}} (tensor<1xf32>, tensor<10xf32>) -> tensor<10xf32>
 // CHECK: %[[ADD:.*]] = "tf.Add"(%[[MUL]], %[[MUL]]) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
 // CHECK: %[[CAST:.*]] = "tf.Cast"(%[[ADD]]) {{.*}} : (tensor<10xf32>) -> tensor<*xf32>
-// CHECK: %[[UNKNOWN:.*]] = "unknown.A"(%[[CAST]]) : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK: %[[UNKNOWN:.*]] = addf %[[CAST]], %[[CAST]] : tensor<*xf32>
 // CHECK: return %[[UNKNOWN]] : tensor<*xf32>
     %0 = "tf.Mul"(%arg0, %arg1) : (tensor<1xf32>, tensor<10xf32>) -> tensor<*xf32>
     %1 = "tf.Add"(%0, %0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    %2 = "unknown.A"(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    %2 = addf %1, %1 : tensor<*xf32>
     return %2 : tensor<*xf32>
   }
 
@@ -116,8 +116,8 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
 
   // CHECK-LABEL: func @shape_from_while_to_cond_body_functions
   func @shape_from_while_to_cond_body_functions(%arg0: tensor<4xf32>, %arg1: tensor<!tf.resource<tensor<4xf32>>>, %arg2: tensor<!tf.resource<tensor<*xf32>>>) -> tensor<4xf32> {
-    // CHECK "tf.While"
-    // CHECK-SAME (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<*xf32>>>) -> (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<*xf32>>>)
+    // CHECK: "tf.While"
+    // CHECK-SAME: (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<*xf32>>>) -> (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<*xf32>>>)
     %0:3 = "tf.While"(%arg0, %arg1, %arg2) {cond = @while_cond_func, body = @while_body_func, is_stateless = true} : (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<*xf32>>>) -> (tensor<4xf32>, tensor<*x!tf.resource>, tensor<!tf.resource<tensor<*xf32>>>)
     return %0#0 : tensor<4xf32>
   }
@@ -244,6 +244,40 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
       // CHECK-SAME: : tensor<32x?x4xf32>
       tf_executor.NextIteration.Sink[%1#1] %out : tensor<?x?x?xf32>
       tf_executor.fetch %1#0 : tensor<?x?x?xf32>
+    }
+    return %0 : tensor<?x?x?xf32>
+  }
+
+  // Check that supported tf_executor ops can receive data from ops on which
+  // shape inference has inferred the result types, without throwing any errors.
+  // CHECK-LABEL: func @supported_tf_executor_users
+  func @supported_tf_executor_users(%arg0: tensor<32x?x256x4xf32>, %arg1: tensor<?x?x?xf32>, %arg2: tensor<i1>, %arg3: tensor<i32>) -> tensor<?x?x?xf32> {
+    %0 = tf_executor.graph {
+      %island:3 = tf_executor.island {
+        %dims = "tf.Const"() {value = dense<[32, -1, 4]> : tensor<3xi32>} : () -> tensor<3xi32>
+        %reshape = "tf.Reshape"(%arg0, %dims) : (tensor<32x?x256x4xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
+        %cast = "tf.Cast"(%arg2) : (tensor<i1>) -> tensor<*xi1>
+        tf_executor.yield %reshape, %cast : tensor<?x?x?xf32>, tensor<*xi1>
+      }
+      // CHECK: tf_executor.Merge
+      // CHECK-SAME: : (tensor<32x?x4xf32>, tensor<?x?x?xf32>) ->
+      // CHECK: tf_executor.Switch
+      // CHECK-SAME: : (tensor<32x?x4xf32>, tensor<i1>) ->
+      // CHECK: tf_executor.SwitchN
+      // CHECK-SAME: : tensor<?x?x?xf32>
+      // CHECK: tf_executor.Enter
+      // CHECK-SAME: : (tensor<32x?x4xf32>) ->
+      // CHECK: tf_executor.Exit
+      // CHECK-SAME: : tensor<?x?x?xf32>
+      // CHECK: tf_executor.LoopCond
+      // CHECK-SAME: : tensor<*xi1>
+      %merge:3 = "tf_executor.Merge"(%island#0, %arg1) : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> (tensor<?x?x?xf32>, tensor<i32>, !tf_executor.control)
+      %switch:3 = "tf_executor.Switch"(%island#0, %arg2) : (tensor<?x?x?xf32>, tensor<i1>) -> (tensor<?x?x?xf32>, tensor<?x?x?xf32>, !tf_executor.control)
+      %switchn:3 = "tf_executor.SwitchN"(%island#0, %arg3) {num_outs = 2} : (tensor<?x?x?xf32>, tensor<i32>) -> (tensor<?x?x?xf32>, tensor<?x?x?xf32>, !tf_executor.control)
+      %enter:2 = "tf_executor.Enter"(%island#0) { frame_name = "frame"} : (tensor<?x?x?xf32>) -> (tensor<?x?x?xf32>, !tf_executor.control)
+      %exit:2 = "tf_executor.Exit"(%island#0) : (tensor<?x?x?xf32>) -> (tensor<?x?x?xf32>, !tf_executor.control)
+      %loop_cond:2 = "tf_executor.LoopCond" (%island#1) : (tensor<*xi1>) -> (tensor<*xi1>, !tf_executor.control)
+      tf_executor.fetch %enter#0 : tensor<?x?x?xf32>
     }
     return %0 : tensor<?x?x?xf32>
   }

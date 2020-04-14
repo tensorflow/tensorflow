@@ -167,6 +167,11 @@ void SseMatrixBatchVectorMultiplyAccumulate(
     const float* __restrict__ scaling_factors, int n_batch,
     float* __restrict__ result, const float* __restrict__ per_channel_scale,
     const int32_t* __restrict__ input_offset) {
+  if (input_offset == nullptr) {
+    SseMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vectors,
+                                           scaling_factors, n_batch, result);
+    return;
+  }
   static constexpr std::intptr_t kBlockSize = 16;
   for (std::intptr_t batch = 0; batch < n_batch; ++batch) {
     const float batch_scaling_factor = scaling_factors[batch];

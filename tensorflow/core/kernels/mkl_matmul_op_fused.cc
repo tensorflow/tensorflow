@@ -243,6 +243,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
       MklFusedMatMulOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_FUSEDMATMUL_MKL_SUPPORTED_KERNELS_TYPES);
+TF_CALL_bfloat16(REGISTER_FUSEDMATMUL_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow
 

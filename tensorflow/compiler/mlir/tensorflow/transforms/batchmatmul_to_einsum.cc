@@ -43,7 +43,8 @@ namespace TF {
 
 namespace {
 // Replace TF BatchMatMul by TF Einsum
-struct BatchMatMulToEinsumPass : public FunctionPass<BatchMatMulToEinsumPass> {
+struct BatchMatMulToEinsumPass
+    : public PassWrapper<BatchMatMulToEinsumPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -54,7 +55,7 @@ void BatchMatMulToEinsumPass::runOnFunction() {
   patterns.insert<ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulOp>,
                   ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulV2Op>>(
       &getContext());
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 
 }  // namespace
@@ -117,7 +118,7 @@ static PassRegistration<BatchMatMulToEinsumPass> pass(
     "tf-batch-matmul-to-tf-einsum",
     "Replace TF BatchMatMul op by TF Einsum op.");
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateBatchMatMulToEinsumPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateBatchMatMulToEinsumPass() {
   return std::make_unique<BatchMatMulToEinsumPass>();
 }
 

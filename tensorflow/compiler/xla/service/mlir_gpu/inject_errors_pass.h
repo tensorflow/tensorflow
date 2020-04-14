@@ -22,7 +22,7 @@ namespace mlir {
 
 // Returns a function pass that emits errors from all operations inside the
 // function.
-std::unique_ptr<OpPassBase<FuncOp>> createInjectErrorsForTestingPass();
+std::unique_ptr<OperationPass<FuncOp>> createInjectErrorsForTestingPass();
 
 }  // namespace mlir
 

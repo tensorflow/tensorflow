@@ -658,8 +658,6 @@ def mark_as_return(outputs, acd):
 V2_DTYPE_BEHAVIOR = None
 
 
-# These two functions are not exported because we plan on removing them in the
-# future.
 def enable_v2_dtype_behavior():
   """Enable the V2 dtype behavior for Keras layers.
 

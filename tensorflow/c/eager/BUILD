@@ -179,6 +179,8 @@ cc_library(
         "//tensorflow/c:tensor_interface",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -193,6 +195,7 @@ tf_cuda_library(
     ],
     deps = [
         ":c_api",
+        ":c_api_experimental",
         "//tensorflow/c:c_test_util",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -220,6 +223,7 @@ tf_cuda_cc_test(
         ":c_api_test_util",
         "//tensorflow/c:c_test_util",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -368,6 +372,22 @@ tf_cuda_cc_test(
     ],
 )
 
+cc_library(
+    name = "custom_device_testutil",
+    testonly = True,
+    srcs = ["custom_device_testutil.cc"],
+    hdrs = ["custom_device_testutil.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_test_util",
+        "//tensorflow/c:c_api",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
 tf_cc_test(
     name = "custom_device_test",
     size = "small",
@@ -378,6 +398,7 @@ tf_cc_test(
         ":c_api",
         ":c_api_experimental",
         ":c_api_test_util",
+        ":custom_device_testutil",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/cc/profiler",
@@ -445,6 +466,7 @@ filegroup(
         ],
         exclude = [
             "c_api_experimental.cc",
+            "*c_api_tfrt*",
             "*test*",
             "*dlpack*",
         ],

@@ -215,6 +215,12 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_armhf",
+    values = {"cpu": "armhf"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_x86_64",
     values = {"cpu": "k8"},
     visibility = ["//visibility:public"],
@@ -639,7 +645,7 @@ tf_cc_shared_object(
         "//tensorflow/cc/saved_model:loader_lite_impl",
         "//tensorflow/core:core_cpu_impl",
         "//tensorflow/core:framework_internal_impl",
-        "//tensorflow/core:gpu_runtime_impl",
+        "//tensorflow/core/common_runtime/gpu:gpu_runtime_impl",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
         "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core/profiler:profiler_impl",

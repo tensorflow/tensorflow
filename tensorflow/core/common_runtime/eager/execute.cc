@@ -80,8 +80,7 @@ const string& DeviceNameOrUnspecified(Device* device) {
   return (device == nullptr) ? *unspecified_string : device->name();
 }
 
-const string& DeviceNameOrUnspecified(
-    absl::variant<Device*, CustomDevice*> device) {
+const string& DeviceNameOrUnspecified(VariantDevice device) {
   if (VariantDeviceIsCustom(device)) {
     return absl::get<CustomDevice*>(device)->name();
   } else {
@@ -157,9 +156,9 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
                             " to ", expected_input_device->name());
       },
       profiler::TraceMeLevel::kInfo);
-  Status status = EagerCopyToDevice(
-      handle, ctx, &op->Executor(), expected_input_device,
-      handle->ImplicitMirroring() || ctx->MirrorTensors(), &result_handle);
+  Status status =
+      EagerCopyToDevice(handle, ctx, &op->Executor(), expected_input_device,
+                        /* mirror= */ true, &result_handle);
   activity.Stop();
   if (!status.ok()) {
     return errors::Internal("Failed copying input tensor from ",
@@ -374,7 +373,10 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
 //    running without an explicitly requested device.
 Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                          int* num_retvals) {
-  auto op_annotation = ScopedMemoryDebugAnnotation(op->op_name());
+  ScopedMemoryDebugAnnotation op_annotation(
+      op->op_name(), op->remote_func_params().has_value()
+                         ? op->remote_func_params().value().step_id.value_or(0)
+                         : 0);
   profiler::TraceMe activity(
       [&] { return absl::StrCat("EagerLocalExecute: ", op->Name()); },
       profiler::TraceMeLevel::kInfo);
@@ -416,7 +418,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
         TensorHandle* handle = nullptr;
         TF_RETURN_IF_ERROR(EagerCopyToDevice(
             input, &ctx, &executor, device == nullptr ? ctx.HostCPU() : device,
-            input->ImplicitMirroring() || ctx.MirrorTensors(), &handle));
+            /* mirror= */ true, &handle));
         op->UpdateInput(i, handle);
         // Unref handle since it has a ref as an input now
         handle->Unref();
@@ -875,7 +877,6 @@ Status MaybeUpdateOpDevice(EagerOperation* op) {
         if (!allowed_devices.empty()) {
           // TODO(b/145922293): Support allowed_devices specified in wildcard
           // patterns.
-          std::vector<string> device_names;
           if (std::find(allowed_devices.begin(), allowed_devices.end(),
                         op->GetDeviceName()) != allowed_devices.end()) {
             TF_RETURN_IF_ERROR(ctx.FindDeviceFromName(
@@ -1011,13 +1012,8 @@ Status EagerKernelExecute(
   // device. We don't call it now because it is an unneeded overhead (it
   // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
-  if (container == nullptr) {
-    TF_RETURN_IF_ERROR(kernel->Run(inputs, &outputs, cancellation_manager,
-                                   remote_func_params));
-  } else {
-    TF_RETURN_IF_ERROR(kernel->Run(container, inputs, &outputs,
-                                   cancellation_manager, remote_func_params));
-  }
+  TF_RETURN_IF_ERROR(kernel->Run(container, inputs, &outputs,
+                                 cancellation_manager, remote_func_params));
   if (graph_collector != nullptr) {
     mutex_lock ml(*ctx->MetadataMu());
     {

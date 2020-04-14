@@ -167,6 +167,7 @@ cc_library(
         ":tf2xla_proto_cc",
         ":tf2xla_util",
         ":xla_compiler",
+        "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",

@@ -94,6 +94,15 @@ TensorShape XlaOpKernelContext::InputShape(absl::string_view name) {
   return GetInputTensorByName(name).shape();
 }
 
+xla::StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(int index) {
+  return builder()->GetShape(Input(index));
+}
+
+xla::StatusOr<xla::Shape> XlaOpKernelContext::InputXlaShape(
+    absl::string_view name) {
+  return builder()->GetShape(Input(name));
+}
+
 DataType XlaOpKernelContext::input_type(int index) const {
   DataType type = context_->input_dtype(index);
   if (type == DT_UINT8) {

@@ -53,14 +53,16 @@ Value CreateScalarConst(int value, OpBuilder builder, Location loc) {
       loc, tensorflow::ConvertTensor(scalar_tensor, &builder).ValueOrDie());
 }
 
-Value GetR1Const(ArrayRef<int64_t> r1, OpBuilder builder, Location loc) {
-  tensorflow::Tensor shape_tensor(tensorflow::DT_INT32,
-                                  {static_cast<int64_t>(r1.size())});
-  for (int i = 0; i < r1.size(); ++i) {
-    shape_tensor.vec<tensorflow::int32>()(i) = r1[i];
-  }
+Value GetR1Const(ArrayRef<int64_t> r1, OpBuilder builder, Location loc,
+                 int bitwidth) {
+  llvm::SmallVector<APInt, 4> values;
+  int64_t rank = r1.size();
+  values.reserve(rank);
+  for (int i = 0; i < rank; ++i) values.push_back(APInt(bitwidth, r1[i]));
+  auto result_type = RankedTensorType::get(
+      {rank}, IntegerType::get(bitwidth, builder.getContext()));
   return builder.create<TF::ConstOp>(
-      loc, tensorflow::ConvertTensor(shape_tensor, &builder).ValueOrDie());
+      loc, DenseElementsAttr::get(result_type, values));
 }
 
 Value GetIndicesForElement(Value index, Value buffer, OpBuilder builder,
@@ -274,7 +276,7 @@ int64_t GetFirstIfIndicesAreContiguous(Value indices) {
   if (!const_op) return -1;
   int64_t last_index = -1;
   int64_t first_index = -1;
-  for (auto ind : const_op.value().getValues<APInt>()) {
+  for (const auto& ind : const_op.value().getValues<APInt>()) {
     if (last_index == -1) {
       last_index = ind.getSExtValue();
       first_index = last_index;

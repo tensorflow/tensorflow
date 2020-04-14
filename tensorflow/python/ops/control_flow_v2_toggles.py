@@ -42,6 +42,8 @@ def enable_control_flow_v2():  # pylint: disable=invalid-name
   Note: v2 control flow is always enabled inside of tf.function. Calling this
   function is not required.
   """
+  # pylint: disable=protected-access
+  ops._control_flow_api_gauge.get_cell().set(True)
   control_flow_util.ENABLE_CONTROL_FLOW_V2 = True
 
 
@@ -55,6 +57,8 @@ def disable_control_flow_v2():  # pylint: disable=invalid-name
   If your code needs tf.disable_control_flow_v2() to be called to work
   properly please file a bug.
   """
+  # pylint: disable=protected-access
+  ops._control_flow_api_gauge.get_cell().set(False)
   control_flow_util.ENABLE_CONTROL_FLOW_V2 = False
 
 

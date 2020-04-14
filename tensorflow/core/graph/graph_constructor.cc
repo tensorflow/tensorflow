@@ -1300,7 +1300,7 @@ Status GraphConstructor::Convert() {
 
 Status GraphConstructor::AddBackEdges() {
   // Add the back edges after all nodes are created.
-  for (auto e : back_edges_) {
+  for (const auto& e : back_edges_) {
     Node* src_node = gdef_nodes_[e.src_name].node;
     if (e.src_index == Graph::kControlSlot) {
       g_->AddControlEdge(src_node, e.dst_node, kDoNotCheckDuplicates);

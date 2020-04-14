@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
@@ -20,8 +21,7 @@ limitations under the License.
 
 namespace {
 
-bool IsCPU(
-    absl::variant<tensorflow::Device*, tensorflow::CustomDevice*> variant) {
+bool IsCPU(tensorflow::VariantDevice variant) {
   if (VariantDeviceIsCustom(variant)) {
     return false;
   }
@@ -40,7 +40,7 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
     auto* custom_device = absl::get<CustomDevice*>(device());
     TensorHandle* copy;
     *status = custom_device->CopyTensorFromDevice(
-        this, "/job:localhost/task:0/replica:0/device:CPU:0", &copy);
+        this, "/job:localhost/replica:0/task:0/device:CPU:0", &copy);
     if (status->ok()) {
       return copy->Resolve(status);
     } else {
@@ -61,8 +61,12 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
       h_cpu->Unref();
       return nullptr;
     }
-    auto* retval = new TensorInterface(*t);
+    // TODO(b/153052876): Change TF_TensorFromTensor to just return an
+    // AbstractTensorInterface
+    TF_Tensor* tf_tensor = TF_TensorFromTensor(*t, status);
+    AbstractTensorInterface* retval = tf_tensor->tensor;
     h_cpu->Unref();
+    delete tf_tensor;
     return retval;
   } else {
     tensorflow::Tensor tensor;
@@ -78,15 +82,19 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
     } else {
       *status = CopyToDevice(*ctx_, ctx_->HostCPU(), &tensor);
       if (!status->ok()) return nullptr;
-      if (ImplicitMirroring()) {
-        *status = AddEmptyLocalMirror(nullptr);
-        if (!status->ok()) return nullptr;
-        tensorflow::Tensor mirror = tensor;
-        *status = SetTensor(std::move(mirror), nullptr);
-        if (!status->ok()) return nullptr;
-      }
+
+      *status = AddEmptyLocalMirror(nullptr);
+      if (!status->ok()) return nullptr;
+      tensorflow::Tensor mirror = tensor;
+      *status = SetTensor(std::move(mirror), nullptr);
+      if (!status->ok()) return nullptr;
     }
-    return new TensorInterface(std::move(tensor));
+    // TODO(b/153052876): Change TF_TensorFromTensor to just return an
+    // AbstractTensorInterface
+    TF_Tensor* tf_tensor = TF_TensorFromTensor(tensor, status);
+    AbstractTensorInterface* retval = tf_tensor->tensor;
+    delete tf_tensor;
+    return retval;
   }
 }
 

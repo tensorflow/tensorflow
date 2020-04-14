@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
 namespace benchmark {
@@ -40,9 +41,6 @@ class DelegateProvider {
   // value.
   virtual std::vector<Flag> CreateFlags(BenchmarkParams* params) const = 0;
 
-  // Add delegate-specific benchmark pararms to 'params'
-  virtual void AddParams(BenchmarkParams* params) const = 0;
-
   // Log benchmark params.
   virtual void LogParams(const BenchmarkParams& params) const = 0;
 
@@ -51,6 +49,18 @@ class DelegateProvider {
       const BenchmarkParams& params) const = 0;
 
   virtual std::string GetName() const = 0;
+
+  const BenchmarkParams& DefaultParams() const { return default_params_; }
+
+ protected:
+  template <typename T>
+  Flag CreateFlag(const char* name, BenchmarkParams* params,
+                  const std::string& usage) const {
+    return Flag(
+        name, [params, name](const T& val) { params->Set<T>(name, val); },
+        default_params_.Get<T>(name), usage, Flag::OPTIONAL);
+  }
+  BenchmarkParams default_params_;
 };
 
 using DelegateProviderPtr = std::unique_ptr<DelegateProvider>;

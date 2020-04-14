@@ -434,6 +434,7 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
     ],
 )

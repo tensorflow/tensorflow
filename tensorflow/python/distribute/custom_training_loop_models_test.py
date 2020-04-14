@@ -219,6 +219,42 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
           distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
+  def test_batch_norm_with_dynamic_batch(self, distribution):
+    inputs = np.zeros((10, 3, 3, 3), dtype=np.float32)
+    targets = np.zeros((10, 4), dtype=np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+    dataset = dataset.repeat()
+    dataset = dataset.batch(10, drop_remainder=False)
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with distribution.scope():
+      x = keras.layers.Input(shape=(3, 3, 3), name="input")
+      y = keras.layers.BatchNormalization(fused=True, name="bn")(x)
+      y = keras.layers.Flatten()(y)
+      y = keras.layers.Dense(4, name="dense")(y)
+      model = keras.Model(x, y)
+      optimizer = keras.optimizer_v2.rmsprop.RMSprop()
+
+    @def_function.function
+    def train_step(iterator):
+      def step_fn(inputs):
+        images, targets = inputs
+        with backprop.GradientTape() as tape:
+          outputs = model(images, training=True)
+          loss = math_ops.reduce_sum(outputs - targets)
+        grads = tape.gradient(loss, model.variables)
+        optimizer.apply_gradients(zip(grads, model.variables))
+        return loss
+
+      distribution.run(step_fn, args=(next(iterator),))
+
+    train_step(input_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
   def test_lstm(self, distribution):
 
     batch_size = 32

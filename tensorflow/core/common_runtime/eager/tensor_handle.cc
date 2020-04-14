@@ -137,7 +137,6 @@ TensorHandle::TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
       op_device_(op_device),
       resource_device_(resource_device),
       ctx_(ctx),
-      implicit_mirroring_(true),
       data_(absl::in_place_type<LocalTensorHandleData>, std::move(t)) {
   DVLOG(3) << "Creating Local TensorHandle: " << this
            << " device: " << VariantDeviceDebugString(device_)
@@ -152,7 +151,6 @@ TensorHandle::TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
       resource_device_(
           GetResourceDevice(t.flat<class ResourceHandle>()(0), ctx)),
       ctx_(ctx),
-      implicit_mirroring_(true),
       resource_handle_info_(
           {t.flat<class ResourceHandle>()(0).dtypes_and_shapes(),
            t.flat<class ResourceHandle>()(0).allowed_devices()}),
@@ -169,7 +167,6 @@ TensorHandle::TensorHandle(tensorflow::Tensor&& t, CustomDevice* d,
       op_device_(nullptr),
       resource_device_(nullptr),
       ctx_(ctx),
-      implicit_mirroring_(true),
       data_(absl::in_place_type<LocalTensorHandleData>, std::move(t)) {
   // TODO(allenl): Figure out a better op_device story for custom devices,
   // since always setting it to CPU=nullptr doesn't make much sense.
@@ -193,7 +190,6 @@ TensorHandle::TensorHandle(Device* d, Device* op_device,
       op_device_(op_device),
       resource_device_(resource_device),
       ctx_(ctx),
-      implicit_mirroring_(true),
       data_(absl::in_place_type<LocalTensorHandleData>) {
   DVLOG(3) << "Creating empty Local TensorHandle: " << this
            << " device: " << VariantDeviceDebugString(device_);
@@ -215,7 +211,6 @@ TensorHandle::TensorHandle(int64 op_id, int32 output_num,
       op_device_(d),
       resource_device_(dtype == DT_RESOURCE ? d : nullptr),
       ctx_(ctx),
-      implicit_mirroring_(true),
       data_(absl::in_place_type<RemoteTensorHandleData>, op_id, output_num,
             remote_task, ctx) {
   DVLOG(3) << "Creating Unshaped Remote TensorHandle: " << this
@@ -238,7 +233,6 @@ TensorHandle::TensorHandle(int64 op_id, int32 output_num,
       op_device_(d),
       resource_device_(dtype == DT_RESOURCE ? d : nullptr),
       ctx_(ctx),
-      implicit_mirroring_(true),
       data_(absl::in_place_type<RemoteTensorHandleData>, op_id, output_num,
             ctx->GetContextViewId()) {
   DVLOG(3) << "Creating Lazy Remote TensorHandle: " << this
@@ -305,7 +299,13 @@ Status TensorHandle::TensorFromDevice(const Device* d,
 Status TensorHandle::TensorValue(const Device* d, tensorflow::TensorValue* t) {
   DVLOG(3) << "TensorValue on TensorHandle: " << this << " device: " << d;
 
-  if (d == absl::get<Device*>(device_)) {
+  if (VariantDeviceIsCustom(device_)) {
+    return errors::Internal(
+        "TensorHandle::TensorValue not supported for custom devices yet. "
+        "Handle device: ",
+        VariantDeviceDebugString(device_),
+        ", requested device: ", d != nullptr ? d->name() : "(nil)");
+  } else if (d == absl::get<Device*>(device_)) {
     if (IsRemote()) {
       return errors::Internal("Invalid TensorValue call on remote handle: ",
                               this);
@@ -326,8 +326,7 @@ Status TensorHandle::TensorValue(const Device* d, tensorflow::TensorValue* t) {
   return mirror.TensorValue(t);
 }
 
-TensorHandle::VariantDevice TensorHandle::DeviceOrHostCPU(
-    const EagerContext& ctx) const {
+VariantDevice TensorHandle::DeviceOrHostCPU(const EagerContext& ctx) const {
   if (VariantDeviceIsCustom(device_)) {
     return device_;
   } else {
@@ -788,16 +787,15 @@ Status TensorHandle::CopyToDevice(const EagerContext& ctx,
   return status;
 }
 
-bool VariantDeviceIsCustom(
-    absl::variant<Device*, CustomDevice*> variant_device) {
+bool VariantDeviceIsCustom(VariantDevice variant_device) {
   return variant_device.index() != 0;
 }
 
-string VariantDeviceName(absl::variant<Device*, CustomDevice*> device) {
+string VariantDeviceName(VariantDevice device) {
   return absl::visit([](auto* device) { return device->name(); }, device);
 }
 
-string VariantDeviceDebugString(absl::variant<Device*, CustomDevice*> device) {
+string VariantDeviceDebugString(VariantDevice device) {
   if (device == kVariantDeviceNull) {
     return "[]";
   } else if (VariantDeviceIsCustom(device)) {
