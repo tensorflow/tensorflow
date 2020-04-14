@@ -131,8 +131,9 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
             case RocmTracerEventSource::ApiCallback:
               break;
             case RocmTracerEventSource::Activity:
-              iter->second.start_time_ns = event.start_time_ns;
-              iter->second.end_time_ns = event.end_time_ns;
+              // Use the start/stop time from the HCC_OPS domain
+              // iter->second.start_time_ns = event.start_time_ns;
+              // iter->second.end_time_ns = event.end_time_ns;
               iter->second.annotation = event.annotation;
               break;
           }
@@ -146,7 +147,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
               iter->second.stream_id = event.stream_id;
               iter->second.start_time_ns = event.start_time_ns;
               iter->second.end_time_ns = event.end_time_ns;
-              iter->second.annotation = event.annotation;
+              // Use the annotation from the HIP_API domain
+              // iter->second.annotation = event.annotation;
               break;
           }
           break;
@@ -600,6 +602,7 @@ RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
   RocmTracerOptions options;
 
   std::vector<uint32_t> hip_api_domain_ops{
+      HIP_API_ID_hipExtModuleLaunchKernel,
       HIP_API_ID_hipFree,
       HIP_API_ID_hipMalloc,
       HIP_API_ID_hipMemcpyDtoD,
