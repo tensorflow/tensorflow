@@ -136,10 +136,6 @@ class DefaultTensorTie : public TensorTie {
     if (!IsValid(def().external_def, obj)) {
       return absl::InvalidArgumentError("Given object is not valid");
     }
-    // TODO(akulik): external object should propagate to internal.
-    if (IsSameDef()) {
-      return absl::UnimplementedError("Not supported");
-    }
     external_obj_ = obj;
     return absl::OkStatus();
   }
