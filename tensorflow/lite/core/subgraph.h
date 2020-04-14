@@ -542,6 +542,11 @@ class Subgraph {
   // Does nothing if UndoAllDelegates wasn't previously called.
   TfLiteStatus RedoAllDelegates();
 
+  // This removes all delegates.
+  // The old execution plan and nodes are restored. The graph is invokable
+  // afterwards.
+  TfLiteStatus RemoveAllDelegates();
+
   // Cleanups up data reserved for the given node. Does not remove the {node,
   // registration} pair from nodes_and_registrations_.
   void CleanupNode(int node_index);
