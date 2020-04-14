@@ -397,8 +397,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
   def metrics(self):
     """Returns the model's metrics added using `compile`, `add_metric` APIs.
 
-    Note: `metrics` are available only after a `keras.Model` has been
-    trained/evaluated on actual data.
+    Note: Metrics passed to `compile()` are available only after a `keras.Model`
+    has been trained/evaluated on actual data.
 
     Examples:
 
@@ -1375,7 +1375,24 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     return tf_utils.to_numpy_or_python_type(all_outputs)
 
   def reset_metrics(self):
-    """Resets the state of metrics."""
+    """Resets the state of all the metrics in the model.
+
+    Examples:
+
+    >>> inputs = tf.keras.layers.Input(shape=(3,))
+    >>> outputs = tf.keras.layers.Dense(2)(inputs)
+    >>> model = tf.keras.models.Model(inputs=inputs, outputs=outputs)
+    >>> model.compile(optimizer="Adam", loss="mse", metrics=["mae"])
+
+    >>> x = np.random.random((2, 3))
+    >>> y = np.random.randint(0, 2, (2, 2))
+    >>> _ = model.fit(x, y, verbose=0)
+    >>> assert all(float(m.result()) for m in model.metrics)
+
+    >>> model.reset_metrics()
+    >>> assert all(float(m.result()) == 0 for m in model.metrics)
+
+    """
     for m in self.metrics:
       m.reset_states()
 
