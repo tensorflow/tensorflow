@@ -39,7 +39,7 @@ template <typename T_SCALE>
 struct InterpolationCache {
   std::vector<int64> lower;  // Lower source index used in the interpolation
   std::vector<int64> upper;  // Upper source index used in the interpolation
-  // 1-D linear iterpolation scale (see:
+  // 1-D linear interpolation scale (see:
   // https://en.wikipedia.org/wiki/Bilinear_interpolation)
   std::vector<float> lerp;
   std::vector<T_SCALE> ilerp;

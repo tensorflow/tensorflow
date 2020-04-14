@@ -18,11 +18,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_TYPES_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_TYPES_H_
 
-#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {
@@ -91,7 +91,7 @@ class TensorFlowType : public Type {
 // Returns true if the specified type is a valid TensorFlow element type.
 static inline bool IsValidTFElementType(Type type) {
   return type.isa<ComplexType>() || type.isa<FloatType>() ||
-         type.isSignlessInteger() || type.isa<TensorFlowType>();
+         type.isa<IntegerType>() || type.isa<TensorFlowType>();
 }
 
 // Returns true if this is a valid TensorFlow tensor type.

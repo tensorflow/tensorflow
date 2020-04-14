@@ -613,9 +613,9 @@ void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
   tflite::ArithmeticParams op_params;
   SetActivationParams(output_activation_min, output_activation_max, &op_params);
 
-  BroadcastDiv4DSlow(op_params, DimsToShape(input1_dims), input1_data,
-                     DimsToShape(input2_dims), input2_data,
-                     DimsToShape(output_dims), output_data);
+  BroadcastDivSlow(op_params, DimsToShape(input1_dims), input1_data,
+                   DimsToShape(input2_dims), input2_data,
+                   DimsToShape(output_dims), output_data);
 }
 
 template <typename T>
@@ -2147,9 +2147,9 @@ void TensorFlowMaximumMinimum(const T* input1_data, const Dims<4>& input1_dims,
                               const T* input2_data, const Dims<4>& input2_dims,
                               T* output_data, const Dims<4>& output_dims,
                               Op op) {
-  MaximumMinimumBroadcast4DSlow(DimsToShape(input1_dims), input1_data,
-                                DimsToShape(input2_dims), input2_data,
-                                DimsToShape(output_dims), output_data, op);
+  MaximumMinimumBroadcastSlow(DimsToShape(input1_dims), input1_data,
+                              DimsToShape(input2_dims), input2_data,
+                              DimsToShape(output_dims), output_data, op);
 }
 
 template <typename T1, typename T2, typename T3>

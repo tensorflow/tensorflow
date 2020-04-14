@@ -58,7 +58,7 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
       } else if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
       } else if (stat.Type() == StatType::kStepName) {
-        step_name = stat.StrValue();
+        step_name = stat.StrOrRefValue();
       }
     });
     if (group_id < 0) return;
@@ -79,7 +79,9 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
           StepMarkerType::kImplicitHostStepMarker, event.Name(), timespan));
     } else if (IsRealCpuCompute(event.Name())) {
       EventTypeSpan event_type_span(
-          ClassifyCpuEvent(event.Name(), correlation_id), timespan);
+          ClassifyCpuEvent(event.Name(), correlation_id,
+                           use_device_step_events),
+          timespan);
       result[group_id].AddEvent(event_type_span);
     }
   });
@@ -126,7 +128,7 @@ StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line) {
       } else if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
       } else if (stat.Type() == StatType::kTensorShapes) {
-        tensor_shapes = stat.StrValue();
+        tensor_shapes = stat.StrOrRefValue();
       }
     });
 

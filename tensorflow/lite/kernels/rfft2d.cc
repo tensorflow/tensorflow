@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "third_party/fft2d/fft2d.h"
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
@@ -360,7 +360,7 @@ TfLiteStatus Rfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
   double* fft_double_working_area_data = reinterpret_cast<double*>(
       GetTensorData<int64_t>(fft_double_working_area));
 
-  // Process evert slice in the input buffer
+  // Process every slice in the input buffer
   for (int i = 0; i < num_slices; ++i) {
     PrepareInputBuffer(input_data, input_height, input_width, fft_height,
                        fft_width, fft_input_output);

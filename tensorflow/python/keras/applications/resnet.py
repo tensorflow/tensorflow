@@ -13,15 +13,24 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=invalid-name
-"""ResNet models for Keras."""
-from __future__ import absolute_import, division, print_function
+"""ResNet models for Keras.
+
+Reference paper:
+  - [Deep Residual Learning for Image Recognition]
+    (https://arxiv.org/abs/1512.03385) (CVPR 2015)
+"""
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
 
 import os
 
-from tensorflow.python.keras import backend, layers
+from tensorflow.python.keras import backend
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.utils import data_utils, layer_utils
+from tensorflow.python.keras.layers import VersionAwareLayers
+from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.util.tf_export import keras_export
 
 BASE_WEIGHTS_PATH = (
@@ -45,6 +54,8 @@ WEIGHTS_HASHES = {
                    '0f678c91647380debd923963594981b3')
 }
 
+layers = None
+
 
 def ResNet(stack_fn,
            preact,
@@ -59,6 +70,10 @@ def ResNet(stack_fn,
            classifier_activation='softmax',
            **kwargs):
   """Instantiates the ResNet, ResNetV2, and ResNeXt architecture.
+
+  Reference paper:
+  - [Deep Residual Learning for Image Recognition]
+    (https://arxiv.org/abs/1512.03385) (CVPR 2015)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
@@ -115,9 +130,11 @@ def ResNet(stack_fn,
     ValueError: if `classifier_activation` is not `softmax` or `None` when
       using a pretrained top layer.
   """
+  global layers
   if 'layers' in kwargs:
-    global layers
     layers = kwargs.pop('layers')
+  else:
+    layers = VersionAwareLayers()
   if kwargs:
     raise ValueError('Unknown argument(s): %s' % (kwargs,))
   if not (weights in {'imagenet', None} or os.path.exists(weights)):
@@ -562,10 +579,14 @@ decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
 
 DOC = """
 
+  Reference paper:
+  - [Deep Residual Learning for Image Recognition]
+  (https://arxiv.org/abs/1512.03385) (CVPR 2015)
+
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
-  
+
   Arguments:
     include_top: whether to include the fully-connected
       layer at the top of the network.

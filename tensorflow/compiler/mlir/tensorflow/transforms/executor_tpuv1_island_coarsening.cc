@@ -29,17 +29,17 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
-#include "mlir/IR/UseDefLists.h"  // TF:llvm-project
-#include "mlir/IR/Visitors.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/UseDefLists.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -59,8 +59,9 @@ constexpr llvm::StringRef kTpuStatusAttr = "_tpu_compilation_status";
 // TPU-annotated operations and intended to preserve backward compatibility with
 // TFv1.
 struct TpuV1BridgeExecutorIslandCoarsening
-    : public ModulePass<TpuV1BridgeExecutorIslandCoarsening> {
-  void runOnModule() override;
+    : public PassWrapper<TpuV1BridgeExecutorIslandCoarsening,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Sort the Operations in the provided range to enforce dominance.
@@ -226,7 +227,8 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
         yield_operands.push_back(std::get<1>(result));
     }
   }
-  OpBuilder(&island_body).create<YieldOp>(new_island.getLoc(), yield_operands);
+  OpBuilder::atBlockEnd(&island_body)
+      .create<YieldOp>(new_island.getLoc(), yield_operands);
 
   // remap results of the new islands to the user outside of the island.
   int current_result = 0;
@@ -257,13 +259,13 @@ LogicalResult MergeIsland(llvm::function_ref<bool(StringAttr, Operation*)>
                            first_op_after);
 }
 
-void TpuV1BridgeExecutorIslandCoarsening::runOnModule() {
-  SymbolTable symbol_table(getModule());
+void TpuV1BridgeExecutorIslandCoarsening::runOnOperation() {
+  SymbolTable symbol_table(getOperation());
 
   // Map tpu cluster names to the functions that contain operations for this
   // cluster.
   DenseMap<StringRef, DenseSet<FuncOp>> tpu_funcs;
-  for (FuncOp func_op : getModule().getOps<FuncOp>()) {
+  for (FuncOp func_op : getOperation().getOps<FuncOp>()) {
     func_op.walk([&](Operation* op) {
       StringAttr cluster_name =
           op->getAttrOfType<StringAttr>(kTpuReplicateAttr);
@@ -291,7 +293,7 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnModule() {
     return false;
   };
 
-  for (FuncOp func_op : getModule().getOps<FuncOp>()) {
+  for (FuncOp func_op : getOperation().getOps<FuncOp>()) {
     func_op.walk([&](GraphOp graph) {
       Block& graph_body = graph.GetBody();
 
@@ -321,7 +323,7 @@ void TpuV1BridgeExecutorIslandCoarsening::runOnModule() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorTPUV1IslandCoarseningPass() {
   return std::make_unique<TpuV1BridgeExecutorIslandCoarsening>();
 }

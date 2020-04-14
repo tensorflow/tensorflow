@@ -17,12 +17,13 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MLIR_GPU_LHLO_DIALECT_EMITTER_H_
 
 #include <memory>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_emitter.h"
@@ -53,15 +54,18 @@ class LhloDialectEmitter : public DfsHloVisitorWithDefault,
   // Default action which emits code for most operations. Operations which are
   // special in some way are handled explicitly in HandleFoo methods.
   Status DefaultAction(HloInstruction* instr) override;
-  Status HandleBroadcast(HloInstruction* broadcast) override;
-  Status HandleCompare(HloInstruction* compare) override;
-  Status HandleConstant(HloInstruction* constant) override;
-  Status HandleCustomCall(HloInstruction* custom_call) override;
-  Status HandleFusion(HloInstruction* fusion) override;
-  Status HandleIota(HloInstruction* iota) override;
-  Status HandleParameter(HloInstruction* parameter) override;
-  Status HandleReduce(HloInstruction* reduce) override;
-  Status HandleTuple(HloInstruction* tuple) override;
+  Status HandleBroadcast(HloInstruction* instr) override;
+  Status HandleCompare(HloInstruction* instr) override;
+  Status HandleConcatenate(HloInstruction* instr) override;
+  Status HandleConstant(HloInstruction* instr) override;
+  Status HandleCustomCall(HloInstruction* instr) override;
+  Status HandleFusion(HloInstruction* instr) override;
+  Status HandleIota(HloInstruction* instr) override;
+  Status HandleParameter(HloInstruction* instr) override;
+  Status HandleReduce(HloInstruction* instr) override;
+  Status HandleReduceWindow(HloInstruction* instr) override;
+  Status HandleSelectAndScatter(HloInstruction* instr) override;
+  Status HandleTuple(HloInstruction* instr) override;
 
   Status FinishVisit(HloInstruction* root) override;
 

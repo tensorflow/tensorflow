@@ -69,12 +69,12 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
@@ -83,7 +83,7 @@ namespace TFDevice {
 namespace {
 
 struct ParallelExecuteToIslandsPass
-    : public FunctionPass<ParallelExecuteToIslandsPass> {
+    : public PassWrapper<ParallelExecuteToIslandsPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -251,7 +251,7 @@ void ParallelExecuteToIslandsPass::runOnFunction() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateParallelExecuteToIslandsPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateParallelExecuteToIslandsPass() {
   return std::make_unique<ParallelExecuteToIslandsPass>();
 }
 

@@ -330,9 +330,10 @@ class ConvRNN2D(RNN):
                                          mask=mask,
                                          input_length=timesteps)
     if self.stateful:
-      updates = []
-      for i in range(len(states)):
-        updates.append(K.update(self.states[i], states[i]))
+      updates = [
+          K.update(self_state, state)
+          for self_state, state in zip(self.states, states)
+      ]
       self.add_update(updates)
 
     if self.return_sequences:
@@ -568,7 +569,7 @@ class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
         def bias_initializer(_, *args, **kwargs):
           return K.concatenate([
               self.bias_initializer((self.filters,), *args, **kwargs),
-              initializers.Ones()((self.filters,), *args, **kwargs),
+              initializers.get('ones')((self.filters,), *args, **kwargs),
               self.bias_initializer((self.filters * 2,), *args, **kwargs),
           ])
       else:

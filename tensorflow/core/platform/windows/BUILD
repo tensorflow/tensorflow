@@ -236,6 +236,11 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "xla_cpu_runtime_srcs",
+    srcs = ["env_time.cc"],
+)
+
 exports_files(
     srcs = ["intrinsics_port.h"],
     visibility = ["//tensorflow/core/platform:__pkg__"],

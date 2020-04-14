@@ -199,7 +199,7 @@ class GrpcEagerClient : public EagerClient {
   mutable mutex mu_;
 
   std::unordered_map<uint64, StreamingRPCDispatcher<EnqueueResponse>>
-      enqueue_dispatchers_ GUARDED_BY(mu_);
+      enqueue_dispatchers_ TF_GUARDED_BY(mu_);
 
   StatusCallback callback_wrapper(StatusCallback done) {
     Ref();
@@ -247,8 +247,8 @@ class GrpcEagerClientCache : public EagerClientCache {
  private:
   mutex assignment_mu_;
   std::unordered_map<std::string, size_t> target_assignments_
-      GUARDED_BY(assignment_mu_);
-  size_t next_round_robin_assignment_ GUARDED_BY(assignment_mu_);
+      TF_GUARDED_BY(assignment_mu_);
+  size_t next_round_robin_assignment_ TF_GUARDED_BY(assignment_mu_);
 
   size_t AssignClientToThread(const string& target) {
     // Round-robin target assignment, but keeps the same target on the same

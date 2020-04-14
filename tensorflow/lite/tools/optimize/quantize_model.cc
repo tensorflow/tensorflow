@@ -347,7 +347,7 @@ TfLiteStatus ApplyConstraints(ModelT* model,
 
         // Add requant op before this input.
         // There are better ways to handle this, which is to try to push the
-        // rescale upwards recurrsively and hope all upstream ops can absort
+        // rescale upwards recursively and hope all upstream ops can absort
         // this rescale.and only add requant when there is no other way.
         std::unique_ptr<OperatorT> requant_op;
         utils::MakeQuantizeOperator(model, &requant_op, op->inputs[input_idx],
@@ -445,7 +445,7 @@ TfLiteStatus QuantizeOpInput(
         }
         if (utils::QuantizeWeight(model, tensor, tensor_property.per_axis,
                                   tensor_property.per_axis_index,
-                                  error_reporter) == kTfLiteError) {
+                                  error_reporter) != kTfLiteOk) {
           TF_LITE_REPORT_ERROR(
               error_reporter,
               "Unable to quantize buffer or min/max value for input %d "
@@ -747,9 +747,9 @@ TfLiteStatus QuantizeIntemediateTensors(ModelT* model,
 // Quantize tensros that have shared range. For example, in LSTM, the output
 // tensor and input state tensor should share the same range because they are
 // using the same scale and zero point.
-// We have to model this explicitely because the output is modeled as an extra
+// We have to model this explicitly because the output is modeled as an extra
 // tensor in LSTM. In calibrator, state tensors are logged both before and after
-// the inferece so the range is fully captured. But output, although it is
+// the inference so the range is fully captured. But output, although it is
 // identical to activation, is not a state tensor the input value (range) of the
 // very first inference is not captured.
 TfLiteStatus QuantizeSharedRange(ModelT* model, ErrorReporter* error_reporter) {
@@ -1001,9 +1001,20 @@ TfLiteStatus FillQuantizationParams(
           // Dynamic tensor.
         } else if (!utils::HasMinMax(tensor) &&
                    !utils::HasBuffer(model, subgraph, tensor_idx)) {
-          TF_LITE_REPORT_ERROR(error_reporter,
-                               "Max and min for dynamic tensors should be"
-                               " recorded during calibration");
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
+              "Max and min for dynamic tensors should be"
+              " recorded during calibration: Failed for tensor %s\n",
+              tensor->name.c_str());
+          if (tensor->quantization == nullptr) {
+            TF_LITE_REPORT_ERROR(error_reporter,
+                                 "No quantization params for tensor %s",
+                                 tensor->name.c_str());
+          } else if (tensor->quantization->min.empty() ||
+                     tensor->quantization->max.empty()) {
+            TF_LITE_REPORT_ERROR(error_reporter, "Empty min/max for tensor %s",
+                                 tensor->name.c_str());
+          }
           return kTfLiteError;
         }
 
@@ -1073,7 +1084,7 @@ TfLiteStatus EnsureBiasScaleCompatibility(
             return kTfLiteError;
           }
 
-          // Get input scale for assymmetric quantization.
+          // Get input scale for asymmetric quantization.
           QuantizationParametersT temp_quant_params = QuantizationParametersT();
           utils::GetAsymmetricQuantizationParams(
               input_tensor->quantization->min[0],

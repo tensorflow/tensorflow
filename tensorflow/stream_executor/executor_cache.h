@@ -63,14 +63,14 @@ class ExecutorCache {
     // Vector of cached {config, executor} pairs.
     std::vector<
         std::pair<StreamExecutorConfig, std::unique_ptr<StreamExecutor>>>
-        configurations GUARDED_BY(configurations_mutex);
+        configurations TF_GUARDED_BY(configurations_mutex);
   };
 
   // Maps ordinal number to a list of cached executors for that ordinal.
   // We key off of ordinal (instead of just looking up all fields in the
   // StreamExecutorConfig) for a slight improvement in lookup time.
   absl::Mutex mutex_;
-  std::map<int, Entry> cache_ GUARDED_BY(mutex_);
+  std::map<int, Entry> cache_ TF_GUARDED_BY(mutex_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(ExecutorCache);
 };

@@ -77,6 +77,7 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
               LOG(ERROR) << "Ignoring an error encountered when setting "
                             "remote shape of tensor handle: "
                          << retvals[i] << " with status: " << status.ToString()
+                         << " and SetRemoteShape status: " << s.ToString()
                          << "\nThis should never happen. "
                             "Please file an issue with the TensorFlow Team.";
             }

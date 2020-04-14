@@ -49,6 +49,7 @@ load(
     "is_windows",
     "raw_exec",
     "read_dir",
+    "realpath",
     "which",
 )
 
@@ -360,8 +361,8 @@ def _cuda_include_path(repository_ctx, cuda_config):
             )
     inc_entries = []
     if target_dir != "":
-        inc_entries.append(target_dir)
-    inc_entries.append(cuda_config.cuda_toolkit_path + "/include")
+        inc_entries.append(realpath(repository_ctx, target_dir))
+    inc_entries.append(realpath(repository_ctx, cuda_config.cuda_toolkit_path + "/include"))
     return inc_entries
 
 def enable_cuda(repository_ctx):
@@ -1023,8 +1024,10 @@ def _create_local_cuda_repository(repository_ctx):
     cuda_defines = {}
     cuda_defines["%{builtin_sysroot}"] = tf_sysroot
     cuda_defines["%{cuda_toolkit_path}"] = ""
+    cuda_defines["%{compiler}"] = "unknown"
     if is_cuda_clang:
         cuda_defines["%{cuda_toolkit_path}"] = cuda_config.config["cuda_toolkit_path"]
+        cuda_defines["%{compiler}"] = "clang"
 
     host_compiler_prefix = get_host_environ(repository_ctx, _GCC_HOST_COMPILER_PREFIX)
     if not host_compiler_prefix:

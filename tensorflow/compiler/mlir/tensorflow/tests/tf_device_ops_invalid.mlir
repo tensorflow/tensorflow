@@ -94,7 +94,7 @@ func @verifier_replicate_terminator() {
 // Check that a replicate with 'n' attribute that is less than 2 is invalid.
 func @verifier_replicate_n() {
   "tf_device.replicate" () ({
-// expected-error@-1 {{'tf_device.replicate' op attribute 'n' failed to satisfy constraint: 32-bit integer attribute whose minimum value is 2}}
+// expected-error@-1 {{'tf_device.replicate' op attribute 'n' failed to satisfy constraint: 32-bit signless integer attribute whose minimum value is 2}}
   ^entry:
     tf_device.return
   }) {n = 1 : i32} : () -> ()
@@ -188,7 +188,7 @@ func @parallel_execute_single_region() {
 // Check that a parallel_execute op with empty regions are not allowed.
 func @parallel_execute_empty_region() {
   "tf_device.parallel_execute"() ( {
-// expected-error@-1 {{'tf_device.parallel_execute' op regions must not be empty. Found an empty region (0).}}
+// expected-error@-1 {{'tf_device.parallel_execute' op region #0 ('regions') failed to verify constraint: region with 1 blocks}}
   },
   {
   tf_device.return

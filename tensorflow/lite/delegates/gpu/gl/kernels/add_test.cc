@@ -74,7 +74,7 @@ TEST(AddTest, InputTensorAndScalar) {
               Pointwise(FloatNear(1e-6), {-1.9, 0.3, 0.8, 0.9, 1.2, 2.1}));
 }
 
-TEST(AddTest, InputTensorWithConstandBroadcast) {
+TEST(AddTest, InputTensorWithConstantBroadcast) {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;

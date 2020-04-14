@@ -38,7 +38,7 @@ int HostPlatform::VisibleDeviceCount() const {
   return std::thread::hardware_concurrency();
 }
 
-const string& HostPlatform::Name() const { return name_; }
+const std::string& HostPlatform::Name() const { return name_; }
 
 port::StatusOr<std::unique_ptr<DeviceDescription>>
 HostPlatform::DescriptionForDevice(int ordinal) const {

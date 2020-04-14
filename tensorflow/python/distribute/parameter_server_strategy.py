@@ -25,7 +25,7 @@ from tensorflow.python.distribute import cross_device_ops as cross_device_ops_li
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
-from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import values
@@ -370,6 +370,12 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         [input_context],
         self._container_strategy())
 
+  def _experimental_distribute_values_from_function(self, value_fn):
+    # TODO(b/137795644): Implement this method for ParameterServerStrategy if
+    # needed.
+    raise NotImplementedError("_experimental_distribute_values_from_function "
+                              "not yet implemented in ParameterServerStrategy.")
+
   def _broadcast_to(self, tensor, destinations):
     # This is both a fast path for Python constants, and a way to delay
     # converting Python values to a tensor until we know what type it
@@ -450,9 +456,8 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         return var_creator(**kwargs)
 
   def _call_for_each_replica(self, fn, args, kwargs):
-    # pylint: disable=protected-access
-    return mirrored_strategy._call_for_each_replica(
-        self._container_strategy(), self._compute_devices, fn, args, kwargs)
+    return mirrored_run.call_for_each_replica(self._container_strategy(), fn,
+                                              args, kwargs)
 
   def _verify_destinations_not_different_worker(self, destinations):
     if not self._cluster_spec:
@@ -607,9 +612,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
 
   def _in_multi_worker_mode(self):
     """Whether this strategy indicates working in multi-worker settings."""
-    # With a PS job, PS strategy should always be considered as in multi
-    # worker mode.
-    return True
+    return self._cluster_spec is not None
 
   @property
   def _num_replicas_in_sync(self):

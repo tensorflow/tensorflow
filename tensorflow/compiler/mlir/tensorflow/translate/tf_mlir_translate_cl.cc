@@ -50,8 +50,7 @@ opt<std::string> output_arrays(
 // NOLINTNEXTLINE
 opt<std::string> control_output_arrays(
     "tf-control-output-arrays",
-    llvm::cl::desc("Control output node names, separated by ',', for main "
-                   "graphs that are functions"),
+    llvm::cl::desc("Control output node names, separated by ','"),
     llvm::cl::init(""));
 
 // NOLINTNEXTLINE

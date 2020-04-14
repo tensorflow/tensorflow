@@ -180,6 +180,10 @@ class HloRematerialization : public HloModulePass {
   // dead. Hence, no net instructions were added.
   int64 net_instructions_added_ = 0;
 
+  // Size of the largest block that has been rematerialized. This is actually an
+  // upper bound (within a factor of 2) on the block size.
+  int max_rematerialized_block_size_ = 0;
+
   RematerializationMode mode_;
 };
 

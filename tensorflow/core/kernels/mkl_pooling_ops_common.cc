@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 
 namespace tensorflow {
 using mkldnn::prop_kind;
@@ -43,6 +43,7 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
   //        so src format is currently hard-coded.
   //        A utility function is used to do this,
   //        which may be broken with future CPU architectures
+#ifndef ENABLE_MKLDNN_V1
   bool is_2d = (fwdParams.src_dims.size() == 4);
   if (std::is_same<T, qint8>::value || std::is_same<T, quint8>::value)
     context_.src_fmt = is_2d ? MEMORY_FORMAT::nhwc : MEMORY_FORMAT::ndhwc;
@@ -51,6 +52,9 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
 
   context_.src_md.reset(new memory::desc({fwdParams.src_dims}, MklDnnType<T>(),
                                          context_.src_fmt));
+#else
+  context_.src_md.reset(new memory::desc(fwdParams.src_md.data));
+#endif  //  !ENABLE_MKLDNN_V1
   context_.dst_md.reset(new memory::desc({fwdParams.dst_dims}, MklDnnType<T>(),
                                          MEMORY_FORMAT::any));
 
@@ -168,8 +172,12 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
   // Create memory descriptor.
   context_.diff_src_md.reset(new memory::desc(
       {bwdParams.src_dims}, MklDnnType<T>(), MEMORY_FORMAT::any));
+#ifndef ENABLE_MKLDNN_V1
   context_.diff_dst_md.reset(new memory::desc(
       {bwdParams.dst_dims}, MklDnnType<T>(), bwdParams.src_format));
+#else
+  context_.diff_dst_md.reset(new memory::desc(bwdParams.diff_dst_md.data));
+#endif  // !ENABLE_MKLDNN_V1
 
 #ifndef ENABLE_MKLDNN_V1
   context_.bwd_desc.reset(new pooling_backward::desc(

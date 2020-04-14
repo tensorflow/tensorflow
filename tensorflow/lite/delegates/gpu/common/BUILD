@@ -24,8 +24,8 @@ cc_library(
     srcs = ["custom_parsers.cc"],
     hdrs = ["custom_parsers.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:status",
+        ":shape",
+        ":status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:any",
         "@flatbuffers",
@@ -91,7 +91,9 @@ cc_library(
         ":status",
         ":tensor",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:any",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -100,7 +102,22 @@ cc_test(
     srcs = ["model_test.cc"],
     deps = [
         ":model",
+        ":status",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "model_builder_helper",
+    hdrs = ["model_builder_helper.h"],
+    deps = [
+        ":status",
+        "//tensorflow/lite:context",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates:utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -112,6 +129,7 @@ cc_library(
         ":custom_parsers",
         ":data_type",
         ":model",
+        ":model_builder_helper",
         ":operations",
         ":shape",
         ":status",
@@ -122,6 +140,8 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/schema:schema_fbs",
         "@FP16",
         "@com_google_absl//absl/memory",
@@ -191,6 +211,7 @@ cc_test(
 cc_library(
     name = "status",
     hdrs = ["status.h"],
+    deps = ["@com_google_absl//absl/status"],
 )
 
 cc_library(
@@ -251,6 +272,17 @@ cc_test(
     deps = [
         ":util",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "winograd_util",
+    srcs = ["winograd_util.cc"],
+    hdrs = ["winograd_util.h"],
+    deps = [
+        ":data_type",
+        ":shape",
+        ":tensor",
     ],
 )
 

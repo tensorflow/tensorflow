@@ -51,12 +51,12 @@ module attributes {tf_saved_model.semantics} {
 
   // Test case: Delete recursively dead cycle.
 
-  // CHECK-NOT func @recursively_dead0
+  // CHECK-NOT: func @recursively_dead0
   func @recursively_dead0() {
     "some_dialect.call"() { callee = @recursively_dead1 } : () -> ()
     return
   }
-  // CHECK-NOT func @recursively_dead1
+  // CHECK-NOT: func @recursively_dead1
   func @recursively_dead1() {
     "some_dialect.call"() { callee = @recursively_dead0 } : () -> ()
     return

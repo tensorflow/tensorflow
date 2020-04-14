@@ -14,19 +14,20 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
-#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
-#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 #include "tensorflow/lite/tools/benchmark/delegate_provider.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
+#include "tensorflow/lite/tools/evaluation/utils.h"
 
 namespace tflite {
 namespace benchmark {
 
 class XnnpackDelegateProvider : public DelegateProvider {
  public:
-  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
+  XnnpackDelegateProvider() {
+    default_params_.AddParam("use_xnnpack",
+                             BenchmarkParam::Create<bool>(false));
+  }
 
-  void AddParams(BenchmarkParams* params) const final;
+  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
 
   void LogParams(const BenchmarkParams& params) const final;
 
@@ -44,10 +45,6 @@ std::vector<Flag> XnnpackDelegateProvider::CreateFlags(
   return flags;
 }
 
-void XnnpackDelegateProvider::AddParams(BenchmarkParams* params) const {
-  params->AddParam("use_xnnpack", BenchmarkParam::Create<bool>(false));
-}
-
 void XnnpackDelegateProvider::LogParams(const BenchmarkParams& params) const {
   TFLITE_LOG(INFO) << "Use xnnpack : [" << params.Get<bool>("use_xnnpack")
                    << "]";
@@ -55,17 +52,11 @@ void XnnpackDelegateProvider::LogParams(const BenchmarkParams& params) const {
 
 TfLiteDelegatePtr XnnpackDelegateProvider::CreateTfLiteDelegate(
     const BenchmarkParams& params) const {
-  TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
   if (params.Get<bool>("use_xnnpack")) {
-    TfLiteXNNPackDelegateOptions options =
-        TfLiteXNNPackDelegateOptionsDefault();
-    const auto num_threads = params.Get<int32_t>("num_threads");
-    // Note that we don't want to use the thread pool for num_threads == 1.
-    options.num_threads = num_threads > 1 ? num_threads : 0;
-    delegate = TfLiteDelegatePtr(TfLiteXNNPackDelegateCreate(&options),
-                                 &TfLiteXNNPackDelegateDelete);
+    return evaluation::CreateXNNPACKDelegate(
+        params.Get<int32_t>("num_threads"));
   }
-  return delegate;
+  return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 }
 
 }  // namespace benchmark

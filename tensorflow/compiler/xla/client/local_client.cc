@@ -271,8 +271,7 @@ static ShapedBuffer MaybeOwningShapeTreeToShapedBuffer(
 
 StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
     absl::Span<Shape const* const> argument_host_shapes,
-    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
-    ExecutableRunOptions run_options) {
+    std::vector<ExecutionInput> arguments, ExecutableRunOptions run_options) {
   if (argument_host_shapes.size() != arguments.size()) {
     return InvalidArgument(
         "Number of argument host shapes not equal to number of arguments (%d "
@@ -291,8 +290,8 @@ StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
     shaped_buffer_ptrs.reserve(arguments.size());
     for (size_t i = 0; i < arguments.size(); ++i) {
       shaped_buffers.push_back(MaybeOwningShapeTreeToShapedBuffer(
-          *argument_host_shapes[i], arguments[i], backend_->platform(),
-          stream->parent()->device_ordinal()));
+          *argument_host_shapes[i], arguments[i].Buffers(),
+          backend_->platform(), stream->parent()->device_ordinal()));
       shaped_buffer_ptrs.push_back(&shaped_buffers.back());
     }
 
@@ -346,6 +345,23 @@ StatusOr<std::vector<std::unique_ptr<LocalExecutable>>> LocalClient::Compile(
     updated_options.set_device_ordinal(default_device_ordinal());
     VLOG(3) << "Set device ordinal to default value of: "
             << updated_options.device_ordinal();
+  }
+  if (options.has_device_assignment()) {
+    if (options.device_assignment().replica_count() != options.num_replicas()) {
+      return InvalidArgument(
+          "Mismatched number of replicas for device "
+          "assignment and computation (%d vs %d).\n%s",
+          options.device_assignment().replica_count(), options.num_replicas(),
+          options.device_assignment().ToString());
+    }
+    if (options.device_assignment().computation_count() !=
+        options.num_partitions()) {
+      return InvalidArgument(
+          "Mismatched number of partitions for device "
+          "assignment and computation (%d vs %d).\n%s",
+          options.device_assignment().computation_count(),
+          options.num_partitions(), options.device_assignment().ToString());
+    }
   }
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Executable>> executables,
                       local_service_->CompileExecutables(

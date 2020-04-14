@@ -287,14 +287,13 @@ std::vector<int32_t> ArenaPlanner::CreateTensorAllocationVector(int first_node,
     return this->alloc_node_[idx1] < this->alloc_node_[idx2];
   };
 
-  std::set<int32_t> tensors_set;
+  std::vector<int32_t> tensor_order;
   for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
     if (alloc_node_[i] >= first_node && alloc_node_[i] <= last_node) {
-      tensors_set.insert(i);
+      tensor_order.push_back(i);
     }
   }
   // Indices of tensors in order their allocation offsets will be calculated.
-  std::vector<int32_t> tensor_order(tensors_set.begin(), tensors_set.end());
   std::sort(tensor_order.begin(), tensor_order.end(), tensor_compare);
 
   return tensor_order;

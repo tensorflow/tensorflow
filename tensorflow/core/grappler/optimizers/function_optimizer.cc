@@ -1177,7 +1177,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
                            GraphDef* output_graph) {
   bool is_aggressive = opt_level == RewriterConfig::AGGRESSIVE;
   VLOG(2) << "Inline function calls: grappler_item_id=" << item.id
-          << " (aggessive_mode=" << is_aggressive << ")";
+          << " (aggressive_mode=" << is_aggressive << ")";
 
   FunctionLibraryDefinition flib_def =
       FunctionLibraryDefinition(OpRegistry::Global(), item.graph.library());

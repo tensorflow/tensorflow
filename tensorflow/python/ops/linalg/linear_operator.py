@@ -664,7 +664,7 @@ class LinearOperator(module.Module):
     """Transform [batch] vector `x` with left multiplication:  `x --> Ax`.
 
     ```python
-    # Make an operator acting like batch matric A.  Assume A.shape = [..., M, N]
+    # Make an operator acting like batch matrix A.  Assume A.shape = [..., M, N]
     operator = LinearOperator(...)
 
     X = ... # shape [..., N], batch vector

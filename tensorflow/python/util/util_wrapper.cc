@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/pytypes.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/util/util.h"
 
@@ -244,7 +244,7 @@ PYBIND11_MODULE(_pywrap_utils, m) {
       Args:
         nest: an arbitrarily nested structure or a scalar object. Note, numpy
             arrays are considered scalars.
-        expand_composites: If true, then composite tensors such as `tf.SparseTensor`
+        expand_composites: If true, then composite tensors such as `tf.sparse.SparseTensor`
             and `tf.RaggedTensor` are expanded into their component tensors.
 
       Returns:

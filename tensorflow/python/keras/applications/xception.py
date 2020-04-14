@@ -30,9 +30,9 @@ from __future__ import print_function
 import os
 
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.util.tf_export import keras_export
@@ -45,6 +45,8 @@ TF_WEIGHTS_PATH_NO_TOP = (
     'https://storage.googleapis.com/tensorflow/keras-applications/'
     'xception/xception_weights_tf_dim_ordering_tf_kernels_notop.h5')
 
+layers = VersionAwareLayers()
+
 
 @keras_export('keras.applications.xception.Xception',
               'keras.applications.Xception')
@@ -55,8 +57,7 @@ def Xception(
     input_shape=None,
     pooling=None,
     classes=1000,
-    classifier_activation='softmax',
-):
+    classifier_activation='softmax'):
   """Instantiates the Xception architecture.
 
   Optionally loads weights pre-trained on ImageNet.

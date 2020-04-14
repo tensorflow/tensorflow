@@ -1363,7 +1363,7 @@ GetHloBufferSlices(const HloInstruction* hlo,
     // appear before any GTE instructions, because it's illegal to bitcast to a
     // tuple type.
     const HloInstruction* parent = instr;
-    while (parent->opcode() == HloOpcode::kBitcast) {
+    while (parent->IsEffectiveBitcast()) {
       parent = parent->operand(0);
 
       auto slice = buffer_assn.GetUniqueSlice(parent, {});
@@ -2156,9 +2156,9 @@ void IrEmitterUnnested::EmitPrologueForReduction(
         reduce_inst->shape().element_type(), module_);
     llvm::Type* buffer_type = [&] {
       if (reduction_info->IsRowReduction()) {
-        // Allocate __shared__ cache[num_partial_results][num_threads].
+        // Allocate __shared__ cache[num_partial_results][kWarpSize].
         return llvm::ArrayType::get(
-            llvm::ArrayType::get(primitive_type, num_threads_x),
+            llvm::ArrayType::get(primitive_type, kWarpSize),
             num_partial_results);
       } else {
         // Allocate __shared__
@@ -3268,7 +3268,7 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
         /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
         /*AddressSpace=*/global_address_space,
         /*isExternallyInitialized=*/false);
-    global_for_const->setAlignment(kConstantBufferAlignBytes);
+    global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
     ir_emitter_context_->llvm_module()->getGlobalList().push_back(
         global_for_const);
   }

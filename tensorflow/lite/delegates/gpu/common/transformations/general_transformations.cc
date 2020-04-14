@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
 
+#include "tensorflow/lite/delegates/gpu/common/transformations/add_quant_adjustments.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/fuse_add_to_conv.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/fuse_mul_to_conv.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/make_fully_connected.h"
@@ -28,7 +29,9 @@ namespace gpu {
 bool ApplyGeneralTransformations(ModelTransformer* transformer) {
   // whenever any of these transforms return false, that means that a graph
   // is in the broken state and processing should not continue.
-  return transformer->Apply("remove_degenerate_upsampling",
+  return transformer->Apply("add_quant_adjustments",
+                            NewAddQuantAdjustments().get()) &&
+         transformer->Apply("remove_degenerate_upsampling",
                             NewRemoveDegenerateUpsampling().get()) &&
          transformer->Apply("remove_single_input_add",
                             NewRemoveSingleInputAdd().get()) &&

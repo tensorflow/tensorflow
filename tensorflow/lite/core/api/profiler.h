@@ -115,7 +115,8 @@ class ScopedDelegateOperatorProfile : public ScopedProfile {
 
 }  // namespace tflite
 
-#define TFLITE_VARNAME_UNIQ(name, ctr) name##ctr
+#define TFLITE_VARNAME_UNIQ_IMPL(name, ctr) name##ctr
+#define TFLITE_VARNAME_UNIQ(name, ctr) TFLITE_VARNAME_UNIQ_IMPL(name, ctr)
 
 #define TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler, tag)          \
   tflite::ScopedProfile TFLITE_VARNAME_UNIQ(_profile_, __COUNTER__)( \

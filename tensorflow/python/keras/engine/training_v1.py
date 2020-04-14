@@ -162,6 +162,9 @@ class Model(training_lib.Model):
 
     self._v1_compile_was_called = False
 
+  def _init_batch_counters(self):
+    pass  # Batch counters should not be created in legacy graph mode.
+
   @trackable.no_automatic_dependency_tracking
   def _set_strategy(self, strategy):
     self._compile_time_distribution_strategy = strategy
@@ -797,7 +800,7 @@ class Model(training_lib.Model):
                use_multiprocessing=False):
     """Returns the loss value & metrics values for the model in test mode.
 
-    Computation is done in batches.
+    Computation is done in batches (see the `batch_size` arg.)
 
     Arguments:
         x: Input data. It could be:
@@ -817,7 +820,7 @@ class Model(training_lib.Model):
           `keras.utils.Sequence` instance, `y` should not be specified (since
           targets will be obtained from the iterator/dataset).
         batch_size: Integer or `None`.
-            Number of samples per gradient update.
+            Number of samples per batch of computation.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` if your data is in the
             form of symbolic tensors, dataset,
@@ -900,7 +903,7 @@ class Model(training_lib.Model):
               use_multiprocessing=False):
     """Generates output predictions for the input samples.
 
-    Computation is done in batches.
+    Computation is done in batches (see the `batch_size` arg.)
 
     Arguments:
         x: Input samples. It could be:
@@ -911,7 +914,7 @@ class Model(training_lib.Model):
           - A `tf.data` dataset.
           - A generator or `keras.utils.Sequence` instance.
         batch_size: Integer or `None`.
-            Number of samples per gradient update.
+            Number of samples per batch of computation.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` if your data is in the
             form of symbolic tensors, dataset,

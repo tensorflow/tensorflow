@@ -155,7 +155,7 @@ class EagerServiceImpl {
     const WorkerEnv* const env_;  // Not owned.
 
     mutex last_accessed_mu_;
-    int64 last_accessed_micros_ GUARDED_BY(last_accessed_mu_);
+    int64 last_accessed_micros_ TF_GUARDED_BY(last_accessed_mu_);
     int64 destroy_after_micros_;
 
     const bool is_master_;
@@ -214,7 +214,8 @@ class EagerServiceImpl {
   const WorkerEnv* const env_;  // Not owned.
 
   mutex contexts_mu_;
-  std::unordered_map<uint64, ServerContext*> contexts_ GUARDED_BY(contexts_mu_);
+  std::unordered_map<uint64, ServerContext*> contexts_
+      TF_GUARDED_BY(contexts_mu_);
 
   // Mutex to guard access to EagerContext in `contexts_`. Different from
   // `contexts_mu_` which guards adding / removing item from the map, this mutex
@@ -225,7 +226,7 @@ class EagerServiceImpl {
   std::unique_ptr<Thread> gc_thread_;
   mutex gc_thread_shutdown_mu_;
   condition_variable gc_thread_cv_;
-  bool shutting_down_ GUARDED_BY(gc_thread_shutdown_mu_) = false;
+  bool shutting_down_ TF_GUARDED_BY(gc_thread_shutdown_mu_) = false;
 
   TF_DISALLOW_COPY_AND_ASSIGN(EagerServiceImpl);
 };

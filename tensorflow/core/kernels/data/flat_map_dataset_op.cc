@@ -127,7 +127,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           return Status::OK();
         }
         if (current_element_iterator_) {
-          // We are currently precessing a mapped element, so try to get the
+          // We are currently processing a mapped element, so try to get the
           // next subelement.
           bool end_of_element;
           TF_RETURN_IF_ERROR(current_element_iterator_->GetNext(
@@ -162,10 +162,13 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       return model::MakeInterleaveManyNode(std::move(args));
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+          dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(mu_);
       if (input_impl_) {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kElementIndex), element_index_));
         if (current_element_iterator_) {
@@ -177,7 +180,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
                 full_name(strings::StrCat(kCapturedFuncInputs, "[", i, "]")),
                 captured_func_inputs_[i]));
           }
-          TF_RETURN_IF_ERROR(SaveInput(writer, current_element_iterator_));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, current_element_iterator_));
         } else {
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               full_name(kCurrentElementIteratorUninitialized), ""));
@@ -232,17 +235,17 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
    private:
     Status BuildCurrentElementIteratorLocked(IteratorContext* ctx)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       return MakeIteratorFromInputElement(
           ctx, this, captured_func_inputs_, element_index_++,
           *instantiated_captured_func_, prefix(), &current_element_iterator_);
     }
 
     mutex mu_;
-    size_t element_index_ GUARDED_BY(mu_) = 0;
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-    std::unique_ptr<IteratorBase> current_element_iterator_ GUARDED_BY(mu_);
-    std::vector<Tensor> captured_func_inputs_ GUARDED_BY(mu_);
+    size_t element_index_ TF_GUARDED_BY(mu_) = 0;
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> current_element_iterator_ TF_GUARDED_BY(mu_);
+    std::vector<Tensor> captured_func_inputs_ TF_GUARDED_BY(mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
   };
 
@@ -254,10 +257,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
 FlatMapDatasetOp::FlatMapDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
-  FunctionMetadata::Params params;
-  params.is_multi_device_function = true;
-  OP_REQUIRES_OK(ctx,
-                 FunctionMetadata::Create(ctx, kFunc, params, &func_metadata_));
+  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kFunc, /*params=*/{},
+                                               &func_metadata_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
 }

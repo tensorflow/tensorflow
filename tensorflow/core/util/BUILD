@@ -20,6 +20,10 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
 )
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
 
 package(
     default_visibility = [
@@ -444,6 +448,7 @@ cc_library(
     srcs = ["version_info.cc"],
     hdrs = ["//tensorflow/core/public:version.h"],
     copts = tf_copts(),
+    alwayslink = if_static(0, 1),
 )
 
 cc_library(
@@ -542,7 +547,6 @@ tf_cc_tests(
     srcs = [
         "bcast_test.cc",
         "command_line_flags_test.cc",
-        "debug_events_writer_test.cc",
         "device_name_utils_test.cc",
         "dump_graph_test.cc",
         "equal_graph_def_test.cc",
@@ -602,6 +606,27 @@ tf_cc_tests(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "debug_events_writer_test",
+    size = "small",
+    srcs = ["debug_events_writer_test.cc"],
+    linkopts = select({
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = ["no_windows"],  # b/150411480
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

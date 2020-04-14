@@ -24,7 +24,7 @@ platform(
           value: "Windows"
         }
         properties:{
-          name: "Pool" value: "win2019"
+          name: "Pool" value: "default"
         }
         """,
 )

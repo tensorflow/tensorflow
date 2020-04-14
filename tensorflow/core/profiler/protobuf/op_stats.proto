@@ -84,6 +84,8 @@ message RunEnvironment {
   int32 num_cores_per_replica = 10;
   // The chip interconnection topology.
   SystemTopology topology = 11;
+  // Host trace level.
+  uint32 host_trace_level = 12;
 }
 
 // Operator Statistics.
@@ -102,4 +104,6 @@ message OpStats {
   RunEnvironment run_environment = 5;
   // Kernel stats results from all GPUs.
   KernelStatsDb kernel_stats_db = 6;
+  // Errors seen.
+  repeated string errors = 7;
 }

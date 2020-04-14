@@ -16,10 +16,7 @@ py_binary(
     srcs = ["visualize.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/lite/python:schema_py",
-        "//tensorflow/python:platform",
-    ],
+    deps = ["//tensorflow/lite/python:schema_py"],
 )
 
 py_test(
@@ -31,7 +28,7 @@ py_test(
         "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
     ],
     deps = [
-        ":test_utilities",
+        ":test_utils",
         ":visualize",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
@@ -44,11 +41,12 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py_no_contrib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:io_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
+        "//tensorflow/python:session",
     ],
 )
 
@@ -61,8 +59,10 @@ py_test(
     deps = [
         ":convert_image_to_csv",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -72,32 +72,51 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/lite/python:schema_py",
+        ":flatbuffer_utils",
         "//tensorflow/python:platform",
+    ],
+)
+
+py_binary(
+    name = "randomize_weights",
+    srcs = ["randomize_weights.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":flatbuffer_utils",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_library(
+    name = "flatbuffer_utils",
+    srcs = ["flatbuffer_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/lite/python:schema_py",
         "@flatbuffers//:runtime_py",
     ],
 )
 
 py_test(
-    name = "strip_strings_test",
-    srcs = ["strip_strings_test.py"],
+    name = "flatbuffer_utils_test",
+    srcs = ["flatbuffer_utils_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
     ],
     deps = [
-        ":strip_strings",
-        ":test_utilities",
-        "//tensorflow/lite/python:schema_py",
+        ":flatbuffer_utils",
+        ":test_utils",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
 )
 
 py_library(
-    name = "test_utilities",
-    srcs = ["test_utilities.py"],
+    name = "test_utils",
+    srcs = ["test_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/lite/python:schema_py",
@@ -109,9 +128,9 @@ tf_cc_binary(
     name = "generate_op_registrations",
     srcs = ["gen_op_registration_main.cc"],
     deps = [
+        ":gen_op_registration",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/lite/tools:gen_op_registration",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -187,6 +206,31 @@ cc_test(
 )
 
 cc_library(
+    name = "logging",
+    hdrs = ["logging.h"],
+    copts = common_copts,
+)
+
+cc_library(
+    name = "tool_params",
+    srcs = ["tool_params.cc"],
+    hdrs = ["tool_params.h"],
+    copts = tflite_copts(),
+    deps = [":logging"],
+)
+
+cc_test(
+    name = "tool_params_test",
+    srcs = ["tool_params_test.cc"],
+    copts = tflite_copts(),
+    visibility = ["//visibility:private"],
+    deps = [
+        ":tool_params",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "command_line_flags",
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
@@ -203,6 +247,17 @@ cc_test(
         ":command_line_flags",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+py_binary(
+    name = "zip_files",
+    srcs = ["zip_files.py"],
+    python_version = "PY3",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 

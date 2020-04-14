@@ -20,4 +20,5 @@ recursive-include tensorflow/include/google *.inc
 recursive-include tensorflow/include/include *.h
 recursive-include tensorflow/include/third_party *
 recursive-include tensorflow/include/unsupported *
+recursive-include tensorflow/xla_aot_runtime_src *
 

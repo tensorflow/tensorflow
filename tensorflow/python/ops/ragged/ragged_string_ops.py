@@ -411,7 +411,7 @@ def _unicode_decode(input, input_encoding, errors, replacement_char,
       input = input.with_flat_values(
           ragged_tensor.RaggedTensor.from_tensor(
               input.flat_values,
-              ragged_rank=input_ndims - input.ragged_rank + 1))
+              ragged_rank=input_ndims - input.ragged_rank - 1))
 
   # Reshape the input to a flat vector, and apply the gen_string_ops op.
   if ragged_tensor.is_ragged(input):

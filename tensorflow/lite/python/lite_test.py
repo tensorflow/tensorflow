@@ -529,7 +529,9 @@ class FromSessionTest(TestModels, parameterized.TestCase):
           shape=[1, 16, 16, 3], dtype=dtypes.float32)
       var = variable_scope.get_variable(
           'weights', shape=[1, 16, 16, 3], dtype=dtypes.float32)
-      out_tensor = in_tensor + var
+      # Get the second output to ensure freezing properly processes tensor names
+      # like 'X:1'.
+      out_tensor = nn_ops.top_k(in_tensor + var, name='top_k')[1]
       sess = session.Session()
       sess.run(_global_variables_initializer())
 
@@ -552,9 +554,9 @@ class FromSessionTest(TestModels, parameterized.TestCase):
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
-    self.assertEqual('add', output_details[0]['name'])
-    self.assertEqual(np.float32, output_details[0]['dtype'])
-    self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+    self.assertEqual('top_k:1', output_details[0]['name'])
+    self.assertEqual(np.int32, output_details[0]['dtype'])
+    self.assertTrue(([1, 16, 16, 1] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
 
   def testGraphviz(self):
@@ -890,17 +892,13 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       ('NoRepresentativeData', False, False, True, False, False, False),
       # Post training quantization if both rep data and int8 included.
       ('UseSampleDataIncludeInt8', True, True, False, False, True, False),
-      # Error if no rep data and int8 included.
-      ('NoSampleDataIncludeInt8', False, True, False, True, False, False),
 
       # Quantize to Float16 even if rep data provided with mlir.
       ('UseRepresentativeDataMlir', True, False, True, False, False, True),
       # Quantize to Float16 if no rep data provided with mlir.
       ('NoRepresentativeDataMlir', False, False, True, False, False, True),
       # Post training quantization if both rep data and int8 included with mlir.
-      ('SampleDataIncludeInt8Mlir', True, True, False, False, True, True),
-      # Error if no rep data and int8 included with mlir.
-      ('NoSampleDataIncludeInt8Mlir', False, True, False, True, False, True))
+      ('SampleDataIncludeInt8Mlir', True, True, False, False, True, True))
   def testQuantizeFloat16(self, use_rep_data, include_int8,
                           is_float16_quantized, is_error,
                           is_post_training_quantized, enable_mlir):
@@ -971,7 +969,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quantized_converter.experimental_new_converter = enable_mlir
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.target_spec.supported_types = [lite.constants.FLOAT16]
-    # Specifiy only int8 builtin ops
+    # Specify only int8 builtin ops
     quantized_converter.target_spec.supported_ops = [
         lite.OpsSet.TFLITE_BUILTINS_INT8
     ]
@@ -1036,9 +1034,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quantized_converter.target_spec.supported_types = [lite.constants.INT8]
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
-    # Ensure that restricting supported types to int8 forces
-    # all fixed point ops/tensors in converter.
-    self.assertTrue(quantized_converter._is_int8_target_required())
 
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite), len(float_tflite))
@@ -1079,7 +1074,47 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertEqual(np.int8, output_details[0]['dtype'])
 
     # Ensure that the quantized weights tflite model is smaller.
-    self.assertTrue(len(quantized_tflite) < len(float_tflite))
+    self.assertLess(len(quantized_tflite), len(float_tflite))
+
+  @parameterized.named_parameters(
+      ('InferenceType_INT8', lite_constants.INT8),
+      ('InferenceType_QUANTIZED_INT8', lite_constants.QUANTIZED_UINT8))
+  def testRequiresInputStatsForTrainingTimeQuantization(self, quantized_type):
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(
+          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+      out_tensor = array_ops.fake_quant_with_min_max_args(
+          in_tensor + in_tensor, min=0., max=1.)
+      sess = session.Session()
+
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [in_tensor], [out_tensor])
+
+    with self.assertRaises(ValueError) as error:
+      quantized_converter.inference_type = quantized_type
+      quantized_converter.convert()
+    self.assertEqual(
+        'std_dev and mean must be defined when inference_type or '
+        'inference_input_type is QUANTIZED_UINT8 or INT8.',
+        str(error.exception))
+
+    with self.assertRaises(ValueError) as error:
+      quantized_converter.inference_type = lite_constants.FLOAT
+      quantized_converter.inference_input_type = quantized_type
+      quantized_converter.convert()
+    self.assertEqual(
+        'std_dev and mean must be defined when inference_type or '
+        'inference_input_type is QUANTIZED_UINT8 or INT8.',
+        str(error.exception))
+
+    quantized_converter.inference_type = quantized_type
+    quantized_converter.inference_input_type = quantized_type
+
+    input_arrays = quantized_converter.get_input_arrays()
+    quantized_converter.quantized_input_stats = {
+        input_arrays[0]: (0., 1.)
+    }
+    quantized_converter.convert()
 
   def testFloatTocoConverter(self):
     """Tests deprecated test TocoConverter."""
@@ -1599,19 +1634,19 @@ class FromSavedModelTest(TestModels):
 
     input_details = interpreter.get_input_details()
     self.assertEqual(2, len(input_details))
-    self.assertEqual('inputA', input_details[0]['name'])
+    self.assertStartsWith(input_details[0]['name'], 'inputA')
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
-    self.assertEqual('inputB', input_details[1]['name'])
+    self.assertStartsWith(input_details[1]['name'], 'inputB')
     self.assertEqual(np.float32, input_details[1]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
     self.assertEqual((0., 0.), input_details[1]['quantization'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
-    self.assertEqual('add', output_details[0]['name'])
+    self.assertStartsWith(output_details[0]['name'], 'add')
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
@@ -1661,19 +1696,19 @@ class FromSavedModelTest(TestModels):
 
     input_details = interpreter.get_input_details()
     self.assertEqual(2, len(input_details))
-    self.assertEqual('inputA', input_details[0]['name'])
+    self.assertStartsWith(input_details[0]['name'], 'inputA')
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
-    self.assertEqual('inputB', input_details[1]['name'])
+    self.assertStartsWith(input_details[1]['name'], 'inputB')
     self.assertEqual(np.float32, input_details[1]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
     self.assertEqual((0., 0.), input_details[1]['quantization'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
-    self.assertEqual('add', output_details[0]['name'])
+    self.assertStartsWith(output_details[0]['name'], 'add')
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
@@ -1693,19 +1728,19 @@ class FromSavedModelTest(TestModels):
 
     input_details = interpreter.get_input_details()
     self.assertEqual(2, len(input_details))
-    self.assertEqual('inputA', input_details[0]['name'])
+    self.assertStartsWith(input_details[0]['name'], 'inputA')
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
     self.assertEqual((0., 0.), input_details[0]['quantization'])
 
-    self.assertEqual('inputB', input_details[1]['name'])
+    self.assertStartsWith(input_details[1]['name'], 'inputB')
     self.assertEqual(np.float32, input_details[1]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
     self.assertEqual((0., 0.), input_details[1]['quantization'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
-    self.assertEqual('add', output_details[0]['name'])
+    self.assertStartsWith(output_details[0]['name'], 'add')
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertEqual((0., 0.), output_details[0]['quantization'])
@@ -2202,6 +2237,37 @@ class GrapplerTest(TestModels, parameterized.TestCase):
     self.assertLen(input_details, 2)
     self.assertEqual('Placeholder', input_details[0]['name'])
     self.assertEqual('Const', input_details[1]['name'])
+
+  def testGrapplerConstFolding(self):
+    # Constant folding converts the following add operation to tf.broadcast_to
+    # operation which was not supported by the TFLite at the time this test was
+    # added.
+    @def_function.function
+    def plus_placeholder(x, placeholder):
+      return x + placeholder
+
+    with ops.Graph().as_default():
+      in_tensor = array_ops.placeholder(shape=[2, 2], dtype=dtypes.float32)
+      out_tensor = plus_placeholder(
+          array_ops.zeros([2, 2, 2]),
+          array_ops.reshape(in_tensor, shape=[2, 2]))
+      sess = session.Session()
+
+    # Convert model.
+    converter = lite.TFLiteConverter.from_session(sess, [in_tensor],
+                                                  [out_tensor])
+    # Only disable this path in MLIR conversion for toco compatibility.
+    converter.experimental_new_converter = True
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    interpreter = Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    self.assertLen(input_details, 1)
+    self.assertEqual('Placeholder', input_details[0]['name'])
+
 
 class ImportOpsUtilTest(LiteTest):
 

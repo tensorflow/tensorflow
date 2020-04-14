@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -210,6 +211,9 @@ class TransferManager {
   // rather than writing all subbuffers. This method is always asynchronous.
   Status WriteRootTupleIndexTable(se::Stream* stream,
                                   const ShapedBuffer& device_buffer);
+  Status WriteRootTupleIndexTable(
+      se::Stream* stream,
+      const ShapeTree<MaybeOwningDeviceMemory>& buffer_tree);
 
   // Determines the byte size requirement for the given shape on the underlying
   // architecture. This will be used to allocate an appropriately sized memory

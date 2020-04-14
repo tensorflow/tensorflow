@@ -28,9 +28,9 @@ import math
 import os
 
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.util.tf_export import keras_export
@@ -140,6 +140,8 @@ DENSE_KERNEL_INITIALIZER = {
     }
 }
 
+layers = VersionAwareLayers()
+
 
 def EfficientNet(
     width_coefficient,
@@ -157,9 +159,12 @@ def EfficientNet(
     input_shape=None,
     pooling=None,
     classes=1000,
-    classifier_activation='softmax',
-):
+    classifier_activation='softmax'):
   """Instantiates the EfficientNet architecture using given scaling coefficients.
+
+  Reference paper:
+  - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks]
+    (https://arxiv.org/abs/1905.11946) (ICML 2019)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
@@ -661,3 +666,6 @@ def preprocess_input(x, data_format=None):  # pylint: disable=unused-argument
 @keras_export('keras.applications.efficientnet.decode_predictions')
 def decode_predictions(preds, top=5):
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

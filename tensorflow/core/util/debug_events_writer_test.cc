@@ -68,8 +68,9 @@ class DebugEventsWriterTest : public ::testing::Test {
   }
 
   void SetUp() override {
-    dump_root_ = io::JoinPath(testing::TmpDir(),
-                              strings::Printf("%010lld", env()->NowMicros()));
+    dump_root_ = io::JoinPath(
+        testing::TmpDir(),
+        strings::Printf("%010lld", static_cast<long long>(env()->NowMicros())));
   }
 
   void TearDown() override {
@@ -805,7 +806,7 @@ TEST_F(DebugEventsWriterTest, RegisterDeviceAndGetIdTrace) {
   }
 }
 
-TEST_F(DebugEventsWriterTest, DisableCyclicBufferBeahavior) {
+TEST_F(DebugEventsWriterTest, DisableCyclicBufferBehavior) {
   const size_t kCyclicBufferSize = 0;  // A value <= 0 disables cyclic behavior.
   DebugEventsWriter* writer =
       DebugEventsWriter::GetDebugEventsWriter(dump_root_, kCyclicBufferSize);

@@ -2654,6 +2654,25 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
           cpu_val = self.evaluate(out_op)
         self.assertAllClose(cpu_val, gpu_val, rtol=1e-5, atol=1e-5)
 
+  @test_util.disable_xla("align_corners=False not supported by XLA")
+  def testBfloat16MultipleOps(self):
+    target_height = 8
+    target_width = 12
+    img = np.random.uniform(0, 100, size=(30, 10, 2)).astype(np.float32)
+    img_bf16 = ops.convert_to_tensor(img, dtype="bfloat16")
+    new_size = constant_op.constant([target_height, target_width])
+    img_methods = [
+        image_ops.ResizeMethod.BILINEAR,
+        image_ops.ResizeMethod.NEAREST_NEIGHBOR, image_ops.ResizeMethod.BICUBIC,
+        image_ops.ResizeMethod.AREA
+    ]
+    for method in img_methods:
+      out_op_bf16 = image_ops.resize_images_v2(img_bf16, new_size, method)
+      out_op_f32 = image_ops.resize_images_v2(img, new_size, method)
+      bf16_val = self.evaluate(out_op_bf16)
+      f32_val = self.evaluate(out_op_f32)
+      self.assertAllClose(bf16_val, f32_val, rtol=1e-2, atol=1e-2)
+
   def testCompareBilinear(self):
     if test.is_gpu_available():
       input_shape = [1, 5, 6, 3]
@@ -2712,7 +2731,9 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
       feed_dict = {}
 
     y = image_ops.resize_images(
-        x_tensor, target_max, preserve_aspect_ratio=preserve_aspect_ratio)
+        x_tensor,
+        ops.convert_to_tensor(target_max),
+        preserve_aspect_ratio=preserve_aspect_ratio)
 
     with self.cached_session(use_gpu=True):
       return y.eval(feed_dict=feed_dict)
@@ -2753,11 +2774,17 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def testPreserveAspectRatioMultipleImages(self):
-    x_shape = [10, 100, 100, 10]
+    x_shape = [10, 100, 80, 10]
     x = np.random.uniform(size=x_shape)
-
-    self._assertResizeCheckShape(
-        x, x_shape, [250, 250], [10, 250, 250, 10], preserve_aspect_ratio=False)
+    for preserve_aspect_ratio in [True, False]:
+      with self.subTest(preserve_aspect_ratio=preserve_aspect_ratio):
+        expect_shape = [10, 250, 200, 10] if preserve_aspect_ratio \
+            else [10, 250, 250, 10]
+        self._assertResizeCheckShape(
+            x,
+            x_shape, [250, 250],
+            expect_shape,
+            preserve_aspect_ratio=preserve_aspect_ratio)
 
   @test_util.run_deprecated_v1
   def testPreserveAspectRatioNoOp(self):
@@ -4588,7 +4615,8 @@ class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase):
     self.assertEqual(selected_indices_padded.shape.is_fully_defined(), True)
     self.assertEqual(selected_indices.shape.is_fully_defined(), False)
     with self.cached_session():
-      self.assertAllClose(selected_indices_padded.eval(), [3, 0, 5, 0, 0])
+      self.assertAllClose(selected_indices_padded.eval(),
+                          [3, 0, 5, 0, 0])
       self.assertEqual(num_valid_padded.eval(), 3)
       self.assertAllClose(selected_indices.eval(), [3, 0, 5])
       self.assertEqual(num_valid.eval(), 3)

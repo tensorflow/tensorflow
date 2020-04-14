@@ -734,6 +734,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["lib/check_numerics_callback_test.py"],
     python_version = "PY3",
+    tags = ["no_windows"],
     deps = [
         ":check_numerics_callback",
         "//tensorflow/python:framework_test_lib",
@@ -780,7 +781,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["lib/dumping_callback_test.py"],
     python_version = "PY3",
-    shard_count = 8,
+    shard_count = 4,
     tags = [
         "no_windows",  # TODO(b/142475891): Enable this test on Windows.
     ],
@@ -794,7 +795,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
@@ -870,6 +870,10 @@ py_test(
     srcs = ["lib/source_utils_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss_py38",  #TODO(b/151449908)
+        "no_windows",
+    ],
     deps = [
         ":debug_data",
         ":debug_utils",
@@ -924,6 +928,7 @@ py_test(
     srcs = ["wrappers/framework_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":debug_data",
         ":framework",
@@ -1144,6 +1149,7 @@ py_test(
     srcs = ["cli/debugger_cli_common_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":debugger_cli_common",
         "//tensorflow/python:framework_test_lib",
@@ -1456,7 +1462,7 @@ sh_test(
         ":debug_errors",
         ":debug_fibonacci",
         ":debug_keras",
-        ":debug_mnist",
+        ":debug_mnist_v1",
         ":debug_tflearn_iris",
         ":offline_analyzer",
     ],

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python import tf2
 from tensorflow.python.distribute import central_storage_strategy
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy as mirrored_lib
@@ -148,6 +149,18 @@ central_storage_strategy_with_gpu_and_cpu = combinations.NamedDistribution(
     lambda: central_storage_strategy.CentralStorageStrategy(
         ["/gpu:0", "/cpu:0"]),
     required_gpus=1)
+multi_worker_mirrored_two_workers = combinations.NamedDistribution(
+    "MultiWorkerMirrroedTwoWorkers",
+    collective_all_reduce_strategy.CollectiveAllReduceStrategy,
+    has_chief=False,
+    num_workers=2,
+)
+multi_worker_mirrored_one_chief_one_worker = combinations.NamedDistribution(
+    "MultiWorkerMirrroedOneChiefOneWorker",
+    collective_all_reduce_strategy.CollectiveAllReduceStrategy,
+    has_chief=True,
+    num_workers=1,
+)
 
 gradient_descent_optimizer_v1_fn = combinations.NamedObject(
     "GradientDescentV1",
@@ -255,11 +268,18 @@ strategies_minus_tpu = [
     mirrored_strategy_with_gpu_and_cpu, mirrored_strategy_with_two_gpus
 ]
 
+strategies_minus_default_and_tpu = [
+    one_device_strategy, one_device_strategy_gpu,
+    mirrored_strategy_with_gpu_and_cpu, mirrored_strategy_with_two_gpus
+]
+
 tpu_strategies = [
     tpu_strategy,  # steps_per_run=2
     tpu_strategy_one_step,
     cloud_tpu_strategy,
 ]
+
+all_strategies_minus_default = strategies_minus_default_and_tpu + tpu_strategies
 
 all_strategies = strategies_minus_tpu + tpu_strategies
 

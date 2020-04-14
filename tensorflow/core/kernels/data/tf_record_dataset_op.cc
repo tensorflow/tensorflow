@@ -119,8 +119,10 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
           Status s =
               reader_->ReadRecord(&out_tensors->back().scalar<tstring>()());
           if (s.ok()) {
-            metrics::RecordTFDataBytesRead(
-                kDatasetType, out_tensors->back().scalar<tstring>()().size());
+            static monitoring::CounterCell* bytes_counter =
+                metrics::GetTFDataBytesReadCounter(kDatasetType);
+            bytes_counter->IncrementBy(
+                out_tensors->back().scalar<tstring>()().size());
             *end_of_sequence = false;
             return Status::OK();
           }
@@ -156,7 +158,8 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
       return model::MakeSourceNode(std::move(args));
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurrentFileIndex),
                                              current_file_index_));
@@ -187,7 +190,7 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
 
    private:
     // Sets up reader streams to read from the file at `current_file_index_`.
-    Status SetupStreamsLocked(Env* env) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    Status SetupStreamsLocked(Env* env) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (current_file_index_ >= dataset()->filenames_.size()) {
         return errors::InvalidArgument(
             "current_file_index_:", current_file_index_,
@@ -203,18 +206,18 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
     }
 
     // Resets all reader streams.
-    void ResetStreamsLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    void ResetStreamsLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       reader_.reset();
       file_.reset();
     }
 
     mutex mu_;
-    size_t current_file_index_ GUARDED_BY(mu_) = 0;
+    size_t current_file_index_ TF_GUARDED_BY(mu_) = 0;
 
     // `reader_` will borrow the object that `file_` points to, so
     // we must destroy `reader_` before `file_`.
-    std::unique_ptr<RandomAccessFile> file_ GUARDED_BY(mu_);
-    std::unique_ptr<io::SequentialRecordReader> reader_ GUARDED_BY(mu_);
+    std::unique_ptr<RandomAccessFile> file_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<io::SequentialRecordReader> reader_ TF_GUARDED_BY(mu_);
   };
 
   const std::vector<string> filenames_;
@@ -254,10 +257,10 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
                   "`buffer_size` must be >= 0 (0 == no buffering)"));
 
   if (is_gcs_fs && is_cloud_tpu_gcs_fs() && buffer_size < kCloudTpuBlockSize) {
-    LOG(WARNING) << "User buffer size is too small for reading Cloud TPU "
-                 << "TFRecords stored in GCS. Overriding " << buffer_size
-                 << " to the minimum recommended buffer_size = "
-                 << kCloudTpuBlockSize;
+    VLOG(2) << "User buffer size is too small for reading Cloud TPU "
+            << "TFRecords stored in GCS. Overriding " << buffer_size
+            << " to the minimum recommended buffer_size = "
+            << kCloudTpuBlockSize;
     buffer_size = kCloudTpuBlockSize;
   }
 

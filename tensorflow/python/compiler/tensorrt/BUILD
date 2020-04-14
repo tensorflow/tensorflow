@@ -36,8 +36,8 @@ py_library(
     srcs = ["trt_convert.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
         "//tensorflow/compiler/tf2tensorrt:trt_ops_loader",
-        "//tensorflow/compiler/tf2tensorrt:wrap_py_utils",
         "//tensorflow/python:convert_to_constants",
         "//tensorflow/python:func_graph",
         "//tensorflow/python:graph_util",
@@ -200,6 +200,5 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/estimator",
-        "//tensorflow/python/keras",
     ],
 )

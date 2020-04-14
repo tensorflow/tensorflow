@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import os
 import sys
+from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -49,7 +50,7 @@ def check_pydot():
     # to check the pydot/graphviz installation.
     pydot.Dot.create(pydot.Dot())
     return True
-  except OSError:
+  except (OSError, pydot.InvocationException):
     return False
 
 
@@ -100,15 +101,17 @@ def model_to_dot(model,
   from tensorflow.python.keras.engine import network
 
   if not check_pydot():
+    message = (
+        'Failed to import pydot. You must `pip install pydot` '
+        'and install graphviz (https://graphviz.gitlab.io/download/), ',
+        'for `pydotprint` to work.')
     if 'IPython.core.magics.namespace' in sys.modules:
       # We don't raise an exception here in order to avoid crashing notebook
       # tests where graphviz is not available.
-      print('Failed to import pydot. You must install pydot'
-            ' and graphviz for `pydotprint` to work.')
+      print(message)
       return
     else:
-      raise ImportError('Failed to import pydot. You must install pydot'
-                        ' and graphviz for `pydotprint` to work.')
+      raise ImportError(message)
 
   if subgraph:
     dot = pydot.Cluster(style='dashed', graph_name=model.name)
@@ -259,6 +262,22 @@ def plot_model(model,
                dpi=96):
   """Converts a Keras model to dot format and save to a file.
 
+  Example:
+
+  ```python
+  input = tf.keras.Input(shape=(100,), dtype='int32', name='input')
+  x = tf.keras.layers.Embedding(
+      output_dim=512, input_dim=10000, input_length=100)(input)
+  x = tf.keras.layers.LSTM(32)(x)
+  x = tf.keras.layers.Dense(64, activation='relu')(x)
+  x = tf.keras.layers.Dense(64, activation='relu')(x)
+  x = tf.keras.layers.Dense(64, activation='relu')(x)
+  output = tf.keras.layers.Dense(1, activation='sigmoid', name='output')(x)
+  model = tf.keras.Model(inputs=[input], outputs=[output])
+  dot_img_file = '/tmp/model_1.png'
+  tf.keras.utils.plot_model(model, to_file=dot_img_file, show_shapes=True)
+  ```
+
   Arguments:
     model: A Keras model instance
     to_file: File name of the plot image.
@@ -281,6 +300,7 @@ def plot_model(model,
                      rankdir=rankdir,
                      expand_nested=expand_nested,
                      dpi=dpi)
+  to_file = path_to_string(to_file)
   if dot is None:
     return
   _, extension = os.path.splitext(to_file)
