@@ -463,6 +463,7 @@ class Function(object):
     self._name = name
     self._input_signature = input_signature
     self._key_for_call_stats = self._get_key_for_call_stats()
+    ops._tf_function_api_guage.get_cell().set(True)  # pylint: disable=protected-access
 
   def __getstate__(self):
     """Custom pickling, to omit unpickleable objects."""
