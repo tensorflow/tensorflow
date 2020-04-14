@@ -240,14 +240,14 @@ class ExtractGlimpseTest(test.TestCase):
     img = constant_op.constant(np.arange(25).reshape((1, 5, 5, 1)),
                                dtype=dtypes.float32)
     with self.test_session():
-      result1 = image_ops.extract_glimpse(img, [3, 3], [[0, 0]],
-                                          centered=False, normalized=False)
-      result2 = image_ops.extract_glimpse(img, [3, 3], [[1, 0]],
-                                          centered=False, normalized=False)
+      result1 = image_ops.extract_glimpse_v2(img, [3, 3], [[0, 0]],
+                                             centered=False, normalized=False)
+      result2 = image_ops.extract_glimpse_v2(img, [3, 3], [[1, 0]],
+                                             centered=False, normalized=False)
       self.assertAllEqual(np.asarray([[0, 1, 2], [5, 6, 7], [10, 11, 12]]),
-                          result1.eval()[0, :, :, 0])
+                          self.evaluate(result1)[0, :, :, 0])
       self.assertAllEqual(np.asarray([[5, 6, 7], [10, 11, 12], [15, 16, 17]]),
-                          result2.eval()[0, :, :, 0])
+                          self.evaluate(result2)[0, :, :, 0])
 
 if __name__ == '__main__':
   test.main()
