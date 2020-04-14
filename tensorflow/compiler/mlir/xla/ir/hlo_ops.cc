@@ -836,9 +836,62 @@ static LogicalResult Verify(ConcatenateOp op) {
 // DynamicSliceOp
 //===----------------------------------------------------------------------===//
 
+namespace {
+// Canonicalizes DynamicSlice ops that can be replaced instead with Slice ops.
+// This canonicalization is applied the case when the `begin` input values are
+// compile time constants and thus can be made into a tensor.
+struct DynamicSliceToSlice : public OpRewritePattern<DynamicSliceOp> {
+  using OpRewritePattern<DynamicSliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DynamicSliceOp dynamic_slice,
+                                PatternRewriter& rewriter) const override {
+    Value input = dynamic_slice.operand();
+    auto input_tensor = input.getType().dyn_cast<RankedTensorType>();
+    if (!input_tensor) return failure();
+
+    SmallVector<int64_t, 4> temp_start_indices;
+    for (Value start : dynamic_slice.start_indices()) {
+      APInt val;
+      if (!matchPattern(start, m_ConstantInt(&val))) {
+        return failure();
+      }
+      temp_start_indices.push_back(*(val.getRawData()));
+    }
+
+    // At this point we've determined that the start indices are all constants;
+    // pack them into a single tensor.
+    auto loc = dynamic_slice.getLoc();
+    int64_t input_rank = input_tensor.getRank();
+    auto slice_start_indices =
+        GetI64ElementsAttr(temp_start_indices, &rewriter);
+    DenseIntElementsAttr slice_limits = BuildSliceLimits(
+        slice_start_indices, dynamic_slice.slice_sizes(), &rewriter);
+    DenseIntElementsAttr slice_strides =
+        GetI64ElementsAttr(SmallVector<int64_t, 4>(input_rank, 1), &rewriter);
+    auto result = rewriter.create<SliceOp>(loc, input, slice_start_indices,
+                                           slice_limits, slice_strides);
+    rewriter.replaceOp(dynamic_slice, {result});
+    return success();
+  }
+};
+
+}  // namespace
+
 void DynamicSliceOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
   results.insert<DynamicSliceToSlice>(context);
+}
+
+// Verifies that the number of slice sizes and the number of start indices match
+static LogicalResult Verify(DynamicSliceOp op) {
+  int num_slice_sizes = op.slice_sizes().getNumElements();
+  int num_start_indices = op.start_indices().size();
+  if (num_start_indices != num_slice_sizes) {
+    return op.emitOpError()
+           << "has mismatched number of slice sizes (" << num_slice_sizes
+           << ") and number of start indices (" << num_start_indices << ")";
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
