@@ -445,16 +445,36 @@ cc_library(
     deps = [
         ":context",
         ":copy_to_device_node",
+        ":eager_executor",
         ":eager_op_rewrite_registry",
         ":eager_operation",
+        ":kernel_and_device",
         ":tensor_handle",
-        "//tensorflow/c:c_api_internal",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/memory",
         "//tensorflow/c:tf_tensor_internal",
-        "//tensorflow/core/distributed_runtime/eager:eager_client",
-        "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
-        "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
-        "//tensorflow/core/distributed_runtime/eager:remote_mgr",
-    ],
+        "//tensorflow/compiler/jit:common",
+        "//tensorflow/core/profiler/lib:traceme",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core/distributed_runtime/eager:remote_mgr",
+            "//tensorflow/core:core_cpu_lib",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core/distributed_runtime/eager:eager_client",
+            "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
+            "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
+        ],
+    }),
 )
 
 tf_cuda_library(
