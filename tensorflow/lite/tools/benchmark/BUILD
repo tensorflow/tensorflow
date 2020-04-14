@@ -101,6 +101,7 @@ cc_test(
         ":delegate_provider_hdr",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
