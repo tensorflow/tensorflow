@@ -2247,7 +2247,10 @@ slice `i`, with the first `seq_lengths[i]` slices along dimension
   let hasOptions = 1;
 }
 
-def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
+def TFL_RsqrtOp: TFL_Op<"rsqrt", [NoSideEffect,
+                                  SameOperandsAndResultType,
+                                  NoQuantizableResult,
+                                  TFL_GpuTargetOp]> {
   let summary = "Reciprocal of square root operator";
 
   let description = [{
@@ -2395,7 +2398,10 @@ def TFL_SelectV2Op : TFL_Op<"select_v2", [NoSideEffect]> {
 }
 
 def TFL_SinOp: TFL_Op<"sin", [
-    NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
+    NoSideEffect,
+    SameOperandsAndResultType,
+    NoQuantizableResult,
+    TFL_GpuTargetOp]> {
   let summary = "Sine operator";
 
   let description = [{
@@ -2437,7 +2443,10 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
 }
 
 def TFL_SqrtOp: TFL_Op<"sqrt", [
-    NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
+    NoSideEffect,
+    SameOperandsAndResultType,
+    NoQuantizableResult,
+    TFL_GpuTargetOp]> {
   let summary = "Square root operator";
 
   let description = [{
@@ -2452,7 +2461,10 @@ def TFL_SqrtOp: TFL_Op<"sqrt", [
 }
 
 def TFL_SquareOp: TFL_Op<"square", [
-    NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
+    NoSideEffect,
+    SameOperandsAndResultType,
+    NoQuantizableResult,
+    TFL_GpuTargetOp]> {
   let summary = "Square operator";
 
   let description = [{
@@ -2496,7 +2508,10 @@ def TFL_SubOp : TFL_Op<"sub", [ResultsBroadcastableShape, NoSideEffect]> {
 // TODO(jpienaar): Expand the kernel implementation to support all types besides
 // I32 and F32.
 def TFL_SquaredDifferenceOp : TFL_Op<"squared_difference", [
-    ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
+    ResultsBroadcastableShape,
+    NoSideEffect,
+    NoQuantizableResult,
+    TFL_GpuTargetOp]> {
   let summary = "Squared difference operator";
 
   let description = [{
