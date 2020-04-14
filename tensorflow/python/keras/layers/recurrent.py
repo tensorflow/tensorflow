@@ -694,10 +694,14 @@ class RNN(Layer):
     if is_keras_tensor:
       # Compute the full input spec, including state and constants
       full_input = [inputs] + additional_inputs
-      # The original input_spec is None since there could be a nested tensor
-      # input. Update the input_spec to match the inputs.
-      full_input_spec = generic_utils.to_list(
-          nest.map_structure(lambda _: None, inputs)) + additional_specs
+      if self.built:
+        # Keep the input_spec since it has been populated in build() method.
+        full_input_spec = self.input_spec + additional_specs
+      else:
+        # The original input_spec is None since there could be a nested tensor
+        # input. Update the input_spec to match the inputs.
+        full_input_spec = generic_utils.to_list(
+            nest.map_structure(lambda _: None, inputs)) + additional_specs
       # Perform the call with temporarily replaced input_spec
       self.input_spec = full_input_spec
       output = super(RNN, self).__call__(full_input, **kwargs)

@@ -1375,7 +1375,15 @@ class RNNTest(keras_parameterized.TestCase):
         initial_state=states
     )
     model = keras.Model([inputs, state_h, state_c], decoder_out)
+    output1 = model.predict(
+        [np.ones((1, 1, 1)), np.ones((1, 1)), np.ones((1, 1))])
+    output2 = model.predict(
+        [np.ones((1, 1, 1)), np.ones((1, 1)), np.ones((1, 1))])
     model.reset_states()
+    output3 = model.predict(
+        [np.ones((1, 1, 1)), np.ones((1, 1)), np.ones((1, 1))])
+    self.assertAllClose(output1, output3)
+    self.assertNotAllClose(output1, output2)
 
   def test_reset_states(self):
     # See https://github.com/tensorflow/tensorflow/issues/25852
