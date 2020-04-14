@@ -610,3 +610,14 @@ def : Pat<(srcDstOpPair[0]:$old $shape, $seed, $seed2),
             (CastValueToI64 $old, $shape)),
           [(IsShapedTensor $shape)]>;
 }
+
+//===----------------------------------------------------------------------===//
+// Sigmoid grad op.
+//===----------------------------------------------------------------------===//
+def : Pat<(TF_SigmoidGradOp AnyRankedTensor:$l, AnyRankedTensor:$r),
+          (HLO_MulOp
+           (HLO_MulOp $r, $l, (NullDenseIntElementsAttr)),
+           (HLO_SubOp (HLO_ConstOp (ConstantSplat<"1"> $l)), $l,
+            (NullDenseIntElementsAttr)),
+           (NullDenseIntElementsAttr)),
+          [(IEEEFloatTensor $l)]>;

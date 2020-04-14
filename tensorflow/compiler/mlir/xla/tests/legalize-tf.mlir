@@ -2064,6 +2064,17 @@ func @sigmoid(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: @sigmoid_grad
+func @sigmoid_grad(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK-DAG: [[MUL0:%.+]] =  xla_hlo.multiply %arg1, %arg0 : tensor<2xf32>
+  // CHECK-DAG: [[ONE:%.+]] = xla_hlo.constant dense<1.000000e+00> : tensor<2xf32>
+  // CHECK-DAG: [[SUB:%.+]] =  xla_hlo.subtract [[ONE]], %arg0 : tensor<2xf32>
+  // CHECK-DAG: [[MUL1:%.+]] =  xla_hlo.multiply [[MUL0]], [[SUB]] : tensor<2xf32>
+  // CHECK: return [[MUL1]]
+  %0 = "tf.SigmoidGrad"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
 // CHECK-LABEL: @sin
 func @sin(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  "xla_hlo.sine"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
