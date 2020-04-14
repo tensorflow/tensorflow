@@ -2981,14 +2981,13 @@ def TFL_MirrorPadOp: TFL_Op<"mirror_pad", [
   }];
 
   let arguments = (ins
-    // TODO: add uint8 support when ready.
-    TFL_TensorOf<[F32, I32, I64]>:$input,
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8]>:$input,
     TFL_TensorOf<[I32, I64]>:$pad,
     TFL_MirrorPaddingAttr:$mode
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I32, I64]>:$output
+    TFL_TensorOf<[F32, I32, I64, I8, UI8, QI8, QUI8]>:$output
   );
 
   let hasOptions = 1;
