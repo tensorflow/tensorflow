@@ -110,13 +110,13 @@ void TestQuantizeFloat(const int* input_dims_data, const float* input_data,
                           scale, zero_point, output_dims_count, output_data);
 }
 
-template <typename T>
-void TestQuantizeInt16(const int* input_dims_data, const float* input_data,
-                       int16_t* input_quantized, const float input_scale,
-                       const int input_zero_point, const int* output_dims_data,
-                       const float* golden, T* golden_quantized,
-                       const float output_scale, const int output_zero_point,
-                       T* output_data) {
+template <typename T, typename U>
+void TestQuantizeInt(const int* input_dims_data, const float* input_data,
+                     U* input_quantized, const float input_scale,
+                     const int input_zero_point, const int* output_dims_data,
+                     const float* golden, T* golden_quantized,
+                     const float output_scale, const int output_zero_point,
+                     T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
@@ -213,10 +213,26 @@ TF_LITE_MICRO_TEST(QuantizeOpTestInt16toInt8) {
   const int output_zero_point = 0;
   int8_t output_quantized[length];
   int16_t input_quantized[length];
-  tflite::testing::TestQuantizeInt16(dims, values, input_quantized, input_scale,
-                                     input_zero_point, dims, values,
-                                     output_quantized, output_scale,
-                                     output_zero_point, output_quantized);
+  tflite::testing::TestQuantizeInt(dims, values, input_quantized, input_scale,
+                                   input_zero_point, dims, values,
+                                   output_quantized, output_scale,
+                                   output_zero_point, output_quantized);
+}
+
+TF_LITE_MICRO_TEST(QuantizeOpTestInt8toInt8) {
+  const int length = 10;
+  const int dims[] = {2, 2, 5};
+  const float values[] = {-64, -62, -60, -58, -56, 54, 56, 58, 60, 62};
+  const float input_scale = 2.f;
+  const int input_zero_point = 0;
+  const float output_scale = 0.5;
+  const int output_zero_point = 0;
+  int8_t output_quantized[length];
+  int8_t input_quantized[length];
+  tflite::testing::TestQuantizeInt(dims, values, input_quantized, input_scale,
+                                   input_zero_point, dims, values,
+                                   output_quantized, output_scale,
+                                   output_zero_point, output_quantized);
 }
 
 TF_LITE_MICRO_TESTS_END

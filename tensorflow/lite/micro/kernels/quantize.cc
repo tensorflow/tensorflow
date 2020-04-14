@@ -43,8 +43,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, affine_quantization->scale);
   TF_LITE_ENSURE(context, affine_quantization->scale->size == 1);
 
-  TF_LITE_ENSURE(context,
-                 input->type == kTfLiteFloat32 || input->type == kTfLiteInt16);
+  TF_LITE_ENSURE(context, input->type == kTfLiteFloat32 ||
+                              input->type == kTfLiteInt16 ||
+                              input->type == kTfLiteInt8);
   TF_LITE_ENSURE(context,
                  output->type == kTfLiteUInt8 || output->type == kTfLiteInt8);
 
@@ -89,6 +90,26 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         reference_ops::Requantize(
             GetTensorData<int16_t>(input), size, output_multiplier,
             output_shift, input->params.zero_point, output->params.zero_point,
+            GetTensorData<int8_t>(output));
+        break;
+      default:
+        TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
+                           TfLiteTypeGetName(input->type),
+                           TfLiteTypeGetName(output->type));
+        return kTfLiteError;
+    }
+  } else if (input->type == kTfLiteInt8) {
+    size_t size = ElementCount(*input->dims);
+    int32_t output_multiplier;
+    int output_shift;
+    double effective_scale =
+        static_cast<double>(input->params.scale / output->params.scale);
+    switch (output->type) {
+      case kTfLiteInt8:
+        QuantizeMultiplier(effective_scale, &output_multiplier, &output_shift);
+        reference_ops::Requantize(
+            GetTensorData<int8_t>(input), size, output_multiplier, output_shift,
+            input->params.zero_point, output->params.zero_point,
             GetTensorData<int8_t>(output));
         break;
       default:
