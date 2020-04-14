@@ -101,21 +101,26 @@ struct GlimpseExtractionOp {
     for (Index i = 0; i < batch_size; ++i) {
       float x = offsets_[i].first, y = offsets_[i].second;
 
-      // Un-normalize coordinates back to pixel space if normalized.
       if (normalized_) {
+        // Un-normalize coordinates back to pixel space if normalized.
         x *= input_width;
         y *= input_height;
+        if (centered_) {
+          // Un-center if coordinates are centered on the image center.
+          x /= 2.0f;
+          y /= 2.0f;
+          x += input_width / 2.0f;
+          y += input_height / 2.0f;
+          // Remove half of the glimpse window.
+          x -= width_ / 2.0f;
+          y -= height_ / 2.0f;
+        }
+      } else {
+        if (centered_) {
+          x += input_width / 2.0f;
+          y += input_height / 2.0f;
+        }
       }
-      // Un-center if coordinates are centered on the image center.
-      if (centered_) {
-        x /= 2.0f;
-        y /= 2.0f;
-        x += input_width / 2.0f;
-        y += input_height / 2.0f;
-      }
-      // Remove half of the glimpse window.
-      x -= width_ / 2.0f;
-      y -= height_ / 2.0f;
 
       const Index offset_x = (Index)x;
       const Index offset_y = (Index)y;
