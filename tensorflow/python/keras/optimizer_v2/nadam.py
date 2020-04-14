@@ -49,15 +49,12 @@ class Nadam(optimizer_v2.OptimizerV2):
       `"clipnorm"` (float) clips gradients by norm; `"clipvalue"` (float) clips
       gradients by value.
   Usage Example:
-    >>> model = tf.keras.models.Sequential()
-    >>> model.add(tf.keras.layers.Dense(12, activation="relu", 
-    ...                                 input_shape=(12,)))
-    >>> model.add(tf.keras.layers.Dense(8, activation="relu"))
-    >>> model.add(tf.keras.layers.Dense(1, activation="sigmoid"))
-    >>> model.compile(optimizer=tf.keras.optimizers.Nadam(), 
-    ...               loss="binary_crossentropy")
-    >>> model.optimizer
-    <tensorflow.python.keras.optimizer_v2.nadam.Nadam ...>
+    >>> opt = tf.keras.optimizers.Nadam(learning_rate=0.2)
+    >>> var1 = tf.Variable(10.0)
+    >>> loss = lambda: (var1 ** 2) / 2.0
+    >>> step_count = opt.minimize(loss, [var1]).numpy()
+    >>> var1.numpy()
+    9.8
   Reference:
     - [Dozat, 2015](http://cs229.stanford.edu/proj2015/054_report.pdf).
   """
