@@ -570,7 +570,11 @@ void TPUVariableRuntimeReformattingPass::runOnOperation() {
       replicate = nullptr;
       return WalkResult::interrupt();
     });
-    if (replicate) HandleReplicateOp(while_op, replicate, &getContext());
+    // Model parallelism is not supported, and can be detected when a
+    // `tf_device.parallel_execute` op in the `tf_device.replicate` is present.
+    if (replicate &&
+        replicate.GetBody().getOps<tf_device::ParallelExecuteOp>().empty())
+      HandleReplicateOp(while_op, replicate, &getContext());
   });
 }
 
