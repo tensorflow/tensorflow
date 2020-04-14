@@ -30,6 +30,10 @@ NEON_FLAGS_IF_APPLICABLE = select({
         "-O3",
         "-mfpu=neon",
     ],
+    ":armhf": [
+        "-O3",
+        "-mfpu=neon",
+    ],
     ":armv7a": [
         "-O3",
         "-mfpu=neon",
@@ -87,6 +91,13 @@ config_setting(
     name = "arm64-v8a",
     values = {
         "cpu": "arm64-v8a",
+    },
+)
+
+config_setting(
+    name = "armhf",
+    values = {
+        "cpu": "armhf",
     },
 )
 
@@ -716,6 +727,9 @@ cc_library(
             ":neon_tensor_utils",
         ],
         ":armeabi-v7a": [
+            ":neon_tensor_utils",
+        ],
+        ":armhf": [
             ":neon_tensor_utils",
         ],
         ":armv7a": [
