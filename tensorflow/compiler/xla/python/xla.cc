@@ -797,6 +797,7 @@ PYBIND11_MODULE(xla_extension, m) {
                              "Integer ID of this device's host.\n\n"
                              "This is always 0 except on multi-host platforms.")
       .def_property_readonly("platform", &Device::platform_name)
+      .def_property_readonly("device_kind", &Device::device_kind)
       .def("__str__", &Device::DebugString)
       .def("TransferToInfeed",
            [](const Device& device, const LiteralSlice& literal) {
