@@ -217,6 +217,32 @@ cc_library(
 )
 
 cc_library(
+    name = "tfl2model",
+    srcs = ["tfl2model.cc"],
+    hdrs = ["tfl2model.h"],
+    deps = [
+        "//tensorflow/lite:framework_lib",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/gpu/cl:api",
+        "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type_util",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:model_builder",
+        "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
+        "//tensorflow/lite/delegates/gpu/gl:api2",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "types",
     hdrs = ["types.h"],
     deps = [
