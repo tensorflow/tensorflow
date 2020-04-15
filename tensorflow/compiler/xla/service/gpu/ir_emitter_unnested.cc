@@ -826,17 +826,10 @@ Status IrEmitterUnnested::HandleRngGetAndUpdateState(
       Cast<HloRngGetAndUpdateStateInstruction>(rng_state)->delta(), module_,
       &b_);
 
-  llvm::Value* output_address =
-      GetIrArray(*rng_state, *rng_state)
-          .EmitArrayElementAddress(
-              llvm_ir::IrArray::Index(
-                  /*linear=*/b_.getInt64(0), rng_state->shape(), &b_),
-              &b_, "rng_state_address");
-  output_address = BitCast(
-      output_address, llvm::PointerType::get(
-                          old_state->getType(),
-                          output_address->getType()->getPointerAddressSpace()));
-  Store(old_state, output_address);
+  GetIrArray(*rng_state, *rng_state).EmitWriteArrayElement(
+      llvm_ir::IrArray::Index(/*linear=*/b_.getInt64(0), rng_state->shape(), &b_),
+      old_state,
+      &b_, true);
 
   return Status::OK();
 }
@@ -3354,9 +3347,7 @@ void IrEmitterUnnested::EmitElementForInputFusibleSlices(
           GetIrArray(*unnested_hlo, *unnested_hlo, shape_index);
       IrArray::Index slice_dst_index(dst_multidim, slice->shape(),
                                      index.GetType());
-      llvm::Value* dst_addr = src_ir_array.EmitArrayElementAddress(
-          slice_dst_index, &b_, "slice.dest");
-      b_.CreateStore(input_ir_values[i], dst_addr);
+      src_ir_array.EmitWriteArrayElement(slice_dst_index, input_ir_values[i], &b_);
     };
 
     ksl.If(StrCat("slice", i), guarding_cond, emit_slice_elem_func);
