@@ -1278,7 +1278,11 @@ port::Status CheckAndFetchProjectionWeights(
   cudnnRNNMode_t mode;
   cudnnRNNAlgo_t algo;
   cudnnDataType_t data_type;
+#if CUDNN_VERSION >= 8000
+  RETURN_IF_CUDNN_ERROR(cudnnGetRNNDescriptor_v6(
+#else
   RETURN_IF_CUDNN_ERROR(cudnnGetRNNDescriptor(
+#endif
       /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc,
       /*hiddenSize=*/&hidden_size_v,
       /*numLayers=*/&num_layers_v,
