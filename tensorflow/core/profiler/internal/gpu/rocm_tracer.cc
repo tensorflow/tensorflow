@@ -18,6 +18,12 @@ limitations under the License.
 #include <iostream>
 #include <sstream>
 
+#define ROCTRACER_FLUSH_BUG_HACK 0
+#if ROCTRACER_FLUSH_BUG_HACK
+#include <chrono>
+#include <thread>
+#endif
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -915,6 +921,10 @@ Status RocmTracer::DisableActivityTracing() {
   // gated by the same flag
   VLOG(kRocmTracerVlog1) << "Flushing roctracer activity buffer";
   RETURN_IF_ROCTRACER_ERROR(roctracer_flush_activity());
+
+#if ROCTRACER_FLUSH_BUG_HACK
+  std::this_thread::sleep_for(std::chrono::milliseconds(4000));
+#endif
 
   // Also it seems that the above call to flush the activity buffer is not
   // guranteed to be blocking, i.e. it can return before the activity callback
