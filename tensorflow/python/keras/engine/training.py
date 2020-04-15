@@ -1180,7 +1180,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               end_step = step + data_handler.step_increment
               callbacks.on_test_batch_end(end_step, logs)
       logs = tf_utils.to_numpy_or_python_type(logs)
-      callbacks.on_test_end(logs)
+      callbacks.on_test_end(logs=logs)
       
       if return_dict:
         return logs
