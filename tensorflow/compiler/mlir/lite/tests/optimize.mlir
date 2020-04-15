@@ -475,6 +475,28 @@ func @FuseFullyConnectedRelu(%arg0: tensor<1x256xf32>, %arg1: tensor<128x256xf32
   // CHECK: return %[[RES]]
 }
 
+// CHECK-LABEL: @FuseFullyConnectedRelu6
+func @FuseFullyConnectedRelu6(%arg0: tensor<1x256xf32>, %arg1: tensor<128x256xf32>, %arg2: tensor<128xf32>) -> tensor<1x128xf32> {
+  %0 = "tfl.fully_connected" (%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x256xf32>, tensor<128x256xf32>, tensor<128xf32>) -> tensor<1x128xf32>
+  %1 = "tfl.relu6"(%0) : (tensor<1x128xf32>) -> tensor<1x128xf32>
+  return %1 : tensor<1x128xf32>
+
+  // CHECK: %[[RES:[0-9].*]] = "tfl.fully_connected"
+  // CHECK-SAME: fused_activation_function = "RELU6"
+  // CHECK: return %[[RES]]
+}
+
+// CHECK-LABEL: @FuseFullyConnectedRelu1
+func @FuseFullyConnectedRelu1(%arg0: tensor<1x256xf32>, %arg1: tensor<128x256xf32>, %arg2: tensor<128xf32>) -> tensor<1x128xf32> {
+  %0 = "tfl.fully_connected" (%arg0, %arg1, %arg2) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x256xf32>, tensor<128x256xf32>, tensor<128xf32>) -> tensor<1x128xf32>
+  %1 = "tfl.relu_n1_to_1"(%0) : (tensor<1x128xf32>) -> tensor<1x128xf32>
+  return %1 : tensor<1x128xf32>
+
+  // CHECK: %[[RES:[0-9].*]] = "tfl.fully_connected"
+  // CHECK-SAME: fused_activation_function = "RELU_N1_TO_1"
+  // CHECK: return %[[RES]]
+}
+
 // CHECK-LABEL: @HardSwishPattern
 func @HardSwishPattern(%arg0: tensor<1xf32>) -> tensor<1xf32> {
   %three = constant dense<3.> : tensor<f32>
