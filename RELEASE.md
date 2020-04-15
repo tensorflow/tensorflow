@@ -121,7 +121,9 @@
   * Add check for memory alignment to MemoryAllocation::MemoryAllocation() on 32-bit ARM. This ensures a deterministic early exit instead of a hard to debug bus error later.
   * `saved_model_cli aot_compile_cpu` allows you to compile saved models to XLA header+object files and include them in your C++ programs.
   * Enable `Igamma`, `Igammac` for XLA.
-  * XLA reduction emitter is deterministic when the environment variable `TF_DETERMINISTIC_OPS` is set.
+* Deterministic Op Functionality:
+  * XLA reduction emitter is deterministic when the environment variable `TF_DETERMINISTIC_OPS` is set to "true" or "1". This extends deterministic `tf.nn.bias_add` back-prop functionality (and therefore also deterministic back-prop of bias-addition in Keras layers) to include when XLA JIT complilation is enabled.
+  * Fix problem, when running on a CUDA GPU and when either environment variable `TF_DETERMINSTIC_OPS` or environment variable `TF_CUDNN_DETERMINISTIC` is set to "true" or "1", in which some layer configurations led to an exception with the message "No algorithm worked!"
 * Tracing and Debugging:
   * Add source, destination name to `_send` traceme to allow easier debugging.
   * Add traceme event to `fastpathexecute`.
