@@ -319,8 +319,6 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       }
 
       void RunnerThread(IteratorContext* ctx, InvocationResult* result, int i) {
-        RecordStart(ctx);
-        auto cleanup = gtl::MakeCleanup([this, ctx]() { RecordStop(ctx); });
         int64 start = EnvTime::NowNanos();
         Status s = input_impls_[i]->GetNext(ctx, &result->out_tensors,
                                             &result->end_of_sequence);

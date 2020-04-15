@@ -133,7 +133,6 @@ class Node {
         bytes_consumed_(0),
         bytes_produced_(0),
         num_elements_(0),
-        processing_time_(0),
         record_metrics_(true),
         metrics_(name_),
         output_(args.output.get()) {}
@@ -148,6 +147,7 @@ class Node {
 
   // Increments the aggregate processing time by the given delta.
   void add_processing_time(int64 delta) TF_LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(mu_);
     processing_time_ += delta;
   }
 
@@ -210,6 +210,7 @@ class Node {
 
   // Returns the aggregate processing time.
   int64 processing_time() const TF_LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock l(mu_);
     return processing_time_;
   }
 
@@ -417,10 +418,10 @@ class Node {
   std::atomic<int64> bytes_consumed_;
   std::atomic<int64> bytes_produced_;
   std::atomic<int64> num_elements_;
-  std::atomic<int64> processing_time_;
   std::atomic<bool> record_metrics_;
   Metrics metrics_;
   std::map<string, std::shared_ptr<Parameter>> parameters_ TF_GUARDED_BY(mu_);
+  int64 processing_time_ TF_GUARDED_BY(mu_) = 0;
   std::map<std::thread::id, int64> work_start_ TF_GUARDED_BY(mu_);
 
   // Statistic of inputs processing time history.
@@ -490,15 +491,30 @@ class Model {
   // Adds a node with the given name and given output. The method returns
   // a pointer to the node but does not transfer ownership.
   void AddNode(Node::Factory factory, const string& name,
-               const string& output_name, std::shared_ptr<Node>* out_node)
+               const string& output_name, Node** out_node)
+      TF_LOCKS_EXCLUDED(mu_);
+
+  // Increments the processing time for the given node..
+  void AddProcessingTime(const string& name, int64 delta)
       TF_LOCKS_EXCLUDED(mu_);
 
   // Flushes metrics record by the model.
   void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
 
+  // Returns the number of elements that the input pipeline has produced.
+  int64 NumElements(const string& name) TF_LOCKS_EXCLUDED(mu_);
+
   // Uses the given algorithm to perform the autotuning optimization.
   void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget, int64 ram_budget)
       TF_LOCKS_EXCLUDED(mu_);
+
+  // Records that the given node has started work. If `stop_output` is set, it
+  // also records that the output of the given node has stopped work.
+  void RecordStart(const string& name, bool stop_output) TF_LOCKS_EXCLUDED(mu_);
+
+  // Records that the given node has stopped work. If `stop_output` is set, it
+  // also records that the output of the given node has started work.
+  void RecordStop(const string& name, bool start_output) TF_LOCKS_EXCLUDED(mu_);
 
   // Removes the given node.
   void RemoveNode(const string& name) TF_LOCKS_EXCLUDED(mu_);
