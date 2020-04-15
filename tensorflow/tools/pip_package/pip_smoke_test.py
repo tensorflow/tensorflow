@@ -37,6 +37,8 @@ BUILD_BLACKLIST = [
     "tensorflow/compiler/mlir/lite",
     "tensorflow/python/kernel_tests/signal",
     "tensorflow/examples",
+    "tensorflow/tools/android",
+    "tensorflow/python/eager/benchmarks",
 ]
 
 def GetBuild(dir_base):
