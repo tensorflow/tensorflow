@@ -16,8 +16,11 @@ limitations under the License.
 
 #include <assert.h>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
+
+#include "absl/types/optional.h"
 
 namespace mlir {
 namespace quant {
@@ -53,6 +56,26 @@ QuantizedMultiplier QuantizeMultiplier(double double_multiplier) {
     q_fixed = 0;
   }
   return {static_cast<int32_t>(q_fixed), shift};
+}
+
+QuantizedRange CalculateQuantizedRange(double scale, int32_t zero_point,
+                                       absl::optional<double> rmin,
+                                       absl::optional<double> rmax,
+                                       int32_t qmin, int32_t qmax) {
+  auto quantize = [scale, zero_point](float f) {
+    return zero_point + static_cast<int32_t>(std::round(f / scale));
+  };
+
+  if (rmin.has_value() && rmax.has_value()) {
+    return {std::max(qmin, quantize(rmin.value())),
+            std::min(qmax, quantize(rmax.value()))};
+  } else if (rmin.has_value()) {
+    return {std::max(qmin, quantize(rmin.value())), qmax};
+  } else if (rmax.has_value()) {
+    return {qmin, std::min(qmax, quantize(rmax.value()))};
+  } else {
+    return {qmin, qmax};
+  }
 }
 
 }  // namespace quant

@@ -19,15 +19,25 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include "absl/types/optional.h"
+
 namespace mlir {
 namespace quant {
 
 using QuantizedMultiplier = std::pair<int32_t, int32_t>;
+using QuantizedRange = std::pair<int32_t, int32_t>;
 
 // Decompose double precision multiplier to integer multiplier and exponent.
 //    double_multiplier = int_multiplier * 2 ^ (-31 + exponent)
 // int_multiplier will be range of (2^31, 2^30].
 QuantizedMultiplier QuantizeMultiplier(double double_multiplier);
+
+// Calculate the effective quantized value range for the scale, zero point. The
+// range is the minimum range defined by [rmin, rmax] and [qmin, qmax].
+QuantizedRange CalculateQuantizedRange(double scale, int32_t zero_point,
+                                       absl::optional<double> rmin,
+                                       absl::optional<double> rmax,
+                                       int32_t qmin, int32_t qmax);
 
 }  // namespace quant
 }  // namespace mlir
