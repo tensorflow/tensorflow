@@ -30,7 +30,7 @@ For example:
               [0, 0, 3, 0]
               [0, 0, 0, 4]]
 
-<tf.Tensor: shape=(4,), dtype=int32, numpy=array([1, 2, 3, 4], dtype=int32)>
+tf.linarg.tensor_diag_part(input) ==> <tf.Tensor: shape=(4,), dtype=int32, numpy=array([1, 2, 3, 4], dtype=int32)>
 ```
 END
 }
