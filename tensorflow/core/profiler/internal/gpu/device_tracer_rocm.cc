@@ -154,7 +154,22 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
           break;
       }
     } else {
-      aggregated_events_.emplace(event.correlation_id, std::move(event));
+      switch (event.source) {
+        case RocmTracerEventSource::ApiCallback:
+          aggregated_events_.emplace(event.correlation_id, std::move(event));
+          break;
+        case RocmTracerEventSource::Activity:
+          // you would think that this cannot happen, but it does
+          // This is primarily because the call "roctracer_flush_activity" does
+          // not work as it should. Imagine a sequence where we enable/disable
+          // tracing more than once in a single TF session.
+          // If the "flush" that happens during disable, does not flush out all
+          // the activity records, then they will show up during the subsequent
+          // call to enable, and we will end up here!
+          OnEventsDropped(
+              "Activity event encountered before a corresponding API event", 1);
+          break;
+      }
     }
   }
 
@@ -201,6 +216,9 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
 
       if (logical_id >= options_.num_gpus) {
         OnEventsDropped("logical device id >= num gpus", 1);
+        DumpRocmTracerEvent(event, 0, 0);
+      } else if (event.stream_id == RocmTracerEvent::kInvalidStreamId) {
+        OnEventsDropped("invalid stream id", 1);
         DumpRocmTracerEvent(event, 0, 0);
       } else {
         event.device_id = logical_id;
