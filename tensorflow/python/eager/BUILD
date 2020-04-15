@@ -611,10 +611,12 @@ py_library(
     ],
 )
 
+# TODO(b/153582383): Move tf_ops_alwayslink dependency to c_api_tfrt instead.
 cuda_py_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":context",
