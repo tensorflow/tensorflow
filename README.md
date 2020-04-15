@@ -9,7 +9,7 @@ TinyML 번역서의 한국 독자들을 위한 한글 소스코드 저장소를 
 ### Google Colab 통한 실습 
 아래의 Jupyter Notebook 파일은 Google Colab과 연결되도록 만들어두었습니다. 이를 통해 책의 주요 딥러닝 모델 학습 코드를 간편하게 실행해 볼 수 있습니다. 
 
-- __Ch04: 사인파를 예측하는 모델 만들기__ [create_sine_model.ipynb ](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/tensorflow/lite/micro/examples/hello_world/create_sine_model.ipynb)
+- __Ch04: 사인파를 예측하는 모델 만들기__ [create_sine_model_ko.ipynb ](https://colab.research.google.com/github/yunho0130/tensorflow-lite/blob/master/tensorflow/lite/micro/examples/hello_world/create_sine_model_ko.ipynb)
 
     ![](./images/sinewave.png)
 
