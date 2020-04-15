@@ -579,9 +579,9 @@ struct LaunchBatchMatMul<GPUDevice, Eigen::half> {
           stream
               ->ThenBlasGemmStridedBatched(
                   blas_transpose_b, blas_transpose_a, n, m, k,
-                  static_cast<Coefficient>(1.0), *b_ptrs[0], adj_y ? k : n,
+                  static_cast<Coefficient>(alpha), *b_ptrs[0], adj_y ? k : n,
                   b_stride, *a_ptrs[0], adj_x ? m : k, a_stride,
-                  static_cast<Coefficient>(0.0), c_ptrs[0], n, c_stride,
+                  static_cast<Coefficient>(beta), c_ptrs[0], n, c_stride,
                   batch_size)
               .ok();
       if (!blas_launch_status) {
