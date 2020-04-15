@@ -941,6 +941,7 @@ cuda_py_test(
     shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
+        "notap",  # TODO(b/154053481) flake
         "notsan",  # TODO(b/152075365)
     ],
     deps = [
