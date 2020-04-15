@@ -44,6 +44,7 @@ hexagon_op_tests(
     ],
     deps = [
         ":hexagon_delegate_op_model",
+        "//tensorflow/lite/kernels:reshape_test_common",
         "@com_google_googletest//:gtest_main",
     ],
 )

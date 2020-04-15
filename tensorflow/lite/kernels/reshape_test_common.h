@@ -33,8 +33,8 @@ enum class ShapeSpecificationType {
   kAsTensor,
 };
 
-template <typename T>
-class ReshapeOpModel : public SingleOpModel {
+template <typename T, typename BASE = SingleOpModel>
+class ReshapeOpModel : public BASE {
  public:
   ReshapeOpModel(std::initializer_list<int> input_shape,
                  std::initializer_list<int> shape_shape,
@@ -42,69 +42,81 @@ class ReshapeOpModel : public SingleOpModel {
                  ShapeSpecificationType shape_type) {
     switch (shape_type) {
       case ShapeSpecificationType::kAsTensor:
-        BuildWithTensorShape(input_shape, shape_shape, shape_data);
+        this->BuildWithTensorShape(input_shape, shape_shape, shape_data);
         break;
       case ShapeSpecificationType::kAsConstantTensor:
-        BuildWithConstantTensorShape(input_shape, shape_shape, shape_data);
+        this->BuildWithConstantTensorShape(input_shape, shape_shape,
+                                           shape_data);
         break;
       case ShapeSpecificationType::kAsReshapeOption:
         // In this case the shape of the new shape doesn't matter. It is
         // always hardcoded as a flat vector.
-        BuildWithHardcodedShape(input_shape, shape_data);
+        this->BuildWithHardcodedShape(input_shape, shape_data);
         break;
     }
   }
 
-  void SetInput(std::vector<T> data) { PopulateTensor<T>(input_, data); }
-
-  void SetStringInput(std::initializer_list<string> data) {
-    PopulateStringTensor(input_, data);
+  void SetInput(std::vector<T> data) {
+    this->template PopulateTensor<T>(input_, data);
   }
 
-  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
-  std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
+  void SetStringInput(std::initializer_list<string> data) {
+    this->PopulateStringTensor(input_, data);
+  }
+
+  std::vector<T> GetOutput() {
+    return this->template ExtractVector<T>(output_);
+  }
+  std::vector<int> GetOutputShape() { return this->GetTensorShape(output_); }
 
  private:
   void BuildWithHardcodedShape(std::initializer_list<int> input_shape,
                                std::initializer_list<int> shape_data) {
-    input_ = AddInput({GetTensorType<T>(), input_shape});
-    output_ = AddOutput(GetTensorType<T>());
-    SetBuiltinOp(
+    input_ = this->AddInput({GetTensorType<T>(), input_shape});
+    output_ = this->AddOutput(GetTensorType<T>());
+    this->SetBuiltinOp(
         BuiltinOperator_RESHAPE, BuiltinOptions_ReshapeOptions,
-        CreateReshapeOptions(builder_, builder_.CreateVector<int>(shape_data))
+        CreateReshapeOptions(
+            this->builder_,
+            this->builder_.template CreateVector<int>(shape_data))
             .Union());
-    BuildInterpreter({GetShape(input_)});
+    this->BuildInterpreter({this->GetShape(input_)});
   }
 
   void BuildWithTensorShape(std::initializer_list<int> input_shape,
                             std::initializer_list<int> shape_shape,
                             std::initializer_list<int> shape_data) {
-    input_ = AddInput({GetTensorType<T>(), input_shape});
-    output_ = AddOutput(GetTensorType<T>());
-    int shape_input_tensor = AddInput({TensorType_INT32, shape_shape});
+    input_ = this->AddInput({GetTensorType<T>(), input_shape});
+    output_ = this->AddOutput(GetTensorType<T>());
+    int shape_input_tensor = this->AddInput({TensorType_INT32, shape_shape});
     // Note how shape also appears in ReshapeOptions
-    SetBuiltinOp(
+    this->SetBuiltinOp(
         BuiltinOperator_RESHAPE, BuiltinOptions_ReshapeOptions,
-        CreateReshapeOptions(builder_, builder_.CreateVector<int>(shape_data))
+        CreateReshapeOptions(
+            this->builder_,
+            this->builder_.template CreateVector<int>(shape_data))
             .Union());
-    BuildInterpreter({GetShape(input_), GetShape(shape_input_tensor)});
+    this->BuildInterpreter(
+        {this->GetShape(input_), this->GetShape(shape_input_tensor)});
     if (shape_data.size() != 0) {
-      PopulateTensor<int32_t>(shape_input_tensor, shape_data);
+      this->template PopulateTensor<int32_t>(shape_input_tensor, shape_data);
     }
   }
 
   void BuildWithConstantTensorShape(std::initializer_list<int> input_shape,
                                     std::initializer_list<int> shape_shape,
                                     std::initializer_list<int> shape_data) {
-    input_ = AddInput({GetTensorType<T>(), input_shape});
-    output_ = AddOutput(GetTensorType<T>());
-    AddConstInput(TensorType_INT32, shape_data, shape_shape);
+    input_ = this->AddInput({GetTensorType<T>(), input_shape});
+    output_ = this->AddOutput(GetTensorType<T>());
+    this->AddConstInput(TensorType_INT32, shape_data, shape_shape);
     // Note how the shape also appears in the ReshapeOptions.
-    SetBuiltinOp(
+    this->SetBuiltinOp(
         BuiltinOperator_RESHAPE, BuiltinOptions_ReshapeOptions,
-        CreateReshapeOptions(builder_, builder_.CreateVector<int>(shape_data))
+        CreateReshapeOptions(
+            this->builder_,
+            this->builder_.template CreateVector<int>(shape_data))
             .Union());
-    BuildInterpreter({GetShape(input_)});
+    this->BuildInterpreter({this->GetShape(input_)});
   }
 
   int input_;
