@@ -1030,6 +1030,8 @@ struct SoftmaxParams {
   int32_t zero_point;
   float scale;
   float* table;
+  int16_t* exp_lut;
+  int16_t* one_over_one_plus_x_lut;
 };
 
 struct SpaceToBatchParams {

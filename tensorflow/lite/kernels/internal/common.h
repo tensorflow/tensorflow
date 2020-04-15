@@ -21,6 +21,8 @@ limitations under the License.
 #endif
 #endif
 
+#include <functional>
+
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -193,6 +195,49 @@ inline int CountLeadingSignBits(T integer_input) {
                    ? CountLeadingZeros(2 * static_cast<U>(-integer_input) - 1)
                    : 0;
 #endif
+}
+
+// generate INT16 LUT for function(), e.g., table exp(x) and 1/(1+x) used in
+// softmax
+inline void gen_lut(const std::function<double(double)>& func, double min,
+                    double max, int16_t* table, const int num) {
+  // size of table should equal to num + 1
+  // last element only for slope calculation
+  double step = (max - min) / (num - 1);
+  double half_step = step / 2.0;
+  for (int i = 0; i < num - 1; i++) {
+    double sample_val = std::round(func(min + i * step) * 32768.0);
+    double midpoint_interp_val =
+        std::round((func(min + (i + 1) * step) * 32768.0 +
+                    std::round(func(min + i * step) * 32768.0)) /
+                   2.0);
+    double midpoint_val =
+        std::round(func(min + i * step + half_step) * 32768.0);
+    double midpoint_err = midpoint_interp_val - midpoint_val;
+    double bias = std::round(midpoint_err / 2.0);
+    table[i] = std::min(std::max(sample_val - bias, -32768.0), 32767.0);
+  }
+  table[num - 1] =
+      std::min(std::max(std::round(func(max) * 32768.0), -32768.0), 32767.0);
+}
+
+// int16 func table lookup, e.g., lookup exp() and 1/(1+x) used in softmax
+static int16_t generic_int16_table_lookup(int16_t value, const int16_t* lut) {
+  // 512 base value, lut[513] only for calculate slope
+  uint16_t index = static_cast<uint16_t>(256 + (value >> 7));
+  assert(index < 512 && "LUT index out of range.");
+  int16_t offset = value & 0x7f;
+
+  // base and slope are Q0.15
+  int16_t base = lut[index];
+  int16_t slope = lut[index + 1] - lut[index];
+
+  // Q0.15 * Q0.7 = Q0.22
+  // Round and convert from Q0.22 to Q0.15
+  int32_t delta = (static_cast<int32_t>(slope) * offset + 64) >> 7;
+
+  // Q0.15 + Q0.15
+  return base + delta;
 }
 
 // Table of sigmoid(i/24) at 0.16 format - 256 elements.
