@@ -1224,6 +1224,17 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "reshape_test_common",
+    testonly = 1,
+    hdrs = [
+        "reshape_test_common.h",
+    ],
+    deps = [
+        ":test_util",
+    ],
+)
+
 cc_test(
     name = "reshape_test",
     size = "small",
@@ -1231,6 +1242,7 @@ cc_test(
     tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
+        ":reshape_test_common",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
