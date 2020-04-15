@@ -604,7 +604,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
       internal_def.object_def.user_provided = false;
       AccessType access =
           graph_.IsGraphInput(value->id) ? AccessType::READ : AccessType::WRITE;
-      links.push_back({value->id, access, external_def, internal_def});
+      links.push_back({value->id, access, internal_def, external_def});
     }
     return links;
   }
