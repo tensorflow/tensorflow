@@ -51,6 +51,10 @@ struct TFL_CAPI_EXPORT TfLiteHexagonDelegateOptions {
   // the DSP. Combining with 'debug_level' more information will be printed.
   // WARNING: Experimental and subject to change anytime.
   bool print_graph_debug;
+  // This sets the maximum number of Hexagon graphs created with
+  // hexagon_nn_init. Each graph corresponds to one delegated node subset in the
+  // TFLite model.
+  int max_delegated_partitions;
 };
 
 // Return a delegate that uses Hexagon SDK for ops execution.
