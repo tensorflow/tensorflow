@@ -51,3 +51,12 @@ tf_py_test(
         "//tensorflow/python:extra_py_tests_deps",
     ],
 )
+
+tf_py_test(
+    name = "module_test",
+    srcs = ["module_test.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:extra_py_tests_deps",
+    ],
+)
