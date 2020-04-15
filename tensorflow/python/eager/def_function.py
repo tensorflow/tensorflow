@@ -39,6 +39,7 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.profiler import traceme
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
@@ -670,25 +671,36 @@ class Function(object):
   def __call__(self, *args, **kwds):
     """Calls the graph function and warn too frequent tracings."""
     if RUN_FUNCTIONS_EAGERLY:
-      return self._python_function(*args, **kwds)
+      with traceme.TraceMe(self._name,
+                           tf_function_call="eager"):
+        return self._python_function(*args, **kwds)
 
     tracing_count = self._get_tracing_count()
-    if self._experimental_compile and (
-        not control_flow_util.GraphOrParentsInXlaContext(
-            ops.get_default_graph())):
-      # V2 control flow relies on XLAControlFlowContext to generate a
-      # XLA-compatible function graph. If the function is already called inside
-      # an XLA context, we don't create nested XLA context.
-      xla_context = control_flow_ops.XLAControlFlowContext()
-      try:
-        xla_context.Enter()
+    with traceme.TraceMe(self._name) as tm:
+      if self._experimental_compile and (
+          not control_flow_util.GraphOrParentsInXlaContext(
+              ops.get_default_graph())):
+        # V2 control flow relies on XLAControlFlowContext to generate a
+        # XLA-compatible function graph. If the function is already called
+        # inside an XLA context, we don't create nested XLA context.
+        compiler = "xla"
+        xla_context = control_flow_ops.XLAControlFlowContext()
+        try:
+          xla_context.Enter()
+          result = self._call(*args, **kwds)
+        finally:
+          xla_context.Exit()
+      else:
+        compiler = "nonXla"
         result = self._call(*args, **kwds)
-      finally:
-        xla_context.Exit()
-    else:
-      result = self._call(*args, **kwds)
 
-    if tracing_count == self._get_tracing_count():
+      new_tracing_count = self._get_tracing_count()
+      without_tracing = (tracing_count == new_tracing_count)
+      execution_mode = "notTraced" if without_tracing else "traced"
+      tm.set_metadata(tf_function_call=execution_mode + "-" + compiler,
+                      tracing_count=new_tracing_count)
+
+    if without_tracing:
       _frequent_tracing_detector.called_without_tracing(
           self._key_for_call_stats)
     else:
