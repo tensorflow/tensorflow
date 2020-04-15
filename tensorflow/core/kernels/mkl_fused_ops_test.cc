@@ -452,7 +452,6 @@ INSTANTIATE_TYPED_TEST_CASE_P(Test, MklFusedConv2DWithBiasOpTest,
                               MklFusedBiasAddDataTypes);
 
 // Testing MKL's fused depthwise convolution ops
-//
 template <typename T>
 class MklFusedDepthwiseConv2DOpTest : public OpsTestBase {
  protected:
@@ -571,10 +570,6 @@ class MklFusedDepthwiseConv2DOpTest : public OpsTestBase {
                const Tensor& bias_data, const std::vector<string>& fused_ops,
                Tensor* out) {
           std::vector<Tensor> fused_input = {bias_data};
-          if (std::find(fused_ops.begin(), fused_ops.end(), "Add") !=
-              fused_ops.end()) {
-            fused_input.push_back(input_data);
-          }
           RunMklFusedDepthwiseConv2DOp(input_data, filter_data, fused_input,
                                        fused_ops, out);
         };
@@ -589,7 +584,7 @@ template <typename T>
 class MklFusedDepthwiseConv2DWithBiasOpTest
     : public MklFusedDepthwiseConv2DOpTest<T> {};
 
-TYPED_TEST_CASE_P(MklFusedDepthwiseConv2DWithBiasOpTest);
+TYPED_TEST_SUITE_P(MklFusedDepthwiseConv2DWithBiasOpTest);
 
 // -------------------------------------------------------------------------- //
 // DepthwiseConv2D + BiasAdd + {Activation}                                   //
@@ -662,17 +657,15 @@ TYPED_TEST_P(MklFusedDepthwiseConv2DWithBiasOpTest, SpatialConvolutionAndElu) {
                                    {"BiasAdd", "Elu"});
 }
 
-REGISTER_TYPED_TEST_CASE_P(MklFusedDepthwiseConv2DWithBiasOpTest,
-                           OneByOneConvolution, SpatialConvolution,
-                           OneByOneConvolutionAndRelu,
-                           SpatialConvolutionAndRelu,
-                           OneByOneConvolutionAndRelu6,
-                           SpatialConvolutionAndRelu6,
-                           OneByOneConvolutionAndElu, SpatialConvolutionAndElu);
+REGISTER_TYPED_TEST_SUITE_P(
+    MklFusedDepthwiseConv2DWithBiasOpTest, OneByOneConvolution,
+    SpatialConvolution, OneByOneConvolutionAndRelu, SpatialConvolutionAndRelu,
+    OneByOneConvolutionAndRelu6, SpatialConvolutionAndRelu6,
+    OneByOneConvolutionAndElu, SpatialConvolutionAndElu);
 
 using MklFusedBiasAddDataTypes = ::testing::Types<float>;
-INSTANTIATE_TYPED_TEST_CASE_P(Test, MklFusedDepthwiseConv2DWithBiasOpTest,
-                              MklFusedBiasAddDataTypes);
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedDepthwiseConv2DWithBiasOpTest,
+                               MklFusedBiasAddDataTypes);
 
 // Testing fusion of pad and convolution
 

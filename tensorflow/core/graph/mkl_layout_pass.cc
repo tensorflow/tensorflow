@@ -482,8 +482,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       CopyAttrsFusedConv2D, FusedConv2DRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.fused_depthwise_conv2d,
-                      csinfo_.mkl_fused_depthwise_conv2d,
-                      CopyAttrsFusedDepthwiseConv2D, FusedDepthwiseConv2DRewrite,
+                      csinfo_.mkl_fused_depthwise_conv2d, CopyAttrsFusedConv2D,
+                      FusedDepthwiseConv2DRewrite,
                       kRewriteForLayoutPropagation});
     rinfo_.push_back({csinfo_.fused_matmul, csinfo_.mkl_fused_matmul,
                       CopyAttrsAllCheckConstFilter, FusedMatMulRewrite});
@@ -1683,7 +1683,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
             fused_ops == std::vector<string>{"BiasAdd", "Add", "Relu"});
   }
 
-static bool FusedDepthwiseConv2DRewrite(const Node* n) {
+  static bool FusedDepthwiseConv2DRewrite(const Node* n) {
     // MKL DNN currently doesn't support all fusions that grappler fuses
     // together with DepthwiseConv2D (ex. batchnorm). We rewrite
     // _FusedDepthwiseConv2DNative only if it includes those we support.
@@ -1913,8 +1913,6 @@ static bool FusedDepthwiseConv2DRewrite(const Node* n) {
                                             bool change_format = false);
   static void CopyAttrsFusedConv2D(const Node* orig_node, NodeBuilder* nb,
                                    bool change_format = false);
-  static void CopyAttrsFusedDepthwiseConv2D(const Node* orig_node, NodeBuilder* nb,
-                                            bool change_format = false);
   static void CopyAttrsPadWithConv2D(const Node* orig_node, NodeBuilder* nb,
                                      bool change_format = false);
   static void CopyAttrsPadWithFusedConv2D(const Node* orig_node,
@@ -2873,13 +2871,6 @@ void MklLayoutRewritePass::CopyAttrsFusedConv2D(const Node* orig_node,
   nb->Attr("fused_ops", fused_ops);
   nb->Attr("epsilon", epsilon);
 }
-
-void MklLayoutRewritePass::CopyAttrsFusedDepthwiseConv2D(const Node* orig_node,
-                                                         NodeBuilder* nb,
-                                                         bool change_format) {
-  MklLayoutRewritePass::CopyAttrsFusedConv2D(orig_node, nb, change_format);
-}
-
 
 void MklLayoutRewritePass::CopyAttrsPooling(const Node* orig_node,
                                             NodeBuilder* nb,

@@ -1387,36 +1387,25 @@ class MklFusedDepthwiseConvOp
 
     if (fused_ops == std::vector<string>{"BiasAdd"}) {
       this->set_fuse_biasadd(true);
-      OP_REQUIRES(
-          context, num_args == 1,
-	  errors::InvalidArgument(
-              "Fused DepthwiseConv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, ALGORITHM::eltwise_relu);
-      OP_REQUIRES(
-          context, num_args == 1,
-	  errors::InvalidArgument(
-              "Fused DepthwiseConv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu6"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, ALGORITHM::eltwise_bounded_relu, 6.0);
-      OP_REQUIRES(
-          context, num_args == 1,
-	  errors::InvalidArgument(
-              "Fused DepthwiseConv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, ALGORITHM::eltwise_elu, 1.0);
-      OP_REQUIRES(
-          context, num_args == 1,
-	  errors::InvalidArgument(
-              "Fused DepthwiseConv2D must have one extra argument: bias."));
     } else {
       OP_REQUIRES(context, false,
                   errors::Unimplemented("Fusion is not implemented: [",
                                         absl::StrJoin(fused_ops, ","), "]"));
     }
+
+    OP_REQUIRES(
+        context, num_args == 1,
+        errors::InvalidArgument(
+            "Fused DepthwiseConv2D must have one extra argument: bias."));
 
     if (pad_enabled) {
       this->set_fuse_pad(true);

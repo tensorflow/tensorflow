@@ -222,7 +222,11 @@ bool IsCpuCompatibleDataType(const NodeDef* contraction,
   if (IsConv2D(*contraction)) {
     return dtype == DT_FLOAT || dtype == DT_DOUBLE;
   } else if (IsDepthwiseConv2dNative(*contraction)) {
+#ifdef INTEL_MKL
     return dtype == DT_FLOAT;
+#else
+    return false;
+#endif  // INTEL_MKL
   } else if (IsMatMul(*contraction)) {
     return dtype == DT_FLOAT;
   } else {
@@ -384,12 +388,11 @@ bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
   const auto* contraction_node_def = contraction_node_view->node();
 
   // Conv2D, MatMul or DepthwiseConv2D
-  bool is_required_contraction = IsConv2D(*contraction_node_def) ||
-                                 IsMatMul(*contraction_node_def) ||
-                                 IsDepthwiseConv2dNative(*contraction_node_def);
+  bool is_contraction = IsConv2D(*contraction_node_def) ||
+                        IsMatMul(*contraction_node_def) ||
+                        IsDepthwiseConv2dNative(*contraction_node_def);
 
-  if (!is_required_contraction ||
-      !HaveSameDataType(node_def, contraction_node_def) ||
+  if (!is_contraction || !HaveSameDataType(node_def, contraction_node_def) ||
       HasControlFaninOrFanout(*contraction_node_view) ||
       !HasAtMostOneFanoutAtPort0(*contraction_node_view) ||
       IsInPreserveSet(ctx, contraction_node_def))
