@@ -833,6 +833,44 @@ static LogicalResult Verify(ConcatenateOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// DynamicReshapeOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(DynamicReshapeOp op) {
+  auto result_type = op.result().getType().dyn_cast<RankedTensorType>();
+  auto output_shape_type =
+      op.output_shape().getType().dyn_cast<RankedTensorType>();
+  if (result_type && output_shape_type && output_shape_type.hasStaticShape() &&
+      output_shape_type.getDimSize(0) != result_type.getRank()) {
+    return op.emitError() << "output should have a rank equal to the number of "
+                             "elements in output_shape";
+  }
+  return success();
+}
+
+namespace {
+class DynamicReshapeOpNotActuallyDynamic
+    : public OpRewritePattern<DynamicReshapeOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(DynamicReshapeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto type = op.result().getType().dyn_cast<RankedTensorType>();
+    if (!type || !type.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(op, "requires static shape tensor");
+    }
+    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.operand());
+    return success();
+  }
+};
+}  // namespace
+
+void DynamicReshapeOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<DynamicReshapeOpNotActuallyDynamic>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // DynamicSliceOp
 //===----------------------------------------------------------------------===//
 
@@ -1021,28 +1059,6 @@ static LogicalResult Verify(RecvOp op) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult CopyOp::fold(ArrayRef<Attribute> operands) { return getOperand(); }
-
-//===----------------------------------------------------------------------===//
-// ReshapeOp
-//===----------------------------------------------------------------------===//
-
-OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
-  if (getOperand().getType() == getType()) {
-    return getOperand();
-  }
-
-  if (auto prev_op =
-          dyn_cast_or_null<ReshapeOp>(getOperand().getDefiningOp())) {
-    setOperand(prev_op.getOperand());
-    return getResult();
-  }
-
-  if (auto elements = operands.front().dyn_cast_or_null<DenseElementsAttr>()) {
-    return elements.reshape(getResult().getType().cast<ShapedType>());
-  }
-
-  return {};
-}
 
 //===----------------------------------------------------------------------===//
 // ReverseOp
@@ -1238,6 +1254,24 @@ static LogicalResult Verify(ReshapeOp op) {
              << num_input_elements << ")";
   }
   return success();
+}
+
+OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
+  if (getOperand().getType() == getType()) {
+    return getOperand();
+  }
+
+  if (auto prev_op =
+          dyn_cast_or_null<ReshapeOp>(getOperand().getDefiningOp())) {
+    setOperand(prev_op.getOperand());
+    return getResult();
+  }
+
+  if (auto elements = operands.front().dyn_cast_or_null<DenseElementsAttr>()) {
+    return elements.reshape(getResult().getType().cast<ShapedType>());
+  }
+
+  return {};
 }
 
 //===----------------------------------------------------------------------===//

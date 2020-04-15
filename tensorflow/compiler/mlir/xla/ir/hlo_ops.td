@@ -1053,6 +1053,26 @@ def HLO_ReshapeOp: HLO_Op<"reshape",
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_DynamicReshapeOp: HLO_Op<"dynamic_reshape", []> {
+  let summary = "Reshape a tensor to a given, possibly dynamic, shape.";
+  let description = [{
+    Reshapes `operand` to `output_shape`.
+
+    Requires:
+    - The length of `output_shape` is equal to the rank of `result`.
+    - The number of elements in `operand` (that is, the product of extents of
+      its shape) is equal to the number of elements in `output_shape` (that is,
+      the product of values in `output_shape`).
+  }];
+
+  let arguments = (ins HLO_Tensor:$operand, HLO_DimensionTensor:$output_shape);
+  let results = (outs HLO_Tensor:$result);
+
+  let hasCanonicalizer = 1;
+  // Cannot be exported to legacy formats.
+  let hasCustomHLOConverter = 1;
+}
+
 def ScatterDimensionNumbers : StructAttr<"ScatterDimensionNumbers", HLO_Dialect,
       [StructFieldAttr<"update_window_dims", I64ElementsAttr>,
       StructFieldAttr<"inserted_window_dims", I64ElementsAttr>,

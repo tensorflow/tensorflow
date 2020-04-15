@@ -155,3 +155,10 @@ func @fold_pad_into_conv_i32(%arg0 : tensor<1x32x32x3xi32>,
   } : (tensor<1x38x38x3xi32>, tensor<7x7x3x64xi32>) -> tensor<1x16x16x64xi32>
   return %2 : tensor<1x16x16x64xi32>
 }
+
+// CHECK-LABEL: func @dynamic_reshape_not_actually_dynamic
+func @dynamic_reshape_not_actually_dynamic(%arg0: tensor<4xf32>, %shape: tensor<2xindex>) -> tensor<4x1xf32> {
+  // CHECK: xla_hlo.reshape
+  %0 = "xla_hlo.dynamic_reshape"(%arg0, %shape) : (tensor<4xf32>, tensor<2xindex>) -> tensor<4x1xf32>
+  return %0 : tensor<4x1xf32>
+}
