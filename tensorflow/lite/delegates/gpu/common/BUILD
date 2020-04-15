@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform:build_config.bzl", "tf_platform_alias")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -19,17 +21,9 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "custom_parsers",
-    srcs = ["custom_parsers.cc"],
-    hdrs = ["custom_parsers.h"],
-    deps = [
-        ":shape",
-        ":status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:any",
-        "@flatbuffers",
-    ],
+exports_files(
+    ["custom_parsers.h"],
+    visibility = ["//tensorflow/lite/delegates/gpu/common:__subpackages__"],
 )
 
 cc_library(
@@ -126,7 +120,6 @@ cc_library(
     srcs = ["model_builder.cc"],
     hdrs = ["model_builder.h"],
     deps = [
-        ":custom_parsers",
         ":data_type",
         ":model",
         ":model_builder_helper",
@@ -134,6 +127,10 @@ cc_library(
         ":shape",
         ":status",
         ":tensor",
+        "@FP16",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/lite:context",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
@@ -143,11 +140,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/schema:schema_fbs",
-        "@FP16",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-    ],
+    ] + tf_platform_alias("custom_parsers", "//tensorflow/lite/delegates/gpu/common/"),
 )
 
 cc_test(
