@@ -67,8 +67,12 @@ class Analyzer(cfg.GraphVisitor):
       live_in = gen | (live_out - kill)
 
     else:
-      assert self.can_ignore(node), (node.ast_node, node)
-
+      # Nodes that don't have a scope annotation are assumed not to touch any
+      # symbols.
+      # This Name node below is a literal name, e.g. False
+      assert isinstance(node.ast_node,
+                        (gast.Name, gast.Continue, gast.Break, gast.Pass,
+                         gast.Global, gast.Nonlocal)), type(node.ast_node)
       live_out = set()
       for n in node.next:
         live_out |= self.in_[n]
@@ -101,7 +105,6 @@ class WholeTreeAnalyzer(transformer.Base):
 
   def __init__(self, source_info, graphs):
     super(WholeTreeAnalyzer, self).__init__(source_info)
-    self.allow_skips = False
     self.graphs = graphs
     self.current_analyzer = None
     self.analyzers = {}
