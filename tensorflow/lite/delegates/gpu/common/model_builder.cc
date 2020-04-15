@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 
-#include <stddef.h>
-
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -582,7 +580,7 @@ absl::Status MaybeFuseActivation(TfLiteFusedActivation fused_activation,
   if (fused_activation == kTfLiteActNone) {
     return absl::OkStatus();
   }
-  const auto& outputs = graph->FindOutputs(node->id);
+  const auto outputs = graph->FindOutputs(node->id);
   if (outputs.empty()) {
     return absl::InternalError("Empty outputs in fused node");
   }
