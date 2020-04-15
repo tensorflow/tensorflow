@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 
 #include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
 namespace evaluation {
@@ -118,6 +119,7 @@ std::vector<TfLiteDelegatePtr> DelegateProviders::CreateAllDelegates(
     // user-specified benchmark params tells not to.
     if (ptr == nullptr) continue;
     delegates.emplace_back(std::move(ptr));
+    TFLITE_LOG(INFO) << one->GetName() << " delegate is created.";
   }
   return delegates;
 }

@@ -71,6 +71,7 @@ cc_library(
     deps = [
         ":utils",
         "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools:tool_params",
         "//tensorflow/lite/tools/benchmark:delegate_provider_hdr",
         "//tensorflow/lite/tools/benchmark:tflite_execution_providers",
