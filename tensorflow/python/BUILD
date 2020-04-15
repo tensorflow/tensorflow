@@ -4885,7 +4885,6 @@ cuda_py_test(
         ":test_ops",
         ":unconnected_gradients",
         ":variable_scope",
-        "//tensorflow/python/keras:engine",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
