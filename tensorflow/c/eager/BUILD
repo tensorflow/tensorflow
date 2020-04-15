@@ -241,8 +241,8 @@ tf_cuda_cc_test(
     ],
     extra_copts = tfe_xla_copts(),
     tags = [
-        "guitar",
-        "multi_gpu",
+        # "guitar",  # disabled due to b/154123730
+        # "multi_gpu",  # disabled due to b/154123730
         "no_oss",
     ],
     deps = [
