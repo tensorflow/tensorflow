@@ -1241,10 +1241,13 @@ static Device* LookupDevice(const PyLocalClient& client, int device_id) {
 PyLocalExecutable::PyLocalExecutable(
     std::vector<std::unique_ptr<LocalExecutable>> executables,
     bool tuple_arguments, DeviceAssignment device_assignment,
-    PyLocalClient* client)
+    std::vector<std::pair<int, int>> local_logical_device_ids,
+    std::vector<Device*> local_devices, PyLocalClient* client)
     : client_(client),
       device_assignment_(std::make_shared<DeviceAssignment>(device_assignment)),
-      tuple_arguments_(tuple_arguments) {
+      tuple_arguments_(tuple_arguments),
+      local_logical_device_ids_(std::move(local_logical_device_ids)),
+      local_devices_(std::move(local_devices)) {
   executables_.reserve(executables.size());
   for (auto& executable : executables) {
     executables_.emplace_back(std::move(executable));
@@ -1254,7 +1257,6 @@ PyLocalExecutable::PyLocalExecutable(
   VLOG(1) << "PyLocalExecutable " << name() << " device_assignment:\n"
           << device_assignment_->ToString();
 
-  const int num_replicas = device_assignment_->replica_count();
   const int num_partitions = device_assignment_->computation_count();
 
   // SPMD sharding produces a single executable for multiple partitions.
@@ -1264,18 +1266,6 @@ PyLocalExecutable::PyLocalExecutable(
         << " did not match number of partitions " << num_partitions;
   }
 
-  for (int replica = 0; replica < num_replicas; ++replica) {
-    for (int partition = 0; partition < num_partitions; ++partition) {
-      int device_id = (*device_assignment_)(replica, partition);
-      Device* device = LookupDevice(*client_, device_id);
-      if (device->host_id() != client_->host_id()) {
-        VLOG(3) << "Non-local device: " << device_id;
-        continue;
-      }
-      local_logical_device_ids_.emplace_back(replica, partition);
-      local_devices_.push_back(device);
-    }
-  }
   CHECK_GE(local_devices_.size(), 1) << device_assignment_->ToString();
   CHECK_LE(local_devices_.size(), client_->local_device_count())
       << "Inconsistent local device count.";
@@ -1758,6 +1748,35 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
   TF_RETURN_IF_ERROR(assign_layouts(&result_layout));
   build_options.set_result_layout(result_layout);
 
+  const int num_replicas = build_options.device_assignment().replica_count();
+  const int num_partitions =
+      build_options.device_assignment().computation_count();
+
+  std::vector<std::pair<int, int>> local_logical_device_ids;
+  std::vector<Device*> local_devices;
+  for (int replica = 0; replica < num_replicas; ++replica) {
+    for (int partition = 0; partition < num_partitions; ++partition) {
+      int device_id = build_options.device_assignment()(replica, partition);
+      Device* device = LookupDevice(*client, device_id);
+      if (device->host_id() != client->host_id()) {
+        VLOG(3) << "Non-local device: " << device_id;
+        continue;
+      }
+      local_logical_device_ids.emplace_back(replica, partition);
+      local_devices.push_back(device);
+    }
+  }
+  if (local_devices.empty()) {
+    return InvalidArgument(
+        "Device assignment (%s) does not have any local devices.",
+        build_options.device_assignment().ToString());
+  }
+
+  if (build_options.device_ordinal() < 0) {
+    build_options.set_device_ordinal(
+        local_devices.front()->local_device_state()->device_ordinal());
+  }
+
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
       client->client()->Compile(computation, argument_layout_pointers,
@@ -1765,7 +1784,8 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
 
   auto py_executable = absl::make_unique<PyLocalExecutable>(
       std::move(local_executables), options.tuple_arguments,
-      build_options.device_assignment(), client);
+      build_options.device_assignment(), std::move(local_logical_device_ids),
+      std::move(local_devices), client);
   TF_RETURN_IF_ERROR(
       py_executable->SetUpDonation(client, options.tuple_arguments));
   return py_executable;

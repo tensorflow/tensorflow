@@ -577,7 +577,8 @@ class PyLocalExecutable {
 
   PyLocalExecutable(std::vector<std::unique_ptr<LocalExecutable>> executables,
                     bool tuple_arguments, DeviceAssignment device_assignment,
-                    PyLocalClient* client);
+                    std::vector<std::pair<int, int>> local_logical_device_ids,
+                    std::vector<Device*> local_devices, PyLocalClient* client);
 
   PyLocalClient* client() const { return client_; }
 
