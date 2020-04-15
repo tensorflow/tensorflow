@@ -696,7 +696,8 @@ string Node::DebugString() const {
                      "\n");
   strings::StrAppend(&result, "  bytes_produced=", bytes_produced_.load(),
                      "\n");
-  strings::StrAppend(&result, "  processing_time=", processing_time_, "\n");
+  strings::StrAppend(&result, "  processing_time=", processing_time_.load(),
+                     "\n");
   strings::StrAppend(&result, "  num_elements=", num_elements_.load(), "\n");
   string inputs;
   for (auto& input : inputs_) {
@@ -735,9 +736,9 @@ std::shared_ptr<Node> Node::Snapshot(std::shared_ptr<Node> output) {
     result->bytes_produced_.store(bytes_produced_);
     result->num_elements_.store(num_elements_);
     result->record_metrics_.store(false);
+    result->processing_time_.store(processing_time_);
     mutex_lock l2(result->mu_);
     result->parameters_ = parameters_;
-    result->processing_time_ = processing_time_;
   }
   for (auto& input : inputs_) {
     result->add_input(input->Snapshot(result));
@@ -862,7 +863,8 @@ double Node::SelfProcessingTimeLocked() const {
 }
 
 void Model::AddNode(Node::Factory factory, const string& name,
-                    const string& output_name, Node** out_node) {
+                    const string& output_name,
+                    std::shared_ptr<Node>* out_node) {
   // The name captures the sequence of iterators joined by `::`. We use the full
   // sequence as the key in the lookup table, but only the last element of the
   // sequence as the name node.
@@ -894,15 +896,7 @@ void Model::AddNode(Node::Factory factory, const string& name,
   collect_resource_usage_ =
       collect_resource_usage_ || node->has_tunable_parameters();
   lookup_table_.insert(std::make_pair(name, node));
-  *out_node = node.get();
-}
-
-void Model::AddProcessingTime(const string& name, int64 delta) {
-  tf_shared_lock l(mu_);
-  auto node = gtl::FindOrNull(lookup_table_, name);
-  if (node) {
-    (*node)->add_processing_time(delta);
-  }
+  *out_node = node;
 }
 
 void Model::FlushMetrics() {
@@ -910,15 +904,6 @@ void Model::FlushMetrics() {
   for (const auto& pair : lookup_table_) {
     pair.second->FlushMetrics();
   }
-}
-
-int64 Model::NumElements(const string& name) {
-  tf_shared_lock l(mu_);
-  auto node = gtl::FindOrNull(lookup_table_, name);
-  if (node) {
-    return (*node)->num_elements();
-  }
-  return 0;
 }
 
 void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget,
@@ -930,30 +915,6 @@ void Model::Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget,
     case AutotuneAlgorithm::GRADIENT_DESCENT:
       OptimizeGradientDescent(cpu_budget, ram_budget);
       break;
-  }
-}
-
-void Model::RecordStart(const string& name, bool stop_output) {
-  tf_shared_lock l(mu_);
-  auto node = gtl::FindOrNull(lookup_table_, name);
-  if (collect_resource_usage_ && node) {
-    int64 now_nanos = absl::GetCurrentTimeNanos();
-    if (stop_output && (*node)->output()) {
-      (*node)->output()->record_stop(now_nanos);
-    }
-    (*node)->record_start(now_nanos);
-  }
-}
-
-void Model::RecordStop(const string& name, bool start_output) {
-  tf_shared_lock l(mu_);
-  auto node = gtl::FindOrNull(lookup_table_, name);
-  if (collect_resource_usage_ && node) {
-    int64 now_nanos = absl::GetCurrentTimeNanos();
-    (*node)->record_stop(now_nanos);
-    if (start_output && (*node)->output()) {
-      (*node)->output()->record_start(now_nanos);
-    }
   }
 }
 
