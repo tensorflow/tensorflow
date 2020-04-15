@@ -1128,7 +1128,7 @@ def tf_gpu_cc_test(
         kernels = kernels,
         linkopts = linkopts,
         linkstatic = linkstatic,
-        tags = tags + ["manual"],
+        tags = tags,
         deps = deps,
     )
     tf_cc_test(

@@ -517,7 +517,6 @@ tf_cuda_cc_test(
         ":test_op1.so",
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
-    kernels = [":test_op_kernel"],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
@@ -531,6 +530,7 @@ tf_cuda_cc_test(
     deps = [
         ":c_api",
         ":c_test_util",
+        ":test_op_kernel",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:grad_ops",
         "//tensorflow/cc/saved_model:signature_constants",
