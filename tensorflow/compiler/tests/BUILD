@@ -1846,3 +1846,20 @@ tf_xla_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+tf_xla_py_test(
+    name = "ensure_shape_op_test",
+    size = "medium",
+    srcs = ["ensure_shape_op_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+    ],
+)
