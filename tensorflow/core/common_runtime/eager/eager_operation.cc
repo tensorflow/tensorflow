@@ -249,7 +249,7 @@ Status EagerOperation::OutputLength(const char* output_name, int* length) {
 
 Status EagerOperation::AddInput(AbstractTensorHandleInterface* input) {
   TensorHandle* h = TensorHandleFromInterface(input);
-  AddInput(h);
+  AddTensorHandle(h);
   return MaybeInferSingleInputAttrs(h);
 }
 
@@ -257,7 +257,7 @@ Status EagerOperation::AddInputList(
     absl::Span<AbstractTensorHandleInterface*> inputs) {
   for (auto& input : inputs) {
     TensorHandle* h = TensorHandleFromInterface(input);
-    AddInput(h);
+    AddTensorHandle(h);
   }
   return InferInputListAttrs(inputs.size());
 }
@@ -424,6 +424,12 @@ string EagerOperation::DebugString() const {
   Attrs().FillAttrValueMap(ndef.mutable_attr());
   strings::StrAppend(&out, "Attrs: ", ndef.DebugString(), "\n");
   return out;
+}
+
+void EagerOperation::AddTensorHandle(TensorHandle* h) {
+  h->Ref();
+  inputs_.push_back(h);
+  attrs_.NumInputs(static_cast<int>(inputs_.size()));
 }
 
 }  // namespace tensorflow

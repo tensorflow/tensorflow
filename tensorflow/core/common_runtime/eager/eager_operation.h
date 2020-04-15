@@ -134,7 +134,6 @@ class EagerOperation : public AbstractOperationInterface {
   bool colocation_exempt() const { return colocation_exempt_; }
 
   tensorflow::EagerContext& EagerContext() { return ctx_; }
-  const tensorflow::EagerContext& EagerContext() const { return ctx_; }
 
   AttrBuilder* MutableAttrs() { return &attrs_; }
   const AttrBuilder& Attrs() const { return attrs_; }
@@ -144,10 +143,7 @@ class EagerOperation : public AbstractOperationInterface {
   }
   absl::InlinedVector<TensorHandle*, 4>* MutableInputs() { return &inputs_; }
 
-  void AddInput(TensorHandle* h);
   void UpdateInput(int i, TensorHandle* h);
-
-  const AttrTypeMap* AttrTypes() const { return attr_types_; }
 
   // Like TensorHandles, EagerOperations may be placed either on a virtual
   // CustomDevice or on a physical Device.
@@ -174,12 +170,10 @@ class EagerOperation : public AbstractOperationInterface {
 
   // Op name recorded for memory debugging purpose.
   const char* op_name() const { return op_name_; }
-  const char* op_name_ = nullptr;
-
-  Status MaybeInferSingleInputAttrs(TensorHandle* handle);
-  Status InferInputListAttrs(int num_inputs);
 
  private:
+  void AddTensorHandle(TensorHandle* h);
+
   const tensorflow::OpDef* GetOpDef(Status* status);
 
   void ClearInferenceState() {
@@ -187,12 +181,17 @@ class EagerOperation : public AbstractOperationInterface {
     inference_arg_idx_ = 0;
     inference_attrs_.clear_no_resize();
   }
+
+  Status MaybeInferSingleInputAttrs(TensorHandle* handle);
+  Status InferInputListAttrs(int num_inputs);
+
   void InferSingleTypeInputListAttrs(const OpDef::ArgDef& input_def,
                                      const DataType dtype, int num_inputs);
   void InferMixedTypeInputListAttrs(const OpDef::ArgDef& input_def,
                                     const std::vector<DataType>& dtypes);
 
   tensorflow::EagerContext& ctx_;
+  const char* op_name_ = nullptr;
   AttrBuilder attrs_;
   const AttrTypeMap* attr_types_;
   absl::InlinedVector<TensorHandle*, 4> inputs_;
@@ -231,12 +230,6 @@ class EagerOperation : public AbstractOperationInterface {
                            // added
   gtl::FlatSet<std::string> inference_attrs_;  // attributes inferred so far
 };
-
-inline void EagerOperation::AddInput(TensorHandle* h) {
-  h->Ref();
-  inputs_.push_back(h);
-  attrs_.NumInputs(static_cast<int>(inputs_.size()));
-}
 
 inline void EagerOperation::UpdateInput(int i, TensorHandle* h) {
   TensorHandle** slot = &inputs_[i];
