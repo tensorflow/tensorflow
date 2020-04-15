@@ -112,10 +112,7 @@ cc_library(
 cc_library(
     name = "gpu_helpers_header",
     hdrs = if_gpu_is_configured(["gpu_helpers.h"]),
-    deps = [
-        ":gpu_types_header",
-        "//tensorflow/core/platform:logging",
-    ],
+    deps = [":gpu_types_header"],
 )
 
 cc_library(
