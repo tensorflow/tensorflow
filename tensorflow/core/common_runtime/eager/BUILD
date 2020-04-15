@@ -151,6 +151,18 @@ tf_cuda_library(
     }),
 )
 
+tf_cc_test(
+    name = "eager_operation_test",
+    srcs = ["eager_operation_test.cc"],
+    deps = [
+        ":core",
+        ":eager_operation",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 tf_cuda_library(
     name = "tensor_handle_data",
     srcs = [

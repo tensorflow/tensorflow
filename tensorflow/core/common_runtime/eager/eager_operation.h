@@ -48,28 +48,39 @@ class EagerOperation : public AbstractOperationInterface {
   }
 
   const string& Name() const override { return attrs_.op_name(); }
-  const string& DeviceName() const override;
 
-  const string& GetDeviceName() const { return device_name_; }
+  const string& DeviceName() const override { return device_name_; }
 
   const DeviceNameUtils::ParsedName& GetDeviceParsedName() const {
     return device_parsed_name_;
   }
 
+  // Replaces the previous device name with the given one (see
+  // AbstractOperationInterface::SetDeviceName for more details).
+  //
+  // This also resets the internal device pointer, unless the given name refers
+  // to a known custom device, in which case the internal device pointer is
+  // updated to that device.
   Status SetDeviceName(const char* name) override;
 
   void SetDevice(tensorflow::Device* device) {
     device_ = device;
-    last_set_device_name_.clear();
     device_name_ = device->name();
     device_parsed_name_ = device->parsed_name();
+    // TODO(b/154133594): Due to intricacies of external logic, we can not
+    // set this do device_name_ as it would be natural, because we need the
+    // next call to SetDeviceName to reset the device pointer.
+    last_set_device_name_ = "\177";  // DEL (an invalid value)
   }
 
   void SetDevice(tensorflow::CustomDevice* device) {
     device_ = device;
-    last_set_device_name_.clear();
     device_name_ = device->name();
     DeviceNameUtils::ParseFullName(device_name_, &device_parsed_name_);
+    // TODO(b/154133594): Due to intricacies of external logic, we can not
+    // set this do device_name_ as it would be natural, because we need the
+    // next call to SetDeviceName to reset the device pointer.
+    last_set_device_name_ = "\177";  // DEL (an invalid value)
   }
 
   Status AddInput(AbstractTensorHandleInterface* input) override;
@@ -191,10 +202,20 @@ class EagerOperation : public AbstractOperationInterface {
   // calls to SetDeviceName.
   string last_set_device_name_;
 
+  // The operation's device name.
+  // This contains the named passed to SetDeviceName until device_ is set,
+  // at which point it contains the device_ name.
   string device_name_;
 
+  // The parsed device name.
+  // This will always contain the result of
+  // DeviceNameUtils::ParseFullName(device_name_).
   DeviceNameUtils::ParsedName device_parsed_name_;
 
+  // The operation's device.
+  // This is set by the execution device placement logic, and should conform
+  // with the contents of device_name_. Once it is set, the device_name_ is
+  // updated accordingly.
   VariantDevice device_;
 
   bool use_xla_ = false;

@@ -385,7 +385,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   TF_RETURN_IF_ERROR(executor.status());
   Device* device = absl::get<Device*>(op->Device());
 
-  Fprint128 cache_key = op->MutableAttrs()->CacheKey(op->GetDeviceName());
+  Fprint128 cache_key = op->MutableAttrs()->CacheKey(op->DeviceName());
 
   std::vector<Device*> input_dev_ptrs;
   std::unordered_map<int, DtypeAndPartialTensorShape>
@@ -677,7 +677,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   // TODO(fishx): Remove following code when lazy tensor copy is ready.
   if (op->Device() == kVariantDeviceNull) {
     tensorflow::Device* device = nullptr;
-    string device_name = op->GetDeviceName();
+    string device_name = op->DeviceName();
     TF_RETURN_IF_ERROR(ctx.FindDeviceFromName(device_name.c_str(), &device));
     op->SetDevice(device);
   }
@@ -886,9 +886,9 @@ Status MaybeUpdateOpDevice(EagerOperation* op) {
           // TODO(b/145922293): Support allowed_devices specified in wildcard
           // patterns.
           if (std::find(allowed_devices.begin(), allowed_devices.end(),
-                        op->GetDeviceName()) != allowed_devices.end()) {
-            TF_RETURN_IF_ERROR(ctx.FindDeviceFromName(
-                op->GetDeviceName().c_str(), &resource_device));
+                        op->DeviceName()) != allowed_devices.end()) {
+            TF_RETURN_IF_ERROR(ctx.FindDeviceFromName(op->DeviceName().c_str(),
+                                                      &resource_device));
           }
         }
         DVLOG(1) << (resource_device != op_device ? "Changing " : "Setting ")
