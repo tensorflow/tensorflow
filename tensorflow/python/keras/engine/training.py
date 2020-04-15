@@ -949,7 +949,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         if self.stop_training:
           break
 
-      callbacks.on_train_end(training_logs)
+      callbacks.on_train_end(logs=training_logs)
       return self.history
 
   def test_step(self, data):
