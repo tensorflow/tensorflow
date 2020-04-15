@@ -28,12 +28,14 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/c/eager/operation_interface.h"
+#include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/common_runtime/eager/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/function.h"
@@ -121,6 +123,48 @@ EagerContext::EagerContext(
       /*owned=*/true);
 }
 
+AbstractTensorInterface* EagerContext::CreateInt64Scalar(int64 value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateUint64Scalar(uint64 value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateInt32Scalar(int32 value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateFloatScalar(float value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateDoubleScalar(double value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateHalfScalar(Eigen::half value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateStringScalar(tstring value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateComplex128Scalar(
+    complex128 value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateBoolScalar(bool value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateTensor(
+    DataType dtype, absl::Span<const int64> dim_sizes) {
+  return new TensorInterface(Tensor(dtype, TensorShape(dim_sizes)));
+}
+
 void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
                              const ConfigProto* config, int graph_def_version,
                              const FunctionLibraryDefinition* lib_def,
@@ -128,22 +172,15 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
                              thread::ThreadPool* thread_pool,
                              DistributedFunctionLibraryRuntime* cluster_flr,
                              const CustomKernelCreator* custom_kernel_creator) {
-  Rendezvous::Factory rendezvous_factory =
+  Rendezvous::Factory rendezvous_factory{
       [this](const int64 step_id, const DeviceMgr*, Rendezvous** r) {
         *r = CreateRendezvous(step_id);
         return Status::OK();
-      };
-  if (lazy_copy_function_remote_inputs_) {
-    pflr_.reset(new eager::EagerProcessFunctionLibraryRuntime(
-        device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-        thread_pool, cluster_flr, custom_kernel_creator,
-        /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
-  } else {
-    pflr_.reset(new ProcessFunctionLibraryRuntime(
-        device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-        thread_pool, cluster_flr, custom_kernel_creator,
-        /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
-  }
+      }};
+  pflr_.reset(new ProcessFunctionLibraryRuntime(
+      device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
+      thread_pool, cluster_flr, custom_kernel_creator,
+      /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
 }
 
 void EagerContext::InitPrioritizedDeviceTypeList() {
@@ -1062,8 +1099,7 @@ Status EagerContext::UpdateRemoteMaster(
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     const std::vector<string>& add_remote_contexts,
     const std::vector<string>& remove_remote_contexts, uint64 context_id,
-    Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
-    DistributedFunctionLibraryRuntime* cluster_flr) {
+    Rendezvous* r) {
   {
     tf_shared_lock l(remote_state_mu_);
     if (context_id != context_id_) {
@@ -1103,7 +1139,7 @@ Status EagerContext::UpdateRemoteMaster(
     if (rendezvous_ != nullptr) rendezvous_->Unref();
     rendezvous_ = r;
     remote_eager_workers_ = std::move(remote_eager_workers);
-    ResetClusterFLR(cluster_flr);
+    pflr_->InitializeDeviceSet();
     InitPrioritizedDeviceTypeList();
 
     default_executor_.ClearError();
@@ -1113,10 +1149,6 @@ Status EagerContext::UpdateRemoteMaster(
         entry.second->ClearError();
       }
     }
-    const auto* config = pflr_->config();
-    ResetPFLR(local_device_manager_.Get(), env_, config, TF_GRAPH_DEF_VERSION,
-              &func_lib_def_, config->graph_options().optimizer_options(),
-              thread_pool_.get(), cluster_flr_.Get(), custom_kernel_creator_);
   }
 
   // Register existing functions to the newly added remote workers. Note that

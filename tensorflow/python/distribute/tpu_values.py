@@ -112,7 +112,7 @@ class TPUVariableMixin(object):
   def handle(self):
     # If we're in a tpu.rewrite(), return the replicated handle.
     tpu_context = enclosing_tpu_context()
-    if tpu_context is None:
+    if tpu_context is None or context.executing_eagerly():
       return self._get_closest().handle
     else:
       return tpu_context.get_replicated_var_handle(self._handle_id,

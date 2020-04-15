@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -hlo-legalize-to-linalg -split-input-file | FileCheck %s
+// RUN: xla-opt %s -hlo-legalize-to-linalg -split-input-file | FileCheck %s
 
 // CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @float_add
@@ -34,7 +34,7 @@ func @float_mul(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: mulf
-  %0 = "xla_hlo.mul"(%lhs, %rhs) : (tensor<2x2xf32>,
+  %0 = "xla_hlo.multiply"(%lhs, %rhs) : (tensor<2x2xf32>,
                                     tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
@@ -46,7 +46,7 @@ func @integer_mul(%lhs: tensor<2x2xi32>,
                   %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
   // CHECK: linalg.generic
   // CHECK: muli
-  %0 = "xla_hlo.mul"(%lhs, %rhs) : (tensor<2x2xi32>,
+  %0 = "xla_hlo.multiply"(%lhs, %rhs) : (tensor<2x2xi32>,
                                     tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
@@ -93,7 +93,7 @@ func @float_sub(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: subf
-  %0 = "xla_hlo.sub"(%lhs, %rhs) : (tensor<2x2xf32>,
+  %0 = "xla_hlo.subtract"(%lhs, %rhs) : (tensor<2x2xf32>,
                                     tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
@@ -105,7 +105,7 @@ func @integer_sub(%lhs: tensor<2x2xi32>,
                   %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
   // CHECK: linalg.generic
   // CHECK: subi
-  %0 = "xla_hlo.sub"(%lhs, %rhs) : (tensor<2x2xi32>,
+  %0 = "xla_hlo.subtract"(%lhs, %rhs) : (tensor<2x2xi32>,
                                     tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
@@ -126,7 +126,7 @@ func @float_abs(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 func @float_exp(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: exp
-  %0 = "xla_hlo.exp"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  %0 = "xla_hlo.exponential"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
 
@@ -156,7 +156,7 @@ func @float_ceil(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 func @float_neg(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: negf
-  %0 = "xla_hlo.neg"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  %0 = "xla_hlo.negate"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
 
@@ -209,6 +209,16 @@ func @int_cmp(%lhs: tensor<2x2xi32>,
 // CHECK-NEXT: ^bb0(%[[LHS_IN:.*]]: i32, %[[RHS_IN:.*]]: i32):
 // CHECK-NEXT:   %[[RESULT:.*]] = cmpi "slt", %[[LHS_IN]], %[[RHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i1
+
+// -----
+
+// CHECK-LABEL: func @float_cos
+func @float_cos(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  // CHECK: linalg.generic
+  // CHECK: cos
+  %0 = "xla_hlo.cosine"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+}
 
 // -----
 
@@ -313,7 +323,7 @@ func @reshape_2D_4D(%arg0: tensor<12x42xi32>) -> tensor<12x1x42x1xi32> {
 
 // CHECK-LABEL: func @minf
 func @minf(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  %0 = "xla_hlo.min"(%lhs, %rhs)
+  %0 = "xla_hlo.minimum"(%lhs, %rhs)
           : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
@@ -327,7 +337,7 @@ func @minf(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
 // CHECK-LABEL: func @maxi
 func @maxi(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
-  %0 = "xla_hlo.max"(%lhs, %rhs)
+  %0 = "xla_hlo.maximum"(%lhs, %rhs)
           : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
@@ -336,3 +346,16 @@ func @maxi(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
 // CHECK-NEXT:   %[[CMP:.*]] = cmpi "sgt", %[[LHS_IN]], %[[RHS_IN]] : i32
 // CHECK-NEXT:   %[[RESULT:.*]] = select %[[CMP]], %[[LHS_IN]], %[[RHS_IN]] : i32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
+
+// -----
+
+// CHECK-DAG: #[[MAP:.*]] = affine_map<() -> ()>
+// CHECK-LABEL: func @add_scalar
+func @add_scalar(%lhs: tensor<f32>, %rhs: tensor<f32>) -> tensor<f32> {
+  %0 = "xla_hlo.add"(%lhs, %rhs) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[MAP]], #[[MAP]], #[[MAP]]]
+// CHECK-NEXT: ^bb0(%[[LHS:.*]]: f32, %[[RHS:.*]]: f32):
+// CHECK: %[[RESULT:.*]] = addf %[[LHS]], %[[RHS]]
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32

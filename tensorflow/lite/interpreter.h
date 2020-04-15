@@ -34,7 +34,16 @@ limitations under the License.
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+#include "tensorflow/lite/experimental/tf_runtime/public/eager_interpreter.h"
+#endif
+
 namespace tflite {
+
+class InterpreterTest;
+class TestDelegate;
+
+namespace impl {
 
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
@@ -158,14 +167,23 @@ class Interpreter {
   inline TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantizationParams quantization,
-      bool is_variable = false) {
-    return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
-                                        dims.data(), quantization, is_variable);
+      bool is_variable = false,
+      const std::vector<int>* dims_signature = nullptr) {
+    size_t rank_dims_signature = 0;
+    const int* dims_signature_pointer = nullptr;
+    if (dims_signature) {
+      rank_dims_signature = dims_signature->size();
+      dims_signature_pointer = dims_signature->data();
+    }
+    return SetTensorParametersReadWrite(
+        tensor_index, type, name, dims.size(), dims.data(), quantization,
+        is_variable, rank_dims_signature, dims_signature_pointer);
   }
   TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name, const size_t rank,
       const int* dims, TfLiteQuantizationParams quantization,
-      bool is_variable = false);
+      bool is_variable = false, const size_t rank_dims_signature = 0,
+      const int* dims_signature = nullptr);
 #endif  // DOXYGEN_SKIP
   // Functions to access tensor data
 
@@ -310,6 +328,15 @@ class Interpreter {
   ///   if our partners determine that dependency is acceptable.
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
+
+  // WARNING: Experimental interface, subject to change
+  // Change the dimensionality of a given tensor. This is only acceptable for
+  // tensor indices that are inputs or variables. Only unknown dimensions can be
+  // resized with this function. Unknown dimensions are indicated as `-1` in the
+  // `dims_signature` attribute of a `TfLiteTensor`. Returns status of failure
+  // or success.
+  TfLiteStatus ResizeInputTensorStrict(int tensor_index,
+                                       const std::vector<int>& dims);
 
   // This releases memory held by non-persistent tensors. It does NOT re-perform
   // memory planning.
@@ -494,7 +521,8 @@ class Interpreter {
 
  private:
   friend class InterpreterBuilder;
-  friend class InterpreterTest;
+  friend class tflite::InterpreterTest;
+  friend class tflite::TestDelegate;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
@@ -503,6 +531,10 @@ class Interpreter {
 
   // Sets the profiler to all subgraphs.
   void SetSubgraphProfiler(Profiler* profiler);
+
+  // Remove delegates (for fallback behaviour). The interpreter is invokable
+  // afterwards.
+  TfLiteStatus RemoveAllDelegates();
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
@@ -541,6 +573,14 @@ class Interpreter {
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap resources_;
 };
+
+}  // namespace impl
+
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+using Interpreter = tflrt::EagerInterpreter;
+#else
+using Interpreter = impl::Interpreter;
+#endif
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_INTERPRETER_H_

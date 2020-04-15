@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import functools
 
+from absl.testing import parameterized
 import numpy as np
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -27,6 +28,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import stateless_random_ops as stateless
 from tensorflow.python.platform import test
@@ -49,7 +51,7 @@ def invert_philox(key, value):
   return np.array(value)
 
 
-class StatelessOpsTest(test.TestCase):
+class StatelessOpsTest(test.TestCase, parameterized.TestCase):
 
   def _test_match(self, cases):
     # Stateless ops should be the same as stateful ops on the first call
@@ -193,6 +195,39 @@ class StatelessOpsTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testDeterminismPoisson(self):
     self._test_determinism(self._poisson_cases())
+
+  def assertDTypeEqual(self, a, b):
+    self.assertEqual(dtypes.as_dtype(a), dtypes.as_dtype(b))
+
+  def assertNoEqualPair(self, ls):
+    for i in range(len(ls)):
+      for j in range(i + 1, len(ls)):
+        self.assertFalse(math_ops.reduce_all(ls[i] == ls[j]))
+
+  @parameterized.parameters(['int32', 'int64'])
+  @test_util.run_v2_only
+  def testSplit(self, dtype):
+    """Test for `split`."""
+    seed = constant_op.constant([1, 2], dtype=dtype)
+    new_seed = stateless.split(seed, 3)
+    self.assertEqual(new_seed.shape, [3, 2])
+    self.assertDTypeEqual(new_seed.dtype, dtype)
+    self.assertNoEqualPair([seed] + array_ops.unstack(new_seed))
+
+  @parameterized.parameters(['int32', 'int64'])
+  @test_util.run_v2_only
+  def testFoldIn(self, dtype):
+    """Test for `fold_in`."""
+    orig_seed = constant_op.constant([1, 2], dtype='int32')
+    seed = stateless.fold_in(orig_seed, constant_op.constant(3, dtype=dtype))
+    new_seeds = []
+    new_seeds.append(seed)
+    seed = stateless.fold_in(seed, constant_op.constant(4, dtype=dtype))
+    new_seeds.append(seed)
+    for s in new_seeds:
+      self.assertEqual(s.shape, [2])
+      self.assertDTypeEqual(s.dtype, dtype)
+    self.assertNoEqualPair([math_ops.cast(orig_seed, dtype)] + new_seeds)
 
   @test_util.run_v2_only
   def testErrors(self):

@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import os
 import sys
+from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -261,6 +262,22 @@ def plot_model(model,
                dpi=96):
   """Converts a Keras model to dot format and save to a file.
 
+  Example:
+
+  ```python
+  input = tf.keras.Input(shape=(100,), dtype='int32', name='input')
+  x = tf.keras.layers.Embedding(
+      output_dim=512, input_dim=10000, input_length=100)(input)
+  x = tf.keras.layers.LSTM(32)(x)
+  x = tf.keras.layers.Dense(64, activation='relu')(x)
+  x = tf.keras.layers.Dense(64, activation='relu')(x)
+  x = tf.keras.layers.Dense(64, activation='relu')(x)
+  output = tf.keras.layers.Dense(1, activation='sigmoid', name='output')(x)
+  model = tf.keras.Model(inputs=[input], outputs=[output])
+  dot_img_file = '/tmp/model_1.png'
+  tf.keras.utils.plot_model(model, to_file=dot_img_file, show_shapes=True)
+  ```
+
   Arguments:
     model: A Keras model instance
     to_file: File name of the plot image.
@@ -283,6 +300,7 @@ def plot_model(model,
                      rankdir=rankdir,
                      expand_nested=expand_nested,
                      dpi=dpi)
+  to_file = path_to_string(to_file)
   if dot is None:
     return
   _, extension = os.path.splitext(to_file)

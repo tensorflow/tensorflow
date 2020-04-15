@@ -38,6 +38,10 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+using shape_inference::InferenceContext;
+using shape_inference::ShapeAndType;
+using shape_inference::ShapeHandle;
+
 const char kTestDataPath[] = "core/grappler/costs/graph_properties_testdata";
 
 REGISTER_OP("TestOpWithNoInferenceFn")
@@ -163,12 +167,9 @@ TEST_F(GraphPropertiesTest, StaticProperties) {
       EXPECT_EQ(1, in_prop.shape().dim(1).size());
       const auto out_props = properties.GetOutputProperties(node.name());
       EXPECT_EQ(1, out_props.size());
-      string in_prop_str;
-      ::tensorflow::protobuf::TextFormat::PrintToString(in_prop, &in_prop_str);
-      string out_prop_str;
-      ::tensorflow::protobuf::TextFormat::PrintToString(out_props[0],
-                                                        &out_prop_str);
-      EXPECT_EQ(in_prop_str, out_prop_str);
+      EXPECT_EQ(in_prop.dtype(), out_props[0].dtype());
+      EXPECT_EQ(in_prop.shape().DebugString(),
+                out_props[0].shape().DebugString());
     }
   }
 }
@@ -1728,7 +1729,9 @@ TEST_F(GraphPropertiesTest, FedNodes) {
         const auto out_props = properties.GetOutputProperties(node.name());
         EXPECT_EQ(1, out_props.size());
         const OpInfo::TensorProperties& out_prop = out_props[0];
-        EXPECT_EQ(in_prop.DebugString(), out_prop.DebugString());
+        EXPECT_EQ(in_prop.dtype(), out_prop.dtype());
+        EXPECT_EQ(in_prop.shape().DebugString(),
+                  out_prop.shape().DebugString());
       }
     }
   }
@@ -2063,6 +2066,160 @@ TEST_F(GraphPropertiesTest, ShapeAnnotatedFunctionOp) {
     const OpInfo::TensorProperties out_prop0 = out_props[0];
     EXPECT_EQ("float: [1,2,3,4]", PropToString(out_prop0));
   }
+}
+
+TEST_F(GraphPropertiesTest,
+       SymbolicShapeInferenceWithReshapeOpsSharingShapeVector) {
+  GrapplerItem item;
+  // This graph creates a shape vector [-1, 10] from Concat(Const, Const)
+  // used for two reshape ops. One reshape op is segment_ids input to
+  // UnsortedSegmentSum op, which applies MergePrefix from its shape function.
+  // segment_ids has a shape [-1, 10] (from reshape), but MergePrefix with
+  // data input ([10, 10, 10, 10]) makes -1, or unknown dim, 10, with
+  // SymbolicShapeRefiner.
+  // This dim value (10), however, should not affect the other reshape op, even
+  // though it shares the shape input; -1 in the shape input of Reshape op is
+  // a special case of computed output dim, not unknown dim.
+  // data and num_segments are inputs to UnsortedSegmenetSum.
+
+  TF_CHECK_OK(NodeDefBuilder("data", "Placeholder")
+                  .Attr("dtype", DT_FLOAT)
+                  .Attr("shape", TensorShape({10, 10, 10, 10}))
+                  .Finalize(item.graph.add_node()));
+  Tensor num_segments(DT_INT32, TensorShape({}));
+  // Build semgent_ids input to UnsortedSegmentSum from Const ops, ConcatV2,
+  // and Reshape ops. tensors_as_shape from Const ops are propagated to ConcatV2
+  // output to form shape vector [-1, 10] to Reshape.
+  test::FillIota<int>(&num_segments, 3);
+  TF_CHECK_OK(NodeDefBuilder("num_segments", "Const")
+                  .Attr("dtype", DT_INT32)
+                  .Attr("value", num_segments)
+                  .Finalize(item.graph.add_node()));
+  Tensor minus_one(DT_INT32, TensorShape({1}));
+  test::FillIota<int>(&minus_one, -1);
+  TF_CHECK_OK(NodeDefBuilder("minus_one", "Const")
+                  .Attr("dtype", DT_INT32)
+                  .Attr("value", minus_one)
+                  .Finalize(item.graph.add_node()));
+  Tensor plus_ten(DT_INT32, TensorShape({1}));
+  test::FillIota<int>(&plus_ten, 10);
+  TF_CHECK_OK(NodeDefBuilder("plus_ten", "Const")
+                  .Attr("dtype", DT_INT32)
+                  .Attr("value", plus_ten)
+                  .Finalize(item.graph.add_node()));
+  Tensor axis(DT_INT32, TensorShape({}));
+  test::FillIota<int>(&axis, -1);
+  TF_CHECK_OK(NodeDefBuilder("axis", "Const")
+                  .Attr("dtype", DT_INT32)
+                  .Attr("value", axis)
+                  .Finalize(item.graph.add_node()));
+  std::vector<NodeDefBuilder::NodeOut> inputs(2);
+  inputs[0] = NodeDefBuilder::NodeOut{"minus_one", 0, DT_INT32};
+  inputs[1] = NodeDefBuilder::NodeOut{"plus_ten", 0, DT_INT32};
+  TF_CHECK_OK(NodeDefBuilder("concat", "ConcatV2")
+                  .Input(inputs)
+                  .Input("axis", 0, DT_INT32)
+                  .Attr("N", 2)
+                  .Attr("T", DT_INT32)
+                  .Attr("Tidx", DT_INT32)
+                  .Finalize(item.graph.add_node()));
+  TF_CHECK_OK(NodeDefBuilder("segment_ids_", "Placeholder")
+                  .Attr("dtype", DT_FLOAT)
+                  .Finalize(item.graph.add_node()));
+  TF_CHECK_OK(NodeDefBuilder("segment_ids_shape_before_reshape", "Shape")
+                  .Input("segment_ids_", 0, DT_FLOAT)
+                  .Attr("T", DT_FLOAT)
+                  .Attr("out_type", DT_INT32)
+                  .Finalize(item.graph.add_node()));
+  TF_CHECK_OK(NodeDefBuilder("segment_ids", "Reshape")
+                  .Input("segment_ids_", 0, DT_FLOAT)
+                  .Input("concat", 0, DT_INT32)
+                  .Attr("T", DT_FLOAT)
+                  .Attr("Tshape", DT_INT32)
+                  .Finalize(item.graph.add_node()));
+  // Shape function of UnsortedSegmentSum applies MergePrefix to data and
+  // segment_ids (the latter being prefix). data shape is [10,10,10,10] and
+  // segment_ids shape is [-1, 10], but MergePrefix and symbolic shape inference
+  // assign 10 from data shape to the unknown dim in segment_ids.
+  TF_CHECK_OK(NodeDefBuilder("y", "UnsortedSegmentSum")
+                  .Input("data", 0, DT_FLOAT)
+                  .Input("segment_ids", 0, DT_INT32)
+                  .Input("num_segments", 0, DT_INT32)
+                  .Attr("T", DT_FLOAT)
+                  .Attr("Tindices", DT_INT32)
+                  .Attr("Tnumsegments", DT_INT32)
+                  .Finalize(item.graph.add_node()));
+  // Note that y2=Reshape(x1) using the same shape vector as segment_ids, but
+  // y2 shape shouldn't be affected by symbolic shape inference w/ segment_ids.
+  TF_CHECK_OK(NodeDefBuilder("x1", "Placeholder")
+                  .Attr("dtype", DT_FLOAT)
+                  .Finalize(item.graph.add_node()));
+  TF_CHECK_OK(NodeDefBuilder("y1", "Reshape")
+                  .Input("x1", 0, DT_FLOAT)
+                  .Input("concat", 0, DT_INT32)
+                  .Attr("T", DT_FLOAT)
+                  .Attr("Tshape", DT_INT32)
+                  .Finalize(item.graph.add_node()));
+
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(true));
+  const auto& y1_output_properties = properties.GetOutputProperties("y1");
+  // y1=reshape(x1), but x1's shape in unknown, so y1 should be [-1, 10].
+  // The first dimensino should not be 10.
+  EXPECT_EQ(y1_output_properties.size(), 1);
+  EXPECT_EQ(y1_output_properties[0].shape().dim_size(), 2);
+  EXPECT_LT(y1_output_properties[0].shape().dim(0).size(), 0);
+  EXPECT_EQ(y1_output_properties[0].shape().dim(1).size(), 10);
+}
+
+TEST(HelperFunctions, IsShapeFullyDefinedIntegerVectorOrScalar) {
+  // Make a dummy InferenceContext.
+  NodeDef node_def;
+  OpRegistrationData op_reg_data;
+  OpDefBuilder b("dummy");
+  CHECK(b.Finalize(&op_reg_data).ok());
+  std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
+      input_handle_shapes_and_types;
+  InferenceContext ic(/*graph_def_version=*/0, node_def, op_reg_data.op_def,
+                      /*input_shapes=*/{},
+                      /*input_tensors=*/{},
+                      /*input_tensors_as_shapes=*/{},
+                      std::move(input_handle_shapes_and_types));
+
+  // ShapeHandles for testing.
+  ShapeHandle fully_defined_vector = ic.MakeShape(
+      {ic.MakeDim(4), ic.MakeDim(5), ic.MakeDim(6), ic.MakeDim(7)});
+  ShapeHandle vector_with_unknown = ic.MakeShape(
+      {ic.MakeDim(4), ic.MakeDim(5), ic.UnknownDim(), ic.MakeDim(7)});
+  // INT64_MAX is used as unknown from Const. See kUnknownFromConst const in
+  // graph_properties.cc
+  ShapeHandle vector_with_unknown_from_const = ic.MakeShape(
+      {ic.MakeDim(4), ic.MakeDim(INT64_MAX), ic.MakeDim(6), ic.MakeDim(7)});
+  ShapeHandle rank_1_vector = ic.MakeShape({ic.MakeDim(4)});
+
+  // Rank-1 shape and fully defined tensor_as_shape with INT32 or INT64.
+  EXPECT_TRUE(IsShapeFullyDefinedIntegerVectorOrScalar(
+      &ic, rank_1_vector, fully_defined_vector, DT_INT32));
+  EXPECT_TRUE(IsShapeFullyDefinedIntegerVectorOrScalar(
+      &ic, rank_1_vector, fully_defined_vector, DT_INT64));
+
+  // Non-integer data type.
+  EXPECT_FALSE(IsShapeFullyDefinedIntegerVectorOrScalar(
+      &ic, rank_1_vector, fully_defined_vector, DT_FLOAT));
+
+  // tensor_as_shape including Unknown or UnknownFromConst.
+  EXPECT_FALSE(IsShapeFullyDefinedIntegerVectorOrScalar(
+      &ic, rank_1_vector, vector_with_unknown, DT_INT32));
+  EXPECT_FALSE(IsShapeFullyDefinedIntegerVectorOrScalar(
+      &ic, rank_1_vector, vector_with_unknown_from_const, DT_INT32));
+  EXPECT_FALSE(IsShapeFullyDefinedIntegerVectorOrScalar(
+      &ic, rank_1_vector, ic.UnknownShape(), DT_INT32));
+  EXPECT_FALSE(IsShapeFullyDefinedIntegerVectorOrScalar(
+      &ic, ic.UnknownShape(), fully_defined_vector, DT_INT32));
+
+  // shape rank > 1.
+  EXPECT_FALSE(IsShapeFullyDefinedIntegerVectorOrScalar(
+      &ic, fully_defined_vector, vector_with_unknown_from_const, DT_INT32));
 }
 }  // namespace
 }  // namespace grappler

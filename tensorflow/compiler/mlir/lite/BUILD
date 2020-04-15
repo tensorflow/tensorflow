@@ -17,8 +17,7 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
-        "//learning/brain/experimental/mlir/...",
-        "//learning/brain/google/xla/...",
+        "//learning/brain/mlir/...",
         "//tensorflow/compiler/mlir/...",
     ],
 )
@@ -26,12 +25,13 @@ package_group(
 filegroup(
     name = "tensorflow_lite_ops_td_files",
     srcs = [
+        "experimental/tfl_hardware_interfaces.td",
         "ir/tfl_op_interfaces.td",
         "ir/tfl_ops.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
-        "@llvm-project//mlir:include/mlir/Transforms/LoopLikeInterface.td",
     ],
 )
 
@@ -55,7 +55,7 @@ gentbl(
             "ir/tfl_structs.cc.inc",
         ),
         (
-            "-gen-op-doc",
+            "-gen-dialect-doc",
             "g3doc/tfl_ops.md",
         ),
     ],
@@ -222,21 +222,21 @@ cc_library(
     deps = [
         ":tensorflow_lite_ops_inc_gen",
         ":validators",
+        "//tensorflow/compiler/mlir/lite/experimental/estimators:cost_estimators",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/lite/schema:schema_fbs",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
-        # TODO(jpienaar): Move this out after splitting out LoopLikeOpInterface.
-        "@llvm-project//mlir:Transforms",
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
-        "//tensorflow/lite/schema:schema_fbs",
+        "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
 )
@@ -307,7 +307,7 @@ cc_library(
         "transforms/optimize_functional_ops.cc",
         "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",
-        "transforms/runtime_type_verify.cc",
+        "transforms/runtime_verify.cc",
         "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
         "transforms/while_loop_outline.cc",
@@ -419,7 +419,9 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -439,7 +441,8 @@ genrule(
     srcs = [
         "ir/tfl_ops.td",
         "ir/tfl_op_interfaces.td",
-        "@llvm-project//mlir:include/mlir/Transforms/LoopLikeInterface.td",
+        "experimental/tfl_hardware_interfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
     ],
     outs = [
@@ -518,6 +521,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
+        "@llvm-project//llvm:analysis",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
@@ -530,6 +534,15 @@ tf_native_cc_binary(
     srcs = ["flatbuffer_to_string.cc"],
     deps = [
         "//tensorflow/lite/schema:schema_fbs_with_reflection",
+        "@flatbuffers",
+    ],
+)
+
+tf_native_cc_binary(
+    name = "json_to_flatbuffer",
+    srcs = ["json_to_flatbuffer.cc"],
+    deps = [
+        "//tensorflow/lite/schema:schema_fbs",
         "@flatbuffers",
     ],
 )
@@ -551,14 +564,14 @@ cc_library(
 cc_library(
     name = "flatbuffer_translate_lib",
     srcs = [
+        "flatbuffer_export.cc",
         "flatbuffer_import.cc",
-        "flatbuffer_translate.cc",
         "utils/convert_type.cc",
     ],
     hdrs = [
+        "flatbuffer_export.h",
+        "flatbuffer_export_flags.h",
         "flatbuffer_import.h",
-        "flatbuffer_translate.h",
-        "flatbuffer_translate_flags.h",
         "utils/convert_type.h",
     ],
     deps = [
@@ -575,9 +588,10 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:status",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
@@ -598,15 +612,37 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Translation",
     ],
+)
+
+cc_library(
+    name = "flatbuffer_translate_registeration",
+    srcs = [
+        "flatbuffer_translate.cc",
+    ],
+    deps = [
+        ":flatbuffer_translate_lib",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LoopOpsTransforms",
+        "@llvm-project//mlir:MlirTranslateMain",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Translation",
+    ],
     alwayslink = 1,
 )
 
 tf_cc_binary(
     name = "flatbuffer_translate",
     deps = [
-        ":flatbuffer_translate_lib",
-        "@llvm-project//mlir:LoopOpsTransforms",
-        "@llvm-project//mlir:MlirTranslateMain",
+        ":flatbuffer_translate_registeration",
     ],
 )
 
@@ -644,10 +680,13 @@ filegroup(
 
 tf_cc_binary(
     name = "tf_tfl_translate",
-    srcs = [":tf_tfl_translate_main"],
+    srcs = [
+        ":tf_tfl_translate_main",
+    ],
     deps = [
         ":common",
         ":flatbuffer_translate_lib",
+        ":flatbuffer_translate_registeration",
         ":tensorflow_lite",
         ":tf_tfl_passes",
         ":tf_tfl_translate_cl_options",
@@ -669,15 +708,18 @@ tf_cc_binary(
 
 tf_cc_binary(
     name = "mlir-tflite-runner",
-    srcs = ["mlir_tflite_runner.cc"],
+    srcs = [
+        "mlir_tflite_runner.cc",
+    ],
     deps = [
         ":flatbuffer_translate_lib",
+        ":flatbuffer_translate_registeration",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
@@ -739,6 +781,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/tools/optimize:quantize_weights",
         "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",

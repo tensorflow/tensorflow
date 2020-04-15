@@ -26,13 +26,13 @@ limitations under the License.
 namespace tensorflow {
 
 OpSegment::Item::~Item() {
-  for (auto kv : name_kernel) delete kv.second;
+  for (const auto& kv : name_kernel) delete kv.second;
 }
 
 OpSegment::OpSegment() {}
 
 OpSegment::~OpSegment() {
-  for (auto kv : sessions_) delete kv.second;
+  for (const auto& kv : sessions_) delete kv.second;
 }
 
 Status OpSegment::FindOrCreate(const string& session_handle,

@@ -1,5 +1,8 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
@@ -163,6 +166,47 @@ py_library(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "custom_device_testutil",
+    testonly = True,
+    srcs = ["custom_device_testutil.cc"],
+    module_name = "custom_device_testutil",
+    deps = [
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/eager:custom_device_testutil",
+        "//tensorflow/python:cpp_python_util",
+        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python:pybind11_status",
+        "//tensorflow/python:safe_ptr",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+py_test(
+    name = "custom_device_test",
+    size = "small",
+    srcs = ["custom_device_test.py"],
+    python_version = "PY3",
+    # Note that this currently only works with --config=monolithic, since it
+    # requires the C API which runs static initializers again.
+    #
+    # TODO(allenl): Figure out a way to allow extensions to register custom
+    # devices which works with dynamic linking.
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
+    deps = [
+        ":context",
+        ":custom_device_testutil",
+        ":test",
+    ],
+)
+
 cuda_py_test(
     name = "context_test",
     size = "small",
@@ -178,10 +222,7 @@ py_library(
     name = "monitoring",
     srcs = ["monitoring.py"],
     srcs_version = "PY2AND3",
-    visibility = [
-        "//tensorflow:internal",
-        "//third_party/py/tf_agents:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:pywrap_tf_session",
@@ -219,6 +260,7 @@ cuda_py_test(
     deps = [
         ":profiler",
         ":test",
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python/profiler:traceme",
     ],
@@ -233,6 +275,7 @@ py_library(
         "//tensorflow/core/profiler:internal",
     ],
     deps = [
+        "//tensorflow/python:util",
         "//tensorflow/python/profiler/internal:_pywrap_profiler",
     ],
 )
@@ -576,13 +619,11 @@ cuda_py_test(
         ":context",
         ":forwardprop",
         ":function",
-        ":profiler",
         ":remote",
         ":test",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
@@ -843,6 +884,7 @@ py_library(
         ":context",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
+        "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
     ],
 )
 
@@ -862,7 +904,10 @@ cuda_py_test(
         ":def_function",
         ":remote",
         ":test",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:functional_ops",
         "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:tensor_spec",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
@@ -893,9 +938,11 @@ cuda_py_test(
     srcs = ["remote_cluster_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
-    shard_count = 16,
+    shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
+        "notap",  # TODO(b/154053481) flake
+        "notsan",  # TODO(b/152075365)
     ],
     deps = [
         "//tensorflow/python:array_ops",

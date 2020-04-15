@@ -40,7 +40,7 @@ def _convert_to_per_replicas(distribution, values):
   Returns:
     `values`, but each element has been converted to a PerReplica value.
   """
-  return distribution.experimental_run_v2(
+  return distribution.run(
       lambda values: [array_ops.identity(v) for v in values],
       args=(values,)
   )

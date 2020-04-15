@@ -16,11 +16,11 @@ limitations under the License.
 #include <memory>
 
 #include "Python.h"
-#include "include/pybind11/chrono.h"
-#include "include/pybind11/complex.h"
-#include "include/pybind11/functional.h"
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/stl.h"
+#include "pybind11/chrono.h"
+#include "pybind11/complex.h"
+#include "pybind11/functional.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/stl.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -461,9 +461,11 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         tensorflow::make_safe(TF_NewStatus());
     tensorflow::Safe_TF_BufferPtr buf =
         tensorflow::make_safe(tensorflow::ProtoStringToTFBuffer(proto.ptr()));
+    Py_BEGIN_ALLOW_THREADS;
     TFE_ContextUpdateServerDef(tensorflow::InputTFE_Context(ctx),
                                keep_alive_secs, buf.get()->data,
                                buf.get()->length, status.get());
+    Py_END_ALLOW_THREADS;
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
   m.def("TFE_ContextCheckAlive", [](py::handle& ctx, const char* worker_name) {
@@ -501,7 +503,10 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_ExecutorWaitForAllPendingNodes", [](TFE_Executor& exc) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
+    // NOTE: release Python GIL for pending PyFunc ops to be executed properly.
+    Py_BEGIN_ALLOW_THREADS;
     TFE_ExecutorWaitForAllPendingNodes(&exc, status.get());
+    Py_END_ALLOW_THREADS;
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
   m.def("TFE_ExecutorClearError", &TFE_ExecutorClearError);
@@ -711,6 +716,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         &TFE_ContextOptionsSetDevicePlacementPolicy);
   m.def("TFE_ContextOptionsSetLazyRemoteInputsCopy",
         &TFE_ContextOptionsSetLazyRemoteInputsCopy);
+  m.def("TFE_ContextOptionsSetTfrt", &TFE_ContextOptionsSetTfrt);
   m.def("TFE_ContextOptionsSetMirroringPolicy",
         &TFE_ContextOptionsSetMirroringPolicy);
   m.def("TFE_ContextOptionsSetAsync", &TFE_ContextOptionsSetAsync);
@@ -1071,7 +1077,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     return capsule;
   });
 
-  m.def("TFE_FromDlpackCapsule", [](const py::capsule& pycapsule) {
+  m.def("TFE_FromDlpackCapsule", [](const py::capsule& pycapsule,
+                                    const py::handle& context) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     if (absl::string_view(pycapsule.name()) !=
@@ -1082,14 +1089,48 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
           absl::string_view(pycapsule.name()));
       tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
     }
-    TFE_TensorHandle* thandle =
-        tensorflow::TFE_HandleFromDLPack(pycapsule, status.get());
+
+    TFE_TensorHandle* thandle = tensorflow::TFE_HandleFromDLPack(
+        pycapsule, status.get(), tensorflow::InputTFE_Context(context));
 
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
 
     PyCapsule_SetName(pycapsule.ptr(), "used_dltensor");
     PyCapsule_SetDestructor(pycapsule.ptr(), nullptr);
     return py::handle(EagerTensorFromHandle(thandle));
+  });
+
+  m.def("TFE_Py_RegisterCustomDevice", [](const py::handle& context,
+                                          const py::capsule& device,
+                                          const char* device_name,
+                                          const py::capsule& device_info) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    if (absl::string_view(device.name()) != "TFE_CustomDevice") {
+      status->status = tensorflow::errors::InvalidArgument(
+          "Expected a capsule named 'TFE_CustomDevice' for the `device` "
+          "argument, got ",
+          absl::string_view(device.name()));
+      tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    }
+    if (absl::string_view(device_info.name()) !=
+        "TFE_CustomDevice_DeviceInfo") {
+      status->status = tensorflow::errors::InvalidArgument(
+          "Expected a capsule named 'TFE_CustomDevice_DeviceInfo' for "
+          "the `device_info` argument, got ",
+          absl::string_view(device_info.name()));
+      tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    }
+    // TFE_RegisterCustomDevice takes ownership
+    PyCapsule_SetDestructor(device_info.ptr(), nullptr);
+    TFE_RegisterCustomDevice(
+        tensorflow::InputTFE_Context(context),
+        *reinterpret_cast<TFE_CustomDevice*>(
+            PyCapsule_GetPointer(device.ptr(), "TFE_CustomDevice")),
+        device_name,
+        PyCapsule_GetPointer(device_info.ptr(), "TFE_CustomDevice_DeviceInfo"),
+        status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
 
   // C API Enum

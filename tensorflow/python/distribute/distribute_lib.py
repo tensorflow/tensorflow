@@ -12,11 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=line-too-long
 """Library for running a computation across multiple devices.
 
 See the guide for overview and examples:
 [TensorFlow v2.x](https://www.tensorflow.org/guide/distributed_training),
-[TensorFlow v1.x](https://github.com/tensorflow/docs/blob/master/site/en/r1/guide/distribute_strategy.ipynb).  # pylint: disable=line-too-long
+[TensorFlow v1.x](https://github.com/tensorflow/docs/blob/master/site/en/r1/guide/distribute_strategy.ipynb).
 
 The intent of this library is that you can write an algorithm in a stylized way
 and it will be usable with a variety of different `tf.distribute.Strategy`
@@ -1035,15 +1036,16 @@ class StrategyBase(object):
         if dim is not None:
           # By returning a python value in the static shape case, we can
           # maybe get a fast path for reducing the denominator.
-          return numer, array_ops.constant(dim, dtype=dtypes.int64)
+          # TODO(b/151871486): Remove array_ops.identity after we fallback to
+          # simple reduction if inputs are all on CPU.
+          return numer, array_ops.identity(
+              constant_op.constant(dim, dtype=dtypes.int64))
       elif axis < 0:
         axis = axis + array_ops.rank(v)
-      if v.shape.rank == 1:
-        # TODO(b/139422050): Currently tf.shape is not supported in TPU dynamic
-        # padder, use tf.size instead to workaround if the rank is 1.
-        denom = array_ops.size(v, out_type=dtypes.int64)
-      else:
-        denom = array_ops.shape_v2(v, out_type=dtypes.int64)[axis]
+      # TODO(b/151871486): Remove array_ops.identity after we fallback to simple
+      # reduction if inputs are all on CPU.
+      denom = array_ops.identity(
+          array_ops.shape_v2(v, out_type=dtypes.int64)[axis])
       # TODO(josh11b): Should we cast denom to v.dtype here instead of after the
       # reduce is complete?
       return numer, denom
@@ -1377,7 +1379,7 @@ class Strategy(StrategyBase):
         multiple_values.append(tf.constant(1.0))
 
     def value_fn(ctx):
-      return multiple_values[ctx.replica_id]
+      return multiple_values[ctx.replica_id_in_sync_group]
 
     distributed_values = strategy.
       experimental_distribute_values_from_function(
@@ -1579,7 +1581,7 @@ class StrategyExtendedV2(object):
   * Unwrapping and merging: Consider calling a function `fn` on multiple
     replicas, like `run(fn, args=[w])` with an
     argument `w` that is a wrapped value. This means `w` will have a map taking
-    replica id `0` to `w0`, replica id `11` to `w1`, etc.
+    replica id `0` to `w0`, replica id `1` to `w1`, etc.
     `run()` unwraps `w` before calling `fn`, so
     it calls `fn(w0)` on `d0`, `fn(w1)` on `d1`, etc.  It then merges the return
     values from `fn()`, which can possibly result in wrapped values. For

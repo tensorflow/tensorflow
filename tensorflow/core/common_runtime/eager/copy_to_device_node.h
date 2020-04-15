@@ -50,8 +50,8 @@ class CopyToDeviceNode : public EagerNode {
 
   Status Run() override {
     tensorflow::Tensor tensor;
-    MEMDEBUG_CACHE_OP(MEMDEBUG_CACHE_VAL ? MEMDEBUG_CACHE_VAL
-                                         : "eager::CopyToDeviceNode");
+    ScopedMemoryDebugAnnotation op_annotation(
+        "eager::CopyToDeviceNode", "dynamic", tensor.dtype(), &tensor.shape());
     TF_RETURN_IF_ERROR(src_->CopyToDevice(ctx_, dstd_, &tensor));
     if (!async_ && mirror_) {
       return dst_->AddLocalMirror(std::move(tensor), dstd_);

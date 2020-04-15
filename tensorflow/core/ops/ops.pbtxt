@@ -850,6 +850,30 @@ op {
   is_stateful: true
 }
 op {
+  name: "AnonymousSeedGenerator"
+  input_arg {
+    name: "seed"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed2"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "reshuffle"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
   name: "Any"
   input_arg {
     name: "input"
@@ -1557,6 +1581,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "multiply_linear_by_lr"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "ApplyFtrlV2"
@@ -1631,6 +1662,13 @@ op {
   }
   attr {
     name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "multiply_linear_by_lr"
     type: "bool"
     default_value {
       b: false
@@ -2115,6 +2153,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BOOL
       }
     }
   }
@@ -2181,6 +2220,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BOOL
       }
     }
   }
@@ -11411,6 +11451,18 @@ op {
   is_stateful: true
 }
 op {
+  name: "DeleteSeedGenerator"
+  input_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}
+op {
   name: "DeleteSessionTensor"
   input_arg {
     name: "handle"
@@ -11654,6 +11706,15 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+        s: "EXPLICIT"
+      }
+    }
+  }
+  attr {
+    name: "explicit_paddings"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -11724,6 +11785,15 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+        s: "EXPLICIT"
+      }
+    }
+  }
+  attr {
+    name: "explicit_paddings"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -11794,6 +11864,15 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+        s: "EXPLICIT"
+      }
+    }
+  }
+  attr {
+    name: "explicit_paddings"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -12939,6 +13018,101 @@ op {
     type: "int"
     default_value {
       i: -1
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "EnqueueTPUEmbeddingRaggedTensorBatch"
+  input_arg {
+    name: "sample_splits"
+    type_attr: "T1"
+    number_attr: "N"
+  }
+  input_arg {
+    name: "embedding_indices"
+    type_attr: "T2"
+    number_attr: "N"
+  }
+  input_arg {
+    name: "aggregation_weights"
+    type_attr: "T3"
+    number_attr: "N"
+  }
+  input_arg {
+    name: "mode_override"
+    type: DT_STRING
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T3"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "device_ordinal"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "combiners"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "table_ids"
+    type: "list(int)"
+  }
+  attr {
+    name: "max_sequence_lengths"
+    type: "list(int)"
+    default_value {
+      list {
+      }
     }
   }
   is_stateful: true
@@ -15840,6 +16014,7 @@ op {
       list {
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT64
         type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
@@ -20026,8 +20201,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -20077,8 +20250,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -20124,8 +20295,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -20175,8 +20344,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -20218,8 +20385,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -20265,8 +20430,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -20316,8 +20479,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -20363,8 +20524,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -20414,8 +20573,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -20465,8 +20622,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -20508,8 +20663,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -20555,8 +20708,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -20598,8 +20749,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -20645,8 +20794,100 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "num_shards"
+    type: "int"
+  }
+  attr {
+    name: "shard_id"
+    type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "LoadTPUEmbeddingProximalYogiParameters"
+  input_arg {
+    name: "parameters"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "v"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "m"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "table_id"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "num_shards"
+    type: "int"
+  }
+  attr {
+    name: "shard_id"
+    type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "LoadTPUEmbeddingProximalYogiParametersGradAccumDebug"
+  input_arg {
+    name: "parameters"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "v"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "m"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "gradient_accumulators"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "table_id"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
   attr {
     name: "table_name"
@@ -20692,8 +20933,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -20743,8 +20982,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -20782,8 +21019,47 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "num_shards"
+    type: "int"
+  }
+  attr {
+    name: "shard_id"
+    type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug"
+  input_arg {
+    name: "parameters"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "gradient_accumulators"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "table_id"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
   attr {
     name: "table_name"
@@ -36226,6 +36502,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "multiply_linear_by_lr"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
   is_stateful: true
 }
 op {
@@ -36293,6 +36576,13 @@ op {
   }
   attr {
     name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "multiply_linear_by_lr"
     type: "bool"
     default_value {
       b: false
@@ -37809,6 +38099,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "multiply_linear_by_lr"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
   is_stateful: true
 }
 op {
@@ -37890,6 +38187,13 @@ op {
   }
   attr {
     name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "multiply_linear_by_lr"
     type: "bool"
     default_value {
       b: false
@@ -38454,8 +38758,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -38505,8 +38807,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -38552,8 +38852,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -38603,8 +38901,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -38646,8 +38942,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -38693,8 +38987,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -38744,8 +39036,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -38791,8 +39081,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -38842,8 +39130,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -38893,8 +39179,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -38936,8 +39220,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -38983,8 +39265,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -39026,8 +39306,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -39073,8 +39351,100 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "num_shards"
+    type: "int"
+  }
+  attr {
+    name: "shard_id"
+    type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "RetrieveTPUEmbeddingProximalYogiParameters"
+  output_arg {
+    name: "parameters"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "v"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "m"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "table_id"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "num_shards"
+    type: "int"
+  }
+  attr {
+    name: "shard_id"
+    type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "RetrieveTPUEmbeddingProximalYogiParametersGradAccumDebug"
+  output_arg {
+    name: "parameters"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "v"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "m"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "gradient_accumulators"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "table_id"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
   attr {
     name: "table_name"
@@ -39120,8 +39490,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -39171,8 +39539,6 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
   }
   attr {
     name: "table_name"
@@ -39210,8 +39576,47 @@ op {
     default_value {
       i: -1
     }
-    has_minimum: true
-    minimum: -1
+  }
+  attr {
+    name: "table_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "num_shards"
+    type: "int"
+  }
+  attr {
+    name: "shard_id"
+    type: "int"
+  }
+  attr {
+    name: "config"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug"
+  output_arg {
+    name: "parameters"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "gradient_accumulators"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "table_id"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
   attr {
     name: "table_name"
@@ -43466,6 +43871,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "multiply_linear_by_lr"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "SparseApplyFtrlV2"
@@ -43554,6 +43966,13 @@ op {
   }
   attr {
     name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "multiply_linear_by_lr"
     type: "bool"
     default_value {
       b: false

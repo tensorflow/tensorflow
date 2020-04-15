@@ -25,7 +25,6 @@ import os
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
-from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.saving import model_config as model_config_lib
@@ -35,6 +34,7 @@ from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import serialization
+from tensorflow.python.util.lazy_loader import LazyLoader
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -43,6 +43,14 @@ try:
 except ImportError:
   h5py = None
 # pylint: enable=g-import-not-at-top
+
+# TODO(b/134426265): Switch back to single-quotes to match the rest of the file
+# once the issue with copybara is fixed.
+# pylint:disable=g-inconsistent-quotes
+sequential_lib = LazyLoader(
+    "sequential_lib", globals(),
+    "tensorflow.python.keras.engine.sequential")
+# pylint:enable=g-inconsistent-quotes
 
 
 def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
@@ -187,27 +195,22 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
 
       # Set optimizer weights.
       if 'optimizer_weights' in f:
-        # Build train function (to get weight updates).
-        # Models that aren't graph networks must wait until they are called
-        # with data to _make_train_function() and so can't load optimizer
-        # weights.
-        if model._is_graph_network:  # pylint: disable=protected-access
-          if not ops.executing_eagerly_outside_functions():
-            model._make_train_function()
-          optimizer_weight_values = load_optimizer_weights_from_hdf5_group(f)
-          try:
-            model.optimizer.set_weights(optimizer_weight_values)
-          except ValueError:
-            logging.warning('Error in loading the saved optimizer '
-                            'state. As a result, your model is '
-                            'starting with a freshly initialized '
-                            'optimizer.')
-        else:
-          logging.warning('Sequential models without an `input_shape` '
-                          'passed to the first layer cannot reload their '
-                          'optimizer state. As a result, your model is'
-                          'starting with a freshly initialized optimizer.')
+        try:
+          model.optimizer._create_all_weights(model.trainable_variables)
+        except (NotImplementedError, AttributeError):
+          logging.warning(
+              'Error when creating the weights of optimizer {}, making it '
+              'impossible to restore the saved optimizer state. As a result, '
+              'your model is starting with a freshly initialized optimizer.')
 
+        optimizer_weight_values = load_optimizer_weights_from_hdf5_group(f)
+        try:
+          model.optimizer.set_weights(optimizer_weight_values)
+        except ValueError:
+          logging.warning('Error in loading the saved optimizer '
+                          'state. As a result, your model is '
+                          'starting with a freshly initialized '
+                          'optimizer.')
   finally:
     if opened_new_file:
       f.close()

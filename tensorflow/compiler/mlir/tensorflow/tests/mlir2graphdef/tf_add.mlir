@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s
+// RUN: tf-mlir-translate -mlir-to-graphdef %s -o - | FileCheck %s --dump-input-on-failure
 
 func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32>
 attributes {tf.entry_function = {inputs = "input0,input1", outputs = "Add"}} {
@@ -14,8 +14,8 @@ attributes {tf.entry_function = {inputs = "input0,input1", outputs = "Add"}} {
 // CHECK:      node {
 // CHECK-NEXT:   name: "input0"
 // CHECK-NEXT:   op: "Placeholder"
-// CHECK-NEXT:   attr {
-// CHECK-NEXT:     key: "dtype"
+// CHECK-NEXT:     attr {
+// CHECK:          key: "dtype"
 // CHECK-NEXT:     value {
 // CHECK-NEXT:       type: DT_INT32
 // CHECK-NEXT:     }
@@ -36,8 +36,8 @@ attributes {tf.entry_function = {inputs = "input0,input1", outputs = "Add"}} {
 // CHECK-NEXT: node {
 // CHECK-NEXT:   name: "input1"
 // CHECK-NEXT:   op: "Placeholder"
-// CHECK-NEXT:   attr {
-// CHECK-NEXT:     key: "dtype"
+// CHECK-NEXT:     attr {
+// CHECK:          key: "dtype"
 // CHECK-NEXT:     value {
 // CHECK-NEXT:       type: DT_INT32
 // CHECK-NEXT:     }
@@ -66,7 +66,7 @@ attributes {tf.entry_function = {inputs = "input0,input1", outputs = "Add"}} {
 // CHECK-NEXT:       type: DT_INT32
 // CHECK-NEXT:     }
 // CHECK-NEXT:   }
-// CHECK-NEXT:   experimental_debug_info {
+// CHECK:        experimental_debug_info {
 // CHECK-NEXT:   }
 // CHECK-NEXT: }
 // CHECK-NEXT: node {

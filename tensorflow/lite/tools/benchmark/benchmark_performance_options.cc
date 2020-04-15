@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/lite/profiling/time.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/lite/tools/logging.h"
 
 #if (defined(ANDROID) || defined(__ANDROID__)) && \
     (defined(__arm__) || defined(__aarch64__))
@@ -41,36 +41,32 @@ limitations under the License.
 namespace tflite {
 namespace benchmark {
 
-void MultiRunStatsRecorder::OnBenchmarkStart(const BenchmarkParams& params) {
-  current_run_name_.clear();
-
+std::string MultiRunStatsRecorder::PerfOptionName(
+    const BenchmarkParams& params) const {
 #if defined(__ANDROID__)
   if (params.Get<bool>("use_nnapi")) {
     const std::string accelerator =
         params.Get<std::string>("nnapi_accelerator_name");
-    current_run_name_ = accelerator.empty() ? "nnapi(w/o accel name)"
-                                            : "nnapi(" + accelerator + ")";
-    return;
+    return accelerator.empty() ? "nnapi(w/o accel name)"
+                               : "nnapi(" + accelerator + ")";
   }
 #endif
 
   if (params.Get<bool>("use_gpu")) {
 #if defined(__ANDROID__)
     if (params.Get<bool>("gpu_precision_loss_allowed")) {
-      current_run_name_ = "gpu-fp16";
+      return "gpu-fp16";
     } else {
-      current_run_name_ = "gpu-default";
+      return "gpu-default";
     }
 #else
-    current_run_name_ = "gpu-default";
+    return "gpu-default";
 #endif
-    return;
   }
 
 #if defined(TFLITE_ENABLE_HEXAGON)
   if (params.Get<bool>("use_hexagon")) {
-    current_run_name_ = "dsp w/ hexagon";
-    return;
+    return "dsp w/ hexagon";
   }
 #endif
 
@@ -85,37 +81,37 @@ void MultiRunStatsRecorder::OnBenchmarkStart(const BenchmarkParams& params) {
     sstm << " (xnnpack)";
   }
 
-  current_run_name_ = sstm.str();
-}
-
-void MultiRunStatsRecorder::OnBenchmarkEnd(const BenchmarkResults& results) {
-  each_run_stats_.emplace_back(std::make_pair(current_run_name_, results));
+  return sstm.str();
 }
 
 void MultiRunStatsRecorder::OutputStats() {
   // Make a 80-character-long header.
   TFLITE_LOG(INFO) << "\n==============Summary of All Runs w/ Different "
                       "Performance Options==============";
-  std::sort(each_run_stats_.begin(), each_run_stats_.end(),
-            EachRunStatsEntryComparator());
+  std::sort(results_.begin(), results_.end(), EachRunStatsEntryComparator());
 
-  for (const auto& run_stats : each_run_stats_) {
+  for (const auto& run_stats : results_) {
+    const auto perf_option_name = PerfOptionName(*run_stats.params);
     std::stringstream stream;
-    // Output the name of this run first.
-    stream << std::setw(26) << run_stats.first << ": ";
-    run_stats.second.inference_time_us().OutputToStream(&stream);
-    // NOTE: As of 2019/11/07, the memory usage is collected in an
-    // OS-process-wide way and this program performs multiple runs in a single
-    // OS process, therefore, the memory usage information of each run becomes
-    // incorrect, hence no output here.
+    stream << std::setw(26) << perf_option_name << ": ";
+    if (!run_stats.completed) {
+      stream << " failed!";
+    } else {
+      run_stats.metrics.inference_time_us().OutputToStream(&stream);
+      // NOTE: As of 2019/11/07, the memory usage is collected in an
+      // OS-process-wide way and this program performs multiple runs in a single
+      // OS process, therefore, the memory usage information of each run becomes
+      // incorrect, hence no output here.
+    }
     TFLITE_LOG(INFO) << stream.str();
   }
 }
 
 BenchmarkPerformanceOptions::BenchmarkPerformanceOptions(
-    BenchmarkModel* single_option_run)
+    BenchmarkModel* single_option_run,
+    std::unique_ptr<MultiRunStatsRecorder> all_run_stats)
     : BenchmarkPerformanceOptions(DefaultParams(), single_option_run,
-                                  DefaultRunStatsRecorder()) {}
+                                  std::move(all_run_stats)) {}
 
 BenchmarkPerformanceOptions::BenchmarkPerformanceOptions(
     BenchmarkParams params, BenchmarkModel* single_option_run,
@@ -136,11 +132,6 @@ BenchmarkParams BenchmarkPerformanceOptions::DefaultParams() {
   params.AddParam("random_shuffle_benchmark_runs",
                   BenchmarkParam::Create<bool>(true));
   return params;
-}
-
-std::unique_ptr<MultiRunStatsRecorder>
-BenchmarkPerformanceOptions::DefaultRunStatsRecorder() {
-  return std::unique_ptr<MultiRunStatsRecorder>(new MultiRunStatsRecorder());
 }
 
 std::vector<Flag> BenchmarkPerformanceOptions::GetFlags() {
@@ -360,6 +351,7 @@ void BenchmarkPerformanceOptions::Run() {
     // created ones.
     single_option_run_->RemoveListeners(num_external_listners);
 
+    all_run_stats_->MarkBenchmarkStart(*single_option_run_params_);
     single_option_run_->Run();
   }
 

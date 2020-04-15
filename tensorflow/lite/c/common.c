@@ -119,7 +119,8 @@ void TfLiteSparsityFree(TfLiteSparsity* sparsity) {
   }
 
   if (sparsity->dim_metadata) {
-    for (int i = 0; i < sparsity->dim_metadata_size; i++) {
+    int i = 0;
+    for (; i < sparsity->dim_metadata_size; i++) {
       TfLiteDimensionMetadata metadata = sparsity->dim_metadata[i];
       if (metadata.format == kTfLiteDimSparseCSR) {
         TfLiteIntArrayFree(metadata.array_segments);
@@ -208,6 +209,8 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "STRING";
     case kTfLiteFloat16:
       return "FLOAT16";
+    case kTfLiteFloat64:
+      return "FLOAT64";
   }
   return "Unknown type";
 }

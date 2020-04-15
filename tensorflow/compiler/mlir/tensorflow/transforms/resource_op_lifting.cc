@@ -22,25 +22,25 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/IR/Visitors.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -131,8 +131,9 @@ namespace {
 //   return %arg0
 // }
 //
-struct ResourceOpLiftingPass : public ModulePass<ResourceOpLiftingPass> {
-  void runOnModule() override;
+struct ResourceOpLiftingPass
+    : public PassWrapper<ResourceOpLiftingPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Removes identity nodes in the block. The device computation does not need
@@ -877,6 +878,7 @@ LogicalResult HandlePartitionedCallOpCallee(
   name_base += "_resource_lifted";
   auto name = name_base;
   callee = callee.clone();
+  callee.setVisibility(SymbolTable::Visibility::Private);
   callee.setName(name);
   SymbolTable(module).insert(callee);
   result->lifted_callee = callee;
@@ -1050,13 +1052,13 @@ LogicalResult HoistForFunctionalControlFlow(
 // Lifts resource operation from tf_device.launch_func ops nested in `op`
 // outside. Returns failure if there are remaining resource-type values that can
 // not be lifted.
-void ResourceOpLiftingPass::runOnModule() {
+void ResourceOpLiftingPass::runOnOperation() {
   llvm::SmallDenseMap<FuncOp, PartitionedCallLiftingInfo>
       lifted_partitioned_call_callees;
-  auto result = getModule().walk([&](FuncOp func_op) {
+  auto result = getOperation().walk([&](FuncOp func_op) {
     return func_op.walk([&](tf_device::LaunchOp launch_op) {
       if (failed(HoistForFunctionalControlFlow(
-              &launch_op.GetBody(), getModule(),
+              &launch_op.GetBody(), getOperation(),
               &lifted_partitioned_call_callees)) ||
           failed(HoistResourceOpsFromLaunchOp(launch_op))) {
         return WalkResult::interrupt();
@@ -1070,12 +1072,13 @@ void ResourceOpLiftingPass::runOnModule() {
 }
 
 struct ResourceOpLiftingForMainFunctionPass
-    : public ModulePass<ResourceOpLiftingForMainFunctionPass> {
-  void runOnModule() override;
+    : public PassWrapper<ResourceOpLiftingForMainFunctionPass,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
-void ResourceOpLiftingForMainFunctionPass::runOnModule() {
-  ModuleOp module = getModule();
+void ResourceOpLiftingForMainFunctionPass::runOnOperation() {
+  ModuleOp module = getOperation();
   FuncOp main_func = module.lookupSymbol<FuncOp>("main");
   if (!main_func) {
     return;
@@ -1099,7 +1102,7 @@ static PassRegistration<ResourceOpLiftingPass> pass(
 }  // namespace
 
 namespace TFDevice {
-std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceOpLiftingPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateResourceOpLiftingPass() {
   return std::make_unique<ResourceOpLiftingPass>();
 }
 }  // namespace TFDevice

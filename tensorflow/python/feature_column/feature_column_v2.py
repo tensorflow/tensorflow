@@ -130,8 +130,8 @@ from __future__ import print_function
 import abc
 import collections
 import math
-
 import re
+
 import numpy as np
 import six
 
@@ -145,14 +145,13 @@ from tensorflow.python.framework import tensor_shape
 # TODO(b/118385027): Dependency on keras can be problematic if Keras moves out
 # of the main repo.
 from tensorflow.python.keras import initializers
-from tensorflow.python.keras.utils import generic_utils
-from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -164,13 +163,13 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import tracking
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.tf_export import tf_export
 
 
 _FEATURE_COLUMN_DEPRECATION_DATE = None
@@ -543,7 +542,7 @@ class _LinearModelLayer(Layer):
               name='weights',
               dtype=dtypes.float32,
               shape=(first_dim, self._units),
-              initializer=init_ops.zeros_initializer(),
+              initializer=initializers.zeros(),
               trainable=self.trainable)
 
       # Create a bias variable.
@@ -551,7 +550,7 @@ class _LinearModelLayer(Layer):
           name='bias_weights',
           dtype=dtypes.float32,
           shape=[self._units],
-          initializer=init_ops.zeros_initializer(),
+          initializer=initializers.zeros(),
           trainable=self.trainable,
           use_resource=True,
           # TODO(rohanj): Get rid of this hack once we have a mechanism for
@@ -618,7 +617,7 @@ class _LinearModelLayer(Layer):
 
 
 # TODO(tanzheny): Cleanup it with respect to Premade model b/132690565.
-class LinearModel(training.Model):
+class LinearModel(keras_training.Model):
   """Produces a linear prediction `Tensor` based on given `feature_columns`.
 
   This layer generates a weighted sum based on output dimension `units`.
@@ -962,7 +961,7 @@ def embedding_column(categorical_column,
                      'Embedding of column_name: {}'.format(
                          categorical_column.name))
   if initializer is None:
-    initializer = init_ops.truncated_normal_initializer(
+    initializer = initializers.truncated_normal(
         mean=0.0, stddev=1 / math.sqrt(dimension))
 
   return EmbeddingColumn(
@@ -1104,7 +1103,7 @@ def shared_embedding_columns(categorical_columns,
   if (initializer is not None) and (not callable(initializer)):
     raise ValueError('initializer must be callable if specified.')
   if initializer is None:
-    initializer = init_ops.truncated_normal_initializer(
+    initializer = initializers.truncated_normal(
         mean=0.0, stddev=1. / math.sqrt(dimension))
 
   # Sort the columns so the default collection name is deterministic even if the
@@ -1287,7 +1286,7 @@ def shared_embedding_columns_v2(categorical_columns,
   if (initializer is not None) and (not callable(initializer)):
     raise ValueError('initializer must be callable if specified.')
   if initializer is None:
-    initializer = init_ops.truncated_normal_initializer(
+    initializer = initializers.truncated_normal(
         mean=0.0, stddev=1. / math.sqrt(dimension))
 
   # Sort the columns so the default collection name is deterministic even if the
@@ -2515,7 +2514,8 @@ def _create_dense_column_weighted_sum(column, transformation_cache,
 class CategoricalColumn(FeatureColumn):
   """Represents a categorical feature.
 
-  A categorical feature typically handled with a `tf.SparseTensor` of IDs.
+  A categorical feature typically handled with a `tf.sparse.SparseTensor` of
+  IDs.
   """
 
   IdWeightPair = collections.namedtuple(  # pylint: disable=invalid-name
@@ -2659,7 +2659,7 @@ class FeatureTransformationCache(object):
     self._features = features.copy()
     self._feature_tensors = {}
 
-  def get(self, key, state_manager):
+  def get(self, key, state_manager, training=None):
     """Returns a `Tensor` for the given key.
 
     A `str` key is used to access a base feature (not-transformed). When a
@@ -2670,6 +2670,11 @@ class FeatureTransformationCache(object):
     Args:
       key: a `str` or a `FeatureColumn`.
       state_manager: A StateManager object that holds the FeatureColumn state.
+      training: Boolean indicating whether to the column is being used in
+        training mode. This argument is passed to the transform_feature method
+        of any `FeatureColumn` that takes a `training` argument. For example, if
+        a `FeatureColumn` performed dropout, it could expose a `training`
+        argument to control whether the dropout should be applied.
 
     Returns:
       The transformed `Tensor` corresponding to the `key`.
@@ -2696,7 +2701,15 @@ class FeatureTransformationCache(object):
 
     column = key
     logging.debug('Transforming feature_column %s.', column)
-    transformed = column.transform_feature(self, state_manager)
+
+    # Some columns may need information about whether the transformation is
+    # happening in training or prediction mode, but not all columns expose this
+    # argument.
+    try:
+      transformed = column.transform_feature(
+          self, state_manager, training=training)
+    except TypeError:
+      transformed = column.transform_feature(self, state_manager)
     if transformed is None:
       raise ValueError('Column {} is not supported.'.format(column.name))
     self._feature_tensors[column] = transformed

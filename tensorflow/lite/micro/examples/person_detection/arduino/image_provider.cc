@@ -35,6 +35,12 @@ limitations under the License.
  *    "#define LOAD_SD_LIBRARY" and "#define LOAD_SDFAT_LIBRARY".
  */
 
+#if defined(ARDUINO) && !defined(ARDUINO_ARDUINO_NANO33BLE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_ARDUINO_NANO33BLE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 // Required by Arducam library
 #include <SPI.h>
 #include <Wire.h>
@@ -261,3 +267,5 @@ TfLiteStatus GetImage(tflite::ErrorReporter* error_reporter, int image_width,
 
   return kTfLiteOk;
 }
+
+#endif  // ARDUINO_EXCLUDE_CODE

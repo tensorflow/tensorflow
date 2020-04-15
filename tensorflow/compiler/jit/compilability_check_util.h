@@ -265,6 +265,23 @@ class RecursiveCompilabilityChecker {
 
 RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
     const XlaOpRegistry::DeviceRegistration& registration);
+
+// Given a FunctionLibraryRuntime and a NodeDef calling a function in the
+// runtime, returns this function's body in `fbody` as well as the indices
+// of its constant and resource arguments.
+// `fbody` is owned by `flr`.
+// `constant_arg_indices` and `resource_arg_indices` should be empty vector.
+// They are sorted in ascending order on this function's return.
+Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
+                                       const NodeDef& node_def,
+                                       const FunctionBody** fbody,
+                                       std::vector<int>* constant_arg_indices,
+                                       std::vector<int>* resource_arg_indices);
+
+// Given a NodeDef `node_def` returns true iff `node_def` has kXlaCompileAttr
+// set.
+bool CanCreateXlaKernel(const NodeDef& node_def);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_COMPILABILITY_CHECK_UTIL_H_

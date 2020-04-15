@@ -20,6 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
@@ -28,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -84,6 +89,17 @@ Status ConvertOutputInfo(const tf2xla::Config& config,
   return ParseOutputArrayInfo(array_names, &specs->outputs);
 }
 
+static void RegisterDialects() {
+  static bool init_once = []() {
+    mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
+    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
+    mlir::registerDialect<mlir::StandardOpsDialect>();
+    mlir::registerDialect<mlir::xla_hlo::XlaHloDialect>();
+    return true;
+  }();
+  (void)init_once;
+}
+
 }  // namespace
 
 Status ConvertGraphDefToXlaViaMlir(
@@ -132,8 +148,8 @@ Status ConvertGraphDefToXlaViaMlir(
     }
   }
 
+  RegisterDialects();
   mlir::MLIRContext context;
-
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
       ConvertGraphdefToMlir(pruned_graph_def, debug_info, specs, &context));
@@ -158,7 +174,8 @@ Status ConvertGraphDefToXlaViaMlir(
   // Convert the MLIR module to XLA computation. If the input graph can't be
   // lowered down to a single graph node with a single island by the previous
   // step, this step will return an error.
-  return ConvertMLIRToXlaComputation(*module, computation,
+  return ConvertMLIRToXlaComputation(*module, /*device_type=*/"XLA_CPU_JIT",
+                                     computation,
                                      /*use_tuple_args=*/false,
                                      /*always_return_tuple=*/true);
 }

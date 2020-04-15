@@ -31,8 +31,12 @@ class TransformerTest(test.TestCase):
 
   def _simple_context(self):
     entity_info = transformer.EntityInfo(
-        source_code=None, source_file=None, future_features=(), namespace=None)
-    return transformer.Context(entity_info)
+        name='Test_fn',
+        source_code=None,
+        source_file=None,
+        future_features=(),
+        namespace=None)
+    return transformer.Context(entity_info, None, None)
 
   def assertSameAnno(self, first, second, key):
     self.assertIs(anno.getanno(first, key), anno.getanno(second, key))
@@ -293,6 +297,71 @@ class TransformerTest(test.TestCase):
         anno.getanno(assign_node, anno.Basic.ORIGIN).loc.lineno, 103)
     self.assertEqual(
         anno.getanno(aug_assign_node, anno.Basic.ORIGIN).loc.lineno, 104)
+
+
+class CodeGeneratorTest(test.TestCase):
+
+  def _simple_context(self):
+    entity_info = transformer.EntityInfo(
+        name='test_fn',
+        source_code=None,
+        source_file=None,
+        future_features=(),
+        namespace=None)
+    return transformer.Context(entity_info, None, None)
+
+  def test_basic_codegen(self):
+
+    class TestCodegen(transformer.CodeGenerator):
+
+      def visit_Assign(self, node):
+        self.emit(parser.unparse(node, include_encoding_marker=False))
+        self.emit('\n')
+
+      def visit_Return(self, node):
+        self.emit(parser.unparse(node, include_encoding_marker=False))
+        self.emit('\n')
+
+      def visit_If(self, node):
+        self.emit('if ')
+        # This is just for simplifity. A real generator will walk the tree and
+        # emit proper code.
+        self.emit(parser.unparse(node.test, include_encoding_marker=False))
+        self.emit(' {\n')
+        self.visit_block(node.body)
+        self.emit('} else {\n')
+        self.visit_block(node.orelse)
+        self.emit('}\n')
+
+    tg = TestCodegen(self._simple_context())
+
+    def test_fn():
+      x = 1
+      if x > 0:
+        x = 2
+        if x > 1:
+          x = 3
+      return x
+
+    node, source = parser.parse_entity(test_fn, future_features=())
+    origin_info.resolve(node, source, 'test_file', 100, 0)
+    tg.visit(node)
+
+    self.assertEqual(
+        tg.code_buffer, '\n'.join([
+            'x = 1',
+            'if (x > 0) {',
+            'x = 2',
+            'if (x > 1) {',
+            'x = 3',
+            '} else {',
+            '}',
+            '} else {',
+            '}',
+            'return x',
+            '',
+        ]))
+    # TODO(mdan): Test the source map.
 
 
 if __name__ == '__main__':

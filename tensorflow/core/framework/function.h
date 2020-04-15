@@ -24,6 +24,7 @@ limitations under the License.
 // clang-format on
 
 #include "absl/types/optional.h"
+#include "absl/types/variant.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -273,7 +274,7 @@ class CallFrameInterface {
   virtual size_t num_args() const = 0;
   virtual size_t num_retvals() const = 0;
 
-  virtual Status GetArg(int index, Tensor* val) const = 0;
+  virtual Status GetArg(int index, const Tensor** val) = 0;
   virtual Status SetRetval(int index, const Tensor& val) = 0;
 };
 
@@ -300,7 +301,7 @@ class FunctionCallFrame : public CallFrameInterface {
   size_t num_retvals() const override { return ret_types_.size(); }
 
   // Callee methods.
-  Status GetArg(int index, Tensor* val) const override;
+  Status GetArg(int index, const Tensor** val) override;
   Status SetRetval(int index, const Tensor& val) override;
 
  private:
@@ -838,6 +839,15 @@ class CustomKernelCreator {
       std::unique_ptr<OpKernel>* kernel) const = 0;
 };
 
+typedef
+#if !defined(IS_MOBILE_PLATFORM)
+    absl::variant<Tensor, eager::RemoteTensorHandle*>
+        FunctionArg;
+#else
+    absl::variant<Tensor>
+        FunctionArg;
+#endif
+
 // Used to instantiate and run functions in a distributed system.
 class DistributedFunctionLibraryRuntime {
  public:
@@ -857,15 +867,13 @@ class DistributedFunctionLibraryRuntime {
                    gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                    FunctionLibraryRuntime::DoneCallback done) = 0;
 
-#if !defined(IS_MOBILE_PLATFORM)
   // TODO(yujingzhang): Support outputting tensors on remote devices.
   virtual void Run(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::LocalHandle handle,
-                   std::vector<eager::RemoteTensorHandle>* args,
+                   gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
                    FunctionLibraryRuntime::DoneCallback done) {
     done(errors::Unimplemented("Unimplemented."));
   }
-#endif  // IS_MOBILE_PLATFORM
 
   virtual void CleanUp(uint64 step_id,
                        FunctionLibraryRuntime::LocalHandle handle,

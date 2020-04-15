@@ -97,6 +97,7 @@ tf_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/engine:base_layer",
         "//tensorflow/python/keras/engine:input_spec",
     ],
@@ -125,6 +126,7 @@ tf_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -157,6 +159,7 @@ tf_py_test(
     srcs = ["pooling_test.py"],
     main = "pooling_test.py",
     python_version = "PY3",
+    tags = ["no_rocm"],
     deps = [
         ":pooling",
         "//tensorflow/python:array_ops",

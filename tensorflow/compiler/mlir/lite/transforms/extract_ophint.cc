@@ -21,26 +21,25 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Analysis/LoopAnalysis.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/Functional.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
@@ -679,8 +678,9 @@ LogicalResult ConvertOphintToStub(StringRef stub_name,
   return success();
 }
 
-struct ExtractOphintPass : public ModulePass<ExtractOphintPass> {
-  void runOnModule() override;
+struct ExtractOphintPass
+    : public PassWrapper<ExtractOphintPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
   void Verify();
 
  private:
@@ -689,8 +689,8 @@ struct ExtractOphintPass : public ModulePass<ExtractOphintPass> {
 
 // TODO(renjieliu): Current ophint extraction does not support inputs/outputs
 // cross functions, we need to do that.
-void ExtractOphintPass::runOnModule() {
-  ModuleOp module = getModule();
+void ExtractOphintPass::runOnOperation() {
+  ModuleOp module = getOperation();
   for (auto function : module.getOps<FuncOp>()) {
     // Process block by block.
     for (auto& bb : function.getBody()) {
@@ -710,7 +710,7 @@ void ExtractOphintPass::runOnModule() {
       ophint_composite_ops_count = ophint_composite_ops.size();
 
       // Convert.
-      OpBuilder builder(&bb);
+      OpBuilder builder = OpBuilder::atBlockEnd(&bb);
       for (const auto& kv : ophint_composite_ops) {
         if (failed(ConvertOphintToStub(kv.getKey(), kv.getValue(), &builder,
                                        &module))) {
@@ -724,9 +724,9 @@ void ExtractOphintPass::runOnModule() {
 }
 
 void ExtractOphintPass::Verify() {
-  ModuleOp module = getModule();
+  ModuleOp module = getOperation();
   int ophint_func_op_count = 0;
-  for (FuncOp func : getModule().getOps<FuncOp>()) {
+  for (FuncOp func : getOperation().getOps<FuncOp>()) {
     for (const NamedAttribute attr : func.getAttrs()) {
       if (attr.first == kTfLiteFunctionName) {
         ophint_func_op_count++;
@@ -752,7 +752,7 @@ void ExtractOphintPass::Verify() {
 
 /// Creates an instance of the TensorFlow Lite dialect ExtractOphintPass
 /// pass.
-std::unique_ptr<OpPassBase<ModuleOp>> CreateExtractOphintPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateExtractOphintPass() {
   return std::make_unique<ExtractOphintPass>();
 }
 

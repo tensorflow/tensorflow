@@ -120,11 +120,6 @@ class KernelAndDevice : public core::RefCounted {
 
   // TODO(ashankar): Handle list-valued inputs.
   virtual Status Run(
-      const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
-      CancellationManager* cancellation_manager,
-      const absl::optional<EagerRemoteFunctionParams>& remote_func_params) = 0;
-
-  virtual Status Run(
       ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
       std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
       const absl::optional<EagerRemoteFunctionParams>& remote_func_params) = 0;
@@ -185,11 +180,6 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   ~KernelAndDeviceOp() override {}
 
   Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
-
-  Status Run(const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
-             CancellationManager* cancellation_manager,
-             const absl::optional<EagerRemoteFunctionParams>&
-                 remote_func_params) override;
 
   Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
              std::vector<Tensor>* outputs,
@@ -269,10 +259,6 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
 
   Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
 
-  Status Run(const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
-             CancellationManager* cancellation_manager,
-             const absl::optional<EagerRemoteFunctionParams>&
-                 remote_func_params) override;
   Status Run(ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
              std::vector<Tensor>* outputs,
              CancellationManager* cancellation_manager,

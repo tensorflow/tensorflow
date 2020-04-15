@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -39,29 +40,45 @@ namespace snapshot_util {
 /* static */ constexpr const int64 Reader::kSnappyReaderInputBufferSizeBytes;
 /* static */ constexpr const int64 Reader::kSnappyReaderOutputBufferSizeBytes;
 
-Writer::Writer(WritableFile* dest, const string& compression_type, int version,
-               const DataTypeVector& dtypes)
-    : dest_(dest), compression_type_(compression_type), version_(version) {
+Writer::Writer(const std::string& filename, const std::string& compression_type,
+               int version, const DataTypeVector& dtypes)
+    : filename_(filename),
+      compression_type_(compression_type),
+      version_(version),
+      dtypes_(dtypes) {}
+
+Status Writer::Create(Env* env, const std::string& filename,
+                      const std::string& compression_type, int version,
+                      const DataTypeVector& dtypes,
+                      std::unique_ptr<Writer>* out_writer) {
+  *out_writer =
+      absl::WrapUnique(new Writer(filename, compression_type, version, dtypes));
+
+  return (*out_writer)->Initialize(env);
+}
+
+Status Writer::Initialize(tensorflow::Env* env) {
+  TF_RETURN_IF_ERROR(env->NewWritableFile(filename_, &dest_));
 #if defined(IS_SLIM_BUILD)
-  if (compression_type != io::compression::kNone) {
+  if (compression_type_ != io::compression::kNone) {
     LOG(ERROR) << "Compression is unsupported on mobile platforms. Turning "
                << "off compression.";
   }
 #else   // IS_SLIM_BUILD
-  if (compression_type == io::compression::kGzip) {
+  if (compression_type_ == io::compression::kGzip) {
+    zlib_underlying_dest_.swap(dest_);
     io::ZlibCompressionOptions zlib_options;
     zlib_options = io::ZlibCompressionOptions::GZIP();
 
-    io::ZlibOutputBuffer* zlib_output_buffer =
-        new io::ZlibOutputBuffer(dest, zlib_options.input_buffer_size,
-                                 zlib_options.output_buffer_size, zlib_options);
+    io::ZlibOutputBuffer* zlib_output_buffer = new io::ZlibOutputBuffer(
+        zlib_underlying_dest_.get(), zlib_options.input_buffer_size,
+        zlib_options.output_buffer_size, zlib_options);
     TF_CHECK_OK(zlib_output_buffer->Init());
-    dest_ = zlib_output_buffer;
-    dest_is_owned_ = true;
+    dest_.reset(zlib_output_buffer);
   }
 #endif  // IS_SLIM_BUILD
-  simple_tensor_mask_.reserve(dtypes.size());
-  for (const auto& dtype : dtypes) {
+  simple_tensor_mask_.reserve(dtypes_.size());
+  for (const auto& dtype : dtypes_) {
     if (DataTypeCanUseMemcpy(dtype)) {
       simple_tensor_mask_.push_back(true);
       num_simple_++;
@@ -70,6 +87,8 @@ Writer::Writer(WritableFile* dest, const string& compression_type, int version,
       num_complex_++;
     }
   }
+
+  return Status::OK();
 }
 
 Status Writer::WriteTensors(const std::vector<Tensor>& tensors) {
@@ -156,21 +175,21 @@ Status Writer::WriteTensors(const std::vector<Tensor>& tensors) {
 Status Writer::Sync() { return dest_->Sync(); }
 
 Status Writer::Close() {
-  if (dest_is_owned_) {
-    Status s = dest_->Close();
-    delete dest_;
+  if (dest_ != nullptr) {
+    TF_RETURN_IF_ERROR(dest_->Close());
     dest_ = nullptr;
-    return s;
+  }
+  if (zlib_underlying_dest_ != nullptr) {
+    TF_RETURN_IF_ERROR(zlib_underlying_dest_->Close());
+    zlib_underlying_dest_ = nullptr;
   }
   return Status::OK();
 }
 
 Writer::~Writer() {
-  if (dest_ != nullptr) {
-    Status s = Close();
-    if (!s.ok()) {
-      LOG(ERROR) << "Could not finish writing file: " << s;
-    }
+  Status s = Close();
+  if (!s.ok()) {
+    LOG(ERROR) << "Could not finish writing file: " << s;
   }
 }
 
@@ -406,10 +425,17 @@ Status WriteMetadataFile(const string& hash_dir,
 }
 
 Status ReadMetadataFile(const string& hash_dir,
-                        experimental::SnapshotMetadataRecord* metadata) {
+                        experimental::SnapshotMetadataRecord* metadata,
+                        bool* file_exists) {
   string metadata_filename = io::JoinPath(hash_dir, kMetadataFilename);
-  TF_RETURN_IF_ERROR(Env::Default()->FileExists(metadata_filename));
-  return ReadBinaryProto(Env::Default(), metadata_filename, metadata);
+  Status s = Env::Default()->FileExists(metadata_filename);
+  *file_exists = s.ok();
+
+  if (*file_exists) {
+    return ReadBinaryProto(Env::Default(), metadata_filename, metadata);
+  } else {
+    return Status::OK();
+  }
 }
 
 Status DumpDatasetGraph(const std::string& path, uint64 hash,
@@ -424,15 +450,14 @@ Status DumpDatasetGraph(const std::string& path, uint64 hash,
   return WriteTextProto(Env::Default(), graph_file, *graph);
 }
 
-Status DetermineOpState(const std::string& mode_string,
-                        const Status& file_status,
+Status DetermineOpState(const std::string& mode_string, bool file_exists,
                         const experimental::SnapshotMetadataRecord* metadata,
                         const uint64 pending_snapshot_expiry_seconds,
                         Mode* mode) {
   if (mode_string == kModeRead) {
     // In read mode, we should expect a metadata file is written.
-    if (errors::IsNotFound(file_status)) {
-      return file_status;
+    if (!file_exists) {
+      return errors::NotFound("Metadata file does not exist.");
     }
     LOG(INFO) << "Overriding mode to reader.";
     *mode = READER;
@@ -451,13 +476,9 @@ Status DetermineOpState(const std::string& mode_string,
     return Status::OK();
   }
 
-  if (errors::IsNotFound(file_status)) {
+  if (!file_exists) {
     *mode = WRITER;
     return Status::OK();
-  }
-
-  if (!file_status.ok()) {
-    return file_status;
   }
 
   if (metadata->finalized()) {

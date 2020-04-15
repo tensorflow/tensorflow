@@ -76,10 +76,10 @@ class MakePaddingFromZerosConcat : public NodeTransformation {
                     "Padding for concat axis is unsupported: " +
                         ToString(concat_attr.axis)};
         }
-        Status status = RemovePrecedingNode(graph, dep, node);
+        absl::Status status = RemovePrecedingNode(graph, dep, node);
         if (!status.ok()) {
-          return {TransformStatus::INVALID,
-                  "Unable to remove const node: " + status.error_message()};
+          return {TransformStatus::INVALID, "Unable to remove const node: " +
+                                                std::string(status.message())};
         }
         node->operation.attributes = pad_attr;
         node->operation.type = ToString(OperationType::PAD);

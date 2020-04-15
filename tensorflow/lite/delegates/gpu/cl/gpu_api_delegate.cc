@@ -87,10 +87,10 @@ class Delegate {
     }
   }
 
-  Status Prepare(TfLiteContext* context,
-                 const TfLiteDelegateParams* delegate_params) {
+  absl::Status Prepare(TfLiteContext* context,
+                       const TfLiteDelegateParams* delegate_params) {
     // Extract TFLite delegate execution plan from the context and convert it
-    // into FlowGraph32.
+    // into GraphFloat32.
     GraphFloat32 graph;
     RETURN_IF_ERROR(BuildModel(context, delegate_params, &graph));
 
@@ -98,7 +98,7 @@ class Delegate {
     NullTransformationReporter reporter;
     ModelTransformer transformer(&graph, &reporter);
     if (!ApplyGeneralTransformations(&transformer)) {
-      return InternalError("Graph general transformations failed");
+      return absl::InternalError("Graph general transformations failed");
     }
 
     InferenceEnvironmentOptions env_options;
@@ -108,7 +108,7 @@ class Delegate {
         options_.serialized_binary_cache_data,
         options_.serialized_binary_cache_size};
     InferenceEnvironmentProperties properties;
-    Status status =
+    absl::Status status =
         NewInferenceEnvironment(env_options, &environment_, &properties);
     if (!properties.is_opencl_available) {
       context->ReportError(context,
@@ -200,7 +200,7 @@ class Delegate {
     return builder->Build(&runner_);
   }
 
-  Status SetInputsAndOutputs(TfLiteContext* context) {
+  absl::Status SetInputsAndOutputs(TfLiteContext* context) {
     int i = 0;
     for (auto index : input_indices_) {
       RETURN_IF_ERROR(
@@ -211,10 +211,10 @@ class Delegate {
       RETURN_IF_ERROR(
           runner_->SetOutputObject(i++, GetTensorObject(index, context)));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Invoke(TfLiteContext* context) {
+  absl::Status Invoke(TfLiteContext* context) {
     RETURN_IF_ERROR(SetInputsAndOutputs(context));
     return runner_->Run();
   }
@@ -310,7 +310,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         const auto status = gpu_delegate->Prepare(context, params);
         if (!status.ok()) {
           context->ReportError(context, "TfLiteGpuDelegate Init: %s",
-                               status.error_message().c_str());
+                               std::string(status.message()).c_str());
           return nullptr;
         }
         return gpu_delegate;
@@ -335,7 +335,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         const auto status = GetDelegate(node)->Invoke(context);
         if (!status.ok()) {
           context->ReportError(context, "TfLiteGpuDelegate Invoke: %s",
-                               status.error_message().c_str());
+                               std::string(status.message()).c_str());
           return kTfLiteError;
         }
         return kTfLiteOk;

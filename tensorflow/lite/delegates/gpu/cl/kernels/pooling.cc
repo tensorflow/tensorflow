@@ -408,7 +408,7 @@ Pooling& Pooling::operator=(Pooling&& kernel) {
   return *this;
 }
 
-Status Pooling::Compile(const CreationContext& creation_context) {
+absl::Status Pooling::Compile(const CreationContext& creation_context) {
   std::string code;
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
@@ -423,7 +423,7 @@ Status Pooling::Compile(const CreationContext& creation_context) {
                                      linked_operations_, output_indices_);
       break;
     default:
-      return InvalidArgumentError(
+      return absl::InvalidArgumentError(
           "You should create another kernel with this params");
       break;
   }
@@ -432,7 +432,7 @@ Status Pooling::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-Status Pooling::BindArguments() {
+absl::Status Pooling::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
@@ -447,7 +447,7 @@ Status Pooling::BindArguments() {
       kernel_.SetBytesAuto(int2(padding_.x * src_[0]->Batch(), padding_.y)));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 Pooling::GetGridSize() const {
@@ -457,12 +457,12 @@ int3 Pooling::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status Pooling::Tune(const TuningParameters& params) {
+absl::Status Pooling::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Status Pooling::AddToQueue(CLCommandQueue* queue) {
+absl::Status Pooling::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
@@ -506,7 +506,7 @@ Pooling3D& Pooling3D::operator=(Pooling3D&& kernel) {
   return *this;
 }
 
-Status Pooling3D::Compile(const CreationContext& creation_context) {
+absl::Status Pooling3D::Compile(const CreationContext& creation_context) {
   std::string code;
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
@@ -521,7 +521,7 @@ Status Pooling3D::Compile(const CreationContext& creation_context) {
                                        linked_operations_, output_indices_);
       break;
     default:
-      return InvalidArgumentError(
+      return absl::InvalidArgumentError(
           "You should create another kernel with this params");
       break;
   }
@@ -530,7 +530,7 @@ Status Pooling3D::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-Status Pooling3D::BindArguments() {
+absl::Status Pooling3D::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
@@ -550,7 +550,7 @@ Status Pooling3D::BindArguments() {
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(int4(stride_.x, stride_.y, stride_.z, 1)));
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 Pooling3D::GetGridSize() const {
@@ -560,12 +560,12 @@ int3 Pooling3D::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status Pooling3D::Tune(const TuningParameters& params) {
+absl::Status Pooling3D::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Status Pooling3D::AddToQueue(CLCommandQueue* queue) {
+absl::Status Pooling3D::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }

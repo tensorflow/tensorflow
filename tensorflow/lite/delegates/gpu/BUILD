@@ -12,12 +12,6 @@ exports_files([
     "metal_delegate.h",
 ])
 
-# Primary purpose of this config is to replace ::util::Status with our custom
-# light implementation ::tflite::gpu::StatusLite to reduce binary size.  Besides
-# that, certain features that were hard to communicate without full open source
-# were hidden away too such as compiled models, serialization, and metadata.
-# While the latter will be fully available with the open source release, the
-# former will have to stay until absl::Status is released.
 config_setting(
     name = "tflite_gpu_binary_release",
     values = {"copt": "-DTFLITE_GPU_BINARY_RELEASE"},
@@ -243,6 +237,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/gl:api2",
+        "//tensorflow/lite/kernels/internal:optimized_base",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
 )

@@ -16,9 +16,9 @@ limitations under the License.
 // This transformation pass convert dense tensor to sparse format.
 
 #include "absl/memory/memory.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
 //===----------------------------------------------------------------------===//
@@ -29,7 +29,7 @@ namespace TFL {
 
 namespace {
 
-struct DenseToSparse : public FunctionPass<DenseToSparse> {
+struct DenseToSparse : public PassWrapper<DenseToSparse, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -63,7 +63,7 @@ void DenseToSparse::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect DenseToSparse pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateDenseToSparsePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateDenseToSparsePass() {
   return absl::make_unique<DenseToSparse>();
 }
 

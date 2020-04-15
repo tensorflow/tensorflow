@@ -17,8 +17,10 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "tensorflow/lite/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/writer/enum_mapping.h"
@@ -50,7 +52,7 @@ SubgraphWriter::ExportOperators(flatbuffers::FlatBufferBuilder* fbb) {
   std::vector<int> operator_to_opcode;
   // TODO(aselle): Augment this once we put execution plan in schema.
   operator_to_opcode.resize(subgraph_->nodes_size(), -1);
-  for (int op_index : subgraph_->execution_plan()) {
+  for (int op_index : execution_plan_) {
     const auto* node_and_registration =
         subgraph_->node_and_registration(op_index);
     const TfLiteRegistration* registration = &node_and_registration->second;
@@ -63,7 +65,7 @@ SubgraphWriter::ExportOperators(flatbuffers::FlatBufferBuilder* fbb) {
     }
   }
   // second pass serialize operators
-  for (int op_index : subgraph_->execution_plan()) {
+  for (int op_index : execution_plan_) {
     const auto* node_and_registration =
         subgraph_->node_and_registration(op_index);
     const TfLiteNode& node = node_and_registration->first;
@@ -222,7 +224,7 @@ SubgraphWriter::ExportBuffers(flatbuffers::FlatBufferBuilder* fbb) {
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<OperatorCode>>>
 SubgraphWriter::CreateOpCodeTable(flatbuffers::FlatBufferBuilder* fbb) {
   std::vector<flatbuffers::Offset<OperatorCode>> codes;
-  for (auto it : opcodes_) {
+  for (const auto& it : opcodes_) {
     const char* custom_name = it.custom.empty() ? nullptr : it.custom.c_str();
     codes.push_back(CreateOperatorCodeDirect(
         *fbb, static_cast<BuiltinOperator>(it.builtin), custom_name));
@@ -255,10 +257,8 @@ TfLiteStatus SubgraphWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
   std::vector<flatbuffers::Offset<SubGraph>> subgraphs_as_vector;
   {  // subgraph specific stuff
     auto tensors = ExportTensors(&builder);
-    std::vector<int> written_inputs =
-        RemapTensorIndicesToWritten(subgraph_->inputs());
-    std::vector<int> written_outputs =
-        RemapTensorIndicesToWritten(subgraph_->outputs());
+    std::vector<int> written_inputs = RemapTensorIndicesToWritten(inputs_);
+    std::vector<int> written_outputs = RemapTensorIndicesToWritten(outputs_);
     auto inputs = ExportVector<int32_t>(&builder, written_inputs);
     auto outputs = ExportVector<int32_t>(&builder, written_outputs);
 
@@ -306,6 +306,65 @@ TfLiteStatus SubgraphWriter::RegisterCustomWriter(
     return kTfLiteError;
   }
   custom_op_to_writer_.insert(std::make_pair(custom_name, custom_writer));
+  return kTfLiteOk;
+}
+
+TfLiteStatus SubgraphWriter::CheckInputOutput(
+    const std::vector<int>& inputs, const std::vector<int>& outputs,
+    const std::vector<int>& execution_plan) {
+  std::unordered_set<int> known_tensors(inputs.begin(), inputs.end());
+  // Scan execution plan and confirm input tensors are known before each node
+  // executes. Then append output tensors to known tensors.
+  for (int op_index : execution_plan) {
+    const auto* node_and_registration =
+        subgraph_->node_and_registration(op_index);
+    const TfLiteNode& node = node_and_registration->first;
+    for (int tensor_index : TfLiteIntArrayView(node.inputs)) {
+      if (TfLiteTensor* tensor = subgraph_->tensor(tensor_index)) {
+        // Skip constant tensors.
+        if (tensor->allocation_type == kTfLiteMmapRo) {
+          continue;
+        }
+      }
+
+      if (known_tensors.find(tensor_index) == known_tensors.end()) {
+        subgraph_->context()->ReportError(
+            subgraph_->context(),
+            "Node (%d) uses an input (%d) that is not provided.", op_index,
+            tensor_index);
+        return kTfLiteError;
+      }
+    }
+    TfLiteIntArrayView outputs(node.outputs);
+    known_tensors.insert(outputs.begin(), outputs.end());
+  }
+
+  // Check if outputs are known tensors or constants.
+  for (int tensor_index : outputs) {
+    if (TfLiteTensor* tensor = subgraph_->tensor(tensor_index)) {
+      // Skip constant tensors.
+      if (tensor->allocation_type == kTfLiteMmapRo) {
+        continue;
+      }
+    }
+
+    if (known_tensors.find(tensor_index) == known_tensors.end()) {
+      subgraph_->context()->ReportError(
+          subgraph_->context(),
+          "Output (%d) is not produced by the execution plan.", tensor_index);
+      return kTfLiteError;
+    }
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus SubgraphWriter::SetCustomInputOutput(
+    const std::vector<int>& inputs, const std::vector<int>& outputs,
+    const std::vector<int>& execution_plan) {
+  TF_LITE_ENSURE_STATUS(CheckInputOutput(inputs, outputs, execution_plan));
+  inputs_ = inputs;
+  outputs_ = outputs;
+  execution_plan_ = execution_plan;
   return kTfLiteOk;
 }
 

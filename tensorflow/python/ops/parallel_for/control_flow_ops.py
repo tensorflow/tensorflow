@@ -132,7 +132,7 @@ def _is_under_xla_context():
   return False
 
 
-def pfor(loop_fn, iters, parallel_iterations=None):
+def pfor(loop_fn, iters, fallback_to_while_loop=True, parallel_iterations=None):
   """Equivalent to running `loop_fn` `iters` times and stacking the outputs.
 
   `pfor` has functionality similar to `for_loop`, i.e. running `loop_fn` `iters`
@@ -167,6 +167,8 @@ def pfor(loop_fn, iters, parallel_iterations=None):
       to something other than None, `loop_fn` may be called more than once
       during graph construction. So it may need to avoid mutating global state.
     iters: Number of iterations for which to run loop_fn.
+    fallback_to_while_loop: If true, on failing to vectorize an operation, pfor
+      fallbacks to using a tf.while_loop to dispatch the iterations.
     parallel_iterations: A knob to control how many iterations are vectorized
       and dispatched in parallel. The default value of None corresponds to
       vectorizing all the iterations.  If `parallel_iterations` is smaller than
@@ -180,7 +182,10 @@ def pfor(loop_fn, iters, parallel_iterations=None):
     ValueError: If parallel_iterations is not None and not an integer > 1.
   """
   def f():
-    return _pfor_impl(loop_fn, iters, parallel_iterations=parallel_iterations)
+    return _pfor_impl(loop_fn,
+                      iters,
+                      fallback_to_while_loop=fallback_to_while_loop,
+                      parallel_iterations=parallel_iterations)
   # Note that we wrap into a tf.function if in eager execution mode or under
   # XLA compilation. The latter is so that we don't compile operations like
   # tf.placeholder that are created by the loop body.
@@ -219,7 +224,11 @@ def _loop_fn_has_config(loop_fn):
     return PFOR_CONFIG_ARG in argspec.args
 
 
-def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
+def _pfor_impl(loop_fn,
+               iters,
+               fallback_to_while_loop,
+               parallel_iterations=None,
+               pfor_config=None):
   """Implementation of pfor."""
   assert not context.executing_eagerly()
   loop_fn_has_config = _loop_fn_has_config(loop_fn)
@@ -263,7 +272,9 @@ def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
       parallel_iterations = None
   if parallel_iterations is None:
     with ops.name_scope("pfor"):
-      converter = PFor(loop_var, iters, new_ops, pfor_config=pfor_config)
+      converter = PFor(loop_var, iters, new_ops,
+                       fallback_to_while_loop=fallback_to_while_loop,
+                       pfor_config=pfor_config)
       outputs = []
       for loop_fn_output in nest.flatten(loop_fn_outputs):
         outputs.append(converter.convert(loop_fn_output))
@@ -278,6 +289,7 @@ def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
     # a tf.function and extract the graph from there to vectorize it.
     with ops.name_scope("pfor_untiled"):
       converter = PFor(loop_var, num_remaining_iterations, new_ops,
+                       fallback_to_while_loop=fallback_to_while_loop,
                        pfor_config=pfor_config)
       remaining_outputs = []
       flattened_loop_fn_outputs = nest.flatten(loop_fn_outputs)
@@ -298,7 +310,10 @@ def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
             return nest.flatten(loop_fn(i + offset))
 
         return _pfor_impl(
-            tiled_loop_fn, parallel_iterations, pfor_config=pfor_config)
+            tiled_loop_fn,
+            parallel_iterations,
+            fallback_to_while_loop=fallback_to_while_loop,
+            pfor_config=pfor_config)
 
       tiled_outputs = for_loop(tiled_loop_body, loop_fn_dtypes,
                                num_tiled_iterations, parallel_iterations=1)
@@ -318,7 +333,7 @@ def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
 
 
 @tf_export("vectorized_map")
-def vectorized_map(fn, elems):
+def vectorized_map(fn, elems, fallback_to_while_loop=True):
   """Parallel map on the list of tensors unpacked from `elems` on dimension 0.
 
 
@@ -340,8 +355,7 @@ def vectorized_map(fn, elems):
     - Stateful kernels may mostly not be supported since these often imply a
       data dependency. We do support a limited set of such stateful kernels
       though (like RandomFoo, Variable operations like reads, etc).
-    - `fn` has limited support for control flow operations. `tf.cond` in
-      particular is not supported.
+    - `fn` has limited support for control flow operations.
     - `fn` should return nested structure of Tensors or Operations. However
       if an Operation is returned, it should have zero outputs.
     - The shape and dtype of any intermediate or output tensors in the
@@ -389,11 +403,21 @@ def vectorized_map(fn, elems):
     elems: A tensor or (possibly nested) sequence of tensors, each of which will
       be unpacked along their first dimension. The nested sequence of the
       resulting slices will be mapped over by `fn`.
+    fallback_to_while_loop: If true, on failing to vectorize an operation,
+      the unsupported op is wrapped in a tf.while_loop to execute the map
+      iterations. Note that this fallback only happens for unsupported ops and
+      other parts of `fn` are still vectorized. If false, on encountering an
+      unsupported op, a ValueError is thrown. Note that the fallbacks can result
+      in slowdowns since vectorization often yields speedup of one to two orders
+      of magnitude.
 
   Returns:
     A tensor or (possibly nested) sequence of tensors. Each tensor packs the
     results of applying fn to tensors unpacked from elems along the first
     dimension, from first to last.
+
+  Raises:
+    ValueError: If vectorization fails and fallback_to_while_loop is False.
   """
   def loop_fn(i):
     gathered_elems = nest.map_structure(lambda x: array_ops.gather(x, i), elems)
@@ -404,4 +428,5 @@ def vectorized_map(fn, elems):
     batch_size = first_elem.shape.as_list()[0]
   if batch_size is None:
     batch_size = array_ops.shape(first_elem)[0]
-  return pfor(loop_fn, batch_size)
+  return pfor(loop_fn, batch_size,
+              fallback_to_while_loop=fallback_to_while_loop)

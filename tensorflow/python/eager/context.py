@@ -139,7 +139,8 @@ class FunctionCallOptions(object):
   @config_proto_serialized.setter
   def config_proto_serialized(self, config):
     if isinstance(config, config_pb2.ConfigProto):
-      self._config_proto_serialized = config.SerializeToString()
+      self._config_proto_serialized = config.SerializeToString(
+          deterministic=True)
     elif isinstance(config, str):
       self._config_proto_serialized = config
     elif config is None:
@@ -335,6 +336,19 @@ class _TensorCacheDeleter(object):
       del _tensor_caches_map[self._context_id]
 
 
+# If the below import is made available through the BUILD rule, then this
+# function is overridden and will instead return True and cause Tensorflow
+# graphs to run with TFRT.
+def is_tfrt_enabled():
+  return None
+
+
+try:
+  from tensorflow.python.framework.is_tfrt_test_true import is_tfrt_enabled  # pylint: disable=g-import-not-at-top
+except:  # pylint: disable=bare-except
+  pass
+
+
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
 # TODO(agarwal): consider keeping the corresponding Graph here.
 class Context(object):
@@ -410,6 +424,7 @@ class Context(object):
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
     self._lazy_remote_inputs_copy = None
+    self._use_tfrt = is_tfrt_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -430,6 +445,7 @@ class Context(object):
     self._soft_device_placement = None
     self._log_device_placement = None
     self._enable_mlir_bridge = None
+    self._enable_mlir_graph_optimization = None
     self._optimizer_experimental_options = {}
 
     _python_eager_context_create_counter.get_cell().increase_by(1)
@@ -512,6 +528,8 @@ class Context(object):
         if self._lazy_remote_inputs_copy is not None:
           pywrap_tfe.TFE_ContextOptionsSetLazyRemoteInputsCopy(
               opts, self._lazy_remote_inputs_copy)
+        if self._use_tfrt is not None:
+          pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
       finally:
         pywrap_tfe.TFE_DeleteContextOptions(opts)
@@ -593,10 +611,6 @@ class Context(object):
 
     if self._context_handle:
       server_def_str = server_def.SerializeToString()
-      # Current executor might have pending nodes that involves updated remote
-      # devices. Wait for them to finish before updating.
-      self.executor.wait()
-      self.executor.clear_error()
       pywrap_tfe.TFE_ContextUpdateServerDef(self._context_handle,
                                             keep_alive_secs, server_def_str)
       self._initialize_logical_devices()
@@ -669,13 +683,19 @@ class Context(object):
     if not server_def:
       raise ValueError("server_def is None.")
 
+    self._collective_ops_server_def = server_def
+
     # TODO(b/129298253): Allow creating datasets/tensors before enabling
     # collective ops.
     if self._context_handle is not None:
       logging.warning("Enabling collective ops after program startup may cause "
                       "error when accessing previously created tensors.")
-
-    self._collective_ops_server_def = server_def
+      with self._initialize_lock:
+        assert self._initialized
+        server_def_str = self._collective_ops_server_def.SerializeToString()
+        pywrap_tfe.TFE_EnableCollectiveOps(self._context_handle, server_def_str)
+        self._initialize_logical_devices()
+        self._clear_caches()
 
   def configure_collective_ops(
       self,
@@ -902,6 +922,9 @@ class Context(object):
 
     if self._enable_mlir_bridge is not None:
       config.experimental.enable_mlir_bridge = self._enable_mlir_bridge
+    if self._enable_mlir_graph_optimization is not None:
+      config.experimental.enable_mlir_graph_optimization = (
+          self._enable_mlir_graph_optimization)
 
     def rewriter_toggle(option):
       toggle = self._optimizer_experimental_options.get(option, None)
@@ -1092,6 +1115,13 @@ class Context(object):
     function_def.ParseFromString(proto_data)
 
     return function_def
+
+  def register_custom_device(self, device_capsule, device_name,
+                             device_info_capsule):
+    """Calls TFE_RegisterCustomDevice. See the non-member function."""
+    self.ensure_initialized()
+    pywrap_tfe.TFE_Py_RegisterCustomDevice(self._handle, device_capsule,
+                                           device_name, device_info_capsule)
 
   def remove_function(self, name):
     """Remove a function from the context.
@@ -1370,10 +1400,18 @@ class Context(object):
   def enable_mlir_bridge(self):
     return self._enable_mlir_bridge
 
+  @property
+  def enable_mlir_graph_optimization(self):
+    return self._enable_mlir_graph_optimization
+
   @enable_mlir_bridge.setter
   def enable_mlir_bridge(self, enabled):
     self._enable_mlir_bridge = enabled
+    self._thread_local_data.function_call_options = None
 
+  @enable_mlir_graph_optimization.setter
+  def enable_mlir_graph_optimization(self, enabled):
+    self._enable_mlir_graph_optimization = enabled
     self._thread_local_data.function_call_options = None
 
   @property
@@ -1549,6 +1587,21 @@ class Context(object):
         raise ValueError(
             "lazy_remote_inputs_copy should be set before being initialized.")
       self._lazy_remote_inputs_copy = lazy_copy
+
+  @property
+  def use_tfrt(self):
+    return self._use_tfrt
+
+  @use_tfrt.setter
+  def use_tfrt(self, tfrt):
+    """Sets whether to use TFRT."""
+    if not isinstance(tfrt, bool):
+      raise ValueError("Expecting a boolean but got %s" % type(tfrt))
+
+    if self._use_tfrt != tfrt:
+      if self._initialized:
+        raise ValueError("use_tfrt should be set before being initialized.")
+      self._use_tfrt = tfrt
 
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.
@@ -2239,6 +2292,32 @@ def remove_function(name):
 
 def get_function_def(name):
   return context().get_function_def(name)
+
+
+def register_custom_device(device_capsule, device_name, device_info_capsule):
+  """Calls TFE_RegisterCustomDevice to register a custom device with Python.
+
+  Enables using C extensions specifying a custom device from Python. See the
+  experimental eager C API in tensorflow/c/eager/c_api_experimental.h for
+  details.
+
+  Note that custom devices are not currently supported inside `tf.function`s.
+
+  Args:
+    device_capsule: A PyCapsule with the name set to 'TFE_CustomDevice'
+      containing a pointer to a TFE_CustomDevice struct. The capsule retains
+      ownership of the memory.
+    device_name: A string indicating the name to register the custom device
+      under, e.g. '/job:localhost/replica:0/task:0/device:CUSTOM:0'. It may
+      subsequently be passed to `with tf.device(...):`.
+    device_info_capsule: A PyCapsule with the name set to
+      'TFE_CustomDevice_DeviceInfo' containing a pointer to a device-specific
+      struct with the initial state of the custom device (the void* device_info
+      argument to TFE_RegisterCustomDevice). This method takes ownership of the
+      memory and clears the capsule destructor.
+  """
+  context().register_custom_device(device_capsule, device_name,
+                                   device_info_capsule)
 
 
 # Not every user creates a Context via context.context()

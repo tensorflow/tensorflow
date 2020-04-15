@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdlib>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -19,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/stages/image_classification_stage.h"
@@ -36,9 +38,6 @@ constexpr char kBlacklistFilePathFlag[] = "blacklist_file_path";
 constexpr char kNumImagesFlag[] = "num_images";
 constexpr char kInterpreterThreadsFlag[] = "num_interpreter_threads";
 constexpr char kDelegateFlag[] = "delegate";
-constexpr char kNnapiDelegate[] = "nnapi";
-constexpr char kGpuDelegate[] = "gpu";
-constexpr char kHexagonDelegate[] = "hexagon";
 
 template <typename T>
 std::vector<T> GetFirstN(const std::vector<T>& v, int n) {
@@ -51,7 +50,8 @@ bool EvaluateModel(const std::string& model_file_path,
                    const std::vector<ImageLabel>& image_labels,
                    const std::vector<std::string>& model_labels,
                    std::string delegate, std::string output_file_path,
-                   int num_interpreter_threads) {
+                   int num_interpreter_threads,
+                   const DelegateProviders& delegate_providers) {
   EvaluationStageConfig eval_config;
   eval_config.set_name("image_classification");
   auto* classification_params = eval_config.mutable_specification()
@@ -59,19 +59,18 @@ bool EvaluateModel(const std::string& model_file_path,
   auto* inference_params = classification_params->mutable_inference_params();
   inference_params->set_model_file_path(model_file_path);
   inference_params->set_num_threads(num_interpreter_threads);
-  if (delegate == kNnapiDelegate) {
-    inference_params->set_delegate(TfliteInferenceParams::NNAPI);
-  } else if (delegate == kGpuDelegate) {
-    inference_params->set_delegate(TfliteInferenceParams::GPU);
-  } else if (delegate == kHexagonDelegate) {
-    inference_params->set_delegate(TfliteInferenceParams::HEXAGON);
+  inference_params->set_delegate(ParseStringToDelegateType(delegate));
+  if (!delegate.empty() &&
+      inference_params->delegate() == TfliteInferenceParams::NONE) {
+    LOG(WARNING) << "Unsupported TFLite delegate: " << delegate;
+    return false;
   }
   classification_params->mutable_topk_accuracy_eval_params()->set_k(10);
 
   ImageClassificationStage eval(eval_config);
 
   eval.SetAllLabels(model_labels);
-  if (eval.Init() != kTfLiteOk) return false;
+  if (eval.Init(&delegate_providers) != kTfLiteOk) return false;
 
   const int step = image_labels.size() / 100;
   for (int i = 0; i < image_labels.size(); ++i) {
@@ -137,6 +136,8 @@ int Main(int argc, char* argv[]) {
                                "Must be one of {'nnapi', 'gpu'}"),
   };
   tflite::Flags::Parse(&argc, const_cast<const char**>(argv), flag_list);
+  DelegateProviders delegate_providers;
+  delegate_providers.InitFromCmdlineArgs(&argc, const_cast<const char**>(argv));
 
   // Process images in filename-sorted order.
   std::vector<std::string> image_files, ground_truth_image_labels;
@@ -144,11 +145,11 @@ int Main(int argc, char* argv[]) {
       StripTrailingSlashes(ground_truth_images_path), &image_files));
   if (!ReadFileLines(ground_truth_labels_path, &ground_truth_image_labels)) {
     LOG(ERROR) << "Could not read ground truth labels file";
-    return 0;
+    return EXIT_FAILURE;
   }
   if (image_files.size() != ground_truth_image_labels.size()) {
     LOG(ERROR) << "Number of images and ground truth labels is not same";
-    return 0;
+    return EXIT_FAILURE;
   }
   std::vector<ImageLabel> image_labels;
   image_labels.reserve(image_files.size());
@@ -166,16 +167,17 @@ int Main(int argc, char* argv[]) {
   std::vector<std::string> model_labels;
   if (!ReadFileLines(model_output_labels_path, &model_labels)) {
     LOG(ERROR) << "Could not read model output labels file";
-    return 0;
+    return EXIT_FAILURE;
   }
 
   if (!EvaluateModel(model_file_path, image_labels, model_labels, delegate,
-                     output_file_path, num_interpreter_threads)) {
+                     output_file_path, num_interpreter_threads,
+                     delegate_providers)) {
     LOG(ERROR) << "Could not evaluate model";
-    return 0;
+    return EXIT_FAILURE;
   }
 
-  return 0;
+  return EXIT_SUCCESS;
 }
 
 }  // namespace evaluation

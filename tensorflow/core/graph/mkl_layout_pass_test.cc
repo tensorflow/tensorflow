@@ -1983,8 +1983,7 @@ REGISTER_TEST(NodeRewrite_FusedDepthwiseConv2dNative_Negative2,
             "A:control->DMT/_2:control;B->D:1;C->D:2;C->Z:1;D->Z;DMT/_0->D:3;" \
             "DMT/_1->D:4;DMT/_2->D:5");                                        \
 }
-//TODO(nhasabni): Enable bfloat16 test when we enable this op.
-REGISTER_TEST_FLOAT32(NodeRewrite_FusedMatMul_Positive);
+REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedMatMul_Positive)
 #undef REGISTER_TEST
 
 // Test set: _FusedMatMul -> MklFusedMatMul rewrite tests

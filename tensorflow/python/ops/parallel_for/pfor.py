@@ -45,6 +45,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_random_ops
@@ -64,10 +65,11 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 
+
+# TODO(agarwal): remove flag.
 flags.DEFINE_bool(
-    "op_conversion_fallback_to_while_loop", False,
-    "If true, falls back to using a while loop for ops for "
-    "which a converter is not defined.")
+    "op_conversion_fallback_to_while_loop", True,
+    "DEPRECATED: Flag is ignored.")
 
 
 def _stack(t, length):
@@ -115,14 +117,17 @@ def _is_stateful_pfor_op(op):
 class WhileOp(object):
   """Object for storing state for converting the outputs of a while_loop."""
 
-  def __init__(self, exit_node, pfor_ops, pfor_config):
+  def __init__(self, exit_node, pfor_ops, fallback_to_while_loop, pfor_config):
     """Initializer.
 
     Args:
       exit_node: A tensor output from the while_loop.
       pfor_ops: list of ops inside the current pfor loop.
+      fallback_to_while_loop: If True, fallback to while loop when conversion of
+        an op is not supported
       pfor_config: PForConfig object used while constructing loop body.
     """
+    self._fallback_to_while_loop = fallback_to_while_loop
     self._pfor_config = pfor_config
     self._pfor_ops = set(pfor_ops)
     self._pfor_op_ids = set(x._id for x in pfor_ops)
@@ -305,6 +310,7 @@ class WhileOp(object):
         pfor_ops=self._pfor_ops,
         all_indices=indices,
         all_indices_partitioned=cond_stacked,
+        fallback_to_while_loop=self._fallback_to_while_loop,
         pfor_config=self._pfor_config)
     # Map all inputs of Enter nodes in self._direct_enters to their converted
     # values.
@@ -679,6 +685,10 @@ class WhileOp(object):
     return outputs
 
 
+class ConversionNotImplementedError(Exception):
+  pass
+
+
 class _PforInput(object):
   """Input object passed to registered pfor converters."""
 
@@ -762,7 +772,7 @@ class _PforInput(object):
         input_name = "at index %d" % index
       else:
         input_name = "\"%s\"" % op_def.input_arg[index].name
-      raise ValueError(
+      raise ConversionNotImplementedError(
           "Input %s of op \"%s\" expected to be not loop invariant" %
           (input_name, op_type))
     return t
@@ -776,8 +786,9 @@ class _PforInput(object):
         input_name = "at index %d" % index
       else:
         input_name = "\"%s\"" % op_def.input_arg[index].name
-      raise ValueError("Input %s of op \"%s\" expected to be loop invariant" %
-                       (input_name, op_type))
+      raise ConversionNotImplementedError(
+          "Input %s of op \"%s\" expected to be loop invariant" %
+          (input_name, op_type))
     return t
 
   @property
@@ -970,6 +981,8 @@ def _fallback_converter(pfor_input):
         attrs=pfor_input.op.node_def.attr).outputs
 
     outputs = []
+    # TODO(agarwal): Add tf.debugging asserts to check that the shapes across
+    # the different iterations are the same.
     for out, ta in zip(op_outputs, ta_list):
       assert isinstance(out, ops.Tensor)
       outputs.append(ta.write(i, array_ops.expand_dims(out, 0)))
@@ -1143,6 +1156,7 @@ class PFor(object):
                loop_var,
                loop_len,
                pfor_ops,
+               fallback_to_while_loop,
                all_indices=None,
                all_indices_partitioned=False,
                pfor_config=None):
@@ -1154,6 +1168,8 @@ class PFor(object):
       loop_len: A scalar or scalar Tensor representing the number of iterations
         the loop is run for.
       pfor_ops: List of all ops inside the loop body.
+      fallback_to_while_loop: If True, on failure to vectorize an op, a while
+        loop is used to sequentially execute that op.
       all_indices: If not None, an int32 vector with size `loop_len`
         representing the iteration ids that are still active. These values
         should be unique and sorted. However they may not be contiguous. This is
@@ -1181,6 +1197,7 @@ class PFor(object):
     self._conversion_map[loop_var] = wrap(self.all_indices, True)
     self._pfor_ops = set(pfor_ops)
     self._pfor_op_ids = set(x._id for x in pfor_ops)
+    self._fallback_to_while_loop = fallback_to_while_loop
     self._pfor_config = pfor_config
 
   def op_is_inside_loop(self, op):
@@ -1216,10 +1233,10 @@ class PFor(object):
     the new dense shape will be (N, max_i(x_i), max_i(y_i), max_i(z_i)).
 
     Args:
-      y: A tf.SparseTensor.
+      y: A tf.sparse.SparseTensor.
 
     Returns:
-      A tf.SparseTensor that is the converted value corresponding to y.
+      A tf.sparse.SparseTensor that is the converted value corresponding to y.
     """
     outputs = [
         self._convert_helper(t) for t in (y.indices, y.values, y.dense_shape)
@@ -1349,7 +1366,9 @@ class PFor(object):
       is_while_loop = y_op.type == "Exit"
       if is_while_loop:
         while_op = WhileOp(
-            y, pfor_ops=self._pfor_ops, pfor_config=self._pfor_config)
+            y, pfor_ops=self._pfor_ops,
+            fallback_to_while_loop=self.fallback_to_while_loop,
+            pfor_config=self._pfor_config)
         is_inside_loop = while_op.is_inside_loop
         # If all nodes in the while_loop graph were created inside the pfor, we
         # treat the whole loop subgraph as a single op (y_op) and try to convert
@@ -1454,20 +1473,26 @@ class PFor(object):
           else:
             converter = _pfor_converter_registry.get(y_op.type, None)
           if converter is None:
-            if flags.FLAGS.op_conversion_fallback_to_while_loop:
+            if self._fallback_to_while_loop:
               converter = _fallback_converter
             else:
               raise ValueError("No converter defined for %s\n%s\ninputs: %s. "
-                               "\nEither add a converter or set "
-                               "--op_conversion_fallback_to_while_loop=True, "
-                               "which may run slower" %
+                               "\nEither add a converter or "
+                               "enable fallback_to_while_loop "
+                               "option to pfor, which may run slower" %
                                (y_op.type, y_op, converted_inputs))
           # TODO(rachelim): Handle the case where some inputs are sparsely
           # stacked. We should only call the converter if it supports handling
           # those inputs.
           pfor_inputs = _PforInput(self, y_op, converted_inputs)
           try:
-            new_outputs = converter(pfor_inputs)
+            try:
+              new_outputs = converter(pfor_inputs)
+            except ConversionNotImplementedError as e:
+              if self._fallback_to_while_loop:
+                new_outputs = _fallback_converter(pfor_inputs)
+              else:
+                six.reraise(ValueError, ValueError(str(e)), sys.exc_info()[2])
           except Exception as e:  # pylint: disable=broad-except
             logging.error(
                 "Got error while pfor was converting op %s"
@@ -1542,6 +1567,10 @@ class PFor(object):
       may be active.
     """
     return self._all_indices_partitioned
+
+  @property
+  def fallback_to_while_loop(self):
+    return self._fallback_to_while_loop
 
 
 # The code below defines converters for different operations. Please see comment
@@ -2167,12 +2196,13 @@ def _convert_reverse(pfor_input):
   return wrap(gen_array_ops.reverse_v2(value, axis=new_axis), True)
 
 
-@RegisterPFor("Transpose")
-def _convert_transpose(pfor_input):
+@RegisterPForWithArgs("Transpose", gen_array_ops.transpose)
+@RegisterPForWithArgs("ConjugateTranspose", gen_array_ops.conjugate_transpose)
+def _convert_transpose(pfor_input, _, op_func):
   t = pfor_input.stacked_input(0)
   perm = pfor_input.unstacked_input(1)
   new_perm = array_ops.concat([[0], perm + 1], axis=0)
-  return wrap(array_ops.transpose(t, new_perm), True)
+  return wrap(op_func(t, new_perm), True)
 
 
 @RegisterPFor("ZerosLike")
@@ -2339,6 +2369,13 @@ def _convert_strided_slice_grad(pfor_input):
           shrink_axis_mask=shrink_axis_mask), True)
 
 
+@RegisterPFor("CheckNumerics")
+def _convert_check_numerics(pfor_input):
+  t = pfor_input.stacked_input(0)
+  message = pfor_input.get_attr("message")
+  return wrap(gen_array_ops.check_numerics(t, message), True)
+
+
 # math_ops
 
 
@@ -2451,6 +2488,22 @@ def _convert_argmax_argmin(pfor_input, _, op_func):
   dimension += math_ops.cast(dimension >= 0, dimension.dtype)
   output_type = pfor_input.get_attr("output_type")
   return wrap(op_func(t, axis=dimension, output_type=output_type), True)
+
+
+@RegisterPFor("Bucketize")
+def _convert_bucketize(pfor_input):
+  t = pfor_input.stacked_input(0)
+  boundaries = pfor_input.get_attr("boundaries")
+  return wrap(math_ops.bucketize(t, boundaries), True)
+
+
+@RegisterPFor("ClipByValue")
+def _convert_clip_by_value(pfor_input):
+  t = pfor_input.stacked_input(0)
+  clip_value_min = pfor_input.unstacked_input(1)
+  clip_value_max = pfor_input.unstacked_input(2)
+  return wrap(gen_math_ops.clip_by_value(t, clip_value_min, clip_value_max),
+              True)
 
 
 @RegisterPForWithArgs("Cumsum", math_ops.cumsum)
@@ -2708,8 +2761,16 @@ def _convert_cwise(pfor_input, op_type, op_func):
   # and hence don't need extra arguments passed to the cwise_op call below.
   for attr in pfor_input.op.node_def.attr.keys():
     assert attr in [u"T", u"Tout", u"_xla_compile_id"], (op_type, attr)
-  pfor_input.expanddim_inputs_for_broadcast()
+  if pfor_input.num_inputs > 1:
+    pfor_input.expanddim_inputs_for_broadcast()
   return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)
+
+
+@RegisterPFor("LeakyRelu")
+def _convert_leaky_relu(pfor_input):
+  t = pfor_input.stacked_input(0)
+  alpha = pfor_input.get_attr("alpha")
+  return wrap(gen_nn_ops.leaky_relu(t, alpha=alpha), True)
 
 
 @RegisterPFor("Equal")
@@ -2806,16 +2867,17 @@ def _convert_biasaddgrad(pfor_input):
 # Some required ops are not exposed under the tf namespace. Hence relying on
 # _create_op to create them.
 @RegisterPForWithArgs("EluGrad")
+@RegisterPForWithArgs("LeakyReluGrad")
+@RegisterPForWithArgs("ReciprocalGrad")
 @RegisterPForWithArgs("Relu6Grad")
 @RegisterPForWithArgs("ReluGrad")
+@RegisterPForWithArgs("RsqrtGrad")
 @RegisterPForWithArgs("SeluGrad")
 @RegisterPForWithArgs("SigmoidGrad")
 @RegisterPForWithArgs("SoftplusGrad")
 @RegisterPForWithArgs("SoftsignGrad")
-@RegisterPForWithArgs("TanhGrad")
 @RegisterPForWithArgs("SqrtGrad")
-@RegisterPForWithArgs("RsqrtGrad")
-@RegisterPForWithArgs("ReciprocalGrad")
+@RegisterPForWithArgs("TanhGrad")
 def _convert_grads(pfor_input, op_type, *args, **kw_args):
   del args
   del kw_args
@@ -2963,6 +3025,7 @@ def _convert_multinomial(pfor_input):
 @RegisterPFor("StatelessRandomPoisson")
 @RegisterPFor("StatelessRandomUniform")
 @RegisterPFor("StatelessRandomUniformInt")
+@RegisterPFor("StatelessRandomUniformFullInt")
 @RegisterPFor("StatelessTruncatedNormal")
 def _convert_stateless_multinomial(pfor_input):
   # Unlike stateful random ops, for stateless ones we want better
@@ -3622,6 +3685,7 @@ def _convert_partitioned_call(pfor_input):
       loop_var=pfor.loop_var,
       loop_len=pfor.loop_len_vector[0],
       pfor_ops=func.graph.get_operations(),
+      fallback_to_while_loop=pfor.fallback_to_while_loop,
       all_indices=pfor.all_indices,
       all_indices_partitioned=pfor.all_indices_partitioned,
       pfor_config=pfor.pfor_config)
@@ -3649,6 +3713,7 @@ def _outputs_for_branch(func_name, indices, pfor_input, inputs):
       loop_var=pfor_input.pfor.loop_var,
       loop_len=array_ops.size(indices),
       pfor_ops=func.graph.get_operations(),
+      fallback_to_while_loop=pfor_input.pfor.fallback_to_while_loop,
       all_indices=indices,
       all_indices_partitioned=partitioned,
       pfor_config=pfor_input.pfor.pfor_config)

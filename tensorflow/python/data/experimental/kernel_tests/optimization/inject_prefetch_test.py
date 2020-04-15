@@ -64,9 +64,7 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testParallelInterleave(self):
     dataset = dataset_ops.Dataset.range(100)
-    parallel_interleave = "ParallelInterleaveV2"
-    if compat.forward_compatible(2020, 2, 20):
-      parallel_interleave = "ParallelInterleaveV3"
+    parallel_interleave = "ParallelInterleaveV3"
     if compat.forward_compatible(2020, 3, 6):
       parallel_interleave = "ParallelInterleaveV4"
     dataset = dataset.apply(
@@ -81,9 +79,7 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testChainedParallelDatasets(self):
     dataset = dataset_ops.Dataset.range(100)
-    parallel_interleave = "ParallelInterleaveV2"
-    if compat.forward_compatible(2020, 2, 20):
-      parallel_interleave = "ParallelInterleaveV3"
+    parallel_interleave = "ParallelInterleaveV3"
     if compat.forward_compatible(2020, 3, 6):
       parallel_interleave = "ParallelInterleaveV4"
     parallel_map = "ParallelMap"

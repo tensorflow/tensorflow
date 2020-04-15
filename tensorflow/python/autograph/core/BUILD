@@ -24,7 +24,6 @@ py_library(
         "config_lib.py",
         "converter.py",
         "function_wrappers.py",
-        "naming.py",
         "unsupported_features_checker.py",
     ],
     srcs_version = "PY2AND3",
@@ -72,17 +71,6 @@ py_test(
 py_test(
     name = "function_wrappers_test",
     srcs = ["function_wrappers_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":core",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "naming_test",
-    srcs = ["naming_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [

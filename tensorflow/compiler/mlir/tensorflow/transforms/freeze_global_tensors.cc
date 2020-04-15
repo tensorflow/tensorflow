@@ -16,11 +16,11 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/UseDefLists.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/UseDefLists.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
@@ -41,12 +41,13 @@ namespace {
 // the IR is in correct form for inference backends (like lite) that do not
 // support resources/variables . Further, this contract also ensures that this
 // pass lowers from saved model to pure TF. Hence it fails, if it cannot lower.
-struct FreezeGlobalTensorsPass : public ModulePass<FreezeGlobalTensorsPass> {
-  void runOnModule() override;
+struct FreezeGlobalTensorsPass
+    : public PassWrapper<FreezeGlobalTensorsPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
-void FreezeGlobalTensorsPass::runOnModule() {
-  auto module = getModule();
+void FreezeGlobalTensorsPass::runOnOperation() {
+  auto module = getOperation();
   SymbolTable symbol_table(module);
   DenseSet<Operation*> frozen_global_tensors;
 
@@ -84,6 +85,7 @@ void FreezeGlobalTensorsPass::runOnModule() {
       }
 
       // Replace the arg with a tf.Const op in the function body.
+      builder.setInsertionPointToStart(&func.getBody().front());
       auto const_op = builder.create<TF::ConstOp>(global_tensor.getLoc(),
                                                   global_tensor.value());
       args_to_erase.push_back(i);
@@ -112,7 +114,7 @@ static PassRegistration<FreezeGlobalTensorsPass> pass(
     "tf-saved-model-freeze-global-tensors",
     "Freeze tf_saved_model.global_tensor's in func bodies.");
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateFreezeGlobalTensorsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateFreezeGlobalTensorsPass() {
   return std::make_unique<FreezeGlobalTensorsPass>();
 }
 

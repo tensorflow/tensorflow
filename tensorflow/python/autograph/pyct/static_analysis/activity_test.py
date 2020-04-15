@@ -22,6 +22,7 @@ import gast
 import six
 
 from tensorflow.python.autograph.pyct import anno
+from tensorflow.python.autograph.pyct import naming
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
@@ -113,11 +114,17 @@ class ScopeTest(test.TestCase):
 class ActivityAnalyzerTestBase(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
+    # TODO(mdan): Use a custom FunctionTransformer here.
     node, source = parser.parse_entity(test_fn, future_features=())
     entity_info = transformer.EntityInfo(
-        source_code=source, source_file=None, future_features=(), namespace={})
+        name=test_fn.__name__,
+        source_code=source,
+        source_file=None,
+        future_features=(),
+        namespace={})
     node = qual_names.resolve(node)
-    ctx = transformer.Context(entity_info)
+    namer = naming.Namer({})
+    ctx = transformer.Context(entity_info, namer, None)
     node = activity.resolve(node, ctx)
     return node, entity_info
 

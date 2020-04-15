@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
@@ -63,14 +63,14 @@ std::string MakeUniqueFilename(string name) {
   return filename;
 }
 
-// Simple raw_ostream that prints to LOG(INFO).
+// Simple raw_ostream that prints to stderr.
 struct LogInfoRawStream : public llvm::raw_ostream {
   LogInfoRawStream() { SetUnbuffered(); }
   ~LogInfoRawStream() override = default;
   uint64_t current_pos() const override { return 0; }
 
   void write_impl(const char* ptr, size_t size) override {
-    LOG(INFO) << absl::string_view(ptr, size);
+    fprintf(stderr, "%.*s", static_cast<int>(size), ptr);
   }
 };
 
@@ -112,7 +112,7 @@ Status CreateFileForDumping(llvm::StringRef name,
 
   if (dir == "-") {
     *os = std::make_unique<LogInfoRawStream>();
-    *filepath = "LOG(INFO)";
+    *filepath = "(stderr)";
     return Status();
   }
 

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import atexit
 import collections
 import contextlib
 import copy
@@ -53,27 +54,10 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.tpu import device_assignment as device_assignment_lib  # pylint: disable=unused-import
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
-
-
-def get_tpu_system_metadata(tpu_cluster_resolver):
-  """Retrieves TPU system metadata given a TPUClusterResolver."""
-  master = tpu_cluster_resolver.master()
-
-  # pylint: disable=protected-access
-  cluster_spec = tpu_cluster_resolver.cluster_spec()
-  cluster_def = cluster_spec.as_cluster_def() if cluster_spec else None
-  tpu_system_metadata = (
-      tpu_system_metadata_lib._query_tpu_system_metadata(
-          master,
-          cluster_def=cluster_def,
-          query_topology=False))
-
-  return tpu_system_metadata
 
 
 @contextlib.contextmanager
@@ -287,7 +271,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     self._tpu_function_cache = weakref.WeakKeyDictionary()
     self._tpu_cluster_resolver = tpu_cluster_resolver
-    self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
+    self._tpu_metadata = self._tpu_cluster_resolver.get_tpu_system_metadata()
     self._device_assignment = device_assignment
 
     tpu_devices_flat = [
@@ -343,6 +327,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._prefetch_on_host = False
 
     self._logical_device_stack = [0]
+
+    if context.executing_eagerly():
+      # In async remote eager, we want to sync the exectors before exiting the
+      # program.
+      atexit.register(context.async_wait)
 
   # TODO(bfontain): Remove once a proper dataset API exists for prefetching
   # a dataset to multiple devices exists.
@@ -570,7 +559,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
                        "logical device id {} but there are only total of {} "
                        "logical devices in replica.".format(
                            logical_device_id, num_logical_devices_per_replica))
-    return xla_sharding.assign_device(tensor, logical_device_id)
+    return xla_sharding.assign_device(
+        tensor, logical_device_id, use_sharding_op=True)
 
   def _experimental_split_to_logical_devices(self, tensor,
                                              partition_dimensions):
@@ -688,11 +678,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           reduce_op, value, destinations, self._num_replicas_in_sync)
 
     # TODO(cjfj): Detect when it is possible to use `cross_replica_sum`.
-    # Always performs the reduction on the TPU host.
-    with ops.device(self._host_device):
-      output = math_ops.add_n(value.values)
-      if reduce_op == reduce_util.ReduceOp.MEAN:
-        output *= (1. / len(value.values))
+    output = math_ops.add_n(value.values)
+    if reduce_op == reduce_util.ReduceOp.MEAN:
+      output *= (1. / len(value.values))
 
     devices = cross_device_ops_lib.get_devices_from(destinations)
 

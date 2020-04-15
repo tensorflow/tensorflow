@@ -44,39 +44,34 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
-#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Support/Functional.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Translation.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
-#include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
-#include "tensorflow/compiler/mlir/lite/flatbuffer_translate_flags.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -99,45 +94,6 @@ using xla::StatusOr;
 
 namespace errors = tensorflow::errors;
 namespace tfl = mlir::TFL;
-
-using llvm::cl::opt;
-
-// Commandline flag to enable the control of flatbuffer import.
-bool use_external_constant;
-
-// Commandline flag to enable graph pruning.
-bool experimental_prune_unreachable_nodes_unconditionally;
-
-// NOLINTNEXTLINE
-static opt<bool, true> use_external_constant_flag(
-    "use-external-constant",
-    llvm::cl::desc("Use external constant during flatbuffer import"),
-    llvm::cl::location(use_external_constant), llvm::cl::init(false));
-
-// TODO(b/147111261): After the importer supports generic custom ops, we should
-// change the flag to a more lightwise flag, e.g.
-// "import_custom_ops_as_side_effect_free_ops", and let the MLIR DCE to prune
-// the operations.
-// NOLINTNEXTLINE
-static opt<bool, true> experimental_prune_unreachable_nodes_unconditionally_flg(
-    "experimental-prune-unreachable-nodes-unconditionally",
-    llvm::cl::desc("Prune nodes that are not ancestors of the output nodes."),
-    llvm::cl::location(experimental_prune_unreachable_nodes_unconditionally),
-    llvm::cl::init(false));
-
-// NOLINTNEXTLINE
-static opt<std::string> input_arrays_flag(
-    "input-arrays",
-    llvm::cl::desc(
-        "List of input tensors, if different from the default inputs"),
-    llvm::cl::init(""));
-
-// NOLINTNEXTLINE
-static opt<std::string> output_arrays_flag(
-    "output-arrays",
-    llvm::cl::desc(
-        "List of output tensors, if different from the default outputs"),
-    llvm::cl::init(""));
 
 namespace {
 bool IsScalar(const TensorT& tensor) {
@@ -396,6 +352,22 @@ StatusOr<mlir::ElementsAttr> ConvertFloatBuffer(
       }
       return DenseElementsAttr::get(shaped_type, ArrayRef<float>(values));
     }
+    case 64: {
+      assert(bytes_len % 8 == 0);
+      size_t elem_count = bytes_len / 8;
+      std::vector<double> values;
+      values.reserve(elem_count);
+
+      const char* data = reinterpret_cast<const char*>(buffer.data());
+
+      for (int i = 0; i < elem_count; i++) {
+        uint64_t bit_repr =
+            llvm::support::endian::readNext<uint64_t, llvm::support::little,
+                                            llvm::support::unaligned>(data);
+        values.push_back(absl::bit_cast<double>(bit_repr));
+      }
+      return DenseElementsAttr::get(shaped_type, ArrayRef<double>(values));
+    }
   }
   return errors::InvalidArgument("unsupported bit width", elem_type.getWidth());
 }
@@ -606,6 +578,24 @@ StatusOr<Operation*> ConvertOp(
     op_state.addTypes({type});
   }
 
+  // While the last several tensors could be optional tensors for an tfl op, the
+  // number of input operands could vary. Gets the min/max number of
+  // operands from tflite op name.
+  // Also, since the above code special-handles the `tfl.reshape` op and add an
+  // additional input, we put these function block here.
+  llvm::MinMax input_min_max = mlir::OperandNumbersMinMax(op_name);
+  int input_max_num = input_min_max.Max;
+  int op_input_num = op_state.operands.size();
+  if (input_max_num != 0 && input_max_num > op_input_num) {
+    // If the number of current inputs is less than the op definition, fill in
+    // with `none` value,
+    llvm::SmallVector<Value, 4> none_operands(
+        input_max_num - op_input_num,
+        builder.create<mlir::ConstantOp>(loc, builder.getNoneType(),
+                                         builder.getUnitAttr()));
+    op_state.addOperands(ArrayRef<Value>(none_operands));
+  }
+
   if (op_name == "tfl.lstm") {
     // TODO(b/147587779): add the right region if region is empty.
     op_state.addRegion();
@@ -685,8 +675,8 @@ template <typename ContainerType>
 mlir::NamedAttribute BuildTFEntryFunctionAttribute(
     const tflite::SubGraphT& subgraph, Builder* builder, const std::string name,
     const ContainerType indices) {
-  llvm::SmallVector<std::string, 8> tensor_names = mlir::functional::map(
-      [&](int i) { return subgraph.tensors.at(i)->name; }, indices);
+  auto tensor_names = llvm::map_range(
+      indices, [&](int i) { return subgraph.tensors.at(i)->name; });
   return builder->getNamedAttr(
       name, builder->getStringAttr(llvm::join(tensor_names, ",")));
 }
@@ -1063,42 +1053,3 @@ OwningModuleRef tflite::FlatBufferToMlir(
 
   return OwningModuleRef(module);
 }
-
-static OwningModuleRef FlatBufferFileToMlirTrans(
-    llvm::SourceMgr* source_mgr, MLIRContext* context,
-    bool use_external_constant,
-    bool experimental_prune_unreachable_nodes_unconditionally) {
-  const llvm::MemoryBuffer* input =
-      source_mgr->getMemoryBuffer(source_mgr->getMainFileID());
-  std::string error;
-  auto loc =
-      mlir::FileLineColLoc::get(input->getBufferIdentifier(), 0, 0, context);
-
-  // Parses input/output names from command line options.
-  std::vector<std::string> inputs;
-  std::vector<std::string> outputs;
-  // Use output parser since we only have tensor names.
-  if (!tensorflow::ParseOutputArrayInfo(input_arrays_flag, &inputs).ok()) {
-    return emitError(loc, "parsing input array info failed ")
-               << input_arrays_flag,
-           nullptr;
-  }
-  if (!tensorflow::ParseOutputArrayInfo(output_arrays_flag, &outputs).ok()) {
-    return emitError(loc, "parsing output array info failed ")
-               << output_arrays_flag,
-           nullptr;
-  }
-
-  return tflite::FlatBufferToMlir(
-      absl::string_view(input->getBufferStart(), input->getBufferSize()),
-      context, loc, use_external_constant, inputs, outputs,
-      experimental_prune_unreachable_nodes_unconditionally);
-}
-
-static mlir::TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(
-    "tflite-flatbuffer-to-mlir",
-    [](llvm::SourceMgr& source_mgr, MLIRContext* context) {
-      return FlatBufferFileToMlirTrans(
-          &source_mgr, context, use_external_constant,
-          experimental_prune_unreachable_nodes_unconditionally);
-    });

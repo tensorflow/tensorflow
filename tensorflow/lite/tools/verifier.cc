@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/verifier.h"
 
 #include <climits>
+#include <complex>
 #include <cstdint>
 
 #include "absl/container/flat_hash_set.h"
@@ -348,6 +349,9 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
       break;
     case TensorType_FLOAT16:
       bytes_required *= sizeof(uint16_t);
+      break;
+    case TensorType_FLOAT64:
+      bytes_required *= sizeof(double);
       break;
     case TensorType_INT32:
       bytes_required *= sizeof(int32_t);

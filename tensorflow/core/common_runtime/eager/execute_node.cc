@@ -53,8 +53,7 @@ Status ExecuteNodeArgs::Init(
     serialize_remote_handle_ =
         [ctx, &op_inputs](const int i,
                           eager::RemoteTensorHandle* handle) -> Status {
-      absl::variant<Device*, CustomDevice*> variant_device =
-          op_inputs[i]->device();
+      VariantDevice variant_device = op_inputs[i]->device();
       if (VariantDeviceIsCustom(variant_device)) {
         return errors::Internal(
             "Custom devices and remote execution are currently not supported "

@@ -22,7 +22,6 @@ from __future__ import print_function
 import functools
 import time
 
-from absl import flags
 from absl.testing import parameterized
 import numpy as np
 
@@ -31,6 +30,7 @@ from tensorflow.core.example import feature_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -81,10 +81,8 @@ class PForTest(PForTestCase):
       return nn.top_k(x_i)
 
     with self.assertRaisesRegexp(ValueError, "No converter defined"):
-      self._test_loop_fn(loop_fn, 3)
-    flags.FLAGS.op_conversion_fallback_to_while_loop = True
-    self._test_loop_fn(loop_fn, 3)
-    flags.FLAGS.op_conversion_fallback_to_while_loop = False
+      self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=False)
+    self._test_loop_fn(loop_fn, 3, fallback_to_while_loop=True)
 
   def test_parallel_iterations(self):
     for parallel_iterations in [2, 3, 8, 10]:
@@ -639,7 +637,7 @@ class RandomTest(PForTestCase):
 
   # The random values generated in the two implementations are not guaranteed to
   # match. So we only check the returned shapes.
-  def run_and_assert_equal(self, targets1, targets2):
+  def run_and_assert_equal(self, targets1, targets2, rtol=1e-4, atol=1e-5):
     outputs = self._run_targets(targets1, targets2)
     n = len(outputs) // 2
     for i in range(n):
@@ -737,7 +735,7 @@ class StatelessRandomTest(PForTestCase):
   # stateless random numbers can generate different random numbers.
   # TODO(agarwal): switch to checking for actual values matching once
   # b/149402339 is resolved.
-  def run_and_assert_equal(self, targets1, targets2):
+  def run_and_assert_equal(self, targets1, targets2, rtol=1e-4, atol=1e-5):
     outputs = self._run_targets(targets1, targets2)
     n = len(outputs) // 2
     for i in range(n):
@@ -1735,8 +1733,10 @@ class SpectralTest(PForTestCase, parameterized.TestCase):
       (fft_ops.irfft2d,),
       (fft_ops.irfft3d,),
   )
-  # TODO(agarwal): Reenable this once the test flaky is fixed.
-  def disabled_test_irfft(self, op_func):
+  def test_irfft(self, op_func):
+    if config.list_physical_devices("GPU"):
+      # TODO(b/149957923): The test is flaky
+      self.skipTest("b/149957923: irfft vectorization flaky")
     for dtype in (dtypes.complex64, dtypes.complex128):
       shape = [2, 3, 4, 3, 4]
       x = np.random.uniform(size=shape) + 1j * np.random.uniform(size=shape)

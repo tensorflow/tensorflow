@@ -472,21 +472,6 @@ class ImportGraphDefTest(test.TestCase):
             node { name: 'B' op: 'FloatInput' input: 'A:0' }
             """))
 
-  def testShapeWhitelist(self):
-    # Barrier's shape is an output vector of 2, but the
-    # graph says it's a scalar.  This is currently whitelisted.
-    with ops.Graph().as_default():
-      _ = importer.import_graph_def(
-          self._MakeGraphDef("""
-          node { name: 'A' op: 'Barrier'
-                 attr { key: '_output_shapes'
-                        value { list { shape { } } } }
-                 attr { key: 'component_types'
-                        value { list { type: DT_FLOAT } } } }
-          """),
-          return_elements=["A"],
-          name="import")
-
   def testShapeWhitelistViolation(self):
     # L2 loss produces a scalar shape, but the graph
     # has the wrong shape, so raise an error.

@@ -4,7 +4,12 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        # TODO(scottzhu): Remove non-keras deps from TF.
+        "//tensorflow/lite/experimental/tf_runtime:__pkg__",
+        "//tensorflow/tools/docs:__pkg__",
+        "//tensorflow/python/keras:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -27,7 +32,7 @@ py_library(
     name = "image",
     srcs = [
         "image.py",
-        "image_pipeline.py",
+        "image_dataset.py",
     ],
     deps = [
         "//tensorflow/python:util",
@@ -82,9 +87,9 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "image_pipeline_test",
+    name = "image_dataset_test",
     size = "small",
-    srcs = ["image_pipeline_test.py"],
+    srcs = ["image_dataset_test.py"],
     python_version = "PY3",
     deps = [
         ":image",

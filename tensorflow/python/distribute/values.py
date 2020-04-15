@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import weakref
 
 from tensorflow.python.distribute import device_util
@@ -89,6 +88,7 @@ class DistributedValues(object):
   >>> distributed_values = strategy.run(run)
 
   3. As input into `run`:
+
   >>> strategy = tf.distribute.MirroredStrategy()
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
@@ -96,10 +96,10 @@ class DistributedValues(object):
   >>> @tf.function
   ... def run(input):
   ...   return input + 1.0
-  >>> updated_value = strategy.run(run,
-  ...                                              args=(distributed_values,))
+  >>> updated_value = strategy.run(run, args=(distributed_values,))
 
-  4. Reduce value
+  4. Reduce value:
+
   >>> strategy = tf.distribute.MirroredStrategy()
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
@@ -108,7 +108,8 @@ class DistributedValues(object):
   ...                                 distributed_values,
   ...                                 axis = 0)
 
-  5. Inspect per replica values.
+  5. Inspect per replica values:
+
   >>> strategy = tf.distribute.MirroredStrategy()
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
@@ -402,8 +403,23 @@ def _assign_sub_on_device(device, variable, tensor):
     return variable.assign_sub(tensor)
 
 
-DistributedVarOp = collections.namedtuple(
-    "DistributedVarOp", ["name", "graph", "traceback", "type"])
+class DistributedVarOp(object):
+  """A class that looks like `tf.Operation`."""
+
+  def __init__(self, name, graph, traceback, typ):
+    self.name = name
+    self.graph = graph
+    self.traceback = traceback
+    self.type = typ
+
+  def __eq__(self, o):
+    if not isinstance(o, self.__class__):
+      raise NotImplementedError
+    return (self.name == o.name and self.graph == o.graph and
+            self.traceback == o.traceback and self.type == o.type)
+
+  def __hash__(self):
+    return hash((self.name, self.graph, self.traceback, self.type))
 
 
 class DistributedVariable(DistributedDelegate, variables_lib.Variable):
@@ -412,8 +428,9 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   # TODO(josh11b): Support changing the set of variables if e.g. if new
   # devices are joining or a device is to leave.
 
-  def __init__(self, strategy, values):
+  def __init__(self, strategy, values, aggregation):
     self._distribute_strategy = strategy
+    self._aggregation = aggregation
     super(DistributedVariable, self).__init__(values)
     self._common_name = self._primary.name.split(":")[0]
     # Use a weakref to make it easy to map from the contained values
@@ -507,6 +524,10 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   @property
   def synchronization(self):
     return self._primary.synchronization
+
+  @property
+  def aggregation(self):
+    return self._aggregation
 
   @property
   def handle(self):
@@ -724,10 +745,6 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
 class MirroredVariable(DistributedVariable, Mirrored):
   """Holds a map from replica to variables whose values are kept in sync."""
 
-  def __init__(self, strategy, values, aggregation):
-    super(MirroredVariable, self).__init__(strategy, values)
-    self._aggregation = aggregation
-
   def _mirrored_update(self, update_fn, *args, **kwargs):
     """Apply identical updates using `update_fn` to variables on each replica."""
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
@@ -846,10 +863,6 @@ class MirroredVariable(DistributedVariable, Mirrored):
     scatter_update_fn = lambda var, *a, **kw: var.scatter_update(*a, **kw)
     return self._mirrored_update(scatter_update_fn, *args, **kwargs)
 
-  @property
-  def aggregation(self):
-    return self._aggregation
-
   def _get_cross_replica(self):
     # Return identity, to avoid directly exposing the variable to the user and
     # allowing it to be modified by mistake.
@@ -877,7 +890,13 @@ class MirroredVariable(DistributedVariable, Mirrored):
     """Converts a variable to a tensor."""
     # Try to avoid assignments to and other mutations of MirroredVariable
     # state except through a DistributionStrategy.extended.update() call.
-    assert not as_ref
+    if as_ref:
+      # A TF 1.x case where the variable is a boolean variable and used like:
+      # tf.cond(v, true_fn, false_fn).
+      raise ValueError(
+          "You may be using variable created under distribute strategy in TF "
+          "1.x control flows. Try explicitly converting the variable to Tensor "
+          "using variable.read_value(), or switch to TF 2.x.")
     return ops.convert_to_tensor(
         self._get(), dtype=dtype, name=name, as_ref=as_ref)
 
@@ -955,10 +974,6 @@ def _assert_replica_context(strategy):
 class SyncOnReadVariable(DistributedVariable):
   """Holds a map from replica to variables whose values are reduced on save."""
 
-  def __init__(self, strategy, values, aggregation):
-    super(SyncOnReadVariable, self).__init__(strategy, values)
-    self._aggregation = aggregation
-
   def assign_sub(self, *args, **kwargs):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       if ds_context.in_cross_replica_context():
@@ -1017,10 +1032,6 @@ class SyncOnReadVariable(DistributedVariable):
     else:
       raise NotImplementedError(
           "numpy() is only available when eager execution is enabled.")
-
-  @property
-  def aggregation(self):
-    return self._aggregation
 
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:

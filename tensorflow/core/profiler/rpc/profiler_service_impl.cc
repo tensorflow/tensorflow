@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
+#include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
@@ -51,7 +52,8 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
   ::grpc::Status Profile(::grpc::ServerContext* ctx, const ProfileRequest* req,
                          ProfileResponse* response) override {
     VLOG(1) << "Received a profile request: " << req->DebugString();
-    std::unique_ptr<ProfilerSession> profiler = ProfilerSession::Create();
+    std::unique_ptr<ProfilerSession> profiler =
+        ProfilerSession::Create(req->opts());
     Status status = profiler->Status();
     if (!status.ok()) {
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,

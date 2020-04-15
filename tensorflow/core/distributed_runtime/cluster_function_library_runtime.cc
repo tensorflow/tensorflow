@@ -186,8 +186,9 @@ void ClusterFunctionLibraryRuntime::Instantiate(
   auto target = options.target;
   VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << target
           << " (this: " << this << ")";
-  WorkerInterface* wi =
-      worker_session_->worker_cache()->GetOrCreateWorker(target);
+  std::shared_ptr<WorkerCacheInterface> worker_cache =
+      worker_session_->GetSharedWorkerCache();
+  WorkerInterface* wi = worker_cache->GetOrCreateWorker(target);
 
   if (wi == nullptr) {
     std::vector<string> workers;
@@ -233,13 +234,14 @@ void ClusterFunctionLibraryRuntime::Instantiate(
 
   wi->RegisterGraphAsync(
       req, resp,
-      [this, handle, req, resp, wi, function_name, target, send_keys, recv_keys,
-       done](const Status& status) {
+      [this, handle, req, resp, worker_cache, wi, function_name, target,
+       send_keys, recv_keys, done](const Status& status) {
         if (status.ok()) {
           mutex_lock l(mu_);
           *handle = function_data_.size();
           function_data_.push_back(FunctionData(resp->graph_handle(), target,
-                                                wi, *send_keys, *recv_keys));
+                                                worker_cache, wi, *send_keys,
+                                                *recv_keys));
           VLOG(1) << "CFLR::Instantiate: [Success] " << function_name << " on "
                   << target << " (this: " << this << ")"
                   << " with handle: " << *handle;
@@ -326,6 +328,25 @@ void ClusterFunctionLibraryRuntime::Run(
           }
         }
       });
+}
+
+void ClusterFunctionLibraryRuntime::Run(
+    const FunctionLibraryRuntime::Options& opts,
+    FunctionLibraryRuntime::LocalHandle handle,
+    gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
+    FunctionLibraryRuntime::DoneCallback done) {
+  std::vector<Tensor> tensors;
+  for (const auto& arg : args) {
+    if (arg.index() == 0) {
+      tensors.push_back(absl::get<Tensor>(arg));
+    } else {
+      done(
+          errors::Internal("ClusterFunctionLibraryRuntime doesn't support "
+                           "eager::RemoteTensorHandle."));
+      return;
+    }
+  }
+  return Run(opts, handle, tensors, rets, std::move(done));
 }
 
 void ClusterFunctionLibraryRuntime::CleanUp(

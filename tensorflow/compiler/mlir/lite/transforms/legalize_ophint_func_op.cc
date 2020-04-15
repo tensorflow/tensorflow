@@ -15,23 +15,23 @@ limitations under the License.
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringMap.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
 namespace mlir {
@@ -68,8 +68,9 @@ constexpr char kUnidirectionalSequenceLstm[] = "UnidirectionalSequenceLstm";
 //           |
 //           |
 //        OutputOp1
-struct LegalizeOphintFuncOpPass : public ModulePass<LegalizeOphintFuncOpPass> {
-  void runOnModule() override;
+struct LegalizeOphintFuncOpPass
+    : public PassWrapper<LegalizeOphintFuncOpPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 llvm::StringMap<FuncOp> FindCompositeFuncOps(ModuleOp module) {
@@ -256,8 +257,8 @@ LogicalResult ConvertCallOps(llvm::StringMap<FuncOp>* composite_func_ops,
   return success();
 }
 
-void LegalizeOphintFuncOpPass::runOnModule() {
-  ModuleOp module = getModule();
+void LegalizeOphintFuncOpPass::runOnOperation() {
+  ModuleOp module = getOperation();
 
   // Find all composite funcs, then for every call op inside every func op
   // within the module, we go ahead and replace the callop with the tflite
@@ -283,7 +284,7 @@ void LegalizeOphintFuncOpPass::runOnModule() {
 
 /// Creates an instance of the TensorFlow Lite dialect LegalizeOphintFuncOpPass
 /// pass.
-std::unique_ptr<OpPassBase<ModuleOp>> CreateLegalizeOphintFuncOpPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateLegalizeOphintFuncOpPass() {
   return std::make_unique<LegalizeOphintFuncOpPass>();
 }
 

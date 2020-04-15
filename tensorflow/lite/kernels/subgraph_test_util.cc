@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 
-#include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/kernels/kernel_util.h"

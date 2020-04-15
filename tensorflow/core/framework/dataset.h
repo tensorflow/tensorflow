@@ -59,6 +59,8 @@ namespace data {
 
 using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
 
+constexpr char kTFDataFunction[] = "_tf_data_function";
+
 constexpr int kInfiniteCardinality = -1;
 constexpr int kUnknownCardinality = -2;
 
@@ -250,7 +252,7 @@ class GraphDefBuilderWrapper {
   bool HasAttr(const string& op_type_name, const string& attr_name) const;
 
   bool HasAttr(const OpDef* op_def, const string& attr_name) const {
-    for (auto attr : op_def->attr()) {
+    for (const auto& attr : op_def->attr()) {
       if (attr.name() == attr_name) {
         return true;
       }
@@ -303,6 +305,10 @@ class Runner {
 // are doing is safe. We should formalize the properties here.
 class IteratorContext {
  public:
+  // Epoch IDs are only used for tf.data service datasets. Other datasets use
+  // an epoch ID value of -1.
+  static constexpr const int64 kNoEpochId = -1;
+
   struct Params {
     explicit Params(IteratorContext* ctx)
         : allocator_getter(ctx->allocator_getter()),
@@ -310,6 +316,7 @@ class IteratorContext {
           env(ctx->env()),
           flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
+          epoch_id(ctx->epoch_id()),
           resource_mgr(ctx->resource_mgr()),
           model(ctx->model()),
           runner(*(ctx->runner())),
@@ -332,7 +339,9 @@ class IteratorContext {
       if (thread_pool) {
         runner_threadpool_size = thread_pool->NumThreads();
       } else {
-        runner_threadpool_size = port::MaxParallelism();
+        static const int32 kDefaultRunnerThreadpoolSize =
+            port::MaxParallelism();
+        runner_threadpool_size = kDefaultRunnerThreadpoolSize;
       }
 
       // NOTE: Wrap every runner invocation in a call to Runner()->Run(), so
@@ -365,6 +374,10 @@ class IteratorContext {
 
     // A FunctionHandleCache that owns all the function handles. Not owned.
     FunctionHandleCache* function_handle_cache = nullptr;
+
+    // Identifies the epoch this iterator was created for. It is used for
+    // reading from the tf.data service.
+    int64 epoch_id = kNoEpochId;
 
     // A resource manager for storing dataset-related state, e.g. random
     // seeds or cached tensors. Not owned.
@@ -414,6 +427,8 @@ class IteratorContext {
   FunctionHandleCache* function_handle_cache() {
     return params_.function_handle_cache;
   }
+
+  int64 epoch_id() { return params_.epoch_id; }
 
   ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
@@ -480,6 +495,25 @@ class SerializationContext {
     // Fail the serialization with an error.
     kFail = 2,
   };
+
+  // Handles the CheckExternalState status according to the external state
+  // policy.
+  Status HandleCheckExternalStateStatus(Status s) {
+    if (s.ok()) {
+      return s;
+    }
+    switch (params_.external_state_policy) {
+      case ExternalStatePolicy::kWarn:
+        LOG(WARNING) << s.ToString();
+        return Status::OK();
+      case ExternalStatePolicy::kIgnore:
+        VLOG(2) << "Ignoring error status: " << s.ToString();
+        return Status::OK();
+      case ExternalStatePolicy::kFail:
+        return s;
+    }
+    LOG(FATAL) << "Control should never reach here";
+  }
 
   struct Params {
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
@@ -589,7 +623,7 @@ class IteratorBase {
 
   // Saves the state of this iterator.
   virtual Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
-    return SaveInternal(writer);
+    return SaveInternal(ctx, writer);
   }
 
  protected:
@@ -604,9 +638,9 @@ class IteratorBase {
 
   // This is needed so that sub-classes of IteratorBase can call
   // `SaveInternal` on their input iterators.
-  Status SaveInput(IteratorStateWriter* writer,
+  Status SaveInput(SerializationContext* ctx, IteratorStateWriter* writer,
                    const std::unique_ptr<IteratorBase>& input) {
-    return input->SaveInternal(writer);
+    return input->SaveInternal(ctx, writer);
   }
 
   // This is needed so that sub-classes of IteratorBase can call
@@ -620,7 +654,8 @@ class IteratorBase {
   //
   // This method is used to store the state of the iterator in a checkpoint.
   // implementations have an override.
-  virtual Status SaveInternal(IteratorStateWriter* writer) = 0;
+  virtual Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) = 0;
 
   // Restores the state of this iterator.
   //
@@ -632,6 +667,11 @@ class IteratorBase {
   // implementations have an override.
   virtual Status RestoreInternal(IteratorContext* ctx,
                                  IteratorStateReader* reader) = 0;
+
+  // Returns a pointer to the node representing this iterator in the performance
+  // model. It may be null, if performance modeling is not enabled for this
+  // iterator.
+  std::shared_ptr<model::Node> model_node() const { return node_; }
 
   // Returns the number of elements produced by this iterator.
   int64 num_elements() const {
@@ -649,7 +689,7 @@ class IteratorBase {
                         const string& output_prefix);
 
   std::vector<std::function<void()>> cleanup_fns_;
-  model::Node* node_ = nullptr;  // Not owned.
+  std::shared_ptr<model::Node> node_ = nullptr;
   const IteratorBase* parent_ = nullptr;  // Not owned.
   int64 id_ = 0;
   int64 parent_id_ = 0;
@@ -931,10 +971,15 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
   // When modeling is enabled, this method records the fact that this iterator
-  // has produced an element.
-  void RecordElement(IteratorContext* ctx) {
+  // has produced an element and its size in bytes.
+  void RecordElement(IteratorContext* ctx, std::vector<Tensor>* out_tensors) {
     if (node_) {
+      int64 num_bytes = GetAllocatedBytes(*out_tensors);
       node_->record_element();
+      node_->record_bytes_produced(num_bytes);
+      if (node_->output()) {
+        node_->output()->record_bytes_consumed(num_bytes);
+      }
     }
   }
 
@@ -1035,6 +1080,8 @@ class DatasetOpKernel : public OpKernel {
   // Indicates whether the given op corresponds to an op whose kernels subclass
   // the `DatasetOpKernel` class.
   static bool IsDatasetOp(const OpDef* op_def);
+
+  string TraceString(OpKernelContext* ctx, bool verbose) override;
 
  protected:
   // Subclasses should implement this method. It will be called during Compute

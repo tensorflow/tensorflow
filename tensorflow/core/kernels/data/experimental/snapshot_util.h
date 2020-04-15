@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/inputstream_interface.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -56,8 +57,10 @@ class Writer {
   static constexpr const char* const kWriteCord = "WriteCord";
   static constexpr const char* const kSeparator = "::";
 
-  explicit Writer(WritableFile* dest, const string& compression_type,
-                  int version, const DataTypeVector& dtypes);
+  static Status Create(Env* env, const std::string& filename,
+                       const std::string& compression_type, int version,
+                       const DataTypeVector& dtypes,
+                       std::unique_ptr<Writer>* out_writer);
 
   Status WriteTensors(const std::vector<Tensor>& tensors);
 
@@ -68,16 +71,27 @@ class Writer {
   ~Writer();
 
  private:
+  explicit Writer(const std::string& filename,
+                  const std::string& compression_type, int version,
+                  const DataTypeVector& dtypes);
+
+  Status Initialize(tensorflow::Env* env);
+
   Status WriteRecord(const StringPiece& data);
 
 #if defined(PLATFORM_GOOGLE)
   Status WriteRecord(const absl::Cord& data);
 #endif  // PLATFORM_GOOGLE
 
-  WritableFile* dest_;
-  bool dest_is_owned_ = false;
-  const string compression_type_;
+  std::unique_ptr<WritableFile> dest_;
+  const std::string filename_;
+  const std::string compression_type_;
   const int version_;
+  const DataTypeVector dtypes_;
+  // We hold zlib_dest_ because we may create a ZlibOutputBuffer and put that
+  // in dest_ if we want compression. ZlibOutputBuffer doesn't own the original
+  // dest_ and so we need somewhere to store the original one.
+  std::unique_ptr<WritableFile> zlib_underlying_dest_;
   std::vector<bool> simple_tensor_mask_;  // true for simple, false for complex.
   int num_simple_ = 0;
   int num_complex_ = 0;
@@ -134,13 +148,13 @@ Status WriteMetadataFile(const string& hash_dir,
                          const experimental::SnapshotMetadataRecord* metadata);
 
 Status ReadMetadataFile(const string& hash_dir,
-                        experimental::SnapshotMetadataRecord* metadata);
+                        experimental::SnapshotMetadataRecord* metadata,
+                        bool* file_exists);
 
 Status DumpDatasetGraph(const std::string& path, uint64 hash,
                         const GraphDef* graph);
 
-Status DetermineOpState(const std::string& mode_string,
-                        const Status& file_status,
+Status DetermineOpState(const std::string& mode_string, bool file_exists,
                         const experimental::SnapshotMetadataRecord* metadata,
                         const uint64 pending_snapshot_expiry_seconds,
                         Mode* mode);

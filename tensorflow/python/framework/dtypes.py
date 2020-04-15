@@ -630,7 +630,8 @@ def as_dtype(type_value):
 
   try:
     return _ANY_TO_TF[type_value]
-  except KeyError:
+  except (KeyError, TypeError):
+    # TypeError indicates that type_value is not hashable.
     pass
 
   if hasattr(type_value, "dtype"):

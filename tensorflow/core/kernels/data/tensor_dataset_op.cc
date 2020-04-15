@@ -117,7 +117,8 @@ class TensorDatasetOp::Dataset : public DatasetBase {
       return model::MakeSourceNode(std::move(args));
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (produced_)
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kProduced), ""));

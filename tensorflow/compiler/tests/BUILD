@@ -1,8 +1,11 @@
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")  # buildifier: disable=same-origin-load
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
-load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
+load(
+    "//tensorflow/compiler/tests:build_defs.bzl",
+    "generate_backend_suites",
+    "tf_xla_py_test",
+)
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -32,6 +35,7 @@ package_group(
     packages = [
         # To pass open source testing in the pip Kokoros.
         "//bazel_pip/tensorflow/compiler/tests/...",
+        "//platforms/xla/tests/neural_nets",
     ],
 )
 
@@ -747,6 +751,7 @@ tf_xla_py_test(
 tf_xla_py_test(
     name = "image_ops_test",
     size = "small",
+    timeout = "long",
     srcs = ["image_ops_test.py"],
     python_version = "PY3",
     shard_count = 10,
@@ -1323,6 +1328,8 @@ tf_xla_py_test(
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "noasan",
+        "notsan",
     ],
     deps = [
         ":xla_test",
@@ -1339,6 +1346,7 @@ tf_xla_py_test(
     name = "unary_ops_test",
     size = "medium",
     srcs = ["unary_ops_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip

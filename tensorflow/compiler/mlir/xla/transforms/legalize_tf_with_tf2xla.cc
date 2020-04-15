@@ -22,16 +22,16 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/Optional.h"
-#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h.inc"
@@ -78,42 +78,21 @@ static bool IsOpWhitelisted(Operation* op) {
   // TODO(hinsu): Drop explicit whitelist when MLIR based bridge is enabled for
   // all tf2xla kernels.
   return isa<TF::AbsOp>(op) || isa<TF::Atan2Op>(op) ||
-         isa<TF::SelectV2Op>(op) || isa<TF::CastOp>(op);
-}
-
-static llvm::Optional<absl::string_view> GetJitDevice(
-    const std::string& device_type, const Location& loc) {
-  if (device_type == "XLA_CPU") return absl::string_view("XLA_CPU_JIT");
-  if (device_type == "TPU") return absl::string_view("XLA_TPU_JIT");
-  // TODO(hinsu): Support GPU device along with a test for it.
-
-  emitError(loc) << "unsupported device for legalization with tf2xla kernels: "
-                 << device_type;
-  return llvm::None;
+         isa<TF::BiasAddGradOp>(op) || isa<TF::CastOp>(op) ||
+         isa<TF::ComplexAbsOp>(op) || isa<TF::GreaterOp>(op) ||
+         isa<TF::InvOp>(op) || isa<TF::InvertOp>(op) || isa<TF::LogOp>(op) ||
+         isa<TF::LogicalNotOp>(op) || isa<TF::NegOp>(op) ||
+         isa<TF::SelectV2Op>(op) || isa<TF::SinOp>(op) ||
+         isa<TF::SquareOp>(op) || isa<TF::UnpackOp>(op);
 }
 
 static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
     const std::string& device_type, const Location& loc) {
-  auto jit_device_or = GetJitDevice(device_type, loc);
-  if (!jit_device_or) return nullptr;
-
-  auto* factory = tensorflow::DeviceFactory::GetFactory(device_type);
-  if (!factory) {
-    emitError(loc) << "failed to create DeviceFactory for device: "
-                   << device_type;
-    return nullptr;
-  }
-  std::vector<std::unique_ptr<tensorflow::Device>> devices;
-  auto status = factory->CreateDevices(
-      tensorflow::SessionOptions(),
-      /*name_prefix=*/"/job:localhost/replica:0/task:0", &devices);
-  if (!status.ok()) {
-    emitError(loc) << status.ToString();
-    return nullptr;
-  }
+  // Register compilation kernels for all registered XLA backends.
+  tensorflow::XlaOpRegistry::RegisterCompilationKernels();
 
   auto device = absl::make_unique<tensorflow::XlaCompilationDevice>(
-      tensorflow::SessionOptions(), tensorflow::DeviceType(*jit_device_or));
+      tensorflow::SessionOptions(), tensorflow::DeviceType(device_type));
   return absl::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
 }
 
@@ -239,8 +218,8 @@ LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
 
   // Only static shaped operands are supported in XLA builders for now.
   for (Type ty : op->getOperandTypes()) {
-    auto ranked_ty = ty.cast<RankedTensorType>();
-    if (!ranked_ty || !ranked_ty.hasStaticShape()) {
+    auto ranked_ty = ty.cast<ShapedType>();
+    if (!ranked_ty.hasStaticShape()) {
       op->emitRemark() << "lowering requires static shaped operands";
       return success();
     }
@@ -359,9 +338,13 @@ LogicalResult FuncLegalizer::LegalizeOp(Operation* op) {
   return success();
 }
 
-class LegalizeTF : public FunctionPass<LegalizeTF> {
+class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
  public:
   LegalizeTF() = default;
+
+  explicit LegalizeTF(llvm::StringRef device_type) {
+    device_type_ = device_type.str();
+  }
 
   LegalizeTF(const LegalizeTF&) {}
 
@@ -376,7 +359,7 @@ class LegalizeTF : public FunctionPass<LegalizeTF> {
   Option<std::string> device_type_{
       *this, "device-type",
       llvm::cl::desc("XLA device type for execution of TensorFlow ops. "
-                     "Supports XLA_CPU and TPU for now.")};
+                     "Supports XLA_CPU_JIT and XLA_TPU_JIT for now.")};
 };
 
 static PassRegistration<LegalizeTF> pass(
@@ -384,6 +367,11 @@ static PassRegistration<LegalizeTF> pass(
     "Legalize from TensorFlow to the HLO dialect using tf2xla kernels");
 
 }  // end namespace
+
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeTfWithTf2XlaPass(
+    llvm::StringRef device_type) {
+  return std::make_unique<LegalizeTF>(device_type);
+}
 
 }  // end namespace xla_hlo
 }  // end namespace mlir

@@ -18,7 +18,7 @@ func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
   %0 = "xla_hlo.all_reduce"(%arg0) ({
   // Perform max reduction inside the region
   ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
-    %max = xla_hlo.max %lhs, %rhs : tensor<f32>
+    %max = xla_hlo.maximum %lhs, %rhs : tensor<f32>
     "xla_hlo.return"(%max) : (tensor<f32>) -> ()
   })
   {
@@ -210,7 +210,7 @@ func @main(%arg0: tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>) {
 
 func @callee(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>) {
   %0 = "xla_hlo.add"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
-  %1 = "xla_hlo.mul"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  %1 = "xla_hlo.multiply"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
   return %0, %1 : tensor<4xi32>, tensor<4xi32>
 }
 
@@ -295,7 +295,7 @@ func @main() -> tensor<2x2x1x1xf32> {
 
 // CHECK:  HloModule
 func @main(%arg0 : tensor<100x26x26x32xf32>, %arg1 : tensor<3x3x1x32xf32>) -> tensor<100x28x28x1xf32> {
-  %result = "xla_hlo.conv"(%arg0, %arg1) {
+  %result = "xla_hlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
     dimension_numbers = {
       input_batch_dimension = 0 : i64,
@@ -605,8 +605,8 @@ func @main(%token: !xla_hlo.token) -> tuple<tensor<3x4xi32>, !xla_hlo.token> {
 func @main(%arg0 : tensor<1x10xf32>, %arg1 : tensor<1x10xi32>, %arg2 : tensor<f32>, %arg3 : tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>) {
   %result0, %result1 = "xla_hlo.reduce"(%arg0, %arg1, %arg2, %arg3) ( {
     ^bb0(%fa: tensor<f32>, %ia : tensor<i32>, %fb: tensor<f32>, %ib: tensor<i32>):   // no predecessors
-      %fmax = "xla_hlo.max"(%fa, %fb) {} : (tensor<f32>, tensor<f32>) -> tensor<f32>
-      %imax = "xla_hlo.max"(%ia, %ib) {} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      %fmax = "xla_hlo.maximum"(%fa, %fb) {} : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      %imax = "xla_hlo.maximum"(%ia, %ib) {} : (tensor<i32>, tensor<i32>) -> tensor<i32>
       "xla_hlo.return"(%fmax, %imax) : (tensor<f32>, tensor<i32>) -> ()
     }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<1x10xf32>, tensor<1x10xi32>, tensor<f32>, tensor<i32>) -> (tensor<1xf32>, tensor<1xi32>)
   return %result0, %result1 : tensor<1xf32>, tensor<1xi32>
@@ -632,7 +632,7 @@ func @main(%arg0: tensor<2x17x31x7xi32>) -> tensor<2x3x5x7xi32> {
   %0 = xla_hlo.constant dense<-2147483648> : tensor<i32>
   %1 = "xla_hlo.reduce_window"(%arg0, %0) ( {
   ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):	// no predecessors
-    %2 = xla_hlo.max %arg1, %arg2 : tensor<i32>
+    %2 = xla_hlo.maximum %arg1, %arg2 : tensor<i32>
     "xla_hlo.return"(%2) : (tensor<i32>) -> ()
   }) {
     window_dimensions = dense<[1, 2, 2, 1]> : tensor<4xi64>,
@@ -861,6 +861,21 @@ func @main(%arg: tensor<3x4xi32>) -> tensor<1x2xi32> {
 // -----
 
 // CHECK:  HloModule
+func @main(%arg: tensor<3x4xi32>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<1x4xi32> {
+  %0 = "xla_hlo.dynamic-slice"(%arg, %start1, %start2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
+  return %0 : tensor<1x4xi32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  %[[ARG:.*]] = s32[3,4] parameter(0)
+// CHECK:  %[[ARG1:.*]] = s64[] parameter(1)
+// CHECK:  %[[ARG2:.*]] = s64[] parameter(2)
+// CHECK:  ROOT
+// CHECK-SAME:  s32[1,4] dynamic-slice(s32[3,4] %[[ARG]], s64[] %[[ARG1]], s64[] %[[ARG2]]), dynamic_slice_sizes={1,4}
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   "xla_hlo.trace"(%arg0) {tag = "This is a random test"} : (tensor<2xi32>) -> ()
   return %arg0: tensor<2xi32>
@@ -985,3 +1000,19 @@ func @main(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16xf32> {tf_device.is_same
 // CHECK-NOT: parameter_replication={true}
 // CHECK:  %[[ARG1:.*]] = f32[16,16] parameter(1), parameter_replication={true}
 // CHECK:  ROOT %[[RESULT:.*]] = f32[16,16] add(f32[16,16] %[[ARG0]], f32[16,16] %[[ARG1]])
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<2xcomplex<f32>>, %arg1: tensor<2xcomplex<f64>>) -> (tensor<2xf32>, tensor<2xf64>) {
+  %0 = "xla_hlo.abs"(%arg0) : (tensor<2xcomplex<f32>>) -> (tensor<2xf32>)
+  %1 = "xla_hlo.abs"(%arg1) : (tensor<2xcomplex<f64>>) -> (tensor<2xf64>)
+  return %0, %1 : tensor<2xf32>, tensor<2xf64>
+}
+
+// CHECK:  ENTRY
+// CHECK:  %[[ARG0:.*]] = c64[2] parameter(0)
+// CHECK:  %[[ABS0:.*]] = f32[2] abs(c64[2] %[[ARG0]])
+// CHECK:  %[[ARG1:.*]] = c128[2] parameter(1)
+// CHECK:  %[[ABS1:.*]] = f64[2] abs(c128[2] %[[ARG1]])
+// CHECK:  ROOT %[[RESULT:.*]] = (f32[2], f64[2]) tuple(f32[2] %[[ABS0]], f64[2] %[[ABS1]])

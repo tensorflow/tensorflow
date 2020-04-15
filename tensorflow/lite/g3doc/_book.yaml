@@ -12,6 +12,50 @@ upper_tabs:
   lower_tabs:
     # Subsite tabs
     other:
+    - name: "Tutorials"
+      contents:
+      - title: "TensorFlow Lite Tutorials"
+        path: /lite/tutorials
+
+      - heading: "Vision"
+      - title: "Recognize handwritten digits"
+        path: https://codelabs.developers.google.com/codelabs/digit-classifier-tflite/
+        status: external
+      - title: "Recognize flowers on Android"
+        path: https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/
+        status: external
+      - title: "Recognize flowers on iOS"
+        path: https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-ios/
+        status: external
+      - title: "Transfer learning for image classification"
+        path: https://colab.research.google.com/github/tensorflow/examples/blob/master/tensorflow_examples/lite/model_maker/demo/image_classification.ipynb
+        status: external
+      - title: "Image classification on Raspberry Pi"
+        path: https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/raspberry_pi/
+        status: external
+      - title: "Object Detection on Raspberry Pi"
+        path: https://github.com/tensorflow/examples/blob/master/lite/examples/object_detection/raspberry_pi/
+        status: external
+      - title: "Train a mobile object detector"
+        path: https://blog.tensorflow.org/2018/07/training-and-serving-realtime-mobile-object-detector-cloud-tpus.html
+        status: external
+
+      - heading: "Text"
+      - title: "Sentiment analysis"
+        path: https://colab.research.google.com/github/tensorflow/examples/blob/master/tensorflow_examples/lite/model_maker/demo/text_classification.ipynb
+        status: external
+
+      - heading: "Microcontrollers"
+      - title: "Gesture recognition"
+        path: https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0
+        status: external
+      - title: "Hotword detection"
+        path: https://blog.tensorflow.org/2019/11/how-to-get-started-with-machine.html
+        status: external
+      - title: "Person detection"
+        path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/person_detection
+        status: external
+
     - name: "Guide"
       contents:
       - title: "TensorFlow Lite guide"
@@ -83,13 +127,16 @@ upper_tabs:
       - title: "Hexagon delegate"
         path: /lite/performance/hexagon_delegate
         status: experimental
+      - title: "Core ML delegate"
+        path: /lite/performance/coreml_delegate
+        status: experimental
 
       - heading: "Optimize a model"
       - title: "Overview"
         path: /lite/performance/model_optimization
       - title: "Post-training quantization"
         path: /lite/performance/post_training_quantization
-      - title: "Post-training weight quantization"
+      - title: "Post-training dynamic range quantization"
         path: /lite/performance/post_training_quant
       - title: "Post-training integer quantization"
         path: /lite/performance/post_training_integer_quant
@@ -115,7 +162,6 @@ upper_tabs:
         path: /lite/microcontrollers/library
       - title: "Build and convert models"
         path: /lite/microcontrollers/build_convert
-
 
     - name: "Examples"
       contents:

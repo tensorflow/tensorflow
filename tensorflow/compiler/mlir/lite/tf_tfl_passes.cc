@@ -15,11 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
-#include "mlir/Transforms/Passes.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
-std::unique_ptr<OpPassBase<FuncOp>>
+std::unique_ptr<OperationPass<FuncOp>>
 CreateTFExecutorToControlDialectConversion();
 }  // namespace mlir
 
@@ -79,25 +79,12 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
             pass_config.quant_specs.serialized_quant_stats));
   }
 
-  if (pass_config.lower_tensor_list_ops) {
-    // TODO(haoliang): Add this pass by default.
-    pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
-  }
-
-  // This pass does resource analysis of saved model global tensors and marks
-  // those deemed read-only as immutable.
-  pass_manager->addPass(
-      mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
-  // This pass marks non-exported functions as symbol visibility 'private'
-  // those deemed read-only as immutable.
-  pass_manager->addPass(
-      mlir::tf_saved_model::
-          CreateMarkFunctionVisibilityUsingSavedModelLinkagePass());
-
-  // Enable fusing composite ops that can be lowered to built-in TFLite ops.
-  if (pass_config.emit_builtin_tflite_ops) {
-    pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
-  }
+  // The conversion pipeline has to follow the following orders:
+  // 1) Try to convert ophint nodes if present first like ophint lstm.
+  // 2) Saved model related optimization like decompose resource ops
+  // 3) Convert composite functions like lstm/rnns, along with proper function
+  // inlining & dce.
+  // 4) Lower static tensor list pass.
 
   // The ophint extractions happen before lots of other passes:
   // The assumption of ophint-extraction is each ophinted region is a black-box
@@ -114,14 +101,50 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFL::CreateLegalizeOphintFuncOpPass());
   }
 
+  // This decomposes resource ops like ResourceGather into read-variable op
+  // followed by gather. This is used when the saved model import path is used
+  // during which resources dont get frozen in the python layer.
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TFDevice::CreateDecomposeResourceOpsPass());
+
+  // Note:
+  // We need to fuse composite ops before LowerStaticTensorList pass.
+  // The tensorflow list is not supported right now by that pass.
+  // Enable fusing composite ops that can be lowered to built-in TFLite ops.
+  if (pass_config.emit_builtin_tflite_ops) {
+    pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
+  }
+
+  // This pass marks non-exported functions as symbol visibility 'private'
+  // those deemed read-only as immutable.
+  pass_manager->addPass(
+      mlir::tf_saved_model::
+          CreateMarkFunctionVisibilityUsingSavedModelLinkagePass());
+
+  pass_manager->addPass(mlir::createInlinerPass());
+  pass_manager->addPass(mlir::createSymbolDCEPass());
+
+  if (pass_config.lower_tensor_list_ops) {
+    // TODO(haoliang): Add this pass by default.
+    pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
+  }
+
+  // This pass does resource analysis of saved model global tensors and marks
+  // those deemed read-only as immutable.
+  pass_manager->addPass(
+      mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
+
+  if (pass_config.shape_inference) {
+    // Add a shape inference pass to optimize away the unnecessary casts.
+    pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
+  }
   // Legalize while early to allow further constant folding.
   // TODO(jpienaar): This may not actually matter as we do canonicalization
   // after the legalize below, for now it needs to be below the above passes
   // that work on TF dialect and before inliner so that the function calls in
   // body and cond are inlined for optimization.
   if (pass_config.legalize_tf_while) {
-    pass_manager->addNestedPass<mlir::FuncOp>(
-        mlir::TFL::CreateLegalizeTFWhilePass());
+    pass_manager->addPass(mlir::TFL::CreateLegalizeTFWhilePass());
   }
 
   // Add function inlining pass. Both TF and TFLite dialects are opted into
@@ -141,11 +164,6 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   // constant ops.
   pass_manager->addPass(mlir::tf_saved_model::CreateFreezeGlobalTensorsPass());
 
-  if (pass_config.shape_inference) {
-    // Add a shape inference pass to optimize away the unnecessary casts.
-    pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
-  }
-
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
   if (pass_config.emit_builtin_tflite_ops) {
@@ -154,7 +172,8 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(
         mlir::TFL::CreatePrepareTFPass(pass_config.unfold_batch_matmul));
     pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-    pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
+    pass_manager->addPass(
+        mlir::TFL::CreateLegalizeTFPass(pass_config.runtime_verification));
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());
     // This pass operates on TensorFlow ops but is triggered after legalization
     // so that it can target constants introduced once TensorFlow Identity ops
@@ -236,7 +255,8 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
   // TFLite dialect passes.
   pm.addPass(mlir::TFL::CreatePrepareTFPass(true));
   pm.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-  pm.addPass(mlir::TFL::CreateLegalizeTFPass());
+  pm.addPass(
+      mlir::TFL::CreateLegalizeTFPass(/*run_tfl_runtime_verification=*/true));
   pm.addPass(mlir::TFL::CreateOptimizePass());
   pm.addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
 
@@ -249,7 +269,7 @@ void CreateTFLStandardPipeline(OpPassManager& pm,
 
   pm.addPass(mlir::TFL::CreateWhileOutlinePass());
 
-  pm.addPass(mlir::TFL::CreateRuntimeTypeVerifyPass());
+  pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
 }
 
 // Registers a pass pipeline for the standard TFL passes.
