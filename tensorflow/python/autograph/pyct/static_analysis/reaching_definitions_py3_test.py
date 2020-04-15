@@ -78,7 +78,7 @@ class ReachingDefinitionsAnalyzerTest(
 
     self.assertSameDef(local_body[1].test, local_body[2].value.elts[0])
 
-    self.assertHasDefinedIn(local_body[1], ('a', 'b', 'local_fn'))
+    self.assertHasDefinedIn(local_body[1], ('a', 'b'))
 
 
 if __name__ == '__main__':

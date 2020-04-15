@@ -223,6 +223,7 @@ class ActivityAnalyzer(transformer.Base):
 
   def __init__(self, context, parent_scope=None):
     super(ActivityAnalyzer, self).__init__(context)
+    self.allow_skips = False
     self.scope = Scope(parent_scope, isolated=True)
 
     # Note: all these flags crucially rely on the respective nodes are
@@ -327,8 +328,21 @@ class ActivityAnalyzer(transformer.Base):
     return self._process_statement(node)
 
   def visit_Global(self, node):
+    self._enter_scope(False)
     for name in node.names:
-      self.scope.globals.add(qual_names.QN(name))
+      qn = qual_names.QN(name)
+      self.scope.read.add(qn)
+      self.scope.globals.add(qn)
+    self._exit_and_record_scope(node)
+    return node
+
+  def visit_Nonlocal(self, node):
+    self._enter_scope(False)
+    for name in node.names:
+      qn = qual_names.QN(name)
+      self.scope.read.add(qn)
+      self.scope.bound.add(qn)
+    self._exit_and_record_scope(node)
     return node
 
   def visit_Expr(self, node):
