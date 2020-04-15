@@ -23,7 +23,9 @@ limitations under the License.
 namespace xla {
 namespace mlir_gpu {
 
-Status LowerLHLOToGPU(mlir::ModuleOp module);
+Status LowerLHLOToGPU(mlir::ModuleOp module,
+                      llvm::ArrayRef<unsigned> tile_sizes = {16, 64},
+                      llvm::ArrayRef<unsigned> unroll_factors = {});
 
 Status LowerKernelBodiesToNVVM(mlir::ModuleOp module);
 

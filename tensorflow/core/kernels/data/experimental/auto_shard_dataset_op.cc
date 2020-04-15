@@ -61,7 +61,6 @@ void AutoShardDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   // function optimization and explicitly handle function modifications
   // for those datasets in the rewrite.
   OP_REQUIRES_OK(ctx, RewriteDataset(ctx, input, std::move(config_factory),
-                                     /*optimize_function_library=*/false,
                                      /*record_fingerprint=*/false, output));
 }
 

@@ -298,7 +298,15 @@ cc_library(
     deps = [
         ":delegate_provider_hdr",
         "//tensorflow/lite/tools/evaluation:utils",
-    ],
+    ] + select({
+        "//tensorflow:android_arm": [
+            "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
+        ],
+        "//tensorflow:android_arm64": [
+            "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
+        ],
+        "//conditions:default": [],
+    }),
     alwayslink = 1,
 )
 

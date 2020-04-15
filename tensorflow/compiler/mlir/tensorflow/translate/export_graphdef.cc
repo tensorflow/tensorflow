@@ -143,7 +143,7 @@ Status HasSingleGraphSingleOpIslandsFunctions(mlir::ModuleOp module) {
       return mlir::WalkResult::interrupt();
     }
 
-    if (!has_single_element(block)) {
+    if (!hasSingleElement(block)) {
       status = errors::FailedPrecondition(
           kInvalidExecutorGraphMsg,
           "function does not only contain a single tf_executor.graph.");

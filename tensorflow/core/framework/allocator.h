@@ -160,13 +160,16 @@ struct AllocatorStats {
   // if such a limit is known.
   absl::optional<int64> bytes_reservable_limit;
 
+  int64 largest_free_block_bytes;  // Largest free block's size in heap.
+
   AllocatorStats()
       : num_allocs(0),
         bytes_in_use(0),
         peak_bytes_in_use(0),
         largest_alloc_size(0),
         bytes_reserved(0),
-        peak_bytes_reserved(0) {}
+        peak_bytes_reserved(0),
+        largest_free_block_bytes(0) {}
 
   std::string DebugString() const;
 };

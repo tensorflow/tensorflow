@@ -361,6 +361,8 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_async_and_sync_mode
   def testMultiThreadPendingNodesLockFree(self):
     """Update cluster when other remote function calls are being launched."""
+    self.skipTest("b/154053481")
+
     with ops.device(self.device_t1):
       x1 = array_ops.ones([2, 2])
 

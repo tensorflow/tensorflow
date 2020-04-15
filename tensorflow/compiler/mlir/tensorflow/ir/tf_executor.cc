@@ -41,7 +41,6 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Support/STLExtras.h"  // from @llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -318,7 +317,7 @@ YieldOp IslandOp::GetYield() { return llvm::cast<YieldOp>(GetBody().back()); }
 // operation results are perfectly forwarded to the islands yield.
 bool IslandOp::WrapsSingleOp() {
   auto body = GetBody().without_terminator();
-  if (!has_single_element(body)) return false;
+  if (!hasSingleElement(body)) return false;
 
   Operation &wrapped_op = *body.begin();
   YieldOp yield = GetYield();

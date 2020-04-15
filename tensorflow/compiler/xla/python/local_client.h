@@ -52,11 +52,13 @@ namespace xla {
 class Device {
  public:
   explicit Device(int id, std::unique_ptr<LocalDeviceState> local_device_state,
-                  absl::string_view platform_name, int host_id = 0)
+                  std::string platform_name, std::string device_kind,
+                  int host_id = 0)
       : id_(id),
         local_device_state_(std::move(local_device_state)),
         host_id_(host_id),
-        platform_name_(platform_name) {}
+        platform_name_(std::move(platform_name)),
+        device_kind_(std::move(device_kind)) {}
   virtual ~Device() {}
 
   // The ID of this device. IDs are unique among devices of this type
@@ -81,6 +83,9 @@ class Device {
 
   const std::string& platform_name() const { return platform_name_; }
 
+  // A vendor-dependent string that uniquely identifies the kind of device.
+  const std::string& device_kind() const { return device_kind_; }
+
   virtual std::string DebugString() const;
 
  private:
@@ -88,6 +93,7 @@ class Device {
   const std::unique_ptr<LocalDeviceState> local_device_state_;
   const int host_id_;
   const std::string platform_name_;
+  const std::string device_kind_;
 };
 
 // Forward declaration.

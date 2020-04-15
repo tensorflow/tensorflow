@@ -119,6 +119,9 @@ cc_library(
     name = "numerical_utils",
     srcs = ["numerical_utils.cc"],
     hdrs = ["numerical_utils.h"],
+    deps = [
+        "@com_google_absl//absl/types:optional",
+    ],
 )
 
 cc_library(
@@ -154,6 +157,7 @@ tf_cc_test(
     srcs = ["numerical_utils_test.cc"],
     deps = [
         ":numerical_utils",
+        "@com_google_absl//absl/types:optional",
         "@com_google_googletest//:gtest_main",
     ],
 )

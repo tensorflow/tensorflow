@@ -1074,13 +1074,9 @@ void TestOneDepthwiseConv3x3Filter(
 void TestOneNeonDot3x3(const TestParam& test_param) {
 #if defined(__aarch64__) && !defined(GOOGLE_L4T) && defined(__ANDROID__) && \
     defined(__clang__)
-  CpuBackendContext backend_context;
-  ruy::Context* ruy_context = backend_context.ruy_context();
-  const auto ruy_paths = ruy_context != nullptr
-                             ? ruy_context->GetRuntimeEnabledPaths()
-                             : ruy::Path::kNone;
-  const bool has_dot_product_instructions =
-      (ruy_paths & ruy::Path::kNeonDotprod) != ruy::Path::kNone;
+  CpuFlags cpu_flags;
+  GetCpuFlags(&cpu_flags);
+  const bool has_dot_product_instructions = cpu_flags.neon_dotprod;
   if (test_param.forced_invocation ==
           DepthwiseConvImplementation::kUseNeon3x3DotProduct &&
       !has_dot_product_instructions) {

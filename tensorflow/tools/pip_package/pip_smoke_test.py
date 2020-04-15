@@ -34,6 +34,11 @@ PIP_PACKAGE_QUERY_EXPRESSION = (
 # pip smoke test.
 BUILD_BLACKLIST = [
     "tensorflow/lite",
+    "tensorflow/compiler/mlir/lite",
+    "tensorflow/python/kernel_tests/signal",
+    "tensorflow/examples",
+    "tensorflow/tools/android",
+    "tensorflow/python/eager/benchmarks",
 ]
 
 def GetBuild(dir_base):

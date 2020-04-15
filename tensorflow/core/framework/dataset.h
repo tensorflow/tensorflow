@@ -59,6 +59,8 @@ namespace data {
 
 using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
 
+constexpr char kTFDataFunction[] = "_tf_data_function";
+
 constexpr int kInfiniteCardinality = -1;
 constexpr int kUnknownCardinality = -2;
 
@@ -666,6 +668,11 @@ class IteratorBase {
   virtual Status RestoreInternal(IteratorContext* ctx,
                                  IteratorStateReader* reader) = 0;
 
+  // Returns a pointer to the node representing this iterator in the performance
+  // model. It may be null, if performance modeling is not enabled for this
+  // iterator.
+  std::shared_ptr<model::Node> model_node() const { return node_; }
+
   // Returns the number of elements produced by this iterator.
   int64 num_elements() const {
     if (node_) return node_->num_elements();
@@ -682,7 +689,7 @@ class IteratorBase {
                         const string& output_prefix);
 
   std::vector<std::function<void()>> cleanup_fns_;
-  model::Node* node_ = nullptr;  // Not owned.
+  std::shared_ptr<model::Node> node_ = nullptr;
   const IteratorBase* parent_ = nullptr;  // Not owned.
   int64 id_ = 0;
   int64 parent_id_ = 0;

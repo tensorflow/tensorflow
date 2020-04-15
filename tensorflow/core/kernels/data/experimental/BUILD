@@ -671,6 +671,16 @@ tf_cc_test(
 )
 
 tf_kernel_library(
+    # data service kernels depend on GRPC, so we package them separately
+    # so that downstream rules can avoid depending on GRPC.
+    name = "data_service_kernels",
+    deps = [
+        ":data_service_dataset_op",
+        ":data_service_ops",
+    ],
+)
+
+tf_kernel_library(
     name = "dataset_kernels",
     deps = [
         ":assert_cardinality_dataset_op",

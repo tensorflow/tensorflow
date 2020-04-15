@@ -439,7 +439,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       // `return_values`, and invoking `done` when finished.
       instantiated_captured_func_->RunAsync(ctx.get(), std::move(input_element),
                                             return_values.get(),
-                                            std::move(done), prefix());
+                                            std::move(done), model_node());
     }
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {

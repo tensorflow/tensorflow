@@ -351,12 +351,29 @@ TfLiteStatus InitializeRuntimeTensor(
         reinterpret_cast<TfLiteAffineQuantization*>(
             allocator->AllocateFromTail(sizeof(TfLiteAffineQuantization),
                                         alignof(TfLiteAffineQuantization)));
+    if (quantization == nullptr) {
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Unable to allocate TfLiteAffineQuantization.\n");
+      return kTfLiteError;
+    }
     quantization->zero_point =
         reinterpret_cast<TfLiteIntArray*>(allocator->AllocateFromTail(
             TfLiteIntArrayGetSizeInBytes(channels), alignof(TfLiteIntArray)));
+    if (quantization->zero_point == nullptr) {
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Unable to allocate quantization->zero_point.\n");
+      return kTfLiteError;
+    }
+
     quantization->scale = reinterpret_cast<TfLiteFloatArray*>(
         allocator->AllocateFromTail(TfLiteFloatArrayGetSizeInBytes(channels),
                                     alignof(TfLiteFloatArray)));
+    if (quantization->scale == nullptr) {
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Unable to allocate quantization->scale.\n");
+      return kTfLiteError;
+    }
+
     quantization->zero_point->size = channels;
     quantization->scale->size = channels;
     int* zero_point_data = quantization->zero_point->data;

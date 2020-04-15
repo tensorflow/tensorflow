@@ -89,48 +89,46 @@ TfLiteStatus FlatBufferIntVectorToArray(
 
 TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
                                ErrorReporter* error_reporter) {
-  *type = kTfLiteNoType;
   switch (tensor_type) {
     case TensorType_FLOAT16:
       *type = kTfLiteFloat16;
-      break;
+      return kTfLiteOk;
     case TensorType_FLOAT32:
       *type = kTfLiteFloat32;
-      break;
+      return kTfLiteOk;
     case TensorType_FLOAT64:
       *type = kTfLiteFloat64;
-      break;
+      return kTfLiteOk;
     case TensorType_INT16:
       *type = kTfLiteInt16;
-      break;
+      return kTfLiteOk;
     case TensorType_INT32:
       *type = kTfLiteInt32;
-      break;
+      return kTfLiteOk;
     case TensorType_UINT8:
       *type = kTfLiteUInt8;
-      break;
+      return kTfLiteOk;
     case TensorType_INT8:
       *type = kTfLiteInt8;
-      break;
+      return kTfLiteOk;
     case TensorType_INT64:
       *type = kTfLiteInt64;
-      break;
+      return kTfLiteOk;
     case TensorType_STRING:
       *type = kTfLiteString;
-      break;
+      return kTfLiteOk;
     case TensorType_BOOL:
       *type = kTfLiteBool;
-      break;
+      return kTfLiteOk;
     case TensorType_COMPLEX64:
       *type = kTfLiteComplex64;
-      break;
+      return kTfLiteOk;
+    default:
+      *type = kTfLiteNoType;
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Unsupported data type %d in tensor\n", tensor_type);
+      return kTfLiteError;
   }
-  if (*type == kTfLiteNoType) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Unsupported data type %d in tensor\n",
-                         tensor_type);
-    return kTfLiteError;
-  }
-  return kTfLiteOk;
 }
 
 // Parse the appropriate data out of the op.
@@ -205,24 +203,21 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->dilation_width_factor = conv_params->dilation_w_factor();
         params->dilation_height_factor = conv_params->dilation_h_factor();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_CAST: {
       auto params = safe_allocator.Allocate<TfLiteCastParams>();
       if (const auto* schema_params = op->builtin_options_as_CastOptions()) {
-        auto in_status =
-            ConvertTensorType(schema_params->in_data_type(),
-                              &params->in_data_type, error_reporter);
-        auto out_status =
-            ConvertTensorType(schema_params->out_data_type(),
-                              &params->out_data_type, error_reporter);
-        if (in_status != kTfLiteOk || out_status != kTfLiteOk) {
-          return kTfLiteError;
-        }
+        TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->in_data_type(),
+                                                &params->in_data_type,
+                                                error_reporter));
+        TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->out_data_type(),
+                                                &params->out_data_type,
+                                                error_reporter));
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_LSH_PROJECTION: {
       auto params = safe_allocator.Allocate<TfLiteLSHProjectionParams>();
@@ -230,8 +225,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_LSHProjectionOptions()) {
         params->type = parseLSHProjectionType(lshParams->type());
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_AVERAGE_POOL_2D:
     case BuiltinOperator_MAX_POOL_2D:
@@ -246,8 +241,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(pool_params->fused_activation_function());
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_DEPTHWISE_CONV_2D: {
       auto params = safe_allocator.Allocate<TfLiteDepthwiseConvParams>();
@@ -263,8 +258,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->dilation_width_factor = conv_params->dilation_w_factor();
         params->dilation_height_factor = conv_params->dilation_h_factor();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_SVDF: {
       auto params = safe_allocator.Allocate<TfLiteSVDFParams>();
@@ -275,8 +270,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->asymmetric_quantize_inputs =
             svdf_params->asymmetric_quantize_inputs();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN: {
       auto params = safe_allocator.Allocate<TfLiteSequenceRNNParams>();
@@ -288,8 +283,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->asymmetric_quantize_inputs =
             sequence_rnn_params->asymmetric_quantize_inputs();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN: {
       auto params =
@@ -303,8 +298,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->asymmetric_quantize_inputs =
             bidi_sequence_rnn_params->asymmetric_quantize_inputs();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_RNN: {
       auto params = safe_allocator.Allocate<TfLiteRNNParams>();
@@ -314,8 +309,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->asymmetric_quantize_inputs =
             rnn_params->asymmetric_quantize_inputs();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_EMBEDDING_LOOKUP_SPARSE: {
       auto params =
@@ -324,8 +319,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_EmbeddingLookupSparseOptions()) {
         params->combiner = parseCombinerType(embedding_params->combiner());
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_FULLY_CONNECTED: {
       auto params = safe_allocator.Allocate<TfLiteFullyConnectedParams>();
@@ -350,20 +345,20 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
             return kTfLiteError;
         }
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_HASHTABLE_LOOKUP:
       // no-op.
-      break;
+      return kTfLiteOk;
     case BuiltinOperator_SOFTMAX: {
       auto params = safe_allocator.Allocate<TfLiteSoftmaxParams>();
       if (const auto* softmax_params =
               op->builtin_options_as_SoftmaxOptions()) {
         params->beta = softmax_params->beta();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_CONCATENATION: {
       auto params = safe_allocator.Allocate<TfLiteConcatenationParams>();
@@ -373,8 +368,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
             parse_activation(concatenation_params->fused_activation_function());
         params->axis = concatenation_params->axis();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_MUL: {
       auto params = safe_allocator.Allocate<TfLiteMulParams>();
@@ -382,8 +377,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(schema_params->fused_activation_function());
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_ADD: {
       auto params = safe_allocator.Allocate<TfLiteAddParams>();
@@ -391,8 +386,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(schema_params->fused_activation_function());
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_DIV: {
       auto params = safe_allocator.Allocate<TfLiteDivParams>();
@@ -400,8 +395,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(schema_params->fused_activation_function());
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_SUB: {
       auto params = safe_allocator.Allocate<TfLiteSubParams>();
@@ -409,8 +404,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(schema_params->fused_activation_function());
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_L2_NORMALIZATION: {
       auto params = safe_allocator.Allocate<TfLiteL2NormParams>();
@@ -418,8 +413,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(schema_params->fused_activation_function());
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION: {
       auto params = safe_allocator.Allocate<TfLiteLocalResponseNormParams>();
@@ -430,8 +425,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->alpha = schema_params->alpha();
         params->beta = schema_params->beta();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_LSTM: {
       auto params = safe_allocator.Allocate<TfLiteLSTMParams>();
@@ -460,8 +455,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
                              "No valid LSTM builtin options exist");
         return kTfLiteError;
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM: {
       auto params =
@@ -476,8 +471,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->asymmetric_quantize_inputs =
             seq_lstm_params->asymmetric_quantize_inputs();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM: {
       auto params =
@@ -493,8 +488,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->asymmetric_quantize_inputs =
             bidi_lstm_params->asymmetric_quantize_inputs();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_RESIZE_BILINEAR: {
       auto params = safe_allocator.Allocate<TfLiteResizeBilinearParams>();
@@ -508,23 +503,18 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->align_corners = false;
         params->half_pixel_centers = false;
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR: {
-      // Large functions confuse MacOS builds with XCode 8 so a lambda is
-      // required to minimize function size. TODO(b/118447267): Simplify
-      // ParseOpData function and reduce its length.
-      [&]() {
-        auto params =
-            safe_allocator.Allocate<TfLiteResizeNearestNeighborParams>();
-        if (const auto* schema_params =
-                op->builtin_options_as_ResizeNearestNeighborOptions()) {
-          params->align_corners = schema_params->align_corners();
-        }
-        *builtin_data = reinterpret_cast<void*>(params.release());
-      }();
-      break;
+      auto params =
+          safe_allocator.Allocate<TfLiteResizeNearestNeighborParams>();
+      if (const auto* schema_params =
+              op->builtin_options_as_ResizeNearestNeighborOptions()) {
+        params->align_corners = schema_params->align_corners();
+      }
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_RESHAPE: {
       auto params = safe_allocator.Allocate<TfLiteReshapeParams>();
@@ -540,8 +530,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
           params->num_dimensions = new_shape->size();
         }
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_SKIP_GRAM: {
       auto params = safe_allocator.Allocate<TfLiteSkipGramParams>();
@@ -551,8 +541,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->max_skip_size = skip_gram_params->max_skip_size();
         params->include_all_ngrams = skip_gram_params->include_all_ngrams();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_SPACE_TO_DEPTH: {
       auto params = safe_allocator.Allocate<TfLiteSpaceToDepthParams>();
@@ -560,8 +550,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_SpaceToDepthOptions()) {
         params->block_size = schema_params->block_size();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_DEPTH_TO_SPACE: {
       auto params = safe_allocator.Allocate<TfLiteDepthToSpaceParams>();
@@ -569,8 +559,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_DepthToSpaceOptions()) {
         params->block_size = schema_params->block_size();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_GATHER: {
       auto params = safe_allocator.Allocate<TfLiteGatherParams>();
@@ -579,8 +569,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->axis = gather_params->axis();
       }
 
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_MEAN:
     case BuiltinOperator_REDUCE_MAX:
@@ -592,36 +582,36 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       if (const auto* schema_params = op->builtin_options_as_ReducerOptions()) {
         params->keep_dims = schema_params->keep_dims();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_SPLIT: {
       auto params = safe_allocator.Allocate<TfLiteSplitParams>();
       if (const auto* schema_params = op->builtin_options_as_SplitOptions()) {
         params->num_splits = schema_params->num_splits();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_SPLIT_V: {
       auto params = safe_allocator.Allocate<TfLiteSplitParams>();
       if (const auto* schema_params = op->builtin_options_as_SplitVOptions()) {
         params->num_splits = schema_params->num_splits();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_SQUEEZE: {
       auto params = safe_allocator.Allocate<TfLiteSqueezeParams>();
       if (const auto* schema_params = op->builtin_options_as_SqueezeOptions()) {
-        const auto& squeeze_dims = schema_params->squeeze_dims();
+        const auto* squeeze_dims = schema_params->squeeze_dims();
         TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
             sizeof(params->squeeze_dims), squeeze_dims, params->squeeze_dims,
             error_reporter, "squeeze"));
         params->num_squeeze_dims = squeeze_dims->size();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_STRIDED_SLICE: {
       auto params = safe_allocator.Allocate<TfLiteStridedSliceParams>();
@@ -633,26 +623,28 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->new_axis_mask = schema_params->new_axis_mask();
         params->shrink_axis_mask = schema_params->shrink_axis_mask();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_ARG_MAX: {
       auto params = safe_allocator.Allocate<TfLiteArgMaxParams>();
       if (const auto* schema_params = op->builtin_options_as_ArgMaxOptions()) {
-        ConvertTensorType(schema_params->output_type(), &params->output_type,
-                          error_reporter);
+        TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->output_type(),
+                                                &params->output_type,
+                                                error_reporter));
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_ARG_MIN: {
       auto params = safe_allocator.Allocate<TfLiteArgMinParams>();
       if (const auto* schema_params = op->builtin_options_as_ArgMinOptions()) {
-        ConvertTensorType(schema_params->output_type(), &params->output_type,
-                          error_reporter);
+        TF_LITE_ENSURE_STATUS(ConvertTensorType(schema_params->output_type(),
+                                                &params->output_type,
+                                                error_reporter));
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_TRANSPOSE_CONV: {
       auto params = safe_allocator.Allocate<TfLiteTransposeConvParams>();
@@ -662,8 +654,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->stride_width = transpose_conv_params->stride_w();
         params->stride_height = transpose_conv_params->stride_h();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_SPARSE_TO_DENSE: {
       auto params = safe_allocator.Allocate<TfLiteSparseToDenseParams>();
@@ -671,17 +663,17 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_SparseToDenseOptions()) {
         params->validate_indices = sparse_to_dense_params->validate_indices();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_SHAPE: {
       auto params = safe_allocator.Allocate<TfLiteShapeParams>();
       if (const auto* schema_params = op->builtin_options_as_ShapeOptions()) {
-        ConvertTensorType(schema_params->out_type(), &params->out_type,
-                          error_reporter);
+        TF_LITE_ENSURE_STATUS(ConvertTensorType(
+            schema_params->out_type(), &params->out_type, error_reporter));
       }
-      *builtin_data = static_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_PACK: {
       auto params = safe_allocator.Allocate<TfLitePackParams>();
@@ -689,8 +681,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->values_count = pack_params->values_count();
         params->axis = pack_params->axis();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_DELEGATE: {
       // TODO(ycling): Revisit when supporting saving delegated models.
@@ -707,16 +699,16 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->num_bits = schema_params->num_bits();
         params->narrow_range = schema_params->narrow_range();
       }
-      *builtin_data = static_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_ONE_HOT: {
       auto params = safe_allocator.Allocate<TfLiteOneHotParams>();
       if (const auto* schema_params = op->builtin_options_as_OneHotOptions()) {
         params->axis = schema_params->axis();
       }
-      *builtin_data = static_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_UNPACK: {
       auto params = safe_allocator.Allocate<TfLiteUnpackParams>();
@@ -724,8 +716,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->num = unpack_params->num();
         params->axis = unpack_params->axis();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_LEAKY_RELU: {
       auto params = safe_allocator.Allocate<TfLiteLeakyReluParams>();
@@ -733,8 +725,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
               op->builtin_options_as_LeakyReluOptions()) {
         params->alpha = leaky_relu_params->alpha();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_MIRROR_PAD: {
       auto params = safe_allocator.Allocate<TfLiteMirrorPaddingParams>();
@@ -745,8 +737,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
                 ? TfLiteMirrorPaddingMode::kTfLiteMirrorPaddingReflect
                 : TfLiteMirrorPaddingMode::kTfLiteMirrorPaddingSymmetric;
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_UNIQUE: {
       auto params = safe_allocator.Allocate<TfLiteUniqueParams>();
@@ -757,8 +749,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
                 ? TfLiteType::kTfLiteInt64
                 : TfLiteType::kTfLiteInt32;
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_REVERSE_SEQUENCE: {
       auto params = safe_allocator.Allocate<TfLiteReverseSequenceParams>();
@@ -767,8 +759,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->seq_dim = reverse_seq_params->seq_dim();
         params->batch_dim = reverse_seq_params->batch_dim();
       }
-      *builtin_data = reinterpret_cast<void*>(params.release());
-      break;
+      *builtin_data = params.release();
+      return kTfLiteOk;
     }
     case BuiltinOperator_IF: {
       TfLiteIfParams* params = allocator->AllocatePOD<TfLiteIfParams>();
@@ -776,8 +768,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->then_subgraph_index = if_params->then_subgraph_index();
         params->else_subgraph_index = if_params->else_subgraph_index();
       }
-      *builtin_data = reinterpret_cast<void*>(params);
-      break;
+      *builtin_data = params;
+      return kTfLiteOk;
     }
     case BuiltinOperator_WHILE: {
       TfLiteWhileParams* params = allocator->AllocatePOD<TfLiteWhileParams>();
@@ -785,8 +777,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->cond_subgraph_index = while_params->cond_subgraph_index();
         params->body_subgraph_index = while_params->body_subgraph_index();
       }
-      *builtin_data = reinterpret_cast<void*>(params);
-      break;
+      *builtin_data = params;
+      return kTfLiteOk;
     }
     case BuiltinOperator_BATCH_MATMUL: {
       TfLiteBatchMatMulParams* params =
@@ -796,8 +788,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->adjoint_lhs = bmm_params->adjoint_lhs();
         params->adjoint_rhs = bmm_params->adjoint_rhs();
       }
-      *builtin_data = reinterpret_cast<void*>(params);
-      break;
+      *builtin_data = params;
+      return kTfLiteOk;
     }
     // Below are the ops with no builtin_data structure.
     case BuiltinOperator_ABS:
@@ -870,9 +862,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_SCATTER_ND:
     case BuiltinOperator_DENSIFY:
     case BuiltinOperator_SEGMENT_SUM:
-      break;
+      return kTfLiteOk;
   }
-  return kTfLiteOk;
 }  // NOLINT[readability/fn_size]
 
 }  // namespace tflite

@@ -296,9 +296,11 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       std::vector<int64_t> slice_sizes(
           instruction->dynamic_slice_sizes().begin(),
           instruction->dynamic_slice_sizes().end());
-      attributes.push_back(
-          builder_->getNamedAttr("slice_sizes", Convert(slice_sizes)));
-      MakeAndReturn(DynamicSliceOp);
+      return func_builder
+          ->create<mlir::xla_hlo::DynamicSliceOp>(
+              loc, result_type, operands[0],
+              makeArrayRef(operands).drop_front(), Convert(slice_sizes))
+          .getOperation();
     }
     case HloOpcode::kDynamicUpdateSlice: {
       return func_builder

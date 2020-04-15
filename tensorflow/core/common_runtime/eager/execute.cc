@@ -596,6 +596,10 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
         &ctx, op->Inputs(), op->remote_func_params(), std::move(kernel),
         graph_collector, op->GetCancellationManager(),
         absl::Span<TensorHandle*>(retvals, num_outputs));
+    // Release the inputs from the eager operation since the AsyncExecuteNode
+    // would have taken ownership. This allows the inputs to be forwarded if
+    // possible.
+    op->Clear();
     // For async mode, execution order will make sure that all
     // input handles are ready before executing them.
     // TODO(b/137118203): Consider executing "cheap" kernels inline for
@@ -609,6 +613,10 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                      graph_collector, op->GetCancellationManager(),
                      {retvals, static_cast<size_t>(num_outputs)});
     s = executor.SyncExecute(&node);
+    // We release the inputs AFTER executing the operation in sync mode since
+    // ExecuteNode does not increment the reference count and thus does not have
+    // ownership of the inputs while executing.
+    op->Clear();
   }
   // Since the operation failed, we need to Unref any outputs if they were
   // allocated.

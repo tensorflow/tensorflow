@@ -25,6 +25,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -84,6 +85,8 @@ class UnaryOpsTest(xla_test.XLATestCase):
     for i in xrange(len(result)):
       self.assertAllClose(result[i], expected[i], rtol, atol)
 
+  @test_util.disable_mlir_bridge(
+      "MlirHloBuilder::Iota missing required for xla::Diag")
   def testAllTypeOps(self):
     for dtype in self.numeric_types - {np.int8, np.uint8}:
       self._assertOpOutputMatchesExpected(
@@ -183,6 +186,8 @@ class UnaryOpsTest(xla_test.XLATestCase):
         self._assertOpOutputMatchesExpected(
             math_ops.cos, x, expected=np.cos(x), rtol=tol, atol=1e-5)
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/153812660): Handle tf.Softmax compilation")
   def testFloatOps(self):
     for dtype in self.float_types:
       x = np.arange(-0.90, 0.90, 0.25)
@@ -593,6 +598,8 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([-1, -0.5, 0, 0.3], dtype=dtype),
           expected=np.array([-1., -0.5, 0., 0.296875], dtype=dtype))
 
+  @test_util.disable_mlir_bridge(
+      "Complex types not supported in CreateDenseElementsAttrFromLiteral")
   def testComplexOps(self):
     for dtype in self.complex_types:
 
@@ -750,6 +757,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([1 + 3j, -4 + 7j, 2.7, -3j], dtype=dtype),
           expected=np.array([1, -4, 2.7, 0], dtype=ctypes[dtype]))
 
+  @test_util.disable_mlir_bridge("TODO(b/153896312): Handle unsigned ints")
   def testIntOps(self):
     for dtype in self.int_types:
       self._assertOpOutputMatchesExpected(
@@ -823,6 +831,8 @@ class UnaryOpsTest(xla_test.XLATestCase):
             [[[1., 2.], [3., 4.]], [[5., 6.], [7., 8.]]], dtype=np.float32),
         expected=np.array([14., 22.], dtype=np.float32))
 
+  @test_util.disable_mlir_bridge("TODO(b/153812660): Handle tf.Cast compilation"
+                                )
   def testCast(self):
     shapes = [[], [4], [2, 3], [2, 0, 4]]
     types = {
@@ -870,6 +880,8 @@ class UnaryOpsTest(xla_test.XLATestCase):
             src,
             expected=dst)
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/153812660): Handle tf.Bitcast compilation")
   def testBitcast(self):
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.bitcast(x, dtypes.int32),
@@ -893,12 +905,16 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([1, 0x100000003f800000], np.int64),
           expected=np.array([1, 0x100000003f800000], np.uint64))
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/153812660): Handle tf.InvertPermutation compilation")
   def testInvertPermutation(self):
     self._assertOpOutputMatchesExpected(
         array_ops.invert_permutation,
         np.array([1, 2, 0], np.int32),
         expected=np.array([2, 0, 1], dtype=np.int32))
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/153812660): Handle tf.InvertPermutation compilation")
   def testInvertPermutationTwiceIsNoop(self):
     self._assertOpOutputMatchesExpected(
         lambda x: array_ops.invert_permutation(array_ops.invert_permutation(x)),
@@ -990,6 +1006,8 @@ class UnaryOpsTest(xla_test.XLATestCase):
         ],
         equality_test=self.ListsAreClose)
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/153812660): Handle tf.DepthToSpace compilation")
   def testDepthToSpace(self):
 
     def make_op(data_format):
@@ -1042,6 +1060,8 @@ class UnaryOpsTest(xla_test.XLATestCase):
                               [[[6, 7], [14, 15]], [[22, 23], [30, 31]]]]],
                             dtype=dtype))
 
+  @test_util.disable_mlir_bridge(
+      "TODO(b/153812660): Handle tf.SpaceToDepth compilation")
   def testSpaceToDepth(self):
 
     def make_op(data_format):
@@ -1101,6 +1121,8 @@ class UnaryOpsTest(xla_test.XLATestCase):
     self._assertOpOutputMatchesExpected(
         nn_ops.softplus, features, expected=expected, rtol=1e-6, atol=9.1e-6)
 
+  @test_util.disable_mlir_bridge(
+      "bf16 type not supported in CreateDenseElementsAttrFromLiteral")
   def testSoftplus(self):
     for dtype in self.float_types:
       self._assertSoftplusMatchesExpected([[-2, 0, 8]], dtype)

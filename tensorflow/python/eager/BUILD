@@ -257,6 +257,7 @@ cuda_py_test(
     name = "profiler_test",
     srcs = ["profiler_test.py"],
     python_version = "PY3",
+    tags = ["no_rocm"],
     deps = [
         ":profiler",
         ":test",
@@ -741,6 +742,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
+        "//tensorflow/python/profiler:traceme",
         "//tensorflow/python/training/tracking:base",
     ],
 )

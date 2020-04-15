@@ -168,6 +168,20 @@ static ConvertOp CastValueToI64(Location loc, Value value,
   return rewriter->create<ConvertOp>(loc, value, rewriter->getIntegerType(64));
 }
 
+// Creates an unpack op along the 0th dimension of the tensor. The `value` input
+// must be a ranked tensor.
+static TF::UnpackOp UnpackTensorAlongZeroDim(Location loc, Value value,
+                                             PatternRewriter *rewriter) {
+  auto indices_type = value.getType().cast<RankedTensorType>();
+  int num_outputs = indices_type.getShape().front();
+  SmallVector<Type, 2> unpacked_indices_type(
+      num_outputs, RankedTensorType::get({}, indices_type.getElementType()));
+  auto unpacked_indices = rewriter->create<TF::UnpackOp>(
+      loc, unpacked_indices_type, value,
+      IntegerAttr::get(rewriter->getIntegerType(64), 0));
+  return unpacked_indices;
+}
+
 // Returns size of dimension at the specified index, if ranked tensor.
 // Otherwise, returns -1.
 //

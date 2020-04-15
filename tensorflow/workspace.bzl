@@ -156,11 +156,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "246aa56afc5263f1d41fc4a3437ecd51b56f78e16421818961cf79e39431c1df",
-        strip_prefix = "XNNPACK-b9d07cfa38af15c2abf564c980e00c965857ba21",
+        sha256 = "583e408c9ab9a6ec241a54e0775bc170ed2ea3d1073668c9379dbfe282fa8acc",
+        strip_prefix = "XNNPACK-24d9a03a9ee036949f8c56878ecec17ab400fc23",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/b9d07cfa38af15c2abf564c980e00c965857ba21.zip",
-            "https://github.com/google/XNNPACK/archive/b9d07cfa38af15c2abf564c980e00c965857ba21.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/24d9a03a9ee036949f8c56878ecec17ab400fc23.zip",
+            "https://github.com/google/XNNPACK/archive/24d9a03a9ee036949f8c56878ecec17ab400fc23.zip",
         ],
     )
 
@@ -176,11 +176,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "f894d845cefc091291329712deec85ce7020546f6eaff200b690ae04b6094535",
-        strip_prefix = "pthreadpool-bfa3b9ce6cb71dc8b792e39d24717320a4f92572",
+        sha256 = "27c039e73846d0bdfe393833e91afafe45e61ba792cc60e1c62808090554ce4d",
+        strip_prefix = "pthreadpool-a61ed1ab70389c62f6f699ca1a30a2421d3ea594",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/Maratyszcza/pthreadpool/archive/bfa3b9ce6cb71dc8b792e39d24717320a4f92572.zip",
-            "https://github.com/Maratyszcza/pthreadpool/archive/bfa3b9ce6cb71dc8b792e39d24717320a4f92572.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/Maratyszcza/pthreadpool/archive/a61ed1ab70389c62f6f699ca1a30a2421d3ea594.zip",
+            "https://github.com/Maratyszcza/pthreadpool/archive/a61ed1ab70389c62f6f699ca1a30a2421d3ea594.zip",
         ],
     )
 
@@ -658,8 +658,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "37ac1c19bed7b7d22e9312dfa61e7a4506ed4e49"
-    LLVM_SHA256 = "b694cd7ed85cbc938f11534d56a326126015de21a5fec3c073dc6125bec1fc24"
+    LLVM_COMMIT = "129cf84e69537ae5c184550f94be18da738d9261"
+    LLVM_SHA256 = "4b56ff735e973ee982c4f24ab5b22d56ad0734f2d12d9c57fe1c21530a5840a0"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),

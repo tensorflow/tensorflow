@@ -2254,6 +2254,27 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
            std::tuple<const HloValue*, Chunk, HeapSimulatorTrace::Event::Kind>>
       events;
 
+  // Go through all instructions in the module to ensure CopyStart/CopyDone
+  // instructions copy between alternate memory and default memory.
+  for (const HloComputation* computation :
+       module_->MakeNonfusionComputations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kCopyStart) {
+        int64 from_memory_space =
+            ShapeUtil::GetSubshape(instruction->shape(), {1})
+                .layout()
+                .memory_space();
+        int64 to_memory_space =
+            ShapeUtil::GetSubshape(instruction->shape(), {0})
+                .layout()
+                .memory_space();
+        CHECK_NE(from_memory_space, to_memory_space)
+            << "Asynchronous copy to the same memory space: "
+            << instruction->ToString();
+      }
+    }
+  }
+
   for (const auto& position_and_chunk : preset_assignments_->chunks()) {
     const HloPosition& position = position_and_chunk.first;
     const Chunk& chunk = position_and_chunk.second;

@@ -728,7 +728,6 @@ cc_library(
         ],
     ),
     hdrs = glob([
-        "include/mlir/ADT/*.h",
         "include/mlir/Support/*.h",
     ]),
     includes = ["include"],
