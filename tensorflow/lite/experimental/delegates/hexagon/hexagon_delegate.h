@@ -55,6 +55,9 @@ struct TFL_CAPI_EXPORT TfLiteHexagonDelegateOptions {
   // hexagon_nn_init. Each graph corresponds to one delegated node subset in the
   // TFLite model.
   int max_delegated_partitions;
+  // This sets the minimum number of nodes per graph created with
+  // hexagon_nn_init. Defaults to 2.
+  int min_nodes_per_partition;
 };
 
 // Return a delegate that uses Hexagon SDK for ops execution.

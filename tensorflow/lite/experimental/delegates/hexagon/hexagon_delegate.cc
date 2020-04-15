@@ -95,7 +95,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   TfLiteHexagonDelegateOptions* params =
       static_cast<TfLiteHexagonDelegateOptions*>(delegate->data_);
   const auto delegate_partitions = helper.GetFirstNLargestPartitions(
-      params->max_delegated_partitions, kMinNodesPerHexagonGraph);
+      params->max_delegated_partitions, params->min_nodes_per_partition);
 
   // To avoid creating a new TfLiteIntArray and free it later, we reserve one
   // element to represent TfLiteIntArray.size which is the 1st element of
@@ -132,6 +132,9 @@ class HexagonDelegate : public TfLiteDelegate {
                       "and will cap to at most %d partitions.\n",
                       params_.max_delegated_partitions, kMaxMaxHexagonGraphs);
       params_.max_delegated_partitions = kMaxMaxHexagonGraphs;
+    }
+    if (params_.min_nodes_per_partition <= 0) {
+      params_.min_nodes_per_partition = kMinNodesPerHexagonGraph;
     }
   }
 
