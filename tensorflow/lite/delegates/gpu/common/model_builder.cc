@@ -383,12 +383,84 @@ class ObjectReader {
         tensor_to_value_(tensor_to_value),
         quant_conversion_map_(quant_conversion_map) {}
 
+  static absl::Status ReadNonConstantTensor(
+      TfLiteContext* context,
+      std::unordered_map<int, Value<TensorRef<BHWC>>*>* tensor_to_value,
+      std::unordered_map<int, int>* quant_conversion_map, GraphFloat32* graph,
+      uint32_t tensor_idx, Value<TensorRef<BHWC>>** value = nullptr) {
+    if (tensor_idx >= context->tensors_size) {
+      return absl::OutOfRangeError(
+          absl::StrCat("ReadNonConstTensor: input tensor index: ", tensor_idx));
+    }
+
+    if (tensor_to_value->find(tensor_idx) == tensor_to_value->end()) {
+      const TfLiteTensor& tflite_tensor = context->tensors[tensor_idx];
+      if (tflite::IsConstantTensor(&tflite_tensor)) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "ReadNonConstantTensor: value is a constant tensor: ", tensor_idx));
+      }
+
+      if ((tflite_tensor.type == kTfLiteInt8 ||
+           tflite_tensor.type == kTfLiteUInt8) &&
+          quant_conversion_map) {
+        // Quantized case
+        if (quant_conversion_map->find(tensor_idx) ==
+            quant_conversion_map->end()) {
+          // Since the original tensor is fixed-point, add a new float tensor to
+          // the TFLite graph to represent the dequantized data.
+          int fp_tensor_index = 0;
+          TfLiteTensor* fp_tflite_tensor;
+          if (delegates::CreateNewTensorWithDifferentType(
+                  context, tensor_idx, kTfLiteFloat32, &fp_tflite_tensor,
+                  &fp_tensor_index) != kTfLiteOk) {
+            return absl::InternalError("Could not add new tensor to graph");
+          }
+          // Remember this tensor for later.
+          (*quant_conversion_map)[fp_tensor_index] = tensor_idx;
+          (*quant_conversion_map)[tensor_idx] = fp_tensor_index;
+          // Add a new GPU Value for the new dequantized floating-point tensor.
+          Value<TensorRef<BHWC>>* value = graph->NewValue();
+          RETURN_IF_ERROR(ConvertTfLiteTensorToTensorRef(*fp_tflite_tensor,
+                                                         &value->tensor));
+          value->tensor.ref = fp_tensor_index;
+          value->quant_params.emplace();
+          RETURN_IF_ERROR(
+              PopulateQuantParams(tflite_tensor, &value->quant_params.value()));
+          (*tensor_to_value)[fp_tensor_index] = value;
+        }
+        // We do not use the original tensor index as reference for the GPU
+        // Value, instead pointing at the corresponding float version.
+        tensor_idx = quant_conversion_map->at(tensor_idx);
+      } else {
+        // Floating-point case.
+        Value<TensorRef<BHWC>>* value = graph->NewValue();
+        RETURN_IF_ERROR(
+            ConvertTfLiteTensorToTensorRef(tflite_tensor, &value->tensor));
+        value->tensor.ref = tensor_idx;
+        (*tensor_to_value)[tensor_idx] = value;
+      }
+    }
+
+    if (value) {
+      *value = (*tensor_to_value)[tensor_idx];
+    }
+    return absl::OkStatus();
+  }
+
   absl::Status ReadValue(uint32_t idx, Value<TensorRef<BHWC>>** value) {
     if (idx >= tflite_node_->inputs->size) {
       return absl::OutOfRangeError(
           absl::StrCat("ReadValue: input tensor index: ", idx));
     }
     return ReadValueByTensorIdx(tflite_node_->inputs->data[idx], value);
+  }
+
+  absl::Status ReadValueByTensorIdx(uint32_t tensor_idx,
+                                    Value<TensorRef<BHWC>>** value) {
+    // Constant tensors should be handled by ReadTensor.
+    return ReadNonConstantTensor(context_, tensor_to_value_,
+                                 quant_conversion_map_, graph_, tensor_idx,
+                                 value);
   }
 
   int GetNumberOfRuntimeInputs() const {
@@ -446,65 +518,6 @@ class ObjectReader {
     Value<TensorRef<BHWC>>* input;
     RETURN_IF_ERROR(ReadValue(idx, &input));
     return graph_->AddConsumer(node->id, input->id);
-  }
-
-  absl::Status ReadValueByTensorIdx(uint32_t tensor_idx,
-                                    Value<TensorRef<BHWC>>** value) {
-    if (tensor_idx >= context_->tensors_size) {
-      return absl::OutOfRangeError(
-          absl::StrCat("ReadValue: input tensor index: ", tensor_idx));
-    }
-
-    if (tensor_to_value_->find(tensor_idx) == tensor_to_value_->end()) {
-      const TfLiteTensor& tflite_tensor = context_->tensors[tensor_idx];
-      if (tflite::IsConstantTensor(&tflite_tensor)) {
-        return absl::NotFoundError(absl::StrCat(
-            "ReadValue: value is a constant tensor: ", tensor_idx));
-      }
-
-      if ((tflite_tensor.type == kTfLiteInt8 ||
-           tflite_tensor.type == kTfLiteUInt8) &&
-          quant_conversion_map_) {
-        // Quantized case
-        if (quant_conversion_map_->find(tensor_idx) ==
-            quant_conversion_map_->end()) {
-          // Since the original tensor is fixed-point, add a new float tensor to
-          // the TFLite graph to represent the dequantized data.
-          int fp_tensor_index = 0;
-          TfLiteTensor* fp_tflite_tensor;
-          if (delegates::CreateNewTensorWithDifferentType(
-                  context_, tensor_idx, kTfLiteFloat32, &fp_tflite_tensor,
-                  &fp_tensor_index) != kTfLiteOk) {
-            return absl::InternalError("Could not add new tensor to graph");
-          }
-          // Remember this tensor for later.
-          (*quant_conversion_map_)[fp_tensor_index] = tensor_idx;
-          (*quant_conversion_map_)[tensor_idx] = fp_tensor_index;
-          // Add a new GPU Value for the new dequantized floating-point tensor.
-          Value<TensorRef<BHWC>>* value = graph_->NewValue();
-          RETURN_IF_ERROR(ConvertTfLiteTensorToTensorRef(*fp_tflite_tensor,
-                                                         &value->tensor));
-          value->tensor.ref = fp_tensor_index;
-          value->quant_params.emplace();
-          RETURN_IF_ERROR(
-              PopulateQuantParams(tflite_tensor, &value->quant_params.value()));
-          (*tensor_to_value_)[fp_tensor_index] = value;
-        }
-        // We do not use the original tensor index as reference for the GPU
-        // Value, instead pointing at the corresponding float version.
-        tensor_idx = quant_conversion_map_->at(tensor_idx);
-      } else {
-        // Floating-point case.
-        Value<TensorRef<BHWC>>* value = graph_->NewValue();
-        RETURN_IF_ERROR(
-            ConvertTfLiteTensorToTensorRef(tflite_tensor, &value->tensor));
-        value->tensor.ref = tensor_idx;
-        (*tensor_to_value_)[tensor_idx] = value;
-      }
-    }
-
-    *value = (*tensor_to_value_)[tensor_idx];
-    return absl::OkStatus();
   }
 
   TfLiteTensor* GetInputTensor(int index) const {
@@ -3122,6 +3135,25 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops) {
   return ConvertVectorToTfLiteIntArray(ops_to_replace);
 }
 
+// Creates inputs and outputs passed by io_tensors parameters in the resulting
+// graph. We force it to make sure that delegated subgraph has same order of
+// inputs and outputs with the original one. When delegated model is built from
+// the tflite model representation tensors are created lazily, so there is no
+// guarantee that the order will match the source model tensors order.
+absl::Status PrecreateIOTensors(
+    TfLiteContext* context, GraphFloat32* graph, TfLiteIntArray* io_tensors,
+    std::unordered_map<int, int>* quant_conversion_map,
+    std::unordered_map<int, Value<TensorRef<BHWC>>*>* tensor_to_value) {
+  for (int i = 0; i < io_tensors->size; ++i) {
+    const int tensor_index = io_tensors->data[i];
+    const TfLiteTensor& tflite_tensor = context->tensors[tensor_index];
+    if (tflite::IsConstantTensor(&tflite_tensor)) continue;
+    RETURN_IF_ERROR(ObjectReader::ReadNonConstantTensor(
+        context, tensor_to_value, quant_conversion_map, graph, tensor_index));
+  }
+  return absl::OkStatus();
+}
+
 absl::Status BuildModel(TfLiteContext* context,
                         const TfLiteDelegateParams* delegate_params,
                         GraphFloat32* graph,
@@ -3152,6 +3184,12 @@ absl::Status BuildModel(TfLiteContext* context,
     tflite_nodes.push_back(i);
   }
   std::unordered_map<int, Value<TensorRef<BHWC>>*> tensor_to_value;
+  RETURN_IF_ERROR(PrecreateIOTensors(context, graph,
+                                     delegate_params->input_tensors,
+                                     quant_conversion_map, &tensor_to_value));
+  RETURN_IF_ERROR(PrecreateIOTensors(context, graph,
+                                     delegate_params->output_tensors,
+                                     quant_conversion_map, &tensor_to_value));
   for (int i = 0; i < operations.size(); ++i) {
     TfLiteNode* tflite_node;
     TfLiteRegistration* registration;
