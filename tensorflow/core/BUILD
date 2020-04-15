@@ -2554,7 +2554,6 @@ tf_cc_tests(
     ],
     create_named_test_suite = True,
     deps = [
-        ":core_cpu_internal",
         ":lib",
         ":lib_internal",
         ":lib_test_internal",
