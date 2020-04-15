@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/reference/pooling.h"
 
+#include "mli_api.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/arc_mli/mli_tf_utils.h"
 #include "tensorflow/lite/micro/kernels/arc_mli/mli_slicers.h"
 
-#include "mli_api.h"
 
 namespace tflite {
 namespace ops {
@@ -40,7 +40,7 @@ struct OpData {
   TfLitePaddingValues padding;
 };
 
-typedef enum MliPoolingType { AveragePooling = 0, MaxPooling = 1 } MliPoolingType;
+enum MliPoolingType { AveragePooling = 0, MaxPooling = 1 };
 
 TfLiteStatus CalculateOpData(const TfLiteContext* context,
                              const TfLitePoolParams* params,
@@ -111,9 +111,15 @@ TfLiteStatus EvalMli(TfLiteContext* context, const TfLitePoolParams* params,
   }
 
   mli_point_to_subtsr_cfg subtsr_cfg_in = {
-      {0, 0}, 2, static_cast<uint8_t>(mli_in.shape[1])};
+      .start_coord = {0, 0}, 
+      .coord_num = 2, 
+      .first_out_dim_size = static_cast<uint8_t>(mli_in.shape[1]),
+  };
   mli_point_to_subtsr_cfg subtsr_cfg_out = {
-      {0, 0}, 2, static_cast<uint8_t>(mli_out.shape[1])};
+      .start_coord = {0, 0}, 
+      .coord_num = 2, 
+      .first_out_dim_size = static_cast<uint8_t>(mli_out.shape[1]),
+  };
   mli_tensor sub_mli_in = {0};
   mli_tensor sub_mli_out = {0};
   mli_hlp_point_to_subtensor(&mli_in, &subtsr_cfg_in, &sub_mli_in);
