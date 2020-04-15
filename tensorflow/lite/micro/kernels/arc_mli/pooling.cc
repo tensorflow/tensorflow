@@ -20,10 +20,10 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
-#include "tensorflow/lite/micro/kernels/embarc_mli/scratch_buffers.h"
-#include "tensorflow/lite/micro/kernels/embarc_mli/scratch_buf_mgr.h"
-#include "tensorflow/lite/micro/kernels/embarc_mli/mli_tf_utils.h"
-#include "tensorflow/lite/micro/kernels/embarc_mli/mli_slicers.h"
+#include "tensorflow/lite/micro/kernels/arc_mli/scratch_buffers.h"
+#include "tensorflow/lite/micro/kernels/arc_mli/scratch_buf_mgr.h"
+#include "tensorflow/lite/micro/kernels/arc_mli/mli_tf_utils.h"
+#include "tensorflow/lite/micro/kernels/arc_mli/mli_slicers.h"
 
 #include "mli_api.h"
 
