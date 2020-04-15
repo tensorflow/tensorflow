@@ -109,22 +109,7 @@ TfLiteStatus EvalMli(TfLiteContext* context, const TfLitePoolParams* params,
     cfg.padding_top = data->padding.height;
     cfg.padding_bottom = data->padding.height + data->padding.height_offset;
   }
-
-  mli_point_to_subtsr_cfg subtsr_cfg_in = {
-      .start_coord = {0, 0}, 
-      .coord_num = 2, 
-      .first_out_dim_size = static_cast<uint8_t>(mli_in.shape[1]),
-  };
-  mli_point_to_subtsr_cfg subtsr_cfg_out = {
-      .start_coord = {0, 0}, 
-      .coord_num = 2, 
-      .first_out_dim_size = static_cast<uint8_t>(mli_out.shape[1]),
-  };
-  mli_tensor sub_mli_in = {0};
-  mli_tensor sub_mli_out = {0};
-  mli_hlp_point_to_subtensor(&mli_in, &subtsr_cfg_in, &sub_mli_in);
-  mli_hlp_point_to_subtensor(&mli_out, &subtsr_cfg_out, &sub_mli_out);
-
+  
   const int height_dimension = 1;
   int in_slice_height = 0;
   int out_slice_height = 0;
@@ -132,14 +117,14 @@ TfLiteStatus EvalMli(TfLiteContext* context, const TfLitePoolParams* params,
 
   // Tensors for data in fast (local) memory and config to copy data from
   // external to local memory
-  mli_tensor in_local = sub_mli_in;
-  mli_tensor out_local = sub_mli_out;
+  mli_tensor in_local = mli_in;
+  mli_tensor out_local = mli_out;
   mli_mov_cfg_t copy_config;
   mli_mov_cfg_for_copy(&copy_config);
   TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_pooling_tensors(
       context, &in_local, &out_local));
-  bool in_is_local = in_local.data == sub_mli_in.data;
-  bool out_is_local = out_local.data == sub_mli_out.data;
+  bool in_is_local = in_local.data == mli_in.data;
+  bool out_is_local = out_local.data == mli_out.data;
   TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_io(
       &in_local, &out_local, cfg.kernel_height, cfg.stride_height,
       cfg.padding_top, cfg.padding_bottom, &in_slice_height,
