@@ -20,10 +20,11 @@ For example:
 
 ```
 # 'diagonal' is [1, 2, 3, 4]
-tf.diag(diagonal) ==> [[1, 0, 0, 0]
-                       [0, 2, 0, 0]
-                       [0, 0, 3, 0]
-                       [0, 0, 0, 4]]
+<tf.Tensor: shape=(4, 4), dtype=int32, numpy=
+array([[1, 0, 0, 0],
+       [0, 2, 0, 0],
+       [0, 0, 3, 0],
+       [0, 0, 0, 4]], dtype=int32)>
 ```
 END
 }
