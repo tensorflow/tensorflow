@@ -778,12 +778,12 @@ NamedAttribute GetConvDimensionNumbersAttr(
 // the paddings attribute anyway requires multiple source op attributes and
 // result op attributes. Defining it as declarative rewrite rule will introduce
 // some duplication in the C++ helper methods.
-template <typename OpT, int num_spatial_dims, bool depthwise_conv = false>
-class ConvertConv : public OpRewritePattern<OpT> {
+template <typename OpTy, int num_spatial_dims, bool depthwise_conv = false>
+class ConvertConvOp : public OpRewritePattern<OpTy> {
  public:
-  using OpRewritePattern<OpT>::OpRewritePattern;
+  using OpRewritePattern<OpTy>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(OpT op,
+  LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
     tensorflow::TensorFormat format;
     std::string data_format = op.data_format().str();
@@ -809,10 +809,10 @@ class ConvertConv : public OpRewritePattern<OpT> {
       return attr.template cast<IntegerAttr>().getInt();
     };
 
-    SmallVector<int64_t, 4> spatial_dim_indices;
-    SmallVector<int64_t, 4> rhs_dilations;
-    SmallVector<int64_t, 4> window_strides;
-    SmallVector<int64_t, 8> paddings;
+    SmallVector<int64_t, 3> spatial_dim_indices;
+    SmallVector<int64_t, 3> rhs_dilations;
+    SmallVector<int64_t, 3> window_strides;
+    SmallVector<int64_t, 6> paddings;
 
     ArrayRef<Attribute> dilations = op.dilations().getValue();
     ArrayRef<Attribute> strides = op.strides().getValue();
@@ -829,10 +829,10 @@ class ConvertConv : public OpRewritePattern<OpT> {
       int64_t dim = GetTensorSpatialDimIndex(num_dims, format, i);
       spatial_dim_indices.push_back(dim);
 
-      int64_t stride = get_int(strides[dim]);
       int64_t dilation = get_int(dilations[dim]);
-      window_strides.push_back(stride);
       rhs_dilations.push_back(dilation);
+      int64_t stride = get_int(strides[dim]);
+      window_strides.push_back(stride);
 
       int64_t pad_low, pad_high;
       if (padding == tensorflow::Padding::EXPLICIT) {
@@ -910,10 +910,12 @@ class ConvertConv : public OpRewritePattern<OpT> {
   }
 };
 
-using ConvertConv2D = ConvertConv<TF::Conv2DOp, /*num_spatial_dims=*/2>;
-using ConvertDepthConv2D =
-    ConvertConv<TF::DepthwiseConv2dNativeOp, /*num_spatial_dims=*/2,
-                /*depthwise_conv=*/true>;
+using ConvertConv2DOp = ConvertConvOp<TF::Conv2DOp, /*num_spatial_dims=*/2>;
+using ConvertConv3DOp = ConvertConvOp<TF::Conv3DOp, /*num_spatial_dims=*/3>;
+using ConvertDepthConv2DOp =
+    ConvertConvOp<TF::DepthwiseConv2dNativeOp, /*num_spatial_dims=*/2,
+                  /*depthwise_conv=*/true>;
+
 // Converts BF16 FloorDiv op to have casting operators on either end as BF16
 // division can result in strange behavior.
 //
@@ -3860,8 +3862,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
   TF::PopulateLoweringTFPatterns(context, &patterns);
   patterns.insert<
       ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBatchMatMulV2Op,
-      ConvertBroadcastToOp, ConvertBF16FloorDivOp, ConvertConv2D,
-      ConvertDepthConv2D, ConvertConv2DBackpropFilterOp,
+      ConvertBroadcastToOp, ConvertBF16FloorDivOp, ConvertConv2DOp,
+      ConvertConv3DOp, ConvertDepthConv2DOp, ConvertConv2DBackpropFilterOp,
       ConvertConv2DBackpropInputOp, ConvertCumsumOp, ConvertDiagPartOp,
       ConvertEinsumOp, ConvertFusedBatchNormGradOp,
       ConvertFusedBatchNormGradV2Op, ConvertFusedBatchNormGradV3Op,
