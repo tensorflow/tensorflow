@@ -1036,7 +1036,7 @@ cc_library(
         "//conditions:default": [],
     },
     deps = [
-        "//tensorflow/lite/kernels:cpu_backend_context",
+        "@ruy//ruy:detect_arm",  # safe to use regardless of arch.
     ],
 )
 
