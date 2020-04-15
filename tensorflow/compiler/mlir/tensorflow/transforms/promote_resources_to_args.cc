@@ -256,7 +256,7 @@ void PromoteResourcesToArgsPass::runOnOperation() {
   // This routine should only be called when control flow operations are still
   // represented with TF IfOp and WhileOp operations. In this case, there should
   // be only one basic blocks in the MLIR representation.
-  if (!has_single_element(main_func.getBlocks())) {
+  if (!hasSingleElement(main_func.getBlocks())) {
     main_func.emitError() << "expects 'main' function to have 1 block, got "
                           << main_func.getBlocks().size();
     return signalPassFailure();
