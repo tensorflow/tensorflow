@@ -44,19 +44,28 @@ class RegisterDatasetOp : public OpKernel {
   SerializationContext::ExternalStatePolicy external_state_policy_;
 };
 
-// Begins a new epoch for a tf.data service dataset.
+enum class ProcessingMode : int64 {
+  // Each tf.data worker processes an entire epoch.
+  PARALLEL_EPOCHS = 0,
+  // Processing of an epoch is distributed across all tf.data workers.
+  ONE_EPOCH = 1,
+};
+
+// Creates a token for reading from the tf.data service.
 //
-// The dataset_id input identifies which dataset to start a new epoch for.
+// The dataset_id input identifies which dataset to create a token for.
 // The address and protocol inputs are used to connect to the tf.data service
 // master.
-// The op produces an epoch id to identify the newly created epoch.
-class BeginEpochOp : public OpKernel {
+// The processing_mode defines how the tf.data service should produce data for
+// the token.
+class CreateJobOp : public OpKernel {
  public:
   static constexpr const char* const kDatasetId = "dataset_id";
   static constexpr const char* const kAddress = "address";
   static constexpr const char* const kProtocol = "protocol";
+  static constexpr const char* const kProcessingMode = "processing_mode";
 
-  explicit BeginEpochOp(OpKernelConstruction* ctx);
+  explicit CreateJobOp(OpKernelConstruction* ctx);
 
   void Compute(OpKernelContext* ctx) override;
 };
@@ -68,7 +77,7 @@ class BeginEpochOp : public OpKernel {
 // across all iterators.
 class MakeDataServiceIteratorOp : public MakeIteratorOp {
  public:
-  static constexpr const char* const kEpochId = "epoch_id";
+  static constexpr const char* const kJobToken = "job_token";
 
   explicit MakeDataServiceIteratorOp(OpKernelConstruction* ctx)
       : MakeIteratorOp(ctx) {}

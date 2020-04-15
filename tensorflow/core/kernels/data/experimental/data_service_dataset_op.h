@@ -25,7 +25,6 @@ class DataServiceDatasetOp : public DatasetOpKernel {
  public:
   static constexpr const char* const kDatasetType = "DataService";
   static constexpr const char* const kAddress = "address";
-  static constexpr const char* const kEpochId = "epoch_id";
   static constexpr const char* const kProtocol = "protocol";
   static constexpr const char* const kMaxOutstandingRequests =
       "max_outstanding_requests";

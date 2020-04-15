@@ -39,6 +39,8 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+const char kDataServiceDataset[] = "DataServiceDataset";
+
 // Simplistic implementation of the `StepStatsCollectorInterface` that only
 // cares about collecting the CPU time needed to execute a captured function.
 class SimpleStepStatsCollector : public StepStatsCollectorInterface {
@@ -478,6 +480,13 @@ Status FunctionMetadata::Create(
     if (!validate_arg(arg)) {
       (*out_metadata)->use_multi_device_function_ = false;
       return Status::OK();
+    }
+  }
+  for (const auto& node : fdef->node_def()) {
+    if (node.op() == kDataServiceDataset) {
+      return errors::InvalidArgument(
+          "The `.distribute(...)` dataset transformation is not supported "
+          "within tf.data functions.");
     }
   }
   return Status::OK();
