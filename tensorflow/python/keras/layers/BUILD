@@ -10,7 +10,6 @@ package(
         "//tensorflow/python/distribute:__pkg__",
         "//tensorflow/python/feature_column:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
-        "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/training/tracking:__pkg__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
