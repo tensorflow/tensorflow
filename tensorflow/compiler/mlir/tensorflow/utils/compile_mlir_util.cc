@@ -273,6 +273,7 @@ Status ConvertMLIRToXlaComputation(
   tf2xla.addPass(mlir::TFDevice::CreateDecomposeResourceOpsPass());
   tf2xla.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
   tf2xla.addPass(mlir::createSymbolDCEPass());
+  tf2xla.addPass(mlir::TF::CreateTFShapeInferencePass());
   // LegalizeTFControlFlow encapsulates arguments for control flow operations
   // with a tuple argument which break the assumption of resource lifting
   // inside PromoteResourcesToArgs.

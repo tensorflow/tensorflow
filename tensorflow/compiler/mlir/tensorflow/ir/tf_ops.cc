@@ -2257,7 +2257,7 @@ static LogicalResult Verify(ReshapeOp op) {
   if (rank_by_shape == -1 || !type_of_tensor.hasStaticShape()) return success();
   int64_t num_by_tensor = type_of_tensor.getNumElements();
 
-  auto out_ty = op.getType().cast<RankedTensorType>();
+  auto out_ty = op.getType().dyn_cast<RankedTensorType>();
   if (out_ty && out_ty.hasStaticShape()) {
     int64_t num_output_elements = out_ty.getNumElements();
     if (num_by_tensor != num_output_elements)
