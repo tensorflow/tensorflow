@@ -34,25 +34,23 @@ namespace gpu {
 class ObjectReader {
  public:
   static absl::Status ReadNonConstantTensor(
-      TfLiteContext* context,
-      std::unordered_map<int, Value<TensorRef<BHWC>>*>* tensor_to_value,
+      TfLiteContext* context, std::unordered_map<int, Value*>* tensor_to_value,
       std::unordered_map<int, int>* quant_conversion_map, GraphFloat32* graph,
-      uint32_t tensor_idx, Value<TensorRef<BHWC>>** value = nullptr);
+      uint32_t tensor_idx, Value** value = nullptr);
 
-  ObjectReader(
-      GraphFloat32* graph, TfLiteContext* context, const TfLiteNode* node,
-      std::unordered_map<int, Value<TensorRef<BHWC>>*>* tensor_to_value,
-      std::unordered_map<int, int>* quant_conversion_map = nullptr)
+  ObjectReader(GraphFloat32* graph, TfLiteContext* context,
+               const TfLiteNode* node,
+               std::unordered_map<int, Value*>* tensor_to_value,
+               std::unordered_map<int, int>* quant_conversion_map = nullptr)
       : graph_(graph),
         context_(context),
         node_(node),
         tensor_to_value_(tensor_to_value),
         quant_conversion_map_(quant_conversion_map) {}
 
-  absl::Status ReadValue(uint32_t idx, Value<TensorRef<BHWC>>** value);
+  absl::Status ReadValue(uint32_t idx, Value** value);
 
-  absl::Status ReadValueByTensorIdx(uint32_t tensor_idx,
-                                    Value<TensorRef<BHWC>>** value);
+  absl::Status ReadValueByTensorIdx(uint32_t tensor_idx, Value** value);
 
   int GetNumberOfRuntimeInputs() const;
 
@@ -89,7 +87,7 @@ class ObjectReader {
   GraphFloat32* graph_;
   TfLiteContext* context_;
   const TfLiteNode* node_;
-  std::unordered_map<int, Value<TensorRef<BHWC>>*>* tensor_to_value_;
+  std::unordered_map<int, Value*>* tensor_to_value_;
   std::unordered_map<int, int>* quant_conversion_map_;
 };
 

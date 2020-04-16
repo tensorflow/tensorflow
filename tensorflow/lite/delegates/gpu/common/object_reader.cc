@@ -28,10 +28,9 @@ namespace tflite {
 namespace gpu {
 
 absl::Status ObjectReader::ReadNonConstantTensor(
-    TfLiteContext* context,
-    std::unordered_map<int, Value<TensorRef<BHWC>>*>* tensor_to_value,
+    TfLiteContext* context, std::unordered_map<int, Value*>* tensor_to_value,
     std::unordered_map<int, int>* quant_conversion_map, GraphFloat32* graph,
-    uint32_t tensor_idx, Value<TensorRef<BHWC>>** value) {
+    uint32_t tensor_idx, Value** value) {
   if (tensor_idx >= context->tensors_size) {
     return absl::OutOfRangeError(
         absl::StrCat("ReadNonConstTensor: input tensor index: ", tensor_idx));
@@ -63,7 +62,7 @@ absl::Status ObjectReader::ReadNonConstantTensor(
         (*quant_conversion_map)[fp_tensor_index] = tensor_idx;
         (*quant_conversion_map)[tensor_idx] = fp_tensor_index;
         // Add a new GPU Value for the new dequantized floating-point tensor.
-        Value<TensorRef<BHWC>>* value = graph->NewValue();
+        Value* value = graph->NewValue();
         RETURN_IF_ERROR(
             ConvertTfLiteTensorToTensorRef(*fp_tflite_tensor, &value->tensor));
         value->tensor.ref = fp_tensor_index;
@@ -77,7 +76,7 @@ absl::Status ObjectReader::ReadNonConstantTensor(
       tensor_idx = quant_conversion_map->at(tensor_idx);
     } else {
       // Floating-point case.
-      Value<TensorRef<BHWC>>* value = graph->NewValue();
+      Value* value = graph->NewValue();
       RETURN_IF_ERROR(
           ConvertTfLiteTensorToTensorRef(tflite_tensor, &value->tensor));
       value->tensor.ref = tensor_idx;
@@ -91,8 +90,7 @@ absl::Status ObjectReader::ReadNonConstantTensor(
   return absl::OkStatus();
 }
 
-absl::Status ObjectReader::ReadValue(uint32_t idx,
-                                     Value<TensorRef<BHWC>>** value) {
+absl::Status ObjectReader::ReadValue(uint32_t idx, Value** value) {
   if (idx >= node_->inputs->size) {
     return absl::OutOfRangeError(
         absl::StrCat("ReadValue: input tensor index: ", idx));
@@ -100,8 +98,8 @@ absl::Status ObjectReader::ReadValue(uint32_t idx,
   return ReadValueByTensorIdx(node_->inputs->data[idx], value);
 }
 
-absl::Status ObjectReader::ReadValueByTensorIdx(
-    uint32_t tensor_idx, Value<TensorRef<BHWC>>** value) {
+absl::Status ObjectReader::ReadValueByTensorIdx(uint32_t tensor_idx,
+                                                Value** value) {
   // Constant tensors should be handled by ReadTensor.
   return ReadNonConstantTensor(context_, tensor_to_value_,
                                quant_conversion_map_, graph_, tensor_idx,
@@ -133,7 +131,7 @@ absl::Status ObjectReader::AddOutput(const Node* node, int id) {
         node_->outputs->size));
   }
   int output_tensor_idx = node_->outputs->data[id];
-  Value<TensorRef<BHWC>>* value;
+  Value* value;
   RETURN_IF_ERROR(ReadValueByTensorIdx(output_tensor_idx, &value));
   RETURN_IF_ERROR(graph_->SetProducer(node->id, value->id));
   return absl::OkStatus();
@@ -147,7 +145,7 @@ absl::Status ObjectReader::AddOutputs(const Node* node) {
 }
 
 absl::Status ObjectReader::AddInput(const Node* node, uint32_t idx) {
-  Value<TensorRef<BHWC>>* input;
+  Value* input;
   RETURN_IF_ERROR(ReadValue(idx, &input));
   return graph_->AddConsumer(node->id, input->id);
 }

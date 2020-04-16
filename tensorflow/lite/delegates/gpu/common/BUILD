@@ -78,6 +78,7 @@ cc_library(
 
 cc_library(
     name = "model",
+    srcs = ["model.cc"],
     hdrs = ["model.h"],
     deps = [
         ":data_type",

@@ -66,12 +66,11 @@ namespace {
 // will turn into:
 //   node(copy(output)) <- passthrough_node(output)
 absl::Status NewPassthroughNode(GraphFloat32* graph, Node* node,
-                                const Value<TensorRef<BHWC>>* output,
-                                Node** passthru_node) {
+                                const Value* output, Node** passthru_node) {
   *passthru_node = graph->NewNode();
   // Make copies for every output in the original node.
   RETURN_IF_ERROR(graph->SetProducer((*passthru_node)->id, output->id));
-  Value<TensorRef<BHWC>>* copy_output = graph->NewValue();
+  Value* copy_output = graph->NewValue();
   RETURN_IF_ERROR(graph->SetProducer(node->id, copy_output->id));
   RETURN_IF_ERROR(graph->AddConsumer((*passthru_node)->id, copy_output->id));
   copy_output->tensor = output->tensor;
@@ -323,8 +322,7 @@ absl::Status CheckKernelsAndStrides(int kernel_h, int kernel_w, int strides_h,
 }
 
 // Creates a simple node that holds tensor value.
-absl::Status NewConstNode(TensorFloat32 t, GraphFloat32* graph,
-                          Value<TensorRef<BHWC>>** value) {
+absl::Status NewConstNode(TensorFloat32 t, GraphFloat32* graph, Value** value) {
   ConstTensorAttributes attr;
   attr.tensor = std::move(t);
   Node* node = graph->NewNode();
@@ -457,16 +455,16 @@ class ConcatenationOperationParser : public TFLiteOperationParser {
     ConcatAttributes attr;
     // Read inputs first to make sure const node is added to a graph before
     // concat node to ensure topological order.
-    std::vector<const Value<TensorRef<BHWC>>*> inputs;
+    std::vector<const Value*> inputs;
     for (uint32_t idx = 0; idx < tflite_node->inputs->size; ++idx) {
-      Value<TensorRef<BHWC>>* value;
+      Value* value;
       const auto status = reader->ReadValue(idx, &value);
       if (status.ok()) {
         inputs.push_back(value);
       } else {
         TensorFloat32 tensor;
         RETURN_IF_ERROR(reader->ReadTensor(idx, &tensor));
-        Value<TensorRef<BHWC>>* value;
+        Value* value;
         RETURN_IF_ERROR(NewConstNode(std::move(tensor), graph, &value));
         inputs.push_back(value);
       }
@@ -475,7 +473,7 @@ class ConcatenationOperationParser : public TFLiteOperationParser {
     Node* node = graph->NewNode();
     node->operation.type = ToString(OperationType::CONCAT);
     RETURN_IF_ERROR(reader->AddOutputs(node));
-    for (const Value<TensorRef<BHWC>>* input : inputs) {
+    for (const Value* input : inputs) {
       RETURN_IF_ERROR(graph->AddConsumer(node->id, input->id));
     }
 
@@ -1011,7 +1009,7 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
     if (input->tensor.shape.h != 1 || input->tensor.shape.w != 1) {
       auto& reshape = node;
       conv = graph->NewNode();  // reset conv pointer!
-      Value<TensorRef<BHWC>>* reshaped_value = graph->NewValue();
+      Value* reshaped_value = graph->NewValue();
       reshaped_value->tensor.type = DataType::FLOAT32;
       reshaped_value->tensor.shape =
           BHWC(input->tensor.shape.b, 1, 1, weights.shape.w);
@@ -1121,11 +1119,11 @@ class LSTMOperationParser : public TFLiteOperationParser {
     lstm_attr.kernel_type = LstmKernelType::BASIC;
     lstm_node->operation.attributes = lstm_attr;
 
-    Value<TensorRef<BHWC>>* concat_temp;
+    Value* concat_temp;
     int concat_tensor_idx = tflite_node->outputs->data[2];
     RETURN_IF_ERROR(
         reader->ReadValueByTensorIdx(concat_tensor_idx, &concat_temp));
-    Value<TensorRef<BHWC>>* activ_temp;
+    Value* activ_temp;
     int activ_tensor_idx = tflite_node->outputs->data[3];
     RETURN_IF_ERROR(
         reader->ReadValueByTensorIdx(activ_tensor_idx, &activ_temp));
@@ -1677,7 +1675,7 @@ class SliceOperationParser : public TFLiteOperationParser {
     Node* node = graph->NewNode();
     node->operation.type = ToString(OperationType::SLICE);
     RETURN_IF_ERROR(reader->AddOutputs(node));
-    Value<TensorRef<BHWC>>* input;
+    Value* input;
     RETURN_IF_ERROR(reader->ReadValue(0, &input));
     RETURN_IF_ERROR(graph->AddConsumer(node->id, input->id));
 
@@ -1842,7 +1840,7 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
     Node* node = graph->NewNode();
     node->operation.type = ToString(OperationType::SLICE);
     RETURN_IF_ERROR(reader->AddOutputs(node));
-    Value<TensorRef<BHWC>>* input;
+    Value* input;
     RETURN_IF_ERROR(reader->ReadValue(0, &input));
     RETURN_IF_ERROR(graph->AddConsumer(node->id, input->id));
 
@@ -2027,7 +2025,7 @@ class TransposeConvOperationParser : public TFLiteOperationParser {
                      GraphFloat32* graph, ObjectReader* reader) final {
     auto* node = graph->NewNode();
     node->operation.type = ToString(OperationType::CONVOLUTION_TRANSPOSED);
-    Value<TensorRef<BHWC>>* input;
+    Value* input;
     RETURN_IF_ERROR(reader->ReadValue(2, &input));
     RETURN_IF_ERROR(graph->AddConsumer(node->id, input->id));
     RETURN_IF_ERROR(reader->AddOutputs(node));
@@ -2677,7 +2675,7 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops) {
 absl::Status PrecreateIOTensors(
     TfLiteContext* context, GraphFloat32* graph, TfLiteIntArray* io_tensors,
     std::unordered_map<int, int>* quant_conversion_map,
-    std::unordered_map<int, Value<TensorRef<BHWC>>*>* tensor_to_value) {
+    std::unordered_map<int, Value*>* tensor_to_value) {
   for (int i = 0; i < io_tensors->size; ++i) {
     const int tensor_index = io_tensors->data[i];
     const TfLiteTensor& tflite_tensor = context->tensors[tensor_index];
@@ -2717,7 +2715,7 @@ absl::Status BuildModel(TfLiteContext* context,
     operations.push_back(std::move(op_parser));
     tflite_nodes.push_back(i);
   }
-  std::unordered_map<int, Value<TensorRef<BHWC>>*> tensor_to_value;
+  std::unordered_map<int, Value*> tensor_to_value;
   RETURN_IF_ERROR(PrecreateIOTensors(context, graph,
                                      delegate_params->input_tensors,
                                      quant_conversion_map, &tensor_to_value));

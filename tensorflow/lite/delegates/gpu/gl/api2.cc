@@ -580,8 +580,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
 
  private:
   // Links internal tensors with external user-facing objects.
-  std::vector<TensorTieDef> LinkTensors(
-      const std::vector<Value<TensorRef<BHWC>>*>& values) {
+  std::vector<TensorTieDef> LinkTensors(const std::vector<Value*>& values) {
     std::vector<TensorTieDef> links;
     links.reserve(values.size());
     for (const auto& value : values) {
