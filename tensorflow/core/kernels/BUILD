@@ -6654,6 +6654,7 @@ filegroup(
         "cwise_op_bitwise_and.cc",
         "cwise_op_bitwise_or.cc",
         "cwise_op_bitwise_xor.cc",
+        "cwise_op_conj.cc",
         "cwise_op_cos.cc",
         "cwise_op_cosh.cc",
         "cwise_op_div.cc",
