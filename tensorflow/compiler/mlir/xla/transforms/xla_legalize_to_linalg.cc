@@ -269,7 +269,8 @@ class BroadcastInDimConverter
         // The input is a scalar, i.e. this is a scalar broadcast op.
         inputMap = AffineMap::get(nloops, /*symbolCount=*/0, b->getContext());
       } else {
-        inputMap = AffineMap::get(nloops, /*symbolCount=*/0, dimExprs);
+        inputMap = AffineMap::get(nloops, /*symbolCount=*/0, dimExprs,
+                                  b->getContext());
       }
     }
     return b->getAffineMapArrayAttr(
@@ -295,7 +296,7 @@ class TransposeConverter
           b->getAffineDimExpr(permutation.index());
     }
     return b->getAffineMapArrayAttr(
-        {AffineMap::get(nloops, /*symbolCount=*/0, inputExprs),
+        {AffineMap::get(nloops, /*symbolCount=*/0, inputExprs, b->getContext()),
          b->getMultiDimIdentityMap(nloops)});
   }
 };
@@ -367,7 +368,7 @@ class ReshapeAddRemoveDimConverter
       return nullptr;
     inputExprs.resize(operandShape.size(), b->getAffineConstantExpr(0));
     return b->getAffineMapArrayAttr(
-        {AffineMap::get(nloops, /*symbolCount=*/0, inputExprs),
+        {AffineMap::get(nloops, /*symbolCount=*/0, inputExprs, b->getContext()),
          b->getMultiDimIdentityMap(nloops)});
   }
 };

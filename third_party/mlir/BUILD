@@ -449,6 +449,23 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "AffineUtils",
+    srcs = glob(
+        [
+            "lib/Dialect/Affine/Utils/*.cpp",
+            "lib/Dialect/Affine/Utils/*.h",
+        ],
+    ),
+    hdrs = ["include/mlir/Dialect/Affine/Utils.h"],
+    includes = ["include"],
+    deps = [
+        ":Affine",
+        ":IR",
+        "@llvm-project//llvm:support",
+    ],
+)
+
 gentbl(
     name = "AffinePassIncGen",
     strip_include_prefix = "include",
