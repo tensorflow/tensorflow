@@ -25,7 +25,8 @@ namespace mlir_gpu {
 
 Status LowerLHLOToGPU(mlir::ModuleOp module,
                       llvm::ArrayRef<unsigned> tile_sizes = {16, 64},
-                      llvm::ArrayRef<unsigned> unroll_factors = {});
+                      llvm::ArrayRef<unsigned> unroll_factors = {},
+                      bool collapseParallelLoops = true);
 
 Status LowerKernelBodiesToNVVM(mlir::ModuleOp module);
 

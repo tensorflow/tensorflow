@@ -429,7 +429,8 @@ struct ParallelLoopCollapsingToFirstDim
 
 Status LowerLHLOToGPU(mlir::ModuleOp module,
                       llvm::ArrayRef<unsigned> tile_sizes,
-                      llvm::ArrayRef<unsigned> unroll_factors) {
+                      llvm::ArrayRef<unsigned> unroll_factors,
+                      bool collapseParallelLoops) {
   mlir::PassManager pm(module.getContext());
   EnableIRPrinting(&pm);
 
@@ -481,8 +482,10 @@ Status LowerLHLOToGPU(mlir::ModuleOp module,
   if (!unroll_factors.empty()) {
     pm.addPass(::mlir::createParallelLoopTilingPass(as_int64));
   }
-  // Project all loop dimensions to X.
-  pm.addPass(absl::make_unique<ParallelLoopCollapsingToFirstDim>());
+  // Project all loop dimensions to X if necessary.
+  if (collapseParallelLoops) {
+    pm.addPass(absl::make_unique<ParallelLoopCollapsingToFirstDim>());
+  }
   // Some basic cleanup.
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCanonicalizerPass());
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
