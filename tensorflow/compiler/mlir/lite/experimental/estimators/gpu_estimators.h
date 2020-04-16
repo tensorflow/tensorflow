@@ -16,6 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_ESTIMATORS_GPU_ESTIMATORS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_ESTIMATORS_GPU_ESTIMATORS_H_
 
+// GPU
+constexpr float kGPUArithmeticUnitCost = 0.2;
+constexpr float kGPUDefaultCost = 1.0f;
+
+// Default values.
+constexpr float kGPUDefaultFixedValuedCost = 10000.0;
+
 // tfl.abs
 template <>
 class TFLiteCostEstimator<AbsOp, hardware::GPU> {
@@ -34,9 +41,11 @@ template <>
 class TFLiteCostEstimator<AddOp, hardware::GPU> {
  public:
   static double GetCost(mlir::Operation* op) {
-    llvm::errs() << "No defined cost function for op: "
-                 << op->getName().getStringRef().str();
-    return 0.0;
+    int64_t count;
+    if (ArithmeticCountUtilHelper::GetArithmeticCountForBroadcastableOp(op,
+                                                                        &count))
+      return kGPUArithmeticUnitCost * count;
+    return kGPUDefaultFixedValuedCost;
   }
 
   static bool IsSupported(mlir::Operation* op) { return true; }
@@ -245,9 +254,11 @@ template <>
 class TFLiteCostEstimator<MulOp, hardware::GPU> {
  public:
   static double GetCost(mlir::Operation* op) {
-    llvm::errs() << "No defined cost function for op: "
-                 << op->getName().getStringRef().str();
-    return 0.0;
+    int64_t count;
+    if (ArithmeticCountUtilHelper::GetArithmeticCountForBroadcastableOp(op,
+                                                                        &count))
+      return kGPUArithmeticUnitCost * count;
+    return kGPUDefaultFixedValuedCost;
   }
 
   static bool IsSupported(mlir::Operation* op) { return true; }
