@@ -102,20 +102,6 @@ cc_test(
 )
 
 cc_library(
-    name = "model_builder_helper",
-    hdrs = ["model_builder_helper.h"],
-    deps = [
-        ":status",
-        "//tensorflow/lite:context",
-        "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/delegates:utils",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "model_builder",
     srcs = ["model_builder.cc"],
     hdrs = ["model_builder.h"],
@@ -123,11 +109,11 @@ cc_library(
         ":data_type",
         ":model",
         ":model_builder_helper",
+        ":object_reader",
         ":operations",
         ":shape",
         ":status",
         ":tensor",
-        "@FP16",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -156,6 +142,29 @@ cc_test(
 )
 
 cc_library(
+    name = "model_builder_helper",
+    srcs = ["model_builder_helper.cc"],
+    hdrs = ["model_builder_helper.h"],
+    deps = [
+        ":data_type",
+        ":model",
+        ":shape",
+        ":status",
+        ":tensor",
+        "//tensorflow/lite:context",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates:utils",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels/internal:types",
+        "@FP16",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "model_transformer",
     srcs = ["model_transformer.cc"],
     hdrs = ["model_transformer.h"],
@@ -166,6 +175,20 @@ cc_library(
 )
 
 # TODO(impjdi): Add unit test for model_transformer.
+
+cc_library(
+    name = "object_reader",
+    srcs = ["object_reader.cc"],
+    hdrs = ["object_reader.h"],
+    deps = [
+        ":model",
+        ":model_builder_helper",
+        ":status",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates:utils",
+        "//tensorflow/lite/kernels:kernel_util",
+    ],
+)
 
 cc_library(
     name = "operations",

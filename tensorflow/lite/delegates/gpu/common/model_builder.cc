@@ -26,7 +26,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include <fp16.h>
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -42,6 +41,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
+#include "tensorflow/lite/delegates/gpu/common/object_reader.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -80,24 +80,6 @@ absl::Status NewPassthroughNode(GraphFloat32* graph, Node* node,
 }
 
 template <typename T>
-absl::Status CreateVectorCopyData(const TfLiteTensor& tensor, T* tensor_data) {
-  if (tensor.bytes % sizeof(T) != 0) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Input data size ", tensor.bytes,
-                     " is not aligned to expected type: ", sizeof(T)));
-  }
-  std::memcpy(tensor_data, tensor.data.uint8, tensor.bytes);
-  return absl::OkStatus();
-}
-
-void ConvertFloat16ToFloat32(size_t num_elements, const uint16_t* src,
-                             float* dst) {
-  for (size_t i = 0; i < num_elements; i++) {
-    *dst++ = fp16_ieee_to_fp32_value(*src++);
-  }
-}
-
-template <typename T>
 inline void DequantizeConstantTensor(const TfLiteTensor& tensor,
                                      const T* source_data,
                                      float* dequantized_data) {
@@ -121,166 +103,6 @@ inline void DequantizeConstantTensor(const TfLiteTensor& tensor,
   }
 }
 
-template <>
-absl::Status CreateVectorCopyData<float>(const TfLiteTensor& tensor,
-                                         float* tensor_data) {
-  switch (tensor.type) {
-    case kTfLiteFloat32:
-      std::memcpy(tensor_data, tensor.data.f, tensor.bytes);
-      break;
-    case kTfLiteFloat16:
-      ConvertFloat16ToFloat32(
-          NumElements(&tensor),
-          reinterpret_cast<uint16_t const*>(tensor.data.f16), tensor_data);
-      break;
-    case kTfLiteInt8:
-      DequantizeConstantTensor(tensor, tensor.data.int8, tensor_data);
-      break;
-    case kTfLiteUInt8:
-      DequantizeConstantTensor(tensor, tensor.data.uint8, tensor_data);
-      break;
-    case kTfLiteInt32:
-      DequantizeConstantTensor(tensor, tensor.data.i32, tensor_data);
-      break;
-    default:
-      return absl::InvalidArgumentError(
-          "Unsupported data type for float32 tensor");
-  }
-  return absl::OkStatus();
-}
-
-template <typename ShapeT>
-absl::Status SetAllDimensions(const TfLiteIntArray* dimensions, ShapeT* shape);
-
-template <>
-absl::Status SetAllDimensions<Scalar>(const TfLiteIntArray* dimensions,
-                                      Scalar* shape) {
-  if (dimensions->size < 0) {
-    return absl::InvalidArgumentError("Invalid Scalar dimensions");
-  }
-  for (int i = 0; i < dimensions->size; ++i) {
-    if (dimensions->data[i] != 1) {
-      return absl::InvalidArgumentError(
-          "Dimension can not be reduced to scalar.");
-    }
-  }
-  shape->v = 1;
-  return absl::OkStatus();
-}
-
-template <>
-absl::Status SetAllDimensions<Linear>(const TfLiteIntArray* dimensions,
-                                      Linear* shape) {
-  if (dimensions->size <= 0) {
-    return absl::InvalidArgumentError("Dimension is empty.");
-  }
-  for (int i = 0; i < dimensions->size - 1; ++i) {
-    if (dimensions->data[i] != 1) {
-      return absl::InvalidArgumentError(
-          "Dimension can not be reduced to linear.");
-    }
-  }
-  shape->v = dimensions->data[dimensions->size - 1];
-  return absl::OkStatus();
-}
-
-template <>
-absl::Status SetAllDimensions<HWC>(const TfLiteIntArray* dimensions,
-                                   HWC* shape) {
-  if (dimensions->size != 4) {
-    return absl::InvalidArgumentError("Dimensions are not HWC");
-  }
-  if (dimensions->data[0] != 1) {
-    return absl::UnimplementedError("Batch size is not equal to 1.");
-  }
-  shape->h = dimensions->data[1];
-  shape->w = dimensions->data[2];
-  shape->c = dimensions->data[3];
-  return absl::OkStatus();
-}
-
-template <>
-absl::Status SetAllDimensions<HW>(const TfLiteIntArray* dimensions, HW* shape) {
-  if (dimensions->size != 2) {
-    return absl::InvalidArgumentError("Dimensions are not HW");
-  }
-  shape->h = dimensions->data[0];
-  shape->w = dimensions->data[1];
-  return absl::OkStatus();
-}
-
-template <>
-absl::Status SetAllDimensions<OHWI>(const TfLiteIntArray* dimensions,
-                                    OHWI* shape) {
-  if (dimensions->size != 4) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Dimensions are not OHWI: ", dimensions->size));
-  }
-  shape->o = dimensions->data[0];
-  shape->h = dimensions->data[1];
-  shape->w = dimensions->data[2];
-  shape->i = dimensions->data[3];
-  return absl::OkStatus();
-}
-
-template <>
-absl::Status SetAllDimensions<BHWC>(const TfLiteIntArray* dimensions,
-                                    BHWC* shape) {
-  if (dimensions->size != 4) {
-    return absl::InvalidArgumentError("Dimensions are not BHWC");
-  }
-  shape->b = dimensions->data[0];
-  shape->h = dimensions->data[1];
-  shape->w = dimensions->data[2];
-  shape->c = dimensions->data[3];
-  return absl::OkStatus();
-}
-
-DataType ToDataType(TfLiteType type) {
-  switch (type) {
-    case kTfLiteFloat32:
-      return DataType::FLOAT32;
-    case kTfLiteInt32:
-      return DataType::INT32;
-    case kTfLiteInt64:
-      return DataType::INT64;
-    case kTfLiteInt8:
-      return DataType::INT8;
-    case kTfLiteUInt8:
-      return DataType::UINT8;
-    default:
-      return DataType::UNKNOWN;
-  }
-}
-
-int GetNumberOfRuntimeInputsForNode(const TfLiteContext* context,
-                                    const TfLiteNode* tflite_node) {
-  int number_of_runtime_inputs = 0;
-  for (int i = 0; i < tflite_node->inputs->size; i++) {
-    if (!IsConstantTensor(&context->tensors[tflite_node->inputs->data[i]])) {
-      number_of_runtime_inputs++;
-    }
-  }
-  return number_of_runtime_inputs;
-}
-
-int GetNumberOfConstInputsForNode(const TfLiteContext* context,
-                                  const TfLiteNode* tflite_node) {
-  return tflite_node->inputs->size -
-         GetNumberOfRuntimeInputsForNode(context, tflite_node);
-}
-
-int GetNumberOfRuntimeOutputsForNode(const TfLiteContext* context,
-                                     const TfLiteNode* tflite_node) {
-  int number_of_runtime_outputs = 0;
-  for (int i = 0; i < tflite_node->outputs->size; i++) {
-    if (!IsConstantTensor(&context->tensors[tflite_node->outputs->data[i]])) {
-      number_of_runtime_outputs++;
-    }
-  }
-  return number_of_runtime_outputs;
-}
-
 absl::Status CheckTensorIsAvailable(const TfLiteContext* context,
                                     const TfLiteNode* tflite_node, int idx) {
   // If tensor id is in range, it's guaranteed that it'll be available.
@@ -291,261 +113,6 @@ absl::Status CheckTensorIsAvailable(const TfLiteContext* context,
   }
   return absl::OkStatus();
 }
-
-absl::Status CheckInputsOutputs(const TfLiteContext* context,
-                                const TfLiteNode* tflite_node,
-                                int runtime_inputs, int outputs) {
-  int runtime_inputs_from_model =
-      GetNumberOfRuntimeInputsForNode(context, tflite_node);
-  if (runtime_inputs_from_model != runtime_inputs) {
-    return absl::InternalError(absl::StrFormat(
-        "Expected %d runtime input tensor(s), but node has %d runtime "
-        "input(s).",
-        runtime_inputs, runtime_inputs_from_model));
-  }
-  int runtime_outputs = GetNumberOfRuntimeOutputsForNode(context, tflite_node);
-  if (runtime_outputs != outputs) {
-    return absl::InternalError(
-        absl::StrFormat("Expected %d output tensor(s), but node has %d "
-                        "output(s).",
-                        outputs, runtime_outputs));
-  }
-  return absl::OkStatus();
-}
-
-absl::Status CheckInputsConstsOutputs(const TfLiteContext* context,
-                                      const TfLiteNode* tflite_node,
-                                      int runtime_inputs, int const_inputs,
-                                      int outputs) {
-  int const_inputs_from_model =
-      GetNumberOfConstInputsForNode(context, tflite_node);
-  if (const_inputs_from_model != const_inputs) {
-    return absl::InternalError(absl::StrFormat(
-        "Expected %d const input tensor(s), but node has %d const "
-        "input(s).",
-        const_inputs, const_inputs_from_model));
-  }
-  return CheckInputsOutputs(context, tflite_node, runtime_inputs, outputs);
-}
-
-// Populates quantization parameters for non-constant UInt8/Int8 tensors.
-// This helps the delegate emulate quantized inference with
-// QuantizeAndDequantize.
-absl::Status PopulateQuantParams(const TfLiteTensor& tensor,
-                                 QuantizationParams* quant_params) {
-  const TfLiteQuantization& quant = tensor.quantization;
-  if (quant.type != TfLiteQuantizationType::kTfLiteAffineQuantization) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Tensor not quantized: ", std::string(tensor.name)));
-  }
-  const TfLiteAffineQuantization* params =
-      static_cast<const TfLiteAffineQuantization*>(quant.params);
-  if (params->scale->size > 1) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Non-constant per-channel quantized tensor: ",
-                     std::string(tensor.name)));
-  }
-  const float scale = params->scale->data[0];
-  const float zero_point = static_cast<float>(params->zero_point->data[0]);
-
-  float qmin_value = 0;
-  float qmax_value = 0;
-  if (tensor.type == kTfLiteUInt8) {
-    qmin_value = static_cast<float>(std::numeric_limits<uint8_t>::min());
-    qmax_value = static_cast<float>(std::numeric_limits<uint8_t>::max());
-  } else if (tensor.type == kTfLiteInt8) {
-    qmin_value = static_cast<float>(std::numeric_limits<int8_t>::min());
-    qmax_value = static_cast<float>(std::numeric_limits<int8_t>::max());
-  } else {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Type invalid for quantized tensor: ", std::string(tensor.name)));
-  }
-  quant_params->min = scale * (static_cast<float>(qmin_value) - zero_point);
-  quant_params->max = scale * (static_cast<float>(qmax_value) - zero_point);
-  quant_params->scale = scale;
-
-  return absl::OkStatus();
-}
-
-// If quantized tensors exist in the graph & quant_conversion_map is non-null,
-// the mapping between the original tensors (fixed-point) & GPU values (fp) is
-// stored in quant_conversion_map.
-class ObjectReader {
- public:
-  ObjectReader(
-      GraphFloat32* graph, TfLiteContext* context,
-      const TfLiteNode* tflite_node,
-      std::unordered_map<int, Value<TensorRef<BHWC>>*>* tensor_to_value,
-      std::unordered_map<int, int>* quant_conversion_map = nullptr)
-      : graph_(graph),
-        context_(context),
-        tflite_node_(tflite_node),
-        tensor_to_value_(tensor_to_value),
-        quant_conversion_map_(quant_conversion_map) {}
-
-  static absl::Status ReadNonConstantTensor(
-      TfLiteContext* context,
-      std::unordered_map<int, Value<TensorRef<BHWC>>*>* tensor_to_value,
-      std::unordered_map<int, int>* quant_conversion_map, GraphFloat32* graph,
-      uint32_t tensor_idx, Value<TensorRef<BHWC>>** value = nullptr) {
-    if (tensor_idx >= context->tensors_size) {
-      return absl::OutOfRangeError(
-          absl::StrCat("ReadNonConstTensor: input tensor index: ", tensor_idx));
-    }
-
-    if (tensor_to_value->find(tensor_idx) == tensor_to_value->end()) {
-      const TfLiteTensor& tflite_tensor = context->tensors[tensor_idx];
-      if (tflite::IsConstantTensor(&tflite_tensor)) {
-        return absl::InvalidArgumentError(absl::StrCat(
-            "ReadNonConstantTensor: value is a constant tensor: ", tensor_idx));
-      }
-
-      if ((tflite_tensor.type == kTfLiteInt8 ||
-           tflite_tensor.type == kTfLiteUInt8) &&
-          quant_conversion_map) {
-        // Quantized case
-        if (quant_conversion_map->find(tensor_idx) ==
-            quant_conversion_map->end()) {
-          // Since the original tensor is fixed-point, add a new float tensor to
-          // the TFLite graph to represent the dequantized data.
-          int fp_tensor_index = 0;
-          TfLiteTensor* fp_tflite_tensor;
-          if (delegates::CreateNewTensorWithDifferentType(
-                  context, tensor_idx, kTfLiteFloat32, &fp_tflite_tensor,
-                  &fp_tensor_index) != kTfLiteOk) {
-            return absl::InternalError("Could not add new tensor to graph");
-          }
-          // Remember this tensor for later.
-          (*quant_conversion_map)[fp_tensor_index] = tensor_idx;
-          (*quant_conversion_map)[tensor_idx] = fp_tensor_index;
-          // Add a new GPU Value for the new dequantized floating-point tensor.
-          Value<TensorRef<BHWC>>* value = graph->NewValue();
-          RETURN_IF_ERROR(ConvertTfLiteTensorToTensorRef(*fp_tflite_tensor,
-                                                         &value->tensor));
-          value->tensor.ref = fp_tensor_index;
-          value->quant_params.emplace();
-          RETURN_IF_ERROR(
-              PopulateQuantParams(tflite_tensor, &value->quant_params.value()));
-          (*tensor_to_value)[fp_tensor_index] = value;
-        }
-        // We do not use the original tensor index as reference for the GPU
-        // Value, instead pointing at the corresponding float version.
-        tensor_idx = quant_conversion_map->at(tensor_idx);
-      } else {
-        // Floating-point case.
-        Value<TensorRef<BHWC>>* value = graph->NewValue();
-        RETURN_IF_ERROR(
-            ConvertTfLiteTensorToTensorRef(tflite_tensor, &value->tensor));
-        value->tensor.ref = tensor_idx;
-        (*tensor_to_value)[tensor_idx] = value;
-      }
-    }
-
-    if (value) {
-      *value = (*tensor_to_value)[tensor_idx];
-    }
-    return absl::OkStatus();
-  }
-
-  absl::Status ReadValue(uint32_t idx, Value<TensorRef<BHWC>>** value) {
-    if (idx >= tflite_node_->inputs->size) {
-      return absl::OutOfRangeError(
-          absl::StrCat("ReadValue: input tensor index: ", idx));
-    }
-    return ReadValueByTensorIdx(tflite_node_->inputs->data[idx], value);
-  }
-
-  absl::Status ReadValueByTensorIdx(uint32_t tensor_idx,
-                                    Value<TensorRef<BHWC>>** value) {
-    // Constant tensors should be handled by ReadTensor.
-    return ReadNonConstantTensor(context_, tensor_to_value_,
-                                 quant_conversion_map_, graph_, tensor_idx,
-                                 value);
-  }
-
-  int GetNumberOfRuntimeInputs() const {
-    return GetNumberOfRuntimeInputsForNode(context_, tflite_node_);
-  }
-
-  absl::Status GetTensorDims(uint32_t idx, TfLiteIntArray* dimensions) const {
-    if (idx >= tflite_node_->inputs->size) {
-      return absl::OutOfRangeError(absl::StrCat("Input tensor index: ", idx));
-    }
-    const int tensor_idx = tflite_node_->inputs->data[idx];
-    if (tensor_idx < 0 || tensor_idx > context_->tensors_size) {
-      return absl::OutOfRangeError(absl::StrCat("Tensor index: ", tensor_idx));
-    }
-    const TfLiteTensor& tflite_tensor = context_->tensors[tensor_idx];
-    *dimensions = *tflite_tensor.dims;
-    return absl::OkStatus();
-  }
-
-  template <typename TensorT>
-  absl::Status ReadTensor(uint32_t idx, TensorT* t) const {
-    RETURN_IF_ERROR(CheckTensorIsAvailable(context_, tflite_node_, idx));
-    const int32_t tensor_idx = tflite_node_->inputs->data[idx];
-    const TfLiteTensor* tflite_tensor = context_->tensors + tensor_idx;
-    t->data.resize(NumElements(tflite_tensor));
-    RETURN_IF_ERROR(CreateVectorCopyData(*tflite_tensor, &t->data[0]));
-
-    // Axis and data layout depend on operation this tensor is used in. So,
-    // postpone resolutions until operations are parsed.
-    t->id = tensor_idx;
-    return SetAllDimensions(tflite_tensor->dims, &t->shape);
-  }
-
-  absl::Status AddOutput(const Node* node, int id) {
-    if (tflite_node_->outputs->size <= id) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Data id ", id, " must be less than tflite node outputs size ",
-          tflite_node_->outputs->size));
-    }
-    int output_tensor_idx = tflite_node_->outputs->data[id];
-    Value<TensorRef<BHWC>>* value;
-    RETURN_IF_ERROR(ReadValueByTensorIdx(output_tensor_idx, &value));
-    RETURN_IF_ERROR(graph_->SetProducer(node->id, value->id));
-    return absl::OkStatus();
-  }
-
-  absl::Status AddOutputs(const Node* node) {
-    for (int i = 0; i < tflite_node_->outputs->size; ++i) {
-      RETURN_IF_ERROR(AddOutput(node, i));
-    }
-    return absl::OkStatus();
-  }
-
-  absl::Status AddInput(const Node* node, uint32_t idx) {
-    Value<TensorRef<BHWC>>* input;
-    RETURN_IF_ERROR(ReadValue(idx, &input));
-    return graph_->AddConsumer(node->id, input->id);
-  }
-
-  TfLiteTensor* GetInputTensor(int index) const {
-    return index >= 0 && index < tflite_node_->inputs->size
-               ? context_->tensors + tflite_node_->inputs->data[index]
-               : nullptr;
-  }
-
-  TfLiteTensor* GetOutputTensor(int index) const {
-    return index >= 0 && index < tflite_node_->outputs->size
-               ? context_->tensors + tflite_node_->outputs->data[index]
-               : nullptr;
-  }
-
-  absl::Status VerifyInputsConstsOutputs(const TfLiteNode* tflite_node,
-                                         int runtime_inputs, int const_inputs,
-                                         int outputs) {
-    return CheckInputsConstsOutputs(context_, tflite_node, runtime_inputs,
-                                    const_inputs, outputs);
-  }
-
- private:
-  GraphFloat32* graph_ = nullptr;
-  TfLiteContext* context_ = nullptr;
-  const TfLiteNode* tflite_node_ = nullptr;
-  std::unordered_map<int, Value<TensorRef<BHWC>>*>* tensor_to_value_;
-  std::unordered_map<int, int>* quant_conversion_map_;
-};
 
 // A parser responsible for parsing TFLite operation and adding it to a graph.
 class TFLiteOperationParser {
@@ -779,28 +346,6 @@ absl::Status ParsePoolingAttributes(const TfLitePoolParams* tf_options,
   attr->strides = ToHW(tf_options->stride_height, tf_options->stride_width);
   UpdatePadding(tf_options->padding, input_shape, attr);
   return absl::OkStatus();
-}
-
-absl::Status ExtractTensorShape(const TfLiteTensor& tflite_tensor, BHWC* bhwc) {
-  const TfLiteIntArray* dims = tflite_tensor.dims;
-  switch (dims->size) {
-    case 1:
-      *bhwc = BHWC(dims->data[0], 1, 1, 1);
-      return absl::OkStatus();
-    case 2:
-      *bhwc = BHWC(dims->data[0], 1, 1, dims->data[1]);
-      return absl::OkStatus();
-    case 3:
-      *bhwc = BHWC(dims->data[0], 1, dims->data[1], dims->data[2]);
-      return absl::OkStatus();
-    case 4:
-      *bhwc = BHWC(dims->data[0], dims->data[1], dims->data[2], dims->data[3]);
-      return absl::OkStatus();
-    default:
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Tensor \"", tflite_tensor.name ? tflite_tensor.name : "nullptr",
-          "\" has bad input dims size: ", dims->size, "."));
-  }
 }
 
 absl::Status ParseInputsWithConstTensor(Node* node, ObjectReader* reader,
@@ -3018,24 +2563,19 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       if (custom_name == "RoIToTransformMatrix") {
         return absl::make_unique<RoIToTransformMatrixOperationParser>();
       }
-
       if (custom_name == "TransformTensor") {
         return absl::make_unique<TransformTensorOperationParser>();
       }
-
       if (custom_name == "TransformLandmarks") {
         return absl::make_unique<TransformLandmarksOperationParser>();
       }
-
       if (custom_name == "Landmarks2TransformMatrix") {
         return absl::make_unique<Landmarks2TransformMatrixOperationParser>();
       }
-
       if (custom_name == "AlignmentPointsToTransformMatrix") {
         return absl::make_unique<
             AlignmentPointsToTransformMatrixOperationParser>();
       }
-
       break;
   }
   return absl::make_unique<UnsupportedOperationParser>();
@@ -3067,16 +2607,10 @@ bool IsAllAllowedTensors(TfLiteContext* context, const TfLiteIntArray* array,
 }
 }  // namespace
 
-absl::Status ConvertTfLiteTensorToTensorRef(const TfLiteTensor& tflite_tensor,
-                                            TensorRef<BHWC>* tensor_ref) {
-  tensor_ref->type = ToDataType(tflite_tensor.type);
-  return ExtractTensorShape(tflite_tensor, &tensor_ref->shape);
-}
-
 // TODO(impjdi): Check number of input/output tensors and their dimensions.
 // TODO(impjdi): Check ops' parameters.
 TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops) {
-  IsNodeSupportedFn node_supported_fn =
+  delegates::IsNodeSupportedFn node_supported_fn =
       [=](TfLiteContext* context, TfLiteNode* node,
           TfLiteRegistration* registration,
           std::string* unsupported_details) -> bool {
