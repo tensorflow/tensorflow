@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -69,9 +70,6 @@ inline void Concatenation(const ConcatenationParams& params,
 }
 
 // TODO(prabhumk): This is the same as the optimized implementation.
-// TODO(prabhumk): The quantized implementation of concatentation isn't fully
-// quantized as it takes scale as a floating point value. This should be fixed
-// when optimizng this routine further.
 inline void ConcatenationWithScaling(const ConcatenationParams& params,
                                      const RuntimeShape* const* input_shapes,
                                      const uint8* const* input_data,
@@ -83,6 +81,8 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
   int inputs_count = params.inputs_count;
   const int32 output_zeropoint = params.output_zeropoint;
   const float output_scale = params.output_scale;
+  const int32* effective_scale_multiplier = params.effective_scale_multiplier;
+  const int* effective_scale_shift = params.effective_scale_shift;
 
   const int concat_dimensions = output_shape.DimensionsCount();
   TFLITE_DCHECK_LT(axis, concat_dimensions);
@@ -109,7 +109,6 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
     base_inner_size *= output_shape.Dims(i);
   }
 
-  const float inverse_output_scale = 1.f / output_scale;
   uint8* output_ptr = output_data;
   for (int k = 0; k < outer_size; k++) {
     for (int i = 0; i < inputs_count; ++i) {
@@ -119,12 +118,12 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
           input_scale[i] == output_scale) {
         memcpy(output_ptr, input_ptr, copy_size);
       } else {
-        const float scale = input_scale[i] * inverse_output_scale;
-        const float bias = -input_zeropoint[i] * scale;
         for (int j = 0; j < copy_size; ++j) {
-          const int32_t value = static_cast<int32_t>(tflite::TfLiteRound(
-                                    input_ptr[j] * scale + bias)) +
-                                output_zeropoint;
+          const int32_t value =
+              MultiplyByQuantizedMultiplier(input_ptr[j] - input_zeropoint[i],
+                                            effective_scale_multiplier[i],
+                                            effective_scale_shift[i]) +
+              output_zeropoint;
           output_ptr[j] = static_cast<uint8_t>(
               std::max<int32_t>(std::min<int32_t>(255, value), 0));
         }

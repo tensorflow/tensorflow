@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -127,6 +128,22 @@ inline void GetAllQuantizationParam(const TfLiteContext& context,
   }
 }
 
+// Gets the quantized effective scale from a list of input tensors and their
+// output tensor.
+inline void GetAllQuantizedEffectiveScale(
+    const TfLiteContext& context, const TfLiteIntArray& input_tensor_list,
+    const TfLiteTensor& output_tensor,
+    int32 effective_scale_multiplier[kMaxInputNum],
+    int effective_scale_shift[kMaxInputNum]) {
+  for (int i = 0; i < input_tensor_list.size; ++i) {
+    const TfLiteTensor* input_tensor =
+        &context.tensors[input_tensor_list.data[i]];
+    QuantizeMultiplier(input_tensor->params.scale / output_tensor.params.scale,
+                       &effective_scale_multiplier[i],
+                       &effective_scale_shift[i]);
+  }
+}
+
 template <typename data_type>
 void EvalUnquantized(TfLiteContext* context, TfLiteNode* node) {
   // Collect the shapes and data pointer of input tensors
@@ -152,19 +169,24 @@ void EvalUnquantized(TfLiteContext* context, TfLiteNode* node) {
 }
 
 void EvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node) {
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
   // Collect the shapes and data pointer of input tensors
   RuntimeShape inputs_shape[kMaxInputNum];
   const RuntimeShape* inputs_shape_ptr[kMaxInputNum];
   const uint8_t* inputs_data[kMaxInputNum];
   float inputs_scale[kMaxInputNum];
   int32 inputs_zero_point[kMaxInputNum];
+  int32 effective_scale_multiplier[kMaxInputNum];
+  int effective_scale_shift[kMaxInputNum];
   GetAllTensorShapes(*context, *node->inputs, inputs_shape);
   GetShapesPointers(inputs_shape, node->inputs->size, inputs_shape_ptr);
   GetAllTensorData(*context, *node->inputs, inputs_data);
   GetAllQuantizationParam(*context, *node->inputs, inputs_scale,
                           inputs_zero_point);
-
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  GetAllQuantizedEffectiveScale(*context, *node->inputs, *output,
+                                effective_scale_multiplier,
+                                effective_scale_shift);
 
   const TfLiteConcatenationParams* params =
       reinterpret_cast<TfLiteConcatenationParams*>(node->builtin_data);
@@ -176,6 +198,8 @@ void EvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node) {
   op_params.input_scale = inputs_scale;
   op_params.output_zeropoint = output->params.zero_point;
   op_params.output_scale = output->params.scale;
+  op_params.effective_scale_multiplier = effective_scale_multiplier;
+  op_params.effective_scale_shift = effective_scale_shift;
 
   reference_ops::ConcatenationWithScaling(op_params, inputs_shape_ptr,
                                           inputs_data, GetTensorShape(output),

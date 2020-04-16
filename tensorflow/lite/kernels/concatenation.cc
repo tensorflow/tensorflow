@@ -18,10 +18,12 @@ limitations under the License.
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -128,25 +130,34 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }                                                                         \
   }
 
-#define TF_LITE_CONCATENATION_QUANTIZED()                         \
-  {                                                               \
-    VectorOfQuantizedTensors all_inputs(*context, *node->inputs); \
-    tflite::ConcatenationParams op_params;                        \
-    op_params.axis = axis;                                        \
-    op_params.input_zeropoint = all_inputs.zero_point();          \
-    op_params.input_scale = all_inputs.scale();                   \
-    op_params.inputs_count = node->inputs->size;                  \
-    op_params.output_zeropoint = output->params.zero_point;       \
-    op_params.output_scale = output->params.scale;                \
-    if (kernel_type == kReference) {                              \
-      reference_ops::ConcatenationWithScaling(                    \
-          op_params, all_inputs.shapes(), all_inputs.data(),      \
-          GetTensorShape(output), GetTensorData<uint8>(output));  \
-    } else {                                                      \
-      optimized_ops::ConcatenationWithScaling(                    \
-          op_params, all_inputs.shapes(), all_inputs.data(),      \
-          GetTensorShape(output), GetTensorData<uint8>(output));  \
-    }                                                             \
+#define TF_LITE_CONCATENATION_QUANTIZED()                                     \
+  {                                                                           \
+    VectorOfQuantizedTensors all_inputs(*context, *node->inputs);             \
+    std::vector<int32> effective_scale_multiplier(node->inputs->size);        \
+    std::vector<int> effective_scale_shift(node->inputs->size);               \
+    for (int i = 0; i < node->inputs->size; i++) {                            \
+      QuantizeMultiplier(all_inputs.scale()[i] / output->params.scale,        \
+                         &effective_scale_multiplier[i],                      \
+                         &effective_scale_shift[i]);                          \
+    }                                                                         \
+    tflite::ConcatenationParams op_params;                                    \
+    op_params.axis = axis;                                                    \
+    op_params.input_zeropoint = all_inputs.zero_point();                      \
+    op_params.input_scale = all_inputs.scale();                               \
+    op_params.inputs_count = node->inputs->size;                              \
+    op_params.output_zeropoint = output->params.zero_point;                   \
+    op_params.output_scale = output->params.scale;                            \
+    op_params.effective_scale_multiplier = effective_scale_multiplier.data(); \
+    op_params.effective_scale_shift = effective_scale_shift.data();           \
+    if (kernel_type == kReference) {                                          \
+      reference_ops::ConcatenationWithScaling(                                \
+          op_params, all_inputs.shapes(), all_inputs.data(),                  \
+          GetTensorShape(output), GetTensorData<uint8>(output));              \
+    } else {                                                                  \
+      optimized_ops::ConcatenationWithScaling(                                \
+          op_params, all_inputs.shapes(), all_inputs.data(),                  \
+          GetTensorShape(output), GetTensorData<uint8>(output));              \
+    }                                                                         \
   }
 
   switch (output->type) {  // Already know in/outtypes are same.

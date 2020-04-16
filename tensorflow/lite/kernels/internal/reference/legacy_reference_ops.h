@@ -665,6 +665,13 @@ inline void Concatenation(int concat_dim, const uint8* const* input_data,
     ShapeFromDims(*input_dims[i], &input_shapes[i]);
     input_shapes_indirect[i] = &input_shapes[i];
   }
+  std::vector<int32> effective_scale_multiplier(inputs_count);
+  std::vector<int> effective_scale_shift(inputs_count);
+  for (int i = 0; i < inputs_count; i++) {
+    QuantizeMultiplier(input_scale[i] / output_scale,
+                       &effective_scale_multiplier[i],
+                       &effective_scale_shift[i]);
+  }
   tflite::ConcatenationParams op_params;
   op_params.axis = 3 - concat_dim;
   op_params.input_zeropoint = input_zeropoint;
@@ -672,6 +679,8 @@ inline void Concatenation(int concat_dim, const uint8* const* input_data,
   op_params.inputs_count = inputs_count;
   op_params.output_zeropoint = output_zeropoint;
   op_params.output_scale = output_scale;
+  op_params.effective_scale_multiplier = effective_scale_multiplier.data();
+  op_params.effective_scale_shift = effective_scale_shift.data();
 
   ConcatenationWithScaling(op_params, input_shapes_indirect.data(), input_data,
                            DimsToShape(output_dims), output_data);
