@@ -51,10 +51,16 @@ class ArithmeticTest : public ClientLibraryTestBase {
       absl::Span<NativeT const> expected_output, int axis, bool is_min) {
     if (is_min) {
       TestArgMinMaxImpl(input, expected_output, axis, &ArgMin);
-      TestArgMinMaxImpl(input, expected_output, axis, &ArgMinTwoPass);
+      TestArgMinMaxImpl(input, expected_output, axis,
+                        [](XlaOp op, PrimitiveType type, int axis) {
+                          return ArgMinTwoPass(op, type, axis);
+                        });
     } else {
       TestArgMinMaxImpl(input, expected_output, axis, &ArgMax);
-      TestArgMinMaxImpl(input, expected_output, axis, &ArgMaxTwoPass);
+      TestArgMinMaxImpl(input, expected_output, axis,
+                        [](XlaOp op, PrimitiveType type, int axis) {
+                          return ArgMaxTwoPass(op, type, axis);
+                        });
     }
   }
 
