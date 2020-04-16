@@ -1121,11 +1121,11 @@ def regroup(values, wrap_class=PerReplica, always_wrap=False):
       return regrouped_tuple
 
   if isinstance(v0, dict):
-    v0keys = set(v0.keys())
+    v0keys = v0.keys()
     for v in values[1:]:
       assert isinstance(v, dict), ("v[0]: %r  v[i]: %r" % (v0, v))
-      assert set(v.keys()) == v0keys, ("v[0].keys: %s  v[i].keys: %s" %
-                                       (v0keys, set(v.keys())))
+      assert set(v.keys()) == set(v0keys), ("v[0].keys: %s  v[i].keys: %s" %
+                                            (set(v0keys), set(v.keys())))
     # Use the actual type in case it is a class inherited from a dict.
     return type(v0)({
         key: regroup(tuple(v[key] for v in values), wrap_class)
