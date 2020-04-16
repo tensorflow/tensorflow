@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_allocator.h"
 
 #include <cstddef>
+#include <cstdint>
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -557,8 +558,8 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
   // Note that AllocationInfo is only needed for creating the plan. It will be
   // thrown away when the child allocator (tmp_allocator) goes out of scope.
   {
-    SimpleMemoryAllocator tmp_allocator =
-        memory_allocator_->CreateChildAllocator();
+    SimpleMemoryAllocator tmp_allocator(memory_allocator_->GetHead(),
+                                        memory_allocator_->GetTail());
 
     AllocationInfoBuilder builder(error_reporter_, &tmp_allocator);
     TF_LITE_ENSURE_STATUS(
@@ -567,31 +568,36 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
     TF_LITE_ENSURE_STATUS(builder.AddScratchBuffers(scratch_buffer_handles_));
     const AllocationInfo* allocation_info = builder.Finish();
 
-    uint8_t* aligned_arena = memory_allocator_->GetBuffer();
-    size_t arena_size = memory_allocator_->GetMaxBufferSize();
     // Remaining arena size that memory planner can use for calculating offsets.
-    // The remaining size should always be a positive number since the parent
-    // allocator is always bigger than the child allocator.
-    size_t remaining_arena_size = arena_size - tmp_allocator.GetDataSize();
-    GreedyMemoryPlanner planner(aligned_arena, remaining_arena_size);
+    size_t remaining_arena_size = tmp_allocator.GetAvailableMemory();
+    uint8_t* planner_arena =
+        tmp_allocator.AllocateFromHead(remaining_arena_size, /*alignment=*/1);
+    TF_LITE_ENSURE(error_reporter_, planner_arena != nullptr);
+    GreedyMemoryPlanner planner(planner_arena, remaining_arena_size);
     TF_LITE_ENSURE_STATUS(
         CreatePlan(error_reporter_, &planner, allocation_info, builder.Size()));
-    // Actual size available for placing tensors. This includes memory held by
-    // the tensor info array, which will be released.
+
     size_t actual_available_arena_size =
-        arena_size - memory_allocator_->GetDataSize();
+        memory_allocator_->GetAvailableMemory();
     // Make sure we have enough arena size.
     if (planner.GetMaximumMemorySize() > actual_available_arena_size) {
       TF_LITE_REPORT_ERROR(
           error_reporter_,
           "Arena size is too small for activation buffers. Needed %d but only "
           "%d was available.",
-          planner.GetMaximumMemorySize(), remaining_arena_size);
+          planner.GetMaximumMemorySize(), actual_available_arena_size);
       return kTfLiteError;
     }
 
-    TF_LITE_ENSURE_STATUS(CommitPlan(error_reporter_, &planner, aligned_arena,
+    // Commit the plan.
+    TF_LITE_ENSURE_STATUS(CommitPlan(error_reporter_, &planner,
+                                     memory_allocator_->GetHead(),
                                      allocation_info, builder.Size()));
+    // Allocate the planned area, so the allocator knows it's used.
+    uint8_t* allocated_tensor_memory =
+        memory_allocator_->AllocateFromHead(planner.GetMaximumMemorySize(),
+                                            /*alignment=*/1);
+    TF_LITE_ENSURE(error_reporter_, allocated_tensor_memory != nullptr);
   }
 
   // Data in variables need to be kept for the next invocation so allocating
@@ -629,9 +635,7 @@ TfLiteStatus MicroAllocator::RequestScratchBufferInArena(int node_id,
   // allocator.
   if (scratch_buffer_handles_ != nullptr &&
       reinterpret_cast<uint8_t*>(scratch_buffer_handles_) !=
-          memory_allocator_->GetBuffer() +
-              memory_allocator_->GetMaxBufferSize() -
-              memory_allocator_->GetDataSize()) {
+          memory_allocator_->GetTail()) {
     TF_LITE_REPORT_ERROR(error_reporter_,
                          "Internal error: AllocateFromTail can not be called "
                          "between two RequestScratchBufferInArena calls.");
