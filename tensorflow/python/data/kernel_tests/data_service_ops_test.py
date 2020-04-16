@@ -32,7 +32,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
-PROTOCOL = "grpc+local"
+PROTOCOL = "grpc"
 
 
 class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):

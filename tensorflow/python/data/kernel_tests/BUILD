@@ -83,9 +83,6 @@ tf_py_test(
     name = "data_service_ops_test",
     size = "small",
     srcs = ["data_service_ops_test.py"],
-    tags = [
-        "no_windows",  # b/154164808
-    ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
