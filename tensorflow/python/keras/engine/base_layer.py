@@ -93,8 +93,7 @@ _keras_model_gauge = monitoring.BoolGauge(
     '/tensorflow/api/keras/premade_models', 'premade keras model usage', 'type')
 
 
-# pylint: disable=g-classes-have-attributes
-@keras_export('keras.layers.Layer', v1=[])
+@keras_export('keras.layers.Layer')
 class Layer(module.Module, version_utils.LayerVersionSelector):
   """This is the class from which all layers inherit.
 
