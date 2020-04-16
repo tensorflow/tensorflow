@@ -148,13 +148,15 @@ TEST(TfliteInferenceStage, CorrectOutput) {
   // Verify metrics.
   EvaluationStageMetrics metrics = stage.LatestMetrics();
   EXPECT_EQ(metrics.num_runs(), 1);
-  const auto& max_latency = metrics.process_metrics().total_latency().max_us();
+  const auto& latency = metrics.process_metrics().total_latency();
+  const auto max_latency = latency.max_us();
   EXPECT_GT(max_latency, 0);
   EXPECT_LT(max_latency, 1e7);
-  EXPECT_LE(metrics.process_metrics().total_latency().last_us(), max_latency);
-  EXPECT_LE(metrics.process_metrics().total_latency().min_us(), max_latency);
-  EXPECT_GT(metrics.process_metrics().total_latency().sum_us(), max_latency);
-  EXPECT_LE(metrics.process_metrics().total_latency().avg_us(), max_latency);
+  EXPECT_LE(latency.last_us(), max_latency);
+  EXPECT_LE(latency.min_us(), max_latency);
+  EXPECT_GT(latency.sum_us(), max_latency);
+  EXPECT_LE(latency.avg_us(), max_latency);
+  EXPECT_TRUE(latency.has_std_deviation_us());
   EXPECT_EQ(
       metrics.process_metrics().tflite_inference_metrics().num_inferences(), 2);
 }
