@@ -14,4 +14,5 @@ exports_files(["LICENSE"])
 tf_proto_library(
     name = "projector_config_proto",
     srcs = ["projector_config.proto"],
+    cc_api_version = 2,
 )
