@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/tfl2model.h"
+#include "tensorflow/lite/delegates/gpu/common/testing/tflite_model_reader.h"
 
 namespace tflite {
 namespace gpu {

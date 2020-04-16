@@ -11,7 +11,7 @@ cc_binary(
         "//tensorflow/lite/delegates/gpu/cl:inference_context",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common:tfl2model",
+        "//tensorflow/lite/delegates/gpu/common/testing:tflite_model_reader",
         "@com_google_absl//absl/time",
     ],
 )

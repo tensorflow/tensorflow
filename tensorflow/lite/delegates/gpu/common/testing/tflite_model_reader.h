@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TFL2MODEL_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TFL2MODEL_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TESTING_TFLITE_MODEL_READER_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TESTING_TFLITE_MODEL_READER_H_
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -29,4 +29,4 @@ absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TFL2MODEL_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TESTING_TFLITE_MODEL_READER_H_
