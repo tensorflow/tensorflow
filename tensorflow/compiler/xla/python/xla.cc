@@ -1318,7 +1318,15 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("IsConstant", &XlaBuilder::IsConstant)
       .def("SetOpMetadata", &XlaBuilder::SetOpMetadata)
       .def("SetSharding", &XlaBuilder::SetSharding)
-      .def("ClearSharding", &XlaBuilder::ClearSharding);
+      .def("ClearSharding", &XlaBuilder::ClearSharding)
+      .def("SetUpAlias",
+           [](XlaBuilder& builder, const std::vector<int64>& output_index,
+              int64 param_number, const std::vector<int64>& param_index) {
+             builder.SetUpAlias(
+                 ShapeIndex(output_index.begin(), output_index.end()),
+                 param_number,
+                 ShapeIndex(param_index.begin(), param_index.end()));
+           });
 
   m.def("BufferToDLPackManagedTensor", BufferToDLPackManagedTensor);
   m.def("DLPackManagedTensorToBuffer",
