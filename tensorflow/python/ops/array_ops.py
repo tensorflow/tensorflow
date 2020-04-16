@@ -4352,10 +4352,11 @@ def where_v2(condition, x=None, y=None, name=None):
   <tf.Tensor: shape=(4,), dtype=int32, numpy=array([100, 100, 100, 100],
   dtype=int32)>
 
-  Note that if the gradient of either branch of the tf.where generates a NaN then the gradient
-  of the entire tf.where will be NaN. The workaround will be to use an inner tf.where to ensure
-  the function has no asymptote and to avoid computing a value whose gradient is NaN by replacing
-  dangerous inputs with safe inputs.
+  Note that if the gradient of either branch of the tf.where generates
+  a NaN then the gradient of the entire tf.where will be NaN. The
+  workaround will be to use an inner tf.where to ensure the function has
+  no asymptote and to avoid computing a value whose gradient is NaN by
+  replacing dangerous inputs with safe inputs.
 
   Instead of this
 
