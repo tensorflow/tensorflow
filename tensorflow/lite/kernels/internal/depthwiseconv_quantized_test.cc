@@ -1089,7 +1089,7 @@ void TestOneNeonDot3x3(const TestParam& test_param) {
 }
 
 TEST(TestDepthwiseConv, TestDepthwiseConv) {
-  const int kTestsToRun = 10 * 1000;
+  const int kTestsToRun = 1000;
   for (int i = 0; i < kTestsToRun; i++) {
     TestOneDepthwiseConv(DepthwiseConvImplementation::kNone,
                          DepthwiseConvOutputRounding::kAwayFromZero);
@@ -1098,7 +1098,7 @@ TEST(TestDepthwiseConv, TestDepthwiseConv) {
 
 // Run basic coverage test against the generic kernel.
 TEST(TestDepthwiseConv, TestGenericKernel) {
-  const int kTestsToRun = 10 * 1000;
+  const int kTestsToRun = 1000;
   for (int i = 0; i < kTestsToRun; i++) {
     TestOneDepthwiseConv(DepthwiseConvImplementation::kUseGenericKernel,
                          DepthwiseConvOutputRounding::kAwayFromZero);
@@ -1107,7 +1107,7 @@ TEST(TestDepthwiseConv, TestGenericKernel) {
 
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
 TEST(TestDepthwiseConv, TestNeon3x3FilterAway) {
-  const int kTestsToRun = 1000;
+  const int kTestsToRun = 500;
   for (int i = 0; i < kTestsToRun; i++) {
     TestOneDepthwiseConv3x3Filter(DepthwiseConvImplementation::kUseNeon3x3,
                                   DepthwiseConvOutputRounding::kAwayFromZero);
@@ -1115,7 +1115,7 @@ TEST(TestDepthwiseConv, TestNeon3x3FilterAway) {
 }
 
 TEST(TestDepthwiseConv, TestNeon3x3FilterUpward) {
-  const int kTestsToRun = 1000;
+  const int kTestsToRun = 500;
   for (int i = 0; i < kTestsToRun; i++) {
     TestOneDepthwiseConv3x3Filter(DepthwiseConvImplementation::kUseNeon3x3,
                                   DepthwiseConvOutputRounding::kUpward);
@@ -1229,7 +1229,7 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(
         Values(DepthwiseConvImplementation::
                    kUseCModel3x3DotProduct),            // forced_invocation
-        Values(1000),                                   // tests_to_run
+        Values(200),                                    // tests_to_run
         Values(QuantizationType::kNonPerChannelUint8),  // quantization_type
         Bool(),                                         // test_stride
         Bool(),                                         // test_pad
@@ -1245,7 +1245,7 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(
         Values(DepthwiseConvImplementation::
                    kUseUnwound3x3DotProduct),           // forced_invocation
-        Values(1000),                                   // tests_to_run
+        Values(200),                                    // tests_to_run
         Values(QuantizationType::kNonPerChannelUint8),  // quantization_type
         Bool(),                                         // test_stride
         Bool(),                                         // test_pad
@@ -1265,7 +1265,7 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(
         Values(DepthwiseConvImplementation::
                    kUseIntrinsics3x3DotProduct),        // forced_invocation
-        Values(500),                                    // tests_to_run
+        Values(200),                                    // tests_to_run
         Values(QuantizationType::kNonPerChannelUint8),  // quantization_type
         Bool(),                                         // test_stride
         Bool(),                                         // test_pad
@@ -1285,7 +1285,7 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(
         Values(DepthwiseConvImplementation::
                    kUseIntrinsics3x3DotProduct),       // forced_invocation
-        Values(500),                                   // tests_to_run
+        Values(200),                                   // tests_to_run
         Values(QuantizationType::kPerChannelInt8),     // quantization_type
         Bool(),                                        // test_stride
         Bool(),                                        // test_pad
@@ -1306,7 +1306,7 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(
         Values(DepthwiseConvImplementation::
                    kUseNeon3x3DotProduct),              // forced_invocation
-        Values(1000),                                   // tests_to_run
+        Values(200),                                    // tests_to_run
         Values(QuantizationType::kNonPerChannelUint8),  // quantization_type
         Bool(),                                         // test_stride
         Bool(),                                         // test_pad
@@ -1322,7 +1322,7 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(
         Values(DepthwiseConvImplementation::
                    kUseNeon3x3DotProduct),             // forced_invocation
-        Values(1000),                                  // tests_to_run
+        Values(200),                                   // tests_to_run
         Values(QuantizationType::kPerChannelInt8),     // quantization_type
         Bool(),                                        // test_stride
         Bool(),                                        // test_pad
@@ -1339,7 +1339,7 @@ INSTANTIATE_TEST_SUITE_P(
     Dispatch3x3, DepthwiseConvTest,
     testing::Combine(
         Values(DepthwiseConvImplementation::kNone),     // forced_invocation
-        Values(500),                                    // tests_to_run
+        Values(200),                                    // tests_to_run
         Values(QuantizationType::kNonPerChannelUint8),  // quantization_type
         Bool(),                                         // test_stride
         Bool(),                                         // test_pad
@@ -1354,7 +1354,7 @@ INSTANTIATE_TEST_SUITE_P(
     Dispatch3x3PerChannel, DepthwiseConvTest,
     testing::Combine(
         Values(DepthwiseConvImplementation::kNone),    // forced_invocation
-        Values(500),                                   // tests_to_run
+        Values(200),                                   // tests_to_run
         Values(QuantizationType::kPerChannelInt8),     // quantization_type
         Bool(),                                        // test_stride
         Bool(),                                        // test_pad
