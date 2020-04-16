@@ -850,6 +850,7 @@ distribute_py_test(
     tags = [
         "manual",
         "multi_and_single_gpu",
+        "notap",  # TODO(b/151467526)
     ],
     deps = [
         ":collective_all_reduce_strategy",
