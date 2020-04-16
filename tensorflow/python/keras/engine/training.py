@@ -100,9 +100,15 @@ def disable_multi_worker(method):
 class Model(network.Network, version_utils.ModelVersionSelector):
   """`Model` groups layers into an object with training and inference features.
 
+  Arguments:
+      inputs: The input(s) of the model: a `keras.Input` object or list of
+          `keras.Input` objects.
+      outputs: The output(s) of the model. See Functional API example below.
+      name: String, the name of the model.
+
   There are two ways to instantiate a `Model`:
 
-  1 - With the "functional API", where you start from `Input`,
+  1 - With the "Functional API", where you start from `Input`,
   you chain layer calls to specify the model's forward pass,
   and finally you create your model from inputs and outputs:
 
