@@ -450,7 +450,7 @@ retained with length 1.
 }
 
 def TFL_TransposeConvOp:
-    TFL_Op<"transpose_conv", [NoSideEffect]> {
+    TFL_Op<"transpose_conv", [NoSideEffect, TFL_GpuTargetOp]> {
   let summary = "Transpose convolution operator";
 
   let description = [{
