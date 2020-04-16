@@ -71,10 +71,7 @@ cc_library(
     ],
     build_for_embedded = True,
     copts = micro_copts(),
-    deps = [
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/api",
-    ],
+    deps = ["//tensorflow/lite/c:common"],
 )
 
 cc_library(
