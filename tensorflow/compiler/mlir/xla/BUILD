@@ -331,9 +331,27 @@ cc_library(
     srcs = ["transforms/buffer_assignment.cc"],
     hdrs = ["transforms/buffer_assignment.h"],
     deps = [
-        ":hlo",
-        ":lhlo",
         "@com_google_absl//absl/memory",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "buffer_assignment_test",
+    srcs = ["transforms/buffer_assignment_test.cc"],
+    hdrs = [
+        "transforms/buffer_assignment.h",
+        "transforms/passes.h",
+    ],
+    deps = [
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -771,6 +789,7 @@ cc_library(
     ],
     deps = [
         ":buffer_assignment",
+        ":buffer_assignment_test",
         ":hlo",
         ":hlo_legalize_to_lhlo",
         ":lhlo",
