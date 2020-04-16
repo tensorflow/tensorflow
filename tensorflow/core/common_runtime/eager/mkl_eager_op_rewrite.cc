@@ -136,7 +136,7 @@ Status MklEagerOpRewrite::SetupNewOp(
       ->Set("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
 
   if (orig_op->Device() == kVariantDeviceNull) {
-    string device_name = orig_op->GetDeviceName();
+    string device_name = orig_op->DeviceName();
     (*new_mkl_op)->SetDeviceName(device_name.c_str());
   } else if (VariantDeviceIsCustom(orig_op->Device())) {
     (*new_mkl_op)->SetDevice(absl::get<CustomDevice*>(orig_op->Device()));
