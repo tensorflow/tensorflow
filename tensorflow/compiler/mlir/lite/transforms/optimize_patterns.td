@@ -378,6 +378,19 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
              (IsTailOfShape $rhs, $input)]>;
 }
 
+// Reorder the element-wise value operations and the element move operations,
+// such that the value operation happens before move operation.
+foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
+                   TFL_ReluOp, TFL_Relu1Op, TFL_Relu6Op, TFL_RoundOp,
+                   TFL_TanhOp, TFL_SqrtOp, TFL_SquareOp] in {
+  foreach MoveOp = [TFL_DepthToSpaceOp, TFL_ExpandDimsOp, TFL_SqueezeOp,
+                   TFL_ReshapeOp, TFL_TransposeOp] in {
+    def : Pat<(ValueOp:$value (MoveOp:$move $input, $move_def)),
+              (MoveOp (ValueOp $input), $move_def),
+              [(HasOneUse $move)]>;
+  }
+}
+
 // Returns shape of a ranked tensor.
 // if called without a ranked tensor it will fail.
 def GetShape: NativeCodeCall<"GetShape($0)">;

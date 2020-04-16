@@ -187,7 +187,7 @@ MaliGPU GetMaliGPUVersion(const std::string& device_name) {
       {"G52", MaliGPU::G52},   {"G72", MaliGPU::G72},   {"G76", MaliGPU::G76},
       {"G57", MaliGPU::G57},   {"G77", MaliGPU::G77},
   };
-  for (auto v : kMapping) {
+  for (const auto& v : kMapping) {
     if (device_name.find(v.first) != std::string::npos) {
       return v.second;
     }

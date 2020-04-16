@@ -9,7 +9,9 @@ cc_library(
     name = "cost_estimators",
     textual_hdrs = [
         "estimator.h",
+        "cpu_estimators.h",
         "gpu_estimators.h",
         "hardware.h",
+        "arithmetic_count_util.h",
     ],
 )

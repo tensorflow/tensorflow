@@ -83,10 +83,10 @@ TfLiteStatus AllocateVariables(
     TfLiteTensor* runtime_tensors, SimpleMemoryAllocator* allocator) {
   for (size_t i = 0; i < flatbuffer_tensors->size(); ++i) {
     if (flatbuffer_tensors->Get(i)->is_variable()) {
-      runtime_tensors[i].data.uint8 = allocator->AllocateFromTail(
+      runtime_tensors[i].data.data = allocator->AllocateFromTail(
           runtime_tensors[i].bytes, kBufferAlignment);
       // Allocation failure.
-      if (runtime_tensors[i].data.uint8 == nullptr) {
+      if (runtime_tensors[i].data.data == nullptr) {
         return kTfLiteError;
       }
     }
@@ -157,7 +157,7 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
     current->bytes = runtime_tensors[i].bytes;
     current->first_created = -1;
     current->last_used = -1;
-    current->needs_allocating = (runtime_tensors[i].data.raw == nullptr) &&
+    current->needs_allocating = (runtime_tensors[i].data.data == nullptr) &&
                                 (!subgraph->tensors()->Get(i)->is_variable());
   }
 
@@ -296,8 +296,8 @@ TfLiteStatus InitializeRuntimeTensor(
       if (array->size()) {
         // We've found a buffer with valid data, so update the runtime tensor
         // data structure to point to it.
-        result->data.raw =
-            const_cast<char*>(reinterpret_cast<const char*>(array->data()));
+        result->data.data =
+            const_cast<void*>(static_cast<const void*>(array->data()));
         // We set the data from a serialized buffer, so record tha.
         result->allocation_type = kTfLiteMmapRo;
       }
@@ -311,7 +311,7 @@ TfLiteStatus InitializeRuntimeTensor(
 
   // TODO(petewarden): Some of these paths aren't getting enough testing
   // coverage, so we should figure out some tests that exercise them.
-  if (!result->data.raw) {
+  if (result->data.data == nullptr) {
     // The tensor contents haven't been set from a serialized buffer, so
     // make a note that they will be allocated from memory. The actual
     // allocation won't happen until later.
@@ -351,12 +351,29 @@ TfLiteStatus InitializeRuntimeTensor(
         reinterpret_cast<TfLiteAffineQuantization*>(
             allocator->AllocateFromTail(sizeof(TfLiteAffineQuantization),
                                         alignof(TfLiteAffineQuantization)));
+    if (quantization == nullptr) {
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Unable to allocate TfLiteAffineQuantization.\n");
+      return kTfLiteError;
+    }
     quantization->zero_point =
         reinterpret_cast<TfLiteIntArray*>(allocator->AllocateFromTail(
             TfLiteIntArrayGetSizeInBytes(channels), alignof(TfLiteIntArray)));
+    if (quantization->zero_point == nullptr) {
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Unable to allocate quantization->zero_point.\n");
+      return kTfLiteError;
+    }
+
     quantization->scale = reinterpret_cast<TfLiteFloatArray*>(
         allocator->AllocateFromTail(TfLiteFloatArrayGetSizeInBytes(channels),
                                     alignof(TfLiteFloatArray)));
+    if (quantization->scale == nullptr) {
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Unable to allocate quantization->scale.\n");
+      return kTfLiteError;
+    }
+
     quantization->zero_point->size = channels;
     quantization->scale->size = channels;
     int* zero_point_data = quantization->zero_point->data;
@@ -407,7 +424,7 @@ TfLiteStatus MicroAllocator::Init() {
     TfLiteStatus status = internal::InitializeRuntimeTensor(
         memory_allocator_, *tensors_->Get(i), model_->buffers(),
         error_reporter_, &context_->tensors[i]);
-    if (status == kTfLiteError) {
+    if (status != kTfLiteOk) {
       TF_LITE_REPORT_ERROR(error_reporter_, "Failed to initialize tensor %d",
                            i);
       return kTfLiteError;

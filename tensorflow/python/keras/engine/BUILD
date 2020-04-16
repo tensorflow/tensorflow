@@ -289,6 +289,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 20,
     tags = [
+        "manual",
         "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
         "notsan",
@@ -583,6 +584,23 @@ tf_py_test(
     ],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "deferred_sequential_test",
+    size = "small",
+    srcs = ["deferred_sequential_test.py"],
+    python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

@@ -1,0 +1,52 @@
+op {
+  name: "GRUBlockCell"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "h_prev"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "w_ru"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "w_c"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "b_ru"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "b_c"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "r"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "u"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "c"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "h"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+}

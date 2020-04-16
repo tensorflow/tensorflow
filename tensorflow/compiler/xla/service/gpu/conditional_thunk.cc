@@ -43,6 +43,13 @@ ConditionalThunk::ConditionalThunk(
   }
 }
 
+void ConditionalThunk::ComputeAnnotations() {
+  Thunk::ComputeAnnotations();
+  for (auto& branch_thunk : branch_thunks_) {
+    branch_thunk->ComputeAnnotations();
+  }
+}
+
 Status ConditionalThunk::Initialize(const GpuExecutable& executable,
                                     se::StreamExecutor* executor) {
   if (branch_index_is_bool_) {

@@ -37,7 +37,8 @@ namespace xla {
 
 TpuDevice::TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
                      int core_on_chip)
-    : xla::Device(id, /*local_device_state=*/nullptr, kTpuPlatform, host_id),
+    : xla::Device(id, /*local_device_state=*/nullptr, kTpuPlatform,
+                  /*device_kind=*/"Cloud TPU", host_id),
       coords_(coords),
       core_on_chip_(core_on_chip) {}
 
@@ -566,7 +567,7 @@ PyTpuExecutable::ExecuteResult PyTpuExecutable::ExecuteHelper(
 
   for (const auto& core_args : all_core_arguments) {
     for (const auto* handle : core_args) {
-      for (auto pending_event : handle->DeviceBuffer()->wait_for_use) {
+      for (const auto& pending_event : handle->DeviceBuffer()->wait_for_use) {
         ready_to_execute.push_back(pending_event.get());
       }
     }

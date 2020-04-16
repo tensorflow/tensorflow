@@ -43,7 +43,7 @@ TEST(DumpMlirModuleTest, LogInfo) {
   setenv("TF_DUMP_GRAPH_PREFIX", "-", 1);
 
   std::string filepath = DumpMlirOpToFile("module", module_ref.get());
-  EXPECT_EQ(filepath, "LOG(INFO)");
+  EXPECT_EQ(filepath, "(stderr)");
 }
 
 TEST(DumpMlirModuleTest, Valid) {

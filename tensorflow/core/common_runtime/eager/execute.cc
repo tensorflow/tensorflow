@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
+#include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -79,8 +80,7 @@ const string& DeviceNameOrUnspecified(Device* device) {
   return (device == nullptr) ? *unspecified_string : device->name();
 }
 
-const string& DeviceNameOrUnspecified(
-    absl::variant<Device*, CustomDevice*> device) {
+const string& DeviceNameOrUnspecified(VariantDevice device) {
   if (VariantDeviceIsCustom(device)) {
     return absl::get<CustomDevice*>(device)->name();
   } else {
@@ -156,9 +156,9 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
                             " to ", expected_input_device->name());
       },
       profiler::TraceMeLevel::kInfo);
-  Status status = EagerCopyToDevice(
-      handle, ctx, &op->Executor(), expected_input_device,
-      handle->ImplicitMirroring() || ctx->MirrorTensors(), &result_handle);
+  Status status =
+      EagerCopyToDevice(handle, ctx, &op->Executor(), expected_input_device,
+                        /* mirror= */ true, &result_handle);
   activity.Stop();
   if (!status.ok()) {
     return errors::Internal("Failed copying input tensor from ",
@@ -373,7 +373,10 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
 //    running without an explicitly requested device.
 Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                          int* num_retvals) {
-  auto op_annotation = ScopedMemoryDebugAnnotation(op->op_name());
+  ScopedMemoryDebugAnnotation op_annotation(
+      op->op_name(), op->remote_func_params().has_value()
+                         ? op->remote_func_params().value().step_id.value_or(0)
+                         : 0);
   profiler::TraceMe activity(
       [&] { return absl::StrCat("EagerLocalExecute: ", op->Name()); },
       profiler::TraceMeLevel::kInfo);
@@ -382,7 +385,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   TF_RETURN_IF_ERROR(executor.status());
   Device* device = absl::get<Device*>(op->Device());
 
-  Fprint128 cache_key = op->MutableAttrs()->CacheKey(op->GetDeviceName());
+  Fprint128 cache_key = op->MutableAttrs()->CacheKey(op->DeviceName());
 
   std::vector<Device*> input_dev_ptrs;
   std::unordered_map<int, DtypeAndPartialTensorShape>
@@ -415,7 +418,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
         TensorHandle* handle = nullptr;
         TF_RETURN_IF_ERROR(EagerCopyToDevice(
             input, &ctx, &executor, device == nullptr ? ctx.HostCPU() : device,
-            input->ImplicitMirroring() || ctx.MirrorTensors(), &handle));
+            /* mirror= */ true, &handle));
         op->UpdateInput(i, handle);
         // Unref handle since it has a ref as an input now
         handle->Unref();
@@ -593,6 +596,10 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
         &ctx, op->Inputs(), op->remote_func_params(), std::move(kernel),
         graph_collector, op->GetCancellationManager(),
         absl::Span<TensorHandle*>(retvals, num_outputs));
+    // Release the inputs from the eager operation since the AsyncExecuteNode
+    // would have taken ownership. This allows the inputs to be forwarded if
+    // possible.
+    op->Clear();
     // For async mode, execution order will make sure that all
     // input handles are ready before executing them.
     // TODO(b/137118203): Consider executing "cheap" kernels inline for
@@ -606,6 +613,10 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                      graph_collector, op->GetCancellationManager(),
                      {retvals, static_cast<size_t>(num_outputs)});
     s = executor.SyncExecute(&node);
+    // We release the inputs AFTER executing the operation in sync mode since
+    // ExecuteNode does not increment the reference count and thus does not have
+    // ownership of the inputs while executing.
+    op->Clear();
   }
   // Since the operation failed, we need to Unref any outputs if they were
   // allocated.
@@ -666,7 +677,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   // TODO(fishx): Remove following code when lazy tensor copy is ready.
   if (op->Device() == kVariantDeviceNull) {
     tensorflow::Device* device = nullptr;
-    string device_name = op->GetDeviceName();
+    string device_name = op->DeviceName();
     TF_RETURN_IF_ERROR(ctx.FindDeviceFromName(device_name.c_str(), &device));
     op->SetDevice(device);
   }
@@ -874,11 +885,10 @@ Status MaybeUpdateOpDevice(EagerOperation* op) {
         if (!allowed_devices.empty()) {
           // TODO(b/145922293): Support allowed_devices specified in wildcard
           // patterns.
-          std::vector<string> device_names;
           if (std::find(allowed_devices.begin(), allowed_devices.end(),
-                        op->GetDeviceName()) != allowed_devices.end()) {
-            TF_RETURN_IF_ERROR(ctx.FindDeviceFromName(
-                op->GetDeviceName().c_str(), &resource_device));
+                        op->DeviceName()) != allowed_devices.end()) {
+            TF_RETURN_IF_ERROR(ctx.FindDeviceFromName(op->DeviceName().c_str(),
+                                                      &resource_device));
           }
         }
         DVLOG(1) << (resource_device != op_device ? "Changing " : "Setting ")
@@ -1010,13 +1020,8 @@ Status EagerKernelExecute(
   // device. We don't call it now because it is an unneeded overhead (it
   // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
-  if (container == nullptr) {
-    TF_RETURN_IF_ERROR(kernel->Run(inputs, &outputs, cancellation_manager,
-                                   remote_func_params));
-  } else {
-    TF_RETURN_IF_ERROR(kernel->Run(container, inputs, &outputs,
-                                   cancellation_manager, remote_func_params));
-  }
+  TF_RETURN_IF_ERROR(kernel->Run(container, inputs, &outputs,
+                                 cancellation_manager, remote_func_params));
   if (graph_collector != nullptr) {
     mutex_lock ml(*ctx->MetadataMu());
     {
@@ -1198,4 +1203,5 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
 #endif  // !IS_MOBILE_PLATFORM
   }
 }
+
 }  // namespace tensorflow

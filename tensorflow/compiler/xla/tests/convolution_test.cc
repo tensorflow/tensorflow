@@ -2008,6 +2008,47 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
+XLA_TEST_F(ConvolutionHloTest, SwappedOperandConvolve) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY Test {
+  %lhs = f32[3,3,7,7] parameter(0)
+  %rhs = f32[5,11,11,7] parameter(1)
+  ROOT %convolution = f32[5,21,2,7] convolution(lhs, rhs),
+     window={size=11x11 pad=3_25x3_6},
+     dim_labels=01bf_o01i->f01b
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, SwappedOperandConvolveWithStride) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY Test {
+  %lhs = f32[3,3,7,7] parameter(0)
+  %rhs = f32[5,11,11,7] parameter(1)
+  ROOT %convolution = f32[5,11,2,7] convolution(lhs, rhs),
+     window={size=11x11 pad=3_26x3_6 stride=2x1},
+     dim_labels=01bf_o01i->f01b
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+XLA_TEST_F(ConvolutionHloTest, SwappedOperandConvolve2) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY Test {
+  %lhs = f32[3,3,7,7] parameter(0)
+  %rhs = f32[5,11,11,7] parameter(1)
+  ROOT %convolution = f32[5,11,4,7] convolution(lhs, rhs),
+     window={size=11x11 pad=3_25x3_6 lhs_dilate=1x2 rhs_dilate=2x1},
+     dim_labels=01bf_o01i->f01b
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
 XLA_TEST_F(ConvolutionHloTest, TestConv0D) {
   constexpr char kHlo[] = R"(
 HloModule TestModule

@@ -28,12 +28,14 @@ hexagon_op_tests(
         "arg_min_max_test.cc",
         "concat_test.cc",
         "conv_test.cc",
+        "matmul_test.cc",
         "mul_test.cc",
         "neg_test.cc",
         "pad_test.cc",
         "pool_test.cc",
         "reduce_test.cc",
-        "resize_bilinear_test.cc",
+        "reshape_test.cc",
+        "resize_test.cc",
         "softmax_test.cc",
         "space_to_depth_test.cc",
         "split_test.cc",
@@ -42,6 +44,7 @@ hexagon_op_tests(
     ],
     deps = [
         ":hexagon_delegate_op_model",
+        "//tensorflow/lite/kernels:reshape_test_common",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -221,6 +221,15 @@ class Subgraph {
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
 
+  // WARNING: Experimental interface, subject to change
+  // Change the dimensionality of a given tensor. This is only acceptable for
+  // tensor indices that are inputs or variables. Only unknown dimensions can be
+  // resized with this function. Unknown dimensions are indicated as `-1` in the
+  // `dims_signature` attribute of a `TfLiteTensor`. Returns status of failure
+  // or success.
+  TfLiteStatus ResizeInputTensorStrict(int tensor_index,
+                                       const std::vector<int>& dims);
+
   // This releases memory held by non-persistent tensors. It does NOT re-perform
   // memory planning.
   // AllocateTensors needs to be called before next invocation.
@@ -532,6 +541,11 @@ class Subgraph {
   // This re-applies all delegates that were undone.
   // Does nothing if UndoAllDelegates wasn't previously called.
   TfLiteStatus RedoAllDelegates();
+
+  // This removes all delegates.
+  // The old execution plan and nodes are restored. The graph is invokable
+  // afterwards.
+  TfLiteStatus RemoveAllDelegates();
 
   // Cleanups up data reserved for the given node. Does not remove the {node,
   // registration} pair from nodes_and_registrations_.

@@ -34,17 +34,15 @@ class Mean : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    auto attr = absl::any_cast<MeanAttributes>(ctx.node->operation.attributes);
+    const auto& attr = absl::any_cast<const MeanAttributes&>(ctx.op_attr);
     if (attr.dims != std::set<Axis>({Axis::HEIGHT, Axis::WIDTH})) {
       return absl::InvalidArgumentError(
           "Mean calculation is supported only for height and width.");
     }
 
-    auto input = ctx.graph->FindInputs(ctx.node->id)[0];
-
     std::vector<Variable> parameters = {
-        {"input_data_0_h", input->tensor.shape.h},
-        {"input_data_0_w", input->tensor.shape.w}};
+        {"input_data_0_h", static_cast<int>(ctx.input_shapes[0][1])},
+        {"input_data_0_w", static_cast<int>(ctx.input_shapes[0][2])}};
 
     std::string source = R"(
       // Shaders may be compiled with a precision hint mediump, which means that

@@ -36,9 +36,7 @@ TfLiteStatus ArithmeticOpBuilder::PopulateSubGraph(
   const auto& input1_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
   TF_LITE_ENSURE_STATUS(
-      ComputeMinAndMaxQuantValues(input1_tensor, &input1_min_, &input1_max_,
-                                  std::numeric_limits<uint8_t>::min(),
-                                  std::numeric_limits<uint8_t>::max()));
+      ComputeMinAndMaxQuantValues(input1_tensor, &input1_min_, &input1_max_));
   auto* input1_min_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape, reinterpret_cast<char*>(&input1_min_),
       sizeof(input1_min_));
@@ -57,9 +55,7 @@ TfLiteStatus ArithmeticOpBuilder::PopulateSubGraph(
   }
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
   TF_LITE_ENSURE_STATUS(
-      ComputeMinAndMaxQuantValues(input2_tensor, &input2_min_, &input2_max_,
-                                  std::numeric_limits<uint8_t>::min(),
-                                  std::numeric_limits<uint8_t>::max()));
+      ComputeMinAndMaxQuantValues(input2_tensor, &input2_min_, &input2_max_));
   auto* input2_min_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape, reinterpret_cast<char*>(&input2_min_),
       sizeof(input2_min_));
@@ -75,9 +71,7 @@ TfLiteStatus ArithmeticOpBuilder::PopulateSubGraph(
 
   // Output details.
   TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
-      context->tensors[outputs->data[0]], &output_min_, &output_max_,
-      std::numeric_limits<uint8_t>::min(),
-      std::numeric_limits<uint8_t>::max()));
+      context->tensors[outputs->data[0]], &output_min_, &output_max_));
   auto* output_min_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape, reinterpret_cast<char*>(&output_min_),
       sizeof(output_min_));

@@ -253,25 +253,6 @@ class ProgramContext(
   pass
 
 
-class EntityContext(transformer.Context):
-  """Tracks the conversion of a single entity.
-
-  This object is mutable, and is updated during conversion. Not thread safe.
-
-  Attributes:
-    namer: Namer
-    info: transformer.EntityInfo
-    program: ProgramContext,
-    targe_name: Text
-  """
-
-  def __init__(self, namer, entity_info, program_ctx, target_name=None):
-    super(EntityContext, self).__init__(entity_info)
-    self.namer = namer
-    self.program = program_ctx
-    self.target_name = target_name
-
-
 class Base(transformer.Base):
   """All converters should inherit from this class.
 

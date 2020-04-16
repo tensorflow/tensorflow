@@ -366,6 +366,7 @@ do_external_licenses_check(){
     -e "@com_github_googlecloudplatform_google_cloud_cpp//google" \
     -e "@com_github_grpc_grpc//src/compiler" \
     -e "@platforms//os" \
+    -e "@ruy//" \
     -v ${MISSING_LICENSES_FILE} > temp.txt
   mv temp.txt ${MISSING_LICENSES_FILE}
 
@@ -383,6 +384,7 @@ do_external_licenses_check(){
     -e "@com_github_googlecloudplatform_google_cloud_cpp//" \
     -e "@embedded_jdk//" \
     -e "^//$" \
+    -e "@ruy//" \
     -v ${EXTRA_LICENSES_FILE} > temp.txt
   mv temp.txt ${EXTRA_LICENSES_FILE}
 
@@ -457,14 +459,9 @@ cmd_status(){
 }
 
 # Run bazel build --nobuild to test the validity of the BUILD files
-# TODO(mikecase): Remove TF Lite exclusion from this list. Exclusion is
-# necessary since the @androidsdk WORKSPACE dependency is commented
-# out by default in TF WORKSPACE file.
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/delegates/gpu/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/java/demo/app/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/schema/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/..."
   BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}

@@ -23,7 +23,7 @@ namespace tflite {
 
 class MicroErrorReporter : public ErrorReporter {
  public:
-  ~MicroErrorReporter() {}
+  ~MicroErrorReporter() override {}
   int Report(const char* format, va_list args) override;
 
  private:

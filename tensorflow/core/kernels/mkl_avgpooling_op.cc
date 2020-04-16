@@ -233,6 +233,13 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
               : memory::desc(orig_input_dims_mkl_order, MklDnnType<T>(),
                              this->data_format_mkldnn_);
 
+      // Get diff_dst memory::desc.
+      memory::desc diff_dst_md =
+          grad_mkl_shape.IsMklTensor()
+              ? grad_mkl_shape.GetMklLayout()
+              : memory::desc(diff_dst_dims, MklDnnType<T>(),
+                             this->data_format_mkldnn_);
+
       // Pass prop_kind::forward_training to create a forward primitive
       // that is used in the backward pass.
 #ifdef ENABLE_MKLDNN_V1
@@ -241,7 +248,8 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
           strides, padding_left, padding_right,
           ALGORITHM::pooling_avg_exclude_padding, prop_kind::forward_training,
-          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), src_md);
+          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), src_md,
+          diff_dst_md);
 #else
       MklPoolingParams bwdParams(
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
@@ -256,12 +264,6 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       this->AllocateOutputTensor(context, *(pooling_bwd->GetPoolingBwdPd()),
                                  orig_input_dims_mkl_order,
                                  this->tensor_format_mkldnn_, &output_tensor);
-      // Get diff_dst memory::desc.
-      memory::desc diff_dst_md =
-          grad_mkl_shape.IsMklTensor()
-              ? grad_mkl_shape.GetMklLayout()
-              : memory::desc(diff_dst_dims, MklDnnType<T>(),
-                             this->data_format_mkldnn_);
 
       // TODO(nammbash): Refactor (lines 249-262) common code for
       // max & avg pooling into superclass or common utils function.

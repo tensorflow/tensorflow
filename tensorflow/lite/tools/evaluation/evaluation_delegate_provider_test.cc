@@ -39,6 +39,21 @@ TEST(EvaluationDelegateProviderTest, CreateTfLiteDelegate) {
   EXPECT_TRUE(!CreateTfLiteDelegate(params));
 }
 
+TEST(EvaluationDelegateProviderTest, DelegateProvidersParams) {
+  DelegateProviders providers;
+  const auto& params = providers.GetAllParams();
+  EXPECT_TRUE(params.HasParam("use_nnapi"));
+  EXPECT_TRUE(params.HasParam("use_gpu"));
+
+  int argc = 3;
+  const char* argv[] = {"program_name", "--use_gpu=true",
+                        "--other_undefined_flag=1"};
+  EXPECT_TRUE(providers.InitFromCmdlineArgs(&argc, argv));
+  EXPECT_TRUE(params.Get<bool>("use_gpu"));
+  EXPECT_EQ(2, argc);
+  EXPECT_EQ("--other_undefined_flag=1", argv[1]);
+}
+
 }  // namespace
 }  // namespace evaluation
 }  // namespace tflite

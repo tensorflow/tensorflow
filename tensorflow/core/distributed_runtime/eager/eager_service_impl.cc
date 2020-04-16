@@ -367,18 +367,13 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
   {
     profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",
                                profiler::TraceMeLevel::kVerbose);
-    if (!operation.op_inputs().empty() && !operation.inputs().empty()) {
-      return errors::InvalidArgument(
-          "Both operation.inputs and operation.op_inputs are specified in the "
-          "same request.");
-    }
     for (const auto& input : operation.op_inputs()) {
       tensorflow::TensorHandle* handle;
       if (input.has_remote_handle()) {
         TF_RETURN_IF_ERROR(
             eager_context->RemoteMgr()->DeserializeRemoteTensorHandle(
                 input.remote_handle(), &handle));
-        op->AddInput(handle);
+        TF_RETURN_IF_ERROR(op->AddInput(handle));
       } else {
         Tensor tensor;
         if (!ParseTensorProtoToTensor(input.tensor(), &tensor)) {
@@ -387,20 +382,9 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
         } else {
           handle = TensorHandle::CreateLocalHandle(std::move(tensor), nullptr,
                                                    nullptr, eager_context);
-          op->AddInput(handle);
+          TF_RETURN_IF_ERROR(op->AddInput(handle));
         }
       }
-      // Unref handle since it has a ref as an input now.
-      handle->Unref();
-    }
-    // TODO(b/150963957): Remove this once the migration from operation.inputs
-    // to operation.op_inputs completes.
-    for (const auto& remote_handle : operation.inputs()) {
-      tensorflow::TensorHandle* handle;
-      TF_RETURN_IF_ERROR(
-          eager_context->RemoteMgr()->DeserializeRemoteTensorHandle(
-              remote_handle, &handle));
-      op->AddInput(handle);
       // Unref handle since it has a ref as an input now.
       handle->Unref();
     }

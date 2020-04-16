@@ -109,8 +109,9 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   // Convert convolutions into CustomCalls to cudnn, then canonicalize them
   // (GpuConvPaddingLegalization). Also expand cuSolver calls.
   HloPassPipeline pipeline("conv_canonicalization");
-  pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                            /*allow_mixed_precision=*/false);
+  pipeline.AddInvariantCheckerDebug<HloVerifier>(
+      /*layout_sensitive=*/false,
+      /*allow_mixed_precision=*/false);
   pipeline.AddPass<CusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
   pipeline.AddPass<CudnnFusedConvRewriter>();
@@ -127,10 +128,20 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
         "algebraic_simplification_post_conv_rewriter");
-    pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                          /*allow_mixed_precision=*/false);
+    pass.AddInvariantCheckerDebug<HloVerifier>(/*layout_sensitive=*/false,
+                                               /*allow_mixed_precision=*/false);
 
     AlgebraicSimplifierOptions options;
+    // When transposes appear in a fusion node, we can easily adjust the
+    // multi-dimensional index to create the one needed for the operand. This
+    // is not as easy with bitcasts, because we don't have the information
+    // readily available which dimensions are permuted. In addition to that,
+    // if we have a transpose and a reshape next to each other, they will both
+    // be replaced by a bitcast, and we replace bitcast(bitcast) with one
+    // bitcast. This leads to having to linearize and then delinearize the
+    // index.
+    options.set_replace_transpose_with_bitcast(false);
+    options.set_enable_conv_operand_swap(false);
     options.set_cudnn_batchnorm_forward_training_metadata(
         kCudnnBatchNormForwardTrainingCallTarget);
     pass.AddPass<AlgebraicSimplifier>(options);
@@ -233,7 +244,7 @@ bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
   // and warn when a file is not used to ease catching typo in filename.
   std::string prefix = xla::FilenameFor(*module, "", *ptx);
   std::string matched_filename;
-  for (const string full_filename :
+  for (const string& full_filename :
        module->config().debug_options().xla_gpu_ptx_file()) {
     // To ease comparing many PTX versions, accept different suffixes then
     // the original filename.

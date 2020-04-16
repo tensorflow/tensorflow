@@ -143,7 +143,7 @@ Status HasSingleGraphSingleOpIslandsFunctions(mlir::ModuleOp module) {
       return mlir::WalkResult::interrupt();
     }
 
-    if (!has_single_element(block)) {
+    if (!hasSingleElement(block)) {
       status = errors::FailedPrecondition(
           kInvalidExecutorGraphMsg,
           "function does not only contain a single tf_executor.graph.");
@@ -236,6 +236,7 @@ class Exporter {
   typedef absl::InlinedVector<Node*, 4> NodeVector;
   absl::flat_hash_map<Operation*, NodeVector> returns_;
   const mlir::Dialect* tf_dialect_;
+  llvm::DenseSet<Operation*> to_delete_;
 };
 
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
@@ -468,11 +469,8 @@ Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
   // If it is one of the specified input names, then the new instruction should
   // have the same name.
   op_to_name_.InitOpName(inst, op_to_name_.GetUniqueName(input));
-  for (int index : llvm::seq<int>(0, input->getNumResults())) {
-    input->getResult(index).replaceAllUsesWith(inst->getResult(index));
-  }
-  input->dropAllReferences();
-  input->erase();
+  input->replaceAllUsesWith(inst);
+  to_delete_.insert(input);
   return Status::OK();
 }
 
@@ -584,7 +582,6 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
         continue;
       }
 
-      TF_RET_CHECK(result.getResultNumber() == tensor_id.index());
       Operation* defining_op = GetIslandInnerOpOrSelf(result.getDefiningOp());
       if (output_op_to_name.insert({defining_op, name}).second) {
         TF_RET_CHECK(name_to_op.insert({name, defining_op}).second)
@@ -700,6 +697,12 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
 
   TF_RETURN_IF_ERROR(
       exporter.GetControlRetNodes(graph_op.GetFetch(), control_ret_nodes));
+
+  // Delete replaced arguments ops.
+  // Note: This is done afterwards to avoid the ops created above from reusing a
+  // memory location of an op to which a mapping has already been assigned.
+  // TODO(jpienaar): Remove this need.
+  for (auto it : exporter.to_delete_) it->erase();
 
   return graph;
 }

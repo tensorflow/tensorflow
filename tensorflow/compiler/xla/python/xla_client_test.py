@@ -381,6 +381,21 @@ class ComputationsWithConstantsTest(ComputationTest):
     self._ExecuteAndCompareClose(c, expected=[0.75])
 
 
+class ComputationFromProtoTest(absltest.TestCase):
+  """Test computation execution from HLO proto."""
+
+  def testExecuteFromProto(self):
+    # Build the HLO proto
+    b = xla_client.ComputationBuilder("computation")
+    b.Add(b.Constant(np.int8(1)), b.Constant(np.int8(2)))
+    serialized_proto = b.Build().GetSerializedProto()
+
+    # Load and execute the proto
+    c = xla_client.Computation(xla_client._xla.XlaComputation(serialized_proto))
+    ans, = xla_client.execute_with_python_values(c.Compile())
+    np.testing.assert_equal(ans, np.int8(3))
+
+
 class ParametersTest(ComputationTest):
   """Tests focusing on Parameter ops and argument-passing."""
 
@@ -2005,6 +2020,21 @@ class SetShardingTest(ComputationTest):
     compiled_c = c.Build(result).Compile()
     ans, = xla_client.execute_with_python_values(compiled_c, [arg])
     np.testing.assert_allclose(ans, 4.14)
+
+
+class AliasTest(ComputationTest):
+
+  def testSetUpAlias(self):
+    c = self._NewComputation()
+    p1 = c.ParameterFromNumpy(NumpyArrayF32(1.0))
+    p2 = c.ParameterFromNumpy(NumpyArrayF32(1.0))
+    out = c.Add(p1, p2)
+    c.SetUpAlias([], 0, [])
+    c = c.Build(out)
+    with self.assertRaisesRegex(RuntimeError,
+                                "Buffer aliasing is not supported "
+                                "by XLA for non-TPU backends"):
+      c.Compile()
 
 
 int_dtypes = [

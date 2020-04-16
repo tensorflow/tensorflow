@@ -163,12 +163,12 @@ func @bitwise_and_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<
 }
 
 func @pow(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  %0 = xla_hlo.pow %arg0, %arg0 : tensor<2xf32>
+  %0 = xla_hlo.power %arg0, %arg0 : tensor<2xf32>
   return %0 : tensor<2xf32>
 }
 
 func @pow_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
-  %0 = xla_hlo.pow %arg0, %arg0 : tensor<?xf32>
+  %0 = xla_hlo.power %arg0, %arg0 : tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
@@ -184,7 +184,7 @@ func @floordiv_broadcast_i32(%arg0: tensor<2x3xi32>, %arg1: tensor<3xi32>) -> te
   %8 = xla_hlo.constant dense<1> : tensor<3xi32>
   %9 = xla_hlo.subtract %7, %8 : tensor<3xi32>
   %10 = "xla_hlo.add"(%6, %9) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
-  %11 = "xla_hlo.neg"(%10) : (tensor<2x3xi32>) -> tensor<2x3xi32>
+  %11 = "xla_hlo.negate"(%10) : (tensor<2x3xi32>) -> tensor<2x3xi32>
   %12 = "xla_hlo.abs"(%arg1) : (tensor<3xi32>) -> tensor<3xi32>
   %13 = "xla_hlo.divide"(%11, %12) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<2x3xi32>, tensor<3xi32>) -> tensor<2x3xi32>
   %14 = "xla_hlo.select"(%4, %5, %13) : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
@@ -203,7 +203,7 @@ func @floordiv_reverse_broadcast_i32(%arg0: tensor<3xi32>, %arg1: tensor<2x3xi32
   %8 = xla_hlo.constant dense<1> : tensor<2x3xi32>
   %9 = xla_hlo.subtract %7, %8 : tensor<2x3xi32>
   %10 = "xla_hlo.add"(%6, %9) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
-  %11 = "xla_hlo.neg"(%10) : (tensor<2x3xi32>) -> tensor<2x3xi32>
+  %11 = "xla_hlo.negate"(%10) : (tensor<2x3xi32>) -> tensor<2x3xi32>
   %12 = "xla_hlo.abs"(%arg1) : (tensor<2x3xi32>) -> tensor<2x3xi32>
   %13 = xla_hlo.divide %11, %12 : tensor<2x3xi32>
   %14 = "xla_hlo.select"(%4, %5, %13) : (tensor<2x3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
@@ -461,32 +461,32 @@ func @complex_abs(%arg0: tensor<2xcomplex<f32>>) -> tensor<2xf32> {
 }
 
 func @cos(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  %0 = "xla_hlo.cos"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %0 = "xla_hlo.cosine"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }
 
 func @cos_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
-  %0 = "xla_hlo.cos"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "xla_hlo.cosine"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
 func @cos_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "xla_hlo.cos"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "xla_hlo.cosine"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
 func @exp(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  %0 = "xla_hlo.exp"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %0 = "xla_hlo.exponential"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }
 
 func @exp_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
-  %0 = "xla_hlo.exp"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "xla_hlo.exponential"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
 func @exp_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "xla_hlo.exp"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "xla_hlo.exponential"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -551,17 +551,17 @@ func @log1p_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 }
 
 func @neg(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  %0 = "xla_hlo.neg"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %0 = "xla_hlo.negate"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }
 
 func @neg_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
-  %0 = "xla_hlo.neg"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "xla_hlo.negate"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
 func @neg_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "xla_hlo.neg"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "xla_hlo.negate"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -577,17 +577,17 @@ func @sigmoid(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 }
 
 func @sin(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  %0 = "xla_hlo.sin"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %0 = "xla_hlo.sine"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
 }
 
 func @sin_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
-  %0 = "xla_hlo.sin"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+  %0 = "xla_hlo.sine"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
 func @sin_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-  %0 = "xla_hlo.sin"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "xla_hlo.sine"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -675,6 +675,11 @@ func @size_rank_one_i32(%arg0: tensor<f32>) -> tensor<i32> {
 func @size_rank_one_i64(%arg0: tensor<f32>) -> tensor<i64> {
   %0 = xla_hlo.constant dense<1> : tensor<i64>
   return %0 : tensor<i64>
+}
+
+func @complex(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>) -> tensor<3xcomplex<f32>> {
+  %0 = "xla_hlo.complex"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xcomplex<f32>>
+  return %0 : tensor<3xcomplex<f32>>
 }
 
 // NOTE: Assertions have been autogenerated by utils/generate-test-checks.py
@@ -1481,3 +1486,10 @@ func @size_rank_one_i64(%arg0: tensor<f32>) -> tensor<i64> {
 // CHECK:           [[VAL_366:%.*]] = "tf.Const"() {value = dense<1> : tensor<i64>} : () -> tensor<i64>
 // CHECK:           return [[VAL_366]] : tensor<i64>
 // CHECK:         }
+
+// CHECK-LABEL:   func @complex(
+// CHECK-SAME:                  [[VAL_367:%.*]]: tensor<3xf32>, [[VAL_368:%.*]]: tensor<3xf32>) -> tensor<3xcomplex<f32>> {
+// CHECK:           [[VAL_369:%.*]] = "tf.Complex"([[VAL_367]], [[VAL_368]]) : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xcomplex<f32>>
+// CHECK:           return [[VAL_369]] : tensor<3xcomplex<f32>>
+// CHECK:         }
+

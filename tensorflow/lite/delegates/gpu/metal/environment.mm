@@ -78,6 +78,10 @@ bool AppleGPUInfo::IsRoundToNearestSupported() const {
   return IsBionic();
 }
 
+bool AppleGPUInfo::IsWaveSizeEqualTo32() const {
+  return true;
+}
+
 int AppleGPUInfo::GetComputeUnitsCount() const {
   switch (gpu_type) {
     case AppleGPU::kA7:
@@ -132,6 +136,14 @@ bool DeviceInfo::IsRoundToNearestSupported() const {
     return apple_info.IsRoundToNearestSupported();
   } else {
     return true;
+  }
+}
+
+bool DeviceInfo::IsWaveSizeEqualTo32() const {
+  if (vendor == Vendor::kApple) {
+    return apple_info.IsWaveSizeEqualTo32();
+  } else {
+    return false;
   }
 }
 

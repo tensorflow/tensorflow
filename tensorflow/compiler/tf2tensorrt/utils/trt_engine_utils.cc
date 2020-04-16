@@ -51,7 +51,8 @@ Status GetTrtBindingShape(const nvinfer1::ICudaEngine* cuda_engine,
         "Explicit batch mode is only supported with TensorRT 6 and above.");
 #endif
   }
-  shape = TrtDimsToTensorShape(dims, use_implicit_batch, batch_size);
+  TF_RETURN_IF_ERROR(
+      TrtDimsToTensorShape(dims, use_implicit_batch, batch_size, shape));
   return Status::OK();
 }
 

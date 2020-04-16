@@ -560,7 +560,7 @@ XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
   }
 }
 
-XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(CollectivePermute_Simple)) {
+XLA_TEST_F(CollectiveOpsTest, CollectivePermute_Simple) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -591,6 +591,53 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(CollectivePermute_Simple)) {
   // Nothing writes to replica 3, so it is memzero'ed.
   EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<uint32>({0, 0}),
                                      results[3]));
+}
+
+XLA_TEST_F(CollectiveOpsTest, AllReduce_TupleAllReduce) {
+  std::string hlo_string = R"(
+    HloModule test
+
+    apply_op {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT apply_op = f32[] add(x, y)
+    }
+
+    ENTRY test_computation {
+      p0 = f32[5] parameter(0)
+      p1 = f32[7] parameter(1)
+      ROOT out = (f32[5], f32[7]) all-reduce(p0, p1), replica_groups={}, to_apply=apply_op
+    }
+  )";
+  static constexpr int kNumReplicas = 2;
+  auto config = GetModuleConfigForTest();
+  config.set_replica_count(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+
+  std::vector<float> input0_vec = {1., 2., 3., 4., 5.};
+  auto input0_literal = LiteralUtil::CreateR1<float>(input0_vec);
+  std::vector<float> input1_vec = {
+      7., 3., 4., 1., 2., 3., 4.,
+  };
+  auto input1_literal = LiteralUtil::CreateR1<float>(input1_vec);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {&input0_literal, &input1_literal},
+                        /*num_replicas=*/kNumReplicas,
+                        /*use_threads=*/true));
+  std::vector<float> expected0_vec = {2., 4., 6., 8., 10.};
+  auto expected0_literal = LiteralUtil::CreateR1<float>(expected0_vec);
+  std::vector<float> expected1_vec = {14., 6., 8., 2., 4., 6., 8.};
+  auto expected1_literal = LiteralUtil::CreateR1<float>(expected1_vec);
+  for (int replica_idx = 0; replica_idx < kNumReplicas; replica_idx++) {
+    auto rs = results[replica_idx].DecomposeTuple();
+    EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected0_literal, rs[0],
+                                             ErrorSpec{1e-5, 1e-5}));
+    EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected1_literal, rs[1],
+                                             ErrorSpec{1e-5, 1e-5}));
+  }
 }
 
 }  // namespace

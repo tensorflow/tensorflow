@@ -71,7 +71,8 @@ using MetadataMap = llvm::SmallDenseMap<llvm::StringRef, NamedAttributeList, 8>;
 using ClusterMap = llvm::SmallDenseMap<llvm::StringRef,
                                        llvm::SmallSetVector<Operation*, 8>, 8>;
 
-struct TPUClusterFormation : public FunctionPass<TPUClusterFormation> {
+struct TPUClusterFormation
+    : public PassWrapper<TPUClusterFormation, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -502,7 +503,7 @@ void TPUClusterFormation::runOnFunction() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTPUClusterFormationPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUClusterFormationPass() {
   return std::make_unique<TPUClusterFormation>();
 }
 

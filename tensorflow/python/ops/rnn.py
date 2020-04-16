@@ -26,6 +26,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
@@ -137,8 +138,12 @@ def _should_cache():
   # train steps could be wrapped in a tf.while_loop. In that scenario caching
   # prevents forward computations in loop iterations from re-reading the
   # updated weights.
-  ctxt = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
-  return control_flow_util.GetContainingWhileContext(ctxt) is None
+  graph = ops.get_default_graph()
+  ctxt = graph._get_control_flow_context()  # pylint: disable=protected-access
+  in_v1_while_loop = (
+      control_flow_util.GetContainingWhileContext(ctxt) is not None)
+  in_v2_while_loop = control_flow_util_v2.in_while_loop_defun(graph)
+  return not in_v1_while_loop and not in_v2_while_loop
 
 
 # pylint: disable=unused-argument

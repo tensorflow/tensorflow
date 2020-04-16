@@ -40,7 +40,7 @@ GrpcMasterImpl::GrpcMasterImpl(ServerBuilder* server_builder,
   }
 HANDLER(RegisterWorker);
 HANDLER(GetOrRegisterDataset);
-HANDLER(BeginEpoch);
+HANDLER(CreateJob);
 HANDLER(GetTasks);
 #undef HANDLER
 

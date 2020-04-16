@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Version 2 of class Optimizer."""
 # pylint: disable=g-bad-name
 
@@ -79,11 +78,10 @@ def _deduplicate_indexed_slices(values, indices):
 @six.add_metaclass(abc.ABCMeta)
 @keras_export("keras.optimizers.Optimizer")
 class OptimizerV2(trackable.Trackable):
-  """Updated base class for optimizers.
+  """Base class for Keras optimizers.
 
-  This class defines the API to add Ops to train a model.  You never use this
-  class directly, but instead instantiate one of its subclasses such as
-  `tf.keras.optimizers.SGD`, `tf.keras.optimizers.Adam`.
+  You should not use this class directly, but instead instantiate one of its
+  subclasses such as `tf.keras.optimizers.SGD`, `tf.keras.optimizers.Adam`, etc.
 
   ### Usage
 
@@ -101,7 +99,7 @@ class OptimizerV2(trackable.Trackable):
   opt.minimize(loss, var_list=[var1, var2])
   ```
 
-  ### Custom training loop with Keras models
+  ### Usage in custom training loops
 
   In Keras models, sometimes variables are created when the model is first
   called, instead of construction time. Examples include 1) sequential models
@@ -109,6 +107,7 @@ class OptimizerV2(trackable.Trackable):
   callable in these cases.
 
   Example:
+
   ```python
   opt = tf.keras.optimizers.SGD(learning_rate=0.1)
   model = tf.keras.Sequential()
@@ -120,7 +119,7 @@ class OptimizerV2(trackable.Trackable):
     opt.minimize(loss_fn, var_list_fn)
   ```
 
-  ### Processing gradients before applying them.
+  ### Processing gradients before applying them
 
   Calling `minimize()` takes care of both computing the gradients and
   applying them to the variables.  If you want to process the gradients
@@ -150,7 +149,7 @@ class OptimizerV2(trackable.Trackable):
   opt.apply_gradients(zip(processed_grads, var_list))
   ```
 
-  ### Use with `tf.distribute.Strategy`.
+  ### Use with `tf.distribute.Strategy`
 
   This optimizer class is `tf.distribute.Strategy` aware, which means it
   automatically sums gradients across all replicas. To average gradients,
@@ -172,7 +171,7 @@ class OptimizerV2(trackable.Trackable):
   step. As a result, using `tf.math.reduce_mean` will give the wrong answer,
   resulting in gradients that can be many times too big.
 
-  ### Variable Constraint
+  ### Variable Constraints
 
   All Keras optimizers respect variable constraints. If constraint function is
   passed to any variable, the constraint will be applied to the variable after
@@ -195,7 +194,7 @@ class OptimizerV2(trackable.Trackable):
   This can be useful if you want to log debug a training algorithm, report stats
   about the slots, etc.
 
-  ### Hyper parameters
+  ### Hyperparameters
 
   These are arguments passed to the optimizer subclass constructor
   (the `__init__` method), and then passed to `self._set_hyper()`.
@@ -203,7 +202,7 @@ class OptimizerV2(trackable.Trackable):
   callables. If they are callable, the callable will be called during
   `apply_gradients()` to get the value for the hyper parameter.
 
-  Hyper parameters can be overwritten through user code:
+  Hyperparameters can be overwritten through user code:
 
   Example:
 
@@ -220,7 +219,8 @@ class OptimizerV2(trackable.Trackable):
   opt.minimize(loss, var_list=[var1, var2])
   ```
 
-  ### Callable learning rate.
+  ### Callable learning rate
+
   Optimizer accepts a callable learning rate in two ways. The first way is
   through built-in or customized
   `tf.keras.optimizers.schedules.LearningRateSchedule`. The schedule will be
@@ -250,14 +250,17 @@ class OptimizerV2(trackable.Trackable):
   >>> opt.minimize(loss, var_list=[var])
   <tf.Variable...
 
-  ### Write a customized optimizer.
+  ### Creating a custom optimizer
+
   If you intend to create your own optimization algorithm, simply inherit from
   this class and override the following methods:
 
-    - _resource_apply_dense (update variable given gradient tensor is dense)
-    - _resource_apply_sparse (update variable given gradient tensor is sparse)
-    - _create_slots (if your optimizer algorithm requires additional variables)
-    - get_config (serialization of the optimizer, include all hyper parameters)
+    - `_resource_apply_dense` (update variable given gradient tensor is dense)
+    - `_resource_apply_sparse` (update variable given gradient tensor is sparse)
+    - `_create_slots`
+      (if your optimizer algorithm requires additional variables)
+    - `get_config`
+      (serialization of the optimizer, include all hyper parameters)
   """
 
   # Subclasses should set this to True unless they override `apply_gradients`
@@ -291,8 +294,6 @@ class OptimizerV2(trackable.Trackable):
 
     Raises:
       ValueError: If name is malformed.
-      RuntimeError: If _create_slots has been overridden instead of
-          _create_vars.
     """
     allowed_kwargs = {"clipnorm", "clipvalue", "lr", "decay"}
     for k in kwargs:
@@ -507,9 +508,7 @@ class OptimizerV2(trackable.Trackable):
     with backend.name_scope(self._name):
       # Create iteration if necessary.
       with ops.init_scope():
-        _ = self.iterations
-        self._create_hypers()
-        self._create_slots(var_list)
+        self._create_all_weights(var_list)
 
       if not grads_and_vars:
         # Distribution strategy does not support reducing an empty list of
@@ -678,6 +677,23 @@ class OptimizerV2(trackable.Trackable):
 
   def _create_slots(self, var_list):
     pass
+
+  def _create_all_weights(self, var_list):
+    """Creates all weights, including iterations, hyperparameters and slot vars.
+
+    This will add newly created variables to `optimizer.weights`.
+
+    New variables are only created when this method is called the first time, or
+    when called with different variables in the var_list.
+
+    Args:
+      var_list: list or tuple of `Variable` objects that will be minimized
+        using this optimizer.
+    """
+
+    _ = self.iterations
+    self._create_hypers()
+    self._create_slots(var_list)
 
   def __getattribute__(self, name):
     """Overridden to support hyperparameter access."""

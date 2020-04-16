@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform:build_config.bzl", "tf_platform_alias")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -19,17 +21,9 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "custom_parsers",
-    srcs = ["custom_parsers.cc"],
-    hdrs = ["custom_parsers.h"],
-    deps = [
-        ":shape",
-        ":status",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:any",
-        "@flatbuffers",
-    ],
+exports_files(
+    ["custom_parsers.h"],
+    visibility = ["//tensorflow/lite/delegates/gpu/common:__subpackages__"],
 )
 
 cc_library(
@@ -91,6 +85,7 @@ cc_library(
         ":status",
         ":tensor",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:any",
         "@com_google_absl//absl/types:optional",
     ],
@@ -107,44 +102,31 @@ cc_test(
 )
 
 cc_library(
-    name = "model_builder_helper",
-    hdrs = ["model_builder_helper.h"],
-    deps = [
-        ":status",
-        "//tensorflow/lite:context",
-        "//tensorflow/lite:kernel_api",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/delegates:utils",
-        "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "model_builder",
     srcs = ["model_builder.cc"],
     hdrs = ["model_builder.h"],
     deps = [
-        ":custom_parsers",
         ":data_type",
         ":model",
         ":model_builder_helper",
+        ":object_reader",
         ":operations",
         ":shape",
         ":status",
         ":tensor",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/lite:context",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/schema:schema_fbs",
-        "@FP16",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:str_format",
-    ],
+    ] + tf_platform_alias("custom_parsers", "//tensorflow/lite/delegates/gpu/common/"),
 )
 
 cc_test(
@@ -160,6 +142,29 @@ cc_test(
 )
 
 cc_library(
+    name = "model_builder_helper",
+    srcs = ["model_builder_helper.cc"],
+    hdrs = ["model_builder_helper.h"],
+    deps = [
+        ":data_type",
+        ":model",
+        ":shape",
+        ":status",
+        ":tensor",
+        "//tensorflow/lite:context",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates:utils",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels/internal:types",
+        "@FP16",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "model_transformer",
     srcs = ["model_transformer.cc"],
     hdrs = ["model_transformer.h"],
@@ -170,6 +175,20 @@ cc_library(
 )
 
 # TODO(impjdi): Add unit test for model_transformer.
+
+cc_library(
+    name = "object_reader",
+    srcs = ["object_reader.cc"],
+    hdrs = ["object_reader.h"],
+    deps = [
+        ":model",
+        ":model_builder_helper",
+        ":status",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates:utils",
+        "//tensorflow/lite/kernels:kernel_util",
+    ],
+)
 
 cc_library(
     name = "operations",
@@ -217,6 +236,32 @@ cc_library(
     deps = [
         ":data_type",
         ":shape",
+    ],
+)
+
+cc_library(
+    name = "tfl2model",
+    srcs = ["tfl2model.cc"],
+    hdrs = ["tfl2model.h"],
+    deps = [
+        "//tensorflow/lite:framework_lib",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/gpu/cl:api",
+        "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type_util",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:model_builder",
+        "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
+        "//tensorflow/lite/delegates/gpu/gl:api2",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

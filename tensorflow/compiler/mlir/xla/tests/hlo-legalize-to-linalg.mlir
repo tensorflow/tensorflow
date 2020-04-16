@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -hlo-legalize-to-linalg -split-input-file | FileCheck %s
+// RUN: xla-opt %s -hlo-legalize-to-linalg -split-input-file | FileCheck %s
 
 // CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @float_add
@@ -126,7 +126,7 @@ func @float_abs(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 func @float_exp(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: exp
-  %0 = "xla_hlo.exp"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  %0 = "xla_hlo.exponential"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
 
@@ -156,7 +156,7 @@ func @float_ceil(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
 func @float_neg(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: negf
-  %0 = "xla_hlo.neg"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  %0 = "xla_hlo.negate"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
 
@@ -216,7 +216,7 @@ func @int_cmp(%lhs: tensor<2x2xi32>,
 func @float_cos(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: cos
-  %0 = "xla_hlo.cos"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  %0 = "xla_hlo.cosine"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
 

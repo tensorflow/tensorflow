@@ -1594,27 +1594,6 @@ class JacobianTest(test.TestCase):
       g.jacobian(y, x, experimental_use_pfor=False)
 
   @test_util.run_v1_only('b/120545219')
-  def testPforException(self):
-    var = variables.Variable([1.])
-
-    @custom_gradient.custom_gradient
-    def op(x):
-      def grad(_):
-        # Note that we perform a stateful operation here that will not be
-        # compatible with parallel for construct.
-        with ops.control_dependencies(
-            [var.assign(random_ops.random_uniform([1]))]):
-          return constant_op.constant(1.)
-      return x, grad
-
-    with backprop.GradientTape() as g:
-      x = constant_op.constant([1., 2.])
-      g.watch(x)
-      y = op(x)
-    with self.assertRaisesRegexp(ValueError, 'No converter'):
-      g.jacobian(y, x, experimental_use_pfor=True)
-
-  @test_util.run_v1_only('b/120545219')
   def test_parallel_iterations(self):
     with backprop.GradientTape(persistent=True) as g:
       x = constant_op.constant([[1., 2], [3, 4]])
@@ -1722,26 +1701,6 @@ class BatchJacobianTest(test.TestCase, parameterized.TestCase):
       y = random_ops.random_uniform([2])
     with self.assertRaisesRegexp(ValueError, 'must have rank at least 2'):
       g.batch_jacobian(y, x)
-
-  def testPforException(self):
-    var = variables.Variable([1.])
-
-    @custom_gradient.custom_gradient
-    def op(x):
-      def grad(_):
-        # Note that we perform a stateful operation here that will not be
-        # compatible with parallel for construct.
-        with ops.control_dependencies(
-            [var.assign(random_ops.random_uniform([1]))]):
-          return constant_op.constant(1.)
-      return x, grad
-
-    with backprop.GradientTape() as g:
-      x = constant_op.constant([[1.], [2.]])
-      g.watch(x)
-      y = op(x)
-    with self.assertRaisesRegexp(ValueError, 'No converter'):
-      g.batch_jacobian(y, x, experimental_use_pfor=True)
 
   def test_parallel_iterations(self):
     with backprop.GradientTape(persistent=True) as g:

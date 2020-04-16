@@ -20,6 +20,9 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
@@ -28,6 +31,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/nn_ops_internal.h"
@@ -52,11 +57,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/public/session.h"
-
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
-#include "third_party/gpus/cuda/include/cuda.h"
-#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
@@ -1281,7 +1281,7 @@ class OpConverterTest : public ::testing::Test {
 
   // Constructs a flat tensor with 'vals' in Unified Memory.
   template <typename T>
-  Tensor AsTensor(gtl::ArraySlice<T> vals) {
+  Tensor AsTensor(gtl::ArraySlice<T> vals) {  // non-absl ok
     Tensor ret(allocator_.get(), DataTypeToEnum<T>::value,
                {static_cast<int64>(vals.size())});
     std::copy_n(vals.data(), vals.size(), ret.flat<T>().data());
@@ -1290,7 +1290,8 @@ class OpConverterTest : public ::testing::Test {
 
   // Constructs a tensor of "shape" with values "vals" in Unified Memory.
   template <typename T>
-  Tensor AsTensor(gtl::ArraySlice<T> vals, const TensorShape& shape) {
+  Tensor AsTensor(gtl::ArraySlice<T> vals,  // non-absl ok
+                  const TensorShape& shape) {
     Tensor ret(allocator_.get(), DataTypeToEnum<T>::value,
                {static_cast<int64>(vals.size())});
     CHECK(ret.CopyFrom(AsTensor(vals), shape));

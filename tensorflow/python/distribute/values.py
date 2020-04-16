@@ -428,8 +428,9 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   # TODO(josh11b): Support changing the set of variables if e.g. if new
   # devices are joining or a device is to leave.
 
-  def __init__(self, strategy, values):
+  def __init__(self, strategy, values, aggregation):
     self._distribute_strategy = strategy
+    self._aggregation = aggregation
     super(DistributedVariable, self).__init__(values)
     self._common_name = self._primary.name.split(":")[0]
     # Use a weakref to make it easy to map from the contained values
@@ -523,6 +524,10 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   @property
   def synchronization(self):
     return self._primary.synchronization
+
+  @property
+  def aggregation(self):
+    return self._aggregation
 
   @property
   def handle(self):
@@ -740,10 +745,6 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
 class MirroredVariable(DistributedVariable, Mirrored):
   """Holds a map from replica to variables whose values are kept in sync."""
 
-  def __init__(self, strategy, values, aggregation):
-    super(MirroredVariable, self).__init__(strategy, values)
-    self._aggregation = aggregation
-
   def _mirrored_update(self, update_fn, *args, **kwargs):
     """Apply identical updates using `update_fn` to variables on each replica."""
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
@@ -862,10 +863,6 @@ class MirroredVariable(DistributedVariable, Mirrored):
     scatter_update_fn = lambda var, *a, **kw: var.scatter_update(*a, **kw)
     return self._mirrored_update(scatter_update_fn, *args, **kwargs)
 
-  @property
-  def aggregation(self):
-    return self._aggregation
-
   def _get_cross_replica(self):
     # Return identity, to avoid directly exposing the variable to the user and
     # allowing it to be modified by mistake.
@@ -977,10 +974,6 @@ def _assert_replica_context(strategy):
 class SyncOnReadVariable(DistributedVariable):
   """Holds a map from replica to variables whose values are reduced on save."""
 
-  def __init__(self, strategy, values, aggregation):
-    super(SyncOnReadVariable, self).__init__(strategy, values)
-    self._aggregation = aggregation
-
   def assign_sub(self, *args, **kwargs):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       if ds_context.in_cross_replica_context():
@@ -1039,10 +1032,6 @@ class SyncOnReadVariable(DistributedVariable):
     else:
       raise NotImplementedError(
           "numpy() is only available when eager execution is enabled.")
-
-  @property
-  def aggregation(self):
-    return self._aggregation
 
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:

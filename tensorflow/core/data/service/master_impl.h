@@ -33,13 +33,12 @@ namespace data {
 // Glossary:
 // * Dataset: A definition of how to generate a potentially large collection of
 //   elements.
-// * Epoch: A single pass over a dataset. There may be multiple epochs
-//   for the same dataset, and they can be iterated over independently
-// * Task: An epoch is broken into multiple tasks, which each represent
-//   iterating over all of or part of the dataset. Workers process tasks. We
-//   don't currently implement dataset splitting, so every task represents a
-//   full iteration over the dataset. In the future, we will partition the data
-//   across all tasks for the same epoch.
+// * Job: A coordinated phase of reading from the tf.data service. A job
+//   produces some amount of data, and (potentially multiple) consumers consume
+//   the data from the job until there is no data left. Each job has a
+//   ProcessingModeDef which determines what data it produces.
+// * Task: A job is broken into multiple tasks, which each represent
+//   iterating over all of or part of the dataset. Workers process tasks.
 class DataServiceMasterImpl {
  public:
   explicit DataServiceMasterImpl(const std::string protocol);
@@ -53,8 +52,8 @@ class DataServiceMasterImpl {
   /// Client-facing API.
   Status GetOrRegisterDataset(const GetOrRegisterDatasetRequest* request,
                               GetOrRegisterDatasetResponse* response);
-  Status BeginEpoch(const BeginEpochRequest* request,
-                    BeginEpochResponse* response);
+  Status CreateJob(const CreateJobRequest* request,
+                   CreateJobResponse* response);
   Status GetTasks(const GetTasksRequest* request, GetTasksResponse* response);
 
  private:
@@ -74,11 +73,11 @@ class DataServiceMasterImpl {
     DatasetDef dataset_def;
   } Dataset;
 
-  typedef struct Epoch {
+  typedef struct Job {
     int64 id;
     int64 dataset_id;
     std::vector<int64> task_ids;
-  } Epoch;
+  } Job;
 
   typedef struct Task {
     int64 id;
@@ -98,7 +97,7 @@ class DataServiceMasterImpl {
 
   int64 next_worker_id_ TF_GUARDED_BY(mu_) = 0;
   int64 next_dataset_id_ TF_GUARDED_BY(mu_) = 0;
-  int64 next_epoch_id_ TF_GUARDED_BY(mu_) = 0;
+  int64 next_job_id_ TF_GUARDED_BY(mu_) = 0;
   int64 next_task_id_ TF_GUARDED_BY(mu_) = 0;
 
   // Registered workers.
@@ -109,8 +108,8 @@ class DataServiceMasterImpl {
   // Registered datasets, keyed by dataset fingerprints.
   absl::flat_hash_map<uint64, std::shared_ptr<Dataset>> datasets_by_fingerprint_
       TF_GUARDED_BY(mu_);
-  // Information about epochs, keyed by epoch ids.
-  absl::flat_hash_map<int64, Epoch> epochs_ TF_GUARDED_BY(mu_);
+  // Information about jobs, keyed by job ids.
+  absl::flat_hash_map<int64, Job> jobs_ TF_GUARDED_BY(mu_);
   // Information about tasks, keyed by task ids.
   absl::flat_hash_map<int64, Task> tasks_ TF_GUARDED_BY(mu_);
 

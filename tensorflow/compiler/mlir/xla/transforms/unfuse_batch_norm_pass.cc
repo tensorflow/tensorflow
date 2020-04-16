@@ -27,21 +27,12 @@ namespace xla_hlo {
 
 namespace {
 
-struct TestUnfuseBatchNormPass : public FunctionPass<TestUnfuseBatchNormPass> {
-  void runOnFunction() override {
-    ConversionTarget conversionTarget(getContext());
-    OwningRewritePatternList conversionPatterns;
-
-    // Consider the xla_hlo dialect legal for tests.
-    conversionTarget.addLegalDialect<XlaHloDialect>();
-    conversionTarget.addLegalDialect<StandardOpsDialect>();
-    conversionTarget.addIllegalOp<xla_hlo::BatchNormInferenceOp>();
-
-    PopulateUnfuseBatchNormPatterns(&getContext(), &conversionPatterns);
-    if (failed(applyPartialConversion(getFunction(), conversionTarget,
-                                      conversionPatterns))) {
-      return signalPassFailure();
-    }
+struct TestUnfuseBatchNormPass
+    : public PassWrapper<TestUnfuseBatchNormPass, OperationPass<>> {
+  void runOnOperation() override {
+    OwningRewritePatternList patterns;
+    PopulateUnfuseBatchNormPatterns(&getContext(), &patterns);
+    applyPatternsAndFoldGreedily(getOperation(), patterns);
   }
 };
 

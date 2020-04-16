@@ -68,8 +68,9 @@ using std::string;
 // shape.
 //
 struct TensorArrayOpsDecompositionPass
-    : public ModulePass<TensorArrayOpsDecompositionPass> {
-  void runOnModule() override;
+    : public PassWrapper<TensorArrayOpsDecompositionPass,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Infers the element type and count for a TensorArraySplitV3Op. Requires
@@ -765,6 +766,7 @@ LogicalResult HandlePartitionedCallOp(
     return it->getSecond().accumulate_on_write;
   };
   auto callee_clone = callee.clone();
+  callee_clone.setVisibility(SymbolTable::Visibility::Private);
   auto grads = AccessedGradients({callee_clone}, module);
   for (int64_t i = 0; i < callee_clone.getNumArguments(); ++i) {
     auto it = grads.find(i);
@@ -873,8 +875,8 @@ LogicalResult DecomposeTensorArrayOps(
   return success();
 }
 
-void TensorArrayOpsDecompositionPass::runOnModule() {
-  auto module = getModule();
+void TensorArrayOpsDecompositionPass::runOnOperation() {
+  auto module = getOperation();
   auto main = module.lookupSymbol<FuncOp>("main");
   if (!main) return;
   llvm::SmallDenseMap<Value, TensorArrayStats> stats;
@@ -893,7 +895,8 @@ static PassRegistration<TensorArrayOpsDecompositionPass> pass(
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTensorArrayOpsDecompositionPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTensorArrayOpsDecompositionPass() {
   return std::make_unique<TensorArrayOpsDecompositionPass>();
 }
 
