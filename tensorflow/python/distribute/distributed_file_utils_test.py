@@ -67,7 +67,7 @@ class DistributedFileUtilsTest(test.TestCase):
     strategy = DistributedFileUtilsTest.MockedWorkerStrategy()
     self.assertEqual(
         distributed_file_utils.write_filepath(filepath, strategy),
-        os.path.join(dirpath, 'workertemp_3/foo.bar'))
+        os.path.join(dirpath, 'workertemp_3', 'foo.bar'))
     self.assertEqual(
         distributed_file_utils.write_dirpath(dirpath, strategy),
         os.path.join(dirpath, 'workertemp_3'))
