@@ -23709,6 +23709,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -23964,6 +23965,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
