@@ -236,6 +236,33 @@ class TFLiteCostEstimator<MaximumOp, hardware::GPU> {
   static bool IsSupported(mlir::Operation* op) { return true; }
 };
 
+// tfl.max_unpooling_2d
+template <>
+class TFLiteCostEstimator<MaxUnpooling2DOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
+// tfl.mean
+template <>
+class TFLiteCostEstimator<MeanOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
+  // TODO(renjieiu): check for constraints.
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
 // tfl.minimum
 template <>
 class TFLiteCostEstimator<MinimumOp, hardware::GPU> {
@@ -394,6 +421,19 @@ class TFLiteCostEstimator<SoftmaxOp, hardware::GPU> {
   static bool IsSupported(mlir::Operation* op) { return true; }
 };
 
+// tfl.space_to_depth
+template <>
+class TFLiteCostEstimator<SpaceToDepthOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
 // tfl.sqrt
 template <>
 class TFLiteCostEstimator<SqrtOp, hardware::GPU> {
@@ -446,9 +486,35 @@ class TFLiteCostEstimator<StridedSliceOp, hardware::GPU> {
   static bool IsSupported(mlir::Operation* op) { return true; }
 };
 
+// tfl.tanh
+template <>
+class TFLiteCostEstimator<TanhOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
 // tfl.transpose
 template <>
 class TFLiteCostEstimator<TransposeOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
+// tfl.transpose_conv
+template <>
+class TFLiteCostEstimator<TransposeConvOp, hardware::GPU> {
  public:
   static double GetCost(mlir::Operation* op) {
     llvm::errs() << "No defined cost function for op: "
