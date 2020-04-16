@@ -26,7 +26,7 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
          py::object toco_flags_proto_txt_raw, py::object input_contents_txt_raw,
          bool extended_return, py::object debug_info_txt_raw,
          bool enable_mlir_converter) {
-        return tensorflow::pyo_or_throw(toco::TocoConvert(
+        return tensorflow::PyoOrThrow(toco::TocoConvert(
             model_flags_proto_txt_raw.ptr(), toco_flags_proto_txt_raw.ptr(),
             input_contents_txt_raw.ptr(), extended_return,
             debug_info_txt_raw.ptr(), enable_mlir_converter));
@@ -49,7 +49,7 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
   m.def(
       "TocoGetPotentiallySupportedOps",
       []() {
-        return tensorflow::pyo_or_throw(toco::TocoGetPotentiallySupportedOps());
+        return tensorflow::PyoOrThrow(toco::TocoGetPotentiallySupportedOps());
       },
       R"pbdoc(
       Returns a list of names of all ops potentially supported by tflite.
@@ -57,7 +57,7 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
   m.def(
       "ExperimentalMlirQuantizeModel",
       [](py::object input_contents_txt_raw, bool fully_quantize) {
-        return tensorflow::pyo_or_throw(toco::MlirQuantizeModel(
+        return tensorflow::PyoOrThrow(toco::MlirQuantizeModel(
             input_contents_txt_raw.ptr(), fully_quantize));
       },
       py::arg("input_contents_txt_raw"), py::arg("fully_quantize") = true,
