@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
@@ -66,6 +67,12 @@ absl::optional<int64> GetKernelEventType(const XPlaneVisitor& visitor,
   return absl::nullopt;
 }
 
+bool IsTfOpEvent(const XPlaneVisitor& visitor, const XEvent& event) {
+  TfOp tf_op =
+      ParseTfOpFullname(visitor.GetEventMetadata(event.metadata_id())->name());
+  return tf_op.category == Category::kTensorFlow;
+}
+
 int64 GetEventType(const XPlaneVisitor& visitor, const XEvent& event) {
   if (absl::optional<int64> event_type = visitor.GetEventType(event)) {
     return *event_type;
@@ -76,6 +83,8 @@ int64 GetEventType(const XPlaneVisitor& visitor, const XEvent& event) {
     // TODO(148346217): Make XPlaneVisitor support KernelLaunch and
     // KernelExecute event types.
     return *kernel_event_type;
+  } else if (IsTfOpEvent(visitor, event)) {
+    return HostEventType::kTfOpRun;
   } else {
     return HostEventType::kUnknownHostEventType;
   }
@@ -181,6 +190,12 @@ void EventNode::AddStepName(absl::string_view step_name) {
 void EventNode::SetIsEager(bool is_eager) {
   AddOrUpdateIntStat(*visitor_->GetStatMetadataId(StatType::kIsEager),
                      is_eager ? 1 : 0, event_);
+}
+
+bool EventNode::IsEager() {
+  // It is eagerly executed if its trace context does not include the TF
+  // executor.
+  return FindParent(HostEventType::kExecutorStateProcess) == nullptr;
 }
 
 bool EventNode::IsNestedIn(EventNode* parent) {
@@ -290,16 +305,21 @@ void EventForest::CreateEventGroup(
   }
 }
 
-void EventForest::MarkEagerlyExecutedKernels() {
+void EventForest::MarkEagerlyExecutedGpuKernels() {
   auto kernel_execute_event_node_list =
       gtl::FindOrNull(event_node_map_, HostEventType::kKernelExecute);
   if (!kernel_execute_event_node_list) return;
   for (auto& kernel_execute_event_node : *kernel_execute_event_node_list) {
-    // A kernel is eagerly executed if its trace context does not include the
-    // TF executor.
-    bool is_eager = kernel_execute_event_node->FindParent(
-                        HostEventType::kExecutorStateProcess) == nullptr;
-    kernel_execute_event_node->SetIsEager(is_eager);
+    kernel_execute_event_node->SetIsEager(kernel_execute_event_node->IsEager());
+  }
+}
+
+void EventForest::MarkEagerlyExecutedCpuTfOps() {
+  auto tf_op_run_event_node_list =
+      gtl::FindOrNull(event_node_map_, HostEventType::kTfOpRun);
+  if (!tf_op_run_event_node_list) return;
+  for (auto& tf_op_run_event_node : *tf_op_run_event_node_list) {
+    tf_op_run_event_node->SetIsEager(tf_op_run_event_node->IsEager());
   }
 }
 
@@ -381,7 +401,8 @@ EventForest::EventForest(
     CreateVirtualEventsForAsyncExecutor();
   }
   CreateEventGroup(root_event_types);
-  MarkEagerlyExecutedKernels();
+  MarkEagerlyExecutedGpuKernels();
+  MarkEagerlyExecutedCpuTfOps();
 }
 
 std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {

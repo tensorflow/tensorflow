@@ -228,6 +228,7 @@ cc_library(
     hdrs = ["group_events.h"],
     visibility = [":friends"],
     deps = [
+        ":tf_op_utils",
         ":tf_xplane_visitor",
         ":xplane_schema",
         ":xplane_utils",

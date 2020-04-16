@@ -48,6 +48,8 @@ struct TfActivity {
   TfActivityType activity_type;
   // Full TF op name and type of this activity (backed by XEvent::name).
   TfOp tf_op;
+  // Whether it is eagerly executed.
+  bool is_eager;
 };
 
 // TF Op metrics stored as element in OpStack.
@@ -83,8 +85,8 @@ void ProcessOneTfActivity(const TfActivity& activity,
       Timespan tf_op_span =
           PicoSpan(info->start_timestamp_ps, activity.timestamp_ps);
       tf_metrics_data->tf_metrics_db_builder.EnterOp(
-          activity.tf_op.name, activity.tf_op.type, tf_op_span.duration_ps(),
-          info->children_duration_ps);
+          activity.tf_op.name, activity.tf_op.type, activity.is_eager,
+          tf_op_span.duration_ps(), info->children_duration_ps);
       TfOpInfo* parent_info = tf_op_stack->Top();
       if (parent_info != nullptr) {
         parent_info->children_duration_ps += tf_op_span.duration_ps();
@@ -135,9 +137,17 @@ void CollectTfActivities(const XLineVisitor& line,
     const TfOp* tf_op = gtl::FindOrNull(tf_ops, event.Id());
     if (tf_op != nullptr) {
       ++tf_op_id;
+      bool is_eager = false;
+      event.ForEachStat([&](const XStatVisitor& stat) {
+        if (stat.Type() == StatType::kIsEager) {
+          is_eager = stat.IntValue();
+        }
+      });
       Timespan span(event.TimestampPs(), event.DurationPs());
-      tf_activities->push_back({span.begin_ps(), tf_op_id, kTfOpBegin, *tf_op});
-      tf_activities->push_back({span.end_ps(), tf_op_id, kTfOpEnd, *tf_op});
+      tf_activities->push_back(
+          {span.begin_ps(), tf_op_id, kTfOpBegin, *tf_op, is_eager});
+      tf_activities->push_back(
+          {span.end_ps(), tf_op_id, kTfOpEnd, *tf_op, is_eager});
     }
   });
 }
