@@ -96,7 +96,8 @@ def disable_multi_worker(method):
       target=method, decorator_func=_method_wrapper)
 
 
-@keras_export('keras.Model', 'keras.models.Model')
+# pylint: disable=g-classes-have-attributes
+@keras_export('keras.Model', 'keras.models.Model', v1=[])
 class Model(network.Network, version_utils.ModelVersionSelector):
   """`Model` groups layers into an object with training and inference features.
 

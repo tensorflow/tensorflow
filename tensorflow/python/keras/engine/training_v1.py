@@ -65,6 +65,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
+from tensorflow.python.util.tf_export import keras_export
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -75,6 +76,7 @@ _keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras/model_v1',
                                         'keras model v1 usage', 'method')
 
 
+@keras_export(v1=['keras.Model', 'keras.models.Model'])
 class Model(training_lib.Model):
   """`Model` groups layers into an object with training and inference features.
 

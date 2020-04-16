@@ -71,10 +71,12 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
 
 # pylint: disable=g-classes-have-attributes
+@keras_export(v1=['keras.layers.Layer'])
 class Layer(base_layer.Layer):
   """Base layer class.
 
