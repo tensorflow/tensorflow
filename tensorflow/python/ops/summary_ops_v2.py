@@ -200,7 +200,15 @@ class SummaryWriter(object):
   def set_as_default(self, step=None):
     """Enables this summary writer for the current thread.
 
-    For the `step` argument, see `tf.summary.experimental.set_step()`.
+    For convenience, if `step` is not None, this function also sets a default
+    value for the `step` parameter used in summary-writing functions elsewhere
+    in the API so that it need not be explicitly passed in every such
+    invocation. The value can be a constant or a variable.
+
+    Note: when setting `step` in a @tf.function, the step value will be
+    captured at the time the function is traced, so changes to the step outside
+    the function will not be reflected inside the function unless using
+    a `tf.Variable` step.
 
     Args:
       step: An `int64`-castable default step value, or `None`.
@@ -214,12 +222,30 @@ class SummaryWriter(object):
   def as_default(self, step=None):
     """Returns a context manager that enables summary writing.
 
-    For the `step` argument, see `tf.summary.experimental.set_step()`.
+    For convenience, if `step` is not None, this function also sets a default
+    value for the `step` parameter used in summary-writing functions elsewhere
+    in the API so that it need not be explicitly passed in every such
+    invocation. The value can be a constant or a variable.
+
+    Note: when setting `step` in a @tf.function, the step value will be
+    captured at the time the function is traced, so changes to the step outside
+    the function will not be reflected inside the function unless using
+    a `tf.Variable` step.
+
+    For example, `step` can be used as:
+
+    ```python
+    with writer_a.as_default(step=10):
+      tf.summary.scalar(tag, value)   # Logged to writer_a with step 10
+      with writer_b.as_default(step=20):
+        tf.summary.scalar(tag, value) # Logged to writer_b with step 20
+      tf.summary.scalar(tag, value)   # Logged to writer_a with step 10
+    ```
 
     Args:
       step: An `int64`-castable default step value, or `None`.
         When not `None`, the current step is captured, replaced by a given one,
-        and the original one is restored when the context manager exists.
+        and the original one is restored when the context manager exits.
         When `None`, the current step is not modified (and not restored
         when the context manager exits).
     """
@@ -264,7 +290,15 @@ class ResourceSummaryWriter(SummaryWriter):
   def set_as_default(self, step=None):
     """Enables this summary writer for the current thread.
 
-    For the `step` argument, see `tf.summary.experimental.set_step()`.
+    For convenience, if `step` is not None, this function also sets a default
+    value for the `step` parameter used in summary-writing functions elsewhere
+    in the API so that it need not be explicitly passed in every such
+    invocation. The value can be a constant or a variable.
+
+    Note: when setting `step` in a @tf.function, the step value will be
+    captured at the time the function is traced, so changes to the step outside
+    the function will not be reflected inside the function unless using
+    a `tf.Variable` step.
 
     Args:
       step: An `int64`-castable default step value, or `None`.
@@ -281,12 +315,30 @@ class ResourceSummaryWriter(SummaryWriter):
   def as_default(self, step=None):
     """Returns a context manager that enables summary writing.
 
-    For the `step` argument, see `tf.summary.experimental.set_step()`.
+    For convenience, if `step` is not None, this function also sets a default
+    value for the `step` parameter used in summary-writing functions elsewhere
+    in the API so that it need not be explicitly passed in every such
+    invocation. The value can be a constant or a variable.
+
+    Note: when setting `step` in a @tf.function, the step value will be
+    captured at the time the function is traced, so changes to the step outside
+    the function will not be reflected inside the function unless using
+    a `tf.Variable` step.
+
+    For example, `step` can be used as:
+
+    ```python
+    with writer_a.as_default(step=10):
+      tf.summary.scalar(tag, value)   # Logged to writer_a with step 10
+      with writer_b.as_default(step=20):
+        tf.summary.scalar(tag, value) # Logged to writer_b with step 20
+      tf.summary.scalar(tag, value)   # Logged to writer_a with step 10
+    ```
 
     Args:
       step: An `int64`-castable default step value, or `None`.
         When not `None`, the current step is captured, replaced by a given one,
-        and the original one is restored when the context manager exists.
+        and the original one is restored when the context manager exits.
         When `None`, the current step is not modified (and not restored
         when the context manager exits).
     """
