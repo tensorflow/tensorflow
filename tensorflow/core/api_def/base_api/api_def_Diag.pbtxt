@@ -18,13 +18,14 @@ rank 2k with dimensions [D1,..., Dk, D1,..., Dk] where:
 
 For example:
 
-```
-# 'diagonal' is [1, 2, 3, 4]
-tf.linarg.tensor_diag(diagonal) ==> <tf.Tensor: shape=(4, 4), dtype=int32, numpy=
-						array([[1, 0, 0, 0],
-						       [0, 2, 0, 0],
-						       [0, 0, 3, 0],
-						       [0, 0, 0, 4]], dtype=int32)>
-```
+"""
+>>> diagonal = [1, 2, 3, 4]
+>>> tf.linarg.tensor_diag(diagonal)
+<tf.Tensor: shape=(4, 4), dtype=int32, numpy=
+array([[1, 0, 0, 0],
+             [0, 2, 0, 0],
+             [0, 0, 3, 0],
+             [0, 0, 0, 4]], dtype=int32)>
+"""
 END
 }
