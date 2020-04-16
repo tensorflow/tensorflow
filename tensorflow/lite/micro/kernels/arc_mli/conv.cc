@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
 
-#include "mli_api.h"  // NOLINT
+#include "mli_api.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -24,12 +24,10 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
-#include "tensorflow/lite/micro/kernels/arc_mli/scratch_buffers.h"
-#include "tensorflow/lite/micro/kernels/arc_mli/scratch_buf_mgr.h"
 #include "tensorflow/lite/micro/kernels/arc_mli/mli_slicers.h"
 #include "tensorflow/lite/micro/kernels/arc_mli/mli_tf_utils.h"
-
-#include "mli_api.h"
+#include "tensorflow/lite/micro/kernels/arc_mli/scratch_buf_mgr.h"
+#include "tensorflow/lite/micro/kernels/arc_mli/scratch_buffers.h"
 
 namespace tflite {
 namespace ops {
@@ -42,9 +40,11 @@ constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 constexpr int kMaxChannels = 256;
 
-// This file has 2 implementation of Conv.
+// Conv is quantized along dimension 0:
+// https://www.tensorflow.org/lite/performance/quantization_spec
+constexpr int kConvQuantizedDimension = 0;
 
-const int kTensorNotAllocated = -1;
+// This file has 2 implementation of Conv.
 
 struct OpData {
   TfLitePaddingValues padding;
@@ -101,13 +101,15 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
     const TfLiteTensor* bias =
         GetOptionalInputTensor(context, node, kBiasTensor);
     TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+    int output_channels = filter->dims->data[kConvQuantizedDimension];
 
     TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
         context, input, filter, bias, output, params->activation,
         &data->output_multiplier, &data->output_shift,
         &data->output_activation_min, &data->output_activation_max,
         data->per_channel_output_multiplier,
-        reinterpret_cast<int*>(data->per_channel_output_shift)));
+        reinterpret_cast<int*>(data->per_channel_output_shift),
+        output_channels));
   }
   return kTfLiteOk;
 }
@@ -144,12 +146,10 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                       GetTensorData<uint8_t>(im2col), nullptr);
 }
 
-TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
-                             TfLiteConvParams* params, OpData* data,
-                             const TfLiteTensor* input,
-                             const TfLiteTensor* filter,
-                             const TfLiteTensor* bias, TfLiteTensor* output,
-                             TfLiteTensor* im2col) {
+TfLiteStatus EvalMliQuantizedPerChannel(
+    TfLiteContext* context, TfLiteNode* node, TfLiteConvParams* params,
+    OpData* data, const TfLiteTensor* input, const TfLiteTensor* filter,
+    const TfLiteTensor* bias, TfLiteTensor* output) {
   // Run Conv MLI kernel
   // MLI optimized version only supports int8 dataype and dilation factor of 1
   if ((input->type == kTfLiteInt8) && (params->dilation_width_factor == 1) &&
@@ -204,24 +204,36 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     const int height_dimension = 1;
     int in_slice_height = 0;
     int out_slice_height = 0;
-    const int kernel_height = static_cast<int>(mli_weights.shape[KRNL_H_DIM_HWC]);
+    const int kernel_height =
+        static_cast<int>(mli_weights.shape[KRNL_H_DIM_HWC]);
     const int overlap = kernel_height - cfg.stride_height;
 
     // for weight slicing (on output channels)
-    const int weight_out_ch_dimension = 0; // NHWC layout for weigths, output channel dimension is the first dimension.
-    int slice_channels = static_cast<int>(mli_weights.shape[weight_out_ch_dimension]);
-    const int out_tensor_ch_dimension = 3; // Batch-Height-Width-Channel layout means last dimension is output channels.
+    const int weight_out_ch_dimension =
+        0;  // NHWC layout for weigths, output channel dimension is the first
+            // dimension.
+    int slice_channels =
+        static_cast<int>(mli_weights.shape[weight_out_ch_dimension]);
+    const int out_tensor_ch_dimension =
+        3;  // Batch-Height-Width-Channel layout means last dimension is output
+            // channels.
 
-    // Tensors for data in fast (local) memory and config to copy data from external to local memory
+    // Tensors for data in fast (local) memory and config to copy data from
+    // external to local memory
     mli_tensor weights_local = mli_weights;
     mli_tensor bias_local = mli_bias;
     mli_tensor in_local = mli_in;
     mli_tensor out_local = mli_out;
     mli_mov_cfg_t copy_config;
     mli_mov_cfg_for_copy(&copy_config);
-    TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_conv_tensors(context, &in_local, &weights_local, &bias_local, &out_local));
-    TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_io(&in_local, &out_local, kernel_height, cfg.stride_height, cfg.padding_top, cfg.padding_bottom, &in_slice_height, &out_slice_height));
-    TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_weights(&weights_local, &bias_local, weight_out_ch_dimension, &slice_channels));
+    TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_conv_tensors(
+        context, &in_local, &weights_local, &bias_local, &out_local));
+    TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_io(
+        &in_local, &out_local, kernel_height, cfg.stride_height,
+        cfg.padding_top, cfg.padding_bottom, &in_slice_height,
+        &out_slice_height));
+    TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_weights(
+        &weights_local, &bias_local, weight_out_ch_dimension, &slice_channels));
 
     /* is_local indicates that the tensor is already in local memory,
        so in that case the original tensor can be used,
@@ -233,33 +245,40 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
 
     TensorSlicer w_slice(&mli_weights, weight_out_ch_dimension, slice_channels);
     TensorSlicer b_slice(&mli_bias, weight_out_ch_dimension, slice_channels);
-    TensorSlicer out_ch_slice(&mli_out, out_tensor_ch_dimension, slice_channels, 0, 0, 0, true);
+    TensorSlicer out_ch_slice(&mli_out, out_tensor_ch_dimension, slice_channels,
+                              0, 0, 0, true);
 
-    mli_tensor *w_ptr = w_is_local ? w_slice.Sub() : &weights_local;
-    mli_tensor *b_ptr = b_is_local ? b_slice.Sub() : &bias_local;
+    mli_tensor* w_ptr = w_is_local ? w_slice.Sub() : &weights_local;
+    mli_tensor* b_ptr = b_is_local ? b_slice.Sub() : &bias_local;
 
-    void *input_buffer_ptr = NULL;
+    void* input_buffer_ptr = NULL;
     int input_buffer_size = 0;
 
-    while (!w_slice.Done()){
+    while (!w_slice.Done()) {
       mli_mov_tensor_sync(w_slice.Sub(), &copy_config, w_ptr);
       mli_mov_tensor_sync(b_slice.Sub(), &copy_config, b_ptr);
 
-      /* mli_in tensor contains batches of HWC tensors. so it is a 4 dimensional tensor.
-      because the mli kernel will process one HWC tensor at a time, the 4 dimensional tensor needs to be sliced into nBatch 3 dimensional tensors.
-      on top of that there could be a need to also slice in the Height dimension. for that the sliceHeight has been calculated.
-      The tensor slicer is configured that it will completely slice the nBatch dimension (0) and slice the height dimension (1)
-      in chunks of 'sliceHeight' */
-      TensorSlicer in_slice(&mli_in, height_dimension, in_slice_height, cfg.padding_top, cfg.padding_bottom, overlap);
+      /* mli_in tensor contains batches of HWC tensors. so it is a 4 dimensional
+      tensor. because the mli kernel will process one HWC tensor at a time, the
+      4 dimensional tensor needs to be sliced into nBatch 3 dimensional tensors.
+      on top of that there could be a need to also slice in the Height
+      dimension. for that the sliceHeight has been calculated. The tensor slicer
+      is configured that it will completely slice the nBatch dimension (0) and
+      slice the height dimension (1) in chunks of 'sliceHeight' */
+      TensorSlicer in_slice(&mli_in, height_dimension, in_slice_height,
+                            cfg.padding_top, cfg.padding_bottom, overlap);
 
-      /* output tensor is alreade sliced in the output channel dimension. out_ch_slice.Sub() is the tensor for the amount of
-      output channels of this itteration of the weight slice loop. This tensor needs to be further sliced over the batch and
-      height dimension. */
-      TensorSlicer out_slice(out_ch_slice.Sub(), height_dimension, out_slice_height);
+      /* output tensor is alreade sliced in the output channel dimension.
+      out_ch_slice.Sub() is the tensor for the amount of output channels of this
+      itteration of the weight slice loop. This tensor needs to be further
+      sliced over the batch and height dimension. */
+      TensorSlicer out_slice(out_ch_slice.Sub(), height_dimension,
+                             out_slice_height);
 
-      /* setup the pointers to the local or remote tensor to make the code inside the loop easier. */
-      mli_tensor *in_ptr = in_is_local ? in_slice.Sub() : &in_local;
-      mli_tensor *out_ptr = out_is_local ? out_slice.Sub() : &out_local;
+      /* setup the pointers to the local or remote tensor to make the code
+       * inside the loop easier. */
+      mli_tensor* in_ptr = in_is_local ? in_slice.Sub() : &in_local;
+      mli_tensor* out_ptr = out_is_local ? out_slice.Sub() : &out_local;
 
       while (!out_slice.Done()) {
         TF_LITE_ENSURE(context, !in_slice.Done());
@@ -267,7 +286,8 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
         cfg.padding_bottom = in_slice.GetPaddingPost();
 
         // if same input copy as previous iteration, skip the copy of input
-        if ((in_slice.Sub()->data != input_buffer_ptr) || (mli_hlp_count_elem_num(in_slice.Sub(), 0) != input_buffer_size)) {
+        if ((in_slice.Sub()->data != input_buffer_ptr) ||
+            (mli_hlp_count_elem_num(in_slice.Sub(), 0) != input_buffer_size)) {
           mli_mov_tensor_sync(in_slice.Sub(), &copy_config, in_ptr);
           input_buffer_ptr = in_slice.Sub()->data;
           input_buffer_size = mli_hlp_count_elem_num(in_slice.Sub(), 0);
@@ -283,26 +303,37 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
       out_ch_slice.Next();
       TF_LITE_ENSURE(context, in_slice.Done());
     }
-
-  } else {
-    ConvParams op_params;
-    op_params.input_offset = -input->params.zero_point;
-    op_params.output_offset = output->params.zero_point;
-    op_params.stride_height = params->stride_height;
-    op_params.stride_width = params->stride_width;
-    op_params.dilation_height_factor = params->dilation_height_factor;
-    op_params.dilation_width_factor = params->dilation_width_factor;
-    op_params.padding_values.height = data->padding.height;
-    op_params.padding_values.width = data->padding.width;
-
-    reference_integer_ops::ConvPerChannel(
-        op_params, data->per_channel_output_multiplier,
-        data->per_channel_output_shift, GetTensorShape(input),
-        GetTensorData<int8>(input), GetTensorShape(filter),
-        GetTensorData<int8>(filter), GetTensorShape(bias),
-        GetTensorData<int32>(bias), GetTensorShape(output),
-        GetTensorData<int8>(output));
   }
+
+  return kTfLiteOk;
+}
+
+TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
+                                     TfLiteConvParams* params, OpData* data,
+                                     const TfLiteTensor* input,
+                                     const TfLiteTensor* filter,
+                                     const TfLiteTensor* bias,
+                                     TfLiteTensor* output) {
+  ConvParams op_params;
+  op_params.input_offset = -input->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.stride_height = params->stride_height;
+  op_params.stride_width = params->stride_width;
+  op_params.dilation_height_factor = params->dilation_height_factor;
+  op_params.dilation_width_factor = params->dilation_width_factor;
+  op_params.padding_values.height = data->padding.height;
+  op_params.padding_values.width = data->padding.width;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
+
+  reference_integer_ops::ConvPerChannel(
+      op_params, data->per_channel_output_multiplier,
+      data->per_channel_output_shift, GetTensorShape(input),
+      GetTensorData<int8>(input), GetTensorShape(filter),
+      GetTensorData<int8>(filter), GetTensorShape(bias),
+      GetTensorData<int32>(bias), GetTensorShape(output),
+      GetTensorData<int8>(output));
+
   return kTfLiteOk;
 }
 
@@ -352,6 +383,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpData data;
 
   // All per-channel quantized tensors need valid zero point and scale arrays.
+  bool mli_is_applicable = false;
   if (input->type == kTfLiteInt8) {
     TF_LITE_ENSURE_EQ(context, filter->quantization.type,
                       kTfLiteAffineQuantization);
@@ -362,26 +394,38 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE(context, affine_quantization);
     TF_LITE_ENSURE(context, affine_quantization->scale);
     TF_LITE_ENSURE(context, affine_quantization->zero_point);
-    // Conv is quantized along dimension 0:
-    // https://www.tensorflow.org/lite/performance/quantization_spec
-    TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
-                      affine_quantization->scale->size);
-    TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
+
+    TF_LITE_ENSURE(context,
+                   affine_quantization->scale->size == 1 ||
+                       affine_quantization->scale->size ==
+                           filter->dims->data[kConvQuantizedDimension]);
+    TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
                       affine_quantization->zero_point->size);
+    mli_is_applicable =
+        ((filter->type == kTfLiteInt8) && (bias->type == kTfLiteInt32) &&
+         (params->dilation_width_factor == 1) &&
+         (params->dilation_height_factor == 1) &&
+         (affine_quantization->scale->size ==
+          filter->dims->data[kConvQuantizedDimension]));
   }
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(
       context, node, params, input_width, input_height, filter_width,
       filter_height, output_width, output_height, input->type, &data));
-
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
       EvalFloat(context, node, params, &data, input, filter, bias, nullptr,
                 nullptr, output);
       break;
     case kTfLiteInt8:
-      return EvalQuantizedPerChannel(context, node, params, &data, input, filter, bias,
-                              output, nullptr);
+      if (mli_is_applicable) {
+        return EvalMliQuantizedPerChannel(context, node, params, &data, input,
+                                       filter, bias, output);
+
+      } else {
+        return EvalQuantizedPerChannel(context, node, params, &data, input,
+                                       filter, bias, output);
+      }
       break;
     case kTfLiteUInt8:
       EvalQuantized(context, node, params, &data, input, filter, bias, nullptr,

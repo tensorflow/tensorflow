@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 
-#include "mli_api.h"  // NOLINT
+#include "mli_api.h" 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -27,8 +27,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/arc_mli/scratch_buf_mgr.h"
 #include "tensorflow/lite/micro/kernels/arc_mli/mli_tf_utils.h"
 #include "tensorflow/lite/micro/kernels/arc_mli/mli_slicers.h"
-
-#include "mli_api.h"
 
 namespace tflite {
 namespace ops {
@@ -76,6 +74,37 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
 }
 
 }  // namespace
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  OpData* data = nullptr;
+  TfLiteStatus status = context->AllocatePersistentBuffer(
+      context, sizeof(OpData), reinterpret_cast<void**>(&data));
+  if (status != kTfLiteOk || data == nullptr) {
+    return nullptr;
+  }
+  return data;
+}
+
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  auto* params =
+      reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
+
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
+  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_MSG(context, input->type == filter->type,
+                     "Hybrid models are not supported on TFLite Micro.");
+
+  TfLiteType data_type = input->type;
+  TF_LITE_ENSURE_STATUS(CalculateOpData(context, params, data_type, input,
+                                        filter, bias, output, data));
+
+  return kTfLiteOk;
+}
 
 TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                                TfLiteFullyConnectedParams* params, OpData* data,
@@ -263,13 +292,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TfLiteType data_type = input->type;
-  OpData local_data_object;
-  OpData* data = &local_data_object;
-  TF_LITE_ENSURE_STATUS(CalculateOpData(context, params, data_type, input,
-                                        filter, bias, output, data));
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  switch (filter->type) {  // Already know in/out types are same.
+  // Checks in Prepare ensure input, output and filter types are all the same.
+  switch (input->type) {
     case kTfLiteFloat32:
       return EvalFloat(context, node, params, data, input, filter, bias,
                        output);
@@ -292,15 +318,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace fully_connected
 
 TfLiteRegistration* Register_FULLY_CONNECTED() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
+  static TfLiteRegistration r = {/*init=*/fully_connected::Init,
                                  /*free=*/nullptr,
-                                 /*prepare=*/nullptr,
+                                 /*prepare=*/fully_connected::Prepare,
                                  /*invoke=*/fully_connected::Eval,
                                  /*profiling_string=*/nullptr,
                                  /*builtin_code=*/0,
                                  /*custom_name=*/nullptr,
                                  /*version=*/0};
-
   return &r;
 }
 
