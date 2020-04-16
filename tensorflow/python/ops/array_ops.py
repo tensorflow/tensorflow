@@ -4359,11 +4359,12 @@ def where_v2(condition, x=None, y=None, name=None):
 
   Instead of this
 
-  >>> tf.where(x_ok, ops_that_can_nan(x), safe_f(x))
+  >>>  y = -1
+  >>> tf.where(y > 0, tf.sqrt(y), y)
 
   Use this
 
-  >>> tf.where(x_ok, ops_that_can_nan(tf.where(x_ok, x, safe_x)), safe_f(x))
+  >>> tf.where(y > 0, tf.sqrt(tf.where(y > 0, y, 1)), y)
 
   Args:
     condition: A `tf.Tensor` of type `bool`
@@ -4382,8 +4383,6 @@ def where_v2(condition, x=None, y=None, name=None):
   Raises:
     ValueError: When exactly one of `x` or `y` is non-None, or the shapes
       are not all broadcastable.
-
-
   """
   if x is None and y is None:
     with ops.name_scope(name, "Where", [condition]) as name:
