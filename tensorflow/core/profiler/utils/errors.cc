@@ -19,17 +19,17 @@ namespace tensorflow {
 namespace profiler {
 
 const absl::string_view kErrorIncompleteStep =
-    "Visualization based on incomplete step. No step markers observed and "
-    "hence the step time is actually unknown. Instead, we use the trace "
-    "duration as the step time. This may happen if your profiling duration "
-    "is shorter than the step time. In that case, you may try to profile "
-    "longer.";
+    "Incomplete step observed and hence the step time is unknown."
+    "Instead, we use the trace duration as the step time. This may happen"
+    " if your profiling duration is shorter than the step time. In this"
+    " case, you may try to profile longer.";
 
 const absl::string_view kErrorNoStepMarker =
-    "Visualization contains on step based analysis. No step markers observed "
-    "and hence the step time is actually unknown. This may happen if your "
-    "profiling duration is shorter than the step time. In that case, you may "
-    "try to profile longer.";
+    "No step marker observed and hence the step time is unknown."
+    " This may happen if (1) training steps are not instrumented (e.g., if"
+    " you are not using Keras) or (2) the profiling duration is shorter"
+    " than the step time. For (1), you need to add step instrumentation;"
+    " for (2), you may try to profile longer.";
 
 }  // namespace profiler
 }  // namespace tensorflow
