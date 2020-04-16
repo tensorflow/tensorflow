@@ -25,7 +25,8 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(TestJustFits) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator allocator(arena, arena_size);
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
 
   uint8_t* result = allocator.AllocateFromTail(arena_size, 1);
   TF_LITE_MICRO_EXPECT_NE(nullptr, result);
@@ -34,7 +35,8 @@ TF_LITE_MICRO_TEST(TestJustFits) {
 TF_LITE_MICRO_TEST(TestAligned) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator allocator(arena, arena_size);
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
 
   uint8_t* result = allocator.AllocateFromTail(1, 1);
   TF_LITE_MICRO_EXPECT_NE(nullptr, result);
@@ -47,7 +49,8 @@ TF_LITE_MICRO_TEST(TestAligned) {
 TF_LITE_MICRO_TEST(TestMultipleTooLarge) {
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator allocator(arena, arena_size);
+  tflite::SimpleMemoryAllocator allocator(micro_test::reporter, arena,
+                                          arena_size);
 
   uint8_t* result = allocator.AllocateFromTail(768, 1);
   TF_LITE_MICRO_EXPECT_NE(nullptr, result);

@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 
 namespace tflite {
 
@@ -27,10 +28,14 @@ namespace tflite {
 // This makes it pretty wasteful, so we should use a more intelligent method.
 class SimpleMemoryAllocator {
  public:
-  SimpleMemoryAllocator(uint8_t* buffer_head, uint8_t* buffer_tail)
-      : head_(buffer_head), tail_(buffer_tail) {}
-  SimpleMemoryAllocator(uint8_t* buffer, size_t buffer_size)
-      : SimpleMemoryAllocator(buffer, buffer + buffer_size) {}
+  SimpleMemoryAllocator(ErrorReporter* error_reporter, uint8_t* buffer_head,
+                        uint8_t* buffer_tail)
+      : error_reporter_(error_reporter),
+        head_(buffer_head),
+        tail_(buffer_tail) {}
+  SimpleMemoryAllocator(ErrorReporter* error_reporter, uint8_t* buffer,
+                        size_t buffer_size)
+      : SimpleMemoryAllocator(error_reporter, buffer, buffer + buffer_size) {}
 
   // Allocates memory starting at the head of the arena (lowest address and
   // moving upwards).
@@ -44,14 +49,15 @@ class SimpleMemoryAllocator {
   size_t GetAvailableMemory() const { return tail_ - head_; }
 
  private:
+  ErrorReporter* error_reporter_;
   uint8_t* head_;
   uint8_t* tail_;
 };
 
 // Allocate a SimpleMemoryAllocator from the buffer and then return the pointer
 // to this allocator.
-SimpleMemoryAllocator* CreateInPlaceSimpleMemoryAllocator(uint8_t* buffer,
-                                                          size_t buffer_size);
+SimpleMemoryAllocator* CreateInPlaceSimpleMemoryAllocator(
+    ErrorReporter* error_reporter, uint8_t* buffer, size_t buffer_size);
 
 }  // namespace tflite
 

@@ -444,9 +444,8 @@ MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
   // Creates a root memory allocator managing the arena. The allocator itself
   // also locates in the arena buffer. This allocator doesn't need to be
   // destructed as it's the root allocator.
-  SimpleMemoryAllocator* aligned_allocator =
-      CreateInPlaceSimpleMemoryAllocator(aligned_arena, aligned_arena_size);
-  memory_allocator_ = aligned_allocator;
+  memory_allocator_ = CreateInPlaceSimpleMemoryAllocator(
+      error_reporter, aligned_arena, aligned_arena_size);
   TfLiteStatus status = Init();
   // TODO(b/147871299): Consider improving this code. A better way of handling
   // failures in the constructor is to have a static function that returns a
@@ -558,7 +557,8 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
   // Note that AllocationInfo is only needed for creating the plan. It will be
   // thrown away when the child allocator (tmp_allocator) goes out of scope.
   {
-    SimpleMemoryAllocator tmp_allocator(memory_allocator_->GetHead(),
+    SimpleMemoryAllocator tmp_allocator(error_reporter_,
+                                        memory_allocator_->GetHead(),
                                         memory_allocator_->GetTail());
 
     AllocationInfoBuilder builder(error_reporter_, &tmp_allocator);

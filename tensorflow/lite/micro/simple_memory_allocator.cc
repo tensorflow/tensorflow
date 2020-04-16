@@ -22,9 +22,10 @@ limitations under the License.
 
 namespace tflite {
 
-SimpleMemoryAllocator* CreateInPlaceSimpleMemoryAllocator(uint8_t* buffer,
-                                                          size_t buffer_size) {
-  SimpleMemoryAllocator tmp = SimpleMemoryAllocator(buffer, buffer_size);
+SimpleMemoryAllocator* CreateInPlaceSimpleMemoryAllocator(
+    ErrorReporter* error_reporter, uint8_t* buffer, size_t buffer_size) {
+  SimpleMemoryAllocator tmp =
+      SimpleMemoryAllocator(error_reporter, buffer, buffer_size);
   SimpleMemoryAllocator* in_place_allocator =
       reinterpret_cast<SimpleMemoryAllocator*>(tmp.AllocateFromTail(
           sizeof(SimpleMemoryAllocator), alignof(SimpleMemoryAllocator)));
@@ -34,10 +35,13 @@ SimpleMemoryAllocator* CreateInPlaceSimpleMemoryAllocator(uint8_t* buffer,
 
 uint8_t* SimpleMemoryAllocator::AllocateFromHead(size_t size,
                                                  size_t alignment) {
-  uint8_t* aligned_result = AlignPointerUp(head_, alignment);
-  size_t available_memory = tail_ - aligned_result;
+  uint8_t* const aligned_result = AlignPointerUp(head_, alignment);
+  const size_t available_memory = tail_ - aligned_result;
   if (available_memory < size) {
-    // TODO(petewarden): Add error reporting beyond returning null!
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
+        "Failed to allocate memory. Requested: %u, available %u, missing: %u",
+        size, available_memory, size - available_memory);
     return nullptr;
   }
   head_ = aligned_result + size;
@@ -46,8 +50,13 @@ uint8_t* SimpleMemoryAllocator::AllocateFromHead(size_t size,
 
 uint8_t* SimpleMemoryAllocator::AllocateFromTail(size_t size,
                                                  size_t alignment) {
-  uint8_t* aligned_result = AlignPointerDown(tail_ - size, alignment);
+  uint8_t* const aligned_result = AlignPointerDown(tail_ - size, alignment);
   if (aligned_result < head_) {
+    const size_t missing_memory = head_ - aligned_result;
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
+        "Failed to allocate memory. Requested: %u, available %u, missing: %u",
+        size, size - missing_memory, missing_memory);
     return nullptr;
   }
   tail_ = aligned_result;
