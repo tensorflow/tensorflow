@@ -23,6 +23,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
@@ -412,6 +413,14 @@ class RandomUniformTest(RandomOpTestCommon):
             200,
             use_gpu=use_gpu,
             graph_seed=965)
+
+  def testUniformWithInvalidMaxMindShape(self):
+    # Test case for GitHub issue 34363.
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "is not compatible with expected shape"):
+      array = array_ops.zeros(shape=(1,))
+      random_ops.random_uniform(shape=(), minval=array)
 
 
 class RandomShapeTest(test.TestCase):
