@@ -80,7 +80,7 @@ class InputLayer(base_layer.Layer):
       ragged: Boolean, whether the placeholder created is meant to be ragged.
           In this case, values of 'None' in the 'shape' argument represent
           ragged dimensions. For more information about RaggedTensors, see
-          https://www.tensorflow.org/guide/ragged_tensors.
+          [this guide](https://www.tensorflow.org/guide/ragged_tensors).
           Default to False.
       name: Optional name of the layer (string).
   """
@@ -231,7 +231,7 @@ def Input(  # pylint: disable=invalid-name
           ragged. Only one of 'ragged' and 'sparse' can be True. In this case,
           values of 'None' in the 'shape' argument represent ragged dimensions.
           For more information about RaggedTensors, see
-          https://www.tensorflow.org/guide/ragged_tensors.
+          [this guide](https://www.tensorflow.org/guide/ragged_tensors).
       **kwargs: deprecated arguments support. Supports `batch_shape` and
           `batch_input_shape`.
 

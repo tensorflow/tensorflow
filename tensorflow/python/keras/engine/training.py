@@ -163,9 +163,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
   Once the model is created, you can config the model with losses and metrics
   with `model.compile()`, train the model with `model.fit()`, or use the model
   to do prediction with `model.predict()`.
-
-  Checkout [guide](https://www.tensorflow.org/guide/keras/overview) for
-  additional details.
   """
   _TF_MODULE_IGNORED_PROPERTIES = frozenset(
       itertools.chain(('_train_counter', '_test_counter', '_predict_counter',

@@ -88,8 +88,8 @@ class BatchNormalizationBase(Layer):
     gamma_regularizer: Optional regularizer for the gamma weight.
     beta_constraint: Optional constraint for the beta weight.
     gamma_constraint: Optional constraint for the gamma weight.
-    renorm: Whether to use Batch Renormalization
-      (https://arxiv.org/abs/1702.03275). This adds extra variables during
+    renorm: Whether to use [Batch Renormalization](
+      https://arxiv.org/abs/1702.03275). This adds extra variables during
       training. The inference is the same for either value of this parameter.
     renorm_clipping: A dictionary that may map keys 'rmax', 'rmin', 'dmax' to
       scalar `Tensors` used to clip the renorm correction. The correction
@@ -164,9 +164,9 @@ class BatchNormalizationBase(Layer):
 
     \\({y_i} = {\gamma * \hat{x_i} + \beta}\\)
 
-  References:
-  - [Batch Normalization: Accelerating Deep Network Training by Reducing
-    Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
+  Reference:
+
+    - [Ioffe and Szegedy, 2015](https://arxiv.org/abs/1502.03167).
   """
 
   # By default, the base class uses V2 behavior. The BatchNormalization V1
@@ -998,8 +998,8 @@ class LayerNormalization(Layer):
   Output shape:
     Same shape as input.
 
-  References:
-    - [Layer Normalization](https://arxiv.org/abs/1607.06450)
+  Reference:
+    - [Lei Ba et al., 2016](https://arxiv.org/abs/1607.06450).
   """
 
   def __init__(self,
