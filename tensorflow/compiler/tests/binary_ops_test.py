@@ -521,11 +521,19 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
       self._testBinary(
           gen_math_ops.real_div,
-          np.array([3, 3j, -1.5j, -8, 2 + 3j, 2 + 4j], dtype=dtype),
-          np.array([2, -2, 7j, -4j, 4 - 6j, 1 + 2j], dtype=dtype),
-          expected=np.array(
-              [1.5, -1.5j, -0.2142857, -2j, (2 + 3j) / (4 - 6j), 2],
-              dtype=dtype))
+          np.array(
+              [3, 3j, -1.5j, -8, 2 + 3j, 2 + 4j, 9.663546088957395e-28 + 0j],
+              dtype=dtype),
+          np.array([
+              2, -2, 7j, -4j, 4 - 6j, 1 + 2j,
+              9.39511792677288e-16 - 1.529841108938729e-23j
+          ],
+                   dtype=dtype),
+          expected=np.array([
+              1.5, -1.5j, -0.2142857, -2j,
+              (2 + 3j) / (4 - 6j), 2, 1.028571e-12 + 1.674859e-20j
+          ],
+                            dtype=dtype))
 
       self._testBinary(
           math_ops.pow,
