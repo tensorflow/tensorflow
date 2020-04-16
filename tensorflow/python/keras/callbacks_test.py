@@ -1918,6 +1918,39 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         },
     )
 
+  def test_TensorBoard_projector_callback(self):
+    layers = [
+        keras.layers.Embedding(10, 10, name='test_embedding'),
+        keras.layers.Dense(10, activation='relu'),
+        keras.layers.Dense(1, activation='sigmoid')
+    ]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(10,))
+    model.compile(
+        optimizer='adam',
+        loss=keras.losses.BinaryCrossentropy(from_logits=True),
+        run_eagerly=testing_utils.should_run_eagerly())
+    x, y = np.ones((10, 10)), np.ones((10, 10))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir,
+        embeddings_freq=1,
+        embeddings_metadata={'test_embedding': 'metadata.tsv'})
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+
+    with open(os.path.join(self.logdir, 'projector_config.pbtxt')) as f:
+      self.assertEqual(
+          f.readlines(), [
+              'embeddings {\n',
+              '  tensor_name: "test_embedding/.ATTRIBUTES/VARIABLE_VALUE"\n',
+              '  metadata_path: "metadata.tsv"\n',
+              '}\n'])
+
   def test_custom_summary(self):
     if not context.executing_eagerly():
       self.skipTest('Custom summaries only supported in V2 code path.')
