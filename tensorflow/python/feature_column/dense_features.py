@@ -23,6 +23,7 @@ import json
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
+from tensorflow.python.keras.layers import serialization as layer_serialization
 from tensorflow.python.util import serialization
 from tensorflow.python.util.tf_export import keras_export
 
@@ -172,3 +173,7 @@ class DenseFeatures(fc._BaseFeaturesLayer):  # pylint: disable=protected-access
           cols_to_output_tensors[column] = processed_tensors
         output_tensors.append(processed_tensors)
     return self._verify_and_concat_tensors(output_tensors)
+
+
+layer_serialization.inject_feature_column_v1_objects(
+    'DenseFeatures', DenseFeatures)

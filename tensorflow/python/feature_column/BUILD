@@ -269,3 +269,37 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
     ],
 )
+
+tf_py_test(
+    name = "keras_integration_test",
+    size = "medium",
+    srcs = ["keras_integration_test.py"],
+    python_version = "PY3",
+    shard_count = 4,
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+        "notsan",
+    ],
+    deps = [
+        ":feature_column_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "save_test",
+    size = "medium",
+    srcs = ["save_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/feature_column:feature_column_v2",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
