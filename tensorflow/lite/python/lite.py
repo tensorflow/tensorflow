@@ -704,8 +704,8 @@ class TFLiteConverterV2(TFLiteConverterBase):
         **converter_kwargs)
 
     if quant_mode.post_training_int8_no_float():
-      result = self._calibrate_quantize_model(result, constants.FLOAT,
-                                              constants.FLOAT, False)
+      result = self._calibrate_quantize_model(result, constants.INT8,
+                                              constants.INT8, False)
     elif quant_mode.post_training_int8_allow_float():
       result = self._calibrate_quantize_model(result, constants.FLOAT,
                                               constants.FLOAT, True)
