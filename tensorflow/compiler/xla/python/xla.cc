@@ -551,7 +551,7 @@ class TraceMeContextManager {
       if (!kwargs_.empty()) {
         absl::StrAppend(&name, "#");
         bool first = true;
-        for (const auto& entry : kwargs_) {
+        for (const auto entry : kwargs_) {
           absl::StrAppend(&name, first ? "" : ",",
                           std::string(py::str(entry.first)), "=",
                           std::string(py::str(entry.second)));
@@ -1044,7 +1044,7 @@ PYBIND11_MODULE(xla_extension, m) {
                      const ExecutableBuildOptions* build_options,
                      std::shared_ptr<PyLocalClient> client,
                      absl::optional<DeviceAssignment> device_assignment,
-                     bool tuple_arguments)
+                     bool parameter_is_tupled_arguments)
                       -> StatusOr<ClientAndUniquePtr<PyLocalExecutable>> {
                     py::gil_scoped_release gil_release;
                     CompileOptions options;
@@ -1052,7 +1052,8 @@ PYBIND11_MODULE(xla_extension, m) {
                     if (build_options) {
                       options.executable_build_options = *build_options;
                     }
-                    options.tuple_arguments = tuple_arguments;
+                    options.parameter_is_tupled_arguments =
+                        parameter_is_tupled_arguments;
                     if (device_assignment) {
                       options.executable_build_options.set_device_assignment(
                           *device_assignment);
@@ -1071,7 +1072,7 @@ PYBIND11_MODULE(xla_extension, m) {
                      std::shared_ptr<PyLocalClient> client,
                      absl::optional<std::vector<std::vector<Device*>>>
                          device_assignment,
-                     bool tuple_arguments)
+                     bool parameter_is_tupled_arguments)
                       -> StatusOr<ClientAndUniquePtr<PyLocalExecutable>> {
                     py::gil_scoped_release gil_release;
                     CompileOptions options;
@@ -1079,7 +1080,8 @@ PYBIND11_MODULE(xla_extension, m) {
                     if (build_options) {
                       options.executable_build_options = *build_options;
                     }
-                    options.tuple_arguments = tuple_arguments;
+                    options.parameter_is_tupled_arguments =
+                        parameter_is_tupled_arguments;
                     if (device_assignment) {
                       TF_ASSIGN_OR_RETURN(
                           DeviceAssignment xla_assignment,

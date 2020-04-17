@@ -1240,12 +1240,12 @@ static Device* LookupDevice(const PyLocalClient& client, int device_id) {
 
 PyLocalExecutable::PyLocalExecutable(
     std::vector<std::unique_ptr<LocalExecutable>> executables,
-    bool tuple_arguments, DeviceAssignment device_assignment,
+    bool parameter_is_tupled_arguments, DeviceAssignment device_assignment,
     std::vector<std::pair<int, int>> local_logical_device_ids,
     std::vector<Device*> local_devices, PyLocalClient* client)
     : client_(client),
       device_assignment_(std::make_shared<DeviceAssignment>(device_assignment)),
-      tuple_arguments_(tuple_arguments),
+      parameter_is_tupled_arguments_(parameter_is_tupled_arguments),
       local_logical_device_ids_(std::move(local_logical_device_ids)),
       local_devices_(std::move(local_devices)) {
   executables_.reserve(executables.size());
@@ -1346,9 +1346,23 @@ StatusOr<ScopedShapedBuffer> PyLocalExecutable::EnqueueExecution(
                           &events);
   }
 
+  if (options.arguments_are_tupled) {
+    if (!parameter_is_tupled_arguments_) {
+      return InvalidArgument(
+          "Arguments may only be supplied as a tuple when the executable was "
+          "compiled with a single tupled parameter");
+    }
+    if (argument_handles.size() != 1) {
+      return InvalidArgument(
+          "Option arguments_are_tupled was true but %d buffers were passed to "
+          "execution",
+          argument_handles.size());
+    }
+  }
+
   LocalDeviceState* device_state = &client_->device_state(device_ordinal);
   TupleHandle tuple_handle;
-  if (tuple_arguments_) {
+  if (parameter_is_tupled_arguments_ && !options.arguments_are_tupled) {
     TF_ASSIGN_OR_RETURN(tuple_handle,
                         MakeTupleHelper(client_, device_state, argument_handles,
                                         *device_buffers, device_ordinal));
@@ -1783,11 +1797,11 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
                                 build_options));
 
   auto py_executable = absl::make_unique<PyLocalExecutable>(
-      std::move(local_executables), options.tuple_arguments,
+      std::move(local_executables), options.parameter_is_tupled_arguments,
       build_options.device_assignment(), std::move(local_logical_device_ids),
       std::move(local_devices), client);
-  TF_RETURN_IF_ERROR(
-      py_executable->SetUpDonation(client, options.tuple_arguments));
+  TF_RETURN_IF_ERROR(py_executable->SetUpDonation(
+      client, options.parameter_is_tupled_arguments));
   return py_executable;
 }
 
