@@ -21,7 +21,7 @@ func @else_branch(%arg0: tuple<tensor<f32>>) -> tuple<tensor<f32>> {
   %0 = "xla_hlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<f32>>) -> tensor<f32>
 
   // CHECK:   %[[VAL1:.+]] = f32[] exponential(f32[] %[[VAL0]])
-  %1 = "xla_hlo.exp"(%0) : (tensor<f32>) -> tensor<f32>
+  %1 = "xla_hlo.exponential"(%0) : (tensor<f32>) -> tensor<f32>
 
   // CHECK:   ROOT %[[VAL2:.+]] = (f32[]) tuple(f32[] %[[VAL1]])
   %2 = "xla_hlo.tuple"(%1) : (tensor<f32>) -> tuple<tensor<f32>>
@@ -50,7 +50,7 @@ func @main(%arg0: tensor<f32>) -> tuple<tensor<f32>> {
   },  {
   ^bb0(%arg1: tuple<tensor<f32>>):
     %6 = "xla_hlo.get_tuple_element"(%arg1) {index = 0 : i32} : (tuple<tensor<f32>>) -> tensor<f32>
-    %7 = "xla_hlo.exp"(%6) : (tensor<f32>) -> tensor<f32>
+    %7 = "xla_hlo.exponential"(%6) : (tensor<f32>) -> tensor<f32>
     %8 = "xla_hlo.tuple"(%7) : (tensor<f32>) -> tuple<tensor<f32>>
     "xla_hlo.return"(%8) : (tuple<tensor<f32>>) -> ()
   }) : (tensor<i1>, tuple<tensor<f32>>, tuple<tensor<f32>>) -> tuple<tensor<f32>>

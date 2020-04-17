@@ -1348,6 +1348,7 @@ xla_test(
     srcs = ["dynamic_ops_test.cc"],
     deps = [
         ":client_library_test_base",
+        ":hlo_test_base",
         ":literal_test_util",
         ":test_macros_header",
         ":xla_internal_test_main",
@@ -2538,6 +2539,7 @@ xla_test(
     tags = [
         "enable_for_xla_interpreter",
         "noasan",  # sometimes times out, http://b/78650012
+        "notsan",  # sometimes times out, http://b/78650012
     ],
     deps = [
         ":test_macros_header",

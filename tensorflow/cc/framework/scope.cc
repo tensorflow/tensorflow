@@ -537,7 +537,7 @@ Status CreateOutputWithScope(string op_name,
   TF_RETURN_IF_ERROR(scope.status());
   const auto unique_name = scope.GetUniqueNameForOp(op_name);
   auto builder = ::tensorflow::NodeBuilder(unique_name, op_name);
-  for (auto input : inputs) {
+  for (const auto& input : inputs) {
     TF_RETURN_IF_ERROR(scope.status());
     builder = builder.Input(input.node());
   }

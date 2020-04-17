@@ -36,20 +36,26 @@ class Context(object):
 
   Attributes:
     info: EntityInfo, immutable.
+    namer: naming.Namer.
     current_origin: origin_info.OriginInfo, holds the OriginInfo of the last
       AST node to be processed successfully. Useful for error handling.
+    user: An user-supplied context object. The object is opaque to the
+      infrastructure, but will pe passed through to all custom transformations.
   """
 
-  def __init__(self, info):
+  def __init__(self, info, namer, user_context):
     self.info = info
+    self.namer = namer
     self.current_origin = None
+    self.user = user_context
 
 
 # TODO(mdan): Move to a standalone file.
 class EntityInfo(
     collections.namedtuple(
         'EntityInfo',
-        ('source_code', 'source_file', 'future_features', 'namespace'))):
+        ('name', 'source_code', 'source_file', 'future_features', 'namespace'))
+):
   """Contains information about a Python entity.
 
   Immutable.
@@ -57,6 +63,7 @@ class EntityInfo(
   Examples of entities include functions and classes.
 
   Attributes:
+    name: The name that identifies this entity.
     source_code: The entity's source code.
     source_file: The entity's source file.
     future_features: Tuple[Text], the future features that this entity was

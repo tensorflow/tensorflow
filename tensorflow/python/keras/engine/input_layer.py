@@ -80,7 +80,7 @@ class InputLayer(base_layer.Layer):
       ragged: Boolean, whether the placeholder created is meant to be ragged.
           In this case, values of 'None' in the 'shape' argument represent
           ragged dimensions. For more information about RaggedTensors, see
-          https://www.tensorflow.org/guide/ragged_tensors.
+          [this guide](https://www.tensorflow.org/guide/ragged_tensors).
           Default to False.
       name: Optional name of the layer (string).
   """
@@ -231,7 +231,7 @@ def Input(  # pylint: disable=invalid-name
           ragged. Only one of 'ragged' and 'sparse' can be True. In this case,
           values of 'None' in the 'shape' argument represent ragged dimensions.
           For more information about RaggedTensors, see
-          https://www.tensorflow.org/guide/ragged_tensors.
+          [this guide](https://www.tensorflow.org/guide/ragged_tensors).
       **kwargs: deprecated arguments support. Supports `batch_shape` and
           `batch_input_shape`.
 
@@ -273,25 +273,23 @@ def Input(  # pylint: disable=invalid-name
 
   batch_input_shape = kwargs.pop('batch_input_shape',
                                  kwargs.pop('batch_shape', None))
-  if shape and batch_input_shape:
+  if shape is not None and batch_input_shape is not None:
     raise ValueError('Only provide the `shape` OR `batch_input_shape` argument '
                      'to Input, not both at the same time.')
+  if batch_input_shape is None and shape is None and tensor is None:
+    raise ValueError('Please provide to Input either a `shape`'
+                     ' or a `tensor` argument. Note that '
+                     '`shape` does not include the batch '
+                     'dimension.')
+  if kwargs:
+    raise ValueError('Unrecognized keyword arguments:', kwargs.keys())
+
   if batch_input_shape:
     shape = batch_input_shape[1:]
     input_layer_config.update({'batch_input_shape': batch_input_shape})
   else:
     input_layer_config.update(
         {'batch_size': batch_size, 'input_shape': shape})
-
-  if kwargs:
-    raise ValueError('Unrecognized keyword arguments:', kwargs.keys())
-
-  if shape is None and tensor is None:
-    raise ValueError('Please provide to Input either a `shape`'
-                     ' or a `tensor` argument. Note that '
-                     '`shape` does not include the batch '
-                     'dimension.')
-
   input_layer = InputLayer(**input_layer_config)
 
   # Return tensor including `_keras_history`.

@@ -44,6 +44,8 @@ class SingleOpModelWithHexagon : public SingleOpModel {
         "vendor/lib/rfsa/adsp;/dsp",
         1 /*overwrite*/);
 
+    // For tests, we use one-op-models.
+    params_.min_nodes_per_partition = 1;
     auto* delegate_ptr = TfLiteHexagonDelegateCreate(&params_);
     ASSERT_TRUE(delegate_ptr != nullptr);
     delegate_ = Interpreter::TfLiteDelegatePtr(

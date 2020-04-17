@@ -305,7 +305,7 @@ void StepStatsCollector::BuildCostModel(
     }
   }
 
-  for (auto itr : device_map) {
+  for (const auto& itr : device_map) {
     const StringPiece device = itr.first;
     if (per_device_stats.find(device) == per_device_stats.end()) {
       continue;

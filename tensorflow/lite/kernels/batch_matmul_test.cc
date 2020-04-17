@@ -27,11 +27,14 @@ using ::testing::ElementsAreArray;
 template <typename T>
 class BatchMatMulOpModel : public SingleOpModel {
  public:
-  BatchMatMulOpModel(const TensorData& lhs, const TensorData& rhs) {
+  BatchMatMulOpModel(const TensorData& lhs, const TensorData& rhs,
+                     bool adjoint_lhs = false, bool adjoint_rhs = false) {
     lhs_id_ = AddInput(lhs);
     rhs_id_ = AddInput(rhs);
     output_id_ = AddOutput(lhs.type);
-    SetBuiltinOp(BuiltinOperator_BATCH_MATMUL, BuiltinOptions_NONE, 0);
+    SetBuiltinOp(
+        BuiltinOperator_BATCH_MATMUL, BuiltinOptions_BatchMatMulOptions,
+        CreateBatchMatMulOptions(builder_, adjoint_lhs, adjoint_rhs).Union());
     BuildInterpreter({GetShape(lhs_id_), GetShape(rhs_id_)});
   }
 
@@ -54,8 +57,31 @@ TEST(BatchMatMulOpModelTest, Float32Test_Simple) {
                               {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
   model.Invoke();
   EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray({50.0f, 122.0f, 68.0f, 167.0f, 86.0f, 212.0f,
-                                104.0f, 257.0f}));
+              ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218.}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4}));
+}
+
+TEST(BatchMatMulOpModelTest, Float32Test_SimpleRHSAdjoint) {
+  BatchMatMulOpModel<float> model({TensorType_FLOAT32, {1, 2, 3}},
+                                  {TensorType_FLOAT32, {1, 4, 3}}, false, true);
+  model.PopulateTensor<float>(model.lhs(), {1, 2, 3, 4, 5, 6});
+  model.PopulateTensor<float>(model.rhs(),
+                              {7, 11, 15, 8, 12, 16, 9, 13, 17, 10, 14, 18});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218.}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4}));
+}
+
+TEST(BatchMatMulOpModelTest, Float32Test_SimpleLHSAdjoint) {
+  BatchMatMulOpModel<float> model({TensorType_FLOAT32, {1, 3, 2}},
+                                  {TensorType_FLOAT32, {1, 3, 4}}, true, false);
+  model.PopulateTensor<float>(model.lhs(), {1, 4, 2, 5, 3, 6});
+  model.PopulateTensor<float>(model.rhs(),
+                              {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218.}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 4}));
 }
 
@@ -68,10 +94,10 @@ TEST(BatchMatMulOpModelTest, Float32Test_BatchSizeTwo) {
                               {7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18,
                                19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30});
   model.Invoke();
-  EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray({50.0f, 122.0f, 68.0f, 167.0f, 86.0f, 212.0f,
-                                104.0f, 257.0f, 482.0f, 662.0f, 554.0f, 761.0f,
-                                626.0f, 860.0f, 698.0f, 959.0f}));
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218., 560., 584.,
+                        608., 632., 767., 800., 833., 866.}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 2, 4}));
 }
 
@@ -84,11 +110,26 @@ TEST(BatchMatMulOpModelTest, Float32Test_Broadcast) {
                               {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
 
   model.Invoke();
-  EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray({50.0f, 122.0f, 68.0f, 167.0f, 86.0f, 212.0f,
-                                104.0f, 257.0f, 194.0f, 266.0f, 266.0f, 365.0f,
-                                338.0f, 464.0f, 410.0f, 563.0f}));
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218., 272., 296.,
+                        320., 344., 371., 404., 437., 470.}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 2, 4}));
+}
 
+TEST(BatchMatMulOpModelTest, Float32Test_BroadcastLHSAdjoint) {
+  BatchMatMulOpModel<float> model({TensorType_FLOAT32, {2, 3, 2}},
+                                  {TensorType_FLOAT32, {3, 4}}, true, false);
+  model.PopulateTensor<float>(model.lhs(),
+                              {1, 4, 2, 5, 3, 6, 7, 10, 8, 11, 9, 12});
+  model.PopulateTensor<float>(model.rhs(),
+                              {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
+
+  model.Invoke();
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({74., 80., 86., 92., 173., 188., 203., 218., 272., 296.,
+                        320., 344., 371., 404., 437., 470.}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 2, 4}));
 }
 
@@ -104,25 +145,23 @@ TEST(BatchMatMulOpModelTest, Float32Test_Broadcast2) {
   model.Invoke();
   EXPECT_THAT(
       model.GetOutput(),
-      ElementsAreArray(
-          {23.0f,  53.0f,  83.0f,  29.0f,  67.0f,  105.0f, 35.0f,  81.0f,
-           127.0f, 41.0f,  95.0f,  149.0f, 47.0f,  109.0f, 171.0f, 53.0f,
-           123.0f, 193.0f, 59.0f,  137.0f, 215.0f, 65.0f,  151.0f, 237.0f,
-           71.0f,  165.0f, 259.0f, 77.0f,  179.0f, 281.0f, 83.0f,  193.0f,
-           303.0f, 89.0f,  207.0f, 325.0f, 113.0f, 143.0f, 173.0f, 143.0f,
-           181.0f, 219.0f, 173.0f, 219.0f, 265.0f, 203.0f, 257.0f, 311.0f,
-           233.0f, 295.0f, 357.0f, 263.0f, 333.0f, 403.0f, 293.0f, 371.0f,
-           449.0f, 323.0f, 409.0f, 495.0f, 353.0f, 447.0f, 541.0f, 383.0f,
-           485.0f, 587.0f, 413.0f, 523.0f, 633.0f, 443.0f, 561.0f, 679.0f}));
+      ElementsAreArray({29.,  32.,  35.,  38.,  65.,  72.,  79.,  86.,  101.,
+                        112., 123., 134., 53.,  56.,  59.,  62.,  121., 128.,
+                        135., 142., 189., 200., 211., 222., 77.,  80.,  83.,
+                        86.,  177., 184., 191., 198., 277., 288., 299., 310.,
+                        137., 152., 167., 182., 173., 192., 211., 230., 209.,
+                        232., 255., 278., 257., 272., 287., 302., 325., 344.,
+                        363., 382., 393., 416., 439., 462., 377., 392., 407.,
+                        422., 477., 496., 515., 534., 577., 600., 623., 646.}));
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 3, 3, 4}));
 }
 
-TEST(BatchMatMulOpModelTest, Float32Test_BroadcastFiveD) {
-  BatchMatMulOpModel<float> model({TensorType_FLOAT32, {1, 2, 1, 3, 2}},
-                                  {TensorType_FLOAT32, {3, 2, 4}});
+TEST(BatchMatMulOpModelTest, Float32Test_Broadcast2LHSAdjoint) {
+  BatchMatMulOpModel<float> model({TensorType_FLOAT32, {2, 1, 2, 3}},
+                                  {TensorType_FLOAT32, {3, 2, 4}}, true, false);
   model.PopulateTensor<float>(model.lhs(),
-                              {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+                              {1, 3, 5, 2, 4, 6, 7, 9, 11, 8, 10, 12});
   model.PopulateTensor<float>(model.rhs(),
                               {7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18,
                                19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30});
@@ -130,18 +169,62 @@ TEST(BatchMatMulOpModelTest, Float32Test_BroadcastFiveD) {
   model.Invoke();
   EXPECT_THAT(
       model.GetOutput(),
-      ElementsAreArray(
-          {23.0f,  53.0f,  83.0f,  29.0f,  67.0f,  105.0f, 35.0f,  81.0f,
-           127.0f, 41.0f,  95.0f,  149.0f, 47.0f,  109.0f, 171.0f, 53.0f,
-           123.0f, 193.0f, 59.0f,  137.0f, 215.0f, 65.0f,  151.0f, 237.0f,
-           71.0f,  165.0f, 259.0f, 77.0f,  179.0f, 281.0f, 83.0f,  193.0f,
-           303.0f, 89.0f,  207.0f, 325.0f, 113.0f, 143.0f, 173.0f, 143.0f,
-           181.0f, 219.0f, 173.0f, 219.0f, 265.0f, 203.0f, 257.0f, 311.0f,
-           233.0f, 295.0f, 357.0f, 263.0f, 333.0f, 403.0f, 293.0f, 371.0f,
-           449.0f, 323.0f, 409.0f, 495.0f, 353.0f, 447.0f, 541.0f, 383.0f,
-           485.0f, 587.0f, 413.0f, 523.0f, 633.0f, 443.0f, 561.0f, 679.0f}));
+      ElementsAreArray({29.,  32.,  35.,  38.,  65.,  72.,  79.,  86.,  101.,
+                        112., 123., 134., 53.,  56.,  59.,  62.,  121., 128.,
+                        135., 142., 189., 200., 211., 222., 77.,  80.,  83.,
+                        86.,  177., 184., 191., 198., 277., 288., 299., 310.,
+                        137., 152., 167., 182., 173., 192., 211., 230., 209.,
+                        232., 255., 278., 257., 272., 287., 302., 325., 344.,
+                        363., 382., 393., 416., 439., 462., 377., 392., 407.,
+                        422., 477., 496., 515., 534., 577., 600., 623., 646.}));
 
-  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 3, 3, 4}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 3, 3, 4}));
+}
+
+TEST(BatchMatMulOpModelTest, Float32Test_Broadcast2RHSAdjoint) {
+  BatchMatMulOpModel<float> model({TensorType_FLOAT32, {2, 1, 3, 2}},
+                                  {TensorType_FLOAT32, {3, 4, 2}}, false, true);
+  model.PopulateTensor<float>(model.lhs(),
+                              {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  model.PopulateTensor<float>(model.rhs(),
+                              {7,  11, 8,  12, 9,  13, 10, 14, 15, 19, 16, 20,
+                               17, 21, 18, 22, 23, 27, 24, 28, 25, 29, 26, 30});
+  model.Invoke();
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({29.,  32.,  35.,  38.,  65.,  72.,  79.,  86.,  101.,
+                        112., 123., 134., 53.,  56.,  59.,  62.,  121., 128.,
+                        135., 142., 189., 200., 211., 222., 77.,  80.,  83.,
+                        86.,  177., 184., 191., 198., 277., 288., 299., 310.,
+                        137., 152., 167., 182., 173., 192., 211., 230., 209.,
+                        232., 255., 278., 257., 272., 287., 302., 325., 344.,
+                        363., 382., 393., 416., 439., 462., 377., 392., 407.,
+                        422., 477., 496., 515., 534., 577., 600., 623., 646.}));
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 3, 3, 4}));
+}
+
+TEST(BatchMatMulOpModelTest, Float32Test_Broadcast2BothAdjoint) {
+  BatchMatMulOpModel<float> model({TensorType_FLOAT32, {2, 1, 2, 3}},
+                                  {TensorType_FLOAT32, {3, 4, 2}}, true, true);
+  model.PopulateTensor<float>(model.lhs(),
+                              {1, 3, 5, 2, 4, 6, 7, 9, 11, 8, 10, 12});
+  model.PopulateTensor<float>(model.rhs(),
+                              {7,  11, 8,  12, 9,  13, 10, 14, 15, 19, 16, 20,
+                               17, 21, 18, 22, 23, 27, 24, 28, 25, 29, 26, 30});
+  model.Invoke();
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({29.,  32.,  35.,  38.,  65.,  72.,  79.,  86.,  101.,
+                        112., 123., 134., 53.,  56.,  59.,  62.,  121., 128.,
+                        135., 142., 189., 200., 211., 222., 77.,  80.,  83.,
+                        86.,  177., 184., 191., 198., 277., 288., 299., 310.,
+                        137., 152., 167., 182., 173., 192., 211., 230., 209.,
+                        232., 255., 278., 257., 272., 287., 302., 325., 344.,
+                        363., 382., 393., 416., 439., 462., 377., 392., 407.,
+                        422., 477., 496., 515., 534., 577., 600., 623., 646.}));
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 3, 3, 4}));
 }
 
 TEST(BatchMatMulOpModelTest, Float32Test_BroadcastFromRHS) {
@@ -158,10 +241,9 @@ TEST(BatchMatMulOpModelTest, Float32Test_BroadcastFromRHS) {
   model.Invoke();
   EXPECT_THAT(
       model.GetOutput(),
-      ElementsAreArray({145.0f,  370.0f,  595.0f,  820.0f,  220.0f,  570.0f,
-                        920.0f,  1270.0f, 295.0f,  770.0f,  1245.0f, 1720.0f,
-                        370.0f,  970.0f,  1570.0f, 2170.0f, 445.0f,  1170.0f,
-                        1895.0f, 2620.0f, 520.0f,  1370.0f, 2220.0f, 3070.0f}));
+      ElementsAreArray({185., 200., 460.,  500.,  735.,  800.,  1010., 1100.,
+                        335., 350., 860.,  900.,  1385., 1450., 1910., 2000.,
+                        485., 500., 1260., 1300., 2035., 2100., 2810., 2900.}));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({3, 1, 4, 2}));
 }
 

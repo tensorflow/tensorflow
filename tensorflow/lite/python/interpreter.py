@@ -43,7 +43,7 @@ if not __file__.endswith('tflite_runtime/interpreter.py'):
   del LazyLoader
 else:
   # This file is part of tflite_runtime package.
-  from tflite_runtime import interpreter_wrapper as _interpreter_wrapper
+  from tflite_runtime import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
 
   def _tf_export(*x, **kwargs):
     del x, kwargs
@@ -77,6 +77,7 @@ class Delegate(object):
         keys and values in the dictionary should be serializable. Consult the
         documentation of the specific delegate for required and legal options.
         (default None)
+
     Raises:
       RuntimeError: This is raised if the Python implementation is not CPython.
     """
@@ -191,7 +192,7 @@ class Interpreter(object):
       model_content: Content of model.
       experimental_delegates: Experimental. Subject to change. List of
         [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
-        objects returned by lite.load_delegate().
+          objects returned by lite.load_delegate().
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -388,14 +389,16 @@ class Interpreter(object):
     ]
 
   def set_tensor(self, tensor_index, value):
-    """Sets the value of the input tensor. Note this copies data in `value`.
+    """Sets the value of the input tensor.
+
+    Note this copies data in `value`.
 
     If you want to avoid copying, you can use the `tensor()` function to get a
     numpy buffer pointing to the input buffer in the tflite interpreter.
 
     Args:
       tensor_index: Tensor index of tensor to set. This value can be gotten from
-                    the 'index' field in get_input_details.
+        the 'index' field in get_input_details.
       value: Value of tensor to set.
 
     Raises:
@@ -408,7 +411,7 @@ class Interpreter(object):
 
     Args:
       input_index: Tensor index of input to set. This value can be gotten from
-                   the 'index' field in get_input_details.
+        the 'index' field in get_input_details.
       tensor_size: The tensor_shape to resize the input to.
 
     Raises:
@@ -438,7 +441,7 @@ class Interpreter(object):
 
     Args:
       tensor_index: Tensor index of tensor to get. This value can be gotten from
-                    the 'index' field in get_output_details.
+        the 'index' field in get_output_details.
 
     Returns:
       a numpy array.
@@ -486,7 +489,7 @@ class Interpreter(object):
 
     Args:
       tensor_index: Tensor index of tensor to get. This value can be gotten from
-                    the 'index' field in get_output_details.
+        the 'index' field in get_output_details.
 
     Returns:
       A function that can return a new numpy array pointing to the internal

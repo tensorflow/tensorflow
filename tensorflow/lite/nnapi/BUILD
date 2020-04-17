@@ -1,3 +1,5 @@
+load("//tensorflow/lite:special_rules.bzl", "if_nnapi")
+
 package(
     default_visibility = [
         "//visibility:public",
@@ -11,51 +13,22 @@ cc_library(
         "NeuralNetworksShim.h",
         "NeuralNetworksTypes.h",
     ],
-    linkopts = select({
-        "//tensorflow:emscripten": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:macos": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["-ldl"],
-    }),
+    linkopts = if_nnapi(["-ldl"]),
 )
 
 cc_library(
     name = "nnapi_implementation",
-    srcs = select({
-        "//tensorflow:emscripten": [
-            "nnapi_implementation_disabled.cc",
-        ],
-        "//tensorflow:ios": [
-            "nnapi_implementation_disabled.cc",
-        ],
-        "//tensorflow:macos": [
-            "nnapi_implementation_disabled.cc",
-        ],
-        "//tensorflow:windows": [
-            "nnapi_implementation_disabled.cc",
-        ],
-        "//conditions:default": [
-            "nnapi_implementation.cc",
-        ],
-    }),
+    srcs = if_nnapi(
+        not_supported = ["nnapi_implementation_disabled.cc"],
+        supported = ["nnapi_implementation.cc"],
+    ),
     hdrs = [
         "nnapi_implementation.h",
     ],
-    linkopts = select({
-        "//tensorflow:emscripten": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:macos": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["-ldl"],
-    }) + select({
-        "//tensorflow:android": [],
-        "//tensorflow:emscripten": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:macos": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["-lrt"],
-    }),
+    linkopts = if_nnapi(["-ldl"]) + if_nnapi(
+        supported = ["-lrt"],
+        supported_android = [],
+    ),
     deps = [
         ":nnapi_lib",
     ],
@@ -84,16 +57,8 @@ cc_test(
 # Cannot inject NNAPI instance on ios and windows
 cc_library(
     name = "nnapi_handler",
-    srcs = select({
-        "//tensorflow:ios": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["nnapi_handler.cc"],
-    }),
-    hdrs = select({
-        "//tensorflow:ios": [],
-        "//tensorflow:windows": [],
-        "//conditions:default": ["nnapi_handler.h"],
-    }),
+    srcs = if_nnapi(["nnapi_handler.cc"]),
+    hdrs = if_nnapi(["nnapi_handler.h"]),
     deps = [
         ":nnapi_implementation",
         ":nnapi_lib",

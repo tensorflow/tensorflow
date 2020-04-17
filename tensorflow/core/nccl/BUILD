@@ -72,6 +72,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:cuda",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rccl",
-        "//tensorflow/core:rocm",
+        "//tensorflow/core/common_runtime/gpu:rocm",
     ]),
 )

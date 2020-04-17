@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
 namespace xla {
@@ -76,6 +77,15 @@ XlaOp MlirHloBuilder::ConstantLiteral(const LiteralSlice& literal) {
   });
 }
 
+StatusOr<XlaOp> MlirHloBuilder::TransposeInternal(
+    const Shape& shape, XlaOp operand, absl::Span<const int64> permutation) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::xla_hlo::TransposeOp>(
+      loc_, ty, GetValue(operand), GetI64ElementsAttr(permutation, &builder_));
+  return MakeXlaOp(op);
+}
+
 StatusOr<XlaOp> MlirHloBuilder::ReshapeInternal(const Shape& shape,
                                                 XlaOp operand,
                                                 int64 inferred_dimension) {
@@ -102,12 +112,21 @@ StatusOr<XlaOp> MlirHloBuilder::InDimBroadcast(
   return MakeXlaOp(op.getResult());
 }
 
-XlaOp MlirHloBuilder::BinaryOpNoBroadcast(
-    HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
-    absl::optional<ComparisonDirection> direction) {
+StatusOr<XlaOp> MlirHloBuilder::Compare(const Shape& shape, XlaOp lhs,
+                                        XlaOp rhs,
+                                        ComparisonDirection direction) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::xla_hlo::CompareOp>(
+      loc_, ty, GetValue(lhs), GetValue(rhs),
+      /*broadcast_dimensions=*/mlir::DenseIntElementsAttr(),
+      builder_.getStringAttr(ComparisonDirectionToString(direction)));
+  return MakeXlaOp(op.getResult());
+}
+
+XlaOp MlirHloBuilder::BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape,
+                                          XlaOp lhs, XlaOp rhs) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    if (direction.has_value())
-      return Unimplemented("direction attribute not yet supported");
     return CreateOp(GetMlirOpName(binop), shape, {lhs, rhs}, /*attributes=*/{});
   });
 }

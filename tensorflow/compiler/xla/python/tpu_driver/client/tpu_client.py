@@ -100,7 +100,8 @@ class TpuBackend(xla_client.Backend):
     return _tpu_client.TpuExecutable.Compile(c_computation,
                                              compile_options.argument_layouts,
                                              options, self.client,
-                                             compile_options.device_assignment)
+                                             compile_options.device_assignment,
+                                             compile_options.tuple_arguments)
 
   def get_default_device_assignment(self, num_replicas, num_partitions=None):
     if num_partitions is not None:

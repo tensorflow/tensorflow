@@ -188,7 +188,7 @@ func @parallel_execute_single_region() {
 // Check that a parallel_execute op with empty regions are not allowed.
 func @parallel_execute_empty_region() {
   "tf_device.parallel_execute"() ( {
-// expected-error@-1 {{'tf_device.parallel_execute' op regions must not be empty. Found an empty region (0).}}
+// expected-error@-1 {{'tf_device.parallel_execute' op region #0 ('regions') failed to verify constraint: region with 1 blocks}}
   },
   {
   tf_device.return

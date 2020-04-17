@@ -277,8 +277,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   {
     auto& pass =
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-    pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                          /*allow_mixed_precision=*/false);
+    pass.AddInvariantCheckerDebug<HloVerifier>(/*layout_sensitive=*/false,
+                                               /*allow_mixed_precision=*/false);
 
     pass.AddPass<TreeReductionRewriter>();
     pass.AddPass<ScatterExpander>();
@@ -339,18 +339,18 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     LLVMTargetMachineFeatures* target_machine_features) {
   HloPassPipeline pipeline("HLO passes after layout assignment");
   // After layout assignment, use a layout-sensitive verifier.
-  auto& after_layout_assn =
-      pipeline.AddPass<HloPassPipeline>("after layout assignment");
-  after_layout_assn.AddInvariantChecker<HloVerifier>(
-      /*layout_sensitive=*/true,
-      /*allow_mixed_precision=*/false);
+
+  pipeline.AddPass<HloPassPipeline>("after layout assignment")
+      .AddInvariantCheckerDebug<HloVerifier>(
+          /*layout_sensitive=*/true,
+          /*allow_mixed_precision=*/false);
 
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
         "simplification after layout assignment");
-    pass.AddInvariantChecker<HloVerifier>(
+    pass.AddInvariantCheckerDebug<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false,
         LayoutAssignment::InstructionCanChangeLayout);

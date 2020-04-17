@@ -35,7 +35,7 @@ class ReLU : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    auto attr = absl::any_cast<ReLUAttributes>(ctx.node->operation.attributes);
+    const auto& attr = absl::any_cast<const ReLUAttributes&>(ctx.op_attr);
     // clamp(value, min(0, alpha * value), clip)
     std::vector<Variable> params;
     std::string min;

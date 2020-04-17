@@ -50,6 +50,7 @@ from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.tools import saved_model_aot_compile
 from tensorflow.python.tools import saved_model_utils
+from tensorflow.python.tpu import tpu
 
 
 _XLA_DEBUG_OPTIONS_URL = (
@@ -438,7 +439,7 @@ def run_saved_model_with_feed_dict(saved_model_dir, tag_set, signature_def_key,
       print('Initializing TPU System ...')
       # This is needed for freshly started worker, or if the job
       # restarts after a preemption.
-      sess.run(tf.contrib.tpu.initialize_system())
+      sess.run(tpu.initialize_system())
 
     loader.load(sess, tag_set.split(','), saved_model_dir)
 

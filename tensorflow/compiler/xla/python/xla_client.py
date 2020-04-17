@@ -147,7 +147,8 @@ class LocalBackend(Backend):
     return _xla.LocalExecutable.Compile(c_computation,
                                         compile_options.argument_layouts,
                                         options, self.client,
-                                        compile_options.device_assignment)
+                                        compile_options.device_assignment,
+                                        compile_options.tuple_arguments)
 
   def get_default_device_assignment(self, num_replicas, num_partitions=None):
     if num_partitions is not None:
@@ -504,6 +505,7 @@ class CompileOptions(object):
     self.argument_layouts = None
     self.result_layout = None
     self.device_assignment = None
+    self.tuple_arguments = False
 
 
 class Computation(object):
@@ -613,7 +615,7 @@ def execute_with_python_values(executable, arguments=(), backend=None):
         arg, device=executable.local_devices()[0], backend=backend)
 
   arguments = [put(arg) for arg in arguments]
-  outputs = executable.Execute(arguments, tuple_arguments=False)
+  outputs = executable.Execute(arguments)
   return [x.to_py() for x in outputs]
 
 
@@ -642,8 +644,9 @@ def execute_with_python_values_replicated(executable, arguments, backend=None):
   for replica_args in arguments:
     arg_buffers.append(flat_arg_buffers[:len(replica_args)])
     flat_arg_buffers = flat_arg_buffers[len(replica_args):]
-  return [[x.to_py() for x in xs] for xs in executable.ExecuteOnLocalDevices(
-      arg_buffers, tuple_arguments=False)]
+  return [[x.to_py()
+           for x in xs]
+          for xs in executable.ExecuteOnLocalDevices(arg_buffers)]
 
 
 class PaddingType(enum.Enum):
@@ -715,6 +718,16 @@ class ComputationBuilder(object):
       return Computation(self._builder.Build(root), backend=backend)
     else:
       return Computation(self._builder.Build(), backend=backend)
+
+  def SetUpAlias(self, output_index, param_number, param_index):
+    """Adds a new input/output alias.
+
+    Args:
+      output_index: Iterable of int64 specifying the output index.
+      param_number: Parameter number.
+      param_index: Iterable of int64 specifying parameter index.
+    """
+    return self._builder.SetUpAlias(output_index, param_number, param_index)
 
   def GetShape(self, operand):
     return self._builder.GetShape(operand)
@@ -868,7 +881,7 @@ class ComputationBuilder(object):
                          shape,
                          name=None,
                          parameter_num=None,
-                         replicated=False):
+                         replicated=None):
     """Enqueues a Parameter op onto the computation, given a shape.
 
     Args:
@@ -880,6 +893,7 @@ class ComputationBuilder(object):
         parameters, use it for *all* parameters to avoid clashes.
       replicated: whether to mark the parameter's leaves as replicated. May be a
         bool, in which case it applies to all leaves, or an iterable of bools.
+        The default is None, which means no replication annotation.
 
     Returns:
       An XlaOp.
@@ -888,7 +902,9 @@ class ComputationBuilder(object):
       name = ''
     if parameter_num is None:
       parameter_num = next(self._parameter_numbering)
-    if isinstance(replicated, bool):
+    if replicated is None:
+      replicated = []
+    elif isinstance(replicated, bool):
       replicated = [replicated] * shape.leaf_count()
 
     return ops.Parameter(self._builder, parameter_num,
@@ -1579,7 +1595,7 @@ class ComputationBuilder(object):
     """
     operands = (
         list(operands)
-        if isinstance(operands, collections.Sequence) else [operands])
+        if isinstance(operands, collections.abc.Sequence) else [operands])
     return ops.Sort(self._builder, operands, dimension,
                     comparator.computation if comparator else None)
 

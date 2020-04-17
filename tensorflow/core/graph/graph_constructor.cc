@@ -821,56 +821,10 @@ Status GraphConstructor::ValidateShape(Node* node) {
     }
     s = refiner_->SetShape(node, i, h);
     if (!s.ok()) {
-      // If the output shape is incompatible with what is inferred
-      // by the graph for a very specific whitelist of ops, then we
-      // ignore this output shape.  This can happen if there is a
-      // bug in the shape function for some operation, and the
-      // serialized graph def has the incorrect shape set when
-      // running on a newer binary with the fixed shape function.
-      // This is an escape hatch that allows us to correct shape
-      // functions that are not critical to correct execution but
-      // would cause graphs to fail if imported after correcting.
-      const string& op = node->type_string();
-      const std::vector<string> whitelist = {
-          // To be removed after 2017/03/08.
-          "RandomShuffleQueue",
-          "PaddingFIFOQueue",
-          "FIFOQueue",
-          "PriorityQueue",
-          "QueueSize",
-          "Stack",
-          "Barrier",
-          "BarrierReadySize",
-          "BarrierIncompleteSize",
-          "HashTable",
-          "MutableHashTable",
-          "MutableHashTableOfTensors",
-          "Mutex",
-          "CuckooTable",
-          "IndexTable",
-          "WholeFileReader",
-          "TextLineReader",
-          "FixedLengthRecordReader",
-          "TFRecordReader",
-          "IdentityReader",
-          "RefSwitch",
-          "RefEnter",
-          "RefNextIteration",
-          "RefMerge",
-          "RefIdentity",
-          "LMDBReader",
-          // To be removed after 2017/04/24.
-          "ConditionalAccumulator",
-          "SparseConditionalAccumulator",
-          "Table",
-      };
-      if (std::find(whitelist.begin(), whitelist.end(), op) ==
-          whitelist.end()) {
-        return errors::InvalidArgument(
-            "Node '", node->name(), "' has an ", kAttrName,
-            " attribute inconsistent with the GraphDef for output #", i, ": ",
-            s.error_message());
-      }
+      return errors::InvalidArgument(
+          "Node '", node->name(), "' has an ", kAttrName,
+          " attribute inconsistent with the GraphDef for output #", i, ": ",
+          s.error_message());
     }
   }
   node->ClearAttr(kAttrName);
@@ -1346,7 +1300,7 @@ Status GraphConstructor::Convert() {
 
 Status GraphConstructor::AddBackEdges() {
   // Add the back edges after all nodes are created.
-  for (auto e : back_edges_) {
+  for (const auto& e : back_edges_) {
     Node* src_node = gdef_nodes_[e.src_name].node;
     if (e.src_index == Graph::kControlSlot) {
       g_->AddControlEdge(src_node, e.dst_node, kDoNotCheckDuplicates);

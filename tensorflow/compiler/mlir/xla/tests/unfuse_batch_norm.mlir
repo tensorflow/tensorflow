@@ -1,4 +1,4 @@
-// RUN: tf-opt -split-input-file -test-xla-unfuse-batch-norm -verify-diagnostics %s | FileCheck --enable-var-scope --dump-input=fail %s
+// RUN: xla-opt -split-input-file -test-xla-unfuse-batch-norm -verify-diagnostics %s | FileCheck --enable-var-scope --dump-input=fail %s
 
 // CHECK-LABEL: @batchNormInference_2D_inner_features
 // CHECK-SAME: %[[X:[^:[:space:]]+]]
@@ -84,8 +84,7 @@ func @batchNormInference_f16_overflow(
     %x: tensor<4x256xf16>, %scale: tensor<256xf16>, %offset: tensor<256xf16>,
     %mean: tensor<256xf16>, %variance: tensor<256xf16>)
     -> (tensor<4x256xf16>) {
-  // expected-warning @+2 {{Could not convert batch_norm epsilon to target fp type: opStatus = 24}}
-  // expected-error @+1 {{failed to legalize operation 'xla_hlo.batch_norm_inference' that was explicitly marked illegal}}
+  // expected-warning @+1 {{Could not convert batch_norm epsilon to target fp type: opStatus = 24}}
   %0 = "xla_hlo.batch_norm_inference"(%x, %scale, %offset, %mean, %variance)
       {epsilon = 0.00000001 : f32, feature_index = 1 : i64} :
       (tensor<4x256xf16>, tensor<256xf16>, tensor<256xf16>, tensor<256xf16>,

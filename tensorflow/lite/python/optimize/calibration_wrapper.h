@@ -57,6 +57,7 @@ class CalibrationWrapper {
   ~CalibrationWrapper();
 
   PyObject* Prepare();
+  PyObject* Prepare(PyObject* input_shapes);
 
   PyObject* FeedTensor(PyObject* input_value);
 

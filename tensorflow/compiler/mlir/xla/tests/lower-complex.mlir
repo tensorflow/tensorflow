@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -test-xla-lower-complex | FileCheck %s
+// RUN: xla-opt %s -test-xla-lower-complex | FileCheck %s
 
 // CHECK-LABEL: @add
 func @add(%arg0 : tensor<2xf32>, %arg1 : tensor<2xf32>, %arg2 : tensor<2xf32>, %arg3 : tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>) {
@@ -152,7 +152,7 @@ func @div(%arg0 : tensor<2xf32>, %arg1 : tensor<2xf32>, %arg2 : tensor<2xf32>, %
   %2 = "xla_hlo.complex"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> (tensor<2xcomplex<f32>>)
   %3 = "xla_hlo.complex"(%arg2, %arg3) : (tensor<2xf32>, tensor<2xf32>) -> (tensor<2xcomplex<f32>>)
 
-  // CHECK-DAG: [[VAL0:%.+]] = "xla_hlo.neg"(%arg3)
+  // CHECK-DAG: [[VAL0:%.+]] = "xla_hlo.negate"(%arg3)
 
   // Compute the numerator's real component:
   //   numerator.real = lhs.real * rhs.real  lhs.imag * rhs.imag
@@ -191,7 +191,7 @@ func @div_broadcast(%arg0 : tensor<1x2xf32>, %arg1 : tensor<1x2xf32>, %arg2 : te
   %2 = "xla_hlo.complex"(%arg0, %arg1) : (tensor<1x2xf32>, tensor<1x2xf32>) -> (tensor<1x2xcomplex<f32>>)
   %3 = "xla_hlo.complex"(%arg2, %arg3) : (tensor<2xf32>, tensor<2xf32>) -> (tensor<2xcomplex<f32>>)
 
-  // CHECK-DAG: [[VAL0:%.+]] = "xla_hlo.neg"(%arg3)
+  // CHECK-DAG: [[VAL0:%.+]] = "xla_hlo.negate"(%arg3)
 
   // Compute the numerator's real component:
   //   numerator.real = lhs.real * rhs.real  lhs.imag * rhs.imag
@@ -230,7 +230,7 @@ func @div_unranked(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>, %arg2 : tensor<
   %2 = "xla_hlo.complex"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xcomplex<f32>>)
   %3 = "xla_hlo.complex"(%arg2, %arg3) : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xcomplex<f32>>)
 
-  // CHECK-DAG: [[VAL0:%.+]] = "xla_hlo.neg"(%arg3)
+  // CHECK-DAG: [[VAL0:%.+]] = "xla_hlo.negate"(%arg3)
 
   // Compute the numerator's real component:
   //   numerator.real = lhs.real * rhs.real  lhs.imag * rhs.imag
@@ -281,12 +281,12 @@ func @abs(%arg0 : tensor<2xf32>, %arg1 : tensor<2xf32>) -> (tensor<2xf32>) {
 func @exp(%arg0 : tensor<2xf32>, %arg1 : tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>) {
   %0 = "xla_hlo.complex"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> (tensor<2xcomplex<f32>>)
 
-  // CHECK-DAG: [[VAL0:%.+]] = "xla_hlo.exp"(%arg0)
-  // CHECK-DAG: [[VAL1:%.+]] = "xla_hlo.cos"(%arg1)
-  // CHECK-DAG: [[VAL2:%.+]] = "xla_hlo.sin"(%arg1)
+  // CHECK-DAG: [[VAL0:%.+]] = "xla_hlo.exponential"(%arg0)
+  // CHECK-DAG: [[VAL1:%.+]] = "xla_hlo.cosine"(%arg1)
+  // CHECK-DAG: [[VAL2:%.+]] = "xla_hlo.sine"(%arg1)
   // CHECK-DAG: [[VAL3:%.+]] = xla_hlo.multiply [[VAL0]], [[VAL1]]
   // CHECK-DAG: [[VAL4:%.+]] = xla_hlo.multiply [[VAL0]], [[VAL2]]
-  %1 = "xla_hlo.exp"(%0) : (tensor<2xcomplex<f32>>) -> (tensor<2xcomplex<f32>>)
+  %1 = "xla_hlo.exponential"(%0) : (tensor<2xcomplex<f32>>) -> (tensor<2xcomplex<f32>>)
   %2 = "xla_hlo.real"(%1) : (tensor<2xcomplex<f32>>) -> (tensor<2xf32>)
   %3 = "xla_hlo.imag"(%1) : (tensor<2xcomplex<f32>>) -> (tensor<2xf32>)
 
@@ -298,12 +298,12 @@ func @exp(%arg0 : tensor<2xf32>, %arg1 : tensor<2xf32>) -> (tensor<2xf32>, tenso
 func @exp_unranked(%arg0 : tensor<*xf32>, %arg1 : tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>) {
   %0 = "xla_hlo.complex"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xcomplex<f32>>)
 
-  // CHECK-DAG: [[VAL0:%.+]] = "xla_hlo.exp"(%arg0)
-  // CHECK-DAG: [[VAL1:%.+]] = "xla_hlo.cos"(%arg1)
-  // CHECK-DAG: [[VAL2:%.+]] = "xla_hlo.sin"(%arg1)
+  // CHECK-DAG: [[VAL0:%.+]] = "xla_hlo.exponential"(%arg0)
+  // CHECK-DAG: [[VAL1:%.+]] = "xla_hlo.cosine"(%arg1)
+  // CHECK-DAG: [[VAL2:%.+]] = "xla_hlo.sine"(%arg1)
   // CHECK-DAG: [[VAL3:%.+]] = xla_hlo.multiply [[VAL0]], [[VAL1]]
   // CHECK-DAG: [[VAL4:%.+]] = xla_hlo.multiply [[VAL0]], [[VAL2]]
-  %1 = "xla_hlo.exp"(%0) : (tensor<*xcomplex<f32>>) -> (tensor<*xcomplex<f32>>)
+  %1 = "xla_hlo.exponential"(%0) : (tensor<*xcomplex<f32>>) -> (tensor<*xcomplex<f32>>)
   %2 = "xla_hlo.real"(%1) : (tensor<*xcomplex<f32>>) -> (tensor<*xf32>)
   %3 = "xla_hlo.imag"(%1) : (tensor<*xcomplex<f32>>) -> (tensor<*xf32>)
 

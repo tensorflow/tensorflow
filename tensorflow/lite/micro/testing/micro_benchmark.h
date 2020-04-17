@@ -38,6 +38,9 @@ extern tflite::ErrorReporter* reporter;
 #define TF_LITE_MICRO_BENCHMARKS_END }
 
 #define TF_LITE_MICRO_BENCHMARK(func)                                         \
+  if (tflite::ticks_per_second() == 0) {                                      \
+    return 0;                                                                 \
+  }                                                                           \
   start_ticks = tflite::GetCurrentTimeTicks();                                \
   func();                                                                     \
   duration_ticks = tflite::GetCurrentTimeTicks() - start_ticks;               \

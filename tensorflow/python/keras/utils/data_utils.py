@@ -46,6 +46,7 @@ from six.moves.urllib.error import URLError
 from tensorflow.python.framework import ops
 from six.moves.urllib.request import urlopen
 from tensorflow.python.keras.utils.generic_utils import Progbar
+from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
@@ -137,6 +138,9 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
   if isinstance(archive_format, six.string_types):
     archive_format = [archive_format]
 
+  file_path = path_to_string(file_path)
+  path = path_to_string(path)
+
   for archive_type in archive_format:
     if archive_type == 'tar':
       open_fn = tarfile.open
@@ -182,13 +186,22 @@ def get_file(fname,
   Passing a hash will verify the file after download. The command line
   programs `shasum` and `sha256sum` can compute the hash.
 
+  Example:
+
+  ```python
+  path_to_downloaded_file = tf.keras.utils.get_file(
+      "flower_photos",
+      "https://storage.googleapis.com/download.tensorflow.org/example_images/flower_photos.tgz",
+      untar=True)
+  ```
+
   Arguments:
       fname: Name of the file. If an absolute path `/path/to/file.txt` is
           specified the file will be saved at that location.
       origin: Original URL of the file.
-      untar: Deprecated in favor of 'extract'.
+      untar: Deprecated in favor of `extract` argument.
           boolean, whether the file should be decompressed
-      md5_hash: Deprecated in favor of 'file_hash'.
+      md5_hash: Deprecated in favor of `file_hash` argument.
           md5 hash of the file for verification
       file_hash: The expected hash string of the file after download.
           The sha256 and md5 hash algorithms are both supported.
@@ -196,17 +209,16 @@ def get_file(fname,
           saved. If an absolute path `/path/to/folder` is
           specified the file will be saved at that location.
       hash_algorithm: Select the hash algorithm to verify the file.
-          options are 'md5', 'sha256', and 'auto'.
+          options are `'md5'`, `'sha256'`, and `'auto'`.
           The default 'auto' detects the hash algorithm in use.
       extract: True tries extracting the file as an Archive, like tar or zip.
       archive_format: Archive format to try for extracting the file.
-          Options are 'auto', 'tar', 'zip', and None.
-          'tar' includes tar, tar.gz, and tar.bz files.
-          The default 'auto' is ['tar', 'zip'].
+          Options are `'auto'`, `'tar'`, `'zip'`, and `None`.
+          `'tar'` includes tar, tar.gz, and tar.bz files.
+          The default `'auto'` corresponds to `['tar', 'zip']`.
           None or an empty list will return no matches found.
       cache_dir: Location to store cached files, when None it
-          defaults to the [Keras
-            Directory](/faq/#where-is-the-keras-configuration-filed-stored).
+          defaults to the default directory `~/.keras/`.
 
   Returns:
       Path to the downloaded file
@@ -221,6 +233,8 @@ def get_file(fname,
     datadir_base = os.path.join('/tmp', '.keras')
   datadir = os.path.join(datadir_base, cache_subdir)
   _makedirs_exist_ok(datadir)
+
+  fname = path_to_string(fname)
 
   if untar:
     untar_fpath = os.path.join(datadir, fname)
@@ -306,8 +320,8 @@ def _hash_file(fpath, algorithm='sha256', chunk_size=65535):
 
   Arguments:
       fpath: path to the file being validated
-      algorithm: hash algorithm, one of 'auto', 'sha256', or 'md5'.
-          The default 'auto' detects the hash algorithm in use.
+      algorithm: hash algorithm, one of `'auto'`, `'sha256'`, or `'md5'`.
+          The default `'auto'` detects the hash algorithm in use.
       chunk_size: Bytes to read at a time, important for large files.
 
   Returns:
@@ -411,32 +425,32 @@ class Sequence(object):
   Examples:
 
   ```python
-      from skimage.io import imread
-      from skimage.transform import resize
-      import numpy as np
-      import math
+  from skimage.io import imread
+  from skimage.transform import resize
+  import numpy as np
+  import math
 
-      # Here, `x_set` is list of path to the images
-      # and `y_set` are the associated classes.
+  # Here, `x_set` is list of path to the images
+  # and `y_set` are the associated classes.
 
-      class CIFAR10Sequence(Sequence):
+  class CIFAR10Sequence(Sequence):
 
-          def __init__(self, x_set, y_set, batch_size):
-              self.x, self.y = x_set, y_set
-              self.batch_size = batch_size
+      def __init__(self, x_set, y_set, batch_size):
+          self.x, self.y = x_set, y_set
+          self.batch_size = batch_size
 
-          def __len__(self):
-              return math.ceil(len(self.x) / self.batch_size)
+      def __len__(self):
+          return math.ceil(len(self.x) / self.batch_size)
 
-          def __getitem__(self, idx):
-              batch_x = self.x[idx * self.batch_size:(idx + 1) *
-              self.batch_size]
-              batch_y = self.y[idx * self.batch_size:(idx + 1) *
-              self.batch_size]
+      def __getitem__(self, idx):
+          batch_x = self.x[idx * self.batch_size:(idx + 1) *
+          self.batch_size]
+          batch_y = self.y[idx * self.batch_size:(idx + 1) *
+          self.batch_size]
 
-              return np.array([
-                  resize(imread(file_name), (200, 200))
-                     for file_name in batch_x]), np.array(batch_y)
+          return np.array([
+              resize(imread(file_name), (200, 200))
+                 for file_name in batch_x]), np.array(batch_y)
   ```
   """
 
@@ -476,10 +490,10 @@ def iter_sequence_infinite(seq):
   """Iterates indefinitely over a Sequence.
 
   Arguments:
-    seq: Sequence instance.
+    seq: `Sequence` instance.
 
   Yields:
-    Batches of data from the Sequence.
+    Batches of data from the `Sequence`.
   """
   while True:
     for item in seq:

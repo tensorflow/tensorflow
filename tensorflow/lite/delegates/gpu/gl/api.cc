@@ -261,9 +261,10 @@ class CompiledModelImpl
     }
     auto runtime = absl::make_unique<Runtime>(options, gpu_info_, command_queue,
                                               refs ? refs.get() : objects);
-    for (auto& c : programs_) {
-      RETURN_IF_ERROR(runtime->AddProgram(shaders_[c.shader_idx], c.parameters,
-                                          c.objects, c.num_workgroups));
+    for (auto& program : programs_) {
+      RETURN_IF_ERROR(runtime->AddProgram(shaders_[program.shader_idx],
+                                          program.parameters, program.objects,
+                                          program.num_workgroups));
     }
     RETURN_IF_ERROR(runtime->PrepareForExecution());
     if (dynamic_batch_) {

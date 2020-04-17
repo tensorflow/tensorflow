@@ -19,10 +19,10 @@
 # Compiler options:
 #     cuda_clang:             Use clang when building CUDA code.
 #     c++17:                  Build with C++17 options
-#     C++1z:                  Build with C++17 options
+#     c++1z:                  Build with C++17 options
 #     avx_linux:              Build with avx instruction set on linux.
 #     avx2_linux:             Build with avx2 instruction set on linux.
-#     arch_native_linux:      Build with instruction sets available to the host machine on linux
+#     native_arch_linux:      Build with instruction sets available to the host machine on linux
 #     avx_win:                Build with avx instruction set on windows
 #     avx2_win:               Build with avx2 instruction set on windows
 #
@@ -73,6 +73,10 @@
 #     tensorflow_testing_rbe_linux: RBE options to use RBE with tensorflow-testing project on linux
 #     tensorflow_testing_rbe_win:   RBE options to use RBE with tensorflow-testing project on windows
 #
+# Embedded Linux options (experimental and only tested with TFLite build yet)
+#     elinux:          General Embedded Linux options shared by all flavors.
+#     elinux_aarch64:  Embedded Linux options for aarch64 (ARM64) CPU support.
+#     elinux_armhf:    Embedded Linux options for armhf (ARMv7) CPU support.
 
 
 
@@ -432,6 +436,14 @@ build:tensorflow_testing_rbe_linux --config=rbe_linux
 
 common:tensorflow_testing_rbe_win --remote_instance_name=projects/tensorflow-testing/instances/windows
 build:tensorflow_testing_rbe_win --config=tensorflow_testing_rbe
+
+# TFLite build configs for generic embedded Linux
+build:elinux --crosstool_top=@local_config_embedded_arm//:toolchain
+build:elinux --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
+build:elinux_aarch64 --config=elinux
+build:elinux_aarch64 --cpu=aarch64
+build:elinux_armhf --config=elinux
+build:elinux_armhf --cpu=armhf
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
 # Default options should come above this line

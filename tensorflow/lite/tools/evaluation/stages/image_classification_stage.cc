@@ -29,7 +29,8 @@ namespace {
 const float kCroppingFraction = 0.875;
 }  // namespace
 
-TfLiteStatus ImageClassificationStage::Init() {
+TfLiteStatus ImageClassificationStage::Init(
+    const DelegateProviders* delegate_providers) {
   // Ensure inference params are provided.
   if (!config_.specification().has_image_classification_params()) {
     LOG(ERROR) << "ImageClassificationParams not provided";
@@ -47,7 +48,8 @@ TfLiteStatus ImageClassificationStage::Init() {
   *tflite_inference_config.mutable_specification()
        ->mutable_tflite_inference_params() = params.inference_params();
   inference_stage_.reset(new TfliteInferenceStage(tflite_inference_config));
-  if (inference_stage_->Init() != kTfLiteOk) return kTfLiteError;
+  if (inference_stage_->Init(delegate_providers) != kTfLiteOk)
+    return kTfLiteError;
 
   // Validate model inputs.
   const TfLiteModelInfo* model_info = inference_stage_->GetModelInfo();

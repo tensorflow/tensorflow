@@ -5,6 +5,7 @@ module attributes {tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0",
 // CHECK: std.constant
 // CHECK: TPUCompile
 // CHECK: TPUExecute
+// CHECK-NOT: func @_func
     tf_executor.graph {
       %outputs, %control = tf_executor.island wraps "std.constant"() {value = dense<2.000000e+00> : tensor<f32>} : () -> tensor<f32>
       %outputs_0, %control_1 = tf_executor.island wraps "std.constant"() {value = dense<3.000000e+00> : tensor<f32>} : () -> tensor<f32>

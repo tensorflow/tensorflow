@@ -174,29 +174,6 @@ objc_library(
 )
 
 objc_library(
-    name = "environment_test_lib",
-    testonly = 1,
-    srcs = ["environment_test.mm"],
-    sdk_frameworks = ["XCTest"],
-    deps = [
-        ":environment",
-        "//tensorflow/lite/delegates/gpu/metal/kernels:test_util",
-    ],
-)
-
-ios_unit_test(
-    name = "environment_test",
-    testonly = 1,
-    minimum_os_version = "10.0",
-    runner = tflite_ios_lab_runner("IOS_LATEST"),
-    tags = tf_gpu_tests_tags() + [
-        "notap",
-        "tflite_not_portable_android",
-    ],
-    deps = [":environment_test_lib"],
-)
-
-objc_library(
     name = "inference_context",
     srcs = ["inference_context.mm"],
     hdrs = ["inference_context.h"],
@@ -273,7 +250,6 @@ objc_library(
     srcs = [
         "//tensorflow/lite/delegates/gpu/metal:common_test.mm",
         "//tensorflow/lite/delegates/gpu/metal:compiled_model_test.mm",
-        "//tensorflow/lite/delegates/gpu/metal:environment_test.mm",
         "//tensorflow/lite/delegates/gpu/metal:inference_context_test.mm",
     ],
     hdrs = [

@@ -119,8 +119,24 @@ template <>
 inline Value MapLhloOpToStdScalarOp<xla_lhlo::AbsOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
     OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::AbsFOp>{}(
-      loc, result_types, args, b);
+  Type element_type = args.front().getType();
+  if (element_type.isa<FloatType>()) {
+    return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::AbsFOp>{}(
+        loc, result_types, args, b);
+  }
+  if (element_type.isa<IntegerType>()) {
+    // xla_lhlo.abs(x, result) ->  result = select((x > 0), x, sub(0, x))
+    Value lhs = args[0];
+    auto integer_type = element_type.dyn_cast<IntegerType>();
+
+    auto zero_intval =
+        b->create<::mlir::ConstantIntOp>(loc, 0, integer_type.getWidth());
+    auto lhs_gt_zero = b->create<ScalarIOp<CompareOp>>(loc, CmpIPredicate::sge,
+                                                       lhs, zero_intval);
+    auto neg_val = b->create<ScalarIOp<xla_lhlo::SubOp>>(loc, zero_intval, lhs);
+    return b->create<::mlir::SelectOp>(loc, lhs_gt_zero, lhs, neg_val);
+  }
+  return nullptr;
 }
 
 template <>
@@ -326,8 +342,21 @@ template <>
 inline Value MapLhloOpToStdScalarOp<xla_lhlo::NegOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
     OpBuilder* b) {
-  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::NegFOp>{}(
-      loc, result_types, args, b);
+  Type element_type = args.front().getType();
+  if (element_type.isa<FloatType>()) {
+    return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::NegFOp>{}(
+        loc, result_types, args, b);
+  }
+  if (element_type.isa<IntegerType>()) {
+    // xla_lhlo.neg(x, result) -> result = sub(0, x)
+    Value lhs = args[0];
+    auto integer_type = element_type.dyn_cast<IntegerType>();
+
+    auto zero_intval =
+        b->create<::mlir::ConstantIntOp>(loc, 0, integer_type.getWidth());
+    return b->create<ScalarIOp<xla_lhlo::SubOp>>(loc, zero_intval, lhs);
+  }
+  return nullptr;
 }
 
 template <>

@@ -85,8 +85,8 @@ namespace cutil = TF::collection_ops_util;
 //
 // The pass also works across control flow and functional calls.
 struct StackOpsDecompositionPass
-    : public ModulePass<StackOpsDecompositionPass> {
-  void runOnModule() override;
+    : public PassWrapper<StackOpsDecompositionPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Returns the type of the local variable for the stack size.
@@ -551,8 +551,8 @@ LogicalResult DecomposeStackOps(Block* block, ModuleOp module) {
                                    &decomposed_partitioned_call_callees);
 }
 
-void StackOpsDecompositionPass::runOnModule() {
-  auto module = getModule();
+void StackOpsDecompositionPass::runOnOperation() {
+  auto module = getOperation();
   auto main = module.lookupSymbol<FuncOp>("main");
   if (!main) return;
   if (failed(DecomposeStackOps(&main.front(), module))) {
@@ -568,7 +568,7 @@ static PassRegistration<StackOpsDecompositionPass> pass(
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OpPassBase<ModuleOp>> CreateStackOpsDecompositionPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateStackOpsDecompositionPass() {
   return std::make_unique<StackOpsDecompositionPass>();
 }
 
