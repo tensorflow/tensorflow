@@ -150,7 +150,6 @@ Status MlirFunctionOptimizationPass::Run(
   }
 
   GraphExportConfig export_config;
-  export_config.graph_as_function = true;
   absl::flat_hash_set<Node*> control_ret_nodes;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       ConvertMlirToGraph(*module_ref, export_config, graph, flib_def,
