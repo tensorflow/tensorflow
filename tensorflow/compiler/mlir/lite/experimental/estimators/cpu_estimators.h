@@ -18,6 +18,9 @@ limitations under the License.
 
 // CPU
 constexpr float kCPUArithmeticUnitCost = 1.0;
+
+// This basically assumes pure load/store. This is just fake data.
+constexpr float kCPUCopyUnitCost = 0.5;
 constexpr float kCPUDefaultCost = 3.0f;
 
 // Default values.
@@ -47,6 +50,50 @@ class TFLiteCostEstimator<MulOp, hardware::CPU> {
     if (ArithmeticCountUtilHelper::GetArithmeticCountForBroadcastableOp(op,
                                                                         &count))
       return kCPUArithmeticUnitCost * count;
+    return kCPUDefaultFixedValuedCost;
+  }
+
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
+// tfl.concatenation
+template <>
+class TFLiteCostEstimator<ConcatenationOp, hardware::CPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    int64_t count;
+    if (ArithmeticCountUtilHelper::GetInputTensorTotalSize(op, &count))
+      return kCPUCopyUnitCost * count;
+    return kCPUDefaultFixedValuedCost;
+  }
+
+  // TODO(renjieliu): We probably need to check for dynamic weights.
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
+// tfl.pack
+template <>
+class TFLiteCostEstimator<PackOp, hardware::CPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    int64_t count;
+    if (ArithmeticCountUtilHelper::GetInputTensorTotalSize(op, &count))
+      return kCPUCopyUnitCost * count;
+    return kCPUDefaultFixedValuedCost;
+  }
+
+  // TODO(renjieliu): We probably need to check for dynamic weights.
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
+// tfl.reshape
+template <>
+class TFLiteCostEstimator<ReshapeOp, hardware::CPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    int64_t count;
+    if (ArithmeticCountUtilHelper::GetInputTensorTotalSize(op, &count))
+      return kCPUCopyUnitCost * count;
     return kCPUDefaultFixedValuedCost;
   }
 

@@ -18,6 +18,9 @@ limitations under the License.
 
 // GPU
 constexpr float kGPUArithmeticUnitCost = 0.2;
+
+// The copy can be non-consectutive copy. This is just fake data.
+constexpr float kGPUCopyUnitCost = 0.2;
 constexpr float kGPUDefaultCost = 1.0f;
 
 // Default values.
@@ -69,9 +72,10 @@ template <>
 class TFLiteCostEstimator<ConcatenationOp, hardware::GPU> {
  public:
   static double GetCost(mlir::Operation* op) {
-    llvm::errs() << "No defined cost function for op: "
-                 << op->getName().getStringRef().str();
-    return 0.0;
+    int64_t count;
+    if (ArithmeticCountUtilHelper::GetInputTensorTotalSize(op, &count))
+      return kGPUCopyUnitCost * count;
+    return kGPUDefaultFixedValuedCost;
   }
 
   // TODO(renjieliu): We probably need to check for dynamic weights.
@@ -361,9 +365,10 @@ template <>
 class TFLiteCostEstimator<ReshapeOp, hardware::GPU> {
  public:
   static double GetCost(mlir::Operation* op) {
-    llvm::errs() << "No defined cost function for op: "
-                 << op->getName().getStringRef().str();
-    return 0.0;
+    int64_t count;
+    if (ArithmeticCountUtilHelper::GetInputTensorTotalSize(op, &count))
+      return kGPUCopyUnitCost * count;
+    return kGPUDefaultFixedValuedCost;
   }
 
   static bool IsSupported(mlir::Operation* op) { return true; }
