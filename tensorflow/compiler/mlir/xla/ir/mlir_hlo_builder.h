@@ -90,6 +90,10 @@ class MlirHloBuilder : public XlaBuilder {
  private:
   XlaOp ConstantLiteral(const LiteralSlice& literal) override;
 
+  StatusOr<XlaOp> TransposeInternal(
+      const Shape& shape, XlaOp operand,
+      absl::Span<const int64> permutation) override;
+
   StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
                                   int64 inferred_dimension) override;
 

@@ -565,6 +565,8 @@ class XlaBuilder {
   XlaOp BitcastConvertType(XlaOp operand, PrimitiveType new_element_type);
 
   XlaOp Transpose(XlaOp operand, absl::Span<const int64> permutation);
+  virtual StatusOr<XlaOp> TransposeInternal(
+      const Shape& shape, XlaOp operand, absl::Span<const int64> permutation);
 
   XlaOp Rev(XlaOp operand, absl::Span<const int64> dimensions);
 

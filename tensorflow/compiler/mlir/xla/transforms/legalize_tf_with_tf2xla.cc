@@ -83,7 +83,8 @@ static bool IsOpWhitelisted(Operation* op) {
          isa<TF::InvOp>(op) || isa<TF::InvertOp>(op) || isa<TF::LogOp>(op) ||
          isa<TF::LogicalNotOp>(op) || isa<TF::NegOp>(op) ||
          isa<TF::SelectV2Op>(op) || isa<TF::SinOp>(op) ||
-         isa<TF::SquareOp>(op) || isa<TF::UnpackOp>(op);
+         isa<TF::SquareOp>(op) || isa<TF::TransposeOp>(op) ||
+         isa<TF::UnpackOp>(op);
 }
 
 static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(

@@ -77,6 +77,15 @@ XlaOp MlirHloBuilder::ConstantLiteral(const LiteralSlice& literal) {
   });
 }
 
+StatusOr<XlaOp> MlirHloBuilder::TransposeInternal(
+    const Shape& shape, XlaOp operand, absl::Span<const int64> permutation) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::xla_hlo::TransposeOp>(
+      loc_, ty, GetValue(operand), GetI64ElementsAttr(permutation, &builder_));
+  return MakeXlaOp(op);
+}
+
 StatusOr<XlaOp> MlirHloBuilder::ReshapeInternal(const Shape& shape,
                                                 XlaOp operand,
                                                 int64 inferred_dimension) {
