@@ -1175,8 +1175,8 @@ StatusOr<TupleHandle> MakeTupleHelper(
       LocalDeviceState::kComputeSynchronized) {
     stream->ThenWaitFor(local_device->compute_stream());
   } else {
-    // In principle we would do a DCHECK for CanShapedBufferBeAccessedNow here
-    // but that call requires a ShapedBuffer which we don't have.
+    DCHECK(transfer_manager->CanBufferBeAccessedNow(
+        local_device->compute_stream()->parent(), root_table_memory.cref()));
   }
 
   ExecutionInput execution_input(on_device_shape);

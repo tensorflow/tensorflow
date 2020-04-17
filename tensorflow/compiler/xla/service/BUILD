@@ -1122,6 +1122,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:maybe_owning_device_memory",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor:device_memory",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
