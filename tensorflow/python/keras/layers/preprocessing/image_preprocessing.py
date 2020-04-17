@@ -82,6 +82,12 @@ class Resizing(Layer):
     self.input_spec = InputSpec(ndim=4)
     super(Resizing, self).__init__(name=name, **kwargs)
 
+  def build(self, input_shape):
+    channel_axis = 3
+    channel_dim = int(input_shape[channel_axis])
+    self.input_spec = InputSpec(ndim=4, axes={channel_axis: channel_dim})
+    self.built = True
+
   def call(self, inputs):
     outputs = image_ops.resize_images_v2(
         images=inputs,
@@ -130,6 +136,12 @@ class CenterCrop(Layer):
     self.target_width = width
     self.input_spec = InputSpec(ndim=4)
     super(CenterCrop, self).__init__(name=name, **kwargs)
+
+  def build(self, input_shape):
+    channel_axis = 3
+    channel_dim = int(input_shape[channel_axis])
+    self.input_spec = InputSpec(ndim=4, axes={channel_axis: channel_dim})
+    self.built = True
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
@@ -480,8 +492,8 @@ class RandomTranslation(Layer):
 
     if fill_mode not in {'reflect', 'wrap', 'constant'}:
       raise NotImplementedError(
-          'Unknown `fill_mode` {}. Only "constant" '
-          'is supported.'.format(fill_mode))
+          'Unknown `fill_mode` {}. Only "constant" is '
+          'supported.'.format(fill_mode))
     if interpolation not in {'nearest', 'bilinear'}:
       raise NotImplementedError(
           'Unknown `interpolation` {}. Only `nearest` and '
@@ -648,11 +660,17 @@ def transform(images,
                        'new_height, new_width, instead got '
                        '{}'.format(output_shape))
 
+    if compat.forward_compatible(2020, 3, 25):
+      return image_ops.image_projective_transform_v2(
+          images,
+          output_shape=output_shape,
+          transforms=transforms,
+          fill_mode=fill_mode.upper(),
+          interpolation=interpolation.upper())
     return image_ops.image_projective_transform_v2(
         images,
         output_shape=output_shape,
         transforms=transforms,
-        fill_mode=fill_mode.upper(),
         interpolation=interpolation.upper())
 
 
@@ -758,8 +776,8 @@ class RandomRotation(Layer):
                        'got {}'.format(factor))
     if fill_mode not in {'reflect', 'wrap', 'constant'}:
       raise NotImplementedError(
-          'Unknown `fill_mode` {}. Only "constant" '
-          'is supported.'.format(fill_mode))
+          'Unknown `fill_mode` {}. Only "constant" is '
+          'supported.'.format(fill_mode))
     if interpolation not in {'nearest', 'bilinear'}:
       raise NotImplementedError(
           'Unknown `interpolation` {}. Only `nearest` and '
@@ -886,8 +904,8 @@ class RandomZoom(Layer):
 
     if fill_mode not in {'reflect', 'wrap', 'constant'}:
       raise NotImplementedError(
-          'Unknown `fill_mode` {}. Only "constant" '
-          'is supported.'.format(fill_mode))
+          'Unknown `fill_mode` {}. Only "constant" is '
+          'supported.'.format(fill_mode))
     if interpolation not in {'nearest', 'bilinear'}:
       raise NotImplementedError(
           'Unknown `interpolation` {}. Only `nearest` and '
