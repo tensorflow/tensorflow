@@ -200,6 +200,7 @@ tf_xla_py_test(
     name = "binary_ops_test",
     size = "medium",
     srcs = ["binary_ops_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 5,
     tags = [

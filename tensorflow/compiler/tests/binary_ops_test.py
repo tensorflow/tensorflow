@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_math_ops
@@ -72,6 +73,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
       self.assertAllCloseAccordingToType(
           result[i], expected[i], rtol=rtol, atol=atol)
 
+  @test_util.disable_mlir_bridge(
+      "F16 type is not supported in CreateDenseElementsAttrFromLiteral")
   def testFloatOps(self):
     for dtype in self.float_types:
       if dtype == dtypes.bfloat16.as_numpy_dtype:
@@ -296,6 +299,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
         ]
         self._testBinary(bitwise_ops.right_shift, lhs, rhs, expected=expected)
 
+  @test_util.disable_mlir_bridge("TODO(b/153896312): Handle unsigned ints")
   def testAdd(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -322,6 +326,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
             expected=np.array([3.0269620882574744, 3.3149631512242195],
                               dtype=dtype))
 
+  @test_util.disable_mlir_bridge("TODO(b/153896312): Handle unsigned ints")
   def testMultiply(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -385,6 +390,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([[16], [81]], dtype=dtype),
           rtol=rtol)
 
+  @test_util.disable_mlir_bridge("TODO(b/153896312): Handle unsigned ints")
   def testNumericOps(self):
     for dtype in self.numeric_types:
       self._testBinary(
@@ -474,6 +480,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([1 << 32, 1 << 36, 1 << 32, 1 << 36],
                             dtype=np.int64))
 
+  @test_util.disable_mlir_bridge("Enable tf.NextAfter Compilation")
   def testNextAfter(self):
     for dtype in self.numeric_types:
       if dtype in [np.float32, np.float64]:
@@ -501,6 +508,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
             expected=expected,
             equality_test=NextAfterEqualityTest)
 
+  @test_util.disable_mlir_bridge(
+      "Complex types not supported in CreateDenseElementsAttrFromLiteral")
   def testComplexOps(self):
     for dtype in self.complex_types:
       ctypes = {np.complex64: np.float32, np.complex128: np.float64}
@@ -724,6 +733,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
     for dtype in self.signed_int_types - {np.int8}:
       self._testRemainder(dtype)
 
+  @test_util.disable_mlir_bridge(
+      "F16 type is not supported in CreateDenseElementsAttrFromLiteral")
   def testFloatRemainder(self):
     for dtype in self.float_types:
       self._testRemainder(dtype)
@@ -923,6 +934,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
       expected = np.array([op(l, r) for l, r in zip(lhs, rhs)], dtype=np.bool)
       self._testBinary(op, lhs, rhs, expected=expected)
 
+  @test_util.disable_mlir_bridge("TODO(b/153896312): Handle unsigned ints")
   def testBroadcasting(self):
     """Tests broadcasting behavior of an operator."""
 
@@ -1490,6 +1502,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([1, 0], dtype=np.int32),
           expected=np.array([[1 + 1j, 3 + 3j], [2 - 2j, 4 - 4j]], dtype=dtype))
 
+  @test_util.disable_mlir_bridge("Enable tf.Cross Compilation")
   def testCross(self):
     for dtype in self.float_types:
       self._testBinary(

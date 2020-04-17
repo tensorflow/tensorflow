@@ -77,13 +77,24 @@ static bool IsOpWhitelisted(Operation* op) {
   // building valid MLIR using MlirHloBuilder.
   // TODO(hinsu): Drop explicit whitelist when MLIR based bridge is enabled for
   // all tf2xla kernels.
-  return isa<TF::AbsOp>(op) || isa<TF::Atan2Op>(op) ||
-         isa<TF::BiasAddGradOp>(op) || isa<TF::CastOp>(op) ||
-         isa<TF::ComplexAbsOp>(op) || isa<TF::GreaterOp>(op) ||
-         isa<TF::InvOp>(op) || isa<TF::InvertOp>(op) || isa<TF::LogOp>(op) ||
-         isa<TF::LogicalNotOp>(op) || isa<TF::NegOp>(op) ||
-         isa<TF::SelectV2Op>(op) || isa<TF::SinOp>(op) ||
+  return isa<TF::AbsOp>(op) || isa<TF::AddV2Op>(op) || isa<TF::Atan2Op>(op) ||
+         isa<TF::BatchMatMulV2Op>(op) || isa<TF::BiasAddOp>(op) ||
+         isa<TF::BiasAddGradOp>(op) || isa<TF::BitwiseAndOp>(op) ||
+         isa<TF::BitwiseOrOp>(op) || isa<TF::BitwiseXorOp>(op) ||
+         isa<TF::CastOp>(op) || isa<TF::ComplexAbsOp>(op) ||
+         isa<TF::DivNoNanOp>(op) || isa<TF::EqualOp>(op) ||
+         isa<TF::FloorDivOp>(op) || isa<TF::FloorModOp>(op) ||
+         isa<TF::GreaterOp>(op) || isa<TF::GreaterEqualOp>(op) ||
+         isa<TF::InvOp>(op) || isa<TF::InvertOp>(op) ||
+         isa<TF::LeftShiftOp>(op) || isa<TF::LessOp>(op) ||
+         isa<TF::LessEqualOp>(op) || isa<TF::LogicalAndOp>(op) ||
+         isa<TF::LogicalNotOp>(op) || isa<TF::LogicalOrOp>(op) ||
+         isa<TF::LogOp>(op) || isa<TF::MatMulOp>(op) || isa<TF::MulOp>(op) ||
+         isa<TF::NegOp>(op) || isa<TF::NotEqualOp>(op) || isa<TF::PowOp>(op) ||
+         isa<TF::RealDivOp>(op) || isa<TF::RightShiftOp>(op) ||
+         isa<TF::SinOp>(op) || isa<TF::SelectV2Op>(op) || isa<TF::SubOp>(op) ||
          isa<TF::SquareOp>(op) || isa<TF::TransposeOp>(op) ||
+         isa<TF::TruncateDivOp>(op) || isa<TF::TruncateModOp>(op) ||
          isa<TF::UnpackOp>(op);
 }
 
