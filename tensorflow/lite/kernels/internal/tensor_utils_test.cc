@@ -457,37 +457,6 @@ TEST(uKernels, HybridMatrixBatchVectorMultiplyAccumulate8x8_16Test) {
       &context);
 
   EXPECT_THAT(output2, testing::ElementsAreArray(expected_output));
-
-  // Run with a large batch size to trigger the CpuBackendGemm path on any
-  // device.
-  constexpr int kBatchMultiplier = 8;
-  std::vector<int8_t> input_big_batch(input.size() * kBatchMultiplier);
-  std::vector<float> scaling_factors_big_batch(scaling_factors.size() *
-                                               kBatchMultiplier);
-  std::vector<int32_t> scratch_big_batch(scratch.size() * kBatchMultiplier);
-  std::vector<int32_t> input_offsets_big_batch(input_offsets.size() *
-                                               kBatchMultiplier);
-  for (int i = 0; i < kBatchMultiplier; i++) {
-    std::copy(input.begin(), input.end(),
-              input_big_batch.begin() + i * input.size());
-    std::copy(scaling_factors.begin(), scaling_factors.end(),
-              scaling_factors_big_batch.begin() + i * scaling_factors.size());
-    std::copy(input_offsets.begin(), input_offsets.end(),
-              input_offsets_big_batch.begin() + i * input_offsets.size());
-  }
-  std::vector<float> output_big_batch(output.size() * kBatchMultiplier, 0);
-  MatrixBatchVectorMultiplyAccumulate(
-      input_to_gate_weights.data(), /*m_rows=*/8, /*m_cols=*/32,
-      input_big_batch.data(), scaling_factors_big_batch.data(),
-      /*n_batch*/ 4 * kBatchMultiplier, output_big_batch.data(), nullptr,
-      input_offsets_big_batch.data(), scratch_big_batch.data(), row_sums,
-      &compute_row_sums, &context);
-  for (int i = 0; i < kBatchMultiplier; i++) {
-    std::vector<float> output_per_batch(
-        output_big_batch.begin() + i * output.size(),
-        output_big_batch.begin() + (i + 1) * output.size());
-    EXPECT_THAT(output_per_batch, testing::ElementsAreArray(expected_output));
-  }
 }
 
 // Qautnized matmul with 2 * 30 input and 9 * 30 matrix.
