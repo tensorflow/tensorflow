@@ -39,6 +39,13 @@ class DelegateProviders {
   // Get all parameters from all registered delegate providers.
   const tools::ToolParams& GetAllParams() const { return params_; }
 
+  // Get a new set of parameters based on the given TfliteInferenceParams
+  // 'params' but considering what have been initialized (i.e. 'params_').
+  // Note the same-meaning parameter (e.g. number of TfLite interpreter threads)
+  // in TfliteInferenceParams will take precedence over the parameter of the
+  // same meaning in 'params_'.
+  tools::ToolParams GetAllParams(const TfliteInferenceParams& params) const;
+
   // Create the a TfLite delegate instance based on the provided delegate
   // 'name'. If the specified one isn't found, an empty TfLiteDelegatePtr is
   // returned.
@@ -53,7 +60,9 @@ class DelegateProviders {
   // Create a list of TfLite delegates based on the given TfliteInferenceParams
   // 'params' but considering what have been initialized (i.e. 'params_').
   std::vector<TfLiteDelegatePtr> CreateAllDelegates(
-      const TfliteInferenceParams& params) const;
+      const TfliteInferenceParams& params) const {
+    return CreateAllDelegates(std::move(GetAllParams(params)));
+  }
 
  private:
   // Create a list of TfLite delegates based on the provided 'params'.
