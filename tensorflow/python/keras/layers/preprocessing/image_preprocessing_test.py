@@ -303,9 +303,9 @@ class RandomFlipTest(keras_parameterized.TestCase):
     if expected_output is None:
       expected_output = inp
       if mode == 'horizontal' or mode == 'horizontal_and_vertical':
-        expected_output = np.flip(expected_output, axis=1)
-      if mode == 'vertical' or mode == 'horizontal_and_vertical':
         expected_output = np.flip(expected_output, axis=2)
+      if mode == 'vertical' or mode == 'horizontal_and_vertical':
+        expected_output = np.flip(expected_output, axis=1)
     with test.mock.patch.object(
         random_ops, 'random_uniform', return_value=mock_random):
       with tf_test_util.use_gpu():
@@ -328,7 +328,7 @@ class RandomFlipTest(keras_parameterized.TestCase):
       mock_random = np.reshape(mock_random, [2, 1, 1, 1])
       input_images = np.random.random((2, 5, 8, 3)).astype(np.float32)
       expected_output = input_images.copy()
-      expected_output[0, :, :, :] = np.flip(input_images[0, :, :, :], axis=0)
+      expected_output[0, :, :, :] = np.flip(input_images[0, :, :, :], axis=1)
       self._run_test('horizontal', expected_output, mock_random)
 
   def test_random_flip_vertical_half(self):
@@ -338,7 +338,7 @@ class RandomFlipTest(keras_parameterized.TestCase):
       mock_random = np.reshape(mock_random, [2, 1, 1, 1])
       input_images = np.random.random((2, 5, 8, 3)).astype(np.float32)
       expected_output = input_images.copy()
-      expected_output[0, :, :, :] = np.flip(input_images[0, :, :, :], axis=1)
+      expected_output[0, :, :, :] = np.flip(input_images[0, :, :, :], axis=0)
       self._run_test('vertical', expected_output, mock_random)
 
   def test_random_flip_inference(self):
