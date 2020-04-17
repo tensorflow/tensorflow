@@ -79,7 +79,7 @@ TypeAttr RescaleQuantizedType(Type input, Attribute factor) {
     SmallVector<double, 4> new_scales;
     new_scales.reserve(scales.size());
     auto scales_iter = scales.begin();
-    for (auto f : factor_values) {
+    for (const auto& f : factor_values) {
       new_scales.push_back(*(scales_iter++) *
                            std::fabs(FloatAttr::getValueAsDouble(f)));
     }

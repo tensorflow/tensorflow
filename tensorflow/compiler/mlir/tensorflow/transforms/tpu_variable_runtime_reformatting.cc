@@ -116,8 +116,9 @@ std::string GetRandomStateVariableName() {
 //    tf.TPUReshardVariablesOp(%rvar, %default_format, %rstate)
 //  }
 struct TPUVariableRuntimeReformattingPass
-    : public ModulePass<TPUVariableRuntimeReformattingPass> {
-  void runOnModule() override;
+    : public PassWrapper<TPUVariableRuntimeReformattingPass,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Returns the earlier value of which `v` is an identity. If `skipped` is
@@ -318,7 +319,7 @@ TF::WhileOp AddStateVarsToWhileOp(TF::WhileOp while_op, FuncOp body,
     new_body_return_vals.push_back(inner_arg);
     new_while_operands.push_back(state_var.resource());
   }
-  OpBuilder builder(&body.front());
+  OpBuilder builder = OpBuilder::atBlockEnd(&body.front());
   // Update return values.
   builder.create<ReturnOp>(body_return.getLoc(), new_body_return_vals);
   body_return.erase();
@@ -555,8 +556,8 @@ void HandleReplicateOp(TF::WhileOp while_op, tf_device::ReplicateOp replicate,
   builder.create<tf_device::ReturnOp>(while_op.getLoc(), ArrayRef<Value>{});
 }
 
-void TPUVariableRuntimeReformattingPass::runOnModule() {
-  auto module = getModule();
+void TPUVariableRuntimeReformattingPass::runOnOperation() {
+  auto module = getOperation();
   module.walk([&](TF::WhileOp while_op) {
     auto body = llvm::cast<FuncOp>(module.lookupSymbol(while_op.body()));
     tf_device::ReplicateOp replicate;
@@ -575,7 +576,7 @@ void TPUVariableRuntimeReformattingPass::runOnModule() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUVariableReformattingPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass() {
   return std::make_unique<TPUVariableRuntimeReformattingPass>();
 }
 

@@ -71,7 +71,7 @@ namespace TFL {
 namespace {
 
 // Prepare TF operations in functions for subsequent legalization.
-class PrepareTFPass : public FunctionPass<PrepareTFPass> {
+class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
  public:
   explicit PrepareTFPass() : unfold_batch_matmul_(true) {}
   explicit PrepareTFPass(bool unfold_batch_matmul)
@@ -619,8 +619,8 @@ void PrepareTFPass::runOnFunction() {
 
   // This pattern was intented to uses TFL QDQs to preserve the quantization
   // parameters from the TF Quant ops, thus this pattern should run with the
-  // first `applyPatternsGreedily` method, which would otherwise removes the
-  // TF FakeQuant ops by the constant folding.
+  // first `applyPatternsAndFoldGreedily` method, which would otherwise removes
+  // the TF FakeQuant ops by the constant folding.
   patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
 
   // This pattern will try to identify and optimize for dilated convolution.
@@ -634,7 +634,7 @@ void PrepareTFPass::runOnFunction() {
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
   // and any expanded from FusedBatchNorm. We need to do this
   // before converting TF_Conv to TFL_Conv
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
@@ -646,13 +646,13 @@ void PrepareTFPass::runOnFunction() {
   }
   patterns.insert<TF::ConvertTFEinsumOp, ConvertTFConv2D,
                   ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice>(ctx);
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareTFPass(
+std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
     bool unfold_batch_matmul) {
   return std::make_unique<PrepareTFPass>(unfold_batch_matmul);
 }

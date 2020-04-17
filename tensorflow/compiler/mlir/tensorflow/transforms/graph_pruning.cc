@@ -84,7 +84,7 @@ void PruneGraph(GraphOp graph) {
 namespace {
 
 // This transformation pass prunes a TF graph eliminating dead-nodes.
-struct GraphPruning : public FunctionPass<GraphPruning> {
+struct GraphPruning : public PassWrapper<GraphPruning, FunctionPass> {
   void runOnFunction() override {
     getFunction().walk([](tf_executor::GraphOp graph) {
       // For TensorFlow V1.0 compatibility: when importing a graph without
@@ -100,7 +100,7 @@ struct GraphPruning : public FunctionPass<GraphPruning> {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorGraphPruningPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTFExecutorGraphPruningPass() {
   return std::make_unique<GraphPruning>();
 }
 

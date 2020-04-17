@@ -48,66 +48,108 @@ class ActivationOpModel : public SingleOpModelWithHexagon {
   int output_;
 };
 
-TEST(ActivationOpModel, ReluOutput) {
+template <typename integer_type, TensorType tensor_dtype>
+void ReluTestImpl() {
   const float kMin = -6;
   const float kMax = 6;
   ActivationOpModel model(BuiltinOperator_RELU,
-                          /*input=*/{TensorType_UINT8, {1, 3}, kMin, kMax},
-                          /*output=*/{TensorType_UINT8, {1, 3}, kMin, kMax});
-  model.SetInput<uint8_t>({1, 5, 7});
+                          /*input=*/{tensor_dtype, {1, 3}, kMin, kMax},
+                          /*output=*/{tensor_dtype, {1, 3}, kMin, kMax});
+  model.SetInput<integer_type>({1, 5, 7});
   model.ApplyDelegateAndInvoke();
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 3}));
-  EXPECT_THAT(
-      model.GetDequantizedOutput<uint8_t>(),
-      ElementsAreArray(ArrayFloatNear({1.0, 5.0, 6.0}, /*tolerance=*/0.03)));
+  EXPECT_THAT(model.GetDequantizedOutput<integer_type>(),
+              ElementsAreArray(
+                  ArrayFloatNear({1.0, 5.0, 6.0}, /*max_abs_error=*/0.03)));
 }
 
-TEST(ActivationOpModel, Relu6Output) {
+template <typename integer_type, TensorType tensor_dtype>
+void Relu6TestImpl() {
   const float kMin = -8;
   const float kMax = 8;
   ActivationOpModel model(BuiltinOperator_RELU6,
-                          /*input=*/{TensorType_UINT8, {1, 3}, kMin, kMax},
-                          /*output=*/{TensorType_UINT8, {1, 3}, kMin, kMax});
-  model.SetInput<uint8_t>({4, -1.0, 8});
+                          /*input=*/{tensor_dtype, {1, 3}, kMin, kMax},
+                          /*output=*/{tensor_dtype, {1, 3}, kMin, kMax});
+  model.SetInput<integer_type>({4, -1.0, 8});
   model.ApplyDelegateAndInvoke();
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 3}));
-  EXPECT_THAT(
-      model.GetDequantizedOutput<uint8_t>(),
-      ElementsAreArray(ArrayFloatNear({4.0, 0.0, 6.0}, /*tolerance=*/0.03)));
+  EXPECT_THAT(model.GetDequantizedOutput<integer_type>(),
+              ElementsAreArray(
+                  ArrayFloatNear({4.0, 0.0, 6.0}, /*max_abs_error=*/0.03)));
 }
 
-TEST(ActivationOpModel, TanhOutput) {
-  const float kMin = -8;
-  const float kMax = 8;
+template <typename integer_type, TensorType tensor_dtype>
+void TanhTestImpl() {
+  // Tanh values are always in this range.
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
   ActivationOpModel model(BuiltinOperator_TANH,
-                          /*input=*/{TensorType_UINT8, {1, 3}, kMin, kMax},
-                          /*output=*/{TensorType_UINT8, {1, 3}, kMin, kMax});
-  model.SetInput<uint8_t>({4, -1.0, 8});
+                          /*input=*/{tensor_dtype, {1, 3}, 8 * kMin, 8 * kMax},
+                          /*output=*/{tensor_dtype, {1, 3}, kMin, kMax});
+  model.SetInput<integer_type>({4, -1.0, 8});
   model.ApplyDelegateAndInvoke();
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 3}));
-  EXPECT_THAT(model.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(
-                  ArrayFloatNear({7.96, -6.09, 7.97}, /*tolerance=*/0.03)));
+  EXPECT_THAT(model.GetDequantizedOutput<integer_type>(),
+              ElementsAreArray(ArrayFloatNear({1.00392, -0.752941, 1.00392},
+                                              /*max_abs_error=*/0.03)));
 }
 
-TEST(ActivationOpModel, SigmoidOutput) {
+template <typename integer_type, TensorType tensor_dtype>
+void SigmoidTestImpl() {
   const float kMin = -8;
   const float kMax = 8;
+  TensorData output;
+  if (tensor_dtype == TensorType_UINT8) {
+    output = {tensor_dtype, {}, 0, 0, 1. / 256};
+  } else if (tensor_dtype == TensorType_INT8) {
+    output = {tensor_dtype, {}, 0, 0, 1. / 256, -128};
+  }
   // Sigmoid requires output min/max to be set to these numbers.
-  ActivationOpModel model(
-      BuiltinOperator_LOGISTIC,
-      /*input=*/{TensorType_UINT8, {1, 3}, kMin, kMax},
-      /*output=*/{TensorType_UINT8, {1, 3}, 0, 0, 1. / 256});
-  model.SetInput<uint8_t>({4, -1.0, 8});
+  ActivationOpModel model(BuiltinOperator_LOGISTIC,
+                          /*input=*/{tensor_dtype, {1, 3}, kMin, kMax},
+                          /*output=*/output);
+  model.SetInput<integer_type>({4, -1.0, 8});
   model.ApplyDelegateAndInvoke();
 
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 3}));
-  EXPECT_THAT(model.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(
-                  ArrayFloatNear({0.977, 0.266, 0.996}, /*tolerance=*/0.03)));
+  EXPECT_THAT(model.GetDequantizedOutput<integer_type>(),
+              ElementsAreArray(ArrayFloatNear({0.977, 0.266, 0.996},
+                                              /*max_abs_error=*/0.03)));
+}
+
+TEST(ActivationOpModel, ReluOutput_UInt8) {
+  ReluTestImpl<uint8_t, TensorType_UINT8>();
+}
+
+TEST(ActivationOpModel, ReluOutput_Int8) {
+  ReluTestImpl<int8_t, TensorType_INT8>();
+}
+
+TEST(ActivationOpModel, Relu6Output_UInt8) {
+  Relu6TestImpl<uint8_t, TensorType_UINT8>();
+}
+
+TEST(ActivationOpModel, Relu6Output_Int8) {
+  Relu6TestImpl<int8_t, TensorType_INT8>();
+}
+
+TEST(ActivationOpModel, SigmoidOutput_UInt8) {
+  SigmoidTestImpl<uint8_t, TensorType_UINT8>();
+}
+
+TEST(ActivationOpModel, SigmoidOutput_Int8) {
+  SigmoidTestImpl<int8_t, TensorType_INT8>();
+}
+
+TEST(ActivationOpModel, TanhOutput_UInt8) {
+  TanhTestImpl<uint8_t, TensorType_UINT8>();
+}
+
+TEST(ActivationOpModel, TanhOutput_Int8) {
+  TanhTestImpl<int8_t, TensorType_INT8>();
 }
 
 }  // namespace tflite

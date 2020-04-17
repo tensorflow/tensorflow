@@ -1257,7 +1257,6 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
         model=deferred_sequential)
     status = deferred_sequential_checkpoint.restore(save_path)
     deferred_sequential.add(core.Dense(4))
-    deferred_sequential(constant_op.constant([[1.]]))
     deferred_second_dense = core.Dense(5)
     deferred_sequential.add(deferred_second_dense)
     deferred_sequential(constant_op.constant([[1.]]))

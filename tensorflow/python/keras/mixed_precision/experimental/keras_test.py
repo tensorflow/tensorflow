@@ -519,7 +519,7 @@ class KerasModelTest(keras_parameterized.TestCase):
             regularizer=regularizer,
             input_shape=(1,))
         if use_input_spec:
-          layer.input_spec = input_spec.InputSpec(shape=(2, 1))
+          layer.input_spec = input_spec.InputSpec(shape=(None, 1))
         model = testing_utils.get_model_from_layers([layer], input_shape=(1,),
                                                     input_dtype=dtypes.float16)
         if get_config:

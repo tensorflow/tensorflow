@@ -27,10 +27,10 @@ class AutoMixedPrecisionLists {
  private:
   static void UpdateList(gtl::FlatSet<string>* list, const string& to_add,
                          const string& to_remove) {
-    for (auto x : str_util::Split(to_add, ",")) {
+    for (const auto& x : str_util::Split(to_add, ",")) {
       list->insert(x);
     }
-    for (auto x : str_util::Split(to_remove, ",")) {
+    for (const auto& x : str_util::Split(to_remove, ",")) {
       list->erase(x);
     }
   }

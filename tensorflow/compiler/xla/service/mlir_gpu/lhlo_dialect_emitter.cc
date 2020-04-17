@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/mlir_gpu/lhlo_dialect_emitter.h"
 
+#include <utility>
+
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -254,6 +256,18 @@ Status LhloDialectEmitter::HandleBroadcast(HloInstruction* instr) {
   return Status::OK();
 }
 
+Status LhloDialectEmitter::HandleConcatenate(HloInstruction* instr) {
+  mlir::IntegerAttr concatenate_dim = builder_.getI64IntegerAttr(
+      static_cast<HloConcatenateInstruction*>(instr)->concatenate_dimension());
+
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
+  OpBuilder func_builder(function.getBody());
+  func_builder.create<lhlo::ConcatenateOp>(
+      getLocation(instr), function.getArguments().drop_back(),
+      function.getArguments().back(), concatenate_dim);
+  return Status::OK();
+}
+
 Status LhloDialectEmitter::HandleFusion(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
   OpBuilder func_builder(function.getBody());
@@ -277,7 +291,7 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* instr) {
   // Insert the write-back from the HLO computation to the result argument
   // buffer.
   body_builder.setInsertionPoint(fusion_op.region().back().getTerminator());
-  Value result_memref = function.getArgument(function.getNumArguments() - 1);
+  Value result_memref = function.getArguments().back();
   body_builder.create<::mlir::TensorStoreOp>(getLocation(instr), result,
                                              result_memref);
 

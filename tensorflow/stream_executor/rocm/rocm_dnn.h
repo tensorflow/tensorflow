@@ -724,7 +724,8 @@ class MIOpenSupport : public dnn::DnnSupport {
                          DeviceMemoryBase costs_data,
                          const dnn::RnnStateTensorDescriptor& grads_desc,
                          DeviceMemoryBase grads_data,
-                         DeviceMemory<uint8> scratch_memory) override;
+                         DeviceMemory<uint8> scratch_memory,
+                         int ctc_loss_algo_id) override;
 
  private:
   GpuExecutor* parent_;  // Parent executor object. Not owned.
@@ -917,7 +918,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
       const MIOpenRnnStateTensorDescriptor& grads_desc,
       DeviceMemoryBase grads_data, const MIOpenCTCLossDescriptor& ctc_loss_desc,
-      DeviceMemory<uint8> scratch_memory);
+      DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id);
 
   port::Status DoPrepareForCtcLoss(
       Stream* stream, dnn::DataType element_type,
@@ -926,8 +927,8 @@ class MIOpenSupport : public dnn::DnnSupport {
       absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data,
-      ScratchAllocator* scratch_allocator,
-      DeviceMemory<uint8>* scratch_memory) override;
+      ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
+      int* ctc_loss_algo_id) override;
 
   template <class T>
   bool DoPoolBackwardImpl(Stream* stream,

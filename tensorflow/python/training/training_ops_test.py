@@ -129,6 +129,61 @@ class TrainingOpsTest(TensorFlowTestCase):
         self.assertAllClose(linear_update, self.evaluate(linear))
         self.assertAllClose(expected_out, out)
 
+  def _testTypesForFtrlMultiplyLinearByLr(self,
+                                          x,
+                                          y,
+                                          z,
+                                          lr,
+                                          grad,
+                                          use_gpu=None,
+                                          l1=0.0,
+                                          l2=0.0,
+                                          lr_power=-0.5):
+    self.setUp()
+    with self.session(use_gpu=use_gpu):
+      var = variables.VariableV1(x)
+      accum = variables.VariableV1(y)
+      linear = variables.VariableV1(z)
+      self.evaluate(variables.global_variables_initializer())
+
+      self.assertAllCloseAccordingToType(x, self.evaluate(var))
+      apply_ftrl = (
+          training_ops.apply_ftrl(
+              var,
+              accum,
+              linear,
+              grad,
+              lr,
+              l1,
+              l2,
+              lr_power,
+              multiply_linear_by_lr=True))
+      out = self.evaluate(apply_ftrl)
+      self.assertShapeEqual(out, apply_ftrl)
+      accum_update = y + grad * grad
+      linear_update = z + grad * lr - (accum_update**(-lr_power) - y**
+                                       (-lr_power)) * x
+      quadratic = accum_update**(-lr_power) + 2 * l2 * lr
+      expected_out = np.array([
+          (np.sign(linear_update[i]) * l1 * lr - linear_update[i]) /
+          (quadratic[i]) if np.abs(linear_update[i]) > l1 * lr else 0.0
+          for i in range(linear_update.size)
+      ])
+      self.assertAllCloseAccordingToType(accum_update, self.evaluate(accum))
+      if x.dtype == np.float16:
+        # The calculations here really are not very precise in float16.
+        self.assertAllClose(
+            linear_update, self.evaluate(linear), rtol=2e-2, atol=2e-2)
+        self.assertAllClose(expected_out, out, rtol=2e-2, atol=2e-2)
+      elif x.dtype == np.float32:
+        # The calculations here not sufficiently precise in float32.
+        self.assertAllClose(
+            linear_update, self.evaluate(linear), rtol=1e-5, atol=1e-5)
+        self.assertAllClose(expected_out, out, rtol=1e-5, atol=1e-5)
+      else:
+        self.assertAllClose(linear_update, self.evaluate(linear))
+        self.assertAllClose(expected_out, out)
+
   @test_util.run_v1_only("b/120545219")
   def testApplyAdagrad(self):
     for (dtype, use_gpu) in itertools.product(
@@ -150,6 +205,19 @@ class TrainingOpsTest(TensorFlowTestCase):
       l2 = np.array(4.0).astype(dtype)
       grad = np.arange(100).astype(dtype)
       self._testTypesForFtrl(x, y, z, lr, grad, use_gpu=False, l1=l1, l2=l2)
+
+  @test_util.run_v1_only("b/120545219")
+  def testApplyFtrlMultiplyLinearByLr(self):
+    for dtype in [np.float16, np.float32, np.float64]:
+      x = np.arange(100).astype(dtype)
+      y = np.arange(1, 101).astype(dtype)
+      z = np.arange(102, 202).astype(dtype)
+      lr = np.array(2.0).astype(dtype)
+      l1 = np.array(3.0).astype(dtype)
+      l2 = np.array(4.0).astype(dtype)
+      grad = np.arange(100).astype(dtype)
+      self._testTypesForFtrlMultiplyLinearByLr(
+          x, y, z, lr, grad, use_gpu=False, l1=l1, l2=l2)
 
   def _testTypesForSparseAdagrad(self, x, y, lr, grad, indices):
     self.setUp()
@@ -205,6 +273,47 @@ class TrainingOpsTest(TensorFlowTestCase):
 
       for (i, index) in enumerate(indices):
         self.assertAllCloseAccordingToType(
+            x[index] - lr * grad[i] *
+            (y[index] + grad[i] * grad[i])**(lr_power),
+            self.evaluate(var)[index])
+        self.assertAllCloseAccordingToType(y[index] + grad[i] * grad[i],
+                                           self.evaluate(accum)[index])
+
+  def _testTypesForSparseFtrlMultiplyLinearByLr(self,
+                                                x,
+                                                y,
+                                                z,
+                                                lr,
+                                                grad,
+                                                indices,
+                                                l1=0.0,
+                                                l2=0.0,
+                                                lr_power=-0.5):
+    self.setUp()
+    with self.session(use_gpu=False):
+      var = variables.VariableV1(x)
+      accum = variables.VariableV1(y)
+      linear = variables.VariableV1(z)
+      self.evaluate(variables.global_variables_initializer())
+
+      self.assertAllCloseAccordingToType(x, self.evaluate(var))
+      sparse_apply_ftrl = (
+          training_ops.sparse_apply_ftrl(
+              var,
+              accum,
+              linear,
+              grad,
+              constant_op.constant(indices, self._toType(indices.dtype)),
+              lr,
+              l1,
+              l2,
+              lr_power=lr_power,
+              multiply_linear_by_lr=True))
+      out = self.evaluate(sparse_apply_ftrl)
+      self.assertShapeEqual(out, sparse_apply_ftrl)
+
+      for (i, index) in enumerate(indices):
+        self.assertAllCloseAccordingToType(
             x[index] - lr * grad[i] * (y[index] + grad[i] * grad[i])**
             (lr_power),
             self.evaluate(var)[index])
@@ -254,6 +363,23 @@ class TrainingOpsTest(TensorFlowTestCase):
       grad = np.array(grad_val).astype(dtype)
       indices = np.array([0, 2]).astype(index_type)
       self._testTypesForSparseFtrl(x, y, z, lr, grad, indices)
+
+  @test_util.run_v1_only("b/120545219")
+  def testSparseApplyFtrlMultiplyLinearByLrDim1(self):
+    for (dtype,
+         index_type) in itertools.product([np.float16, np.float32, np.float64],
+                                          [np.int32, np.int64]):
+      x_val = [[0.0], [0.0], [0.0]]
+      y_val = [[4.0], [5.0], [6.0]]
+      z_val = [[0.0], [0.0], [0.0]]
+      x = np.array(x_val).astype(dtype)
+      y = np.array(y_val).astype(dtype)
+      z = np.array(z_val).astype(dtype)
+      lr = np.array(2.0).astype(dtype)
+      grad_val = [[1.5], [2.5]]
+      grad = np.array(grad_val).astype(dtype)
+      indices = np.array([0, 2]).astype(index_type)
+      self._testTypesForSparseFtrlMultiplyLinearByLr(x, y, z, lr, grad, indices)
 
   @test_util.run_v1_only("b/120545219")
   def testApplyAdam(self):

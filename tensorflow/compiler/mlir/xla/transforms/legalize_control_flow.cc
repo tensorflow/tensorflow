@@ -37,7 +37,8 @@ using mlir::PassRegistration;
 namespace mlir {
 namespace xla_hlo {
 namespace {
-struct LegalizeControlFlow : public mlir::FunctionPass<LegalizeControlFlow> {
+struct LegalizeControlFlow
+    : public mlir::PassWrapper<LegalizeControlFlow, FunctionPass> {
   // Perform the lowering to MLIR control flow.
   void runOnFunction() override;
 };
@@ -227,7 +228,7 @@ void LegalizeControlFlow::runOnFunction() {
 }  // namespace xla_hlo
 }  // namespace mlir
 
-std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>>
+std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
 mlir::xla_hlo::createLegalizeControlFlowPass() {
   return std::make_unique<LegalizeControlFlow>();
 }

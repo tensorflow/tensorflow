@@ -62,6 +62,7 @@ cc_library(
 cc_library(
     name = "legacy_types",
     hdrs = ["legacy_types.h"],
+    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         ":types",
@@ -201,6 +202,7 @@ cc_library(
     name = "common",
     srcs = [],
     hdrs = ["common.h"],
+    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         ":cpu_check",
@@ -249,7 +251,7 @@ cc_library(
         ":transpose_utils",
         "//third_party/eigen3",
         "@gemmlowp//:fixedpoint",
-        "//tensorflow/lite/experimental/ruy/ruy/profiler:instrumentation",
+        "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
@@ -301,7 +303,7 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
-        "//tensorflow/lite/experimental/ruy/ruy/profiler:instrumentation",
+        "@ruy//ruy/profiler:instrumentation",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -357,6 +359,7 @@ cc_library(
     name = "quantization_util",
     srcs = ["quantization_util.cc"],
     hdrs = ["quantization_util.h"],
+    build_for_embedded = True,
     copts = tflite_copts() + micro_copts(),
     deps = [
         ":compatibility",
@@ -384,6 +387,7 @@ cc_library(
     hdrs = [
         "transpose_utils.h",
     ],
+    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         ":types",
@@ -405,6 +409,7 @@ cc_library(
     hdrs = [
         "strided_slice_logic.h",
     ],
+    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         ":compatibility",
@@ -463,23 +468,9 @@ cc_library(
         "reference/sub.h",
         "reference/svdf.h",
     ],
+    build_for_embedded = True,
     copts = tflite_copts(),
-    deps = [
-        ":common",
-        ":compatibility",
-        ":quantization_util",
-        ":cppmath",
-        ":strided_slice_logic",
-        ":tensor",
-        ":tensor_utils",
-        ":types",
-        "@gemmlowp//:fixedpoint",
-        "//third_party/eigen3",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:op_macros",
-        "//tensorflow/lite/experimental/ruy/ruy/profiler:instrumentation",
-        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
-    ] + select({
+    select_deps = {
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
         ":k8": tflite_deps_intel,
@@ -490,7 +481,23 @@ cc_library(
         ":freebsd": tflite_deps_intel,
         ":windows": tflite_deps_intel,
         "//conditions:default": [],
-    }),
+    },
+    deps = [
+        ":common",
+        ":compatibility",
+        ":cppmath",
+        ":quantization_util",
+        ":strided_slice_logic",
+        ":tensor",
+        ":tensor_utils",
+        ":types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:op_macros",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "//third_party/eigen3",
+        "@gemmlowp//:fixedpoint",
+        "@ruy//ruy/profiler:instrumentation",
+    ],
 )
 
 cc_library(
@@ -542,7 +549,7 @@ cc_library(
         "@gemmlowp",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
-        "//tensorflow/lite/experimental/ruy/ruy/profiler:instrumentation",
+        "@ruy//ruy/profiler:instrumentation",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
     ] + select({
         ":haswell": tflite_deps_intel,
@@ -626,10 +633,10 @@ cc_library(
         ":cpu_check",
         ":portable_tensor_utils",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/experimental/ruy/ruy",
-        "//tensorflow/lite/experimental/ruy/ruy:detect_arm",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
+        "@ruy//ruy",
+        "@ruy//ruy:detect_arm",
     ],
 )
 
@@ -658,6 +665,7 @@ cc_library(
     name = "kernel_utils",
     srcs = ["kernel_utils.cc"],
     hdrs = ["kernel_utils.h"],
+    build_for_embedded = True,
     copts = tflite_copts() + micro_copts(),
     deps = [
         ":tensor_utils",
@@ -695,13 +703,9 @@ cc_library(
     hdrs = [
         "tensor_utils.h",
     ],
+    build_for_embedded = True,
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,
-    deps = [
-        ":cpu_check",
-        "//third_party/eigen3",
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:cpu_backend_context",
-    ] + select({
+    select_deps = {
         ":aarch64": [
             ":neon_tensor_utils",
         ],
@@ -757,7 +761,13 @@ cc_library(
         "//conditions:default": [
             ":portable_tensor_utils",
         ],
-    }),
+    },
+    deps = [
+        ":cpu_check",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:cpu_backend_context",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
@@ -822,10 +832,10 @@ cc_test(
         ":reference_base",
         ":test_util",
         ":types",
-        "//tensorflow/lite/experimental/ruy/ruy:context",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@ruy//ruy:context",
     ],
 )
 
@@ -995,10 +1005,9 @@ cc_library(
         "optimized/neon_check.h",
         "optimized/sse_check.h",
     ],
+    build_for_embedded = True,
     copts = tflite_copts(),
-    deps = [
-        "//tensorflow/lite/kernels:cpu_backend_context",
-    ] + select({
+    select_deps = {
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
         ":k8": tflite_deps_intel,
@@ -1009,7 +1018,10 @@ cc_library(
         ":freebsd": tflite_deps_intel,
         ":windows": tflite_deps_intel,
         "//conditions:default": [],
-    }),
+    },
+    deps = [
+        "//tensorflow/lite/kernels:cpu_backend_context",
+    ],
 )
 
 cc_test(

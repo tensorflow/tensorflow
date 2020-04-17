@@ -392,6 +392,20 @@ def _default_learning_phase():
 def set_learning_phase(value):
   """Sets the learning phase to a fixed value.
 
+  The backend learning phase affects any code that calls
+  `backend.learning_phase()`
+  In particular, all Keras built-in layers use the learning phase as the default
+  for the `training` arg to `Layer.__call__`.
+
+  User-written layers and models can achieve the same behavior with code that
+  looks like:
+
+  ```python
+    def call(self, inputs, training=None):
+      if training is None:
+        training = backend.learning_phase()
+  ```
+
   Arguments:
       value: Learning phase value, either 0 or 1 (integers).
              0 = test, 1 = train
@@ -3296,11 +3310,11 @@ _VALUE_SET_CODE_STRING = """
 
   >>> v = tf.Variable(1.)
 
-  >>> _ = v.assign(2.)
+  >>> v.assign(2.)
   >>> print(v.numpy())
   2.0
 
-  >>> _ = v.assign_add(1.)
+  >>> v.assign_add(1.)
   >>> print(v.numpy())
   3.0"""[3:]  # Prune first newline and indent to match the docstring template.
 

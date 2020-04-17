@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv_3x3.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/depthwise_conv.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/depthwise_conv_3x3.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 
 namespace tflite {
@@ -30,16 +30,16 @@ absl::Status SelectDWConvolutionAdreno(
     const DepthwiseConvolution2DAttributes& attr,
     const CreationContext& creation_context, const OperationDef& op_def,
     std::unique_ptr<GPUOperation>* ptr) {
-  if (!op_def.IsBatchSupported() && IsDepthWiseConv3x3Supported(attr)) {
-    DepthWiseConv3x3 dw_conv;
+  if (!op_def.IsBatchSupported() && IsDepthwiseConv3x3Supported(attr)) {
+    DepthwiseConv3x3 dw_conv;
     RETURN_IF_ERROR(
-        CreateDepthWiseConv3x3(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConv3x3>(std::move(dw_conv));
+        CreateDepthwiseConv3x3(creation_context, op_def, attr, &dw_conv));
+    *ptr = absl::make_unique<DepthwiseConv3x3>(std::move(dw_conv));
   } else {
-    DepthWiseConvolution dw_conv;
+    DepthwiseConvolution dw_conv;
     RETURN_IF_ERROR(
-        CreateDepthWiseConvolution(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConvolution>(std::move(dw_conv));
+        CreateDepthwiseConvolution(creation_context, op_def, attr, &dw_conv));
+    *ptr = absl::make_unique<DepthwiseConvolution>(std::move(dw_conv));
   }
   return absl::OkStatus();
 }
@@ -48,16 +48,16 @@ absl::Status SelectDWConvolutionPowerVR(
     const DepthwiseConvolution2DAttributes& attr,
     const CreationContext& creation_context, const OperationDef& op_def,
     std::unique_ptr<GPUOperation>* ptr) {
-  if (!op_def.IsBatchSupported() && IsDepthWiseConv3x3Supported(attr)) {
-    DepthWiseConv3x3 dw_conv;
+  if (!op_def.IsBatchSupported() && IsDepthwiseConv3x3Supported(attr)) {
+    DepthwiseConv3x3 dw_conv;
     RETURN_IF_ERROR(
-        CreateDepthWiseConv3x3(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConv3x3>(std::move(dw_conv));
+        CreateDepthwiseConv3x3(creation_context, op_def, attr, &dw_conv));
+    *ptr = absl::make_unique<DepthwiseConv3x3>(std::move(dw_conv));
   } else {
-    DepthWiseConvolution dw_conv;
+    DepthwiseConvolution dw_conv;
     RETURN_IF_ERROR(
-        CreateDepthWiseConvolution(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConvolution>(std::move(dw_conv));
+        CreateDepthwiseConvolution(creation_context, op_def, attr, &dw_conv));
+    *ptr = absl::make_unique<DepthwiseConvolution>(std::move(dw_conv));
   }
   return absl::OkStatus();
 }
@@ -70,18 +70,18 @@ absl::Status SelectDWConvolutionMali(
   bool buffer_type = storage_type == TensorStorageType::BUFFER ||
                      storage_type == TensorStorageType::IMAGE_BUFFER;
   MaliInfo mali_info = creation_context.device->GetInfo().mali_info;
-  if (IsDepthWiseConv3x3Supported(attr) && !mali_info.IsMidgard() &&
+  if (IsDepthwiseConv3x3Supported(attr) && !mali_info.IsMidgard() &&
       !buffer_type && !op_def.IsBatchSupported() &&
       op_def.precision != CalculationsPrecision::F32) {
-    DepthWiseConv3x3 dw_conv;
+    DepthwiseConv3x3 dw_conv;
     RETURN_IF_ERROR(
-        CreateDepthWiseConv3x3(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConv3x3>(std::move(dw_conv));
+        CreateDepthwiseConv3x3(creation_context, op_def, attr, &dw_conv));
+    *ptr = absl::make_unique<DepthwiseConv3x3>(std::move(dw_conv));
   } else {
-    DepthWiseConvolution dw_conv;
+    DepthwiseConvolution dw_conv;
     RETURN_IF_ERROR(
-        CreateDepthWiseConvolution(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConvolution>(std::move(dw_conv));
+        CreateDepthwiseConvolution(creation_context, op_def, attr, &dw_conv));
+    *ptr = absl::make_unique<DepthwiseConvolution>(std::move(dw_conv));
   }
   return absl::OkStatus();
 }

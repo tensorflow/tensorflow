@@ -498,7 +498,10 @@ Status HloCostAnalysis::HandleBatchNormGrad(const HloInstruction*) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleTranspose(const HloInstruction*) {
+Status HloCostAnalysis::HandleTranspose(const HloInstruction* transpose) {
+  if (transpose->IsEffectiveBitcast()) {
+    return HandleBitcast(transpose);
+  }
   return Status::OK();
 }
 

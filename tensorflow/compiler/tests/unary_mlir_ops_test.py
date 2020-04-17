@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
-from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -30,10 +29,6 @@ from tensorflow.python.platform import googletest
 
 class UnaryOpsTest(xla_test.XLATestCase):
   """Test cases for unary operators."""
-
-  def __init__(self, method_name='runTest'):
-    super(UnaryOpsTest, self).__init__(method_name)
-    context.context().enable_mlir_bridge = True
 
   def _assertOpOutputMatchesExpected(self,
                                      op,
@@ -67,9 +62,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
         equality_test(result, expected, rtol=rtol, atol=atol)
 
   def testNumericOps(self):
-    # TODO(hinsu): Enable complex types after fixing the failure in export to
-    # HLOModule.
-    for dtype in self.numeric_types - {np.int8, np.uint8} - self.complex_types:
+    for dtype in self.numeric_types - {np.int8, np.uint8}:
       self._assertOpOutputMatchesExpected(
           math_ops.abs,
           np.array([[2, -1]], dtype=dtype),

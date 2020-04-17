@@ -188,7 +188,8 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
           f=remote_fn,
           target='/job:worker/task:0')
 
-    self.assertAllEqual(func(constant_op.constant(1)), [2])
+    with ops.device('/job:localhost/task:0'):
+      self.assertAllEqual(func(constant_op.constant(1)), [2])
 
 
 class RemoteAsyncTest(test.TestCase):

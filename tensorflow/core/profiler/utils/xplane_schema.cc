@@ -26,11 +26,13 @@ const absl::string_view kHostThreads = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
 const absl::string_view kRocmTracerPlaneName = "/host:ROCmTRACER";
+const absl::string_view kMetadataPlane = "/host:metadata";
 
 const int32 kHostPlaneId = 49;
 const int32 kGpuPlaneBaseId = 0;
 const int32 kCuptiDriverApiPlaneId = 50;
 const int32 kRocmTracerPlaneId = 51;
+const int32 kMetadataPlaneId = 52;
 
 namespace {
 
@@ -126,6 +128,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"requested_bytes", kRequestedBytes},
       {"allocation_bytes", kAllocationBytes},
       {"addr", kAddress},
+      {"region_type", kRegionType},
+      {"data_type", kDataType},
       {"shape", kTensorShapes},
       // Device trace arguments.
       {"device_id", kDeviceId},
@@ -151,6 +155,7 @@ const StatTypeMap& GetStatTypeMap() {
       // XLA metadata map related.
       {"SELF_DURATION_PS", kSelfDurationPs},
       {"MIN_DURATION_PS", kMinDurationPs},
+      {"Hlo Proto", kHloProto},
       // Device capability related.
       {"clock_rate", kDevCapClockRateKHz},
       {"core_count", kDevCapCoreCount},

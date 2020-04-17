@@ -173,7 +173,7 @@ StreamExecutor::~StreamExecutor() {
   }
 
   if (FLAGS_check_device_leaks) {
-    for (auto it : mem_allocs_) {
+    for (const auto &it : mem_allocs_) {
       LOG(INFO) << "Memory alloced at executor exit: addr: "
                 << absl::StrFormat("%p", it.first)
                 << ", bytes: " << it.second.bytes << ", trace: \n"
@@ -291,14 +291,14 @@ bool StreamExecutor::GetConvolveAlgorithms(
 }
 
 bool StreamExecutor::GetMIOpenConvolveAlgorithms(
-    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream* stream,
-    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
-    const dnn::FilterDescriptor& filter_descriptor,
-    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
+    dnn::ConvolutionKind kind, dnn::DataType element_type, Stream *stream,
+    const dnn::BatchDescriptor &input_descriptor, DeviceMemoryBase input_data,
+    const dnn::FilterDescriptor &filter_descriptor,
+    DeviceMemoryBase filter_data, const dnn::BatchDescriptor &output_descriptor,
     DeviceMemoryBase output_data,
-    const dnn::ConvolutionDescriptor& convolution_descriptor,
-    ScratchAllocator* scratch_allocator,
-    std::vector<dnn::ProfileResult>* out_algorithms) {
+    const dnn::ConvolutionDescriptor &convolution_descriptor,
+    ScratchAllocator *scratch_allocator,
+    std::vector<dnn::ProfileResult> *out_algorithms) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return false;

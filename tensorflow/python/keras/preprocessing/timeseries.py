@@ -26,8 +26,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.preprocessing.timeseries.dataset_from_array', v1=[])
-def dataset_from_array(
+@keras_export('keras.preprocessing.timeseries_dataset_from_array', v1=[])
+def timeseries_dataset_from_array(
     data,
     targets,
     sequence_length,

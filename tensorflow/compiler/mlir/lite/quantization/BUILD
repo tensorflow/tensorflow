@@ -14,7 +14,10 @@ package(
 package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
-    packages = ["//tensorflow/compiler/mlir/..."],
+    packages = [
+        "//learning/brain/experimental/mlir/quantization/...",
+        "//tensorflow/compiler/mlir/...",
+    ],
 )
 
 exports_files([

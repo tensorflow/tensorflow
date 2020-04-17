@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -144,7 +145,8 @@ const XStat* EventNode::GetContextStat(int64 stat_type) const {
 std::string EventNode::GetGroupName() const {
   std::vector<std::string> name_parts;
   if (const XStat* graph_type_stat = GetContextStat(StatType::kGraphType)) {
-    name_parts.push_back(graph_type_stat->str_value());
+    XStatVisitor stat(visitor_, graph_type_stat);
+    name_parts.push_back(stat.ToString());
   }
   int64 step_num = group_id_.value_or(0);
   if (const XStat* step_num_stat = GetContextStat(StatType::kStepNum)) {
@@ -356,8 +358,14 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
       {HostEventType::kFunctionRun,
        HostEventType::kExecutorStateProcess,
        {StatType::kStepId}},
+      {HostEventType::kFunctionRun,
+       HostEventType::kExecutorDoneCallback,
+       {StatType::kStepId}},
       {HostEventType::kSessionRun,
        HostEventType::kExecutorStateProcess,
+       {StatType::kStepId}},
+      {HostEventType::kSessionRun,
+       HostEventType::kExecutorDoneCallback,
        {StatType::kStepId}},
       {HostEventType::kExecutorStateProcess,
        HostEventType::kIteratorGetNextOp,
@@ -371,6 +379,10 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
   for (int64 event_type : kFunctionalOpEventTypes) {
     connect_info_list.push_back({event_type,
                                  HostEventType::kExecutorStateProcess,
+                                 {StatType::kFunctionStepId},
+                                 {StatType::kStepId}});
+    connect_info_list.push_back({event_type,
+                                 HostEventType::kExecutorDoneCallback,
                                  {StatType::kFunctionStepId},
                                  {StatType::kStepId}});
   }

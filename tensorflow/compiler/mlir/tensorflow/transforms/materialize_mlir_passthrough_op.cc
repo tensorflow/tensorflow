@@ -35,7 +35,7 @@ namespace mlir {
 namespace {
 
 class MaterializePassthroughOpPass
-    : public FunctionPass<MaterializePassthroughOpPass> {
+    : public PassWrapper<MaterializePassthroughOpPass, FunctionPass> {
  public:
   void runOnFunction() override;
 };
@@ -96,7 +96,7 @@ void MaterializePassthroughOpPass::runOnFunction() {
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OpPassBase<FuncOp>> CreateMaterializePassthroughOpPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateMaterializePassthroughOpPass() {
   return std::make_unique<MaterializePassthroughOpPass>();
 }
 }  // namespace TF

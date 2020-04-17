@@ -50,7 +50,8 @@ bool EvaluateModel(const std::string& model_file_path,
                    const std::vector<ImageLabel>& image_labels,
                    const std::vector<std::string>& model_labels,
                    std::string delegate, std::string output_file_path,
-                   int num_interpreter_threads) {
+                   int num_interpreter_threads,
+                   const DelegateProviders& delegate_providers) {
   EvaluationStageConfig eval_config;
   eval_config.set_name("image_classification");
   auto* classification_params = eval_config.mutable_specification()
@@ -69,7 +70,7 @@ bool EvaluateModel(const std::string& model_file_path,
   ImageClassificationStage eval(eval_config);
 
   eval.SetAllLabels(model_labels);
-  if (eval.Init() != kTfLiteOk) return false;
+  if (eval.Init(&delegate_providers) != kTfLiteOk) return false;
 
   const int step = image_labels.size() / 100;
   for (int i = 0; i < image_labels.size(); ++i) {
@@ -135,6 +136,8 @@ int Main(int argc, char* argv[]) {
                                "Must be one of {'nnapi', 'gpu'}"),
   };
   tflite::Flags::Parse(&argc, const_cast<const char**>(argv), flag_list);
+  DelegateProviders delegate_providers;
+  delegate_providers.InitFromCmdlineArgs(&argc, const_cast<const char**>(argv));
 
   // Process images in filename-sorted order.
   std::vector<std::string> image_files, ground_truth_image_labels;
@@ -168,7 +171,8 @@ int Main(int argc, char* argv[]) {
   }
 
   if (!EvaluateModel(model_file_path, image_labels, model_labels, delegate,
-                     output_file_path, num_interpreter_threads)) {
+                     output_file_path, num_interpreter_threads,
+                     delegate_providers)) {
     LOG(ERROR) << "Could not evaluate model";
     return EXIT_FAILURE;
   }

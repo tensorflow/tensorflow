@@ -221,6 +221,15 @@ class Subgraph {
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
 
+  // WARNING: Experimental interface, subject to change
+  // Change the dimensionality of a given tensor. This is only acceptable for
+  // tensor indices that are inputs or variables. Only unknown dimensions can be
+  // resized with this function. Unknown dimensions are indicated as `-1` in the
+  // `dims_signature` attribute of a `TfLiteTensor`. Returns status of failure
+  // or success.
+  TfLiteStatus ResizeInputTensorStrict(int tensor_index,
+                                       const std::vector<int>& dims);
+
   // This releases memory held by non-persistent tensors. It does NOT re-perform
   // memory planning.
   // AllocateTensors needs to be called before next invocation.

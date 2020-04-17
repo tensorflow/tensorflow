@@ -1217,7 +1217,7 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
         &algorithms));
     std::vector<tensorflow::AutotuneResult> results;
-    for (auto profile_algorithm : algorithms) {
+    for (const auto& profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
       DnnScratchAllocator scratch_allocator(ConvolveBackwardDataScratchSize,
@@ -1283,7 +1283,6 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
               "because MIOpen failed to initialize, so try looking to "
               "see if a warning log message was printed above."));
     }
-
     std::vector<tensorflow::AutotuneResult> results;
     if (algorithms.size() == 1) {
       auto profile_result = algorithms[0];
@@ -1325,7 +1324,6 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
                       &profile_result)
                   .ok();
         }
-
         if (miopen_launch_status && profile_result.is_valid()) {
           results.emplace_back();
           auto& result = results.back();

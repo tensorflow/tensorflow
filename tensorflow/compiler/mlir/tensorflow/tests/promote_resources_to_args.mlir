@@ -251,19 +251,6 @@ func @main() {
 
 // -----
 
-// Tests non main function with resource arguments.
-
-func @main() {
-  return
-}
-
-// expected-error@+1 {{potential nested resource accesses in function}}
-func @other(%arg0: tensor<!tf.resource<tensor<f32>>>) {
-  return
-}
-
-// -----
-
 // Tests main function with invalid resource argument subtype.
 
 // expected-error@+1 {{expects resource type of argument 0 to have one subtype, got '!tf.resource'}}

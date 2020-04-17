@@ -32,6 +32,7 @@ tensorflow/third_party/clang_toolchain/download_clang.bzl
 tensorflow/third_party/codegen.BUILD
 tensorflow/third_party/com_google_absl.BUILD
 tensorflow/third_party/common.bzl
+tensorflow/third_party/coremltools.BUILD
 tensorflow/third_party/cub.BUILD
 tensorflow/third_party/curl.BUILD
 tensorflow/third_party/cython.BUILD

@@ -66,8 +66,9 @@ __global__ void ReluGradHalfKernel(const Eigen::half* __restrict__ gradient,
     // Fall back: convert half2 to float2 for processing.
     float2 feature_f2 = __half22float2(feature_h2);
     float2 gradient_f2 = __half22float2(gradient_h2);
-    float2 backprop_f2 = make_float2((feature_f2.x > 0.0f) ? float(gradient_f2.x) : 0.0f,
-                                     (feature_f2.y > 0.0f) ? float(gradient_f2.y) : 0.0f);
+    float2 backprop_f2 =
+        make_float2((feature_f2.x > 0.0f) ? float(gradient_f2.x) : 0.0f,
+                    (feature_f2.y > 0.0f) ? float(gradient_f2.y) : 0.0f);
     // Convert back to half2.
     half2 backprop_h2 = __float22half2_rn(backprop_f2);
 #endif
@@ -119,7 +120,6 @@ struct ReluGrad<Device, Eigen::half> {
   }
 };
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 __global__ void Relu_int8x4_kernel(int vect_count,
                                    const int32* __restrict__ input,
                                    int32* __restrict__ output) {
@@ -251,7 +251,6 @@ struct GeluGrad<GPUDevice, T> {
                                 feature.data(), backprop.data(), count));
   }
 };
-#endif
 
 }  // namespace functor
 

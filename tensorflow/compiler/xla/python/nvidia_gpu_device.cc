@@ -76,7 +76,8 @@ StatusOr<std::vector<std::unique_ptr<LocalDeviceState>>> BuildLocalDeviceStates(
     se::StreamExecutor* executor =
         xla_client->backend().stream_executor(i).ValueOrDie();
     local_devices.push_back(absl::make_unique<LocalDeviceState>(
-        executor, xla_client, /*synchronous_deallocation=*/false, asynchronous,
+        executor, xla_client, LocalDeviceState::kComputeSynchronized,
+        asynchronous,
         /*allow_event_reuse=*/true));
   }
   return std::move(local_devices);

@@ -4,6 +4,7 @@ load(
 )
 load(
     "//tensorflow/lite/micro:build_def.bzl",
+    "cc_library",
     "micro_copts",
 )
 
@@ -12,6 +13,11 @@ package(
         "//visibility:public",
     ],
     licenses = ["notice"],  # Apache 2.0
+)
+
+config_setting(
+    name = "xtensa_hifimini",
+    define_values = {"tflm_build": "xtensa_hifimini"},
 )
 
 # LINT.IfChange(micro_ops)
@@ -25,12 +31,9 @@ cc_library(
         "circular_buffer.cc",
         "comparisons.cc",
         "concatenation.cc",
-        "conv.cc",
-        "depthwise_conv.cc",
         "dequantize.cc",
         "elementwise.cc",
         "floor.cc",
-        "fully_connected.cc",
         "logical.cc",
         "logistic.cc",
         "maximum_minimum.cc",
@@ -40,18 +43,36 @@ cc_library(
         "pad.cc",
         "pooling.cc",
         "prelu.cc",
-        "quantize.cc",
         "reduce.cc",
         "reshape.cc",
         "round.cc",
-        "softmax.cc",
         "split.cc",
         "strided_slice.cc",
         "sub.cc",
-        "svdf.cc",
         "unpack.cc",
-    ],
+    ] + select({
+        "//conditions:default": [
+            "conv.cc",
+            "depthwise_conv.cc",
+            "fully_connected.cc",
+            "quantize.cc",
+            "softmax.cc",
+            "svdf.cc",
+        ],
+        ":xtensa_hifimini": [
+            "xtensa_hifimini/conv.cc",
+            "xtensa_hifimini/depthwise_conv.cc",
+            "xtensa_hifimini/fixedpoint_utils.h",
+            "xtensa_hifimini/fully_connected.cc",
+            "xtensa_hifimini/quantize.cc",
+            "xtensa_hifimini/softmax.cc",
+            "xtensa_hifimini/svdf.cc",
+            "xtensa_hifimini/utils.h",
+        ],
+    }),
     hdrs = ["micro_ops.h"],
+    # TODO(b/153609488): enable embedded build once we can properly support it.
+    #build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":activation_utils",
@@ -67,7 +88,12 @@ cc_library(
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/micro:micro_utils",
-    ],
+    ] + select({
+        "//conditions:default": [],
+        ":xtensa_hifimini": [
+            # #"//third_party/xtensa/cstub64s:hifi_mini",
+        ],
+    }),
 )
 # LINT.ThenChange(//tensorflow/lite/micro/kernels/BUILD:portable_optimized_micro_ops)
 
@@ -79,6 +105,8 @@ cc_library(
     hdrs = [
         "all_ops_resolver.h",
     ],
+    # TODO(b/153609488): enable embedded build once we can properly support it.
+    #build_for_embedded = True,
     copts = micro_copts(),
     deps = [
         ":micro_ops",
@@ -506,6 +534,7 @@ tflite_micro_cc_test(
 cc_library(
     name = "activation_utils",
     hdrs = ["activation_utils.h"],
+    build_for_embedded = True,
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
@@ -543,6 +572,7 @@ tflite_micro_cc_test(
 cc_library(
     name = "micro_utils",
     hdrs = ["micro_utils.h"],
+    build_for_embedded = True,
 )
 
 tflite_micro_cc_test(

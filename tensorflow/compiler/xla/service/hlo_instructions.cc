@@ -564,7 +564,7 @@ HloAllReduceInstruction::HloAllReduceInstruction(
 }
 
 bool HloAllReduceInstruction::IsNoop() const {
-  for (auto replica_group : replica_groups()) {
+  for (const auto& replica_group : replica_groups()) {
     if (replica_group.replica_ids().size() != 1) {
       return false;
     }

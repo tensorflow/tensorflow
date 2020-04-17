@@ -24,9 +24,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 
@@ -50,7 +52,10 @@ class DefFunctionTest(test.TestCase):
     with context.collect_graphs(optimized=True) as graphs:
       outer(i1, i2, i3)
 
-    self.assertIn('_XlaRun', [n.op for n in graphs[0].node])
+    if test_util.is_xla_enabled():
+      self.assertIn('_XlaRun', [n.op for n in graphs[0].node])
+    else:
+      self.assertNotIn('_XlaRun', [n.op for n in graphs[0].node])
 
   def testBasic(self):
 
@@ -249,6 +254,21 @@ class DefFunctionTest(test.TestCase):
       return g(array_ops.ones([3, 4, 3], dtype=dtypes.float32), f())
 
     z()
+
+  def testArgMinMax(self):
+
+    @def_function.function(experimental_compile=True)
+    def argmax(x):
+      return math_ops.argmax(x)
+
+    @def_function.function(experimental_compile=True)
+    def argmin(x):
+      return math_ops.argmin(x)
+
+    self.assertAllClose(0, argmax(array_ops.ones([10], dtype=dtypes.float32)))
+    self.assertAllClose(0, argmax(array_ops.ones([10])))
+    self.assertAllClose(0, argmin(array_ops.ones([10], dtype=dtypes.float32)))
+    self.assertAllClose(0, argmin(array_ops.ones([10])))
 
 
 if __name__ == '__main__':

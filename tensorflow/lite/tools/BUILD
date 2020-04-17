@@ -206,6 +206,31 @@ cc_test(
 )
 
 cc_library(
+    name = "logging",
+    hdrs = ["logging.h"],
+    copts = common_copts,
+)
+
+cc_library(
+    name = "tool_params",
+    srcs = ["tool_params.cc"],
+    hdrs = ["tool_params.h"],
+    copts = tflite_copts(),
+    deps = [":logging"],
+)
+
+cc_test(
+    name = "tool_params_test",
+    srcs = ["tool_params_test.cc"],
+    copts = tflite_copts(),
+    visibility = ["//visibility:private"],
+    deps = [
+        ":tool_params",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "command_line_flags",
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],

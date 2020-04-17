@@ -218,5 +218,11 @@ TEST_F(LhloGenTest, Tanh) {
                                               "tanh.hlo"));
 }
 
+TEST_F(LhloGenTest, Concatenate) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "concatenate.hlo"));
+}
+
 }  // namespace mlir_gpu
 }  // namespace xla

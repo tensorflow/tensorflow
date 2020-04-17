@@ -216,7 +216,7 @@ Status ConvertHalfElementsAttr(const ElementsAttr attr,
       output_tensor->add_half_val(
           (*elts.begin()).bitcastToAPInt().getSExtValue());
     } else {
-      for (auto value : elts.getFloatValues())
+      for (const auto& value : elts.getFloatValues())
         output_tensor->add_half_val(value.bitcastToAPInt().getSExtValue());
     }
     return Status::OK();
@@ -232,7 +232,8 @@ Status ConvertIntElementsAttr(const mlir::ElementsAttr attr,
     if (elts.isSplat()) {
       output_tensor->add_int_val((*elts.begin()).getSExtValue());
     } else {
-      for (auto val : elts) output_tensor->add_int_val(val.getSExtValue());
+      for (const auto& val : elts)
+        output_tensor->add_int_val(val.getSExtValue());
     }
     return Status::OK();
   }
@@ -269,7 +270,8 @@ Status ConvertInt64ElementsAttr(const mlir::ElementsAttr attr,
     if (elts.isSplat()) {
       output_tensor->add_int64_val((*elts.begin()).getSExtValue());
     } else {
-      for (auto val : elts) output_tensor->add_int64_val(val.getSExtValue());
+      for (const auto& val : elts)
+        output_tensor->add_int64_val(val.getSExtValue());
     }
     return Status::OK();
   }
@@ -281,7 +283,7 @@ Status ConvertInt64ElementsAttr(const mlir::ElementsAttr attr,
 Status ConvertBoolElementsAttr(const mlir::ElementsAttr attr,
                                TensorProto* output_tensor) {
   if (auto elts = attr.dyn_cast<DenseIntElementsAttr>()) {
-    for (auto val : elts) {
+    for (const auto& val : elts) {
       output_tensor->add_bool_val(val.getBoolValue());
     }
     return Status::OK();

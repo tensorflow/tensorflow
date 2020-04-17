@@ -58,7 +58,7 @@ limitations under the License.
 namespace mlir {
 namespace {
 
-class SwitchFoldPass : public mlir::FunctionPass<SwitchFoldPass> {
+class SwitchFoldPass : public mlir::PassWrapper<SwitchFoldPass, FunctionPass> {
  public:
   void runOnFunction() override;
 };
@@ -202,7 +202,7 @@ static void MatchSwitchFoldOps(tf_executor::SwitchOp switch_op,
 static LogicalResult FoldMergeNodes(FuncOp function, const DeadQueue& queue) {
   // Create builder for val_index of MergeOp.
   auto* block = &function.getBlocks().front();
-  OpBuilder builder(block);
+  OpBuilder builder = OpBuilder::atBlockEnd(block);
   auto type = builder.getIntegerType(32);
   auto build_index = [&](Location loc, int value) {
     return builder.create<ConstantOp>(loc, type,
@@ -279,7 +279,7 @@ void SwitchFoldPass::runOnFunction() {
 }  // namespace mlir
 
 namespace tf_executor {
-std::unique_ptr<OpPassBase<FuncOp>> CreateSwitchFoldPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateSwitchFoldPass() {
   return std::make_unique<SwitchFoldPass>();
 }
 }  // namespace tf_executor

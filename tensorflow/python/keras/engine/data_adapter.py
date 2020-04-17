@@ -1397,10 +1397,11 @@ def train_validation_split(arrays, validation_split, shuffle=True):
     return isinstance(t, tensor_types) or t is None
 
   flat_arrays = nest.flatten(arrays)
-  if not all(_can_split(t) for t in flat_arrays):
+  unsplitable = [type(t) for t in flat_arrays if not _can_split(t)]
+  if unsplitable:
     raise ValueError(
         "`validation_split` is only supported for Tensors or NumPy "
-        "arrays, found: {}".format(arrays))
+        "arrays, found following types in the input: {}".format(unsplitable))
 
   if all(t is None for t in flat_arrays):
     return arrays, arrays
@@ -1419,6 +1420,14 @@ def train_validation_split(arrays, validation_split, shuffle=True):
   split_at = int(math.floor(batch_dim * (1. - validation_split)))
   train_indices = indices[:split_at]
   val_indices = indices[split_at:]
+
+  if split_at == 0 or split_at == batch_dim:
+    raise ValueError(
+        "Training data contains {batch_dim} samples, which is not sufficient "
+        "to split it into a validation and training set as specified by "
+        "`validation_split={validation_split}`. Either provide more data, or a "
+        "different value for the `validation_split` argument." .format(
+            batch_dim=batch_dim, validation_split=validation_split))
 
   def _split(t, indices):
     if t is None:

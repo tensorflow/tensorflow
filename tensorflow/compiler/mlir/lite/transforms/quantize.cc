@@ -75,7 +75,7 @@ struct TFLFullQuantization
 };
 
 // Applies quantization on the model in TFL dialect.
-struct QuantizePass : public FunctionPass<QuantizePass> {
+struct QuantizePass : public PassWrapper<QuantizePass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -88,12 +88,12 @@ void QuantizePass::runOnFunction() {
   TFL::populateWithGenerated(ctx, &patterns);
   patterns.insert<TFLFullQuantization>(
       ctx, enable_numeric_verify, error_tolerance, enable_single_layer_verify);
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect QuantizeTFL pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateQuantizePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateQuantizePass() {
   return std::make_unique<QuantizePass>();
 }
 
