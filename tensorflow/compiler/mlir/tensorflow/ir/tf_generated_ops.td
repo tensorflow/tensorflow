@@ -4703,12 +4703,12 @@ def TF_MaximumOp : TF_Op<"Maximum", [NoSideEffect, ResultsBroadcastableShape]>,
   }];
 
   let arguments = (ins
-    TF_FpOrI32OrI64Tensor:$x,
-    TF_FpOrI32OrI64Tensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$y
   );
 
   let results = (outs
-    TF_FpOrI32OrI64Tensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -4751,12 +4751,12 @@ def TF_MinimumOp : TF_Op<"Minimum", [NoSideEffect, ResultsBroadcastableShape]>,
   }];
 
   let arguments = (ins
-    TF_FpOrI32OrI64Tensor:$x,
-    TF_FpOrI32OrI64Tensor:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$y
   );
 
   let results = (outs
-    TF_FpOrI32OrI64Tensor:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
