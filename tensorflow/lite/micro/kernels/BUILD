@@ -45,6 +45,7 @@ cc_library(
         "prelu.cc",
         "reduce.cc",
         "reshape.cc",
+        "resize_nearest_neighbor.cc",
         "round.cc",
         "split.cc",
         "strided_slice.cc",
@@ -144,6 +145,7 @@ cc_library(
         "quantize.cc",
         "reduce.cc",
         "reshape.cc",
+        "resize_nearest_neighbor.cc",
         "round.cc",
         "softmax.cc",
         "split.cc",
@@ -646,6 +648,19 @@ tflite_micro_cc_test(
     name = "circular_buffer_test",
     srcs = [
         "circular_buffer_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        ":micro_ops",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "resize_nearest_neighbor_test",
+    srcs = [
+        "resize_nearest_neighbor_test.cc",
     ],
     deps = [
         ":all_ops_resolver",
