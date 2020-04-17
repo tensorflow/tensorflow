@@ -44,6 +44,16 @@ class ReduceTest(test_util.TensorFlowTestCase):
       y_tf = self.evaluate(math_ops.reduce_sum(x))
       self.assertEqual(y_tf, 21)
 
+  def testReduceExtendType(self):
+    in_f32 = np.random.rand(1024, 1024).astype(np.float)
+    in_bf16 = math_ops.cast(in_f32, dtypes.bfloat16)
+
+    out_f32 = self.evaluate(math_ops.reduce_sum(in_f32))
+    out_bf16 = self.evaluate(math_ops.reduce_sum(in_bf16))
+    expected = math_ops.cast(out_f32, dtypes.bfloat16)
+
+    self.assertAllEqual(out_bf16, expected)
+
   def testReduceExplicitAxes(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     with test_util.device(use_gpu=True):
