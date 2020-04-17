@@ -127,6 +127,7 @@ Status MlirFunctionOptimizationPass::Run(
   GraphImportConfig import_config;
   import_config.graph_as_function = true;
   import_config.control_outputs = *control_ret_node_names;
+  import_config.upgrade_legacy = true;
   TF_ASSIGN_OR_RETURN(auto module_ref,
                       ConvertGraphToMlir(**graph, debug_info, *flib_def,
                                          import_config, &context));
