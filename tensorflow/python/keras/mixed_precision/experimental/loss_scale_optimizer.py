@@ -495,6 +495,14 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
   # individual subclasses like Adam. However, although "learning_rate" and "lr"
   # properties are not part of the base OptimizerV2 class, they are part of most
   # subclasses, so we expose them here for convenience.
+  
+  @property
+  def weight_decay(self):
+    return self._optimizer.weight_decay
+
+  @weight_decay.setter
+  def weight_decay(self, weight_decay):
+    self._optimizer.weight_decay = weight_decay
 
   @property
   def learning_rate(self):
