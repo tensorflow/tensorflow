@@ -896,6 +896,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
       train_function = self.make_train_function()
       self._train_counter.assign(0)
       callbacks.on_train_begin()
+      training_logs = None
       # Handle fault-tolerance for multi-worker.
       # TODO(omalleyt): Fix the ordering issues that mean this has to
       # happen after `callbacks.on_train_begin`.
@@ -940,10 +941,11 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           epoch_logs.update(val_logs)
 
         callbacks.on_epoch_end(epoch, epoch_logs)
+        training_logs = epoch_logs
         if self.stop_training:
           break
 
-      callbacks.on_train_end()
+      callbacks.on_train_end(logs=training_logs)
       return self.history
 
   def test_step(self, data):
@@ -1171,9 +1173,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               logs = tmp_logs  # No error, now safe to assign to logs.
               end_step = step + data_handler.step_increment
               callbacks.on_test_batch_end(end_step, logs)
-      callbacks.on_test_end()
-
       logs = tf_utils.to_numpy_or_python_type(logs)
+      callbacks.on_test_end(logs=logs)
+
       if return_dict:
         return logs
       else:
