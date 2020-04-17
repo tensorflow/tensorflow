@@ -1,14 +1,8 @@
-# TODO(herhut): describe this package.
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load(
-    "//tensorflow/core/platform/default:cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
+load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
 package(
     default_visibility = [":friends"],
@@ -22,49 +16,27 @@ package_group(
     ],
 )
 
-tf_cc_test(
-    name = "mlir_gpu_lhlo_gen_test",
-    srcs = if_cuda_is_configured(["mlir_gpu_lhlo_gen_test.cc"]),
-    data = [
-        "abs.hlo",
-        "add.hlo",
-        "add_as_kernel.hlo",
-        "add_in_gpu_dialect.hlo",
-        "add_multiply.hlo",
-        "add_multiply_gpu.hlo",
-        "add_reduce.hlo",
-        "broadcast.hlo",
-        "broken_add.hlo",
-        "ceil.hlo",
-        "compare.hlo",
-        "concatenate.hlo",
-        "const.hlo",
-        "copy.hlo",
-        "copy_transpose.hlo",
-        "cos.hlo",
-        "exp.hlo",
-        "fused_reduce.hlo",
-        "iota.hlo",
+glob_lit_tests(
+    data = [":test_utilities"],
+    # TODO(141337082): Figure out why the tests do not run successfully in open
+    # source.
+    default_tags = ["no_oss"] + tf_cuda_tests_tags(),
+    driver = "@llvm-project//mlir:run_lit.sh",
+    exclude = [
+        # TODO(b/149302060) Reenable once fusion is fixed.
         "iota_add_multiply.hlo",
-        "log.hlo",
-        "neg.hlo",
-        "reduce_window.hlo",
-        "rem.hlo",
-        "rsqrt.hlo",
-        "select.hlo",
-        "select_and_scatter.hlo",
-        "sign.hlo",
-        "sqrt.hlo",
-        "tanh.hlo",
+        # TODO(b/137624192): Reenable once we can fuse reductions.
+        "fused_reduce.hlo",
     ],
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
-    deps = [
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:test",
-    ] + if_cuda_is_configured([
-        "//tensorflow/core:lib",
-        "//tensorflow/compiler/xla/service:gpu_plugin_mlir",
-        "//tensorflow/compiler/xla/service/mlir_gpu:mlir_irgen_test_base",
-        "//tensorflow/stream_executor/lib",
-    ]),
+    test_file_exts = ["hlo"],
+)
+
+# Bundle together all of the test utilities that are used by tests.
+filegroup(
+    name = "test_utilities",
+    testonly = True,
+    data = [
+        "//tensorflow/compiler/xla/service/mlir_gpu:xla-gpu-opt",
+        "@llvm-project//llvm:FileCheck",
+    ],
 )

@@ -5,6 +5,7 @@ load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
     default_visibility = [":friends"],
@@ -183,28 +184,41 @@ cc_library(
 )
 
 cc_library(
-    name = "mlir_irgen_test_base",
+    name = "xla_gpu_opt_lib",
     testonly = True,
-    srcs = if_cuda_is_configured(["mlir_irgen_test_base.cc"]),
-    hdrs = if_cuda_is_configured(["mlir_irgen_test_base.h"]),
+    srcs = if_cuda_is_configured(["xla_gpu_opt.cc"]),
+    hdrs = if_cuda_is_configured(["xla_gpu_opt.h"]),
     deps = [
-        ":emission_context",
         ":failover_compiler",
         ":inject_errors_pass",
         ":mlir_compiler",
-        "//tensorflow/compiler/mlir/xla:hlo_utils",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/compiler/xla/tests:codegen_test_base",
-        "//tensorflow/compiler/xla/tests:filecheck",
         "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core/platform:resource_loader",
-        "//tensorflow/core/platform:test",
-        "@com_google_absl//absl/memory",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+    ],
+)
+
+tf_cc_binary(
+    name = "xla-gpu-opt",
+    testonly = True,
+    srcs = if_cuda_is_configured(["xla_gpu_opt_main.cc"]),
+    deps = [
+        ":mlir_compiler",
+        ":xla_gpu_opt_lib",
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla/service:gpu_plugin_mlir",
+        "//tensorflow/core:lib",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Support",
     ],
 )

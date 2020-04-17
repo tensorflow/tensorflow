@@ -1,3 +1,4 @@
+// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
 HloModule Rem
 ENTRY %Rem(x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
   %x = f32[2,2]{1,0} parameter(0)
