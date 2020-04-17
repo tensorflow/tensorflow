@@ -1364,8 +1364,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         self.mean = metrics_module.Mean(name='metric_1')
 
       def call(self, inputs):
-        # Provide same name as in the instance created in __init__
-        self.add_metric(self.mean(x), name='metric_1')
+        self.add_metric(self.mean(x))
         self.add_metric(math_ops.reduce_sum(x), name='metric_2')
         return inputs
     ```
