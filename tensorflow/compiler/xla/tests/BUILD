@@ -2539,6 +2539,7 @@ xla_test(
     tags = [
         "enable_for_xla_interpreter",
         "noasan",  # sometimes times out, http://b/78650012
+        "nomsan",  # sometimes times out, http://b/78650012
         "notsan",  # sometimes times out, http://b/78650012
     ],
     deps = [
