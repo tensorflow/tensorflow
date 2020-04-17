@@ -852,7 +852,47 @@ bool IsPinnableOp(const string& op_type) {
 // - All op inputs are on the CPU, small (<64 elements) and integers
 // (int32/int64). This can be disabled by setting the environment variable
 // "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING" to "0" or "false".
+//
+// TODO(b/154234908): Unify placement logic.
 Status MaybeUpdateOpDevice(EagerOperation* op) {
+  // If operation was already placed on a custom device, use it.
+  if (VariantDeviceIsCustom(op->Device())) {
+    return Status::OK();
+  }
+
+  // If all the inputs are on the same custom device, use that custom
+  // device. Otherwise, it is an error to have a custom device as an input.
+  if (!op->Inputs().empty()) {
+    // We keep track of what we've seen with devices instead of booleans to be
+    // able to provide a meaningful error message below.
+    VariantDevice first = op->Inputs()[0]->device();
+    VariantDevice different = first;  // A different input device, if any.
+    VariantDevice custom = first;     // The first custom device seen, or an
+                                      // arbitrary non-custom device otherwise.
+    for (size_t i = 1; first == different && i < op->Inputs().size(); ++i) {
+      VariantDevice device = op->Inputs()[i]->device();
+      if (device != first) {
+        different = device;
+      }
+      if (!VariantDeviceIsCustom(custom) && VariantDeviceIsCustom(device)) {
+        custom = device;
+      }
+      if (different != first && VariantDeviceIsCustom(custom)) {
+        return errors::InvalidArgument(absl::StrCat(
+            "If an operation has one of its inputs in a custom device, then "
+            "all inputs should be on that same device. Operation ",
+            op->Name(), " has one input in custom device ",
+            VariantDeviceName(custom),
+            " and at least one input in a different device ",
+            VariantDeviceName(custom == first ? different : first)));
+      }
+    }
+    if (different == first && VariantDeviceIsCustom(custom)) {
+      op->SetDevice(first);
+      return Status::OK();
+    }
+  }
+
   if (op->colocation_exempt()) {
     return Status::OK();
   }
@@ -864,9 +904,6 @@ Status MaybeUpdateOpDevice(EagerOperation* op) {
                           : absl::get<Device*>(op->Device());
   for (int i = 0; i < op->Inputs().size(); ++i) {
     TensorHandle* tensor_handle = op->Inputs()[i];
-    if (VariantDeviceIsCustom(tensor_handle->DeviceOrHostCPU(ctx))) {
-      continue;  // Do not try to let custom devices influence op placement.
-    }
     if (tensor_handle->dtype == DT_RESOURCE) {
       Device* resource_device = tensor_handle->resource_device();
       DVLOG(2) << "for op " << op->Name() << " input " << i << " "
@@ -956,12 +993,12 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
       [&] { return absl::StrCat("EagerExecute: ", op->Name()); },
       profiler::TraceMeLevel::kInfo);
 
+  TF_RETURN_IF_ERROR(MaybeUpdateOpDevice(op));
+
   if (VariantDeviceIsCustom(op->Device())) {
     return absl::get<CustomDevice*>(op->Device())
         ->Execute(op, retvals, num_retvals);
   }
-
-  TF_RETURN_IF_ERROR(MaybeUpdateOpDevice(op));
 
   if (!op->Executor().Async()) {
     // In sync mode, always clear error to maintain the same behavior as before.

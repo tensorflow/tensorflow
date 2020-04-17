@@ -63,19 +63,10 @@ class EagerOperation : public AbstractOperationInterface {
   // updated to that device.
   Status SetDeviceName(const char* name) override;
 
-  void SetDevice(tensorflow::Device* device) {
+  void SetDevice(VariantDevice device) {
     device_ = device;
-    device_name_ = device->name();
-    device_parsed_name_ = device->parsed_name();
-    // TODO(b/154133594): Due to intricacies of external logic, we can not
-    // set this do device_name_ as it would be natural, because we need the
-    // next call to SetDeviceName to reset the device pointer.
-    last_set_device_name_ = "\177";  // DEL (an invalid value)
-  }
-
-  void SetDevice(tensorflow::CustomDevice* device) {
-    device_ = device;
-    device_name_ = device->name();
+    device_name_ =
+        device == kVariantDeviceNull ? "" : VariantDeviceName(device);
     DeviceNameUtils::ParseFullName(device_name_, &device_parsed_name_);
     // TODO(b/154133594): Due to intricacies of external logic, we can not
     // set this do device_name_ as it would be natural, because we need the
