@@ -113,6 +113,16 @@ def _make_input_signature_hashable(elem, variable_map=None):
   except TypeError:
     assert isinstance(elem, weakref.ReferenceType)
     v = elem()
+
+    # Check if v is a Variable.  Note that we can't use isinstance to check if
+    # it's a variable, since not all variable types are subclass of Variable.
+    # TODO(mdan) Update this to use a generic "Variable" superclass once we
+    # create one.
+    if not (hasattr(v, "shape") and hasattr(v, "dtype")):
+      raise ValueError("Arguments to a tf.function must be Tensors, Variables, "
+                       "or hashable Python objects (or nested structures of "
+                       "these types).\nGot type: %s" % type(v).__name__)
+
     idx = variable_map.get(id(v))
     if idx is None:
       idx = len(variable_map)
