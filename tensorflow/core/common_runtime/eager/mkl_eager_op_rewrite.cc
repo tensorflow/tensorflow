@@ -136,6 +136,7 @@ Status MklEagerOpRewrite::SetupNewOp(
       ->MutableAttrs()
       ->Set("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
 
+  string device_name = orig_op->DeviceName();
   return (*new_mkl_op)->SetDeviceName(device_name.c_str());
 }
 
