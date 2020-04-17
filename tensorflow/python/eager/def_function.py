@@ -1260,7 +1260,7 @@ def function(func=None,
   ...     self.v = None
   ...
   ...   @tf.function
-  ...   def call(self, x):
+  ...   def __call__(self, x):
   ...     if self.v is None:
   ...       self.v = tf.Variable(tf.ones_like(x))
   ...     return self.v * x
