@@ -1850,25 +1850,31 @@ XlaOp XlaBuilder::Gather(XlaOp input, XlaOp start_indices,
                          absl::Span<const int64> slice_sizes,
                          bool indices_are_sorted) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-    instr.set_indices_are_sorted(indices_are_sorted);
-
     TF_ASSIGN_OR_RETURN(const Shape* input_shape, GetShapePtr(input));
     TF_ASSIGN_OR_RETURN(const Shape* start_indices_shape,
                         GetShapePtr(start_indices));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferGatherShape(
                                          *input_shape, *start_indices_shape,
                                          dimension_numbers, slice_sizes));
-    *instr.mutable_shape() = shape.ToProto();
-
-    *instr.mutable_gather_dimension_numbers() = dimension_numbers;
-    for (int64 bound : slice_sizes) {
-      instr.add_gather_slice_sizes(bound);
-    }
-
-    return AddInstruction(std::move(instr), HloOpcode::kGather,
-                          {input, start_indices});
+    return GatherInternal(shape, input, start_indices, dimension_numbers,
+                          slice_sizes, indices_are_sorted);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::GatherInternal(
+    const Shape& shape, XlaOp input, XlaOp start_indices,
+    const GatherDimensionNumbers& dimension_numbers,
+    absl::Span<const int64> slice_sizes, bool indices_are_sorted) {
+  HloInstructionProto instr;
+  instr.set_indices_are_sorted(indices_are_sorted);
+  *instr.mutable_shape() = shape.ToProto();
+  *instr.mutable_gather_dimension_numbers() = dimension_numbers;
+  for (int64 bound : slice_sizes) {
+    instr.add_gather_slice_sizes(bound);
+  }
+
+  return AddInstruction(std::move(instr), HloOpcode::kGather,
+                        {input, start_indices});
 }
 
 XlaOp XlaBuilder::Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,

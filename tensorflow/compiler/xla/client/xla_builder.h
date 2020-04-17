@@ -605,6 +605,11 @@ class XlaBuilder {
                absl::Span<const int64> slice_sizes,
                bool indices_are_sorted = false);
 
+  virtual StatusOr<XlaOp> GatherInternal(
+      const Shape& shape, XlaOp input, XlaOp start_indices,
+      const GatherDimensionNumbers& dimension_numbers,
+      absl::Span<const int64> slice_sizes, bool indices_are_sorted);
+
   XlaOp Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,
                 const XlaComputation& update_computation,
                 const ScatterDimensionNumbers& dimension_numbers,

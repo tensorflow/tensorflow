@@ -87,6 +87,19 @@ StatusOr<XlaOp> MlirHloBuilder::TransposeInternal(
   return MakeXlaOp(op);
 }
 
+StatusOr<XlaOp> MlirHloBuilder::GatherInternal(
+    const Shape& shape, XlaOp input, XlaOp start_indices,
+    const GatherDimensionNumbers& dimension_numbers,
+    absl::Span<const int64> slice_sizes, bool indices_are_sorted) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::xla_hlo::GatherOp>(
+      loc_, ty, GetValue(input), GetValue(start_indices),
+      ConvertGatherDimensionNumbers(dimension_numbers, &builder_),
+      GetI64ElementsAttr(slice_sizes, &builder_));
+  return MakeXlaOp(op);
+}
+
 StatusOr<XlaOp> MlirHloBuilder::ReshapeInternal(const Shape& shape,
                                                 XlaOp operand,
                                                 int64 inferred_dimension) {

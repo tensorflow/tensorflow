@@ -87,19 +87,20 @@ static bool IsOpWhitelisted(Operation* op) {
       TypeID::get<TF::ComplexAbsOp>(),   TypeID::get<TF::DivNoNanOp>(),
       TypeID::get<TF::EqualOp>(),        TypeID::get<TF::FloorDivOp>(),
       TypeID::get<TF::FloorModOp>(),     TypeID::get<TF::GreaterOp>(),
-      TypeID::get<TF::GreaterEqualOp>(), TypeID::get<TF::InvOp>(),
-      TypeID::get<TF::InvertOp>(),       TypeID::get<TF::LeftShiftOp>(),
-      TypeID::get<TF::LessOp>(),         TypeID::get<TF::LessEqualOp>(),
-      TypeID::get<TF::LogicalAndOp>(),   TypeID::get<TF::LogicalNotOp>(),
-      TypeID::get<TF::LogicalOrOp>(),    TypeID::get<TF::LogOp>(),
-      TypeID::get<TF::MatMulOp>(),       TypeID::get<TF::MulOp>(),
-      TypeID::get<TF::NegOp>(),          TypeID::get<TF::NotEqualOp>(),
-      TypeID::get<TF::PowOp>(),          TypeID::get<TF::RealDivOp>(),
-      TypeID::get<TF::RightShiftOp>(),   TypeID::get<TF::SinOp>(),
-      TypeID::get<TF::SelectV2Op>(),     TypeID::get<TF::SubOp>(),
-      TypeID::get<TF::SquareOp>(),       TypeID::get<TF::TransposeOp>(),
-      TypeID::get<TF::TruncateDivOp>(),  TypeID::get<TF::TruncateModOp>(),
-      TypeID::get<TF::UnpackOp>(),       TypeID::get<TF::XlaDotOp>()};
+      TypeID::get<TF::GreaterEqualOp>(), TypeID::get<TF::GatherNdOp>(),
+      TypeID::get<TF::InvOp>(),          TypeID::get<TF::InvertOp>(),
+      TypeID::get<TF::LeftShiftOp>(),    TypeID::get<TF::LessOp>(),
+      TypeID::get<TF::LessEqualOp>(),    TypeID::get<TF::LogicalAndOp>(),
+      TypeID::get<TF::LogicalNotOp>(),   TypeID::get<TF::LogicalOrOp>(),
+      TypeID::get<TF::LogOp>(),          TypeID::get<TF::MatMulOp>(),
+      TypeID::get<TF::MulOp>(),          TypeID::get<TF::NegOp>(),
+      TypeID::get<TF::NotEqualOp>(),     TypeID::get<TF::PowOp>(),
+      TypeID::get<TF::RealDivOp>(),      TypeID::get<TF::RightShiftOp>(),
+      TypeID::get<TF::SinOp>(),          TypeID::get<TF::SelectV2Op>(),
+      TypeID::get<TF::SubOp>(),          TypeID::get<TF::SquareOp>(),
+      TypeID::get<TF::TransposeOp>(),    TypeID::get<TF::TruncateDivOp>(),
+      TypeID::get<TF::TruncateModOp>(),  TypeID::get<TF::UnpackOp>(),
+      TypeID::get<TF::XlaDotOp>()};
 
   auto* abstractOp = op->getAbstractOperation();
   if (!abstractOp) return false;

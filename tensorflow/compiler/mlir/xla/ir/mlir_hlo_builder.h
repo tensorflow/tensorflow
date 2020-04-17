@@ -94,6 +94,11 @@ class MlirHloBuilder : public XlaBuilder {
       const Shape& shape, XlaOp operand,
       absl::Span<const int64> permutation) override;
 
+  StatusOr<XlaOp> GatherInternal(
+      const Shape& shape, XlaOp input, XlaOp start_indices,
+      const GatherDimensionNumbers& dimension_numbers,
+      absl::Span<const int64> slice_sizes, bool indices_are_sorted) override;
+
   StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
                                   int64 inferred_dimension) override;
 
