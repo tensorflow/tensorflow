@@ -406,7 +406,10 @@ def build_toco_convert_protos(input_tensors,
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
     input_array = model.input_arrays.add()
-    input_array.name = util.get_tensor_name(input_tensor)
+    if saved_model_dir:
+      input_array.name = input_tensor.name
+    else:
+      input_array.name = util.get_tensor_name(input_tensor)
     input_array.data_type = util.convert_dtype_to_tflite_type(
         input_tensor.dtype)
 
@@ -429,7 +432,10 @@ def build_toco_convert_protos(input_tensors,
     input_array.shape.dims.extend(dims)
 
   for output_tensor in output_tensors:
-    model.output_arrays.append(util.get_tensor_name(output_tensor))
+    if saved_model_dir:
+      model.output_arrays.append(output_tensor.name)
+    else:
+      model.output_arrays.append(util.get_tensor_name(output_tensor))
 
   model.allow_nonexistent_arrays = allow_nonexistent_arrays
 

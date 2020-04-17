@@ -529,6 +529,7 @@ cc_library(
         "//tensorflow/core/platform:coding",
         "//tensorflow/core/platform:random",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -666,6 +667,16 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels/data:dataset_test_base",
         "//third_party/eigen3",
+    ],
+)
+
+tf_kernel_library(
+    # data service kernels depend on GRPC, so we package them separately
+    # so that downstream rules can avoid depending on GRPC.
+    name = "data_service_kernels",
+    deps = [
+        ":data_service_dataset_op",
+        ":data_service_ops",
     ],
 )
 

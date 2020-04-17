@@ -1434,9 +1434,9 @@ void ProcessFunctionLibraryRuntime::Run(
   std::vector<Tensor> args;
   args.reserve(frame->num_args());
   for (size_t i = 0; i < frame->num_args(); ++i) {
-    Tensor arg;
+    const Tensor* arg;
     Status s = frame->GetArg(i, &arg);
-    args.push_back(std::move(arg));
+    args.emplace_back(*arg);
     if (!s.ok()) {
       done(s);
     }

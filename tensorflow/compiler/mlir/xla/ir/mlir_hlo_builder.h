@@ -90,6 +90,10 @@ class MlirHloBuilder : public XlaBuilder {
  private:
   XlaOp ConstantLiteral(const LiteralSlice& literal) override;
 
+  StatusOr<XlaOp> TransposeInternal(
+      const Shape& shape, XlaOp operand,
+      absl::Span<const int64> permutation) override;
+
   StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
                                   int64 inferred_dimension) override;
 
@@ -97,9 +101,11 @@ class MlirHloBuilder : public XlaBuilder {
       const Shape& shape, XlaOp operand,
       absl::Span<const int64> broadcast_dimensions) override;
 
-  XlaOp BinaryOpNoBroadcast(
-      HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
-      absl::optional<ComparisonDirection> direction) override;
+  StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
+                          ComparisonDirection direction) override;
+
+  XlaOp BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape, XlaOp lhs,
+                            XlaOp rhs) override;
 
   StatusOr<XlaOp> AddOpWithShape(HloOpcode opcode, const Shape& shape,
                                  absl::Span<const XlaOp> operands) override;

@@ -229,7 +229,8 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
-              strategy_combinations.central_storage_strategy_with_two_gpus,
+              # TODO(b/137795644): support CentralStroageStrategy
+              # strategy_combinations.central_storage_strategy_with_two_gpus,
           ],
           mode=["eager"]
       ))
@@ -253,7 +254,8 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
-              strategy_combinations.central_storage_strategy_with_two_gpus,
+              # TODO(b/137795644): support CentralStroageStrategy
+              # strategy_combinations.central_storage_strategy_with_two_gpus,
           ],
           mode=["eager"]
       ))
@@ -655,6 +657,35 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
 
     # In replica context.
     distribution.run(assert_is_tensor_like, args=(v,))
+
+  def testAssignSignature(self, distribution, synchronization, aggregation):
+    # This test verifies assign*() can be called in the same way as normal
+    # variables.
+    with distribution.scope():
+      v = variables_lib.Variable(
+          0., synchronization=synchronization, aggregation=aggregation)
+
+      def assign():
+        one = constant_op.constant(1.)
+        v.assign(one, True, "assign", False)
+        # TODO(b/154017756): SyncOnReadVariable.assign() doesn't support passing
+        # value as a keyword argument.
+        v.assign(one, use_locking=True, name="assign", read_value=False)
+        v.assign_add(one, True, "assign", False)
+        v.assign_add(one, use_locking=True, name="assign", read_value=False)
+        v.assign_sub(one, True, "assign", False)
+        v.assign_sub(one, use_locking=True, name="assign", read_value=False)
+        # Return something for graph mode to fetch.
+        return constant_op.constant(1)
+
+      self.evaluate(variables_lib.global_variables_initializer())
+      if not (synchronization == variables_lib.VariableSynchronization.ON_READ
+              and aggregation == variables_lib.VariableAggregation.SUM):
+        self.evaluate(distribution.experimental_local_results(assign()))
+      if not (isinstance(distribution.extended, tpu_strategy.TPUExtended) and
+              context.executing_eagerly()):
+        self.evaluate(
+            distribution.experimental_local_results(distribution.run(assign)))
 
 
 class MirroredVariableTest(test.TestCase, parameterized.TestCase):

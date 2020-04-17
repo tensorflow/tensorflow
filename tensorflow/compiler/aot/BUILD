@@ -16,6 +16,12 @@ cc_library(
     deps = ["//tensorflow/core:test_main"],
 )
 
+filegroup(
+    name = "quantize_header",
+    srcs = ["quantize.h"],
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "tfcompile_lib",
     srcs = [
@@ -27,6 +33,7 @@ cc_library(
         "codegen.h",
         "compile.h",
         "flags.h",
+        "quantize.h",
     ],
     defines = if_llvm_aarch64_available(["TF_LLVM_AARCH64_AVAILABLE=1"]),
     visibility = ["//tensorflow/python:__pkg__"],
@@ -37,7 +44,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "//tensorflow/compiler/mlir/lite/quantization/xla:quantize",
         "//tensorflow/compiler/tf2xla",
         "//tensorflow/compiler/tf2xla:mlir_tf2xla",
         "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",

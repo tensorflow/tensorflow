@@ -375,10 +375,6 @@ class ExecutorState {
 
   mutex mu_;
   Status status_ TF_GUARDED_BY(mu_);
-
-  // A flag that is set on error after the propagator state has been
-  // dumped for diagnostic purposes.
-  bool dumped_on_error_ TF_GUARDED_BY(mu_) = false;
 };
 
 template <class PropagatorStateType>
@@ -932,11 +928,6 @@ Status ExecutorState<PropagatorStateType>::ProcessOutputs(
     // add better optional debugging support.
     if (vlog_ && VLOG_IS_ON(1)) {
       LOG(WARNING) << this << " Compute status: " << s;
-      mutex_lock l(mu_);
-      if (!dumped_on_error_) {
-        propagator_.DumpState();
-        dumped_on_error_ = true;
-      }
     }
     if (s.code() == error::RESOURCE_EXHAUSTED) {
       if (stats_collector_) {
@@ -1188,6 +1179,12 @@ void ExecutorState<PropagatorStateType>::Finish() {
   int64 step_id = step_id_;
   CHECK(done_cb != nullptr);
   Device* device = immutable_state_.params().device;
+
+  if (vlog_ && !status.ok() && VLOG_IS_ON(1)) {
+    // Logs verbose information about the current state of active and pending
+    // nodes in the propagator.
+    propagator_.DumpState();
+  }
 
   // There are several potential race conditions below. To name a few:
   // 1. Even if the device's status is OK at the precise moment when

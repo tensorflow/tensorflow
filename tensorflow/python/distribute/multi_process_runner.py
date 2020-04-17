@@ -36,6 +36,13 @@ from tensorflow.python.distribute import multi_process_lib
 from tensorflow.python.eager import context
 from tensorflow.python.platform import test
 
+# pylint: disable=g-import-not-at-top
+try:
+  # `faulthandler` is not available in py2.
+  import faulthandler
+except ImportError:
+  faulthandler = None
+
 # _ProcessStatusInfo contains process status information. When is_successful
 # attribute is True, the subprocess has ended successfully, or if False, the
 # exception stack trace info is stored in exc_info to pass on to parent process
@@ -81,6 +88,10 @@ STREAMING_PIPE = 'streaming_pipe'
 BARRIER = 'barrier'
 
 _DEFAULT_MAX_SUBPROCESS_COUNT = 20
+
+# Default time out sec is selected so that it's handled before the default
+# "medium" timeout of the test runs.
+_DEFAULT_TIMEOUT_SEC = 200
 
 # Next pipe index to be global so that pipes are not reused across multiple
 # MultiProcessRunner usages.
@@ -366,7 +377,7 @@ class MultiProcessRunner(object):
         break
     return list_to_return
 
-  def join(self, timeout=None):
+  def join(self, timeout=_DEFAULT_TIMEOUT_SEC):
     """Joins all the processes with timeout.
 
     Args:
@@ -397,6 +408,9 @@ class MultiProcessRunner(object):
           if self._all_forced_terminated:
             break
           if time.time() - start_time > timeout:
+            # Send SIGTERM signal to subprocesses to dump their current
+            # stack trace.
+            self.terminate_all(sig=signal.SIGTERM)
             # If none of those did, report timeout to user.
             raise RuntimeError('One or more subprocesses timed out. '
                                'Number of outstanding subprocesses '
@@ -435,8 +449,11 @@ class MultiProcessRunner(object):
     _resource(PARENT_TO_SUB_QUEUE).put('terminate {} {}'.format(
         task_type, task_id))
 
-  def terminate_all(self):
+  def terminate_all(self, sig=None):
     """Terminates all subprocesses."""
+    # Use SIGKILL as default. In systems where that's unavailable such as
+    # windows, use SIGTERM.
+    sig = sig or getattr(signal, 'SIGKILL', signal.SIGTERM)
     subprocess_infos = []
 
     while True:
@@ -449,7 +466,7 @@ class MultiProcessRunner(object):
     for subprocess_info in subprocess_infos:
       logging.info('Parent process is now killing PID: %d', subprocess_info.pid)
       try:
-        os.kill(subprocess_info.pid, signal.SIGKILL)
+        os.kill(subprocess_info.pid, sig)
       except ProcessLookupError:
         # TODO(rchao): Remove subprocess info from the queue once a subprocess
         # is terminated.
@@ -510,11 +527,14 @@ class _Subprocess(object):
                *arg, **kwargs):
     """The wrapper function that actually gets run in child process(es)."""
 
+    if faulthandler is not None:
+      faulthandler.enable()
+      faulthandler.register(signal.SIGTERM, chain=True)
+
     pid = os.getpid()
     logging.info('Subprocess with PID %d (%s, %d) is now being started.', pid,
                  task_type, task_id)
     _resource(SUBPROCESS_INFO_QUEUE).put(_SubprocessInfo(pid=pid))
-
     # Assign sys.stdout and sys.stderr as duplicates of `pipe_w` so print() and
     # logging.*() write directly to `pipe_w`. Unfortunately since we cannot
     # prepend task_type and task_id information to the streamed logs we will
@@ -605,7 +625,7 @@ def run(proc_func,
         grpc_fail_fast=None,
         stream_stdout=True,
         list_stdout=False,
-        timeout=None,
+        timeout=_DEFAULT_TIMEOUT_SEC,
         args=None,
         kwargs=None):  # pylint: disable=g-doc-args
   """Runs functions in local child processes.

@@ -31,6 +31,7 @@ from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values as value_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
@@ -39,6 +40,7 @@ from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 
 
 def _get_devices(devices):
@@ -385,6 +387,33 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
     devices = ["/cpu:0", "/gpu:0"]
     self._testIndexedSlicesAllReduce(devices, cross_device_ops_instance,
                                      reduce_op, batch_reduce)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          cross_device_ops_instance=[
+              combinations.NamedObject(
+                  "ReductionToOneDevice",
+                  cross_device_ops_lib.ReductionToOneDevice()),
+              combinations.NamedObject(
+                  "AllReduceCrossDeviceOps",
+                  cross_device_ops_lib.AllReduceCrossDeviceOps("ring"))
+          ],
+          batch_reduce=[True, False],
+          mode=["graph", "eager"]))
+  def testReduceDistributedVariable(self, distribution,
+                                    cross_device_ops_instance, batch_reduce):
+    with distribution.scope():
+      v = variables.Variable(1.)
+    if batch_reduce:
+      result = cross_device_ops_instance.batch_reduce(reduce_util.ReduceOp.MEAN,
+                                                      [(v, v)])[0]
+    else:
+      result = cross_device_ops_instance.reduce(reduce_util.ReduceOp.MEAN, v, v)
+    for v in result.values:
+      self.assertIsInstance(v, ops.Tensor)
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(self.evaluate(result.values), [1.0, 1.0])
 
 
 class MultiWorkerCrossDeviceOpsTest(multi_worker_test_base.MultiWorkerTestBase,

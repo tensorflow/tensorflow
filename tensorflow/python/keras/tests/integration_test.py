@@ -157,11 +157,6 @@ class SequentialIntegrationTest(KerasIntegrationTest):
               verbose=2)
     model = self._save_and_reload_model(model)
 
-    # TODO(b/134537740): model.pop doesn't update model outputs properly when
-    # model.outputs is already defined, so just set to `None` for now.
-    model.inputs = None
-    model.outputs = None
-
     model.pop()
     model.add(keras.layers.Dense(y_train.shape[-1], activation='softmax'))
 

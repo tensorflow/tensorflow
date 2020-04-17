@@ -13,7 +13,7 @@ load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+load("//tensorflow:tensorflow.bzl", "pywrap_tensorflow_macro")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
@@ -1585,7 +1585,6 @@ cuda_py_test(
         ":sparse_tensor",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
@@ -1963,6 +1962,14 @@ py_library(
 py_library(
     name = "is_xla_test_true",
     srcs = ["framework/is_xla_test_true.py"],
+    srcs_version = "PY2AND3",
+)
+
+# Including this as a dependency will result in tests using
+# :framework_test_lib to use MLIR.
+py_library(
+    name = "is_mlir_bridge_test_true",
+    srcs = ["framework/is_mlir_bridge_test_true.py"],
     srcs_version = "PY2AND3",
 )
 
@@ -4243,6 +4250,7 @@ py_library(
         ":array_ops",
         ":control_flow_ops",
         ":control_flow_util",
+        ":control_flow_util_v2",
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":rnn_cell",
@@ -4877,7 +4885,6 @@ cuda_py_test(
         ":test_ops",
         ":unconnected_gradients",
         ":variable_scope",
-        "//tensorflow/python/keras:engine",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -5831,16 +5838,14 @@ py_library(
         ["pywrap_dlopen_global_flags.py"],
         # Import will fail, indicating no global dlopen flags
         otherwise = [],
-    ),
+    ),  # b/153585257
     srcs_version = "PY2AND3",
     deps = [":pywrap_tensorflow_internal"],
 )
 
-# TODO(b/137885063): This macro should be cleaned up to be just
-# a py_binary/library shared object. We have removed the source
-# SWIG file to prevent people from adding SWIG code.
-tf_py_wrap_cc(
+pywrap_tensorflow_macro(
     name = "pywrap_tensorflow_internal",
+    srcs = ["pywrap_tensorflow_internal.cc"],
     # add win_def_file for pywrap_tensorflow
     win_def_file = select({
         "//tensorflow:windows": ":pywrap_tensorflow_filtered_def_file",
@@ -5885,6 +5890,7 @@ tf_py_wrap_cc(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core:lib",
         "//tensorflow/core:reader_base",
+        "//tensorflow/core/kernels:data_service_ops",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:stacktrace_handler",
@@ -6546,27 +6552,6 @@ tf_py_test(
     size = "small",
     srcs = ["lib/io/tf_record_test.py"],
     python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":errors",
-        ":lib",
-        ":util",
-    ],
-)
-
-tf_py_test(
-    name = "tf_record_multiprocessing_test",
-    size = "small",
-    srcs = ["lib/io/tf_record_multiprocessing_test.py"],
-    python_version = "PY3",
-    tags = [
-        # multiprocessing can be flaky in the internal google
-        # environment, so we disable it there.
-        "notap",
-        # The multiprocessing module behaves differently on
-        # windows, so we disable this test on windows.
-        "no_windows",
-    ],
     deps = [
         ":client_testlib",
         ":errors",

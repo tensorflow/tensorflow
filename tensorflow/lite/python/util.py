@@ -263,9 +263,9 @@ def freeze_graph(sess, input_tensors, output_tensors):
                                         hinted_outputs_nodes)
 
   if not is_frozen_graph(sess):
-    output_arrays = [get_tensor_name(tensor) for tensor in output_tensors]
+    output_node_names = [tensor.name.split(":")[0] for tensor in output_tensors]
     return tf_graph_util.convert_variables_to_constants(sess, graph_def,
-                                                        output_arrays)
+                                                        output_node_names)
   else:
     return sess.graph_def
 

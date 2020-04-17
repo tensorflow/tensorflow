@@ -48,12 +48,15 @@ bool DnnSupport::GetConvolveAlgorithms(
 }
 
 bool DnnSupport::GetMIOpenConvolveAlgorithms(
-    dnn::ConvolutionKind /*kind*/, Stream* /*stream*/,
-    dnn::DataType /*element_type*/,
-    const dnn::BatchDescriptor& /*input_descriptor*/,
+    dnn::ConvolutionKind /*kind*/, dnn::DataType /*element_type*/,
+    Stream* /*stream*/, const dnn::BatchDescriptor& /*input_descriptor*/,
+    DeviceMemoryBase input_data,
     const dnn::FilterDescriptor& /*filter_descriptor*/,
-    const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
+    DeviceMemoryBase filter_data,
     const dnn::BatchDescriptor& /*output_descriptor*/,
+    DeviceMemoryBase output_data,
+    const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
+    ScratchAllocator* scratch_allocator,
     std::vector<ProfileResult>* /*out_algorithms*/) {
   return false;
 }
@@ -615,16 +618,14 @@ bool DnnSupport::IsStatusOk(const port::Status& status, bool report_error) {
   return false;
 }
 
-port::Status DnnSupport::DoCtcLoss(Stream* stream, dnn::DataType element_type,
-                                   const RnnStateTensorDescriptor& probs_desc,
-                                   const DeviceMemoryBase probs_data,
-                                   absl::Span<const int> labels_data,
-                                   absl::Span<const int> labels_lengths_data,
-                                   absl::Span<const int> input_lengths_data,
-                                   DeviceMemoryBase costs_data,
-                                   const RnnStateTensorDescriptor& grads_desc,
-                                   DeviceMemoryBase grads_data,
-                                   DeviceMemory<uint8> scratch_memory) {
+port::Status DnnSupport::DoCtcLoss(
+    Stream* stream, dnn::DataType element_type,
+    const RnnStateTensorDescriptor& probs_desc,
+    const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
+    absl::Span<const int> labels_lengths_data,
+    absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
+    const RnnStateTensorDescriptor& grads_desc, DeviceMemoryBase grads_data,
+    DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id) {
   return port::UnimplementedError("CtcLoss not implemented");
 }
 

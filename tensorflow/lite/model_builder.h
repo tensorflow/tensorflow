@@ -145,7 +145,7 @@ class FlatBufferModel {
   // lower-bound; ops in the graph may not have an associated runtime version,
   // in which case the actual required runtime might be greater than the
   // reported minimum.
-  string GetMinimumRuntime() const;
+  std::string GetMinimumRuntime() const;
 
   /// Returns true if the model identifier is correct (otherwise false and
   /// reports an error).

@@ -398,6 +398,9 @@ def fftshift(x, axes=None, name=None):
     elif isinstance(axes, int):
       shift = _array_ops.shape(x)[axes] // 2
     else:
+      rank = _array_ops.rank(x)
+      # allows negative axis
+      axes = _array_ops.where(_math_ops.less(axes, 0), axes + rank, axes)
       shift = _array_ops.gather(_array_ops.shape(x), axes) // 2
 
     return manip_ops.roll(x, shift, axes, name)
@@ -439,6 +442,9 @@ def ifftshift(x, axes=None, name=None):
     elif isinstance(axes, int):
       shift = -(_array_ops.shape(x)[axes] // 2)
     else:
+      rank = _array_ops.rank(x)
+      # allows negative axis
+      axes = _array_ops.where(_math_ops.less(axes, 0), axes + rank, axes)
       shift = -(_array_ops.gather(_array_ops.shape(x), axes) // 2)
 
     return manip_ops.roll(x, shift, axes, name)

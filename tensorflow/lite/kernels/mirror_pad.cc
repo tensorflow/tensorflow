@@ -231,6 +231,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_MIRROR_PAD(uint8_t);
       break;
     }
+    case kTfLiteInt8: {
+      TF_LITE_MIRROR_PAD(int8_t);
+      break;
+    }
     case kTfLiteInt64: {
       TF_LITE_MIRROR_PAD(int64_t);
       break;

@@ -42,6 +42,7 @@ class DeviceTfOpMetricsDbBuilder : public OpMetricsDbBuilder {
       tf_op_metrics->set_category(
           tf_op_type == kUnknownOp ? "Unknown" : string(tf_op_type));
     }
+    tf_op_metrics->set_is_eager(device_op_metrics.is_eager());
     // The occurrences of a TF-op is the maximum among the occurrences of all
     // device ops that it contains.
     tf_op_metrics->set_occurrences(std::max(tf_op_metrics->occurrences(),

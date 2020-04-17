@@ -1,0 +1,23 @@
+op {
+  name: "KmeansPlusPlusInitialization"
+  input_arg {
+    name: "points"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "num_to_sample"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "num_retries_per_sample"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "samples"
+    type: DT_FLOAT
+  }
+}

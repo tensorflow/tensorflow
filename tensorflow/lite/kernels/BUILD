@@ -230,14 +230,15 @@ cc_test(
 
 cc_library(
     name = "tflite_with_ruy_enabled",
+    build_for_embedded = True,
     defines = ["TFLITE_WITH_RUY"],
     visibility = ["//visibility:private"],
 )
 
 cc_library(
     name = "tflite_with_ruy_default",
-    visibility = ["//visibility:private"],
-    deps = select({
+    build_for_embedded = True,
+    select_deps = {
         ":chromiumos_arm64": [":tflite_with_ruy_enabled"],
         ":cpu_aarch64": [":tflite_with_ruy_enabled"],
         ":cpu_arm64": [":tflite_with_ruy_enabled"],
@@ -247,16 +248,18 @@ cc_library(
         ":cpu_arm64_v8a": [":tflite_with_ruy_enabled"],
         "//tensorflow:android_arm": ["tflite_with_ruy_enabled"],
         "//conditions:default": [],
-    }),
+    },
+    visibility = ["//visibility:private"],
 )
 
 cc_library(
     name = "tflite_with_ruy",
-    deps = select({
+    build_for_embedded = True,
+    select_deps = {
         ":tflite_with_ruy_explicit_true": [":tflite_with_ruy_enabled"],
         ":tflite_with_ruy_explicit_false": [],
         "//conditions:default": [":tflite_with_ruy_default"],
-    }),
+    },
 )
 
 cc_library(
@@ -376,6 +379,7 @@ cc_library(
     hdrs = [
         "kernel_util.h",
     ],
+    build_for_embedded = True,
     copts = tflite_copts() + micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
@@ -411,6 +415,7 @@ cc_library(
     name = "padding",
     srcs = [],
     hdrs = ["padding.h"],
+    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",
@@ -1219,6 +1224,17 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "reshape_test_common",
+    testonly = 1,
+    hdrs = [
+        "reshape_test_common.h",
+    ],
+    deps = [
+        ":test_util",
+    ],
+)
+
 cc_test(
     name = "reshape_test",
     size = "small",
@@ -1226,6 +1242,7 @@ cc_test(
     tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
+        ":reshape_test_common",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",

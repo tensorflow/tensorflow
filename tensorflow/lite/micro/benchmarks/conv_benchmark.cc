@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <ctime>
-
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/kernels/micro_ops.h"
+#include "tensorflow/lite/micro/micro_time.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
 namespace tflite {
@@ -27,14 +26,14 @@ namespace {
 // Takes in quantized tensors along with expected outputs, and runs a single
 // iteration of the conv op with the supplied parameters. Compares outputs vs
 // the expected outputs and logs any differences found. Additionally, logs the
-// number of clocks taken by the invoke call.
+// number of clock ticks taken by the invoke call.
 TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
                                  TfLiteConvParams* conv_params, int tolerance,
                                  int output_length,
-                                 const int8_t* expected_output_data) {
-  MicroErrorReporter micro_reporter;
+                                 const int8_t* expected_output_data,
+                                 ErrorReporter* reporter) {
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, &micro_reporter, &context);
+  PopulateContext(tensors, tensors_size, reporter, &context);
 
   const TfLiteRegistration* registration = ops::micro::Register_CONV_2D();
 
@@ -68,16 +67,17 @@ TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
   node.custom_initial_data_size = 0;
   node.delegate = nullptr;
 
-  TfLiteStatus prepare_status = registration->prepare(&context, &node);
-  if (prepare_status != kTfLiteOk) {
-    return prepare_status;
+  if (registration->prepare) {
+    TfLiteStatus prepare_status = registration->prepare(&context, &node);
+    if (prepare_status != kTfLiteOk) {
+      return prepare_status;
+    }
   }
 
-  // On xtensa-hifimini, clock() returns a cyle count. On x86, it returns a time
-  // based on CLOCKS_PER_SECOND.
-  clock_t start = clock();
+  int32_t start = tflite::GetCurrentTimeTicks();
   TfLiteStatus invoke_status = registration->invoke(&context, &node);
-  printf("invoke took %ld cycles\n", clock() - start);
+  TF_LITE_REPORT_ERROR(reporter, "invoke took %d cycles\n",
+                       tflite::GetCurrentTimeTicks() - start);
 
   if (registration->free) {
     registration->free(&context, user_data);
@@ -90,9 +90,9 @@ TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
   int8_t* output_data = tensors[3].data.int8;
   for (int i = 0; i < output_length; ++i) {
     if (std::abs(expected_output_data[i] - output_data[i]) > tolerance) {
-      printf("output[%d] failed, was %f expected %f\n", i,
-             static_cast<float>(output_data[i]),
-             static_cast<float>(expected_output_data[i]));
+      TF_LITE_REPORT_ERROR(reporter, "output[%d] failed, was %d expected %d\n",
+                           i, static_cast<int>(output_data[i]),
+                           static_cast<int>(expected_output_data[i]));
     }
   }
   return kTfLiteOk;
@@ -103,6 +103,7 @@ TfLiteStatus ValidateConvGoldens(TfLiteTensor* tensors, int tensors_size,
 }  // namespace tflite
 
 int main() {
+  tflite::MicroErrorReporter reporter;
   const int input_shape[] = {4, 1, 1, 1, 32};
   const int filter_shape[] = {4, 32, 1, 1, 32};
   const int bias_shape[] = {1, 32};
@@ -229,9 +230,9 @@ int main() {
   const int num_tensors = sizeof(tensors) / sizeof(TfLiteTensor);
   TfLiteStatus status = tflite::testing::ValidateConvGoldens(
       tensors, num_tensors, &conv_params, kQuantizationTolerance,
-      output_dims_count, golden_quantized);
-  if (status == kTfLiteError) {
-    printf("Model invoke failed\n");
+      output_dims_count, golden_quantized, &reporter);
+  if (status != kTfLiteOk) {
+    TF_LITE_REPORT_ERROR(&reporter, "Model invoke failed\n");
   }
   return 0;
 }

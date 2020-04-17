@@ -253,6 +253,8 @@ class CuptiTracer {
 
   static uint64 GetTimestamp();
   static int NumGpus();
+  // Returns the error (if any) when using libcupti.
+  static std::string ErrorIfAny();
 
  protected:
   // protected constructor for injecting mock cupti interface for testing.

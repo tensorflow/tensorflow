@@ -55,8 +55,8 @@ inline void FullyConnected(
   const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
   const int accum_depth_iters = accum_depth / 2;
 
-  ae_p24x2s offsets_input_24x2 = AE_MOVPA24X2(input_offset, input_offset);
-  ae_p24x2s offsets_filter_24x2 = AE_MOVPA24X2(filter_offset, filter_offset);
+  ae_p24x2s offsets_input_24x2 = AE_MOVPA24(input_offset);
+  ae_p24x2s offsets_filter_24x2 = AE_MOVPA24(filter_offset);
   ae_q56s output_offset_56 = AE_CVTQ48A32S(output_offset);
   ae_q56s output_activation_max_56 = AE_CVTQ48A32S(output_activation_max);
   ae_q56s output_activation_min_56 = AE_CVTQ48A32S(output_activation_min);
@@ -148,7 +148,7 @@ constexpr int kOutputTensor = 0;
 
 // This size will work for both the hotword (5) and ambient music (2):
 constexpr int kMaxOpDataSize = 7;
-static int kStaticOpDataCounter = 0;
+static int op_data_counter = 0;
 static OpData kStaticOpData[kMaxOpDataSize];
 
 TfLiteStatus CalculateOpData(TfLiteContext* context,
@@ -175,6 +175,8 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
 
 }  // namespace
 
+void Free(TfLiteContext* context, void* buffer) { op_data_counter = 0; }
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
@@ -187,7 +189,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(b/132070898): Use statically slotted OpData structures until a
   // scratch memory API is ready.
-  OpData* op_data = &kStaticOpData[kStaticOpDataCounter++];
+  OpData* op_data = &kStaticOpData[op_data_counter++];
   node->user_data = op_data;
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(context, params, data_type, input,
@@ -246,7 +248,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteRegistration* Register_FULLY_CONNECTED() {
   static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
+                                 /*free=*/fully_connected::Free,
                                  /*prepare=*/fully_connected::Prepare,
                                  /*invoke=*/fully_connected::Eval,
                                  /*profiling_string=*/nullptr,

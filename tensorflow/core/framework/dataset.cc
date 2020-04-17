@@ -228,7 +228,7 @@ Status GraphDefBuilderWrapper::AddDataset(
     opts.reset(new GraphDefBuilder::Options(
         opts->WithAttr("output_types", dataset->output_dtypes())));
   }
-  for (auto attr : attrs) {
+  for (const auto& attr : attrs) {
     opts.reset(
         new GraphDefBuilder::Options(opts->WithAttr(attr.first, attr.second)));
   }

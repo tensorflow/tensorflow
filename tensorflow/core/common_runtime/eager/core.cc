@@ -21,8 +21,7 @@ limitations under the License.
 
 namespace {
 
-bool IsCPU(
-    absl::variant<tensorflow::Device*, tensorflow::CustomDevice*> variant) {
+bool IsCPU(tensorflow::VariantDevice variant) {
   if (VariantDeviceIsCustom(variant)) {
     return false;
   }

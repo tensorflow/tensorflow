@@ -33,8 +33,37 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "gradients_test",
+    srcs = ["gradients_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:extra_py_tests_deps",
+    ],
+)
+
+tf_py_test(
     name = "legacy_rnn_test",  # Remove this target in when TF 1 is deprecated.
     srcs = ["legacy_rnn_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:extra_py_tests_deps",
+    ],
+)
+
+tf_py_test(
+    name = "module_test",
+    srcs = ["module_test.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:extra_py_tests_deps",
+    ],
+)
+
+tf_py_test(
+    name = "vectorized_map_test",
+    srcs = ["vectorized_map_test.py"],
     python_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",

@@ -16,7 +16,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/types/optional.h"
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 

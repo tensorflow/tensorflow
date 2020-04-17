@@ -14,9 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
-#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 #include "tensorflow/lite/tools/benchmark/delegate_provider.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
 #if (defined(ANDROID) || defined(__ANDROID__)) && \
@@ -24,14 +22,28 @@ limitations under the License.
 #define TFLITE_ENABLE_HEXAGON
 #endif
 
+#if defined(TFLITE_ENABLE_HEXAGON)
+#include "tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h"
+#endif
+
 namespace tflite {
 namespace benchmark {
 
 class HexagonDelegateProvider : public DelegateProvider {
  public:
-  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
+  HexagonDelegateProvider() {
+#if defined(TFLITE_ENABLE_HEXAGON)
+    default_params_.AddParam("use_hexagon",
+                             BenchmarkParam::Create<bool>(false));
+    default_params_.AddParam(
+        "hexagon_lib_path",
+        BenchmarkParam::Create<std::string>("/data/local/tmp"));
+    default_params_.AddParam("hexagon_profiling",
+                             BenchmarkParam::Create<bool>(false));
+#endif
+  }
 
-  void AddParams(BenchmarkParams* params) const final;
+  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
 
   void LogParams(const BenchmarkParams& params) const final;
 
@@ -58,15 +70,6 @@ std::vector<Flag> HexagonDelegateProvider::CreateFlags(
 #endif
 }
 
-void HexagonDelegateProvider::AddParams(BenchmarkParams* params) const {
-#if defined(TFLITE_ENABLE_HEXAGON)
-  params->AddParam("use_hexagon", BenchmarkParam::Create<bool>(false));
-  params->AddParam("hexagon_lib_path",
-                   BenchmarkParam::Create<std::string>("/data/local/tmp"));
-  params->AddParam("hexagon_profiling", BenchmarkParam::Create<bool>(false));
-#endif
-}
-
 void HexagonDelegateProvider::LogParams(const BenchmarkParams& params) const {
 #if defined(TFLITE_ENABLE_HEXAGON)
   TFLITE_LOG(INFO) << "Use Hexagon : [" << params.Get<bool>("use_hexagon")
@@ -83,9 +86,14 @@ TfLiteDelegatePtr HexagonDelegateProvider::CreateTfLiteDelegate(
   TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
 #if defined(TFLITE_ENABLE_HEXAGON)
   if (params.Get<bool>("use_hexagon")) {
+    TfLiteHexagonDelegateOptions options = {0};
+    options.print_graph_profile = params.Get<bool>("hexagon_profiling");
+    options.max_delegated_partitions =
+        params.Get<int>("max_delegated_partitions");
+    options.min_nodes_per_partition =
+        params.Get<int>("min_nodes_per_partition");
     delegate = evaluation::CreateHexagonDelegate(
-        params.Get<std::string>("hexagon_lib_path"),
-        params.Get<bool>("hexagon_profiling"));
+        &options, params.Get<std::string>("hexagon_lib_path"));
 
     if (!delegate.get()) {
       TFLITE_LOG(WARN)

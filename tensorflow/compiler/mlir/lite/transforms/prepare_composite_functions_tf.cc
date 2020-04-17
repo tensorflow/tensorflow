@@ -94,7 +94,8 @@ class ConvertEmbeddedLookupFunc {
 // body with the corresponding fused TFLite op. The replacement need not always
 // be a fused op, though that is the primary use case.
 class PrepareCompositeFunctionsPass
-    : public OperationPass<PrepareCompositeFunctionsPass, ModuleOp> {
+    : public PassWrapper<PrepareCompositeFunctionsPass,
+                         OperationPass<ModuleOp>> {
  public:
   explicit PrepareCompositeFunctionsPass() {}
 
@@ -211,7 +212,7 @@ void PrepareCompositeFunctionsPass::runOnOperation() {
 }
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreatePrepareCompositeFunctionsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareCompositeFunctionsPass() {
   return std::make_unique<PrepareCompositeFunctionsPass>();
 }
 

@@ -740,7 +740,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       });
   std::vector<Tensor> outputs;
 
-  TF_ASSERT_OK(kernel->Run(inputs, &outputs, /*cancellation_manager=*/nullptr,
+  TF_ASSERT_OK(kernel->Run(/*step_container=*/nullptr, inputs, &outputs,
+                           /*cancellation_manager=*/nullptr,
                            /*remote_func_params=*/absl::nullopt));
 
   CheckOutputsAndClose(op_id);

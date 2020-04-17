@@ -39,7 +39,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python import keras
 
 
 class Tests(test.TestCase):
@@ -261,10 +260,12 @@ class Tests(test.TestCase):
 
   def testEagerExecute_InvalidType(self):
     # Test case for GitHub issue 26879.
-    value = keras.layers.Input((128, 128, 1), dtype="float32")
-    with self.assertRaisesRegexp(TypeError,
-                                 "Expected list for 'values' argument"):
-      _ = array_ops.stack(value, axis=1)
+    with ops.Graph().as_default():
+      a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
+      m = resource_variable_ops.ResourceVariable(a_2_by_2)
+      with self.assertRaisesRegexp(TypeError,
+                                   "Expected list for 'values' argument"):
+        _ = array_ops.stack(m, axis=1)
 
   def testGraphResourceVariableRaisesFallback(self):
     with ops.Graph().as_default():

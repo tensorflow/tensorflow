@@ -68,7 +68,8 @@ using std::string;
 // shape.
 //
 struct TensorArrayOpsDecompositionPass
-    : public OperationPass<TensorArrayOpsDecompositionPass, ModuleOp> {
+    : public PassWrapper<TensorArrayOpsDecompositionPass,
+                         OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -765,6 +766,7 @@ LogicalResult HandlePartitionedCallOp(
     return it->getSecond().accumulate_on_write;
   };
   auto callee_clone = callee.clone();
+  callee_clone.setVisibility(SymbolTable::Visibility::Private);
   auto grads = AccessedGradients({callee_clone}, module);
   for (int64_t i = 0; i < callee_clone.getNumArguments(); ++i) {
     auto it = grads.find(i);
@@ -893,7 +895,8 @@ static PassRegistration<TensorArrayOpsDecompositionPass> pass(
 }  // namespace
 
 namespace TF {
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTensorArrayOpsDecompositionPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateTensorArrayOpsDecompositionPass() {
   return std::make_unique<TensorArrayOpsDecompositionPass>();
 }
 

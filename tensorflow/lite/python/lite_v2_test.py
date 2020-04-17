@@ -373,19 +373,22 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
       input_details = interpreter.get_input_details()
       self.assertLen(input_details, 2)
-      self.assertEqual('inputA', input_details[0]['name'])
+      self.assertStartsWith(input_details[0]['name'], 'inputA')
       self.assertEqual(np.float32, input_details[0]['dtype'])
       self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
       self.assertEqual((0., 0.), input_details[0]['quantization'])
 
-      self.assertEqual('inputB', input_details[1]['name'])
+      self.assertStartsWith(
+          input_details[1]['name'],
+          'inputB',
+      )
       self.assertEqual(np.float32, input_details[1]['dtype'])
       self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
       self.assertEqual((0., 0.), input_details[1]['quantization'])
 
       output_details = interpreter.get_output_details()
       self.assertLen(output_details, 1)
-      self.assertEqual('add', output_details[0]['name'])
+      self.assertStartsWith(output_details[0]['name'], 'add')
       self.assertEqual(np.float32, output_details[0]['dtype'])
       self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
       self.assertEqual((0., 0.), output_details[0]['quantization'])

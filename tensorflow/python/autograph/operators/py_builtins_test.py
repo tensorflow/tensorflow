@@ -27,13 +27,14 @@ from tensorflow.python.autograph.core import function_wrappers
 from tensorflow.python.autograph.operators import data_structures
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
 
@@ -247,6 +248,86 @@ class PyBuiltinsTest(test.TestCase):
       self.assertAllEqual(self.evaluate(iterator.get_next()), -32)
       self.assertAllEqual(self.evaluate(iterator.get_next()), -34)
       self.assertAllEqual(self.evaluate(iterator.get_next()), 9)
+
+  def test_next_normal(self):
+    iterator = iter([1, 2, 3])
+    self.assertEqual(py_builtins.next_(iterator), 1)
+    self.assertEqual(py_builtins.next_(iterator), 2)
+    self.assertEqual(py_builtins.next_(iterator), 3)
+    with self.assertRaises(StopIteration):
+      py_builtins.next_(iterator)
+    self.assertEqual(py_builtins.next_(iterator, 4), 4)
+
+  def test_next_tf_iterator(self):
+    # graph-mode iterators are only supported inside tf.function.
+    @def_function.function(autograph=False)
+    def test_fn(go_out_of_range, with_default):
+      iterator = iter(dataset_ops.Dataset.range(3))
+      retval = (
+          py_builtins.next_(iterator),
+          py_builtins.next_(iterator),
+          py_builtins.next_(iterator),
+      )
+      if go_out_of_range:
+        if with_default:
+          retval += (
+              py_builtins.next_(iterator,
+                                constant_op.constant(-3, dtype=dtypes.int64)),
+              py_builtins.next_(iterator,
+                                constant_op.constant(-4, dtype=dtypes.int64)),
+          )
+        else:
+          py_builtins.next_(iterator)
+      return retval
+
+    self.assertAllEqual(
+        self.evaluate(test_fn(go_out_of_range=False, with_default=None)),
+        (0, 1, 2))
+    self.assertAllEqual(
+        self.evaluate(test_fn(go_out_of_range=True, with_default=True)),
+        (0, 1, 2, -3, -4))
+    with self.assertRaises(errors_impl.OutOfRangeError):
+      self.evaluate(test_fn(go_out_of_range=True, with_default=False))
+
+  def test_next_tf_iterator_error_checking(self):
+    # graph-mode iterators are only supported inside tf.function.
+    @def_function.function(autograph=False)
+    def test_fn():
+      iterator = iter(dataset_ops.Dataset.range(1))
+      py_builtins.next_(iterator)
+      py_builtins.next_(iterator, constant_op.constant(-3))
+
+    # Dataset.range defaults to int64,
+    with self.assertRaisesRegex(TypeError, 'default.*int64'):
+      self.evaluate(test_fn())
+
+  def test_next_tf_iterator_error_checking_structures(self):
+    # graph-mode iterators are only supported inside tf.function.
+    @def_function.function(autograph=False)
+    def test_fn(default_val):
+      ds = dataset_ops.Dataset.range(1)
+      ds = ds.map(lambda i: {'a': i + 1, 'b': i + 10})
+      iterator = iter(ds)
+      py_builtins.next_(iterator)
+      py_builtins.next_(iterator, default_val)
+
+    default = {
+        'a': constant_op.constant(3, dtype=dtypes.int64),
+    }
+    with self.assertRaisesRegex(TypeError, 'same element structure'):
+      test_fn(default)
+    default = {
+        'a': constant_op.constant(3.0),
+        'b': [constant_op.constant(30), constant_op.constant(300)]
+    }
+    with self.assertRaisesRegex(TypeError, 'same element structure'):
+      test_fn(default)
+    default = {
+        'a': constant_op.constant(3.0),
+        'b': constant_op.constant(30, dtype=dtypes.int64),
+    }
+    with self.assertRaisesRegex(TypeError, 'float32'):
+      test_fn(default)
 
   def _basic_function_scope(self):
     return function_wrappers.FunctionScope(

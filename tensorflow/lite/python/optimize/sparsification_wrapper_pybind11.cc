@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "include/pybind11/pybind11.h"
-#include "include/pybind11/pytypes.h"
+#include "pybind11/pybind11.h"
+#include "pybind11/pytypes.h"
 #include "tensorflow/lite/python/optimize/sparsification_wrapper.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
@@ -30,6 +30,6 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_sparsification_wrapper, m) {
         return ::SparsificationWrapper::CreateWrapperCPPFromBuffer(data.ptr());
       }))
       .def("SparsifyModel", [](SparsificationWrapper& self) {
-        return tensorflow::pyo_or_throw(self.SparsifyModel());
+        return tensorflow::PyoOrThrow(self.SparsifyModel());
       });
 }

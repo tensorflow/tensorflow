@@ -594,6 +594,7 @@ tpu_py_test(
     srcs = ["tpu_strategy_test.py"],
     disable_experimental = True,
     python_version = "PY3",
+    tags = ["no_oss"],
     deps = [
         ":tpu_strategy",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
@@ -721,6 +722,9 @@ py_library(
 py_test(
     name = "combinations_test",
     srcs = ["combinations_test.py"],
+    tags = [
+        "notap",  # TODO(b/153646955): flaky
+    ],
     deps = [
         ":combinations",
         "//tensorflow/python:client_testlib",
@@ -991,6 +995,7 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
     ],
     tpu_tags = [
         "no_oss",  # Target too big to run serially reliably.
@@ -1100,6 +1105,9 @@ distribute_py_test(
     main = "custom_training_loop_models_test.py",
     tags = [
         "multi_and_single_gpu",
+    ],
+    tpu_tags = [
+        "no_oss",  # b/153615544.
     ],
     deps = [
         ":combinations",
@@ -1581,5 +1589,25 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":multi_worker_util",
+    ],
+)
+
+py_test(
+    name = "distributed_file_utils_test",
+    srcs = ["distributed_file_utils_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":distributed_file_utils",
+        ":multi_worker_util",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/eager:test",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

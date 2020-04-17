@@ -183,7 +183,7 @@ void BufRendezvous::LogContents() {
   LOG(INFO) << strings::StrCat("BufRendezvous ",
                                strings::Hex(reinterpret_cast<uint64>(this)),
                                " step_id=", step_id_, " current contents:");
-  for (auto it : hook_table_) {
+  for (const auto& it : hook_table_) {
     LOG(INFO) << it.first << ":" << it.second->DebugString();
   }
 }

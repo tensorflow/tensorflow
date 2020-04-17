@@ -150,11 +150,11 @@ tf_module {
   }
   member_method {
     name: "ApplyFtrl"
-    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'lr\', \'l1\', \'l2\', \'lr_power\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'lr\', \'l1\', \'l2\', \'lr_power\', \'use_locking\', \'multiply_linear_by_lr\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "ApplyFtrlV2"
-    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'lr\', \'l1\', \'l2\', \'l2_shrinkage\', \'lr_power\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'lr\', \'l1\', \'l2\', \'l2_shrinkage\', \'lr_power\', \'use_locking\', \'multiply_linear_by_lr\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "ApplyGradientDescent"
@@ -427,10 +427,6 @@ tf_module {
   member_method {
     name: "BatchToSpaceND"
     argspec: "args=[\'input\', \'block_shape\', \'crops\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "BeginEpoch"
-    argspec: "args=[\'dataset_id\', \'address\', \'protocol\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "BesselI0e"
@@ -843,6 +839,10 @@ tf_module {
   member_method {
     name: "CountUpTo"
     argspec: "args=[\'ref\', \'limit\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "CreateJob"
+    argspec: "args=[\'dataset_id\', \'address\', \'protocol\', \'processing_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "CreateSummaryDbWriter"
@@ -2190,7 +2190,7 @@ tf_module {
   }
   member_method {
     name: "MakeDataServiceIterator"
-    argspec: "args=[\'dataset\', \'epoch_id\', \'iterator\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'dataset\', \'job_token\', \'iterator\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "MakeIterator"
@@ -3414,11 +3414,11 @@ tf_module {
   }
   member_method {
     name: "ResourceApplyFtrl"
-    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'lr\', \'l1\', \'l2\', \'lr_power\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'lr\', \'l1\', \'l2\', \'lr_power\', \'use_locking\', \'multiply_linear_by_lr\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "ResourceApplyFtrlV2"
-    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'lr\', \'l1\', \'l2\', \'l2_shrinkage\', \'lr_power\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'lr\', \'l1\', \'l2\', \'l2_shrinkage\', \'lr_power\', \'use_locking\', \'multiply_linear_by_lr\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "ResourceApplyGradientDescent"
@@ -3526,11 +3526,11 @@ tf_module {
   }
   member_method {
     name: "ResourceSparseApplyFtrl"
-    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'lr_power\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'lr_power\', \'use_locking\', \'multiply_linear_by_lr\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "ResourceSparseApplyFtrlV2"
-    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'l2_shrinkage\', \'lr_power\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'l2_shrinkage\', \'lr_power\', \'use_locking\', \'multiply_linear_by_lr\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "ResourceSparseApplyKerasMomentum"
@@ -4030,11 +4030,11 @@ tf_module {
   }
   member_method {
     name: "SparseApplyFtrl"
-    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'lr_power\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'lr_power\', \'use_locking\', \'multiply_linear_by_lr\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "SparseApplyFtrlV2"
-    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'l2_shrinkage\', \'lr_power\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+    argspec: "args=[\'var\', \'accum\', \'linear\', \'grad\', \'indices\', \'lr\', \'l1\', \'l2\', \'l2_shrinkage\', \'lr_power\', \'use_locking\', \'multiply_linear_by_lr\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "SparseApplyMomentum"

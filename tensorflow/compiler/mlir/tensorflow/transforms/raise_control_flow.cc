@@ -32,7 +32,8 @@ namespace mlir {
 namespace TFControlFlow {
 
 namespace {
-struct RaiseTFControlFlow : public FunctionPass<RaiseTFControlFlow> {
+struct RaiseTFControlFlow
+    : public PassWrapper<RaiseTFControlFlow, FunctionPass> {
   void runOnFunction() {
     // First start by recognizing loops and reconstructing a loop tree.
     buildLoopNests();
@@ -145,7 +146,7 @@ void RaiseTFControlFlow::rewriteOps() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateRaiseTFControlFlowPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateRaiseTFControlFlowPass() {
   return std::make_unique<RaiseTFControlFlow>();
 }
 

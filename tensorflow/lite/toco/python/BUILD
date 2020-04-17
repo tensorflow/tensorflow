@@ -51,6 +51,7 @@ cc_library(
         "//tensorflow/lite/toco:toco_tooling",
         "//tensorflow/lite/toco:tooling_util",
         "//tensorflow/compiler/mlir/lite/python:graphdef_to_tfl_flatbuffer",
+        "//tensorflow/compiler/mlir/lite/python:saved_model_to_tfl_flatbuffer",
         "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
     ] + select({
         # This is required when running `tflite_convert` from `bazel`.

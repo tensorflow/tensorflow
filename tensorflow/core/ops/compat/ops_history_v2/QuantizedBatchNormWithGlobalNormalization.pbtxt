@@ -1,0 +1,218 @@
+op {
+  name: "QuantizedBatchNormWithGlobalNormalization"
+  input_arg {
+    name: "t"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "t_min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "t_max"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "m"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "m_min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "m_max"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "v"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "v_min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "v_max"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "beta"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "beta_min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "beta_max"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "gamma"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "gamma_min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "gamma_max"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "result"
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "result_min"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "result_max"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "variance_epsilon"
+    type: "float"
+  }
+  attr {
+    name: "scale_after_normalization"
+    type: "bool"
+  }
+}
+op {
+  name: "QuantizedBatchNormWithGlobalNormalization"
+  input_arg {
+    name: "t"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "t_min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "t_max"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "m"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "m_min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "m_max"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "v"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "v_min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "v_max"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "beta"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "beta_min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "beta_max"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "gamma"
+    type_attr: "Tinput"
+  }
+  input_arg {
+    name: "gamma_min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "gamma_max"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "result"
+    type_attr: "out_type"
+  }
+  output_arg {
+    name: "result_min"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "result_max"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "Tinput"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
+      }
+    }
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_QINT16
+        type: DT_QUINT16
+      }
+    }
+  }
+  attr {
+    name: "variance_epsilon"
+    type: "float"
+  }
+  attr {
+    name: "scale_after_normalization"
+    type: "bool"
+  }
+}

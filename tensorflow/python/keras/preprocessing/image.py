@@ -28,6 +28,7 @@ except ImportError:
   pass
 
 from tensorflow.python.keras import backend
+from tensorflow.python.keras.preprocessing.image_dataset import image_dataset_from_directory  # pylint: disable=unused-import
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export

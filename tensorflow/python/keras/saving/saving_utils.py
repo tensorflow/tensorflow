@@ -91,8 +91,8 @@ def raise_model_input_error(model):
   raise ValueError(
       'Model {} cannot be saved because the input shapes have not been '
       'set. Usually, input shapes are automatically determined from calling'
-      ' .fit() or .predict(). To manually set the shapes, call '
-      'model._set_inputs(inputs).'.format(model))
+      ' `.fit()` or `.predict()`. To manually set the shapes, call '
+      '`model.build(input_shape)`.'.format(model))
 
 
 def trace_model_call(model, input_signature=None):
@@ -227,7 +227,8 @@ def compile_args_from_training_config(training_config, custom_objects=None):
       weighted_metrics = _deserialize_nested_config(_deserialize_metric,
                                                     weighted_metrics_config)
 
-    sample_weight_mode = training_config['sample_weight_mode']
+    sample_weight_mode = training_config['sample_weight_mode'] if hasattr(
+        training_config, 'sample_weight_mode') else None
     loss_weights = training_config['loss_weights']
 
   return dict(

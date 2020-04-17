@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/delegates/coreml/coreml_delegate.h"
 
+#include <string.h>
+#include <sys/utsname.h>
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
@@ -41,6 +43,10 @@ bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfL
     switch (registration->builtin_code) {
       case kTfLiteBuiltinDepthwiseConv2d:
         if (registration->version > 2) return false;
+        break;
+      // FullyConnected without bias is supported starting from version 6.
+      case kTfLiteBuiltinFullyConnected:
+        if (registration->version > 6) return false;
         break;
       default:
         return false;
@@ -82,6 +88,9 @@ bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfL
     }
     case kTfLiteBuiltinDepthwiseConv2d: {
       return delegates::coreml::IsDepthwiseConvolutionOpSupported(registration, node, context);
+    }
+    case kTfLiteBuiltinFullyConnected: {
+      return delegates::coreml::IsFullyConnectedOpSupported(registration, node, context);
     }
     case kTfLiteBuiltinHardSwish: {
       return true;
@@ -232,8 +241,38 @@ TfLiteDelegate* CreateCoreMlDelegate(const TfLiteCoreMlDelegateOptions* options)
 }  // namespace
 }  // namespace tflite
 
+namespace {
+// utsname.machine has device identifier. For example, identifier for iPhone Xs is "iPhone11,2".
+// Since Neural Engine is only available for use on A12 and later, major device version in the
+// identifier is checked for these models:
+// A12: iPhone XS (11,2), iPad Mini - 5th Gen (11,1)
+// A12X: iPad Pro - 3rd Gen (8,1)
+// For more information, see https://www.theiphonewiki.com/wiki/Models
+bool IsNeuralEngineAvailable() {
+  struct utsname system_info;
+  uname(&system_info);
+
+  if (strncmp("iPad", system_info.machine, 4) == 0) {
+    const int major_version = atoi(system_info.machine + 4);
+    return major_version >= 8;  // There are no device between iPad 8 and 11.
+  } else if (strncmp("iPhone", system_info.machine, 6) == 0) {
+    const int major_version = atoi(system_info.machine + 6);
+    return major_version >= 11;
+  }
+  return false;
+}
+
+}  // namespace
+
 TfLiteDelegate* TfLiteCoreMlDelegateCreate(const TfLiteCoreMlDelegateOptions* options) {
   if (@available(iOS 11.0, *)) {
+    if (options->enabled_devices == TfLiteCoreMlDelegateDevicesWithNeuralEngine &&
+        !IsNeuralEngineAvailable()) {
+      NSLog(@"This device does not have Neural Engine, so Core ML delegate will not be enabled. "
+             "If you want to run Core ML delegate anyway, set enabled_devices option to "
+             "TfLiteCoreMlDelegateAllDevices (or enabledDevices to .allDevices in Swift).");
+      return nullptr;
+    }
     return tflite::CreateCoreMlDelegate(options);
   } else {
     NSLog(@"Core ML delegate is not supported in this iOS version. "

@@ -1581,6 +1581,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "multiply_linear_by_lr"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "ApplyFtrlV2"
@@ -1655,6 +1662,13 @@ op {
   }
   attr {
     name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "multiply_linear_by_lr"
     type: "bool"
     default_value {
       b: false
@@ -2139,6 +2153,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BOOL
       }
     }
   }
@@ -2205,6 +2220,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BOOL
       }
     }
   }
@@ -4278,25 +4294,6 @@ op {
         type: DT_INT64
       }
     }
-  }
-}
-op {
-  name: "BeginEpoch"
-  input_arg {
-    name: "dataset_id"
-    type: DT_INT64
-  }
-  input_arg {
-    name: "address"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "protocol"
-    type: DT_STRING
-  }
-  output_arg {
-    name: "epoch_id"
-    type: DT_INT64
   }
 }
 op {
@@ -8555,6 +8552,29 @@ op {
         type: DT_INT64
       }
     }
+  }
+}
+op {
+  name: "CreateJob"
+  input_arg {
+    name: "dataset_id"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "protocol"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "processing_mode"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "job_token"
+    type: DT_VARIANT
   }
 }
 op {
@@ -21600,8 +21620,8 @@ op {
     type: DT_VARIANT
   }
   input_arg {
-    name: "epoch_id"
-    type: DT_INT64
+    name: "job_token"
+    type: DT_VARIANT
   }
   input_arg {
     name: "iterator"
@@ -36486,6 +36506,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "multiply_linear_by_lr"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
   is_stateful: true
 }
 op {
@@ -36553,6 +36580,13 @@ op {
   }
   attr {
     name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "multiply_linear_by_lr"
     type: "bool"
     default_value {
       b: false
@@ -38069,6 +38103,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "multiply_linear_by_lr"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
   is_stateful: true
 }
 op {
@@ -38150,6 +38191,13 @@ op {
   }
   attr {
     name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "multiply_linear_by_lr"
     type: "bool"
     default_value {
       b: false
@@ -43827,6 +43875,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "multiply_linear_by_lr"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "SparseApplyFtrlV2"
@@ -43915,6 +43970,13 @@ op {
   }
   attr {
     name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "multiply_linear_by_lr"
     type: "bool"
     default_value {
       b: false

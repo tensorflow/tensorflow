@@ -326,11 +326,9 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
     scale_for_finite = clip_norm * math_ops.minimum(
         1.0 / use_norm,
         constant_op.constant(1.0, dtype=use_norm.dtype) / clip_norm)
-    scale = array_ops.where(
-        math_ops.is_finite(use_norm),
-        scale_for_finite,
-        # Return NaN if use_norm is not finite.
-        constant_op.constant(float("nan"), dtype=use_norm.dtype))
+    # If use_norm is any finite number, this is a no-op. For inf/-inf/NaN,
+    # this will make scale NaN.
+    scale = scale_for_finite + (use_norm - use_norm)
 
     values = [
         ops.convert_to_tensor(

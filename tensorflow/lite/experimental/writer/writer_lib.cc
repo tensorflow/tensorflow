@@ -224,7 +224,7 @@ SubgraphWriter::ExportBuffers(flatbuffers::FlatBufferBuilder* fbb) {
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<OperatorCode>>>
 SubgraphWriter::CreateOpCodeTable(flatbuffers::FlatBufferBuilder* fbb) {
   std::vector<flatbuffers::Offset<OperatorCode>> codes;
-  for (auto it : opcodes_) {
+  for (const auto& it : opcodes_) {
     const char* custom_name = it.custom.empty() ? nullptr : it.custom.c_str();
     codes.push_back(CreateOperatorCodeDirect(
         *fbb, static_cast<BuiltinOperator>(it.builtin), custom_name));

@@ -57,8 +57,13 @@ class XStatVisitor {
 
   absl::string_view RefValue() const;
 
+  // Returns a string view.
+  // REQUIRED: the value type should be string type or reference type.
+  absl::string_view StrOrRefValue() const;
+
   const XStat& RawStat() const { return *stat_; }
 
+  // Return a string representation of all value type.
   std::string ToString() const;
 
  private:

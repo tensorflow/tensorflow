@@ -30,7 +30,7 @@ namespace TFL {
 namespace {
 
 // Applies all the clean up steps after quantization.
-class PostQuantizePass : public FunctionPass<PostQuantizePass> {
+class PostQuantizePass : public PassWrapper<PostQuantizePass, FunctionPass> {
  public:
   // Constructor used by the PassRegistration. This will remove the adaptor ops.
   explicit PostQuantizePass() : emit_quant_adaptor_ops_(false) {}
@@ -125,7 +125,7 @@ void PostQuantizePass::runOnFunction() {
   auto func = getFunction();
   auto* ctx = func.getContext();
   TFL::populateWithGenerated(ctx, &patterns);
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 
   if (!emit_quant_adaptor_ops_) {
     RemoveQuantizationAdaptorOps(getFunction());
@@ -135,7 +135,7 @@ void PostQuantizePass::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PostQuantize pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreatePostQuantizePass(
+std::unique_ptr<OperationPass<FuncOp>> CreatePostQuantizePass(
     bool emit_quant_adaptor_ops) {
   return std::make_unique<PostQuantizePass>(emit_quant_adaptor_ops);
 }

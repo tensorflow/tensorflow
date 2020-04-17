@@ -149,9 +149,6 @@ class ExecutionOutput {
     to_be_released_.push_back(std::move(mem));
   }
 
-  void SetOutputShapeTable(se::OwningDeviceMemory output_shape_table) {
-    output_shape_table_ = std::move(output_shape_table);
-  }
 
   // Should be called once it is known that the execute operation succeeded,
   // before returning the ExecutionOutput to the caller.
@@ -164,17 +161,9 @@ class ExecutionOutput {
 
   ScopedShapedBuffer* MutableResult() { return &result_; }
 
-  const se::OwningDeviceMemory& ShapeTable() const {
-    return output_shape_table_;
-  }
-
   ScopedShapedBuffer ConsumeResult() {
     aliased_indices_.clear();
     return std::move(result_);
-  }
-
-  se::OwningDeviceMemory ConsumeShapeTable() {
-    return std::move(output_shape_table_);
   }
 
   const std::vector<se::OwningDeviceMemory>& ToBeReleased() const {

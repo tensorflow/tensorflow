@@ -41,13 +41,15 @@ from tensorflow.python.platform import test
 
 
 def whitelist(entity):
-  if 'test_whitelisted_call' not in sys.modules:
-    whitelisted_mod = imp.new_module('test_whitelisted_call')
-    sys.modules['test_whitelisted_call'] = whitelisted_mod
-    config.CONVERSION_RULES = ((config.DoNotConvert('test_whitelisted_call'),) +
-                               config.CONVERSION_RULES)
+  """Helper that marks a callable as whtelitisted."""
+  if 'whitelisted_module_for_testing' not in sys.modules:
+    whitelisted_mod = imp.new_module('whitelisted_module_for_testing')
+    sys.modules['whitelisted_module_for_testing'] = whitelisted_mod
+    config.CONVERSION_RULES = (
+        (config.DoNotConvert('whitelisted_module_for_testing'),) +
+        config.CONVERSION_RULES)
 
-  entity.__module__ = 'test_whitelisted_call'
+  entity.__module__ = 'whitelisted_module_for_testing'
 
 
 def is_inside_generated_code():

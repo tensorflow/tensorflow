@@ -46,6 +46,7 @@ from six.moves.urllib.error import URLError
 from tensorflow.python.framework import ops
 from six.moves.urllib.request import urlopen
 from tensorflow.python.keras.utils.generic_utils import Progbar
+from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
@@ -136,6 +137,9 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
     archive_format = ['tar', 'zip']
   if isinstance(archive_format, six.string_types):
     archive_format = [archive_format]
+
+  file_path = path_to_string(file_path)
+  path = path_to_string(path)
 
   for archive_type in archive_format:
     if archive_type == 'tar':
@@ -229,6 +233,8 @@ def get_file(fname,
     datadir_base = os.path.join('/tmp', '.keras')
   datadir = os.path.join(datadir_base, cache_subdir)
   _makedirs_exist_ok(datadir)
+
+  fname = path_to_string(fname)
 
   if untar:
     untar_fpath = os.path.join(datadir, fname)

@@ -125,7 +125,7 @@ Status FunctionalizeControlFlowForFunction(
       nodes_to_associated_functions.push_back({n, associated_functions});
     }
   }
-  for (auto iter : nodes_to_associated_functions) {
+  for (const auto& iter : nodes_to_associated_functions) {
     Node* n = iter.first;
     auto associated_functions = iter.second;
     for (auto& associated_function : associated_functions) {

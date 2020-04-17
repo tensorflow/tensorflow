@@ -238,6 +238,7 @@ FRAMEWORK_PROTO_SRCS = [
 
 PROFILER_PROTO_SRCS = [
     "//tensorflow/core/profiler/protobuf:xplane.proto",
+    "//tensorflow/core/profiler:profiler_options.proto",
 ]
 
 ERROR_CODES_PROTO_SRCS = [
@@ -1140,6 +1141,15 @@ cc_library(
 )
 
 cc_library(
+    name = "distributed_tensorflow_dependencies",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+        "//tensorflow/core/kernels:data_service_ops",
+    ],
+)
+
+cc_library(
     name = "testlib_kernels_impl",
     deps = [
         "//tensorflow/core/kernels:aggregate_ops",
@@ -1443,7 +1453,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":ios_tensorflow_lib",
-        ":portable_test_proto_lib",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//third_party/eigen3",
     ],
@@ -2162,6 +2171,7 @@ tf_proto_library(
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/lib/core:error_codes_proto",
         "//tensorflow/core/profiler/protobuf:xplane_proto",
+        "//tensorflow/core/profiler:profiler_options_proto",
         "//tensorflow/core/util:protos_all",
         "//tensorflow/core/util:test_log_proto_impl",
     ],
@@ -2544,7 +2554,6 @@ tf_cc_tests(
     ],
     create_named_test_suite = True,
     deps = [
-        ":core_cpu_internal",
         ":lib",
         ":lib_internal",
         ":lib_test_internal",

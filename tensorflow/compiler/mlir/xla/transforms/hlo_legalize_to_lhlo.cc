@@ -324,7 +324,8 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 //   "xla_lhlo.terminator"() : () -> ()
 // }
 
-struct HloLegalizeToLhlo : public OperationPass<HloLegalizeToLhlo, ModuleOp> {
+struct HloLegalizeToLhlo
+    : public PassWrapper<HloLegalizeToLhlo, OperationPass<ModuleOp>> {
   void runOnOperation() override {
     OwningRewritePatternList patterns;
     auto& context = getContext();
@@ -473,7 +474,7 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
   // clang-format on
 }
 
-std::unique_ptr<OpPassBase<ModuleOp>> createLegalizeToLhloPass() {
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass() {
   return absl::make_unique<HloLegalizeToLhlo>();
 }
 

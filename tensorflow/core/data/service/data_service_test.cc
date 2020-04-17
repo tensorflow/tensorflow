@@ -48,25 +48,25 @@ Status RegisterDataset(MasterService::Stub* master_stub,
   return Status::OK();
 }
 
-Status BeginEpoch(MasterService::Stub* master_stub, int64 dataset_id,
-                  int64* epoch_id) {
+Status CreateJob(MasterService::Stub* master_stub, int64 dataset_id,
+                 int64* job_id) {
   grpc_impl::ClientContext ctx;
-  BeginEpochRequest req;
+  CreateJobRequest req;
   req.set_dataset_id(dataset_id);
-  BeginEpochResponse resp;
-  grpc::Status s = master_stub->BeginEpoch(&ctx, req, &resp);
+  CreateJobResponse resp;
+  grpc::Status s = master_stub->CreateJob(&ctx, req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to begin epoch", s);
   }
-  *epoch_id = resp.epoch_id();
+  *job_id = resp.job_id();
   return Status::OK();
 }
 
-Status GetTasks(MasterService::Stub* master_stub, int64 epoch_id,
+Status GetTasks(MasterService::Stub* master_stub, int64 job_id,
                 std::vector<TaskInfo>* tasks) {
   grpc_impl::ClientContext ctx;
   GetTasksRequest req;
-  req.set_epoch_id(epoch_id);
+  req.set_job_id(job_id);
   GetTasksResponse resp;
   grpc::Status s = master_stub->GetTasks(&ctx, req, &resp);
   if (!s.ok()) {
@@ -146,10 +146,10 @@ TEST(DataService, IterateDatasetOneWorker) {
   int64 dataset_id;
   TF_ASSERT_OK(
       RegisterDataset(master_stub.get(), test_case.graph_def, &dataset_id));
-  int64 epoch_id;
-  TF_ASSERT_OK(BeginEpoch(master_stub.get(), dataset_id, &epoch_id));
+  int64 job_id;
+  TF_ASSERT_OK(CreateJob(master_stub.get(), dataset_id, &job_id));
   std::vector<TaskInfo> tasks;
-  TF_ASSERT_OK(GetTasks(master_stub.get(), epoch_id, &tasks));
+  TF_ASSERT_OK(GetTasks(master_stub.get(), job_id, &tasks));
   ASSERT_EQ(tasks.size(), 1);
   ASSERT_EQ(tasks[0].worker_address(), cluster.WorkerAddress(0));
 
@@ -170,10 +170,10 @@ TEST(DataService, IterateDatasetTwoWorkers) {
   int64 dataset_id;
   TF_ASSERT_OK(
       RegisterDataset(master_stub.get(), test_case.graph_def, &dataset_id));
-  int64 epoch_id;
-  TF_ASSERT_OK(BeginEpoch(master_stub.get(), dataset_id, &epoch_id));
+  int64 job_id;
+  TF_ASSERT_OK(CreateJob(master_stub.get(), dataset_id, &job_id));
   std::vector<TaskInfo> tasks;
-  TF_ASSERT_OK(GetTasks(master_stub.get(), epoch_id, &tasks));
+  TF_ASSERT_OK(GetTasks(master_stub.get(), job_id, &tasks));
   ASSERT_EQ(tasks.size(), 2);
 
   // Each worker produces the full dataset.
@@ -196,13 +196,13 @@ TEST(DataService, AddWorkerMidEpoch) {
   int64 dataset_id;
   TF_ASSERT_OK(
       RegisterDataset(master_stub.get(), test_case.graph_def, &dataset_id));
-  int64 epoch_id;
-  TF_ASSERT_OK(BeginEpoch(master_stub.get(), dataset_id, &epoch_id));
+  int64 job_id;
+  TF_ASSERT_OK(CreateJob(master_stub.get(), dataset_id, &job_id));
   std::vector<TaskInfo> tasks;
-  TF_ASSERT_OK(GetTasks(master_stub.get(), epoch_id, &tasks));
+  TF_ASSERT_OK(GetTasks(master_stub.get(), job_id, &tasks));
   ASSERT_EQ(tasks.size(), 1);
   TF_ASSERT_OK(cluster.AddWorker());
-  TF_ASSERT_OK(GetTasks(master_stub.get(), epoch_id, &tasks));
+  TF_ASSERT_OK(GetTasks(master_stub.get(), job_id, &tasks));
   ASSERT_EQ(tasks.size(), 2);
 
   // Each worker produces the full dataset.

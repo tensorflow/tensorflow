@@ -27,7 +27,7 @@ XStatVisitor::XStatVisitor(const XPlaneVisitor* plane, const XStat* stat)
 
 absl::string_view XStatVisitor::RefValue() const {
   const XStatMetadata* metadata = plane_->GetStatMetadata(stat_->ref_value());
-  return metadata ? metadata->name() : "";
+  return metadata ? absl::string_view(metadata->name()) : absl::string_view();
 }
 
 std::string XStatVisitor::ToString() const {
@@ -46,6 +46,21 @@ std::string XStatVisitor::ToString() const {
       return plane_->GetStatMetadata(stat_->ref_value())->name();
     case XStat::VALUE_NOT_SET:
       return "";
+  }
+}
+
+absl::string_view XStatVisitor::StrOrRefValue() const {
+  switch (stat_->value_case()) {
+    case XStat::kStrValue:
+      return stat_->str_value();
+    case XStat::kRefValue:
+      return plane_->GetStatMetadata(stat_->ref_value())->name();
+    case XStat::kInt64Value:
+    case XStat::kUint64Value:
+    case XStat::kDoubleValue:
+    case XStat::kBytesValue:
+    case XStat::VALUE_NOT_SET:
+      return absl::string_view();
   }
 }
 

@@ -2403,9 +2403,12 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_casting_utils",
+        ":tuple_util",
         ":while_util",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",

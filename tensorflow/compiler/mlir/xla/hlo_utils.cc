@@ -83,12 +83,11 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
                       ConvertTensorShapeToType<mlir::RankedTensorType>(
                           literal.shape(), builder));
 
+  // TODO(hinsu): Support remaining XLA primitive types.
   auto element_type = literal.shape().element_type();
   switch (element_type) {
     case PrimitiveType::PRED:
       return CreateDenseAttrFromLiteral<bool>(type, literal);
-    case PrimitiveType::F16:
-      return CreateDenseAttrFromLiteral<float>(type, literal);
     case PrimitiveType::F32:
       return CreateDenseAttrFromLiteral<float>(type, literal);
     case PrimitiveType::F64:
@@ -123,6 +122,8 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
       return builder.getI1Type();
     case PrimitiveType::F16:
       return builder.getF16Type();
+    case PrimitiveType::BF16:
+      return builder.getBF16Type();
     case PrimitiveType::F32:
       return builder.getF32Type();
     case PrimitiveType::F64:
@@ -137,6 +138,8 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
       return builder.getIntegerType(64);
     case PrimitiveType::C64:
       return mlir::ComplexType::get(builder.getF32Type());
+    case PrimitiveType::C128:
+      return mlir::ComplexType::get(builder.getF64Type());
     // TODO(b/130356985): Support unsigned primitive types.
     default:
       return tensorflow::errors::Internal(

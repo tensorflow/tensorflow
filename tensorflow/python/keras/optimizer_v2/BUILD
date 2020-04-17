@@ -224,6 +224,7 @@ cuda_py_test(
     srcs = ["optimizer_v2_test.py"],
     shard_count = 8,
     tags = [
+        "no_rocm",
         "no_windows",
     ],
     deps = [

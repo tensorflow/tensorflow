@@ -100,9 +100,15 @@ def disable_multi_worker(method):
 class Model(network.Network, version_utils.ModelVersionSelector):
   """`Model` groups layers into an object with training and inference features.
 
+  Arguments:
+      inputs: The input(s) of the model: a `keras.Input` object or list of
+          `keras.Input` objects.
+      outputs: The output(s) of the model. See Functional API example below.
+      name: String, the name of the model.
+
   There are two ways to instantiate a `Model`:
 
-  1 - With the "functional API", where you start from `Input`,
+  1 - With the "Functional API", where you start from `Input`,
   you chain layer calls to specify the model's forward pass,
   and finally you create your model from inputs and outputs:
 
@@ -163,9 +169,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
   Once the model is created, you can config the model with losses and metrics
   with `model.compile()`, train the model with `model.fit()`, or use the model
   to do prediction with `model.predict()`.
-
-  Checkout [guide](https://www.tensorflow.org/guide/keras/overview) for
-  additional details.
   """
   _TF_MODULE_IGNORED_PROPERTIES = frozenset(
       itertools.chain(('_train_counter', '_test_counter', '_predict_counter',
@@ -275,7 +278,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               loss=None,
               metrics=None,
               loss_weights=None,
-              sample_weight_mode=None,
               weighted_metrics=None,
               run_eagerly=None,
               **kwargs):
@@ -323,11 +325,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             If a list, it is expected to have a 1:1 mapping to the model's
               outputs. If a dict, it is expected to map output names (strings)
               to scalar coefficients.
-        sample_weight_mode: If you need to do timestep-wise sample weighting (2D
-          weights), set this to `"temporal"`. `None` defaults to sample-wise
-          weights (1D). If the model has multiple outputs, you can use a
-          different `sample_weight_mode` on each output by passing a dictionary
-          or a list of modes.
         weighted_metrics: List of metrics to be evaluated and weighted by
           sample_weight or class_weight during training and testing.
         run_eagerly: Bool. Defaults to `False`. If `True`, this `Model`'s
@@ -335,7 +332,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           this as `None` unless your `Model` cannot be run inside a
           `tf.function`.
         **kwargs: Any additional arguments. Supported arguments:
-            `experimental_steps_per_execution`: Int. The number of batches to
+            - `experimental_steps_per_execution`: Int. The number of batches to
               run during each `tf.function` call. Running multiple batches
               inside a single `tf.function` call can greatly improve performance
               on TPUs or small models with a large Python overhead. Note that if
@@ -344,10 +341,11 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               one full epoch will be run each execution. If a number larger than
               the size of the epoch is passed, the execution will be truncated
               to the size of the epoch.
+            - `sample_weight_mode` for backward compatibility.
 
     Raises:
         ValueError: In case of invalid arguments for
-            `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
+            `optimizer`, `loss` or `metrics`.
     """
     _keras_api_gauge.get_cell('compile').set(True)
     with self.distribute_strategy.scope():
@@ -402,8 +400,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
   def metrics(self):
     """Returns the model's metrics added using `compile`, `add_metric` APIs.
 
-    Note: `metrics` are available only after a `keras.Model` has been
-    trained/evaluated on actual data.
+    Note: Metrics passed to `compile()` are available only after a `keras.Model`
+    has been trained/evaluated on actual data.
 
     Examples:
 
@@ -757,10 +755,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             or in the case of temporal data,
             you can pass a 2D array with shape
             `(samples, sequence_length)`,
-            to apply a different weight to every timestep of every sample.
-            In this case you should make sure to specify
-            `sample_weight_mode="temporal"` in `compile()`. This argument is not
-            supported when `x` is a dataset, generator, or
+            to apply a different weight to every timestep of every sample. This
+            argument is not supported when `x` is a dataset, generator, or
            `keras.utils.Sequence` instance, instead provide the sample_weights
             as the third element of `x`.
         initial_epoch: Integer.
@@ -1089,10 +1085,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             (1:1 mapping between weights and samples), or in the case of
               temporal data, you can pass a 2D array with shape `(samples,
               sequence_length)`, to apply a different weight to every timestep
-              of every sample. In this case you should make sure to specify
-              `sample_weight_mode="temporal"` in `compile()`. This argument is
-              not supported when `x` is a dataset, instead pass sample weights
-              as the third element of `x`.
+              of every sample. This argument is not supported when `x` is a
+              dataset, instead pass sample weights as the third element of `x`.
         steps: Integer or `None`. Total number of steps (batches of samples)
           before declaring the evaluation round finished. Ignored with the
           default value of `None`. If x is a `tf.data` dataset and `steps` is
@@ -1384,7 +1378,24 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     return tf_utils.to_numpy_or_python_type(all_outputs)
 
   def reset_metrics(self):
-    """Resets the state of metrics."""
+    """Resets the state of all the metrics in the model.
+
+    Examples:
+
+    >>> inputs = tf.keras.layers.Input(shape=(3,))
+    >>> outputs = tf.keras.layers.Dense(2)(inputs)
+    >>> model = tf.keras.models.Model(inputs=inputs, outputs=outputs)
+    >>> model.compile(optimizer="Adam", loss="mse", metrics=["mae"])
+
+    >>> x = np.random.random((2, 3))
+    >>> y = np.random.randint(0, 2, (2, 2))
+    >>> _ = model.fit(x, y, verbose=0)
+    >>> assert all(float(m.result()) for m in model.metrics)
+
+    >>> model.reset_metrics()
+    >>> assert all(float(m.result()) == 0 for m in model.metrics)
+
+    """
     for m in self.metrics:
       m.reset_states()
 
@@ -1412,8 +1423,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           weights to apply to the model's loss for each sample. In the case of
           temporal data, you can pass a 2D array with shape (samples,
           sequence_length), to apply a different weight to every timestep of
-          every sample. In this case you should make sure to specify
-          sample_weight_mode="temporal" in compile().
+          every sample.
         class_weight: Optional dictionary mapping class indices (integers) to a
           weight (float) to apply to the model's loss for the samples from this
           class during training. This can be useful to tell the model to "pay
@@ -1477,8 +1487,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           weights to apply to the model's loss for each sample. In the case of
           temporal data, you can pass a 2D array with shape (samples,
           sequence_length), to apply a different weight to every timestep of
-          every sample. In this case you should make sure to specify
-          sample_weight_mode="temporal" in compile().
+          every sample.
         reset_metrics: If `True`, the metrics returned will be only for this
           batch. If `False`, the metrics will be statefully accumulated across
           batches.
@@ -1669,7 +1678,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     if kwargs.pop('target_tensors', None) is not None:
       raise ValueError(
           'target_tensors argument is not supported when executing eagerly.')
-    invalid_kwargs = set(kwargs) - {'experimental_steps_per_execution'}
+    invalid_kwargs = set(kwargs) - {
+        'experimental_steps_per_execution', 'sample_weight_mode'
+    }
     if invalid_kwargs:
       raise TypeError('Invalid keyword argument(s) in `compile`: %s' %
                       (invalid_kwargs,))
@@ -1780,7 +1791,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         'metrics': self.compiled_metrics._user_metrics,
         'weighted_metrics': self.compiled_metrics._user_weighted_metrics,
         'loss_weights': self.compiled_loss._user_loss_weights,
-        'sample_weight_mode': None,
     }
     # pylint: enable=protected-access
     return compile_args

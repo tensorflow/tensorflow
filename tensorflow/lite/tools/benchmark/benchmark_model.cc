@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/profiling/time.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
+#include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
 namespace benchmark {
@@ -55,6 +55,7 @@ void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
                    << "Warmup (avg): " << warmup_us.avg() << ", "
                    << "Inference (avg): " << inference_us.avg();
 
+  if (!init_mem_usage.IsSupported()) return;
   TFLITE_LOG(INFO)
       << "Note: as the benchmark tool itself affects memory footprint, the "
          "following is only APPROXIMATE to the actual memory footprint of the "

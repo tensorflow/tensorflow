@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
@@ -487,8 +488,6 @@ LogicalResult RefineShapeForControlFlowFunc(FuncOp func,
   }
 
   FunctionType func_type = func.getType();
-  if (input_types == func_type.getInputs()) return success();
-
   func.setType(FunctionType::get(input_types, func_type.getResults(),
                                  func.getContext()));
 
@@ -525,6 +524,49 @@ LogicalResult PropagateShapeToFunctions(
   return mlir::success(success);
 }
 
+// If the callee has only one use, propagates any constant operand of call_op to
+// the called function body's corresponding argument.
+//
+// TODO(b/154065712): Move this to a more general inter-procedural constant
+// folding pass.
+void PropagateConstantToCallee(CallOpInterface call_op,
+                               SymbolRefAttr callee_sym, ModuleOp module) {
+  auto func = module.lookupSymbol<FuncOp>(callee_sym.getRootReference());
+  auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
+  int num_uses = std::distance(func_uses->begin(), func_uses->end());
+  OpBuilder builder(&func.front().front());
+  Operation* op = call_op.getOperation();
+  if (num_uses == 1) {
+    // If this is the only caller, and an operand is a constant, propagate
+    // the constant inside the function.
+    for (auto arg : func.getArguments()) {
+      auto operand = op->getOperand(arg.getArgNumber()).getDefiningOp();
+      if (llvm::isa_and_nonnull<TF::ConstOp>(operand)) {
+        arg.replaceAllUsesWith(builder.clone(*operand)->getResult(0));
+      }
+    }
+  }
+}
+
+// Propagates any constant return value of the callee function to the call op's
+// corresponding result.
+void PropagateConstantFromCallee(CallOpInterface call_op,
+                                 SymbolRefAttr callee_sym, ModuleOp module) {
+  auto func = module.lookupSymbol<FuncOp>(callee_sym.getRootReference());
+  // If the return value is a constant, replace the call result with a constant.
+  Operation* op = call_op.getOperation();
+  OpBuilder builder(op);
+  builder.setInsertionPointAfter(op);
+  for (auto retval :
+       llvm::enumerate(func.front().getTerminator()->getOperands())) {
+    auto retval_op = retval.value().getDefiningOp();
+    if (llvm::isa_and_nonnull<TF::ConstOp>(retval_op)) {
+      op->getResult(retval.index())
+          .replaceAllUsesWith(builder.clone(*retval_op)->getResult(0));
+    }
+  }
+}
+
 LogicalResult PropagateShapeIntoAttachedFunctions(Operation* op,
                                                   int64_t graph_version,
                                                   int64_t max_iteration) {
@@ -541,9 +583,14 @@ LogicalResult PropagateShapeIntoAttachedFunctions(Operation* op,
   } else if (auto call_op = dyn_cast<CallOpInterface>(op)) {
     CallInterfaceCallable callable = call_op.getCallableForCallee();
     if (SymbolRefAttr sym = callable.dyn_cast<SymbolRefAttr>()) {
-      return PropagateShapeToFunctions(
-          module, call_op.getArgOperands().getTypes(), {sym.getRootReference()},
-          graph_version, max_iteration);
+      PropagateConstantToCallee(call_op, sym, module);
+      if (failed(PropagateShapeToFunctions(
+              module, call_op.getArgOperands().getTypes(),
+              {sym.getRootReference()}, graph_version, max_iteration))) {
+        return failure();
+      }
+      PropagateConstantFromCallee(call_op, sym, module);
+      return success();
     }
   }
 

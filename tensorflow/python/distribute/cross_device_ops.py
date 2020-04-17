@@ -196,9 +196,6 @@ def _simple_reduce(per_replica_value, reduce_to_device, accumulation_fn,
     raise ValueError("`per_replica_value` must be non-empty")
   count = len(all_values)
 
-  if (count == 1 and all_values[0].device == reduce_to_device):
-    return all_values[0]
-
   with ops.device(reduce_to_device):
     with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
       reduced = cross_device_utils.aggregate_tensors_or_indexed_slices(
@@ -236,7 +233,8 @@ class CrossDeviceOps(object):
     Args:
       reduce_op: An instance of `tf.distribute.ReduceOp` that indicates how
         per_replica_value will be reduced.
-      per_replica_value: A PerReplica object or a tensor with device set.
+      per_replica_value: A `tf.distribute.DistributedValues` object or a tensor
+        with device set.
       destinations: the reduction destinations.
       experimental_hints: A `tf.distrbute.experimental.CollectiveHints`. Hints
         to perform collective operations.
@@ -257,9 +255,9 @@ class CrossDeviceOps(object):
     if self._num_between_graph_workers == 1 and len(
         per_replica_value.values) == 1 and _devices_match(
             per_replica_value, destinations):
-      return value_lib.regroup(
-          per_replica_value.values,
-          wrap_class=value_lib.Mirrored)
+      with ops.device(per_replica_value.values[0].device):
+        v = array_ops.identity(per_replica_value.values[0])
+      return value_lib.regroup((v,), wrap_class=value_lib.Mirrored)
 
     if experimental_hints is None:
       experimental_hints = collective_util.Hints()

@@ -1416,8 +1416,8 @@ class Recall(Metric):
 class SensitivitySpecificityBase(Metric):
   """Abstract base class for computing sensitivity and specificity.
 
-  For additional information about specificity and sensitivity, see the
-  following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+  For additional information about specificity and sensitivity, see
+  [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
   """
 
   def __init__(self, value, num_thresholds=200, name=None, dtype=None):
@@ -1523,8 +1523,8 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
-  For additional information about specificity and sensitivity, see the
-  following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+  For additional information about specificity and sensitivity, see
+  [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
 
   Args:
     specificity: A scalar value in range `[0, 1]`.
@@ -1598,8 +1598,8 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
-  For additional information about specificity and sensitivity, see the
-  following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+  For additional information about specificity and sensitivity, see
+  [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
 
   Args:
     sensitivity: A scalar value in range `[0, 1]`.
@@ -1828,13 +1828,14 @@ class AUC(Metric):
       use when discretizing the roc curve. Values must be > 1.
     curve: (Optional) Specifies the name of the curve to be computed, 'ROC'
       [default] or 'PR' for the Precision-Recall-curve.
-    summation_method: (Optional) Specifies the Riemann summation method used
-      (https://en.wikipedia.org/wiki/Riemann_sum): 'interpolation' [default],
-        applies mid-point summation scheme for `ROC`. For PR-AUC, interpolates
-        (true/false) positives but not the ratio that is precision (see Davis
-        & Goadrich 2006 for details); 'minoring' that applies left summation
+    summation_method: (Optional) Specifies the [Riemann summation method](
+        https://en.wikipedia.org/wiki/Riemann_sum) used.
+        'interpolation' (default) applies mid-point summation scheme for `ROC`.
+        For PR-AUC, interpolates (true/false) positives but not the ratio that
+        is precision (see Davis & Goadrich 2006 for details);
+        'minoring' applies left summation
         for increasing intervals and right summation for decreasing intervals;
-        'majoring' that does the opposite.
+        'majoring' does the opposite.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
     thresholds: (Optional) A list of floating point values to use as the
@@ -2226,8 +2227,9 @@ class AUC(Metric):
 class CosineSimilarity(MeanMetricWrapper):
   """Computes the cosine similarity between the labels and predictions.
 
-  cosine similarity = (a . b) / ||a|| ||b||
-  [Cosine Similarity](https://en.wikipedia.org/wiki/Cosine_similarity)
+  `cosine similarity = (a . b) / ||a|| ||b||`
+
+  See: [Cosine Similarity](https://en.wikipedia.org/wiki/Cosine_similarity).
 
   This metric keeps the average cosine similarity between `predictions` and
   `labels` over a stream of data.

@@ -16,13 +16,13 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/stages/inference_profiler_stage.h"
+#include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
 namespace evaluation {
@@ -36,7 +36,8 @@ constexpr char kDelegateFlag[] = "delegate";
 bool EvaluateModel(const std::string& model_file_path,
                    const std::string& delegate, int num_runs,
                    const std::string& output_file_path,
-                   int num_interpreter_threads) {
+                   int num_interpreter_threads,
+                   const DelegateProviders& delegate_providers) {
   // Initialize evaluation stage.
   EvaluationStageConfig eval_config;
   eval_config.set_name("inference_profiling");
@@ -50,11 +51,11 @@ bool EvaluateModel(const std::string& model_file_path,
   inference_params->set_delegate(ParseStringToDelegateType(delegate));
   if (!delegate.empty() &&
       inference_params->delegate() == TfliteInferenceParams::NONE) {
-    LOG(WARNING) << "Unsupported TFLite delegate: " << delegate;
+    TFLITE_LOG(WARN) << "Unsupported TFLite delegate: " << delegate;
     return false;
   }
   InferenceProfilerStage eval(eval_config);
-  if (eval.Init() != kTfLiteOk) return false;
+  if (eval.Init(&delegate_providers) != kTfLiteOk) return false;
 
   // Run inference & check diff for specified number of runs.
   for (int i = 0; i < num_runs; ++i) {
@@ -62,10 +63,32 @@ bool EvaluateModel(const std::string& model_file_path,
   }
 
   // Output latency & diff metrics.
-  std::ofstream metrics_ofile;
-  metrics_ofile.open(output_file_path, std::ios::out);
-  metrics_ofile << eval.LatestMetrics().DebugString();
-  metrics_ofile.close();
+  const auto latest_metrics = eval.LatestMetrics();
+  if (!output_file_path.empty()) {
+    std::ofstream metrics_ofile;
+    metrics_ofile.open(output_file_path, std::ios::out);
+    metrics_ofile << latest_metrics.SerializeAsString();
+    metrics_ofile.close();
+  } else {
+    TFLITE_LOG(INFO) << "Num evaluation runs: " << latest_metrics.num_runs();
+    const auto& metrics =
+        latest_metrics.process_metrics().inference_profiler_metrics();
+    const auto& ref_latency = metrics.reference_latency();
+    TFLITE_LOG(INFO) << "Reference run latency: avg=" << ref_latency.avg_us()
+                     << "(us), std_dev=" << ref_latency.std_deviation_us()
+                     << "(us)";
+    const auto& test_latency = metrics.test_latency();
+    TFLITE_LOG(INFO) << "Test run latency: avg=" << test_latency.avg_us()
+                     << "(us), std_dev=" << test_latency.std_deviation_us()
+                     << "(us)";
+    const auto& output_errors = metrics.output_errors();
+    for (int i = 0; i < output_errors.size(); ++i) {
+      const auto& error = output_errors.at(i);
+      TFLITE_LOG(INFO) << "OutputDiff[" << i
+                       << "]: avg_error=" << error.avg_value()
+                       << ", std_dev=" << error.std_deviation();
+    }
+  }
   return true;
 }
 
@@ -94,9 +117,11 @@ int Main(int argc, char* argv[]) {
   };
   tflite::Flags::Parse(&argc, const_cast<const char**>(argv), flag_list);
 
+  DelegateProviders delegate_providers;
+  delegate_providers.InitFromCmdlineArgs(&argc, const_cast<const char**>(argv));
   if (!EvaluateModel(model_file_path, delegate, num_runs, output_file_path,
-                     num_interpreter_threads)) {
-    LOG(ERROR) << "Could not evaluate model!";
+                     num_interpreter_threads, delegate_providers)) {
+    TFLITE_LOG(ERROR) << "Could not evaluate model!";
     return EXIT_FAILURE;
   }
 

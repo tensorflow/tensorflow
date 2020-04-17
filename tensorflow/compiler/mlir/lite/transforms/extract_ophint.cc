@@ -38,7 +38,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -679,7 +678,8 @@ LogicalResult ConvertOphintToStub(StringRef stub_name,
   return success();
 }
 
-struct ExtractOphintPass : public OperationPass<ExtractOphintPass, ModuleOp> {
+struct ExtractOphintPass
+    : public PassWrapper<ExtractOphintPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
   void Verify();
 
@@ -752,7 +752,7 @@ void ExtractOphintPass::Verify() {
 
 /// Creates an instance of the TensorFlow Lite dialect ExtractOphintPass
 /// pass.
-std::unique_ptr<OpPassBase<ModuleOp>> CreateExtractOphintPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateExtractOphintPass() {
   return std::make_unique<ExtractOphintPass>();
 }
 

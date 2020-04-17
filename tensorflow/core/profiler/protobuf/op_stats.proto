@@ -104,4 +104,6 @@ message OpStats {
   RunEnvironment run_environment = 5;
   // Kernel stats results from all GPUs.
   KernelStatsDb kernel_stats_db = 6;
+  // Errors seen.
+  repeated string errors = 7;
 }

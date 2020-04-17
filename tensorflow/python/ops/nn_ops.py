@@ -4634,7 +4634,7 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
 
   Raises:
     ValueError: If `rate` is not in `[0, 1)` or if `x` is not a floating point
-      tensor. `rate=1` is disallowed, because theoutput would be all zeros,
+      tensor. `rate=1` is disallowed, because the output would be all zeros,
       which is likely not what was intended.
   """
   with ops.name_scope(name, "dropout", [x]) as name:

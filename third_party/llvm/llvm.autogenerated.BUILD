@@ -4039,27 +4039,6 @@ cc_library(
 )
 
 cc_library(
-    name = "ve_asm_printer",
-    srcs = glob([
-        "lib/Target/VE/InstPrinter/*.c",
-        "lib/Target/VE/InstPrinter/*.cpp",
-        "lib/Target/VE/InstPrinter/*.inc",
-    ]),
-    hdrs = glob([
-        "include/llvm/Target/VE/InstPrinter/*.h",
-        "include/llvm/Target/VE/InstPrinter/*.def",
-        "include/llvm/Target/VE/InstPrinter/*.inc",
-        "lib/Target/VE/InstPrinter/*.h",
-    ]),
-    copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/VE"],
-    deps = [
-        ":config",
-        ":mc",
-        ":support",
-    ],
-)
-
-cc_library(
     name = "ve_code_gen",
     srcs = glob([
         "lib/Target/VE/*.c",
@@ -4083,7 +4062,6 @@ cc_library(
         ":selection_dag",
         ":support",
         ":target",
-        ":ve_asm_printer",
         ":ve_desc",
         ":ve_info",
     ],
@@ -4107,7 +4085,6 @@ cc_library(
         ":config",
         ":mc",
         ":support",
-        ":ve_asm_printer",
         ":ve_info",
     ],
 )

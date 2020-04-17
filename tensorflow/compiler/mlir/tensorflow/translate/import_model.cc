@@ -1885,13 +1885,13 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
       auto node_name = [&](const OutputTensor& tensor) {
         ss << tensor.node->name();
       };
-      mlir::interleave(arg_nodes, ss, node_name, ",");
+      llvm::interleave(arg_nodes, ss, node_name, ",");
       auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(ret_nodes, ss, node_name, ",");
+      llvm::interleave(ret_nodes, ss, node_name, ",");
       auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(specs.control_outputs, ss, ",");
+      llvm::interleave(specs.control_outputs, ss, ",");
       auto control_outputs =
           b.getNamedAttr("control_outputs", b.getStringAttr(ss.str()));
 
@@ -1916,16 +1916,16 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
       mlir::Builder b(context);
       std::string s;
       llvm::raw_string_ostream ss(s);
-      mlir::interleave(
+      llvm::interleave(
           specs.inputs, ss,
           [&](const std::pair<std::string, ArrayInfo>& v) { ss << v.first; },
           ",");
       auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(specs.outputs, ss, ",");
+      llvm::interleave(specs.outputs, ss, ",");
       auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(specs.control_outputs, ss, ",");
+      llvm::interleave(specs.control_outputs, ss, ",");
       auto control_outputs =
           b.getNamedAttr("control_outputs", b.getStringAttr(ss.str()));
 
@@ -2004,7 +2004,7 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
   llvm::SmallVector<mlir::Type, 4> arg_types;
   arg_types.reserve(specs.inputs.size());
   int i = 0;
-  for (auto it : specs.inputs) {
+  for (const auto& it : specs.inputs) {
     Node* arg_node = arg_nodes->at(i).node;
     if (arg_node == nullptr) {
       return errors::InvalidArgument("Input ", it.first,

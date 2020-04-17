@@ -77,14 +77,20 @@ XlaComputation CreateScalarIdentityWithZeroComputation(PrimitiveType type,
 XlaOp Any(XlaOp predicates);
 
 // Returns the argmax of `input` along `axis`. `output_type` is the type to
-// use for the output.
+// use for the output. The `tie_low` argument drives the index selection is case
+// of same values. If `true` (default behavior) the lowest index will be
+// returned, otherwise the higher.
 XlaOp ArgMax(XlaOp input, PrimitiveType output_type, int axis);
-XlaOp ArgMaxTwoPass(XlaOp input, PrimitiveType output_type, int axis);
+XlaOp ArgMaxTwoPass(XlaOp input, PrimitiveType output_type, int axis,
+                    bool tie_low = true);
 
 // Returns the argmin of `input` along `axis`. `output_type` is the type to
-// use for the output.
+// use for the output. The `tie_low` argument drives the index selection is case
+// of same values. If `true` (default behavior) the lowest index will be
+// returned, otherwise the higher.
 XlaOp ArgMin(XlaOp input, PrimitiveType output_type, int axis);
-XlaOp ArgMinTwoPass(XlaOp input, PrimitiveType output_type, int axis);
+XlaOp ArgMinTwoPass(XlaOp input, PrimitiveType output_type, int axis,
+                    bool tie_low = true);
 
 }  // namespace xla
 
