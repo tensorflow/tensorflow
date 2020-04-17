@@ -69,25 +69,24 @@ bool EvaluateModel(const std::string& model_file_path,
     metrics_ofile.open(output_file_path, std::ios::out);
     metrics_ofile << latest_metrics.SerializeAsString();
     metrics_ofile.close();
-  } else {
-    TFLITE_LOG(INFO) << "Num evaluation runs: " << latest_metrics.num_runs();
-    const auto& metrics =
-        latest_metrics.process_metrics().inference_profiler_metrics();
-    const auto& ref_latency = metrics.reference_latency();
-    TFLITE_LOG(INFO) << "Reference run latency: avg=" << ref_latency.avg_us()
-                     << "(us), std_dev=" << ref_latency.std_deviation_us()
-                     << "(us)";
-    const auto& test_latency = metrics.test_latency();
-    TFLITE_LOG(INFO) << "Test run latency: avg=" << test_latency.avg_us()
-                     << "(us), std_dev=" << test_latency.std_deviation_us()
-                     << "(us)";
-    const auto& output_errors = metrics.output_errors();
-    for (int i = 0; i < output_errors.size(); ++i) {
-      const auto& error = output_errors.at(i);
-      TFLITE_LOG(INFO) << "OutputDiff[" << i
-                       << "]: avg_error=" << error.avg_value()
-                       << ", std_dev=" << error.std_deviation();
-    }
+  }
+  TFLITE_LOG(INFO) << "Num evaluation runs: " << latest_metrics.num_runs();
+  const auto& metrics =
+      latest_metrics.process_metrics().inference_profiler_metrics();
+  const auto& ref_latency = metrics.reference_latency();
+  TFLITE_LOG(INFO) << "Reference run latency: avg=" << ref_latency.avg_us()
+                   << "(us), std_dev=" << ref_latency.std_deviation_us()
+                   << "(us)";
+  const auto& test_latency = metrics.test_latency();
+  TFLITE_LOG(INFO) << "Test run latency: avg=" << test_latency.avg_us()
+                   << "(us), std_dev=" << test_latency.std_deviation_us()
+                   << "(us)";
+  const auto& output_errors = metrics.output_errors();
+  for (int i = 0; i < output_errors.size(); ++i) {
+    const auto& error = output_errors.at(i);
+    TFLITE_LOG(INFO) << "OutputDiff[" << i
+                     << "]: avg_error=" << error.avg_value()
+                     << ", std_dev=" << error.std_deviation();
   }
   return true;
 }
