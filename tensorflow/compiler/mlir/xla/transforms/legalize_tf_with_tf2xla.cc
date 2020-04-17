@@ -99,7 +99,7 @@ static bool IsOpWhitelisted(Operation* op) {
       TypeID::get<TF::SelectV2Op>(),     TypeID::get<TF::SubOp>(),
       TypeID::get<TF::SquareOp>(),       TypeID::get<TF::TransposeOp>(),
       TypeID::get<TF::TruncateDivOp>(),  TypeID::get<TF::TruncateModOp>(),
-      TypeID::get<TF::UnpackOp>()};
+      TypeID::get<TF::UnpackOp>(),       TypeID::get<TF::XlaDotOp>()};
 
   auto* abstractOp = op->getAbstractOperation();
   if (!abstractOp) return false;

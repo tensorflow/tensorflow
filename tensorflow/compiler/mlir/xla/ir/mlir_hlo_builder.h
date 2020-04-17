@@ -97,6 +97,11 @@ class MlirHloBuilder : public XlaBuilder {
   StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
                                   int64 inferred_dimension) override;
 
+  StatusOr<XlaOp> DotGeneralInternal(
+      const Shape& shape, XlaOp lhs, XlaOp rhs,
+      const DotDimensionNumbers& dimension_number,
+      const PrecisionConfig* precision_config) override;
+
   StatusOr<XlaOp> InDimBroadcast(
       const Shape& shape, XlaOp operand,
       absl::Span<const int64> broadcast_dimensions) override;

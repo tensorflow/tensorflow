@@ -534,6 +534,7 @@ cc_library(
         "ir/mlir_hlo_builder.h",
     ],
     deps = [
+        ":attribute_importer",
         ":hlo",
         ":hlo_utils",
         ":type_to_shape",

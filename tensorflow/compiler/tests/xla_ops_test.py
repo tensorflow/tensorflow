@@ -149,7 +149,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           expected=np.array([[[-9, -12, -21, -26, -10]]], dtype=dtype))
 
   @parameterized.parameters(*PRECISION_VALUES)
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testDotGeneral(self, precision):
     for dtype in self.float_types:
 
