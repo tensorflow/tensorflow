@@ -48,7 +48,6 @@ Coinciding with this change, new releases of [TensorFlow's Docker images](https:
 * Keras compile/fit behavior for functional and subclassed models have been unified. Model properties such as `metrics`, `metrics_names` will now be available only after **training/evaluating the model on actual data** for functional models. `metrics` will **now include** model `loss` and output losses.`loss_functions` property has been removed from the model. This was an undocumented property that was accidentally public and has now been removed.
 
 ## Known Caveats
-* Due to certain unforeseen circumstances, we are unable to release MacOS py3.8 binaries, but Windows/Linux binaries for py3.8 are available.
 * The current TensorFlow release now **requires** [gast](https://pypi.org/project/gast/) version 0.3.3. 
 
 ## Bug Fixes and Other Changes
