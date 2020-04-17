@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/Optional.h"
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
@@ -77,25 +78,32 @@ static bool IsOpWhitelisted(Operation* op) {
   // building valid MLIR using MlirHloBuilder.
   // TODO(hinsu): Drop explicit whitelist when MLIR based bridge is enabled for
   // all tf2xla kernels.
-  return isa<TF::AbsOp>(op) || isa<TF::AddV2Op>(op) || isa<TF::Atan2Op>(op) ||
-         isa<TF::BatchMatMulV2Op>(op) || isa<TF::BiasAddOp>(op) ||
-         isa<TF::BiasAddGradOp>(op) || isa<TF::BitwiseAndOp>(op) ||
-         isa<TF::BitwiseOrOp>(op) || isa<TF::BitwiseXorOp>(op) ||
-         isa<TF::CastOp>(op) || isa<TF::ComplexAbsOp>(op) ||
-         isa<TF::DivNoNanOp>(op) || isa<TF::EqualOp>(op) ||
-         isa<TF::FloorDivOp>(op) || isa<TF::FloorModOp>(op) ||
-         isa<TF::GreaterOp>(op) || isa<TF::GreaterEqualOp>(op) ||
-         isa<TF::InvOp>(op) || isa<TF::InvertOp>(op) ||
-         isa<TF::LeftShiftOp>(op) || isa<TF::LessOp>(op) ||
-         isa<TF::LessEqualOp>(op) || isa<TF::LogicalAndOp>(op) ||
-         isa<TF::LogicalNotOp>(op) || isa<TF::LogicalOrOp>(op) ||
-         isa<TF::LogOp>(op) || isa<TF::MatMulOp>(op) || isa<TF::MulOp>(op) ||
-         isa<TF::NegOp>(op) || isa<TF::NotEqualOp>(op) || isa<TF::PowOp>(op) ||
-         isa<TF::RealDivOp>(op) || isa<TF::RightShiftOp>(op) ||
-         isa<TF::SinOp>(op) || isa<TF::SelectV2Op>(op) || isa<TF::SubOp>(op) ||
-         isa<TF::SquareOp>(op) || isa<TF::TransposeOp>(op) ||
-         isa<TF::TruncateDivOp>(op) || isa<TF::TruncateModOp>(op) ||
-         isa<TF::UnpackOp>(op);
+  static llvm::SmallDenseSet<mlir::TypeID, 512> ops = {
+      TypeID::get<TF::AbsOp>(),          TypeID::get<TF::AddV2Op>(),
+      TypeID::get<TF::Atan2Op>(),        TypeID::get<TF::BatchMatMulV2Op>(),
+      TypeID::get<TF::BiasAddOp>(),      TypeID::get<TF::BiasAddGradOp>(),
+      TypeID::get<TF::BitwiseAndOp>(),   TypeID::get<TF::BitwiseOrOp>(),
+      TypeID::get<TF::BitwiseXorOp>(),   TypeID::get<TF::CastOp>(),
+      TypeID::get<TF::ComplexAbsOp>(),   TypeID::get<TF::DivNoNanOp>(),
+      TypeID::get<TF::EqualOp>(),        TypeID::get<TF::FloorDivOp>(),
+      TypeID::get<TF::FloorModOp>(),     TypeID::get<TF::GreaterOp>(),
+      TypeID::get<TF::GreaterEqualOp>(), TypeID::get<TF::InvOp>(),
+      TypeID::get<TF::InvertOp>(),       TypeID::get<TF::LeftShiftOp>(),
+      TypeID::get<TF::LessOp>(),         TypeID::get<TF::LessEqualOp>(),
+      TypeID::get<TF::LogicalAndOp>(),   TypeID::get<TF::LogicalNotOp>(),
+      TypeID::get<TF::LogicalOrOp>(),    TypeID::get<TF::LogOp>(),
+      TypeID::get<TF::MatMulOp>(),       TypeID::get<TF::MulOp>(),
+      TypeID::get<TF::NegOp>(),          TypeID::get<TF::NotEqualOp>(),
+      TypeID::get<TF::PowOp>(),          TypeID::get<TF::RealDivOp>(),
+      TypeID::get<TF::RightShiftOp>(),   TypeID::get<TF::SinOp>(),
+      TypeID::get<TF::SelectV2Op>(),     TypeID::get<TF::SubOp>(),
+      TypeID::get<TF::SquareOp>(),       TypeID::get<TF::TransposeOp>(),
+      TypeID::get<TF::TruncateDivOp>(),  TypeID::get<TF::TruncateModOp>(),
+      TypeID::get<TF::UnpackOp>()};
+
+  auto* abstractOp = op->getAbstractOperation();
+  if (!abstractOp) return false;
+  return ops.count(abstractOp->typeID);
 }
 
 static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
