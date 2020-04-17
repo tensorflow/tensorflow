@@ -78,8 +78,19 @@ struct GemmImplUsingRuy {
     ruy::MulParams<AccumScalar, DstScalar> ruy_mul_params;
     MakeRuyMulParams(params, &ruy_mul_params);
 
-    ruy::Mul(ruy_lhs, ruy_rhs, ruy_mul_params, context->ruy_context(),
-             &ruy_dst);
+// If Ruy is not selected intentionally (TFLITE_WITH_RUY not defined)
+// and GEMMLOWP_NEON is absent, we fall back to Ruy for some quantized
+// kernels. Some Ruy paths are still experimental, so we restrict to reference
+// code in that case.
+#if !defined(TFLITE_WITH_RUY) && !defined(GEMMLOWP_NEON)
+    constexpr ruy::Path kRuyPath =
+        ruy::Path::kReference | ruy::Path::kStandardCpp;
+#else
+    constexpr ruy::Path kRuyPath = ruy::kAllPaths;
+#endif
+
+    ruy::Mul<kRuyPath>(ruy_lhs, ruy_rhs, ruy_mul_params, context->ruy_context(),
+                       &ruy_dst);
   }
 };
 
