@@ -310,36 +310,51 @@ void BuildOpsSubmodule(py::module* m) {
   // XlaBuilder.
   py::module ops = m->def_submodule("ops", "XLA operations");
 
-  ops.def("AfterAll", &AfterAll);
+  ops.def("AfterAll", &AfterAll, py::arg("builder"), py::arg("tokens"));
   ops.def(
       "AllReduce",
       static_cast<XlaOp (*)(
           XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
           const absl::optional<ChannelHandle>&, const absl::optional<Shape>&)>(
-          &AllReduce));
-  ops.def("AllToAll", &AllToAll);
-  ops.def("CollectivePermute", &CollectivePermute);
-  ops.def("CreateToken", &CreateToken);
+          &AllReduce),
+      py::arg("operand"), py::arg("computation"), py::arg("replica_groups"),
+      py::arg("channel_id") = absl::nullopt,
+      py::arg("shape_with_layout") = absl::nullopt);
+  ops.def("AllToAll", &AllToAll, py::arg("operand"), py::arg("split_dimension"),
+          py::arg("concat_dimension"), py::arg("split_count"),
+          py::arg("replica_groups"));
+  ops.def("CollectivePermute", &CollectivePermute, py::arg("operand"),
+          py::arg("source_target_pairs"));
+  ops.def("CreateToken", &CreateToken, py::arg("builder"));
   ops.def("CrossReplicaSum",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const ReplicaGroup>)>(
-              &CrossReplicaSum));
+              &CrossReplicaSum),
+          py::arg("operand"), py::arg("replica_groups"));
   ops.def("BitcastConvertType", &BitcastConvertType, py::arg("operand"),
           py::arg("new_element_type"));
   ops.def("Broadcast", &Broadcast, py::arg("operand"), py::arg("sizes"));
   ops.def("BroadcastInDim", &BroadcastInDim, py::arg("operand"),
           py::arg("shape"), py::arg("broadcast_dimensions"));
-  ops.def("Call", &Call);
+  ops.def("Call", &Call, py::arg("builder"), py::arg("computation"),
+          py::arg("operands"));
   ops.def("Cholesky", &Cholesky, py::arg("a"), py::arg("lower") = true);
-  ops.def("Clamp", &Clamp);
+  ops.def("Clamp", &Clamp, py::arg("min"), py::arg("operand"), py::arg("max"));
   ops.def("Collapse", &Collapse, py::arg("operand"), py::arg("dimensions"));
-  ops.def("ConcatInDim", &ConcatInDim);
+  ops.def("ConcatInDim", &ConcatInDim, py::arg("builder"), py::arg("operands"),
+          py::arg("dimension"));
   ops.def("Conditional",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaComputation* const>,
-                                absl::Span<const XlaOp>)>(&Conditional));
+                                absl::Span<const XlaOp>)>(&Conditional),
+          py::arg("branch_index"), py::arg("branch_computations"),
+          py::arg("branch_operands"));
   ops.def("Conditional",
           static_cast<XlaOp (*)(XlaOp, XlaOp, const XlaComputation&, XlaOp,
-                                const XlaComputation&)>(&Conditional));
-  ops.def("ConstantLiteral", &ConstantLiteral);
+                                const XlaComputation&)>(&Conditional),
+          py::arg("predicate"), py::arg("true_operand"),
+          py::arg("true_computation"), py::arg("false_operand"),
+          py::arg("false_computation"));
+  ops.def("ConstantLiteral", &ConstantLiteral, py::arg("builder"),
+          py::arg("literal"));
   ops.def("ConvGeneralDilated", &ConvGeneralDilated, py::arg("lhs"),
           py::arg("rhs"), py::arg("window_strides"), py::arg("padding"),
           py::arg("lhs_dilation"), py::arg("rhs_dilation"),
@@ -348,48 +363,69 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("precision_config") = nullptr);
   ops.def("ConvertElementType", &ConvertElementType, py::arg("operand"),
           py::arg("new_element_type"));
-  ops.def("CustomCall", &CustomCall);
-  ops.def("CustomCallWithLayout", &CustomCallWithLayout);
+  ops.def("CustomCall", &CustomCall, py::arg("builder"),
+          py::arg("call_target_name"), py::arg("operands"), py::arg("shape"),
+          py::arg("opaque"));
+  ops.def("CustomCallWithLayout", &CustomCallWithLayout, py::arg("builder"),
+          py::arg("call_target_name"), py::arg("operands"),
+          py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
+          py::arg("opaque"));
   ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
           py::arg("precision_config") = nullptr);
   ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
           py::arg("dimension_numbers"), py::arg("precision_config") = nullptr);
   ops.def("DynamicSlice",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const XlaOp>,
-                                absl::Span<const int64>)>(&DynamicSlice));
+                                absl::Span<const int64>)>(&DynamicSlice),
+          py::arg("operand"), py::arg("start_indices"), py::arg("slice_sizes"));
   ops.def("DynamicUpdateSlice",
           static_cast<XlaOp (*)(XlaOp, XlaOp, absl::Span<const XlaOp>)>(
-              &DynamicUpdateSlice));
+              &DynamicUpdateSlice),
+          py::arg("operand"), py::arg("update"), py::arg("start_indices"));
 
-  ops.def("Fft", &Fft);
+  ops.def("Fft", &Fft, py::arg("operand"), py::arg("fft_type"),
+          py::arg("fft_length"));
 
   ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
           py::arg("dimension_numbers"), py::arg("slice_sizes"),
           py::arg("indices_are_sorted"));
-  ops.def("GetTupleElement", &GetTupleElement);
+  ops.def("GetTupleElement", &GetTupleElement, py::arg("tuple_data"),
+          py::arg("index"));
   ops.def("InfeedWithToken", &InfeedWithToken, py::arg("token"),
           py::arg("shape"), py::arg("config") = "");
   ops.def("Iota",
-          static_cast<XlaOp (*)(XlaBuilder*, const Shape&, int64)>(&Iota));
+          static_cast<XlaOp (*)(XlaBuilder*, const Shape&, int64)>(&Iota),
+          py::arg("builder"), py::arg("shape"), py::arg("iota_dimension"));
   ops.def("Iota",
-          static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64)>(&Iota));
-  ops.def("Map", &Map);
-  ops.def("NextAfter", &NextAfter);
+          static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64)>(&Iota),
+          py::arg("builder"), py::arg("type"), py::arg("size"));
+  ops.def("Map", &Map, py::arg("builder"), py::arg("operands"),
+          py::arg("computation"), py::arg("dimensions"),
+          py::arg("static_operands"));
+  ops.def("NextAfter", &NextAfter, py::arg("from"), py::arg("to"));
   ops.def("OutfeedWithToken", &OutfeedWithToken, py::arg("operand"),
           py::arg("token"), py::arg("shape_with_layout"),
           py::arg("outfeed_config") = "");
-  ops.def("Pad", &Pad);
-  ops.def("Parameter", static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
-                                             const std::string&)>(&Parameter));
+  ops.def("Pad", &Pad, py::arg("operand"), py::arg("padding_value"),
+          py::arg("padding_config"));
+  ops.def("Parameter",
+          static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
+                                const std::string&)>(&Parameter),
+          py::arg("builder"), py::arg("parameter_number"), py::arg("shape"),
+          py::arg("name"));
   ops.def("Parameter",
           static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
                                 const std::string&, const std::vector<bool>&)>(
-              &Parameter));
-  ops.def("QR",
-          [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
-            TF_ASSIGN_OR_RETURN(auto qr, QRDecomposition(a, full_matrices));
-            return std::make_pair(qr.q, qr.r);
-          });
+              &Parameter),
+          py::arg("builder"), py::arg("parameter_number"), py::arg("shape"),
+          py::arg("name"), py::arg("replicated_at_leaf_buffers"));
+  ops.def(
+      "QR",
+      [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
+        TF_ASSIGN_OR_RETURN(auto qr, QRDecomposition(a, full_matrices));
+        return std::make_pair(qr.q, qr.r);
+      },
+      py::arg("operand"), py::arg("full_matrices"));
   ops.def(
       "Eigh",
       [](XlaOp a, bool lower, int64 max_iter,
@@ -410,23 +446,42 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("Reduce",
           static_cast<XlaOp (*)(XlaBuilder*, absl::Span<const XlaOp>,
                                 absl::Span<const XlaOp>, const XlaComputation&,
-                                absl::Span<const int64>)>(&Reduce));
+                                absl::Span<const int64>)>(&Reduce),
+          py::arg("builder"), py::arg("operands"), py::arg("init_values"),
+          py::arg("computation"), py::arg("dimensions_to_reduce"));
   ops.def("ReducePrecision", &ReducePrecision, py::arg("operand"),
           py::arg("exponent_bits"), py::arg("mantissa_bits"));
-  ops.def("ReduceWindowWithGeneralPadding", &ReduceWindowWithGeneralPadding);
-  ops.def("ReplicaId", &ReplicaId);
-  ops.def("Reshape", static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,
-                                           absl::Span<const int64>)>(&Reshape));
+  ops.def("ReduceWindowWithGeneralPadding", &ReduceWindowWithGeneralPadding,
+          py::arg("operand"), py::arg("init_value"), py::arg("computation"),
+          py::arg("window_dimensions"), py::arg("window_strides"),
+          py::arg("base_dilations"), py::arg("window_dilations"),
+          py::arg("padding"));
+  ops.def("ReplicaId", &ReplicaId, py::arg("builder"));
   ops.def("Reshape",
-          static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>)>(&Reshape));
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>,
+                                absl::Span<const int64>)>(&Reshape),
+          py::arg("operand"), py::arg("dimensions"), py::arg("new_sizes"));
+  ops.def("Reshape",
+          static_cast<XlaOp (*)(XlaOp, absl::Span<const int64>)>(&Reshape),
+          py::arg("operand"), py::arg("new_sizes"));
   ops.def("Rev", &Rev, py::arg("operand"), py::arg("dimensions"));
-  ops.def("RngNormal", &RngNormal);
-  ops.def("RngUniform", &RngUniform);
-  ops.def("Scatter", &Scatter);
-  ops.def("Select", &Select);
+  ops.def("RngNormal", &RngNormal, py::arg("mu"), py::arg("sigma"),
+          py::arg("shape"));
+  ops.def("RngUniform", &RngUniform, py::arg("a"), py::arg("b"),
+          py::arg("shape"));
+  ops.def("Scatter", &Scatter, py::arg("input"), py::arg("scatter_indices"),
+          py::arg("updates"), py::arg("update_computation"),
+          py::arg("dimension_numbers"), py::arg("indices_are_sorted") = false,
+          py::arg("unique_indices") = false);
+  ops.def("Select", &Select, py::arg("pred"), py::arg("on_true"),
+          py::arg("on_false"));
   ops.def("SelectAndScatterWithGeneralPadding",
-          &SelectAndScatterWithGeneralPadding);
-  ops.def("Slice", &Slice);
+          &SelectAndScatterWithGeneralPadding, py::arg("operand"),
+          py::arg("select"), py::arg("window_dimensions"),
+          py::arg("window_strides"), py::arg("padding"), py::arg("source"),
+          py::arg("init_value"), py::arg("scatter"));
+  ops.def("Slice", &Slice, py::arg("operand"), py::arg("start_indices"),
+          py::arg("limit_indices"), py::arg("strides"));
   ops.def("SliceInDim", &SliceInDim, py::arg("operand"), py::arg("start_index"),
           py::arg("limit_index"), py::arg("stride"), py::arg("dimno"));
   ops.def(
@@ -452,16 +507,20 @@ void BuildOpsSubmodule(py::module* m) {
       py::arg("builder"), py::arg("operands"), py::arg("dimension") = -1,
       py::arg("comparator") = absl::nullopt);
   ops.def("TopK", &TopK, py::arg("input"), py::arg("k"));
-  ops.def("Transpose", &Transpose);
-  ops.def("TriangularSolve", &TriangularSolve);
-  ops.def("Tuple", &Tuple);
-  ops.def("While", &While);
+  ops.def("Transpose", &Transpose, py::arg("operand"), py::arg("permutation"));
+  ops.def("TriangularSolve", &TriangularSolve, py::arg("a"), py::arg("b"),
+          py::arg("left_side"), py::arg("lower"), py::arg("unit_diagonal"),
+          py::arg("transpose_a"));
+  ops.def("Tuple", &Tuple, py::arg("builder"), py::arg("elements"));
+  ops.def("While", &While, py::arg("condition"), py::arg("body"),
+          py::arg("init"));
 
-  ops.def("Igamma", &Igamma);
-  ops.def("Igammac", &Igammac);
-  ops.def("IgammaGradA", &IgammaGradA);
-  ops.def("RandomGammaGrad", &RandomGammaGrad);
-  ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta);
+  ops.def("Igamma", &Igamma, py::arg("a"), py::arg("x"));
+  ops.def("Igammac", &Igammac, py::arg("a"), py::arg("x"));
+  ops.def("IgammaGradA", &IgammaGradA, py::arg("a"), py::arg("x"));
+  ops.def("RandomGammaGrad", &RandomGammaGrad, py::arg("a"), py::arg("x"));
+  ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta, py::arg("a"),
+          py::arg("b"), py::arg("x"));
 
 #define BINARY_OP(op)                                                 \
   ops.def(                                                            \
