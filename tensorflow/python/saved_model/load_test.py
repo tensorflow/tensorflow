@@ -995,9 +995,10 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([6],
                         imported.f(constant_op.constant([3])).numpy())
 
+  @test_util.run_in_graph_and_eager_modes
   def test_concrete_function_backprop(self, cycles):
     @def_function.function(
-        input_signature=[tensor_spec.TensorSpec([None], dtypes.float32)])
+        input_signature=[tensor_spec.TensorSpec([], dtypes.float32)])
     def func(x):
       return x ** 2.
     root = tracking.AutoTrackable()
@@ -1010,10 +1011,10 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         output = function(inp)
       return tape.gradient(output, inp)
 
-    self.assertEqual(2., _compute_gradient(root.f).numpy())
+    self.assertAllEqual(2., _compute_gradient(root.f))
     # TODO(andresp): Fix exporting of loaded concrete functions as signatures.
     imported = cycle(root, cycles, signatures={})
-    self.assertEqual(2., _compute_gradient(imported.f).numpy())
+    self.assertAllEqual(2., _compute_gradient(imported.f))
 
   def test_revived_concrete_function_kwargs(self, cycles):
 
