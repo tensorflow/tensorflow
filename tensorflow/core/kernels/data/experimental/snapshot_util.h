@@ -114,12 +114,19 @@ class Reader {
   static constexpr const char* const kReadCord = "ReadCord";
   static constexpr const char* const kSeparator = "::";
 
-  explicit Reader(RandomAccessFile* file, const string& compression_type,
-                  int version, const DataTypeVector& dtypes);
+  static Status Create(Env* env, const std::string& filename,
+                       const string& compression_type, int version,
+                       const DataTypeVector& dtypes,
+                       std::unique_ptr<Reader>* out_reader);
 
   Status ReadTensors(std::vector<Tensor>* read_tensors);
 
  private:
+  explicit Reader(const std::string& filename, const string& compression_type,
+                  int version, const DataTypeVector& dtypes);
+
+  Status Initialize(Env* env);
+
   Status ReadTensorsV0(std::vector<Tensor>* read_tensors);
 
   Status SnappyUncompress(
@@ -134,7 +141,8 @@ class Reader {
   Status ReadRecord(absl::Cord* record);
 #endif
 
-  RandomAccessFile* file_;
+  std::string filename_;
+  std::unique_ptr<RandomAccessFile> file_;
   std::unique_ptr<io::InputStreamInterface> input_stream_;
   const string compression_type_;
   const int version_;
