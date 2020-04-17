@@ -156,8 +156,17 @@ void Node::UpdateProperties() {
     LOG(ERROR) << "Failed at updating node: " << status;
     return;
   }
-  props_ = std::make_shared<NodeProperties>(props_->op_def, props_->node_def,
-                                            inputs, outputs);
+  if (props_->input_types != inputs || props_->output_types != outputs) {
+    if (TF_PREDICT_TRUE(props_.use_count() == 1)) {
+      props_->input_types = inputs;
+      props_->input_types_slice = props_->input_types;
+      props_->output_types = outputs;
+      props_->output_types_slice = props_->output_types;
+    } else {
+      props_ = std::make_shared<NodeProperties>(
+          props_->op_def, std::move(props_->node_def), inputs, outputs);
+    }
+  }
 }
 
 const string& Node::name() const { return props_->node_def.name(); }
