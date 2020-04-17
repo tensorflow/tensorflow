@@ -732,7 +732,10 @@ cc_test(
     name = "activations_test",
     size = "small",
     srcs = ["activations_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -747,7 +750,10 @@ cc_test(
     name = "add_test",
     size = "small",
     srcs = ["add_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1200,7 +1206,10 @@ cc_test(
     name = "mul_test",
     size = "small",
     srcs = ["mul_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1414,7 +1423,10 @@ cc_test(
     name = "pooling_test",
     size = "small",
     srcs = ["pooling_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1428,7 +1440,10 @@ cc_test(
     name = "softmax_test",
     size = "small",
     srcs = ["softmax_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
