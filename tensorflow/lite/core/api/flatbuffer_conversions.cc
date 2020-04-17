@@ -49,7 +49,7 @@ class SafeBuiltinDataAllocator {
 
   template <typename T>
   BuiltinDataPtr<T> Allocate() {
-    return BuiltinDataPtr<T>(allocator_->AllocateStruct<T>(),
+    return BuiltinDataPtr<T>(allocator_->AllocatePOD<T>(),
                              BuiltinDataDeleter(allocator_));
   }
 

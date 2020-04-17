@@ -32,15 +32,14 @@ class BuiltinDataAllocator {
   virtual void* Allocate(size_t size) = 0;
   virtual void Deallocate(void* data) = 0;
 
-  // Allocate a structure, but make sure it is trivially destructible. The
-  // reason we do this, is that Interpreter's C extension part will take
-  // ownership so destructors will not be run during deallocation.
+  // Allocate a structure, but make sure it is a POD structure that doesn't
+  // require constructors to run. The reason we do this, is that Interpreter's C
+  // extension part will take ownership so destructors  will not be run during
+  // deallocation.
   template <typename T>
-  T* AllocateStruct() {
-    static_assert(std::is_trivially_destructible<T>::value,
-                  "Builtin data structure must be trivially destructible.");
-    void* allocated_memory = this->Allocate(sizeof(T));
-    return new (allocated_memory) T;
+  T* AllocatePOD() {
+    static_assert(std::is_pod<T>::value, "Builtin data structure must be POD.");
+    return static_cast<T*>(this->Allocate(sizeof(T)));
   }
 
   virtual ~BuiltinDataAllocator() {}
