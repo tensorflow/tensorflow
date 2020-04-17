@@ -29,6 +29,8 @@ limitations under the License.
 
 namespace tflite {
 
+constexpr int kReverseShift = -1;
+
 inline void GetActivationMinMax(FusedActivationFunctionType ac,
                                 float* output_activation_min,
                                 float* output_activation_max) {
