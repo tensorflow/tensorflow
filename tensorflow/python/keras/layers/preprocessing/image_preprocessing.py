@@ -389,10 +389,10 @@ class RandomFlip(Layer):
     def random_flipped_inputs():
       flipped_outputs = inputs
       if self.horizontal:
-        flipped_outputs = image_ops.random_flip_up_down(flipped_outputs,
-                                                        self.seed)
+        flipped_outputs = image_ops.random_flip_left_right(flipped_outputs,
+                                                           self.seed)
       if self.vertical:
-        flipped_outputs = image_ops.random_flip_left_right(
+        flipped_outputs = image_ops.random_flip_up_down(
             flipped_outputs, self.seed)
       return flipped_outputs
 
@@ -459,7 +459,7 @@ class RandomTranslation(Layer):
   def __init__(self,
                height_factor,
                width_factor,
-               fill_mode='reflect',
+               fill_mode='constant',
                interpolation='bilinear',
                seed=None,
                name=None,
@@ -492,8 +492,8 @@ class RandomTranslation(Layer):
 
     if fill_mode not in {'reflect', 'wrap', 'constant'}:
       raise NotImplementedError(
-          'Unknown `fill_mode` {}. Only `reflect`, `wrap` and '
-          '`constant` are supported.'.format(fill_mode))
+          'Unknown `fill_mode` {}. Only "constant" is '
+          'supported.'.format(fill_mode))
     if interpolation not in {'nearest', 'bilinear'}:
       raise NotImplementedError(
           'Unknown `interpolation` {}. Only `nearest` and '
@@ -590,7 +590,7 @@ def get_translation_matrix(translations, name=None):
 
 def transform(images,
               transforms,
-              fill_mode='reflect',
+              fill_mode='constant',
               interpolation='bilinear',
               output_shape=None,
               name=None):
@@ -760,7 +760,7 @@ class RandomRotation(Layer):
 
   def __init__(self,
                factor,
-               fill_mode='reflect',
+               fill_mode='constant',
                interpolation='bilinear',
                seed=None,
                name=None,
@@ -776,8 +776,8 @@ class RandomRotation(Layer):
                        'got {}'.format(factor))
     if fill_mode not in {'reflect', 'wrap', 'constant'}:
       raise NotImplementedError(
-          'Unknown `fill_mode` {}. Only `reflect`, `wrap` and '
-          '`constant` are supported.'.format(fill_mode))
+          'Unknown `fill_mode` {}. Only "constant" is '
+          'supported.'.format(fill_mode))
     if interpolation not in {'nearest', 'bilinear'}:
       raise NotImplementedError(
           'Unknown `interpolation` {}. Only `nearest` and '
@@ -829,7 +829,6 @@ class RandomRotation(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.experimental.preprocessing.RandomZoom')
 class RandomZoom(Layer):
   """Randomly zoom each image during training.
 
@@ -872,7 +871,7 @@ class RandomZoom(Layer):
   def __init__(self,
                height_factor,
                width_factor,
-               fill_mode='reflect',
+               fill_mode='constant',
                interpolation='bilinear',
                seed=None,
                name=None,
@@ -905,8 +904,8 @@ class RandomZoom(Layer):
 
     if fill_mode not in {'reflect', 'wrap', 'constant'}:
       raise NotImplementedError(
-          'Unknown `fill_mode` {}. Only `reflect`, `wrap` and '
-          '`constant` are supported.'.format(fill_mode))
+          'Unknown `fill_mode` {}. Only "constant" is '
+          'supported.'.format(fill_mode))
     if interpolation not in {'nearest', 'bilinear'}:
       raise NotImplementedError(
           'Unknown `interpolation` {}. Only `nearest` and '
