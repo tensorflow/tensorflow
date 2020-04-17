@@ -172,11 +172,10 @@ TEST_F(MklRemapperTest, FuseDepthwiseConv2DWithBiasAndActivation) {
         return ops::Identity(fetch, ops::Relu6(activate, bias_add));
       } else if (activation == "Elu") {
         return ops::Identity(fetch, ops::Elu(activate, bias_add));
-      } else if (activation == "None") {
-        return ops::Identity(s.WithOpName("fetch"), bias_add);
       }
 
-      return ops::Identity(fetch, bias);
+      DCHECK(activation == "None");
+      return ops::Identity(fetch, bias_add);
     }();
 
     auto input_t = GenerateRandomTensor<DT_FLOAT>({8, 32, 32, 3});

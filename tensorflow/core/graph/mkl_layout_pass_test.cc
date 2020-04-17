@@ -1805,7 +1805,7 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive7);
         " attr { key: 'padding'          value { s: 'SAME' } }"                \
         " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} " \
         "} }"                                                                  \
-        " attr { key: 'fused_ops'        value { list: " FUSED_OPS" } }"       \
+        " attr { key: 'fused_ops'        value { list: " FUSED_OPS " } }"      \
         " attr { key: 'epsilon'          value { f: 0.001 }}"                  \
         " input: ['A', 'B', 'C']}"                                             \
         "node { name: 'E' op: 'Zeta'"                                          \
