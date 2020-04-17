@@ -901,6 +901,8 @@ cc_library(
         ":SideEffects",
         ":Support",
         "@llvm-project//llvm:asm_parser",
+        "@llvm-project//llvm:bit_reader",
+        "@llvm-project//llvm:bit_writer",
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],

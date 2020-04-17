@@ -134,7 +134,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
         rewriter.getI64IntegerAttr(bodyResultTypes.size()),  // args_out
         rewriter.getArrayAttr(indexingMaps),
         GetNParallelLoopsAttrs(nloops, &rewriter),
-        /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
+        /*doc=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
     auto* region = &linalgOp.region();
@@ -218,7 +218,7 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
         loc, isLHLO ? ArrayRef<Type>{} : resultType, args,
         rewriter.getI64IntegerAttr(1), rewriter.getI64IntegerAttr(1),
         indexingMapsAttr, GetNParallelLoopsAttrs(nloops, &rewriter),
-        /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
+        /*doc=*/nullptr, /*library_call=*/nullptr);
 
     auto* region = &linalgOp.region();
     auto* block = rewriter.createBlock(region, region->end());
@@ -400,7 +400,7 @@ class IotaConverter : public OpConversionPattern<xla_lhlo::IotaOp> {
         rewriter.getI64IntegerAttr(1),  // args_out
         rewriter.getArrayAttr(indexingMaps),
         GetNParallelLoopsAttrs(nloops, &rewriter),
-        /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
+        /*doc=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
     auto* region = &linalgOp.region();
