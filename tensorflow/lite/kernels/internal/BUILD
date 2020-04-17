@@ -650,6 +650,7 @@ cc_library(
         "//tensorflow/lite/kernels:cpu_backend_gemm",
         "@ruy//ruy",
         "@ruy//ruy:detect_arm",
+        "@ruy//ruy:size_util",
     ],
 )
 
