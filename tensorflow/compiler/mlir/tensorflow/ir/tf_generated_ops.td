@@ -2562,6 +2562,10 @@ fill([2, 3], 9) ==> [[9, 9, 9]
   let verifier = [{
     return Verify(*this);
   }];
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value dims, Value value"
+  >];
 }
 
 def TF_FloorOp : TF_Op<"Floor", [NoSideEffect, SameOperandsAndResultType]> {
