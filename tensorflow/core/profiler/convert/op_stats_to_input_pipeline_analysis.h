@@ -57,6 +57,8 @@ void OutputAnalysis(double output_percent, string* output_classification,
 string GetSummaryNextStep(absl::string_view input_classification,
                           const InputTimeBreakdown& breakdown);
 
+void AddErrorMessages(const OpStats& op_stats,
+                      InputPipelineAnalysisResult* result);
 }  // namespace profiler
 }  // namespace tensorflow
 

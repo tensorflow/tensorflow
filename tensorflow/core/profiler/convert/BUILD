@@ -116,6 +116,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
+        "//tensorflow/core/profiler/utils:errors",
         "//tensorflow/core/profiler/utils:event_span",
         "//tensorflow/core/profiler/utils:math_utils",
         "//tensorflow/core/profiler/utils:tf_op_utils",
