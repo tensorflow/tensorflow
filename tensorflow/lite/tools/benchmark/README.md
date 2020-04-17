@@ -80,6 +80,13 @@ and the following optional parameters:
     Whether to use the
     [GPU accelerator delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/gpu).
     This option is currently only available on Android and iOS devices.
+*   `gpu_precision_loss_allowed`: `bool` (default=true) \
+    Whethre to allow the GPU delegate to carry out computation with some
+    precision loss (i.e. processing in FP16) or not. If allowed, the performance
+    will increase.
+*   `gpu_experimental_enable_quant`: `bool` (default=true) \
+    Whether to allow the GPU delegate to run a quantized model or not. This
+    option is currently only available on Android.
 *   `gpu_wait_type`: `str` (default="") \
     Which GPU wait_type option to use, when using GPU delegate on iOS. Should be
     one of the following: passive, active, do_not_wait, aggressive. When left
