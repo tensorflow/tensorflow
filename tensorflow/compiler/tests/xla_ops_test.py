@@ -309,7 +309,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
       self._assertOpOutputMatchesExpected(
           lambda x: xla.transpose(x, [1, 0]), args=(v,), expected=v.T)
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testDynamicSlice(self):
     for dtype in self.numeric_types:
       self._assertOpOutputMatchesExpected(
@@ -322,7 +321,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                         [[673, 674], [683, 684], [693, 694]]]),
               dtype=dtype))
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testDynamicSliceWithIncorrectStartIndicesShape(self):
     with self.session() as session:
       with self.test_scope():
@@ -336,7 +334,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           (r'start_indices must be a vector with length equal to input rank, '
            r'but input rank is 3 and start_indices has shape \[2\].*'))
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testDynamicSliceWithIncorrectSizeIndicesShape(self):
     with self.session() as session:
       with self.test_scope():
@@ -353,7 +350,6 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
 
 class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testDotDifferentNumberOfContractingDimensions(self):
     a = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
     b = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
@@ -368,7 +364,6 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
                                 'dimensions for lhs and rhs. Got: 1 and 2'):
       xla.dot_general(a, b, dim_nums)
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testDotDifferentContractingDimensionsSizes(self):
     a = array_ops.placeholder(np.float32, shape=(2, 2, 2, 2))
     b = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
@@ -382,7 +377,6 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
                                 'Got: 2 and 4'):
       xla.dot_general(a, b, dim_nums)
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testDotDifferentNumberOfBatchDimensions(self):
     a = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
     b = array_ops.placeholder(np.float32, shape=(4, 4, 4, 4))
@@ -397,7 +391,6 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
                                 'dimensions for lhs and rhs. Got: 1 and 2'):
       xla.dot_general(a, b, dim_nums)
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testDotDifferentBatchDimensionsSizes(self):
     a = array_ops.placeholder(np.float32, shape=(2, 2, 2, 2))
     b = array_ops.placeholder(np.float32, shape=(4, 4, 4, 2))
@@ -413,7 +406,6 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
                                 'Got: 2 and 4'):
       xla.dot_general(a, b, dim_nums)
 
-  @test_util.disable_mlir_bridge('Not supported yet')
   def testDotShapeInference(self):
     a = array_ops.placeholder(np.float32, shape=(1, 2, 3, 4))
     b = array_ops.placeholder(np.float32, shape=(4, 3, 2, 1))
