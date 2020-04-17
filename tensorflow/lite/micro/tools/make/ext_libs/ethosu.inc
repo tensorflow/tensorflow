@@ -6,7 +6,7 @@ ifneq ($(filter ethos-u,$(ALL_TAGS)),)
         $(error target architecture x86_64 not supported)
     endif
 
-    ETHOSU_PATH = $(MAKEFILE_DIR)/downloads/ethosu
+    ETHOSU_DRIVER_PATH = $(MAKEFILE_DIR)/downloads/ethosu
 
     # Currently there is a dependency to CMSIS-NN
     THIRD_PARTY_DOWNLOADS += \
@@ -14,14 +14,14 @@ ifneq ($(filter ethos-u,$(ALL_TAGS)),)
     CMSIS_PATH = $(MAKEFILE_DIR)/downloads/cmsis/
     THIRD_PARTY_CC_HDRS += $(call recursive_find,$(CMSIS_PATH)/CMSIS/Core/Include,*.h)
 
-    THIRD_PARTY_CC_HDRS += $(call recursive_find,$(ETHOSU_PATH)/include,*.h)
-    ifeq (,$(ETHOSU_LIBS))
-        THIRD_PARTY_CC_SRCS += $(call recursive_find,$(ETHOSU_PATH)/src,*.c)
+    THIRD_PARTY_CC_HDRS += $(call recursive_find,$(ETHOSU_DRIVER_PATH)/include,*.h)
+    ifeq (,$(ETHOSU_DRIVER_LIBS))
+        THIRD_PARTY_CC_SRCS += $(call recursive_find,$(ETHOSU_DRIVER_PATH)/src,*.c)
     else
-        MICROLITE_LIBS += $(ETHOSU_LIBS)
+        MICROLITE_LIBS += $(ETHOSU_DRIVER_LIBS)
     endif
 
-    INCLUDES += -I$(ETHOSU_PATH)/include \
+    INCLUDES += -I$(ETHOSU_DRIVER_PATH)/include \
                 -I$(CMSIS_PATH)/CMSIS/Core/Include
-    GENERATED_PROJECT_INCLUDES += -I./$(ETHOSU_PATH)/include
+    GENERATED_PROJECT_INCLUDES += -I./$(ETHOSU_DRIVER_PATH)/include
 endif
