@@ -82,43 +82,6 @@ TfLiteRegistration GetHexagonKernelRegistration() {
   return kernel_registration;
 }
 
-TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
-  delegates::IsNodeSupportedFn node_supported_fn =
-      [=](TfLiteContext* context, TfLiteNode* node,
-          TfLiteRegistration* registration,
-          std::string* unsupported_details) -> bool {
-    return IsNodeSupportedByHexagon(registration, node, context);
-  };
-  delegates::GraphPartitionHelper helper(context, node_supported_fn);
-  TF_LITE_ENSURE_STATUS(helper.Partition(nullptr));
-
-  TfLiteHexagonDelegateOptions* params =
-      static_cast<TfLiteHexagonDelegateOptions*>(delegate->data_);
-  const auto delegate_partitions = helper.GetFirstNLargestPartitions(
-      params->max_delegated_partitions, params->min_nodes_per_partition);
-
-  // To avoid creating a new TfLiteIntArray and free it later, we reserve one
-  // element to represent TfLiteIntArray.size which is the 1st element of
-  // TfLiteIntArray C struct.
-  std::vector<int> supported_nodes(1);
-  for (const auto partition : delegate_partitions) {
-    auto* nodes = partition->nodes_to_replace;
-    supported_nodes.insert(supported_nodes.end(), nodes->data,
-                           nodes->data + nodes->size);
-  }
-  // Set first element to the number of nodes to replace.
-  supported_nodes[0] = supported_nodes.size() - 1;
-  TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
-                  "Hexagon delegate: %d nodes delegated out of %d nodes with "
-                  "%d partitions.\n",
-                  supported_nodes[0], helper.num_total_nodes(),
-                  delegate_partitions.size());
-
-  return context->ReplaceNodeSubsetsWithDelegateKernels(
-      context, GetHexagonKernelRegistration(),
-      reinterpret_cast<TfLiteIntArray*>(supported_nodes.data()), delegate);
-}
-
 class HexagonDelegate : public TfLiteDelegate {
  public:
   explicit HexagonDelegate(const TfLiteHexagonDelegateOptions* params)
@@ -173,9 +136,61 @@ class HexagonDelegate : public TfLiteDelegate {
            hexagon_nn->hexagon_nn_is_device_supported();
   }
 
+  ~HexagonDelegate() {
+    TfLiteIntArrayFree(params_.input_batch_dimensions);
+    TfLiteIntArrayFree(params_.output_batch_dimensions);
+  }
+
  private:
   TfLiteHexagonDelegateOptions params_;
 };
+
+TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
+  delegates::IsNodeSupportedFn node_supported_fn =
+      [=](TfLiteContext* context, TfLiteNode* node,
+          TfLiteRegistration* registration,
+          std::string* unsupported_details) -> bool {
+    return IsNodeSupportedByHexagon(registration, node, context);
+  };
+  TfLiteIntArray* plan;
+  TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan));
+  delegates::GraphPartitionHelper helper(context, node_supported_fn);
+  TF_LITE_ENSURE_STATUS(helper.Partition(nullptr));
+
+  TfLiteHexagonDelegateOptions* params =
+      static_cast<TfLiteHexagonDelegateOptions*>(delegate->data_);
+  const auto delegate_partitions = helper.GetFirstNLargestPartitions(
+      params->max_delegated_partitions, params->min_nodes_per_partition);
+
+  // To avoid creating a new TfLiteIntArray and free it later, we reserve one
+  // element to represent TfLiteIntArray.size which is the 1st element of
+  // TfLiteIntArray C struct.
+  std::vector<int> supported_nodes(1);
+  for (const auto partition : delegate_partitions) {
+    auto* nodes = partition->nodes_to_replace;
+    supported_nodes.insert(supported_nodes.end(), nodes->data,
+                           nodes->data + nodes->size);
+  }
+  // Set first element to the number of nodes to replace.
+  supported_nodes[0] = supported_nodes.size() - 1;
+  auto* hexagon_delegate = static_cast<HexagonDelegate*>(delegate);
+  // Make sure dynamic batch is requested on fully delegated graph only.
+  if (supported_nodes[0] != plan->size && hexagon_delegate != nullptr &&
+      hexagon_delegate->params()->enable_dynamic_batch_size) {
+    TF_LITE_KERNEL_LOG(
+        context, "Dynamic batch requested on non-fully delegated graph !!.");
+    return kTfLiteError;
+  }
+  TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO,
+                  "Hexagon delegate: %d nodes delegated out of %d nodes with "
+                  "%d partitions.\n",
+                  supported_nodes[0], helper.num_total_nodes(),
+                  delegate_partitions.size());
+
+  return context->ReplaceNodeSubsetsWithDelegateKernels(
+      context, GetHexagonKernelRegistration(),
+      reinterpret_cast<TfLiteIntArray*>(supported_nodes.data()), delegate);
+}
 
 TfLiteDelegate* CreateDelegate(const TfLiteHexagonDelegateOptions* params) {
   TfLiteDelegate* delegate = new HexagonDelegate(params);
@@ -187,7 +202,7 @@ TfLiteDelegate* CreateDelegate(const TfLiteHexagonDelegateOptions* params) {
   }
 
   delegate->data_ = static_cast<HexagonDelegate*>(delegate)->params();
-  delegate->flags = kTfLiteDelegateFlagsNone;
+  delegate->flags = kTfLiteDelegateFlagsAllowDynamicTensors;
   delegate->Prepare = &DelegatePrepare;
   delegate->CopyFromBufferHandle = nullptr;
   delegate->CopyToBufferHandle = nullptr;

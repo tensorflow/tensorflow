@@ -48,3 +48,29 @@ hexagon_op_tests(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "batch_seq_config_test",
+    srcs = [
+        "batch_seq_config_test.cc",
+    ],
+    tags = [
+        "no_oss",
+        "nobuilder",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/testing:util",
+        "//tensorflow/lite/tools:logging",
+        "//tensorflow/lite/tools/benchmark:benchmark_utils",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
+        "@com_google_googletest//:gtest",
+    ],
+)
