@@ -418,7 +418,7 @@ class RandomUniformTest(RandomOpTestCommon):
     # Test case for GitHub issue 34363.
     with self.assertRaisesRegexp(
         errors.InvalidArgumentError,
-        "is not compatible with expected shape"):
+        "must be no greater than rank of output shape"):
       array = array_ops.zeros(shape=(1,))
       random_ops.random_uniform(shape=(), minval=array)
 
