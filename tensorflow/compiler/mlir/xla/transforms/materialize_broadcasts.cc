@@ -296,8 +296,18 @@ struct CompareWithBroadcastConvert : public OpRewritePattern<CompareOp> {
                                 PatternRewriter &rewriter) const override {
     Value new_lhs;
     Value new_rhs;
-    if (!CreateBroadcastsForBinaryOp(op, &rewriter, &new_lhs, &new_rhs)) {
-      return failure();
+
+    auto op_ranked_type = op.getType().template dyn_cast<RankedTensorType>();
+    if (!op_ranked_type) return failure();
+
+    if (op_ranked_type.hasStaticShape()) {
+      if (!CreateBroadcastsForBinaryOp(op, &rewriter, &new_lhs, &new_rhs)) {
+        return failure();
+      }
+    } else {
+      if (!CreateDynamicBroadcastsForBinaryOp(op, &rewriter, &new_lhs, &new_rhs)) {
+        return failure();
+      }
     }
 
     rewriter.replaceOpWithNewOp<CompareOp>(op, op.getType(), new_lhs, new_rhs,
