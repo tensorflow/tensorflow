@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -44,7 +44,7 @@ def make_identity_tests(options):
     input_count = (2 if parameters["op_to_use"] == "identity_n_with_2_inputs"
                    else 1)
     input_tensors = [
-        tf.placeholder(
+        tf.compat.v1.placeholder(
             dtype=tf.float32, name="input", shape=parameters["input_shape"])
         for _ in range(input_count)
     ]

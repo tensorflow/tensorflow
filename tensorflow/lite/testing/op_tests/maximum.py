@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -29,18 +29,20 @@ def make_maximum_tests(options):
 
   test_parameters = [{
       "input_dtype": [tf.float32],
-      "input_shape_1": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
-      "input_shape_2": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
-      "fully_quantize": [True, False],
+      "input_shape_1": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3],
+                        [5, 32, 32, 3, 1], [5, 32, 32, 3, 1]],
+      "input_shape_2": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3],
+                        [5, 32, 32, 3, 3], [5, 32, 32, 3, 1]],
+      "fully_quantize": [False, True],
   }]
 
   def build_graph(parameters):
     """Build the maximum op testing graph."""
-    input_tensor_1 = tf.placeholder(
+    input_tensor_1 = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input_1",
         shape=parameters["input_shape_1"])
-    input_tensor_2 = tf.placeholder(
+    input_tensor_2 = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input_2",
         shape=parameters["input_shape_2"])
@@ -49,8 +51,7 @@ def make_maximum_tests(options):
     return [input_tensor_1, input_tensor_2], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    """Build inputs for maximum op."""
-
+    """Builds the inputs for the model above."""
     values = [
         create_tensor_data(
             parameters["input_dtype"],
@@ -70,4 +71,4 @@ def make_maximum_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=16)
+      expected_tf_failures=44)

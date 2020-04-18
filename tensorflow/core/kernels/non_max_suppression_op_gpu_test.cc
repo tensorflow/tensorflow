@@ -13,18 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/allocator.h"
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "absl/strings/match.h"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/types.pb.h"  // NOLINT
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -427,9 +433,10 @@ TEST_F(NonMaxSuppressionV3GPUOpTest, TestEmptyInput) {
 class NonMaxSuppressionV4GPUOpTest : public OpsTestBase {
  protected:
   void MakeOp() {
-    SetDevice(DEVICE_GPU,
-              std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(
-                  "GPU", {}, "/job:a/replica:0/task:0")));
+    // TODO(b/143610288): reenable this once the bug is fixed.
+    // SetDevice(DEVICE_GPU,
+    //           std::unique_ptr<tensorflow::Device>(DeviceFactory::NewDevice(
+    //               "GPU", {}, "/job:a/replica:0/task:0")));
 
     TF_EXPECT_OK(NodeDefBuilder("non_max_suppression_op", "NonMaxSuppressionV4")
                      .Input(FakeInput(DT_FLOAT))

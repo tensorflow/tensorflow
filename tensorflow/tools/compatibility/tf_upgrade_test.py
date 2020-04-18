@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 import os
 import tempfile
+
 import six
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib

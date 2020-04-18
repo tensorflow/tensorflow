@@ -145,16 +145,9 @@ Status XlaCompileOnDemandOp::Compile(
         attrs.set_on_host(true);
         TF_RETURN_IF_ERROR(ctx->allocate_temp(
             device_tensor.dtype(), device_tensor.shape(), &host_tensor, attrs));
-        Notification n;
-        Status status;
-        ctx->op_device_context()->CopyDeviceTensorToCPU(
+        Status status = ctx->op_device_context()->CopyDeviceTensorToCPUSync(
             &device_tensor, "ConstantArgument",
-            reinterpret_cast<Device*>(ctx->device()), &host_tensor,
-            [&](Status s) {
-              status = s;
-              n.Notify();
-            });
-        n.WaitForNotification();
+            reinterpret_cast<Device*>(ctx->device()), &host_tensor);
         if (!status.ok()) {
           LOG(ERROR) << "Copying tensor of shape "
                      << device_tensor.shape().DebugString() << " from "
@@ -193,10 +186,6 @@ Status XlaCompileOnDemandOp::Compile(
 
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
-  // Optimization: don't resolve constants. If we resolve constants we never
-  // emit them on the device, meaning that if they are needed by a following
-  // computation the host has to transfer them.
-  compile_options.resolve_compile_time_constants = false;
   // Optimization: where possible, have the computation return a naked array
   // rather than a one-element tuple.
   compile_options.always_return_tuple = false;

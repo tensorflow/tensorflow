@@ -28,11 +28,11 @@ limitations under the License.
 
 #include <atomic>
 #include <map>
-#include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -64,7 +64,7 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
@@ -176,6 +176,45 @@ struct LaunchConv2DOp<CPUDevice, T> {
   }
 };
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+template <>
+struct LaunchConv2DOp<GPUDevice, int32> {
+  void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+                  const Tensor& input, const Tensor& filter, int row_dilation,
+                  int col_dilation, int row_stride, int col_stride,
+                  const Padding& padding,
+                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  TensorFormat data_format) {
+    if (data_format != FORMAT_NHWC) {
+      ctx->SetStatus(
+          errors::Unimplemented("The Conv2D op currently only supports the "
+                                "NHWC tensor format for integer types. "
+                                "The op was given the format: ",
+                                ToString(data_format)));
+      return;
+    }
+    const int64 in_depth = GetTensorDim(input, data_format, 'C');
+    OP_REQUIRES(ctx, in_depth == filter.dim_size(2),
+                errors::Unimplemented(
+                    "The Conv2D op currently does not support grouped "
+                    "convolutions for integer types. A grouped convolution was "
+                    "attempted to be run because the input depth of ",
+                    in_depth, " does not match the filter input depth of ",
+                    filter.dim_size(2)));
+
+    for (int64 explicit_padding : explicit_paddings) {
+      if (!FastBoundsCheck(explicit_padding, std::numeric_limits<int>::max())) {
+        ctx->SetStatus(errors::InvalidArgument("filter too large"));
+        return;
+      }
+    }
+    LaunchGeneric<GPUDevice, int32>()(
+        ctx, input, filter, row_stride, col_stride, row_dilation, col_dilation,
+        padding, explicit_paddings, output, data_format);
+  }
+};
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 template <typename Device, typename T>
 class LaunchDeepConvOp {
  public:
@@ -281,9 +320,9 @@ class LaunchXsmmConvOp<CPUDevice, float> {
     desc.buffer_format = LIBXSMM_DNN_TENSOR_FORMAT_NHWC;
     desc.filter_format = LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;
     desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
-    desc.options = LIBXSMM_DNN_CONV_OPTION_WU_EXT_FILTER_REDUCE_OVERWRITE;
-    desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
-
+    desc.options = LIBXSMM_DNN_CONV_OPTION_OVERWRITE;
+    desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
+    desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
     if (dilation_rows != 1 || dilation_cols != 1 ||
         !CanUseXsmmConv2D(desc, data_format)) {
       return false;
@@ -569,6 +608,7 @@ class Conv2DOp : public BinaryOp<T> {
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
+TF_CALL_int32(REGISTER_CPU);
 #endif  // USE_GEMM_FOR_CONV
 
 // To be used inside depthwise_conv_op.cc.
@@ -693,11 +733,16 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     return;
   }
 
+#if GOOGLE_CUDA
   // Tensor Core (NVIDIA Volta+ GPUs) supports efficient convolution with fp16
   // in NHWC data layout. In all other configurations it's more efficient to
   // run computation in NCHW data format.
   const bool compute_in_nhwc =
       DataTypeToEnum<T>::value == DT_HALF && IsVoltaOrLater(*stream->parent());
+#else
+  // fast NHWC implementation is a CUDA only feature
+  const bool compute_in_nhwc = false;
+#endif
 
   // We only do one directional conversion: NHWC->NCHW. We never convert in the
   // other direction. Grappler layout optimizer selects preferred layout and
@@ -939,6 +984,12 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                     device_id,                // device_id
                                     conv_desc.group_count()};
   AlgorithmConfig algorithm_config;
+#if TENSORFLOW_USE_ROCM
+  // cudnn_use_autotune is applicable only the CUDA flow
+  // for ROCm/MIOpen, we need to call GetMIOpenConvolveAlgorithms explicitly
+  // if we do not have a cached algorithm_config for this conv_parameters
+  cudnn_use_autotune = true;
+#endif
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
@@ -961,7 +1012,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
     std::vector<tensorflow::AutotuneResult> results;
-    for (auto profile_algorithm : algorithms) {
+    for (const auto& profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
       se::RedzoneAllocator rz_scratch_allocator(
@@ -999,28 +1050,69 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         CheckRedzones(rz_allocator, &result);
       }
     }
+
+#elif TENSORFLOW_USE_ROCM
+    DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+
+    std::vector<ProfileResult> algorithms;
+    OP_REQUIRES(
+        ctx,
+        stream->parent()->GetMIOpenConvolveAlgorithms(
+            se::dnn::ConvolutionKind::FORWARD, se::dnn::ToDataType<T>::value,
+            stream, input_desc, input_ptr, filter_desc, filter_ptr, output_desc,
+            output_ptr, conv_desc, &scratch_allocator, &algorithms),
+        errors::Unknown(
+            "Failed to get convolution algorithm. This is probably "
+            "because MIOpen failed to initialize, so try looking to "
+            "see if a warning log message was printed above."));
+    se::DeviceMemory<T> output_tensor = output_ptr;
+
+    std::vector<tensorflow::AutotuneResult> results;
+    if (algorithms.size() == 1) {
+      auto profile_result = algorithms[0];
+      results.emplace_back();
+      auto& result = results.back();
+      result.mutable_conv()->set_algorithm(
+          profile_result.algorithm().algo_id());
+      result.mutable_conv()->set_tensor_ops_enabled(
+          profile_result.algorithm().tensor_ops_enabled());
+
+      result.set_scratch_bytes(profile_result.scratch_size());
+      *result.mutable_run_time() = proto_utils::ToDurationProto(
+          absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+    } else {
+      for (auto miopen_algorithm : algorithms) {
+        auto profile_algorithm = miopen_algorithm.algorithm();
+        ProfileResult profile_result;
+        bool miopen_launch_status = false;
+        miopen_launch_status =
+            stream
+                ->ThenConvolveWithAlgorithm(
+                    input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
+                    output_desc, &output_ptr, &scratch_allocator,
+                    AlgorithmConfig(profile_algorithm,
+                                    miopen_algorithm.scratch_size()),
+                    &profile_result)
+                .ok();
+        if (miopen_launch_status && profile_result.is_valid()) {
+          results.emplace_back();
+          auto& result = results.back();
+          result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+          result.mutable_conv()->set_tensor_ops_enabled(
+              profile_algorithm.tensor_ops_enabled());
+
+          result.set_scratch_bytes(scratch_allocator.TotalByteSize());
+          *result.mutable_run_time() = proto_utils::ToDurationProto(
+              absl::Milliseconds(profile_result.elapsed_time_in_ms()));
+        }
+      }
+    }
+#endif
     LogConvAutotuneResults(se::dnn::ConvolutionKind::FORWARD,
                            se::dnn::ToDataType<T>::value, input_ptr, filter_ptr,
                            output_tensor, input_desc, filter_desc, output_desc,
                            conv_desc, stream->parent(), results);
     OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
-#elif TENSORFLOW_USE_ROCM
-    DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-    ProfileResult best_result;
-    bool miopen_find_status =
-        stream
-            ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
-                                        filter_ptr, conv_desc, output_desc,
-                                        &output_ptr, &scratch_allocator,
-                                        AlgorithmConfig(), &best_result)
-            .ok();
-
-    OP_REQUIRES(ctx, miopen_find_status && best_result.is_valid(),
-                errors::NotFound("Failed to find conv algorithm!"));
-
-    algorithm_config.set_algorithm(best_result.algorithm());
-    algorithm_config.set_scratch_size(best_result.scratch_size());
-#endif
     AutoTuneConv::GetInstance()->Insert(conv_parameters, algorithm_config);
   }
 
@@ -1064,6 +1156,14 @@ namespace functor {
       int col_stride, int row_dilation, int col_dilation,                   \
       const Eigen::PaddingType& padding,                                    \
       const Eigen::NoOpOutputKernel& output_kernel);                        \
+  template <>                                                               \
+  void SpatialConvolution<GPUDevice, T>::operator()(                        \
+      const GPUDevice& d, typename TTypes<T, 4>::Tensor output,             \
+      typename TTypes<T, 4>::ConstTensor input,                             \
+      typename TTypes<T, 4>::ConstTensor filter, int row_stride,            \
+      int col_stride, int row_dilation, int col_dilation, int padding_top,  \
+      int padding_bottom, int padding_left, int padding_right,              \
+      const Eigen::NoOpOutputKernel& output_kernel);                        \
   extern template struct SpatialConvolution<GPUDevice, T>;                  \
   template <>                                                               \
   void MatMulConvFunctor<GPUDevice, T>::operator()(                         \
@@ -1090,7 +1190,9 @@ namespace functor {
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(double);
+DECLARE_GPU_SPEC(int32);
 #undef DECLARE_GPU_SPEC
+
 }  // namespace functor
 
 // Registration of the GPU implementations.
@@ -1103,6 +1205,9 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<double>("T"),
     Conv2DOp<GPUDevice, double>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<int32>("T"),
+    Conv2DOp<GPUDevice, int32>);
 
 // To be used inside depthwise_conv_op.cc.
 template struct LaunchConv2DOp<GPUDevice, float>;

@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -34,11 +34,12 @@ def make_depth_to_space_tests(options):
   }]
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
-    out = tf.depth_to_space(input_tensor, block_size=parameters["block_size"])
+    out = tf.compat.v1.depth_to_space(
+        input_tensor, block_size=parameters["block_size"])
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

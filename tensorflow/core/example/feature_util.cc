@@ -50,6 +50,13 @@ bool HasFeature<string>(const string& key, const Features& features) {
          (it->second.kind_case() == Feature::KindCase::kBytesList);
 }
 
+template <>
+bool HasFeature<tstring>(const string& key, const Features& features) {
+  auto it = features.feature().find(key);
+  return (it != features.feature().end()) &&
+         (it->second.kind_case() == Feature::KindCase::kBytesList);
+}
+
 bool HasFeatureList(const string& key,
                     const SequenceExample& sequence_example) {
   auto& feature_list = sequence_example.feature_lists().feature_list();
@@ -80,9 +87,21 @@ protobuf::RepeatedField<float>* GetFeatureValues<float>(Feature* feature) {
 }
 
 template <>
+const protobuf::RepeatedPtrField<string>& GetFeatureValues<tstring>(
+    const Feature& feature) {
+  return feature.bytes_list().value();
+}
+
+template <>
 const protobuf::RepeatedPtrField<string>& GetFeatureValues<string>(
     const Feature& feature) {
   return feature.bytes_list().value();
+}
+
+template <>
+protobuf::RepeatedPtrField<string>* GetFeatureValues<tstring>(
+    Feature* feature) {
+  return feature->mutable_bytes_list()->mutable_value();
 }
 
 template <>
@@ -114,6 +133,11 @@ void ClearFeatureValues<float>(Feature* feature) {
 
 template <>
 void ClearFeatureValues<string>(Feature* feature) {
+  feature->mutable_bytes_list()->Clear();
+}
+
+template <>
+void ClearFeatureValues<tstring>(Feature* feature) {
   feature->mutable_bytes_list()->Clear();
 }
 
@@ -157,5 +181,13 @@ const protobuf::RepeatedPtrField<string>& GetFeatureValues<string>(
     const Feature& feature);
 
 template <>
+const protobuf::RepeatedPtrField<string>& GetFeatureValues<tstring>(
+    const Feature& feature);
+
+template <>
 protobuf::RepeatedPtrField<string>* GetFeatureValues<string>(Feature* feature);
+
+template <>
+protobuf::RepeatedPtrField<string>* GetFeatureValues<tstring>(Feature* feature);
+
 }  // namespace tensorflow

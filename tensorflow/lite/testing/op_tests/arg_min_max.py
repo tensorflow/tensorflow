@@ -19,8 +19,7 @@ from __future__ import print_function
 
 import random
 
-import tensorflow as tf
-
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -39,15 +38,17 @@ def make_arg_min_max_tests(options):
 
   def build_graph(parameters):
     """Build the topk op testing graph."""
-    input_value = tf.placeholder(
+    input_value = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])
     axis = random.randint(0, max(len(parameters["input_shape"]) - 1, 0))
     if parameters["is_arg_max"]:
-      out = tf.arg_max(input_value, axis, output_type=parameters["output_type"])
+      out = tf.math.argmax(
+          input_value, axis, output_type=parameters["output_type"])
     else:
-      out = tf.arg_min(input_value, axis, output_type=parameters["output_type"])
+      out = tf.math.argmin(
+          input_value, axis, output_type=parameters["output_type"])
     return [input_value], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

@@ -24,7 +24,7 @@ import weakref
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
@@ -35,9 +35,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.layers import convolutional
-from tensorflow.python.keras.layers import core
-from tensorflow.python.keras.layers import normalization_v2
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import custom_gradient
@@ -86,7 +83,8 @@ def _jacfwd(f, primals):
       jac_columns.append(
           nest.map_structure(
               functools.partial(array_ops.reshape, shape=[-1]),
-              _jvp(f, primals, tangent_mask)[1]))
+              _jvp(f, primals,
+                   nest.pack_sequence_as(primals, tangent_mask))[1]))
     jac_flat.append(array_ops.stack(jac_columns, axis=1))
     tangent_mask[primal_index] = array_ops.zeros_like(primal)
   return nest.pack_sequence_as(primals, jac_flat)
@@ -104,6 +102,22 @@ def _grad(f, argnums=0):
         params[argnums],
         unconnected_gradients=UnconnectedGradients.ZERO)
 
+  return _f
+
+
+def _gradfwd(f, argnums=0, f_out_dtypes=dtypes.float32):
+  """Return a function which computes the gradient of `f` in forward mode."""
+
+  def _f(*params):
+    def _single_jvp(param_mask):
+      with forwardprop.ForwardAccumulator(primals=[params[argnums]],
+                                          tangents=param_mask) as acc:
+        primals_out = f(*params)
+      return acc.jvp(primals_out)
+    # Building up a function to run with pfor takes a bit too long since we're
+    # only running it a handful of times.
+    return _vectorize_parameters(_single_jvp, [params[argnums]],
+                                 use_pfor=False, dtype=f_out_dtypes)
   return _f
 
 
@@ -180,9 +194,7 @@ def _test_gradients(testcase,
   sym_jac_back, num_jac = gradient_checker_v2.compute_gradient(
       f, primals, delta=delta)
   testcase.assertAllClose(num_jac, sym_jac_back, rtol=rtol, atol=atol)
-  # TODO(b/134972215): compute_gradient should use the definition of a Jacobian
-  # matrix on Wikipedia, then this transpose can go away.
-  sym_jac_fwd = nest.map_structure(array_ops.transpose, _jacfwd(f, primals))
+  sym_jac_fwd = _jacfwd(f, primals)
   testcase.assertAllClose(num_jac, sym_jac_fwd, rtol=rtol, atol=atol)
   # And the symbolic computations should be much closer.
   testcase.assertAllClose(sym_jac_back, sym_jac_fwd)
@@ -215,19 +227,27 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         ))
     self.assertAllClose([2. * 5. + 3. * 4.], self.evaluate(vp))
 
+  def testNonDifferentiableOpWithInputTangent(self):
+    x = constant_op.constant(1.)
+    with forwardprop.ForwardAccumulator(x, 2.) as acc1:
+      with forwardprop.ForwardAccumulator(x, 2.) as acc2:
+        y = array_ops.zeros_like(x)
+      self.assertIsNone(acc1.jvp(y))
+    self.assertIsNone(acc2.jvp(y))
+
   def testJVPFunctionUsedByAccumulatorForOps(self):
     previous_fn = forwardprop._jvp_dispatch
     try:
       x = constant_op.constant(1.)
       with forwardprop.ForwardAccumulator(x, 2.) as acc:
         y = x + x
-        pywrap_tensorflow.TFE_Py_RegisterJVPFunction(
+        pywrap_tfe.TFE_Py_RegisterJVPFunction(
             lambda *args, **kwargs: [constant_op.constant(-15.)])
         z = x + x
       self.assertAllClose(4., acc.jvp(y))
       self.assertAllClose(-15., acc.jvp(z))
     finally:
-      pywrap_tensorflow.TFE_Py_RegisterJVPFunction(previous_fn)
+      pywrap_tfe.TFE_Py_RegisterJVPFunction(previous_fn)
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testFunctionCacheLimited(self):
@@ -361,80 +381,30 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
   def testElementwiseNNOps(self, value, op_fn):
     _test_gradients(self, op_fn, [constant_op.constant(value)], order=3)
 
-  @parameterized.named_parameters(
-      [("Dense", [[0.1]], functools.partial(core.Dense, 5)),
-       ("Conv2D",
-        np.reshape(np.arange(start=-1., stop=1., step=2. / (1 * 2 * 4 * 4)),
-                   [1, 2, 4, 4]),
-        functools.partial(convolutional.Conv2D, 2, 2),
-        1e-4),
-       ("BatchNorm", [[0.1], [0.2], [-0.3]],
-        normalization_v2.BatchNormalization)])
-  def testKerasLayers(self, value, op_fn, atol=1e-6):
-    layer = op_fn()
-    input_value = constant_op.constant(value, dtype=dtypes.float32)
-    layer.build(input_value.shape)
-    # Make sure the test is deterministic by avoiding random variable
-    # initialization.
-    for v in layer.trainable_variables:
-      v.assign(array_ops.reshape(
-          math_ops.range(
-              -1., 1., 2. / array_ops.size(v, out_type=dtypes.float32),
-              dtype=dtypes.float32),
-          v.shape))
-    _test_gradients(
-        self, layer, [input_value], atol=atol,
-        # These are linear, so second-order is pretty boring.
-        order=2)
-
-  @parameterized.named_parameters(
-      [("Function", def_function.function),
-       ("NoFunction", lambda f: f)])
-  def testVariablesHVP(self, decorator):
+  def testFusedBatchNormGradsInference(self):
 
     if test.is_built_with_rocm():
-      # TODO(rocm)
-      # This test was recently added and has never passed on the
-      # ROCm platform. Remove this skip once the test is passing again
-      self.skipTest("NoFunction decorator test fails on the ROCm platform")
+      # This test was addeded recently and has been failing on the ROCm
+      # platform, since it was added.
+      # TODO(rocm): do root cause analysis of test failure and fix it.
+      self.skipTest("Test fails on ROCm platform, needs further analysis")
 
-    class _Model(module.Module):
+    x_shape = [4, 10, 10, 2]
+    increment = 3. / math_ops.reduce_prod(
+        constant_op.constant(x_shape, dtype=dtypes.float32))
+    x = array_ops.reshape(math_ops.range(-2., 1., increment), x_shape)
+    scale = constant_op.constant([1., 1.1])
+    offset = constant_op.constant([-0.5, -0.6])
+    mean = constant_op.constant([-1.3, 1.4])
+    variance = constant_op.constant([0.7, 0.9])
+    epsilon = 0.001
 
-      def __init__(self):
-        self._first_dense = core.Dense(18)
-        self._conv = convolutional.Conv2D(2, 2)
-        self._norm = normalization_v2.BatchNormalization()
-        self._second_dense = core.Dense(1)
-
-      def __call__(self, x):
-        x = self._first_dense(x)
-        x = nn_ops.relu(x)
-        x = self._norm(x)
-        x = nn_ops.relu(self._conv(array_ops.reshape(x, [-1, 2, 3, 3])))
-        return self._second_dense(x)
-
-    model = _Model()
-    def _loss():
-      input_value = constant_op.constant([[-0.5, 1.], [0.5, -1.]])
-      target = constant_op.constant([[-1.], [2.]])
-      return math_ops.reduce_sum((model(input_value) - target) ** 2.)
-
-    @decorator
-    def _compute_hvps():
-      with backprop.GradientTape() as tape:
-        loss = _loss()
-      vector = tape.gradient(loss, model.trainable_variables)
-      variable_input_fn = lambda unused_variables: _loss()
-      forward_over_back_hvp, = _hvp(
-          variable_input_fn, [model.trainable_variables], [vector])
-      with backprop.GradientTape(persistent=True) as tape:
-        tape.watch(model.trainable_variables)
-        loss = _loss()
-        first_grads = tape.gradient(loss, model.trainable_variables)
-      back_over_back_hvp = tape.gradient(
-          first_grads, model.trainable_variables, output_gradients=vector)
-      return forward_over_back_hvp, back_over_back_hvp
-    self.assertAllClose(*_compute_hvps(), rtol=1e-5, atol=1e-5)
+    def _bn_fused(x_arg, scale_arg, offset_arg):
+      return nn_impl.fused_batch_norm(x_arg, scale_arg, offset_arg,
+                                      mean, variance,
+                                      epsilon=epsilon, is_training=False)[0]
+    _test_gradients(self, _bn_fused, [x, scale, offset],
+                    order=2, atol=1e-2)
 
   def testPushPopAccumulatorState(self):
     # Note that this example is somewhat contrived. push_forwardprop_state is
@@ -634,19 +604,19 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     with forwardprop.ForwardAccumulator(c, c_tangent) as acc:
       with backprop.GradientTape() as tape:
         self.assertFalse(tape_lib.should_record_backprop([c]))
-        self.assertEqual(
-            1, pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes([c]))
+        self.assertEqual(1,
+                         pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes([c]))
         tape.watch(c)
-        self.assertEqual(
-            2, pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes([c]))
+        self.assertEqual(2,
+                         pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes([c]))
         self.assertTrue(tape_lib.should_record_backprop([c]))
         with tape_lib.stop_recording():
-          self.assertEqual(
-              0, pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes([c]))
+          self.assertEqual(0,
+                           pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes([c]))
           self.assertFalse(tape_lib.should_record_backprop([c]))
           d = c * 2.
-        self.assertEqual(
-            2, pywrap_tensorflow.TFE_Py_TapeSetPossibleGradientTypes([c]))
+        self.assertEqual(2,
+                         pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes([c]))
         self.assertTrue(tape_lib.should_record_backprop([c]))
         self.assertFalse(tape_lib.should_record_backprop([d]))
         self.assertIsNone(acc.jvp(d))
@@ -805,7 +775,8 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(0.0, acc.jvp(y, unconnected_gradients="zero"))
       self.assertIsNone(acc.jvp(y, unconnected_gradients="none"))
 
-  @test_util.assert_no_new_pyobjects_executing_eagerly
+  # TODO(kkb): One weakref instance is created with warmup_iters=2, investigate.
+  @test_util.assert_no_new_pyobjects_executing_eagerly(warmup_iters=3)
   def testVariableWatchedFunction(self):
 
     class _Model(module.Module):
@@ -831,7 +802,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   # NOTE: assert_no_new_pyobjects_executing_eagerly fails flakily on this
   # test... could be something wrong with the test decorator, or some sort of
-  # nondeterminstic caching.
+  # nondeterministic caching.
   def testMirroredVariableWatched(self):
 
     def _replicated(input_tangent):
@@ -845,8 +816,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     strategy = mirrored_strategy.MirroredStrategy()
     with strategy.scope():
       v = variables.Variable([1., 2., 3.])
-      strategy.experimental_run_v2(
-          _replicated, args=(constant_op.constant([.1, -.2, .3]),))
+      strategy.run(_replicated, args=(constant_op.constant([.1, -.2, .3]),))
 
   # TODO(b/141025187): Add a no_new_pyobjects decorator.
   def testArgumentUnused(self):
@@ -956,29 +926,6 @@ class HessianTests(test.TestCase, parameterized.TestCase):
         _f, [constant_op.constant(x_value)],
         use_pfor=True, dtype=[dtypes.float32])
     self.assertAllClose(hess_value, hessian_pfor)
-
-  @parameterized.named_parameters(
-      [("PFor", True),
-       ("MapFn", False)])
-  def testHessianOfVariables(self, use_pfor):
-    model = core.Dense(1)
-    model.build([2])
-
-    def _loss(*unused_args):
-      input_value = constant_op.constant([[-0.5, 1.], [0.5, -1.]])
-      target = constant_op.constant([[-1.], [2.]])
-      return math_ops.reduce_sum((model(input_value) - target) ** 2.)
-
-    kernel_hess, bias_hess = _forward_over_back_hessian(
-        _loss, [model.kernel, model.bias], use_pfor=use_pfor,
-        dtype=[dtypes.float32, dtypes.float32])
-    # 3 total parameters, the whole hessian is the 3x3 concatenation
-    self.assertEqual([3, 2, 1], kernel_hess.shape)
-    self.assertEqual([3, 1], bias_hess.shape)
-    full_hessian = array_ops.concat(
-        [array_ops.reshape(kernel_hess, [3, 2]), bias_hess], axis=1)
-    # The full Hessian should be symmetric.
-    self.assertAllClose(full_hessian, array_ops.transpose(full_hessian))
 
 
 if __name__ == "__main__":

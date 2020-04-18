@@ -637,6 +637,48 @@ void TF_GraphSetOutputHandleShapesAndTypes_wrapper(
                                         types.data(), status);
 }
 
+void CreatePlaceholder(TF_Graph* graph, TF_Status* s, string&& name,
+                       TF_DataType dtype, TF_Output* output) {
+  TF_OperationDescription* desc =
+      TF_NewOperation(graph, "Placeholder", name.data());
+  TF_SetAttrType(desc, "dtype", dtype);
+  TF_Operation* op = TF_FinishOperation(desc, s);
+  output->oper = op;
+  output->index = 0;
+}
+
+std::vector<TF_Output> TF_CreatePlaceholders(TF_Graph* graph, PyObject* dtypes,
+                                             const char* prefix,
+                                             TF_Status* status) {
+  std::vector<TF_Output> outputs;
+  dtypes = PySequence_Fast(dtypes, "dtypes must be a sequence");
+  if (dtypes == nullptr) {
+    Set_TF_Status_from_Status(status, errors::Internal("dtypes is nullptr"));
+    return outputs;
+  }
+  Safe_PyObjectPtr dtypes_holder(make_safe(dtypes));
+  Py_ssize_t len = PySequence_Fast_GET_SIZE(dtypes);
+  outputs.reserve(len);
+  for (size_t i = 0; i < len; i++) {
+    PyObject* dtype = PySequence_Fast_GET_ITEM(dtypes, i);
+    if (!dtype) {
+      Set_TF_Status_from_Status(status,
+                                errors::Internal("Could not get dtype ", i));
+      return outputs;
+    }
+#if PY_MAJOR_VERSION >= 3
+    TF_DataType tf_datatype = static_cast<TF_DataType>(PyLong_AsLong(dtype));
+#else
+    TF_DataType tf_datatype = static_cast<TF_DataType>(PyInt_AsLong(dtype));
+#endif
+    outputs.push_back(TF_Output());
+    CreatePlaceholder(graph, status, strings::StrCat(prefix, i), tf_datatype,
+                      &outputs.back());
+    if (!status->status.ok()) break;
+  }
+  return outputs;
+}
+
 void TF_GraphSetTensorShape_wrapper(TF_Graph* graph, TF_Output output,
                                     const std::vector<int64_t>& dims,
                                     bool unknown_shape, TF_Status* status) {

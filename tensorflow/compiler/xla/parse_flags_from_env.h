@@ -30,7 +30,7 @@ limitations under the License.
 //  - <single-quote><characters string not containing nul or
 //    single-quote><single_quote> in which case the effective value is the
 //    string with the single-quotes removed
-//  - <double-quote><character string not containing nul or unesecaped
+//  - <double-quote><character string not containing nul or unescaped
 //    double-quote><double_quote> in which case the effective value if the
 //    string with the double-quotes removed, and escaped sequences of
 //    <backslash><char> replaced by <char>.

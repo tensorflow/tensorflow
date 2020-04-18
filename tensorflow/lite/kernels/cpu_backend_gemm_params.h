@@ -47,6 +47,10 @@ struct MatrixParams {
   // The zero_point, i.e. which Scalar value is to be interpreted as zero.
   // When Scalar is floating-point, this must be 0.
   Scalar zero_point = 0;
+  // Indicate whether the underlying data will remain unchanged for
+  // some period of time. Defaults to false, but should be set to true
+  // for unchanging data (e.g. weights buffers in many cases)
+  bool cacheable = false;
 };
 
 // Enumeration of broad categories of Gemm.
@@ -157,17 +161,26 @@ void ValidateGemmParams(
     TFLITE_DCHECK(!params.multiplier_fixedpoint_perchannel);
     TFLITE_DCHECK(!params.multiplier_exponent_perchannel);
   } else if (quantization_flavor ==
-             QuantizationFlavor::kIntegerWithUniformMultiplier) {
+                 QuantizationFlavor::kIntegerWithUniformMultiplier &&
+             !std::is_same<DstScalar, int32_t>::value) {
     TFLITE_DCHECK(params.multiplier_fixedpoint);
     // Nothing to check about multiplier_exponent
     TFLITE_DCHECK(!params.multiplier_fixedpoint_perchannel);
     TFLITE_DCHECK(!params.multiplier_exponent_perchannel);
   } else if (quantization_flavor ==
-             QuantizationFlavor::kIntegerWithPerRowMultiplier) {
+                 QuantizationFlavor::kIntegerWithPerRowMultiplier &&
+             !std::is_same<DstScalar, int32_t>::value) {
     TFLITE_DCHECK(!params.multiplier_fixedpoint);
     TFLITE_DCHECK(!params.multiplier_exponent);
     TFLITE_DCHECK(params.multiplier_fixedpoint_perchannel);
     TFLITE_DCHECK(params.multiplier_exponent_perchannel);
+  } else {
+    // For the get raw accumulator case, we should make sure none of the
+    // quantization params are set.
+    TFLITE_DCHECK(!params.multiplier_fixedpoint);
+    TFLITE_DCHECK(!params.multiplier_exponent);
+    TFLITE_DCHECK(!params.multiplier_fixedpoint_perchannel);
+    TFLITE_DCHECK(!params.multiplier_exponent_perchannel);
   }
 }
 

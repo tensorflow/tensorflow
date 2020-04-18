@@ -8,7 +8,6 @@ package(
 android_binary(
     name = "TfLiteCameraDemo",
     srcs = glob(["java/**/*.java"]),
-    aapt_version = "aapt2",
     assets = [
         "//tensorflow/lite/java/demo/app/src/main/assets:labels_mobilenet_quant_v1_224.txt",
         "@tflite_mobilenet_quant//:mobilenet_v1_1.0_224_quant.tflite",

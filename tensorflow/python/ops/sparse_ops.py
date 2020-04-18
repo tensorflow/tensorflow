@@ -16,7 +16,7 @@
 # pylint: disable=g-short-docstring-punctuation
 """Sparse Tensor Representation.
 
-See also `tf.SparseTensor`.
+See also `tf.sparse.SparseTensor`.
 """
 
 from __future__ import absolute_import
@@ -126,18 +126,68 @@ def from_dense(tensor, name=None):
 
 @tf_export("sparse.expand_dims")
 def sparse_expand_dims(sp_input, axis=None, name=None):
-  """Inserts a dimension of 1 into a tensor's shape.
+  """Returns a tensor with an length 1 axis inserted at index `axis`.
 
-  Given a tensor `sp_input`, this operation inserts a dimension of 1 at the
-  dimension index `axis` of `sp_input`'s shape. The dimension index `axis`
-  starts at zero; if you specify a negative number for `axis` it is counted
-  backwards from the end.
+  Given a tensor `input`, this operation inserts a dimension of length 1 at the
+  dimension index `axis` of `input`'s shape. The dimension index follows python
+  indexing rules: It's zero-based, a negative index it is counted backward
+  from the end.
+
+  This operation is useful to:
+
+  * Add an outer "batch" dimension to a single element.
+  * Align axes for broadcasting.
+  * To add an inner vector length axis to a tensor of scalars.
+
+  For example:
+
+  If you have a sparse tensor with shape `[height, width, depth]`:
+
+  >>> sp = tf.sparse.SparseTensor(indices=[[3,4,1]], values=[7,],
+  ...                             dense_shape=[10,10,3])
+
+  You can add an outer `batch` axis by passing `axis=0`:
+
+  >>> tf.sparse.expand_dims(sp, axis=0).shape.as_list()
+  [1, 10, 10, 3]
+
+  The new axis location matches Python `list.insert(axis, 1)`:
+
+  >>> tf.sparse.expand_dims(sp, axis=1).shape.as_list()
+  [10, 1, 10, 3]
+
+  Following standard python indexing rules, a negative `axis` counts from the
+  end so `axis=-1` adds an inner most dimension:
+
+  >>> tf.sparse.expand_dims(sp, axis=-1).shape.as_list()
+  [10, 10, 3, 1]
+
+  Note: Unlike `tf.expand_dims` this function includes a default value for the
+  `axis`: `-1`. So if `axis is not specified, an inner dimension is added.
+
+  >>> sp.shape.as_list()
+  [10, 10, 3]
+  >>> tf.sparse.expand_dims(sp).shape.as_list()
+  [10, 10, 3, 1]
+
+  This operation requires that `axis` is a valid index for `input.shape`,
+  following python indexing rules:
+
+  ```
+  -1-tf.rank(input) <= axis <= tf.rank(input)
+  ```
+
+  This operation is related to:
+
+  * `tf.expand_dims`, which provides this functionality for dense tensors.
+  * `tf.squeeze`, which removes dimensions of size 1, from dense tensors.
+  * `tf.sparse.reshape`, which provides more flexible reshaping capability.
 
   Args:
     sp_input: A `SparseTensor`.
     axis: 0-D (scalar). Specifies the dimension index at which to expand the
       shape of `input`. Must be in the range `[-rank(sp_input) - 1,
-      rank(sp_input)]`.
+      rank(sp_input)]`. Defaults to `-1`.
     name: The name of the output `SparseTensor`.
 
   Returns:
@@ -145,6 +195,8 @@ def sparse_expand_dims(sp_input, axis=None, name=None):
     additional dimension of size 1 added.
   """
   rank = sp_input.dense_shape.get_shape()[0]
+  if rank is None:
+    rank = array_ops.shape(sp_input.dense_shape)[0]
   axis = -1 if axis is None else axis
 
   with ops.name_scope(name, default_name="expand_dims", values=[sp_input]):
@@ -609,7 +661,7 @@ def _sparse_cross_internal(inputs,
                            hash_key=None,
                            name=None):
   """See gen_sparse_ops.sparse_cross."""
-  if not isinstance(inputs, list):
+  if not isinstance(inputs, (tuple, list)):
     raise TypeError("Inputs must be a list")
   if not all(
       isinstance(i, sparse_tensor.SparseTensor) or isinstance(i, ops.Tensor)
@@ -2195,7 +2247,10 @@ def sparse_tensor_dense_matmul(sp_a,
                                adjoint_b=False,
                                name=None):
   # pylint: disable=line-too-long
-  """Multiply SparseTensor (of rank 2) "A" by dense matrix "B".
+  """Multiply SparseTensor (or dense Matrix) (of rank 2) "A" by dense matrix
+
+  (or SparseTensor) "B". Please note that one and only one of the inputs MUST
+  be a SparseTensor and the other MUST be a dense matrix.
 
   No validity checking is performed on the indices of `A`.  However, the
   following input format is recommended for optimal behavior:
@@ -2377,8 +2432,8 @@ def sparse_tensor_dense_matmul(sp_a,
   ```
 
   Args:
-    sp_a: SparseTensor A, of rank 2.
-    b: A dense Matrix with the same dtype as sp_a.
+    sp_a: SparseTensor (or dense Matrix) A, of rank 2.
+    b: dense Matrix (or SparseTensor) B, with the same dtype as sp_a.
     adjoint_a: Use the adjoint of A in the matrix multiply.  If A is complex,
       this is transpose(conj(A)).  Otherwise it's transpose(A).
     adjoint_b: Use the adjoint of B in the matrix multiply.  If B is complex,
@@ -2392,17 +2447,32 @@ def sparse_tensor_dense_matmul(sp_a,
       `return A*B`
   """
   # pylint: enable=line-too-long
-  sp_a = _convert_to_sparse_tensor(sp_a)
-  with ops.name_scope(name, "SparseTensorDenseMatMul",
-                      [sp_a.indices, sp_a.values, b]) as name:
-    b = ops.convert_to_tensor(b, name="b")
-    return gen_sparse_ops.sparse_tensor_dense_mat_mul(
-        a_indices=sp_a.indices,
-        a_values=sp_a.values,
-        a_shape=sp_a.dense_shape,
-        b=b,
-        adjoint_a=adjoint_a,
-        adjoint_b=adjoint_b)
+
+  if isinstance(b, sparse_tensor.SparseTensor) \
+          or isinstance(b, sparse_tensor.SparseTensorValue):
+    # We can do C * D where C is sparse but if we want to do A * B when
+    # B is sparse we have to transpose. But AB = (B'A')' so we have to feed in
+    # the transpose of the arguments as well.
+    if adjoint_a != adjoint_b:
+      return array_ops.transpose(
+          sparse_tensor_dense_matmul(b, sp_a, adjoint_a, adjoint_b))
+    else:
+      return array_ops.transpose(
+          sparse_tensor_dense_matmul(
+              b, sp_a, adjoint_a=not adjoint_a, adjoint_b=not adjoint_b))
+
+  else:
+    sp_a = _convert_to_sparse_tensor(sp_a)
+    with ops.name_scope(name, "SparseTensorDenseMatMul",
+                        [sp_a.indices, sp_a.values, b]) as name:
+      b = ops.convert_to_tensor(b, name="b")
+      return gen_sparse_ops.sparse_tensor_dense_mat_mul(
+          a_indices=sp_a.indices,
+          a_values=sp_a.values,
+          a_shape=sp_a.dense_shape,
+          b=b,
+          adjoint_a=adjoint_a,
+          adjoint_b=adjoint_b)
 
 
 @tf_export("sparse.softmax", v1=["sparse.softmax", "sparse_softmax"])
@@ -2440,7 +2510,7 @@ def sparse_softmax(sp_input, name=None):
   values = np.asarray([[[0., np.e], [1., 0.]], [[np.e, 0.], [np.e, np.e]]])
   indices = np.vstack(np.where(values)).astype(np.int64).T
 
-  result = tf.sparse.softmax(tf.SparseTensor(indices, values, shape))
+  result = tf.sparse.softmax(tf.sparse.SparseTensor(indices, values, shape))
   # ...returning a 3-D SparseTensor, equivalent to:
   # [?   1.]     [1    ?]
   # [1.  ? ] and [.5  .5]
@@ -2574,8 +2644,8 @@ def sparse_transpose(sp_input, perm=None, name=None):
   """
   with ops.name_scope(name, "SparseTranspose", [sp_input]) as name:
     if perm is None:
-      if sp_input.shape.is_fully_defined():
-        rank = len(sp_input.shape)
+      if sp_input.shape.rank is not None:
+        rank = sp_input.shape.rank
         perm = (rank - 1) - np.arange(0, rank, 1)
       else:
         rank = array_ops.rank(sp_input)

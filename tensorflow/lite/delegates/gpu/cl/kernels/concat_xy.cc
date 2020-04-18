@@ -35,11 +35,12 @@ std::string GetConcatKernelCode(
     const std::string tensor_name = "src_data_" + std::to_string(i);
     const std::string width = "src_size_" + std::to_string(i) + ".x";
     const std::string height = "src_size_" + std::to_string(i) + ".y";
-    srcs[i] = TensorCodeGenerator(tensor_name, {width, height, "dst_size.z"},
-                                  op_def.src_tensors[i]);
+    srcs[i] =
+        TensorCodeGenerator(tensor_name, WHSPoint{width, height, "dst_size.z"},
+                            op_def.src_tensors[i]);
   }
   TensorCodeGenerator dst("dst_data",
-                          {"dst_size.x", "dst_size.y", "dst_size.z"},
+                          WHSPoint{"dst_size.x", "dst_size.y", "dst_size.z"},
                           op_def.dst_tensors[0]);
 
   std::string c = GetCommonDefines(op_def.precision);
@@ -63,12 +64,12 @@ std::string GetConcatKernelCode(
   for (int i = 0; i < tensors_count; ++i) {
     const std::string size_name = "src_size_" + std::to_string(i);
     c += "  if (X < " + size_name + ".x && Y < " + size_name + ".y) { \n";
-    c += "    FLT4 result = " + srcs[i].Read3D("X", "Y", "Z") + ";\n";
+    c += "    FLT4 result = " + srcs[i].ReadWHS("X", "Y", "Z") + ";\n";
     c += "    int dst_x = X + " + size_name + ".z;\n";
     c += "    int dst_y = Y + " + size_name + ".w;\n";
     const LinkingContext context{"result", "dst_x", "dst_y", "Z"};
     c += PostProcess(linked_operations, context);
-    c += "    " + dst.Write3D("result", "dst_x", "dst_y", "Z");
+    c += "    " + dst.WriteWHS("result", "dst_x", "dst_y", "Z");
     c += "  } \n";
   }
   c += "}\n";
@@ -95,7 +96,7 @@ ConcatXY& ConcatXY::operator=(ConcatXY&& operation) {
   return *this;
 }
 
-Status ConcatXY::Compile(const CreationContext& creation_context) {
+absl::Status ConcatXY::Compile(const CreationContext& creation_context) {
   const auto code =
       GetConcatKernelCode(definition_, tensors_count_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
@@ -103,7 +104,7 @@ Status ConcatXY::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-Status ConcatXY::BindArguments() {
+absl::Status ConcatXY::BindArguments() {
   kernel_.ResetBindingCounter();
   for (int i = 0; i < tensors_count_; ++i) {
     RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[i]->GetMemoryPtr()));
@@ -120,8 +121,8 @@ Status ConcatXY::BindArguments() {
     x_offset += attr_.axis == Axis::WIDTH ? width : 0;
     y_offset += attr_.axis == Axis::HEIGHT ? height : 0;
   }
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
-  return OkStatus();
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
+  return absl::OkStatus();
 }
 
 int3 ConcatXY::GetGridSize() const {
@@ -134,17 +135,17 @@ int3 ConcatXY::GetGridSize() const {
 
   const int grid_x = max_src_width * dst_[0]->Batch();
   const int grid_y = max_src_height;
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
 
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status ConcatXY::Tune(const TuningParameters& params) {
+absl::Status ConcatXY::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Status ConcatXY::AddToQueue(CLCommandQueue* queue) {
+absl::Status ConcatXY::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }

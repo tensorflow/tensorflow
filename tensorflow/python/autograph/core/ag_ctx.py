@@ -63,5 +63,15 @@ class ControlStatusCtx(object):
     _control_ctx().pop()
 
 
+class NullCtx(object):
+  """Helper substitute for contextlib.nullcontext."""
+
+  def __enter__(self):
+    pass
+
+  def __exit__(self, unused_type, unused_value, unused_traceback):
+    pass
+
+
 def _default_control_status_ctx():
   return ControlStatusCtx(status=Status.UNSPECIFIED)

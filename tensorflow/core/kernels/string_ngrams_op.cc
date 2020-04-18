@@ -60,21 +60,22 @@ class StringNGramsOp : public tensorflow::OpKernel {
     OP_REQUIRES_OK(context, context->input("data_splits", &splits));
     const auto& splits_vec = splits->flat<SPLITS_TYPE>();
 
-    // If there is no data or size, return an empty RT.
-    if (data->flat<tstring>().size() == 0 || splits_vec.size() == 0) {
-      tensorflow::Tensor* empty;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(0, data->shape(), &empty));
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(1, splits->shape(), &empty));
-      return;
-    }
-
     int num_batch_items = splits_vec.size() - 1;
     tensorflow::Tensor* ngrams_splits;
     OP_REQUIRES_OK(
         context, context->allocate_output(1, splits->shape(), &ngrams_splits));
     auto ngrams_splits_data = ngrams_splits->flat<SPLITS_TYPE>().data();
+
+    // If there is no data or size, return an empty RT.
+    if (data->flat<tstring>().size() == 0 || splits_vec.size() == 0) {
+      tensorflow::Tensor* empty;
+      OP_REQUIRES_OK(context,
+                     context->allocate_output(0, data->shape(), &empty));
+      for (int i = 0; i <= num_batch_items; ++i) {
+        ngrams_splits_data[i] = 0;
+      }
+      return;
+    }
 
     ngrams_splits_data[0] = 0;
     for (int i = 1; i <= num_batch_items; ++i) {

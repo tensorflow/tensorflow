@@ -18,23 +18,23 @@ limitations under the License.
 #include <GLES/glext.h>
 #endif
 
-#include <string>
+#include <cinttypes>
 #include <map>
+#include <string>
 
+#include "tensorflow/examples/android/jni/object_tracking/config.h"
+#include "tensorflow/examples/android/jni/object_tracking/flow_cache.h"
 #include "tensorflow/examples/android/jni/object_tracking/geom.h"
 #include "tensorflow/examples/android/jni/object_tracking/image-inl.h"
 #include "tensorflow/examples/android/jni/object_tracking/image.h"
 #include "tensorflow/examples/android/jni/object_tracking/integral_image.h"
-#include "tensorflow/examples/android/jni/object_tracking/logging.h"
-#include "tensorflow/examples/android/jni/object_tracking/time_log.h"
-#include "tensorflow/examples/android/jni/object_tracking/utils.h"
-
-#include "tensorflow/examples/android/jni/object_tracking/config.h"
-#include "tensorflow/examples/android/jni/object_tracking/flow_cache.h"
 #include "tensorflow/examples/android/jni/object_tracking/keypoint_detector.h"
+#include "tensorflow/examples/android/jni/object_tracking/logging.h"
 #include "tensorflow/examples/android/jni/object_tracking/object_detector.h"
 #include "tensorflow/examples/android/jni/object_tracking/object_tracker.h"
 #include "tensorflow/examples/android/jni/object_tracking/optical_flow.h"
+#include "tensorflow/examples/android/jni/object_tracking/time_log.h"
+#include "tensorflow/examples/android/jni/object_tracking/utils.h"
 
 namespace tf_tracking {
 
@@ -108,9 +108,10 @@ void ObjectTracker::NextFrame(const uint8_t* const new_frame,
   curr_change->Init(curr_time_, timestamp);
 
   CHECK_ALWAYS(curr_time_ < timestamp,
-               "Timestamp must monotonically increase! Went from %lld to %lld"
-               " on frame %d.",
+               "Timestamp must monotonically increase! Went from %" PRId64
+               " to %" PRId64 " on frame %d.",
                curr_time_, timestamp, num_frames_);
+
   curr_time_ = timestamp;
 
   // Swap the frames.
@@ -198,9 +199,10 @@ void ObjectTracker::RegisterNewObjectWithAppearance(
 void ObjectTracker::SetPreviousPositionOfObject(const std::string& id,
                                                 const BoundingBox& bounding_box,
                                                 const int64_t timestamp) {
-  CHECK_ALWAYS(timestamp > 0, "Timestamp too low! %lld", timestamp);
+  CHECK_ALWAYS(timestamp > 0, "Timestamp too low! %" PRId64, timestamp);
   CHECK_ALWAYS(timestamp <= curr_time_,
-               "Timestamp too great! %lld vs %lld", timestamp, curr_time_);
+               "Timestamp too great! %" PRId64 " vs %" PRId64, timestamp,
+               curr_time_);
 
   TrackedObject* const object = GetObject(id);
 
@@ -304,7 +306,7 @@ BoundingBox ObjectTracker::TrackBox(const BoundingBox& region,
 
 BoundingBox ObjectTracker::TrackBox(const BoundingBox& region,
                                     const int64_t timestamp) const {
-  CHECK_ALWAYS(timestamp > 0, "Timestamp too low! %lld", timestamp);
+  CHECK_ALWAYS(timestamp > 0, "Timestamp too low! %" PRId64, timestamp);
   CHECK_ALWAYS(timestamp <= curr_time_, "Timestamp is in the future!");
 
   // Anything that ended before the requested timestamp is of no concern to us.
@@ -328,9 +330,9 @@ BoundingBox ObjectTracker::TrackBox(const BoundingBox& region,
   }
 
   if (!found_it) {
-    LOGW("History did not go back far enough! %lld vs %lld",
+    LOGW("History did not go back far enough! %" PRId64 " vs %" PRId64,
          frame_pairs_[GetNthIndexFromEnd(0)].end_time_ -
-         frame_pairs_[GetNthIndexFromStart(0)].end_time_,
+             frame_pairs_[GetNthIndexFromStart(0)].end_time_,
          frame_pairs_[GetNthIndexFromEnd(0)].end_time_ - timestamp);
   }
 

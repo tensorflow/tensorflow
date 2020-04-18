@@ -27,26 +27,3 @@ and the [Ragged Tensor Guide](/guide/ragged_tensors).
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-from tensorflow.python.ops.ragged import ragged_array_ops
-from tensorflow.python.ops.ragged import ragged_batch_gather_ops
-from tensorflow.python.ops.ragged import ragged_batch_gather_with_default_op
-from tensorflow.python.ops.ragged import ragged_concat_ops
-from tensorflow.python.ops.ragged import ragged_conversion_ops
-from tensorflow.python.ops.ragged import ragged_dispatch
-from tensorflow.python.ops.ragged import ragged_factory_ops
-from tensorflow.python.ops.ragged import ragged_functional_ops
-from tensorflow.python.ops.ragged import ragged_gather_ops
-from tensorflow.python.ops.ragged import ragged_getitem
-from tensorflow.python.ops.ragged import ragged_map_ops
-from tensorflow.python.ops.ragged import ragged_math_ops
-from tensorflow.python.ops.ragged import ragged_operators
-from tensorflow.python.ops.ragged import ragged_string_ops
-from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_tensor_shape
-from tensorflow.python.ops.ragged import ragged_tensor_value
-from tensorflow.python.ops.ragged import ragged_where_op
-from tensorflow.python.ops.ragged import segment_id_ops
-
-# Add a list of the ops that support Ragged Tensors.
-__doc__ += ragged_dispatch.ragged_op_list()  # pylint: disable=redefined-builtin

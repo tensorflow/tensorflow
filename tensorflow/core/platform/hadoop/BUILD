@@ -18,6 +18,8 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:strcat",
         "//third_party/hadoop:hdfs",
     ],
     alwayslink = 1,
@@ -58,5 +60,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:str_util",
     ],
 )

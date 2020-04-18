@@ -59,9 +59,8 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:variant",
         "@ngraph//:ngraph_core",
-        "@org_tensorflow//tensorflow/core:core_cpu_headers_lib",
         "@org_tensorflow//tensorflow/core:framework_headers_lib",
-        "@org_tensorflow//tensorflow/core:protos_all_proto_text",
+        "@org_tensorflow//tensorflow/core/common_runtime:core_cpu_headers_lib",
     ],
     alwayslink = 1,
 )

@@ -40,4 +40,5 @@ cc_library(
     name = "conversion_data",
     srcs = [":conversion_data.c"],
     deps = ["@icu//:headers"],
+    alwayslink = 1,
 )

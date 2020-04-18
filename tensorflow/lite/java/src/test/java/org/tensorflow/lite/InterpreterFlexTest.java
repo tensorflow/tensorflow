@@ -24,6 +24,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.tensorflow.lite.flex.FlexDelegate;
+import org.tensorflow.lite.nnapi.NnApiDelegate;
 
 /**
  * Unit tests for {@link org.tensorflow.lite.Interpreter} that validate execution with models that
@@ -51,6 +52,17 @@ public final class InterpreterFlexTest {
   @Test
   public void testFlexModelDelegateAutomaticallyApplied() throws Exception {
     try (Interpreter interpreter = new Interpreter(FLEX_MODEL_BUFFER)) {
+      testCommon(interpreter);
+    }
+  }
+
+  /** Smoke test validating that flex model loading works when the flex delegate is linked. */
+  @Test
+  public void testFlexModelDelegateAutomaticallyAppliedBeforeOtherDelegates() throws Exception {
+    Interpreter.Options options = new Interpreter.Options();
+    try (NnApiDelegate delegate = new NnApiDelegate();
+        Interpreter interpreter =
+            new Interpreter(FLEX_MODEL_BUFFER, options.addDelegate(delegate))) {
       testCommon(interpreter);
     }
   }

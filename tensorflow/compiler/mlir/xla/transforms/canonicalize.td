@@ -17,24 +17,65 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
+include "tensorflow/compiler/mlir/xla/ir/hlo_utils.td"
 
-def CastIntElementsAttr : NativeCodeCall<"$0.cast<DenseIntElementsAttr>()">;
+def UnaryToBinaryEinsumEq : NativeCodeCall<
+  "$_builder.getStringAttr(\",\" + $0.getValue().str())">;
+
+// Convert UnaryEinsumOp to EinsumOp with two operands with redundant first
+// operand.
+def UnaryEinsumToEinsum : Pat<
+  (HLO_UnaryEinsumOp $operand, $equation),
+  (HLO_EinsumOp (HLO_ConstOp (GetScalarOfType<1> $operand)),
+                $operand, (UnaryToBinaryEinsumEq $equation))>;
 
 //===----------------------------------------------------------------------===//
-// DynamicSlice op patterns.
+// Conv op patterns.
 //===----------------------------------------------------------------------===//
 
-def BuildSliceLimits : NativeCodeCall<
-    "BuildSliceLimits($0.cast<DenseIntElementsAttr>(),"
-    "$1.cast<DenseIntElementsAttr>(), &$_builder)">;
+def IsZero : Attr<CPred<
+  "($_self.isa<DenseFPElementsAttr>() &&"
+  "$_self.cast<DenseFPElementsAttr>().isSplat() &&"
+  "$_self.cast<DenseFPElementsAttr>().getSplatValue<FloatAttr>()"
+  ".getValue().isZero()) ||"
+  "($_self.isa<DenseIntElementsAttr>() &&"
+  "$_self.cast<DenseIntElementsAttr>().isSplat() &&"
+  "$_self.cast<DenseIntElementsAttr>().getSplatValue<IntegerAttr>()"
+  ".getInt() == 0)">>;
 
-def BuildSliceStrides : NativeCodeCall<
-  "GetI64ElementsAttr(SmallVector<int64_t, 4>("
-  "$0->getType().cast<RankedTensorType>().getRank(), 1), &$_builder)">;
+def IsOnlyPaddingSpatialDims
+  : Constraint<CPred<"IsOnlyPaddingSpatialDims($0, $1, $2, $3)">>;
 
-def DynamicSliceToSlice: Pat<(HLO_DynamicSliceOp HLO_Tensor:$input,
-           (HLO_ConstOp I64ElementsAttr:$starting_indices),
-           I64ElementsAttr:$slice_sizes),
-          (HLO_SliceOp $input, (CastIntElementsAttr $starting_indices),
-           (BuildSliceLimits $starting_indices, $slice_sizes),
-            (BuildSliceStrides $input))>;
+def BuildConvPaddingAttrs : NativeCodeCall<
+  "BuildConvPaddingAttrs($0, $1, $2, $3, &$_builder)">;
+
+def FoldPadIntoConv : Pat<
+  (HLO_ConvOp
+    (HLO_PadOp $lhs,
+      (HLO_ConstOp IsZero:$padding_value),
+      $edge_padding_low,
+      $edge_padding_high,
+      IsZero:$interior_padding),
+    $rhs,
+    $window_strides,
+    $padding,
+    $lhs_dilation,
+    $rhs_dilation,
+    $dimension_numbers,
+    $feature_group_count,
+    $batch_group_count,
+    $precision_config),
+  (HLO_ConvOp
+    $lhs,
+    $rhs,
+    $window_strides,
+    (BuildConvPaddingAttrs $edge_padding_low, $edge_padding_high, $padding,
+      $dimension_numbers),
+    $lhs_dilation,
+    $rhs_dilation,
+    $dimension_numbers,
+    $feature_group_count,
+    $batch_group_count,
+    $precision_config),
+    [(IsOnlyPaddingSpatialDims $lhs, $dimension_numbers, $edge_padding_low,
+      $edge_padding_high)]>;

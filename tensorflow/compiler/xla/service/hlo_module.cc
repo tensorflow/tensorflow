@@ -28,12 +28,14 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -223,7 +225,7 @@ string HloModule::ToString(const HloPrintOptions& options) const {
   }
   s << "\n\n";
   const auto& computations = options.canonicalize_computations()
-                                 ? MakeComputationPostOrderAndSortedByNames()
+                                 ? MakeComputationSorted()
                                  : MakeComputationPostOrder();
   for (const HloComputation* computation : computations) {
     if (!options.print_computation(computation)) {
@@ -261,6 +263,15 @@ HloModuleProto HloModule::ToProto() const {
   *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
   *proto.mutable_dynamic_parameter_binding() =
       dynamic_parameter_binding().ToProto();
+  for (const auto& parameter_indices : CrossProgramPrefetches()) {
+    const auto& parameter = parameter_indices.first;
+    const auto& indices = parameter_indices.second;
+    auto* prefetch = proto.mutable_cross_program_prefetches()->Add();
+    prefetch->set_parameter(parameter);
+    for (auto index : indices) {
+      prefetch->add_index(index);
+    }
+  }
   return proto;
 }
 
@@ -294,7 +305,8 @@ Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
 
 /* static */
 StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
-    const HloModuleProto& proto, const HloModuleConfig& module_config) {
+    const HloModuleProto& proto, const HloModuleConfig& module_config,
+    bool prohibit_empty_literal) {
   VLOG(2) << "CreateFromProto()";
   XLA_VLOG_LINES(3, proto.DebugString());
 
@@ -332,7 +344,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   for (const HloComputationProto& computation_proto : proto.computations()) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloComputation> computation,
-        HloComputation::CreateFromProto(computation_proto, computation_map));
+        HloComputation::CreateFromProto(computation_proto, computation_map,
+                                        prohibit_empty_literal));
     CHECK_NE(computation.get(), nullptr);
     int64 computation_id = computation_proto.id();
     TF_RET_CHECK(computation_id != -1);
@@ -383,6 +396,12 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
         HloSchedule schedule,
         HloSchedule::CreateFromProto(module.get(), proto.schedule()));
     TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+  }
+
+  for (auto prefetch : proto.cross_program_prefetches()) {
+    module->AddCrossProgramPrefetch(
+        prefetch.parameter(),
+        ShapeIndex(prefetch.index().begin(), prefetch.index().end()));
   }
 
   return std::move(module);
@@ -598,13 +617,23 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
   return post_order;
 }
 
-std::vector<HloComputation*>
-HloModule::MakeComputationPostOrderAndSortedByNames() const {
-  auto result = MakeComputationPostOrder();
-  std::sort(result.begin(), result.end(),
-            [](HloComputation* a, HloComputation* b) {
-              return a->name() < b->name();
-            });
+namespace {
+bool CompareComputationsByContent(HloComputation* a, HloComputation* b) {
+  if (a->instruction_count() != b->instruction_count()) {
+    return a->instruction_count() < b->instruction_count();
+  }
+  return a->ToString(HloPrintOptions::Fingerprint()) <
+         b->ToString(HloPrintOptions::Fingerprint());
+}
+}  // anonymous namespace
+
+std::vector<HloComputation*> HloModule::MakeComputationSorted() const {
+  std::vector<HloComputation*> result;
+  result.reserve(computations_.size());
+  for (const auto& computation : computations_) {
+    result.push_back(computation.get());
+  }
+  std::sort(result.begin(), result.end(), CompareComputationsByContent);
   return result;
 }
 
@@ -622,10 +651,7 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
 std::vector<HloComputation*> HloModule::MakeNonfusionComputationsSorted()
     const {
   auto result = MakeNonfusionComputations();
-  std::sort(result.begin(), result.end(),
-            [](HloComputation* a, HloComputation* b) {
-              return a->name() < b->name();
-            });
+  std::sort(result.begin(), result.end(), CompareComputationsByContent);
   return result;
 }
 
@@ -657,6 +683,11 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
       }
     }
     TF_CHECK_OK(module->set_schedule(std::move(clone_schedule)));
+  }
+  for (const auto& parameter_indices : CrossProgramPrefetches()) {
+    const auto& parameter = parameter_indices.first;
+    const auto& indices = parameter_indices.second;
+    module->AddCrossProgramPrefetch(parameter, indices);
   }
   return module;
 }
@@ -709,9 +740,16 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
 }
 
 uint64 HloModule::Hash() const {
-  return tensorflow::Hash64Combine(
-      entry_computation_layout().Hash(),
-      entry_computation()->root_instruction()->Hash());
+  uint64 result = entry_computation_layout().Hash();
+  // Use MakeComputationSorted() instead of MakeComputationPostOrder()
+  // because naming may affect the order of MakeComputationPostOrder() but not
+  // MakeComputationSorted().
+  for (auto* computation : MakeComputationSorted()) {
+    for (auto* instruction : computation->MakeInstructionPostOrder()) {
+      result = tensorflow::Hash64Combine(result, instruction->Hash());
+    }
+  }
+  return result;
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

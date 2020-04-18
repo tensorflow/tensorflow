@@ -624,7 +624,7 @@ class ProfileAnalyzer(object):
       device_stats = self._run_metadata.step_stats.dev_stats[index]
       if device_name_regex and not device_name_regex.match(device_stats.device):
         continue
-      profile_data.extend([datum for datum in data_generator(device_stats)])
+      profile_data.extend(data_generator(device_stats))
 
     source_annotation = source_utils.annotate_source_against_profile(
         profile_data,

@@ -31,6 +31,12 @@ namespace xla {
 using absl::flat_hash_map;
 using absl::flat_hash_set;
 
+bool HeapSimulator::Chunk::OverlapsWith(Chunk other_chunk) const {
+  CHECK_NE(size, 0);
+  CHECK_NE(other_chunk.size, 0);
+  return offset < other_chunk.chunk_end() && other_chunk.offset < chunk_end();
+}
+
 /*static*/
 StatusOr<int64> HeapSimulator::MinimumMemoryForModule(
     const HloSchedule& schedule,
@@ -478,6 +484,54 @@ HeapSimulator::Result NoFragmentationStatsHeap::Finish() {
   return result;
 }
 
+GlobalDecreasingSizeBestFitHeap::GlobalDecreasingSizeBestFitHeap(
+    int64 alignment, Type type)
+    : alignment_(alignment) {
+  if (type == kTemporal) {
+    buffer_interval_compare_ = GetTemporalBufferIntervalCompare();
+  } else {
+    CHECK(type == kSpatial);
+    buffer_interval_compare_ = GetSpatialBufferIntervalCompare();
+  }
+}
+
+GlobalDecreasingSizeBestFitHeap::BufferIntervalCompare
+GlobalDecreasingSizeBestFitHeap::GetTemporalBufferIntervalCompare() const {
+  return [&](const BufferInterval& x, const BufferInterval& y) {
+    int64 x_end = x.end;
+    for (auto colocation : GetTransitiveColocations(x)) {
+      x_end = std::max(x_end, buffer_intervals_.at(colocation).end);
+    }
+
+    int64 y_end = y.end;
+    for (auto colocation : GetTransitiveColocations(y)) {
+      y_end = std::max(y_end, buffer_intervals_.at(colocation).end);
+    }
+
+    if (x_end - x.start != y_end - y.start) {
+      return x_end - x.start > y_end - y.start;
+    }
+
+    if (x.size != y.size) {
+      return x.size > y.size;
+    }
+    return x.buffer->id() < y.buffer->id();
+  };
+}
+
+/*static*/ GlobalDecreasingSizeBestFitHeap::BufferIntervalCompare
+GlobalDecreasingSizeBestFitHeap::GetSpatialBufferIntervalCompare() {
+  return [&](const BufferInterval& x, const BufferInterval& y) {
+    if (x.size != y.size) {
+      return x.size > y.size;
+    }
+    if (x.end - x.start != y.end - y.start) {
+      return x.end - x.start > y.end - y.start;
+    }
+    return x.buffer->id() < y.buffer->id();
+  };
+}
+
 void GlobalDecreasingSizeBestFitHeap::Alloc(const HloValue* buffer,
                                             int64 size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
@@ -543,28 +597,30 @@ void GlobalDecreasingSizeBestFitHeap::Free(const HloValue* buffer, int64 size) {
 
 using Chunk = HeapSimulator::Chunk;
 
-void GlobalDecreasingSizeBestFitHeap::BufferIntervalTree::Add(
-    int64 start, int64 end, const Chunk& chunk) {
-  node_storage_.emplace_back(
-      BufferIntervalTreeNode{start, end, end, chunk, nullptr, nullptr});
-
-  if (node_storage_.size() == 1) {
+void BufferIntervalTree::Add(int64 start, int64 end, const Chunk& chunk) {
+  node_storage_.emplace_back(BufferIntervalTreeNode{
+      start, end, end, chunk,
+      /*left=*/nullptr, /*right=*/nullptr, /*parent=*/nullptr});
+  if (root_ == nullptr) {
+    root_ = &node_storage_.back();
     // This is root.
     return;
   }
 
-  BufferIntervalTreeNode* parent = &node_storage_.front();
+  BufferIntervalTreeNode* parent = root_;
   while (true) {
     parent->subtree_end = std::max(parent->subtree_end, end);
     if (parent->start > start) {
       if (parent->left == nullptr) {
         parent->left = &node_storage_.back();
+        node_storage_.back().parent = parent;
         return;
       }
       parent = parent->left;
     } else {
       if (parent->right == nullptr) {
         parent->right = &node_storage_.back();
+        node_storage_.back().parent = parent;
         return;
       }
       parent = parent->right;
@@ -572,15 +628,141 @@ void GlobalDecreasingSizeBestFitHeap::BufferIntervalTree::Add(
   }
 }
 
-std::vector<Chunk>
-GlobalDecreasingSizeBestFitHeap::BufferIntervalTree::ChunksOverlappingInTime(
+bool BufferIntervalTree::Remove(int64 start, int64 end, const Chunk& chunk) {
+  BufferIntervalTreeNode* to_delete = root_;
+  while (to_delete != nullptr) {
+    if (to_delete->start == start && to_delete->end == end &&
+        to_delete->chunk.offset == chunk.offset) {
+      break;
+    }
+    if (start < to_delete->start) {
+      to_delete = to_delete->left;
+    } else {
+      to_delete = to_delete->right;
+    }
+  }
+  if (to_delete == nullptr) {
+    // Nothing to delete.
+    return false;
+  }
+  // Found the node to be deleted, enter deletion sequence.
+
+  // Recursively traverse the parents of node and fix up the `subtree_end`
+  // invariant of a node. Recursive lambda need an explicit
+  // std::function declaration.
+  std::function<void(BufferIntervalTreeNode*)> fix_up =
+      [&](BufferIntervalTreeNode* node) {
+        if (node == nullptr) {
+          return;
+        }
+        node->subtree_end = node->end;
+        if (node->left) {
+          node->subtree_end =
+              std::max(node->subtree_end, node->left->subtree_end);
+        }
+        if (node->right) {
+          node->subtree_end =
+              std::max(node->subtree_end, node->right->subtree_end);
+        }
+        // Recursively go up.
+        fix_up(node->parent);
+      };
+
+  if (to_delete->right == nullptr) {
+    // to_delete has no right child, simply move up left child of to_delete if
+    // any.
+    //
+    // Turn:
+    //      parent
+    //       /
+    // to_delete
+    //  /      \
+    // left    nullptr
+    //
+    // Into:
+    //      parent
+    //      /
+    //    left
+    if (root_ == to_delete) {
+      // Deleting root is simply reseting root;
+      root_ = to_delete->left;
+      return true;
+    }
+
+    if (to_delete == to_delete->parent->left) {
+      // to_delete is left child of parent.
+      to_delete->parent->left = to_delete->left;
+    }
+    if (to_delete == to_delete->parent->right) {
+      // to_delete is right child of parent.
+      to_delete->parent->right = to_delete->left;
+    }
+    // Rewire parent to the node being moved up.
+    if (to_delete->left) {
+      to_delete->left->parent = to_delete->parent;
+    }
+    // Fix up starting from subroot.
+    fix_up(to_delete);
+  } else {
+    // 1. Find left-most node of the right subtree, promote it to the position
+    // of to_delete.
+    BufferIntervalTreeNode* to_promote = to_delete->right;
+    while (to_promote->left != nullptr) {
+      // Go to left-most subtree.
+      to_promote = to_promote->left;
+    }
+
+    // 2. Copy the content of `to_promote` to `to_delete`.
+    to_delete->start = to_promote->start;
+    to_delete->end = to_promote->end;
+    // This is incorrect but we will fix this up later in the `fix_up`
+    // procedure.
+    to_delete->subtree_end = to_promote->subtree_end;
+    to_delete->chunk = to_promote->chunk;
+    auto to_promote_parent = to_promote->parent;
+    // 3. Move the right child of `to_promote` up if there is any.
+    //
+    // Turn
+    //
+    // to_delete
+    //         \
+    //        to_promote_parent
+    //         /
+    //    to_promote
+    //          \
+    //          right
+    // into
+    //
+    // to_promote
+    //         \
+    //         to_promote_parent
+    //         /
+    //      right
+    if (to_promote_parent->left == to_promote) {
+      to_promote_parent->left = to_promote->right;
+    } else {
+      to_promote_parent->right = to_promote->right;
+    }
+    if (to_promote->right) {
+      // Set correct parent.
+      to_promote->right->parent = to_promote_parent;
+    }
+    // 4. Recursive fix up the `subtree_end` starting from
+    // `to_promote_parent`.
+    fix_up(to_promote_parent);
+  }
+  // Don't free the entry in node_storage_ until we free the entire tree.
+  return true;
+}
+
+std::vector<Chunk> BufferIntervalTree::ChunksOverlappingInTime(
     int64 start, int64 end) const {
   std::vector<Chunk> result;
-  if (node_storage_.empty()) {
+  if (root_ == nullptr) {
     return result;
   }
   std::vector<const BufferIntervalTreeNode*> visiting_stack;
-  visiting_stack.push_back(&node_storage_.front());
+  visiting_stack.push_back(root_);
   while (!visiting_stack.empty()) {
     const BufferIntervalTreeNode* top = visiting_stack.back();
     visiting_stack.pop_back();
@@ -627,47 +809,7 @@ GlobalDecreasingSizeBestFitHeap::GetSortedBufferIntervals() const {
   for (auto& entry : buffer_intervals_) {
     sorted_buffer_intervals.push_back(entry.second);
   }
-  if (type_ == kTemporal) {
-    // Sort by live-range. A live range is defined by the range between the
-    // start of the first buffer and the end of the last co-located
-    // buffer. There could be "holes" in the live ranges of each co-located
-    // buffers, but in this heuristics we think they are contiguous.
-    absl::c_sort(sorted_buffer_intervals, [&](const BufferInterval& x,
-                                              const BufferInterval& y) {
-      int64 x_end = x.end;
-      for (auto colocation : GetTransitiveColocations(x)) {
-        x_end = std::max(x_end, buffer_intervals_.at(colocation).end);
-      }
-
-      int64 y_end = y.end;
-      for (auto colocation : GetTransitiveColocations(y)) {
-        y_end = std::max(y_end, buffer_intervals_.at(colocation).end);
-      }
-
-      if (x_end - x.start != y_end - y.start) {
-        return x_end - x.start > y_end - y.start;
-      }
-
-      if (x.size != y.size) {
-        return x.size > y.size;
-      }
-      return x.buffer->id() < y.buffer->id();
-    });
-  } else {
-    // Sort by spatial size. We don't look at co-locates as they should have the
-    // same size.
-    CHECK(type_ == kSpatial);
-    absl::c_sort(sorted_buffer_intervals,
-                 [&](const BufferInterval& x, const BufferInterval& y) {
-                   if (x.size != y.size) {
-                     return x.size > y.size;
-                   }
-                   if (x.end - x.start != y.end - y.start) {
-                     return x.end - x.start > y.end - y.start;
-                   }
-                   return x.buffer->id() < y.buffer->id();
-                 });
-  }
+  absl::c_sort(sorted_buffer_intervals, buffer_interval_compare_);
 
   return sorted_buffer_intervals;
 }
@@ -719,6 +861,7 @@ GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
   // Find the minimum free chunk that can hold this buffer.
   ChunkCandidate chunk_candidate{Chunk{-1, INT64_MAX}, result_.heap_size};
   Chunk& min_fit_chunk = chunk_candidate.chunk;
+  int64 preferred_chunk_end = preferred_offset + buffer_interval.size;
   auto use_free_chunk_if_smaller = [&](int64 free_offset, int64 free_size) {
     if (free_size < buffer_interval.size) {
       return;
@@ -726,8 +869,14 @@ GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
 
     // If a preferred offset is provided, pick that offset.
     if (free_offset <= preferred_offset &&
-        free_offset + free_size >= preferred_offset + buffer_interval.size) {
+        free_offset + free_size >= preferred_chunk_end) {
       min_fit_chunk = {preferred_offset, buffer_interval.size};
+    } else if (free_offset + free_size == result_.heap_size &&
+               free_offset <= preferred_offset) {
+      // If the free offset is at the very end and if the preferred offset lies
+      // in this, pick the preferred offset and grow the heap.
+      min_fit_chunk = {preferred_offset, buffer_interval.size};
+      chunk_candidate.heap_size = preferred_chunk_end;
     }
 
     // Pick the min-fit chunk only if we didn't have a preferred offset or a
@@ -749,7 +898,7 @@ GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
   // When preferred offset is provided and the preferred offset is larger than
   // the current heap size, simply use the preferred offset provided.
   if (result_.heap_size <= preferred_offset) {
-    chunk_candidate.heap_size = preferred_offset + buffer_interval.size;
+    chunk_candidate.heap_size = preferred_chunk_end;
     min_fit_chunk = {preferred_offset, buffer_interval.size};
   }
 

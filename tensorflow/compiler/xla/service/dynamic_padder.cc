@@ -21,14 +21,21 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
@@ -105,6 +112,11 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kTranspose:
     case HloOpcode::kSort:
     case HloOpcode::kSlice:
+    case HloOpcode::kDomain:
+      return nullptr;
+    // Assume that custom calls created by the client are valid with padded
+    // dynamic dimensions.
+    case HloOpcode::kCustomCall:
       return nullptr;
     default:
       return UnimplementedStrCat("Unimplemented padding for instruction: ",
@@ -165,7 +177,7 @@ HloInstruction* PadWithScalar(HloInstruction* inst, int64 dim,
   return padded;
 }
 
-// In a reshape if a dynamci dimension is splitted into multiple output
+// In a reshape if a dynamic dimension is splitted into multiple output
 // dimensions, we need to rewrite the input of the reshape.
 //
 // The reason for this is that a continuous input may not be evenly reshaped
@@ -197,38 +209,35 @@ HloInstruction* PadWithScalar(HloInstruction* inst, int64 dim,
 // [[a,b,P]
 //  [c,d,P]]
 //
-// The way we do this is by a 6-steps double-sorting algorithm:
+// The way we do this is by a 5-steps cumsum-gather algorithm:
 //
 // 1.First we use the output shape to generate a binary 0-1 masking, which masks
 // out the padded area of the output:
-// [[0,0,1]
-//  [0,0,1]]
+// [[1,1,0]
+//  [1,1,0]]
 //
 // 2.Then we do an inverse reshape to reshape it from output shape back to input
 // shape [2,3]->[6]:
-//  [0,0,1,0,0,1]
+//  [1,1,0,1,1,0]
 //
-// 3.We then generate an iota mask using the input shape:
-//  [0,1,2,3,4,5]
+// 3.We then do a cumsum with the mask:
+//  [1,2,2,3,4,4] and subtract it with 1:
+//  [0,1,1,2,3,3]
 //
-// 4.Stable sort the iota mask using the binary mask as key:
-//  key  [0,0,1,0,0,1]
-//  value[0,1,2,3,4,5]
-//     | Sort by key
+// 4.Use the the result of cumsum as gather indicies to rearrange the original
+// data. Feed the original input [a,b,c,d,P,P] and indices into gather.
+//
+//  operand [a,b,c,d,P,P], indices [0,1,1,2,3,3]
+//     |                    |
+//   Gather-----------------+
+//     |
 //     v
-//  key  [0,0,0,0,1,1]
-//  value[0,1,3,4,2,5]
+//  value[a,b,b,c,d,d], which is equivalent to [a,b,P,c,d,P] as padding value
+//  doesn't matter.
 //
-// 5.Sort the original input [a,b,c,d,P,P] using the sorted iota mask:
-//  key  [0,1,3,4,2,5]
-//  value[a,b,c,d,P,P]
-//     | Sort by key
-//     v
-//  key  [0,1,2,3,4,5]
-//  value[a,b,P,c,d,P]
 //
-// 6.Feed the sorted input to original reshape[6]->[2,3], we can get the correct
-// reshape:
+// 5.Feed the sorted input to original reshape[6]->[2,3], we can now get the
+// correct result:
 //  [[a,b,P]
 //   [c,d,P]]
 //
@@ -236,27 +245,37 @@ Status RewriteDynamicReshapeSplitInput(
     HloInstruction* reshape, int64 input_dim,
     absl::Span<const int64> output_dims,
     DynamicDimensionInference* dynamic_dimension_inference) {
+  VLOG(1) << "Reshaping input dim " << input_dim << "to "
+          << VectorString(output_dims);
   const Shape operand_shape = reshape->operand(0)->shape();
   TF_RET_CHECK(output_dims.size() > 1);
 
   HloComputation* comp = reshape->parent();
   const Shape mask_input_shape =
-      ShapeUtil::ChangeElementType(operand_shape, xla::S32);
+      ShapeUtil::MakeShape(xla::S32, {operand_shape.dimensions(input_dim)});
+
+  std::vector<int64> reshaped_dims;
+  for (int64 output_dim : output_dims) {
+    reshaped_dims.push_back(reshape->shape().dimensions(output_dim));
+  }
+
   const Shape mask_reshaped_shape =
-      ShapeUtil::ChangeElementType(reshape->shape(), xla::S32);
+      ShapeUtil::MakeShape(xla::S32, reshaped_dims);
 
   HloInstruction* zero = comp->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
   HloInstruction* one = comp->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::One(S32)));
   // Step 1 -- generate binary mask.
-  // Mask starts with all zero, each dynamic dimension sets one dimension of the
-  // mask to partially one.
+  // Mask starts with all one, each dynamic dimension sets that dimension of the
+  // mask to partially zero in the end.
   HloInstruction* binary_mask = comp->AddInstruction(
-      HloInstruction::CreateBroadcast(mask_reshaped_shape, zero, {}));
+      HloInstruction::CreateBroadcast(mask_reshaped_shape, one, {}));
 
   bool need_rewrite = false;
 
+  // Pad the effective dimension with 1.
+  //
   // Index starts from 1 since there is no need to rewrite a major output
   // dimension.
   for (int64 i = 1; i < output_dims.size(); ++i) {
@@ -266,10 +285,10 @@ Status RewriteDynamicReshapeSplitInput(
     if (dynamic_size == nullptr) {
       continue;
     }
-    // If there is dynamic dimension in the output, need rewrite the input.
+    // If there is dynamic dimension in the output, need to rewrite the input.
     need_rewrite = true;
 
-    binary_mask = PadWithScalar(binary_mask, output_dim, dynamic_size, one);
+    binary_mask = PadWithScalar(binary_mask, i, dynamic_size, zero);
   }
   if (!need_rewrite) {
     return Status::OK();
@@ -280,90 +299,77 @@ Status RewriteDynamicReshapeSplitInput(
   HloInstruction* input_shape_binary_mask = comp->AddInstruction(
       HloInstruction::CreateReshape(mask_input_shape, binary_mask));
 
-  // Step 3. Generate iota mask.
-  HloInstruction* iota_mask = comp->AddInstruction(
-      HloInstruction::CreateIota(mask_input_shape, input_dim));
-
-  // Step 4. Sort iota.
-  // Use binary mark to sort iota mask, then use iota mask to reshape input.
-  HloComputation::Builder comp_builder("compare_bianry_iota");
+  // Step 3. Do a cumsum on the binary mask.
+  auto embedded_builder = HloComputation::Builder("add");
   {
-    HloInstruction* lhs_key =
-        comp_builder.AddInstruction(HloInstruction::CreateParameter(
-            0, ShapeUtil::MakeShape(S32, {}), "lhs_key_binary"));
-    HloInstruction* rhs_key =
-        comp_builder.AddInstruction(HloInstruction::CreateParameter(
-            1, ShapeUtil::MakeShape(S32, {}), "rhs_key_binary"));
-
-    // Values for lhs and rhs
-    comp_builder.AddInstruction(HloInstruction::CreateParameter(
-        2, ShapeUtil::MakeShape(S32, {}), "lhs_iota"));
-    comp_builder.AddInstruction(HloInstruction::CreateParameter(
-        3, ShapeUtil::MakeShape(S32, {}), "rhs_iota"));
-    comp_builder.AddInstruction(
-        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), lhs_key,
-                                      rhs_key, ComparisonDirection::kLt));
+    auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
+        0, ShapeUtil::MakeShape(S32, {}), "lhs"));
+    auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
+        1, ShapeUtil::MakeShape(S32, {}), "rhs"));
+    embedded_builder.AddInstruction(
+        HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kAdd, lhs, rhs));
   }
 
-  HloComputation* compare_binary_iota =
-      comp->parent()->AddEmbeddedComputation(comp_builder.Build());
+  HloComputation* add =
+      reshape->GetModule()->AddEmbeddedComputation(embedded_builder.Build());
+  Window cumsum_window;
+  // First dimension is unchanged.
+  WindowDimension* dim = cumsum_window.add_dimensions();
+  dim->set_size(operand_shape.dimensions(input_dim));
+  dim->set_stride(1);
+  dim->set_padding_low(operand_shape.dimensions(input_dim) - 1);
+  dim->set_padding_high(0);
+  dim->set_window_dilation(1);
+  dim->set_base_dilation(1);
+  HloInstruction* cumsum =
+      comp->AddInstruction(HloInstruction::CreateReduceWindow(
+          mask_input_shape, input_shape_binary_mask, zero, cumsum_window, add));
 
-  HloInstruction* sorted_binary_iota =
-      comp->AddInstruction(HloInstruction::CreateSort(
-          ShapeUtil::MakeTupleShape({mask_input_shape, mask_input_shape}),
-          input_dim, {input_shape_binary_mask, iota_mask}, compare_binary_iota,
-          /*is_stable=*/true));
-  HloInstruction* sorted_iota_mask =
-      comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-          mask_input_shape, sorted_binary_iota, 1));
+  HloInstruction* broadcast_ones = comp->AddInstruction(
+      HloInstruction::CreateBroadcast(mask_input_shape, one, {}));
+  cumsum = comp->AddInstruction(HloInstruction::CreateBinary(
+      mask_input_shape, HloOpcode::kSubtract, cumsum, broadcast_ones));
 
-  // Step 5. Sort original input using iota mask as key.
-  HloComputation::Builder comp_builder_iota("compare_bianry_iota");
-  {
-    HloInstruction* lhs_key =
-        comp_builder_iota.AddInstruction(HloInstruction::CreateParameter(
-            0, ShapeUtil::MakeShape(S32, {}), "lhs_key_iota"));
-    HloInstruction* rhs_key =
-        comp_builder_iota.AddInstruction(HloInstruction::CreateParameter(
-            1, ShapeUtil::MakeShape(S32, {}), "rhs_key_iota"));
-
-    // Values for lhs and rhs
-    comp_builder_iota.AddInstruction(HloInstruction::CreateParameter(
-        2, ShapeUtil::MakeShape(operand_shape.element_type(), {}),
-        "lhs_value"));
-    comp_builder_iota.AddInstruction(HloInstruction::CreateParameter(
-        3, ShapeUtil::MakeShape(operand_shape.element_type(), {}),
-        "rhs_value"));
-    comp_builder_iota.AddInstruction(
-        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), lhs_key,
-                                      rhs_key, ComparisonDirection::kLt));
+  GatherDimensionNumbers gather_dim_numbers;
+  // We use gather to rearrange the input dim dimension. However the current
+  // semantic of gather doesn't allow us to collapse dimension in this case so
+  // we keep it, which make the gather from shape [..., input_dim, ...] to
+  // [..., 1, input_dim, ...]
+  for (int64 i = 0; i < operand_shape.dimensions_size(); ++i) {
+    // Offset dim is every dimension including newly added size 1 dim, except
+    // for input_dim, which acts as a batch_dim.
+    if (i != input_dim) {
+      gather_dim_numbers.add_offset_dims(i);
+    }
   }
+  // The dimension to rewrite is the index dim.
+  gather_dim_numbers.add_start_index_map(input_dim);
+  gather_dim_numbers.set_index_vector_dim(1);
+  gather_dim_numbers.add_collapsed_slice_dims(input_dim);
 
-  HloComputation* compare_iota_value =
-      comp->parent()->AddEmbeddedComputation(comp_builder_iota.Build());
+  // Step 4. Gather.
 
-  // Temporarily removes dynamic dimension before entering sort -- we want the
-  // sort to ignore dynamic dimension.
+  // Temporarily removes dynamic dimension before entering gather -- we want the
+  // gather to ignore dynamic dimension.
   HloInstruction* operand_static_dim_size =
       comp->AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateR0<int32>(operand_shape.dimensions(input_dim))));
-
   HloInstruction* operand_static =
       comp->AddInstruction(HloInstruction::CreateSetDimensionSize(
           operand_shape, reshape->mutable_operand(0), operand_static_dim_size,
           input_dim));
 
-  HloInstruction* sorted_iota_value =
-      comp->AddInstruction(HloInstruction::CreateSort(
-          ShapeUtil::MakeTupleShape({mask_input_shape, operand_shape}),
-          input_dim, {sorted_iota_mask, operand_static}, compare_iota_value,
-          /*is_stable=*/true));
-  // Step 6: Feed sorted input to original reshape.
-  HloInstruction* sorted_operand =
-      comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-          operand_shape, sorted_iota_value, 1));
+  std::vector<int64> slice_sizes(operand_shape.dimensions().begin(),
+                                 operand_shape.dimensions().end());
+  slice_sizes[input_dim] = 1;
+  HloInstruction* gather = comp->AddInstruction(HloInstruction::CreateGather(
+      ShapeUtil::MakeShape(operand_shape.element_type(),
+                           operand_shape.dimensions()),
+      operand_static, cumsum, gather_dim_numbers, slice_sizes, true));
 
-  TF_RETURN_IF_ERROR(reshape->ReplaceOperandWith(0, sorted_operand));
+  // Step 6: Feed gather input to original reshape.
+
+  TF_RETURN_IF_ERROR(reshape->ReplaceOperandWith(0, gather));
 
   HloInstruction* reshape_dynamic = reshape;
 
@@ -564,6 +570,149 @@ Status RewriteDynamicReshapeSingleDim(
   return Status::OK();
 }
 
+StatusOr<bool> RewriteDynamicConcat(
+    HloInstruction* concat,
+    DynamicDimensionInference* dynamic_dimension_inference) {
+  const int64 concat_dim = concat->concatenate_dimension();
+  HloComputation* comp = concat->parent();
+  if (dynamic_dimension_inference->GetDynamicSize(concat, {}, concat_dim) ==
+      nullptr) {
+    // Concat dimension is not dynamic -- no rewrite needed.
+    return false;
+  }
+  std::vector<HloInstruction*> offsets;
+  for (int64 i = 0; i < concat->shape().dimensions_size(); ++i) {
+    offsets.push_back(comp->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0))));
+  }
+  HloInstruction* rewritten_concat = concat;
+  // Keep track of previous users before rewrite so that we can update their
+  // operands later.
+  auto prev_users = concat->users();
+  for (int64 i = 0; i < concat->operand_count(); ++i) {
+    // Rewrite the concat by dynamic update slicing operand into the concat dim.
+    HloInstruction* operand = concat->mutable_operand(i);
+    rewritten_concat =
+        comp->AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+            rewritten_concat->shape(), rewritten_concat, operand, offsets));
+    // Update the offset of concat dimension by adding the size of the concat
+    // dimension of the operand to it.
+    HloInstruction* dynamic_size =
+        dynamic_dimension_inference->GetDynamicSize(operand, {}, concat_dim);
+    if (dynamic_size == nullptr) {
+      HloInstruction* static_size = comp->AddInstruction(
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
+              operand->shape().dimensions(concat_dim))));
+      offsets[concat_dim] = comp->AddInstruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeScalarShape(S32), HloOpcode::kAdd, offsets[concat_dim],
+          static_size));
+    } else {
+      offsets[concat_dim] = comp->AddInstruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeScalarShape(S32), HloOpcode::kAdd, offsets[concat_dim],
+          dynamic_size));
+    }
+  }
+  for (HloInstruction* user : prev_users) {
+    TF_RETURN_IF_ERROR(concat->ReplaceUseWith(user, rewritten_concat));
+  }
+  TF_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+      concat, rewritten_concat, {}));
+  return true;
+}
+
+StatusOr<bool> RewriteDynamicSort(
+    HloInstruction* hlo,
+    DynamicDimensionInference* dynamic_dimension_inference) {
+  HloInstruction* dynamic_size = nullptr;
+  HloSortInstruction* sort = Cast<HloSortInstruction>(hlo);
+  HloComputation* comp = hlo->parent();
+  int64 sort_dim = sort->sort_dimension();
+  // Find the dynamic dimension in the operand.
+  for (auto* operand : sort->operands()) {
+    if (dynamic_size == nullptr) {
+      dynamic_size =
+          dynamic_dimension_inference->GetDynamicSize(operand, {}, sort_dim);
+    }
+  }
+
+  if (dynamic_size == nullptr) {
+    // Not a dynamic sort, ignore.
+    return false;
+  }
+
+  Shape operand_shape =
+      ShapeUtil::ChangeElementType(sort->operand(0)->shape(), S32);
+  HloInstruction* iota =
+      comp->AddInstruction(HloInstruction::CreateIota(operand_shape, sort_dim));
+  HloInstruction* dynamic_size_broadcasted = comp->AddInstruction(
+      HloInstruction::CreateBroadcast(operand_shape, dynamic_size, {}));
+  HloInstruction* lt = comp->AddInstruction(HloInstruction::CreateCompare(
+      ShapeUtil::ChangeElementType(operand_shape, PRED), iota,
+      dynamic_size_broadcasted, ComparisonDirection::kLt));
+  sort->AppendOperand(lt);
+
+  const int64 param_number_before_rewritten =
+      sort->called_computations()[0]->num_parameters();
+  auto new_param_0 = HloInstruction::CreateParameter(
+      param_number_before_rewritten, ShapeUtil::MakeScalarShape(PRED),
+      "inbound_lhs");
+  auto new_param_1 = HloInstruction::CreateParameter(
+      param_number_before_rewritten + 1, ShapeUtil::MakeScalarShape(PRED),
+      "inbound_rhs");
+  std::vector<const HloInstruction*> extra_parameters{new_param_0.get(),
+                                                      new_param_1.get()};
+  HloComputation* sort_comp = sort->parent()->parent()->AddEmbeddedComputation(
+      sort->called_computations()[0]->CloneWithReplacements(
+          /*replacements=*/absl::flat_hash_map<
+              const HloInstruction*, std::unique_ptr<HloInstruction>>(),
+          extra_parameters));
+  auto inbound_lhs =
+      sort_comp->parameter_instruction(param_number_before_rewritten);
+  auto inbound_rhs =
+      sort_comp->parameter_instruction(param_number_before_rewritten + 1);
+  sort->ReplaceCalledComputations(
+      [&](HloComputation* comp) { return sort_comp; });
+
+  // inbound_lhs & (sort_comp | !in_bound_rhs)
+  // Select the lhs if it is in bounds and the rhs is out of bounds or the
+  // sort_comp returns true.
+  auto out_of_bound_rhs = sort_comp->AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeScalarShape(PRED), HloOpcode::kNot, inbound_rhs));
+  auto sort_comp_or_out_of_bound_rhs =
+      sort_comp->AddInstruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeScalarShape(PRED), HloOpcode::kOr,
+          sort_comp->root_instruction(), out_of_bound_rhs));
+
+  auto new_root = sort_comp->AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeScalarShape(PRED), HloOpcode::kAnd, inbound_lhs,
+      sort_comp_or_out_of_bound_rhs));
+  sort_comp->set_root_instruction(new_root);
+  Shape compare_shape =
+      ShapeUtil::ChangeElementType(sort->operand(0)->shape(), PRED);
+  if (sort->shape().IsTuple()) {
+    // For sort that is already tuple, simply add another result to the tuple.
+    *sort->mutable_shape()->add_tuple_shapes() =
+        ShapeUtil::ChangeElementType(operand_shape, PRED);
+  } else {
+    auto sort_users = sort->users();
+    auto sort_clone = comp->AddInstruction(sort->Clone());
+    *sort_clone->mutable_shape() = ShapeUtil::MakeTupleShape(
+        {sort->shape(), ShapeUtil::ChangeElementType(operand_shape, PRED)});
+    auto rewritten_sort = comp->AddInstruction(
+        HloInstruction::CreateGetTupleElement(sort->shape(), sort_clone, 0));
+    for (HloInstruction* user : sort_users) {
+      TF_RETURN_IF_ERROR(sort->ReplaceUseWith(user, rewritten_sort));
+    }
+    TF_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
+        sort, rewritten_sort, {}));
+    if (comp->root_instruction() == sort) {
+      comp->set_root_instruction(rewritten_sort);
+    }
+  }
+
+  return true;
+}
+
 StatusOr<bool> RewriteDynamicReshape(
     HloInstruction* reshape,
     DynamicDimensionInference* dynamic_dimension_inference) {
@@ -589,9 +738,77 @@ StatusOr<bool> RewriteDynamicReshape(
   return changed;
 }
 
-// For all dynamic outputs that live out of the computation, add unpad
-// operations.
-Status InsertUnpadsForModuleOutputs(
+// Insert pad-to-static after `inst` if `inst` has dynamic dimensions in it.
+// Recurse into tuple instructions.
+StatusOr<HloInstruction*> InsertPadToStaticOnInstruction(HloInstruction* inst) {
+  if (inst->shape().is_static()) {
+    return inst;
+  }
+  HloComputation* comp = inst->parent();
+  if (!inst->shape().IsTuple()) {
+    // The output shape of pad static is a tuple. The 0th element is the data
+    // output, which is the same as input shape, but without dynamic dimensions;
+    // i-th element is the dynamic dimension size for i-1th input dimension.
+    Shape data_output_shape = inst->shape();  // 0th element.
+    data_output_shape.clear_dynamic_dimensions();
+    Shape output_shape = ShapeUtil::MakeTupleShape({data_output_shape});
+    for (int64 i = 0; i < inst->shape().rank(); ++i) {
+      ShapeUtil::AppendShapeToTuple(ShapeUtil::MakeScalarShape(S32),
+                                    &output_shape);
+    }
+    HloInstruction* pad_to_static =
+        comp->AddInstruction(HloInstruction::CreateCustomCall(
+            output_shape, {inst}, "PadToStatic", ""));
+    HloInstruction* data_output =
+        comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+            data_output_shape, pad_to_static, 0));
+    return data_output;
+  }
+
+  TF_RET_CHECK(inst->shape().IsTuple());
+  std::vector<HloInstruction*> static_tuple_elements;
+  for (int64 i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
+    // For each tuple element, if it is static, pass it through. If it is
+    // dynamic, recursively call this function again.
+    HloInstruction* gte =
+        comp->AddInstruction(HloInstruction::CreateGetTupleElement(
+            inst->shape().tuple_shapes(i), inst, i));
+
+    if (gte->shape().is_static()) {
+      static_tuple_elements.push_back(gte);
+    } else {
+      TF_ASSIGN_OR_RETURN(HloInstruction * static_gte,
+                          InsertPadToStaticOnInstruction(gte));
+      static_tuple_elements.push_back(static_gte);
+    }
+  }
+
+  return comp->AddInstruction(
+      HloInstruction::CreateTuple(static_tuple_elements));
+}
+
+Status InsertPadToStaticAfterModuleInputs(HloModule* module) {
+  std::vector<HloInstruction*> params;
+  HloComputation* entry = module->entry_computation();
+  for (int64 i = 0; i < entry->num_parameters(); ++i) {
+    HloInstruction* param =
+        module->entry_computation()->parameter_instruction(i);
+    auto users = param->users();
+    TF_ASSIGN_OR_RETURN(HloInstruction * static_param,
+                        InsertPadToStaticOnInstruction(param));
+    for (auto* user : users) {
+      TF_RETURN_IF_ERROR(param->ReplaceUseWith(user, static_param));
+    }
+    if (param == entry->root_instruction()) {
+      module->entry_computation()->set_root_instruction(static_param);
+    }
+  }
+  return Status::OK();
+}
+
+// For all dynamic outputs that live out of the computation, add
+// slice-to-dynamic operations.
+Status InsertSliceToDynamicBeforeModuleOutputs(
     const DynamicDimensionInference& dynamic_dimension_inference,
     HloModule* module) {
   auto root = module->entry_computation()->root_instruction();
@@ -604,7 +821,7 @@ Status InsertUnpadsForModuleOutputs(
             if (dynamic_dimension_inference.GetDynamicSize(root, index, dim) !=
                 nullptr) {
               CHECK_LE(index.size(), 1) << "XLA doesn't support nested output "
-                                           "dimensions that has dynamic size";
+                                           "dimension that has dynamic size";
               has_dynamic_output = true;
             }
           }
@@ -613,7 +830,6 @@ Status InsertUnpadsForModuleOutputs(
           }
         }
       });
-  int64 dynamic_index = 0;
   if (!dynamic_outputs.empty()) {
     if (root->shape().IsTuple()) {
       std::vector<HloInstruction*> new_root_operands;
@@ -622,44 +838,40 @@ Status InsertUnpadsForModuleOutputs(
         if (!subshape.IsArray()) {
           return;
         }
+
         auto gte = module->entry_computation()->AddInstruction(
-            HloInstruction::CreateGetTupleElement(subshape, root, index[0]));
+            HloInstruction::CreateGetTupleElement(
+                ShapeUtil::MakeShapeWithStaticDimensions(subshape), root,
+                index[0]));
 
         if (dynamic_outputs.contains(index)) {
           CHECK_EQ(index.size(), 1)
               << "XLA only support 1 layer nested output tuple";
-          // For dynamic outputs, creates an unpad operation.
-          std::vector<HloInstruction*> unpad_operands;
+          // For dynamic outputs, creates an slice operation.
+          std::vector<HloInstruction*> slice_operands;
           // First operand is the original input. Rest are dimension values.
-          unpad_operands.push_back(gte);
+          slice_operands.push_back(gte);
+          // Keep a dynamic version of the subshape as we are removing the
+          // dynamic dimension in the original root and gte.
+          Shape dynamic_subshape = subshape;
           for (int64 dim = 0; dim < subshape.rank(); ++dim) {
             HloInstruction* dynamic_size =
                 dynamic_dimension_inference.GetDynamicSize(root, index, dim);
             if (dynamic_size != nullptr) {
-              unpad_operands.push_back(dynamic_size);
+              slice_operands.push_back(dynamic_size);
             } else {
               auto const_size = HloInstruction::CreateConstant(
                   LiteralUtil::CreateR0<int32>(subshape.dimensions(dim)));
-              unpad_operands.push_back(
+              slice_operands.push_back(
                   module->entry_computation()->AddInstruction(
                       std::move(const_size)));
             }
           }
-          // This is a dynamic output, add unpad operation.
-          //
-          // Write the backend config in the format of
-          // 'dynamic_index'-'output_index'.
-          //
-          // dynamic_index indicates the position of this output in all dynamic
-          // outputs.
-          //
-          // output_index indicates the position of this output in all outputs
-          // (including static inputs).
-          auto unpad = HloInstruction::CreateCustomCall(
-              subshape, unpad_operands, "Unpad",
-              absl::StrFormat("%d-%d", dynamic_index++, index[0]));
+          // This is a dynamic output, add slice operation.
+          auto slice = HloInstruction::CreateCustomCall(
+              dynamic_subshape, slice_operands, "SliceToDynamic");
           new_root_operands.push_back(
-              module->entry_computation()->AddInstruction(std::move(unpad)));
+              module->entry_computation()->AddInstruction(std::move(slice)));
         } else {
           new_root_operands.push_back(gte);
         }
@@ -669,28 +881,84 @@ Status InsertUnpadsForModuleOutputs(
           HloInstruction::CreateTuple(new_root_operands));
       module->entry_computation()->set_root_instruction(new_root);
     } else {
-      std::vector<HloInstruction*> unpad_operands;
+      std::vector<HloInstruction*> slice_operands;
       // First operand is the original input. Rest are dimension values.
-      unpad_operands.push_back(root);
+      slice_operands.push_back(root);
       for (int64 dim = 0; dim < root->shape().rank(); ++dim) {
         HloInstruction* dynamic_size =
             dynamic_dimension_inference.GetDynamicSize(root, {}, dim);
         if (dynamic_size != nullptr) {
-          unpad_operands.push_back(dynamic_size);
+          slice_operands.push_back(dynamic_size);
         } else {
           auto const_size = HloInstruction::CreateConstant(
               LiteralUtil::CreateR0<int32>(root->shape().dimensions(dim)));
-          unpad_operands.push_back(module->entry_computation()->AddInstruction(
+          slice_operands.push_back(module->entry_computation()->AddInstruction(
               std::move(const_size)));
         }
-        // This is a dynamic output, add unpad operation.
-        auto unpad = module->entry_computation()->AddInstruction(
-            HloInstruction::CreateCustomCall(root->shape(), unpad_operands,
-                                             "Unpad", "0"));
-        module->entry_computation()->set_root_instruction(unpad);
+        // This is a dynamic output, add slice operation.
+        auto slice = module->entry_computation()->AddInstruction(
+            HloInstruction::CreateCustomCall(root->shape(), slice_operands,
+                                             "SliceToDynamic", "0-0"));
+        module->entry_computation()->set_root_instruction(slice);
       }
     }
   }
+  return Status::OK();
+}
+
+// Remove all dynamic shapes between pad-to-static and slice-to-dynamic.
+//
+// After this visitor the entry computation then looks like:
+//  Param(dynamic)
+//    |
+//   GTE (dynamic)
+//    |
+//  PadToStatic(static)
+//    |
+//   .... regular computation with static shapes.
+//    |
+//  SliceToDynamic(dynamic)
+//    |
+// ROOT tuple (dynamic)
+class DynamicShapeRemovingVisitor : public DfsHloVisitorWithDefault {
+ public:
+  Status DefaultAction(HloInstruction* hlo) override;
+
+  Status HandleCustomCall(HloInstruction* hlo) override;
+
+  Status HandleParameter(HloInstruction* hlo) override;
+
+  static Status Run(HloComputation* computation) {
+    DynamicShapeRemovingVisitor visitor;
+    return computation->Accept(&visitor);
+  }
+};
+
+Status DynamicShapeRemovingVisitor::DefaultAction(HloInstruction* hlo) {
+  // Default rule: If input to an op is static, remove dynamism in output.
+  bool input_is_dynamic = false;
+  // Default rule:
+  for (int64 i = 0; i < hlo->operand_count(); ++i) {
+    if (!hlo->operand(i)->shape().is_static()) {
+      input_is_dynamic = true;
+    }
+  }
+
+  if (!input_is_dynamic) {
+    hlo->mutable_shape()->clear_dynamic_dimensions();
+  }
+  return Status::OK();
+}
+
+Status DynamicShapeRemovingVisitor::HandleCustomCall(HloInstruction* hlo) {
+  if (hlo->custom_call_target() == "SliceToDynamic") {
+    // Don't remove slice-to-dynamic instruction.
+    return Status::OK();
+  }
+  return DefaultAction(hlo);
+}
+
+Status DynamicShapeRemovingVisitor::HandleParameter(HloInstruction* hlo) {
   return Status::OK();
 }
 
@@ -700,11 +968,53 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
   bool changed = false;
   VLOG(2) << "Pre DynamicPadder HLO:";
   XLA_VLOG_LINES(2, module->ToString());
+  // Removes dynamic dimensions on parameters if there is already a binding for
+  // it. We do this because we have two different APIs to express a dynamic
+  // dimension:
+  //
+  // 1. Dynamic dimension as specificed directly in the shape -- Needed for
+  // Pytorch.
+  //
+  // 2. Dynamic dimension using dynamic parameter binding object. This
+  // is needed for tensorflow.
+  //
+  // For case 1, we will insert "pad-to-static" instruction in the
+  // beginning of xla execution, to make it into a static layout.
+  //
+  // For case 2, since it already has a static layout, we remove the
+  // dynamic dimension.
+  //
+  // TODO(b/145140571): Convert all API invocations to case 1.
+  //
+  TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().ForEachBinding(
+      [&](const DynamicParameterBinding::DynamicParameter& dynamic_parameter,
+          const DynamicParameterBinding::DynamicDimension& dynamic_dimension)
+          -> Status {
+        HloInstruction* parameter =
+            module->entry_computation()->parameter_instruction(
+                dynamic_dimension.parameter_num);
+        ShapeUtil::UpdateDynamicDimension(parameter->mutable_shape(),
+                                          dynamic_dimension.parameter_index,
+                                          dynamic_dimension.dimension, false);
+        return Status::OK();
+      }));
+
+  TF_RETURN_IF_ERROR(InsertPadToStaticAfterModuleInputs(module));
   TF_ASSIGN_OR_RETURN(DynamicDimensionInference dynamic_dimension_inference,
                       DynamicDimensionInference::Run(module));
 
   for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* inst : computation->instructions()) {
+    for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
+      if (inst->opcode() == HloOpcode::kConcatenate) {
+        TF_ASSIGN_OR_RETURN(
+            changed, RewriteDynamicConcat(inst, &dynamic_dimension_inference));
+        continue;
+      }
+      if (inst->opcode() == HloOpcode::kSort) {
+        TF_ASSIGN_OR_RETURN(
+            changed, RewriteDynamicSort(inst, &dynamic_dimension_inference));
+        continue;
+      }
       for (int64 operand_num = 0; operand_num < inst->operand_count();
            ++operand_num) {
         HloInstruction* original_operand = inst->mutable_operand(operand_num);
@@ -748,9 +1058,30 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
       }
     }
   }
+  if (slice_dynamic_output_) {
+    TF_RETURN_IF_ERROR(InsertSliceToDynamicBeforeModuleOutputs(
+        dynamic_dimension_inference, module));
+  }
 
-  TF_RETURN_IF_ERROR(
-      InsertUnpadsForModuleOutputs(dynamic_dimension_inference, module));
+  // Remove all dynamic dimensions after entry parameter and root instruction --
+  // Dynamic padder will produce an equivalent static shaped graph.
+  for (HloComputation* computation : module->computations()) {
+    if (computation == module->entry_computation()) {
+      TF_RETURN_IF_ERROR(DynamicShapeRemovingVisitor::Run(computation));
+    } else {
+      for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
+        bool operand_is_dynamic = false;
+        for (auto* operand : inst->operands()) {
+          if (!operand->shape().is_static()) {
+            operand_is_dynamic = true;
+          }
+        }
+        if (!operand_is_dynamic) {
+          inst->mutable_shape()->clear_dynamic_dimensions();
+        }
+      }
+    }
+  }
 
   HloDCE dce;
   TF_ASSIGN_OR_RETURN(changed, dce.Run(module));

@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow/core/platform:default/build_config.bzl", "tf_protos_all")
+load("//tensorflow/core/platform:build_config.bzl", "tf_protos_all")
 
 package(
     default_visibility = [
@@ -635,13 +635,18 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:arithmetic_optimizer",
+        "//tensorflow/core/grappler/optimizers:common_subgraph_elimination",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
         "//tensorflow/core/grappler/optimizers:dependency_optimizer",
         "//tensorflow/core/grappler/optimizers:function_optimizer",
+        "//tensorflow/core/grappler/optimizers:loop_optimizer",
         "//tensorflow/core/grappler/optimizers:model_pruner",
+        "//tensorflow/core/grappler/optimizers:remapper",
         "//tensorflow/core/grappler/optimizers:shape_optimizer",
+        "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ptr_util",
     ] + tf_protos_all(),
@@ -655,6 +660,7 @@ cc_library(
         "noop_elimination.h",
     ],
     deps = [
+        ":function_utils",
         ":graph_utils",
         ":optimizer_base",
         "@com_google_absl//absl/container:flat_hash_set",

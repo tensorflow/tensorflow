@@ -17,6 +17,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
@@ -30,7 +32,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ParseExampleDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx),
-        graph_def_version_(ctx->graph_def_version()) {
+        graph_def_version_(ctx->graph_def_version()),
+        op_version_(ctx->HasAttr("deterministic") ? 2 : 1) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("sparse_keys", &sparse_keys_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dense_keys", &dense_keys_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("sparse_types", &sparse_types_));
@@ -38,7 +41,24 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dense_shapes", &dense_shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("sloppy", &sloppy_));
+
+    if (op_version_ == 1) {
+      bool sloppy;
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("sloppy", &sloppy));
+      if (sloppy) {
+        deterministic_ =
+            DeterminismPolicy(DeterminismPolicy::Type::kNondeterministic);
+      } else {
+        deterministic_ = DeterminismPolicy(DeterminismPolicy::Type::kDefault);
+      }
+    }
+    if (op_version_ == 2) {
+      std::string deterministic;
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("deterministic", &deterministic));
+      OP_REQUIRES_OK(
+          ctx, DeterminismPolicy::FromString(deterministic, &deterministic_));
+    }
+
     has_ragged_keys_ = ctx->HasAttr("ragged_keys");
     if (has_ragged_keys_) {
       OP_REQUIRES_OK(ctx, ctx->GetAttr("ragged_keys", &ragged_keys_));
@@ -162,12 +182,12 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       it->second = i++;
     }
 
-    *output = new Dataset(ctx, input, dense_defaults, sparse_keys_, dense_keys_,
-                          std::move(key_to_output_index), std::move(config),
-                          num_parallel_calls, sparse_types_, dense_types_,
-                          dense_shapes_, output_types_, output_shapes_, sloppy_,
-                          has_ragged_keys_, ragged_keys_, ragged_value_types_,
-                          ragged_split_types_);
+    *output = new Dataset(
+        ctx, input, dense_defaults, sparse_keys_, dense_keys_,
+        std::move(key_to_output_index), std::move(config), num_parallel_calls,
+        sparse_types_, dense_types_, dense_shapes_, output_types_,
+        output_shapes_, deterministic_, has_ragged_keys_, ragged_keys_,
+        ragged_value_types_, ragged_split_types_, op_version_);
   }
 
  private:
@@ -182,10 +202,11 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             const DataTypeVector& dense_types,
             const std::vector<PartialTensorShape>& dense_shapes,
             const DataTypeVector& output_types,
-            const std::vector<PartialTensorShape>& output_shapes, bool sloppy,
-            bool has_ragged_keys, std::vector<string> ragged_keys,
+            const std::vector<PartialTensorShape>& output_shapes,
+            const DeterminismPolicy& deterministic, bool has_ragged_keys,
+            std::vector<string> ragged_keys,
             const DataTypeVector& ragged_value_types,
-            const DataTypeVector& ragged_split_types)
+            const DataTypeVector& ragged_split_types, int op_version)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           dense_defaults_(std::move(dense_defaults)),
@@ -202,8 +223,9 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
           dense_shapes_(dense_shapes),
           output_types_(output_types),
           output_shapes_(output_shapes),
-          sloppy_(sloppy),
-          has_ragged_keys_(has_ragged_keys) {
+          deterministic_(deterministic),
+          has_ragged_keys_(has_ragged_keys),
+          op_version_(op_version) {
       input_->Ref();
     }
 
@@ -213,9 +235,14 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         const string& prefix) const override {
       std::unique_ptr<ParallelMapFunctor> parse_example_functor =
           absl::make_unique<ParseExampleFunctor>(this);
+      name_utils::IteratorPrefixParams params;
+      params.op_version = op_version_;
+      bool deterministic =
+          deterministic_.IsDeterministic() || deterministic_.IsDefault();
       return NewParallelMapIterator(
-          {this, strings::StrCat(prefix, "::ParseExample")}, input_,
-          std::move(parse_example_functor), num_parallel_calls_, sloppy_,
+          {this, name_utils::IteratorPrefix("ParseExample", prefix, params)},
+          input_, std::move(parse_example_functor), num_parallel_calls_,
+          deterministic,
           /*preserve_cardinality=*/true);
     }
 
@@ -228,7 +255,9 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     }
 
     string DebugString() const override {
-      return "ParseExampleDatasetOp::Dataset";
+      name_utils::DatasetDebugStringParams params;
+      params.op_version = op_version_;
+      return name_utils::DatasetDebugString("ParseExampleDataset", params);
     }
 
     int64 Cardinality() const override { return input_->Cardinality(); }
@@ -244,12 +273,12 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
-      Node* num_parallle_calls_node;
+      Node* num_parallel_calls_node;
       std::vector<Node*> dense_defaults_nodes;
       dense_defaults_nodes.reserve(dense_defaults_.size());
 
       TF_RETURN_IF_ERROR(
-          b->AddScalar(num_parallel_calls_, &num_parallle_calls_node));
+          b->AddScalar(num_parallel_calls_, &num_parallel_calls_node));
 
       for (const Tensor& dense_default : dense_defaults_) {
         Node* node;
@@ -257,60 +286,60 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         dense_defaults_nodes.emplace_back(node);
       }
 
-      AttrValue sparse_keys_attr;
-      AttrValue dense_keys_attr;
-      AttrValue sparse_types_attr;
-      AttrValue dense_attr;
-      AttrValue dense_shapes_attr;
-      AttrValue sloppy_attr;
+      std::vector<std::pair<StringPiece, AttrValue>> attrs;
 
+      AttrValue sparse_keys_attr;
       b->BuildAttrValue(sparse_keys_, &sparse_keys_attr);
+      attrs.emplace_back("sparse_keys", sparse_keys_attr);
+
+      AttrValue dense_keys_attr;
       b->BuildAttrValue(dense_keys_, &dense_keys_attr);
+      attrs.emplace_back("dense_keys", dense_keys_attr);
+
+      AttrValue sparse_types_attr;
       b->BuildAttrValue(sparse_types_, &sparse_types_attr);
+      attrs.emplace_back("sparse_types", sparse_types_attr);
+
+      AttrValue dense_attr;
       b->BuildAttrValue(dense_types_, &dense_attr);
+      attrs.emplace_back("Tdense", dense_attr);
+
+      AttrValue dense_shapes_attr;
       b->BuildAttrValue(dense_shapes_, &dense_shapes_attr);
-      b->BuildAttrValue(sloppy_, &sloppy_attr);
+      attrs.emplace_back("dense_shapes", dense_shapes_attr);
+
+      if (op_version_ == 1) {
+        AttrValue sloppy_attr;
+        b->BuildAttrValue(deterministic_.IsNondeterministic(), &sloppy_attr);
+        attrs.emplace_back("sloppy", sloppy_attr);
+      }
+      if (op_version_ == 2) {
+        AttrValue deterministic_attr;
+        b->BuildAttrValue(deterministic_.String(), &deterministic_attr);
+        attrs.emplace_back("deterministic", deterministic_attr);
+      }
 
       if (has_ragged_keys_) {
         AttrValue ragged_keys_attr;
-        AttrValue ragged_value_types_attr;
-        AttrValue ragged_split_types_attr;
         b->BuildAttrValue(ragged_keys_, &ragged_keys_attr);
-        b->BuildAttrValue(ragged_value_types_, &ragged_value_types_attr);
-        b->BuildAttrValue(ragged_split_types_, &ragged_split_types_attr);
+        attrs.emplace_back("ragged_keys", ragged_keys_attr);
 
-        TF_RETURN_IF_ERROR(
-            b->AddDataset(this,
-                          {
-                              {0, input_graph_node},
-                              {1, num_parallle_calls_node},
-                          },
-                          {{2, dense_defaults_nodes}},
-                          {{"sparse_keys", sparse_keys_attr},
-                           {"dense_keys", dense_keys_attr},
-                           {"sparse_types", sparse_types_attr},
-                           {"Tdense", dense_attr},
-                           {"dense_shapes", dense_shapes_attr},
-                           {"sloppy", sloppy_attr},
-                           {"ragged_keys", ragged_keys_attr},
-                           {"ragged_value_types", ragged_value_types_attr},
-                           {"ragged_split_types", ragged_split_types_attr}},
-                          output));
-      } else {
-        TF_RETURN_IF_ERROR(b->AddDataset(this,
-                                         {
-                                             {0, input_graph_node},
-                                             {1, num_parallle_calls_node},
-                                         },
-                                         {{2, dense_defaults_nodes}},
-                                         {{"sparse_keys", sparse_keys_attr},
-                                          {"dense_keys", dense_keys_attr},
-                                          {"sparse_types", sparse_types_attr},
-                                          {"Tdense", dense_attr},
-                                          {"dense_shapes", dense_shapes_attr},
-                                          {"sloppy", sloppy_attr}},
-                                         output));
+        AttrValue ragged_value_types_attr;
+        b->BuildAttrValue(ragged_value_types_, &ragged_value_types_attr);
+        attrs.emplace_back("ragged_value_types", ragged_value_types_attr);
+
+        AttrValue ragged_split_types_attr;
+        b->BuildAttrValue(ragged_split_types_, &ragged_split_types_attr);
+        attrs.emplace_back("ragged_split_types", ragged_split_types_attr);
       }
+
+      TF_RETURN_IF_ERROR(b->AddDataset(this,
+                                       {
+                                           {0, input_graph_node},
+                                           {1, num_parallel_calls_node},
+                                       },
+                                       {{2, dense_defaults_nodes}}, attrs,
+                                       output));
       return Status::OK();
     }
 
@@ -320,10 +349,14 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       explicit ParseExampleFunctor(const Dataset* dataset)
           : dataset_(dataset) {}
 
-      void MapFunc(IteratorContext* ctx, const string& prefix,
+      Status CheckExternalState() override { return Status::OK(); }
+
+      void MapFunc(IteratorContext* ctx,
+                   const std::shared_ptr<model::Node>& node,
                    std::vector<Tensor> input, std::vector<Tensor>* output,
                    StatusCallback callback) override {
-        (*ctx->runner())([this, ctx, prefix, input, output, callback]() {
+        (*ctx->runner())([this, ctx, node, input, output,
+                          callback = std::move(callback)]() {
           thread::ThreadPool* device_threadpool =
               ctx->flr()->device()->tensorflow_cpu_worker_threads()->workers;
           std::vector<tstring> slice_vec;
@@ -392,7 +425,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                 stats_aggregator->IncrementCounter(
                     stats_utils::kFeatureValuesCount, "trainer",
                     feature_stats.feature_values_count);
-                int64 steps = ctx->model()->NumElements(prefix);
+                int64 steps = node ? node->num_elements() : 0;
                 stats_aggregator->AddToHistogram(
                     stats_utils::FeatureHistogramName(dataset_->node_name()),
                     {static_cast<double>(feature_stats.features_count)}, steps);
@@ -443,14 +476,15 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     const std::vector<PartialTensorShape> dense_shapes_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
-    const bool sloppy_;
+    const DeterminismPolicy deterministic_;
     const bool has_ragged_keys_;
+    const int op_version_;
   };
 
   const int graph_def_version_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  bool sloppy_;
+  DeterminismPolicy deterministic_;
   std::vector<string> sparse_keys_;
   std::vector<string> dense_keys_;
   std::vector<string> ragged_keys_;
@@ -462,9 +496,12 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
   std::vector<bool> variable_length_;
   std::vector<std::size_t> elements_per_stride_;
   bool has_ragged_keys_;
+  const int op_version_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParseExampleDataset").Device(DEVICE_CPU),
+                        ParseExampleDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("ParseExampleDatasetV2").Device(DEVICE_CPU),
                         ParseExampleDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalParseExampleDataset").Device(DEVICE_CPU),

@@ -47,7 +47,8 @@ namespace tensorflow {
 namespace {
 
 inline bool IsMerge(const NodeDef& node_def) {
-  return node_def.op() == "Merge" || node_def.op() == "RefMerge";
+  return node_def.op() == "Merge" || node_def.op() == "RefMerge" ||
+         node_def.op() == "_XlaMerge";
 }
 
 inline bool IsNextIteration(const NodeDef& node_def) {
@@ -188,6 +189,8 @@ void SetSendRecvAttrs(const PartitionOptions& opts, const Edge* edge,
                     opts.get_incarnation(edge->src()->assigned_device_name())));
   builder->Attr("recv_device", edge->dst()->assigned_device_name());
   builder->Attr("client_terminated", false);
+  builder->Attr("_src", edge->src()->name());
+  builder->Attr("_dst", edge->dst()->name());
 }
 
 NodeDef* AddSend(const PartitionOptions& opts, const GraphInfo& g_info,

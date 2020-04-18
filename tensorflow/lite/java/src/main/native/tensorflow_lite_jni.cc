@@ -23,14 +23,15 @@ extern "C" {
 #endif  // __cplusplus
 
 JNIEXPORT jstring JNICALL
-Java_org_tensorflow_lite_TensorFlowLite_runtimeVersion(JNIEnv* env,
-                                                       jclass /*clazz*/) {
+Java_org_tensorflow_lite_TensorFlowLite_nativeRuntimeVersion(JNIEnv* env,
+                                                             jclass /*clazz*/) {
   const char* kTfLiteVersionString = TFLITE_VERSION_STRING;
   return env->NewStringUTF(kTfLiteVersionString);
 }
 
-JNIEXPORT jstring JNICALL Java_org_tensorflow_lite_TensorFlowLite_schemaVersion(
-    JNIEnv* env, jclass /*clazz*/) {
+JNIEXPORT jstring JNICALL
+Java_org_tensorflow_lite_TensorFlowLite_nativeSchemaVersion(JNIEnv* env,
+                                                            jclass /*clazz*/) {
   char buf[64];
   snprintf(buf, sizeof(buf), "%d", TFLITE_SCHEMA_VERSION);
   return env->NewStringUTF(buf);

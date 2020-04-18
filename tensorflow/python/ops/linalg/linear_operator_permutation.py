@@ -75,6 +75,7 @@ class LinearOperatorPermutation(linear_operator.LinearOperator):
   x = ... Shape [3, 4] Tensor
   operator.matmul(x)
   ==> Shape [3, 4] Tensor
+  ```
 
   #### Shape compatibility
 
@@ -241,6 +242,10 @@ class LinearOperatorPermutation(linear_operator.LinearOperator):
     return math_ops.cast(math_ops.equal(
         math_ops.range(0, self._domain_dimension_tensor(perm)),
         perm), self.dtype)
+
+  def _cond(self):
+    # Permutation matrices are rotations which have condition number 1.
+    return array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)
 
   @property
   def perm(self):

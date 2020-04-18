@@ -18,7 +18,7 @@ test_suite(
 py_test(
     name = "mnist",
     srcs = ["mnist.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     tags = [
         "manual",
         "no_oss",
@@ -26,7 +26,7 @@ py_test(
     ],
     deps = [
         "//tensorflow:tensorflow_py",
-        "//third_party/py/absl:app",
-        "//third_party/py/absl/flags",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )

@@ -109,9 +109,9 @@ ENTRY MergeSharedFusionInstruction.Computation0 {
 // This is because the bytes read by Fusion2 (when replicated if the instruction
 // is merged into Fusion0 and Fusion1) would exceed the bytes transferred
 // threshold.
-TEST_F(FusionMergerTest, BytesTransferredThresholdExeceeded) {
+TEST_F(FusionMergerTest, BytesTransferredThresholdExceeded) {
   auto module = ParseAndReturnVerifiedModule(R"(
-HloModule BytesTransferredThresholdExeceeded
+HloModule BytesTransferredThresholdExceeded
 
 comp.2 {
   state.param_1.1 = (f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) parameter(0)
@@ -138,7 +138,7 @@ comp {
   ROOT add.5 = f32[4]{0} add(multiply.2, constant.param_1.1)
 }
 
-ENTRY BytesTransferredThresholdExeceeded.Computation2 {
+ENTRY BytesTransferredThresholdExceeded.Computation2 {
   constant = f32[4]{0} constant({1, 1, 1, 1})
   state = (f32[4]{0}, f32[4]{0}, f32[4]{0}, f32[4]{0}) parameter(0)
   fusion.2 = f32[4]{0} fusion(state), kind=kLoop, calls=comp.2
@@ -157,9 +157,9 @@ ENTRY BytesTransferredThresholdExeceeded.Computation2 {
 // Fusion2 is merged into Fusion0 and Fusion1, because bytes read from Param by
 // Fusion2 is reduced for this test which makes the merge operation into its
 // operand below the bytes transferred threshold.
-TEST_F(FusionMergerTest, BytesTransferredThresholdNotExeceeded) {
+TEST_F(FusionMergerTest, BytesTransferredThresholdNotExceeded) {
   auto module = ParseAndReturnVerifiedModule(R"(
-HloModule BytesTransferredThresholdNotExeceeded
+HloModule BytesTransferredThresholdNotExceeded
 
 comp.2 {
   state.param_1.1 = (f32[4]{0}, f32[4]{0}, f32[4]{0}) parameter(0)
@@ -184,7 +184,7 @@ comp {
   ROOT add.4 = f32[4]{0} add(multiply.2, constant.param_1.1)
 }
 
-ENTRY BytesTransferredThresholdNotExeceeded.Computation2 {
+ENTRY BytesTransferredThresholdNotExceeded.Computation2 {
   constant = f32[4]{0} constant({1, 1, 1, 1})
   state = (f32[4]{0}, f32[4]{0}, f32[4]{0}) parameter(0)
   fusion.2 = f32[4]{0} fusion(state), kind=kLoop, calls=comp.2

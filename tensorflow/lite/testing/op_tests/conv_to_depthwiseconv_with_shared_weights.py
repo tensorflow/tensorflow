@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -49,7 +49,7 @@ def make_conv_to_depthwiseconv_with_shared_weights_tests(options):
   def build_graph(parameters):
     """Build a conv graph given `parameters`."""
     input_shape, filter_shape = get_tensor_shapes(parameters)
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=tf.float32, name="input", shape=input_shape)
 
     # Construct a constant weights tensor which will be used by both Conv2D.

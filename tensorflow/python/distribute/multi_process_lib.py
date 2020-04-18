@@ -38,6 +38,13 @@ def get_user_data():
 
 
 @contextlib.contextmanager
-def context_manager():
+def context_manager(max_subprocess_count=20, barrier_parties=0):
   """No-op in OSS. This exists to maintain testing compatibility."""
+  del max_subprocess_count, barrier_parties
   yield
+
+
+def using_context_manager():
+  """Whether the context manager is being used."""
+  raise unittest.SkipTest(
+      'TODO(b/141874796): Implement OSS version of `multi_process_lib`')

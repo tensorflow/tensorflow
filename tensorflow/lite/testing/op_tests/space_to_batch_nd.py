@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -55,11 +55,20 @@ def make_space_to_batch_nd_tests(options):
           "constant_block_shape": [True, False],
           "constant_paddings": [True, False],
       },
+      # 3D case.
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1, 4, 4]],
+          "block_shape": [[2]],
+          "paddings": [[[0, 0]]],
+          "constant_block_shape": [True, False],
+          "constant_paddings": [True, False],
+      },
   ]
 
   def build_graph(parameters):
     """Build a space_to_batch graph given `parameters`."""
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
@@ -70,7 +79,8 @@ def make_space_to_batch_nd_tests(options):
       block_shape = parameters["block_shape"]
     else:
       shape = [len(parameters["block_shape"])]
-      block_shape = tf.placeholder(dtype=tf.int32, name="shape", shape=shape)
+      block_shape = tf.compat.v1.placeholder(
+          dtype=tf.int32, name="shape", shape=shape)
       input_tensors.append(block_shape)
 
     # Get paddings either as a const or as a placeholder (tensor).
@@ -78,7 +88,8 @@ def make_space_to_batch_nd_tests(options):
       paddings = parameters["paddings"]
     else:
       shape = [len(parameters["paddings"]), 2]
-      paddings = tf.placeholder(dtype=tf.int32, name="paddings", shape=shape)
+      paddings = tf.compat.v1.placeholder(
+          dtype=tf.int32, name="paddings", shape=shape)
       input_tensors.append(paddings)
 
     out = tf.space_to_batch_nd(input_tensor, block_shape, paddings)

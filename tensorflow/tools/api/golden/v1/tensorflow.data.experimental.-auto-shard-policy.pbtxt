@@ -13,4 +13,8 @@ tf_class {
     name: "FILE"
     mtype: "<enum \'AutoShardPolicy\'>"
   }
+  member {
+    name: "OFF"
+    mtype: "<enum \'AutoShardPolicy\'>"
+  }
 }

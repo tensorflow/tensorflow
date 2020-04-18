@@ -18,8 +18,9 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/experimental/resource/resource_variable.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
@@ -43,10 +44,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   //   everything still works fine when variable ops aren't used.
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 0);
 
-  const TfLiteTensor* input_variable_id_tensor =
+  const TfLiteTensor* input_resource_id_tensor =
       GetInput(context, node, kInputVariableId);
-  TF_LITE_ENSURE_EQ(context, input_variable_id_tensor->type, kTfLiteInt32);
-  TF_LITE_ENSURE_EQ(context, NumElements(input_variable_id_tensor), 1);
+  TF_LITE_ENSURE_EQ(context, input_resource_id_tensor->type, kTfLiteInt32);
+  TF_LITE_ENSURE_EQ(context, NumElements(input_resource_id_tensor), 1);
 
   return kTfLiteOk;
 }
@@ -54,21 +55,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   Subgraph* subgraph = reinterpret_cast<Subgraph*>(context->impl_);
 
-  const TfLiteTensor* input_variable_id_tensor =
+  const TfLiteTensor* input_resource_id_tensor =
       GetInput(context, node, kInputVariableId);
   const TfLiteTensor* input_value_tensor = GetInput(context, node, kInputValue);
 
-  int variable_id = input_variable_id_tensor->data.i32[0];
-  auto& resource_variables = subgraph->resource_variables();
-
-  auto variable_iterator = resource_variables.find(variable_id);
-  if (variable_iterator == resource_variables.end()) {
-    auto ret = resource_variables.emplace(variable_id, ResourceVariable());
-    variable_iterator = ret.first;
-  }
-
-  auto& variable = variable_iterator->second;
-  variable.AssignFrom(input_value_tensor);
+  int resource_id = input_resource_id_tensor->data.i32[0];
+  auto& resources = subgraph->resources();
+  resource::CreateResourceVariableIfNotAvailable(&resources, resource_id);
+  auto* variable = resource::GetResourceVariable(&resources, resource_id);
+  TF_LITE_ENSURE(context, variable != nullptr);
+  variable->AssignFrom(input_value_tensor);
 
   return kTfLiteOk;
 }

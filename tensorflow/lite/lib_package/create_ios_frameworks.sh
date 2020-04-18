@@ -45,7 +45,7 @@ if [ $USE_GPU_DELEGATE == "true" ] ; then
   for filename in metal_delegate.h libmetal_delegate.a ; do
     if [[ ! -f "${TFLITE_DIR}/delegates/gpu/${filename}" ]] ; then
       echo "File ${TFLITE_DIR}/delegates/gpu/${filename} doesn't exist."
-      echo "It's requried for building TFLite Framework with GPU. Aborting."
+      echo "It's required for building TFLite Framework with GPU. Aborting."
       exit 1
     fi
   done
@@ -86,7 +86,7 @@ cd $TFLITE_DIR/../..
 echo "Generate LICENSE files and copy to target"
 bazel build //tensorflow/tools/lib_package:clicenses_generate
 cp $TFLITE_DIR/../../LICENSE $FW_DIR_TFLITE
-cp $TFLITE_DIR/../../bazel-genfiles/tensorflow/tools/lib_package/THIRD_PARTY_TF_C_LICENSES \
+cp $TFLITE_DIR/../../bazel-bin/tensorflow/tools/lib_package/THIRD_PARTY_TF_C_LICENSES \
    $FW_DIR_TFLITE
 
 echo "Copying static libraries"

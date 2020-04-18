@@ -120,8 +120,8 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -147,6 +147,11 @@ struct RepeatedFieldTrait<protobuf_int64> {
 template <>
 struct RepeatedFieldTrait<float> {
   using Type = protobuf::RepeatedField<float>;
+};
+
+template <>
+struct RepeatedFieldTrait<tstring> {
+  using Type = protobuf::RepeatedPtrField<string>;
 };
 
 template <>
@@ -185,6 +190,9 @@ struct is_string<string> : std::true_type {};
 
 template <>
 struct is_string<::tensorflow::StringPiece> : std::true_type {};
+
+template <>
+struct is_string<tstring> : std::true_type {};
 
 template <typename ValueType>
 struct FeatureTrait<

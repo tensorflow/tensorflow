@@ -21,7 +21,7 @@ from __future__ import print_function
 
 from tensorflow.core.framework import api_def_pb2
 from tensorflow.core.framework import op_def_pb2
-from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_contextlib
 
@@ -44,12 +44,14 @@ class ScopedTFGraph(object):
 
   def __init__(self):
     self.graph = c_api.TF_NewGraph()
+    # Note: when we're destructing the global context (i.e when the process is
+    # terminating) we may have already deleted other modules. By capturing the
+    # DeleteGraph function here, we retain the ability to cleanly destroy the
+    # graph at shutdown, which satisfies leak checkers.
+    self.deleter = c_api.TF_DeleteGraph
 
   def __del__(self):
-    # Note: when we're destructing the global context (i.e when the process is
-    # terminating) we can have already deleted other modules.
-    if c_api is not None and c_api.TF_DeleteGraph is not None:
-      c_api.TF_DeleteGraph(self.graph)
+    self.deleter(self.graph)
 
 
 class ScopedTFImportGraphDefOptions(object):
@@ -83,14 +85,26 @@ class ScopedTFFunction(object):
 
   def __init__(self, func):
     self.func = func
+    # Note: when we're destructing the global context (i.e when the process is
+    # terminating) we may have already deleted other modules. By capturing the
+    # DeleteFunction function here, we retain the ability to cleanly destroy the
+    # Function at shutdown, which satisfies leak checkers.
+    self.deleter = c_api.TF_DeleteFunction
 
   def __del__(self):
-    # Note: when we're destructing the global context (i.e when the process is
-    # terminating) we can have already deleted other modules.
-    if c_api is not None and c_api.TF_DeleteFunction is not None:
-      if self.func is not None:
-        c_api.TF_DeleteFunction(self.func)
-        self.func = None
+    if self.func is not None:
+      self.deleter(self.func)
+      self.func = None
+
+
+class ScopedTFBuffer(object):
+  """An internal class to help manage the TF_Buffer lifetime."""
+
+  def __init__(self, buf_string):
+    self.buffer = c_api.TF_NewBufferFromString(compat.as_bytes(buf_string))
+
+  def __del__(self):
+    c_api.TF_DeleteBuffer(self.buffer)
 
 
 class ApiDefMap(object):

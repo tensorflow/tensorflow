@@ -249,6 +249,47 @@ struct ApplyFtrlV2<CPUDevice, T> {
 };
 
 template <typename T>
+struct ApplyFtrlV2MultiplyLinearByLr<CPUDevice, T> {
+  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::Flat linear,
+                  typename TTypes<T>::ConstFlat grad,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar l1,
+                  typename TTypes<T>::ConstScalar l2,
+                  typename TTypes<T>::ConstScalar l2_shrinkage,
+                  typename TTypes<T>::ConstScalar lr_power) {
+    auto grad_with_shrinkage = grad + static_cast<T>(2) * l2_shrinkage() * var;
+    auto new_accum = accum + grad * grad;
+    // special case for which lr_power=-0.5.
+    if (lr_power() == static_cast<T>(-0.5)) {
+      linear.device(d) +=
+          grad_with_shrinkage * lr() - (new_accum.sqrt() - accum.sqrt()) * var;
+    } else {
+      linear.device(d) +=
+          grad_with_shrinkage * lr() -
+          (new_accum.pow(-lr_power()) - accum.pow(-lr_power())) * var;
+    }
+    auto x = (linear.constant(l1() * lr()) * linear.sign() - linear);
+    if (lr_power() == static_cast<T>(-0.5)) {
+      auto y =
+          new_accum.sqrt() + linear.constant(static_cast<T>(2) * l2() * lr());
+      auto pre_shrink = x / y;
+      var.device(d) = (linear.abs() > linear.constant(l1() * lr()))
+                          .select(pre_shrink, var.constant(static_cast<T>(0)));
+
+    } else {
+      auto y = new_accum.pow(-lr_power()) +
+               linear.constant(static_cast<T>(2) * l2() * lr());
+      auto pre_shrink = x / y;
+      var.device(d) = (linear.abs() > linear.constant(l1() * lr()))
+                          .select(pre_shrink, var.constant(static_cast<T>(0)));
+    }
+    accum.device(d) += grad * grad;
+  }
+};
+
+template <typename T>
 struct ApplyFtrl<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
@@ -280,6 +321,44 @@ struct ApplyFtrl<CPUDevice, T> {
                linear.constant(static_cast<T>(2) * l2());
       auto pre_shrink = x / y;
       var.device(d) = (linear.abs() > linear.constant(l1()))
+                          .select(pre_shrink, var.constant(static_cast<T>(0)));
+    }
+    accum.device(d) += grad.square();
+  }
+};
+
+template <typename T>
+struct ApplyFtrlMultiplyLinearByLr<CPUDevice, T> {
+  void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat accum,
+                  typename TTypes<T>::Flat linear,
+                  typename TTypes<T>::ConstFlat grad,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar l1,
+                  typename TTypes<T>::ConstScalar l2,
+                  typename TTypes<T>::ConstScalar lr_power) {
+    auto new_accum = accum + grad.square();
+    // special case for which lr_power=-0.5.
+    if (lr_power() == static_cast<T>(-0.5)) {
+      linear.device(d) += grad * lr() - (new_accum.sqrt() - accum.sqrt()) * var;
+    } else {
+      linear.device(d) +=
+          grad * lr() -
+          (new_accum.pow(-lr_power()) - accum.pow(-lr_power())) * var;
+    }
+    auto x = (linear.constant(l1()) * lr() * linear.sign() - linear);
+    if (lr_power() == static_cast<T>(-0.5)) {
+      auto y =
+          new_accum.sqrt() + linear.constant(static_cast<T>(2) * l2() * lr());
+      auto pre_shrink = x / y;
+      var.device(d) = (linear.abs() > linear.constant(l1() * lr()))
+                          .select(pre_shrink, var.constant(static_cast<T>(0)));
+
+    } else {
+      auto y = new_accum.pow(-lr_power()) +
+               linear.constant(static_cast<T>(2) * l2() * lr());
+      auto pre_shrink = x / y;
+      var.device(d) = (linear.abs() > linear.constant(l1() * lr()))
                           .select(pre_shrink, var.constant(static_cast<T>(0)));
     }
     accum.device(d) += grad.square();
@@ -568,7 +647,7 @@ class ApplyGradientDescentOp : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", requested_input(0)));
     const Tensor& alpha = ctx->input(1);
-    OP_REQUIRES(ctx, IsLegacyScalar(alpha.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha.shape()),
                 errors::InvalidArgument("alpha is not a scalar: ",
                                         alpha.shape().DebugString()));
     const Tensor& delta = ctx->input(2);
@@ -610,7 +689,7 @@ class ApplyGradientDescentOp<SYCLDevice, T> : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", requested_input(0)));
     const Tensor& alpha_dev = ctx->input(1);
-    OP_REQUIRES(ctx, IsLegacyScalar(alpha_dev.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_dev.shape()),
                 errors::InvalidArgument("alpha is not a scalar: ",
                                         alpha_dev.shape().DebugString()));
     const Tensor& delta = ctx->input(2);
@@ -652,6 +731,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
@@ -666,12 +747,20 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+DECLARE_GPU_SPEC(complex64);
+DECLARE_GPU_SPEC(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+REGISTER_KERNELS(GPU, complex64);
+REGISTER_KERNELS(GPU, complex128);
+#endif
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
@@ -813,6 +902,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
@@ -829,12 +920,20 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+DECLARE_GPU_SPEC(complex64);
+DECLARE_GPU_SPEC(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+REGISTER_KERNELS(GPU, complex64);
+REGISTER_KERNELS(GPU, complex128);
+#endif
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -994,6 +1093,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -1020,7 +1121,7 @@ class ApplyProximalGradientDescentOp : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", requested_input(0)));
     const Tensor& alpha = ctx->input(1);
-    OP_REQUIRES(ctx, IsLegacyScalar(alpha.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha.shape()),
                 errors::InvalidArgument("alpha is not a scalar: ",
                                         alpha.shape().DebugString()));
     const Tensor& l1 = ctx->input(2);
@@ -1077,7 +1178,7 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0});
@@ -1088,7 +1189,7 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
                 errors::InvalidArgument("var must be at least 1 dimensional"));
 
     const Tensor& lr = ctx->input(1);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(2);
@@ -1242,7 +1343,7 @@ class ApplyAdagradOp : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", requested_input(1)));
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& grad = ctx->input(3);
@@ -1286,6 +1387,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
@@ -1300,12 +1403,20 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+DECLARE_GPU_SPEC(complex64);
+DECLARE_GPU_SPEC(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+REGISTER_KERNELS(GPU, complex64);
+REGISTER_KERNELS(GPU, complex128);
+#endif
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -1337,7 +1448,7 @@ class ApplyAdagradV2Op : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", requested_input(1)));
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& epsilon = ctx->input(3);
@@ -1385,6 +1496,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
@@ -1400,12 +1513,20 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+DECLARE_GPU_SPEC(complex64);
+DECLARE_GPU_SPEC(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+REGISTER_KERNELS(GPU, complex64);
+REGISTER_KERNELS(GPU, complex128);
+#endif
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -1498,16 +1619,28 @@ namespace {
 
 template <typename T>
 inline T FtrlCompute(const T& accum, const T& linear, const T& lr, const T& l1,
-                     const T& l2, const T& lr_power) {
+                     const T& l2, const T& lr_power,
+                     const bool multiply_linear_by_lr) {
   T quadratic;
-  if (lr_power == static_cast<T>(-0.5)) {
-    quadratic = Eigen::numext::sqrt(accum) / lr + static_cast<T>(2) * l2;
+  if (multiply_linear_by_lr) {
+    if (lr_power == static_cast<T>(-0.5)) {
+      quadratic = Eigen::numext::sqrt(accum) + static_cast<T>(2) * l2 * lr;
+    } else {
+      quadratic =
+          Eigen::numext::pow(accum, -lr_power) + static_cast<T>(2) * l2 * lr;
+    }
+    auto l1_reg_adjust = std::max(std::min(linear, l1 * lr), -l1 * lr);
+    return (l1_reg_adjust - linear) / quadratic;
   } else {
-    quadratic =
-        Eigen::numext::pow(accum, -lr_power) / lr + static_cast<T>(2) * l2;
+    if (lr_power == static_cast<T>(-0.5)) {
+      quadratic = Eigen::numext::sqrt(accum) / lr + static_cast<T>(2) * l2;
+    } else {
+      quadratic =
+          Eigen::numext::pow(accum, -lr_power) / lr + static_cast<T>(2) * l2;
+    }
+    auto l1_reg_adjust = std::max(std::min(linear, l1), -l1);
+    return (l1_reg_adjust - linear) / quadratic;
   }
-  auto l1_reg_adjust = std::max(std::min(linear, l1), -l1);
-  return (l1_reg_adjust - linear) / quadratic;
 }
 }  // namespace
 
@@ -1520,7 +1653,7 @@ class SparseApplyAdagradOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
@@ -1547,7 +1680,7 @@ class SparseApplyAdagradOp : public OpKernel {
                 errors::InvalidArgument("var must be at least 1 dimensional"));
 
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& grad = ctx->input(3);
@@ -1672,6 +1805,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -1685,7 +1820,7 @@ class SparseApplyAdagradV2Op : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
@@ -1712,7 +1847,7 @@ class SparseApplyAdagradV2Op : public OpKernel {
                 errors::InvalidArgument("var must be at least 1 dimensional"));
 
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& epsilon = ctx->input(3);
@@ -1845,6 +1980,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -1858,7 +1995,7 @@ class SparseApplyProximalAdagradOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
@@ -2077,7 +2214,7 @@ class ApplyAdagradDAOp : public OpKernel {
                                 grad.shape().DebugString()));
 
     const Tensor& lr = ctx->input(4);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(5);
@@ -2091,7 +2228,7 @@ class ApplyAdagradDAOp : public OpKernel {
         errors::InvalidArgument("l2 regularization strength is not a scalar: ",
                                 l2.shape().DebugString()));
     const Tensor& global_step = ctx->input(7);
-    OP_REQUIRES(ctx, IsLegacyScalar(global_step.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(global_step.shape()),
                 errors::InvalidArgument("global_step is not a scalar: ",
                                         global_step.shape().DebugString()));
 
@@ -2133,7 +2270,7 @@ class SparseApplyAdagradDAOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1, 2});
@@ -2180,7 +2317,7 @@ class SparseApplyAdagradDAOp : public OpKernel {
                 errors::InvalidArgument("indices must be one-dimensional"));
 
     const Tensor& lr = ctx->input(5);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
 
@@ -2197,7 +2334,7 @@ class SparseApplyAdagradDAOp : public OpKernel {
                                 l2.shape().DebugString()));
 
     const Tensor& global_step = ctx->input(8);
-    OP_REQUIRES(ctx, IsLegacyScalar(global_step.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(global_step.shape()),
                 errors::InvalidArgument("global_step is not a scalar: ",
                                         global_step.shape().DebugString()));
 
@@ -2330,6 +2467,8 @@ class ApplyFtrlOp : public OpKernel {
  public:
   explicit ApplyFtrlOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("multiply_linear_by_lr", &multiply_linear_by_lr_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -2404,10 +2543,22 @@ class ApplyFtrlOp : public OpKernel {
           errors::InvalidArgument("l2 shrinkage regularization strength "
                                   "is not a scalar: ",
                                   l2_shrinkage.shape().DebugString()));
-      functor::ApplyFtrlV2<Device, T>()(
+      if (multiply_linear_by_lr_) {
+        functor::ApplyFtrlV2<Device, T>()(
+            device, var.flat<T>(), accum.flat<T>(), linear.flat<T>(),
+            grad.flat<T>(), lr.scalar<T>(), l1.scalar<T>(), l2.scalar<T>(),
+            l2_shrinkage.scalar<T>(), lr_power.scalar<T>());
+      } else {
+        functor::ApplyFtrlV2MultiplyLinearByLr<Device, T>()(
+            device, var.flat<T>(), accum.flat<T>(), linear.flat<T>(),
+            grad.flat<T>(), lr.scalar<T>(), l1.scalar<T>(), l2.scalar<T>(),
+            l2_shrinkage.scalar<T>(), lr_power.scalar<T>());
+      }
+    } else if (multiply_linear_by_lr_) {
+      functor::ApplyFtrlMultiplyLinearByLr<Device, T>()(
           device, var.flat<T>(), accum.flat<T>(), linear.flat<T>(),
           grad.flat<T>(), lr.scalar<T>(), l1.scalar<T>(), l2.scalar<T>(),
-          l2_shrinkage.scalar<T>(), lr_power.scalar<T>());
+          lr_power.scalar<T>());
     } else {
       functor::ApplyFtrl<Device, T>()(device, var.flat<T>(), accum.flat<T>(),
                                       linear.flat<T>(), grad.flat<T>(),
@@ -2420,6 +2571,7 @@ class ApplyFtrlOp : public OpKernel {
 
  private:
   bool use_exclusive_lock_;
+  bool multiply_linear_by_lr_;
 };
 
 #define REGISTER_KERNELS(D, T)                                     \
@@ -2497,7 +2649,16 @@ namespace functor {
       typename TTypes<T>::ConstScalar l1, typename TTypes<T>::ConstScalar l2, \
       typename TTypes<T>::ConstScalar l2_shrinkage,                           \
       typename TTypes<T>::ConstScalar lr_power);                              \
-  extern template struct ApplyFtrlV2<GPUDevice, T>;
+  extern template struct ApplyFtrlV2<GPUDevice, T>;                           \
+  template <>                                                                 \
+  void ApplyFtrlV2MultiplyLinearByLr<GPUDevice, T>::operator()(               \
+      const GPUDevice& d, typename TTypes<T>::Flat var,                       \
+      typename TTypes<T>::Flat accum, typename TTypes<T>::Flat linear,        \
+      typename TTypes<T>::ConstFlat grad, typename TTypes<T>::ConstScalar lr, \
+      typename TTypes<T>::ConstScalar l1, typename TTypes<T>::ConstScalar l2, \
+      typename TTypes<T>::ConstScalar l2_shrinkage,                           \
+      typename TTypes<T>::ConstScalar lr_power);                              \
+  extern template struct ApplyFtrlV2MultiplyLinearByLr<GPUDevice, T>;
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
@@ -2517,9 +2678,11 @@ class SparseApplyFtrlOp : public OpKernel {
  public:
   explicit SparseApplyFtrlOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr("multiply_linear_by_lr", &multiply_linear_by_lr_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1, 2});
@@ -2652,24 +2815,53 @@ class SparseApplyFtrlOp : public OpKernel {
 // eigen tensor library.
 #define COMPUTE_FTRL(grad, grad_maybe_with_shrinkage)                          \
   auto new_accum = accum + grad.square();                                      \
-  if (lr_power_scalar == static_cast<T>(-0.5)) {                               \
-    linear += grad_maybe_with_shrinkage -                                      \
-              (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;             \
+  if (multiply_linear_by_lr_) {                                                \
+    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
+      linear += grad_maybe_with_shrinkage * lr_scalar -                        \
+                (new_accum.sqrt() - accum.sqrt()) * var;                       \
+    } else {                                                                   \
+      linear +=                                                                \
+          grad_maybe_with_shrinkage * lr_scalar -                              \
+          (new_accum.pow(-lr_power_scalar) - accum.pow(-lr_power_scalar)) *    \
+              var;                                                             \
+    }                                                                          \
   } else {                                                                     \
-    linear += grad_maybe_with_shrinkage - (new_accum.pow(-lr_power_scalar) -   \
-                                           accum.pow(-lr_power_scalar)) /      \
-                                              lr_scalar * var;                 \
+    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
+      linear += grad_maybe_with_shrinkage -                                    \
+                (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;           \
+    } else {                                                                   \
+      linear += grad_maybe_with_shrinkage - (new_accum.pow(-lr_power_scalar) - \
+                                             accum.pow(-lr_power_scalar)) /    \
+                                                lr_scalar * var;               \
+    }                                                                          \
   }                                                                            \
-  auto l1_reg_adjust = linear.cwiseMin(l1_scalar).cwiseMax(-l1_scalar);        \
+  auto l1_reg_adjust =                                                         \
+      (multiply_linear_by_lr_                                                  \
+           ? linear.cwiseMin(l1_scalar * lr_scalar)                            \
+                 .cwiseMax(-l1_scalar * lr_scalar)                             \
+           : linear.cwiseMin(l1_scalar).cwiseMax(-l1_scalar));                 \
   auto x = l1_reg_adjust - linear;                                             \
-  if (lr_power_scalar == static_cast<T>(-0.5)) {                               \
-    auto y = new_accum.sqrt() / new_accum.constant(lr_scalar) +                \
-             linear.constant(static_cast<T>(2) * l2_scalar);                   \
-    var = x / y;                                                               \
+  if (multiply_linear_by_lr_) {                                                \
+    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
+      auto y = new_accum.sqrt() +                                              \
+               linear.constant(static_cast<T>(2) * l2_scalar * lr_scalar);     \
+      var = x / y;                                                             \
+    } else {                                                                   \
+      auto y = new_accum.pow(-lr_power_scalar) +                               \
+               linear.constant(static_cast<T>(2) * l2_scalar * lr_scalar);     \
+      var = x / y;                                                             \
+    }                                                                          \
   } else {                                                                     \
-    auto y = new_accum.pow(-lr_power_scalar) / new_accum.constant(lr_scalar) + \
-             linear.constant(static_cast<T>(2) * l2_scalar);                   \
-    var = x / y;                                                               \
+    if (lr_power_scalar == static_cast<T>(-0.5)) {                             \
+      auto y = new_accum.sqrt() / new_accum.constant(lr_scalar) +              \
+               linear.constant(static_cast<T>(2) * l2_scalar);                 \
+      var = x / y;                                                             \
+    } else {                                                                   \
+      auto y =                                                                 \
+          new_accum.pow(-lr_power_scalar) / new_accum.constant(lr_scalar) +    \
+          linear.constant(static_cast<T>(2) * l2_scalar);                      \
+      var = x / y;                                                             \
+    }                                                                          \
   }                                                                            \
   accum += grad.square();
 
@@ -2719,10 +2911,13 @@ class SparseApplyFtrlOp : public OpKernel {
           T updated_a = a + grad_flat(i) * grad_flat(i);
           using Eigen::numext::pow;
           T sigma = pow(updated_a, -lr_power_scalar) - pow(a, -lr_power_scalar);
-          sigma /= lr_scalar;
-          T updated_l = l + g - sigma * v;
+          if (!multiply_linear_by_lr_) {
+            sigma /= lr_scalar;
+          }
+          T updated_l = (multiply_linear_by_lr_ ? l + g * lr_scalar - sigma * v
+                                                : l + g - sigma * v);
           v = FtrlCompute(updated_a, updated_l, lr_scalar, l1_scalar, l2_scalar,
-                          lr_power_scalar);
+                          lr_power_scalar, multiply_linear_by_lr_);
           a = updated_a;
           l = updated_l;
         }
@@ -2734,6 +2929,7 @@ class SparseApplyFtrlOp : public OpKernel {
 
  private:
   bool use_exclusive_lock_;
+  bool multiply_linear_by_lr_;
 };
 
 #define REGISTER_KERNELS(T, Tindices)                                         \
@@ -2862,6 +3058,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
@@ -2877,12 +3075,24 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+DECLARE_GPU_SPEC(complex64);
+DECLARE_GPU_SPEC(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+REGISTER_KERNELS(GPU, complex64);
+REGISTER_KERNELS(GPU, complex128);
+#endif
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -2896,7 +3106,7 @@ class SparseApplyMomentumOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
@@ -3003,6 +3213,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -3080,6 +3292,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
@@ -3095,12 +3309,24 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+DECLARE_GPU_SPEC(complex64);
+DECLARE_GPU_SPEC(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+REGISTER_KERNELS(GPU, complex64);
+REGISTER_KERNELS(GPU, complex128);
+#endif
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -3115,7 +3341,7 @@ class SparseApplyKerasMomentumOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
@@ -3201,6 +3427,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -3221,6 +3449,14 @@ DECLARE_GPU_SPEC(float, int32);
 DECLARE_GPU_SPEC(float, int64);
 DECLARE_GPU_SPEC(double, int32);
 DECLARE_GPU_SPEC(double, int64);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+DECLARE_GPU_SPEC(complex64, int32);
+DECLARE_GPU_SPEC(complex64, int64);
+DECLARE_GPU_SPEC(complex128, int32);
+DECLARE_GPU_SPEC(complex128, int64);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -3231,6 +3467,12 @@ DECLARE_GPU_SPEC(double, int64);
 REGISTER_GPU_KERNELS(Eigen::half);
 REGISTER_GPU_KERNELS(float);
 REGISTER_GPU_KERNELS(double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+REGISTER_GPU_KERNELS(complex64);
+REGISTER_GPU_KERNELS(complex128);
+#endif
 #undef REGISTER_GPU_KERNELS
 #endif
 #undef REGISTER_KERNELS
@@ -3461,6 +3703,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
@@ -3488,12 +3732,24 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+DECLARE_GPU_SPEC(complex64);
+DECLARE_GPU_SPEC(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+REGISTER_KERNELS(GPU, complex64);
+REGISTER_KERNELS(GPU, complex128);
+#endif
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -3974,6 +4230,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
@@ -4001,12 +4259,20 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+DECLARE_GPU_SPEC(complex64);
+DECLARE_GPU_SPEC(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
+REGISTER_KERNELS(GPU, complex64);
+REGISTER_KERNELS(GPU, complex128);
+#endif
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -4019,7 +4285,7 @@ class SparseApplyRMSPropOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1, 2});
@@ -4149,7 +4415,7 @@ class SparseApplyCenteredRMSPropOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1, 2, 3});
@@ -4310,6 +4576,10 @@ REGISTER_KERNELS(float, int32);
 REGISTER_KERNELS(float, int64);
 REGISTER_KERNELS(double, int32);
 REGISTER_KERNELS(double, int64);
+REGISTER_KERNELS(complex64, int32);
+REGISTER_KERNELS(complex64, int64);
+REGISTER_KERNELS(complex128, int32);
+REGISTER_KERNELS(complex128, int64);
 
 #undef REGISTER_KERNELS
 

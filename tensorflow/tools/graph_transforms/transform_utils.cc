@@ -26,7 +26,8 @@ namespace graph_transforms {
 
 namespace {
 inline bool IsMerge(const NodeDef& node_def) {
-  return node_def.op() == "Merge" || node_def.op() == "RefMerge";
+  return node_def.op() == "Merge" || node_def.op() == "RefMerge" ||
+         node_def.op() == "_XlaMerge";
 }
 
 void RecordMatchedNodes(const NodeMatch& match,
@@ -595,7 +596,7 @@ Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
 
 Status TensorShapeFromString(const string& shape_string, TensorShape* result) {
   if (shape_string.empty()) {
-    return errors::InvalidArgument("Specificed shape is empty.");
+    return errors::InvalidArgument("Specified shape is empty.");
   }
   std::vector<string> dims_as_str = str_util::Split(shape_string, ",");
   std::vector<int64> dims;

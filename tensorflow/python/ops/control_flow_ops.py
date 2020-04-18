@@ -117,16 +117,6 @@ def Assert(condition, data, summarize=None, name=None):
   If `condition` evaluates to false, print the list of tensors in `data`.
   `summarize` determines how many entries of the tensors to print.
 
-  NOTE: In graph mode, to ensure that Assert executes, one usually attaches
-  a dependency:
-
-  ```python
-  # Ensure maximum element of x is smaller or equal to 1
-  assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
-  with tf.control_dependencies([assert_op]):
-    ... code using x ...
-  ```
-
   Args:
     condition: The condition to evaluate.
     data: The tensors to print out when condition is false.
@@ -141,8 +131,17 @@ def Assert(condition, data, summarize=None, name=None):
     @end_compatibility
 
   Raises:
-    @compatibility(eager)
-    `tf.errors.InvalidArgumentError` if `condition` is not true
+    @compatibility(TF1)
+    When in TF V1 mode (that is, outside `tf.function`) Assert needs a control
+    dependency on the output to ensure the assertion executes:
+
+  ```python
+  # Ensure maximum element of x is smaller or equal to 1
+  assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
+  with tf.control_dependencies([assert_op]):
+    ... code using x ...
+  ```
+
     @end_compatibility
   """
   if context.executing_eagerly():
@@ -503,13 +502,16 @@ def _shape_invariant_to_type_spec(var, shape):
   Returns:
     A `TypeSpec` for `var`, consistent with the given shape.
   """
-  if isinstance(shape, type_spec.TypeSpec):
+  if shape is None:
+    return type_spec.type_spec_from_value(var)
+  elif isinstance(shape, type_spec.TypeSpec):
     if not shape.is_compatible_with(var):
       raise TypeError("TypeSpec %r is not compatible with %r" % (shape, var))
     return shape
   elif not isinstance(shape, tensor_shape.TensorShape):
-    raise TypeError("Expected shape to be a TypeSpec or TensorShape, got %r"
-                    % shape)
+    raise TypeError(
+        "Expected shape to be a TypeSpec, TensorShape or None, got %r for"
+        " value %r" % (shape, var))
 
   if isinstance(var, ops.Tensor):
     return tensor_spec.TensorSpec(shape, var.dtype)
@@ -570,7 +572,7 @@ def _EnforceShapeInvariant(merge_var, next_var):
 
   Raises:
     ValueError: If any tensor in `merge_var` has a more specific shape than
-      its correspnding tensor in `next_var`.
+      its corresponding tensor in `next_var`.
   """
   if isinstance(merge_var, ops.Tensor):
     m_shape = merge_var.get_shape()
@@ -749,10 +751,10 @@ class ControlFlowContext(object):
   def ExitResult(self, result):
     """Make a list of tensors available in the outer context."""
     if self._outer_context:
-      nest.map_structure(
-          lambda x: self._outer_context.AddName(x.name),
-          result,
-          expand_composites=True)
+      def fn(x):
+        self._outer_context.AddName(x.name)
+        return x
+      nest.map_structure(fn, result, expand_composites=True)
 
   def GetWhileContext(self):
     """Return the while context containing this context."""
@@ -1067,7 +1069,7 @@ class CondContext(ControlFlowContext):
       with ops.control_dependencies(new_summaries):
         if original_result is None:
           return no_op(), None
-        else:
+        elif not isinstance(original_result, ops.Operation):
           original_result = nest.map_structure(
               array_ops.identity, original_result, expand_composites=True)
     if original_result is None:
@@ -1721,6 +1723,10 @@ class WhileContext(ControlFlowContext):
     We move any external control dependencies of the op to the loop pivot, to
     ensure they get executed.
     """
+    # This is needed to prevent frame mismatch errors where there are Const
+    # nodes inside tf.function in v1 while_loop and inlining is turned on.
+    if op.type in ["PartitionedCall", "StatefulPartitionedCall"]:
+      op._add_control_input(self.GetControlPivot().op)  # pylint: disable=protected-access
     if not op.inputs:
       # Remove any external control dependency on this op
       control_inputs, external_inputs = self._RemoveExternalControlEdges(op)
@@ -2300,6 +2306,15 @@ class WhileContext(ControlFlowContext):
 # @TODO(b/133606651) Replace "shape_invariants" with "loop_vars_signature".
 # pylint: disable=redefined-outer-name
 @tf_export("while_loop", v1=[])
+@deprecation.deprecated_arg_values(
+    None,
+    """back_prop=False is deprecated. Consider using tf.stop_gradient instead.
+Instead of:
+results = tf.while_loop(c, b, vars, back_prop=False)
+Use:
+results = tf.nest.map_structure(tf.stop_gradient, tf.while_loop(c, b, vars))""",
+    warn_once=True,
+    back_prop=False)
 def while_loop_v2(cond,
                   body,
                   loop_vars,
@@ -2377,7 +2392,8 @@ def while_loop_v2(cond,
     shape_invariants: The shape invariants for the loop variables.
     parallel_iterations: The number of iterations allowed to run in parallel. It
       must be a positive integer.
-    back_prop: Whether backprop is enabled for this while loop.
+    back_prop: (optional) Deprecated. False disables support for back
+      propagation. Prefer using `tf.stop_gradient` instead.
     swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
     maximum_iterations: Optional maximum number of iterations of the while loop
       to run.  If provided, the `cond` output is AND-ed with an additional
@@ -2398,7 +2414,7 @@ def while_loop_v2(cond,
   ```python
   i = tf.constant(0)
   c = lambda i: tf.less(i, 10)
-  b = lambda i: tf.add(i, 1)
+  b = lambda i: (tf.add(i, 1), )
   r = tf.while_loop(c, b, [i])
   ```
 

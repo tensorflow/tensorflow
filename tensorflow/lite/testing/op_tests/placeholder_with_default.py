@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 from tensorflow.lite.testing.zip_test_utils import TF_TYPE_INFO
@@ -37,7 +37,7 @@ def make_placeholder_with_default_tests(options):
     const_node = tf.constant([1, 2, 2, 0],
                              shape=[2, 2],
                              dtype=parameters["dtype"])
-    input_tensor = tf.placeholder_with_default(
+    input_tensor = tf.compat.v1.placeholder_with_default(
         const_node, shape=[2, 2], name="input")
     out = tf.equal(input_tensor, const_node, name="output")
 

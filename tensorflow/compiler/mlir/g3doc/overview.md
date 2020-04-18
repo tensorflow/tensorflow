@@ -31,6 +31,6 @@ We expect MLIR to be of interest to many groups, including:
 
 The TensorFlow ecosystem contains a number of compilers and optimizers that
 operate at multiple levels of the software and hardware stack. We expect the
-gradual adoption of MLIF to simplify every aspect of this stack.
+gradual adoption of MLIR to simplify every aspect of this stack.
 
 <img alt="MLIR overview diagram" src="./images/mlir-infra.svg"/>

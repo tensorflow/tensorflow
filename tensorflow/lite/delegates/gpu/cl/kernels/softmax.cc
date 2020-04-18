@@ -29,9 +29,11 @@ namespace {
 std::string GetSoftmaxKernelCode(
     const OperationDef& op_def,
     const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src_tensor("src_data", {"size.x", "size.y", "size.z"},
+  TensorCodeGenerator src_tensor("src_data",
+                                 WHSPoint{"size.x", "size.y", "size.z"},
                                  op_def.src_tensors[0]);
-  TensorCodeGenerator dst_tensor("dst_data", {"size.x", "size.y", "size.z"},
+  TensorCodeGenerator dst_tensor("dst_data",
+                                 WHSPoint{"size.x", "size.y", "size.z"},
                                  op_def.dst_tensors[0]);
 
   std::string c = GetCommonDefines(op_def.precision);
@@ -48,15 +50,15 @@ std::string GetSoftmaxKernelCode(
   c += "  float sum = 0.0f;\n";
   c += "  for (int d = 0; d < size.z; ++d) {\n";
   c += "    float4 mask_temp = d == size.z - 1 ? mask : (float4)(1.0f);\n";
-  c += "    float4 t = " + src_tensor.ReadAsFloat3D("X", "Y", "d") + ";\n";
+  c += "    float4 t = " + src_tensor.ReadAsFloatWHS("X", "Y", "d") + ";\n";
   c += "    sum += dot(mask_temp, exp(t));\n";
   c += "  }\n";
   c += "  for (int d = 0; d < size.z; ++d) {\n";
-  c += "    float4 t = " + src_tensor.ReadAsFloat3D("X", "Y", "d") + ";\n";
+  c += "    float4 t = " + src_tensor.ReadAsFloatWHS("X", "Y", "d") + ";\n";
   c += "    t = exp(t) / sum;\n";
   c += "    FLT4 result = TO_FLT4(t);\n";
   c += PostProcess(linked_operations, {"result", "X", "Y", "d"});
-  c += "    " + dst_tensor.Write3D("result", "X", "Y", "d");
+  c += "    " + dst_tensor.WriteWHS("result", "X", "Y", "d");
   c += "  }\n";
   c += "}\n";
   return c;
@@ -77,22 +79,22 @@ Softmax& Softmax::operator=(Softmax&& kernel) {
   return *this;
 }
 
-Status Softmax::Compile(const CreationContext& creation_context) {
+absl::Status Softmax::Compile(const CreationContext& creation_context) {
   const auto code = GetSoftmaxKernelCode(definition_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
-Status Softmax::BindArguments() {
+absl::Status Softmax::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(GetMaskForLastPlane(src_[0]->Channels())));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 Softmax::GetGridSize() const {
@@ -102,12 +104,12 @@ int3 Softmax::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status Softmax::Tune(const TuningParameters& params) {
+absl::Status Softmax::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Status Softmax::AddToQueue(CLCommandQueue* queue) {
+absl::Status Softmax::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }

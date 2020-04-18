@@ -70,7 +70,15 @@ void* TRTDeviceAllocator::allocate(uint64_t size, uint64_t alignment,
   // TODO(aaroey): AllocateRaw takes size_t size as input, so it'll produce
   // unexpected result when TRT tries to allocate more bytes than size_t can
   // carry. Fix this.
-  void* mem = allocator_->AllocateRaw(alignment, total_size);
+  //
+  // Fail immediately if allocation fails, rather than waiting 10 seconds and
+  // failing then anyway.
+  // TensorRT 7 can also switch to a different algorithm for a layer if an
+  // algorithm uses too much memory. If we don't fail immediately building the
+  // engine can be *very* slow with TensorRT7 when GPU memory is limited.
+  AllocationAttributes attributes;
+  attributes.no_retry_on_failure = true;
+  void* mem = allocator_->AllocateRaw(alignment, total_size, attributes);
   if (!mem) return nullptr;
 
   void* alloc_mem = mem;

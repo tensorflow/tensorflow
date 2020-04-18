@@ -79,20 +79,36 @@ def parse_args():
       default=False,
       help="Use fake MNIST data for unit testing")
   parser.add_argument(
-      "--debug",
+      "--check_numerics",
       type="bool",
       nargs="?",
       const=True,
       default=False,
-      help="Use debugger to track down bad values during training. "
-      "Mutually exclusive with the --tensorboard_debug_address flag.")
+      help="Use tfdbg to track down bad values during training. "
+      "Mutually exclusive with the --dump_dir flag.")
   parser.add_argument(
-      "--tensorboard_debug_address",
+      "--dump_dir",
       type=str,
       default=None,
-      help="Connect to the TensorBoard Debugger Plugin backend specified by "
-      "the gRPC address (e.g., localhost:1234). Mutually exclusive with the "
-      "--debug flag.")
+      help="Dump TensorFlow program debug data to the specified directory. "
+      "The dumped data contains information regarding tf.function building, "
+      "execution of ops and tf.functions, as well as their stack traces and "
+      "associated source-code snapshots. "
+      "Mutually exclusive with the --check_numerics flag.")
+  parser.add_argument(
+      "--dump_tensor_debug_mode",
+      type=str,
+      default="NO_TENSOR",
+      help="Mode for dumping tensor values. Options: NO_TENSOR, CURT_HEALTH, "
+      "CONCISE_HEALTH, SHAPE, FULL_TENSOR. This is relevant only when "
+      "--dump_dir is set.")
+  # TODO(cais): Add more tensor debug mode strings once they are supported.
+  parser.add_argument(
+      "--dump_circular_buffer_size",
+      type=int,
+      default=1000,
+      help="Size of the circular buffer used to dump execution events. "
+      "This is relevant only when --dump_dir is set.")
   parser.add_argument(
       "--use_random_config_path",
       type="bool",
@@ -105,18 +121,17 @@ def parse_args():
 
 
 def main(_):
-  # TODO(anthonyjliu): Enable debugger from flags
-  if FLAGS.debug and FLAGS.tensorboard_debug_address:
+  if FLAGS.check_numerics and FLAGS.dump_dir:
     raise ValueError(
-        "The --debug and --tensorboard_debug_address flags are mutually "
+        "The --check_numerics and --dump_dir flags are mutually "
         "exclusive.")
-  if FLAGS.debug:
+  if FLAGS.check_numerics:
     tf.debugging.enable_check_numerics()
-  elif FLAGS.tensorboard_debug_address:
-    raise NotImplementedError(
-        "Tensorboard Debugger Plugin support for debug_mnist_v2 is not "
-        "implemented yet"
-    )
+  elif FLAGS.dump_dir:
+    tf.debugging.experimental.enable_dump_debug_info(
+        FLAGS.dump_dir,
+        tensor_debug_mode=FLAGS.dump_tensor_debug_mode,
+        circular_buffer_size=FLAGS.dump_circular_buffer_size)
 
   # Import data
   if FLAGS.fake_data:

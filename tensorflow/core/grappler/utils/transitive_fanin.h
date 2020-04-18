@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_TRANSITIVE_FANIN_H_
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_TRANSITIVE_FANIN_H_
 
+#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
@@ -29,6 +30,7 @@ namespace grappler {
 // transitive fanin.
 std::vector<const NodeDef*> ComputeTransitiveFanin(
     const GraphDef& graph, const std::vector<string>& terminal_nodes,
+    std::unordered_map<string, const NodeDef*>* name_to_fanin_node,
     bool* ill_formed);
 
 // Creates output_graph from input_graph using the transitive fanin from the

@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import warnings
+
 import numpy as np
 
 from tensorflow.python import tf2
@@ -53,13 +54,9 @@ tensor_util = LazyLoader(
     "tensor_util", globals(),
     "tensorflow.python.framework.tensor_util")
 
-# pylint: disable=protected-access
-_TensorLike = tensor_like._TensorLike
-# pylint: enable=protected-access
-
 
 @tf_export("IndexedSlices")
-class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
+class IndexedSlices(tensor_like.TensorLike, composite_tensor.CompositeTensor):
   """A sparse representation of a set of tensor slices at given indices.
 
   This class is a simple wrapper for a pair of `Tensor` objects:
@@ -83,13 +80,12 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
   (e.g. `tf.gather`).
 
   Contrast this representation with
-  `tf.SparseTensor`,
+  `tf.sparse.SparseTensor`,
   which uses multi-dimensional indices and scalar values.
   """
 
   def __init__(self, values, indices, dense_shape=None):
     """Creates an `IndexedSlices`."""
-    ops._get_graph_from_inputs([values, indices, dense_shape])  # pylint: disable=protected-access
     self._values = values
     self._indices = indices
     self._dense_shape = dense_shape
@@ -108,6 +104,18 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
   def dense_shape(self):
     """A 1-D `Tensor` containing the shape of the corresponding dense tensor."""
     return self._dense_shape
+
+  @property
+  def shape(self):
+    """Gets the `tf.TensorShape` representing the shape of the dense tensor.
+
+    Returns:
+      A `tf.TensorShape` object.
+    """
+    if self._dense_shape is None:
+      return tensor_shape.TensorShape(None)
+
+    return tensor_util.constant_value_as_shape(self._dense_shape)
 
   @property
   def name(self):
@@ -297,7 +305,7 @@ def internal_convert_to_tensor_or_indexed_slices(value,
   """
   if isinstance(value, ops.EagerTensor) and not context.executing_eagerly():
     return ops.convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
-  elif isinstance(value, _TensorLike):
+  elif isinstance(value, tensor_like.TensorLike):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %

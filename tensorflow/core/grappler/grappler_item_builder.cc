@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/framework/variable.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
-#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/inputs/utils.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
@@ -201,20 +200,6 @@ Status UpdatePlaceholderShape(
   return Status::OK();
 }
 
-bool OutputShapesFullyDefined(const NodeDef& node) {
-  if (node.attr().count("_output_shapes") == 0) return false;
-
-  int size = node.attr().at("_output_shapes").list().shape_size();
-  for (int i = 0; i < size; ++i) {
-    const TensorShapeProto& shape =
-        node.attr().at("_output_shapes").list().shape(i);
-    for (int j = 0; j < shape.dim_size(); ++j) {
-      if (shape.dim(j).size() < 0) return false;
-    }
-  }
-  return true;
-}
-
 }  // namespace
 
 Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
@@ -226,7 +211,12 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
   // in order to get the correct session options and environment, and performing
   // the correct optimizations.
 
-  if (!cfg.apply_optimizations && !cfg.erase_noinline_attributes) {
+  // Return input as is if no graph-modifying config is set.
+  if (!cfg.apply_optimizations && !cfg.inline_functions &&
+      !cfg.erase_noinline_attributes) {
+    if (output_graph_def != &graph_def_arg) {
+      *output_graph_def = graph_def_arg;
+    }
     return Status::OK();
   }
 
@@ -489,22 +479,29 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       const CollectionDef& collection =
           meta_graph.collection_def().at("saved_model_assets");
       const auto& any_assets = collection.any_list().value();
-      for (const auto& any_asset : any_assets) {
-        AssetFileDef asset_file_def;
-        if (!ParseAny(any_asset, &asset_file_def, "tensorflow.AssetFileDef")
-                 .ok()) {
-          LOG(ERROR) << "Failed to parse AssetFile.";
-          continue;
+      if (!any_assets.empty()) {
+#ifndef TENSORFLOW_LITE_PROTOS
+        for (const auto& any_asset : any_assets) {
+          AssetFileDef asset_file_def;
+          if (!ParseAny(any_asset, &asset_file_def, "tensorflow.AssetFileDef")
+                   .ok()) {
+            LOG(ERROR) << "Failed to parse AssetFile.";
+            continue;
+          }
+          string asset_filepath = io::JoinPath(cfg.assets_directory_override,
+                                               asset_file_def.filename());
+          if (!FilesExist({asset_filepath}, nullptr)) {
+            LOG(ERROR) << "Can't access one or more of the asset files "
+                       << asset_filepath << ", skipping this input";
+            return nullptr;
+          }
+          asset_node_to_value[NodeName(asset_file_def.tensor_info().name())] =
+              asset_filepath;
         }
-        string asset_filepath = io::JoinPath(cfg.assets_directory_override,
-                                             asset_file_def.filename());
-        if (!FilesExist({asset_filepath}, nullptr)) {
-          LOG(ERROR) << "Can't access one or more of the asset files "
-                     << asset_filepath << ", skipping this input";
-          return nullptr;
-        }
-        asset_node_to_value[NodeName(asset_file_def.tensor_info().name())] =
-            asset_filepath;
+#else
+        LOG(ERROR) << "Can't parse AssetFileDef on mobile.";
+        return nullptr;
+#endif  // TENSORFLOW_LITE_PROTOS
       }
     }
   } else if (meta_graph.collection_def().count("asset_filepaths") > 0) {
@@ -568,21 +565,6 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
                   << node.name();
         *(iter->second.mutable_tensor()->mutable_string_val(0)) = it->second;
       }
-    }
-
-    // If the graph has _output_shapes and is not annotated, use it for
-    // shape annotation. This is only for tf-sim purpose with aggressive shape
-    // inference enabled.
-    // TODO(grappler-dev): Investigate if _output_shapes is reliable to be used
-    // in non-aggressive shape inference.
-    if (node.attr().count("_output_shapes") > 0 &&
-        node.attr().count(kOutputSame) == 0 &&
-        node.attr().count(kOutputShapes) == 0 &&
-        OutputShapesFullyDefined(node)) {
-      AttrValue attr_output_same;
-      attr_output_same.set_b(true);
-      AddNodeAttr(kOutputSame, attr_output_same, &node);
-      AddNodeAttr(kOutputShapes, node.attr().at("_output_shapes"), &node);
     }
 
     // Erase the recorded result of any previous shape inference to start again

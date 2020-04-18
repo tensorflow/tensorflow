@@ -26,6 +26,8 @@ namespace tflite {
 namespace gpu {
 namespace {
 
+using ::testing::UnorderedElementsAre;
+
 TEST(RemoveSingleInputAdd, Smoke) {
   GraphFloat32 graph;
   auto input = graph.NewValue();
@@ -33,12 +35,12 @@ TEST(RemoveSingleInputAdd, Smoke) {
   ASSERT_TRUE(graph.AddConsumer(first_node->id, input->id).ok());
 
   auto add_node = graph.NewNode();
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   ASSERT_TRUE(AddOutput(&graph, add_node, &output).ok());
   add_node->operation.type = ToString(OperationType::ADD);
   add_node->operation.attributes = AddAttributes();
 
-  Value<TensorRef<BHWC>>* temp;
+  Value* temp;
   ASSERT_TRUE(ConnectTwoNodes(&graph, first_node, add_node, &temp).ok());
   ASSERT_EQ(2, graph.nodes().size());
   ASSERT_EQ(3, graph.values().size());
@@ -61,14 +63,14 @@ TEST(RemoveSingleInputAdd, DoNotTrigger_Tensor) {
   ASSERT_TRUE(graph.AddConsumer(first_node->id, input->id).ok());
 
   auto add_node = graph.NewNode();
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   ASSERT_TRUE(AddOutput(&graph, add_node, &output).ok());
   add_node->operation.type = ToString(OperationType::ADD);
   AddAttributes attr;
   attr.param = Tensor<Linear, DataType::FLOAT32>();
   add_node->operation.attributes = attr;
 
-  Value<TensorRef<BHWC>>* temp;
+  Value* temp;
   ASSERT_TRUE(ConnectTwoNodes(&graph, first_node, add_node, &temp).ok());
   ASSERT_EQ(2, graph.nodes().size());
   ASSERT_EQ(3, graph.values().size());
@@ -88,14 +90,14 @@ TEST(RemoveSingleInputAdd, DoNotTrigger_Scalar) {
   ASSERT_TRUE(graph.AddConsumer(first_node->id, input->id).ok());
 
   auto add_node = graph.NewNode();
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   ASSERT_TRUE(AddOutput(&graph, add_node, &output).ok());
   add_node->operation.type = ToString(OperationType::ADD);
   AddAttributes attr;
   attr.param = 0.5f;
   add_node->operation.attributes = attr;
 
-  Value<TensorRef<BHWC>>* temp;
+  Value* temp;
   ASSERT_TRUE(ConnectTwoNodes(&graph, first_node, add_node, &temp).ok());
   ASSERT_EQ(2, graph.nodes().size());
   ASSERT_EQ(3, graph.values().size());
@@ -117,11 +119,11 @@ TEST(RemoveSingleInputAdd, DoNotTrigger_Multiple) {
   ASSERT_TRUE(graph.AddConsumer(node_b->id, input->id).ok());
 
   auto add_node = graph.NewNode();
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   ASSERT_TRUE(AddOutput(&graph, add_node, &output).ok());
   add_node->operation.type = ToString(OperationType::ADD);
 
-  Value<TensorRef<BHWC>>* temp;
+  Value* temp;
   ASSERT_TRUE(ConnectTwoNodes(&graph, node_a, add_node, &temp).ok());
   ASSERT_TRUE(ConnectTwoNodes(&graph, node_b, add_node, &temp).ok());
   ASSERT_EQ(3, graph.nodes().size());
@@ -142,16 +144,16 @@ TEST(RemoveDegenerateUpsampling, Smoke) {
   ASSERT_TRUE(graph.AddConsumer(first_node->id, input->id).ok());
 
   auto node_to_remove = graph.NewNode();
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   ASSERT_TRUE(AddOutput(&graph, node_to_remove, &output).ok());
   output->tensor.shape = BHWC(1, 5, 5, 1);
-  node_to_remove->operation.type = ToString(OperationType::UPSAMPLE_2D);
-  Upsample2DAttributes attr;
+  node_to_remove->operation.type = ToString(OperationType::RESIZE);
+  Resize2DAttributes attr;
   attr.new_shape = HW(5, 5);
-  attr.type = UpsamplingType::BILINEAR;
+  attr.type = SamplingType::BILINEAR;
   node_to_remove->operation.attributes = attr;
 
-  Value<TensorRef<BHWC>>* link;
+  Value* link;
   ASSERT_TRUE(ConnectTwoNodes(&graph, first_node, node_to_remove, &link).ok());
   link->tensor.shape = output->tensor.shape;
   ASSERT_EQ(2, graph.nodes().size());
@@ -170,34 +172,41 @@ TEST(RemoveDegenerateUpsampling, Smoke) {
 
 TEST(RemoveIdentityReshape, Smoke) {
   GraphFloat32 graph;
-  auto input = graph.NewValue();
-  auto first_node = graph.NewNode();
-  ASSERT_TRUE(graph.AddConsumer(first_node->id, input->id).ok());
+  Node* simple_node = graph.NewNode();
+  Node* producer_node = graph.NewNode();
+  Node* consumer_node = graph.NewNode();
+  Value* graph_input = graph.NewValue();
+  Value* graph_output = graph.NewValue();
+  Value* value0 = graph.NewValue();
+  Value* value1 = graph.NewValue();
 
-  auto node_to_remove = graph.NewNode();
-  Value<TensorRef<BHWC>>* output;
-  ASSERT_TRUE(AddOutput(&graph, node_to_remove, &output).ok());
-  output->tensor.shape = BHWC(1, 1, 1, 11);
-  node_to_remove->operation.type = ToString(OperationType::RESHAPE);
+  value0->tensor.shape = BHWC(1, 1, 1, 11);
+  simple_node->operation.type = ToString(OperationType::RESHAPE);
   ReshapeAttributes attr;
   attr.new_shape = BHWC(1, 1, 1, 11);
-  node_to_remove->operation.attributes = attr;
+  simple_node->operation.attributes = attr;
 
-  Value<TensorRef<BHWC>>* link;
-  ASSERT_TRUE(ConnectTwoNodes(&graph, first_node, node_to_remove, &link).ok());
-  link->tensor.shape = output->tensor.shape;
-  ASSERT_EQ(2, graph.nodes().size());
-  ASSERT_EQ(3, graph.values().size());
+  ASSERT_TRUE(graph.AddConsumer(producer_node->id, graph_input->id).ok());
+  ASSERT_TRUE(graph.SetProducer(producer_node->id, value0->id).ok());
+  ASSERT_TRUE(graph.AddConsumer(simple_node->id, value0->id).ok());
+  ASSERT_TRUE(graph.SetProducer(simple_node->id, value1->id).ok());
+  ASSERT_TRUE(graph.AddConsumer(consumer_node->id, value1->id).ok());
+  ASSERT_TRUE(graph.SetProducer(consumer_node->id, graph_output->id).ok());
+  EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_input));
+  EXPECT_THAT(graph.outputs(), UnorderedElementsAre(graph_output));
+  EXPECT_THAT(graph.nodes(),
+              UnorderedElementsAre(simple_node, producer_node, consumer_node));
 
   auto transformation = NewRemoveIdentityReshape();
   ModelTransformer transformer(&graph, nullptr);
   transformer.Apply("noop", transformation.get());
 
-  ASSERT_EQ(1, graph.nodes().size());
-  ASSERT_EQ(2, graph.values().size());
-  EXPECT_EQ(first_node, graph.nodes()[0]);
-  EXPECT_EQ(input, graph.values()[0]);
-  EXPECT_EQ(output, graph.values()[1]);
+  EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_input));
+  EXPECT_THAT(graph.outputs(), UnorderedElementsAre(graph_output));
+  EXPECT_THAT(graph.nodes(),
+              UnorderedElementsAre(producer_node, consumer_node));
+  EXPECT_THAT(graph.values(),
+              UnorderedElementsAre(graph_input, graph_output, value0));
 }
 
 }  // namespace

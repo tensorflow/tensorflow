@@ -19,12 +19,10 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "third_party/cub/device/device_radix_sort.cuh"
-#include "third_party/cub/device/device_segmented_radix_sort.cuh"
-#include "third_party/cub/device/device_select.cuh"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/non_max_suppression_op.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
@@ -751,13 +749,15 @@ REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV2")
 //                             .HostMemory("score_threshold"),
 //                         NonMaxSuppressionV3GPUOp);
 
-REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV4")
-                            .TypeConstraint<float>("T")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("iou_threshold")
-                            .HostMemory("max_output_size")
-                            .HostMemory("score_threshold"),
-                        NonMaxSuppressionV4GPUOp);
+// TODO(b/143610288): this op tries to allocate 4GB of memory for the mask for
+// some model and cause OOM.
+// REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV4")
+//                             .TypeConstraint<float>("T")
+//                             .Device(DEVICE_GPU)
+//                             .HostMemory("iou_threshold")
+//                             .HostMemory("max_output_size")
+//                             .HostMemory("score_threshold"),
+//                         NonMaxSuppressionV4GPUOp);
 
 }  // namespace tensorflow
 #endif

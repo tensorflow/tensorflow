@@ -193,7 +193,7 @@ bool ParallelTaskAssigner::AssignParallelTasksHelper(
                                             computation->instructions().end());
   for (auto* instruction : instructions) {
     // Assign parallel tasks to sub-computations for While and Call HLOs.
-    // TODO(b/27458679) Evaluate alternative intra-op parallelsim placement,
+    // TODO(b/27458679) Evaluate alternative intra-op parallelism placement,
     // and support other callable computations like reduce.
     if (instruction->opcode() == HloOpcode::kWhile) {
       changed |= AssignParallelTasksHelper(module, instruction->while_body(),

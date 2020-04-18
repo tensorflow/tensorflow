@@ -27,10 +27,10 @@ class AutoMixedPrecisionLists {
  private:
   static void UpdateList(gtl::FlatSet<string>* list, const string& to_add,
                          const string& to_remove) {
-    for (auto x : str_util::Split(to_add, ",")) {
+    for (const auto& x : str_util::Split(to_add, ",")) {
       list->insert(x);
     }
-    for (auto x : str_util::Split(to_remove, ",")) {
+    for (const auto& x : str_util::Split(to_remove, ",")) {
       list->erase(x);
     }
   }
@@ -55,18 +55,31 @@ class AutoMixedPrecisionLists {
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_WHITELIST_REMOVE", "",
         &to_remove));
 
-    auto list = gtl::FlatSet<string> {
-          "BlockLSTM", "BlockLSTMGrad", "Conv2D", "Conv2DBackpropFilter",
-          "Conv2DBackpropInput",
-          "CudnnRNN", "CudnnRNNBackprop", "CudnnRNNBackpropV2",
-          "CudnnRNNBackpropV3", "CudnnRNNV2", "CudnnRNNV3", "GRUBlockCell",
-          "GRUBlockCellGrad", "LSTMBlockCell", "LSTMBlockCellGrad",
-          // TODO(benbarsdell): Enable these when fast and safe fp16 kernels are
-          // available for depthwise convolutions.
-          // "DepthwiseConv2dNative",
-          // "DepthwiseConv2dNativeBackpropFilter",
-          // "DepthwiseConv2dNativeBackpropInput",
-          "MatMul",
+    auto list = gtl::FlatSet<string>{
+        "BlockLSTM",
+        "BlockLSTMV2",
+        "BlockLSTMGrad",
+        "BlockLSTMGradV2",
+        "Conv2D",
+        "Conv2DBackpropFilter",
+        "Conv2DBackpropInput",
+        "CudnnRNN",
+        "CudnnRNNBackprop",
+        "CudnnRNNBackpropV2",
+        "CudnnRNNBackpropV3",
+        "CudnnRNNV2",
+        "CudnnRNNV3",
+        "Einsum",
+        "GRUBlockCell",
+        "GRUBlockCellGrad",
+        "LSTMBlockCell",
+        "LSTMBlockCellGrad",
+        // TODO(benbarsdell): Enable these when fast and safe fp16 kernels are
+        // available for depthwise convolutions.
+        // "DepthwiseConv2dNative",
+        // "DepthwiseConv2dNativeBackpropFilter",
+        // "DepthwiseConv2dNativeBackpropInput",
+        "MatMul",
     };
     if (cuda_version >= 9010) {
       // Fp16 BatchMatMul is slow before CUDA 9.1.
@@ -129,11 +142,15 @@ class AutoMixedPrecisionLists {
         "Prod",
         "RealDiv",
         "Reciprocal",
+        "Selu",
+        "SeluGrad",
         "Sigmoid",
         "SigmoidGrad",
         "Softmax",
         "Softplus",
         "SoftplusGrad",
+        "Softsign",
+        "SoftsignGrad",
         "Sqrt",
         "Sub",
         "Tanh",
@@ -178,9 +195,6 @@ class AutoMixedPrecisionLists {
     if (IsPseudoFastMath()) {
       return gtl::FlatSet<string>{};
     }
-    // Note: if a data structure op (such as TensorListPopBack) is added to the
-    // clearlist, the AutoMixedPrecisionImpl class must also be modified to call
-    // AddDataStructureOpsToMap() with that op.
     string to_add, to_remove;
     TF_CHECK_OK(ReadStringFromEnvVar(
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_CLEARLIST_ADD", "", &to_add));
@@ -260,6 +274,7 @@ class AutoMixedPrecisionLists {
         "ReverseV2",
         "Round",
         "Select",
+        "SelectV2",
         "Shape",
         "ShapeN",
         "Sign",
@@ -277,11 +292,13 @@ class AutoMixedPrecisionLists {
         "StridedSliceGrad",
         "Switch",
         "TensorListConcat",
+        "TensorListConcatLists",
         "TensorListConcatV2",
         "TensorListGather",
         "TensorListGetItem",
         "TensorListPopBack",
         "TensorListPushBack",
+        "TensorListPushBackBatch",
         "TensorListFromTensor",
         "TensorListScatter",
         "TensorListScatterV2",

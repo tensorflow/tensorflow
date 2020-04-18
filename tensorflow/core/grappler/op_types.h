@@ -28,6 +28,7 @@ bool IsAll(const NodeDef& node);
 bool IsAngle(const NodeDef& node);
 bool IsAny(const NodeDef& node);
 bool IsAnyDiv(const NodeDef& node);
+bool IsAnyBatchMatMul(const NodeDef& node);
 bool IsAnyMatMul(const NodeDef& node);
 bool IsAnyMax(const NodeDef& node);
 bool IsAnyMaxPool(const NodeDef& node);

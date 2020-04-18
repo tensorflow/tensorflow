@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/matrix_diag_op.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -42,7 +43,13 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename Device, typename T>
 class MatrixSetDiagOp : public OpKernel {
  public:
-  explicit MatrixSetDiagOp(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit MatrixSetDiagOp(OpKernelConstruction* context) : OpKernel(context) {
+    // MatrixSetDiagV3-specific.
+    if (context->HasAttr("align")) {
+      functor::ReadAlignment(context, &left_align_superdiagonal_,
+                             &left_align_subdiagonal_);
+    }
+  }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
@@ -55,7 +62,7 @@ class MatrixSetDiagOp : public OpKernel {
     int32 upper_diag_index = 0;
 
     // MatrixSetDiagV2-specific.
-    if (context->num_inputs() > 2) {
+    if (context->num_inputs() > kNumV1Inputs) {
       auto& diag_index = context->input(2);
       OP_REQUIRES(context,
                   TensorShapeUtils::IsScalar(diag_index.shape()) ||
@@ -155,10 +162,14 @@ class MatrixSetDiagOp : public OpKernel {
     auto output_reshaped = output->flat_inner_dims<T, 3>();
     functor::MatrixSetDiag<Device, T>::Compute(
         context, context->eigen_device<Device>(), input_reshaped, diag_reshaped,
-        output_reshaped, lower_diag_index, upper_diag_index, max_diag_len);
+        output_reshaped, lower_diag_index, upper_diag_index, max_diag_len,
+        left_align_superdiagonal_, left_align_subdiagonal_);
   }
 
  private:
+  bool left_align_superdiagonal_ = true;
+  bool left_align_subdiagonal_ = true;
+  static constexpr int kNumV1Inputs = 2;
   TF_DISALLOW_COPY_AND_ASSIGN(MatrixSetDiagOp);
 };
 
@@ -168,7 +179,11 @@ class MatrixSetDiagOp : public OpKernel {
       MatrixSetDiagOp<CPUDevice, type>);                                    \
   REGISTER_KERNEL_BUILDER(                                                  \
       Name("MatrixSetDiagV2").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      MatrixSetDiagOp<CPUDevice, type>);                                    \
+  REGISTER_KERNEL_BUILDER(                                                  \
+      Name("MatrixSetDiagV3").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
       MatrixSetDiagOp<CPUDevice, type>);
+
 TF_CALL_POD_TYPES(REGISTER_MATRIX_SET_DIAG);
 #undef REGISTER_MATRIX_SET_DIAG
 
@@ -192,29 +207,38 @@ struct MatrixSetDiag<CPUDevice, T> {
                       typename TTypes<T, 3>::Tensor& output,
                       const Eigen::Index lower_diag_index,
                       const Eigen::Index upper_diag_index,
-                      const Eigen::Index max_diag_len) {
+                      const Eigen::Index max_diag_len,
+                      const bool left_align_superdiagonal,
+                      const bool left_align_subdiagonal) {
     if (input.data() != output.data()) {
       output.device(device) = input;
     }
     const Eigen::Index num_diags = upper_diag_index - lower_diag_index + 1;
     auto compute_shard = [&output, &diag, &upper_diag_index, &max_diag_len,
-                          &num_diags](Eigen::Index begin, Eigen::Index end) {
+                          &num_diags, &left_align_superdiagonal,
+                          &left_align_subdiagonal](Eigen::Index begin,
+                                                   Eigen::Index end) {
       const Eigen::Index num_rows = output.dimension(1);
       const Eigen::Index num_cols = output.dimension(2);
       Eigen::Index diag_base_index = begin * num_diags * max_diag_len;
       for (Eigen::Index batch = begin; batch < end; ++batch) {
         for (Eigen::Index m = 0; m < num_diags; ++m) {
-          const Eigen::Index d = upper_diag_index - m;
+          const Eigen::Index diag_index = upper_diag_index - m;
+          int diag_len, content_offset;
+          std::tie(diag_len, content_offset) = ComputeDiagLenAndContentOffset(
+              diag_index, max_diag_len, num_rows, num_cols,
+              left_align_superdiagonal, left_align_subdiagonal);
+
           // Make two separate cases to save some index calculations.
-          if (d >= 0) {
-            for (Eigen::Index n = 0; n < std::min(num_rows, num_cols - d);
-                 ++n) {
-              output(batch, n, n + d) = diag(diag_base_index + n);
+          if (diag_index >= 0) {
+            for (Eigen::Index n = 0; n < diag_len; ++n) {
+              output(batch, n, n + diag_index) =
+                  diag(diag_base_index + n + content_offset);
             }
           } else {
-            for (Eigen::Index n = 0; n < std::min(num_rows + d, num_cols);
-                 ++n) {
-              output(batch, n - d, n) = diag(diag_base_index + n);
+            for (Eigen::Index n = 0; n < diag_len; ++n) {
+              output(batch, n - diag_index, n) =
+                  diag(diag_base_index + n + content_offset);
             }
           }
           diag_base_index += max_diag_len;
@@ -236,15 +260,16 @@ struct MatrixSetDiag<CPUDevice, T> {
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                                  \
-  template <>                                                                \
-  void MatrixSetDiag<GPUDevice, T>::Compute(                                 \
-      OpKernelContext* context, const GPUDevice& device,                     \
-      typename TTypes<T, 3>::ConstTensor& input,                             \
-      typename TTypes<T>::ConstTensor& diag,                                 \
-      typename TTypes<T, 3>::Tensor& output,                                 \
-      const Eigen::Index lower_diag_index,                                   \
-      const Eigen::Index upper_diag_index, const Eigen::Index max_diag_len); \
+#define DECLARE_GPU_SPEC(T)                                                    \
+  template <>                                                                  \
+  void MatrixSetDiag<GPUDevice, T>::Compute(                                   \
+      OpKernelContext* context, const GPUDevice& device,                       \
+      typename TTypes<T, 3>::ConstTensor& input,                               \
+      typename TTypes<T>::ConstTensor& diag,                                   \
+      typename TTypes<T, 3>::Tensor& output,                                   \
+      const Eigen::Index lower_diag_index,                                     \
+      const Eigen::Index upper_diag_index, const Eigen::Index max_diag_len,    \
+      const bool left_align_superdiagonal, const bool left_align_subdiagonal); \
   extern template struct MatrixSetDiag<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
@@ -263,7 +288,13 @@ TF_CALL_complex128(DECLARE_GPU_SPEC);
                               .Device(DEVICE_GPU)                         \
                               .TypeConstraint<type>("T")                  \
                               .HostMemory("k"),                           \
+                          MatrixSetDiagOp<GPUDevice, type>);              \
+  REGISTER_KERNEL_BUILDER(Name("MatrixSetDiagV3")                         \
+                              .Device(DEVICE_GPU)                         \
+                              .TypeConstraint<type>("T")                  \
+                              .HostMemory("k"),                           \
                           MatrixSetDiagOp<GPUDevice, type>);
+
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_MATRIX_SET_DIAG_GPU);
 TF_CALL_bool(REGISTER_MATRIX_SET_DIAG_GPU);
 TF_CALL_complex64(REGISTER_MATRIX_SET_DIAG_GPU);

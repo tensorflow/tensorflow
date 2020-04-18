@@ -15,11 +15,13 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 
 #include <atomic>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/synchronization/notification.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -68,8 +70,8 @@ TEST(RecorderTest, Multithreaded) {
   constexpr static int kNumThreads = 4;
 
   // Start several threads writing events.
-  absl::Notification start;
-  absl::Notification stop;
+  tensorflow::Notification start;
+  tensorflow::Notification stop;
   thread::ThreadPool pool(Env::Default(), "testpool", kNumThreads);
   std::atomic<int> thread_count = {0};
   for (int i = 0; i < kNumThreads; i++) {
@@ -80,7 +82,7 @@ TEST(RecorderTest, Multithreaded) {
         uint64 start_time = Env::Default()->NowNanos();
         uint64 end_time = start_time + kNanosInSec;
         TraceMeRecorder::Record({/*activity_id=*/j++,
-                                 /*name=*/strings::StrCat(i), start_time,
+                                 /*name=*/absl::StrCat(i), start_time,
                                  end_time});
       };
       thread_count.fetch_add(1, std::memory_order_relaxed);

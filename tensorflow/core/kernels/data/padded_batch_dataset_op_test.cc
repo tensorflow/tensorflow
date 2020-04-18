@@ -20,7 +20,7 @@ namespace {
 constexpr char kNodeName[] = "padded_batch_dataset";
 constexpr int kOpVersion = 2;
 
-class PaddedBatchDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class PaddedBatchDatasetOpTest : public DatasetOpsTestBase {};
 
 class PaddedBatchDatasetParams : public DatasetParams {
  public:

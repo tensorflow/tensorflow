@@ -42,17 +42,22 @@ def preload_check():
     # we load the Python extension, so that we can raise an actionable error
     # message if they are not found.
     import ctypes  # pylint: disable=g-import-not-at-top
-    if hasattr(build_info, "msvcp_dll_name"):
-      try:
-        ctypes.WinDLL(build_info.msvcp_dll_name)
-      except OSError:
+    if hasattr(build_info, "msvcp_dll_names"):
+      missing = []
+      for dll_name in build_info.msvcp_dll_names.split(","):
+        try:
+          ctypes.WinDLL(dll_name)
+        except OSError:
+          missing.append(dll_name)
+      if missing:
         raise ImportError(
-            "Could not find %r. TensorFlow requires that this DLL be "
-            "installed in a directory that is named in your %%PATH%% "
-            "environment variable. You may install this DLL by downloading "
-            "Visual C++ 2015 Redistributable Update 3 from this URL: "
-            "https://www.microsoft.com/en-us/download/details.aspx?id=53587"
-            % build_info.msvcp_dll_name)
+            "Could not find the DLL(s) %r. TensorFlow requires that these DLLs "
+            "be installed in a directory that is named in your %%PATH%% "
+            "environment variable. You may install these DLLs by downloading "
+            '"Microsoft C++ Redistributable for Visual Studio 2015, 2017 and '
+            '2019" for your platform from this URL: '
+            "https://support.microsoft.com/help/2977003/the-latest-supported-visual-c-downloads"
+            % " or ".join(missing))
   else:
     # TODO(mrry): Consider adding checks for the Linux and Mac OS X builds.
     pass

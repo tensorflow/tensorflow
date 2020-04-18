@@ -104,19 +104,21 @@ def _device_link_impl(ctx):
     tmp_fatbin = ctx.actions.declare_file("%s.fatbin" % name)
     fatbin_h = ctx.actions.declare_file("%s_fatbin.h" % name)
     bin2c = ctx.file._bin2c
-    ctx.actions.run(
-        outputs = [tmp_fatbin, fatbin_h],
-        inputs = cubins,
-        executable = ctx.file._fatbinary,
-        arguments = [
+    arguments_list = [
             "-64",
             "--cmdline=--compile-only",
             "--link",
             "--compress-all",
-            "--bin2c-path=%s" % bin2c.dirname,
             "--create=%s" % tmp_fatbin.path,
             "--embedded-fatbin=%s" % fatbin_h.path,
-        ] + images,
+        ]
+    if %{use_bin2c_path}:
+           arguments_list.append("--bin2c-path=%s" % bin2c.dirname)
+    ctx.actions.run(
+        outputs = [tmp_fatbin, fatbin_h],
+        inputs = cubins,
+        executable = ctx.file._fatbinary,
+        arguments = arguments_list + images,
         tools = [bin2c],
         mnemonic = "fatbinary",
     )

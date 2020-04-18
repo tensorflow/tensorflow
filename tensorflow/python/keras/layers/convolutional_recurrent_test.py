@@ -202,6 +202,35 @@ class ConvLSTMTest(keras_parameterized.TestCase):
       outputs = clone.predict(test_inputs)
       self.assertAllClose(reference_outputs, outputs, atol=1e-5)
 
+  def test_conv_lstm_with_initial_state(self):
+    num_samples = 32
+    sequence_len = 5
+    encoder_inputs = keras.layers.Input((None, 32, 32, 3))
+    encoder = keras.layers.ConvLSTM2D(
+        filters=32, kernel_size=(3, 3), padding='same',
+        return_sequences=False, return_state=True)
+    _, state_h, state_c = encoder(encoder_inputs)
+    encoder_states = [state_h, state_c]
+
+    decoder_inputs = keras.layers.Input((None, 32, 32, 4))
+    decoder_lstm = keras.layers.ConvLSTM2D(
+        filters=32, kernel_size=(3, 3), padding='same',
+        return_sequences=False, return_state=False)
+    decoder_outputs = decoder_lstm(decoder_inputs, initial_state=encoder_states)
+    output = keras.layers.Conv2D(
+        1, (3, 3), padding='same', activation='relu')(decoder_outputs)
+    model = keras.Model([encoder_inputs, decoder_inputs], output)
+
+    model.compile(
+        optimizer='sgd', loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    x_1 = np.random.rand(num_samples, sequence_len, 32, 32, 3)
+    x_2 = np.random.rand(num_samples, sequence_len, 32, 32, 4)
+    y = np.random.rand(num_samples, 32, 32, 1)
+    model.fit([x_1, x_2], y)
+
+    model.predict([x_1, x_2])
+
 
 if __name__ == '__main__':
   test.main()

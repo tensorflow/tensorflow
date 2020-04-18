@@ -22,8 +22,10 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_GPU_HELPERS_H_
 
 #include <stddef.h>
+
 #include <complex>
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/stream_executor/gpu/gpu_types.h"
 
 namespace stream_executor {
@@ -83,12 +85,18 @@ struct GpuComplexT<std::complex<double>> {
 
 template <typename T>
 inline const typename GpuComplexT<T>::type* GpuComplex(const T* p) {
-  return reinterpret_cast<const typename GpuComplexT<T>::type*>(p);
+  auto* result = reinterpret_cast<const typename GpuComplexT<T>::type*>(p);
+  CHECK_EQ(reinterpret_cast<uintptr_t>(p) % alignof(decltype(*result)), 0)
+      << "Source pointer is not aligned by " << alignof(decltype(*result));
+  return result;
 }
 
 template <typename T>
 inline typename GpuComplexT<T>::type* GpuComplex(T* p) {
-  return reinterpret_cast<typename GpuComplexT<T>::type*>(p);
+  auto* result = reinterpret_cast<typename GpuComplexT<T>::type*>(p);
+  CHECK_EQ(reinterpret_cast<uintptr_t>(p) % alignof(decltype(*result)), 0)
+      << "Source pointer is not aligned by " << alignof(decltype(*result));
+  return result;
 }
 
 // Converts values of std::complex<float/double> to values of

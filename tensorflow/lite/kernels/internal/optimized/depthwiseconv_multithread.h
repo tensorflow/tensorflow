@@ -123,7 +123,7 @@ inline void DepthwiseConv(const DepthwiseParams& params,
                           const TS* bias_data, const RuntimeShape& output_shape,
                           T* output_data,
                           CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("DepthwiseConv");
+  ruy::profiler::ScopeLabel label("DepthwiseConv");
 
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
@@ -144,7 +144,7 @@ inline void DepthwiseConv(const DepthwiseParams& params,
   const int output_height = output_shape.Dims(1);
 
   CpuFlags cpu_flags;
-  GetCpuFlags(cpu_backend_context, &cpu_flags);
+  GetCpuFlags(&cpu_flags);
 
   if (thread_count == 1) {
     DepthwiseConvImpl(params, input_shape, input_data, filter_shape,

@@ -21,6 +21,7 @@ import collections
 import functools
 
 import six
+import wrapt
 
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import composite_tensor
@@ -105,6 +106,8 @@ def normalize_element(element):
         elif isinstance(
             spec, (tensor_array_ops.TensorArraySpec, dataset_ops.DatasetSpec)):
           normalized_components.append(t)
+        elif isinstance(spec, NoneTensorSpec):
+          normalized_components.append(NoneTensor())
         elif isinstance(t, composite_tensor.CompositeTensor):
           normalized_components.append(t)
         else:
@@ -439,8 +442,12 @@ def type_spec_from_value(element, use_fallback=True):
     if hasattr(element, "_fields") and isinstance(
         element._fields, collections.Sequence) and all(
             isinstance(f, six.string_types) for f in element._fields):
+      if isinstance(element, wrapt.ObjectProxy):
+        element_type = type(element.__wrapped__)
+      else:
+        element_type = type(element)
       # `element` is a namedtuple
-      return type(element)(*[type_spec_from_value(v) for v in element])
+      return element_type(*[type_spec_from_value(v) for v in element])
     # `element` is not a namedtuple
     return tuple([type_spec_from_value(v) for v in element])
 
@@ -457,3 +464,65 @@ def type_spec_from_value(element, use_fallback=True):
 
   raise TypeError("Could not build a TypeSpec for %r with type %s" %
                   (element, type(element).__name__))
+
+
+# TODO(b/149584798): Move this to framework and add tests for non-tf.data
+# functionality.
+class NoneTensor(composite_tensor.CompositeTensor):
+  """Composite tensor representation for `None` value."""
+
+  @property
+  def _type_spec(self):
+    return NoneTensorSpec()
+
+
+# TODO(b/149584798): Move this to framework and add tests for non-tf.data
+# functionality.
+class NoneTensorSpec(type_spec.BatchableTypeSpec):
+  """Type specification for `None` value."""
+
+  @property
+  def value_type(self):
+    return NoneTensor
+
+  def _serialize(self):
+    return ()
+
+  @property
+  def _component_specs(self):
+    return []
+
+  def _to_components(self, value):
+    return []
+
+  def _from_components(self, components):
+    return
+
+  def _to_tensor_list(self, value):
+    return []
+
+  @staticmethod
+  def from_value(value):
+    return NoneTensorSpec()
+
+  def _batch(self, batch_size):
+    return NoneTensorSpec()
+
+  def _unbatch(self):
+    return NoneTensorSpec()
+
+  def _to_batched_tensor_list(self, value):
+    return []
+
+  def _to_legacy_output_types(self):
+    return self
+
+  def _to_legacy_output_shapes(self):
+    return self
+
+  def _to_legacy_output_classes(self):
+    return self
+
+
+type_spec.register_type_spec_from_value_converter(type(None),
+                                                  NoneTensorSpec.from_value)

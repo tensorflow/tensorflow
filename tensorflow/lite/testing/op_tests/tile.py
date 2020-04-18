@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -27,7 +27,7 @@ from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 def make_tile_tests(options):
   """Make a set of tests to do tile."""
   test_parameters = [{
-      "input_dtype": [tf.float32, tf.int32, tf.bool],
+      "input_dtype": [tf.float32, tf.int32, tf.bool, tf.string],
       "input_shape": [[3, 2, 1], [2, 2, 2]],
       "multiplier_dtype": [tf.int32, tf.int64],
       "multiplier_shape": [[3]]
@@ -35,11 +35,11 @@ def make_tile_tests(options):
 
   def build_graph(parameters):
     """Build the tile op testing graph."""
-    input_value = tf.placeholder(
+    input_value = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         shape=parameters["input_shape"],
         name="input")
-    multiplier_value = tf.placeholder(
+    multiplier_value = tf.compat.v1.placeholder(
         dtype=parameters["multiplier_dtype"],
         shape=parameters["multiplier_shape"],
         name="multiplier")

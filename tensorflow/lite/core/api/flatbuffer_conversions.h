@@ -19,7 +19,7 @@ limitations under the License.
 // flatbuffer serialization format into in-memory values that are used by the
 // runtime API and interpreter.
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -39,7 +39,8 @@ class BuiltinDataAllocator {
   template <typename T>
   T* AllocatePOD() {
     static_assert(std::is_pod<T>::value, "Builtin data structure must be POD.");
-    return static_cast<T*>(this->Allocate(sizeof(T)));
+    void* allocated_memory = this->Allocate(sizeof(T));
+    return new (allocated_memory) T;
   }
 
   virtual ~BuiltinDataAllocator() {}

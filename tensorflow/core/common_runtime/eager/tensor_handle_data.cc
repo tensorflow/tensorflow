@@ -16,18 +16,23 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
 class Status;
 
 Status LocalTensorHandleData::Tensor(const tensorflow::Tensor** t) const {
+  TF_RETURN_IF_ERROR(WaitReady("Tensor"));
+
   *t = &tensor_;
 
   return Status::OK();
 }
 
 Status LocalTensorHandleData::TensorValue(tensorflow::TensorValue* t) {
+  TF_RETURN_IF_ERROR(WaitReady("TensorValue"));
+
   tensorflow::Tensor& tensor = tensor_;
   *t = tensorflow::TensorValue(&tensor);
 
@@ -35,67 +40,96 @@ Status LocalTensorHandleData::TensorValue(tensorflow::TensorValue* t) {
 }
 
 Status LocalTensorHandleData::Shape(TensorShape* shape) const {
+  TF_RETURN_IF_ERROR(WaitReady("Shape"));
+
   *shape = tensor_.shape();
 
   return Status::OK();
 }
 
 Status LocalTensorHandleData::NumDims(int* num_dims) const {
+  TF_RETURN_IF_ERROR(WaitReady("NumDims"));
+
   *num_dims = tensor_.dims();
 
   return Status::OK();
 }
 
 Status LocalTensorHandleData::Dim(int dim_index, int64* dim) const {
+  TF_RETURN_IF_ERROR(WaitReady("Dim"));
+
   *dim = tensor_.dim_size(dim_index);
 
   return Status::OK();
 }
 
 Status LocalTensorHandleData::NumElements(int64* num_elements) const {
+  TF_RETURN_IF_ERROR(WaitReady("NumElements"));
+
   *num_elements = tensor_.NumElements();
 
   return Status::OK();
 }
 
-Status AsyncLocalTensorHandleData::Tensor(const tensorflow::Tensor** t) const {
-  return errors::Unavailable(
-      "Unable to get a tensor for an async handle. "
-      "Please wait until it is ready");
+Status LocalTensorHandleData::Unprotect() {
+  if (!IsReady()) {
+    return errors::Internal("Cannot unprotect a non-ready tensor");
+  }
+
+  forwarding_protection_tensor_ = tensorflow::Tensor();
+
+  return Status::OK();
 }
 
-Status AsyncLocalTensorHandleData::TensorValue(tensorflow::TensorValue* t) {
-  return errors::Unavailable(
-      "Unable to get a tensor for an async handle. "
-      "Please wait until it is ready");
+Status LocalTensorHandleData::SetTensor(tensorflow::Tensor&& t) {
+  DCHECK(!IsReady()) << "SetTensor is only called on non-ready handles.";
+
+  tensor_ = std::move(t);
+  // Create copy of original tensor to avoid forwarding
+  forwarding_protection_tensor_ = tensor_;
+
+  auto& state = absl::get<BlockingControl>(ctrl_);
+  state.SetReady();
+
+  return Status::OK();
 }
 
-Status AsyncLocalTensorHandleData::Shape(TensorShape* shape) const {
-  return errors::Unavailable(
-      "Unable to get shape information for an async handle. "
-      "Please wait until it is ready");
+string LocalTensorHandleData::DebugString() const {
+  if (IsReady()) {
+    return tensor_.DeviceSafeDebugString();
+  } else {
+    return "LocalTensorHandleData";
+  }
 }
 
-Status AsyncLocalTensorHandleData::NumDims(int* num_dims) const {
-  return errors::Unavailable(
-      "Unable to get shape information for an async handle. "
-      "Please wait until it is ready");
+void LocalTensorHandleData::BlockingControl::SetReady() {
+  mutex_lock l(mu_);
+  is_ready_ = true;
 }
 
-Status AsyncLocalTensorHandleData::Dim(int dim_index, int64* dim) const {
-  return errors::Unavailable(
-      "Unable to get shape information for an async handle. "
-      "Please wait until it is ready");
+Status LocalTensorHandleData::BlockingControl::WaitReady(
+    const char* caller) const {
+  tf_shared_lock l(mu_);
+  if (!is_ready_) {
+    profiler::TraceMe activity(
+        [caller] { return absl::StrCat(caller, " WaitReady"); },
+
+        profiler::TraceMeLevel::kInfo);
+    DVLOG(3) << "WaitReady: " << caller << " " << this;
+    mu_.Await(Condition(&is_ready_));
+  }
+
+  return is_poisoned_;
 }
 
-Status AsyncLocalTensorHandleData::NumElements(int64* num_elements) const {
-  return errors::Unavailable(
-      "Unable to get shape information for an async handle. "
-      "Please wait until it is ready");
-}
-
-string AsyncLocalTensorHandleData::DebugString() const {
-  return "AsyncLocalTensorHandleData";
+void LocalTensorHandleData::BlockingControl::Poison(Status status) {
+  mutex_lock l(mu_);
+  if (is_ready_) {
+    LOG(ERROR) << "Poison can only be called on non-ready handle: " << this;
+    return;
+  }
+  is_poisoned_ = status;
+  is_ready_ = true;
 }
 
 }  // namespace tensorflow

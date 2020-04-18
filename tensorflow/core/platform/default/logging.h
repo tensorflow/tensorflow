@@ -46,6 +46,9 @@ class LogMessage : public std::basic_ostringstream<char> {
   LogMessage(const char* fname, int line, int severity);
   ~LogMessage() override;
 
+  // Change the location of the log message.
+  LogMessage& AtLocation(const char* fname, int line);
+
   // Returns the minimum log level for VLOG statements.
   // E.g., if MinVLogLevel() is 2, then VLOG(2) statements will produce output,
   // but VLOG(3) will not. Defaults to 0.
@@ -473,13 +476,13 @@ int64 MinVLogLevelFromEnv();
 // instance will be called from whichever thread is performing a logging
 // operation.
 class TFLogEntry {
-  static absl::LogSeverity AsAbslLogSecurity(int severity) {
+  static absl::LogSeverity AsAbslLogSeverity(int severity) {
     return static_cast<absl::LogSeverity>(severity);
   }
 
  public:
   explicit TFLogEntry(int severity, absl::string_view log_line)
-      : severity_(AsAbslLogSecurity(severity)), log_line_(log_line) {}
+      : severity_(AsAbslLogSeverity(severity)), log_line_(log_line) {}
 
   absl::LogSeverity log_severity() const { return severity_; }
   std::string ToString() const { return std::string(log_line_); }

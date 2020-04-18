@@ -199,7 +199,6 @@ Status SessionMgr::UpdateSession(
   }
   protobuf::RepeatedPtrField<DeviceAttributes> added_cluster_device_attrs_pb(
       added_cluster_device_attrs.begin(), added_cluster_device_attrs.end());
-  std::unique_ptr<DeviceMgr> remote_devices;
   AsRemoteDevices(worker_env_->env, added_cluster_device_attrs_pb, nullptr,
                   &added_remote_devices);
 

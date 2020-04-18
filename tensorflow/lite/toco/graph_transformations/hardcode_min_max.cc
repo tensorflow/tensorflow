@@ -17,10 +17,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -279,7 +279,7 @@ bool MinMaxApproximatelyEqual(const MinMax& minmax1, const MinMax& minmax2) {
 // If multiple of these arrays have MinMax, then these are required
 // to agree with each other.
 bool PropagateMinMaxAmongArrays(Model* model,
-                                const std::vector<string> array_names) {
+                                const std::vector<string>& array_names) {
   string reference_array_name;
   MinMax* reference_minmax = nullptr;
   for (const string& array_name : array_names) {
@@ -390,6 +390,37 @@ bool HardcodeMinMaxForLstmCell(Model* model, Operator* op) {
 
   return changed;
 }
+
+bool HardcodeMinMaxForPack(Model* model, Operator* op) {
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.minmax) {
+    return false;
+  }
+
+  // If all tensors being packed have the same min/max range, hardcode min/max
+  // for the output.
+  const auto& first_input_array = model->GetArray(op->inputs[0]);
+  if (!first_input_array.minmax) {
+    return false;
+  }
+  const auto& first_input_minmax = first_input_array.GetMinMax();
+
+  for (int i = 1; i < op->inputs.size(); i++) {
+    const auto& input_array = model->GetArray(op->inputs[i]);
+    if (!input_array.minmax) {
+      return false;
+    }
+    if (first_input_minmax != input_array.GetMinMax()) {
+      return false;
+    }
+  }
+
+  auto& output_minmax = output_array.GetOrCreateMinMax();
+  output_minmax.min = first_input_minmax.min;
+  output_minmax.max = first_input_minmax.max;
+  return true;
+}
+
 }  // namespace
 
 ::tensorflow::Status HardcodeMinMax::Run(Model* model, std::size_t op_index,
@@ -443,6 +474,9 @@ bool HardcodeMinMaxForLstmCell(Model* model, Operator* op) {
     case OperatorType::kReduceMax:
     case OperatorType::kReduceMin:
       changed = HardcodeMinMaxFromFirstInput(model, op);
+      break;
+    case OperatorType::kPack:
+      changed = HardcodeMinMaxForPack(model, op);
       break;
     case OperatorType::kSum:
       // reduce_sum is expected to change the output range. Hence

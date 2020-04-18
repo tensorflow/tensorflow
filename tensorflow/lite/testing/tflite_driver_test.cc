@@ -112,7 +112,7 @@ TEST(TfliteDriverTest, AddQuantizedInt8Test) {
 
   runner->SetInput(1, "1,1,1,1");
 
-  runner->SetExpectation(2, "3,3,3,3");
+  runner->SetExpectation(2, "0.0117,0.0117,0.0117,0.0117");
 
   runner->Invoke();
   ASSERT_TRUE(runner->IsValid());

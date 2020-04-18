@@ -22,7 +22,9 @@ namespace tensorflow {
 namespace data {
 
 FunctionHandleCache::FunctionHandleCache(FunctionLibraryRuntime* lib)
-    : lib_(lib), state_handle_(strings::Printf("%lld", random::New64())) {}
+    : lib_(lib),
+      state_handle_(
+          strings::Printf("%lld", static_cast<long long>(random::New64()))) {}
 
 FunctionHandleCache::~FunctionHandleCache() {
   Status s = Clear();
@@ -55,7 +57,7 @@ Status FunctionHandleCache::Instantiate(
 
 Status FunctionHandleCache::Clear() {
   mutex_lock l(mu_);
-  for (auto entry : handles_) {
+  for (const auto& entry : handles_) {
     TF_RETURN_IF_ERROR(lib_->ReleaseHandle(entry.second));
   }
   handles_.clear();

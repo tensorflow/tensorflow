@@ -278,7 +278,7 @@ TEST_F(HloMatchersTest, AsyncCopyMatcher) {
   auto p0 = HloInstruction::CreateParameter(0, shape_memspace1, "p0");
   auto copy_start = HloInstruction::CreateUnary(
       ShapeUtil::MakeTupleShape(
-          {shape_memspace2, ShapeUtil::MakeShape(U32, {})}),
+          {shape_memspace2, shape_memspace1, ShapeUtil::MakeShape(U32, {})}),
       HloOpcode::kCopyStart, p0.get());
   auto copy_done = HloInstruction::CreateUnary(
       shape_memspace2, HloOpcode::kCopyDone, copy_start.get());
@@ -286,18 +286,18 @@ TEST_F(HloMatchersTest, AsyncCopyMatcher) {
   EXPECT_THAT(copy_done.get(), op::AsyncCopy(2, 1, op::Parameter(0)));
 
   EXPECT_THAT(Explain(copy_start.get(), op::AsyncCopy(2, 1, op::Parameter(0))),
-              Eq("(%copy-start = (f32[16]{0:S(2)}, u32[]) "
+              Eq("(%copy-start = (f32[16]{0:S(2)}, f32[16]{0:S(1)}, u32[]) "
                  "copy-start(f32[16]{0:S(1)} %p0))"));
-  EXPECT_THAT(
-      Explain(copy_done.get(), op::AsyncCopy(3, 1, op::Parameter(0))),
-      "(%copy-done = f32[16]{0:S(2)} copy-done((f32[16]{0:S(2)}, u32[]) "
-      "%copy-start)) "
-      "copies to memory space 2, expected 3");
-  EXPECT_THAT(
-      Explain(copy_done.get(), op::AsyncCopy(2, 3, op::Parameter(0))),
-      "(%copy-done = f32[16]{0:S(2)} copy-done((f32[16]{0:S(2)}, u32[]) "
-      "%copy-start)) "
-      "is in the memory space 1, expected 3");
+  EXPECT_THAT(Explain(copy_done.get(), op::AsyncCopy(3, 1, op::Parameter(0))),
+              "(%copy-done = f32[16]{0:S(2)} copy-done((f32[16]{0:S(2)}, "
+              "f32[16]{0:S(1)}, u32[]) "
+              "%copy-start)) "
+              "copies to memory space 2, expected 3");
+  EXPECT_THAT(Explain(copy_done.get(), op::AsyncCopy(2, 3, op::Parameter(0))),
+              "(%copy-done = f32[16]{0:S(2)} copy-done((f32[16]{0:S(2)}, "
+              "f32[16]{0:S(1)}, u32[]) "
+              "%copy-start)) "
+              "is in the memory space 1, expected 3");
 }
 
 }  // namespace

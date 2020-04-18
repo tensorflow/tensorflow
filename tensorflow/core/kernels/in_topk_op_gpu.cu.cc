@@ -100,6 +100,12 @@ struct InTopKFunctor<GPUDevice, T, TargetT> {
         errors::InvalidArgument(
             "Number of targets * number of classes must be less than INT_MAX"));
 
+    if (num_targets == 0 || num_classes == 0) {
+      // Result is empty, so shortcut the rest of the function to avoid
+      // launching kernels with empty input.
+      return;
+    }
+
     // Temporary storage for a mask computed by  `ComputePredictionMaskKernel`.
     Tensor predictions_mask;
     OP_REQUIRES_OK(

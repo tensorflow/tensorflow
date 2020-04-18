@@ -25,10 +25,10 @@ import numpy as _np  # Avoids becoming a part of public Tensorflow API.
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.python.framework import dtypes
 
-# Records corresponsence between a XLA primitive type and Python/Numpy types.
+# Records correspondence between a XLA primitive type and Python/Numpy types.
 #
 # primitive_type: value of type xla_data_pb2.PrimitiveType
-# numpy_dtype: corresponsing Numpy "dtype" (like np.float32)
+# numpy_dtype: corresponding Numpy "dtype" (like np.float32)
 # literal_field_name: name of the field in the LiteralProto message elements
 # of this type go into.
 # literal_field_type: type of the field named 'literal_field_name'.

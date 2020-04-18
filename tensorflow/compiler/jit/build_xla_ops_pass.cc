@@ -157,9 +157,9 @@ void MergeOutgoingDataEdges(const Scope& s, Node* old_node, Node* new_node,
         new_output = check_numerics_op;
       }
 
-      ops::Merge merge_op(s.WithOpName("merge_oidx_", oidx),
-                          {Output(old_node, oidx), new_output});
-      merged_output = merged_outputs[oidx] = merge_op.output;
+      ops::_XlaMerge xla_merge_op(s.WithOpName("merge_oidx_", oidx),
+                                  Output(old_node, oidx), new_output);
+      merged_output = merged_outputs[oidx] = xla_merge_op.output;
     }
 
     Node* dst = e->dst();

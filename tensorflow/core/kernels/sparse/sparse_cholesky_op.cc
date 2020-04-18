@@ -75,7 +75,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
   explicit CSRSparseCholeskyCPUOp(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* ctx) final {
-    // Extract inputs and valididate shapes and types.
+    // Extract inputs and validate shapes and types.
     const CSRSparseMatrix* input_matrix;
     OP_REQUIRES_OK(ctx, ExtractVariantFromInput(ctx, 0, &input_matrix));
     const Tensor& input_permutation_indices = ctx->input(1);
@@ -150,8 +150,7 @@ class CSRSparseCholeskyCPUOp : public OpKernel {
               // lower triangular part of the output CSRSparseMatrix when
               // interpreted in row major format.
               sparse_cholesky_factors[batch_index] =
-                  solver.matrixU().twistedBy(permutation);
-
+                  std::move(solver.matrixU());
               // For now, batch_ptr contains the number of nonzeros in each
               // batch.
               batch_ptr_vec(batch_index + 1) =

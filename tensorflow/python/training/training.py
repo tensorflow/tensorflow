@@ -110,8 +110,7 @@ from tensorflow.python.training.training_util import create_global_step
 from tensorflow.python.training.training_util import get_or_create_global_step
 from tensorflow.python.training.warm_starting_util import VocabInfo
 from tensorflow.python.training.warm_starting_util import warm_start
-from tensorflow.python.pywrap_tensorflow import do_quantize_training_on_graphdef
-from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
+from tensorflow.python.training.py_checkpoint_reader import NewCheckpointReader
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=wildcard-import

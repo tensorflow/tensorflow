@@ -146,7 +146,9 @@ enum class OperatorType : uint8 {
   // instead of being given as plain constant arrays. So we need to insert
   // special nodes in the graph to shuffle axes.
   kReorderAxes,
+  kSegmentSum,
   kSelect,
+  kSelectV2,
   kSparseToDense,
   kEqual,
   kNotEqual,
@@ -175,7 +177,11 @@ enum class OperatorType : uint8 {
   kMatrixDiag,
   kMatrixSetDiag,
   kMatrixDiagV2,
-  kMatrixSetDiagV2
+  kMatrixSetDiagV2,
+  kMatrixDiagV3,
+  kMatrixSetDiagV3,
+  // Debugging operators.
+  kNumericVerify
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -228,6 +234,7 @@ enum class ArrayDataType : uint8 {
   kString,
   kComplex64,
   kFloat16,
+  kFloat64,
 };
 
 // Compile-time logic to map ArrayDataType to the corresponding C++ scalar type
@@ -484,7 +491,7 @@ struct ConvOperator : Operator {
 //   inputs[4]: optional: merge repeated.
 //
 //  Outputs:
-//    outputs[0]: deocoded.
+//    outputs[0]: decoded.
 //    outputs[1]: log probability.
 //
 // TensorFlow equivalent: CTCBeamSearchDecoder
@@ -585,6 +592,21 @@ struct FullyConnectedOperator : Operator {
 // TensorFlow equivalent: Dequantize
 struct DequantizeOperator : Operator {
   DequantizeOperator() : Operator(OperatorType::kDequantize) {}
+};
+
+// Numeric verification operator, converting a quantized array of integers with
+// quantization parameters specifying how these integers correspond to real
+// numbers
+// (see QuantizationParams) and verify them with an array of floating-point
+// values.
+
+// Inputs:
+//   inputs[0]: required: the input quantized activations array
+//   inputs[1]: required: the input reference activations array
+//
+// TensorFlow equivalent: Dequantize
+struct NumericVerifyOperator : Operator {
+  NumericVerifyOperator() : Operator(OperatorType::kNumericVerify) {}
 };
 
 // Batch-normalization operator.
@@ -950,6 +972,10 @@ inline bool operator==(const MinMax& m1, const MinMax& m2) {
   return m1.min == m2.min && m1.max == m2.max;
 }
 
+inline bool operator!=(const MinMax& m1, const MinMax& m2) {
+  return m1.min != m2.min || m1.max != m2.max;
+}
+
 // Fake-quantization operator. This does two things:
 //   - Annotate its input and output arrays with MinMax information,
 //   - Arithmetic-wise, this operator rounds incoming activation values
@@ -1233,7 +1259,7 @@ struct ExpandDimsOperator : Operator {
   ExpandDimsOperator() : Operator(OperatorType::kExpandDims) {}
 };
 
-// Ceates a tensor of shape dims and fills it with the given scalar value.
+// Creates a tensor of shape dims and fills it with the given scalar value.
 // Output type will be the same as the given scalar value.
 //
 // Inputs:
@@ -1815,6 +1841,7 @@ struct ResizeBilinearOperator : Operator {
   ResizeBilinearOperator() : Operator(OperatorType::kResizeBilinear) {}
 
   bool align_corners = false;
+  bool half_pixel_centers = false;
 };
 
 // ResizeNearestNeighborOperator operator. It resizes input images with nearest
@@ -2118,10 +2145,22 @@ struct MatrixDiagOperator : Operator {
 
 // Matrix Diag Operator V2:
 // Construct a batched diagonal tensor with given batched diagonal values.
-// Not fully supported, constains 4 extra inputs compared to MatrixDiag, support
-// default parameters settings which performs the same as MatrixDiag
+// Not fully supported, contains 4 extra inputs compared to MatrixDiag. Behave
+// like MatrixDiag when default parameters are used.
 struct MatrixDiagV2Operator : Operator {
   MatrixDiagV2Operator() : Operator(OperatorType::kMatrixDiagV2) {}
+};
+
+// Matrix Diag Operator V3:
+// Construct a batched diagonal tensor with given batched diagonal values.
+// Not fully supported, contains 5 extra inputs compared to MatrixDiag. Behave
+// like MatrixDiag when default parameters are used.
+// V3 is only different from V2 because it has an extra attribute (align) which
+// controls the alignment of diagonals in the band matrix (compact) format.
+// The alignment in V2 contradicts with the default alignment in V3 so V2 is
+// skipped. (It has never been, and should never be, exposed in the public API.)
+struct MatrixDiagV3Operator : Operator {
+  MatrixDiagV3Operator() : Operator(OperatorType::kMatrixDiagV3) {}
 };
 
 // Matrix Set Diag Operator:
@@ -2136,10 +2175,26 @@ struct MatrixSetDiagOperator : Operator {
 
 // Matrix Set Diag Operator V2:
 // Construct a batched diagonal tensor with given input and diagonal values.
-// Not fully supported, constains 1 extra inputs compared to MatrixSetDiag,
-// support default parameters settings which performs the same as MatrixSetDiag
+// Not fully supported, contains 1 extra inputs compared to MatrixSetDiag.
+// Behave like MatrixSetDiag when default parameters are used.
 struct MatrixSetDiagV2Operator : Operator {
   MatrixSetDiagV2Operator() : Operator(OperatorType::kMatrixSetDiagV2) {}
+};
+
+// Matrix Set Diag Operator V3:
+// Construct a batched diagonal tensor with given input and diagonal values.
+// Not fully supported, contains 2 extra inputs compared to MatrixSetDiag.
+// Behave like MatrixSetDiag when default parameters are used.
+// V3 is only different from V2 because it has an extra attribute (align) which
+// controls the alignment of diagonals in the band matrix (compact) format.
+// The alignment in V2 contradicts with the default alignment in V3 so V2 is
+// skipped. (It has never been, and should never be, exposed in the public API.)
+struct MatrixSetDiagV3Operator : Operator {
+  MatrixSetDiagV3Operator() : Operator(OperatorType::kMatrixSetDiagV3) {}
+};
+
+struct SegmentSumOperator : Operator {
+  SegmentSumOperator() : Operator(OperatorType::kSegmentSum) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

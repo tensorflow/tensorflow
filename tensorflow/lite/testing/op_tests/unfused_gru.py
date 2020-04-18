@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -36,13 +36,13 @@ def make_unfused_gru_tests(options):
   def build_graph(parameters):
     """Build the graph for unfused_gru."""
     inputs = [
-        tf.placeholder(tf.float32,
-                       [parameters["batch_size"], parameters["units"]])
+        tf.compat.v1.placeholder(
+            tf.float32, [parameters["batch_size"], parameters["units"]])
         for _ in range(parameters["time"])
     ]
-    cell_fw = tf.nn.rnn_cell.GRUCell(parameters["units"])
-    cell_bw = tf.nn.rnn_cell.GRUCell(parameters["units"])
-    outputs, _, _ = tf.nn.static_bidirectional_rnn(
+    cell_fw = tf.compat.v1.nn.rnn_cell.GRUCell(parameters["units"])
+    cell_bw = tf.compat.v1.nn.rnn_cell.GRUCell(parameters["units"])
+    outputs, _, _ = tf.compat.v1.nn.static_bidirectional_rnn(
         cell_fw, cell_bw, inputs, dtype=tf.float32)
 
     return inputs, outputs
@@ -54,7 +54,7 @@ def make_unfused_gru_tests(options):
                            [parameters["batch_size"], parameters["units"]])
         for _ in range(parameters["time"])
     ]
-    init = tf.global_variables_initializer()
+    init = tf.compat.v1.global_variables_initializer()
     sess.run(init)
     return input_values, sess.run(
         outputs, feed_dict=dict(zip(inputs, input_values)))

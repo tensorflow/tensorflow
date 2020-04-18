@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mem.h"
 
 namespace tensorflow {
@@ -115,10 +116,76 @@ class StridedSliceOp : public XlaOpKernel {
         slice = xla::Rev(slice, dimensions_to_reverse);
       }
       slice = xla::Slice(slice, slice_begin, slice_end, slice_strides);
+      auto operand_shape_or = ctx->builder()->GetShape(ctx->Input(0));
+      OP_REQUIRES_OK(ctx, operand_shape_or.status());
+      xla::Shape xla_shape = operand_shape_or.ValueOrDie();
+      if (xla_shape.is_static()) {
+        // Static output shape, return a static slice.
+        slice = xla::Reshape(slice, final_shape.dim_sizes());
+        ctx->SetOutput(0, slice);
+        return;
+      }
+      auto input_dim_sizes = input_shape.dim_sizes();
+
+      for (int64 i = 0; i < xla_shape.rank(); ++i) {
+        if (xla_shape.is_dynamic_dimension(i)) {
+          input_dim_sizes[i] = -1;
+        }
+      }
+      PartialTensorShape input_partial_shape(input_dim_sizes);
+      partial_final_shape.Clear();
+      end.clear();
+      strides.clear();
+      begin.clear();
+      // Run shape inferenference again with partial shape.
+      OP_REQUIRES_OK(ctx, ValidateStridedSliceOp(
+                              &begin_tensor, &end_tensor, strides_tensor,
+                              input_partial_shape, begin_mask_, end_mask_,
+                              ellipsis_mask_, new_axis_mask_, shrink_axis_mask_,
+                              &dummy_processing_shape, &partial_final_shape,
+                              &dummy, &dummy, &dummy, &begin, &end, &strides));
+      if (partial_final_shape.AsTensorShape(&final_shape)) {
+        // Static output shape, return a static slice.
+        slice = xla::Reshape(slice, final_shape.dim_sizes());
+        ctx->SetOutput(0, slice);
+        return;
+      }
+
+      // We consider slicing a dynamic tensor t with negative indices as a
+      // dynamic sized slice. E.g., t[: -n], the result length is shape(t) - n
+      for (int64 i = 0; i < partial_final_shape.dims(); ++i) {
+        bool dynamic_dim = partial_final_shape.dim_size(i) - 1;
+        bool backward_slice = end[i] < 0;
+        if (dynamic_dim && backward_slice) {
+          OP_REQUIRES(
+              ctx, strides[i] == 1,
+              errors::InvalidArgument("XLA has not implemented dynamic "
+                                      "sized slice with non-trival stride yet. "
+                                      "Please file a bug against XLA"));
+
+          OP_REQUIRES(ctx, begin[i] >= 0,
+                      errors::InvalidArgument(
+                          "XLA has not implemented dynamic "
+                          "sized slice with negative begin index %lld. "
+                          "Please file a bug against XLA",
+                          begin[i]));
+          // If there is a dynamic dimension, properly set dimension size of
+          // the result.
+          auto operand_size = xla::GetDimensionSize(ctx->Input(0), i);
+
+          operand_size = xla::Add(
+              operand_size, xla::ConstantR0<int32>(ctx->builder(), end[i]));
+          slice = xla::SetDimensionSize(
+              slice,
+              xla::Sub(operand_size,
+                       xla::ConstantR0<int32>(ctx->builder(), begin[i])),
+              i);
+        }
+      }
     } else {
       // When output shape is fully defined, it must be a size one slice:
       //
-      // 1. The number of output elements has to equal to number of input
+      // 1. The number of output elements has to be equal to the number of input
       // elements that are sliced.
       // 2. The stride of the slice dimensions must be exact one.
       int64 output_elements = final_shape.num_elements();
@@ -126,6 +193,7 @@ class StridedSliceOp : public XlaOpKernel {
       int64 input_elements_sliced = 1;
       int64 slicing_dim_size = begin_shape.dim_size(0);
       // We only support slicing major dimensions, so minor dimensions after
+      // slicing dimension are all sliced with their full sizes.
       for (int64 d = slicing_dim_size; d < input_shape.dims(); ++d) {
         input_elements_sliced *= input_shape.dim_size(d);
       }
@@ -148,17 +216,25 @@ class StridedSliceOp : public XlaOpKernel {
       // inference size 1 slice.
       std::vector<int64> slice_sizes(slicing_dim_size, 1);
       std::vector<xla::XlaOp> start_indices;
+      auto zero = xla::Zero(ctx->builder(), ctx->InputXlaType("begin"));
       for (int64 d = 0; d < slicing_dim_size; ++d) {
         auto index = xla::Slice(ctx->Input("begin"), {d}, {d + 1}, {1});
         // Convert index to scalar.
-        start_indices.push_back(xla::Reshape(index, {}));
+        index = xla::Reshape(index, {});
+        // Negative index: wrap it around with dimension size.
+        auto index_negative = xla::Lt(index, zero);
+        auto dim_size = xla::ConvertElementType(
+            xla::ConstantR0<int32>(ctx->builder(), input_shape.dim_size(d)),
+            ctx->InputXlaType("begin"));
+        auto wrapped_index = xla::Add(dim_size, index);
+        index = xla::Select(index_negative, wrapped_index, index);
+        start_indices.push_back(index);
       }
 
       for (int64 d = slicing_dim_size; d < input_shape.dims(); ++d) {
         // For non-slice dims, naturally we get the full slice starting from 0.
         slice_sizes.push_back(input_shape.dim_size(d));
-        start_indices.push_back(
-            xla::Zero(ctx->builder(), ctx->InputXlaType("begin")));
+        start_indices.push_back(zero);
       }
 
       std::vector<int64> output_shape_dim_sizes;

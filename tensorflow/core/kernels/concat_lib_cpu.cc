@@ -45,6 +45,54 @@ struct MemCpyCopier<ResourceHandle> {
   }
 };
 
+template <typename T>
+int64 EstimateBytesPerElement(
+    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
+        inputs) {
+  return sizeof(T);
+}
+
+// EstimateBytesPerElement for strings estimates the total bytes involved in
+// concatenating the strings in the "inputs" matrices (higher-level code
+// reshapes all the inputs to matrices), by sampling the lengths of the actual
+// strings in the various tensors.
+template <>
+int64 EstimateBytesPerElement<tstring>(
+    const std::vector<
+        std::unique_ptr<typename TTypes<tstring, 2>::ConstMatrix>>& inputs) {
+  // randomly sample a few input strings to get a sense of the average size
+  // of each element
+  int num_samples = 0;
+  int64 num_bytes_in_samples = 0;
+  for (const auto& input : inputs) {
+    const auto dim0 = input->dimension(0);
+    const auto dim1 = input->dimension(1);
+    const auto zero = dim0 - dim0;  // Make type match
+    if (dim0 > 0 && dim1 > 0) {
+      // Draw 9 samples of string sizes from the input, in this sort of pattern
+      // ("*" is sample), to get an estimate of the lengths of each string
+      // element in the tensors:
+      //
+      //    *...*...*
+      //    .........
+      //    *...*...*
+      //    .........
+      //    *...*...*
+      for (auto i : {zero, dim0 / 2, dim0 - 1}) {
+        for (auto j : {zero, dim1 / 2, dim1 - 1}) {
+          num_bytes_in_samples += (*input)(i, j).size();
+          num_samples++;
+        }
+      }
+    }
+  }
+  // We don't use sizeof(std::string) as the overhead, since that would
+  // overestimate the memory touched for copying a string.
+  int64 string_overhead = sizeof(char*) + sizeof(size_t);
+  return string_overhead +
+         ((num_samples > 0) ? (num_bytes_in_samples / num_samples) : 0);
+}
+
 }  // namespace
 
 template <typename T>
@@ -53,13 +101,8 @@ void ConcatCPU(
     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
         inputs,
     typename TTypes<T, 2>::Matrix* output) {
-  if (std::is_same<T, string>::value) {
-    // use a large cost here to force strings to be handled by separate threads
-    ConcatCPUImpl<T>(d, inputs, 100000, MemCpyCopier<T>(), output);
-  } else {
-    ConcatCPUImpl<T>(d, inputs, sizeof(T) /* cost_per_unit */,
-                     MemCpyCopier<T>(), output);
-  }
+  int64 cost_per_unit = EstimateBytesPerElement<T>(inputs);
+  ConcatCPUImpl<T>(d, inputs, cost_per_unit, MemCpyCopier<T>(), output);
 }
 
 #define REGISTER(T)                                                            \

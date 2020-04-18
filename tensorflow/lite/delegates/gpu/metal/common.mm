@@ -34,34 +34,9 @@ namespace metal {
 
 id<MTLDevice> GetBestSupportedMetalDevice() { return MTLCreateSystemDefaultDevice(); }
 
-int GetMacOsGpuVersion(id<MTLDevice> device) {
-#if defined(__MAC_10_11) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_11
-  std::vector<std::pair<MTLFeatureSet, int>> features;
-  if (@available(macOS 10.11, *)) {
-    features.emplace_back(MTLFeatureSet_macOS_GPUFamily1_v1, 1);
-  }
-  if (@available(macOS 10.12, *)) {
-    features.emplace_back(MTLFeatureSet_macOS_GPUFamily1_v2, 1);
-  }
-  if (@available(macOS 10.13, *)) {
-    features.emplace_back(MTLFeatureSet_macOS_GPUFamily1_v3, 1);
-  }
-  if (@available(macOS 10.14, *)) {
-    features.emplace_back(MTLFeatureSet_macOS_GPUFamily1_v4, 1);
-    features.emplace_back(MTLFeatureSet_macOS_GPUFamily2_v1, 2);
-  }
-  for (const auto& type : features) {
-    if ([device supportsFeatureSet:type.first]) {
-      return type.second;
-    }
-  }
-#endif
-  return 0;
-}
-
-Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* functionName,
-                            NSDictionary<NSString*, NSString*>* macros,
-                            id<MTLComputePipelineState>* program) {
+absl::Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* functionName,
+                                  NSDictionary<NSString*, NSString*>* macros,
+                                  id<MTLComputePipelineState>* program) {
   MTLCompileOptions* options = [[MTLCompileOptions alloc] init];
 
   // Runtime checks for the iOS version independently of minimum target iOS.
@@ -74,10 +49,10 @@ Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* func
   } else if (@available(macOS 10.11, iOS 9.0, tvOS 9.0, *)) {
     [options setLanguageVersion:MTLLanguageVersion1_1];
   }
-#if (defined(__MAC_10_11) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_11) ||  \
+#if (defined(__MAC_10_11) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_11) ||    \
     (defined(__IPHONE_9_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_9_0) || \
     (defined(__TVOS_9_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_9_0)
-    // Minimum target OS version is able to support Metal.
+  // Minimum target OS version is able to support Metal.
 #else
 #pragma message(VAR_NAME_VALUE(__MAC_OS_X_VERSION_MIN_REQUIRED))
 #pragma message(VAR_NAME_VALUE(__IPHONE_OS_VERSION_MIN_REQUIRED))
@@ -95,14 +70,14 @@ Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* func
   if (!library) {
     NSString* errorString =
         [NSString stringWithFormat:@"newLibraryWithSource: %@", [error localizedDescription]];
-    return InternalError([errorString UTF8String]);
+    return absl::InternalError([errorString UTF8String]);
   }
 
   id<MTLFunction> function = [library newFunctionWithName:functionName];
   if (!function) {
     NSString* errorString =
         [NSString stringWithFormat:@"newFunctionWithName: %@", [error localizedDescription]];
-    return InternalError([errorString UTF8String]);
+    return absl::InternalError([errorString UTF8String]);
   }
 
   *program = [device newComputePipelineStateWithFunction:function error:&error];
@@ -110,9 +85,9 @@ Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* func
     NSString* errorString =
         [NSString stringWithFormat:@"newComputePipelineStateWithFunction error: %@",
                                    [error localizedDescription]];
-    return InternalError([errorString UTF8String]);
+    return absl::InternalError([errorString UTF8String]);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace metal

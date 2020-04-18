@@ -17,15 +17,16 @@ limitations under the License.
 #define TENSORFLOW_C_TF_STATUS_HELPER_H_
 
 #include "tensorflow/c/tf_status.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
 // Set the attribute of "tf_status" from the attributes of "status".
-void Set_TF_Status_from_Status(TF_Status* tf_status, const Status& status);
+void Set_TF_Status_from_Status(TF_Status* tf_status,
+                               const tensorflow::Status& status);
 
 // Returns a "status" from "tf_status".
-Status StatusFromTF_Status(const TF_Status* tf_status);
+tensorflow::Status StatusFromTF_Status(const TF_Status* tf_status);
 
 }  // namespace tensorflow
 

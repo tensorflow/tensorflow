@@ -204,13 +204,14 @@ class DeserializeSparseOp : public OpKernel {
       target_shape.vec<int64>()(i + ndims - 1) = output.shape().data()[i + 1];
     }
 
-    Reshape(context, output.indices(), input_shape, target_shape,
-            0 /* output indices index */, 2 /* output shape index */);
+    ReshapeSparseTensor(context, output.indices(), input_shape, target_shape,
+                        0 /* output indices index */,
+                        2 /* output shape index */);
     context->set_output(1, output.values());
   }
 
  private:
-  Status Deserialize(const string& serialized, Tensor* result) {
+  Status Deserialize(const tstring& serialized, Tensor* result) {
     TensorProto proto;
     if (!ParseProtoUnlimited(&proto, serialized)) {
       return errors::InvalidArgument("Could not parse serialized proto");
@@ -224,8 +225,8 @@ class DeserializeSparseOp : public OpKernel {
   }
 
   Status GetAndValidateSparseTensor(
-      const string& serialized_indices, const string& serialized_values,
-      const string& serialized_shape, DataType values_dtype, int index,
+      const tstring& serialized_indices, const tstring& serialized_values,
+      const tstring& serialized_shape, DataType values_dtype, int index,
       Tensor* output_indices, Tensor* output_values, Tensor* output_shape) {
     // Deserialize and validate the indices.
     TF_RETURN_IF_ERROR(this->Deserialize(serialized_indices, output_indices));

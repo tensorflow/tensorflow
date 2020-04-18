@@ -20,7 +20,7 @@ END
 Creates a Dataset that returns a stream of uniformly distributed
 pseudorandom 64-bit signed integers.
 
-In the TensorFlow Python API, you can instantiate this dataset via the 
+In the TensorFlow Python API, you can instantiate this dataset via the
 class `tf.data.experimental.RandomDataset`.
 
 Instances of this dataset are also created as a result of the

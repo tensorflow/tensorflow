@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
+
+#include "absl/strings/match.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -886,6 +888,61 @@ TEST_F(DependencyOptimizerTest, GroupCrossDeviceControlDeps) {
   output.Clear();
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
   CompareGraphs(expected, output);
+}
+
+TEST_F(DependencyOptimizerTest, GroupCrossHostControlDeps) {
+  GrapplerItem item;
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    std::vector<Operation> ops;
+    Output a = ops::RandomUniform(s.WithOpName("a").WithDevice("/CPU:0"),
+                                  {1, 2}, DT_FLOAT);
+    for (int t = 0; t < 4; ++t) {
+      for (int c = 0; c < 8; ++c) {
+        string opname = absl::StrCat("t", t, "/c", c);
+        string device = absl::StrCat("/task:", t, "/device:TPU:", c);
+        Output output = ops::RandomUniform(
+            s.WithOpName(opname).WithDevice(device), {1, 2}, DT_FLOAT);
+        ops.push_back(output.op());
+      }
+    }
+    // Node with cross-device dependencies.
+    auto fetch = ops::Identity(
+        s.WithOpName("f").WithControlDependencies(ops).WithDevice("/CPU:0"),
+        {a});
+
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    item.fetch.push_back("f");
+  }
+
+  GraphDef expected;
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    TF_CHECK_OK(s.ToGraphDef(&expected));
+  }
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 4);
+  std::set<string> tasks;
+  for (const auto& n : output.node()) {
+    if (n.op() == "NoOp") {
+      EXPECT_TRUE(absl::StartsWith(n.name(), "GroupCrossDeviceControlEdges"));
+      EXPECT_EQ(n.input_size(), 8);
+      tasks.insert(n.device());
+    }
+
+    if (n.name() == "f") {
+      EXPECT_EQ(n.input_size(), 5);
+      for (const auto& i : n.input()) {
+        EXPECT_TRUE(i == "a" ||
+                    absl::StartsWith(i, "^GroupCrossDeviceControlEdges"));
+      }
+    }
+  }
+  EXPECT_EQ(tasks.size(), 4);
 }
 
 }  // namespace

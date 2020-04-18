@@ -140,10 +140,9 @@ class DimensionTest(test_util.TensorFlowTestCase):
         tensor_shape.Dimension(None) == tensor_shape.Dimension(12))
     self.assertIsNone(
         tensor_shape.Dimension(None) == tensor_shape.Dimension(None))
-    self.assertEqual(tensor_shape.Dimension(12), 24.0 / 2)
 
     # None indicates ambiguous comparison, but comparison vs the wrong type
-    # is unambigously False.
+    # is unambiguously False.
     self.assertIsNotNone(tensor_shape.Dimension(None) == 12.99)
     self.assertNotEqual(tensor_shape.Dimension(None), 12.99)
 
@@ -163,12 +162,26 @@ class DimensionTest(test_util.TensorFlowTestCase):
         tensor_shape.Dimension(None) != tensor_shape.Dimension(None))
 
     # None indicates ambiguous comparison, but comparison vs the wrong type
-    # is unambigously False.
+    # is unambiguously False.
     self.assertIsNotNone(tensor_shape.Dimension(None) != 12.99)
     self.assertNotEqual(tensor_shape.Dimension(None), 12.99)
 
     self.assertIsNone(tensor_shape.Dimension(None) != None)  # pylint: disable=g-equals-none
     self.assertNotEqual(tensor_shape.Dimension(12), 12.99)
+
+  def testIsCompatibleWithError(self):
+    with self.assertRaisesRegex(TypeError, "must be integer or None"):
+      tensor_shape.Dimension(42).is_compatible_with([])
+
+    with self.assertRaisesRegex(ValueError, "must be >= 0"):
+      tensor_shape.Dimension(42).is_compatible_with(-1)
+
+  def testMergeWithError(self):
+    with self.assertRaisesRegex(TypeError, "must be integer or None"):
+      tensor_shape.Dimension(42).merge_with([])
+
+    with self.assertRaisesRegex(ValueError, "must be >= 0"):
+      tensor_shape.Dimension(42).merge_with(-1)
 
   def testRepr(self):
     self.assertEqual(repr(tensor_shape.Dimension(7)), "Dimension(7)")

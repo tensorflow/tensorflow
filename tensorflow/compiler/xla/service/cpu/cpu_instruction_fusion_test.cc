@@ -16,13 +16,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
 
 #include <algorithm>
+#include <memory>
 #include <set>
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 
@@ -37,7 +38,7 @@ using InstructionFusionTest = HloTestBase;
 std::unique_ptr<HloInstruction> MakeDot(const Shape& shape, HloInstruction* lhs,
                                         HloInstruction* rhs) {
   DotDimensionNumbers dot_dnums;
-  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_lhs_contracting_dimensions(lhs->shape().rank() - 1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   PrecisionConfig precision_config;
   precision_config.mutable_operand_precision()->Resize(
@@ -54,11 +55,11 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Basic_0) {
       1, ShapeUtil::MakeShape(F32, {256}), "arg1"));
 
   HloInstruction* exp0 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {1024, 256}), HloOpcode::kExp, arg0));
+      ShapeUtil::MakeShape(F32, {1024, 256}), HloOpcode::kExp, arg0));
   HloInstruction* dot = builder.AddInstruction(
       MakeDot(ShapeUtil::MakeShape(F32, {1024}), exp0, arg1));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
   EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
@@ -73,11 +74,11 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Basic_1) {
       1, ShapeUtil::MakeShape(F32, {256, 1024}), "arg1"));
 
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {256, 1024}), HloOpcode::kExp, arg1));
+      ShapeUtil::MakeShape(F32, {256, 1024}), HloOpcode::kExp, arg1));
   HloInstruction* dot = builder.AddInstruction(
       MakeDot(ShapeUtil::MakeShape(F32, {1024}), arg0, exp1));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
   EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
@@ -92,13 +93,13 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Bitcast) {
       1, ShapeUtil::MakeShape(F32, {256}), "arg1"));
 
   HloInstruction* exp0 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {2, 512, 2, 128}), HloOpcode::kExp, arg0));
+      ShapeUtil::MakeShape(F32, {2, 512, 2, 128}), HloOpcode::kExp, arg0));
   HloInstruction* bitcast0 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {1024, 256}), HloOpcode::kBitcast, exp0));
+      ShapeUtil::MakeShape(F32, {1024, 256}), HloOpcode::kBitcast, exp0));
   HloInstruction* dot = builder.AddInstruction(
       MakeDot(ShapeUtil::MakeShape(F32, {1024}), bitcast0, arg1));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
   EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
@@ -113,14 +114,14 @@ TEST_F(InstructionFusionTest, DotOperationFusion_Reshape) {
       1, ShapeUtil::MakeShape(F32, {256}), "arg1"));
 
   HloInstruction* exp0 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {2, 512, 2, 128}), HloOpcode::kExp, arg0));
+      ShapeUtil::MakeShape(F32, {2, 512, 2, 128}), HloOpcode::kExp, arg0));
   HloInstruction* reshape0 =
       builder.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(S32, {1024, 256}), exp0));
+          ShapeUtil::MakeShape(F32, {1024, 256}), exp0));
   HloInstruction* dot = builder.AddInstruction(
       MakeDot(ShapeUtil::MakeShape(F32, {1024}), reshape0, arg1));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
   EXPECT_TRUE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
@@ -132,14 +133,14 @@ TEST_F(InstructionFusionTest, DotOperationFusion_TooLarge) {
   HloInstruction* arg0 = builder.AddInstruction(HloInstruction::CreateParameter(
       0, ShapeUtil::MakeShape(F32, {32 * 1024}), "arg0"));
   HloInstruction* arg1 = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(F32, {256, 32 * 1024}), "arg1"));
+      1, ShapeUtil::MakeShape(F32, {32 * 1024, 256}), "arg1"));
 
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {256, 32 * 1024}), HloOpcode::kExp, arg1));
+      ShapeUtil::MakeShape(F32, {32 * 1024, 256}), HloOpcode::kExp, arg1));
   HloInstruction* dot = builder.AddInstruction(
-      MakeDot(ShapeUtil::MakeShape(F32, {32 * 1024}), arg0, exp1));
+      MakeDot(ShapeUtil::MakeShape(F32, {256}), arg0, exp1));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
   EXPECT_FALSE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
@@ -154,11 +155,11 @@ TEST_F(InstructionFusionTest, DotOperationFusion_ElementReuse) {
       1, ShapeUtil::MakeShape(F32, {256, 1024}), "arg1"));
 
   HloInstruction* exp1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {256, 1024}), HloOpcode::kExp, arg1));
+      ShapeUtil::MakeShape(F32, {256, 1024}), HloOpcode::kExp, arg1));
   HloInstruction* dot = builder.AddInstruction(
       MakeDot(ShapeUtil::MakeShape(F32, {2, 1024}), arg0, exp1));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(dot, computation->root_instruction());
   EXPECT_FALSE(CpuInstructionFusion().Run(module.get()).ValueOrDie());
@@ -172,14 +173,14 @@ HloModule DotOperationFusion_TransposeFusion
 ENTRY DotOperationFusion_TransposeFusion {
   arg0 = f32[1,256] parameter(0)
   arg1 = f32[1024,256] parameter(1)
-  exponential = s32[1024,256] exponential(arg1)
-  transpose = s32[256,1024] transpose(exponential), dimensions={1,0}
+  exponential = f32[1024,256] exponential(arg1)
+  transpose = f32[256,1024] transpose(exponential), dimensions={1,0}
   ROOT dot = f32[1,1024] dot(arg0, transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
 
   TransposeFolding transpose_folding(
@@ -202,14 +203,14 @@ HloModule DotOperationFusion_TransposeFusion
 ENTRY DotOperationFusion_TransposeFusion {
   arg0 = f32[256,1] parameter(0)
   arg1 = f32[256,1024] parameter(1)
-  transpose = s32[1,256] transpose(arg0), dimensions={1,0}
-  exponential = s32[256,1024] exponential(arg1)
+  transpose = f32[1,256] transpose(arg0), dimensions={1,0}
+  exponential = f32[256,1024] exponential(arg1)
   ROOT dot = f32[1,1024] dot(transpose, exponential), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
 
   TransposeFolding transpose_folding(
@@ -233,14 +234,14 @@ HloModule DotOperationFusion_TransposeFusion
 ENTRY DotOperationFusion_TransposeFusion {
   arg0 = f32[1,256] parameter(0)
   arg1 = f32[256,1024] parameter(1)
-  transpose = s32[256,1] transpose(arg0), dimensions={1,0}
-  exponential = s32[256,1024] exponential(arg1)
+  transpose = f32[256,1] transpose(arg0), dimensions={1,0}
+  exponential = f32[256,1024] exponential(arg1)
   ROOT dot = f32[1,1024] dot(transpose, exponential), lhs_contracting_dims={0}, rhs_contracting_dims={0}
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
   HloComputation* computation = module->entry_computation();
 
   TransposeFolding transpose_folding(
@@ -333,7 +334,7 @@ TEST_F(OpcodeFusionTest, Exponential_Reshape_Negate) {
 TEST_F(OpcodeFusionTest, Broadcast_Reshape_DynamicSlice_Tanh) {
   HloComputation::Builder builder(TestName());
   Shape param_shape = ShapeUtil::MakeShape(F32, {8});
-  Shape starts_shape = ShapeUtil::MakeShape(F32, {});
+  Shape starts_shape = ShapeUtil::MakeShape(S32, {});
   Shape broadcast_shape = ShapeUtil::MakeShape(F32, {1, 8, 8});
   Shape reshape_shape = ShapeUtil::MakeShape(F32, {8, 8});
   Shape dynamic_slice_shape = ShapeUtil::MakeShape(F32, {4, 4});
@@ -353,7 +354,7 @@ TEST_F(OpcodeFusionTest, Broadcast_Reshape_DynamicSlice_Tanh) {
   builder.AddInstruction(HloInstruction::CreateUnary(
       dynamic_slice_shape, HloOpcode::kTanh, dynamic_slice4));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   RunFusionAndCheckOpcodesWereFused(
@@ -385,7 +386,7 @@ TEST_F(OpcodeFusionTest, Broadcast_Negate) {
 TEST_F(OpcodeFusionTest, DynamicSlice_Negate) {
   HloComputation::Builder builder(TestName());
   Shape param_shape = ShapeUtil::MakeShape(F32, {4});
-  Shape slice_shape = ShapeUtil::MakeShape(F32, {});
+  Shape slice_shape = ShapeUtil::MakeShape(S32, {});
   Shape result_shape = ShapeUtil::MakeShape(F32, {2});
   HloInstruction* param0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, param_shape, "param"));
@@ -396,7 +397,7 @@ TEST_F(OpcodeFusionTest, DynamicSlice_Negate) {
   builder.AddInstruction(HloInstruction::CreateUnary(
       result_shape, HloOpcode::kNegate, dynamic_slice2));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   RunFusionAndCheckOpcodesWereFused(
@@ -468,9 +469,9 @@ TEST_F(OpcodeFusionTest, Slice_Negate) {
   HloInstruction* slice1 = builder.AddInstruction(
       HloInstruction::CreateSlice(slice_shape, param0, {0}, {4}, {2}));
   builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {2}), HloOpcode::kNegate, slice1));
+      ShapeUtil::MakeShape(F32, {2}), HloOpcode::kNegate, slice1));
 
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   RunFusionAndCheckOpcodesWereFused(
@@ -731,7 +732,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(module_string));
   TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
                           CpuInstructionFusion().Run(module.get()));
@@ -758,8 +759,8 @@ TEST_P(GatherLoopFusionTest, GatherLoopFusion) {
   const GatherLoopFusionTestSpec& spec = GetParam();
   string hlo_string = absl::StrCat("HloModule ", spec.test_name, "\n\n",
                                    spec.hlo_computation_text);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   RunFusionAndCheckOpcodesWereFused(
       module.get(),
@@ -909,7 +910,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(module_string));
   TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
                           CpuInstructionFusion().Run(module.get()));
@@ -937,7 +938,7 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(module_string));
   TF_ASSERT_OK_AND_ASSIGN(bool fused_something,
                           CpuInstructionFusion().Run(module.get()));

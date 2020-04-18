@@ -97,13 +97,13 @@ TEST(ProfilingTest, ProfilesAreCollected) {
 
 TEST(ProfilingTest, NullProfiler) {
   Profiler* profiler = nullptr;
-  { SCOPED_OPERATOR_PROFILE(profiler, 1); }
+  { SCOPED_TAGGED_OPERATOR_PROFILE(profiler, "noop", 1); }
 }
 
 TEST(ProfilingTest, ScopedProfile) {
   BufferedProfiler profiler(1024);
   profiler.StartProfiling();
-  { SCOPED_OPERATOR_PROFILE(&profiler, 1); }
+  { SCOPED_TAGGED_OPERATOR_PROFILE(&profiler, "noop", 1); }
   profiler.StopProfiling();
   auto profile_events = profiler.GetProfileEvents();
   EXPECT_EQ(1, profile_events.size());
@@ -112,7 +112,7 @@ TEST(ProfilingTest, ScopedProfile) {
 TEST(ProfilingTest, NoopProfiler) {
   NoopProfiler profiler;
   profiler.StartProfiling();
-  { SCOPED_OPERATOR_PROFILE(&profiler, 1); }
+  { SCOPED_TAGGED_OPERATOR_PROFILE(&profiler, "noop", 1); }
   profiler.StopProfiling();
   auto profile_events = profiler.GetProfileEvents();
   EXPECT_EQ(0, profile_events.size());

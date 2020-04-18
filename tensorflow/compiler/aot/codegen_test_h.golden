@@ -55,14 +55,17 @@ namespace bar {
 //   ((unknown): f32[1,2], (unknown): s64[3,4], (unknown): f32[1], (unknown): f32[1], (unknown): s32[5]) -> (u32[5,6], f32[1], s32[5])
 //
 // Memory stats:
-//   arg bytes total:    104
-//   arg bytes aligned:  192
+//   arg bytes total:    392
+//   arg bytes aligned:  576
 //   temp bytes total:   126
-//   temp bytes aligned: 320
+//   temp bytes aligned: 512
 class MyClass final : public tensorflow::XlaCompiledCpuFunction {
  public:
   // Number of input arguments for the compiled computation.
-  static constexpr size_t kNumArgs = 2;
+  static constexpr size_t kNumArgs = 5;
+
+  // Number of variables for the compiled computation.
+  static constexpr size_t kNumVariables = 3;
 
   // Byte size of each argument buffer. There are kNumArgs entries.
   static const ::tensorflow::int64 ArgSize(::tensorflow::int32 index) {
@@ -79,8 +82,10 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
       set_static_data_num_buffers(data, kNumBuffers);
       set_static_data_arg_index_table(data, ArgIndexToBufferIndex());
       set_static_data_num_args(data, kNumArgs);
+      set_static_data_num_variables(data, kNumVariables);
       set_static_data_result_index(data, kResultIndex);
       set_static_data_arg_names(data, StaticArgNames());
+      set_static_data_variable_names(data, StaticVariableNames());
       set_static_data_result_names(data, StaticResultNames());
       set_static_data_program_shape(data, StaticProgramShape());
       set_static_data_hlo_profile_printer_data(
@@ -295,16 +300,22 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
 
  private:
   // Number of buffers for the compiled computation.
-  static constexpr size_t kNumBuffers = 6;
+  static constexpr size_t kNumBuffers = 12;
 
   static const ::xla::cpu_function_runtime::BufferInfo* BufferInfos() {
     static const ::xla::cpu_function_runtime::BufferInfo
       kBufferInfos[kNumBuffers] = {
 ::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
 ::xla::cpu_function_runtime::BufferInfo({34ULL, 0ULL}),
-::xla::cpu_function_runtime::BufferInfo({9ULL, ~0ULL}),
+::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
 ::xla::cpu_function_runtime::BufferInfo({386ULL, 1ULL}),
-::xla::cpu_function_runtime::BufferInfo({13ULL, ~0ULL}),
+::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
+::xla::cpu_function_runtime::BufferInfo({386ULL, 2ULL}),
+::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
+::xla::cpu_function_runtime::BufferInfo({386ULL, 3ULL}),
+::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
+::xla::cpu_function_runtime::BufferInfo({386ULL, 4ULL}),
+::xla::cpu_function_runtime::BufferInfo({5ULL, ~0ULL}),
 ::xla::cpu_function_runtime::BufferInfo({481ULL, ~0ULL})
       };
     return kBufferInfos;
@@ -312,17 +323,23 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
 
   static const ::tensorflow::int32* ArgIndexToBufferIndex() {
     static constexpr ::tensorflow::int32 kArgIndexToBufferIndex[kNumArgs] = {
-1, 3
+1, 3, 5, 7, 9
     };
     return kArgIndexToBufferIndex;
   }
 
   // The 0-based index of the result tuple in the temporary buffers.
-  static constexpr size_t kResultIndex = 5;
+  static constexpr size_t kResultIndex = 11;
 
   // Array of names of each positional argument, terminated by nullptr.
   static const char** StaticArgNames() {
     static const char* kNames[] = {"myfeed", nullptr};
+    return kNames;
+  }
+
+  // Array of names of each positional variable, terminated by nullptr.
+  static const char** StaticVariableNames() {
+    static const char* kNames[] = {"myvar_readonly", "myvar", "myvar2", nullptr};
     return kNames;
   }
 

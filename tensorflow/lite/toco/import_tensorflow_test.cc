@@ -186,6 +186,43 @@ TEST(FlexImportTest, ConditionalConst) {
   EXPECT_FALSE(model.HasArray("BadType"));
 }
 
+TEST(FlexImportTest, SoftmaxWithBeta) {
+  NodeDef node;
+  node.set_op("Softmax");
+  node.set_name("softmax");
+  node.add_input();
+  node.set_input(0, "logits");
+
+  AttrValue dtype_attr;
+  SetAttrValue(0.5, &dtype_attr);
+  (*node.mutable_attr())["_softmax_beta"] = dtype_attr;
+  Model model;
+  EXPECT_TRUE(ImportNode(node, &model).ok());
+
+  ASSERT_THAT(model.operators.size(), ::testing::Ge(1));
+  ASSERT_EQ(model.operators[0]->type, OperatorType::kSoftmax);
+  const SoftmaxOperator* op =
+      static_cast<const SoftmaxOperator*>(model.operators[0].get());
+  EXPECT_EQ(op->beta, 0.5);
+}
+
+TEST(FlexImportTest, SoftmaxWithoutBeta) {
+  NodeDef node;
+  node.set_op("Softmax");
+  node.set_name("softmax");
+  node.add_input();
+  node.set_input(0, "logits");
+
+  Model model;
+  EXPECT_TRUE(ImportNode(node, &model).ok());
+
+  ASSERT_THAT(model.operators.size(), ::testing::Ge(1));
+  ASSERT_EQ(model.operators[0]->type, OperatorType::kSoftmax);
+  const SoftmaxOperator* op =
+      static_cast<const SoftmaxOperator*>(model.operators[0].get());
+  EXPECT_EQ(op->beta, 1.0);
+}
+
 class ShapeImportTest : public ::testing::TestWithParam<tensorflow::DataType> {
 };
 

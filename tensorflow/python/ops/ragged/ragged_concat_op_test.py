@@ -220,7 +220,7 @@ class RaggedConcatOpTest(test_util.TensorFlowTestCase,
           axis=0,
           expected=[1, 2, 3, 4, 5, 6]),
       dict(
-          descr='One input (so ragged_conat is a noop)',
+          descr='One input (so ragged_concat is a noop)',
           rt_inputs=([['a00', 'a01'], [], ['a20', 'a21']],),
           axis=0,
           expected=[[b'a00', b'a01'], [], [b'a20', b'a21']]),

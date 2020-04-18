@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 
@@ -41,7 +41,7 @@ class GraphInfo {
   // num_nodes().
   virtual const TfLiteNode& node(size_t index) const = 0;
 
-  // Returns an implementation-speicfic node index which may be different from
+  // Returns an implementation-specific node index which may be different from
   // index.
   virtual size_t node_index(size_t index) const = 0;
 

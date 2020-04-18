@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_scalar_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -39,9 +39,9 @@ def make_eye_tests(options):
   def build_graph(parameters):
     """Make a set of tests to do eye."""
 
-    input_tensor0 = tf.placeholder(
+    input_tensor0 = tf.compat.v1.placeholder(
         dtype=tf.int32, name="num_rows", shape=parameters["num_rows_shape"])
-    input_tensor1 = tf.placeholder(
+    input_tensor1 = tf.compat.v1.placeholder(
         dtype=tf.int32, name="num_columns", shape=parameters["num_cols_shape"])
     if parameters["use_num_cols"]:
       outs = tf.eye(

@@ -124,7 +124,7 @@ class MetricsV1Test(test.TestCase, parameterized.TestCase):
         # replace "distribution.num_replicas_in_sync" with "1".
         batches_per_update = distribution.num_replicas_in_sync
 
-      self.evaluate(iterator.initialize())
+      self.evaluate(iterator.initializer)
       self.evaluate(variables.local_variables_initializer())
 
       batches_consumed = 0

@@ -30,7 +30,7 @@ def get_gpus():
   gpus = context.context().list_logical_devices("GPU")
   actual_gpus = []
   for gpu in gpus:
-    if "localhost" not in gpu.name:
+    if "job" in gpu.name:
       actual_gpus.append(gpu.name)
   return actual_gpus
 

@@ -24,7 +24,6 @@ import itertools
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.signal import dct_ops
 from tensorflow.python.platform import test
@@ -88,7 +87,7 @@ def _np_dct2(signals, n=None, norm=None):
     phi = np.cos(np.pi * (np.arange(dct_size) + 0.5) * k / dct_size)
     dct[..., k] = np.sum(signals_mod * phi, axis=-1)
   # SciPy's `dct` has a scaling factor of 2.0 which we follow.
-  # https://github.com/scipy/scipy/blob/v0.15.1/scipy/fftpack/src/dct.c.src
+  # https://github.com/scipy/scipy/blob/v1.2.1/scipy/fftpack/src/dct.c.src
   if norm == "ortho":
     # The orthonormal scaling includes a factor of 0.5 which we combine with
     # the overall scaling of 2.0 to cancel.
@@ -102,7 +101,7 @@ def _np_dct2(signals, n=None, norm=None):
 def _np_dct3(signals, n=None, norm=None):
   """Computes the DCT-III manually with NumPy."""
   # SciPy's `dct` has a scaling factor of 2.0 which we follow.
-  # https://github.com/scipy/scipy/blob/v0.15.1/scipy/fftpack/src/dct.c.src
+  # https://github.com/scipy/scipy/blob/v1.2.1/scipy/fftpack/src/dct.c.src
   signals_mod = _modify_input_for_dct(signals, n=n)
   dct_size = signals_mod.shape[-1]
   signals_mod = np.array(signals_mod)  # make a copy so we can modify
@@ -121,8 +120,30 @@ def _np_dct3(signals, n=None, norm=None):
   return dct
 
 
-NP_DCT = {1: _np_dct1, 2: _np_dct2, 3: _np_dct3}
-NP_IDCT = {1: _np_dct1, 2: _np_dct3, 3: _np_dct2}
+def _np_dct4(signals, n=None, norm=None):
+  """Computes the DCT-IV manually with NumPy."""
+  # SciPy's `dct` has a scaling factor of 2.0 which we follow.
+  # https://github.com/scipy/scipy/blob/v1.2.1/scipy/fftpack/src/dct.c.src
+  signals_mod = _modify_input_for_dct(signals, n=n)
+  dct_size = signals_mod.shape[-1]
+  signals_mod = np.array(signals_mod)  # make a copy so we can modify
+  if norm == "ortho":
+    signals_mod *= np.sqrt(2.0 / dct_size)
+  else:
+    signals_mod *= 2.0
+  dct = np.zeros_like(signals_mod)
+  # X_k = sum_{n=0}^{N-1}
+  #            x_n * cos(\frac{pi}{4N} * (2n + 1) * (2k + 1))  k=0,...,N-1
+  for k in range(dct_size):
+    phi = np.cos(np.pi *
+                 (2 * np.arange(0, dct_size) + 1) * (2 * k + 1) /
+                 (4.0 * dct_size))
+    dct[..., k] = np.sum(signals_mod * phi, axis=-1)
+  return dct
+
+
+NP_DCT = {1: _np_dct1, 2: _np_dct2, 3: _np_dct3, 4: _np_dct4}
+NP_IDCT = {1: _np_dct1, 2: _np_dct3, 3: _np_dct2, 4: _np_dct4}
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -138,7 +159,7 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     tf_idct = dct_ops.idct(signals, type=dct_type, norm=norm)
     self.assertEqual(tf_idct.dtype.as_numpy_dtype, signals.dtype)
     self.assertAllClose(np_idct, tf_idct, atol=atol, rtol=rtol)
-    if fftpack:
+    if fftpack and dct_type != 4:
       scipy_dct = fftpack.dct(signals, n=n, type=dct_type, norm=norm)
       self.assertAllClose(scipy_dct, tf_dct, atol=atol, rtol=rtol)
       scipy_idct = fftpack.idct(signals, type=dct_type, norm=norm)
@@ -160,7 +181,7 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     self.assertAllClose(signals, tf_dct_idct, atol=atol, rtol=rtol)
 
   @parameterized.parameters(itertools.product(
-      [1, 2, 3],
+      [1, 2, 3, 4],
       [None, "ortho"],
       [[2], [3], [10], [2, 20], [2, 3, 25]],
       [np.float32, np.float64]))
@@ -169,14 +190,13 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     # "ortho" normalization is not implemented for type I.
     if dct_type == 1 and norm == "ortho":
       return
-    with compat.forward_compatibility_horizon(2019, 10, 13):
-      with self.session(use_gpu=True):
-        tol = 5e-4 if dtype == np.float32 else 1e-7
-        signals = np.random.rand(*shape).astype(dtype)
-        n = np.random.randint(1, 2 * signals.shape[-1])
-        n = np.random.choice([None, n])
-        self._compare(signals, n, norm=norm, dct_type=dct_type,
-                      rtol=tol, atol=tol)
+    with self.session(use_gpu=True):
+      tol = 5e-4 if dtype == np.float32 else 1e-7
+      signals = np.random.rand(*shape).astype(dtype)
+      n = np.random.randint(1, 2 * signals.shape[-1])
+      n = np.random.choice([None, n])
+      self._compare(signals, n, norm=norm, dct_type=dct_type,
+                    rtol=tol, atol=tol)
 
   def test_error(self):
     signals = np.random.rand(10)

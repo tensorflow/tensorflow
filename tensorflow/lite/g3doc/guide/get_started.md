@@ -127,7 +127,7 @@ When [converting TensorFlow 2.x models](../convert/python_api.md), these are:
 
 *   [SavedModel directories](https://www.tensorflow.org/guide/saved_model)
 *   [`tf.keras` models](https://www.tensorflow.org/guide/keras/overview)
-*   [Concrete functions](../convert/concrete_function.md)
+*   [Concrete functions](https://tensorflow.org/guide/concrete_function)
 
 The converter can be configured to apply various optimizations that can improve
 performance or reduce file size. This is covered in section 4,
@@ -223,9 +223,9 @@ NanoPi).
 
 ### Microcontrollers
 
-[TensorFlow Lite for Microcontrollers](../microcontrollers/overview.md) is an
-experimental port of TensorFlow Lite aimed at microcontrollers and other devices
-with only kilobytes of memory.
+[TensorFlow Lite for Microcontrollers](../microcontrollers) is an experimental
+port of TensorFlow Lite aimed at microcontrollers and other devices with only
+kilobytes of memory.
 
 ### Operations
 

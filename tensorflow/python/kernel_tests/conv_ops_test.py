@@ -220,6 +220,7 @@ class Conv2DTest(test.TestCase):
           strides=strides,
           padding=padding,
           data_format=data_format)
+      self.assertEqual(conv.dtype, dtype)
       if data_format == "NCHW":
         conv = test_util.NCHWToNHWC(conv)
 
@@ -336,7 +337,10 @@ class Conv2DTest(test.TestCase):
     for (data_format, use_gpu) in GetTestConfigs():
       if gpu_only and not use_gpu:
         continue
-      for dtype in self._DtypesToTest(use_gpu):
+      dtypes_to_test = self._DtypesToTest(use_gpu)
+      if not test_grappler_layout_optimizer and data_format == "NHWC":
+        dtypes_to_test.append(dtypes.int32)
+      for dtype in dtypes_to_test:
         result = self._SetupValuesForDevice(
             tensor_in_sizes,
             filter_in_sizes,
@@ -358,9 +362,13 @@ class Conv2DTest(test.TestCase):
         tf_logging.debug("expected = %s", expected)
         tf_logging.debug("actual = %s", value)
         tol_to_use = fp16_tol if value.dtype == np.float16 else tol
-        self.assertAllClose(expected, np.ravel(value), atol=tol_to_use,
-                            rtol=tol_to_use)
+        if np.issubdtype(value.dtype, np.integer):
+          self.assertAllEqual(np.rint(expected), np.ravel(value))
+        else:
+          self.assertAllClose(expected, np.ravel(value), atol=tol_to_use,
+                              rtol=tol_to_use)
         self.assertShapeEqual(value, conv)
+        self.assertEqual(value.dtype, conv.dtype.as_numpy_dtype)
 
   def _VerifyExplicitPaddings(self,
                               tensor_in_sizes,
@@ -828,8 +836,9 @@ class Conv2DTest(test.TestCase):
     x2 = self._CreateNumpyTensor(output_sizes)
     dilations = list(dilations)
     with test_util.device(use_gpu):
-      if data_format == "NCHW":
-        input_sizes = test_util.NHWCToNCHW(input_sizes)
+      if len(input_sizes) == 4:
+        if data_format == "NCHW":
+          input_sizes = test_util.NHWCToNCHW(input_sizes)
       t0 = constant_op.constant(input_sizes, shape=[len(input_sizes)])
       t1 = constant_op.constant(x1, shape=filter_sizes)
       t2 = constant_op.constant(x2, shape=output_sizes)
@@ -990,6 +999,22 @@ class Conv2DTest(test.TestCase):
     for (data_format, use_gpu) in GetTestConfigs():
       self._RunAndVerifyBackpropInput(
           input_sizes=[1, 2, 2, 1],
+          filter_sizes=[2, 2, 1, 2],
+          output_sizes=[1, 1, 1, 2],
+          strides=[1, 1],
+          padding="VALID",
+          expected=expected_output,
+          data_format=data_format,
+          use_gpu=use_gpu,
+          err=1e-5)
+
+  @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("XLA requires input_sizes to be a 4D shape.")
+  def testConv2DInputSizesContainsOnlySpatialDimensionsBackpropInput(self):
+    expected_output = [5.0, 11.0, 17.0, 23.0]
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropInput(
+          input_sizes=[2, 2],
           filter_sizes=[2, 2, 1, 2],
           output_sizes=[1, 1, 1, 2],
           strides=[1, 1],
@@ -2651,7 +2676,7 @@ class SeparableConv2DTest(test.TestCase):
 
       value = self.evaluate(conv)
     tf_logging.debug("value = %s", value)
-    self.assertArrayNear(expected, np.ravel(value), 1e-3)
+    self.assertArrayNear(expected, np.ravel(value), 2e-3)
     self.assertShapeEqual(value, conv)
 
   def _testSeparableConv2D(self, data_format):

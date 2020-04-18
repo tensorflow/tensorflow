@@ -23,7 +23,6 @@ import time
 import numpy as np
 
 from tensorflow.python.client import session
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -375,15 +374,14 @@ class GatherNdTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testGatherNdResourceVariable(self):
-    with compat.forward_compatibility_horizon(2019, 4, 30):
-      with self.cached_session():
-        v = resource_variable_ops.ResourceVariable(
-            constant_op.constant([[1, 2], [3, 4], [5, 6]]))
-        self.evaluate(variables.global_variables_initializer())
-        gather = array_ops.gather_nd(v, [[0, 1], [2, 0]])
-        if not context.executing_eagerly():  # .op doesn't make sense in Eager
-          self.assertEqual("ResourceGatherNd", gather.op.inputs[0].op.type)
-        self.assertAllEqual([2, 5], gather)
+    with self.cached_session():
+      v = resource_variable_ops.ResourceVariable(
+          constant_op.constant([[1, 2], [3, 4], [5, 6]]))
+      self.evaluate(variables.global_variables_initializer())
+      gather = array_ops.gather_nd(v, [[0, 1], [2, 0]])
+      if not context.executing_eagerly():  # .op doesn't make sense in Eager
+        self.assertEqual("ResourceGatherNd", gather.op.inputs[0].op.type)
+      self.assertAllEqual([2, 5], gather)
 
 
 class GatherNdOpBenchmark(test.Benchmark):

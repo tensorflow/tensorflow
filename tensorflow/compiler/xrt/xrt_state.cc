@@ -218,17 +218,25 @@ void XRTTupleAllocation::ReleaseBuffers() {
 }
 
 /*static*/ Status XRTTupleAllocation::CreateFromBuffer(
-    const xla::ShapedBuffer& shaped_buffer, xla::Backend* backend,
+    const xla::ShapedBuffer& shaped_buffer, const xla::Shape& on_host_shape,
+    const xla::Shape& on_device_shape, xla::Backend* backend,
     int device_ordinal, XRTTupleAllocation** allocation) {
   auto allocator = backend->memory_allocator();
 
-  *allocation = new XRTTupleAllocation(device_ordinal, allocator,
-                                       shaped_buffer.on_host_shape(),
-                                       shaped_buffer.on_device_shape());
+  *allocation = new XRTTupleAllocation(device_ordinal, allocator, on_host_shape,
+                                       on_device_shape);
   (*allocation)
       ->InitializeFromShapedBuffer(shaped_buffer, allocator, device_ordinal);
   (*allocation)->SetDeviceMemorySize();
   return Status::OK();
+}
+
+/*static*/ Status XRTTupleAllocation::CreateFromBuffer(
+    const xla::ShapedBuffer& shaped_buffer, xla::Backend* backend,
+    int device_ordinal, XRTTupleAllocation** allocation) {
+  return CreateFromBuffer(shaped_buffer, shaped_buffer.on_host_shape(),
+                          shaped_buffer.on_device_shape(), backend,
+                          device_ordinal, allocation);
 }
 
 Status XRTTupleAllocation::ToLiteral(xla::Backend* backend,
@@ -624,7 +632,7 @@ Status XRTTupleAllocation::AliasBufferFrom(const XRTTupleAllocation& source,
   *buffers_.mutable_element(dest_index) = source_buffer;
   source_buffer->Ref();
   if (dest_buffer != nullptr) {
-    // If we handed over the ownership of a buffer in ToDeviceMemoryTree(), we
+    // If we handed over the ownership of a buffer in ToExecutionInput(), we
     // will be called here on the way back from execution, to alias back the
     // buffer at that index. In that case the buffers will be the same. So we
     // need to discard the memory at the destination buffer, before releasing
@@ -638,10 +646,10 @@ Status XRTTupleAllocation::AliasBufferFrom(const XRTTupleAllocation& source,
   return Status::OK();
 }
 
-xla::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>>
-XRTTupleAllocation::ToDeviceMemoryTree(
-    const std::function<bool(const xla::ShapeIndex&)>& release_checker) {
-  xla::ShapeTree<xla::MaybeOwningDeviceMemory> shaped_tree(on_device_shape());
+xla::StatusOr<xla::ExecutionInput> XRTTupleAllocation::ToExecutionInput(
+    const std::function<xla::StatusOr<bool>(const xla::ShapeIndex&)>&
+        alias_checker) {
+  xla::ExecutionInput result(on_device_shape());
   for (const auto& index_buffer : buffers_) {
     if (index_buffer.second == nullptr ||
         index_buffer.second->allocation().is_null()) {
@@ -649,16 +657,20 @@ XRTTupleAllocation::ToDeviceMemoryTree(
                                      index_buffer.first.ToString(),
                                      " has been released");
     }
-    if (!release_checker(index_buffer.first)) {
-      *shaped_tree.mutable_element(index_buffer.first) =
-          index_buffer.second->allocation();
+    TF_ASSIGN_OR_RETURN(bool should_alias, alias_checker(index_buffer.first));
+    if (!should_alias) {
+      result.SetBuffer(
+          index_buffer.first,
+          xla::MaybeOwningDeviceMemory(index_buffer.second->allocation()));
     } else {
       // We keep the ownership of the device memory here.
-      *shaped_tree.mutable_element(index_buffer.first) = se::OwningDeviceMemory(
-          index_buffer.second->allocation(), device_ordinal_, allocator_);
+      result.SetUnownedBuffer(
+          index_buffer.first,
+          xla::MaybeOwningDeviceMemory(se::OwningDeviceMemory(
+              index_buffer.second->allocation(), device_ordinal_, allocator_)));
     }
   }
-  return std::move(shaped_tree);
+  return std::move(result);
 }
 
 }  // namespace tensorflow

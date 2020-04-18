@@ -187,8 +187,10 @@ class MultiOutputFusionTest : public HloTestBase {
 XLA_TEST_F(MultiOutputFusionTest, 2DNofusion) { RunTest2D(false, 5); }
 XLA_TEST_F(MultiOutputFusionTest, 2DFusion) { RunTest2D(true, 5); }
 XLA_TEST_F(MultiOutputFusionTest, 2DFusionSize129) { RunTest2D(true, 129); }
-XLA_TEST_F(MultiOutputFusionTest, DiffentTypesNoFusion) { RunTest1D(false, 8); }
-XLA_TEST_F(MultiOutputFusionTest, DiffentTypesFusion) { RunTest1D(true, 8); }
+XLA_TEST_F(MultiOutputFusionTest, DifferentTypesNoFusion) {
+  RunTest1D(false, 8);
+}
+XLA_TEST_F(MultiOutputFusionTest, DifferentTypesFusion) { RunTest1D(true, 8); }
 
 XLA_TEST_F(MultiOutputFusionTest, FusionNodeIsRoot) {
   const char* testcase = R"(

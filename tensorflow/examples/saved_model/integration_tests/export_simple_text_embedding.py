@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 import tempfile
+
 from absl import app
 from absl import flags
 
@@ -86,7 +87,8 @@ class TextEmbeddingModel(tf.train.Checkpoint):
 
     return tf.nn.safe_embedding_lookup_sparse(
         embedding_weights=self.embeddings,
-        sparse_ids=tf.SparseTensor(token_ids, token_values, token_dense_shape),
+        sparse_ids=tf.sparse.SparseTensor(token_ids, token_values,
+                                          token_dense_shape),
         sparse_weights=None,
         combiner="sqrtn")
 

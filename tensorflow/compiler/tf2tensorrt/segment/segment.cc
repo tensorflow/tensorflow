@@ -466,7 +466,7 @@ Status SegmentGraph(const Graph* tf_graph,
   // grow from the output-side of the network towards the inputs.
   //
   // In general this is not guaranteed to produce a globally optimal
-  // segmentation. For exaample, consider graph with node {A, B, C, D} and edges
+  // segmentation. For example, consider graph with node {A, B, C, D} and edges
   // {A->B, A->C, B->D, C->D), where A, B, D are trt compatible but C is not, so
   // in theory we can choose to contract either A, B or B, D but not both, but
   // here it always choose to contract B, D.

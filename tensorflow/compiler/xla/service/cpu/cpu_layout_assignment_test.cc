@@ -450,8 +450,8 @@ ENTRY BatchDotLayoutMustBeRowMajor {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   HloComputation* computation = module->entry_computation();
 

@@ -137,7 +137,8 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        return dataset()->input_->MakeIterator(ctx, this, prefix(),
+                                               &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -238,13 +239,14 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
                                          dataset()->window_shift_);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (!input_impl_) {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_empty"), ""));
         } else {
-          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         }
         // Save buffer.
         TF_RETURN_IF_ERROR(writer->WriteScalar(strings::StrCat("buffer_size"),
@@ -292,8 +294,8 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
       }
 
       mutex mu_;
-      std::deque<std::vector<Tensor>> buffer_ GUARDED_BY(mu_);
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      std::deque<std::vector<Tensor>> buffer_ TF_GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     };
 
     const int64 window_size_;

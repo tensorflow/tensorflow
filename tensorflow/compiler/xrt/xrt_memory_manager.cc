@@ -20,7 +20,10 @@ limitations under the License.
 #include <unordered_map>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/xrt/xrt_metrics.h"
+#include "tensorflow/core/lib/monitoring/timed.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace {
@@ -97,6 +100,9 @@ class XRTMemoryManager::DeviceContext {
 
   Status CompactAllocations(XRTMemoryManager* memory_manager,
                             xla::Backend* backend) {
+    profiler::TraceMe trace_me("XRTMemoryManager::CompactAllocations",
+                               /*level=*/2);
+    auto timed = monitoring::MakeTimed(xrt_metrics::GetMemoryCompactCell());
     VLOG(4) << "CompactAllocations started";
     mutex_lock lock(lock_);
     Status status;
@@ -143,6 +149,8 @@ class XRTMemoryManager::DeviceContext {
   // Tries to free size bytes by freeing some unpinned device memory. Returns
   // the amount of memory which was able to free.
   xla::StatusOr<size_t> TryFreeMemory(xla::Backend* backend, size_t size) {
+    profiler::TraceMe trace_me("XRTMemoryManager::TryFreeMemory", /*level=*/2);
+    auto timed = monitoring::MakeTimed(xrt_metrics::GetTryFreeMemoryCell());
     mutex_lock lock(lock_);
     size_t swapped_size = 0;
     for (auto it = allocs_.rbegin(); it != allocs_.rend(); ++it) {
@@ -319,7 +327,7 @@ Status XRTMemoryManager::TryFreeMemoryStep(MemoryReclaimContext* mrctx,
   }
   if (!mrctx->done_freeing) {
     // If the caller passed us a zero requested_free_size, we try to free chunks
-    // of kMaxFreeSize memory, until either the run function suceeds, or we run
+    // of kMaxFreeSize memory, until either the run function succeeds, or we run
     // out of freeable memory.
     const size_t kMaxFreeSize = 1000000000;
     size_t free_size =

@@ -387,6 +387,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Reshape)
     HANDLE_OPERATORTYPENAME_CASE(Squeeze)
     HANDLE_OPERATORTYPENAME_CASE(Rsqrt)
+    HANDLE_OPERATORTYPENAME_CASE(SegmentSum)
     HANDLE_OPERATORTYPENAME_CASE(Shape)
     HANDLE_OPERATORTYPENAME_CASE(Slice)
     HANDLE_OPERATORTYPENAME_CASE(Split)
@@ -449,6 +450,8 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiag)
     HANDLE_OPERATORTYPENAME_CASE(MatrixDiagV2)
     HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiagV2)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixDiagV3)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiagV3)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -926,7 +929,7 @@ void CheckNonExistentIOArrays(const Model& model) {
   }
   static constexpr char general_comment[] =
       "Is it a typo? This should not happen. If you trigger this error "
-      "please send a bug report (with code to reporduce this error), to the "
+      "please send a bug report (with code to reproduce this error), to the "
       "TensorFlow Lite team.";
   for (const string& output_array : model.flags.output_arrays()) {
     if (IsConstantParameterArray(model, output_array)) {
@@ -1763,6 +1766,8 @@ int ElementSize(ArrayDataType data_type) {
       return 8;
     case ArrayDataType::kComplex64:
       return 8;
+    case ArrayDataType::kFloat64:
+      return 8;
 
     // Usually not critical limitation because strings are only input and/or
     // output.
@@ -2304,6 +2309,10 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kString;
     case COMPLEX64:
       return ArrayDataType::kComplex64;
+    case FLOAT16:
+      return ArrayDataType::kFloat16;
+    case FLOAT64:
+      return ArrayDataType::kFloat64;
     default:
       return ArrayDataType::kNone;
   }
@@ -2349,6 +2358,12 @@ std::unordered_set<string> ScanArrayNames(
 void UseArraysExtraInfo(Model* model, bool quantize_output) {
   for (const auto& entry : model->flags.arrays_extra_info().entries()) {
     const auto matches = ScanArrayNames(*model, entry);
+    if (matches.empty()) {
+      LOG(ERROR) << "arrays_extra_info_file: No matching arrays found for "
+                 << (entry.has_name() ? entry.name() : "")
+                 << (entry.has_name_regexp() ? entry.name_regexp() : "");
+      continue;
+    }
     for (const auto& matched_name : matches) {
       auto& array = model->GetArray(matched_name);
       if (entry.has_min() || entry.has_max()) {

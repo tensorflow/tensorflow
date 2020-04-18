@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -42,12 +42,12 @@ def make_shape_tests(options):
     # TODO(haoliang): Test shape op directly after we have better support for
     # dynamic input. Currently we need to introduce a Reshape op to prevent
     # shape being constant-folded.
-    input_value = tf.placeholder(
+    input_value = tf.compat.v1.placeholder(
         dtype=parameters["input_dtype"],
         shape=parameters["input_shape"],
         name="input")
     shape_of_new_shape = [len(parameters["new_shape"])]
-    new_shape = tf.placeholder(
+    new_shape = tf.compat.v1.placeholder(
         dtype=tf.int32, shape=shape_of_new_shape, name="new_shape")
     reshaped = tf.reshape(input_value, shape=new_shape)
     out = tf.shape(reshaped, out_type=parameters["out_type"])

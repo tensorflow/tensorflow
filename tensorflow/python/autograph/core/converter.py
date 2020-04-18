@@ -23,10 +23,10 @@ The class hierarchy is as follows:
       [extends] converter.Base
         [extends] transformer.Base
             [extends] gast.nodeTransformer
-          [uses] transfomer.SourceInfo
+          [uses] transformer.SourceInfo
         [uses] converter.EntityContext
           [uses] converter.ProgramContext
-          [uses] transfomer.SourceInfo
+          [uses] transformer.SourceInfo
 
 converter.Base is a specialization of transformer.Base for AutoGraph. It's a
 very lightweight subclass that adds a `ctx` attribute holding the corresponding
@@ -69,7 +69,6 @@ import enum
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import cfg
-from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
@@ -254,25 +253,6 @@ class ProgramContext(
   pass
 
 
-class EntityContext(transformer.Context):
-  """Tracks the conversion of a single entity.
-
-  This object is mutable, and is updated during conversion. Not thread safe.
-
-  Attributes:
-    namer: Namer
-    info: transformer.EntityInfo
-    program: ProgramContext,
-    targe_name: Text
-  """
-
-  def __init__(self, namer, entity_info, program_ctx, target_name=None):
-    super(EntityContext, self).__init__(entity_info)
-    self.namer = namer
-    self.program = program_ctx
-    self.target_name = target_name
-
-
 class Base(transformer.Base):
   """All converters should inherit from this class.
 
@@ -329,10 +309,10 @@ class Base(transformer.Base):
     for other_value in arg_values_found[1:]:
       if not ast_util.matches(first_value, other_value):
         qn = anno.getanno(node, anno.Basic.QN)
-        raise ValueError('%s has ambiguous annotations for %s(%s): %s, %s' %
-                         (qn, directive.__name__, arg,
-                          compiler.ast_to_source(other_value).strip(),
-                          compiler.ast_to_source(first_value).strip()))
+        raise ValueError(
+            '%s has ambiguous annotations for %s(%s): %s, %s' %
+            (qn, directive.__name__, arg, parser.unparse(other_value).strip(),
+             parser.unparse(first_value).strip()))
     return first_value
 
   def visit(self, node):
@@ -353,15 +333,6 @@ class AnnotatedDef(reaching_definitions.Definition):
   def __init__(self):
     super(AnnotatedDef, self).__init__()
     self.directives = {}
-
-
-class AgAnno(enum.Enum):
-  """Annotation labels specific to AutoGraph. See anno.py."""
-
-  DIRECTIVES = 'User directives associated with the annotated statement.'
-
-  def __repr__(self):
-    return self.name
 
 
 def standard_analysis(node, context, is_initial=False):

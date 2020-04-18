@@ -22,7 +22,7 @@ import six
 
 from google.protobuf import text_format
 from tensorflow.core.framework import tensor_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import core
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -56,9 +56,8 @@ def quick_execute(op_name, num_outputs, inputs, attrs, ctx, name=None):
   # pylint: disable=protected-access
   try:
     ctx.ensure_initialized()
-    tensors = pywrap_tensorflow.TFE_Py_Execute(ctx._handle, device_name,
-                                               op_name, inputs, attrs,
-                                               num_outputs)
+    tensors = pywrap_tfe.TFE_Py_Execute(ctx._handle, device_name, op_name,
+                                        inputs, attrs, num_outputs)
   except core._NotOkStatusException as e:
     if name is not None:
       message = e.message + " name: " + name
@@ -111,9 +110,10 @@ def execute_with_cancellation(op_name,
   # pylint: disable=protected-access
   try:
     ctx.ensure_initialized()
-    tensors = pywrap_tensorflow.TFE_Py_ExecuteCancelable(
-        ctx._handle, device_name, op_name, inputs, attrs,
-        cancellation_manager._impl, num_outputs)
+    tensors = pywrap_tfe.TFE_Py_ExecuteCancelable(ctx._handle, device_name,
+                                                  op_name, inputs, attrs,
+                                                  cancellation_manager._impl,
+                                                  num_outputs)
   except core._NotOkStatusException as e:
     if name is not None:
       message = e.message + " name: " + name

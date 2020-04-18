@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -34,7 +34,8 @@ def make_rank_tests(options):
 
   def build_graph(parameters):
     """Build the rank op testing graph."""
-    input_value = tf.placeholder(dtype=parameters["input_dtype"], name="input")
+    input_value = tf.compat.v1.placeholder(
+        dtype=parameters["input_dtype"], name="input")
     out = tf.rank(input_value)
     return [input_value], [out]
 

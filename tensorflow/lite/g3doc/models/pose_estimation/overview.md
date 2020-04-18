@@ -10,18 +10,19 @@ an image or video by estimating where key body joints are.
 <a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/posenet_mobilenet_v1_100_257x257_multi_kpt_stripped.tflite">
 Download starter model</a>
 
-Android and iOS end-to-end tutorials are coming soon. In the meantime, if you
-want to experiment this on a web browser, check out the
+If you want to experiment this on a web browser, check out the
 <a href="https://github.com/tensorflow/tfjs-models/tree/master/posenet">TensorFlow.js
 GitHub repository</a>.
 
 ### Example applications and guides
 
-There is a TensorFlow Lite sample application that demonstrates the PoseNet
-model on Android.
+We provide example TensorFlow Lite applications demonstrating the PoseNet model
+for both Android and iOS.
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/posenet/android">
-Android example</a>.
+Android example</a>
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/posenet/ios">
+iOS example</a>
 
 ## How it works
 
@@ -113,6 +114,48 @@ between 0.0 and 1.0, 1.0 being the highest.
     </tr>
   </tbody>
 </table>
+
+## Performance Benchmarks
+
+Performance benchmark numbers are generated with the tool
+[described here](https://www.tensorflow.org/lite/performance/benchmarks).
+
+<table>
+  <thead>
+    <tr>
+      <th>Model Name</th>
+      <th>Model size </th>
+      <th>Device </th>
+      <th>GPU</th>
+      <th>CPU</th>
+    </tr>
+  </thead>
+  <tr>
+    <td rowspan = 3>
+      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/posenet_mobilenet_v1_100_257x257_multi_kpt_stripped.tflite">Posenet</a>
+    </td>
+    <td rowspan = 3>
+      12.7 Mb
+    </td>
+    <td>Pixel 3 (Android 10) </td>
+    <td>12ms</td>
+    <td>31ms*</td>
+  </tr>
+   <tr>
+     <td>Pixel 4 (Android 10) </td>
+    <td>12ms</td>
+    <td>19ms*</td>
+  </tr>
+   <tr>
+     <td>iPhone XS (iOS 12.4.1) </td>
+     <td>4.8ms</td>
+    <td>22ms** </td>
+  </tr>
+</table>
+
+\* 4 threads used.
+
+\*\* 2 threads used on iPhone for the best performance result.
 
 ## Example output
 

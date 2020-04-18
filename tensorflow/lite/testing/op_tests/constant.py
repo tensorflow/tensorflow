@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -42,7 +42,7 @@ def make_constant_tests(options):
 
   def build_graph(parameters):
     """Build a constant graph given `parameters`."""
-    dummy_input = tf.placeholder(
+    dummy_input = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input1",
         shape=parameters["input_shape"])
@@ -53,7 +53,7 @@ def make_constant_tests(options):
       outputs.append(constant)
     inputs = [dummy_input]
     if parameters["has_unread_input"]:
-      unread_input = tf.placeholder(
+      unread_input = tf.compat.v1.placeholder(
           dtype=parameters["dtype"],
           name="unread_input",
           shape=parameters["input_shape"])

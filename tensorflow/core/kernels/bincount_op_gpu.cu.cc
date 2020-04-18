@@ -17,25 +17,15 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#if GOOGLE_CUDA
-#include "third_party/cub/device/device_histogram.cuh"
-#elif TENSORFLOW_USE_ROCM
-#include "rocm/include/hipcub/hipcub.hpp"
-#endif
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/bincount_op.h"
+#include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-
-#if GOOGLE_CUDA
-namespace gpuprim = ::cub;
-#elif TENSORFLOW_USE_ROCM
-namespace gpuprim = ::hipcub;
-#endif
 
 namespace tensorflow {
 

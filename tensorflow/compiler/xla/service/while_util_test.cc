@@ -19,9 +19,9 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -31,7 +31,7 @@ namespace op = ::xla::testing::opcode_matchers;
 
 class WhileUtilTest : public HloTestBase {
  protected:
-  StatusOr<std::unique_ptr<HloModule>> GetParsedModule(
+  StatusOr<std::unique_ptr<VerifiedHloModule>> GetParsedModule(
       HloComputation** entry_computation, HloInstruction** param0,
       HloInstruction** param1, HloInstruction** param2) {
     const char* const hlo_string = R"(
@@ -42,7 +42,7 @@ while_body {
 }
 
 while_condition {
-  p_cond = f32[32,32]{1,0} parameter(0)
+  p_cond = (f32[32,32]{1,0}, f32[32,32]{1,0}) parameter(0)
   ROOT result = pred[] constant(true)
 }
 
@@ -55,9 +55,7 @@ ENTRY entry {
 }
 )";
 
-    // TODO(b/80488902): Use VerifiedHloModule here.
-    TF_ASSIGN_OR_RETURN(auto module,
-                        ParseAndReturnUnverifiedModule(hlo_string));
+    TF_ASSIGN_OR_RETURN(auto module, ParseAndReturnVerifiedModule(hlo_string));
 
     *entry_computation = module->entry_computation();
     *param0 = (*entry_computation)->parameter_instruction(0);

@@ -26,15 +26,16 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 
+#if TENSORFLOW_USE_ROCM
+#include "rocm/include/hip/hip_fp16.h"
+typedef __half2 half2;
+#endif
+
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace functor {
-
-#if GOOGLE_CUDA
-// TODO(rocm): disabling this code on the ROCm platform since the references
-// to `half2` are leading to compile errors.
 
 // This kernel computes ReluGrad by processing one half2, two fp16, at a time.
 // It effectively does: backdrops = (feature > 0) ? gradient : 0
@@ -65,8 +66,9 @@ __global__ void ReluGradHalfKernel(const Eigen::half* __restrict__ gradient,
     // Fall back: convert half2 to float2 for processing.
     float2 feature_f2 = __half22float2(feature_h2);
     float2 gradient_f2 = __half22float2(gradient_h2);
-    float2 backprop_f2 = make_float2((feature_f2.x > 0) ? gradient_f2.x : 0,
-                                     (feature_f2.y > 0) ? gradient_f2.y : 0);
+    float2 backprop_f2 =
+        make_float2((feature_f2.x > 0.0f) ? float(gradient_f2.x) : 0.0f,
+                    (feature_f2.y > 0.0f) ? float(gradient_f2.y) : 0.0f);
     // Convert back to half2.
     half2 backprop_h2 = __float22half2_rn(backprop_f2);
 #endif
@@ -117,14 +119,22 @@ struct ReluGrad<Device, Eigen::half> {
         d.stream(), gradient.data(), feature.data(), backprop.data(), count));
   }
 };
-#endif  // GOOGLE_CUDA
 
-#if GOOGLE_CUDA
 __global__ void Relu_int8x4_kernel(int vect_count,
                                    const int32* __restrict__ input,
                                    int32* __restrict__ output) {
   CUDA_1D_KERNEL_LOOP(index, vect_count) {
+#if GOOGLE_CUDA
     output[index] = __vmaxs4(input[index], 0);
+#else
+    uint32 signs = (~input[index]) & 0x80808080;
+    signs = signs >> 7;
+    signs |= signs << 1;
+    signs |= signs << 2;
+    signs |= signs << 4;
+    signs &= 0x7f7f7f7f;
+    output[index] = input[index] & signs;
+#endif
   }
 }
 
@@ -150,7 +160,6 @@ struct Relu<Device, qint8> {
         reinterpret_cast<int32*>(output.data())));
   }
 };
-#endif  // GOOGLE_CUDA
 
 }  // namespace functor
 
@@ -168,9 +177,7 @@ struct Relu<Device, qint8> {
   template struct functor::SeluGrad<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
-#if GOOGLE_CUDA
 template struct functor::Relu<GPUDevice, qint8>;
-#endif  // GOOGLE_CUDA
 
 }  // end namespace tensorflow
 

@@ -366,6 +366,8 @@ renames = {
         'tf.compat.v1.estimator.tpu.TPUEstimatorSpec',
     'tf.estimator.tpu.experimental.EmbeddingConfigSpec':
         'tf.compat.v1.estimator.tpu.experimental.EmbeddingConfigSpec',
+    'tf.executing_eagerly_outside_functions':
+        'tf.compat.v1.executing_eagerly_outside_functions',
     'tf.experimental.output_all_intermediates':
         'tf.compat.v1.experimental.output_all_intermediates',
     'tf.expm1':
@@ -514,6 +516,10 @@ renames = {
         'tf.compat.v1.keras.backend.get_session',
     'tf.keras.backend.set_session':
         'tf.compat.v1.keras.backend.set_session',
+    'tf.keras.experimental.export_saved_model':
+        'tf.compat.v1.keras.experimental.export_saved_model',
+    'tf.keras.experimental.load_from_saved_model':
+        'tf.compat.v1.keras.experimental.load_from_saved_model',
     'tf.keras.layers.CuDNNGRU':
         'tf.compat.v1.keras.layers.CuDNNGRU',
     'tf.keras.layers.CuDNNLSTM':
@@ -845,7 +851,7 @@ renames = {
     'tf.nn.ctc_beam_search_decoder_v2':
         'tf.nn.ctc_beam_search_decoder',
     'tf.nn.ctc_loss_v2':
-        'tf.nn.ctc_loss',
+        'tf.compat.v1.nn.ctc_loss_v2',
     'tf.nn.depthwise_conv2d_native':
         'tf.compat.v1.nn.depthwise_conv2d_native',
     'tf.nn.depthwise_conv2d_native_backprop_filter':
@@ -1078,6 +1084,8 @@ renames = {
         'tf.saved_model.REGRESS_METHOD_NAME',
     'tf.saved_model.signature_constants.REGRESS_OUTPUTS':
         'tf.saved_model.REGRESS_OUTPUTS',
+    'tf.saved_model.signature_def_utils.MethodNameUpdater':
+        'tf.compat.v1.saved_model.signature_def_utils.MethodNameUpdater',
     'tf.saved_model.signature_def_utils.build_signature_def':
         'tf.compat.v1.saved_model.signature_def_utils.build_signature_def',
     'tf.saved_model.signature_def_utils.classification_signature_def':
@@ -1322,6 +1330,8 @@ renames = {
         'tf.compat.v1.to_int64',
     'tf.tpu.CrossShardOptimizer':
         'tf.compat.v1.tpu.CrossShardOptimizer',
+    'tf.tpu.PaddingSpec':
+        'tf.compat.v1.tpu.PaddingSpec',
     'tf.tpu.batch_parallel':
         'tf.compat.v1.tpu.batch_parallel',
     'tf.tpu.bfloat16_scope':
@@ -1334,6 +1344,8 @@ renames = {
         'tf.compat.v1.tpu.experimental.AdagradParameters',
     'tf.tpu.experimental.AdamParameters':
         'tf.compat.v1.tpu.experimental.AdamParameters',
+    'tf.tpu.experimental.FtrlParameters':
+        'tf.compat.v1.tpu.experimental.FtrlParameters',
     'tf.tpu.experimental.StochasticGradientDescentParameters':
         'tf.compat.v1.tpu.experimental.StochasticGradientDescentParameters',
     'tf.tpu.experimental.embedding_column':

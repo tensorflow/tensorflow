@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_CHECKER_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_ADVISOR_CHECKER_H_
 
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/profiler/internal/tfprof_stats.h"
 #include "tensorflow/core/profiler/tfprof_options.pb.h"
 

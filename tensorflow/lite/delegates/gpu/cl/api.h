@@ -48,17 +48,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-enum class InferencePriority {
-  MIN_LATENCY,
-
-  MAX_PRECISION,
-};
-
-struct InferenceOptions {
-  bool allow_precision_loss = false;
-
-  InferencePriority priority = InferencePriority::MAX_PRECISION;
-};
+struct InferenceOptions : public tflite::gpu::InferenceOptions {};
 
 // Indicates environment
 struct InferenceEnvironmentProperties {
@@ -80,7 +70,7 @@ class InferenceEnvironment {
  public:
   virtual ~InferenceEnvironment() {}
 
-  virtual Status NewInferenceBuilder(
+  virtual absl::Status NewInferenceBuilder(
       const InferenceOptions& options, GraphFloat32 model,
       std::unique_ptr<InferenceBuilder>* builder) = 0;
 
@@ -94,9 +84,18 @@ class InferenceEnvironment {
 };
 
 struct InferenceEnvironmentOptions {
+  // If any of these objects are set, created environment will use them instead
+  // of creating/choosing own instances.
+  cl_device_id device = nullptr;
+  cl_context context = nullptr;
+  cl_command_queue command_queue = nullptr;
+
   // Whenever input and/or output is GL object, EGL display and context must be
   // set to create GL aware OpenCL context. Do not set these variables whenever
   // GL interoperability is not needed.
+  // It is the error to set egl_display, egl_context AND context at the same
+  // time. If egl_display and egl_context are set, they will be used to create
+  // GL-aware CL context.
   EGLDisplay egl_display = EGL_NO_DISPLAY;
   EGLContext egl_context = EGL_NO_CONTEXT;
 
@@ -113,7 +112,7 @@ struct InferenceEnvironmentOptions {
 
 // Creates new OpenCL environment that needs to stay around until all inference
 // runners are destroyed.
-Status NewInferenceEnvironment(
+absl::Status NewInferenceEnvironment(
     const InferenceEnvironmentOptions& options,
     std::unique_ptr<InferenceEnvironment>* environment,
     InferenceEnvironmentProperties* properties /* optional */);
