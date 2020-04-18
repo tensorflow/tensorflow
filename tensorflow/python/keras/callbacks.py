@@ -1209,7 +1209,7 @@ class ModelCheckpoint(Callback):
 
   def on_train_batch_end(self, batch, logs=None):
     if self._should_save_on_batch(batch):
-      self._save_model(epoch=self._current_epoch, logs=logs)
+      self._save_model(epoch=self._current_epoch, batch=batch, logs=logs)
 
   def on_epoch_begin(self, epoch, logs=None):
     self._current_epoch = epoch
@@ -1221,9 +1221,9 @@ class ModelCheckpoint(Callback):
       if self.model._in_multi_worker_mode():
         # Exclude training state variables in user-requested checkpoint file.
         with self._training_state.untrack_vars():
-          self._save_model(epoch=epoch, logs=logs)
+          self._save_model(epoch=epoch, batch=None, logs=logs)
       else:
-        self._save_model(epoch=epoch, logs=logs)
+        self._save_model(epoch=epoch,  batch=None, logs=logs)
     if self.model._in_multi_worker_mode():
       # For multi-worker training, back up the weights and current training
       # state for possible future recovery.
@@ -1247,11 +1247,13 @@ class ModelCheckpoint(Callback):
       return True
     return False
 
-  def _save_model(self, epoch, logs):
+  def _save_model(self, epoch, batch, logs):
     """Saves the model.
 
     Arguments:
         epoch: the epoch this iteration is in.
+        batch: the batch this iteration is in. `None` if the `save_freq`
+          is set to `epoch`.
         logs: the `logs` dict passed in to `on_batch_end` or `on_epoch_end`.
     """
     logs = logs or {}
@@ -1261,7 +1263,7 @@ class ModelCheckpoint(Callback):
       # Block only when saving interval is reached.
       logs = tf_utils.to_numpy_or_python_type(logs)
       self.epochs_since_last_save = 0
-      filepath = self._get_file_path(epoch, logs)
+      filepath = self._get_file_path(epoch, batch, logs)
 
       try:
         if self.save_best_only:
@@ -1300,16 +1302,19 @@ class ModelCheckpoint(Callback):
                         'ModelCheckpoint. Filepath used is an existing '
                         'directory: {}'.format(filepath))
 
-  def _get_file_path(self, epoch, logs):
+  def _get_file_path(self, epoch, batch, logs):
     """Returns the file path for checkpoint."""
     # pylint: disable=protected-access
     if not self.model._in_multi_worker_mode(
     ) or multi_worker_util.should_save_checkpoint():
       try:
         # `filepath` may contain placeholders such as `{epoch:02d}` and
-        # `{mape:.2f}`. A mismatch between logged metrics and the path's
+        # `{batch:02d}`. A mismatch between logged metrics and the path's
         # placeholders can cause formatting to fail.
-        return self.filepath.format(epoch=epoch + 1, **logs)
+        if not batch:
+          return self.filepath.format(epoch=epoch + 1, **logs)
+        else:
+          return self.filepath.format(epoch=epoch + 1, batch=batch + 1, **logs)
       except KeyError as e:
         raise KeyError('Failed to format this callback filepath: "{}". '
                        'Reason: {}'.format(self.filepath, e))
