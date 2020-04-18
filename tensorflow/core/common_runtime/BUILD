@@ -167,6 +167,8 @@ tf_cuda_library(
     srcs = [
         "eval_const_tensor.cc",
         "graph_optimizer.h",
+        "scoped_allocator.cc",
+        "scoped_allocator_mgr.cc",
         "shape_refiner.cc",
         "//tensorflow/core/graph:core_cpu_base_no_ops_srcs",
         "//tensorflow/core/public:session_options.h",
@@ -178,7 +180,6 @@ tf_cuda_library(
     ],
     copts = tf_copts(),
     deps = [
-        ":scoped_allocator",
         "//tensorflow/core:graph",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -261,732 +262,92 @@ filegroup(
     ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util_header"]),
 )
 
-cc_library(
-    name = "accumulate_n_optimizer",
-    srcs = ["accumulate_n_optimizer.cc"],
-    copts = tf_copts(),
-    deps = [
-        ":optimization_registry",
-        "//tensorflow/core:graph",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "base_collective_executor",
-    srcs = ["base_collective_executor.cc"],
-    hdrs = ["base_collective_executor.h"],
-    copts = tf_copts(),
-    deps = [
-        ":buf_rendezvous",
-        ":copy_tensor",
-        ":device_mgr",
-        ":dma_helper",
-        ":process_util",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/profiler/lib:traceme",
-    ],
-)
-
-cc_library(
-    name = "buf_rendezvous",
-    srcs = ["buf_rendezvous.cc"],
-    hdrs = ["buf_rendezvous.h"],
-    copts = tf_copts(),
-    deps = [
-        ":device",
-        ":device_mgr",
-        ":process_util",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "build_graph_options",
-    srcs = ["build_graph_options.cc"],
-    hdrs = ["build_graph_options.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "collective_executor_mgr",
-    srcs = ["collective_executor_mgr.cc"],
-    hdrs = ["collective_executor_mgr.h"],
-    copts = tf_copts(),
-    deps = [
-        ":base_collective_executor",
-        ":build_graph_options",
-        ":collective_rma_local",
-        ":device_mgr",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "collective_util",
-    srcs = ["collective_util.cc"],
-    hdrs = ["collective_util.h"],
-    copts = tf_copts(),
-    deps = [
-        ":device",
-        ":device_mgr",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "copy_tensor",
-    srcs = ["copy_tensor.cc"],
-    hdrs = ["copy_tensor.h"],
-    copts = tf_copts(),
-    deps = [
-        ":device",
-        ":dma_helper",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/profiler/lib:scoped_annotation",
-    ],
-)
-
-cc_library(
-    name = "collective_param_resolver_local",
-    srcs = ["collective_param_resolver_local.cc"],
-    hdrs = ["collective_param_resolver_local.h"],
-    copts = tf_copts(),
-    deps = [
-        ":device",
-        ":device_mgr",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "collective_rma_local",
-    srcs = ["collective_rma_local.cc"],
-    hdrs = ["collective_rma_local.h"],
-    copts = tf_copts(),
-    deps = [
-        ":buf_rendezvous",
-        ":copy_tensor",
-        ":device",
-        ":device_mgr",
-        ":dma_helper",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "costmodel_manager",
-    srcs = ["costmodel_manager.cc"],
-    hdrs = ["costmodel_manager.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-cc_library(
-    name = "debugger_state_interface",
-    srcs = ["debugger_state_interface.cc"],
-    hdrs = ["debugger_state_interface.h"],
-    copts = tf_copts(),
-    deps = [
-        ":device",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "device",
-    srcs = ["device.cc"],
-    hdrs = ["device.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "device_factory",
-    srcs = ["device_factory.cc"],
-    hdrs = ["device_factory.h"],
-    copts = tf_copts(),
-    deps = [
-        ":device",
-        ":session_options",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-cc_library(
-    name = "device_mgr",
-    srcs = [
-        "device_mgr.cc",
-        "dynamic_device_mgr.cc",
-    ],
-    hdrs = ["device_mgr.h"],
-    copts = tf_copts(),
-    deps = [
-        ":device",
-        ":local_device",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "device_resolver_local",
-    srcs = ["device_resolver_local.cc"],
-    hdrs = ["device_resolver_local.h"],
-    copts = tf_copts(),
-    deps = [
-        ":device_mgr",
-        "//tensorflow/core:framework",
-    ],
-)
-
-cc_library(
-    name = "entry",
-    hdrs = ["entry.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "graph_view",
-    srcs = ["graph_view.cc"],
-    hdrs = ["graph_view.h"],
-    copts = tf_copts(),
-    deps = [
-        ":device",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "device_set",
-    srcs = ["device_set.cc"],
-    hdrs = ["device_set.h"],
-    copts = tf_copts(),
-    deps = [
-        ":device",
-        ":device_factory",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-cc_library(
-    name = "dma_helper",
-    hdrs = ["dma_helper.h"],
-    copts = tf_copts(),
-    deps = ["//tensorflow/core:framework"],
-)
-
-cc_library(
-    name = "hierarchical_tree_broadcaster",
-    srcs = ["hierarchical_tree_broadcaster.cc"],
-    hdrs = ["hierarchical_tree_broadcaster.h"],
-    copts = tf_copts(),
-    deps = [
-        ":base_collective_executor",
-        ":collective_rma_local",
-        ":collective_util",
-        ":device_mgr",
-        ":dma_helper",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/lib:traceme",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "input_colocation_exemption_registry",
-    srcs = ["input_colocation_exemption_registry.cc"],
-    hdrs = ["input_colocation_exemption_registry.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "local_device",
-    srcs = ["local_device.cc"],
-    hdrs = ["local_device.h"],
-    copts = tf_copts(),
-    deps = [
-        ":device",
-        ":process_state",
-        ":process_util",
-        ":session_options",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//third_party/eigen3",
-    ],
-)
-
-cc_library(
-    name = "memory_types",
-    srcs = ["memory_types.cc"],
-    hdrs = ["memory_types.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-cc_library(
-    name = "mkl_cpu_allocator",
-    srcs = ["mkl_cpu_allocator.cc"],
-    hdrs = ["mkl_cpu_allocator.h"],
-    copts = tf_copts(),
-    deps = [
-        ":bfc_allocator",
-        ":pool_allocator",
-        "//tensorflow/core:lib",
-    ] + mkl_deps(),
-)
-
-cc_library(
-    name = "optimization_registry",
-    srcs = ["optimization_registry.cc"],
-    hdrs = ["optimization_registry.h"],
-    copts = tf_copts(),
-    deps = [
-        ":device_set",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "parallel_concat_optimizer",
-    srcs = ["parallel_concat_optimizer.cc"],
-    copts = tf_copts(),
-    deps = [
-        ":optimization_registry",
-        "//tensorflow/core:graph",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "partitioning_utils",
-    srcs = ["partitioning_utils.cc"],
-    hdrs = ["partitioning_utils.h"],
-    copts = tf_copts(),
-    deps = [
-        ":device_set",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "pending_counts",
-    hdrs = ["pending_counts.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "pool_allocator",
-    srcs = ["pool_allocator.cc"],
-    hdrs = ["pool_allocator.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-cc_library(
-    name = "process_state",
-    srcs = ["process_state.cc"],
-    hdrs = ["process_state.h"],
-    copts = tf_copts(),
-    deps = [
-        ":bfc_allocator",
-        ":pool_allocator",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/util:env_var",
-        "@com_google_absl//absl/base",
-    ],
-)
-
-cc_library(
-    name = "process_util",
-    srcs = ["process_util.cc"],
-    hdrs = ["process_util.h"],
-    copts = tf_copts() + tf_openmp_copts(),
-    deps = [
-        ":session_options",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-cc_library(
-    name = "profile_handler",
-    hdrs = ["profile_handler.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "renamed_device",
-    srcs = ["renamed_device.cc"],
-    hdrs = ["renamed_device.h"],
-    copts = tf_copts(),
-    deps = [
-        ":device",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//third_party/eigen3",
-        "@com_google_absl//absl/memory",
-    ],
-)
-
-cc_library(
-    name = "rendezvous_mgr",
-    srcs = ["rendezvous_mgr.cc"],
-    hdrs = ["rendezvous_mgr.h"],
-    copts = tf_copts(),
-    deps = [
-        ":copy_tensor",
-        ":device",
-        ":device_mgr",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "ring_alg",
-    srcs = ["ring_alg.cc"],
-    hdrs = ["ring_alg.h"],
-    copts = tf_copts(),
-    deps = [
-        ":base_collective_executor",
-        ":collective_rma_local",
-        ":collective_util",
-        ":copy_tensor",
-        ":device",
-        ":device_mgr",
-        ":dma_helper",
-        ":process_util",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "ring_gatherer",
-    srcs = ["ring_gatherer.cc"],
-    hdrs = ["ring_gatherer.h"],
-    copts = tf_copts(),
-    deps = [
-        ":base_collective_executor",
-        ":collective_rma_local",
-        ":collective_util",
-        ":copy_tensor",
-        ":device",
-        ":device_mgr",
-        ":dma_helper",
-        ":process_util",
-        ":ring_alg",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/lib:traceme",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "ring_reducer",
-    srcs = ["ring_reducer.cc"],
-    hdrs = ["ring_reducer.h"],
-    copts = tf_copts(),
-    deps = [
-        ":base_collective_executor",
-        ":collective_rma_local",
-        ":collective_util",
-        ":copy_tensor",
-        ":device",
-        ":device_mgr",
-        ":dma_helper",
-        ":process_util",
-        ":ring_alg",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/lib:traceme",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
-    name = "rendezvous_util",
-    srcs = ["rendezvous_util.cc"],
-    hdrs = ["rendezvous_util.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "replicate_per_replica_nodes",
-    srcs = ["replicate_per_replica_nodes.cc"],
-    hdrs = ["replicate_per_replica_nodes.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "scoped_allocator",
-    srcs = [
-        "scoped_allocator.cc",
-        "scoped_allocator_mgr.cc",
-    ],
-    hdrs = [
-        "scoped_allocator.h",
-        "scoped_allocator_mgr.h",
-    ],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "session",
-    srcs = ["session.cc"],
-    hdrs = ["//tensorflow/core/public:session.h"],
-    copts = tf_copts(),
-    deps = [
-        ":session_factory",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "session_factory",
-    srcs = ["session_factory.cc"],
-    hdrs = ["session_factory.h"],
-    copts = tf_copts(),
-    deps = [
-        ":session_options",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "session_options",
-    srcs = ["session_options.cc"],
-    hdrs = [
-        "//tensorflow/core/public:session_options.h",
-    ],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "single_threaded_cpu_device",
-    srcs = ["single_threaded_cpu_device.cc"],
-    hdrs = [
-        "single_threaded_cpu_device.h",
-    ],
-    copts = tf_copts(),
-    deps = [
-        ":device",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//third_party/eigen3",
-    ],
-)
-
-cc_library(
-    name = "session_state",
-    srcs = ["session_state.cc"],
-    hdrs = ["//tensorflow/core/framework:session_state.h"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "stats_publisher_interface",
-    srcs = ["stats_publisher_interface.cc"],
-    hdrs = ["stats_publisher_interface.h"],
-    copts = tf_copts(),
-    deps = [
-        ":build_graph_options",
-        ":profile_handler",
-        ":session_options",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "step_stats_collector",
-    srcs = ["step_stats_collector.cc"],
-    hdrs = ["step_stats_collector.h"],
-    copts = tf_copts(),
-    deps = [
-        ":costmodel_manager",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "threadpool_device",
-    srcs = ["threadpool_device.cc"],
-    hdrs = ["threadpool_device.h"],
-    copts = tf_copts() + tf_openmp_copts(),
-    deps = [
-        ":device_factory",
-        ":local_device",
-        ":scoped_allocator",
-        ":session_options",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
-    name = "threadpool_device_factory",
-    srcs = ["threadpool_device_factory.cc"],
-    copts = tf_copts(),
-    deps = [
-        ":device_factory",
-        ":process_state",
-        ":session_options",
-        ":threadpool_device",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/memory",
-    ],
-    alwayslink = 1,
-)
-
 tf_cuda_library(
-    name = "core_cpu_rump_impl",
+    name = "core_cpu_impl",
     srcs = [
+        "accumulate_n_optimizer.cc",
+        "base_collective_executor.cc",
+        "buf_rendezvous.cc",
+        "build_graph_options.cc",
+        "collective_executor_mgr.cc",
+        "collective_param_resolver_local.cc",
+        "collective_rma_local.cc",
+        "collective_util.cc",
         "colocation_graph.cc",
         "constant_folding.cc",
+        "copy_tensor.cc",
+        "costmodel_manager.cc",
+        "debugger_state_interface.cc",
+        "device.cc",
+        "device_factory.cc",
+        "device_mgr.cc",
+        "device_resolver_local.cc",
+        "device_set.cc",
+        "dynamic_device_mgr.cc",
         "executor.cc",
         "executor_factory.cc",
         "function.cc",
         "function_optimization_registry.cc",
         "graph_optimizer.cc",
         "graph_runner.cc",
+        "graph_view.cc",
+        "hierarchical_tree_broadcaster.cc",
         "immutable_executor_state.cc",
+        "input_colocation_exemption_registry.cc",
         "inspecting_placer.cc",
         "isolate_placer_inspection_required_ops_pass.cc",
+        "local_device.cc",
         "lower_case_op.cc",
         "lower_function_call_op.cc",
         "lower_functional_ops.cc",
         "lower_if_op.cc",
         "lower_while_op.cc",
+        "memory_types.cc",
+        "mkl_cpu_allocator.cc",
+        "optimization_registry.cc",
+        "parallel_concat_optimizer.cc",
+        "partitioning_utils.cc",
         "placer.cc",
         "placer_inspection_required_ops_utils.cc",
         "placer_inspection_required_ops_utils.h",
+        "pool_allocator.cc",
         "process_function_library_runtime.cc",
+        "process_state.cc",
+        "process_util.cc",
         "propagator_debug_utils.cc",
         "propagator_state.cc",
+        "renamed_device.cc",
+        "rendezvous_mgr.cc",
+        "rendezvous_util.cc",
+        "replicate_per_replica_nodes.cc",
+        "ring_alg.cc",
+        "ring_gatherer.cc",
+        "ring_reducer.cc",
+        "session.cc",
+        "session_factory.cc",
+        "session_options.cc",
+        "session_state.cc",
         "simple_propagator_state.cc",
+        "single_threaded_cpu_device.cc",
+        "stats_publisher_interface.cc",
+        "step_stats_collector.cc",
+        "threadpool_device.cc",
+        "threadpool_device_factory.cc",
         "//tensorflow/core/graph:core_cpu_impl_srcs",
+        "//tensorflow/core/public:session.h",
+        "//tensorflow/core/public:session_options.h",
     ],
     hdrs = [":core_cpu_lib_headers"],
-    copts = tf_copts(),
+    copts = tf_copts() + tf_openmp_copts(),
     deps = [
-        ":entry",
-        ":graph_view",
-        ":input_colocation_exemption_registry",
-        ":pending_counts",
-        ":session_options",
-        ":single_threaded_cpu_device",
+        ":bfc_allocator",
         "//tensorflow/core:graph",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -994,6 +355,7 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:variant",
+        "//third_party/eigen3",
         "//tensorflow/core/public:version",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/profiler/lib:annotated_traceme",
@@ -1001,63 +363,6 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:traceme",
     ] + mkl_deps(),
     alwayslink = 1,
-)
-
-tf_cuda_library(
-    name = "core_cpu_impl",
-    hdrs = [":core_cpu_lib_headers"],
-    copts = tf_copts(),
-    deps = [
-        ":accumulate_n_optimizer",
-        ":base_collective_executor",
-        ":bfc_allocator",
-        ":buf_rendezvous",
-        ":build_graph_options",
-        ":collective_executor_mgr",
-        ":collective_param_resolver_local",
-        ":collective_rma_local",
-        ":collective_util",
-        ":copy_tensor",
-        ":core_cpu_rump_impl",
-        ":costmodel_manager",
-        ":debugger_state_interface",
-        ":device",
-        ":device_factory",
-        ":device_mgr",
-        ":device_resolver_local",
-        ":device_set",
-        ":entry",
-        ":graph_view",
-        ":hierarchical_tree_broadcaster",
-        ":input_colocation_exemption_registry",
-        ":local_device",
-        ":memory_types",
-        ":mkl_cpu_allocator",
-        ":optimization_registry",
-        ":parallel_concat_optimizer",
-        ":partitioning_utils",
-        ":pending_counts",
-        ":pool_allocator",
-        ":process_state",
-        ":process_util",
-        ":profile_handler",
-        ":renamed_device",
-        ":rendezvous_mgr",
-        ":rendezvous_util",
-        ":replicate_per_replica_nodes",
-        ":ring_alg",
-        ":ring_gatherer",
-        ":ring_reducer",
-        ":session",
-        ":session_factory",
-        ":session_options",
-        ":session_state",
-        ":single_threaded_cpu_device",
-        ":stats_publisher_interface",
-        ":step_stats_collector",
-        ":threadpool_device",
-        ":threadpool_device_factory",
-    ],
 )
 
 tf_cuda_library(
@@ -1331,6 +636,7 @@ tf_cc_tests_gpu(
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
+        ":direct_session_internal",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1359,6 +665,7 @@ tf_cc_tests_gpu(
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
+        ":direct_session_internal",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1387,6 +694,7 @@ tf_cc_tests_gpu(
         ":core",
         ":core_cpu",
         ":core_cpu_internal",
+        ":direct_session_internal",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1431,7 +739,9 @@ tf_cc_test_gpu(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags(),
     deps = [
-        ":memory_types",
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1544,7 +854,7 @@ tf_cc_test(
     srcs = ["process_util_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
-        ":process_util",
+        ":core_cpu_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -1556,7 +866,7 @@ tf_cc_test(
     srcs = ["rendezvous_util_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
-        ":rendezvous_util",
+        ":core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -1569,7 +879,7 @@ tf_cc_test(
     srcs = ["replicate_per_replica_nodes_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
-        ":replicate_per_replica_nodes",
+        ":core_cpu_internal",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
@@ -1854,8 +1164,8 @@ tf_cc_test(
     srcs = ["scoped_allocator_mgr_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
-        ":dma_helper",
-        ":scoped_allocator",
+        ":core_cpu",
+        ":core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -1868,7 +1178,8 @@ tf_cc_test(
     size = "small",
     srcs = ["input_colocation_exemption_registry_test.cc"],
     deps = [
-        ":input_colocation_exemption_registry",
+        ":core_cpu",
+        ":core_cpu_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",

@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
@@ -447,8 +448,6 @@ void HierarchicalTreeBroadcaster::DispatchRecv(int subdiv, int src_rank,
       col_ctx_->device_locality, 0 /*stream_index*/, done);
 }
 
-namespace {
 REGISTER_COLLECTIVE(HierarchicalTreeBroadcast, HierarchicalTreeBroadcaster);
-}  // namespace
 
 }  // namespace tensorflow
