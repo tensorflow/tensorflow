@@ -351,6 +351,28 @@ TEST(ModelInterface, Int8SingleInputOutput) {
   EXPECT_EQ(model->subgraphs[0]->outputs[0], 1);
 }
 
+TEST(ModelInterface, MixedTypeSingleInputOutput) {
+  auto model = CreateModelSingleInputOutput();
+
+  // Change model type.
+  flatbuffers::FlatBufferBuilder builder;
+  EXPECT_EQ(ModifyModelInterface(&builder, model.get(), TensorType_UINT8,
+                                 TensorType_INT8),
+            kTfLiteOk);
+
+  // Verify results.
+  EXPECT_EQ(model->operator_codes.size(), 3);
+  EXPECT_EQ(model->subgraphs.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->operators.size(), 2);
+  EXPECT_EQ(model->subgraphs[0]->tensors.size(), 3);
+  EXPECT_EQ(model->buffers.size(), 1);
+
+  EXPECT_EQ(model->subgraphs[0]->inputs.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->inputs[0], 2);
+  EXPECT_EQ(model->subgraphs[0]->outputs.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->outputs[0], 1);
+}
+
 TEST(ModelInterface, Uint8MutipleInputOutput) {
   auto model = CreateModelMultipleInputOutput();
 
