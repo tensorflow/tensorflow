@@ -331,6 +331,7 @@ cuda_py_test(
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:memory_checker",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
@@ -662,6 +663,7 @@ tf_py_test(
     deps = [
         ":backprop",
         ":context",
+        ":tape",
         ":test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",

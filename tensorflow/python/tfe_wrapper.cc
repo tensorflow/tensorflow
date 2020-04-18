@@ -665,6 +665,23 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     return tensorflow::PyoOrThrow(TFE_Py_TapeWatchedVariables(tape.ptr()));
   });
 
+  // TFE_Py_VariableWatcher logic.
+  m.def("TFE_Py_VariableWatcherNew",
+        []() { return tensorflow::PyoOrThrow(TFE_Py_VariableWatcherNew()); });
+  m.def("TFE_Py_VariableWatcherRemove", [](const py::handle& variable_watcher) {
+    TFE_Py_VariableWatcherRemove(variable_watcher.ptr());
+  });
+  m.def("TFE_Py_VariableWatcherVariableAccessed",
+        [](const py::handle& variable) {
+          TFE_Py_VariableWatcherVariableAccessed(variable.ptr());
+        });
+  m.def("TFE_Py_VariableWatcherWatchedVariables",
+        [](const py::handle& variable_watcher) {
+          return tensorflow::PyoOrThrow(
+              TFE_Py_VariableWatcherWatchedVariables(variable_watcher.ptr()));
+        });
+
+  // TFE_Py_ForwardAccumulator logic.
   m.def("TFE_Py_ForwardAccumulatorNew", []() {
     return tensorflow::PyoOrThrow(TFE_Py_ForwardAccumulatorNew());
   });
