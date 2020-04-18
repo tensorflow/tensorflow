@@ -87,17 +87,16 @@ void ConvPerChannel(const ConvParams& params, const int32* output_multiplier,
                   (in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
                   (in_y < input_height);
               if (is_point_inside_image) {
+                // Find current input index, minus 2 for Xtensa load
+                // alignments:
+                // TODO(b/147322595): Consider doing these offset calculations
+                // with intrinsics:
+                int input_idx =
+                    ((batch * input_height + in_y) * input_width + in_x) *
+                        input_depth -
+                    2;
+                const int8_t* input_vals_offset_ptr = input_data + input_idx;
                 for (int i = 0; i < input_depth_iters; ++i) {
-                  // Find current input index, minus 2 for Xtensa load
-                  // alignments:
-                  // TODO(b/147322595): Consider doing these offset calculations
-                  // with intrinsics:
-                  int input_idx =
-                      ((batch * input_height + in_y) * input_width + in_x) *
-                          input_depth +
-                      (i * 2) - 2;
-                  const int8_t* input_vals_offset_ptr = input_data + input_idx;
-
                   // Load signed 2x 8bit values and right shift into 24bit
                   // alignment:
                   ae_p24x2s input_vals_24x2;
@@ -172,40 +171,38 @@ void ConvPerChannel(const ConvParams& params, const int32* output_multiplier,
 
 // TODO(b/154240772): Move shared code into common methods.
 inline void Conv1x32Input32x32Filter(
-    const ConvParams& params, const int32* output_multiplier,
-    const int32* output_shift, const RuntimeShape& input_shape,
-    const int8* input_data, const RuntimeShape& filter_shape,
-    const int8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    int8* output_data) {
-  ae_p24x2s input_offset_24x2 = AE_CONVERT_INT32_24x2(params.input_offset);
-  ae_q56s output_offset_56 = AE_CVTQ48A32S(params.output_offset);
-  ae_q56s output_activation_max_56 =
-      AE_CVTQ48A32S(params.quantized_activation_max);
-  ae_q56s output_activation_min_56 =
-      AE_CVTQ48A32S(params.quantized_activation_min);
+    const int input_offset, const int output_offset,
+    const int quantized_activation_min, const int quantized_activation_max,
+    const int32* output_multiplier, const int32* output_shift,
+    const RuntimeShape& input_shape, const int8* input_data,
+    const RuntimeShape& filter_shape, const int8* filter_data,
+    const RuntimeShape& bias_shape, const int32* bias_data,
+    const RuntimeShape& output_shape, int8* output_data) {
+  ae_p24x2s input_offset_24x2 = AE_CONVERT_INT32_24x2(input_offset);
+  ae_q56s output_offset_56 = AE_CVTQ48A32S(output_offset);
+  ae_q56s output_activation_max_56 = AE_CVTQ48A32S(quantized_activation_max);
+  ae_q56s output_activation_min_56 = AE_CVTQ48A32S(quantized_activation_min);
 
   constexpr int kChannels = 32;
   constexpr int kFilterDepth = 32;
   for (int ch = 0; ch < kChannels; ch++) {
     ae_q56s acc_56 = AE_ZEROQ56();
+    const int8_t* input_vals_ptr = input_data - 2;
     for (int i = 0; i < kFilterDepth; i += 2) {
       // Find current input index, minus 2 for Xtensa load
       // alignments:
-      int input_idx = i - 2;
-      const int8_t* input_vals_offset_ptr = input_data + input_idx;
 
       // Load signed 2x 8bit values and right shift into 24bit
       // alignment:
       ae_p24x2s input_vals_24x2;
-      AE_LP8X2F_IU(input_vals_24x2, input_vals_offset_ptr, 2);
+      AE_LP8X2F_IU(input_vals_24x2, input_vals_ptr, 2);
       input_vals_24x2 = AE_P24X2S_SRAI(input_vals_24x2, 16);
 
       // Add input offset (24bit aligned):
       input_vals_24x2 = AE_P24S_ADDS_P24X2S(input_vals_24x2, input_offset_24x2);
       // Find current filter index, minus 2 for Xtensa load
       // alignments:
-      int filter_idx = ch * kFilterDepth + i - 2;
+      const int filter_idx = ch * kFilterDepth + i - 2;
       const int8_t* filter_vals_offset_ptr = filter_data + filter_idx;
 
       // Load signed 2x 8bit values and right shift into 24bit
@@ -243,8 +240,7 @@ inline void Conv1x32Input32x32Filter(
     acc_56 = AE_MINQ56S(acc_56, output_activation_max_56);
     acc_56 = AE_MAXQ56S(acc_56, output_activation_min_56);
 
-    int output_idx = ch;
-    output_data[output_idx] = static_cast<int8_t>(AE_TRUNCA32Q48(acc_56));
+    output_data[ch] = static_cast<int8_t>(AE_TRUNCA32Q48(acc_56));
   }
 }
 
@@ -398,32 +394,6 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
       GetTensorData<int8>(output));
 }
 
-TfLiteStatus Conv1x32Input32x32FilterOptimized(
-    TfLiteContext* context, TfLiteNode* node, TfLiteConvParams* params,
-    OpData* data, const TfLiteTensor* input, const TfLiteTensor* filter,
-    const TfLiteTensor* bias, TfLiteTensor* output) {
-  ConvParams op_params;
-  // TODO(b/154032858): Investigate removing these copies.
-  op_params.input_offset = -input->params.zero_point;
-  op_params.output_offset = output->params.zero_point;
-  op_params.stride_height = params->stride_height;
-  op_params.stride_width = params->stride_width;
-  op_params.dilation_height_factor = params->dilation_height_factor;
-  op_params.dilation_width_factor = params->dilation_width_factor;
-  op_params.padding_values.height = data->padding.height;
-  op_params.padding_values.width = data->padding.width;
-  op_params.quantized_activation_min = data->output_activation_min;
-  op_params.quantized_activation_max = data->output_activation_max;
-  xtensa::hifimini::Conv1x32Input32x32Filter(
-      op_params, data->per_channel_output_multiplier,
-      data->per_channel_output_shift, GetTensorShape(input),
-      GetTensorData<int8>(input), GetTensorShape(filter),
-      GetTensorData<int8>(filter), GetTensorShape(bias),
-      GetTensorData<int32>(bias), GetTensorShape(output),
-      GetTensorData<int8>(output));
-  return kTfLiteOk;
-}
-
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
   auto* op_data = reinterpret_cast<OpData*>(node->user_data);
@@ -438,8 +408,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (input_dims[0] == 1 && input_dims[1] == 1 && input_dims[2] == 1 &&
       input_dims[3] == 32 && filter_dims[0] == 32 && filter_dims[1] == 1 &&
       filter_dims[2] == 1 && filter_dims[3] == 32) {
-    return Conv1x32Input32x32FilterOptimized(context, node, params, op_data,
-                                             input, filter, bias, output);
+    xtensa::hifimini::Conv1x32Input32x32Filter(
+        -input->params.zero_point, output->params.zero_point,
+        op_data->output_activation_min, op_data->output_activation_max,
+        op_data->per_channel_output_multiplier,
+        op_data->per_channel_output_shift, GetTensorShape(input),
+        GetTensorData<int8>(input), GetTensorShape(filter),
+        GetTensorData<int8>(filter), GetTensorShape(bias),
+        GetTensorData<int32>(bias), GetTensorShape(output),
+        GetTensorData<int8>(output));
+    return kTfLiteOk;
   }
 
   switch (input->type) {

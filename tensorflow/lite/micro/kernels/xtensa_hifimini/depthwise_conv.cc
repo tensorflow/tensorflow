@@ -174,20 +174,19 @@ inline void DepthwiseConvPerChannel(
 constexpr int kConvolutionalKernelWidth = 4;
 constexpr int kConvolutionalKernelDepth = 32;
 inline void DepthwiseConv4x32MatchingInputAndFilter(
-    const DepthwiseParams& params, const int32* output_multiplier,
-    const int32* output_shift, const RuntimeShape& input_shape,
-    const int8* input_data, const RuntimeShape& filter_shape,
-    const int8* filter_data, const RuntimeShape& bias_shape,
-    const int32* bias_data, const RuntimeShape& output_shape,
-    int8* output_data) {
+    const int input_offset, const int output_offset,
+    const int quantized_activation_min, const int quantized_activation_max,
+    const int32* output_multiplier, const int32* output_shift,
+    const RuntimeShape& input_shape, const int8* input_data,
+    const RuntimeShape& filter_shape, const int8* filter_data,
+    const RuntimeShape& bias_shape, const int32* bias_data,
+    const RuntimeShape& output_shape, int8* output_data) {
   const int32_t mult = output_multiplier[0];
   const int32_t shift = output_shift[0];
-  ae_p24x2s input_offset_24x2 = AE_CONVERT_INT32_24x2(params.input_offset);
-  ae_q56s output_offset_56 = AE_CVTQ48A32S(params.output_offset);
-  ae_q56s output_activation_min_56 =
-      AE_CVTQ48A32S(params.quantized_activation_min);
-  ae_q56s output_activation_max_56 =
-      AE_CVTQ48A32S(params.quantized_activation_max);
+  ae_p24x2s input_offset_24x2 = AE_CONVERT_INT32_24x2(input_offset);
+  ae_q56s output_offset_56 = AE_CVTQ48A32S(output_offset);
+  ae_q56s output_activation_min_56 = AE_CVTQ48A32S(quantized_activation_min);
+  ae_q56s output_activation_max_56 = AE_CVTQ48A32S(quantized_activation_max);
 
   const int num_blocks =
       kConvolutionalKernelDepth / 2;  // Based on the 24x2 register size.
@@ -441,34 +440,6 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
       GetTensorData<int8>(output));
 }
 
-TfLiteStatus DepthwiseConv4x32MatchingInputAndFilterOptimized(
-    TfLiteContext* context, TfLiteNode* node, TfLiteDepthwiseConvParams* params,
-    OpData* data, const TfLiteTensor* input, const TfLiteTensor* filter,
-    const TfLiteTensor* bias, TfLiteTensor* output) {
-  DepthwiseParams op_params;
-  op_params.padding_type = PaddingType::kSame;
-  op_params.padding_values.width = data->padding.width;
-  op_params.padding_values.height = data->padding.height;
-  op_params.stride_width = params->stride_width;
-  op_params.stride_height = params->stride_height;
-  op_params.dilation_width_factor = params->dilation_width_factor;
-  op_params.dilation_height_factor = params->dilation_height_factor;
-  op_params.depth_multiplier = params->depth_multiplier;
-  op_params.input_offset = -input->params.zero_point;
-  op_params.weights_offset = 0;
-  op_params.output_offset = output->params.zero_point;
-  op_params.quantized_activation_min = std::numeric_limits<int8_t>::min();
-  op_params.quantized_activation_max = std::numeric_limits<int8_t>::max();
-  xtensa::hifimini::DepthwiseConv4x32MatchingInputAndFilter(
-      op_params, data->per_channel_output_multiplier,
-      data->per_channel_output_shift, GetTensorShape(input),
-      GetTensorData<int8>(input), GetTensorShape(filter),
-      GetTensorData<int8>(filter), GetTensorShape(bias),
-      GetTensorData<int32>(bias), GetTensorShape(output),
-      GetTensorData<int8>(output));
-  return kTfLiteOk;
-}
-
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
@@ -486,8 +457,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (input_dims[0] == 1 && input_dims[1] == 4 && input_dims[2] == 1 &&
       input_dims[3] == 32 && filter_dims[0] == 1 && filter_dims[1] == 4 &&
       filter_dims[2] == 1 && filter_dims[3] == 32) {
-    return DepthwiseConv4x32MatchingInputAndFilterOptimized(
-        context, node, params, op_data, input, filter, bias, output);
+    xtensa::hifimini::DepthwiseConv4x32MatchingInputAndFilter(
+        -input->params.zero_point, output->params.zero_point,
+        std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max(),
+        op_data->per_channel_output_multiplier,
+        op_data->per_channel_output_shift, GetTensorShape(input),
+        GetTensorData<int8>(input), GetTensorShape(filter),
+        GetTensorData<int8>(filter), GetTensorShape(bias),
+        GetTensorData<int32>(bias), GetTensorShape(output),
+        GetTensorData<int8>(output));
+    return kTfLiteOk;
   }
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteInt8:
