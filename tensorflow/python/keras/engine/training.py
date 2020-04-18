@@ -282,7 +282,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               run_eagerly=None,
               **kwargs):
     """Configures the model for training.
- See
+
+    Arguments:
+        optimizer: String (name of optimizer) or optimizer instance. See
           `tf.keras.optimizers`.
         loss: String (name of objective function), objective function or
           `tf.keras.losses.Loss` instance. See `tf.keras.losses`. An objective
@@ -753,8 +755,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             or in the case of temporal data,
             you can pass a 2D array with shape
             `(samples, sequence_length)`,
-            to apply a different weight to every timestep of every sample. This
-            argument is not supported when `x` is a dataset, generator, or
            `keras.utils.Sequence` instance, instead provide the sample_weights
             as the third element of `x`.
         initial_epoch: Integer.
@@ -1085,8 +1085,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             (1:1 mapping between weights and samples), or in the case of
               temporal data, you can pass a 2D array with shape `(samples,
               sequence_length)`, to apply a different weight to every timestep
-              of every sample. This argument is not supported when `x` is a
-              dataset, instead pass sample weights as the third element of `x`.
         steps: Integer or `None`. Total number of steps (batches of samples)
           before declaring the evaluation round finished. Ignored with the
           default value of `None`. If x is a `tf.data` dataset and `steps` is
