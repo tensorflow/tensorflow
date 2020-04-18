@@ -55,7 +55,6 @@ limitations under the License.
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Support/STLExtras.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -208,7 +207,7 @@ static Type InferReductionOpType(Value input, Value reduction_indices,
 
   int64_t num_reduce_dim = 0;
   llvm::SmallVector<bool, 4> is_reduce_dim(rank, false);
-  for (APInt index : indices.getValues<APInt>()) {
+  for (const APInt &index : indices.getValues<APInt>()) {
     int64_t dim = GetDimForAxis(index.getSExtValue(), rank);
     // Invalid input.
     if (dim < 0 || dim >= rank) return UnrankedTensorType::get(element_ty);
@@ -404,11 +403,11 @@ static bool AreCancellablePermutations(DenseIntElementsAttr perm0,
   if (perm0.getNumElements() != perm1.getNumElements()) return false;
 
   SmallVector<int64_t, 8> perm0_values;
-  for (auto value : perm0.getIntValues())
+  for (const auto &value : perm0.getIntValues())
     perm0_values.push_back(value.getSExtValue());
 
   SmallVector<int64_t, 8> perm1_values;
-  for (auto value : perm1.getIntValues())
+  for (const auto &value : perm1.getIntValues())
     perm1_values.push_back(value.getSExtValue());
 
   for (int i = 0; i < perm0_values.size(); ++i) {
@@ -1520,6 +1519,55 @@ static LogicalResult Verify(FillOp op) {
   return success();
 }
 
+static ShapedType InferFillOpType(Value dims, Value value) {
+  Type etype = value.getType().cast<ShapedType>().getElementType();
+
+  DenseIntElementsAttr dims_attr;
+  if (!matchPattern(dims, m_Constant(&dims_attr))) {
+    return UnrankedTensorType::get(etype);
+  }
+
+  llvm::SmallVector<int64_t, 4> shape;
+  shape.reserve(dims_attr.getNumElements());
+  for (const APInt &dim : dims_attr.getValues<APInt>()) {
+    shape.push_back(dim.getSExtValue());
+  }
+  return RankedTensorType::get(shape, etype);
+}
+
+void FillOp::build(Builder *builder, OperationState &result, Value dims,
+                   Value value) {
+  FillOp::build(builder, result, InferFillOpType(dims, value), dims, value);
+}
+
+//===----------------------------------------------------------------------===//
+// FusedBatchNormGradOp
+//===----------------------------------------------------------------------===//
+
+// TODO(b/150954845): Add benchmarks to verify that layout preference didn't
+// change in the latest GPU generations.
+
+LogicalResult FusedBatchNormGradV3Op::UpdateDataFormat(StringRef data_format) {
+  return ::mlir::TF::UpdateDataFormat(data_format, this);
+}
+
+StringRef FusedBatchNormGradV3Op::GetOptimalLayout(
+    const RuntimeDevices &devices) {
+  // Keep current data format if no GPUs are available or if explicit placement
+  // does not allow to use GPU for this operation.
+  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(getOperation()))
+    return data_format();
+
+  // For f16 data type on devices with Tensor Cores support NHWC data format
+  // is up to ~2x faster.
+  auto x_ty = x().getType().cast<TensorType>();
+  const bool is_f16 = x_ty.getElementType().isF16();
+  if (is_f16 && CanUseTensorCores(devices)) return "NHWC";
+
+  // For all other data types prefer NCHW.
+  return "NCHW";
+}
+
 //===----------------------------------------------------------------------===//
 // FusedBatchNormOp
 //===----------------------------------------------------------------------===//
@@ -1547,7 +1595,34 @@ static LogicalResult Verify(FusedBatchNormOp op) {
 
 LogicalResult FusedBatchNormV3Op::FoldOperandsPermutation(
     ArrayRef<int64_t> permutation) {
+  // FusedBatchNorm in training mode is a layout sentitive operation, and should
+  // have already assigned an optimal data format.
+  if (is_training()) return failure();
+
   return ::mlir::TF::FoldOperandsPermutation(permutation, this);
+}
+
+LogicalResult FusedBatchNormV3Op::UpdateDataFormat(StringRef data_format) {
+  return ::mlir::TF::UpdateDataFormat(data_format, this);
+}
+
+StringRef FusedBatchNormV3Op::GetOptimalLayout(const RuntimeDevices &devices) {
+  // In inference mode FusedBatchNorm is not sensitive to data layout.
+  if (!is_training()) return data_format();
+
+  // Keep current data format if no GPUs are available or if explicit placement
+  // does not allow to use GPU for this operation.
+  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(getOperation()))
+    return data_format();
+
+  // For f16 data type on devices with Tensor Cores support NHWC data format
+  // is up to ~2x faster.
+  auto x_ty = x().getType().cast<TensorType>();
+  const bool is_f16 = x_ty.getElementType().isF16();
+  if (is_f16 && CanUseTensorCores(devices)) return "NHWC";
+
+  // For all other data types prefer NCHW.
+  return "NCHW";
 }
 
 //===----------------------------------------------------------------------===//
@@ -2099,6 +2174,27 @@ static LogicalResult VerifyPartitionedCall(OpClass op) {
 }
 
 //===----------------------------------------------------------------------===//
+// PowOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult PowOp::fold(ArrayRef<Attribute> operands) {
+  auto constant_y = operands[1].dyn_cast_or_null<DenseFPElementsAttr>();
+  if (constant_y && constant_y.isSplat()) {
+    APFloat y_value = constant_y.getSplatValue<APFloat>();
+    auto output_type = getType().cast<ShapedType>();
+    if (y_value.isZero() && output_type.hasStaticShape()) {
+      return DenseElementsAttr::get(
+          output_type,
+          FloatAttr::get(output_type.getElementType(), /*value=*/1.0));
+    }
+    if (y_value.isExactlyValue(1.0)) {
+      return x();
+    }
+  }
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // ReciprocalOp
 //===----------------------------------------------------------------------===//
 
@@ -2182,7 +2278,7 @@ static LogicalResult Verify(ReshapeOp op) {
   if (rank_by_shape == -1 || !type_of_tensor.hasStaticShape()) return success();
   int64_t num_by_tensor = type_of_tensor.getNumElements();
 
-  auto out_ty = op.getType().cast<RankedTensorType>();
+  auto out_ty = op.getType().dyn_cast<RankedTensorType>();
   if (out_ty && out_ty.hasStaticShape()) {
     int64_t num_output_elements = out_ty.getNumElements();
     if (num_by_tensor != num_output_elements)
@@ -2472,12 +2568,15 @@ static LogicalResult Verify(SizeOp op) {
 // SliceOp
 //===----------------------------------------------------------------------===//
 
-// Verifies that,
+// Verifies that:
 //
 // - operands begin and size are 1D with the same number of elements.
 // - if the input is a ranked tensor, the rank of the input equals the number
 //   of elements in operands begin and size.
-// - if begin are constants, 0 <= begin[i] < input_ty.getShape()[i]
+// - if begin are constants, that
+//   0 <= begin[i] <= begin[i] + size[i] <= input_ty.getShape()[i]
+// - if begins aren't constant but the input is a ranked tensor, that
+//   size[i] <= input_ty.getShape()[i]
 //
 static LogicalResult Verify(SliceOp op) {
   RankedTensorType begin_ty = GetRankedTensorTypeForOperand(op.begin());
@@ -2511,7 +2610,7 @@ static LogicalResult Verify(SliceOp op) {
     bool constant_slice_sizes =
         matchPattern(op.size(), m_Constant(&slice_sizes));
     int dim = 0;
-    for (APInt raw_begin_index : begin_indices.getValues<APInt>()) {
+    for (const APInt &raw_begin_index : begin_indices.getValues<APInt>()) {
       int64_t begin_index = raw_begin_index.getSExtValue();
       int64_t input_size = input_ty ? input_ty.getShape()[dim] : -1;
       int64_t slice_size = constant_slice_sizes
@@ -2526,6 +2625,20 @@ static LogicalResult Verify(SliceOp op) {
                << "requires 0 <= begin[i] <= begin[i] + size[i] <= Di";
       }
       ++dim;
+    }
+  } else if (input_ty) {
+    // If the inputs are ranked, we can do a few more sanity checks.
+    DenseIntElementsAttr slice_sizes;
+    if (matchPattern(op.size(), m_Constant(&slice_sizes))) {
+      auto input_shape = input_ty.getShape();
+      for (int64_t i = 0; i < input_ty.getRank(); ++i) {
+        int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
+        int64_t input_size = input_shape[i];
+        if (slice_size != -1 && input_size != -1 && slice_size > input_size) {
+          return op.emitOpError() << "requires size[i] <= Di, even if begin[i] "
+                                     "is unknown at compile time";
+        }
+      }
     }
   }
 
@@ -3264,7 +3377,7 @@ void TransposeOp::build(Builder *builder, OperationState &result, Value x,
           x_type.getDimSize((*attr_shape.begin()).getSExtValue()));
     } else {
       const_shape.reserve(attr_shape.getNumElements());
-      for (auto dim : attr_shape)
+      for (const auto &dim : attr_shape)
         const_shape.push_back(x_type.getDimSize(dim.getSExtValue()));
     }
     return TransposeOp::build(

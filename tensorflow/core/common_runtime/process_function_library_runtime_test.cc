@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -122,10 +123,24 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts,
         /*thread_pool=*/nullptr, cluster_flr_.get(),
         /*custom_kernel_creator=*/nullptr, session_metadata,
-        [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
-          *r = new IntraProcessRendezvous(device_mgr);
-          return Status::OK();
-        }));
+        Rendezvous::Factory{
+            [this](const int64 step_id, const DeviceMgr* device_mgr,
+                   Rendezvous** r) {
+              *r = new IntraProcessRendezvous(device_mgr);
+              if (rendezvous_ref_counts_.find(step_id) !=
+                  rendezvous_ref_counts_.end()) {
+                rendezvous_ref_counts_[step_id]++;
+              } else {
+                rendezvous_ref_counts_[step_id] = 1;
+              }
+              return Status::OK();
+            },
+            [this](const int64 step_id) {
+              CHECK(rendezvous_ref_counts_.find(step_id) !=
+                    rendezvous_ref_counts_.end());
+              rendezvous_ref_counts_[step_id]--;
+              return Status::OK();
+            }}));
   }
 
   Status Instantiate(
@@ -142,17 +157,11 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     DeviceContext* device_context =
         gpu_device_->tensorflow_gpu_device_info()->default_context;
 
-    Notification n;
-    Status status;
     Tensor cpu_tensor(device_tensor.dtype(), device_tensor.shape());
-    device_context->CopyDeviceTensorToCPU(&device_tensor, "", gpu_device_,
-                                          &cpu_tensor,
-                                          [&n, &status](const Status& s) {
-                                            status = s;
-                                            n.Notify();
-                                          });
-    n.WaitForNotification();
-    CHECK(status.ok());
+    CHECK(device_context
+              ->CopyDeviceTensorToCPUSync(&device_tensor, "", gpu_device_,
+                                          &cpu_tensor)
+              .ok());
     return cpu_tensor;
 #else
     CHECK(false);
@@ -166,18 +175,12 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     DeviceContext* device_context =
         gpu_device_->tensorflow_gpu_device_info()->default_context;
 
-    Notification n;
-    Status status;
     Tensor device_tensor(gpu_device_->GetAllocator({}), cpu_tensor.dtype(),
                          cpu_tensor.shape(), {});
-    device_context->CopyCPUTensorToDevice(&cpu_tensor, gpu_device_,
-                                          &device_tensor,
-                                          [&n, &status](const Status& s) {
-                                            status = s;
-                                            n.Notify();
-                                          });
-    n.WaitForNotification();
-    CHECK(status.ok());
+    CHECK(device_context
+              ->CopyCPUTensorToDeviceSync(&cpu_tensor, gpu_device_,
+                                          &device_tensor)
+              .ok());
     return device_tensor;
 #else
     CHECK(false);
@@ -289,6 +292,9 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
   std::unique_ptr<TestClusterFLR> cluster_flr_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr_;
+
+  // To ensure that we are cleaning up the rendezvous properly.
+  std::unordered_map<int64, int> rendezvous_ref_counts_;
 };
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, GetFLRNull) {
@@ -362,6 +368,9 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SingleCallFindDevice) {
   test::ExpectTensorEqual<tstring>(
       y, test::AsTensor<tstring>({"/job:a/replica:0/task:0/device:CPU:0"},
                                  TensorShape({})));
+  EXPECT_EQ(1, rendezvous_ref_counts_.size());
+  EXPECT_EQ(opts.step_id, rendezvous_ref_counts_.begin()->first);
+  EXPECT_EQ(0, rendezvous_ref_counts_.begin()->second);
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsSameDeviceXTimes) {

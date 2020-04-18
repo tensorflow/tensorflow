@@ -79,6 +79,18 @@ class ModuleTest(test.TestCase):
       tf.compat.v1.summary.FileWriter
     # pylint: enable=pointless-statement
 
+  def testInternalKerasImport(self):
+    # pylint: disable=g-import-not-at-top
+    from tensorflow.python.keras import layers
+    normalization_parent = layers.Normalization.__module__.split('.')[-1]
+    if tf._major_api_version == 2:
+      self.assertEqual('normalization', normalization_parent)
+      self.assertTrue(layers.BatchNormalization._USE_V2_BEHAVIOR)
+    else:
+      self.assertEqual('normalization_v1', normalization_parent)
+      self.assertFalse(layers.BatchNormalization._USE_V2_BEHAVIOR)
+    # pylint: enable=g-import-not-at-top
+
 
 if __name__ == '__main__':
   test.main()

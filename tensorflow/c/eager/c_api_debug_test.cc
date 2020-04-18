@@ -21,8 +21,13 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 TEST(CApiDebug, ScalarCPU) {
-  TFE_TensorHandle* h = TestScalarTensorHandle(1.0f);
   TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_TensorHandle* h = TestScalarTensorHandle(ctx, 1.0f);
   TFE_TensorDebugInfo* debug_info = TFE_TensorHandleTensorDebugInfo(h, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
@@ -30,12 +35,18 @@ TEST(CApiDebug, ScalarCPU) {
 
   TFE_DeleteTensorDebugInfo(debug_info);
   TFE_DeleteTensorHandle(h);
+  TFE_DeleteContext(ctx);
   TF_DeleteStatus(status);
 }
 
 TEST(CApiDebug, 2DCPU) {
-  TFE_TensorHandle* h = TestMatrixTensorHandle3X2();
   TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_TensorHandle* h = TestMatrixTensorHandle3X2(ctx);
   TFE_TensorDebugInfo* debug_info = TFE_TensorHandleTensorDebugInfo(h, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
@@ -46,5 +57,6 @@ TEST(CApiDebug, 2DCPU) {
 
   TFE_DeleteTensorDebugInfo(debug_info);
   TFE_DeleteTensorHandle(h);
+  TFE_DeleteContext(ctx);
   TF_DeleteStatus(status);
 }

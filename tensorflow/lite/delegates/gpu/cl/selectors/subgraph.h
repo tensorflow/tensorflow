@@ -43,8 +43,7 @@ struct GPUOperationsSubgraph {
 };
 
 std::unique_ptr<GPUOperation>* InitSingleOpSubgraph(
-    const std::vector<Value<TensorRef<BHWC>>*>& inputs,
-    const std::vector<Value<TensorRef<BHWC>>*>& outputs,
+    const std::vector<Value*>& inputs, const std::vector<Value*>& outputs,
     GPUOperationsSubgraph* gpu_subgraph);
 
 }  // namespace cl

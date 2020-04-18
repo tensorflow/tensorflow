@@ -16,7 +16,6 @@ py_library(
         "__init__.py",
         "estimator/__init__.py",
         "keras_parameterized.py",
-        "ops.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -141,6 +140,7 @@ py_library(
         ":backend",
         "//tensorflow/python/distribute:distributed_file_utils",
         "//tensorflow/python/keras/distribute:multi_worker_training_state",
+        "//tensorflow/python/keras/protobuf:projector_config_proto_py",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:mode_keys",
         "//tensorflow/python/profiler:profiler_v2",
@@ -189,7 +189,9 @@ py_library(
 py_library(
     name = "initializers",
     srcs = [
-        "initializers.py",
+        "initializers/__init__.py",
+        "initializers/initializers_v1.py",
+        "initializers/initializers_v2.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -525,7 +527,6 @@ tf_py_test(
     ],
     deps = [
         ":keras",
-        "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",

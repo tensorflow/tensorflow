@@ -157,7 +157,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
   }
 
   port::Status SetDeviceSharedMemoryConfig(SharedMemoryConfig config) override {
-    string error_msg{
+    std::string error_msg{
         "Shared memory configuration is unsupported for host "
         "executors."};
     LOG(INFO) << error_msg;

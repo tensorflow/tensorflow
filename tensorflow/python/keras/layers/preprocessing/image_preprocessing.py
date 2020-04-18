@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -342,7 +341,8 @@ class RandomFlip(Layer):
   Attributes:
     mode: String indicating which flip mode to use. Can be "horizontal",
       "vertical", or "horizontal_and_vertical". Defaults to
-      "horizontal_and_vertical".
+      "horizontal_and_vertical". "horizontal" is a left-right flip and
+      "vertical" is a top-bottom flip.
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
   """
@@ -377,10 +377,10 @@ class RandomFlip(Layer):
     def random_flipped_inputs():
       flipped_outputs = inputs
       if self.horizontal:
-        flipped_outputs = image_ops.random_flip_up_down(flipped_outputs,
-                                                        self.seed)
+        flipped_outputs = image_ops.random_flip_left_right(flipped_outputs,
+                                                           self.seed)
       if self.vertical:
-        flipped_outputs = image_ops.random_flip_left_right(
+        flipped_outputs = image_ops.random_flip_up_down(
             flipped_outputs, self.seed)
       return flipped_outputs
 
@@ -648,17 +648,11 @@ def transform(images,
                        'new_height, new_width, instead got '
                        '{}'.format(output_shape))
 
-    if compat.forward_compatible(2020, 3, 25):
-      return image_ops.image_projective_transform_v2(
-          images,
-          output_shape=output_shape,
-          transforms=transforms,
-          fill_mode=fill_mode.upper(),
-          interpolation=interpolation.upper())
     return image_ops.image_projective_transform_v2(
         images,
         output_shape=output_shape,
         transforms=transforms,
+        fill_mode=fill_mode.upper(),
         interpolation=interpolation.upper())
 
 
@@ -817,7 +811,6 @@ class RandomRotation(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.experimental.preprocessing.RandomZoom')
 class RandomZoom(Layer):
   """Randomly zoom each image during training.
 

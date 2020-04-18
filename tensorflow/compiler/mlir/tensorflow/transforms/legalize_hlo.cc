@@ -31,7 +31,7 @@ namespace mlir {
 namespace TF {
 namespace {
 
-class LegalizeHloToTf : public FunctionPass<LegalizeHloToTf> {
+class LegalizeHloToTf : public PassWrapper<LegalizeHloToTf, FunctionPass> {
  public:
   LegalizeHloToTf() = default;
   LegalizeHloToTf(const LegalizeHloToTf &) {}
@@ -39,6 +39,20 @@ class LegalizeHloToTf : public FunctionPass<LegalizeHloToTf> {
   /// Performs the legalization to the TF dialect.
   void runOnFunction() override;
 };
+
+// Returns whether the two values are guaranteed to be broadcastable to the
+// same shape, this broadcasts size 1 tensors up to any rank.
+// TODO(jpienaar): Move this to more general location.
+static bool AreBroadcastCompatible(Value x, Value y) {
+  auto x_ranked = x.getType().dyn_cast<RankedTensorType>();
+  auto y_ranked = y.getType().dyn_cast<RankedTensorType>();
+  if (!x_ranked || !y_ranked) {
+    return true;
+  }
+  SmallVector<int64_t, 4> resultShape;
+  return OpTrait::util::getBroadcastedShape(x_ranked.getShape(),
+                                            y_ranked.getShape(), resultShape);
+}
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_legalize_hlo.inc"
 
@@ -62,7 +76,7 @@ static PassRegistration<LegalizeHloToTf> pass(
 
 }  // end namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeHloToTfPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass() {
   return std::make_unique<LegalizeHloToTf>();
 }
 

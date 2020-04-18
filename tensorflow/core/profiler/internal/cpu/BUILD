@@ -15,6 +15,7 @@ cc_library(
         "//tensorflow/core/profiler/internal:parse_annotation",
         "//tensorflow/core/profiler/internal:traceme_recorder",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -50,9 +51,11 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core/profiler/internal:profiler_interface",
+        "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/types:optional",
         "@com_google_googletest//:gtest_main",
     ],
@@ -75,6 +78,23 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/python/profiler/internal:python_hooks",
         "@com_google_absl//absl/strings",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
+    name = "metadata_collector",
+    srcs = ["metadata_collector.cc"],
+    deps = [
+        "//tensorflow/compiler/xla/service/gpu:gpu_debug_info_manager",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/internal:profiler_factory",
+        "//tensorflow/core/profiler/internal:profiler_interface",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
     ],
     alwayslink = True,
 )

@@ -74,11 +74,12 @@ LogicalResult MarkFunctionVisibilityUsingEntryFunctionSpecification(
 
 namespace {
 struct MarkFunctionVisibilityUsingEntryFunctionSpecificationPass
-    : public ModulePass<
-          MarkFunctionVisibilityUsingEntryFunctionSpecificationPass> {
-  void runOnModule() override {
+    : public PassWrapper<
+          MarkFunctionVisibilityUsingEntryFunctionSpecificationPass,
+          OperationPass<ModuleOp>> {
+  void runOnOperation() override {
     if (failed(MarkFunctionVisibilityUsingEntryFunctionSpecification(
-            getModule()))) {
+            getOperation()))) {
       signalPassFailure();
     }
   }
@@ -90,7 +91,7 @@ static PassRegistration<
     pass("tf-mark-func-visibility",
          "Use tf.entry_function to mark function visibility.");
 
-std::unique_ptr<OpPassBase<ModuleOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateMarkFunctionVisibilityUsingEntryFunctionSpecificationPass() {
   return std::make_unique<
       MarkFunctionVisibilityUsingEntryFunctionSpecificationPass>();
@@ -110,9 +111,10 @@ static LogicalResult MarkFunctionVisibilityUsingSavedModelLinkage(
 
 namespace {
 struct MarkFunctionVisibilityUsingSavedModelLinkagePass
-    : public ModulePass<MarkFunctionVisibilityUsingSavedModelLinkagePass> {
-  void runOnModule() override {
-    if (failed(MarkFunctionVisibilityUsingSavedModelLinkage(getModule()))) {
+    : public PassWrapper<MarkFunctionVisibilityUsingSavedModelLinkagePass,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override {
+    if (failed(MarkFunctionVisibilityUsingSavedModelLinkage(getOperation()))) {
       signalPassFailure();
     }
   }
@@ -123,7 +125,7 @@ static PassRegistration<MarkFunctionVisibilityUsingSavedModelLinkagePass> pass(
     "tf-saved-model-mark-func-visibility",
     "Use tf_saved_model linkage information to mark function visibility.");
 
-std::unique_ptr<OpPassBase<ModuleOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateMarkFunctionVisibilityUsingSavedModelLinkagePass() {
   return std::make_unique<MarkFunctionVisibilityUsingSavedModelLinkagePass>();
 }

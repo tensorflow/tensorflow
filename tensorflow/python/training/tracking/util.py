@@ -52,23 +52,28 @@ from tensorflow.python.training.tracking import graph_view as graph_view_lib
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
 
-# Loaded lazily due to a circular dependency.
-keras_backend = lazy_loader.LazyLoader(
-    "keras_backend", globals(),
-    "tensorflow.python.keras.backend")
+# The callable that provide Keras default session that is needed for saving.
+_SESSION_PROVIDER = None
+
+
+def register_session_provider(session_provider):
+  global _SESSION_PROVIDER
+  if _SESSION_PROVIDER is None:
+    _SESSION_PROVIDER = session_provider
 
 
 def get_session():
   # Prefer TF's default session since get_session from Keras has side-effects.
   session = ops.get_default_session()
   if session is None:
-    session = keras_backend.get_session()
+    global _SESSION_PROVIDER
+    if _SESSION_PROVIDER is not None:
+      session = _SESSION_PROVIDER()  # pylint: disable=not-callable
   return session
 
 
@@ -1718,9 +1723,9 @@ class Checkpoint(tracking.AutoTrackable):
 
   `Checkpoint`'s constructor accepts keyword arguments whose values are types
   that contain trackable state, such as `tf.keras.optimizers.Optimizer`
-  implementations, `tf.Variable`, `tf.keras.Layer` implementations, or
-  `tf.keras.Model` implementations. It saves these values with a checkpoint, and
-  maintains a `save_counter` for numbering checkpoints.
+  implementations, `tf.Variable`s, `tf.data.Dataset` iterators, `tf.keras.Layer`
+  implementations, or `tf.keras.Model` implementations. It saves these values
+  with a checkpoint, and maintains a `save_counter` for numbering checkpoints.
 
   Example usage:
 
@@ -2003,11 +2008,9 @@ class Checkpoint(tracking.AutoTrackable):
 
     Args:
       save_path: The path to the checkpoint, as returned by `save` or
-        `tf.train.latest_checkpoint`. If None (as when there is no latest
-        checkpoint for `tf.train.latest_checkpoint` to return), returns an
-        object which may run initializers for objects in the dependency graph.
-        If the checkpoint was written by the name-based
-        `tf.compat.v1.train.Saver`, names are used to match variables.
+        `tf.train.latest_checkpoint`. If the checkpoint was written by the
+        name-based `tf.compat.v1.train.Saver`, names are used to match
+        variables.
 
     Returns:
       A load status object, which can be used to make assertions about the

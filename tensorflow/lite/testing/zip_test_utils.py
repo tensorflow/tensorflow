@@ -75,6 +75,7 @@ RANDOM_SEED = 342
 TF_TYPE_INFO = {
     tf.float32: (np.float32, "FLOAT"),
     tf.float16: (np.float16, "FLOAT"),
+    tf.float64: (np.double, "FLOAT64"),
     tf.int32: (np.int32, "INT32"),
     tf.uint8: (np.uint8, "QUANTIZED_UINT8"),
     tf.int16: (np.int16, "QUANTIZED_INT16"),
@@ -108,7 +109,7 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
   if dtype in TF_TYPE_INFO:
     dtype = TF_TYPE_INFO[dtype][0]
 
-  if dtype in (tf.float32, tf.float16):
+  if dtype in (tf.float32, tf.float16, tf.float64):
     value = (max_value - min_value) * np.random.random_sample(shape) + min_value
   elif dtype in (tf.int32, tf.uint8, tf.int64, tf.int16):
     value = np.random.randint(min_value, max_value + 1, shape)
@@ -128,10 +129,15 @@ def create_scalar_data(dtype, min_value=-100, max_value=100):
   if dtype in TF_TYPE_INFO:
     dtype = TF_TYPE_INFO[dtype][0]
 
-  if dtype in (tf.float32, tf.float16):
+  if dtype in (tf.float32, tf.float16, tf.float64):
     value = (max_value - min_value) * np.random.random() + min_value
   elif dtype in (tf.int32, tf.uint8, tf.int64, tf.int16):
     value = np.random.randint(min_value, max_value + 1)
+  elif dtype == tf.bool:
+    value = np.random.choice([True, False])
+  elif dtype == np.string_:
+    l = np.random.randint(1, 6)
+    value = "".join(np.random.choice(list(string.ascii_uppercase), size=l))
   return np.array(value, dtype=dtype)
 
 

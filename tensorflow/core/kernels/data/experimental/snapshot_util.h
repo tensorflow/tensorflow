@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/inputstream_interface.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -56,8 +57,10 @@ class Writer {
   static constexpr const char* const kWriteCord = "WriteCord";
   static constexpr const char* const kSeparator = "::";
 
-  explicit Writer(WritableFile* dest, const string& compression_type,
-                  int version, const DataTypeVector& dtypes);
+  static Status Create(Env* env, const std::string& filename,
+                       const std::string& compression_type, int version,
+                       const DataTypeVector& dtypes,
+                       std::unique_ptr<Writer>* out_writer);
 
   Status WriteTensors(const std::vector<Tensor>& tensors);
 
@@ -68,16 +71,27 @@ class Writer {
   ~Writer();
 
  private:
+  explicit Writer(const std::string& filename,
+                  const std::string& compression_type, int version,
+                  const DataTypeVector& dtypes);
+
+  Status Initialize(tensorflow::Env* env);
+
   Status WriteRecord(const StringPiece& data);
 
 #if defined(PLATFORM_GOOGLE)
   Status WriteRecord(const absl::Cord& data);
 #endif  // PLATFORM_GOOGLE
 
-  WritableFile* dest_;
-  bool dest_is_owned_ = false;
-  const string compression_type_;
+  std::unique_ptr<WritableFile> dest_;
+  const std::string filename_;
+  const std::string compression_type_;
   const int version_;
+  const DataTypeVector dtypes_;
+  // We hold zlib_dest_ because we may create a ZlibOutputBuffer and put that
+  // in dest_ if we want compression. ZlibOutputBuffer doesn't own the original
+  // dest_ and so we need somewhere to store the original one.
+  std::unique_ptr<WritableFile> zlib_underlying_dest_;
   std::vector<bool> simple_tensor_mask_;  // true for simple, false for complex.
   int num_simple_ = 0;
   int num_complex_ = 0;
@@ -100,12 +114,19 @@ class Reader {
   static constexpr const char* const kReadCord = "ReadCord";
   static constexpr const char* const kSeparator = "::";
 
-  explicit Reader(RandomAccessFile* file, const string& compression_type,
-                  int version, const DataTypeVector& dtypes);
+  static Status Create(Env* env, const std::string& filename,
+                       const string& compression_type, int version,
+                       const DataTypeVector& dtypes,
+                       std::unique_ptr<Reader>* out_reader);
 
   Status ReadTensors(std::vector<Tensor>* read_tensors);
 
  private:
+  explicit Reader(const std::string& filename, const string& compression_type,
+                  int version, const DataTypeVector& dtypes);
+
+  Status Initialize(Env* env);
+
   Status ReadTensorsV0(std::vector<Tensor>* read_tensors);
 
   Status SnappyUncompress(
@@ -120,7 +141,8 @@ class Reader {
   Status ReadRecord(absl::Cord* record);
 #endif
 
-  RandomAccessFile* file_;
+  std::string filename_;
+  std::unique_ptr<RandomAccessFile> file_;
   std::unique_ptr<io::InputStreamInterface> input_stream_;
   const string compression_type_;
   const int version_;

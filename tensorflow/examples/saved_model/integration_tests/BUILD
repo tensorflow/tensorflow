@@ -64,6 +64,7 @@ cuda_py_test(
         ":distribution_strategy_utils",
         ":integration_scripts",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:framework_combinations",
         "//tensorflow/python/distribute:combinations",
         "@absl_py//absl/testing:parameterized",
     ],

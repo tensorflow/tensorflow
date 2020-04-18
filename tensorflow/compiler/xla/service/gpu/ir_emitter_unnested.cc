@@ -1363,7 +1363,7 @@ GetHloBufferSlices(const HloInstruction* hlo,
     // appear before any GTE instructions, because it's illegal to bitcast to a
     // tuple type.
     const HloInstruction* parent = instr;
-    while (parent->opcode() == HloOpcode::kBitcast) {
+    while (parent->IsEffectiveBitcast()) {
       parent = parent->operand(0);
 
       auto slice = buffer_assn.GetUniqueSlice(parent, {});
@@ -3268,7 +3268,7 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
         /*TLMode=*/llvm::GlobalValue::NotThreadLocal,
         /*AddressSpace=*/global_address_space,
         /*isExternallyInitialized=*/false);
-    global_for_const->setAlignment(kConstantBufferAlignBytes);
+    global_for_const->setAlignment(llvm::Align(kConstantBufferAlignBytes));
     ir_emitter_context_->llvm_module()->getGlobalList().push_back(
         global_for_const);
   }

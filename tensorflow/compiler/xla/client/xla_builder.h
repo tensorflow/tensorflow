@@ -493,6 +493,12 @@ class XlaBuilder {
       const Shape& shape_with_layout, const string& opaque,
       absl::optional<absl::Span<const Shape>> operand_shapes_with_layout);
 
+  XlaOp CustomCall(
+      const string& call_target_name, absl::Span<const XlaOp> operands,
+      const XlaComputation& computation, const Shape& shape_with_layout,
+      const string& opaque,
+      absl::optional<absl::Span<const Shape>> operand_shapes_with_layout);
+
   XlaOp Reduce(XlaOp operand, XlaOp init_value,
                const XlaComputation& computation,
                absl::Span<const int64> dimensions_to_reduce);
@@ -559,6 +565,8 @@ class XlaBuilder {
   XlaOp BitcastConvertType(XlaOp operand, PrimitiveType new_element_type);
 
   XlaOp Transpose(XlaOp operand, absl::Span<const int64> permutation);
+  virtual StatusOr<XlaOp> TransposeInternal(
+      const Shape& shape, XlaOp operand, absl::Span<const int64> permutation);
 
   XlaOp Rev(XlaOp operand, absl::Span<const int64> dimensions);
 
@@ -596,6 +604,11 @@ class XlaBuilder {
                const GatherDimensionNumbers& dimension_numbers,
                absl::Span<const int64> slice_sizes,
                bool indices_are_sorted = false);
+
+  virtual StatusOr<XlaOp> GatherInternal(
+      const Shape& shape, XlaOp input, XlaOp start_indices,
+      const GatherDimensionNumbers& dimension_numbers,
+      absl::Span<const int64> slice_sizes, bool indices_are_sorted);
 
   XlaOp Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,
                 const XlaComputation& update_computation,
@@ -656,11 +669,14 @@ class XlaBuilder {
                  absl::Span<const int64> broadcast_dimensions,
                  absl::optional<ComparisonDirection> direction = absl::nullopt);
 
+  // Internal helper method for binary op compare without broadcast dimensions.
+  virtual StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
+                                  ComparisonDirection direction);
+
   // Internal helper method that does the building for an arbitrary binary op
   // with same ranked operands that doesn't broadcast.
-  virtual XlaOp BinaryOpNoBroadcast(
-      HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
-      absl::optional<ComparisonDirection> direction);
+  virtual XlaOp BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape,
+                                    XlaOp lhs, XlaOp rhs);
 
   // Internal helper method that does the building for an arbitrary ternary op.
   XlaOp TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs);
@@ -842,6 +858,10 @@ class XlaBuilder {
   friend XlaOp DotGeneral(XlaOp lhs, XlaOp rhs,
                           const DotDimensionNumbers& dimension_number,
                           const PrecisionConfig* precision_config);
+  virtual StatusOr<XlaOp> DotGeneralInternal(
+      const Shape& shape, XlaOp lhs, XlaOp rhs,
+      const DotDimensionNumbers& dimension_number,
+      const PrecisionConfig* precision_config);
   friend XlaOp Conv(XlaOp lhs, XlaOp rhs,
                     absl::Span<const int64> window_strides, Padding padding,
                     int64 feature_group_count, int64 batch_group_count,
@@ -885,6 +905,12 @@ class XlaBuilder {
   friend XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
                           absl::Span<const XlaOp> operands, const Shape& shape,
                           const string& opaque);
+  friend XlaOp CustomCallWithComputation(XlaBuilder* builder,
+                                         const string& call_target_name,
+                                         absl::Span<const XlaOp> operands,
+                                         const XlaComputation& computation,
+                                         const Shape& shape,
+                                         const string& opaque);
   friend XlaOp CustomCallWithLayout(
       XlaBuilder* builder, const string& call_target_name,
       absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
@@ -1579,6 +1605,13 @@ XlaOp Call(XlaBuilder* builder, const XlaComputation& computation,
 XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
                  absl::Span<const XlaOp> operands, const Shape& shape,
                  const string& opaque = "");
+
+// Overload which constructs a custom call that applies an Xla computation.
+XlaOp CustomCallWithComputation(XlaBuilder* builder,
+                                const string& call_target_name,
+                                absl::Span<const XlaOp> operands,
+                                const XlaComputation& computation,
+                                const Shape& shape, const string& opaque = "");
 
 // Overload which constructs a custom call with fixed layouts. The operands will
 // have the layouts specified by |operand_shapes_with_layout| when provided to

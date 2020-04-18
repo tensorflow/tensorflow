@@ -1581,7 +1581,7 @@ class StrategyExtendedV2(object):
   * Unwrapping and merging: Consider calling a function `fn` on multiple
     replicas, like `run(fn, args=[w])` with an
     argument `w` that is a wrapped value. This means `w` will have a map taking
-    replica id `0` to `w0`, replica id `11` to `w1`, etc.
+    replica id `0` to `w0`, replica id `1` to `w1`, etc.
     `run()` unwraps `w` before calling `fn`, so
     it calls `fn(w0)` on `d0`, `fn(w1)` on `d1`, etc.  It then merges the return
     values from `fn()`, which can possibly result in wrapped values. For

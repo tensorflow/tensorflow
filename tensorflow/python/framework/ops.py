@@ -92,9 +92,19 @@ _api_usage_gauge = monitoring.BoolGauge(
     "/tensorflow/api/ops_eager_execution",
     "Whether ops.enable_eager_execution() is called.")
 
+_tensor_equality_api_usage_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/enable_tensor_equality",
+    "Whether ops.enable_tensor_equality() is called.")
+
+_control_flow_api_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/enable_control_flow_v2",
+    "Whether enable_control_flow_v2() is called.")
+
+_tf_function_api_guage = monitoring.BoolGauge(
+    "/tensorflow/api/tf_function",
+    "Whether tf.function() is used.")
 
 # pylint: disable=protected-access
-_TensorLike = tensor_like._TensorLike
 _DTYPES_INTERN_TABLE = dtypes._INTERN_TABLE
 # pylint: enable=protected-access
 
@@ -278,7 +288,9 @@ def enable_tensor_equality():
   unhashable. Thus tensors can no longer be directly used in sets or as a key in
   a dictionary.
   """
+  _tensor_equality_api_usage_gauge.get_cell().set(True)
   Tensor._USE_EQUALITY = True  # pylint: disable=protected-access
+
 
 @tf_export(v1=["disable_tensor_equality"])
 def disable_tensor_equality():
@@ -286,11 +298,12 @@ def disable_tensor_equality():
 
   This is a legacy behaviour of TensorFlow and is highly discouraged.
   """
+  _tensor_equality_api_usage_gauge.get_cell().set(False)
   Tensor._USE_EQUALITY = False  # pylint: disable=protected-access
 
 
 @tf_export("Tensor")
-class Tensor(_TensorLike):
+class Tensor(tensor_like.TensorLike):
   """A tensor is a multidimensional array of elements represented by a
 
   `tf.Tensor` object.  All elements are of a single known data type.
@@ -341,7 +354,7 @@ class Tensor(_TensorLike):
   shape of a tensor at execution time.
 
   A number of specialized tensors are available: see `tf.Variable`,
-  `tf.constant`, `tf.placeholder`, `tf.SparseTensor`, and
+  `tf.constant`, `tf.placeholder`, `tf.sparse.SparseTensor`, and
   `tf.RaggedTensor`.
 
   For more on Tensors, see the [guide](https://tensorflow.org/guide/tensor).
@@ -611,14 +624,14 @@ class Tensor(_TensorLike):
 
     The shape inference functions propagate shapes to the extent possible:
 
-    >>> _ = my_matmul.get_concrete_function(
+    >>> f = my_matmul.get_concrete_function(
     ...   tf.TensorSpec([None,3]),
     ...   tf.TensorSpec([3,5]))
     Result shape: (None, 5)
 
     Tracing may fail if a shape missmatch can be detected:
 
-    >>> _ = my_matmul.get_concrete_function(
+    >>> cf = my_matmul.get_concrete_function(
     ...   tf.TensorSpec([None,3]),
     ...   tf.TensorSpec([4,5]))
     Traceback (most recent call last):
@@ -638,7 +651,7 @@ class Tensor(_TensorLike):
     ...   print("Result shape: ", a.shape)
     ...   return a
 
-    >>> _ = my_fun.get_concrete_function(
+    >>> cf = my_fun.get_concrete_function(
     ...   tf.TensorSpec([None, None]))
     Result shape: (5, 5)
 
@@ -703,7 +716,7 @@ class Tensor(_TensorLike):
     Trace the function, see the [Concrete Functions
     Guide](https://www.tensorflow.org/guide/concrete_function) for details.
 
-    >>> _ = load_image.get_concrete_function(
+    >>> cf = load_image.get_concrete_function(
     ...     tf.TensorSpec([], dtype=tf.string))
     Initial shape:  (None, None, 3)
     Final shape: (28, 28, 3)
@@ -877,8 +890,10 @@ class Tensor(_TensorLike):
   __array_priority__ = 100
 
   def __array__(self):
-    raise NotImplementedError("Cannot convert a symbolic Tensor ({}) to a numpy"
-                              " array.".format(self.name))
+    raise NotImplementedError(
+        "Cannot convert a symbolic Tensor ({}) to a numpy array."
+        " This error may indicate that you're trying to pass a Tensor to"
+        " a NumPy call, which is not supported".format(self.name))
 
   def __len__(self):
     raise TypeError("len is not well defined for symbolic Tensors. ({}) "
@@ -5983,9 +5998,12 @@ def _assert_same_graph(original_item, item):
   Raises:
     ValueError: if graphs do not match.
   """
-  if original_item.graph is not item.graph:
-    raise ValueError("%s must be from the same graph as %s." %
-                     (item, original_item))
+  original_graph = getattr(original_item, "graph", None)
+  graph = getattr(item, "graph", None)
+  if original_graph and graph and original_graph is not graph:
+    raise ValueError(
+        "%s must be from the same graph as %s (graphs are %s and %s)." %
+        (item, original_item, graph, original_graph))
 
 
 def _get_graph_from_inputs(op_input_list, graph=None):
@@ -6039,7 +6057,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
     # TODO(josh11b): Note that we exclude subclasses of Tensor. Need to clean this
     # up.
     graph_element = None
-    if (isinstance(op_input, (Operation, _TensorLike)) and
+    if (isinstance(op_input, (Operation, tensor_like.TensorLike)) and
         ((not isinstance(op_input, Tensor)) or type(op_input) == Tensor)):  # pylint: disable=unidiomatic-typecheck
       graph_element = op_input
     else:
@@ -6048,7 +6066,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
     if graph_element is not None:
       if not graph:
         original_graph_element = graph_element
-        graph = graph_element.graph
+        graph = getattr(graph_element, "graph", None)
       elif original_graph_element is not None:
         _assert_same_graph(original_graph_element, graph_element)
       elif graph_element.graph is not graph:

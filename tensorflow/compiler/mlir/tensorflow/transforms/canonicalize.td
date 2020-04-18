@@ -27,9 +27,10 @@ def SingleResultAndOperandHaveSameType : Constraint<
 
 def IsRank2Tensor : Type<HasAnyRankOfPred<[2]>, "Rank 2 tensor">;
 
-// Checks if the value has only one user.
-def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
-
+// Checks if all the users is ReadVariableOp.
+def HasOnlyReadVariableOpUsers : Constraint<
+  CPred<"llvm::all_of($0.getUsers(), [](mlir::OpOperand op) { "
+        "return llvm::isa<mlir::TF::ReadVariableOp>(op.getOwner()); })">>;
 
 //===----------------------------------------------------------------------===//
 // Add op patterns.
@@ -185,5 +186,5 @@ def XdivyWithSqrtDivisor : Pat<(TF_XdivyOp $arg0, (TF_SqrtOp $arg1)),
 // Cast op followed by a ReadVariable op can be folded into the ReadVariable
 //===----------------------------------------------------------------------===//
 
-def ReadVariableOfCast : Pat<(TF_ReadVariableOp (TF_CastOp:$output $x, BoolAttr:$Truncate)), (TF_ReadVariableOp $x), [(HasOneUse $output)]>;
+def ReadVariableOfCast : Pat<(TF_ReadVariableOp (TF_CastOp:$output $x, BoolAttr:$Truncate)), (TF_ReadVariableOp $x), [(HasOnlyReadVariableOpUsers $output)]>;
 

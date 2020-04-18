@@ -144,6 +144,13 @@ filegroup(
 ##---------------------------------------------------------------------------##
 
 filegroup(
+    name = "PassBaseTdFiles",
+    srcs = [
+        "include/mlir/Pass/PassBase.td",
+    ],
+)
+
+filegroup(
     name = "AffineOpsTdFiles",
     srcs = [
         "include/mlir/Dialect/Affine/IR/AffineOps.td",
@@ -243,13 +250,14 @@ cc_library(
     name = "AVX512ToLLVM",
     srcs = glob([
         "lib/Conversion/AVX512ToLLVM/*.cpp",
-    ]),
+    ]) + ["lib/Conversion/PassDetail.h"],
     hdrs = glob([
         "include/mlir/Conversion/AVX512ToLLVM/*.h",
     ]),
     includes = ["include"],
     deps = [
         ":AVX512",
+        ":ConversionPassIncGen",
         ":EDSC",
         ":IR",
         ":LLVMAVX512",
@@ -300,21 +308,40 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "LoopPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls",
+            "include/mlir/Dialect/LoopOps/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/LoopOps/Passes.td",
+    td_srcs = [
+        ":PassBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "LoopOpsTransforms",
-    srcs = glob(["lib/Dialect/LoopOps/Transforms/*.cpp"]),
+    srcs = glob([
+        "lib/Dialect/LoopOps/Transforms/*.cpp",
+        "lib/Dialect/LoopOps/Transforms/*.h",
+    ]),
     hdrs = ["include/mlir/Dialect/LoopOps/Passes.h"],
     includes = ["include"],
     deps = [
         ":Affine",
         ":IR",
         ":LoopOps",
+        ":LoopPassIncGen",
         ":Pass",
         ":StandardOps",
         ":Transforms",
         "@llvm-project//llvm:support",
     ],
-    alwayslink = 1,
 )
 
 filegroup(
@@ -423,9 +450,43 @@ cc_library(
 )
 
 cc_library(
+    name = "AffineUtils",
+    srcs = glob(
+        [
+            "lib/Dialect/Affine/Utils/*.cpp",
+            "lib/Dialect/Affine/Utils/*.h",
+        ],
+    ),
+    hdrs = ["include/mlir/Dialect/Affine/Utils.h"],
+    includes = ["include"],
+    deps = [
+        ":Affine",
+        ":IR",
+        "@llvm-project//llvm:support",
+    ],
+)
+
+gentbl(
+    name = "AffinePassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls",
+            "include/mlir/Dialect/Affine/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Affine/Passes.td",
+    td_srcs = [
+        ":PassBaseTdFiles",
+    ],
+)
+
+cc_library(
     name = "AffineTransforms",
     srcs = glob([
         "lib/Dialect/Affine/Transforms/*.cpp",
+        "lib/Dialect/Affine/Transforms/*.h",
     ]),
     hdrs = [
         "include/mlir/Dialect/Affine/Passes.h",
@@ -433,6 +494,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":Affine",
+        ":AffinePassIncGen",
         ":Analysis",
         ":IR",
         ":LoopOps",
@@ -445,16 +507,33 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "ConversionPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls",
+            "include/mlir/Conversion/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Conversion/Passes.td",
+    td_srcs = [
+        ":PassBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "AffineToStandardTransforms",
     srcs = glob([
         "lib/Conversion/AffineToStandard/*.cpp",
         "lib/Conversion/AffineToStandard/*.h",
-    ]),
+    ]) + ["lib/Conversion/PassDetail.h"],
     hdrs = glob(["include/mlir/Conversion/AffineToStandard/*.h"]),
     includes = ["include"],
     deps = [
         ":Affine",
+        ":ConversionPassIncGen",
         ":IR",
         ":LoopOps",
         ":Pass",
@@ -542,6 +621,7 @@ gentbl(
     td_file = "include/mlir/Dialect/Shape/IR/ShapeOps.td",
     td_srcs = [
         ":StdOpsTdFiles",
+        "include/mlir/Interfaces/InferTypeOpInterface.td",
     ],
 )
 
@@ -560,6 +640,7 @@ cc_library(
         ":CallOpInterfaces",
         ":CommonFolders",
         ":IR",
+        ":InferTypeOpInterface",
         ":ShapeOpsIncGen",
         ":SideEffects",
         ":Support",
@@ -661,16 +742,11 @@ cc_library(
             "lib/Support/JitRunner.cpp",
             # TODO(jpienaar): Move this out, else Support depends on Analysis/
             "lib/Support/MlirOptMain.cpp",
-            # TODO(jpienaar): Move this out, else Support depends on Analysis/
-            "lib/Support/TranslateClParser.cpp",
         ],
     ),
     hdrs = glob([
-        "include/mlir/ADT/*.h",
         "include/mlir/Support/*.h",
-    ]) + [
-        "include/mlir/Translation.h",
-    ],
+    ]),
     includes = ["include"],
     deps = [
         "@llvm-project//llvm:support",
@@ -789,7 +865,6 @@ cc_library(
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -826,19 +901,41 @@ cc_library(
         ":SideEffects",
         ":Support",
         "@llvm-project//llvm:asm_parser",
+        "@llvm-project//llvm:bit_reader",
+        "@llvm-project//llvm:bit_writer",
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],
 )
 
+gentbl(
+    name = "LLVMPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls",
+            "include/mlir/Dialect/LLVMIR/Transforms/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/LLVMIR/Transforms/Passes.td",
+    td_srcs = [
+        ":PassBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "LLVMIRTransforms",
-    srcs = glob(["lib/Dialect/LLVMIR/Transforms/*.cpp"]),
+    srcs = glob([
+        "lib/Dialect/LLVMIR/Transforms/*.cpp",
+        "lib/Dialect/LLVMIR/Transforms/*.h",
+    ]),
     hdrs = glob(["include/mlir/Dialect/LLVMIR/Transforms/*.h"]),
     includes = ["include"],
     deps = [
         ":IR",
         ":LLVMDialect",
+        ":LLVMPassIncGen",
         ":Pass",
     ],
 )
@@ -846,10 +943,40 @@ cc_library(
 filegroup(
     name = "GPUOpsTdFiles",
     srcs = [
+        "include/mlir/Dialect/GPU/GPUBase.td",
         "include/mlir/Dialect/GPU/GPUOps.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Interfaces/SideEffects.td",
         ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
+    name = "ParallelLoopMapperAttrGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-struct-attr-decls",
+            "include/mlir/Dialect/GPU/ParallelLoopMapperAttr.h.inc",
+        ),
+        (
+            "-gen-struct-attr-defs",
+            "include/mlir/Dialect/GPU/ParallelLoopMapperAttr.cpp.inc",
+        ),
+        (
+            "-gen-enum-decls",
+            "include/mlir/Dialect/GPU/ParallelLoopMapperEnums.h.inc",
+        ),
+        (
+            "-gen-enum-defs",
+            "include/mlir/Dialect/GPU/ParallelLoopMapperEnums.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/GPU/ParallelLoopMapperAttr.td",
+    td_srcs = [
+        ":GPUOpsTdFiles",
+        ":AffineOpsTdFiles",
     ],
 )
 
@@ -886,7 +1013,7 @@ cc_library(
         ],
     ),
     hdrs = glob([
-        "include/mlir/Dialect/GPU/*.h",
+        "include/mlir/Dialect/GPU/GPUDialect.h",
     ]),
     includes = ["include"],
     deps = [
@@ -899,6 +1026,22 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "GPUPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls",
+            "include/mlir/Dialect/GPU/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/GPU/Passes.td",
+    td_srcs = [
+        ":PassBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "GPUTransforms",
     srcs = glob(
@@ -908,6 +1051,8 @@ cc_library(
         ],
     ),
     hdrs = [
+        "include/mlir/Dialect/GPU/MemoryPromotion.h",
+        "include/mlir/Dialect/GPU/ParallelLoopMapper.h",
         "include/mlir/Dialect/GPU/Passes.h",
         "include/mlir/Dialect/GPU/Utils.h",
     ],
@@ -915,12 +1060,15 @@ cc_library(
     deps = [
         ":EDSC",
         ":GPUDialect",
+        ":GPUPassIncGen",
         ":IR",
         ":LoopOps",
+        ":ParallelLoopMapperAttrGen",
         ":Pass",
         ":StandardOps",
         ":Support",
         ":Transforms",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -973,15 +1121,17 @@ cc_library(
     srcs = glob([
         "lib/Conversion/GPUToNVVM/*.cpp",
         "lib/Conversion/GPUToNVVM/*.h",
-    ]),
+    ]) + ["lib/Conversion/PassDetail.h"],
     hdrs = glob([
         "include/mlir/Conversion/GPUToNVVM/*.h",
     ]),
     includes = ["include"],
     deps = [
+        ":ConversionPassIncGen",
         ":GPUCommonTransforms",
         ":GPUDialect",
         ":GPUToNVVMGen",
+        ":GPUTransforms",
         ":IR",
         ":LLVMTransforms",
         ":NVVMDialect",
@@ -993,12 +1143,16 @@ cc_library(
 
 cc_library(
     name = "GPUToROCDLTransforms",
-    srcs = ["lib/Conversion/GPUToROCDL/LowerGpuOpsToROCDLOps.cpp"],
+    srcs = [
+        "lib/Conversion/GPUToROCDL/LowerGpuOpsToROCDLOps.cpp",
+        "lib/Conversion/PassDetail.h",
+    ],
     hdrs = [
         "include/mlir/Conversion/GPUToROCDL/GPUToROCDLPass.h",
     ],
     includes = ["include"],
     deps = [
+        ":ConversionPassIncGen",
         ":GPUCommonTransforms",
         ":GPUDialect",
         ":LLVMTransforms",
@@ -1013,10 +1167,12 @@ cc_library(
     srcs = [
         "lib/Conversion/GPUToVulkan/ConvertGPULaunchFuncToVulkanLaunchFunc.cpp",
         "lib/Conversion/GPUToVulkan/ConvertLaunchFuncToVulkanCalls.cpp",
+        "lib/Conversion/PassDetail.h",
     ],
     hdrs = ["include/mlir/Conversion/GPUToVulkan/ConvertGPUToVulkanPass.h"],
     includes = ["include"],
     deps = [
+        ":ConversionPassIncGen",
         ":GPUDialect",
         ":IR",
         ":LLVMDialect",
@@ -1034,10 +1190,12 @@ cc_library(
     srcs = [
         "lib/Conversion/GPUToCUDA/ConvertKernelFuncToCubin.cpp",
         "lib/Conversion/GPUToCUDA/ConvertLaunchFuncToCudaCalls.cpp",
+        "lib/Conversion/PassDetail.h",
     ],
     hdrs = ["include/mlir/Conversion/GPUToCUDA/GPUToCUDAPass.h"],
     includes = ["include"],
     deps = [
+        ":ConversionPassIncGen",
         ":GPUDialect",
         ":IR",
         ":LLVMDialect",
@@ -1073,6 +1231,7 @@ cc_library(
     srcs = [
         "lib/Conversion/GPUToSPIRV/ConvertGPUToSPIRV.cpp",
         "lib/Conversion/GPUToSPIRV/ConvertGPUToSPIRVPass.cpp",
+        "lib/Conversion/PassDetail.h",
     ],
     hdrs = [
         "include/mlir/Conversion/GPUToSPIRV/ConvertGPUToSPIRV.h",
@@ -1083,6 +1242,7 @@ cc_library(
         "lib/Conversions/GPUToSPIRV",
     ],
     deps = [
+        ":ConversionPassIncGen",
         ":GPUDialect",
         ":GPUToSPIRVIncGen",
         ":IR",
@@ -1491,13 +1651,29 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "SPIRVPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls",
+            "include/mlir/Dialect/SPIRV/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/SPIRV/Passes.td",
+    td_srcs = [
+        ":PassBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "SPIRVLowering",
-    srcs = [
+    srcs = glob([
+        "lib/Dialect/SPIRV/Transforms/*.cpp",
+        "lib/Dialect/SPIRV/Transforms/*.h",
+    ]) + [
         "lib/Dialect/SPIRV/SPIRVLowering.cpp",
-        "lib/Dialect/SPIRV/Transforms/DecorateSPIRVCompositeTypeLayoutPass.cpp",
-        "lib/Dialect/SPIRV/Transforms/LowerABIAttributesPass.cpp",
-        "lib/Dialect/SPIRV/Transforms/UpdateVCEPass.cpp",
     ],
     hdrs = [
         "include/mlir/Dialect/SPIRV/Passes.h",
@@ -1511,6 +1687,7 @@ cc_library(
         ":IR",
         ":Pass",
         ":SPIRVDialect",
+        ":SPIRVPassIncGen",
         ":SPIRVTargetAndABIStructGen",
         ":StandardOps",
         ":Support",
@@ -1524,7 +1701,7 @@ cc_library(
     srcs = glob([
         "lib/Conversion/StandardToSPIRV/*.cpp",
         "lib/Conversion/StandardToSPIRV/*.h",
-    ]),
+    ]) + ["lib/Conversion/PassDetail.h"],
     hdrs = glob([
         "include/mlir/Conversion/StandardToSPIRV/*.h",
     ]),
@@ -1533,6 +1710,7 @@ cc_library(
         "lib/Conversion/StandardToSPIRV",
     ],
     deps = [
+        ":ConversionPassIncGen",
         ":IR",
         ":Pass",
         ":SPIRVDialect",
@@ -1558,6 +1736,7 @@ cc_library(
         "lib/Conversion/StandardToStandard",
     ],
     deps = [
+        ":ConversionPassIncGen",
         ":IR",
         ":Pass",
         ":StandardOps",
@@ -1607,7 +1786,6 @@ cc_library(
         ":Translation",
         "@llvm-project//llvm:support",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -1691,6 +1869,22 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "TransformsPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls",
+            "include/mlir/Transforms/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Transforms/Passes.td",
+    td_srcs = [
+        ":PassBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "Transforms",
     srcs = glob([
@@ -1712,6 +1906,7 @@ cc_library(
         ":StandardOps",
         ":Support",
         ":TransformUtils",
+        ":TransformsPassIncGen",
         ":VectorOps",
         "@llvm-project//llvm:support",
     ],
@@ -1733,17 +1928,15 @@ cc_library(
 
 cc_library(
     name = "LoopsToGPU",
-    srcs = [
-        "lib/Conversion/LoopsToGPU/LoopsToGPU.cpp",
-    ],
-    hdrs = [
-        "include/mlir/Conversion/LoopsToGPU/LoopsToGPU.h",
-    ],
+    srcs = ["lib/Conversion/LoopsToGPU/LoopsToGPU.cpp"],
+    hdrs = ["include/mlir/Conversion/LoopsToGPU/LoopsToGPU.h"],
     includes = ["include"],
     deps = [
         ":Affine",
         ":AffineToStandardTransforms",
+        ":ConversionPassIncGen",
         ":GPUDialect",
+        ":GPUTransforms",
         ":IR",
         ":LoopOps",
         ":Pass",
@@ -1759,6 +1952,7 @@ cc_library(
     name = "LoopsToGPUPass",
     srcs = [
         "lib/Conversion/LoopsToGPU/LoopsToGPUPass.cpp",
+        "lib/Conversion/PassDetail.h",
     ],
     hdrs = [
         "include/mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h",
@@ -1766,6 +1960,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":Affine",
+        ":ConversionPassIncGen",
         ":GPUDialect",
         ":LoopOps",
         ":LoopsToGPU",
@@ -1781,12 +1976,14 @@ cc_library(
     name = "CFGTransforms",
     srcs = [
         "lib/Conversion/LoopToStandard/LoopToStandard.cpp",
+        "lib/Conversion/PassDetail.h",
     ],
     hdrs = [
         "include/mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h",
     ],
     includes = ["include"],
     deps = [
+        ":ConversionPassIncGen",
         ":IR",
         ":LLVMDialect",
         ":LoopOps",
@@ -1801,6 +1998,7 @@ cc_library(
 cc_library(
     name = "LLVMTransforms",
     srcs = [
+        "lib/Conversion/PassDetail.h",
         "lib/Conversion/StandardToLLVM/StandardToLLVM.cpp",
     ],
     hdrs = [
@@ -1809,6 +2007,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":ConversionPassIncGen",
         ":IR",
         ":LLVMDialect",
         ":Pass",
@@ -2012,9 +2211,9 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":Analysis",
         ":IR",
         ":Parser",
-        ":StandardOps",
         ":Support",
         "@llvm-project//llvm:support",
     ],
@@ -2067,7 +2266,6 @@ cc_library(
         "@llvm-project//llvm:ir_reader",
         "@llvm-project//llvm:support",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -2091,7 +2289,6 @@ cc_library(
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -2115,7 +2312,6 @@ cc_library(
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],
-    alwayslink = 1,
 )
 
 # TODO(zinenko): Update these so that we can simplify mapping to cmake.
@@ -2188,7 +2384,6 @@ cc_library(
         ":NVVMDialect",
         ":Parser",
         ":Pass",
-        ":QuantizerTransforms",
         ":StandardToSPIRVConversions",
         ":StandardToStandard",
         ":Support",
@@ -2206,17 +2401,13 @@ cc_library(
 )
 
 cc_library(
-    name = "TranslateClParser",
-    srcs = ["lib/Support/TranslateClParser.cpp"],
-    hdrs = ["include/mlir/Support/TranslateClParser.h"],
-    includes = ["include"],
+    name = "AllTranslations",
+    hdrs = ["include/mlir/InitAllTranslations.h"],
     deps = [
-        ":Analysis",
-        ":IR",
-        ":Parser",
-        ":Support",
-        ":Translation",
-        "@llvm-project//llvm:support",
+        ":SPIRVTranslateRegistration",
+        ":TargetLLVMIR",
+        ":TargetNVVMIR",
+        ":TargetROCDLIR",
     ],
 )
 
@@ -2225,10 +2416,10 @@ cc_library(
     srcs = ["tools/mlir-translate/mlir-translate.cpp"],
     deps = [
         ":AllPassesAndDialectsNoRegistration",
+        ":AllTranslations",
         ":IR",
         ":Parser",
         ":Support",
-        ":TranslateClParser",
         ":Translation",
         "@llvm-project//llvm:support",
     ],
@@ -2238,10 +2429,6 @@ cc_binary(
     name = "mlir-translate",
     deps = [
         ":MlirTranslateMain",
-        ":SPIRVTranslateRegistration",
-        ":TargetLLVMIR",
-        ":TargetNVVMIR",
-        ":TargetROCDLIR",
     ],
 )
 
@@ -2256,10 +2443,12 @@ cc_library(
         ":AVX512",
         ":AVX512ToLLVM",
         ":Affine",
+        ":AffinePassIncGen",
         ":AffineTransforms",
-        ":Analysis",
-        ":FxpMathOps",
+        ":CFGTransforms",
+        ":ConversionPassIncGen",
         ":GPUDialect",
+        ":GPUPassIncGen",
         ":GPUToCUDATransforms",
         ":GPUToNVVMTransforms",
         ":GPUToROCDLTransforms",
@@ -2270,27 +2459,34 @@ cc_library(
         ":LLVMAVX512",
         ":LLVMDialect",
         ":LLVMIRTransforms",
+        ":LLVMPassIncGen",
+        ":LLVMTransforms",
         ":LinalgOps",
+        ":LinalgPassIncGen",
         ":LinalgToLLVM",
         ":LinalgToSPIRV",
         ":LinalgTransforms",
         ":LoopOps",
         ":LoopOpsTransforms",
+        ":LoopPassIncGen",
         ":LoopsToGPUPass",
         ":NVVMDialect",
         ":OpenMPDialect",
         ":QuantOps",
-        ":QuantizerTransforms",
+        ":QuantPassIncGen",
         ":ROCDLDialect",
         ":SDBM",
         ":SPIRVDialect",
         ":SPIRVLowering",
+        ":SPIRVPassIncGen",
         ":Shape",
         ":StandardOps",
         ":StandardToSPIRVConversions",
         ":StandardToStandard",
         ":Transforms",
+        ":TransformsPassIncGen",
         ":VectorOps",
+        ":VectorToLLVM",
     ],
 )
 
@@ -2324,7 +2520,6 @@ cc_binary(
     name = "mlir-opt",
     deps = [
         ":Analysis",
-        ":FxpMathOps",
         ":IR",
         ":LoopsToGPUPass",
         ":MlirOptLib",
@@ -2489,6 +2684,20 @@ cc_binary(
     ],
 )
 
+cc_binary(
+    name = "mlir-linalg-ods-gen",
+    srcs = glob([
+        "tools/mlir-linalg-ods-gen/mlir-linalg-ods-gen.cpp",
+    ]),
+    deps = [
+        ":IR",
+        ":Support",
+        "@llvm-project//llvm:config",
+        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:tablegen",
+    ],
+)
+
 ## OpenMP dialect
 gentbl(
     name = "OpenMPOpsIncGen",
@@ -2576,6 +2785,22 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "QuantPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls",
+            "include/mlir/Dialect/Quant/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Quant/Passes.td",
+    td_srcs = [
+        ":PassBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "QuantOps",
     srcs = [
@@ -2585,6 +2810,7 @@ cc_library(
         "lib/Dialect/Quant/IR/TypeParser.cpp",
         "lib/Dialect/Quant/Transforms/ConvertConst.cpp",
         "lib/Dialect/Quant/Transforms/ConvertSimQuant.cpp",
+        "lib/Dialect/Quant/Transforms/PassDetail.h",
         "lib/Dialect/Quant/Utils/FakeQuantSupport.cpp",
         "lib/Dialect/Quant/Utils/QuantizeUtils.cpp",
         "lib/Dialect/Quant/Utils/UniformSupport.cpp",
@@ -2602,68 +2828,7 @@ cc_library(
         ":IR",
         ":Pass",
         ":QuantOpsIncGen",
-        ":SideEffects",
-        ":StandardOps",
-        "@llvm-project//llvm:support",
-    ],
-)
-
-filegroup(
-    name = "FxpMathOpsTdFiles",
-    srcs = [
-        "include/mlir/Dialect/FxpMathOps/FxpMathOps.td",
-        "include/mlir/Dialect/Quant/QuantOpsBase.td",
-        "include/mlir/Interfaces/SideEffects.td",
-        ":OpBaseTdFiles",
-    ],
-)
-
-## FxpMathOps dialect
-gentbl(
-    name = "FxpMathOpsIncGen",
-    strip_include_prefix = "include",
-    tbl_outs = [
-        (
-            "-gen-op-decls",
-            "include/mlir/Dialect/FxpMathOps/FxpMathOps.h.inc",
-        ),
-        (
-            "-gen-op-defs",
-            "include/mlir/Dialect/FxpMathOps/FxpMathOps.cpp.inc",
-        ),
-        (
-            "-gen-dialect-decls -dialect=fxpmath",
-            "include/mlir/Dialect/FxpMathOps/FxpMathOpsDialect.h.inc",
-        ),
-        (
-            "-gen-op-doc",
-            "g3doc/Dialects/FxpMathOps/FxpMathOps.md",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/FxpMathOps/FxpMathOps.td",
-    td_srcs = [
-        ":FxpMathOpsTdFiles",
-    ],
-)
-
-cc_library(
-    name = "FxpMathOps",
-    srcs = [
-        "lib/Dialect/FxpMathOps/IR/FxpMathOps.cpp",
-        "lib/Dialect/FxpMathOps/Transforms/LowerUniformRealMath.cpp",
-        "lib/Dialect/FxpMathOps/Transforms/UniformKernelUtils.h",
-    ],
-    hdrs = [
-        "include/mlir/Dialect/FxpMathOps/FxpMathOps.h",
-        "include/mlir/Dialect/FxpMathOps/Passes.h",
-    ],
-    includes = ["include"],
-    deps = [
-        ":FxpMathOpsIncGen",
-        ":IR",
-        ":Pass",
-        ":QuantOps",
+        ":QuantPassIncGen",
         ":SideEffects",
         ":StandardOps",
         "@llvm-project//llvm:support",
@@ -2799,7 +2964,7 @@ cc_library(
     srcs = glob([
         "lib/Conversion/LinalgToLLVM/*.cpp",
         "lib/Conversion/LinalgToLLVM/*.h",
-    ]),
+    ]) + ["lib/Conversion/PassDetail.h"],
     hdrs = glob([
         "include/mlir/Conversion/LinalgToLLVM/*.h",
     ]),
@@ -2808,6 +2973,7 @@ cc_library(
         ":AffineToStandardTransforms",
         ":Analysis",
         ":CFGTransforms",
+        ":ConversionPassIncGen",
         ":EDSC",
         ":IR",
         ":LLVMDialect",
@@ -2829,12 +2995,13 @@ cc_library(
     srcs = glob([
         "lib/Conversion/LinalgToSPIRV/*.cpp",
         "lib/Conversion/LinalgToSPIRV/*.h",
-    ]),
+    ]) + ["lib/Conversion/PassDetail.h"],
     hdrs = glob([
         "include/mlir/Conversion/LinalgToSPIRV/*.h",
     ]),
     includes = ["include"],
     deps = [
+        ":ConversionPassIncGen",
         ":DialectUtils",
         ":IR",
         ":LinalgOps",
@@ -2871,21 +3038,36 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "LinalgPassIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-pass-decls",
+            "include/mlir/Dialect/Linalg/Passes.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Linalg/Passes.td",
+    td_srcs = [
+        ":PassBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "LinalgTransforms",
-    srcs = [
+    srcs = glob([
+        "lib/Dialect/Linalg/Transforms/*.cpp",
+        "lib/Dialect/Linalg/Transforms/*.h",
+    ]) + [
         "lib/Dialect/Linalg/Analysis/DependenceAnalysis.cpp",
         "lib/Dialect/Linalg/EDSC/Builders.cpp",
-        "lib/Dialect/Linalg/Transforms/Fusion.cpp",
-        "lib/Dialect/Linalg/Transforms/LinalgToLoops.cpp",
-        "lib/Dialect/Linalg/Transforms/LinalgTransforms.cpp",
-        "lib/Dialect/Linalg/Transforms/Promotion.cpp",
-        "lib/Dialect/Linalg/Transforms/Tiling.cpp",
         "lib/Dialect/Linalg/Utils/Utils.cpp",
     ],
     hdrs = [
         "include/mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h",
         "include/mlir/Dialect/Linalg/EDSC/Builders.h",
+        "include/mlir/Dialect/Linalg/EDSC/FoldedIntrinsics.h",
         "include/mlir/Dialect/Linalg/EDSC/Intrinsics.h",
         "include/mlir/Dialect/Linalg/Passes.h",
         "include/mlir/Dialect/Linalg/Transforms/LinalgTransforms.h",
@@ -2903,61 +3085,17 @@ cc_library(
         ":LLVMDialect",
         ":LLVMTransforms",
         ":LinalgOps",
-        ":LinalgOpsIncGen",
+        ":LinalgPassIncGen",
         ":LinalgStructuredOpsIncGen",
-        ":LinalgTransformPatternsIncGen",
         ":LoopOps",
-        ":Parser",
         ":Pass",
         ":StandardOps",
         ":Support",
         ":TransformUtils",
         ":Transforms",
+        ":TransformsPassIncGen",
         ":VectorOps",
         "@llvm-project//llvm:core",
-        "@llvm-project//llvm:support",
-    ],
-)
-
-cc_library(
-    name = "QuantizerSupportLib",
-    srcs = glob([
-        "lib/Quantizer/Configurations/*.cpp",
-        "lib/Quantizer/Support/*.cpp",
-        "lib/Quantizer/Configurations/*.h",
-        "lib/Quantizer/Support/*.h",
-    ]),
-    hdrs = glob([
-        "include/mlir/Quantizer/Configurations/*.h",
-        "include/mlir/Quantizer/Support/*.h",
-    ]),
-    includes = ["include"],
-    deps = [
-        ":FxpMathOps",
-        ":IR",
-        ":QuantOps",
-        ":StandardOps",
-        ":Support",
-        "@llvm-project//llvm:support",
-    ],
-)
-
-cc_library(
-    name = "QuantizerTransforms",
-    srcs = glob([
-        "lib/Quantizer/Transforms/*.cpp",
-        "lib/Quantizer/Transforms/*.h",
-    ]),
-    hdrs = glob([
-        "include/mlir/Quantizer/Transforms/*.h",
-    ]),
-    includes = ["include"],
-    deps = [
-        ":IR",
-        ":Pass",
-        ":QuantOps",
-        ":QuantizerSupportLib",
-        ":Support",
         "@llvm-project//llvm:support",
     ],
 )
@@ -3032,12 +3170,13 @@ cc_library(
     srcs = glob([
         "lib/Conversion/VectorToLLVM/*.cpp",
         "lib/Conversion/VectorToLLVM/*.h",
-    ]),
+    ]) + ["lib/Conversion/PassDetail.h"],
     hdrs = glob([
         "include/mlir/Conversion/VectorToLLVM/*.h",
     ]),
     includes = ["include"],
     deps = [
+        ":ConversionPassIncGen",
         ":DialectUtils",
         ":EDSC",
         ":IR",
@@ -3065,6 +3204,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":Affine",
+        ":ConversionPassIncGen",
         ":EDSC",
         ":IR",
         ":LLVMDialect",

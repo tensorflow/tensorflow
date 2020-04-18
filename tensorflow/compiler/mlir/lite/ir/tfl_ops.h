@@ -28,7 +28,6 @@ limitations under the License.
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/LoopLikeInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffects.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -54,7 +53,9 @@ class TensorFlowLiteDialect : public Dialect {
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h.inc"
 // Include all specializes estimators below this line
-#include "tensorflow/compiler/mlir/lite/experimental/estimators/gpu_estimator.h.inc"
+#include "tensorflow/compiler/mlir/lite/experimental/estimators/arithmetic_count_util.h"
+#include "tensorflow/compiler/mlir/lite/experimental/estimators/cpu_estimators.h"
+#include "tensorflow/compiler/mlir/lite/experimental/estimators/gpu_estimators.h"
 
 }  // end namespace TFL
 }  // end namespace mlir

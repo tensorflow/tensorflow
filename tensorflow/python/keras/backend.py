@@ -75,6 +75,7 @@ from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import moving_averages
+from tensorflow.python.training.tracking import util as tracking_util
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
@@ -391,6 +392,20 @@ def _default_learning_phase():
 def set_learning_phase(value):
   """Sets the learning phase to a fixed value.
 
+  The backend learning phase affects any code that calls
+  `backend.learning_phase()`
+  In particular, all Keras built-in layers use the learning phase as the default
+  for the `training` arg to `Layer.__call__`.
+
+  User-written layers and models can achieve the same behavior with code that
+  looks like:
+
+  ```python
+    def call(self, inputs, training=None):
+      if training is None:
+        training = backend.learning_phase()
+  ```
+
   Arguments:
       value: Learning phase value, either 0 or 1 (integers).
              0 = test, 1 = train
@@ -544,6 +559,11 @@ def get_session(op_input_list=()):
     with session.graph.as_default():
       _initialize_variables(session)
   return session
+
+
+# Inject the get_session function to tracking_util to avoid the backward
+# dependency from TF to Keras.
+tracking_util.register_session_provider(get_session)
 
 
 def get_graph():
@@ -818,6 +838,9 @@ def name_scope(name):
   """
   return ops.name_scope_v2(name)
 
+# Export V1 version.
+keras_export(v1=['keras.backend.name_scope'])(ops.name_scope_v1)
+
 
 @keras_export('keras.backend.variable')
 def variable(value, dtype=None, name=None, constraint=None):
@@ -910,8 +933,8 @@ def unique_object_name(name,
   Example:
 
 
-  _unique_layer_name('dense')  # dense_1
-  _unique_layer_name('dense')  # dense_2
+  unique_object_name('dense')  # dense_1
+  unique_object_name('dense')  # dense_2
 
   """
   if name_uid_map is None:
@@ -3287,11 +3310,11 @@ _VALUE_SET_CODE_STRING = """
 
   >>> v = tf.Variable(1.)
 
-  >>> _ = v.assign(2.)
+  >>> v.assign(2.)
   >>> print(v.numpy())
   2.0
 
-  >>> _ = v.assign_add(1.)
+  >>> v.assign_add(1.)
   >>> print(v.numpy())
   3.0"""[3:]  # Prune first newline and indent to match the docstring template.
 
@@ -3851,7 +3874,8 @@ def function(inputs, outputs, updates=None, name=None, **kwargs):
         msg = ('Invalid argument "%s" passed to K.function with TensorFlow '
                'backend') % key
         raise ValueError(msg)
-  return GraphExecutionFunction(inputs, outputs, updates=updates, **kwargs)
+  return GraphExecutionFunction(
+      inputs, outputs, updates=updates, name=name, **kwargs)
 
 
 @keras_export('keras.backend.gradients')

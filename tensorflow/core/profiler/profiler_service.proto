@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
+import "tensorflow/core/profiler/profiler_options.proto";
 import "tensorflow/core/profiler/profiler_service_monitor_result.proto";
 
 // The ProfilerService service retrieves performance information about
@@ -11,14 +12,6 @@ service ProfilerService {
   rpc Profile(ProfileRequest) returns (ProfileResponse) {}
   // Collects profiling data and returns user-friendly metrics.
   rpc Monitor(MonitorRequest) returns (MonitorResponse) {}
-}
-
-message ProfileOptions {
-  // We don't collect the dataset ops by default for better trace-viewer
-  // scalability. The caller can mannually set this field to include the ops.
-  bool include_dataset_ops = 1;
-
-  // next-field: 2
 }
 
 message ToolRequestOptions {

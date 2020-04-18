@@ -197,6 +197,11 @@ TfLiteStatus Interpreter::ResizeInputTensor(int tensor_index,
   return primary_subgraph().ResizeInputTensor(tensor_index, dims);
 }
 
+TfLiteStatus Interpreter::ResizeInputTensorStrict(
+    int tensor_index, const std::vector<int>& dims) {
+  return primary_subgraph().ResizeInputTensorStrict(tensor_index, dims);
+}
+
 TfLiteStatus Interpreter::ReleaseNonPersistentMemory() {
   // TODO(b/138790287): We could do this for all subgraphs whose tensors have
   // been allocated. However, AllocateTensors() relies on Control Flow ops to
@@ -256,10 +261,12 @@ TfLiteStatus Interpreter::SetTensorParametersReadOnly(
 
 TfLiteStatus Interpreter::SetTensorParametersReadWrite(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
-    const int* dims, TfLiteQuantizationParams quantization, bool is_variable) {
+    const int* dims, TfLiteQuantizationParams quantization, bool is_variable,
+    const size_t rank_dims_signature, const int* dims_signature) {
   TfLiteQuantization new_quantization = GetQuantizationFromLegacy(quantization);
   return primary_subgraph().SetTensorParametersReadWrite(
-      tensor_index, type, name, rank, dims, new_quantization, is_variable);
+      tensor_index, type, name, rank, dims, new_quantization, is_variable,
+      rank_dims_signature, dims_signature);
 }
 
 TfLiteStatus Interpreter::SetExecutionPlan(const std::vector<int>& new_plan) {
@@ -315,6 +322,13 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegatePtr delegate) {
   // fails, as delegate use will be in an indeterminate state at that point.
   owned_delegates_.push_back(std::move(delegate));
   return ModifyGraphWithDelegate(owned_delegates_.back().get());
+}
+
+TfLiteStatus Interpreter::RemoveAllDelegates() {
+  for (auto& subgraph : subgraphs_) {
+    TF_LITE_ENSURE_STATUS(subgraph->RemoveAllDelegates());
+  }
+  return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,

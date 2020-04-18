@@ -14,9 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
-#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 #include "tensorflow/lite/tools/benchmark/delegate_provider.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
 namespace tflite {
@@ -24,9 +22,12 @@ namespace benchmark {
 
 class XnnpackDelegateProvider : public DelegateProvider {
  public:
-  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
+  XnnpackDelegateProvider() {
+    default_params_.AddParam("use_xnnpack",
+                             BenchmarkParam::Create<bool>(false));
+  }
 
-  void AddParams(BenchmarkParams* params) const final;
+  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
 
   void LogParams(const BenchmarkParams& params) const final;
 
@@ -42,10 +43,6 @@ std::vector<Flag> XnnpackDelegateProvider::CreateFlags(
   std::vector<Flag> flags = {
       CreateFlag<bool>("use_xnnpack", params, "use XNNPack")};
   return flags;
-}
-
-void XnnpackDelegateProvider::AddParams(BenchmarkParams* params) const {
-  params->AddParam("use_xnnpack", BenchmarkParam::Create<bool>(false));
 }
 
 void XnnpackDelegateProvider::LogParams(const BenchmarkParams& params) const {

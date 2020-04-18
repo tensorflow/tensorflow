@@ -16,115 +16,117 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_test_util.h"
 
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 
 using tensorflow::string;
 
-TFE_TensorHandle* TestScalarTensorHandle(float value) {
+TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx, float value) {
   float data[] = {value};
-  TF_Tensor* t = TF_AllocateTensor(TF_FLOAT, nullptr, 0, sizeof(float));
-  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
   TF_Status* status = TF_NewStatus();
-  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
+  TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_FLOAT, nullptr, 0, status);
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteTensor(t);
   TF_DeleteStatus(status);
   return th;
 }
 
-TFE_TensorHandle* TestScalarTensorHandle(int value) {
+TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx, int value) {
   int data[] = {value};
-  TF_Tensor* t = TF_AllocateTensor(TF_INT32, nullptr, 0, sizeof(int));
-  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
   TF_Status* status = TF_NewStatus();
-  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
+  TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_INT32, nullptr, 0, status);
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteTensor(t);
   TF_DeleteStatus(status);
   return th;
 }
 
-TFE_TensorHandle* TestScalarTensorHandle(bool value) {
+TFE_TensorHandle* TestScalarTensorHandle(TFE_Context* ctx, bool value) {
   bool data[] = {value};
-  TF_Tensor* t = TF_AllocateTensor(TF_BOOL, nullptr, 0, sizeof(bool));
-  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
   TF_Status* status = TF_NewStatus();
-  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
+  TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_BOOL, nullptr, 0, status);
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteTensor(t);
   TF_DeleteStatus(status);
   return th;
 }
 
-TFE_TensorHandle* DoubleTestMatrixTensorHandle() {
+TFE_TensorHandle* DoubleTestMatrixTensorHandle(TFE_Context* ctx) {
   int64_t dims[] = {2, 2};
   double data[] = {1.0, 2.0, 3.0, 4.0};
-  TF_Tensor* t = TF_AllocateTensor(
-      TF_DOUBLE, &dims[0], sizeof(dims) / sizeof(int64_t), sizeof(data));
-  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
   TF_Status* status = TF_NewStatus();
-  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
+  TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_DOUBLE, &dims[0],
+                                        sizeof(dims) / sizeof(int64_t), status);
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteTensor(t);
   TF_DeleteStatus(status);
   return th;
 }
 
-TFE_TensorHandle* TestMatrixTensorHandle() {
+TFE_TensorHandle* TestMatrixTensorHandle(TFE_Context* ctx) {
   int64_t dims[] = {2, 2};
   float data[] = {1.0f, 2.0f, 3.0f, 4.0f};
-  TF_Tensor* t = TF_AllocateTensor(
-      TF_FLOAT, &dims[0], sizeof(dims) / sizeof(int64_t), sizeof(data));
-  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
   TF_Status* status = TF_NewStatus();
-  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
+  TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_FLOAT, &dims[0],
+                                        sizeof(dims) / sizeof(int64_t), status);
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteTensor(t);
   TF_DeleteStatus(status);
   return th;
 }
 
-TFE_TensorHandle* TestMatrixTensorHandle100x100() {
+TFE_TensorHandle* TestMatrixTensorHandle100x100(TFE_Context* ctx) {
   constexpr int64_t dims[] = {100, 100};
   constexpr int num_elements = dims[0] * dims[1];
   float data[num_elements];
   for (int i = 0; i < num_elements; ++i) {
     data[i] = 1.0f;
   }
-  TF_Tensor* t = TF_AllocateTensor(
-      TF_FLOAT, &dims[0], sizeof(dims) / sizeof(int64_t), sizeof(data));
-  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
   TF_Status* status = TF_NewStatus();
-  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
+  TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_FLOAT, &dims[0],
+                                        sizeof(dims) / sizeof(int64_t), status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteTensor(t);
   TF_DeleteStatus(status);
   return th;
 }
 
-TFE_TensorHandle* DoubleTestMatrixTensorHandle3X2() {
+TFE_TensorHandle* DoubleTestMatrixTensorHandle3X2(TFE_Context* ctx) {
   int64_t dims[] = {3, 2};
   double data[] = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0};
-  TF_Tensor* t = TF_AllocateTensor(
-      TF_FLOAT, &dims[0], sizeof(dims) / sizeof(int64_t), sizeof(data));
-  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
   TF_Status* status = TF_NewStatus();
-  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
+  TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_FLOAT, &dims[0],
+                                        sizeof(dims) / sizeof(int64_t), status);
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteTensor(t);
   TF_DeleteStatus(status);
   return th;
 }
 
-TFE_TensorHandle* TestMatrixTensorHandle3X2() {
+TFE_TensorHandle* TestMatrixTensorHandle3X2(TFE_Context* ctx) {
   int64_t dims[] = {3, 2};
   float data[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  TF_Tensor* t = TF_AllocateTensor(
-      TF_FLOAT, &dims[0], sizeof(dims) / sizeof(int64_t), sizeof(data));
-  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
   TF_Status* status = TF_NewStatus();
-  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
+  TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_FLOAT, &dims[0],
+                                        sizeof(dims) / sizeof(int64_t), status);
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteTensor(t);
   TF_DeleteStatus(status);
@@ -187,14 +189,14 @@ TFE_Op* ShapeOp(TFE_Context* ctx, TFE_TensorHandle* a) {
   return op;
 }
 
-TFE_TensorHandle* TestAxisTensorHandle() {
+TFE_TensorHandle* TestAxisTensorHandle(TFE_Context* ctx) {
   int64_t dims[] = {1};
   int data[] = {1};
-  TF_Tensor* t = TF_AllocateTensor(
-      TF_INT32, &dims[0], sizeof(dims) / sizeof(int64_t), sizeof(data));
-  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
   TF_Status* status = TF_NewStatus();
-  TFE_TensorHandle* th = TFE_NewTensorHandle(t, status);
+  TF_Tensor* t = TFE_AllocateHostTensor(ctx, TF_INT32, &dims[0],
+                                        sizeof(dims) / sizeof(int64_t), status);
+  memcpy(TF_TensorData(t), &data[0], TF_TensorByteSize(t));
+  TFE_TensorHandle* th = TFE_NewTensorHandleFromTensor(ctx, t, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TF_DeleteTensor(t);
   TF_DeleteStatus(status);

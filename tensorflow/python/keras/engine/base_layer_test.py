@@ -125,6 +125,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
       def build(self, input_shape):
         self.build_counter += 1
+        self.build_shape = input_shape
 
       def call(self, inputs):
         return inputs
@@ -132,14 +133,17 @@ class BaseLayerTest(keras_parameterized.TestCase):
     layer = BuildCounter(dtype=dtypes.float64)
     output_shape = layer.compute_output_shape((None, 10))
     self.assertEqual(layer.build_counter, 1)
+    self.assertEqual(layer.build_shape.as_list(), [None, 10])
     self.assertEqual(output_shape.as_list(), [None, 10])
     output_signature = layer.compute_output_signature(
         tensor_spec.TensorSpec(dtype=dtypes.float64, shape=[None, 10]))
     self.assertEqual(layer.build_counter, 1)
+    self.assertEqual(layer.build_shape.as_list(), [None, 10])
     self.assertEqual(output_signature.dtype, dtypes.float64)
     self.assertEqual(output_signature.shape.as_list(), [None, 10])
     layer(np.ones((5, 10)))
     self.assertEqual(layer.build_counter, 1)
+    self.assertEqual(layer.build_shape.as_list(), [None, 10])
 
   def test_eager_switch_case_input(self):
     task = input_layer.Input(shape=(), dtype=dtypes.int32)

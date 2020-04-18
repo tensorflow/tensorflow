@@ -124,9 +124,8 @@ TfLiteStatus EqualEval(TfLiteContext* context, TfLiteNode* node) {
                                  requires_broadcast);
       break;
     default:
-      TF_LITE_KERNEL_LOG(
-          context, "Does not support type %d, requires bool|float|int|uint8",
-          input1->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input1->type), input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -160,9 +159,8 @@ TfLiteStatus NotEqualEval(TfLiteContext* context, TfLiteNode* node) {
                                     requires_broadcast);
       break;
     default:
-      TF_LITE_KERNEL_LOG(
-          context, "Does not support type %d, requires bool|float|int|uint8",
-          input1->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input1->type), input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -192,9 +190,8 @@ TfLiteStatus GreaterEval(TfLiteContext* context, TfLiteNode* node) {
                                    requires_broadcast);
       break;
     default:
-      TF_LITE_KERNEL_LOG(context,
-                         "Does not support type %d, requires float|int|uint8",
-                         input1->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input1->type), input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -224,9 +221,8 @@ TfLiteStatus GreaterEqualEval(TfLiteContext* context, TfLiteNode* node) {
                                         requires_broadcast);
       break;
     default:
-      TF_LITE_KERNEL_LOG(context,
-                         "Does not support type %d, requires float|int|uint8",
-                         input1->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input1->type), input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -256,9 +252,8 @@ TfLiteStatus LessEval(TfLiteContext* context, TfLiteNode* node) {
                                 requires_broadcast);
       break;
     default:
-      TF_LITE_KERNEL_LOG(context,
-                         "Does not support type %d, requires float|int|uint8",
-                         input1->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input1->type), input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -288,9 +283,8 @@ TfLiteStatus LessEqualEval(TfLiteContext* context, TfLiteNode* node) {
                                      requires_broadcast);
       break;
     default:
-      TF_LITE_KERNEL_LOG(context,
-                         "Does not support type %d, requires float|int|uint8",
-                         input1->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input1->type), input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -300,38 +294,74 @@ TfLiteStatus LessEqualEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace comparisons
 
 TfLiteRegistration* Register_EQUAL() {
-  static TfLiteRegistration r = {};
-  r.invoke = comparisons::EqualEval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/comparisons::EqualEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_NOT_EQUAL() {
-  static TfLiteRegistration r = {};
-  r.invoke = comparisons::NotEqualEval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/comparisons::NotEqualEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_GREATER() {
-  static TfLiteRegistration r = {};
-  r.invoke = comparisons::GreaterEval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/comparisons::GreaterEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_GREATER_EQUAL() {
-  static TfLiteRegistration r = {};
-  r.invoke = comparisons::GreaterEqualEval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/comparisons::GreaterEqualEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_LESS() {
-  static TfLiteRegistration r = {};
-  r.invoke = comparisons::LessEval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/comparisons::LessEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_LESS_EQUAL() {
-  static TfLiteRegistration r = {};
-  r.invoke = comparisons::LessEqualEval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/comparisons::LessEqualEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

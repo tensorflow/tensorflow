@@ -40,6 +40,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/keras:backend",
@@ -62,6 +63,20 @@ py_library(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python/keras/utils:generic_utils",
+    ],
+)
+
+py_library(
+    name = "legacy_learning_rate_decay",
+    srcs = ["legacy_learning_rate_decay.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learning_rate_schedule",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tf_export",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -209,6 +224,7 @@ cuda_py_test(
     srcs = ["optimizer_v2_test.py"],
     shard_count = 8,
     tags = [
+        "no_rocm",
         "no_windows",
     ],
     deps = [
@@ -241,6 +257,21 @@ cuda_py_test(
         "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "legacy_learning_rate_decay_test",
+    size = "medium",
+    srcs = ["legacy_learning_rate_decay_test.py"],
+    deps = [
+        ":legacy_learning_rate_decay",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:training_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
     ],
 )
 

@@ -41,37 +41,34 @@ class Embedding(Layer):
 
   Example:
 
-  ```python
-  model = Sequential()
-  model.add(Embedding(1000, 64, input_length=10))
-  # the model will take as input an integer matrix of size (batch,
-  # input_length).
-  # the largest integer (i.e. word index) in the input should be no larger
-  # than 999 (vocabulary size).
-  # now model.output_shape == (None, 10, 64), where None is the batch
-  # dimension.
-
-  input_array = np.random.randint(1000, size=(32, 10))
-
-  model.compile('rmsprop', 'mse')
-  output_array = model.predict(input_array)
-  assert output_array.shape == (32, 10, 64)
-  ```
+  >>> model = tf.keras.Sequential()
+  >>> model.add(tf.keras.layers.Embedding(1000, 64, input_length=10))
+  >>> # The model will take as input an integer matrix of size (batch,
+  >>> # input_length), and the largest integer (i.e. word index) in the input
+  >>> # should be no larger than 999 (vocabulary size).
+  >>> # Now model.output_shape is (None, 10, 64), where `None` is the batch
+  >>> # dimension.
+  >>> input_array = np.random.randint(1000, size=(32, 10))
+  >>> model.compile('rmsprop', 'mse')
+  >>> output_array = model.predict(input_array)
+  >>> print(output_array.shape)
+  (32, 10, 64)
 
   Arguments:
-    input_dim: int > 0. Size of the vocabulary,
+    input_dim: Integer. Size of the vocabulary,
       i.e. maximum integer index + 1.
-    output_dim: int >= 0. Dimension of the dense embedding.
-    embeddings_initializer: Initializer for the `embeddings` matrix.
+    output_dim: Integer. Dimension of the dense embedding.
+    embeddings_initializer: Initializer for the `embeddings`
+      matrix (see `keras.initializers`).
     embeddings_regularizer: Regularizer function applied to
-      the `embeddings` matrix.
+      the `embeddings` matrix (see `keras.regularizers`).
     embeddings_constraint: Constraint function applied to
-      the `embeddings` matrix.
-    mask_zero: Whether or not the input value 0 is a special "padding"
+      the `embeddings` matrix (see `keras.constraints`).
+    mask_zero: Boolean, whether or not the input value 0 is a special "padding"
       value that should be masked out.
       This is useful when using recurrent layers
       which may take variable length input.
-      If this is `True` then all subsequent layers
+      If this is `True`, then all subsequent layers
       in the model need to support masking or an exception will be raised.
       If mask_zero is set to True, as a consequence, index 0 cannot be
       used in the vocabulary (input_dim should equal size of
@@ -103,6 +100,10 @@ class Embedding(Layer):
         kwargs['input_shape'] = (input_length,)
       else:
         kwargs['input_shape'] = (None,)
+    if input_dim <= 0 or output_dim <= 0:
+      raise ValueError('Both `input_dim` and `output_dim` should be positive, '
+                       'found input_dim {} and output_dim {}'.format(
+                           input_dim, output_dim))
     dtype = kwargs.pop('dtype', K.floatx())
     # We set autocast to False, as we do not want to cast floating- point inputs
     # to self.dtype. In call(), we cast to int32, and casting to self.dtype

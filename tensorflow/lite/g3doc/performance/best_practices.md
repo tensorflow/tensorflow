@@ -52,7 +52,7 @@ operator is executed. Check out our
 
 Model optimization aims to create smaller models that are generally faster and
 more energy efficient, so that they can be deployed on mobile devices. There are
-multiple optimization techniques suppored by TensorFlow Lite, such as
+multiple optimization techniques supported by TensorFlow Lite, such as
 quantization.
 
 Check out our [model optimization docs](model_optimization.md) for details.

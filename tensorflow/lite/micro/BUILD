@@ -46,11 +46,7 @@ cc_library(
         "test_helpers.h",
     ],
     build_for_embedded = True,
-    copts = [
-        "-Werror",
-        "-Wdouble-promotion",
-        "-Wsign-compare",
-    ],
+    copts = micro_copts(),
     deps = [
         ":micro_compatibility",
         ":micro_string",
@@ -75,10 +71,7 @@ cc_library(
     ],
     build_for_embedded = True,
     copts = micro_copts(),
-    deps = [
-        "//tensorflow/lite/c:common",
-        "//tensorflow/lite/core/api",
-    ],
+    deps = ["//tensorflow/lite/c:common"],
 )
 
 cc_library(

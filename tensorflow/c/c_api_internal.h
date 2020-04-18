@@ -40,8 +40,8 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 
@@ -185,10 +185,6 @@ struct TF_Server {
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 namespace tensorflow {
-
-Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
-
-TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
 
 Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
                        TF_Buffer* out);

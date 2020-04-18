@@ -45,12 +45,14 @@ function run_build () {
   export ACTION_PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   export PYTHON_BIN_PATH="/usr/bin/python3"
   export TF2_BEHAVIOR=1
-  tag_filters="gpu,-no_gpu,-nogpu,-benchmark-test,-no_oss,-oss_serial,-no_gpu_presubmit""$(maybe_skip_v1)"
+  # TODO(b/152356894):
+  # Remove -gpu_cupti once RBE supports cupti tests.
+  tag_filters="gpu,-no_gpu,-nogpu,-benchmark-test,-no_oss,-oss_serial,-no_gpu_presubmit,-gpu_cupti""$(maybe_skip_v1)"
 
   # Get the default test targets for bazel.
   source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 
-  RBE_CONFIG="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.0-cudnn7-tensorrt5.1"
+  RBE_CONFIG="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0"
   TF_CUDA_CONFIG_REPO="${RBE_CONFIG}_config_cuda"
   TF_TENSORRT_CONFIG_REPO="${RBE_CONFIG}_config_tensorrt"
   TF_PYTHON_CONFIG_REPO="${RBE_CONFIG}_config_python"

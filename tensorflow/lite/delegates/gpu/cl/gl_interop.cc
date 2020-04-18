@@ -263,6 +263,46 @@ absl::Status GlInteropFabric::Finish() {
   return absl::OkStatus();
 }
 
+GlClBufferCopier::GlClBufferCopier(const TensorObjectDef& input_def,
+                                   const TensorObjectDef& output_def,
+                                   Environment* environment) {
+  queue_ = environment->queue();
+  size_in_bytes_ =
+      NumElements(input_def) * SizeOf(input_def.object_def.data_type);
+}
+
+absl::Status GlClBufferCopier::Convert(const TensorObject& input_obj,
+                                       const TensorObject& output_obj) {
+  if (absl::get_if<OpenGlBuffer>(&input_obj)) {
+    auto ssbo = absl::get_if<OpenGlBuffer>(&input_obj);
+    auto cl_mem = absl::get_if<OpenClBuffer>(&output_obj);
+    RETURN_IF_ERROR(
+        TFLITE_GPU_CALL_GL(glBindBuffer, GL_SHADER_STORAGE_BUFFER, ssbo->id));
+    void* ptr;
+    RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glMapBufferRange, &ptr,
+                                       GL_SHADER_STORAGE_BUFFER, 0,
+                                       size_in_bytes_, GL_MAP_READ_BIT));
+    RETURN_IF_ERROR(
+        queue_->EnqueueWriteBuffer(cl_mem->memobj, size_in_bytes_, ptr));
+    RETURN_IF_ERROR(
+        TFLITE_GPU_CALL_GL(glUnmapBuffer, GL_SHADER_STORAGE_BUFFER));
+  } else {
+    auto cl_mem = absl::get_if<OpenClBuffer>(&input_obj);
+    auto ssbo = absl::get_if<OpenGlBuffer>(&output_obj);
+    RETURN_IF_ERROR(
+        TFLITE_GPU_CALL_GL(glBindBuffer, GL_SHADER_STORAGE_BUFFER, ssbo->id));
+    void* ptr;
+    RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glMapBufferRange, &ptr,
+                                       GL_SHADER_STORAGE_BUFFER, 0,
+                                       size_in_bytes_, GL_MAP_WRITE_BIT));
+    RETURN_IF_ERROR(
+        queue_->EnqueueReadBuffer(cl_mem->memobj, size_in_bytes_, ptr));
+    RETURN_IF_ERROR(
+        TFLITE_GPU_CALL_GL(glUnmapBuffer, GL_SHADER_STORAGE_BUFFER));
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

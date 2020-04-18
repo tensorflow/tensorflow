@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -110,10 +110,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
      public:
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params) {
-        auto remove_node_hook = [](std::shared_ptr<model::Node> node) {
-          metrics::RecordTFDataElements(node->name(), node->num_elements());
-        };
-        model_ = std::make_shared<model::Model>(std::move(remove_node_hook));
+        model_ = std::make_shared<model::Model>();
       }
 
       ~Iterator() override {
@@ -168,16 +165,16 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
      private:
       Status EnsureOptimizeThreadStarted(IteratorContext* ctx)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        if (!optimize_thread_) {
+        if (!model_thread_) {
           std::shared_ptr<IteratorContext> new_ctx =
               std::make_shared<IteratorContext>(*ctx);
-          optimize_thread_ = ctx->StartThread(
-              "tf_data_model", [this, new_ctx]() { OptimizeThread(new_ctx); });
+          model_thread_ = ctx->StartThread(
+              "tf_data_model", [this, new_ctx]() { ModelThread(new_ctx); });
         }
         return Status::OK();
       }
 
-      void OptimizeThread(const std::shared_ptr<IteratorContext>& ctx) {
+      void ModelThread(const std::shared_ptr<IteratorContext>& ctx) {
         int64 last_optimization_ms = 0;
         int64 optimization_period_ms = 10;
         int64 current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
@@ -205,13 +202,14 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
           }
           current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
           last_optimization_ms = current_time_ms;
+          model_->FlushMetrics();
         }
       }
 
       mutex mu_;
       condition_variable cond_var_;
       std::shared_ptr<model::Model> model_;
-      std::unique_ptr<Thread> optimize_thread_ TF_GUARDED_BY(mu_);
+      std::unique_ptr<Thread> model_thread_ TF_GUARDED_BY(mu_);
       bool cancelled_ TF_GUARDED_BY(mu_) = false;
       std::unique_ptr<IteratorBase> input_impl_;
     };

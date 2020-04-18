@@ -36,6 +36,13 @@ from tensorflow.python.distribute import multi_process_lib
 from tensorflow.python.eager import context
 from tensorflow.python.platform import test
 
+# pylint: disable=g-import-not-at-top
+try:
+  # `faulthandler` is not available in py2.
+  import faulthandler
+except ImportError:
+  faulthandler = None
+
 # _ProcessStatusInfo contains process status information. When is_successful
 # attribute is True, the subprocess has ended successfully, or if False, the
 # exception stack trace info is stored in exc_info to pass on to parent process
@@ -81,6 +88,10 @@ STREAMING_PIPE = 'streaming_pipe'
 BARRIER = 'barrier'
 
 _DEFAULT_MAX_SUBPROCESS_COUNT = 20
+
+# Default time out sec is selected so that it's handled before the default
+# "medium" timeout of the test runs.
+_DEFAULT_TIMEOUT_SEC = 200
 
 # Next pipe index to be global so that pipes are not reused across multiple
 # MultiProcessRunner usages.
@@ -216,7 +227,7 @@ class MultiProcessRunner(object):
     _resource(STREAMING_QUEUE).put(formatted_line)
 
   def _start_subprocess_and_reading_thread(self, proc_func, task_type, task_id,
-                                           args, kwargs):
+                                           cluster_spec, args, kwargs):
     """Start a subprocess and a thread the reads lines from the subprocess."""
     global _next_pipe_index
     pipe_r, pipe_w = _resource(STREAMING_PIPE)[_next_pipe_index]
@@ -224,9 +235,9 @@ class MultiProcessRunner(object):
 
     p = multi_process_lib.Process(
         target=_Subprocess(),
-        args=(proc_func, task_type, task_id, self._cluster_spec,
-              self._rpc_layer, self._grpc_fail_fast, self._v2_enabled,
-              self._executing_eagerly, pipe_w) + args,
+        args=(proc_func, task_type, task_id, cluster_spec, self._rpc_layer,
+              self._grpc_fail_fast, self._v2_enabled, self._executing_eagerly,
+              pipe_w) + args,
         kwargs=kwargs)
     p.start()
     self._outstanding_subprocess_count += 1
@@ -247,8 +258,8 @@ class MultiProcessRunner(object):
     for task_type, addresses in self._cluster_spec.items():
       for task_id, _ in enumerate(addresses):
         self._start_subprocess_and_reading_thread(self._proc_func, task_type,
-                                                  task_id, self._args,
-                                                  self._kwargs)
+                                                  task_id, self._cluster_spec,
+                                                  self._args, self._kwargs)
 
     # TODO(rchao): Remove the need of using SIGALRM if possible. At this time,
     # without this the tests become very flaky.
@@ -261,19 +272,78 @@ class MultiProcessRunner(object):
       signal.signal(signal.SIGALRM, handler)
       signal.alarm(self._max_run_time)
 
+  def start_in_process_as(self, as_task_type, as_task_id):
+    """Start the processes, with the specified task run in main process.
+
+    This is similar to `start()` except that the task with task_type
+    `as_task_type` and task_id `as_task_id` is run in the main process.
+    This method is particularly useful when debugging tool such as `pdb` is
+    needed in some specific task. Note that since this method is blocking until
+    that specific task exits, additional actions would need a thread to be
+    called:
+
+    ```python
+    def proc_func():
+      # user code to be run
+      import pdb; pdb.set_trace()
+
+    def follow_ups():
+      time.sleep(5)
+      mpr.start_single_process(
+          task_type='evaluator',
+          task_id=0)
+
+    mpr = multi_process_runner.MultiProcessRunner(
+        proc_func,
+        multi_worker_test_base.create_cluster_spec(
+            has_chief=True, num_workers=1))
+    threading.Thread(target=follow_ups).start()
+    mpr.start_in_process_as(as_task_type='chief', as_task_id=0)
+    mpr.join()
+    ```
+
+    Note that if `list_stdout=True`, the logs/stdout by task
+    run by the main process is not available in result.stdout.
+
+    Args:
+      as_task_type: The task type to be run in the main process.
+      as_task_id: The task id to be run in the main process.
+    """
+    global _next_pipe_index
+    self._starting_pipe_index = _next_pipe_index
+
+    for task_type, addresses in self._cluster_spec.items():
+      for task_id, _ in enumerate(addresses):
+        if not (task_type == as_task_type and task_id == as_task_id):
+          self._start_subprocess_and_reading_thread(self._proc_func, task_type,
+                                                    task_id, self._cluster_spec,
+                                                    self._args, self._kwargs)
+    tf_config_dict = {
+        'cluster': self._cluster_spec,
+        'task': {
+            'type': as_task_type,
+            'index': as_task_id,
+        },
+    }
+    if self._rpc_layer is not None:
+      tf_config_dict['rpc_layer'] = self._rpc_layer
+    os.environ['TF_CONFIG'] = json.dumps(tf_config_dict)
+
+    self._proc_func(*self._args, **self._kwargs)
+
   def start_single_process(self,
                            task_type,
                            task_id,
                            proc_func=None,
-                           updated_cluster_spec=None,
+                           cluster_spec=None,
                            args=None,
                            kwargs=None):
     """Starts a single process.
 
     This starts a process in the cluster with the task type, task id, and the
     process function (`proc_func`). If process function is `None`, the function
-    provided at `__init__` will be used. If `updated_cluster_spec` is not
-    `None`, the cluster spec used by this subprocess will be updated.
+    provided at `__init__` will be used. If `cluster_spec` is `None`, the
+    cluster spec provided at `__init__` will be used.
 
     TODO(rchao): It is meant that all subprocesses will be updated with the new
     cluster spec, but this has yet to be implemented. At this time only the
@@ -284,15 +354,17 @@ class MultiProcessRunner(object):
       task_id: The task id.
       proc_func: The process function to be run on the newly started
         process. If `None`, the function provided at `__init__` will be used.
-      updated_cluster_spec: If not `None`, the cluster spec used by this
-        subprocess will be updated.
+      cluster_spec: The cluster spec to be used on the newly started
+        process. If `None`, the cluster spec provided at `__init__` will be
+        used.
       args: Optional positional arguments to be supplied in `proc_func`.
       kwargs: Optional keyword arguments to be supplied in `proc_func`.
     """
-    self._cluster_spec = updated_cluster_spec or self._cluster_spec
+    cluster_spec = cluster_spec or self._cluster_spec
     proc_func = proc_func or self._proc_func
     self._start_subprocess_and_reading_thread(proc_func, task_type, task_id,
-                                              args or (), kwargs or {})
+                                              cluster_spec, args or (),
+                                              kwargs or {})
 
   def _queue_to_list(self, queue_to_convert):
     """Convert `queue.Queue` to `list`."""
@@ -305,7 +377,7 @@ class MultiProcessRunner(object):
         break
     return list_to_return
 
-  def join(self, timeout=None):
+  def join(self, timeout=_DEFAULT_TIMEOUT_SEC):
     """Joins all the processes with timeout.
 
     Args:
@@ -336,6 +408,9 @@ class MultiProcessRunner(object):
           if self._all_forced_terminated:
             break
           if time.time() - start_time > timeout:
+            # Send SIGTERM signal to subprocesses to dump their current
+            # stack trace.
+            self.terminate_all(sig=signal.SIGTERM)
             # If none of those did, report timeout to user.
             raise RuntimeError('One or more subprocesses timed out. '
                                'Number of outstanding subprocesses '
@@ -374,8 +449,11 @@ class MultiProcessRunner(object):
     _resource(PARENT_TO_SUB_QUEUE).put('terminate {} {}'.format(
         task_type, task_id))
 
-  def terminate_all(self):
+  def terminate_all(self, sig=None):
     """Terminates all subprocesses."""
+    # Use SIGKILL as default. In systems where that's unavailable such as
+    # windows, use SIGTERM.
+    sig = sig or getattr(signal, 'SIGKILL', signal.SIGTERM)
     subprocess_infos = []
 
     while True:
@@ -388,7 +466,7 @@ class MultiProcessRunner(object):
     for subprocess_info in subprocess_infos:
       logging.info('Parent process is now killing PID: %d', subprocess_info.pid)
       try:
-        os.kill(subprocess_info.pid, signal.SIGKILL)
+        os.kill(subprocess_info.pid, sig)
       except ProcessLookupError:
         # TODO(rchao): Remove subprocess info from the queue once a subprocess
         # is terminated.
@@ -449,11 +527,14 @@ class _Subprocess(object):
                *arg, **kwargs):
     """The wrapper function that actually gets run in child process(es)."""
 
+    if faulthandler is not None:
+      faulthandler.enable()
+      faulthandler.register(signal.SIGTERM, chain=True)
+
     pid = os.getpid()
     logging.info('Subprocess with PID %d (%s, %d) is now being started.', pid,
                  task_type, task_id)
     _resource(SUBPROCESS_INFO_QUEUE).put(_SubprocessInfo(pid=pid))
-
     # Assign sys.stdout and sys.stderr as duplicates of `pipe_w` so print() and
     # logging.*() write directly to `pipe_w`. Unfortunately since we cannot
     # prepend task_type and task_id information to the streamed logs we will
@@ -544,7 +625,7 @@ def run(proc_func,
         grpc_fail_fast=None,
         stream_stdout=True,
         list_stdout=False,
-        timeout=None,
+        timeout=_DEFAULT_TIMEOUT_SEC,
         args=None,
         kwargs=None):  # pylint: disable=g-doc-args
   """Runs functions in local child processes.

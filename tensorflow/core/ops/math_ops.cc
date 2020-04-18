@@ -549,7 +549,7 @@ REGISTER_OP("Maximum")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {bfloat16, half, float, double, int32, int64}")
+    .Attr("T: {bfloat16, half, float, double, int16, int32, int64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 // Note: This op is not commutative w.r.t. to all its inputs.
@@ -573,7 +573,7 @@ REGISTER_OP("Minimum")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {bfloat16, half, float, double, int32, int64}")
+    .Attr("T: {bfloat16, half, float, double, int16, int32, int64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("Mod")
@@ -959,7 +959,11 @@ REGISTER_OP("_FusedMatMul")
     .Output("product: T")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
+#if defined(INTEL_MKL) && defined(ENABLE_INTEL_MKL_BFLOAT16)
+    .Attr("T: {bfloat16, float}")
+#else
     .Attr("T: {float}")
+#endif
     .Attr("num_args: int >= 0")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ----------- //
@@ -1092,7 +1096,7 @@ REGISTER_OP("ArgMax")
     .Input("input: T")
     .Input("dimension: Tidx")
     .Output("output: output_type")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("output_type: {int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape);
@@ -1101,7 +1105,7 @@ REGISTER_OP("ArgMin")
     .Input("input: T")
     .Input("dimension: Tidx")
     .Output("output: output_type")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("output_type: {int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape);

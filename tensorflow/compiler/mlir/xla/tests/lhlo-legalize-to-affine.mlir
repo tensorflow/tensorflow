@@ -1,4 +1,4 @@
-// RUN: tf-opt -lhlo-legalize-to-affine %s -o - | FileCheck %s
+// RUN: xla-opt -lhlo-legalize-to-affine %s -o - | FileCheck %s
 
 // Smoke test.
 // CHECK-LABEL: func @min_op

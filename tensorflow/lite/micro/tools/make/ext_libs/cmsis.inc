@@ -8,6 +8,11 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
     THIRD_PARTY_DOWNLOADS += \
       $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
 
+    ifneq (,$(filter $(TARGET_ARCH), cortex-m55))
+      CCFLAGS += -DARM_MATH_MVEI
+      CXXFLAGS += -DARM_MATH_MVEI
+    endif
+
     CMSIS_PATH = $(MAKEFILE_DIR)/downloads/cmsis/
 
     # Include CMSIS-NN files
@@ -20,13 +25,6 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
       $(call recursive_find,$(CMSIS_PATH)/CMSIS/DSP/Include,*.h)
     THIRD_PARTY_CC_HDRS += \
       $(call recursive_find,$(CMSIS_PATH)/CMSIS/Core/Include,*.h)
-
-    # todo: remove the two lines below once context->AllocateTemporaryTensor()
-    # is implemented.
-    MICROLITE_CC_HDRS += \
-      tensorflow/lite/micro/kernels/cmsis-nn/scratch_buffer.h
-    MICROLITE_CC_SRCS += \
-      tensorflow/lite/micro/kernels/cmsis-nn/scratch_buffer.cc
 
     INCLUDES += -I$(CMSIS_PATH)/CMSIS/Core/Include \
                 -I$(CMSIS_PATH)/CMSIS/NN/Include \

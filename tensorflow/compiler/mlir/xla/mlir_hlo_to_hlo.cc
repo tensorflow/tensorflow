@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -37,8 +38,12 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/UseDefLists.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/quantize.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
@@ -49,6 +54,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 using ::stream_executor::port::StatusOr;
@@ -64,6 +71,7 @@ using ::tensorflow::uint8;
 constexpr char kPaddingMapAttr[] = "xla_hlo.padding_map";
 constexpr char kShapeIndicesAttr[] = "shape_indices";
 constexpr char kPaddingArgIndicesAttr[] = "padding_arg_indices";
+constexpr char kShardingAttr[] = "xla_hlo.sharding";
 constexpr char kRepicationAttr[] = "tf_device.is_same_data_across_replicas";
 
 // Passes through everything except for unique_ptr, on which it calls get().
@@ -253,18 +261,18 @@ static xla::DotDimensionNumbers Convert_dot_dimension_numbers(
       dot_dimension_numbers_attr.lhs_batching_dimensions()
           .cast<mlir::DenseIntElementsAttr>();
 
-  for (auto val : rhs_contracting_dimensions) {
+  for (const auto& val : rhs_contracting_dimensions) {
     dot_dimension_numbers.add_rhs_contracting_dimensions(val.getSExtValue());
   }
-  for (auto val : lhs_contracting_dimensions) {
+  for (const auto& val : lhs_contracting_dimensions) {
     dot_dimension_numbers.add_lhs_contracting_dimensions(val.getSExtValue());
   }
 
-  for (auto val : rhs_batch_dimensions) {
+  for (const auto& val : rhs_batch_dimensions) {
     dot_dimension_numbers.add_rhs_batch_dimensions(val.getSExtValue());
   }
 
-  for (auto val : lhs_batch_dimensions) {
+  for (const auto& val : lhs_batch_dimensions) {
     dot_dimension_numbers.add_lhs_batch_dimensions(val.getSExtValue());
   }
 
@@ -377,7 +385,7 @@ static xla::ScatterDimensionNumbers Convert_scatter_dimension_numbers(
 // returns absl::nullopt.
 static absl::optional<xla::OpSharding> CreateOpShardingFromAttribute(
     mlir::Operation* op) {
-  auto sharding = op->getAttrOfType<mlir::StringAttr>("xla_hlo.sharding");
+  auto sharding = op->getAttrOfType<mlir::StringAttr>(kShardingAttr);
   if (!sharding) {
     return absl::nullopt;
   }
@@ -387,6 +395,43 @@ static absl::optional<xla::OpSharding> CreateOpShardingFromAttribute(
     return absl::nullopt;
   }
   return sharding_proto;
+}
+
+// Checks if all shardings are set.
+static bool AllOptionalShardingsAreSet(
+    llvm::ArrayRef<absl::optional<xla::OpSharding>> shardings) {
+  return llvm::all_of(shardings,
+                      [](const absl::optional<xla::OpSharding>& sharding) {
+                        return sharding.has_value();
+                      });
+}
+
+// Extracts sharding from attribute string.
+static absl::optional<xla::OpSharding> CreateOpShardingFromStringRef(
+    llvm::StringRef sharding) {
+  xla::OpSharding sharding_proto;
+  if (!sharding_proto.ParseFromString(sharding.str())) return absl::nullopt;
+  return sharding_proto;
+}
+
+// Extracts argument and result shardings from function.
+static void ExtractShardingsFromFunction(
+    mlir::FuncOp function,
+    llvm::SmallVectorImpl<absl::optional<xla::OpSharding>>* arg_shardings,
+    llvm::SmallVectorImpl<absl::optional<xla::OpSharding>>* ret_shardings) {
+  arg_shardings->resize(function.getNumArguments(),
+                        absl::optional<xla::OpSharding>());
+  for (int i = 0; i < function.getNumArguments(); ++i)
+    if (auto sharding =
+            function.getArgAttrOfType<mlir::StringAttr>(i, kShardingAttr))
+      (*arg_shardings)[i] = CreateOpShardingFromStringRef(sharding.getValue());
+
+  ret_shardings->resize(function.getNumResults(),
+                        absl::optional<xla::OpSharding>());
+  for (int i = 0; i < function.getNumResults(); ++i)
+    if (auto sharding =
+            function.getResultAttrOfType<mlir::StringAttr>(i, kShardingAttr))
+      (*ret_shardings)[i] = CreateOpShardingFromStringRef(sharding.getValue());
 }
 
 namespace mlir {
@@ -402,12 +447,17 @@ class ConvertToHloModule {
   // are converted to a tuple even when there is only a single return value.
   // Multiple return values are always converted to a tuple and returned as a
   // single value.
-  explicit ConvertToHloModule(mlir::ModuleOp module, bool use_tuple_args,
-                              bool return_tuple)
+  explicit ConvertToHloModule(
+      mlir::ModuleOp module, bool use_tuple_args, bool return_tuple,
+      tensorflow::XlaCompiler::ShapeRepresentationFn shape_representation_fn)
       : module_(module),
         module_builder_("main"),
         use_tuple_args_(use_tuple_args),
-        return_tuple_(return_tuple) {}
+        return_tuple_(return_tuple),
+        shape_representation_fn_(shape_representation_fn) {
+    if (!shape_representation_fn_)
+      shape_representation_fn_ = tensorflow::IdentityShapeRepresentationFn();
+  }
 
   // Perform the lowering to XLA. This function returns failure if an error was
   // encountered.
@@ -432,6 +482,8 @@ class ConvertToHloModule {
   LogicalResult LowerBasicBlockAsFunction(
       Block* block, xla::XlaBuilder* builder, bool is_entry_function,
       const std::vector<bool>& entry_args_same_across_replicas,
+      llvm::ArrayRef<absl::optional<xla::OpSharding>> arg_shardings,
+      llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
       xla::XlaComputation* result);
 
   ::xla::HloModuleProto ConsumeMainProto() {
@@ -445,10 +497,22 @@ class ConvertToHloModule {
       ConvertToHloModule::ValueLoweringMap* value_lowering);
 
  private:
-  LogicalResult Lower(mlir::Operation* inst, bool is_entry_function,
-                      xla::XlaBuilder* builder,
-                      ConvertToHloModule::ValueLoweringMap* value_lowering,
-                      xla::XlaComputation* result);
+  LogicalResult Lower(
+      mlir::Operation* inst, bool is_entry_function,
+      llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
+      xla::XlaBuilder* builder,
+      ConvertToHloModule::ValueLoweringMap* value_lowering,
+      xla::XlaComputation* result);
+
+  LogicalResult SetEntryTupleShapesAndLeafReplication(
+      Block* block, const std::vector<bool>& entry_args_same_across_replicas,
+      llvm::SmallVectorImpl<xla::Shape>* arg_shapes,
+      std::vector<bool>* leaf_replication);
+
+  LogicalResult SetEntryTupleShardings(
+      Block* block, xla::XlaBuilder* builder,
+      llvm::ArrayRef<absl::optional<xla::OpSharding>> arg_shardings,
+      llvm::SmallVectorImpl<xla::Shape>* arg_shapes);
 
   // The module being lowered.
   mlir::ModuleOp module_;
@@ -464,6 +528,10 @@ class ConvertToHloModule {
 
   // Whether to always return a tuple.
   bool return_tuple_;
+
+  // Shape representation function to determine entry function argument and
+  // result shapes.
+  tensorflow::XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
 
   // Unique suffix to give to the name of the next lowered region.
   size_t region_id_ = 0;
@@ -540,6 +608,11 @@ LogicalResult ExportXlaOp(ScalarsToDimensionTensorOp op,
 }
 
 LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
+  // This op has no expression in the legacy export format.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(DynamicReshapeOp op, OpLoweringContext ctx) {
   // This op has no expression in the legacy export format.
   return failure();
 }
@@ -876,7 +949,9 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(Type type, ElementsAttr attr) {
 }
 
 LogicalResult ConvertToHloModule::Lower(
-    mlir::Operation* inst, bool is_entry_function, xla::XlaBuilder* builder,
+    mlir::Operation* inst, bool is_entry_function,
+    llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
+    xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering,
     xla::XlaComputation* result) {
   if (succeeded(ExportXlaOperator(inst, {value_lowering, this, builder}))) {
@@ -906,11 +981,37 @@ LogicalResult ConvertToHloModule::Lower(
     xla::XlaOp return_value;
     unsigned num_return_values = inst->getNumOperands();
     if ((return_tuple_ && is_entry_function) || num_return_values > 1) {
+      const bool has_ret_shardings =
+          !ret_shardings.empty() && AllOptionalShardingsAreSet(ret_shardings);
+
       std::vector<xla::XlaOp> returns(num_return_values);
-      for (unsigned i = 0, e = inst->getNumOperands(); i != e; ++i) {
-        returns[i] = value_map[inst->getOperand(i)];
+      for (OpOperand& ret : inst->getOpOperands()) {
+        unsigned index = ret.getOperandNumber();
+        returns[index] = value_map[ret.get()];
+        if (!is_entry_function || !has_ret_shardings) continue;
+
+        xla::Shape return_shape = xla::TypeToShape(ret.get().getType());
+        StatusOr<xla::XlaOp> reshape =
+            tensorflow::ReshapeWithCorrectRepresentationAndSharding(
+                builder, returns[index], return_shape, shape_representation_fn_,
+                ret_shardings[index], /*fast_mem=*/false);
+        if (!reshape.ok())
+          return inst->emitError() << reshape.status().error_message();
+
+        returns[index] = reshape.ValueOrDie();
       }
+
+      if (has_ret_shardings) {
+        xla::OpSharding sharding;
+        sharding.set_type(xla::OpSharding::TUPLE);
+        for (auto& ret_sharding : ret_shardings)
+          *sharding.add_tuple_shardings() = ret_sharding.value();
+
+        builder->SetSharding(sharding);
+      }
+
       return_value = xla::Tuple(builder, returns);
+      builder->ClearSharding();
     } else if (num_return_values == 1) {
       return_value = value_map[inst->getOperand(0)];
     }
@@ -926,8 +1027,7 @@ LogicalResult ConvertToHloModule::Lower(
     return success();
   }
 
-  inst->emitError("unable to lower operation of type '" +
-                  inst->getName().getStringRef().str() + '\'');
+  inst->emitOpError() << "can't be translated to XLA HLO";
   return failure();
 }
 
@@ -976,6 +1076,8 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
 
   xla::XlaComputation computation;
   std::vector<bool> entry_args_same_across_replicas;
+  llvm::SmallVector<absl::optional<xla::OpSharding>, 4> arg_shardings;
+  llvm::SmallVector<absl::optional<xla::OpSharding>, 4> ret_shardings;
   if (entry_function) {
     bool any_arg_replicated = false;
     entry_args_same_across_replicas.reserve(f.getNumArguments());
@@ -1000,21 +1102,90 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
     // means no replication. This avoids the need for unrelated tests to handle
     // this field.
     if (!any_arg_replicated) entry_args_same_across_replicas.clear();
+
+    ExtractShardingsFromFunction(f, &arg_shardings, &ret_shardings);
   }
-  if (failed(LowerBasicBlockAsFunction(&f.front(), &builder, entry_function,
-                                       entry_args_same_across_replicas,
-                                       &computation))) {
+  if (failed(LowerBasicBlockAsFunction(
+          &f.front(), &builder, entry_function, entry_args_same_across_replicas,
+          arg_shardings, ret_shardings, &computation))) {
     return failure();
   }
   lowered_computation_[f] = std::move(computation);
   return success();
 }
 
+LogicalResult ConvertToHloModule::SetEntryTupleShapesAndLeafReplication(
+    Block* block, const std::vector<bool>& entry_args_same_across_replicas,
+    llvm::SmallVectorImpl<xla::Shape>* arg_shapes,
+    std::vector<bool>* leaf_replication) {
+  arg_shapes->reserve(block->getNumArguments());
+  leaf_replication->reserve(block->getNumArguments());
+  for (BlockArgument& arg : block->getArguments()) {
+    arg_shapes->push_back(xla::TypeToShape(arg.getType()));
+    xla::Shape& arg_shape = arg_shapes->back();
+    tensorflow::TensorShape arg_tensor_shape;
+    auto status =
+        tensorflow::XLAShapeToTensorShape(arg_shape, &arg_tensor_shape);
+    if (!status.ok())
+      return block->getParentOp()->emitError() << status.error_message();
+
+    tensorflow::DataType dtype;
+    status = tensorflow::ConvertToDataType(arg.getType(), &dtype);
+    if (!status.ok())
+      return block->getParentOp()->emitError() << status.error_message();
+
+    auto arg_shape_status = shape_representation_fn_(arg_tensor_shape, dtype,
+                                                     /*use_fast_memory=*/false);
+    if (!arg_shape_status.ok())
+      return block->getParentOp()->emitError()
+             << arg_shape_status.status().error_message();
+
+    arg_shape = std::move(arg_shape_status.ValueOrDie());
+
+    if (entry_args_same_across_replicas.empty()) continue;
+    for (int i = 0, e = xla::ShapeUtil::GetLeafCount(arg_shape); i < e; ++i)
+      leaf_replication->push_back(
+          entry_args_same_across_replicas[arg.getArgNumber()]);
+  }
+
+  return success();
+}
+
+LogicalResult ConvertToHloModule::SetEntryTupleShardings(
+    Block* block, xla::XlaBuilder* builder,
+    llvm::ArrayRef<absl::optional<xla::OpSharding>> arg_shardings,
+    llvm::SmallVectorImpl<xla::Shape>* arg_shapes) {
+  if (!arg_shardings.empty() && AllOptionalShardingsAreSet(arg_shardings)) {
+    xla::OpSharding sharding;
+    sharding.set_type(xla::OpSharding::TUPLE);
+    for (auto arg_sharding : llvm::enumerate(arg_shardings)) {
+      auto hlo_sharding =
+          xla::HloSharding::FromProto(arg_sharding.value().value());
+      if (!hlo_sharding.ok())
+        return block->getParentOp()->emitError()
+               << hlo_sharding.status().error_message();
+
+      auto status = tensorflow::RewriteLayoutWithShardedShape(
+          hlo_sharding.ValueOrDie(), /*use_fast_memory=*/false,
+          shape_representation_fn_, &(*arg_shapes)[arg_sharding.index()]);
+      if (!status.ok())
+        return block->getParentOp()->emitError() << status.error_message();
+
+      *sharding.add_tuple_shardings() = arg_sharding.value().value();
+    }
+
+    builder->SetSharding(sharding);
+  }
+
+  return success();
+}
+
 LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     Block* block, xla::XlaBuilder* builder, bool is_entry_function,
     const std::vector<bool>& entry_args_same_across_replicas,
+    llvm::ArrayRef<absl::optional<xla::OpSharding>> arg_shardings,
+    llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
     xla::XlaComputation* result) {
-  auto& bb = *block;
   // Mapping from the Value to lowered XlaOp. The code below lowers in
   // program order and will fail if an operand is unseen. This can be improved.
   ValueLoweringMap lowering;
@@ -1022,29 +1193,28 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
   // If using tuples as input, then there is only one input parameter that is a
   // tuple.
   if (is_entry_function && use_tuple_args_) {
-    std::vector<xla::Shape> arg_shapes;
-    arg_shapes.reserve(bb.getNumArguments());
+    llvm::SmallVector<xla::Shape, 4> arg_shapes;
     std::vector<bool> leaf_replication;
-    for (auto& arg : bb.getArguments()) {
-      arg_shapes.push_back(xla::TypeToShape(arg.getType()));
-      if (!entry_args_same_across_replicas.empty()) {
-        for (int i = 0; i < xla::ShapeUtil::GetLeafCount(arg_shapes.back());
-             ++i) {
-          leaf_replication.push_back(
-              entry_args_same_across_replicas[arg.getArgNumber()]);
-        }
-      }
-    }
+    if (failed(SetEntryTupleShapesAndLeafReplication(
+            block, entry_args_same_across_replicas, &arg_shapes,
+            &leaf_replication)))
+      return failure();
+
+    if (failed(
+            SetEntryTupleShardings(block, builder, arg_shardings, &arg_shapes)))
+      return failure();
+
     xla::Shape input_shape = xla::ShapeUtil::MakeTupleShape(arg_shapes);
     auto tuple =
         xla::Parameter(builder, 0, input_shape, "arg_tuple", leaf_replication);
-    for (auto& it : llvm::enumerate(bb.getArguments())) {
-      lowering[it.value()] = xla::GetTupleElement(tuple, it.index());
-    }
+
+    builder->ClearSharding();
+
+    for (BlockArgument& arg : block->getArguments())
+      lowering[arg] = xla::GetTupleElement(tuple, arg.getArgNumber());
   } else {
-    for (auto& it : llvm::enumerate(bb.getArguments())) {
-      auto arg = it.value();
-      auto num = it.index();
+    for (BlockArgument& arg : block->getArguments()) {
+      auto num = arg.getArgNumber();
       xla::Shape shape = xla::TypeToShape(arg.getType());
       if (entry_args_same_across_replicas.empty()) {
         lowering[arg] =
@@ -1058,8 +1228,9 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     }
   }
 
-  for (auto& inst : bb)
-    if (failed(Lower(&inst, is_entry_function, builder, &lowering, result)))
+  for (auto& inst : *block)
+    if (failed(Lower(&inst, is_entry_function, ret_shardings, builder,
+                     &lowering, result)))
       return failure();
 
   return success();
@@ -1069,8 +1240,10 @@ LogicalResult ConvertToHloModule::LowerRegionAsComputation(
     mlir::Region* region, xla::XlaComputation* func) {
   std::unique_ptr<xla::XlaBuilder> builder =
       module_builder_.CreateSubBuilder(absl::StrCat("region_", region_id_++));
-  return LowerBasicBlockAsFunction(&region->front(), builder.get(),
-                                   /*is_entry_function=*/false, {}, func);
+  return LowerBasicBlockAsFunction(
+      &region->front(), builder.get(),
+      /*is_entry_function=*/false, /*entry_args_same_across_replicas=*/{},
+      /*arg_shardings=*/{}, /*ret_shardings=*/{}, func);
 }
 
 std::string PaddingMapBadArrayAttrMsg(llvm::StringRef attr_name, int index) {
@@ -1241,9 +1414,12 @@ LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
 }  // namespace
 
 Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
-                           bool use_tuple_args, bool return_tuple) {
+                           bool use_tuple_args, bool return_tuple,
+                           const tensorflow::XlaCompiler::ShapeRepresentationFn
+                               shape_representation_fn) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
-  ConvertToHloModule converter(module, use_tuple_args, return_tuple);
+  ConvertToHloModule converter(module, use_tuple_args, return_tuple,
+                               shape_representation_fn);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
   auto hlo_module = converter.ConsumeMainProto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);

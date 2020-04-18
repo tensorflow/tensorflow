@@ -86,6 +86,11 @@ class DefaultTensorTie : public TensorTie {
       const TensorTieDef& def,
       const TensorObjectConverterBuilder& converter_builder) {
     auto object_type = def.external_def.object_def.object_type;
+    if (def.external_def.object_def.user_provided &&
+        GlClBufferCopier::IsSupported(def.external_def.object_def,
+                                      def.internal_def.object_def)) {
+      return true;
+    }
     return (object_type == ObjectType::OPENCL_BUFFER ||
             object_type == ObjectType::OPENCL_TEXTURE ||
             object_type == ObjectType::CPU_MEMORY) &&
@@ -132,10 +137,24 @@ class DefaultTensorTie : public TensorTie {
  private:
   absl::Status Init(TensorObjectConverterBuilder* converter_builder,
                     Environment* env) {
-    RETURN_IF_ERROR(converter_builder->MakeConverter(
-        def().internal_def, def().external_def, &converter_to_));
-    RETURN_IF_ERROR(converter_builder->MakeConverter(
-        def().external_def, def().internal_def, &converter_from_));
+    if (def().external_def.object_def.user_provided &&
+        GlClBufferCopier::IsSupported(def().external_def.object_def,
+                                      def().internal_def.object_def)) {
+      converter_from_ = absl::make_unique<GlClBufferCopier>(
+          def().internal_def, def().external_def, env);
+    } else {
+      RETURN_IF_ERROR(converter_builder->MakeConverter(
+          def().external_def, def().internal_def, &converter_from_));
+    }
+    if (def().external_def.object_def.user_provided &&
+        GlClBufferCopier::IsSupported(def().internal_def.object_def,
+                                      def().external_def.object_def)) {
+      converter_to_ = absl::make_unique<GlClBufferCopier>(
+          def().internal_def, def().external_def, env);
+    } else {
+      RETURN_IF_ERROR(converter_builder->MakeConverter(
+          def().internal_def, def().external_def, &converter_to_));
+    }
     return MaybeAllocateExternalObject(env);
   }
 
@@ -356,7 +375,8 @@ class TensorTieFactory {
     return IsValid(def.external_def.object_def) &&
            (NoopTensorTie::IsSupported(def) ||
             DefaultTensorTie::IsSupported(def, *converter_builder_) ||
-            GlBufferHolder::IsSupported(def, *converter_builder_) ||
+            (gl_interop_fabric_ &&
+             GlBufferHolder::IsSupported(def, *converter_builder_)) ||
             TwoStepTensorTie::IsSupported(def, *converter_builder_));
   }
 
@@ -371,12 +391,7 @@ class TensorTieFactory {
     if (DefaultTensorTie::IsSupported(def, *converter)) {
       return DefaultTensorTie::New(def, internal_object, converter, &env_, tie);
     }
-    if (GlBufferHolder::IsSupported(def, *converter)) {
-      if (!gl_interop_fabric_) {
-        return absl::InvalidArgumentError(
-            "GL object is used but InferenceEnvironmentOptions does not have "
-            "EGL display and context set.");
-      }
+    if (gl_interop_fabric_ && GlBufferHolder::IsSupported(def, *converter)) {
       return GlBufferHolder::New(def, internal_object, converter,
                                  gl_interop_fabric_, &env_, tie);
     }
@@ -526,7 +541,8 @@ class InferenceBuilderImpl : public InferenceBuilder {
     }
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
 
-    if (env_options.IsGlAware()) {
+    if (env_options.IsGlAware() &&
+        IsGlSharingSupported(environment_->device())) {
       gl_interop_fabric_ = absl::make_unique<GlInteropFabric>(
           env_options.egl_display, environment_);
     }
@@ -645,9 +661,8 @@ class InferenceBuilderImpl : public InferenceBuilder {
   }
 
   // Links internal tensors with external user-facing objects.
-  std::vector<TensorTieDef> LinkTensors(
-      const GraphFloat32& graph,
-      const std::vector<Value<TensorRef<BHWC>>*>& values) {
+  std::vector<TensorTieDef> LinkTensors(const GraphFloat32& graph,
+                                        const std::vector<Value*>& values) {
     std::vector<TensorTieDef> links;
     links.reserve(values.size());
     for (const auto& value : values) {
@@ -719,9 +734,6 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
         IsClEventFromEglSyncSupported(device);
     properties_.is_cl_to_gl_fast_sync_supported =
         IsEglSyncFromClEventSupported();
-    if (options_.IsGlAware() && !properties_.is_gl_sharing_supported) {
-      return absl::UnavailableError("GL sharing is not supported");
-    }
 
     CLContext context;
     if (options_.context) {
@@ -731,7 +743,7 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
       }
       context = CLContext(options_.context, /* has_ownership = */ false);
     } else {
-      if (options_.IsGlAware()) {
+      if (options_.IsGlAware() && properties_.is_gl_sharing_supported) {
         RETURN_IF_ERROR(CreateCLGLContext(
             device,
             reinterpret_cast<cl_context_properties>(options_.egl_context),

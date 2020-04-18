@@ -1766,6 +1766,8 @@ int ElementSize(ArrayDataType data_type) {
       return 8;
     case ArrayDataType::kComplex64:
       return 8;
+    case ArrayDataType::kFloat64:
+      return 8;
 
     // Usually not critical limitation because strings are only input and/or
     // output.
@@ -2307,6 +2309,10 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kString;
     case COMPLEX64:
       return ArrayDataType::kComplex64;
+    case FLOAT16:
+      return ArrayDataType::kFloat16;
+    case FLOAT64:
+      return ArrayDataType::kFloat64;
     default:
       return ArrayDataType::kNone;
   }

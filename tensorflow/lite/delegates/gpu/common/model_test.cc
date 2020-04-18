@@ -32,12 +32,12 @@ TEST(Model, SingleNode) {
   // graph_input -> node -> graph_output
   GraphFloat32 graph;
   Node* node = graph.NewNode();
-  Value<TensorRef<BHWC>>* graph_input = graph.NewValue();
-  Value<TensorRef<BHWC>>* graph_output = graph.NewValue();
+  Value* graph_input = graph.NewValue();
+  Value* graph_output = graph.NewValue();
   ASSERT_TRUE(graph.AddConsumer(node->id, graph_input->id).ok());
   ASSERT_TRUE(graph.SetProducer(node->id, graph_output->id).ok());
 
-  EXPECT_THAT(graph.nodes(), UnorderedElementsAre(node));
+  EXPECT_THAT(graph.nodes(), ElementsAre(node));
   EXPECT_THAT(graph.values(), UnorderedElementsAre(graph_input, graph_output));
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_input));
   EXPECT_THAT(graph.outputs(), UnorderedElementsAre(graph_output));
@@ -53,9 +53,9 @@ TEST(Model, SingleNodeMultipleOutputs) {
   // graph_input -> node -> (graph_output1, graph_output2)
   GraphFloat32 graph;
   Node* node = graph.NewNode();
-  Value<TensorRef<BHWC>>* graph_input = graph.NewValue();
-  Value<TensorRef<BHWC>>* graph_output1 = graph.NewValue();
-  Value<TensorRef<BHWC>>* graph_output2 = graph.NewValue();
+  Value* graph_input = graph.NewValue();
+  Value* graph_output1 = graph.NewValue();
+  Value* graph_output2 = graph.NewValue();
   ASSERT_TRUE(graph.AddConsumer(node->id, graph_input->id).ok());
   ASSERT_TRUE(graph.SetProducer(node->id, graph_output1->id).ok());
   ASSERT_TRUE(graph.SetProducer(node->id, graph_output2->id).ok());
@@ -68,7 +68,7 @@ TEST(Model, SingleNodeMultipleOutputs) {
 TEST(Model, SetSameConsumer) {
   GraphFloat32 graph;
   Node* node = graph.NewNode();
-  Value<TensorRef<BHWC>>* graph_input = graph.NewValue();
+  Value* graph_input = graph.NewValue();
   ASSERT_TRUE(graph.AddConsumer(node->id, graph_input->id).ok());
   EXPECT_FALSE(graph.AddConsumer(node->id, graph_input->id).ok());
 }
@@ -77,8 +77,8 @@ TEST(Model, RemoveConsumer) {
   // (graph_input1, graph_input2) -> node
   GraphFloat32 graph;
   Node* node = graph.NewNode();
-  Value<TensorRef<BHWC>>* graph_input1 = graph.NewValue();
-  Value<TensorRef<BHWC>>* graph_input2 = graph.NewValue();
+  Value* graph_input1 = graph.NewValue();
+  Value* graph_input2 = graph.NewValue();
   ASSERT_TRUE(graph.AddConsumer(node->id, graph_input1->id).ok());
   ASSERT_TRUE(graph.AddConsumer(node->id, graph_input2->id).ok());
   EXPECT_THAT(graph.FindConsumers(graph_input1->id),
@@ -102,7 +102,7 @@ TEST(Model, RemoveConsumer) {
 TEST(Model, SetSameProducer) {
   GraphFloat32 graph;
   Node* node = graph.NewNode();
-  Value<TensorRef<BHWC>>* graph_output = graph.NewValue();
+  Value* graph_output = graph.NewValue();
   ASSERT_TRUE(graph.SetProducer(node->id, graph_output->id).ok());
   EXPECT_FALSE(graph.SetProducer(node->id, graph_output->id).ok());
 }
@@ -110,10 +110,10 @@ TEST(Model, SetSameProducer) {
 TEST(Model, ReplaceInput) {
   GraphFloat32 graph;
   Node* node = graph.NewNode();
-  Value<TensorRef<BHWC>>* v0 = graph.NewValue();
-  Value<TensorRef<BHWC>>* v1 = graph.NewValue();
-  Value<TensorRef<BHWC>>* v2 = graph.NewValue();
-  Value<TensorRef<BHWC>>* v3 = graph.NewValue();
+  Value* v0 = graph.NewValue();
+  Value* v1 = graph.NewValue();
+  Value* v2 = graph.NewValue();
+  Value* v3 = graph.NewValue();
   ASSERT_TRUE(graph.AddConsumer(node->id, v0->id).ok());
   ASSERT_TRUE(graph.AddConsumer(node->id, v1->id).ok());
   ASSERT_TRUE(graph.AddConsumer(node->id, v2->id).ok());
@@ -125,7 +125,7 @@ TEST(Model, ReplaceInput) {
 TEST(Model, RemoveProducer) {
   GraphFloat32 graph;
   Node* node = graph.NewNode();
-  Value<TensorRef<BHWC>>* graph_output = graph.NewValue();
+  Value* graph_output = graph.NewValue();
 
   ASSERT_TRUE(graph.SetProducer(node->id, graph_output->id).ok());
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre());
@@ -142,28 +142,28 @@ TEST(Model, RemoveProducer) {
 TEST(Model, RemoveSimpleNodeDegenerateCase) {
   GraphFloat32 graph;
   Node* node = graph.NewNode();
-  Value<TensorRef<BHWC>>* graph_input = graph.NewValue();
-  Value<TensorRef<BHWC>>* graph_output = graph.NewValue();
+  Value* graph_input = graph.NewValue();
+  Value* graph_output = graph.NewValue();
 
   ASSERT_TRUE(graph.AddConsumer(node->id, graph_input->id).ok());
   ASSERT_TRUE(graph.SetProducer(node->id, graph_output->id).ok());
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_input));
   EXPECT_THAT(graph.outputs(), UnorderedElementsAre(graph_output));
-  EXPECT_THAT(graph.nodes(), UnorderedElementsAre(node));
+  EXPECT_THAT(graph.nodes(), ElementsAre(node));
 
   ASSERT_TRUE(RemoveOneInputOneOutputNode(&graph, node).ok());
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre());
   EXPECT_THAT(graph.outputs(), UnorderedElementsAre());
-  EXPECT_THAT(graph.nodes(), UnorderedElementsAre());
+  EXPECT_THAT(graph.nodes(), ElementsAre());
 }
 
 TEST(Model, RemoveSimpleNodeNoPreviousNode) {
   GraphFloat32 graph;
   Node* simple_node = graph.NewNode();
   Node* consumer_node = graph.NewNode();
-  Value<TensorRef<BHWC>>* graph_input = graph.NewValue();
-  Value<TensorRef<BHWC>>* graph_output = graph.NewValue();
-  Value<TensorRef<BHWC>>* value = graph.NewValue();
+  Value* graph_input = graph.NewValue();
+  Value* graph_output = graph.NewValue();
+  Value* value = graph.NewValue();
 
   ASSERT_TRUE(graph.AddConsumer(simple_node->id, graph_input->id).ok());
   ASSERT_TRUE(graph.SetProducer(simple_node->id, value->id).ok());
@@ -171,21 +171,21 @@ TEST(Model, RemoveSimpleNodeNoPreviousNode) {
   ASSERT_TRUE(graph.SetProducer(consumer_node->id, graph_output->id).ok());
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_input));
   EXPECT_THAT(graph.outputs(), UnorderedElementsAre(graph_output));
-  EXPECT_THAT(graph.nodes(), UnorderedElementsAre(simple_node, consumer_node));
+  EXPECT_THAT(graph.nodes(), ElementsAre(simple_node, consumer_node));
 
   ASSERT_TRUE(RemoveOneInputOneOutputNode(&graph, simple_node).ok());
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_input));
   EXPECT_THAT(graph.outputs(), UnorderedElementsAre(graph_output));
-  EXPECT_THAT(graph.nodes(), UnorderedElementsAre(consumer_node));
+  EXPECT_THAT(graph.nodes(), ElementsAre(consumer_node));
 }
 
 TEST(Model, RemoveSimpleNodeNoAfterNodes) {
   GraphFloat32 graph;
   Node* simple_node = graph.NewNode();
   Node* producer_node = graph.NewNode();
-  Value<TensorRef<BHWC>>* graph_input = graph.NewValue();
-  Value<TensorRef<BHWC>>* graph_output = graph.NewValue();
-  Value<TensorRef<BHWC>>* value = graph.NewValue();
+  Value* graph_input = graph.NewValue();
+  Value* graph_output = graph.NewValue();
+  Value* value = graph.NewValue();
 
   ASSERT_TRUE(graph.AddConsumer(simple_node->id, value->id).ok());
   ASSERT_TRUE(graph.SetProducer(simple_node->id, graph_output->id).ok());
@@ -193,12 +193,12 @@ TEST(Model, RemoveSimpleNodeNoAfterNodes) {
   ASSERT_TRUE(graph.SetProducer(producer_node->id, value->id).ok());
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_input));
   EXPECT_THAT(graph.outputs(), UnorderedElementsAre(graph_output));
-  EXPECT_THAT(graph.nodes(), UnorderedElementsAre(simple_node, producer_node));
+  EXPECT_THAT(graph.nodes(), ElementsAre(simple_node, producer_node));
 
   ASSERT_TRUE(RemoveOneInputOneOutputNode(&graph, simple_node).ok());
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_input));
   EXPECT_THAT(graph.outputs(), UnorderedElementsAre(value));
-  EXPECT_THAT(graph.nodes(), UnorderedElementsAre(producer_node));
+  EXPECT_THAT(graph.nodes(), ElementsAre(producer_node));
 }
 
 TEST(Model, RemoveSimpleNodeGeneralCase) {
@@ -206,10 +206,10 @@ TEST(Model, RemoveSimpleNodeGeneralCase) {
   Node* simple_node = graph.NewNode();
   Node* producer_node = graph.NewNode();
   Node* consumer_node = graph.NewNode();
-  Value<TensorRef<BHWC>>* graph_input = graph.NewValue();
-  Value<TensorRef<BHWC>>* graph_output = graph.NewValue();
-  Value<TensorRef<BHWC>>* value0 = graph.NewValue();
-  Value<TensorRef<BHWC>>* value1 = graph.NewValue();
+  Value* graph_input = graph.NewValue();
+  Value* graph_output = graph.NewValue();
+  Value* value0 = graph.NewValue();
+  Value* value1 = graph.NewValue();
 
   ASSERT_TRUE(graph.AddConsumer(producer_node->id, graph_input->id).ok());
   ASSERT_TRUE(graph.SetProducer(producer_node->id, value0->id).ok());
@@ -220,13 +220,12 @@ TEST(Model, RemoveSimpleNodeGeneralCase) {
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_input));
   EXPECT_THAT(graph.outputs(), UnorderedElementsAre(graph_output));
   EXPECT_THAT(graph.nodes(),
-              UnorderedElementsAre(simple_node, producer_node, consumer_node));
+              ElementsAre(simple_node, producer_node, consumer_node));
 
   ASSERT_TRUE(RemoveOneInputOneOutputNode(&graph, simple_node).ok());
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_input));
   EXPECT_THAT(graph.outputs(), UnorderedElementsAre(graph_output));
-  EXPECT_THAT(graph.nodes(),
-              UnorderedElementsAre(producer_node, consumer_node));
+  EXPECT_THAT(graph.nodes(), ElementsAre(producer_node, consumer_node));
   EXPECT_THAT(graph.values(),
               UnorderedElementsAre(graph_input, graph_output, value0));
 }
@@ -258,12 +257,12 @@ TEST(Model, RemoveSimpleNodeComplexCase) {
   Node* n0 = graph.NewNode();
   Node* n1 = graph.NewNode();  // node to remove
   Node* n2 = graph.NewNode();
-  Value<TensorRef<BHWC>>* v0 = graph.NewValue();
-  Value<TensorRef<BHWC>>* v1 = graph.NewValue();
-  Value<TensorRef<BHWC>>* v2 = graph.NewValue();  // value to be removed
-  Value<TensorRef<BHWC>>* v3 = graph.NewValue();
-  Value<TensorRef<BHWC>>* o1 = graph.NewValue();
-  Value<TensorRef<BHWC>>* o2 = graph.NewValue();
+  Value* v0 = graph.NewValue();
+  Value* v1 = graph.NewValue();
+  Value* v2 = graph.NewValue();  // value to be removed
+  Value* v3 = graph.NewValue();
+  Value* o1 = graph.NewValue();
+  Value* o2 = graph.NewValue();
 
   ASSERT_TRUE(graph.AddConsumer(n0->id, v0->id).ok());
   ASSERT_TRUE(graph.AddConsumer(n0->id, v1->id).ok());
@@ -275,12 +274,12 @@ TEST(Model, RemoveSimpleNodeComplexCase) {
   ASSERT_TRUE(graph.SetProducer(n2->id, o2->id).ok());
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre(v0, v1, v3));
   EXPECT_THAT(graph.outputs(), UnorderedElementsAre(o1, o2));
-  EXPECT_THAT(graph.nodes(), UnorderedElementsAre(n0, n1, n2));
+  EXPECT_THAT(graph.nodes(), ElementsAre(n0, n1, n2));
 
   ASSERT_TRUE(RemoveOneInputOneOutputNode(&graph, n1).ok());
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre(v0, v1, v3));
   EXPECT_THAT(graph.outputs(), UnorderedElementsAre(o1, o2));
-  EXPECT_THAT(graph.nodes(), UnorderedElementsAre(n0, n2));
+  EXPECT_THAT(graph.nodes(), ElementsAre(n0, n2));
   EXPECT_THAT(graph.values(), UnorderedElementsAre(v0, v1, v3, o1, o2));
   EXPECT_THAT(graph.FindInputs(n0->id), ElementsAre(v0, v1));
   EXPECT_THAT(graph.FindInputs(n2->id), ElementsAre(v1, v3));
@@ -290,14 +289,14 @@ TEST(Model, CircularDependency) {
   {
     GraphFloat32 graph;
     Node* node = graph.NewNode();
-    Value<TensorRef<BHWC>>* value = graph.NewValue();
+    Value* value = graph.NewValue();
     ASSERT_TRUE(graph.AddConsumer(node->id, value->id).ok());
     EXPECT_FALSE(graph.SetProducer(node->id, value->id).ok());
   }
   {
     GraphFloat32 graph;
     Node* node = graph.NewNode();
-    Value<TensorRef<BHWC>>* value = graph.NewValue();
+    Value* value = graph.NewValue();
     ASSERT_TRUE(graph.SetProducer(node->id, value->id).ok());
     EXPECT_FALSE(graph.AddConsumer(node->id, value->id).ok());
   }
@@ -310,8 +309,8 @@ TEST(Model, ReassignValue) {
   GraphFloat32 graph;
   Node* node1 = graph.NewNode();
   Node* node2 = graph.NewNode();
-  Value<TensorRef<BHWC>>* graph_input = graph.NewValue();
-  Value<TensorRef<BHWC>>* graph_output = graph.NewValue();
+  Value* graph_input = graph.NewValue();
+  Value* graph_output = graph.NewValue();
   ASSERT_TRUE(graph.AddConsumer(node1->id, graph_input->id).ok());
   ASSERT_TRUE(graph.SetProducer(node1->id, graph_output->id).ok());
   ASSERT_TRUE(graph.AddConsumer(node2->id, graph_input->id).ok());
@@ -321,7 +320,7 @@ TEST(Model, ReassignValue) {
   //              \ -> node2 -> graph_output
   ASSERT_TRUE(graph.SetProducer(node2->id, graph_output->id).ok());
 
-  EXPECT_THAT(graph.nodes(), UnorderedElementsAre(node1, node2));
+  EXPECT_THAT(graph.nodes(), ElementsAre(node1, node2));
   EXPECT_THAT(graph.FindInputs(node1->id), UnorderedElementsAre(graph_input));
   EXPECT_THAT(graph.FindInputs(node2->id), UnorderedElementsAre(graph_input));
   EXPECT_THAT(graph.FindOutputs(node1->id), UnorderedElementsAre());
@@ -337,9 +336,9 @@ TEST(Model, DeleteValue) {
   GraphFloat32 graph;
   Node* node1 = graph.NewNode();
   Node* node2 = graph.NewNode();
-  Value<TensorRef<BHWC>>* graph_input = graph.NewValue();
-  Value<TensorRef<BHWC>>* graph_output = graph.NewValue();
-  Value<TensorRef<BHWC>>* value = graph.NewValue();
+  Value* graph_input = graph.NewValue();
+  Value* graph_output = graph.NewValue();
+  Value* value = graph.NewValue();
   ASSERT_TRUE(graph.AddConsumer(node1->id, graph_input->id).ok());
   ASSERT_TRUE(graph.SetProducer(node1->id, value->id).ok());
   ASSERT_TRUE(graph.AddConsumer(node2->id, value->id).ok());
@@ -378,10 +377,10 @@ TEST(Model, DeleteNode) {
   Node* node1 = graph.NewNode();
   Node* node2 = graph.NewNode();
   Node* node3 = graph.NewNode();
-  Value<TensorRef<BHWC>>* graph_input = graph.NewValue();
-  Value<TensorRef<BHWC>>* graph_output = graph.NewValue();
-  Value<TensorRef<BHWC>>* graph_output2 = graph.NewValue();
-  Value<TensorRef<BHWC>>* value = graph.NewValue();
+  Value* graph_input = graph.NewValue();
+  Value* graph_output = graph.NewValue();
+  Value* graph_output2 = graph.NewValue();
+  Value* value = graph.NewValue();
   ASSERT_TRUE(graph.AddConsumer(node1->id, graph_input->id).ok());
   ASSERT_TRUE(graph.SetProducer(node1->id, value->id).ok());
   ASSERT_TRUE(graph.AddConsumer(node2->id, value->id).ok());
@@ -389,7 +388,7 @@ TEST(Model, DeleteNode) {
   ASSERT_TRUE(graph.SetProducer(node2->id, graph_output->id).ok());
   ASSERT_TRUE(graph.SetProducer(node3->id, graph_output2->id).ok());
 
-  EXPECT_THAT(graph.nodes(), UnorderedElementsAre(node1, node2, node3));
+  EXPECT_THAT(graph.nodes(), ElementsAre(node1, node2, node3));
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_input));
   EXPECT_THAT(graph.outputs(),
               UnorderedElementsAre(graph_output, graph_output2));
@@ -403,7 +402,7 @@ TEST(Model, DeleteNode) {
   // graph_output2
   ASSERT_TRUE(graph.DeleteNode(node3->id).ok());
   node3 = nullptr;
-  EXPECT_THAT(graph.nodes(), UnorderedElementsAre(node1, node2));
+  EXPECT_THAT(graph.nodes(), ElementsAre(node1, node2));
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_input, graph_output2));
   EXPECT_THAT(graph.outputs(),
               UnorderedElementsAre(graph_output, graph_output2));
@@ -414,7 +413,7 @@ TEST(Model, DeleteNode) {
   // graph_output2
   ASSERT_TRUE(graph.DeleteNode(node1->id).ok());
   node1 = nullptr;
-  EXPECT_THAT(graph.nodes(), UnorderedElementsAre(node2));
+  EXPECT_THAT(graph.nodes(), ElementsAre(node2));
   EXPECT_THAT(graph.inputs(),
               UnorderedElementsAre(value, graph_output2, graph_input));
   EXPECT_THAT(graph.outputs(),
@@ -424,13 +423,47 @@ TEST(Model, DeleteNode) {
 
   ASSERT_TRUE(graph.DeleteNode(node2->id).ok());
   node2 = nullptr;
-  EXPECT_THAT(graph.nodes(), UnorderedElementsAre());
+  EXPECT_THAT(graph.nodes(), ElementsAre());
   EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_output, graph_output2,
                                                    graph_input, value));
   EXPECT_THAT(graph.outputs(), UnorderedElementsAre(graph_output, graph_output2,
                                                     graph_input, value));
   EXPECT_THAT(graph.FindConsumers(value->id), UnorderedElementsAre());
   EXPECT_THAT(graph.FindProducer(value->id), ::testing::Eq(nullptr));
+}
+
+TEST(Model, InsertNodeAfter) {
+  // graph_input -> node1 -> value -> node2 -> graph_output
+  GraphFloat32 graph;
+  Node* node1 = graph.NewNode();
+  Node* node2 = graph.NewNode();
+  Value* graph_input = graph.NewValue();
+  Value* graph_output = graph.NewValue();
+  Value* value = graph.NewValue();
+  ASSERT_TRUE(graph.AddConsumer(node1->id, graph_input->id).ok());
+  ASSERT_TRUE(graph.SetProducer(node1->id, value->id).ok());
+  ASSERT_TRUE(graph.AddConsumer(node2->id, value->id).ok());
+  ASSERT_TRUE(graph.SetProducer(node2->id, graph_output->id).ok());
+
+  EXPECT_THAT(graph.nodes(), ElementsAre(node1, node2));
+  EXPECT_THAT(graph.inputs(), UnorderedElementsAre(graph_input));
+  EXPECT_THAT(graph.outputs(), UnorderedElementsAre(graph_output));
+  EXPECT_THAT(graph.FindConsumers(value->id), UnorderedElementsAre(node2));
+  EXPECT_THAT(graph.FindProducer(value->id), ::testing::Eq(node1));
+  EXPECT_THAT(graph.FindInputs(node2->id), UnorderedElementsAre(value));
+
+  Node* new_node1;
+  absl::Status status = graph.InsertNodeAfter(node1->id, &new_node1);
+  ASSERT_TRUE(status.ok());
+  EXPECT_THAT(graph.nodes(), ElementsAre(node1, new_node1, node2));
+
+  Node* new_node2;
+  status = graph.InsertNodeAfter(/*id=*/100, &new_node2);
+  EXPECT_EQ(status.code(), absl::StatusCode::kOutOfRange);
+
+  status = graph.InsertNodeAfter(node2->id, &new_node2);
+  ASSERT_TRUE(status.ok());
+  EXPECT_THAT(graph.nodes(), ElementsAre(node1, new_node1, node2, new_node2));
 }
 
 }  // namespace

@@ -49,7 +49,7 @@ _ACCUMULATOR_COUNTS_NAME = "counts"
 class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
   """Maps strings (or integers) from a vocabulary to integer indices.
 
-  This layer translates a set of arbitray strings or integers into an integer
+  This layer translates a set of arbitrary strings or integers into an integer
   output via a table-based lookup, with optional out-of-vocabulary handling.
 
   If desired, the user can call this layer's `adapt()` method on a data set,
@@ -341,7 +341,6 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
 
     start_index = self._reserved_values + (self.vocab_size() if append else 0)
     values = np.arange(start_index, len(vocab) + start_index, dtype=np.int64)
-
     vocab = self._convert_to_ndarray(vocab, self.dtype)
     self._assert_same_type(self.dtype, vocab, "vocab")
 
@@ -459,8 +458,11 @@ class _IndexLookupCombiner(base_preprocessing_layer.Combiner):
 
     # TODO(momernick): Benchmark improvements to this algorithm.
     for document in values:
-      for token in document:
-        accumulator.count_dict[token] += 1
+      if not isinstance(document, list):
+        accumulator.count_dict[document] += 1
+      else:
+        for token in document:
+          accumulator.count_dict[token] += 1
 
     return accumulator
 

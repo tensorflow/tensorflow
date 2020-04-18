@@ -234,7 +234,7 @@ def get_registered_object(name, custom_objects=None, module_objects=None):
 
 @keras_export('keras.utils.serialize_keras_object')
 def serialize_keras_object(instance):
-  """Serialize Keras object into JSON."""
+  """Serialize a Keras object into a JSON-compatible representation."""
   _, instance = tf_decorator.unwrap(instance)
   if instance is None:
     return None
@@ -327,6 +327,7 @@ def deserialize_keras_object(identifier,
                              module_objects=None,
                              custom_objects=None,
                              printable_module_name='object'):
+  """Turns the serialized form of a Keras object back into an actual object."""
   if identifier is None:
     return None
 
@@ -364,7 +365,8 @@ def deserialize_keras_object(identifier,
     else:
       obj = module_objects.get(object_name)
       if obj is None:
-        raise ValueError('Unknown ' + printable_module_name + ':' + object_name)
+        raise ValueError(
+            'Unknown ' + printable_module_name + ': ' + object_name)
     # Classes passed by name are instantiated with no args, functions are
     # returned as-is.
     if tf_inspect.isclass(obj):
@@ -782,6 +784,13 @@ def is_default(method):
   """Check if a method is decorated with the `default` wrapper."""
   return getattr(method, '_is_default', False)
 
+
+def populate_dict_with_module_objects(target_dict, modules, obj_filter):
+  for module in modules:
+    for name in dir(module):
+      obj = getattr(module, name)
+      if obj_filter(obj):
+        target_dict[name] = obj
 
 # Aliases
 

@@ -20,8 +20,8 @@ LEON_BCC2_MD5 := "cdf78082be4882da2a92c9baa82fe765"
 TSIM_URL := "https://www.gaisler.com/anonftp/tsim/tsim-eval-2.0.63.tar.gz"
 TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
 
-CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/b2937134bd2047bd569c4408391ae20d7677d35c.zip"
-CMSIS_MD5 := "04cb3a2cb4834284767a01e8f1c6f834"
+CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/3d8235079ade1e4df06f91be65e0309cc45e1952.zip"
+CMSIS_MD5 := "f3e93203e875caf4ba6aff0bccd95d85"
 
 AM_SDK_URL := "http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.2.0.zip"
 AM_SDK_MD5 := "7605fa2d4d97e6bb7a1190c92b66b597"
@@ -48,6 +48,9 @@ SIFIVE_FE310_LIB_MD5 := "06ee24c4956f8e21670ab3395861fe64"
 KISSFFT_URL="https://github.com/mborgerding/kissfft/archive/v130.zip"
 KISSFFT_MD5="438ba1fef5783cc5f5f201395cc477ca"
 
+RUY_URL="https://github.com/google/ruy/archive/9f53ba413e6fc879236dcaa3e008915973d67a4f.zip"
+RUY_MD5="ce2c2444cced9dcf6ca6bc908061faa8"
+
 PERSON_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale_2019_11_21.zip"
 PERSON_MODEL_MD5 := "fe2934bd0788f1dcc7af3f0a954542ab"
 
@@ -59,3 +62,7 @@ EMBARC_OSP_MD5 := "9eaf7b3a1ed05872a03da9796672a776"
 
 EMBARC_MLI_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/6316034d421cbbb59756239908d7c9a99075a3bb.zip"
 EMBARC_MLI_MD5 := "db0910cf0e07e43f74ae7a31de485d56"
+
+XTENSA_HIFI4_URL :="https://github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib_04_07.zip"
+XTENSA_HIFI4_MD5 :="f234764928f9a42901df33a27e118c8b"
+

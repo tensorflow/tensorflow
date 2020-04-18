@@ -37,7 +37,8 @@ namespace xla {
 
 TpuDevice::TpuDevice(int id, int host_id, const std::array<int, 3>& coords,
                      int core_on_chip)
-    : xla::Device(id, /*local_device_state=*/nullptr, kTpuPlatform, host_id),
+    : xla::Device(id, /*local_device_state=*/nullptr, kTpuPlatform,
+                  /*device_kind=*/"Cloud TPU", host_id),
       coords_(coords),
       core_on_chip_(core_on_chip) {}
 
@@ -503,9 +504,10 @@ static std::shared_ptr<Device> LookupDevice(const PyTpuClient& client,
 PyTpuExecutable::PyTpuExecutable(
     std::unique_ptr<tpu_driver::CompiledProgramHandle> compiled_program,
     DeviceAssignment device_assignment, std::shared_ptr<PyTpuClient> client,
-    xla::Shape result_shape)
+    xla::Shape result_shape, bool tuple_arguments)
     : client_(std::move(client)),
       device_assignment_(std::move(device_assignment)),
+      tuple_arguments_(tuple_arguments),
       result_shape_(std::move(result_shape)) {
   VLOG(1) << "DeviceAssignment. " << device_assignment_.ToString();
   const int num_replicas = device_assignment_.replica_count();
@@ -565,7 +567,7 @@ PyTpuExecutable::ExecuteResult PyTpuExecutable::ExecuteHelper(
 
   for (const auto& core_args : all_core_arguments) {
     for (const auto* handle : core_args) {
-      for (auto pending_event : handle->DeviceBuffer()->wait_for_use) {
+      for (const auto& pending_event : handle->DeviceBuffer()->wait_for_use) {
         ready_to_execute.push_back(pending_event.get());
       }
     }
@@ -612,7 +614,7 @@ Status WaitForExecuteEvent(tpu_driver::Event* event) {
 }
 
 StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> PyTpuExecutable::Execute(
-    absl::Span<PyTpuBuffer* const> argument_handles, bool tuple_arguments) {
+    absl::Span<PyTpuBuffer* const> argument_handles) {
   if (num_replicas() != 1) {
     return InvalidArgument(
         "Attempted to execute computation with %d replicas using Execute().",
@@ -627,7 +629,7 @@ StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> PyTpuExecutable::Execute(
   std::vector<PyTpuBuffer*> all_core_arguments;
 
   std::unique_ptr<PyTpuBuffer> tupled_arguments;
-  if (tuple_arguments) {
+  if (tuple_arguments_) {
     TF_ASSIGN_OR_RETURN(tupled_arguments,
                         PyTpuBuffer::MakeTuple(argument_handles, client_,
                                                local_devices_.front()));
@@ -658,8 +660,7 @@ StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> PyTpuExecutable::Execute(
 
 StatusOr<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>>
 PyTpuExecutable::ExecuteOnLocalDevices(
-    absl::Span<const std::vector<PyTpuBuffer*>> argument_handles,
-    bool tuple_arguments) {
+    absl::Span<const std::vector<PyTpuBuffer*>> argument_handles) {
   tensorflow::profiler::TraceMe traceme(
       "PyTpuExecutable::ExecuteOnLocalDevices");
 
@@ -679,7 +680,7 @@ PyTpuExecutable::ExecuteOnLocalDevices(
 
   std::vector<std::unique_ptr<PyTpuBuffer>> tupled_arguments;
   std::vector<std::vector<PyTpuBuffer*>> tupled_argument_pointers;
-  if (tuple_arguments) {
+  if (tuple_arguments_) {
     tupled_arguments.resize(argument_handles.size());
     tupled_argument_pointers.resize(argument_handles.size());
     for (int i = 0; i < num_local_devices; ++i) {
@@ -750,7 +751,7 @@ PyTpuExecutable::ExecuteOnLocalDevices(
     absl::optional<std::vector<Shape>> argument_layouts,
     const ExecutableBuildOptions* build_options,
     std::shared_ptr<PyTpuClient> client,
-    absl::optional<DeviceAssignment> device_assignment) {
+    absl::optional<DeviceAssignment> device_assignment, bool tuple_arguments) {
   tensorflow::profiler::TraceMe traceme("PyTpuExecutable::Compile");
 
   VLOG(1) << "Compile: "
@@ -814,7 +815,7 @@ PyTpuExecutable::ExecuteOnLocalDevices(
 
   return absl::make_unique<PyTpuExecutable>(
       std::move(compiled_program), std::move(*device_assignment),
-      std::move(client), std::move(result_layout));
+      std::move(client), std::move(result_layout), tuple_arguments);
 }
 
 }  // namespace xla

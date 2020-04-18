@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -37,6 +38,7 @@ class GatherNdTest(xla_test.XLATestCase):
       feed_dict = {paramsp: params, indicesp: indices}
       return gather_nd_t.eval(feed_dict=feed_dict)
 
+  @test_util.disable_mlir_bridge("TODO(b/153896312): Handle unsigned ints")
   def testSimpleDtype(self):
     for dtype in self.numeric_types:
       self.assertAllEqual(

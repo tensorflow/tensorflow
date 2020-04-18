@@ -29,7 +29,11 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#if GOOGLE_CUDA
 #include "third_party/nccl/nccl.h"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/include/rccl/rccl.h"
+#endif
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/refcounting_hash_map.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
@@ -39,7 +43,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/stream_executor/gpu/gpu_activation.h"
+
+#if TENSORFLOW_USE_ROCM
+// Local hipify of cuda symbols
+#define cudaError_t hipError_t
+#define cudaStream_t hipStream_t
+#define cudaGetErrorString hipGetErrorString
+#define cudaGetDevice hipGetDevice
+#define cudaSetDevice hipSetDevice
+#define cudaSuccess hipSuccess
+#endif
 
 namespace xla {
 namespace gpu {
@@ -159,6 +173,7 @@ absl::optional<ncclDataType_t> DatatypeToNccl(PrimitiveType element_type) {
   switch (element_type) {
     case S8:
       return ncclInt8;
+    case PRED:
     case U8:
       return ncclUint8;
     case S32:
@@ -331,14 +346,16 @@ RefcountingHashMap<NcclCliqueKey, NcclClique>& GlobalNcclCliqueMap() {
   return m;
 }
 
-class RendezvousNcclAllReduce : public Rendezvous<std::shared_ptr<NcclClique>> {
+using RendezvousBase =
+    Rendezvous<AllReduceParticipantData, std::shared_ptr<NcclClique>>;
+class RendezvousNcclAllReduce : public RendezvousBase {
  public:
   explicit RendezvousNcclAllReduce(const RendezvousKey& k)
-      : Rendezvous<std::shared_ptr<NcclClique>>(k) {}
+      : RendezvousBase(k) {}
 
  protected:
-  StatusOr<std::pair<std::shared_ptr<NcclClique>, bool>> SubmitParticipantImpl(
-      AllReduceParticipantData participant) override;
+  StatusOr<ParticipantImplOutput> SubmitParticipantImpl(
+      const AllReduceParticipantData& participant) override;
 
   void CleanupImpl(std::shared_ptr<NcclClique> handle,
                    bool is_primary) override;
@@ -357,9 +374,9 @@ GlobalRendezvousMap() {
   return m;
 }
 
-StatusOr<std::pair<std::shared_ptr<NcclClique>, bool>>
+StatusOr<RendezvousNcclAllReduce::ParticipantImplOutput>
 RendezvousNcclAllReduce::SubmitParticipantImpl(
-    AllReduceParticipantData participant) {
+    const AllReduceParticipantData& participant) {
   // We pull into our thread a) the communication handle and b) whether we're
   // the "primary" thread for this rendezvous -- the "primary" thread has some
   // additional responsibilities for setup/teardown.
@@ -443,15 +460,15 @@ RendezvousNcclAllReduce::SubmitParticipantImpl(
   ncclRedOp_t computation = ReductionKindToNccl(participant.reduction_kind);
 
   se::StreamExecutor* executor = participant.stream->parent();
-  se::cuda::ScopedActivateExecutorContext scoped_context(executor);
+  se::gpu::ScopedActivateExecutorContext scoped_context(executor);
   cudaStream_t* cu_stream = reinterpret_cast<cudaStream_t*>(
       participant.stream->implementation()->GpuStreamMemberHack());
   VLOG(3) << "Using stream pointer: " << cu_stream
           << " on device: " << participant.device_ordinal;
   XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
   for (auto& buffer : participant.buffers) {
-    void* send_buffer = buffer.source_data.opaque();
-    void* recv_buffer = buffer.destination_data.opaque();
+    void* send_buffer = const_cast<void*>(buffer.source_data.opaque());
+    void* recv_buffer = const_cast<void*>(buffer.destination_data.opaque());
     absl::optional<ncclDataType_t> allreduce_datatype =
         DatatypeToNccl(buffer.primitive_type);
     CHECK(allreduce_datatype.has_value());
@@ -473,7 +490,7 @@ RendezvousNcclAllReduce::SubmitParticipantImpl(
           << participant.device_ordinal;
   VLOG(3) << "This thread done with all-reduce op.";
 
-  return std::make_pair(clique, primary);
+  return ParticipantImplOutput{primary, clique};
 }
 
 void RendezvousNcclAllReduce::CleanupImpl(std::shared_ptr<NcclClique> handle,

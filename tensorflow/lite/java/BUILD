@@ -106,6 +106,15 @@ android_library(
 )
 
 java_library(
+    name = "tensorflowlite_javalib",
+    srcs = JAVA_SRCS,
+    javacopts = JAVACOPTS,
+    deps = [
+        "@org_checkerframework_qual",
+    ],
+)
+
+java_library(
     name = "tensorflowlitelib",
     srcs = JAVA_SRCS,
     javacopts = JAVACOPTS,

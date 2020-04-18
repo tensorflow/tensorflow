@@ -1,0 +1,13 @@
+// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
+HloModule Concatenate
+
+ENTRY %Concatenate (x: f32[2,3], y: f32[2,2]) -> f32[2,5] {
+  %x = f32[2,3]{1,0} parameter(0)
+  %y = f32[2,2]{1,0} parameter(1)
+  ROOT %concatenate = f32[2,5]{1,0} concatenate(f32[2,3]{1,0} %x, f32[2,2]{1,0} %y), dimensions={1}
+}
+
+// CHECK: func @concatenate(%[[ARG0:.*]]: [[TYPE0:.*]], %[[ARG1:.*]]: [[TYPE1:.*]], %[[RESULT:.*]]: [[RTYPE:.*]]) {
+// CHECK:   "xla_lhlo.concatenate"(%[[ARG0]], %[[ARG1]], %[[RESULT]])
+// CHECK:   {dimension = 1 : i64} : ([[TYPE0]], [[TYPE1]], [[RTYPE]]) -> ()
+// CHECK: }
