@@ -149,10 +149,9 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
   # This does not work with v1 TensorArrays.
   if ops.executing_eagerly_outside_functions(
   ) or control_flow_util.EnableControlFlowV2(ops.get_default_graph()):
+    gradient_name_scope = "gradient_tape/"
     if forward_pass_name_scope:
-      gradient_name_scope = "gradient_tape/" + forward_pass_name_scope + "/"
-    else:
-      gradient_name_scope = "gradient_tape/"
+       gradient_name_scope += forward_pass_name_scope + "/"
     with ops.name_scope(gradient_name_scope):
       return grad_fn(mock_op, *out_grads)
   else:
