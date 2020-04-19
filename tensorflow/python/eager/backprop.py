@@ -86,13 +86,13 @@ def make_attr(attr_type, value):
   # from integer value to class.
   if attr_type == int(pywrap_tfe.TF_ATTR_TYPE):
     return dtypes.as_dtype(value)
-  elif attr_type == [int(pywrap_tfe.TF_ATTR_TYPE)]:
+  if attr_type == [int(pywrap_tfe.TF_ATTR_TYPE)]:
     return [dtypes.as_dtype(v) for v in value]
-  elif attr_type == int(pywrap_tfe.TF_ATTR_SHAPE):
+  if attr_type == int(pywrap_tfe.TF_ATTR_SHAPE):
     return tensor_shape.as_shape(value).as_proto()
-  elif attr_type == [int(pywrap_tfe.TF_ATTR_SHAPE)]:
+  if attr_type == [int(pywrap_tfe.TF_ATTR_SHAPE)]:
     return [tensor_shape.as_shape(v).as_proto() for v in value]
-  elif isinstance(value, str):
+  if isinstance(value, str):
     return value.encode()
   return value
 
