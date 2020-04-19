@@ -1223,7 +1223,7 @@ class ModelCheckpoint(Callback):
         with self._training_state.untrack_vars():
           self._save_model(epoch=epoch, batch=None, logs=logs)
       else:
-        self._save_model(epoch=epoch,  batch=None, logs=logs)
+        self._save_model(epoch=epoch, batch=None, logs=logs)
     if self.model._in_multi_worker_mode():
       # For multi-worker training, back up the weights and current training
       # state for possible future recovery.
