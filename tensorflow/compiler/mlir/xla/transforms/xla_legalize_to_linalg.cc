@@ -134,7 +134,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
         rewriter.getI64IntegerAttr(bodyResultTypes.size()),  // args_out
         rewriter.getArrayAttr(indexingMaps),
         GetNParallelLoopsAttrs(nloops, &rewriter),
-        /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
+        /*doc=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
     auto* region = &linalgOp.region();
@@ -218,7 +218,7 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
         loc, isLHLO ? ArrayRef<Type>{} : resultType, args,
         rewriter.getI64IntegerAttr(1), rewriter.getI64IntegerAttr(1),
         indexingMapsAttr, GetNParallelLoopsAttrs(nloops, &rewriter),
-        /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
+        /*doc=*/nullptr, /*library_call=*/nullptr);
 
     auto* region = &linalgOp.region();
     auto* block = rewriter.createBlock(region, region->end());
@@ -269,7 +269,8 @@ class BroadcastInDimConverter
         // The input is a scalar, i.e. this is a scalar broadcast op.
         inputMap = AffineMap::get(nloops, /*symbolCount=*/0, b->getContext());
       } else {
-        inputMap = AffineMap::get(nloops, /*symbolCount=*/0, dimExprs);
+        inputMap = AffineMap::get(nloops, /*symbolCount=*/0, dimExprs,
+                                  b->getContext());
       }
     }
     return b->getAffineMapArrayAttr(
@@ -295,7 +296,7 @@ class TransposeConverter
           b->getAffineDimExpr(permutation.index());
     }
     return b->getAffineMapArrayAttr(
-        {AffineMap::get(nloops, /*symbolCount=*/0, inputExprs),
+        {AffineMap::get(nloops, /*symbolCount=*/0, inputExprs, b->getContext()),
          b->getMultiDimIdentityMap(nloops)});
   }
 };
@@ -367,7 +368,7 @@ class ReshapeAddRemoveDimConverter
       return nullptr;
     inputExprs.resize(operandShape.size(), b->getAffineConstantExpr(0));
     return b->getAffineMapArrayAttr(
-        {AffineMap::get(nloops, /*symbolCount=*/0, inputExprs),
+        {AffineMap::get(nloops, /*symbolCount=*/0, inputExprs, b->getContext()),
          b->getMultiDimIdentityMap(nloops)});
   }
 };
@@ -399,7 +400,7 @@ class IotaConverter : public OpConversionPattern<xla_lhlo::IotaOp> {
         rewriter.getI64IntegerAttr(1),  // args_out
         rewriter.getArrayAttr(indexingMaps),
         GetNParallelLoopsAttrs(nloops, &rewriter),
-        /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
+        /*doc=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
     auto* region = &linalgOp.region();
@@ -531,7 +532,8 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
 //     iterator_types = ["parallel", "parallel"],
 //   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 // }
-struct LhloLegalizeToLinalg : public FunctionPass<LhloLegalizeToLinalg> {
+struct LhloLegalizeToLinalg
+    : public PassWrapper<LhloLegalizeToLinalg, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
@@ -545,7 +547,8 @@ struct LhloLegalizeToLinalg : public FunctionPass<LhloLegalizeToLinalg> {
   }
 };
 
-struct HloLegalizeToLinalg : public FunctionPass<HloLegalizeToLinalg> {
+struct HloLegalizeToLinalg
+    : public PassWrapper<HloLegalizeToLinalg, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
@@ -562,7 +565,7 @@ struct HloLegalizeToLinalg : public FunctionPass<HloLegalizeToLinalg> {
 }  // namespace
 
 namespace xla_lhlo {
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeLhloToLinalgPass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToLinalgPass() {
   return absl::make_unique<LhloLegalizeToLinalg>();
 }
 
@@ -599,7 +602,7 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_hlo::TanhOp, false>>(context);
 }
 
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeHloToLinalgPass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass() {
   return absl::make_unique<HloLegalizeToLinalg>();
 }
 

@@ -69,7 +69,7 @@ gentbl(
             "ir/tf_ops.cc.inc",
         ),
         (
-            "-gen-op-doc",
+            "-gen-dialect-doc",
             "g3doc/tf_ops.md",
         ),
         (
@@ -100,7 +100,7 @@ gentbl(
             "ir/tf_saved_model.cc.inc",
         ),
         (
-            "-gen-op-doc",
+            "-gen-dialect-doc",
             "g3doc/tf_saved_model.md",
         ),
     ],
@@ -124,7 +124,7 @@ gentbl(
             "ir/tf_executor.cc.inc",
         ),
         (
-            "-gen-op-doc",
+            "-gen-dialect-doc",
             "g3doc/tf_executor.md",
         ),
     ],
@@ -148,7 +148,7 @@ gentbl(
             "ir/tf_device.cc.inc",
         ),
         (
-            "-gen-op-doc",
+            "-gen-dialect-doc",
             "g3doc/tf_device.md",
         ),
     ],
@@ -987,7 +987,6 @@ cc_library(
 tf_cc_test(
     name = "error_util_test",
     srcs = ["utils/error_util_test.cc"],
-    tags = ["no_rocm"],
     deps = [
         ":error_util",
         "//tensorflow/compiler/xla:test",
@@ -1066,6 +1065,7 @@ COMPILE_MLIR_UTIL_DEPS = [
     ":tensorflow_dialect_registration",
     ":tensorflow_passes",
     ":translate_utils",
+    "@com_google_absl//absl/types:optional",
     "@llvm-project//llvm:support",
     "@llvm-project//mlir:IR",
     "@llvm-project//mlir:Parser",
@@ -1078,12 +1078,15 @@ COMPILE_MLIR_UTIL_DEPS = [
     "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
     "//tensorflow/compiler/mlir/xla:type_to_shape",
     "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
+    "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
     "//tensorflow/compiler/tf2xla:common",
     "//tensorflow/compiler/tf2xla:xla_compiler",
     "//tensorflow/core:framework",
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/platform:logging",
     "//tensorflow/stream_executor/lib",
+    "//tensorflow/compiler/xla:xla_data_proto_cc",
+    "//tensorflow/compiler/xla/service:hlo",
 ]
 
 # Prefer to link 'compile_mlir_util' library that also links necessary
@@ -1116,6 +1119,7 @@ tf_cc_test(
     srcs = ["utils/compile_mlir_util_test.cc"],
     deps = [
         ":compile_mlir_util",
+        "//tensorflow/compiler/jit",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:test",
@@ -1289,6 +1293,45 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "dump_graph",
+    srcs = ["utils/dump_graph.cc"],
+    hdrs = ["utils/dump_graph.h"],
+    deps = [
+        ":convert_graphdef",
+        ":error_util",
+        ":tensorflow",
+        ":tensorflow_dialect_registration",
+        ":tensorflow_passes",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+tf_cc_test(
+    name = "dump_graph_test",
+    size = "small",
+    srcs = ["utils/dump_graph_test.cc"],
+    deps = [
+        ":dump_graph",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "bridge_logger",
     srcs = ["utils/bridge_logger.cc"],
     hdrs = ["utils/bridge_logger.h"],
@@ -1327,6 +1370,7 @@ cc_library(
     deps = [
         ":tensorflow",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",

@@ -32,10 +32,12 @@ namespace errors = tensorflow::errors;
 
 mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
   switch (type) {
-    case tflite::TensorType_FLOAT32:
-      return builder.getF32Type();
     case tflite::TensorType_FLOAT16:
       return builder.getF16Type();
+    case tflite::TensorType_FLOAT32:
+      return builder.getF32Type();
+    case tflite::TensorType_FLOAT64:
+      return builder.getF64Type();
     case tflite::TensorType_INT32:
       return builder.getIntegerType(32);
     case tflite::TensorType_UINT8:
@@ -65,6 +67,8 @@ tensorflow::DataType TflTypeToTfType(tflite::TensorType type) {
       return tensorflow::DT_HALF;
     case tflite::TensorType_FLOAT32:
       return tensorflow::DT_FLOAT;
+    case tflite::TensorType_FLOAT64:
+      return tensorflow::DT_DOUBLE;
     case tflite::TensorType_INT8:
       return tensorflow::DT_INT8;
     case tflite::TensorType_INT16:

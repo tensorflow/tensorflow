@@ -61,13 +61,14 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
       /*thread_pool=*/nullptr, /*parent=*/nullptr,
       /*custom_kernel_creator=*/nullptr,
       /*session_metadata=*/nullptr,
-      [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
-        *r = new IntraProcessRendezvous(device_mgr);
-        return Status::OK();
-      });
+      Rendezvous::Factory{
+          [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+            *r = new IntraProcessRendezvous(device_mgr);
+            return Status::OK();
+          }});
 
   string fetch_node = "";
-  for (auto node : graph_def.node()) {
+  for (const auto& node : graph_def.node()) {
     if (node.op() == "_Retval") {
       fetch_node = node.input(0);
     }

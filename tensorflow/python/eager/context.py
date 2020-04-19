@@ -336,6 +336,19 @@ class _TensorCacheDeleter(object):
       del _tensor_caches_map[self._context_id]
 
 
+# If the below import is made available through the BUILD rule, then this
+# function is overridden and will instead return True and cause Tensorflow
+# graphs to run with TFRT.
+def is_tfrt_enabled():
+  return None
+
+
+try:
+  from tensorflow.python.framework.is_tfrt_test_true import is_tfrt_enabled  # pylint: disable=g-import-not-at-top
+except:  # pylint: disable=bare-except
+  pass
+
+
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
 # TODO(agarwal): consider keeping the corresponding Graph here.
 class Context(object):
@@ -411,6 +424,7 @@ class Context(object):
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
     self._lazy_remote_inputs_copy = None
+    self._use_tfrt = is_tfrt_enabled()
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -514,6 +528,8 @@ class Context(object):
         if self._lazy_remote_inputs_copy is not None:
           pywrap_tfe.TFE_ContextOptionsSetLazyRemoteInputsCopy(
               opts, self._lazy_remote_inputs_copy)
+        if self._use_tfrt is not None:
+          pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
       finally:
         pywrap_tfe.TFE_DeleteContextOptions(opts)
@@ -1100,6 +1116,13 @@ class Context(object):
 
     return function_def
 
+  def register_custom_device(self, device_capsule, device_name,
+                             device_info_capsule):
+    """Calls TFE_RegisterCustomDevice. See the non-member function."""
+    self.ensure_initialized()
+    pywrap_tfe.TFE_Py_RegisterCustomDevice(self._handle, device_capsule,
+                                           device_name, device_info_capsule)
+
   def remove_function(self, name):
     """Remove a function from the context.
 
@@ -1564,6 +1587,21 @@ class Context(object):
         raise ValueError(
             "lazy_remote_inputs_copy should be set before being initialized.")
       self._lazy_remote_inputs_copy = lazy_copy
+
+  @property
+  def use_tfrt(self):
+    return self._use_tfrt
+
+  @use_tfrt.setter
+  def use_tfrt(self, tfrt):
+    """Sets whether to use TFRT."""
+    if not isinstance(tfrt, bool):
+      raise ValueError("Expecting a boolean but got %s" % type(tfrt))
+
+    if self._use_tfrt != tfrt:
+      if self._initialized:
+        raise ValueError("use_tfrt should be set before being initialized.")
+      self._use_tfrt = tfrt
 
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.
@@ -2254,6 +2292,32 @@ def remove_function(name):
 
 def get_function_def(name):
   return context().get_function_def(name)
+
+
+def register_custom_device(device_capsule, device_name, device_info_capsule):
+  """Calls TFE_RegisterCustomDevice to register a custom device with Python.
+
+  Enables using C extensions specifying a custom device from Python. See the
+  experimental eager C API in tensorflow/c/eager/c_api_experimental.h for
+  details.
+
+  Note that custom devices are not currently supported inside `tf.function`s.
+
+  Args:
+    device_capsule: A PyCapsule with the name set to 'TFE_CustomDevice'
+      containing a pointer to a TFE_CustomDevice struct. The capsule retains
+      ownership of the memory.
+    device_name: A string indicating the name to register the custom device
+      under, e.g. '/job:localhost/replica:0/task:0/device:CUSTOM:0'. It may
+      subsequently be passed to `with tf.device(...):`.
+    device_info_capsule: A PyCapsule with the name set to
+      'TFE_CustomDevice_DeviceInfo' containing a pointer to a device-specific
+      struct with the initial state of the custom device (the void* device_info
+      argument to TFE_RegisterCustomDevice). This method takes ownership of the
+      memory and clears the capsule destructor.
+  """
+  context().register_custom_device(device_capsule, device_name,
+                                   device_info_capsule)
 
 
 # Not every user creates a Context via context.context()

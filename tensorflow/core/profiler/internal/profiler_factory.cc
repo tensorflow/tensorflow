@@ -36,7 +36,7 @@ void RegisterProfilerFactory(ProfilerFactory factory) {
 }
 
 void CreateProfilers(
-    const profiler::ProfilerOptions& options,
+    const ProfileOptions& options,
     std::vector<std::unique_ptr<profiler::ProfilerInterface>>* result) {
   mutex_lock lock(mu);
   for (auto factory : *GetFactories()) {

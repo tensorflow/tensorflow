@@ -11,8 +11,10 @@ cc_library(
         "activation_builder.cc",
         "arg_min_max_builder.cc",
         "arithmetic_builder.cc",
+        "batch_seq_builder.cc",
         "concat_builder.cc",
         "conv_2d_builder.cc",
+        "conv_2d_helpers.cc",
         "l2_normalization_builder.cc",
         "matmul_builder.cc",
         "neg_op_builder.cc",
@@ -33,6 +35,7 @@ cc_library(
         "activation_builder.h",
         "arg_min_max_builder.h",
         "arithmetic_builder.h",
+        "batch_seq_builder.h",
         "concat_builder.h",
         "conv_2d_builder.h",
         "l2_normalization_builder.h",
@@ -58,6 +61,7 @@ cc_library(
     deps = [
         ":op_factory",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/delegates/hexagon:hexagon_implementation",
         "//tensorflow/lite/experimental/delegates/hexagon/hexagon_nn:hexagon_nn_header",
@@ -75,4 +79,5 @@ cc_library(
         "manual",
         "nobuilder",
     ],
+    deps = ["//tensorflow/lite/c:common"],
 )

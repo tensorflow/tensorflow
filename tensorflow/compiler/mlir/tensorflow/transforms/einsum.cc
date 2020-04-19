@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
 
+#include <algorithm>
 #include <climits>
 #include <cstdint>
 
@@ -32,7 +33,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -49,6 +49,9 @@ enum EinsumEquation {
   FourDMatrixDotProd,
   ThreeDReshapeTail,
   FourDBatchMatMul,
+  BroadcastMatMul,
+  ReduceSum,
+  TransposeMatMul,
   UnsupportedEquation
 };
 
@@ -121,6 +124,18 @@ EinsumEquation parseEquation(const std::vector<EquationToken>& eqn) {
   if (is_equal(eqn, {A, B, C, COMMA, C, D, E, ARROW, A, B, D, E})) {
     return EinsumEquation::ThreeDReshapeTail;
   }
+  // BFH,HO->BFO
+  if (is_equal(eqn, {A, B, C, COMMA, C, D, ARROW, A, B, D})) {
+    return EinsumEquation::BroadcastMatMul;
+  }
+  // LBH,BL->BH
+  if (is_equal(eqn, {A, B, C, COMMA, B, A, ARROW, B, C})) {
+    return EinsumEquation::ReduceSum;
+  }
+  // LBH,BKL->BKH
+  if (is_equal(eqn, {A, B, C, COMMA, B, D, A, ARROW, B, D, C})) {
+    return EinsumEquation::TransposeMatMul;
+  }
   return EinsumEquation::UnsupportedEquation;
 }
 
@@ -151,6 +166,28 @@ TF::TransposeOp createTransposeOp(Value value, Location loc,
                                            perm_op);
 }
 
+TF::SumOp createSumOp(Value value, Location loc,
+                      llvm::ArrayRef<int32_t> redux_axes,
+                      PatternRewriter* rewriter) {
+  auto value_type = value.getType().cast<RankedTensorType>();
+  auto shape = value_type.getShape();
+  auto redux_type = RankedTensorType::get(
+      {static_cast<int32_t>(redux_axes.size())}, rewriter->getIntegerType(32));
+  auto redux_attr = DenseElementsAttr::get(redux_type, redux_axes);
+  auto redux_op = rewriter->create<ConstantOp>(loc, redux_type, redux_attr);
+  std::vector<int64_t> sum_shape(shape.size() - redux_axes.size());
+  int count = 0;
+  for (int i = 0; i < shape.size(); ++i) {
+    if (std::find(redux_axes.begin(), redux_axes.end(), i) ==
+        redux_axes.end()) {
+      sum_shape[count] = shape[i];
+      count++;
+    }
+  }
+  auto sum_type = RankedTensorType::get(sum_shape, value_type.getElementType());
+  return rewriter->create<TF::SumOp>(loc, sum_type, value, redux_op);
+}
+
 TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
                               Type element_type, Location loc,
                               PatternRewriter* rewriter) {
@@ -173,7 +210,6 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
   Value lhs = op.getOperand(0);
   Value rhs = op.getOperand(1);
   Location loc = op.getLoc();
-
   if (!lhs.getType().isa<RankedTensorType>()) {
     // LHS must be a ranked tensor type
     return failure();
@@ -193,10 +229,10 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
     return failure();
   }
 
-  // Currently support use cases of LHS, RHS dims = 3 or 4
+  // Currently support use cases of LHS dims \in {3,4}  RHS dims \in {2, 3, 4}
   const int dims_lhs = lhs_shape.size();
   const int dims_rhs = rhs_shape.size();
-  if (dims_rhs < 3 || dims_rhs > 4 || dims_lhs < 3 || dims_lhs > 4) {
+  if (dims_lhs < 3 || dims_lhs > 4 || dims_rhs < 2 || dims_rhs > 4) {
     return failure();
   }
 
@@ -207,6 +243,46 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
         loc, ArrayRef<Type>{output_type}, lhs, rhs, rewriter.getBoolAttr(false),
         rewriter.getBoolAttr(false));
     rewriter.replaceOp(op, bmm_op.getResult());
+    return success();
+  }
+  if (einsum_eqn == EinsumEquation::BroadcastMatMul) {
+    // Case "BFH,HO->BFO"
+    auto bmm_op = rewriter.create<TF::BatchMatMulV2Op>(
+        loc, ArrayRef<Type>{output_type}, lhs, rhs, rewriter.getBoolAttr(false),
+        rewriter.getBoolAttr(false));
+    rewriter.replaceOp(op, bmm_op.getResult());
+    return success();
+  }
+  if (einsum_eqn == EinsumEquation::ReduceSum) {
+    // Case "LBH,BL->BH"
+    // Transpose LHS
+    lhs = createTransposeOp(lhs, loc, {1, 2, 0}, &rewriter);
+    // Reshape RHS
+    auto rhs_element_type = rhs_type.getElementType();
+    const int rhs_dim0 = rhs_shape[0];
+    const int rhs_dim1 = rhs_shape[1];
+    auto reshaped_rhs = createReshapeOp(rhs, {rhs_dim0, 1, rhs_dim1},
+                                        rhs_element_type, loc, &rewriter);
+    auto mul_op = rewriter.create<TF::MulOp>(loc, lhs, reshaped_rhs);
+
+    auto sum_op = createSumOp(mul_op, loc, {2}, &rewriter);
+    rewriter.replaceOp(op, {sum_op.getResult()});
+    return success();
+  }
+  if (einsum_eqn == EinsumEquation::TransposeMatMul) {
+    // Case "LBH,BKL->BKH"
+    // Transpose LHS
+    lhs = createTransposeOp(lhs, loc, {1, 2, 0}, &rewriter);
+    // Transpose RHS
+    rhs = createTransposeOp(rhs, loc, {0, 2, 1}, &rewriter);
+    std::vector<int64_t> bmm_shape = {lhs_shape[1], lhs_shape[2], rhs_shape[1]};
+    auto bmm_type = RankedTensorType::get(bmm_shape, rhs_type.getElementType());
+    auto bmm_op = rewriter.create<TF::BatchMatMulV2Op>(
+        loc, ArrayRef<Type>{bmm_type}, lhs, rhs, rewriter.getBoolAttr(false),
+        rewriter.getBoolAttr(false));
+
+    auto trans_bmm = createTransposeOp(bmm_op, loc, {0, 2, 1}, &rewriter);
+    rewriter.replaceOp(op, {trans_bmm.getResult()});
     return success();
   }
   if (einsum_eqn == EinsumEquation::ThreeDReshapeTail) {
@@ -277,7 +353,8 @@ LogicalResult ConvertTFEinsumOp::matchAndRewrite(
 }
 
 // Transform Einsum to other TF Ops for the supported variants.
-struct TransformEinsumPass : public FunctionPass<TransformEinsumPass> {
+struct TransformEinsumPass
+    : public PassWrapper<TransformEinsumPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -286,7 +363,7 @@ void TransformEinsumPass::runOnFunction() {
   auto func = getFunction();
 
   patterns.insert<ConvertTFEinsumOp>(&getContext());
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 
 static PassRegistration<TransformEinsumPass> pass(

@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-materialize-passthrough-op %s  | FileCheck %s --dump-input=fail
+// RUN: tf-opt -allow-unregistered-dialect -tf-materialize-passthrough-op %s  | FileCheck %s --dump-input=fail
 
 
 // Check that the MlirPassthroughOp is eliminated and replaced by its attached

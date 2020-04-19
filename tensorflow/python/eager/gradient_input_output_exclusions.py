@@ -198,11 +198,12 @@ def _live_tensors(f, attr_name="inputs"):
   """
   node, _ = parser.parse_entity(f, ())
   entity_info = transformer.EntityInfo(
+      name=f.__name__,
       source_code=None,
       source_file=None,
       future_features=(),
       namespace=sys.modules[f.__module__].__dict__)
-  ctx = transformer.Context(entity_info)
+  ctx = transformer.Context(entity_info, None, None)
 
   graphs = cfg.build(node)
   node = qual_names.resolve(node)

@@ -105,3 +105,7 @@ def disallow_legacy_graph(cls_name, method_name):
         " call `{cls_name}.{method_name}` with eager mode enabled.")
     error_msg = error_msg.format(cls_name=cls_name, method_name=method_name)
     raise ValueError(error_msg)
+
+
+def is_v1_layer_or_model(obj):
+  return isinstance(obj, (base_layer_v1.Layer, training_v1.Model))

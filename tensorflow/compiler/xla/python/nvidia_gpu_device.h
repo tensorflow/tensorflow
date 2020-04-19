@@ -28,7 +28,7 @@ namespace xla {
 class GpuDevice : public Device {
  public:
   GpuDevice(int id, std::unique_ptr<LocalDeviceState> local_device_state,
-            int node_id);
+            std::string device_kind, int node_id);
 };
 
 struct GpuAllocatorConfig {

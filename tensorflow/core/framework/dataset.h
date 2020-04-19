@@ -59,6 +59,8 @@ namespace data {
 
 using TraceMeMetadata = std::vector<std::pair<StringPiece, string>>;
 
+constexpr char kTFDataFunction[] = "_tf_data_function";
+
 constexpr int kInfiniteCardinality = -1;
 constexpr int kUnknownCardinality = -2;
 
@@ -250,7 +252,7 @@ class GraphDefBuilderWrapper {
   bool HasAttr(const string& op_type_name, const string& attr_name) const;
 
   bool HasAttr(const OpDef* op_def, const string& attr_name) const {
-    for (auto attr : op_def->attr()) {
+    for (const auto& attr : op_def->attr()) {
       if (attr.name() == attr_name) {
         return true;
       }
@@ -290,6 +292,36 @@ class Runner {
   static Runner* get();
 };
 
+// A token for reading from a tf.data service job.
+class JobToken {
+ public:
+  JobToken() : is_empty_(true) {}
+
+  explicit JobToken(int64 job_id) : job_id_(job_id), is_empty_(false) {}
+
+  bool is_empty() const { return is_empty_; }
+  int64 job_id() const { return job_id_; }
+  string TypeName() const { return "tensorflow::JobToken"; }
+  void Encode(VariantTensorData* data) const {
+    Tensor job_id = Tensor(DT_INT64, TensorShape({}));
+    job_id.scalar<int64>()() = job_id_;
+    *(data->add_tensors()) = job_id;
+
+    Tensor is_empty = Tensor(DT_BOOL, TensorShape({}));
+    is_empty.scalar<bool>()() = is_empty_;
+    *(data->add_tensors()) = is_empty;
+  }
+  bool Decode(const VariantTensorData& data) {
+    job_id_ = data.tensors(0).scalar<int64>()();
+    is_empty_ = data.tensors(1).scalar<bool>()();
+    return true;
+  }
+
+ private:
+  int64 job_id_;
+  bool is_empty_;
+};
+
 // A cut-down version of `OpKernelContext` for running computations in
 // iterators. Note that we cannot simply use `OpKernelContext` here because we
 // might run computation in an iterator whose lifetime is not nested within the
@@ -310,6 +342,7 @@ class IteratorContext {
           env(ctx->env()),
           flr(ctx->flr()),
           function_handle_cache(ctx->function_handle_cache()),
+          job_token(ctx->job_token()),
           resource_mgr(ctx->resource_mgr()),
           model(ctx->model()),
           runner(*(ctx->runner())),
@@ -332,7 +365,9 @@ class IteratorContext {
       if (thread_pool) {
         runner_threadpool_size = thread_pool->NumThreads();
       } else {
-        runner_threadpool_size = port::MaxParallelism();
+        static const int32 kDefaultRunnerThreadpoolSize =
+            port::MaxParallelism();
+        runner_threadpool_size = kDefaultRunnerThreadpoolSize;
       }
 
       // NOTE: Wrap every runner invocation in a call to Runner()->Run(), so
@@ -365,6 +400,9 @@ class IteratorContext {
 
     // A FunctionHandleCache that owns all the function handles. Not owned.
     FunctionHandleCache* function_handle_cache = nullptr;
+
+    // A token for reading data from a tf.data service job.
+    JobToken job_token;
 
     // A resource manager for storing dataset-related state, e.g. random
     // seeds or cached tensors. Not owned.
@@ -414,6 +452,8 @@ class IteratorContext {
   FunctionHandleCache* function_handle_cache() {
     return params_.function_handle_cache;
   }
+
+  const JobToken& job_token() { return params_.job_token; }
 
   ResourceMgr* resource_mgr() { return params_.resource_mgr; }
 
@@ -653,6 +693,11 @@ class IteratorBase {
   virtual Status RestoreInternal(IteratorContext* ctx,
                                  IteratorStateReader* reader) = 0;
 
+  // Returns a pointer to the node representing this iterator in the performance
+  // model. It may be null, if performance modeling is not enabled for this
+  // iterator.
+  std::shared_ptr<model::Node> model_node() const { return node_; }
+
   // Returns the number of elements produced by this iterator.
   int64 num_elements() const {
     if (node_) return node_->num_elements();
@@ -669,7 +714,7 @@ class IteratorBase {
                         const string& output_prefix);
 
   std::vector<std::function<void()>> cleanup_fns_;
-  model::Node* node_ = nullptr;  // Not owned.
+  std::shared_ptr<model::Node> node_ = nullptr;
   const IteratorBase* parent_ = nullptr;  // Not owned.
   int64 id_ = 0;
   int64 parent_id_ = 0;
@@ -951,10 +996,15 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
   // When modeling is enabled, this method records the fact that this iterator
-  // has produced an element.
-  void RecordElement(IteratorContext* ctx) {
+  // has produced an element and its size in bytes.
+  void RecordElement(IteratorContext* ctx, std::vector<Tensor>* out_tensors) {
     if (node_) {
+      int64 num_bytes = GetAllocatedBytes(*out_tensors);
       node_->record_element();
+      node_->record_bytes_produced(num_bytes);
+      if (node_->output()) {
+        node_->output()->record_bytes_consumed(num_bytes);
+      }
     }
   }
 

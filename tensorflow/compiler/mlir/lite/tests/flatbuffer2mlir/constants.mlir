@@ -28,6 +28,13 @@ func @f32() -> tensor<4xf32> {
   return %0 : tensor<4xf32>
 }
 
+func @f64() -> tensor<4xf64> {
+  // CHECK-LABEL: @f64
+  // CHECK: value = dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf64>
+  %0 = "tfl.pseudo_const"() { value = dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf64> } : () -> tensor<4xf64>
+  return %0 : tensor<4xf64>
+}
+
 func @i8() -> tensor<4xi8> {
   // CHECK-LABEL: @i8
   // CHECK: value = dense<[1, 2, 3, 4]> : tensor<4xi8>

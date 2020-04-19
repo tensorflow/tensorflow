@@ -33,7 +33,7 @@ limitations under the License.
 //
 // TensorList, as it name suggests, is conceptually a list of tensors. In actual
 // representation of a non-nested TensorList, the buffer shape is
-// [tensor_list_size, element shape]. We will call tensor_list_size "leading
+// [element_shape, tensor_list_size]. We will call tensor_list_size "leading
 // dimension" below. Notice that the leading dimension must be a compile time
 // constant, since it's part of the buffer shape.
 //

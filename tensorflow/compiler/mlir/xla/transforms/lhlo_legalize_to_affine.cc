@@ -81,18 +81,19 @@ void populateLHLOToAffineConversionPattern(MLIRContext* context,
   // clang-format on
 }
 
-struct LhloLegalizeToAffine : public FunctionPass<LhloLegalizeToAffine> {
+struct LhloLegalizeToAffine
+    : public PassWrapper<LhloLegalizeToAffine, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     auto func = getFunction();
     populateLHLOToAffineConversionPattern(func.getContext(), &patterns);
-    applyPatternsGreedily(func, patterns);
+    applyPatternsAndFoldGreedily(func, patterns);
   }
 };
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeToAffinePass() {
   return absl::make_unique<LhloLegalizeToAffine>();
 }
 

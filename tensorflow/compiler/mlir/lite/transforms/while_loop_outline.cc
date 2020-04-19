@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -36,12 +37,13 @@ namespace {
 
 // This pass outlines the cond/body region of the TFL WhileOp into functions and
 // replaces the regions with calls to these outlined functions.
-class WhileOutlinePass : public mlir::ModulePass<WhileOutlinePass> {
+class WhileOutlinePass
+    : public mlir::PassWrapper<WhileOutlinePass, OperationPass<ModuleOp>> {
  public:
   explicit WhileOutlinePass() {}
 
  private:
-  void runOnModule() override;
+  void runOnOperation() override;
 
   // Outlines the regions of the WhileOp's cond and body and insert function
   // calls instead,
@@ -89,24 +91,20 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   llvm::SmallVector<Region*, 2> regions{&while_op.cond(), &while_op.body()};
   for (auto it : llvm::enumerate(regions)) {
     llvm::SetVector<Value> region_extern_values;
-    Value const_none = nullptr;
     getUsedValuesDefinedAbove(*it.value(), region_extern_values);
 
-    // Sink down none type constants into the functions.
+    // Sink down constants into the functions.
     for (auto extern_value : region_extern_values) {
-      if (!extern_value.getType().isa<NoneType>()) {
+      if (!matchPattern(extern_value, m_Constant())) {
         extern_values.insert(extern_value);
         continue;
       }
-      if (!const_none) {
-        // Add constant at start of region.
-        auto const_builder =
-            OpBuilder(&it.value()->front(), it.value()->front().begin());
-        const_none = const_builder.create<ConstantOp>(
-            while_op.getLoc(), extern_value.getType(),
-            const_builder.getUnitAttr());
-      }
-      replaceAllUsesInRegionWith(extern_value, const_none, *it.value());
+      // Add constant at start of region.
+      auto const_builder =
+          OpBuilder(&it.value()->front(), it.value()->front().begin());
+      auto const_value = const_builder.clone(*extern_value.getDefiningOp());
+      replaceAllUsesInRegionWith(extern_value, const_value->getResult(0),
+                                 *it.value());
     }
   }
 
@@ -133,7 +131,7 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
 
   // Create outline function from region. Optional pass extra arguments through
   // to yield.
-  SymbolTable symbol_table(getModule());
+  SymbolTable symbol_table(getOperation());
   auto create_outline_func = [&](StringRef name, Region& region,
                                  bool passthru_extra_args) {
     FunctionType type;
@@ -237,13 +235,13 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   op->erase();
 }
 
-void WhileOutlinePass::runOnModule() {
-  getModule().walk(
+void WhileOutlinePass::runOnOperation() {
+  getOperation().walk(
       [&](mlir::TFL::WhileOp while_op) { OutlineWhile(while_op); });
 }
 
 // Creates an instance of the TensorFlow Lite dialect WhileOp outline pass.
-std::unique_ptr<OpPassBase<ModuleOp>> CreateWhileOutlinePass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateWhileOutlinePass() {
   return std::make_unique<WhileOutlinePass>();
 }
 

@@ -27,8 +27,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/strings/base64.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/base64.h"
+#include "tensorflow/core/platform/strcat.h"
 
 using tensorflow::errors::InvalidArgument;
 

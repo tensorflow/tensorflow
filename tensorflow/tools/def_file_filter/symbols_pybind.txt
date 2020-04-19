@@ -84,6 +84,13 @@ tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 tensorflow::DeviceFactory::ListAllPhysicalDevices
 tensorflow::SessionState::kTensorHandleResourceTypeName
 
+[server_lib] # server_lib
+tensorflow::data::GrpcDataServer::Start
+tensorflow::data::GrpcDataServer::Stop
+tensorflow::data::GrpcDataServer::Target
+tensorflow::data::NewMasterServer
+tensorflow::data::NewWorkerServer
+
 [protos_all]  # device_lib, dtypes
 tensorflow::DataType_IsValid
 tensorflow::ConfigProto::ConfigProto
@@ -100,6 +107,7 @@ tensorflow::swig::TryFindKernelClass
 [toco_python_api] # toco_python_api
 toco::TocoConvert
 toco::TocoGetPotentiallySupportedOps
+toco::MlirQuantizeModel
 
 [transform_graph_lib] # transform_graph
 tensorflow::graph_transforms::TransformGraph
@@ -165,6 +173,10 @@ TFE_Py_TapeGradient
 TFE_Py_FastPathExecute_C
 TFE_Py_RecordGradient
 TFE_Py_TapeWatchedVariables
+TFE_Py_VariableWatcherNew
+TFE_Py_VariableWatcherRemove
+TFE_Py_VariableWatcherVariableAccessed
+TFE_Py_VariableWatcherWatchedVariables
 TFE_Py_ForwardAccumulatorNew
 TFE_Py_ForwardAccumulatorSetAdd
 TFE_Py_ForwardAccumulatorSetRemove

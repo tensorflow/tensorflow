@@ -103,6 +103,7 @@ KERAS_API_INIT_FILES_V1 = [
     "keras/activations/__init__.py",
     "keras/applications/__init__.py",
     "keras/applications/densenet/__init__.py",
+    "keras/applications/efficientnet/__init__.py",
     "keras/applications/imagenet_utils/__init__.py",
     "keras/applications/inception_resnet_v2/__init__.py",
     "keras/applications/inception_v3/__init__.py",

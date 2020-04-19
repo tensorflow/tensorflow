@@ -1,5 +1,5 @@
 // RUN: tf-opt --tfl-legalize-tf-while %s -o - | FileCheck %s --dump-input-on-failure
-// RUN: tf-opt --tfl-legalize-tf-while %s -o - --tfl-legalize-tf-while --inline --mlir-disable-inline-simplify | FileCheck %s --dump-input-on-failure --check-prefix=INLINE
+// RUN: tf-opt --tfl-legalize-tf-while %s -o - --tfl-legalize-tf-while --inline="disable-simplify" | FileCheck %s --dump-input-on-failure --check-prefix=INLINE
 // RUN: tf-opt --tfl-legalize-tf-while %s -o - --tfl-legalize-tf-while --inline | FileCheck %s --dump-input-on-failure --check-prefix=CANON
 
 func @while_main(%arg0: tensor<?x256x256xf32>) -> (tensor<i32>, tensor<256x256xf32>, tensor<?x256x256xf32>) attributes {tf.entry_function = {inputs = "input", outputs = "Identity,Identity_1,Identity_2"}} {
@@ -50,8 +50,8 @@ func @while_cond_10_frozen0(%arg0: tensor<*xi32>, %arg1: tensor<*xi32>, %arg2: t
 // INLINE: ^bb0([[ARGS]]):
 // INLINE:   %cst_2 = constant
 // INLINE:   yield
-// INLINE: while_body
-// INLINE: while_cond
+// INLINE-NOT: while_body
+// INLINE-NOT: while_cond
 
 // CANON-LABEL:   func @while_main
 // CANON-SAME:         ([[VAL_0:%.*]]: tensor<?x256x256xf32>)

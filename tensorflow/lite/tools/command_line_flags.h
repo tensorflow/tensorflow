@@ -125,6 +125,14 @@ class Flags {
   // with matching flags, and remove the matching arguments from (*argc, argv).
   // Return true iff all recognized flag values were parsed correctly, and the
   // first remaining argument is not "--help".
+  // Note:
+  // 1. when there are duplicate args in argv for the same flag, the flag value
+  // and the parse result will be based on the 1st arg.
+  // 2. when there are duplicate flags in flag_list (i.e. two flags having the
+  // same name), all of them will be checked against the arg list and the parse
+  // result will be false if any of the parsing fails.
+  // See *Duplicate* unit tests in command_line_flags_test.cc for the
+  // illustration of such behaviors.
   static bool Parse(int* argc, const char** argv,
                     const std::vector<Flag>& flag_list);
 

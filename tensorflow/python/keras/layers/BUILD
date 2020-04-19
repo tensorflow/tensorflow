@@ -10,7 +10,6 @@ package(
         "//tensorflow/python/distribute:__pkg__",
         "//tensorflow/python/feature_column:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
-        "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/training/tracking:__pkg__",
         "//tensorflow/tools/pip_package:__pkg__",
     ],
@@ -47,7 +46,6 @@ py_library(
         ":recurrent_v2",
         ":rnn_cell_wrapper_v2",
         ":wrappers",
-        "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras/layers/preprocessing",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
@@ -632,6 +630,7 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
+        "no_rocm",
         "notsan",
     ],
     deps = [
@@ -665,7 +664,10 @@ tf_py_test(
     srcs = ["gru_test.py"],
     python_version = "PY3",
     shard_count = 4,
-    tags = ["notsan"],  # http://b/62136390
+    tags = [
+        "no_rocm",
+        "notsan",  # http://b/62136390
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -682,6 +684,7 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
+        "no_rocm",
         "noasan",  # times out b/63678675
         "notsan",  # http://b/62189182
     ],

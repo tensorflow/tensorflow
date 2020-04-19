@@ -38,19 +38,20 @@ namespace {
 // NOTE: This pass does not support `use_locking=true` for a lot of resource
 // operations. So decomposition may not be correct outside of backends like XLA,
 // which automatically locks all resource variables.
-struct DecomposeResourceOps : public FunctionPass<DecomposeResourceOps> {
+struct DecomposeResourceOps
+    : public PassWrapper<DecomposeResourceOps, FunctionPass> {
   void runOnFunction() override {
     // Add lowering patterns to the list.
     OwningRewritePatternList patterns;
     mlir::TF::PopulateDecomposeResourceOpsPatterns(&getContext(), &patterns);
 
-    applyPatternsGreedily(getFunction(), patterns);
+    applyPatternsAndFoldGreedily(getFunction(), patterns);
   }
 };
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateDecomposeResourceOpsPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateDecomposeResourceOpsPass() {
   return std::make_unique<DecomposeResourceOps>();
 }
 

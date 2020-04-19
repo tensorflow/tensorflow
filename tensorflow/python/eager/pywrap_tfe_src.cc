@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <atomic>
 #include <cstring>
+#include <unordered_map>
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/variant.h"
@@ -58,12 +59,16 @@ namespace {
 // This occurs when a PyFunc kernel is run. This behavior makes it safe in that
 // case, as well as the case where python decides to reuse the underlying
 // C++ thread in 2 python threads case.
-thread_local std::map<TFE_Context*, std::unique_ptr<TFE_Op>>
+struct OpDeleter {
+  void operator()(TFE_Op* op) const { TFE_DeleteOp(op); }
+};
+thread_local std::unordered_map<TFE_Context*,
+                                std::unique_ptr<TFE_Op, OpDeleter>>
     thread_local_eager_operation_map;                             // NOLINT
 thread_local std::unique_ptr<TF_Status> thread_local_tf_status =  // NOLINT
     nullptr;
 
-std::unique_ptr<TFE_Op> ReleaseThreadLocalOp(TFE_Context* ctx) {
+std::unique_ptr<TFE_Op, OpDeleter> ReleaseThreadLocalOp(TFE_Context* ctx) {
   auto it = thread_local_eager_operation_map.find(ctx);
   if (it == thread_local_eager_operation_map.end()) {
     return nullptr;
@@ -73,9 +78,9 @@ std::unique_ptr<TFE_Op> ReleaseThreadLocalOp(TFE_Context* ctx) {
 
 TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
               const char* raw_device_name, TF_Status* status) {
-  std::unique_ptr<TFE_Op> op = ReleaseThreadLocalOp(ctx);
+  auto op = ReleaseThreadLocalOp(ctx);
   if (!op) {
-    op.reset(new TFE_Op{std::make_unique<tensorflow::OperationInterface>(ctx)});
+    op.reset(new TFE_Op{ctx->context->CreateOperation()});
   }
   status->status = op->operation->Reset(op_or_function_name, raw_device_name);
   if (!status->status.ok()) {
@@ -1018,7 +1023,7 @@ PyObject* TFE_Py_UID() { return PyLong_FromLongLong(get_uid()); }
 void TFE_DeleteContextCapsule(PyObject* context) {
   TFE_Context* ctx =
       reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(context, nullptr));
-  std::unique_ptr<TFE_Op> op = ReleaseThreadLocalOp(ctx);
+  auto op = ReleaseThreadLocalOp(ctx);
   op.reset();
   TFE_DeleteContext(ctx);
 }
@@ -1370,37 +1375,23 @@ PyObject* PyTapeTensor::ZerosLike() const {
   return result;
 }
 
-class GradientTape
-    : public tensorflow::eager::GradientTape<PyObject, PyBackwardFunction,
-                                             PyTapeTensor> {
+// Keeps track of all variables that have been accessed during execution.
+class VariableWatcher {
  public:
-  explicit GradientTape(bool persistent, bool watch_accessed_variables)
-      : tensorflow::eager::GradientTape<PyObject, PyBackwardFunction,
-                                        PyTapeTensor>(persistent),
-        watch_accessed_variables_(watch_accessed_variables) {}
+  VariableWatcher() {}
 
-  virtual ~GradientTape() {
+  ~VariableWatcher() {
     for (const IdAndVariable& v : watched_variables_) {
       Py_DECREF(v.variable);
     }
   }
 
-  void VariableAccessed(PyObject* v) {
-    if (watch_accessed_variables_) {
-      WatchVariable(v);
-    }
-  }
-
-  void WatchVariable(PyObject* v) {
+  tensorflow::int64 WatchVariable(PyObject* v) {
     tensorflow::Safe_PyObjectPtr handle(PyObject_GetAttrString(v, "handle"));
     if (handle == nullptr) {
-      return;
+      return -1;
     }
     tensorflow::int64 id = FastTensorId(handle.get());
-
-    if (!PyErr_Occurred()) {
-      this->Watch(id);
-    }
 
     tensorflow::mutex_lock l(watched_variables_mu_);
     auto insert_result = watched_variables_.emplace(id, v);
@@ -1410,6 +1401,8 @@ class GradientTape
       // variable.
       Py_INCREF(v);
     }
+
+    return id;
   }
 
   PyObject* GetVariablesAsPyTuple() {
@@ -1440,10 +1433,43 @@ class GradientTape
     }
   };
 
-  bool watch_accessed_variables_;
   tensorflow::mutex watched_variables_mu_;
   std::set<IdAndVariable, CompareById> watched_variables_
       TF_GUARDED_BY(watched_variables_mu_);
+};
+
+class GradientTape
+    : public tensorflow::eager::GradientTape<PyObject, PyBackwardFunction,
+                                             PyTapeTensor> {
+ public:
+  explicit GradientTape(bool persistent, bool watch_accessed_variables)
+      : tensorflow::eager::GradientTape<PyObject, PyBackwardFunction,
+                                        PyTapeTensor>(persistent),
+        watch_accessed_variables_(watch_accessed_variables) {}
+
+  virtual ~GradientTape() {}
+
+  void VariableAccessed(PyObject* v) {
+    if (watch_accessed_variables_) {
+      WatchVariable(v);
+    }
+  }
+
+  void WatchVariable(PyObject* v) {
+    tensorflow::int64 id = variable_watcher_.WatchVariable(v);
+
+    if (!PyErr_Occurred()) {
+      this->Watch(id);
+    }
+  }
+
+  PyObject* GetVariablesAsPyTuple() {
+    return variable_watcher_.GetVariablesAsPyTuple();
+  }
+
+ private:
+  bool watch_accessed_variables_;
+  VariableWatcher variable_watcher_;
 };
 
 typedef tensorflow::eager::ForwardAccumulator<PyObject, PyBackwardFunction,
@@ -1530,6 +1556,41 @@ static PyTypeObject TFE_Py_ForwardAccumulator_Type = {
     "TFE_Py_ForwardAccumulator objects",                    /* tp_doc */
 };
 
+typedef struct {
+  PyObject_HEAD
+      /* Type-specific fields go here. */
+      VariableWatcher* variable_watcher;
+} TFE_Py_VariableWatcher;
+
+static void TFE_Py_VariableWatcher_Delete(PyObject* variable_watcher) {
+  delete reinterpret_cast<TFE_Py_VariableWatcher*>(variable_watcher)
+      ->variable_watcher;
+  Py_TYPE(variable_watcher)->tp_free(variable_watcher);
+}
+
+static PyTypeObject TFE_Py_VariableWatcher_Type = {
+    PyVarObject_HEAD_INIT(nullptr, 0) "tfe.VariableWatcher", /* tp_name */
+    sizeof(TFE_Py_VariableWatcher),                          /* tp_basicsize */
+    0,                                                       /* tp_itemsize */
+    &TFE_Py_VariableWatcher_Delete,                          /* tp_dealloc */
+    0,                                                       /* tp_print */
+    nullptr,                                                 /* tp_getattr */
+    nullptr,                                                 /* tp_setattr */
+    nullptr,                                                 /* tp_reserved */
+    nullptr,                                                 /* tp_repr */
+    nullptr,                                                 /* tp_as_number */
+    nullptr,                          /* tp_as_sequence */
+    nullptr,                          /* tp_as_mapping */
+    nullptr,                          /* tp_hash  */
+    nullptr,                          /* tp_call */
+    nullptr,                          /* tp_str */
+    nullptr,                          /* tp_getattro */
+    nullptr,                          /* tp_setattro */
+    nullptr,                          /* tp_as_buffer */
+    Py_TPFLAGS_DEFAULT,               /* tp_flags */
+    "TFE_Py_VariableWatcher objects", /* tp_doc */
+};
+
 // Note: in the current design no mutex is needed here because of the python
 // GIL, which is always held when any TFE_Py_* methods are called. We should
 // revisit this if/when decide to not hold the GIL while manipulating the tape
@@ -1541,6 +1602,18 @@ tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* GetTapeSet() {
     tape_set.reset(new tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>);
   }
   return tape_set.get();
+}
+
+tensorflow::gtl::CompactPointerSet<TFE_Py_VariableWatcher*>*
+GetVariableWatcherSet() {
+  thread_local std::unique_ptr<
+      tensorflow::gtl::CompactPointerSet<TFE_Py_VariableWatcher*>>
+      variable_watcher_set = nullptr;
+  if (variable_watcher_set == nullptr) {
+    variable_watcher_set.reset(
+        new tensorflow::gtl::CompactPointerSet<TFE_Py_VariableWatcher*>);
+  }
+  return variable_watcher_set.get();
 }
 
 // A linked hash set, where iteration is in insertion order.
@@ -1663,6 +1736,16 @@ class SafeAccumulatorSet : public SafeSetCopy<AccumulatorSet> {
   typename AccumulatorSet::const_reverse_iterator rend() const {
     return set_copy_.rend();
   }
+};
+
+class SafeVariableWatcherSet
+    : public SafeSetCopy<
+          tensorflow::gtl::CompactPointerSet<TFE_Py_VariableWatcher*>> {
+ public:
+  SafeVariableWatcherSet()
+      : SafeSetCopy<
+            tensorflow::gtl::CompactPointerSet<TFE_Py_VariableWatcher*>>(
+            *GetVariableWatcherSet()) {}
 };
 
 bool* ThreadTapeIsStopped() {
@@ -1915,12 +1998,13 @@ static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
       return PyTapeTensor(id, dtype, tensor);
     }
 
-    tensorflow::Status status;
     tensorflow::TensorShape tensor_shape;
-    int num_dims = t->handle->NumDims(&status);
+    int num_dims;
+    tensorflow::Status status = t->handle->NumDims(&num_dims);
     if (status.ok()) {
       for (int i = 0; i < num_dims; ++i) {
-        tensorflow::int64 dim_size = t->handle->Dim(i, &status);
+        tensorflow::int64 dim_size;
+        status = t->handle->Dim(i, &dim_size);
         if (!status.ok()) break;
         tensor_shape.AddDim(dim_size);
       }
@@ -2029,6 +2113,36 @@ void TFE_Py_TapeWatchVariable(PyObject* tape, PyObject* variable) {
 
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape) {
   return reinterpret_cast<TFE_Py_Tape*>(tape)->tape->GetVariablesAsPyTuple();
+}
+
+PyObject* TFE_Py_VariableWatcherNew() {
+  TFE_Py_VariableWatcher_Type.tp_new = PyType_GenericNew;
+  if (PyType_Ready(&TFE_Py_VariableWatcher_Type) < 0) return nullptr;
+  TFE_Py_VariableWatcher* variable_watcher =
+      PyObject_NEW(TFE_Py_VariableWatcher, &TFE_Py_VariableWatcher_Type);
+  variable_watcher->variable_watcher = new VariableWatcher();
+  Py_INCREF(variable_watcher);
+  GetVariableWatcherSet()->insert(variable_watcher);
+  return reinterpret_cast<PyObject*>(variable_watcher);
+}
+
+void TFE_Py_VariableWatcherRemove(PyObject* variable_watcher) {
+  auto* stack = GetVariableWatcherSet();
+  stack->erase(reinterpret_cast<TFE_Py_VariableWatcher*>(variable_watcher));
+  // We kept a reference to the variable watcher in the set to ensure it
+  // wouldn't get deleted under us; cleaning it up here.
+  Py_DECREF(variable_watcher);
+}
+
+void TFE_Py_VariableWatcherVariableAccessed(PyObject* variable) {
+  for (TFE_Py_VariableWatcher* variable_watcher : SafeVariableWatcherSet()) {
+    variable_watcher->variable_watcher->WatchVariable(variable);
+  }
+}
+
+PyObject* TFE_Py_VariableWatcherWatchedVariables(PyObject* variable_watcher) {
+  return reinterpret_cast<TFE_Py_VariableWatcher*>(variable_watcher)
+      ->variable_watcher->GetVariablesAsPyTuple();
 }
 
 namespace {
@@ -3080,6 +3194,7 @@ void MaybeNotifyVariableAccessed(PyObject* input) {
       PyObject_GetAttrString(input, "_trainable"));
   if (trainable.get() == Py_False) return;
   TFE_Py_TapeVariableAccessed(input);
+  TFE_Py_VariableWatcherVariableAccessed(input);
 }
 
 bool ReadVariableOp(const FastPathOpExecInfo& parent_op_exec_info,
@@ -3741,15 +3856,16 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
                     static_cast<tensorflow::DataType>(t->handle->DataType()));
     absl::StrAppend(&result->str, kShape);
 
-    tensorflow::Status status;
-    int num_dims = t->handle->NumDims(&status);
+    int num_dims;
+    tensorflow::Status status = t->handle->NumDims(&num_dims);
     if (!status.ok()) return status;
 
     if (include_tensor_ranks_only) {
       absl::StrAppend(&result->str, num_dims);
     } else {
       for (int i = 0; i < num_dims; ++i) {
-        tensorflow::int64 dim_size = t->handle->Dim(i, &status);
+        tensorflow::int64 dim_size;
+        status = t->handle->Dim(i, &dim_size);
         if (!status.ok()) return status;
         absl::StrAppend(&result->str, dim_size, kShapeDelim);
       }

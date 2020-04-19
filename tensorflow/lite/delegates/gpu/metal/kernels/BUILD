@@ -1,4 +1,5 @@
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
+load("@build_bazel_rules_apple//apple:macos.bzl", "macos_unit_test")
 load(
     "//tensorflow/lite:special_rules.bzl",
     "tflite_ios_lab_runner",
@@ -37,6 +38,7 @@ cc_library(
         ":softmax",
         ":space_to_depth",
         ":transpose_conv",
+        ":winograd",
     ],
 )
 
@@ -126,6 +128,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common:winograd_util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
         "//tensorflow/lite/delegates/gpu/metal:environment",
         "//tensorflow/lite/delegates/gpu/metal:runtime_options",
@@ -141,6 +144,7 @@ objc_library(
     deps = [
         ":conv",
         ":test_util",
+        ":winograd",
     ],
 )
 
@@ -152,6 +156,15 @@ ios_unit_test(
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
+    ],
+    deps = [":conv_test_lib"],
+)
+
+macos_unit_test(
+    name = "macos_conv_test",
+    minimum_os_version = "10.13",
+    tags = [
+        "local",
     ],
     deps = [":conv_test_lib"],
 )
@@ -694,6 +707,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:environment",
         "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
@@ -830,6 +844,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal:api",
         "//tensorflow/lite/delegates/gpu/metal:common",
         "//tensorflow/lite/delegates/gpu/metal:compiled_model",
+        "//tensorflow/lite/delegates/gpu/metal:environment",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@FP16",
@@ -849,6 +864,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common:winograd_util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],

@@ -929,6 +929,12 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.restrict_same_input_output_scale = true;
       property.version = 1;
       break;
+    case BuiltinOperator_MIRROR_PAD:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      break;
     default:
       // No quantized implementation exists for this operation.
       property.quantizable = false;

@@ -873,6 +873,44 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       cb_list.on_predict_batch_end(logs)
       cb_list.on_predict_end(logs)
 
+  def test_ProgbarLogger_verbose_2_nonblocking(self):
+    # Should only cause a sync block on epoch end methods.
+    callback = keras.callbacks.ProgbarLogger(count_mode='steps')
+    self.assertTrue(callback._supports_tf_logs)
+
+    model = keras.Sequential([keras.layers.Dense(1)])
+    cb_list = keras.callbacks.CallbackList([callback],
+                                           model=model,
+                                           epochs=1,
+                                           steps=10,
+                                           verbose=2)
+
+    with context.eager_mode():
+      tensor = ops.convert_to_tensor(1.)
+
+    def mock_numpy():
+      raise RuntimeError(
+          'If this error is seen, ModelCheckpoint is causing a blocking '
+          'NumPy conversion even when not checkpointing.')
+
+    with test.mock.patch.object(tensor, 'numpy', mock_numpy):
+      logs = {'metric': tensor}
+
+      cb_list.on_train_begin(logs)
+      cb_list.on_epoch_begin(0, logs)
+      cb_list.on_train_batch_begin(0, logs)
+      cb_list.on_train_batch_end(0, logs)
+
+      cb_list.on_test_begin(logs)
+      cb_list.on_test_batch_begin(0, logs)
+      cb_list.on_test_batch_end(0, logs)
+      cb_list.on_test_end(logs)
+
+      with self.assertRaisesRegexp(RuntimeError, 'NumPy conversion'):
+        # on_epoch_end should still block.
+        cb_list.on_epoch_end(0, logs)
+      cb_list.on_train_end(logs)
+
   def test_EarlyStopping(self):
     with self.cached_session():
       np.random.seed(123)
@@ -1880,6 +1918,39 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         },
     )
 
+  def test_TensorBoard_projector_callback(self):
+    layers = [
+        keras.layers.Embedding(10, 10, name='test_embedding'),
+        keras.layers.Dense(10, activation='relu'),
+        keras.layers.Dense(1, activation='sigmoid')
+    ]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(10,))
+    model.compile(
+        optimizer='adam',
+        loss=keras.losses.BinaryCrossentropy(from_logits=True),
+        run_eagerly=testing_utils.should_run_eagerly())
+    x, y = np.ones((10, 10)), np.ones((10, 10))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir,
+        embeddings_freq=1,
+        embeddings_metadata={'test_embedding': 'metadata.tsv'})
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+
+    with open(os.path.join(self.logdir, 'projector_config.pbtxt')) as f:
+      self.assertEqual(
+          f.readlines(), [
+              'embeddings {\n',
+              '  tensor_name: "test_embedding/.ATTRIBUTES/VARIABLE_VALUE"\n',
+              '  metadata_path: "metadata.tsv"\n',
+              '}\n'])
+
   def test_custom_summary(self):
     if not context.executing_eagerly():
       self.skipTest('Custom summaries only supported in V2 code path.')
@@ -2018,14 +2089,16 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     return model
 
-  def _get_trace_file(self, logdir):
+  def _count_trace_file(self, logdir):
     profile_dir = os.path.join(logdir, 'plugins', 'profile')
+    count = 0
     for (dirpath, dirnames, filenames) in os.walk(profile_dir):
+      del dirpath  # unused
       del dirnames  # unused
       for filename in filenames:
         if filename.endswith('.trace.json.gz'):
-          return os.path.join(dirpath, filename)
-    return None
+          count += 1
+    return count
 
   def fitModelAndAssertKerasModelWritten(self, model):
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
@@ -2095,7 +2168,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag=u'batch_1'),
         },
     )
-    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
+    self.assertEqual(1, self._count_trace_file(logdir=self.train_dir))
 
   def test_TensorBoard_autoTrace_tagNameWithBatchNum(self):
     model = self._get_seq_model()
@@ -2118,7 +2191,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag=u'batch_2'),
         },
     )
-    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
+    self.assertEqual(1, self._count_trace_file(logdir=self.train_dir))
 
   def test_TensorBoard_autoTrace_profileBatchRangeSingle(self):
     model = self._get_seq_model()
@@ -2142,7 +2215,32 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag=u'batch_2'),
         },
     )
-    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
+    self.assertEqual(1, self._count_trace_file(logdir=self.train_dir))
+
+  def test_TensorBoard_autoTrace_profileBatchRangeTwice(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch='10,10', write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=3,
+        epochs=10,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+
+    time.sleep(1)  # Avoids the second profile over-writing the first.
+
+    model.fit(
+        x,
+        y,
+        batch_size=3,
+        epochs=10,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    self.assertEqual(2, self._count_trace_file(logdir=self.train_dir))
 
   # Test case that replicates a Github issue.
   # https://github.com/tensorflow/tensorflow/issues/37543
@@ -2162,7 +2260,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         callbacks=[keras.callbacks.TensorBoard(logdir, profile_batch=1)],
     )
     # Verifies trace exists in the first logdir.
-    self.assertIsNotNone(self._get_trace_file(logdir=logdir))
+    self.assertEqual(1, self._count_trace_file(logdir=logdir))
     logdir = os.path.join(self.get_temp_dir(), 'tb2')
     model.fit(
         np.zeros((64, 1)),
@@ -2171,7 +2269,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         callbacks=[keras.callbacks.TensorBoard(logdir, profile_batch=2)],
     )
     # Verifies trace exists in the second logdir.
-    self.assertIsNotNone(self._get_trace_file(logdir=logdir))
+    self.assertEqual(1, self._count_trace_file(logdir=logdir))
 
   def test_TensorBoard_autoTrace_profileBatchRange(self):
     model = self._get_seq_model()
@@ -2195,7 +2293,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag=u'batch_3'),
         },
     )
-    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
+    self.assertEqual(1, self._count_trace_file(logdir=self.train_dir))
 
   def test_TensorBoard_autoTrace_profileInvalidBatchRange(self):
     with self.assertRaises(ValueError):
@@ -2237,7 +2335,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
 
     # Enabled trace only on the 10000th batch, thus it should be empty.
     self.assertEmpty(summary_file.tensors)
-    self.assertIsNone(self._get_trace_file(logdir=self.train_dir))
+    self.assertEqual(0, self._count_trace_file(logdir=self.train_dir))
 
 
 class MostRecentlyModifiedFileMatchingPatternTest(test.TestCase):

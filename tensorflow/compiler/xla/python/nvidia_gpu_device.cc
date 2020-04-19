@@ -76,7 +76,8 @@ StatusOr<std::vector<std::unique_ptr<LocalDeviceState>>> BuildLocalDeviceStates(
     se::StreamExecutor* executor =
         xla_client->backend().stream_executor(i).ValueOrDie();
     local_devices.push_back(absl::make_unique<LocalDeviceState>(
-        executor, xla_client, /*synchronous_deallocation=*/false, asynchronous,
+        executor, xla_client, LocalDeviceState::kComputeSynchronized,
+        asynchronous,
         /*allow_event_reuse=*/true));
   }
   return std::move(local_devices);
@@ -212,8 +213,11 @@ std::vector<std::unique_ptr<Device>> BuildLocalDevices(
   std::vector<std::unique_ptr<Device>> devices;
   for (auto& local_device : local_device_states) {
     int device_ordinal = local_device->device_ordinal();
+    const se::DeviceDescription& description =
+        local_device->executor()->GetDeviceDescription();
     auto device = absl::make_unique<GpuDevice>(
-        device_ordinal, std::move(local_device), /*node_id=*/0);
+        device_ordinal, std::move(local_device), description.name(),
+        /*node_id=*/0);
     devices.push_back(std::move(device));
   }
   return devices;
@@ -258,9 +262,9 @@ Status BuildDistributedDevices(
         gpu_device_ids[device_proto.local_device_ordinal()] =
             GlobalDeviceId(device_proto.global_device_id());
       }
-      auto device =
-          absl::make_unique<GpuDevice>(device_proto.global_device_id(),
-                                       std::move(local_device), node.node_id());
+      auto device = absl::make_unique<GpuDevice>(
+          device_proto.global_device_id(), std::move(local_device),
+          device_proto.name(), node.node_id());
       devices->push_back(std::move(device));
     }
   }
@@ -282,8 +286,9 @@ Status BuildDistributedDevices(
 
 GpuDevice::GpuDevice(int id,
                      std::unique_ptr<LocalDeviceState> local_device_state,
-                     int node_id)
-    : Device(id, std::move(local_device_state), kGpuPlatformName, node_id) {}
+                     std::string device_kind, int node_id)
+    : Device(id, std::move(local_device_state), kGpuPlatformName,
+             std::move(device_kind), node_id) {}
 
 StatusOr<std::shared_ptr<PyLocalClient>> GetNvidiaGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,

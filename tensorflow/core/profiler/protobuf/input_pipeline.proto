@@ -147,5 +147,7 @@ message InputPipelineAnalysisResult {
   // Breakdown of the step time. Can be unpacked into a
   // GenericStepTimeBreakdown.
   google.protobuf.Any step_time_breakdown = 8;
+  // Error messages.
+  repeated string error_messages = 10;
   reserved 1;
 }

@@ -17,7 +17,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
@@ -25,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/stages/image_classification_stage.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
+#include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
 namespace evaluation {
@@ -50,7 +50,8 @@ bool EvaluateModel(const std::string& model_file_path,
                    const std::vector<ImageLabel>& image_labels,
                    const std::vector<std::string>& model_labels,
                    std::string delegate, std::string output_file_path,
-                   int num_interpreter_threads) {
+                   int num_interpreter_threads,
+                   const DelegateProviders& delegate_providers) {
   EvaluationStageConfig eval_config;
   eval_config.set_name("image_classification");
   auto* classification_params = eval_config.mutable_specification()
@@ -61,7 +62,7 @@ bool EvaluateModel(const std::string& model_file_path,
   inference_params->set_delegate(ParseStringToDelegateType(delegate));
   if (!delegate.empty() &&
       inference_params->delegate() == TfliteInferenceParams::NONE) {
-    LOG(WARNING) << "Unsupported TFLite delegate: " << delegate;
+    TFLITE_LOG(WARN) << "Unsupported TFLite delegate: " << delegate;
     return false;
   }
   classification_params->mutable_topk_accuracy_eval_params()->set_k(10);
@@ -69,22 +70,41 @@ bool EvaluateModel(const std::string& model_file_path,
   ImageClassificationStage eval(eval_config);
 
   eval.SetAllLabels(model_labels);
-  if (eval.Init() != kTfLiteOk) return false;
+  if (eval.Init(&delegate_providers) != kTfLiteOk) return false;
 
   const int step = image_labels.size() / 100;
   for (int i = 0; i < image_labels.size(); ++i) {
     if (step > 1 && i % step == 0) {
-      LOG(INFO) << "Evaluated: " << i / step << "%";
+      TFLITE_LOG(INFO) << "Evaluated: " << i / step << "%";
     }
 
     eval.SetInputs(image_labels[i].image, image_labels[i].label);
     if (eval.Run() != kTfLiteOk) return false;
   }
 
-  std::ofstream metrics_ofile;
-  metrics_ofile.open(output_file_path, std::ios::out);
-  metrics_ofile << eval.LatestMetrics().DebugString();
-  metrics_ofile.close();
+  const auto latest_metrics = eval.LatestMetrics();
+  if (!output_file_path.empty()) {
+    std::ofstream metrics_ofile;
+    metrics_ofile.open(output_file_path, std::ios::out);
+    metrics_ofile << latest_metrics.SerializeAsString();
+    metrics_ofile.close();
+  }
+  TFLITE_LOG(INFO) << "Num evaluation runs: " << latest_metrics.num_runs();
+  const auto& metrics =
+      latest_metrics.process_metrics().image_classification_metrics();
+  const auto& preprocessing_latency = metrics.pre_processing_latency();
+  TFLITE_LOG(INFO) << "Preprocessing latency: avg="
+                   << preprocessing_latency.avg_us() << "(us), std_dev="
+                   << preprocessing_latency.std_deviation_us() << "(us)";
+  const auto& inference_latency = metrics.inference_latency();
+  TFLITE_LOG(INFO) << "Inference latency: avg=" << inference_latency.avg_us()
+                   << "(us), std_dev=" << inference_latency.std_deviation_us()
+                   << "(us)";
+  const auto& accuracy_metrics = metrics.topk_accuracy_metrics();
+  for (int i = 0; i < accuracy_metrics.topk_accuracies_size(); ++i) {
+    TFLITE_LOG(INFO) << "Top-" << i + 1
+                     << " Accuracy: " << accuracy_metrics.topk_accuracies(i);
+  }
 
   return true;
 }
@@ -135,17 +155,19 @@ int Main(int argc, char* argv[]) {
                                "Must be one of {'nnapi', 'gpu'}"),
   };
   tflite::Flags::Parse(&argc, const_cast<const char**>(argv), flag_list);
+  DelegateProviders delegate_providers;
+  delegate_providers.InitFromCmdlineArgs(&argc, const_cast<const char**>(argv));
 
   // Process images in filename-sorted order.
   std::vector<std::string> image_files, ground_truth_image_labels;
   TF_LITE_ENSURE_STATUS(GetSortedFileNames(
       StripTrailingSlashes(ground_truth_images_path), &image_files));
   if (!ReadFileLines(ground_truth_labels_path, &ground_truth_image_labels)) {
-    LOG(ERROR) << "Could not read ground truth labels file";
+    TFLITE_LOG(ERROR) << "Could not read ground truth labels file";
     return EXIT_FAILURE;
   }
   if (image_files.size() != ground_truth_image_labels.size()) {
-    LOG(ERROR) << "Number of images and ground truth labels is not same";
+    TFLITE_LOG(ERROR) << "Number of images and ground truth labels is not same";
     return EXIT_FAILURE;
   }
   std::vector<ImageLabel> image_labels;
@@ -163,13 +185,14 @@ int Main(int argc, char* argv[]) {
 
   std::vector<std::string> model_labels;
   if (!ReadFileLines(model_output_labels_path, &model_labels)) {
-    LOG(ERROR) << "Could not read model output labels file";
+    TFLITE_LOG(ERROR) << "Could not read model output labels file";
     return EXIT_FAILURE;
   }
 
   if (!EvaluateModel(model_file_path, image_labels, model_labels, delegate,
-                     output_file_path, num_interpreter_threads)) {
-    LOG(ERROR) << "Could not evaluate model";
+                     output_file_path, num_interpreter_threads,
+                     delegate_providers)) {
+    TFLITE_LOG(ERROR) << "Could not evaluate model";
     return EXIT_FAILURE;
   }
 

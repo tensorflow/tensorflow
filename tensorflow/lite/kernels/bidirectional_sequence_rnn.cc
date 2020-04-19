@@ -27,6 +27,16 @@ namespace ops {
 namespace builtin {
 namespace bidirectional_sequence_rnn {
 
+namespace {
+
+struct OpData {
+  int scratch_tensor_index;
+  bool fw_compute_row_sums = false;
+  bool bw_compute_row_sums = false;
+};
+
+}  // namespace
+
 // LINT.IfChange
 
 constexpr int kInputTensor = 0;
@@ -58,18 +68,23 @@ enum TemporaryTensor {
   kFwHiddenStateQuantized = 1,
   kBwHiddenStateQuantized = 2,
   kScalingFactors = 3,
-  kAuxInputQuantized = 4,
-  kNumTemporaryTensors = 5
+  kAccumScratch = 4,
+  kZeroPoints = 5,
+  kFwRowSums = 6,
+  kBwRowSums = 7,
+  kAuxInputQuantized = 8,
+  kNumTemporaryTensors = 9
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  auto* scratch_tensor_index = new int;
-  context->AddTensors(context, kNumTemporaryTensors, scratch_tensor_index);
-  return scratch_tensor_index;
+  auto* op_data = new OpData();
+  context->AddTensors(context, kNumTemporaryTensors,
+                      &op_data->scratch_tensor_index);
+  return op_data;
 }
 
 void Free(TfLiteContext* context, void* buffer) {
-  delete reinterpret_cast<int*>(buffer);
+  delete reinterpret_cast<OpData*>(buffer);
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
@@ -157,8 +172,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (IsHybridOp(input, fw_input_weights)) {
-    int* scratch_tensor_index = reinterpret_cast<int*>(node->user_data);
-
+    OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+    op_data->fw_compute_row_sums = true;
+    op_data->bw_compute_row_sums = true;
     TfLiteIntArrayFree(node->temporaries);
     if (has_aux_input) {
       node->temporaries = TfLiteIntArrayCreate(kNumTemporaryTensors);
@@ -168,7 +184,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
 
     node->temporaries->data[kInputQuantized] =
-        *scratch_tensor_index + kInputQuantized;
+        op_data->scratch_tensor_index + kInputQuantized;
     TfLiteTensor* input_quantized =
         GetTemporary(context, node, kInputQuantized);
     input_quantized->type = fw_input_weights->type;
@@ -180,7 +196,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
 
     node->temporaries->data[kFwHiddenStateQuantized] =
-        *scratch_tensor_index + kFwHiddenStateQuantized;
+        op_data->scratch_tensor_index + kFwHiddenStateQuantized;
     TfLiteTensor* fw_hidden_state_quantized =
         GetTemporary(context, node, kFwHiddenStateQuantized);
     fw_hidden_state_quantized->type = fw_input_weights->type;
@@ -195,7 +211,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
 
     node->temporaries->data[kBwHiddenStateQuantized] =
-        *scratch_tensor_index + kBwHiddenStateQuantized;
+        op_data->scratch_tensor_index + kBwHiddenStateQuantized;
     TfLiteTensor* bw_hidden_state_quantized =
         GetTemporary(context, node, kBwHiddenStateQuantized);
     bw_hidden_state_quantized->type = fw_input_weights->type;
@@ -211,7 +227,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
     // Allocate temporary tensors to store scaling factors of quantization.
     node->temporaries->data[kScalingFactors] =
-        *scratch_tensor_index + kScalingFactors;
+        op_data->scratch_tensor_index + kScalingFactors;
     TfLiteTensor* scaling_factors =
         GetTemporary(context, node, kScalingFactors);
     scaling_factors->type = kTfLiteFloat32;
@@ -223,10 +239,66 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
                                                        scaling_factors_size));
     }
-
+    node->temporaries->data[kAccumScratch] =
+        op_data->scratch_tensor_index + kAccumScratch;
+    TfLiteTensor* accum_scratch = GetTemporary(context, node, kAccumScratch);
+    accum_scratch->type = kTfLiteInt32;
+    accum_scratch->allocation_type = kTfLiteArenaRw;
+    int accum_scratch_dims[2] = {std::max(fw_num_units, bw_num_units),
+                                 batch_size};
+    if (!TfLiteIntArrayEqualsArray(accum_scratch->dims, 2,
+                                   accum_scratch_dims)) {
+      TfLiteIntArray* accum_scratch_size = TfLiteIntArrayCreate(2);
+      accum_scratch_size->data[0] = accum_scratch_dims[0];
+      accum_scratch_size->data[1] = accum_scratch_dims[1];
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, accum_scratch,
+                                                       accum_scratch_size));
+    }
+    node->temporaries->data[kZeroPoints] =
+        op_data->scratch_tensor_index + kZeroPoints;
+    TfLiteTensor* zero_points =
+        GetTemporary(context, node, /*index=*/kZeroPoints);
+    zero_points->type = kTfLiteInt32;
+    zero_points->allocation_type = kTfLiteArenaRw;
+    int zero_points_dims[1] = {batch_size};
+    if (!TfLiteIntArrayEqualsArray(zero_points->dims, 1, zero_points_dims)) {
+      TfLiteIntArray* zero_points_size = TfLiteIntArrayCreate(1);
+      zero_points_size->data[0] = batch_size;
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, zero_points,
+                                                       zero_points_size));
+    }
+    const int num_row_sums = has_aux_input ? 3 : 2;
+    node->temporaries->data[kFwRowSums] =
+        op_data->scratch_tensor_index + kFwRowSums;
+    TfLiteTensor* fw_row_sums =
+        GetTemporary(context, node, /*index=*/kFwRowSums);
+    fw_row_sums->type = kTfLiteInt32;
+    fw_row_sums->allocation_type = kTfLiteArenaRwPersistent;
+    int fw_row_sums_dims[2] = {num_row_sums, fw_num_units};
+    if (!TfLiteIntArrayEqualsArray(fw_row_sums->dims, 2, fw_row_sums_dims)) {
+      TfLiteIntArray* fw_row_sums_size = TfLiteIntArrayCreate(2);
+      fw_row_sums_size->data[0] = fw_row_sums_dims[0];
+      fw_row_sums_size->data[1] = fw_row_sums_dims[1];
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, fw_row_sums,
+                                                       fw_row_sums_size));
+    }
+    node->temporaries->data[kBwRowSums] =
+        op_data->scratch_tensor_index + kBwRowSums;
+    TfLiteTensor* bw_row_sums = GetTemporary(context, node,
+                                             /*index=*/kBwRowSums);
+    bw_row_sums->type = kTfLiteInt32;
+    bw_row_sums->allocation_type = kTfLiteArenaRwPersistent;
+    int bw_row_sums_dims[2] = {num_row_sums, bw_num_units};
+    if (!TfLiteIntArrayEqualsArray(bw_row_sums->dims, 2, bw_row_sums_dims)) {
+      TfLiteIntArray* bw_row_sums_size = TfLiteIntArrayCreate(2);
+      bw_row_sums_size->data[0] = bw_row_sums_dims[0];
+      bw_row_sums_size->data[1] = bw_row_sums_dims[1];
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, bw_row_sums,
+                                                       bw_row_sums_size));
+    }
     if (has_aux_input) {
       node->temporaries->data[kAuxInputQuantized] =
-          *scratch_tensor_index + kAuxInputQuantized;
+          op_data->scratch_tensor_index + kAuxInputQuantized;
       TfLiteTensor* aux_input_quantized =
           GetTemporary(context, node, kAuxInputQuantized);
       aux_input_quantized->type = fw_input_weights->type;
@@ -418,7 +490,10 @@ TfLiteStatus EvalHybrid(
     TfLiteTensor* aux_input_quantized, TfLiteTensor* fw_hidden_state_quantized,
     TfLiteTensor* fw_hidden_state, TfLiteTensor* fw_output,
     TfLiteTensor* bw_hidden_state_quantized, TfLiteTensor* bw_hidden_state,
-    TfLiteTensor* bw_output) {
+    TfLiteTensor* bw_output, TfLiteTensor* zero_points,
+    TfLiteTensor* accum_scratch, TfLiteTensor* fw_row_sums,
+    TfLiteTensor* bw_row_sums, bool* fw_compute_row_sums,
+    bool* bw_compute_row_sums) {
   const bool time_major = params->time_major;
   const int batch_size =
       (time_major) ? input->dims->data[1] : input->dims->data[0];
@@ -464,11 +539,20 @@ TfLiteStatus EvalHybrid(
   int8_t* bw_quantized_hidden_state_ptr =
       GetTensorData<int8_t>(bw_hidden_state_quantized);
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
-
+  int32_t* accum_scratch_ptr = GetTensorData<int32_t>(accum_scratch);
+  int32_t* zero_points_ptr = nullptr;
+  int32_t* fw_row_sums_ptr = nullptr;
+  int32_t* bw_row_sums_ptr = nullptr;
+  if (params->asymmetric_quantize_inputs) {
+    zero_points_ptr = GetTensorData<int32_t>(zero_points);
+    fw_row_sums_ptr = GetTensorData<int32_t>(fw_row_sums);
+    bw_row_sums_ptr = GetTensorData<int32_t>(bw_row_sums);
+  }
   const int fw_output_step =
       params->merge_outputs ? fw_num_units + bw_num_units : fw_num_units;
   const int bw_output_step =
       params->merge_outputs ? fw_num_units + bw_num_units : bw_num_units;
+
   if (time_major) {
     for (int t = 0; t < max_time; t++) {
       // Forward cell.
@@ -491,7 +575,9 @@ TfLiteStatus EvalHybrid(
             fw_num_units, batch_size, fw_output_step, params->activation,
             quantized_input_ptr, aux_quantized_input_ptr,
             fw_quantized_hidden_state_ptr, scaling_factors_ptr,
-            fw_hidden_state_ptr_batch, output_ptr_batch);
+            fw_hidden_state_ptr_batch, output_ptr_batch,
+            params->asymmetric_quantize_inputs, zero_points_ptr,
+            accum_scratch_ptr, fw_row_sums_ptr, fw_compute_row_sums);
       }
       // Backward cell.
       float* bw_hidden_state_ptr_batch = GetTensorData<float>(bw_hidden_state);
@@ -516,7 +602,9 @@ TfLiteStatus EvalHybrid(
             bw_num_units, batch_size, bw_output_step, params->activation,
             quantized_input_ptr, aux_quantized_input_ptr,
             bw_quantized_hidden_state_ptr, scaling_factors_ptr,
-            bw_hidden_state_ptr_batch, output_ptr_batch);
+            bw_hidden_state_ptr_batch, output_ptr_batch,
+            params->asymmetric_quantize_inputs, zero_points_ptr,
+            accum_scratch_ptr, bw_row_sums_ptr, bw_compute_row_sums);
       }
     }
   } else {
@@ -545,7 +633,9 @@ TfLiteStatus EvalHybrid(
             fw_num_units, /*batch_size=*/1, fw_output_step, params->activation,
             quantized_input_ptr, aux_quantized_input_ptr,
             fw_quantized_hidden_state_ptr, scaling_factors_ptr,
-            fw_hidden_state_ptr_batch, output_ptr_batch);
+            fw_hidden_state_ptr_batch, output_ptr_batch,
+            params->asymmetric_quantize_inputs, zero_points_ptr,
+            accum_scratch_ptr, fw_row_sums_ptr, fw_compute_row_sums);
       }
       // Backward cell.
       float* bw_hidden_state_ptr_batch =
@@ -574,7 +664,9 @@ TfLiteStatus EvalHybrid(
             bw_num_units, /*batch_size=*/1, bw_output_step, params->activation,
             quantized_input_ptr, aux_quantized_input_ptr,
             bw_quantized_hidden_state_ptr, scaling_factors_ptr,
-            bw_hidden_state_ptr_batch, output_ptr_batch);
+            bw_hidden_state_ptr_batch, output_ptr_batch,
+            params->asymmetric_quantize_inputs, zero_points_ptr,
+            accum_scratch_ptr, bw_row_sums_ptr, bw_compute_row_sums);
       }
     }
   }
@@ -656,17 +748,23 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           GetTemporary(context, node, kBwHiddenStateQuantized);
       TfLiteTensor* scaling_factors =
           GetTemporary(context, node, kScalingFactors);
+      TfLiteTensor* zero_points = GetTemporary(context, node, kZeroPoints);
+      TfLiteTensor* accum_scratch = GetTemporary(context, node, kAccumScratch);
+      TfLiteTensor* fw_row_sums = GetTemporary(context, node, kFwRowSums);
+      TfLiteTensor* bw_row_sums = GetTemporary(context, node, kBwRowSums);
       TfLiteTensor* aux_input_quantized =
           use_aux_input ? GetTemporary(context, node, kAuxInputQuantized)
                         : nullptr;
-
-      return EvalHybrid(input, bw_input, fw_input_weights, fw_recurrent_weights,
-                        fw_bias, bw_input_weights, bw_recurrent_weights,
-                        bw_bias, real_aux_input, fw_aux_input_weights,
-                        bw_aux_input_weights, params, scaling_factors,
-                        input_quantized, aux_input_quantized,
-                        fw_hidden_state_quantized, fw_hidden_state, fw_output,
-                        bw_hidden_state_quantized, bw_hidden_state, bw_output);
+      auto* op_data = reinterpret_cast<OpData*>(node->user_data);
+      return EvalHybrid(
+          input, bw_input, fw_input_weights, fw_recurrent_weights, fw_bias,
+          bw_input_weights, bw_recurrent_weights, bw_bias, real_aux_input,
+          fw_aux_input_weights, bw_aux_input_weights, params, scaling_factors,
+          input_quantized, aux_input_quantized, fw_hidden_state_quantized,
+          fw_hidden_state, fw_output, bw_hidden_state_quantized,
+          bw_hidden_state, bw_output, zero_points, accum_scratch, fw_row_sums,
+          bw_row_sums, &op_data->fw_compute_row_sums,
+          &op_data->bw_compute_row_sums);
     }
     default:
       context->ReportError(context, "Type not currently supported.");

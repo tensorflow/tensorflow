@@ -35,8 +35,8 @@ class MaxUnpooling : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    auto attr = absl::any_cast<MaxUnpooling2DAttributes>(
-        ctx.node->operation.attributes);
+    const auto& attr =
+        absl::any_cast<const MaxUnpooling2DAttributes&>(ctx.op_attr);
     std::vector<Variable> parameters = {
         {"stride", int2(attr.strides.w, attr.strides.h)},
         {"offset", int2(attr.padding.prepended.w, attr.padding.prepended.h)},

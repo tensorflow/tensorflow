@@ -24,14 +24,22 @@ namespace codegen {
 
 constexpr char BUFFER_KEY[] = "TFLITE_METADATA";
 const ModelMetadata* GetMetadataFromModel(const Model* model) {
-  if (model->metadata() == nullptr) {
+  if (model == nullptr || model->metadata() == nullptr) {
     return nullptr;
   }
   for (auto i = 0; i < model->metadata()->size(); i++) {
-    if (model->metadata()->Get(i)->name()->str() == BUFFER_KEY) {
+    const auto* name = model->metadata()->Get(i)->name();
+    if (name != nullptr && name->str() == BUFFER_KEY) {
       const auto buffer_index = model->metadata()->Get(i)->buffer();
-      const auto* buffer = model->buffers()->Get(buffer_index)->data()->data();
-      return GetModelMetadata(buffer);
+      if (model->buffers() == nullptr ||
+          model->buffers()->size() <= buffer_index) {
+        continue;
+      }
+      const auto* buffer_vec = model->buffers()->Get(buffer_index)->data();
+      if (buffer_vec == nullptr || buffer_vec->data() == nullptr) {
+        continue;
+      }
+      return GetModelMetadata(buffer_vec->data());
     }
   }
   return nullptr;

@@ -99,6 +99,9 @@ std::vector<int64> ColorInterferenceGraph(
 bool HloBufferIsReadOnly(const HloBuffer& buffer) {
   for (const HloValue* value : buffer.values()) {
     const HloInstruction* instruction = value->instruction();
+    if (instruction->opcode() == HloOpcode::kConstant) {
+      return true;
+    }
     const HloModule* module = instruction->parent()->parent();
     const bool is_entry_parameter =
         instruction->opcode() == HloOpcode::kParameter &&
@@ -1008,7 +1011,22 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
 
 Status BufferAssigner::MergeInplaceOpBuffers(BufferAssignment* assignment) {
   // Try allocate same buffer for dynamic update slice's operand and output.
-  //
+
+  // If memory_space_assignment is run and there is information about a color in
+  // preset assignments, don't merge those buffers. We expect
+  // memory_space_assignment to have merged these buffers. If
+  // memory_space_assignment didn't merge these buffers and have assigned
+  // different offsets to the operand and the output buffer, merging the buffers
+  // can cause memory corruption if memory_space_assignment assigned a different
+  // buffer at the same offset.
+  absl::flat_hash_set<int64> excluded_colors;
+  if (preset_assignments_) {
+    for (const auto& color_and_info :
+         preset_assignments_->assignment_informations()) {
+      excluded_colors.insert(color_and_info.first);
+    }
+  }
+
   // TODO(yunxing): Moving this logic to alias analysis and add must-alias rule
   // to operations that can be done in place.
   for (HloComputation* computation : assignment->module().computations()) {
@@ -1038,6 +1056,13 @@ Status BufferAssigner::MergeInplaceOpBuffers(BufferAssignment* assignment) {
       HloBuffer& operand_buffer =
           assignment->alias_analysis().GetUniqueBufferAt(
               instruction->operand(0), {});
+
+      // The instruction or operand color is excluded because it was assigned by
+      // memory_space_assignment.
+      if (excluded_colors.contains(instruction_buffer.color().value()) ||
+          excluded_colors.contains(operand_buffer.color().value())) {
+        continue;
+      }
 
       // Already have the same buffer. No need to merge those.
       if (instruction_buffer.id() == operand_buffer.id()) {
@@ -1367,23 +1392,22 @@ Status BufferAssigner::AssignPresetBuffers(
   }
 
   const HloAliasAnalysis& alias_analysis = assignment->alias_analysis();
-  const HloDataflowAnalysis& dataflow_analysis =
-      alias_analysis.dataflow_analysis();
 
   for (auto& position_and_chunk : preset_assignments_->chunks()) {
-    const HloPosition& position = position_and_chunk.first;
-    const HloValue& value = dataflow_analysis.GetUniqueValueAt(
-        position.instruction, position.index);
-    VLOG(3) << "Preset allocation for value: " << value.ToShortString();
-    const HeapSimulator::Chunk& chunk = position_and_chunk.second;
-    auto preset_allocations_iter = preset_allocations.find(value.color());
-    CHECK(preset_allocations_iter != preset_allocations.end())
-        << "No preset value allocation for color " << value.color() << " for "
-        << value.ToShortString() << " found.";
-    preset_allocations_iter->second->AddAssignment(value, chunk.offset,
-                                                   chunk.size);
+    const HloPosition& defining_position = position_and_chunk.first;
+    const HloBuffer& buffer = alias_analysis.GetUniqueBufferAt(
+        defining_position.instruction, defining_position.index);
+    for (const HloValue* value : buffer.values()) {
+      VLOG(3) << "Preset allocation for value: " << value->ToShortString();
+      const HeapSimulator::Chunk& chunk = position_and_chunk.second;
+      auto preset_allocations_iter = preset_allocations.find(value->color());
+      CHECK(preset_allocations_iter != preset_allocations.end())
+          << "No preset value allocation for color " << value->color()
+          << " for " << value->ToShortString() << " found.";
+      preset_allocations_iter->second->AddAssignment(*value, chunk.offset,
+                                                     chunk.size);
+    }
 
-    const HloBuffer& buffer = alias_analysis.GetBufferContainingValue(value);
     assigned_buffers->insert(&buffer);
   }
 

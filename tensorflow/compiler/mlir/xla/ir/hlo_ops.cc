@@ -104,6 +104,53 @@ DenseIntElementsAttr BuildSliceLimits(DenseIntElementsAttr start_indices,
   return GetI64ElementsAttr(slice_limits, builder);
 }
 
+// Returns the padding value of the given position. If padding_attr is a
+// nullptr, returns 0.
+static int64_t GetPaddingValue(DenseIntElementsAttr padding_attr,
+                               ArrayRef<uint64_t> index) {
+  if (!padding_attr) return 0;
+  return padding_attr.getValue<int64_t>(index);
+}
+
+static bool IsOnlyPaddingSpatialDims(Value lhs,
+                                     ConvDimensionNumbers dimension_numbers,
+                                     DenseIntElementsAttr edge_padding_low,
+                                     DenseIntElementsAttr edge_padding_high) {
+  const int64_t batch_dim = dimension_numbers.input_batch_dimension().getInt();
+  const int64_t feature_dim =
+      dimension_numbers.input_feature_dimension().getInt();
+  if (edge_padding_low.getValue<int64_t>(batch_dim) ||
+      edge_padding_high.getValue<int64_t>(batch_dim))
+    return false;
+  if (edge_padding_low.getValue<int64_t>(feature_dim) ||
+      edge_padding_high.getValue<int64_t>(feature_dim))
+    return false;
+  return true;
+}
+
+DenseIntElementsAttr BuildConvPaddingAttrs(
+    DenseIntElementsAttr edge_padding_low,
+    DenseIntElementsAttr edge_padding_high, DenseIntElementsAttr padding_attr,
+    ConvDimensionNumbers dimension_numbers, Builder* builder) {
+  SmallVector<int64_t, 4> padding_low, padding_high;
+  for (const auto& dim : dimension_numbers.input_spatial_dimensions()) {
+    unsigned i = dim.getZExtValue();
+    padding_low.push_back(edge_padding_low.getValue<int64_t>(i));
+    padding_high.push_back(edge_padding_high.getValue<int64_t>(i));
+  }
+
+  int rank = padding_low.size();
+  SmallVector<int64_t, 8> padding;
+  for (unsigned i = 0; i < rank; ++i) {
+    padding.push_back(GetPaddingValue(padding_attr, {i, 0}) + padding_low[i]);
+    padding.push_back(GetPaddingValue(padding_attr, {i, 1}) + padding_high[i]);
+  }
+  // padding_attr.getType() doesn't work because it is an optional attribute,
+  // which can be a nullptr.
+  auto type = RankedTensorType::get({rank, 2}, builder->getIntegerType(64));
+  return DenseIntElementsAttr::get(type, padding);
+}
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_canonicalize.inc"
 }  // namespace
 
@@ -175,6 +222,31 @@ void ConstOp::build(Builder* builder, OperationState& result, Attribute value) {
   assert(type && "unsupported attribute type for building xla_hlo.constant");
   result.types.push_back(type);
   result.addAttribute("value", value);
+}
+
+//===----------------------------------------------------------------------===//
+// DotGeneralOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(DotGeneralOp op) {
+  auto dot_dimension_numbers = op.dot_dimension_numbers();
+  int64_t lhs_batching_dimensions_size = llvm::size(
+      dot_dimension_numbers.lhs_batching_dimensions().getValues<int64_t>());
+  int64_t rhs_batching_dimensions_size = llvm::size(
+      dot_dimension_numbers.rhs_batching_dimensions().getValues<int64_t>());
+  if (lhs_batching_dimensions_size != rhs_batching_dimensions_size) {
+    return op.emitError()
+           << "lhs and rhs should have the same number of batching dimensions";
+  }
+  int64_t lhs_contracting_dimensions_size = llvm::size(
+      dot_dimension_numbers.lhs_contracting_dimensions().getValues<int64_t>());
+  int64_t rhs_contracting_dimensions_size = llvm::size(
+      dot_dimension_numbers.rhs_contracting_dimensions().getValues<int64_t>());
+  if (lhs_contracting_dimensions_size != rhs_contracting_dimensions_size) {
+    return op.emitError() << "lhs and rhs should have the same number of "
+                             "contracting dimensions";
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -598,6 +670,28 @@ static LogicalResult Verify(DynamicBroadcastInDimOp op) {
   return success();
 }
 
+// If a DynamicBroadCastInDimOp is not actually dynamic, use an ordinary
+// BroadcastInDimOp.
+class DynamicBroadcastInDimOpNotActuallyDynamic
+    : public OpRewritePattern<DynamicBroadcastInDimOp> {
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(DynamicBroadcastInDimOp op,
+                                PatternRewriter& rewriter) const override {
+    auto type = op.getType().dyn_cast<RankedTensorType>();
+    if (!type || !type.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(op, "requires static shape");
+    }
+    rewriter.replaceOpWithNewOp<BroadcastInDimOp>(
+        op, op.getType(), op.operand(), op.broadcast_dimensions());
+    return success();
+  }
+};
+
+void DynamicBroadcastInDimOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<DynamicBroadcastInDimOpNotActuallyDynamic>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // ClampOp
 //===----------------------------------------------------------------------===//
@@ -739,12 +833,103 @@ static LogicalResult Verify(ConcatenateOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// DynamicReshapeOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(DynamicReshapeOp op) {
+  auto result_type = op.result().getType().dyn_cast<RankedTensorType>();
+  auto output_shape_type =
+      op.output_shape().getType().dyn_cast<RankedTensorType>();
+  if (result_type && output_shape_type && output_shape_type.hasStaticShape() &&
+      output_shape_type.getDimSize(0) != result_type.getRank()) {
+    return op.emitError() << "output should have a rank equal to the number of "
+                             "elements in output_shape";
+  }
+  return success();
+}
+
+namespace {
+class DynamicReshapeOpNotActuallyDynamic
+    : public OpRewritePattern<DynamicReshapeOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(DynamicReshapeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto type = op.result().getType().dyn_cast<RankedTensorType>();
+    if (!type || !type.hasStaticShape()) {
+      return rewriter.notifyMatchFailure(op, "requires static shape tensor");
+    }
+    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.operand());
+    return success();
+  }
+};
+}  // namespace
+
+void DynamicReshapeOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<DynamicReshapeOpNotActuallyDynamic>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // DynamicSliceOp
 //===----------------------------------------------------------------------===//
+
+namespace {
+// Canonicalizes DynamicSlice ops that can be replaced instead with Slice ops.
+// This canonicalization is applied the case when the `begin` input values are
+// compile time constants and thus can be made into a tensor.
+struct DynamicSliceToSlice : public OpRewritePattern<DynamicSliceOp> {
+  using OpRewritePattern<DynamicSliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(DynamicSliceOp dynamic_slice,
+                                PatternRewriter& rewriter) const override {
+    Value input = dynamic_slice.operand();
+    auto input_tensor = input.getType().dyn_cast<RankedTensorType>();
+    if (!input_tensor) return failure();
+
+    SmallVector<int64_t, 4> temp_start_indices;
+    for (Value start : dynamic_slice.start_indices()) {
+      APInt val;
+      if (!matchPattern(start, m_ConstantInt(&val))) {
+        return failure();
+      }
+      temp_start_indices.push_back(*(val.getRawData()));
+    }
+
+    // At this point we've determined that the start indices are all constants;
+    // pack them into a single tensor.
+    auto loc = dynamic_slice.getLoc();
+    int64_t input_rank = input_tensor.getRank();
+    auto slice_start_indices =
+        GetI64ElementsAttr(temp_start_indices, &rewriter);
+    DenseIntElementsAttr slice_limits = BuildSliceLimits(
+        slice_start_indices, dynamic_slice.slice_sizes(), &rewriter);
+    DenseIntElementsAttr slice_strides =
+        GetI64ElementsAttr(SmallVector<int64_t, 4>(input_rank, 1), &rewriter);
+    auto result = rewriter.create<SliceOp>(loc, input, slice_start_indices,
+                                           slice_limits, slice_strides);
+    rewriter.replaceOp(dynamic_slice, {result});
+    return success();
+  }
+};
+
+}  // namespace
 
 void DynamicSliceOp::getCanonicalizationPatterns(
     OwningRewritePatternList& results, MLIRContext* context) {
   results.insert<DynamicSliceToSlice>(context);
+}
+
+// Verifies that the number of slice sizes and the number of start indices match
+static LogicalResult Verify(DynamicSliceOp op) {
+  int num_slice_sizes = op.slice_sizes().getNumElements();
+  int num_start_indices = op.start_indices().size();
+  if (num_start_indices != num_slice_sizes) {
+    return op.emitOpError()
+           << "has mismatched number of slice sizes (" << num_slice_sizes
+           << ") and number of start indices (" << num_start_indices << ")";
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -874,28 +1059,6 @@ static LogicalResult Verify(RecvOp op) {
 //===----------------------------------------------------------------------===//
 
 OpFoldResult CopyOp::fold(ArrayRef<Attribute> operands) { return getOperand(); }
-
-//===----------------------------------------------------------------------===//
-// ReshapeOp
-//===----------------------------------------------------------------------===//
-
-OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
-  if (getOperand().getType() == getType()) {
-    return getOperand();
-  }
-
-  if (auto prev_op =
-          dyn_cast_or_null<ReshapeOp>(getOperand().getDefiningOp())) {
-    setOperand(prev_op.getOperand());
-    return getResult();
-  }
-
-  if (auto elements = operands.front().dyn_cast_or_null<DenseElementsAttr>()) {
-    return elements.reshape(getResult().getType().cast<ShapedType>());
-  }
-
-  return {};
-}
 
 //===----------------------------------------------------------------------===//
 // ReverseOp
@@ -1091,6 +1254,24 @@ static LogicalResult Verify(ReshapeOp op) {
              << num_input_elements << ")";
   }
   return success();
+}
+
+OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
+  if (getOperand().getType() == getType()) {
+    return getOperand();
+  }
+
+  if (auto prev_op =
+          dyn_cast_or_null<ReshapeOp>(getOperand().getDefiningOp())) {
+    setOperand(prev_op.getOperand());
+    return getResult();
+  }
+
+  if (auto elements = operands.front().dyn_cast_or_null<DenseElementsAttr>()) {
+    return elements.reshape(getResult().getType().cast<ShapedType>());
+  }
+
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -1559,6 +1740,15 @@ LogicalResult deriveShapeFromFirstOperand(
           RankedTensorType::get({operand_type.getRank()}, shape_scalar_type),
           shape_values)};
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ConvOp
+//===----------------------------------------------------------------------===//
+
+void ConvOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                         MLIRContext* context) {
+  results.insert<FoldPadIntoConv>(context);
 }
 
 }  // namespace xla_hlo

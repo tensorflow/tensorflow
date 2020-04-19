@@ -1,0 +1,46 @@
+op {
+  name: "LoadAndRemapMatrix"
+  input_arg {
+    name: "ckpt_path"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "old_tensor_name"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "row_remapping"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "col_remapping"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "initializing_values"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "output_matrix"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "num_rows"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_cols"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "max_rows_in_memory"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  is_stateful: true
+}

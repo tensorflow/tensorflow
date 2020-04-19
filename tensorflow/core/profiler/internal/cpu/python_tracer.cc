@@ -50,8 +50,6 @@ class PythonTracer : public ProfilerInterface {
 
   Status CollectData(XSpace* space) override;
 
-  DeviceType GetDeviceType() override { return DeviceType::kCpu; }
-
  private:
   bool recording_ = false;
 
@@ -107,10 +105,10 @@ Status PythonTracer::CollectData(XSpace* space) {
 
 // Not in anonymous namespace for testing purposes.
 std::unique_ptr<ProfilerInterface> CreatePythonTracer(
-    const profiler::ProfilerOptions& options) {
-  if (!options.enable_python_tracer) return nullptr;
+    const ProfileOptions& options) {
+  if (options.python_tracer_level() == 0) return nullptr;
   // This ProfilerInterface rely on TraceMeRecorder to be active.
-  if (options.host_tracer_level == 0) return nullptr;
+  if (options.host_tracer_level() == 0) return nullptr;
   return absl::make_unique<PythonTracer>();
 }
 

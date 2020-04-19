@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
+
 package(
     licenses = ["notice"],  # Apache 2.0
 )
@@ -9,12 +11,12 @@ cc_library(
     visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
     deps = [
         ":save_profile",
-        "//tensorflow:grpc++",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler:profiler_analysis_proto_cc",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
         "@com_google_absl//absl/strings",
+        tf_grpc_cc_dependency(),
     ],
 )
 
@@ -26,8 +28,8 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:profiler_service_proto_cc",
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],

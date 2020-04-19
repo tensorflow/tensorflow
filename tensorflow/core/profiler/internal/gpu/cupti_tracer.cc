@@ -106,14 +106,23 @@ const char *getActivityUnifiedMemoryKindString(
   return "<UNKNOWN>";
 }
 
+// CUPTI_ERROR_INSUFFICIENT_PRIVILEGES is introduced at CUDA 10.1.
+#if CUDA_VERSION <= 10000
+#define CUPTI_ERROR_INSUFFICIENT_PRIVILEGES 35
+#endif
+
 #define RETURN_IF_CUPTI_ERROR(expr)                                         \
   do {                                                                      \
     CUptiResult status = expr;                                              \
-    if (status != CUPTI_SUCCESS) {                                          \
+    if (ABSL_PREDICT_FALSE(status != CUPTI_SUCCESS)) {                      \
       const char *errstr = "";                                              \
       cupti_interface_->GetResultString(status, &errstr);                   \
       LOG(ERROR) << "function " << #expr << "failed with error " << errstr; \
-      return errors::Internal(absl::StrCat("cutpi call error", errstr));    \
+      if (status == CUPTI_ERROR_INSUFFICIENT_PRIVILEGES) {                  \
+        return errors::PermissionDenied("CUPTI need root access!");         \
+      } else {                                                              \
+        return errors::Internal(absl::StrCat("CUPTI call error", errstr));  \
+      }                                                                     \
     }                                                                       \
   } while (false)
 
@@ -1348,7 +1357,7 @@ absl::string_view AnnotationMap::LookUp(uint32 device_id,
 }
 
 bool CuptiTracer::IsAvailable() const {
-  return !activity_tracing_enabled_ && !api_tracing_enabled_;
+  return NumGpus() && !activity_tracing_enabled_ && !api_tracing_enabled_;
 }
 
 int CuptiTracer::NumGpus() {
@@ -1379,7 +1388,9 @@ void CuptiTracer::Enable(const CuptiTracerOptions &option,
         option, cupti_interface_, collector));
   }
 
-  EnableApiTracing().IgnoreError();
+  Status status = EnableApiTracing();
+  need_root_access_ |= status.code() == error::PERMISSION_DENIED;
+
   if (option_->enable_activity_api) {
     EnableActivityTracing().IgnoreError();
   }
@@ -1629,6 +1640,17 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
     collector_->OnEventsDropped("CUpti activity buffer", dropped);
   }
   return Status::OK();
+}
+
+/*static*/ std::string CuptiTracer::ErrorIfAny() {
+  if (CuptiTracer::NumGpus() == 0) {
+    return "No GPU detected.";
+  } else if (CuptiTracer::GetCuptiTracerSingleton()->NeedRootAccess()) {
+    return "Insufficient privilege to run libcupti (you need root permission).";
+  } else if (CuptiTracer::GetTimestamp() == 0) {
+    return "Failed to load libcupti (is it installed and accessible?)";
+  }
+  return "";
 }
 
 }  // namespace profiler

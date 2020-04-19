@@ -1093,6 +1093,7 @@ py_test(
     srcs = ["ragged_map_fn_op_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":ragged",  # fixdeps: keep
         ":ragged_factory_ops",
@@ -1107,7 +1108,6 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
-        "//tensorflow/python/keras:backend",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

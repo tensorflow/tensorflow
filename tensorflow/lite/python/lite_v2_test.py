@@ -137,7 +137,10 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     to_save = root.f.get_concrete_function()
     return (to_save, calibration_gen)
 
-  def testPostTrainingCalibrateAndQuantize(self):
+  @parameterized.named_parameters(
+      ('EnableMlirQuantizer', True),  # enable mlir quantizer
+      ('DisableMlirQuantizer', False))  # disable mlir quantizer
+  def testPostTrainingCalibrateAndQuantize(self, mlir_quantizer):
     func, calibration_gen = self._getCalibrationQuantizeModel()
 
     # Convert float model.
@@ -149,6 +152,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.representative_dataset = calibration_gen
+    quantized_converter._experimental_new_quantizer = mlir_quantizer
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 
@@ -165,7 +169,10 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite), len(float_tflite))
 
-  def testCalibrateAndQuantizeBuiltinInt8(self):
+  @parameterized.named_parameters(
+      ('EnableMlirQuantizer', True),  # enable mlir quantizer
+      ('DisableMlirQuantizer', False))  # disable mlir quantizer
+  def testCalibrateAndQuantizeBuiltinInt8(self, mlir_quantizer):
     func, calibration_gen = self._getCalibrationQuantizeModel()
 
     # Convert float model.
@@ -180,6 +187,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
         lite.OpsSet.TFLITE_BUILTINS_INT8
     ]
     quantized_converter.representative_dataset = calibration_gen
+    quantized_converter._experimental_new_quantizer = mlir_quantizer
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 
@@ -263,11 +271,11 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter.representative_dataset = calibration_gen
 
     # default quantizer
-    quantized_converter.experimental_new_quantizer = False
+    quantized_converter._experimental_new_quantizer = False
     old_tflite = quantized_converter.convert()
 
     # new quantizer
-    quantized_converter.experimental_new_quantizer = True
+    quantized_converter._experimental_new_quantizer = True
     new_tflite = quantized_converter.convert()
 
     for _ in range(5):
@@ -365,19 +373,22 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
 
       input_details = interpreter.get_input_details()
       self.assertLen(input_details, 2)
-      self.assertEqual('inputA', input_details[0]['name'])
+      self.assertStartsWith(input_details[0]['name'], 'inputA')
       self.assertEqual(np.float32, input_details[0]['dtype'])
       self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
       self.assertEqual((0., 0.), input_details[0]['quantization'])
 
-      self.assertEqual('inputB', input_details[1]['name'])
+      self.assertStartsWith(
+          input_details[1]['name'],
+          'inputB',
+      )
       self.assertEqual(np.float32, input_details[1]['dtype'])
       self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
       self.assertEqual((0., 0.), input_details[1]['quantization'])
 
       output_details = interpreter.get_output_details()
       self.assertLen(output_details, 1)
-      self.assertEqual('add', output_details[0]['name'])
+      self.assertStartsWith(output_details[0]['name'], 'add')
       self.assertEqual(np.float32, output_details[0]['dtype'])
       self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
       self.assertEqual((0., 0.), output_details[0]['quantization'])
