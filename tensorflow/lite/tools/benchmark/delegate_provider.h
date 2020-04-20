@@ -58,7 +58,7 @@ class DelegateProvider {
                   const std::string& usage) const {
     return Flag(
         name, [params, name](const T& val) { params->Set<T>(name, val); },
-        default_params_.Get<T>(name), usage, Flag::OPTIONAL);
+        default_params_.Get<T>(name), usage, Flag::kOptional);
   }
   BenchmarkParams default_params_;
 };
