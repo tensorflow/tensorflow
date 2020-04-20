@@ -23,6 +23,15 @@ func @unknown_op(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: not_whitelisted_op
+func @not_whitelisted_op(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<?x?x?xf32> {
+  // CHECK: tf.TensorListReserve
+  %0 = "tf.TensorListReserve"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x?x?xf32>>>
+  // CHECK: tf.TensorListGetItem
+  %1 = "tf.TensorListGetItem"(%0, %arg2, %arg0) : (tensor<!tf.variant<tensor<?x?x?xf32>>>, tensor<i32>, tensor<3xi32>) -> tensor<?x?x?xf32>
+  return %1 : tensor<?x?x?xf32>
+}
+
 // CHECK-LABEL: unranked_operand
 func @unranked_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: tf.Abs

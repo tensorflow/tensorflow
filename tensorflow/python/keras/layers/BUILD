@@ -46,7 +46,6 @@ py_library(
         ":recurrent_v2",
         ":rnn_cell_wrapper_v2",
         ":wrappers",
-        "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras/layers/preprocessing",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
@@ -631,6 +630,7 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
+        "no_rocm",
         "notsan",
     ],
     deps = [

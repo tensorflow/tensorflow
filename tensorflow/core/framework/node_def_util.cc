@@ -158,6 +158,15 @@ const AttrValue* AttrSlice::Find(StringPiece attr_name) const {
   return nullptr;
 }
 
+const AttrValue* AttrSlice::FindByString(const string& attr_name) const {
+  auto iter = attrs_->find(attr_name);
+  if (iter != attrs_->end()) {
+    return &iter->second;
+  } else {
+    return nullptr;
+  }
+}
+
 Status AttrSlice::Find(StringPiece attr_name,
                        const AttrValue** attr_value) const {
   *attr_value = Find(attr_name);

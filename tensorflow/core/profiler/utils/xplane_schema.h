@@ -52,6 +52,7 @@ enum HostEventType {
   kSessionRun,
   kFunctionRun,
   kRunGraph,
+  kTfOpRun,
   kEagerKernelExecute,
   kExecutorStateProcess,
   kExecutorDoneCallback,

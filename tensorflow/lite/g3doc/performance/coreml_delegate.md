@@ -190,6 +190,8 @@ Following ops are supported by the Core ML delegate.
 *   ResizeBilinear
 *   SoftMax
 *   Tanh
+*   TransposeConv
+    *   Weights should be constant.
 
 ## Feedback
 

@@ -720,8 +720,9 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        logs: Dict. Currently no data is passed to this argument for this method
-          but that may change in the future.
+        logs: Dict. Currently the output of the last call to `on_epoch_end()`
+          is passed to this argument for this method but that may change in
+          the future.
     """
 
   @doc_controls.for_subclass_implementers
@@ -742,7 +743,8 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        logs: Dict. Currently no data is passed to this argument for this method
+        logs: Dict. Currently the output of the last call to
+          `on_test_batch_end()` is passed to this argument for this method
           but that may change in the future.
     """
 
@@ -1888,41 +1890,33 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   def _configure_embeddings(self):
     """Configure the Projector for embeddings."""
     # TODO(omalleyt): Add integration tests.
+    from google.protobuf import text_format
     from tensorflow.python.keras.layers import embeddings
-    try:
-      from tensorboard.plugins import projector
-    except ImportError:
-      raise ImportError('Failed to import TensorBoard. Please make sure that '
-                        'TensorBoard integration is complete."')
-    config = projector.ProjectorConfig()
+    from tensorflow.python.keras.protobuf import projector_config_pb2
+
+    config = projector_config_pb2.ProjectorConfig()
     for layer in self.model.layers:
       if isinstance(layer, embeddings.Embedding):
         embedding = config.embeddings.add()
-        embedding.tensor_name = layer.embeddings.name
+        embedding.tensor_name = layer.name + '/.ATTRIBUTES/VARIABLE_VALUE'
 
         if self.embeddings_metadata is not None:
           if isinstance(self.embeddings_metadata, str):
             embedding.metadata_path = self.embeddings_metadata
           else:
-            if layer.name in embedding.metadata_path:
+            if layer.name in self.embeddings_metadata.keys():
               embedding.metadata_path = self.embeddings_metadata.pop(layer.name)
 
-    if self.embeddings_metadata:
+    if self.embeddings_metadata and not isinstance(self.embeddings_metadata,
+                                                   str):
       raise ValueError('Unrecognized `Embedding` layer names passed to '
                        '`keras.callbacks.TensorBoard` `embeddings_metadata` '
                        'argument: ' + str(self.embeddings_metadata.keys()))
 
-    class DummyWriter(object):
-      """Dummy writer to conform to `Projector` API."""
-
-      def __init__(self, logdir):
-        self.logdir = logdir
-
-      def get_logdir(self):
-        return self.logdir
-
-    writer = DummyWriter(self._log_write_dir)
-    projector.visualize_embeddings(writer, config)
+    config_pbtxt = text_format.MessageToString(config)
+    path = os.path.join(self._log_write_dir, 'projector_config.pbtxt')
+    with open(path, 'w') as f:
+      f.write(config_pbtxt)
 
   def _push_writer(self, writer, step):
     """Sets the default writer for custom batch-level summaries."""

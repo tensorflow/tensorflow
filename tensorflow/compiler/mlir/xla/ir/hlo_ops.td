@@ -477,7 +477,7 @@ def HLO_AfterAllOp : HLO_Op<"after_all", []> {
   let results = (outs HLO_Token);
 }
 
-def HLO_ConditionalOp: HLO_Op<"conditional", [NoSideEffect]> {
+def HLO_ConditionalOp: HLO_Op<"conditional", []> {
   string summary = "Conditional operator";
 
   string description = [{
@@ -501,7 +501,7 @@ def HLO_ConditionalOp: HLO_Op<"conditional", [NoSideEffect]> {
   let hasCustomHLOConverter = 1;
 }
 
-def HLO_WhileOp: HLO_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
+def HLO_WhileOp: HLO_Op<"while", [SameOperandsAndResultType]> {
   string summary = "While operator";
 
   string description = [{
@@ -678,7 +678,7 @@ def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_Tensor:$update,
-    Variadic<HLO_Tensor>:$start_indices
+    Variadic<HLO_ScalarIntTensor>:$start_indices
   );
 
   let results = (outs HLO_Tensor:$result);

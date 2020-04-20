@@ -450,7 +450,7 @@ retained with length 1.
 }
 
 def TFL_TransposeConvOp:
-    TFL_Op<"transpose_conv", [NoSideEffect]> {
+    TFL_Op<"transpose_conv", [NoSideEffect, TFL_GpuTargetOp]> {
   let summary = "Transpose convolution operator";
 
   let description = [{
@@ -1658,7 +1658,7 @@ def TFL_MaxPoolingWithArgMax2DOp :
 }
 
 def TFL_MaxUnpooling2DOp :
-    Op<TFL_Dialect, "max_unpooling_2d", [NoSideEffect]> {
+    Op<TFL_Dialect, "max_unpooling_2d", [NoSideEffect, TFL_GpuTargetOp]> {
   let summary = "Max Unpool 2D";
 
   let description = [{
@@ -1711,7 +1711,7 @@ def TFL_MaximumOp : TFL_Op<"maximum", [
   let hasOptions = 0;
 }
 
-def TFL_MeanOp : TFL_Op<"mean", [NoSideEffect]> {
+def TFL_MeanOp : TFL_Op<"mean", [NoSideEffect, TFL_GpuTargetOp]> {
   let summary = "Mean operator";
 
   let description = [{
@@ -2571,7 +2571,8 @@ def TFL_TanhOp: TFL_Op<"tanh", [
     // zero_point = central_value
     // scale = 1. / (central_value - min_value)
     FixedResultScale<Int8UniformQuantizedType<0, 78125, -7>>,
-    FixedResultScale<UInt8UniformQuantizedType<128, 78125, -7>>]> {
+    FixedResultScale<UInt8UniformQuantizedType<128, 78125, -7>>,
+    TFL_GpuTargetOp]> {
   let summary = "Hyperbolic tangent operator";
 
   let description = [{
@@ -2777,7 +2778,8 @@ def TFL_SpaceToDepthOp: TFL_Op<"space_to_depth", [
     NoSideEffect,
     SameOperandsAndResultsScale,
     PredOpTrait<"input and output must have same element type",
-      TCresVTEtIsSameAsOp<0, 0>>
+      TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_GpuTargetOp
   ]> {
   let summary = "SpaceToDepth operator";
 

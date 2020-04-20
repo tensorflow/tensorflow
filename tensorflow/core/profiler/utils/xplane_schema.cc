@@ -53,6 +53,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"SessionRun", kSessionRun},
       {"FunctionRun", kFunctionRun},
       {"RunGraph", kRunGraph},
+      {"TfOpRun", kTfOpRun},
       {"EagerKernelExecute", kEagerKernelExecute},
       {"ExecutorState::Process", kExecutorStateProcess},
       {"ExecutorDoneCallback", kExecutorDoneCallback},

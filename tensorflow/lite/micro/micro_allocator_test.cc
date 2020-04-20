@@ -68,7 +68,8 @@ TF_LITE_MICRO_TEST(TestInitializeRuntimeTensor) {
   TfLiteContext context;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator simple_allocator(arena, arena_size);
+  tflite::SimpleMemoryAllocator simple_allocator(micro_test::reporter, arena,
+                                                 arena_size);
 
   const tflite::Tensor* tensor = tflite::testing::Create1dFlatbufferTensor(100);
   const flatbuffers::Vector<flatbuffers::Offset<tflite::Buffer>>* buffers =
@@ -92,7 +93,8 @@ TF_LITE_MICRO_TEST(TestInitializeQuantizedTensor) {
   TfLiteContext context;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator simple_allocator(arena, arena_size);
+  tflite::SimpleMemoryAllocator simple_allocator(micro_test::reporter, arena,
+                                                 arena_size);
 
   const tflite::Tensor* tensor =
       tflite::testing::CreateQuantizedFlatbufferTensor(100);
@@ -117,7 +119,8 @@ TF_LITE_MICRO_TEST(TestMissingQuantization) {
   TfLiteContext context;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator simple_allocator(arena, arena_size);
+  tflite::SimpleMemoryAllocator simple_allocator(micro_test::reporter, arena,
+                                                 arena_size);
 
   const tflite::Tensor* tensor =
       tflite::testing::CreateMissingQuantizationFlatbufferTensor(100);

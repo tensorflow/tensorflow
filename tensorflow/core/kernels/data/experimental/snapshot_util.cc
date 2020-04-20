@@ -209,13 +209,27 @@ Status Writer::WriteRecord(const absl::Cord& data) {
 }
 #endif  // PLATFORM_GOOGLE
 
-Reader::Reader(RandomAccessFile* file, const string& compression_type,
+Status Reader::Create(Env* env, const std::string& filename,
+                      const string& compression_type, int version,
+                      const DataTypeVector& dtypes,
+                      std::unique_ptr<Reader>* out_reader) {
+  *out_reader =
+      absl::WrapUnique(new Reader(filename, compression_type, version, dtypes));
+
+  return (*out_reader)->Initialize(env);
+}
+
+Reader::Reader(const std::string& filename, const string& compression_type,
                int version, const DataTypeVector& dtypes)
-    : file_(file),
-      input_stream_(new io::RandomAccessInputStream(file)),
+    : filename_(filename),
       compression_type_(compression_type),
       version_(version),
-      dtypes_(dtypes) {
+      dtypes_(dtypes) {}
+
+Status Reader::Initialize(Env* env) {
+  TF_RETURN_IF_ERROR(Env::Default()->NewRandomAccessFile(filename_, &file_));
+  input_stream_ = std::make_unique<io::RandomAccessInputStream>(file_.get());
+
 #if defined(IS_SLIM_BUILD)
   if (compression_type_ != io::compression::kNone) {
     LOG(ERROR) << "Compression is unsupported on mobile platforms. Turning "
@@ -232,16 +246,16 @@ Reader::Reader(RandomAccessFile* file, const string& compression_type,
   } else if (compression_type_ == io::compression::kSnappy) {
     if (version_ == 0) {
       input_stream_ = absl::make_unique<io::SnappyInputBuffer>(
-          file_, /*input_buffer_bytes=*/kSnappyReaderInputBufferSizeBytes,
+          file_.get(), /*input_buffer_bytes=*/kSnappyReaderInputBufferSizeBytes,
           /*output_buffer_bytes=*/kSnappyReaderOutputBufferSizeBytes);
     } else {
       input_stream_ =
-          absl::make_unique<io::BufferedInputStream>(file_, 64 << 20);
+          absl::make_unique<io::BufferedInputStream>(file_.get(), 64 << 20);
     }
   }
 #endif  // IS_SLIM_BUILD
-  simple_tensor_mask_.reserve(dtypes.size());
-  for (const auto& dtype : dtypes) {
+  simple_tensor_mask_.reserve(dtypes_.size());
+  for (const auto& dtype : dtypes_) {
     if (DataTypeCanUseMemcpy(dtype)) {
       simple_tensor_mask_.push_back(true);
       num_simple_++;
@@ -250,6 +264,8 @@ Reader::Reader(RandomAccessFile* file, const string& compression_type,
       num_complex_++;
     }
   }
+
+  return Status::OK();
 }
 
 Status Reader::ReadTensors(std::vector<Tensor>* read_tensors) {

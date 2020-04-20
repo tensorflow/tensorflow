@@ -580,8 +580,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
 
  private:
   // Links internal tensors with external user-facing objects.
-  std::vector<TensorTieDef> LinkTensors(
-      const std::vector<Value<TensorRef<BHWC>>*>& values) {
+  std::vector<TensorTieDef> LinkTensors(const std::vector<Value*>& values) {
     std::vector<TensorTieDef> links;
     links.reserve(values.size());
     for (const auto& value : values) {
@@ -604,7 +603,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
       internal_def.object_def.user_provided = false;
       AccessType access =
           graph_.IsGraphInput(value->id) ? AccessType::READ : AccessType::WRITE;
-      links.push_back({value->id, access, external_def, internal_def});
+      links.push_back({value->id, access, internal_def, external_def});
     }
     return links;
   }

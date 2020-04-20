@@ -2295,6 +2295,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "//third_party/eigen3",
         "//tensorflow/core/example:feature_util",
@@ -2554,7 +2555,6 @@ tf_cc_tests(
     ],
     create_named_test_suite = True,
     deps = [
-        ":core_cpu_internal",
         ":lib",
         ":lib_internal",
         ":lib_test_internal",

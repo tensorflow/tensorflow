@@ -52,11 +52,13 @@ namespace xla {
 class Device {
  public:
   explicit Device(int id, std::unique_ptr<LocalDeviceState> local_device_state,
-                  absl::string_view platform_name, int host_id = 0)
+                  std::string platform_name, std::string device_kind,
+                  int host_id = 0)
       : id_(id),
         local_device_state_(std::move(local_device_state)),
         host_id_(host_id),
-        platform_name_(platform_name) {}
+        platform_name_(std::move(platform_name)),
+        device_kind_(std::move(device_kind)) {}
   virtual ~Device() {}
 
   // The ID of this device. IDs are unique among devices of this type
@@ -81,6 +83,9 @@ class Device {
 
   const std::string& platform_name() const { return platform_name_; }
 
+  // A vendor-dependent string that uniquely identifies the kind of device.
+  const std::string& device_kind() const { return device_kind_; }
+
   virtual std::string DebugString() const;
 
  private:
@@ -88,6 +93,7 @@ class Device {
   const std::unique_ptr<LocalDeviceState> local_device_state_;
   const int host_id_;
   const std::string platform_name_;
+  const std::string device_kind_;
 };
 
 // Forward declaration.
@@ -544,15 +550,20 @@ struct CompileOptions {
   // The layouts of the arguments that the computation should expect.
   absl::optional<std::vector<Shape>> argument_layouts;
 
-  // If true, the arguments to the computation will be wrapped in a tuple and
-  // passed as a single parameter.
-  bool tuple_arguments = false;
+  // If true, the supplied computation expects its arguments to be wrapped in a
+  // tuple and passed as a single parameter.
+  bool parameter_is_tupled_arguments = false;
 
   // XLA's compilation time options.
   ExecutableBuildOptions executable_build_options;
 };
 
 struct ExecuteOptions {
+  // If true, the client must pass a single PyLocalBuffer which contains all of
+  // the arguments as a single XLA tuple, otherwise each argument must be
+  // passed in its own PyLocalBuffer. May only be true if the executable was
+  // compiled with parameter_is_tupled_arguments==true.
+  bool arguments_are_tupled = false;
   // If true, the computation must return a tuple, which will be destructured
   // into its elements.
   bool untuple_result = false;
@@ -570,8 +581,10 @@ class PyLocalExecutable {
       CompileOptions options);
 
   PyLocalExecutable(std::vector<std::unique_ptr<LocalExecutable>> executables,
-                    bool tuple_arguments, DeviceAssignment device_assignment,
-                    PyLocalClient* client);
+                    bool parameter_is_tupled_arguments,
+                    DeviceAssignment device_assignment,
+                    std::vector<std::pair<int, int>> local_logical_device_ids,
+                    std::vector<Device*> local_devices, PyLocalClient* client);
 
   PyLocalClient* client() const { return client_; }
 
@@ -652,7 +665,7 @@ class PyLocalExecutable {
 
   // True if the executables were compiled expecting arguments in a single
   // tuple.
-  const bool tuple_arguments_;
+  const bool parameter_is_tupled_arguments_;
 
   // The replica and partition indices of device_assignment_ to be run by this
   // client. On single-host platforms without partitioning, this is all replicas

@@ -549,7 +549,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           if (!background_threads_started_) {
             for (int i = 0; i < dataset()->num_reader_threads_; ++i) {
               ++num_active_threads_;
-              thread_pool_->Schedule([this, i]() { ReadingFilesLoop(i); });
+              thread_pool_->Schedule(
+                  [this, i, env = ctx->env()]() { ReadingFilesLoop(env, i); });
             }
             background_threads_started_ = true;
           }
@@ -731,13 +732,11 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
        private:
         // Reads one file end to end.
-        Status ReadFile(const string& filename) {
-          std::unique_ptr<RandomAccessFile> file;
-          TF_RETURN_IF_ERROR(
-              Env::Default()->NewRandomAccessFile(filename, &file));
-          snapshot_util::Reader reader(file.get(), dataset()->compression_,
-                                       version_, dataset()->output_dtypes());
-
+        Status ReadFile(Env* env, const string& filename) {
+          std::unique_ptr<snapshot_util::Reader> reader;
+          TF_RETURN_IF_ERROR(snapshot_util::Reader::Create(
+              Env::Default(), filename, dataset()->compression_, version_,
+              dataset()->output_dtypes(), &reader));
           while (true) {
             // Wait for a slot in the buffer.
             {
@@ -754,7 +753,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               }
             }
             std::vector<Tensor> read_tensors;
-            Status s = reader.ReadTensors(&read_tensors);
+            Status s = reader->ReadTensors(&read_tensors);
             if (s.ok()) {
               profiler::TraceMe activity(
                   [&]() { return absl::StrCat(prefix(), kSeparator, kParse); },
@@ -787,7 +786,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
         // Pulls one file off the filenames_ list and reads it through. When
         // all files are read, terminates.
-        void ReadingFilesLoop(int i) {
+        void ReadingFilesLoop(Env* env, int i) {
           auto cleanup = gtl::MakeCleanup([this]() {
             mutex_lock l(mu_);
             --num_active_threads_;
@@ -803,7 +802,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               }
               VLOG(2) << "Starting to read: " << filename;
             }
-            Status s = ReadFile(filename);
+            Status s = ReadFile(env, filename);
             // If we get to the end of the file, it's a clean termination and
             // we are at the end of the file. If all files have been processed,
             // then we insert an end_of_sequence marker in the buffer and

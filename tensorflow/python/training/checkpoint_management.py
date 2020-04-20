@@ -511,7 +511,7 @@ def meta_graph_filename(checkpoint_filename, meta_graph_suffix="meta"):
 # TODO(allenl): Allow tf.keras.Model instances in the constructor directly?
 @tf_export("train.CheckpointManager")
 class CheckpointManager(object):
-  """Deletes old checkpoints.
+  """Manages multiple checkpoints by keeping some and deleting unneeded ones.
 
   Example usage:
 

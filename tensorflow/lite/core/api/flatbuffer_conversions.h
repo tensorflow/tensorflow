@@ -39,7 +39,8 @@ class BuiltinDataAllocator {
   template <typename T>
   T* AllocatePOD() {
     static_assert(std::is_pod<T>::value, "Builtin data structure must be POD.");
-    return static_cast<T*>(this->Allocate(sizeof(T)));
+    void* allocated_memory = this->Allocate(sizeof(T));
+    return new (allocated_memory) T;
   }
 
   virtual ~BuiltinDataAllocator() {}

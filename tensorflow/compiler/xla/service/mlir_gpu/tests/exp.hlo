@@ -1,3 +1,4 @@
+// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
 HloModule Exp
 
 ENTRY %Exp (x: f32[2,2]) -> f32[2,2] {

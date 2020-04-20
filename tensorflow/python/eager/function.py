@@ -62,6 +62,7 @@ from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import resource_variable_ops
 
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.profiler import traceme
 from tensorflow.python.util import compat
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import lazy_loader
@@ -112,6 +113,16 @@ def _make_input_signature_hashable(elem, variable_map=None):
   except TypeError:
     assert isinstance(elem, weakref.ReferenceType)
     v = elem()
+
+    # Check if v is a Variable.  Note that we can't use isinstance to check if
+    # it's a variable, since not all variable types are subclass of Variable.
+    # TODO(mdan) Update this to use a generic "Variable" superclass once we
+    # create one.
+    if not (hasattr(v, "shape") and hasattr(v, "dtype")):
+      raise ValueError("Arguments to a tf.function must be Tensors, Variables, "
+                       "or hashable Python objects (or nested structures of "
+                       "these types).\nGot type: %s" % type(v).__name__)
+
     idx = variable_map.get(id(v))
     if idx is None:
       idx = len(variable_map)
@@ -1602,37 +1613,40 @@ class ConcreteFunction(object):
 
   def _call_impl(self, args, kwargs, cancellation_manager=None):
     """See `__call__` for details."""
-    if self._arg_keywords is None or self._num_positional_args is None:
-      raise AssertionError(
-          "Tried to call a concrete function obtained from an internal API "
-          "through the public interface. Use get_concrete_function instead.")
-    if len(args) > self._num_positional_args:
-      raise TypeError(
-          ("Expected at most {} positional arguments (and the rest keywords, "
-           "of {}), got {}. When calling a concrete function, positional "
-           "arguments may not be bound to Tensors within nested structures."
-          ).format(self._num_positional_args, self._arg_keywords, args))
-    args = list(args)
-    for keyword in self._arg_keywords[len(args):]:
-      try:
-        args.append(kwargs.pop(compat.as_str(keyword)))
-      except KeyError:
-        specified_keywords = (list(self._arg_keywords[:len(args)])
-                              + list(kwargs.keys()))
+    with traceme.TraceMe(self._func_graph.name,
+                         tf_function_call="concrete"):
+      if self._arg_keywords is None or self._num_positional_args is None:
+        raise AssertionError(
+            "Tried to call a concrete function obtained from an internal API "
+            "through the public interface. Use get_concrete_function instead.")
+      if len(args) > self._num_positional_args:
         raise TypeError(
-            "Expected argument names {} but got values for {}. Missing: {}."
-            .format(
-                list(self._arg_keywords),
-                specified_keywords,
-                list(set(self._arg_keywords) - set(specified_keywords))))
-    if kwargs:
-      positional_arg_keywords = set(self._arg_keywords[:len(args)])
-      for unused_key in kwargs:
-        if unused_key in positional_arg_keywords:
-          raise TypeError("Got two values for keyword '{}'.".format(unused_key))
-      raise TypeError("Keyword arguments {} unknown. Expected {}.".format(
-          list(kwargs.keys()), list(self._arg_keywords)))
-    return self._call_flat(args, self.captured_inputs, cancellation_manager)
+            ("Expected at most {} positional arguments (and the rest keywords, "
+             "of {}), got {}. When calling a concrete function, positional "
+             "arguments may not be bound to Tensors within nested structures."
+            ).format(self._num_positional_args, self._arg_keywords, args))
+      args = list(args)
+      for keyword in self._arg_keywords[len(args):]:
+        try:
+          args.append(kwargs.pop(compat.as_str(keyword)))
+        except KeyError:
+          specified_keywords = (list(self._arg_keywords[:len(args)])
+                                + list(kwargs.keys()))
+          raise TypeError(
+              "Expected argument names {} but got values for {}. Missing: {}."
+              .format(
+                  list(self._arg_keywords),
+                  specified_keywords,
+                  list(set(self._arg_keywords) - set(specified_keywords))))
+      if kwargs:
+        positional_arg_keywords = set(self._arg_keywords[:len(args)])
+        for unused_key in kwargs:
+          if unused_key in positional_arg_keywords:
+            raise TypeError("Got two values for keyword '{}'.".format(
+                unused_key))
+        raise TypeError("Keyword arguments {} unknown. Expected {}.".format(
+            list(kwargs.keys()), list(self._arg_keywords)))
+      return self._call_flat(args, self.captured_inputs, cancellation_manager)
 
   def _filtered_call(self, args, kwargs):
     """Executes the function, filtering arguments from the Python function.

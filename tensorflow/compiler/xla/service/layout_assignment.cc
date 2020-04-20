@@ -2315,6 +2315,7 @@ Status LayoutAssignment::ClearPreviousPassSideEffects(HloModule* module) {
     HloDCE dce;
     TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
     TF_RETURN_IF_ERROR(dce.Run(module).status());
+    call_graph_ = CallGraph::Build(module);
   }
   return Status::OK();
 }

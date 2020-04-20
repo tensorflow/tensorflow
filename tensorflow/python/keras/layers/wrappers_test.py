@@ -800,29 +800,20 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       assert len(layer.get_updates_for(x)) == 2
 
   def test_Bidirectional_losses(self):
-    with self.cached_session():
-      x = keras.layers.Input(shape=(3, 2))
-      x_reachable_loss = x * x
-      layer = keras.layers.Bidirectional(
-          keras.layers.SimpleRNN(
-              3, kernel_regularizer='l1', bias_regularizer='l1',
-              activity_regularizer='l1'))
-      _ = layer(x)
-      assert len(layer.losses) == 6
-      assert len(layer.get_losses_for(None)) == 4
-      assert len(layer.get_losses_for(x)) == 2
+    x = keras.layers.Input(shape=(3, 2))
+    layer = keras.layers.Bidirectional(
+        keras.layers.SimpleRNN(
+            3,
+            kernel_regularizer='l1',
+            bias_regularizer='l1',
+            activity_regularizer='l1'))
+    _ = layer(x)
+    assert len(layer.losses) == 6
 
-      # Create a random tensor that is not conditional on the inputs.
-      with keras.backend.get_graph().as_default():
-        const_tensor = constant_op.constant(1)
-
-      layer.forward_layer.add_loss(x_reachable_loss, inputs=x)
-      layer.forward_layer.add_loss(const_tensor, inputs=None)
-      layer.backward_layer.add_loss(x_reachable_loss, inputs=x)
-      layer.backward_layer.add_loss(const_tensor, inputs=None)
-      assert len(layer.losses) == 10
-      assert len(layer.get_losses_for(None)) == 6
-      assert len(layer.get_losses_for(x)) == 4
+    loss = x * x
+    layer.forward_layer.add_loss(loss)
+    layer.backward_layer.add_loss(loss, inputs=x)
+    assert len(layer.losses) == 8
 
   def test_Bidirectional_with_constants(self):
     with self.cached_session():

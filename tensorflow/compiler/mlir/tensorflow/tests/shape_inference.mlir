@@ -331,4 +331,21 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
   func @stateful_partitioned_call_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
     return %arg0 : tensor<?xi32>
   }
+
+  // Test propagation involving const values across caller and callee.
+  func @partitioned_call_const(%arg0 : tensor<6xf32>) -> tensor<*xf32> {
+    %0 = "tf.Const"() {value = dense<[3, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %1 = "tf.PartitionedCall"(%0) {config = "", config_proto = "", executor_type = "", f = @partitioned_call_func_const} : (tensor<2xi32>) -> (tensor<2xi32>)
+    // CHECK: "tf.Reshape"
+    // CHECK-SAME: tensor<3x2xf32>
+    %2 = "tf.Reshape"(%arg0, %1) : (tensor<6xf32>, tensor<2xi32>) -> tensor<*xf32>
+    return %2 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @partitioned_call_func_const
+  func @partitioned_call_func_const(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<[3, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+    // CHECK: return %[[CONST]]
+    return %arg0 : tensor<2xi32>
+  }
 }

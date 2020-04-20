@@ -24,7 +24,8 @@ static const char kCpuPlatformName[] = "cpu";
 
 CpuDevice::CpuDevice(int id,
                      std::unique_ptr<LocalDeviceState> local_device_state)
-    : Device(id, std::move(local_device_state), kCpuPlatformName) {}
+    : Device(id, std::move(local_device_state), kCpuPlatformName,
+             /*device_kind=*/kCpuPlatformName) {}
 
 StatusOr<std::shared_ptr<PyLocalClient>> GetCpuClient(bool asynchronous) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,

@@ -1183,8 +1183,10 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
 
   // Register the additional async copy with the interval tree to keep track of
   // the limit at any given time.
-  pending_async_copies_.push_back({start_time, end_time, memory_space});
-  async_copy_interval_tree_.Add(start_time, end_time, kDummyChunk);
+  pending_async_copies_.push_back(
+      {start_time, copy_done_schedule_before_time, memory_space});
+  async_copy_interval_tree_.Add(start_time, copy_done_schedule_before_time,
+                                kDummyChunk);
   if (memory_space == MemorySpaceAssignment::MemorySpace::kAlternate) {
     async_copy_ordering_.AddCopy(pending_async_copies_.back());
   }
@@ -1446,12 +1448,12 @@ bool AlternateMemoryBestFitHeap::Prefetch(
     // If this additional asynchronous copy would violate the limit, try a
     // different interval.
     if (ViolatesMaximumOutstandingAsyncCopies(alternate_mem_interval.start,
-                                              request.end_time)) {
+                                              request.latest_prefetch_time)) {
       VLOG(4) << "This would violate the outstanding async copy limit.";
       continue;
     }
     if (ViolatesAsyncCopyOrdering(alternate_mem_interval.start,
-                                  request.end_time)) {
+                                  request.latest_prefetch_time)) {
       VLOG(4) << "This would violate asynchronous copy ordering.";
       continue;
     }

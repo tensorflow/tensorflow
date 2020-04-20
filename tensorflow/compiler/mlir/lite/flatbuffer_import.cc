@@ -64,7 +64,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/xla/statusor.h"

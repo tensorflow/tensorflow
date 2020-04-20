@@ -1,5 +1,5 @@
 op {
-  name: "BeginEpoch"
+  name: "CreateJob"
   input_arg {
     name: "dataset_id"
     type: DT_INT64
@@ -12,8 +12,12 @@ op {
     name: "protocol"
     type: DT_STRING
   }
+  input_arg {
+    name: "processing_mode"
+    type: DT_STRING
+  }
   output_arg {
-    name: "epoch_id"
-    type: DT_INT64
+    name: "job_token"
+    type: DT_VARIANT
   }
 }

@@ -143,7 +143,7 @@ Status HasSingleGraphSingleOpIslandsFunctions(mlir::ModuleOp module) {
       return mlir::WalkResult::interrupt();
     }
 
-    if (!has_single_element(block)) {
+    if (!hasSingleElement(block)) {
       status = errors::FailedPrecondition(
           kInvalidExecutorGraphMsg,
           "function does not only contain a single tf_executor.graph.");
@@ -236,7 +236,6 @@ class Exporter {
   typedef absl::InlinedVector<Node*, 4> NodeVector;
   absl::flat_hash_map<Operation*, NodeVector> returns_;
   const mlir::Dialect* tf_dialect_;
-  llvm::DenseSet<Operation*> to_delete_;
 };
 
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
@@ -251,6 +250,10 @@ StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
         std::string(op_to_name_.GetUniqueName(func.getName().str())));
 
   node_def->set_op(FunctionLibraryDefinition::kArgOp);
+
+  TF_RETURN_IF_ERROR(SetShapeAttribute("_output_shapes",
+                                       arg.getType().cast<mlir::ShapedType>(),
+                                       node_def->mutable_attr()));
 
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
@@ -418,59 +421,11 @@ bool IsEntryFunctionArg(BlockArgument arg) {
 // name will be used instead of generating a unique name.
 Status Exporter::AddArgumentNode(BlockArgument arg, unsigned index,
                                  llvm::StringRef name) {
-  if (!IsEntryFunctionArg(arg) || !name.empty()) {
-    TF_ASSIGN_OR_RETURN(auto node_def, GetArgumentNode(arg, index, name));
-    Status status;
-    Node* node = graph_->AddNode(*node_def, &status);
-    TF_RETURN_IF_ERROR(status);
-    args_[arg] = node;
-    return status;
-  }
-
-  // If it is an argument from the "main" function, it has only one user, which
-  // is an input node. We recover the original input node and skip adding the
-  // argument node. The new input node will be handled as normal in the
-  // following steps.
-  if (!arg.hasOneUse()) {
-    return errors::FailedPrecondition(
-        "Arg in 'main' should only have one user.");
-  }
-  auto* input = *arg.user_begin();
-  auto* parent = input->getParentOp();
-  auto island = llvm::dyn_cast_or_null<mlir::tf_executor::IslandOp>(parent);
-  if (!island)
-    return errors::FailedPrecondition(
-        "User of arg in 'main' must be in an inner op of a "
-        "tf_executor.island.");
-
-  if (!island.control().use_empty())
-    return errors::FailedPrecondition(
-        "tf_executor.island of user of arg in 'main' must have no control "
-        "output users.");
-
-  auto input_name = input->getName().getStringRef();
-  input_name.consume_back(".input");
-
-  mlir::OpBuilder builder(island.getContext());
-  builder.setInsertionPointToStart(&island.GetBody());
-  auto loc = mlir::NameLoc::get(
-      builder.getIdentifier(op_to_name_.GetUniqueName(input)),
-      builder.getContext());
-  OperationState state(loc, input_name.str());
-  state.attributes.append(input->getAttrs().begin(), input->getAttrs().end());
-  for (auto op : input->getOperands()) {
-    // Skip the argument in the new operation.
-    if (op.isa<BlockArgument>()) continue;
-    state.operands.push_back(op);
-  }
-  state.types.append(input->getResultTypes().begin(),
-                     input->getResultTypes().end());
-  auto* inst = builder.createOperation(state);
-  // If it is one of the specified input names, then the new instruction should
-  // have the same name.
-  op_to_name_.InitOpName(inst, op_to_name_.GetUniqueName(input));
-  input->replaceAllUsesWith(inst);
-  to_delete_.insert(input);
+  TF_ASSIGN_OR_RETURN(auto node_def, GetArgumentNode(arg, index, name));
+  Status status;
+  Node* node = graph_->AddNode(*node_def, &status);
+  TF_RETURN_IF_ERROR(status);
+  args_[arg] = node;
   return Status::OK();
 }
 
@@ -520,9 +475,6 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     absl::flat_hash_set<Node*>* control_ret_nodes) {
   mlir::Block& block = function.front();
 
-  // Determine if _Arg and _Retval nodes should use input and output names.
-  bool graph_as_function = false;
-
   // Extract input & output names if set.
   llvm::SmallVector<llvm::StringRef, 2> input_names;
   llvm::SmallVector<llvm::StringRef, 2> output_names;
@@ -537,7 +489,6 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
         input_names, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
     dict_attr.get("outputs").cast<mlir::StringAttr>().getValue().split(
         output_names, ',', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
-    graph_as_function = configs.graph_as_function;
   }
 
   auto graph = absl::make_unique<Graph>(OpRegistry::Global());
@@ -565,38 +516,24 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
         << ") != terminator operands (" << num_data_results << ")";
     llvm::DenseMap<Operation*, llvm::StringRef> output_op_to_name;
     llvm::StringMap<Operation*> name_to_op;
-    for (auto it : llvm::enumerate(graph_op.GetFetch().getOperands())) {
+    for (const auto& it : llvm::enumerate(graph_op.GetFetch().getOperands())) {
       // Skip control rets.
       if (it.index() >= num_data_results) break;
-      // If there is a result index specified, ensure only one and that it
-      // matches the result index of the op.
-      auto result = it.value().cast<mlir::OpResult>();
+      // TODO(jpienaar): If there is a result index specified, ensure only one
+      // and that it matches the result index of the op.
       std::string orig_name(output_names[it.index()]);
       auto tensor_id = ParseTensorName(orig_name);
       auto name = LegalizeNodeName(
           llvm::StringRef(tensor_id.node().data(), tensor_id.node().size()));
 
-      if (graph_as_function) {
-        // Ensure name does not get reused.
-        (void)exporter.op_to_name_.GetUniqueName(name);
-        continue;
-      }
-
-      Operation* defining_op = GetIslandInnerOpOrSelf(result.getDefiningOp());
-      if (output_op_to_name.insert({defining_op, name}).second) {
-        TF_RET_CHECK(name_to_op.insert({name, defining_op}).second)
-            << "multiple operations associated with the same name";
-        exporter.op_to_name_.InitOpName(defining_op, name);
-      } else {
-        TF_RET_CHECK(output_op_to_name[defining_op] == name)
-            << "associating multiple names with the same op not supported";
-      }
+      // Ensure name does not get reused.
+      (void)exporter.op_to_name_.GetUniqueName(name);
     }
   }
 
   if (!input_names.empty()) {
     TF_RET_CHECK(input_names.size() == block.getNumArguments());
-    for (auto it : llvm::enumerate(function.getArguments())) {
+    for (const auto& it : llvm::enumerate(function.getArguments())) {
       // TODO(lyandy): Update when changing feed/fetch import.
       std::string orig_name(input_names[it.index()]);
       std::string name = LegalizeNodeName(orig_name);
@@ -605,14 +542,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
           << "input port designation not supported";
       // Only assign user of argument the input name if the main graph did not
       // have its _Arg nodes lifted into the functions arguments.
-      if (graph_as_function) {
-        // Ensure name does not get reused.
-        (void)exporter.op_to_name_.GetUniqueName(name);
-      } else {
-        Operation* defining_op =
-            GetIslandInnerOpOrSelf(*it.value().user_begin());
-        exporter.op_to_name_.InitOpName(defining_op, name);
-      }
+      // Ensure name does not get reused.
+      (void)exporter.op_to_name_.GetUniqueName(name);
     }
   }
 
@@ -628,8 +559,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     }
 
     TF_RETURN_IF_ERROR(exporter.AddArgumentNode(
-        arg, index,
-        graph_as_function && !input_names.empty() ? input_names[index] : ""));
+        arg, index, !input_names.empty() ? input_names[index] : ""));
   }
 
   auto convert_called_function = [&](llvm::StringRef name) {
@@ -659,10 +589,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       // tf_executor.NextIteration.Sink will be used instead.
       continue;
     } else if (auto fetch = llvm::dyn_cast<mlir::tf_executor::FetchOp>(inst)) {
-      TF_RETURN_IF_ERROR(exporter.AddFetchNode(
-          function, fetch,
-          graph_as_function ? output_names
-                            : llvm::ArrayRef<llvm::StringRef>()));
+      TF_RETURN_IF_ERROR(exporter.AddFetchNode(function, fetch, output_names));
     } else if (auto island =
                    llvm::dyn_cast<mlir::tf_executor::IslandOp>(inst)) {
       Operation& inner_op = island.GetBody().front();
@@ -697,12 +624,6 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
 
   TF_RETURN_IF_ERROR(
       exporter.GetControlRetNodes(graph_op.GetFetch(), control_ret_nodes));
-
-  // Delete replaced arguments ops.
-  // Note: This is done afterwards to avoid the ops created above from reusing a
-  // memory location of an op to which a mapping has already been assigned.
-  // TODO(jpienaar): Remove this need.
-  for (auto it : exporter.to_delete_) it->erase();
 
   return graph;
 }

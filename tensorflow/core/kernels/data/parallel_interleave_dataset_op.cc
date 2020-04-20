@@ -1326,21 +1326,22 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       Status s = Status::OK();
       BlockingCounter counter(size);
       for (int idx = 0; idx < size; ++idx) {
-        threadpool->Schedule([this, ctx, reader, idx, name, &s, &counter,
-                              elements] {
-          RecordStart(ctx);
-          auto cleanup = gtl::MakeCleanup([this, ctx]() { RecordStop(ctx); });
-          std::shared_ptr<Element> elem;
-          Status ret_status = ReadElement(ctx, reader, idx, name, &elem);
-          mutex_lock l(*mu_);
-          if (!ret_status.ok()) {
-            s.Update(ret_status);
-            counter.DecrementCount();
-            return;
-          }
-          (*elements)[idx] = elem;
-          counter.DecrementCount();
-        });
+        threadpool->Schedule(
+            [this, ctx, reader, idx, name, &s, &counter, elements] {
+              RecordStart(ctx);
+              auto cleanup = gtl::MakeCleanup([this, ctx, &counter]() {
+                RecordStop(ctx);
+                counter.DecrementCount();
+              });
+              std::shared_ptr<Element> elem;
+              Status ret_status = ReadElement(ctx, reader, idx, name, &elem);
+              mutex_lock l(*mu_);
+              if (!ret_status.ok()) {
+                s.Update(ret_status);
+                return;
+              }
+              (*elements)[idx] = elem;
+            });
       }
       counter.Wait();
       return s;

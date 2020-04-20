@@ -1891,6 +1891,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "DynamicStitch",
                                      "Einsum",
                                      "EmptyTensorList",
+                                     "EnsureShape",
                                      "ExtractImagePatches",
                                      "Igamma",
                                      "IgammaGradA",

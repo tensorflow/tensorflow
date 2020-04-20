@@ -1968,7 +1968,7 @@ def indicator_column(categorical_column):
 
   ```python
   name = indicator_column(categorical_column_with_vocabulary_list(
-      'name', ['bob', 'george', 'wanda'])
+      'name', ['bob', 'george', 'wanda']))
   columns = [name, ...]
   features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = input_layer(features, columns)

@@ -459,6 +459,7 @@ cc_library(
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/tanh.h",
         "reference/integer_ops/transpose_conv.h",
+        "reference/l2normalization.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
@@ -529,6 +530,7 @@ cc_library(
         "reference/dequantize.h",
         "reference/floor.h",
         "reference/fully_connected.h",
+        "reference/l2normalization.h",
         "reference/legacy_reference_ops.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
@@ -1036,7 +1038,7 @@ cc_library(
         "//conditions:default": [],
     },
     deps = [
-        "//tensorflow/lite/kernels:cpu_backend_context",
+        "@ruy//ruy:detect_arm",  # safe to use regardless of arch.
     ],
 )
 

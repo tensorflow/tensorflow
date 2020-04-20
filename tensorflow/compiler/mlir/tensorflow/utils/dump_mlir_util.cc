@@ -144,7 +144,7 @@ std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
   if (!result.ok()) return result.error_message();
 
-  op->print(*os, mlir::OpPrintingFlags().useLocalScope());
+  op->print(*os, mlir::OpPrintingFlags().useLocalScope().printGenericOpForm());
   LOG(INFO) << "Dumped MLIR operation '" << op->getName().getStringRef().str()
             << "' to '" << filepath << "'";
   return filepath;

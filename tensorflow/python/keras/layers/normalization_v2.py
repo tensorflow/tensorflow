@@ -76,8 +76,8 @@ class SyncBatchNormalization(normalization.BatchNormalizationBase):
     gamma_regularizer: Optional regularizer for the gamma weight.
     beta_constraint: Optional constraint for the beta weight.
     gamma_constraint: Optional constraint for the gamma weight.
-    renorm: Whether to use Batch Renormalization
-      (https://arxiv.org/abs/1702.03275). This adds extra variables during
+    renorm: Whether to use [Batch Renormalization](
+      https://arxiv.org/abs/1702.03275). This adds extra variables during
       training. The inference is the same for either value of this parameter.
     renorm_clipping: A dictionary that may map keys 'rmax', 'rmin', 'dmax' to
       scalar `Tensors` used to clip the renorm correction. The correction

@@ -732,7 +732,10 @@ cc_test(
     name = "activations_test",
     size = "small",
     srcs = ["activations_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -747,7 +750,10 @@ cc_test(
     name = "add_test",
     size = "small",
     srcs = ["add_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1200,7 +1206,10 @@ cc_test(
     name = "mul_test",
     size = "small",
     srcs = ["mul_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1224,6 +1233,17 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "reshape_test_common",
+    testonly = 1,
+    hdrs = [
+        "reshape_test_common.h",
+    ],
+    deps = [
+        ":test_util",
+    ],
+)
+
 cc_test(
     name = "reshape_test",
     size = "small",
@@ -1231,6 +1251,7 @@ cc_test(
     tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
+        ":reshape_test_common",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
@@ -1402,7 +1423,10 @@ cc_test(
     name = "pooling_test",
     size = "small",
     srcs = ["pooling_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1416,7 +1440,10 @@ cc_test(
     name = "softmax_test",
     size = "small",
     srcs = ["softmax_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",

@@ -16,6 +16,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_ESTIMATORS_GPU_ESTIMATORS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_ESTIMATORS_GPU_ESTIMATORS_H_
 
+// GPU
+constexpr float kGPUArithmeticUnitCost = 0.2;
+
+// The copy can be non-consectutive copy. This is just fake data.
+constexpr float kGPUCopyUnitCost = 0.2;
+constexpr float kGPUDefaultCost = 1.0f;
+
+// Default values.
+constexpr float kGPUDefaultFixedValuedCost = 10000.0;
+
 // tfl.abs
 template <>
 class TFLiteCostEstimator<AbsOp, hardware::GPU> {
@@ -34,9 +44,11 @@ template <>
 class TFLiteCostEstimator<AddOp, hardware::GPU> {
  public:
   static double GetCost(mlir::Operation* op) {
-    llvm::errs() << "No defined cost function for op: "
-                 << op->getName().getStringRef().str();
-    return 0.0;
+    int64_t count;
+    if (ArithmeticCountUtilHelper::GetArithmeticCountForBroadcastableOp(op,
+                                                                        &count))
+      return kGPUArithmeticUnitCost * count;
+    return kGPUDefaultFixedValuedCost;
   }
 
   static bool IsSupported(mlir::Operation* op) { return true; }
@@ -60,9 +72,10 @@ template <>
 class TFLiteCostEstimator<ConcatenationOp, hardware::GPU> {
  public:
   static double GetCost(mlir::Operation* op) {
-    llvm::errs() << "No defined cost function for op: "
-                 << op->getName().getStringRef().str();
-    return 0.0;
+    int64_t count;
+    if (ArithmeticCountUtilHelper::GetInputTensorTotalSize(op, &count))
+      return kGPUCopyUnitCost * count;
+    return kGPUDefaultFixedValuedCost;
   }
 
   // TODO(renjieliu): We probably need to check for dynamic weights.
@@ -227,6 +240,33 @@ class TFLiteCostEstimator<MaximumOp, hardware::GPU> {
   static bool IsSupported(mlir::Operation* op) { return true; }
 };
 
+// tfl.max_unpooling_2d
+template <>
+class TFLiteCostEstimator<MaxUnpooling2DOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
+// tfl.mean
+template <>
+class TFLiteCostEstimator<MeanOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
+  // TODO(renjieiu): check for constraints.
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
 // tfl.minimum
 template <>
 class TFLiteCostEstimator<MinimumOp, hardware::GPU> {
@@ -245,9 +285,11 @@ template <>
 class TFLiteCostEstimator<MulOp, hardware::GPU> {
  public:
   static double GetCost(mlir::Operation* op) {
-    llvm::errs() << "No defined cost function for op: "
-                 << op->getName().getStringRef().str();
-    return 0.0;
+    int64_t count;
+    if (ArithmeticCountUtilHelper::GetArithmeticCountForBroadcastableOp(op,
+                                                                        &count))
+      return kGPUArithmeticUnitCost * count;
+    return kGPUDefaultFixedValuedCost;
   }
 
   static bool IsSupported(mlir::Operation* op) { return true; }
@@ -323,9 +365,10 @@ template <>
 class TFLiteCostEstimator<ReshapeOp, hardware::GPU> {
  public:
   static double GetCost(mlir::Operation* op) {
-    llvm::errs() << "No defined cost function for op: "
-                 << op->getName().getStringRef().str();
-    return 0.0;
+    int64_t count;
+    if (ArithmeticCountUtilHelper::GetInputTensorTotalSize(op, &count))
+      return kGPUCopyUnitCost * count;
+    return kGPUDefaultFixedValuedCost;
   }
 
   static bool IsSupported(mlir::Operation* op) { return true; }
@@ -373,6 +416,19 @@ class TFLiteCostEstimator<SliceOp, hardware::GPU> {
 // tfl.softmax
 template <>
 class TFLiteCostEstimator<SoftmaxOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
+// tfl.space_to_depth
+template <>
+class TFLiteCostEstimator<SpaceToDepthOp, hardware::GPU> {
  public:
   static double GetCost(mlir::Operation* op) {
     llvm::errs() << "No defined cost function for op: "
@@ -435,9 +491,35 @@ class TFLiteCostEstimator<StridedSliceOp, hardware::GPU> {
   static bool IsSupported(mlir::Operation* op) { return true; }
 };
 
+// tfl.tanh
+template <>
+class TFLiteCostEstimator<TanhOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
 // tfl.transpose
 template <>
 class TFLiteCostEstimator<TransposeOp, hardware::GPU> {
+ public:
+  static double GetCost(mlir::Operation* op) {
+    llvm::errs() << "No defined cost function for op: "
+                 << op->getName().getStringRef().str();
+    return 0.0;
+  }
+
+  static bool IsSupported(mlir::Operation* op) { return true; }
+};
+
+// tfl.transpose_conv
+template <>
+class TFLiteCostEstimator<TransposeConvOp, hardware::GPU> {
  public:
   static double GetCost(mlir::Operation* op) {
     llvm::errs() << "No defined cost function for op: "

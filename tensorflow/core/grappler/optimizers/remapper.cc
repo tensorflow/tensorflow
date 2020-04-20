@@ -219,20 +219,19 @@ bool HasDataType(const NodeDef* node, const DataType& expected,
 bool IsCpuCompatibleDataType(const NodeDef* contraction,
                              const string& type_attr = "T") {
   DataType dtype = GetDataTypeFromAttr(*contraction, type_attr);
-  if (IsConv2D(*contraction)) {
-    return dtype == DT_FLOAT || dtype == DT_DOUBLE;
-  } else if (IsDepthwiseConv2dNative(*contraction)) {
-#ifdef INTEL_MKL
-    return dtype == DT_FLOAT;
-#else
-    return false;
-#endif  // INTEL_MKL
-  } else if (IsMatMul(*contraction)) {
 #if defined(INTEL_MKL) && defined(ENABLE_INTEL_MKL_BFLOAT16)
+  if (IsConv2D(*contraction)) {
+    return dtype == DT_FLOAT || dtype == DT_BFLOAT16;
+  } else if (IsDepthwiseConv2dNative(*contraction)) {
+    return dtype == DT_FLOAT || dtype == DT_BFLOAT16;
+  } else if (IsMatMul(*contraction)) {
     return dtype == DT_FLOAT || dtype == DT_BFLOAT16;
 #else
+  if (IsConv2D(*contraction)) {
+    return dtype == DT_FLOAT || dtype == DT_DOUBLE;
+  } else if (IsMatMul(*contraction)) {
     return dtype == DT_FLOAT;
-#endif
+#endif  // INTEL_MKL && ENABLE_INTEL_MKL_BFLOAT16
   } else {
     return false;
   }
@@ -618,6 +617,18 @@ bool FindContractionWithBiasInPort(const RemapperContext& ctx,
   return true;
 }
 
+bool IsAddWithNoBroadcast(const RemapperContext& ctx, const NodeDef& node) {
+  if (!IsAdd(node)) return false;
+
+  // Check if this is case of broadcasting - Add node supports broadcasting.
+  const auto& props = ctx.graph_properties.GetInputProperties(node.name());
+  if (props.size() == 2 &&
+      ShapesSymbolicallyEqual(props[0].shape(), props[1].shape())) {
+    return true;
+  }
+  return false;
+}
+
 bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
                                       const utils::MutableNodeView& node_view,
                                       ContractionWithBiasAddAndAdd* matched) {
@@ -626,12 +637,19 @@ bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
   if (HasControlFaninOrFanout(node_view) || node_view.NumRegularFanins() != 2)
     return false;
 
-  // Root of the pattern must be a AddN
+  // Root of the pattern must be a AddN or Add with same input shapes
+  // (no broadcasting).
   const auto* node_def = node_view.node();
-  if (!IsAddN(*node_def)) return false;
+  if (!IsAddN(*node_def) && !IsAddWithNoBroadcast(ctx, *node_def)) return false;
 
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
+  // MKL AddN ops only support float and bfloat16 data types.
+  if (!HasDataType(node_def, DT_FLOAT) && !HasDataType(node_def, DT_BFLOAT16))
+    return false;
+#else
   // MKL AddN ops only support float data type.
   if (!HasDataType(node_def, DT_FLOAT)) return false;
+#endif  // ENABLE_INTEL_MKL_BFLOAT16
 
   ContractionWithBiasAdd base;
   matched->port_id = 0;
@@ -646,7 +664,7 @@ bool FindContractionWithBiasAddAndAdd(const RemapperContext& ctx,
     }
   }
 
-  // We successfully found a Conv2D+BiasAdd+AddN pattern.
+  // We successfully found a Conv2D+BiasAdd+{AddN,Add} pattern.
   matched->contraction = base.contraction;
   matched->bias_add = base.bias_add;
   matched->add = node_view.node_index();
@@ -673,8 +691,14 @@ bool FindContractionWithBiasAndAddActivation(
   if (node_def == nullptr) return false;
   if (!IsSupportedActivation(*node_def)) return false;
 
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
+  // MKL activation op only supports float and bfloat16 data types.
+  if (!HasDataType(node_def, DT_FLOAT) && !HasDataType(node_def, DT_BFLOAT16))
+    return false;
+#else
   // MKL activation op only supports float data type.
   if (!HasDataType(node_def, DT_FLOAT)) return false;
+#endif  // ENABLE_INTEL_MKL_BFLOAT16
 
   // And input to activation must match ContractionWithBiasAddAndAdd pattern.
   if (node_view->NumRegularFanins() < 1) return false;
@@ -1506,10 +1530,52 @@ Status AddBatchNormNodes(RemapperContext* ctx, const FusedBatchNorm& matched) {
   return mutation->Apply();
 }
 
+#ifdef INTEL_MKL
+bool IsConv2DWithAdd(const RemapperContext& ctx, int node_index) {
+  const auto* node_view = ctx.graph_view.GetNode(node_index);
+  const auto* node_def = node_view->node();
+
+  // Candidate for Conv2D + Add or Conv2D + BiasAdd + Add fusion.
+  auto is_supported_add_input = [](const auto* node_view) -> bool {
+    if (IsConv2D(*node_view->node())) return true;
+    if (IsBiasAdd(*node_view->node())) {
+      if (node_view->NumRegularFanins() < 2) return false;
+      const auto& bias_add_fanin_0 = node_view->GetRegularFanin(0);
+      const auto& bias_add_fanin_1 = node_view->GetRegularFanin(1);
+      return IsConv2D(*bias_add_fanin_0.node_view()->node()) ||
+             IsConv2D(*bias_add_fanin_1.node_view()->node());
+    }
+    return false;
+  };
+
+  auto is_supported_add = [&](const auto* node_view) -> bool {
+    const auto* node_def = node_view->node();
+    if (IsAdd(*node_def)) {
+      if (node_view->NumRegularFanins() < 2) return false;
+      const auto& add_fanin_0 = node_view->GetRegularFanin(0);
+      const auto& add_fanin_1 = node_view->GetRegularFanin(1);
+      return is_supported_add_input(add_fanin_0.node_view()) ||
+             is_supported_add_input(add_fanin_1.node_view());
+    }
+    return false;
+  };
+
+  bool ret = false;
+  for (int i = 0; i < node_view->NumRegularFanins(); i++) {
+    const auto& fanin_i = node_view->GetRegularFanin(i);
+    ret = is_supported_add(fanin_i.node_view());
+    if (ret) break;
+  }
+
+  return ret;
+}
+#endif
+
 // Check if a node is a candidate to one of the patterns that require inferred
 // shapes:
 //   (1) Splitting FusedBatchNorm into primitives.
 //   (2) Fusing side input and/or activation into FusedBatchNorm.
+//   (3) INTEL_MKL specific: Conv2D -> Add or Conv2D -> BiasAdd -> Add.
 bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
   // Candidate for a FusedBatchNorm splitting.
   const auto* node_view = ctx.graph_view.GetNode(node_index);
@@ -1555,7 +1621,12 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     return false;
   };
 
+#ifdef INTEL_MKL
+  return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
+         IsConv2DWithAdd(ctx, node_index);
+#else
   return is_batch_norm_candidate() || is_batch_norm_fusion_candidate();
+#endif  // INTEL_MKL
 }
 
 }  // namespace
@@ -1586,6 +1657,17 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     // Check if node was invalidated by one of the previous remaps.
     if (invalidated_nodes[i] || nodes_to_delete[i]) {
       continue;
+    }
+
+    // Infer properties lazily in case they are not needed.
+    if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
+      const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
+      TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(
+          assume_valid_feeds,
+          /*aggressive_shape_inference=*/false,
+          /*include_input_tensor_values=*/true,
+          /*include_output_tensor_values=*/false));
+      ctx.inferred_graph_properties = true;
     }
 
 #ifdef INTEL_MKL
@@ -1674,17 +1756,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 #endif  // !INTEL_MKL
-
-    // Infer properties lazily in case they are not needed.
-    if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
-      const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
-      TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(
-          assume_valid_feeds,
-          /*aggressive_shape_inference=*/false,
-          /*include_input_tensor_values=*/true,
-          /*include_output_tensor_values=*/false));
-      ctx.inferred_graph_properties = true;
-    }
 
     // Remap FusedBatchNorm+<SideInput>+<Activation> into the _FusedBatchNormEx.
     FusedBatchNormEx fused_batch_norm_ex;

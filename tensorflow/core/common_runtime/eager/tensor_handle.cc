@@ -792,6 +792,9 @@ bool VariantDeviceIsCustom(VariantDevice variant_device) {
 }
 
 string VariantDeviceName(VariantDevice device) {
+  if (device == kVariantDeviceNull) {
+    return "[]";
+  }
   return absl::visit([](auto* device) { return device->name(); }, device);
 }
 

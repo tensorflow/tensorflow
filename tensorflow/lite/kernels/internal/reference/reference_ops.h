@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
+#include "tensorflow/lite/kernels/internal/reference/l2normalization.h"
 #include "tensorflow/lite/kernels/internal/reference/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/maximum_minimum.h"
 #include "tensorflow/lite/kernels/internal/reference/mul.h"
@@ -291,62 +292,6 @@ inline void QuantizeLeakyRelu(const LeakyReluParams& params,
     const T clamped_output =
         std::min(quantized_max, std::max(quantized_min, unclamped_output));
     output_data[i] = static_cast<T>(clamped_output);
-  }
-}
-
-inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
-                            const RuntimeShape& input_shape,
-                            const float* input_data,
-                            const RuntimeShape& output_shape,
-                            float* output_data, float epsilon = 1e-6) {
-  const int trailing_dim = input_shape.DimensionsCount() - 1;
-  const int outer_size =
-      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-  const int depth =
-      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
-  for (int i = 0; i < outer_size; ++i) {
-    float squared_l2_norm = 0;
-    for (int c = 0; c < depth; ++c) {
-      const float val = input_data[depth * i + c];
-      squared_l2_norm += val * val;
-    }
-    float l2_norm = std::sqrt(squared_l2_norm);
-    l2_norm = std::max(l2_norm, epsilon);
-    for (int c = 0; c < depth; ++c) {
-      output_data[depth * i + c] = input_data[depth * i + c] / l2_norm;
-    }
-  }
-}
-
-inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
-                            const RuntimeShape& input_shape,
-                            const uint8* input_data,
-                            const RuntimeShape& output_shape,
-                            uint8* output_data) {
-  const int trailing_dim = input_shape.DimensionsCount() - 1;
-  const int depth =
-      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
-  const int outer_size =
-      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-  const int32 input_zero_point = op_params.input_zero_point;
-  for (int i = 0; i < outer_size; ++i) {
-    int32 square_l2_norm = 0;
-    for (int c = 0; c < depth; c++) {
-      int32 diff = input_data[depth * i + c] - input_zero_point;
-      square_l2_norm += diff * diff;
-    }
-    int32 inv_l2norm_multiplier;
-    int inv_l2norm_shift;
-    GetInvSqrtQuantizedMultiplierExp(square_l2_norm, kReverseShift,
-                                     &inv_l2norm_multiplier, &inv_l2norm_shift);
-    for (int c = 0; c < depth; c++) {
-      int32 diff = input_data[depth * i + c] - input_zero_point;
-      int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
-          128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
-      int32 unclamped_output_val = 128 + rescaled_diff;
-      int32 output_val = std::min(255, std::max(0, unclamped_output_val));
-      output_data[depth * i + c] = static_cast<uint8>(output_val);
-    }
   }
 }
 

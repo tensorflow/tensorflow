@@ -1587,6 +1587,7 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
       // require TFE_Op* and just convert it internally a NameAttrValue, so
       // consider adding an overload to the C API to make this case easier.
       TFE_OpSetAttrFunction(op, attr_name, func_op);
+      TFE_DeleteOp(func_op);
     } break;
     case tensorflow::AttrValue::kList:
       TF_FALLTHROUGH_INTENDED;
