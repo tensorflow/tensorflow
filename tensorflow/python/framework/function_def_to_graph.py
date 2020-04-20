@@ -258,9 +258,8 @@ def function_def_to_graph_def(fdef, input_shapes=None):
 def _get_num_args(arg_def, node_def):
   if arg_def.number_attr:
     return node_def.attr[arg_def.number_attr].i
-  elif arg_def.type_list_attr:
+  if arg_def.type_list_attr:
     return len(node_def.attr[arg_def.type_list_attr].list.type)
-  elif arg_def.type_attr or arg_def.type != types_pb2.DT_INVALID:
+  if arg_def.type_attr or arg_def.type != types_pb2.DT_INVALID:
     return 1
-  else:
-    raise ValueError("Invalid arg_def:\n\n{}".format(str(arg_def)))
+  raise ValueError("Invalid arg_def:\n\n{}".format(str(arg_def)))
