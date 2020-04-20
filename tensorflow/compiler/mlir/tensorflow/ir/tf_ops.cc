@@ -82,8 +82,7 @@ static RankedTensorType GetRankedTensorTypeForOperand(Value operand) {
 
 // Returns true if the given `value` is of ranked float tensor type with the
 // given `rank`.
-static inline bool isOfRankedFloatTensorType(Value value, int rank) {
-  RankedTensorType type = GetRankedTensorTypeForOperand(value);
+static inline bool IsOfRankedFloatTensorType(RankedTensorType type, int rank) {
   return type && type.getRank() == rank &&
          type.getElementType().isa<FloatType>();
 }
@@ -1461,10 +1460,12 @@ static LogicalResult Verify(FakeQuantWithMinMaxArgsOp op) {
 // FakeQuantWithMinMaxVarsOp
 //===----------------------------------------------------------------------===//
 static LogicalResult Verify(FakeQuantWithMinMaxVarsOp op) {
-  if (!isOfRankedFloatTensorType(op.min(), 0))
+  auto min = GetRankedTensorTypeForOperand(op.min());
+  if (min && !IsOfRankedFloatTensorType(min, 0))
     return op.emitOpError("requires min to be a 0d float tensor");
 
-  if (!isOfRankedFloatTensorType(op.max(), 0))
+  auto max = GetRankedTensorTypeForOperand(op.max());
+  if (max && !IsOfRankedFloatTensorType(max, 0))
     return op.emitOpError("requires max to be a 0d float tensor");
 
   int64_t num_bits = op.num_bits().getSExtValue();
@@ -1479,30 +1480,33 @@ static LogicalResult Verify(FakeQuantWithMinMaxVarsOp op) {
 // FakeQuantWithMinMaxVarsPerChannelOp
 //===----------------------------------------------------------------------===//
 static LogicalResult Verify(FakeQuantWithMinMaxVarsPerChannelOp op) {
-  if (!isOfRankedFloatTensorType(op.min(), 1))
+  auto min = GetRankedTensorTypeForOperand(op.min());
+  if (min && !IsOfRankedFloatTensorType(min, 1))
     return op.emitOpError("requires min to be a 1d float tensor");
 
-  if (!isOfRankedFloatTensorType(op.max(), 1))
+  auto max = GetRankedTensorTypeForOperand(op.max());
+  if (max && !IsOfRankedFloatTensorType(max, 1))
     return op.emitOpError("requires max to be a 1d float tensor");
 
   Value inputs = op.inputs();
-  if (!HasRankAtLeast(inputs, 1) ||
-      inputs.getType().isa<UnrankedTensorType>()) {
+  if (!HasRankAtLeast(inputs, 1))
     return op.emitError("requires inputs to be at least 1d float tensor");
-  }
 
-  auto inputsType = inputs.getType().cast<ShapedType>();
-  int depth = inputsType.getDimSize(inputsType.getRank() - 1);
-  if (op.min().getType().cast<ShapedType>().getDimSize(0) != depth ||
-      op.max().getType().cast<ShapedType>().getDimSize(0) != depth) {
-    return op.emitOpError(
-        "requires min and max to have same size as last dimension of inputs");
-  }
   int64_t num_bits = op.num_bits().getSExtValue();
   if (num_bits < 2 || num_bits > 16) {
     return op.emitOpError(
         "requires num_bits to be between 2 and 16, inclusive");
   }
+
+  auto inputs_type = inputs.getType().dyn_cast<RankedTensorType>();
+  if (!inputs_type) return success();
+  int depth = inputs_type.getDimSize(inputs_type.getRank() - 1);
+  if ((min && min.getDimSize(0) != depth) ||
+      (max && max.getDimSize(0) != depth)) {
+    return op.emitOpError(
+        "requires min and max to have same size as last dimension of inputs");
+  }
+
   return success();
 }
 
@@ -1573,19 +1577,24 @@ StringRef FusedBatchNormGradV3Op::GetOptimalLayout(
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(FusedBatchNormOp op) {
-  if (!isOfRankedFloatTensorType(op.x(), 4))
+  auto x = GetRankedTensorTypeForOperand(op.x());
+  if (x && !IsOfRankedFloatTensorType(x, 4))
     return op.emitOpError("requires x to be a 4D float tensor");
 
-  if (!isOfRankedFloatTensorType(op.scale(), 1))
+  auto scale = GetRankedTensorTypeForOperand(op.scale());
+  if (scale && !IsOfRankedFloatTensorType(scale, 1))
     return op.emitOpError("requires scale to be a 1D float tensor");
 
-  if (!isOfRankedFloatTensorType(op.offset(), 1))
+  auto offset = GetRankedTensorTypeForOperand(op.offset());
+  if (offset && !IsOfRankedFloatTensorType(offset, 1))
     return op.emitOpError("requires offset to be a 1D float tensor");
 
-  if (!isOfRankedFloatTensorType(op.mean(), 1))
+  auto mean = GetRankedTensorTypeForOperand(op.mean());
+  if (mean && !IsOfRankedFloatTensorType(mean, 1))
     return op.emitOpError("requires mean to be a 1D float tensor");
 
-  if (!isOfRankedFloatTensorType(op.variance(), 1))
+  auto variance = GetRankedTensorTypeForOperand(op.variance());
+  if (variance && !IsOfRankedFloatTensorType(variance, 1))
     return op.emitOpError("requires variance to be a 1D float tensor");
 
   // TODO(antiagainst): check attributes
@@ -2437,7 +2446,8 @@ LogicalResult VerifyShapeOperandAndResult(Operation *op, Type operand_type,
       variadic_idx < 0 ? "" : llvm::formatv(" #{0}", variadic_idx).str();
 
   auto result_ranked_type = result_type.dyn_cast<RankedTensorType>();
-  if (!result_ranked_type || result_ranked_type.getShape().size() != 1)
+  if (!result_ranked_type) return success();
+  if (result_ranked_type.getShape().size() != 1)
     return op->emitOpError("requires 1D type for result") << variadic_idx_str;
 
   auto operand_ranked_type = operand_type.dyn_cast_or_null<RankedTensorType>();
