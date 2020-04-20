@@ -36,6 +36,7 @@ from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -50,6 +51,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -65,6 +67,7 @@ from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -97,6 +100,16 @@ def _example_indexed_slices_with_dense_shape():
 def _example_indexed_slices_without_dense_shape():
   return indexed_slices.IndexedSlices(
       constant_op.constant([1, 2]), constant_op.constant([0, 1]))
+
+
+def _spec_for_value(value):
+  """Returns the (nested) TypeSpec for a value."""
+  if nest.is_sequence(value):
+    return nest.map_structure(_spec_for_value, value)
+  elif isinstance(value, (ops.Tensor, composite_tensor.CompositeTensor)):
+    return type_spec.type_spec_from_value(value)
+  else:
+    return value
 
 
 class FunctionTest(test.TestCase, parameterized.TestCase):
@@ -1789,6 +1802,18 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, 'incompatible'):
       func([['wrong dtype']])
 
+  def testNoKeywordOnlyArgumentsWithInputSignature(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('keyword_only arguments only exist in Python 3.')
+
+    func = eval('lambda x, *, y: x')  # pylint: disable=eval-used
+    signature = [tensor_spec.TensorSpec(None, dtypes.int32)]
+    with self.assertRaisesRegexp(
+        ValueError, 'Cannot define a TensorFlow function from a Python '
+        'function with keyword-only arguments when input_signature is '
+        'provided.'):
+      def_function.function(func, signature)
+
   def testNestedInputSignatures(self):
 
     def expected_foo(a, b):
@@ -1905,7 +1930,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined(array_ops.ones([2, 1]))
 
     # Wrong number of arguments.
-    with self.assertRaisesRegexp(TypeError, r'Received 2 argument\(s\)'):
+    with self.assertRaisesRegexp(
+        TypeError, r'takes 1 positional arguments \(as specified by the '
+        r'input_signature\) but 2 were given'):
       defined(array_ops.ones([2]), array_ops.ones([2]))
     with self.assertRaisesRegexp(ValueError,
                                  'Structure of Python function inputs.*'):
@@ -1946,10 +1973,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return -1.0 * a
 
     x = constant_op.constant(1.0)
-    with self.assertRaisesRegexp(TypeError, 'only pass arguments'):
+    with self.assertRaisesRegexp(
+        TypeError, 'got keyword argument `training` '
+        'that was not included in input_signature'):
       foo(x, training=True)
 
-    with self.assertRaisesRegexp(TypeError, 'only pass arguments'):
+    with self.assertRaisesRegexp(
+        TypeError, 'got keyword argument `training` '
+        'that was not included in input_signature'):
       foo(x, training=False)
 
     self.assertAllEqual(x.numpy(), foo(x).numpy())
@@ -2472,8 +2503,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return x
 
     graph_function = foo.get_concrete_function(constant_op.constant(1.0))
-    with self.assertRaisesRegexp(
-        ValueError, 'All inputs to `ConcreteFunction`s must be Tensors;.*'):
+    with self.assertRaises((TypeError, ValueError)):
       graph_function('Not a Tensor.')
 
   def testSwapImplementationWithGrapplerPlugin(self):
@@ -3147,6 +3177,432 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertLen(function._function_callbacks, 2)
     function.clear_function_callbacks()
     self.assertEmpty(function._function_callbacks)  # pylint:disable=protected-access
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionWithNestedTensorInputs(self):
+
+    @def_function.function
+    def f(x, y):
+      return (x['a'] + x['b'], y[0] + y[1])
+
+    a = constant_op.constant(1000)
+    b = constant_op.constant(200)
+    c = constant_op.constant(30)
+    d = {'a': a, 'b': b}
+    e = (c, 4)
+
+    # Test different argument signatures when constructing the concrete func.
+    for cf in [
+        f.get_concrete_function(d, e),
+        f.get_concrete_function(d, y=e),
+        f.get_concrete_function(y=e, x=d),
+        f.get_concrete_function(_spec_for_value(d), _spec_for_value(e)),
+        f.get_concrete_function(_spec_for_value(d), y=_spec_for_value(e)),
+        f.get_concrete_function(y=_spec_for_value(e), x=_spec_for_value(d))
+    ]:
+      # Test different calling conventions when calling the concrete func.
+      for output in [
+          cf(d, e),  # structured signature
+          cf(d, y=e),  # structured signature w/ kwarg
+          cf(y=e, x=d),  # structured signature w/ 2 kwargs
+          cf(a, b, c),  # flat signature
+          cf(x=a, x_1=b, y=c)  # flat signature w/ kwargs
+      ]:
+        self.assertIsInstance(output, tuple)
+        self.assertLen(output, 2)
+        self.assertAllEqual(output[0], 1200)
+        self.assertAllEqual(output[1], 34)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionWithNestedNonTensorInputs(self):
+
+    @def_function.function
+    def f(x, y):
+      return (x['a'] + x['b'], y[0] + y[1])
+
+    a = {'a': constant_op.constant(1000), 'b': constant_op.constant(200)}
+    b = (50, 3)
+
+    for cf in [  # argument y is bound to non-Tensor value (50, 3).
+        f.get_concrete_function(a, b),
+        f.get_concrete_function(a, y=b),
+        f.get_concrete_function(x=a, y=b)
+    ]:
+      for output in [cf(a), cf(x=a), cf(a, b), cf(x=a, y=b)]:
+        self.assertAllEqual(output[0] + output[1], 1253)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionWithBoundNestedNonTensorInputs(self):
+
+    @def_function.function
+    def f(x, y):
+      return (x['a'] + x['b'], y[0] + y[1])
+
+    a = {'a': 3000, 'b': 200, 'c': 9000}
+    b = (constant_op.constant(30), 4)
+
+    for cf in [  # argument x is bound to non-tensor value `a`
+        f.get_concrete_function(a, b),
+        f.get_concrete_function(a, y=b),
+        f.get_concrete_function(x=a, y=b)
+    ]:
+      for output in [cf(a, b), cf(a, y=b), cf(y=b), cf(x=a, y=b)]:
+        self.assertAllEqual(output[0] + output[1], 3234)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionWithAllBoundNestedNonTensorInputs(self):
+
+    @def_function.function
+    def f(x, y):
+      return (x['a'] + x['b'], y[0] + y[1])
+
+    a = {'a': 5000, 'b': 500}
+    b = (50, 5)
+
+    cf = f.get_concrete_function(a, b)
+    for output in [cf(), cf(a), cf(y=b)]:
+      self.assertAllEqual(output[0] + output[1], 5555)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionStructuredSignatureKeywordOrder(self):
+    # Check that keyword-only arguments are sorted appropriately, so that they
+    # feed the right tensor into each input.
+    @def_function.function
+    def g(**kwargs):
+      return string_ops.reduce_join(
+          string_ops.reduce_join(
+              ops.convert_to_tensor(sorted(kwargs.items())),
+              axis=1,
+              separator='='),
+          axis=0,
+          separator=', ')
+
+    s = constant_op.constant('s')
+    g.get_concrete_function(q=s, a=s, p=s, r=s, v=s, m=s, l=s)
+    self.assertAllEqual(
+        g(m='a', r='b', v='c', q='d', l='e', a='f', p='g'),
+        b'a=f, l=e, m=a, p=g, q=d, r=b, v=c')
+    self.assertAllEqual(
+        g(q='d', a='f', p='g', r='b', v='c', m='a', l='e'),
+        b'a=f, l=e, m=a, p=g, q=d, r=b, v=c')
+    self.assertAllEqual(
+        g(a='f', l='e', m='a', p='g', q='d', r='b', v='c'),
+        b'a=f, l=e, m=a, p=g, q=d, r=b, v=c')
+
+  # pylint: disable=g-long-lambda
+  @parameterized.named_parameters([
+      dict(
+          testcase_name='MissingArg',
+          conc_args=lambda: (1, constant_op.constant(2)),
+          call_args=lambda: (1,),
+          error=r'func\(x, y\) missing required arguments: y'),
+      dict(
+          testcase_name='MissingVararg',
+          conc_args=lambda: (1, 2, constant_op.constant(1.0)),
+          call_args=lambda: (1, 2),
+          error=r'func\(x, y, <arg3>\) missing required arguments: <arg3>'),
+      dict(
+          testcase_name='ExtraPositionalArg',
+          conc_args=lambda: (1, 2),
+          call_args=lambda: (1, 2, 3),
+          error=r'func\(x, y\) takes 2 positional arguments but 3 were given'),
+      dict(
+          testcase_name='MissingKeywordOnlyArg',
+          conc_args=lambda: (1, 2),
+          conc_kwargs=lambda: {'c': constant_op.constant(1.0)},
+          call_args=lambda: (1, 2),
+          error=r'func\(x, y, \*, c\) missing required arguments: c'),
+      dict(
+          testcase_name='ExtraKeywordArg',
+          conc_args=lambda: (1, 2),
+          call_args=lambda: (1, 2),
+          call_kwargs=lambda: {'c': constant_op.constant(1.0)},
+          error=r'func\(x, y\) got unexpected keyword arguments: c'),
+      dict(
+          testcase_name='ExpectedRaggedGotNest',
+          conc_args=lambda: (ragged_factory_ops.constant([[1, 2], [3]]),),
+          call_args=lambda: ({
+              'a': constant_op.constant([1, 2, 3])
+          },),
+          error=r'func\(x, y\): argument x had incorrect type\n'
+          r'  expected: RaggedTensor\n'
+          r"       got: {'a': (Eager)?Tensor}"),
+      dict(
+          testcase_name='WrongRaggedRank',
+          conc_args=lambda: (ragged_factory_ops.constant([[1, 2], [3]]),),
+          call_args=lambda: (ragged_factory_ops.constant([[[1]]]),),
+          error=r'func\(x, y\): argument x had incorrect type\n'),
+      dict(
+          testcase_name='WrongRaggedDType',
+          conc_args=lambda: (ragged_factory_ops.constant([[1]]),),
+          call_args=lambda: (ragged_factory_ops.constant([[1.0]]),),
+          error=r'func\(x, y\): argument x had incorrect type\n'),
+      dict(
+          testcase_name='ExpectedDictGotTensor',
+          conc_args=lambda: ({
+              'a': constant_op.constant(1),
+              'b': constant_op.constant(1)
+          },),
+          call_args=lambda: (constant_op.constant(1),),
+          error=r'func\(x, y\): argument x had incorrect type\n'),
+      dict(
+          testcase_name='ExpectedTupleGotTensor',
+          conc_args=lambda:
+          ((constant_op.constant(1), constant_op.constant(2)),),
+          call_args=lambda: (constant_op.constant(1),),
+          error=r'func\(x, y\): argument x had incorrect type\n'),
+      dict(
+          testcase_name='WrongDType',
+          conc_args=lambda: (constant_op.constant(1),),
+          call_args=lambda: (constant_op.constant(1.0),),
+          exception=(ValueError, errors.InvalidArgumentError,
+                     # on xla_gpu, we get InternalError instead.
+                     errors.InternalError)),
+      dict(
+          testcase_name='ExpectedTensorGotInt',
+          conc_args=lambda: (constant_op.constant(1),),
+          call_args=lambda: (5,),
+          error=r'func\(x, y\) expected a Tensor in x, but got int value 5'),
+      dict(
+          testcase_name='ExpectedIntGotDifferentInt',
+          conc_args=lambda: (5,),
+          call_args=lambda: (8,),
+          error=r'ConcreteFunction func\(x, y\) was constructed with int '
+          r'value 5 in x, but was called with int value 8'),
+      dict(
+          testcase_name='ExpectedIntGotTensor',
+          conc_args=lambda: (5,),
+          call_args=lambda: (constant_op.constant(6),),
+          error=r'ConcreteFunction func\(x, y\) was constructed with int '
+          'value 5 in x, but was called with (Eager)?Tensor value .*'),
+      dict(
+          testcase_name='TwoValuesForArgument',
+          conc_args=lambda: (1, 2),
+          call_args=lambda: (1, 2),
+          call_kwargs=lambda: {'x': 3},
+          error=r"func\(x, y\) got two values for argument 'x'"),
+  ])
+  # pylint: enable=g-long-lambda
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionStructuredSignatureError(self,
+                                                   conc_args=(),
+                                                   conc_kwargs=None,
+                                                   call_args=(),
+                                                   call_kwargs=None,
+                                                   error='.*',
+                                                   exception=TypeError):
+    """Tests for errors in the structrued signature.
+
+    Args:
+      conc_args: Positional arguments used for get_concrete_function.
+      conc_kwargs: Keyword arguments used for get_concrete_function.
+      call_args: Positional arguments used to call the function.
+      call_kwargs: Keyword arguments used to call the function.
+      error: Expected exception message.
+      exception: Expected exception type.
+    """
+    conc_args = conc_args() if callable(conc_args) else conc_args
+    conc_kwargs = conc_kwargs() if callable(conc_kwargs) else conc_kwargs or {}
+    call_args = call_args() if callable(call_args) else call_args
+    call_kwargs = call_kwargs() if callable(call_kwargs) else call_kwargs or {}
+    self.assertIsInstance(conc_args, tuple)
+    self.assertIsInstance(call_args, tuple)
+    self.assertIsInstance(conc_kwargs, dict)
+    self.assertIsInstance(call_kwargs, dict)
+
+    @def_function.function
+    def func(x, y=5, *varargs, **kwargs):  # pylint: disable=keyword-arg-before-vararg
+      del y, varargs, kwargs
+      return x
+
+    conc = func.get_concrete_function(*conc_args, **conc_kwargs)
+    with self.assertRaisesRegexp(exception, error):
+      self.evaluate(conc(*call_args, **call_kwargs))
+
+  # pylint: disable=g-long-lambda
+  @parameterized.named_parameters([
+      dict(
+          testcase_name='MissingArg',
+          conc_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          call_args=lambda: (constant_op.constant(1),),
+          error=r'func\(x, y\) missing required arguments: y'),
+      dict(
+          testcase_name='TwoValuesForArg',
+          conc_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          call_args=lambda: (constant_op.constant(1),),
+          call_kwargs=lambda: {
+              'x': constant_op.constant(1),
+              'y': constant_op.constant(1)
+          },
+          error=r"func\(x, y\) got two values for argument 'x'"),
+      dict(
+          testcase_name='ExtraPositionalArg',
+          conc_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          call_args=lambda: (constant_op.constant(1), constant_op.constant(2),
+                             constant_op.constant(3)),
+          error=r'func\(x, y\) takes 2 positional arguments but 3 were given'),
+      dict(
+          testcase_name='UnexpectedKeywordArg',
+          conc_args=lambda: (constant_op.constant(1),),
+          call_args=lambda: (constant_op.constant(1),),
+          call_kwargs=lambda: {'c': constant_op.constant(1)},
+          error=r'func\(x\) got unexpected keyword arguments: c'),
+      dict(
+          testcase_name='MissingVararg',
+          conc_args=lambda: (constant_op.constant(1), constant_op.constant(2),
+                             constant_op.constant(3)),
+          call_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          error=r'func\(x, y, varargs_0\) missing required '
+          r'arguments: varargs_0'),
+      dict(
+          testcase_name='MissingKeywordArg',
+          conc_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          conc_kwargs=lambda: {'c': constant_op.constant(1)},
+          call_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          error=r'func\(x, y, c\) missing required arguments: c'),
+      dict(
+          testcase_name='ExpectedTensorGotInt',
+          conc_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          call_args=lambda: (5, constant_op.constant(2)),
+          error=r'func\(x, y\): expected argument #0\(zero-based\) to be '
+          r'a Tensor; got int \(5\)'),
+      dict(
+          testcase_name='WrongDType',
+          conc_args=lambda: (constant_op.constant(1),),
+          call_args=lambda: (constant_op.constant(1.0),),
+          exception=(ValueError, errors.InvalidArgumentError,
+                     # on xla_gpu, we get InternalError instead.
+                     errors.InternalError)),
+      dict(
+          testcase_name='MissingKeywordArgNestPiece',
+          conc_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          conc_kwargs=lambda: {'c': ragged_factory_ops.constant([[1]])},
+          call_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          call_kwargs=lambda: {'c': constant_op.constant(1)},
+          error=r'func\(x, y, c, c_1\) missing required arguments: c_1'),
+  ])
+  # pylint: enable=g-long-lambda
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionFlatSignatureError(self,
+                                             conc_args=(),
+                                             conc_kwargs=None,
+                                             call_args=(),
+                                             call_kwargs=None,
+                                             error='.*',
+                                             exception=TypeError):
+    """Tests for errors in the flat signature.
+
+    Args:
+      conc_args: Positional arguments used for get_concrete_function.
+      conc_kwargs: Keyword arguments used for get_concrete_function.
+      call_args: Positional arguments used to call the function.
+      call_kwargs: Keyword arguments used to call the function.
+      error: Expected exception message.
+      exception: Expected exception type.
+    """
+    conc_args = conc_args() if callable(conc_args) else conc_args
+    conc_kwargs = conc_kwargs() if callable(conc_kwargs) else conc_kwargs or {}
+    call_args = call_args() if callable(call_args) else call_args
+    call_kwargs = call_kwargs() if callable(call_kwargs) else call_kwargs or {}
+    self.assertIsInstance(conc_args, tuple)
+    self.assertIsInstance(call_args, tuple)
+    self.assertIsInstance(conc_kwargs, dict)
+    self.assertIsInstance(call_kwargs, dict)
+
+    @def_function.function
+    def func(x, y=5, *varargs, **kwargs):  # pylint: disable=keyword-arg-before-vararg
+      del y, varargs, kwargs
+      return x
+
+    conc = func.get_concrete_function(*conc_args, **conc_kwargs)
+
+    # Remove _function_spec, to disable the structured signature.
+    conc._set_function_spec(None)  # pylint: disable=protected-access
+
+    with self.assertRaisesRegexp(exception, error):
+      self.evaluate(conc(*call_args, **call_kwargs))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionAmbiguousSignature(self):
+    # When both the flat & structured signatures are applicable, but they
+    # give different results, we use the structured signature.  Note: we expect
+    # this to be extremely rare.
+    @def_function.function
+    def f(x, y):
+      return x * 10 + y
+
+    conc = f.get_concrete_function(
+        x=tensor_spec.TensorSpec(None, dtypes.int32, name='y'),
+        y=tensor_spec.TensorSpec(None, dtypes.int32, name='x'))
+
+    result = conc(x=constant_op.constant(5), y=constant_op.constant(6))
+    self.assertAllEqual(result, 56)
+
+  def testPrettyPrintedSignature(self):
+
+    @def_function.function
+    def func(x, kangaroo=None, octopus=7):
+      del octopus, kangaroo
+      return x
+
+    scalar = constant_op.constant(5)
+    vector = constant_op.constant([10, 10, 20])
+    ragged = ragged_factory_ops.constant([[10, 20], [40]])
+
+    c1 = func.get_concrete_function(scalar, vector)
+    c1_summary = r'func\(x, kangaroo, octopus=7\)'
+    c1_details = (r'  Args:\n'
+                  r'    x: int32 Tensor, shape=\(\)\n'
+                  r'    kangaroo: int32 Tensor, shape=\(3,\)\n'
+                  r'  Returns:\n'
+                  r'    int32 Tensor, shape=\(\)')
+    self.assertRegexpMatches(
+        c1.pretty_printed_signature(verbose=False), c1_summary)
+    self.assertRegexpMatches(
+        c1.pretty_printed_signature(verbose=True),
+        c1_summary + '\n' + c1_details)
+    self.assertRegexpMatches(
+        repr(c1), r'<ConcreteFunction func\(x, kangaroo, octopus=7\) at .*>')
+    self.assertRegexpMatches(
+        str(c1), 'ConcreteFunction {}\n{}'.format(c1_summary, c1_details))
+
+    c2 = func.get_concrete_function(scalar, ragged, 3)
+    c2_summary = r'func\(x, kangaroo, octopus=3\)'
+    c2_details = (r'  Args:\n'
+                  r'    x: int32 Tensor, shape=\(\)\n'
+                  r'    kangaroo: RaggedTensorSpec\(.*\)\n'
+                  r'  Returns:\n'
+                  r'    int32 Tensor, shape=\(\)')
+    self.assertRegexpMatches(c2.pretty_printed_signature(),
+                             c2_summary + '\n' + c2_details)
+
+    c3 = func.get_concrete_function({'a': scalar, 'b': [ragged, ragged]})
+    c3_summary = r'func\(x, kangaroo=None, octopus=7\)'
+    c3_details = (r'  Args:\n'
+                  r"    x: {'a': <1>, 'b': \[<2>, <3>\]}\n"
+                  r'      <1>: int32 Tensor, shape=\(\)\n'
+                  r'      <2>: RaggedTensorSpec\(.*\)\n'
+                  r'      <3>: RaggedTensorSpec\(.*\)\n'
+                  r'  Returns:\n'
+                  r"    {'a': <1>, 'b': \[<2>, <3>\]}\n"
+                  r'      <1>: int32 Tensor, shape=\(\)\n'
+                  r'      <2>: RaggedTensorSpec\(.*\)\n'
+                  r'      <3>: RaggedTensorSpec\(.*\)')
+    self.assertRegexpMatches(c3.pretty_printed_signature(),
+                             c3_summary + '\n' + c3_details)
+
+    # pylint: disable=keyword-arg-before-vararg
+    @def_function.function
+    def func2(x, y=3, *args, **kwargs):
+      return (x, y, args, kwargs)
+
+    c4 = func2.get_concrete_function(scalar, 4, 5, a=scalar)
+    c4_summary = 'func2(x, y=4, <arg3>=5, *, a)'
+    self.assertEqual(c4.pretty_printed_signature(verbose=False), c4_summary)
+
+    c5 = func2.get_concrete_function(8, vector)
+    c5_summary = 'func2(x=8, y)'
+    self.assertEqual(c5.pretty_printed_signature(verbose=False), c5_summary)
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
