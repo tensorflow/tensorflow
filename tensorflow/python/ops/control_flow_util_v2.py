@@ -33,6 +33,7 @@ from tensorflow.python.util import tf_contextlib
 
 _EXPERIMENTAL_OUTPUT_ALL_INTERMEDIATES_OVERRIDE = None
 _KERAS_LAYER_CONTEXT_FUNCTION = None
+_DISABLE_LOWER_USING_SWITCH_MERGE = False
 
 
 CondBranchFuncGraph = control_flow_v2_func_graphs.CondBranchFuncGraph
@@ -111,7 +112,8 @@ def maybe_set_lowering_attr(op):
   Args:
     op: An `If` or `While` Operation.
   """
-  if (not control_flow_util.GraphOrParentsInXlaContext(op.graph) and
+  if (not _DISABLE_LOWER_USING_SWITCH_MERGE and
+      not control_flow_util.GraphOrParentsInXlaContext(op.graph) and
       context.context().function_call_options.executor_type !=
       "SINGLE_THREADED_EXECUTOR"):
     # pylint: disable=protected-access
