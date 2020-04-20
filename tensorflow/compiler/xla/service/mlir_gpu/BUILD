@@ -188,6 +188,7 @@ cc_library(
     testonly = True,
     srcs = if_cuda_is_configured(["xla_gpu_opt.cc"]),
     hdrs = if_cuda_is_configured(["xla_gpu_opt.h"]),
+    tags = ["no_pip"],
     deps = [
         ":failover_compiler",
         ":inject_errors_pass",
@@ -212,6 +213,7 @@ tf_cc_binary(
     name = "xla-gpu-opt",
     testonly = True,
     srcs = if_cuda_is_configured(["xla_gpu_opt_main.cc"]),
+    tags = ["no_pip"],
     deps = [
         ":mlir_compiler",
         ":xla_gpu_opt_lib",

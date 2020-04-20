@@ -19,7 +19,10 @@ package_group(
 
 glob_lit_tests(
     data = [":test_utilities"],
-    default_tags = tf_cuda_tests_tags() + ["config-cuda-only"],
+    default_tags = tf_cuda_tests_tags() + [
+        "no_pip",
+        "config-cuda-only",
+    ],
     driver = "@llvm-project//mlir:run_lit.sh",
     exclude = [
         # TODO(b/149302060) Reenable once fusion is fixed.
