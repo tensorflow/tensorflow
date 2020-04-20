@@ -2116,7 +2116,9 @@ def TFL_PowOp : TFL_Op<"pow", [ResultsBroadcastableShape,
   let builders = [TFL_BroadcastableBinaryBuilder];
 }
 
-def TFL_PReluOp : TFL_Op<"prelu", [NoSideEffect, TFL_GpuTargetOp]> {
+def TFL_PReluOp : TFL_Op<"prelu", [NoSideEffect,
+                                   TFL_GpuTargetOp,
+                                   SameOperandsAndResultsScale]> {
   let summary = "Parameterized Relu operator";
 
   let description = [{
