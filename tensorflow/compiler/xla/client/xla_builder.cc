@@ -822,21 +822,27 @@ XlaOp XlaBuilder::Slice(XlaOp operand, absl::Span<const int64> start_indices,
                         absl::Span<const int64> limit_indices,
                         absl::Span<const int64> strides) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferSliceShape(
                                          *operand_shape, start_indices,
                                          limit_indices, strides));
-    *instr.mutable_shape() = shape.ToProto();
-    for (int i = 0; i < start_indices.size(); i++) {
-      auto* slice_config = instr.add_slice_dimensions();
-      slice_config->set_start(start_indices[i]);
-      slice_config->set_limit(limit_indices[i]);
-      slice_config->set_stride(strides[i]);
-    }
-
-    return AddInstruction(std::move(instr), HloOpcode::kSlice, {operand});
+    return SliceInternal(shape, operand, start_indices, limit_indices, strides);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::SliceInternal(const Shape& shape, XlaOp operand,
+                                          absl::Span<const int64> start_indices,
+                                          absl::Span<const int64> limit_indices,
+                                          absl::Span<const int64> strides) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  for (int i = 0; i < start_indices.size(); i++) {
+    auto* slice_config = instr.add_slice_dimensions();
+    slice_config->set_start(start_indices[i]);
+    slice_config->set_limit(limit_indices[i]);
+    slice_config->set_stride(strides[i]);
+  }
+  return AddInstruction(std::move(instr), HloOpcode::kSlice, {operand});
 }
 
 XlaOp XlaBuilder::SliceInDim(XlaOp operand, int64 start_index,
@@ -952,39 +958,47 @@ XlaOp XlaBuilder::DynamicUpdateSlice(XlaOp operand, XlaOp update,
 XlaOp XlaBuilder::ConcatInDim(absl::Span<const XlaOp> operands,
                               int64 dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
     absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
                       [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferConcatOpShape(
                                          operand_shape_ptrs, dimension));
-    *instr.mutable_shape() = shape.ToProto();
-
-    instr.add_dimensions(dimension);
-
-    return AddInstruction(std::move(instr), HloOpcode::kConcatenate, operands);
+    return ConcatInDimInternal(shape, operands, dimension);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::ConcatInDimInternal(
+    const Shape& shape, absl::Span<const XlaOp> operands, int64 dimension) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+
+  instr.add_dimensions(dimension);
+
+  return AddInstruction(std::move(instr), HloOpcode::kConcatenate, operands);
 }
 
 XlaOp XlaBuilder::Pad(XlaOp operand, XlaOp padding_value,
                       const PaddingConfig& padding_config) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(const Shape* padding_value_shape,
                         GetShapePtr(padding_value));
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferPadShape(
                          *operand_shape, *padding_value_shape, padding_config));
-    *instr.mutable_shape() = shape.ToProto();
-    *instr.mutable_padding_config() = padding_config;
-
-    return AddInstruction(std::move(instr), HloOpcode::kPad,
-                          {operand, padding_value});
+    return PadInternal(shape, operand, padding_value, padding_config);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::PadInternal(const Shape& shape, XlaOp operand,
+                                        XlaOp padding_value,
+                                        const PaddingConfig& padding_config) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  *instr.mutable_padding_config() = padding_config;
+  return AddInstruction(std::move(instr), HloOpcode::kPad,
+                        {operand, padding_value});
 }
 
 XlaOp XlaBuilder::Reshape(XlaOp operand, absl::Span<const int64> dimensions,
@@ -1080,7 +1094,6 @@ XlaOp XlaBuilder::Select(XlaOp pred, XlaOp on_true, XlaOp on_false) {
 
 XlaOp XlaBuilder::Tuple(absl::Span<const XlaOp> elements) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(elements));
     absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
@@ -1088,14 +1101,19 @@ XlaOp XlaBuilder::Tuple(absl::Span<const XlaOp> elements) {
     TF_ASSIGN_OR_RETURN(const Shape shape,
                         ShapeInference::InferVariadicOpShape(
                             HloOpcode::kTuple, operand_shape_ptrs));
-    *instr.mutable_shape() = shape.ToProto();
-    return AddInstruction(std::move(instr), HloOpcode::kTuple, elements);
+    return TupleInternal(shape, elements);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::TupleInternal(const Shape& shape,
+                                          absl::Span<const XlaOp> elements) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  return AddInstruction(std::move(instr), HloOpcode::kTuple, elements);
 }
 
 XlaOp XlaBuilder::GetTupleElement(XlaOp tuple_data, int64 index) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* tuple_shape, GetShapePtr(tuple_data));
     if (!tuple_shape->IsTuple()) {
       return InvalidArgument(
@@ -1107,14 +1125,20 @@ XlaOp XlaBuilder::GetTupleElement(XlaOp tuple_data, int64 index) {
           "GetTupleElement() index (%d) out of range for tuple shape %s", index,
           ShapeUtil::HumanString(*tuple_shape));
     }
-    *instr.mutable_shape() =
-        ShapeUtil::GetTupleElementShape(*tuple_shape, index).ToProto();
-
-    instr.set_tuple_index(index);
-
-    return AddInstruction(std::move(instr), HloOpcode::kGetTupleElement,
-                          {tuple_data});
+    return GetTupleElementInternal(
+        ShapeUtil::GetTupleElementShape(*tuple_shape, index), tuple_data,
+        index);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::GetTupleElementInternal(const Shape& shape,
+                                                    XlaOp tuple_data,
+                                                    int64 index) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  instr.set_tuple_index(index);
+  return AddInstruction(std::move(instr), HloOpcode::kGetTupleElement,
+                        {tuple_data});
 }
 
 XlaOp XlaBuilder::Dot(XlaOp lhs, XlaOp rhs,
@@ -1407,14 +1431,11 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
 XlaOp XlaBuilder::InfeedWithToken(XlaOp token, const Shape& shape,
                                   const string& config) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     if (!LayoutUtil::HasLayout(shape)) {
       return InvalidArgument("Given shape to Infeed must have a layout");
     }
     const Shape infeed_instruction_shape =
         ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeTokenShape()});
-    *instr.mutable_shape() = infeed_instruction_shape.ToProto();
-    instr.set_infeed_config(config);
 
     if (shape.IsArray() && sharding() &&
         sharding()->type() == OpSharding::OTHER) {
@@ -1427,9 +1448,16 @@ XlaOp XlaBuilder::InfeedWithToken(XlaOp token, const Shape& shape,
       return InvalidArgument(
           "Replicated sharding is not yet supported for infeeds");
     }
-
-    return AddInstruction(std::move(instr), HloOpcode::kInfeed, {token});
+    return InfeedWithTokenInternal(infeed_instruction_shape, token, config);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::InfeedWithTokenInternal(
+    const Shape& infeed_instruction_shape, XlaOp token, const string& config) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = infeed_instruction_shape.ToProto();
+  instr.set_infeed_config(config);
+  return AddInstruction(std::move(instr), HloOpcode::kInfeed, {token});
 }
 
 void XlaBuilder::Outfeed(XlaOp operand, const Shape& shape_with_layout,
@@ -1488,10 +1516,6 @@ XlaOp XlaBuilder::OutfeedWithToken(XlaOp operand, XlaOp token,
                                    const Shape& shape_with_layout,
                                    const string& outfeed_config) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-
-    *instr.mutable_shape() = ShapeUtil::MakeTokenShape().ToProto();
-
     // Check and set outfeed shape.
     if (!LayoutUtil::HasLayout(shape_with_layout)) {
       return InvalidArgument("Given shape to Outfeed must have a layout");
@@ -1503,13 +1527,20 @@ XlaOp XlaBuilder::OutfeedWithToken(XlaOp operand, XlaOp token,
           ShapeUtil::HumanStringWithLayout(shape_with_layout),
           ShapeUtil::HumanStringWithLayout(*operand_shape));
     }
-    *instr.mutable_outfeed_shape() = shape_with_layout.ToProto();
-
-    instr.set_outfeed_config(outfeed_config);
-
-    return AddInstruction(std::move(instr), HloOpcode::kOutfeed,
-                          {operand, token});
+    return OutfeedWithTokenInternal(operand, token, shape_with_layout,
+                                    outfeed_config);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::OutfeedWithTokenInternal(
+    XlaOp operand, XlaOp token, const Shape& shape_with_layout,
+    const string& outfeed_config) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = ShapeUtil::MakeTokenShape().ToProto();
+  *instr.mutable_outfeed_shape() = shape_with_layout.ToProto();
+  instr.set_outfeed_config(outfeed_config);
+  return AddInstruction(std::move(instr), HloOpcode::kOutfeed,
+                        {operand, token});
 }
 
 XlaOp XlaBuilder::CreateToken() {
