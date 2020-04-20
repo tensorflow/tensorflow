@@ -33,6 +33,8 @@ public final class CoreMLDelegate: Delegate {
     self.options = options
     var delegateOptions = TfLiteCoreMlDelegateOptions()
     delegateOptions.enabled_devices = options.enabledDevices.cEnabledDevices
+    delegateOptions.max_delegated_partitions = options.maxDelegatedPartitions
+    delegateOptions.min_nodes_per_partition = options.minNodesPerPartition
     cDelegate = TfLiteCoreMlDelegateCreate(&delegateOptions)
     if cDelegate == nil {
       return nil
@@ -53,6 +55,14 @@ extension CoreMLDelegate {
     /// default is .devicesWithNeuralEngine, where the delegate will not be created for
     /// devices that does not have Neural Engine.
     public var enabledDevices: CoreMLDelegateEnabledDevices = .devicesWithNeuralEngine
+    /// Maximum number of Core ML delegates created.  Each graph corresponds to one delegated node
+    /// subset in the TFLite model. Set this to 0 to delegate all possible partitions.
+    public var maxDelegatedPartitions: Int32 = 0;
+
+    // Minimum number of nodes per partition delegated with
+    // Core ML delegate. Defaults to 2.
+    public var  minNodesPerPartition: Int32 = 2;
+
     /// Creates a new instance with the default values.
     public init() {}
   }
@@ -75,4 +85,3 @@ public enum CoreMLDelegateEnabledDevices: Equatable, Hashable {
     }
   }
 }
-
