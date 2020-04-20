@@ -140,10 +140,11 @@ class PyBuiltinsTest(test.TestCase):
 
   def test_len_dataset_unknown(self):
     dataset = dataset_ops.DatasetV2.range(5).filter(lambda _: True).batch(2)
-    self.assertEqual(py_builtins.len_(dataset), 3)
+    with self.assertRaises(errors_impl.InvalidArgumentError):
+      _ = py_builtins.len_(dataset)
     with self.cached_session() as sess:
-      t = py_builtins.len_(dataset)
-      self.assertAllEqual(self.evaluate(t), 3)
+      with self.assertRaises(errors_impl.InvalidArgumentError):
+        _ = py_builtins.len_(dataset)
 
   def test_len_scalar(self):
     with self.assertRaises(ValueError):

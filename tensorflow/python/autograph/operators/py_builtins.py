@@ -284,19 +284,14 @@ def _tf_tensor_len(s):
 def _tf_dataset_len(s):
   l = cardinality.cardinality(s)
 
-  def raise_infinite_cardinality_error():
-    msg = "len requires non-infinite dataset"
+  def raise_cardinality_error():
+    msg = gen_string_ops.string_join(
+        ["len requires dataset with definitive cardinality, got ",
+         gen_string_ops.as_string(l)])
     with ops.control_dependencies([control_flow_ops.Assert(False, [msg])]):
       return constant_op.constant(-1, dtype=dtypes.int32)
 
-  def reduce_unknown_cardinality_dataset(d):
-    return d.reduce(constant_op.constant(0, dtype=dtypes.int32), lambda x, _: x + 1)
-
-  l = control_flow_ops.cond(l != cardinality.INFINITE, lambda: l, raise_infinite_cardinality_error)
-
-  l = control_flow_ops.cond(l != cardinality.UNKNOWN, lambda: l, lambda: reduce_unknown_cardinality_dataset(s))
-
-  return l
+  return control_flow_ops.cond(l == cardinality.INFINITE or l == cardinality.UNKNOWN, raise_cardinality_error, lambda: l)
 
 
 def _py_len(s):
