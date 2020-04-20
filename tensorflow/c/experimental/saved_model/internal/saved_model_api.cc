@@ -35,9 +35,9 @@ TF_SavedModel* TF_LoadSavedModel(const char* dirname, TFE_Context* ctx,
 
 void TF_DeleteSavedModel(TF_SavedModel* model) { delete model; }
 
-TF_ConcreteFunction* TF_GetSavedModelFunction(TF_SavedModel* model,
-                                              char* function_path,
-                                              TF_Status* status) {
+TF_ConcreteFunction* TF_GetSavedModelConcreteFunction(TF_SavedModel* model,
+                                                      char* function_path,
+                                                      TF_Status* status) {
   tensorflow::ConcreteFunction* result = nullptr;
   tensorflow::Status get_function_status =
       model->saved_model->GetFunction(function_path, &result);

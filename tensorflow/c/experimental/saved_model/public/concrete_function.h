@@ -40,7 +40,7 @@ TF_CAPI_EXPORT extern TF_OutputList* TF_ConcreteFunctionGetCaptures(
     TF_ConcreteFunction* func);
 
 // Returns a TFE_Op suitable for executing this function.
-TF_CAPI_EXPORT extern TFE_Op* TF_ConcreteFunctionGetOperation(
+TF_CAPI_EXPORT extern TFE_Op* TF_ConcreteFunctionGetCallOp(
     TF_ConcreteFunction* func);
 
 // Deletes `func`.

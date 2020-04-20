@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 
 const std::vector<tensorflow::AbstractTensorHandleInterface*>&
-ConcreteFunction::Captures() const {
+ConcreteFunction::GetCaptures() const {
   return captures_;
 }
 

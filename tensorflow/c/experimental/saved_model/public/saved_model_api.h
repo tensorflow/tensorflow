@@ -67,7 +67,7 @@ TF_CAPI_EXPORT extern void TF_DeleteSavedModel(TF_SavedModel* model);
 //  TF_ConcreteFunction instance. The lifetime of this instance is
 //  "conceptually" bound to `model`. Once `model` is deleted, all
 //  `TF_ConcreteFunctions` retrieved from it are invalid, and have been deleted.
-TF_CAPI_EXPORT extern TF_ConcreteFunction* TF_GetSavedModelFunction(
+TF_CAPI_EXPORT extern TF_ConcreteFunction* TF_GetSavedModelConcreteFunction(
     TF_SavedModel* model, char* function_path, TF_Status* status);
 
 // Retrieve a function from the TF SavedModel via a SignatureDef key.

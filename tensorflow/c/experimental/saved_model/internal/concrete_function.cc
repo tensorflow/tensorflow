@@ -33,8 +33,8 @@ TF_OutputList* TF_ConcreteFunctionGetCaptures(TF_ConcreteFunction* func) {
   return nullptr;
 }
 
-TFE_Op* TF_ConcreteFunctionGetOperation(TF_ConcreteFunction* func) {
-  return new TFE_Op{tensorflow::unwrap(func)->GetFunctionOp()};
+TFE_Op* TF_ConcreteFunctionGetCallOp(TF_ConcreteFunction* func) {
+  return new TFE_Op{tensorflow::unwrap(func)->GetCallOp()};
 }
 
 }  // end extern "C"

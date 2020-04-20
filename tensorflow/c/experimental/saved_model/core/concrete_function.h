@@ -38,9 +38,9 @@ class ConcreteFunction {
   virtual ~ConcreteFunction() = 0;
 
   // This method returns the "Call" Op used to execute the function.
-  virtual AbstractOperationInterface* GetFunctionOp() = 0;
+  virtual AbstractOperationInterface* GetCallOp() = 0;
 
-  const std::vector<tensorflow::AbstractTensorHandleInterface*>& Captures()
+  const std::vector<tensorflow::AbstractTensorHandleInterface*>& GetCaptures()
       const;
   const FunctionMetadata& GetFunctionMetadata() const;
 
