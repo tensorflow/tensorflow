@@ -86,6 +86,14 @@ endif
   ARC_MLI_TESTS += $(foreach TEST,$(ARC_MLI_TESTS), $(TEST)_slicing)
 
 generate_arc_mli_test_projects: $(foreach TEST,$(ARC_MLI_TESTS), generate_kernel_$(TEST)_test_make_project)
+  
+  ARC_EXTRA_APP_SETTINGS += \
+    \nMLI_ONLY ?= false\n\
+    \nifeq \($(DLR)\(MLI_ONLY\), true\)\
+    \nCCFLAGS += -DTF_LITE_STRIP_REFERENCE_IMPL\
+    \nCXXFLAGS += -DTF_LITE_STRIP_REFERENCE_IMPL\
+    \nendif\n
+
 
 
 endif # no_embarc_mli

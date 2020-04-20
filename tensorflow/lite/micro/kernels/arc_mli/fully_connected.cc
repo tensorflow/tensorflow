@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2017-2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 
-#include "mli_api.h" 
+#include "mli_api.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -23,10 +23,10 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/micro/kernels/arc_mli/scratch_buffers.h"
-#include "tensorflow/lite/micro/kernels/arc_mli/scratch_buf_mgr.h"
-#include "tensorflow/lite/micro/kernels/arc_mli/mli_tf_utils.h"
 #include "tensorflow/lite/micro/kernels/arc_mli/mli_slicers.h"
+#include "tensorflow/lite/micro/kernels/arc_mli/mli_tf_utils.h"
+#include "tensorflow/lite/micro/kernels/arc_mli/scratch_buf_mgr.h"
+#include "tensorflow/lite/micro/kernels/arc_mli/scratch_buffers.h"
 
 namespace tflite {
 namespace ops {
@@ -52,6 +52,18 @@ constexpr int kWeightsTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 
+bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
+                     const TfLiteTensor* filter, const TfLiteTensor* bias,
+                     const TfLiteFullyConnectedParams* params) {
+  // MLI optimized version only supports int8 dataype and no fused Relu and
+  // symmetric per-tensor quantization of weights (not per-axis)
+  bool ret_val = (filter->type == kTfLiteInt8) &&
+                 (input->type == kTfLiteInt8) && (bias->type == kTfLiteInt32) &&
+                 (params->activation == kTfLiteActNone) &&
+                 (filter->params.zero_point == 0); 
+  return ret_val;
+}
+
 TfLiteStatus CalculateOpData(TfLiteContext* context,
                              TfLiteFullyConnectedParams* params,
                              TfLiteType data_type, const TfLiteTensor* input,
@@ -59,7 +71,9 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
                              const TfLiteTensor* bias, TfLiteTensor* output,
                              OpData* data) {
   TfLiteStatus status = kTfLiteOk;
-  if (data_type != kTfLiteFloat32) {
+#if !defined(TF_LITE_STRIP_REFERENCE_IMPL)
+  if (data_type != kTfLiteFloat32 &&
+      !IsMliApplicable(context, input, filter, bias, params)) {
     double real_multiplier = 0.0;
     TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
         context, input, filter, bias, output, &real_multiplier));
@@ -70,6 +84,7 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
         context, params->activation, output, &data->output_activation_min,
         &data->output_activation_max));
   }
+#endif
   return status;
 }
 
@@ -95,6 +110,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
+  TF_LITE_ENSURE(context, data != nullptr);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
   TF_LITE_ENSURE_MSG(context, input->type == filter->type,
                      "Hybrid models are not supported on TFLite Micro.");
@@ -106,122 +122,135 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+TfLiteStatus EvalMliQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
+                                  TfLiteFullyConnectedParams* params,
+                                  OpData* data, const TfLiteTensor* input,
+                                  const TfLiteTensor* filter,
+                                  const TfLiteTensor* bias,
+                                  TfLiteTensor* output) {
+  mli_tensor mli_in = {0};
+  mli_tensor mli_weights = {0};
+  mli_tensor mli_bias = {0};
+  mli_tensor mli_out = {0};
+
+  ConvertToMliTensor<int8_t>(input, &mli_in);
+  ConvertToMliTensor<int8_t>(filter, &mli_weights);
+  ConvertToMliTensor<int32_t>(bias, &mli_bias);
+  ConvertToMliTensor<int8_t>(output, &mli_out);
+
+  /* The input tensor can have more than 2 dimensions. for the compute this
+     doesn't make any difference because all the inputs or a batch entry will
+     be used anyway. because the MLI kernel doesn't recognize the multiple
+     dimensions, the tensor shape is casted to a {batchnum, inputsize} shape. */
+  mli_in.shape[0] = mli_out.shape[0];
+  mli_in.shape[1] = mli_weights.shape[1];
+  mli_in.shape[2] = 0;
+  mli_in.shape[3] = 0;
+  mli_in.rank = 2;
+
+  // Tensors for data in fast (local) memory and config to copy data from
+  // external to local memory
+  mli_tensor weights_local = mli_weights;
+  mli_tensor bias_local = mli_bias;
+  mli_tensor in_local = mli_in;
+  mli_tensor out_local = mli_out;
+  mli_mov_cfg_t copy_config;
+  mli_mov_cfg_for_copy(&copy_config);
+  const int weight_out_dimension = 0;
+  const int out_tensor_dimension = 1;
+  const int batch_dimension = 0;
+  int slice_size = mli_weights.shape[weight_out_dimension];
+
+  /* allocate the local buffers, and compute the slice size */
+  TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_fully_connect_tensors(
+      context, &in_local, &weights_local, &bias_local, &out_local));
+  TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_weights(
+      &weights_local, &bias_local, weight_out_dimension, &slice_size));
+  int max_out_slice_size =
+      out_local.capacity / mli_hlp_tensor_element_size(&out_local);
+  if (slice_size > max_out_slice_size) slice_size = max_out_slice_size;
+
+  /* is_local indicates that the tensor is already in local memory,
+     so in that case the original tensor can be used,
+     and there is no need to copy it to the local tensor*/
+  const bool in_is_local = in_local.data == mli_in.data;
+  const bool out_is_local = out_local.data == mli_out.data;
+  const bool w_is_local = weights_local.data == mli_weights.data;
+  const bool b_is_local = bias_local.data == mli_bias.data;
+
+  TensorSlicer w_slice(&mli_weights, weight_out_dimension, slice_size);
+  TensorSlicer b_slice(&mli_bias, weight_out_dimension, slice_size);
+  TensorSlicer out_ch_slice(&mli_out, out_tensor_dimension, slice_size, 0, 0, 0,
+                            true);
+
+  mli_tensor* w_ptr = w_is_local ? w_slice.Sub() : &weights_local;
+  mli_tensor* b_ptr = b_is_local ? b_slice.Sub() : &bias_local;
+
+  void* input_buffer_ptr = NULL;
+
+  while (!w_slice.Done()) {
+    mli_mov_tensor_sync(w_slice.Sub(), &copy_config, w_ptr);
+    mli_mov_tensor_sync(b_slice.Sub(), &copy_config, b_ptr);
+
+    TensorSlicer in_slice(&mli_in, batch_dimension, 1);
+
+    /* output tensor is alreade sliced in the output size dimension.
+    out_ch_slice.Sub() is the tensor for the amount of output size of this
+    itteration of the weight slice loop. This tensor needs to be further
+    sliced over the batch */
+    TensorSlicer out_slice(out_ch_slice.Sub(), batch_dimension, 1);
+
+    /* setup the pointers to the local or remote tensor to make the code
+     * inside the loop easier. */
+    mli_tensor* in_ptr = in_is_local ? in_slice.Sub() : &in_local;
+    mli_tensor* out_ptr = out_is_local ? out_slice.Sub() : &out_local;
+
+    while (!out_slice.Done()) {
+      // if same input copy as previous iteration, skip the copy of input
+      if (in_slice.Sub()->data != input_buffer_ptr) {
+        mli_mov_tensor_sync(in_slice.Sub(), &copy_config, in_ptr);
+        input_buffer_ptr = in_slice.Sub()->data;
+      }
+      mli_krn_fully_connected_sa8_sa8_sa32(in_ptr, w_ptr, b_ptr, out_ptr);
+      mli_mov_tensor_sync(out_ptr, &copy_config, out_slice.Sub());
+
+      in_slice.Next();
+      out_slice.Next();
+    }
+    w_slice.Next();
+    b_slice.Next();
+    out_ch_slice.Next();
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                                TfLiteFullyConnectedParams* params, OpData* data,
                                const TfLiteTensor* input,
                                const TfLiteTensor* filter,
                                const TfLiteTensor* bias, TfLiteTensor* output) {
-  // Run Fully Connected MLI kernel
-  // MLI optimized version only supports int8 dataype and no fused Relu
-  // TODO: subject to add mli_saturate kernel
-  // work around for issue #35318, mli fully connect kernel only supports
-  // zeropoint == 0 for weights. this check can be removed once issue #35318 is
-  // resolved.
-  if ((filter->params.zero_point == 0) &&
-      (input->type == kTfLiteInt8 && params->activation == kTfLiteActNone)) {
-    mli_tensor mli_in = {0};
-    mli_tensor mli_weights = {0};
-    mli_tensor mli_bias = {0};
-    mli_tensor mli_out = {0};
+#if !defined(TF_LITE_STRIP_REFERENCE_IMPL)
+  FullyConnectedParams op_params;
+  op_params.input_offset = -input->params.zero_point;
+  op_params.weights_offset = -filter->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.output_multiplier = data->output_multiplier;
+  // TODO(b/138810107): Figure out whether output shift should be inverted
+  op_params.output_shift = -data->output_shift;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
 
-    ConvertToMliTensor<int8_t>(input, &mli_in);
-    ConvertToMliTensor<int8_t>(filter, &mli_weights);
-    ConvertToMliTensor<int32_t>(bias, &mli_bias);
-    ConvertToMliTensor<int8_t>(output, &mli_out);
-
-    /* The input tensor can have more than 2 dimensions. for the compute this doesn't make any difference
-       because all the inputs or a batch entry will be used anyway. because the MLI kernel doesn't recognize
-       the multiple dimensions, the tensor shape is casted to a {batchnum, inputsize} shape. */
-    mli_in.shape[0] = mli_out.shape[0];
-    mli_in.shape[1] = mli_weights.shape[1];
-    mli_in.shape[2] = 0;
-    mli_in.shape[3] = 0;
-    mli_in.rank = 2;
-
-    // Tensors for data in fast (local) memory and config to copy data from external to local memory
-    mli_tensor weights_local = mli_weights;
-    mli_tensor bias_local = mli_bias;
-    mli_tensor in_local = mli_in;
-    mli_tensor out_local = mli_out;
-    mli_mov_cfg_t copy_config;
-    mli_mov_cfg_for_copy(&copy_config);
-    const int weight_out_dimension = 0;
-    const int out_tensor_dimension = 1;
-    const int batch_dimension = 0;
-    int slice_size = mli_weights.shape[weight_out_dimension];
-
-    /* allocate the local buffers, and compute the slice size */
-    TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_fully_connect_tensors(context, &in_local, &weights_local, &bias_local, &out_local));
-    TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_weights(&weights_local, &bias_local, weight_out_dimension, &slice_size));
-    int max_out_slice_size = out_local.capacity / mli_hlp_tensor_element_size(&out_local);
-    if (slice_size > max_out_slice_size) slice_size = max_out_slice_size;
-
-    /* is_local indicates that the tensor is already in local memory,
-       so in that case the original tensor can be used,
-       and there is no need to copy it to the local tensor*/
-    const bool in_is_local = in_local.data == mli_in.data;
-    const bool out_is_local = out_local.data == mli_out.data;
-    const bool w_is_local = weights_local.data == mli_weights.data;
-    const bool b_is_local = bias_local.data == mli_bias.data;
-
-    TensorSlicer w_slice(&mli_weights, weight_out_dimension, slice_size);
-    TensorSlicer b_slice(&mli_bias, weight_out_dimension, slice_size);
-    TensorSlicer out_ch_slice(&mli_out, out_tensor_dimension, slice_size, 0, 0, 0, true);
-
-    mli_tensor *w_ptr = w_is_local ? w_slice.Sub() : &weights_local;
-    mli_tensor *b_ptr = b_is_local ? b_slice.Sub() : &bias_local;
-
-    void *input_buffer_ptr = NULL;
-
-    while (!w_slice.Done()){
-      mli_mov_tensor_sync(w_slice.Sub(), &copy_config, w_ptr);
-      mli_mov_tensor_sync(b_slice.Sub(), &copy_config, b_ptr);
-
-      TensorSlicer in_slice(&mli_in, batch_dimension, 1);
-
-      /* output tensor is alreade sliced in the output size dimension. out_ch_slice.Sub() is the tensor for the amount of
-      output size of this itteration of the weight slice loop. This tensor needs to be further sliced over the batch */
-      TensorSlicer out_slice(out_ch_slice.Sub(), batch_dimension, 1);
-
-      /* setup the pointers to the local or remote tensor to make the code inside the loop easier. */
-      mli_tensor *in_ptr = in_is_local ? in_slice.Sub() : &in_local;
-      mli_tensor *out_ptr = out_is_local ? out_slice.Sub() : &out_local;
-
-      while (!out_slice.Done()) {
-
-        // if same input copy as previous iteration, skip the copy of input
-        if (in_slice.Sub()->data != input_buffer_ptr) {
-          mli_mov_tensor_sync(in_slice.Sub(), &copy_config, in_ptr);
-          input_buffer_ptr = in_slice.Sub()->data;
-        }
-        mli_krn_fully_connected_sa8_sa8_sa32(in_ptr, w_ptr, b_ptr, out_ptr);
-        mli_mov_tensor_sync(out_ptr, &copy_config, out_slice.Sub());
-
-        in_slice.Next();
-        out_slice.Next();
-      }
-      w_slice.Next();
-      b_slice.Next();
-      out_ch_slice.Next();
-    }
-  } else {
-    FullyConnectedParams op_params;
-    op_params.input_offset = -input->params.zero_point;
-    op_params.weights_offset = -filter->params.zero_point;
-    op_params.output_offset = output->params.zero_point;
-    op_params.output_multiplier = data->output_multiplier;
-    // TODO(b/138810107): Figure out whether output shift should be inverted
-    op_params.output_shift = -data->output_shift;
-    op_params.quantized_activation_min = data->output_activation_min;
-    op_params.quantized_activation_max = data->output_activation_max;
-
-    reference_integer_ops::FullyConnected(
-        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-        GetTensorShape(filter), GetTensorData<int8_t>(filter),
-        GetTensorShape(bias), GetTensorData<int32_t>(bias),
-        GetTensorShape(output), GetTensorData<int8_t>(output));
-  }
+  reference_integer_ops::FullyConnected(
+      op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+      GetTensorShape(filter), GetTensorData<int8_t>(filter),
+      GetTensorShape(bias), GetTensorData<int32_t>(bias),
+      GetTensorShape(output), GetTensorData<int8_t>(output));
   return kTfLiteOk;
+#else
+  TF_LITE_KERNEL_LOG(context,
+                     "Node configuration is not supported by ARC MLI Library.");
+  return kTfLiteError;
+#endif
 }
 
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
@@ -229,6 +258,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                            const TfLiteTensor* input,
                            const TfLiteTensor* filter, const TfLiteTensor* bias,
                            TfLiteTensor* output) {
+#if !defined(TF_LITE_STRIP_REFERENCE_IMPL)
   const int32_t input_offset = -input->params.zero_point;
   const int32_t filter_offset = -filter->params.zero_point;
   const int32_t output_offset = output->params.zero_point;
@@ -261,14 +291,20 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                          TfLiteTypeGetName(output->type), output->type);
       return kTfLiteError;
   }
-
   return kTfLiteOk;
+#else
+  TF_LITE_KERNEL_LOG(context,
+                     "Type %s (%d) is not supported by ARC MLI Library.",
+                     TfLiteTypeGetName(input->type), input->type);
+  return kTfLiteError;
+#endif
 }
 
 TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
                        TfLiteFullyConnectedParams* params, OpData* data,
                        const TfLiteTensor* input, const TfLiteTensor* filter,
                        const TfLiteTensor* bias, TfLiteTensor* output) {
+#if !defined(TF_LITE_STRIP_REFERENCE_IMPL)
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
@@ -281,6 +317,12 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
       GetTensorShape(bias), GetTensorData<float>(bias), GetTensorShape(output),
       GetTensorData<float>(output));
   return kTfLiteOk;
+#else
+  TF_LITE_KERNEL_LOG(context,
+                     "Type %s (%d) is not supported by ARC MLI Library.",
+                     TfLiteTypeGetName(input->type), input->type);
+  return kTfLiteError;
+#endif
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
@@ -293,6 +335,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  TF_LITE_ENSURE(context, data != nullptr);
 
   // Checks in Prepare ensure input, output and filter types are all the same.
   switch (input->type) {
@@ -300,12 +343,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return EvalFloat(context, node, params, data, input, filter, bias,
                        output);
     case kTfLiteInt8:
-      return EvalQuantizedInt8(context, node, params, data, input, filter, bias,
-                               output);
+      if (IsMliApplicable(context, input, filter, bias, params)) {
+        return EvalMliQuantizedInt8(context, node, params, data, input, filter,
+                                 bias, output);
+      } else {
+        return EvalQuantizedInt8(context, node, params, data, input, filter,
+                                 bias, output);
+      }
 
-    case kTfLiteUInt8:
-      return EvalQuantized(context, node, params, data, input, filter, bias,
-                           output);
+      case kTfLiteUInt8:
+        return EvalQuantized(context, node, params, data, input, filter, bias,
+                             output);
 
     default:
       TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
