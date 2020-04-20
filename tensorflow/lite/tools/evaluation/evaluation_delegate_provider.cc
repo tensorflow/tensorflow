@@ -66,7 +66,6 @@ TfLiteDelegatePtr CreateTfLiteDelegate(const TfliteInferenceParams& params,
       return p;
     }
     case TfliteInferenceParams::NONE:
-      if (error_msg) *error_msg = "No delegate type is specified.";
       return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
     default:
       if (error_msg) {
