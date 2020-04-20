@@ -392,11 +392,11 @@ struct bfloat16 {
   uint16_t value;
 
   // A value that represents "not a number".
-  static const uint16_t NAN_VALUE = 0x7FC0;
+  static constexpr uint16_t NAN_VALUE = 0x7FC0;
 
  private:
   // A value that represents "zero".
-  static const uint16_t ZERO_VALUE = 0;
+  static constexpr uint16_t ZERO_VALUE = 0;
 
   B16_DEVICE_FUNC static bool float_isnan(const float& x) {
 #ifdef __CUDA_ARCH__

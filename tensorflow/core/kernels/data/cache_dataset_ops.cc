@@ -603,7 +603,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
   Env* const env_;
   const size_t num_tensors_;
   const size_t tensor_index_padding_size_;
-  static const size_t kMaxItems = 10000000;  // 10 million
+  static constexpr size_t kMaxItems = 10000000;  // 10 million
   const size_t item_index_padding_size_;
   const string tensor_format_string_;
 };  // FileDataset
