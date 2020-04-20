@@ -70,7 +70,7 @@ class NoReusePortOption : public ::grpc::ServerBuilderOption {
                          plugins) override {}
 };
 
-// Define an option subclass in order to disable SO_REUSEPORT for the
+// Define an option subclass in order to enable SO_REUSEPORT for the
 // server socket.
 class ReusePortOption : public ::grpc::ServerBuilderOption {
  public:
