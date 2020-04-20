@@ -449,6 +449,23 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "AffineUtils",
+    srcs = glob(
+        [
+            "lib/Dialect/Affine/Utils/*.cpp",
+            "lib/Dialect/Affine/Utils/*.h",
+        ],
+    ),
+    hdrs = ["include/mlir/Dialect/Affine/Utils.h"],
+    includes = ["include"],
+    deps = [
+        ":Affine",
+        ":IR",
+        "@llvm-project//llvm:support",
+    ],
+)
+
 gentbl(
     name = "AffinePassIncGen",
     strip_include_prefix = "include",
@@ -728,7 +745,6 @@ cc_library(
         ],
     ),
     hdrs = glob([
-        "include/mlir/ADT/*.h",
         "include/mlir/Support/*.h",
     ]),
     includes = ["include"],
@@ -885,6 +901,8 @@ cc_library(
         ":SideEffects",
         ":Support",
         "@llvm-project//llvm:asm_parser",
+        "@llvm-project//llvm:bit_reader",
+        "@llvm-project//llvm:bit_writer",
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
     ],
@@ -2666,6 +2684,20 @@ cc_binary(
     ],
 )
 
+cc_binary(
+    name = "mlir-linalg-ods-gen",
+    srcs = glob([
+        "tools/mlir-linalg-ods-gen/mlir-linalg-ods-gen.cpp",
+    ]),
+    deps = [
+        ":IR",
+        ":Support",
+        "@llvm-project//llvm:config",
+        "@llvm-project//llvm:support",
+        "@llvm-project//llvm:tablegen",
+    ],
+)
+
 ## OpenMP dialect
 gentbl(
     name = "OpenMPOpsIncGen",
@@ -3035,6 +3067,7 @@ cc_library(
     hdrs = [
         "include/mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h",
         "include/mlir/Dialect/Linalg/EDSC/Builders.h",
+        "include/mlir/Dialect/Linalg/EDSC/FoldedIntrinsics.h",
         "include/mlir/Dialect/Linalg/EDSC/Intrinsics.h",
         "include/mlir/Dialect/Linalg/Passes.h",
         "include/mlir/Dialect/Linalg/Transforms/LinalgTransforms.h",

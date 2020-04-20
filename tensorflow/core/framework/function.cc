@@ -1505,9 +1505,17 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
     // function's attrs to see if noinline is specified. Otherwise,
     // uses func's attrs.
     if (!grad_name.empty()) {
-      return &(FindHelper(grad_name)->fdef);
+      if (const auto helper = FindHelper(grad_name)) {
+        return &(helper->fdef);
+      } else {
+        return nullptr;
+      }
     }
-    return &(FindHelper(func_name)->fdef);
+    if (const auto helper = FindHelper(func_name)) {
+      return &(helper->fdef);
+    } else {
+      return nullptr;
+    }
   }
 }
 

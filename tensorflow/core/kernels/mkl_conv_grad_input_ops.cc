@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
+#include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/kernels/mkl_conv_ops.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -380,7 +381,15 @@ class MklConvCustomBackpropInputOp
       // tensor containing shape of filter. So filter.shape() is not
       // a correct way to get filter shape. These operator-specific calls
       // allow this class to handle this case.
-      TensorShape src_tf_shape = MakeInputTfShape(context, src_tensor);
+      TensorShape src_tf_shape;
+      if (src_tensor.dim_size(0) == 2) {
+        Conv2DBackpropComputeInputShape(src_tensor, filter_tensor.shape(),
+                                        diff_dst_tensor.shape(),
+                                        this->data_format_, &src_tf_shape);
+      } else {
+        src_tf_shape = MakeInputTfShape(context, src_tensor);
+      }
+
       TensorShape filter_tf_shape = MakeFilterTfShape(context, filter_tensor);
       TensorShape diff_dst_tf_shape =
           GetTfShape(context, kOutbpropIdx, eager_mode);

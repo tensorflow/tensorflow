@@ -112,20 +112,24 @@ TensorInfo CreateTensorInfo(const TensorMetadata* metadata,
   tensor_info.upper_camel_name[0] = toupper(tensor_info.upper_camel_name[0]);
   tensor_info.normalization_unit =
       FindNormalizationUnit(metadata, tensor_identifier, err);
-  if (metadata->content()->content_properties_type() ==
-      ContentProperties_ImageProperties) {
-    if (metadata->content()
-            ->content_properties_as_ImageProperties()
-            ->color_space() == ColorSpaceType_RGB) {
-      tensor_info.content_type = "image";
-      tensor_info.wrapper_type = "TensorImage";
-      tensor_info.processor_type = "ImageProcessor";
-      return tensor_info;
-    } else {
-      err->Warning(
-          "Found Non-RGB image on tensor (%s). Codegen currently does not "
-          "support it, and regard it as a plain numeric tensor.",
-          tensor_identifier.c_str());
+  if (metadata->content() != nullptr &&
+      metadata->content()->content_properties() != nullptr) {
+    // Enter tensor wrapper type inferring
+    if (metadata->content()->content_properties_type() ==
+        ContentProperties_ImageProperties) {
+      if (metadata->content()
+              ->content_properties_as_ImageProperties()
+              ->color_space() == ColorSpaceType_RGB) {
+        tensor_info.content_type = "image";
+        tensor_info.wrapper_type = "TensorImage";
+        tensor_info.processor_type = "ImageProcessor";
+        return tensor_info;
+      } else {
+        err->Warning(
+            "Found Non-RGB image on tensor (%s). Codegen currently does not "
+            "support it, and regard it as a plain numeric tensor.",
+            tensor_identifier.c_str());
+      }
     }
   }
   tensor_info.content_type = "tensor";
@@ -154,12 +158,12 @@ ModelInfo CreateModelInfo(const ModelMetadata* metadata,
       graph->input_tensor_metadata(), graph->output_tensor_metadata());
   std::vector<std::string> input_tensor_names = std::move(names.first);
   std::vector<std::string> output_tensor_names = std::move(names.second);
-  for (int i = 0; i < graph->input_tensor_metadata()->size(); i++) {
+  for (int i = 0; i < input_tensor_names.size(); i++) {
     model_info.inputs.push_back(
         CreateTensorInfo(graph->input_tensor_metadata()->Get(i),
                          input_tensor_names[i], true, i, err));
   }
-  for (int i = 0; i < graph->output_tensor_metadata()->size(); i++) {
+  for (int i = 0; i < output_tensor_names.size(); i++) {
     model_info.outputs.push_back(
         CreateTensorInfo(graph->output_tensor_metadata()->Get(i),
                          output_tensor_names[i], false, i, err));
@@ -945,6 +949,11 @@ GenerationResult AndroidJavaGenerator::Generate(
     const Model* model, const std::string& package_name,
     const std::string& model_class_name, const std::string& model_asset_path) {
   GenerationResult result;
+  if (model == nullptr) {
+    err_.Error(
+        "Cannot read model from the buffer. Codegen will generate nothing.");
+    return result;
+  }
   const ModelMetadata* metadata = GetMetadataFromModel(model);
   if (metadata == nullptr) {
     err_.Error(

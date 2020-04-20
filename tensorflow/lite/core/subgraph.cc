@@ -1305,6 +1305,14 @@ TfLiteStatus Subgraph::RedoAllDelegates() {
   return kTfLiteOk;
 }
 
+TfLiteStatus Subgraph::RemoveAllDelegates() {
+  TF_LITE_ENSURE_STATUS(UndoAllDelegates());
+  delegates_applied_.clear();
+  delegates_undone_ = false;
+  TF_LITE_ENSURE_STATUS(EnsureMemoryAllocations());
+  return kTfLiteOk;
+}
+
 TfLiteStatus Subgraph::EnsureMemoryAllocations() {
   if (memory_planner_) {
     state_ = kStateUninvokable;

@@ -373,7 +373,7 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
         TF_RETURN_IF_ERROR(
             eager_context->RemoteMgr()->DeserializeRemoteTensorHandle(
                 input.remote_handle(), &handle));
-        op->AddInput(handle);
+        TF_RETURN_IF_ERROR(op->AddInput(handle));
       } else {
         Tensor tensor;
         if (!ParseTensorProtoToTensor(input.tensor(), &tensor)) {
@@ -382,7 +382,7 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
         } else {
           handle = TensorHandle::CreateLocalHandle(std::move(tensor), nullptr,
                                                    nullptr, eager_context);
-          op->AddInput(handle);
+          TF_RETURN_IF_ERROR(op->AddInput(handle));
         }
       }
       // Unref handle since it has a ref as an input now.

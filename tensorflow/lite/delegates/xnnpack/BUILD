@@ -28,6 +28,21 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "xnnpack_delegate_test_mode",
+    srcs = ["xnnpack_delegate.cc"],
+    hdrs = ["xnnpack_delegate.h"],
+    copts = ["-DXNNPACK_DELEGATE_TEST_MODE=1"],
+    linkstatic = True,
+    deps = [
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@XNNPACK",
+    ],
+)
+
 ############################## Integration tests ###############################
 
 cc_library(
@@ -39,6 +54,66 @@ cc_library(
     }),
     deps = [
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "depthwise_conv_2d_tester",
+    testonly = 1,
+    srcs = ["depthwise_conv_2d_tester.cc"],
+    hdrs = ["depthwise_conv_2d_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "pool_2d_tester",
+    testonly = 1,
+    srcs = ["pool_2d_tester.cc"],
+    hdrs = ["pool_2d_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "average_pool_2d_test",
+    srcs = ["average_pool_2d_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":pool_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "max_pool_2d_test",
+    srcs = ["max_pool_2d_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":pool_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -70,14 +145,10 @@ cc_test(
     }),
     tags = ["nomsan"],  # b/145129478
     deps = [
+        ":depthwise_conv_2d_tester",
         ":test_main",
-        ":xnnpack_delegate",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/schema:schema_fbs",
+        ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 

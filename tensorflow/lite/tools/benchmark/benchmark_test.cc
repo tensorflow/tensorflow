@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -22,14 +23,15 @@ limitations under the License.
 #include "absl/algorithm/algorithm.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_performance_options.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
 #include "tensorflow/lite/tools/benchmark/delegate_provider.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/lite/tools/logging.h"
 
 namespace {
 const std::string* g_fp32_model_path = nullptr;
@@ -342,6 +344,56 @@ TEST(BenchmarkTest, DoesntCrashWithExplicitInputValueFilesStringModel) {
   CheckInputTensorValue(input_tensor, 0, string_value_0);
   CheckInputTensorValue(input_tensor, 1, string_value_1);
   CheckInputTensorValue(input_tensor, 2, string_value_2);
+}
+
+class ScopedCommandlineArgs {
+ public:
+  explicit ScopedCommandlineArgs(const std::vector<std::string>& actual_args) {
+    argc_ = actual_args.size() + 1;
+    argv_ = new char*[argc_];
+    const std::string program_name = "benchmark_model";
+    int buffer_size = program_name.length() + 1;
+    for (const auto& arg : actual_args) buffer_size += arg.length() + 1;
+    buffer_ = new char[buffer_size];
+    auto next_start = program_name.copy(buffer_, program_name.length());
+    buffer_[next_start++] = '\0';
+    argv_[0] = buffer_;
+    for (int i = 0; i < actual_args.size(); ++i) {
+      const auto& arg = actual_args[i];
+      argv_[i + 1] = buffer_ + next_start;
+      next_start += arg.copy(argv_[i + 1], arg.length());
+      buffer_[next_start++] = '\0';
+    }
+  }
+  ~ScopedCommandlineArgs() {
+    delete[] argv_;
+    delete[] buffer_;
+  }
+
+  int argc() const { return argc_; }
+
+  char** argv() const { return argv_; }
+
+ private:
+  char* buffer_;  // the buffer for all arguments.
+  int argc_;
+  char** argv_;  // Each char* element points to each argument.
+};
+
+TEST(BenchmarkTest, RunWithCorrectFlags) {
+  ASSERT_THAT(g_fp32_model_path, testing::NotNull());
+  TestBenchmark benchmark(CreateFp32Params());
+  ScopedCommandlineArgs scoped_argv({"--num_threads=4"});
+  auto status = benchmark.Run(scoped_argv.argc(), scoped_argv.argv());
+  EXPECT_EQ(kTfLiteOk, status);
+}
+
+TEST(BenchmarkTest, RunWithWrongFlags) {
+  ASSERT_THAT(g_fp32_model_path, testing::NotNull());
+  TestBenchmark benchmark(CreateFp32Params());
+  ScopedCommandlineArgs scoped_argv({"--num_threads=str"});
+  auto status = benchmark.Run(scoped_argv.argc(), scoped_argv.argv());
+  EXPECT_EQ(kTfLiteError, status);
 }
 
 class MaxDurationWorksTestListener : public BenchmarkListener {

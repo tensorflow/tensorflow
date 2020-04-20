@@ -97,6 +97,36 @@ CreateMarkFunctionVisibilityUsingEntryFunctionSpecificationPass() {
       MarkFunctionVisibilityUsingEntryFunctionSpecificationPass>();
 }
 
+// Marks the main function with public visibility, while other functions are
+// marked with private visibility.
+LogicalResult MarkOnlyMainFunctionWithPublicVisibility(ModuleOp module) {
+  for (auto func : module.getOps<FuncOp>()) {
+    if (func.getName() == "main") {
+      func.setVisibility(FuncOp::Visibility::Public);
+    } else {
+      func.setVisibility(FuncOp::Visibility::Private);
+    }
+  }
+  return success();
+}
+
+namespace {
+struct MarkOnlyMainFunctionWithPublicVisibilityPass
+    : public PassWrapper<MarkOnlyMainFunctionWithPublicVisibilityPass,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override {
+    if (failed(MarkOnlyMainFunctionWithPublicVisibility(getOperation()))) {
+      signalPassFailure();
+    }
+  }
+};
+}  // namespace
+
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateMarkOnlyMainFunctionWithPublicVisibilityPass() {
+  return std::make_unique<MarkOnlyMainFunctionWithPublicVisibilityPass>();
+}
+
 }  // namespace TF
 
 namespace tf_saved_model {

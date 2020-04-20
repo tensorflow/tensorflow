@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
@@ -49,6 +50,8 @@ class OneDeviceStrategyTest(
     self._test_call_and_merge_exceptions(distribution)
 
   def testReplicateDataset(self, distribution):
+    if tf2.enabled() and not context.executing_eagerly():
+      self.skipTest("Skipping test since we do not support graph mode in TF 2")
     dataset_fn = lambda: dataset_ops.Dataset.range(10)
     expected_values = [[i] for i in range(10)]
     input_fn = self._input_fn_to_test_input_context(

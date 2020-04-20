@@ -82,6 +82,7 @@ Status GetXlaInputShapes(
   xla_input_shapes->clear();
 
   mlir::FuncOp main_func = module.lookupSymbol<mlir::FuncOp>("main");
+  TF_RET_CHECK(main_func != nullptr) << "No main function found";
   mlir::FunctionType func_type = main_func.getType();
 
   int num_args = func_type.getNumInputs();
@@ -259,23 +260,34 @@ Status ConvertMLIRToXlaComputation(
     bool return_tuple,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn) {
   mlir::PassManager tf2xla(module_op.getContext());
+  // Mark main function as public, and other functions as private.
+  tf2xla.addPass(
+      mlir::TF::CreateMarkOnlyMainFunctionWithPublicVisibilityPass());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   tf2xla.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
   tf2xla.addPass(mlir::TF::CreateStackOpsDecompositionPass());
   tf2xla.addPass(mlir::TF::CreateTensorArrayOpsDecompositionPass());
   tf2xla.addPass(mlir::TFDevice::CreateDecomposeResourceOpsPass());
   tf2xla.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
+  tf2xla.addPass(mlir::createSymbolDCEPass());
+  tf2xla.addPass(mlir::TF::CreateTFShapeInferencePass());
   // LegalizeTFControlFlow encapsulates arguments for control flow operations
   // with a tuple argument which break the assumption of resource lifting
   // inside PromoteResourcesToArgs.
   tf2xla.addPass(mlir::xla_hlo::createLegalizeTFControlFlowPass());
-  tf2xla.addPass(mlir::xla_hlo::createLegalizeTfWithTf2XlaPass(device_type));
-  // We need to run LegalizeTFPass 2 times because first
-  // LegalizeTFPass(allow_partial_conversion=true) can expose more graph pruning
-  // and canonicalization opportunities that are necessary for the second
-  // LegalizeTFPass(allow_partial_conversion=false) invocation.
+
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::xla_hlo::createLegalizeTFPass(true));
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+
+  // Leverage tf2xla kernels for ops that didn't get lowered in the previous
+  // legalization pass.
+  tf2xla.addPass(mlir::xla_hlo::createLegalizeTfWithTf2XlaPass(device_type));
+  tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+
+  // Run LegalizeTFPass again because the previous legalization passes can
+  // expose more graph pruning and canonicalization opportunities that are
+  // necessary for the second LegalizeTFPass(allow_partial_conversion=false)
+  // invocation.
   tf2xla.addNestedPass<mlir::FuncOp>(
       mlir::xla_hlo::createLegalizeTFPass(false));
 

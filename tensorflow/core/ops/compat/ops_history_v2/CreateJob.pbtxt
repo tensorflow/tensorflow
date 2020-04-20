@@ -1,0 +1,23 @@
+op {
+  name: "CreateJob"
+  input_arg {
+    name: "dataset_id"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "protocol"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "processing_mode"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "job_token"
+    type: DT_VARIANT
+  }
+}

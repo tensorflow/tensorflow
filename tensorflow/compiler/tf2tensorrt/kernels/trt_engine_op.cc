@@ -569,7 +569,15 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     input_concrete_shapes.push_back(ctx->input(i).shape());
   }
 
-  OP_REQUIRES_OK_ASYNC(ctx, VerifyInputShapes(input_concrete_shapes), *helper);
+  Status verify_input_shape_status = VerifyInputShapes(input_concrete_shapes);
+  // TODO(bixia): Fix the segmentation.
+  if (!verify_input_shape_status.ok()) {
+    LOG_FIRST_N(WARNING, 5) << "Running native segment for" << name()
+                            << " due to failure in verifying input shapes: "
+                            << verify_input_shape_status.error_message();
+    ExecuteNativeSegment(ctx, helper);
+    return;
+  }
 
   if (!use_implicit_batch_) {
     if (profile_generation_mode_) {

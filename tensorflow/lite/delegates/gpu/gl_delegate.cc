@@ -145,7 +145,7 @@ class Delegate {
 
     // TODO(impjdi): Remove code duplication.
     auto values = graph.values();
-    auto find_value = [&](int tensor_index) -> Value<TensorRef<BHWC>>* {
+    auto find_value = [&](int tensor_index) -> Value* {
       for (auto value : values) {
         if (value->tensor.ref == tensor_index) return value;
       }

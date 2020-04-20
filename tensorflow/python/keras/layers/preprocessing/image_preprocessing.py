@@ -341,7 +341,8 @@ class RandomFlip(Layer):
   Attributes:
     mode: String indicating which flip mode to use. Can be "horizontal",
       "vertical", or "horizontal_and_vertical". Defaults to
-      "horizontal_and_vertical".
+      "horizontal_and_vertical". "horizontal" is a left-right flip and
+      "vertical" is a top-bottom flip.
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
   """
@@ -376,10 +377,10 @@ class RandomFlip(Layer):
     def random_flipped_inputs():
       flipped_outputs = inputs
       if self.horizontal:
-        flipped_outputs = image_ops.random_flip_up_down(flipped_outputs,
-                                                        self.seed)
+        flipped_outputs = image_ops.random_flip_left_right(flipped_outputs,
+                                                           self.seed)
       if self.vertical:
-        flipped_outputs = image_ops.random_flip_left_right(
+        flipped_outputs = image_ops.random_flip_up_down(
             flipped_outputs, self.seed)
       return flipped_outputs
 
@@ -810,7 +811,6 @@ class RandomRotation(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.layers.experimental.preprocessing.RandomZoom')
 class RandomZoom(Layer):
   """Randomly zoom each image during training.
 

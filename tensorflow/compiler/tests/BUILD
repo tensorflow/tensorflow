@@ -200,6 +200,7 @@ tf_xla_py_test(
     name = "binary_ops_test",
     size = "medium",
     srcs = ["binary_ops_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 5,
     tags = [
@@ -1346,26 +1347,7 @@ tf_xla_py_test(
     name = "unary_ops_test",
     size = "medium",
     srcs = ["unary_ops_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-    ],
-    deps = [
-        ":xla_test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:nn_ops_gen",
-        "//tensorflow/python:platform_test",
-    ],
-)
-
-# TODO(hinsu): Combine this test with unary_ops_test instead of replicating it.
-tf_xla_py_test(
-    name = "unary_mlir_ops_test",
-    size = "medium",
-    srcs = ["unary_mlir_ops_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1466,6 +1448,7 @@ tf_xla_py_test(
     name = "gather_nd_op_test",
     size = "medium",
     srcs = ["gather_nd_op_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1788,6 +1771,7 @@ tf_xla_py_test(
     name = "xla_ops_test",
     size = "medium",
     srcs = ["xla_ops_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -1863,5 +1847,22 @@ tf_xla_py_test(
         "//tensorflow/python:extra_py_tests_deps",
         "//tensorflow/python:math_ops",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_xla_py_test(
+    name = "ensure_shape_op_test",
+    size = "medium",
+    srcs = ["ensure_shape_op_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
     ],
 )

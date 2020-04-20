@@ -22,6 +22,10 @@ limitations under the License.
 #define TFLITE_ENABLE_HEXAGON
 #endif
 
+#if defined(TFLITE_ENABLE_HEXAGON)
+#include "tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h"
+#endif
+
 namespace tflite {
 namespace benchmark {
 
@@ -82,9 +86,14 @@ TfLiteDelegatePtr HexagonDelegateProvider::CreateTfLiteDelegate(
   TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
 #if defined(TFLITE_ENABLE_HEXAGON)
   if (params.Get<bool>("use_hexagon")) {
+    TfLiteHexagonDelegateOptions options = {0};
+    options.print_graph_profile = params.Get<bool>("hexagon_profiling");
+    options.max_delegated_partitions =
+        params.Get<int>("max_delegated_partitions");
+    options.min_nodes_per_partition =
+        params.Get<int>("min_nodes_per_partition");
     delegate = evaluation::CreateHexagonDelegate(
-        params.Get<std::string>("hexagon_lib_path"),
-        params.Get<bool>("hexagon_profiling"));
+        &options, params.Get<std::string>("hexagon_lib_path"));
 
     if (!delegate.get()) {
       TFLITE_LOG(WARN)

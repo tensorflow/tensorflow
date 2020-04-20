@@ -2022,6 +2022,21 @@ class SetShardingTest(ComputationTest):
     np.testing.assert_allclose(ans, 4.14)
 
 
+class AliasTest(ComputationTest):
+
+  def testSetUpAlias(self):
+    c = self._NewComputation()
+    p1 = c.ParameterFromNumpy(NumpyArrayF32(1.0))
+    p2 = c.ParameterFromNumpy(NumpyArrayF32(1.0))
+    out = c.Add(p1, p2)
+    c.SetUpAlias([], 0, [])
+    c = c.Build(out)
+    with self.assertRaisesRegex(RuntimeError,
+                                "Buffer aliasing is not supported "
+                                "by XLA for non-TPU backends"):
+      c.Compile()
+
+
 int_dtypes = [
     np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32,
     np.uint64

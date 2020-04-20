@@ -137,8 +137,13 @@ class ProcessFunctionLibraryRuntime {
   // index of instantiation of that function. If the function was not
   // instantiated on `device_name` or the function is multi-device,
   // returns kInvalidLocalHandle.
+  //
+  // If `include_multi_device` is true and `handle` is a multi-device function
+  // with a single component that is placed on `device_name`, then this method
+  // will return the local handle for that component.
   FunctionLibraryRuntime::LocalHandle GetHandleOnDevice(
-      const string& device_name, FunctionLibraryRuntime::Handle handle) const;
+      const string& device_name, FunctionLibraryRuntime::Handle handle,
+      bool include_multi_device = false) const;
 
   // Fills `output_devices` with the devices on which the results will
   // be produced. If some output is produced on CPU, the corresponding Device*

@@ -57,8 +57,8 @@ class Policy(object):
   not have a single dtype. When the variable dtype does not match the compute
   dtype, variables will be automatically casted to the compute dtype to avoid
   type errors. In this case, `tf.keras.layers.Layer.dtype` refers to the
-  variable dtype, not the compute dtype. See [the mixed precision
-  guide](https://www.tensorflow.org/guide/keras/mixed_precision) for more
+  variable dtype, not the compute dtype. See [the mixed precision guide](
+    https://www.tensorflow.org/guide/keras/mixed_precision) for more
   information on how to use mixed precision.
 
   Certain policies also have a `tf.mixed_precision.experimental.LossScale`
@@ -119,8 +119,8 @@ class Policy(object):
   `'mixed_bfloat16'`, no loss scaling is done and loss scaling never needs to be
   manually applied.
 
-  See [the mixed precision
-  guide](https://www.tensorflow.org/guide/keras/mixed_precision) for more
+  See [the mixed precision guide](
+    https://www.tensorflow.org/guide/keras/mixed_precision) for more
   information on using mixed precision
 
   ### How to use float64 in a Keras model

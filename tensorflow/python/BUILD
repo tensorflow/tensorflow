@@ -1585,7 +1585,6 @@ cuda_py_test(
         ":sparse_tensor",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
@@ -1963,6 +1962,14 @@ py_library(
 py_library(
     name = "is_xla_test_true",
     srcs = ["framework/is_xla_test_true.py"],
+    srcs_version = "PY2AND3",
+)
+
+# Including this as a dependency will result in tests using
+# :framework_test_lib to use MLIR.
+py_library(
+    name = "is_mlir_bridge_test_true",
+    srcs = ["framework/is_mlir_bridge_test_true.py"],
     srcs_version = "PY2AND3",
 )
 
@@ -4878,7 +4885,6 @@ cuda_py_test(
         ":test_ops",
         ":unconnected_gradients",
         ":variable_scope",
-        "//tensorflow/python/keras:engine",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -5884,6 +5890,7 @@ pywrap_tensorflow_macro(
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core:lib",
         "//tensorflow/core:reader_base",
+        "//tensorflow/core/kernels:data_service_ops",
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/platform:stacktrace_handler",

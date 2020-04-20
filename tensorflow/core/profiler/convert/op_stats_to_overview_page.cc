@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
+#include "tensorflow/core/profiler/utils/errors.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
@@ -263,11 +264,11 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
 }
 
 void SetRemarks(const OpStats& op_stats, OverviewPageAnalysis* analysis) {
-  if (op_stats.step_db().step_sequence_size() == 0) {
-    analysis->set_remark_text(
-        "WARNING: No step markers observed and hence the step time is actually "
-        "unknown. This may happen if your profiling duration is shorter than "
-        "the step time. In that case, you may try to profile longer.");
+  if (op_stats.step_db().use_incomplete_step()) {
+    analysis->set_remark_text(absl::StrCat("WARNING: ", kErrorIncompleteStep));
+    analysis->set_remark_color("red");
+  } else if (op_stats.step_db().step_sequence().empty()) {
+    analysis->set_remark_text(absl::StrCat("WARNING: ", kErrorNoStepMarker));
     analysis->set_remark_color("red");
   } else {
     analysis->set_remark_text("");

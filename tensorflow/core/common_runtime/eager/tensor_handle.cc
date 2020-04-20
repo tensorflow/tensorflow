@@ -449,7 +449,7 @@ Status TensorHandle::NumElements(int64* num_elements) const {
 Status TensorHandle::Unprotect(const Device* d) {
   DVLOG(3) << "Unprotect on TensorHandle: " << this << " device: " << d;
 
-  if (d == absl::get<Device*>(device_)) {
+  if (!IsRemote() && (d == absl::get<Device*>(device_))) {
     auto& data = absl::get<LocalTensorHandleData>(data_);
     return data.Unprotect();
   }
@@ -792,6 +792,9 @@ bool VariantDeviceIsCustom(VariantDevice variant_device) {
 }
 
 string VariantDeviceName(VariantDevice device) {
+  if (device == kVariantDeviceNull) {
+    return "[]";
+  }
   return absl::visit([](auto* device) { return device->name(); }, device);
 }
 

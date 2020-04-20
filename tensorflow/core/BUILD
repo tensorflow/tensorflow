@@ -1141,6 +1141,15 @@ cc_library(
 )
 
 cc_library(
+    name = "distributed_tensorflow_dependencies",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+        "//tensorflow/core/kernels:data_service_ops",
+    ],
+)
+
+cc_library(
     name = "testlib_kernels_impl",
     deps = [
         "//tensorflow/core/kernels:aggregate_ops",
@@ -1444,7 +1453,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":ios_tensorflow_lib",
-        ":portable_test_proto_lib",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//third_party/eigen3",
     ],
@@ -2287,6 +2295,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "//third_party/eigen3",
         "//tensorflow/core/example:feature_util",
@@ -2546,7 +2555,6 @@ tf_cc_tests(
     ],
     create_named_test_suite = True,
     deps = [
-        ":core_cpu_internal",
         ":lib",
         ":lib_internal",
         ":lib_test_internal",

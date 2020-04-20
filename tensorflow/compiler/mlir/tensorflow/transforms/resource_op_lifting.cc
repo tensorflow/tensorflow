@@ -878,6 +878,7 @@ LogicalResult HandlePartitionedCallOpCallee(
   name_base += "_resource_lifted";
   auto name = name_base;
   callee = callee.clone();
+  callee.setVisibility(SymbolTable::Visibility::Private);
   callee.setName(name);
   SymbolTable(module).insert(callee);
   result->lifted_callee = callee;
@@ -1111,7 +1112,7 @@ LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function) {
   // This routine should only be called when control flow operations are still
   // represented with TF IfOp and WhileOp operations. In this case, there should
   // be only one basic blocks in the MLIR representation.
-  if (!has_single_element(function.getBlocks())) {
+  if (!hasSingleElement(function.getBlocks())) {
     return function.emitError()
            << "expect the function to have 1 block while it has "
            << function.getBlocks().size();

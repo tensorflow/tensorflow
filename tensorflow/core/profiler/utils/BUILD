@@ -13,6 +13,15 @@ package_group(
 )
 
 cc_library(
+    name = "errors",
+    srcs = ["errors.cc"],
+    hdrs = ["errors.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "event_span",
     srcs = ["event_span.cc"],
     hdrs = ["event_span.h"],
@@ -219,6 +228,7 @@ cc_library(
     hdrs = ["group_events.h"],
     visibility = [":friends"],
     deps = [
+        ":tf_op_utils",
         ":tf_xplane_visitor",
         ":xplane_schema",
         ":xplane_utils",

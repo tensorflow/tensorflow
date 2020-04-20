@@ -78,11 +78,18 @@ void BM_Execute(int iters, int async) {
   TFE_DeleteContextOptions(opts);
 
   TFE_TensorHandle* m = TestMatrixTensorHandle(ctx);
-  TFE_Op* matmul = MatMulOp(ctx, m, m);
+  TFE_Op* matmul = TFE_NewOp(ctx, "MatMul", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_TensorHandle* retvals[1];
   int num_retvals = 1;
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
+    TFE_OpReset(matmul, "MatMul", nullptr, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_OpAddInput(matmul, m, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_OpAddInput(matmul, m, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     TFE_Execute(matmul, &retvals[0], &num_retvals, status);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   }
@@ -113,11 +120,15 @@ void BM_Execute_Identity(int iters, int async) {
   TFE_DeleteContextOptions(opts);
 
   TFE_TensorHandle* m = TestMatrixTensorHandle(ctx);
-  TFE_Op* identity = IdentityOp(ctx, m);
+  TFE_Op* identity = TFE_NewOp(ctx, "Identity", status);
   TFE_TensorHandle* retvals[1];
   int num_retvals = 1;
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
+    TFE_OpReset(identity, "Identity", nullptr, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_OpAddInput(identity, m, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     TFE_Execute(identity, &retvals[0], &num_retvals, status);
     CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   }
@@ -405,6 +416,11 @@ void TensorHandleSilentCopy(bool async,
         hcpu, ctx, gpu_device_name.c_str(), status.get());
     ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
 
+    auto cpu_arg = tensorflow::TensorHandleFromInterface(hcpu->handle);
+    auto gpu_arg = tensorflow::TensorHandleFromInterface(hgpu->handle);
+    auto gpu_device = absl::get<tensorflow::Device*>(gpu_arg->device());
+    ASSERT_FALSE(cpu_arg->HasLocalMirror(gpu_device));
+
     TFE_Op* matmul = MatMulOp(ctx, hcpu, hgpu);
     if (cpu_op) {
       string cpu_device_name;
@@ -420,15 +436,8 @@ void TensorHandleSilentCopy(bool async,
     TFE_Execute(matmul, &retvals[0], &num_retvals, status.get());
     ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
 
-    // Validate if the input was replaced with a different TensorHandle
-    auto arg0 = tensorflow::TensorHandleFromInterface(hcpu->handle);
-    auto arg1 = tensorflow::TensorHandleFromInterface(hgpu->handle);
-    tensorflow::EagerOperation* op =
-        tensorflow::OperationFromInterface(matmul->operation);
-
-    // The input handles should never change since they have been mirrored.
-    EXPECT_EQ(op->Inputs()[0], arg0);
-    EXPECT_EQ(op->Inputs()[1], arg1);
+    // The CPU handle should have been copied and have a mirror on the GPU
+    ASSERT_TRUE(cpu_arg->HasLocalMirror(gpu_device));
 
     TFE_DeleteOp(matmul);
     TFE_DeleteTensorHandle(retvals[0]);
@@ -626,17 +635,6 @@ void ExecuteAdd(bool async, bool forward_input, bool tfrt) {
   }
 
   int num_retvals = 1;
-
-  if (async) {
-    // Enqueue dummy ops so we backlog async execution & actually test async.
-    for (int i = 0; i < 10000; ++i) {
-      TFE_TensorHandle* dummy = nullptr;
-      TFE_Execute(add_op, &dummy, &num_retvals, status);
-      ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-      TFE_DeleteTensorHandle(dummy);
-    }
-  }
-
   TFE_TensorHandle* retval = nullptr;
   TFE_Execute(add_op, &retval, &num_retvals, status);
   EXPECT_EQ(1, num_retvals);

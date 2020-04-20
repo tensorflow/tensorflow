@@ -5,8 +5,8 @@ op {
     type: DT_VARIANT
   }
   input_arg {
-    name: "epoch_id"
-    type: DT_INT64
+    name: "job_token"
+    type: DT_VARIANT
   }
   input_arg {
     name: "iterator"

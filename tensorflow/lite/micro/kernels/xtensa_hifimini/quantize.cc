@@ -111,8 +111,10 @@ struct OpData {
 
 // This size will work for both the hotword (1) and ambient music (1):
 constexpr int kMaxOpDataSize = 2;
-static int kStaticOpDataCounter = 0;
+static int op_data_counter = 0;
 static OpData kStaticOpData[kMaxOpDataSize];
+
+void Free(TfLiteContext* context, void* buffer) { op_data_counter = 0; }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
@@ -120,7 +122,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(b/132070898): Use statically slotted OpData structures until a
   // scratch memory API is ready.
-  OpData* op_data = &kStaticOpData[kStaticOpDataCounter++];
+  OpData* op_data = &kStaticOpData[op_data_counter++];
   node->user_data = op_data;
 
   op_data->scale_multiplier = xtensa::hifimini::CreateQConstantForInt24(
@@ -159,7 +161,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 // quantized output, in int8 or uint8 format.
 TfLiteRegistration* Register_QUANTIZE() {
   static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
+                                 /*free=*/quantize::Free,
                                  /*prepare=*/quantize::Prepare,
                                  /*invoke=*/quantize::Eval,
                                  /*profiling_string=*/nullptr,

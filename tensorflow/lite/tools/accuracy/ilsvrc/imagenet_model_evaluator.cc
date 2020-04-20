@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
-#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/stages/image_classification_stage.h"
@@ -155,12 +154,12 @@ class CompositeObserver : public ImagenetModelEvaluator::Observer {
   return kTfLiteOk;
 }
 
-TfLiteStatus EvaluateModelForShard(const uint64_t shard_id,
-                                   const std::vector<ImageLabel>& image_labels,
-                                   const std::vector<std::string>& model_labels,
-                                   const ImagenetModelEvaluator::Params& params,
-                                   ImagenetModelEvaluator::Observer* observer,
-                                   int num_ranks) {
+TfLiteStatus EvaluateModelForShard(
+    const uint64_t shard_id, const std::vector<ImageLabel>& image_labels,
+    const std::vector<std::string>& model_labels,
+    const ImagenetModelEvaluator::Params& params,
+    ImagenetModelEvaluator::Observer* observer, int num_ranks,
+    const tflite::evaluation::DelegateProviders* delegate_providers) {
   tflite::evaluation::EvaluationStageConfig eval_config;
   eval_config.set_name("image_classification");
   auto* classification_params = eval_config.mutable_specification()
@@ -174,7 +173,7 @@ TfLiteStatus EvaluateModelForShard(const uint64_t shard_id,
 
   tflite::evaluation::ImageClassificationStage eval(eval_config);
   eval.SetAllLabels(model_labels);
-  TF_LITE_ENSURE_STATUS(eval.Init());
+  TF_LITE_ENSURE_STATUS(eval.Init(delegate_providers));
 
   for (const auto& image_label : image_labels) {
     eval.SetInputs(image_label.image, image_label.label);
@@ -191,7 +190,8 @@ TfLiteStatus EvaluateModelForShard(const uint64_t shard_id,
   return kTfLiteOk;
 }
 
-TfLiteStatus ImagenetModelEvaluator::EvaluateModel() const {
+TfLiteStatus ImagenetModelEvaluator::EvaluateModel(
+    const tflite::evaluation::DelegateProviders* delegate_providers) const {
   const std::string data_path = tflite::evaluation::StripTrailingSlashes(
                                     params_.ground_truth_images_path) +
                                 "/";
@@ -252,9 +252,10 @@ TfLiteStatus ImagenetModelEvaluator::EvaluateModel() const {
     const uint64_t shard_id = i + 1;
     shard_id_image_count_map[shard_id] = image_label.size();
     auto func = [shard_id, &image_label, &model_labels, this, &observer,
-                 &all_okay]() {
+                 &all_okay, delegate_providers]() {
       if (EvaluateModelForShard(shard_id, image_label, model_labels, params_,
-                                &observer, params_.num_ranks) != kTfLiteOk) {
+                                &observer, params_.num_ranks,
+                                delegate_providers) != kTfLiteOk) {
         all_okay = false;
       }
     };

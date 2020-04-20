@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "efficientnet"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "imagenet_utils"
     mtype: "<type \'module\'>"
   }
@@ -63,6 +67,38 @@ tf_module {
   member_method {
     name: "DenseNet201"
     argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\'], varargs=None, keywords=None, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\'], "
+  }
+  member_method {
+    name: "EfficientNetB0"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\', \'softmax\'], "
+  }
+  member_method {
+    name: "EfficientNetB1"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\', \'softmax\'], "
+  }
+  member_method {
+    name: "EfficientNetB2"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\', \'softmax\'], "
+  }
+  member_method {
+    name: "EfficientNetB3"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\', \'softmax\'], "
+  }
+  member_method {
+    name: "EfficientNetB4"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\', \'softmax\'], "
+  }
+  member_method {
+    name: "EfficientNetB5"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\', \'softmax\'], "
+  }
+  member_method {
+    name: "EfficientNetB6"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\', \'softmax\'], "
+  }
+  member_method {
+    name: "EfficientNetB7"
+    argspec: "args=[\'include_top\', \'weights\', \'input_tensor\', \'input_shape\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'True\', \'imagenet\', \'None\', \'None\', \'None\', \'1000\', \'softmax\'], "
   }
   member_method {
     name: "InceptionResNetV2"

@@ -11,6 +11,7 @@ cc_library(
         "activation_builder.cc",
         "arg_min_max_builder.cc",
         "arithmetic_builder.cc",
+        "batch_seq_builder.cc",
         "concat_builder.cc",
         "conv_2d_builder.cc",
         "conv_2d_helpers.cc",
@@ -34,6 +35,7 @@ cc_library(
         "activation_builder.h",
         "arg_min_max_builder.h",
         "arithmetic_builder.h",
+        "batch_seq_builder.h",
         "concat_builder.h",
         "conv_2d_builder.h",
         "l2_normalization_builder.h",
@@ -77,4 +79,5 @@ cc_library(
         "manual",
         "nobuilder",
     ],
+    deps = ["//tensorflow/lite/c:common"],
 )

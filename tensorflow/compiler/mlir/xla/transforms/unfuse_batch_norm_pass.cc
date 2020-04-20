@@ -32,7 +32,7 @@ struct TestUnfuseBatchNormPass
   void runOnOperation() override {
     OwningRewritePatternList patterns;
     PopulateUnfuseBatchNormPatterns(&getContext(), &patterns);
-    applyPatternsGreedily(getOperation(), patterns);
+    applyPatternsAndFoldGreedily(getOperation(), patterns);
   }
 };
 

@@ -57,11 +57,11 @@ TEST(MergeConvolutionWithAddTest, Smoke) {
 
   ASSERT_TRUE(graph.AddConsumer(conv_node->id, input->id).ok());
 
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   ASSERT_TRUE(AddOutput(&graph, add_node, &output).ok());
   output->tensor.shape = BHWC(1, 4, 4, 16);
 
-  Value<TensorRef<BHWC>>* link1;
+  Value* link1;
   ASSERT_TRUE(ConnectTwoNodes(&graph, conv_node, add_node, &link1).ok());
   link1->tensor.shape = BHWC(1, 4, 4, 16);
 
@@ -108,11 +108,11 @@ TEST(MergeAddWithConvolutionTest, Smoke) {
 
   ASSERT_TRUE(graph.AddConsumer(add_node->id, input->id).ok());
 
-  Value<TensorRef<BHWC>>* output;
+  Value* output;
   ASSERT_TRUE(AddOutput(&graph, conv_node, &output).ok());
   output->tensor.shape = BHWC(1, 4, 4, 16);
 
-  Value<TensorRef<BHWC>>* link1;
+  Value* link1;
   ASSERT_TRUE(ConnectTwoNodes(&graph, add_node, conv_node, &link1).ok());
   link1->tensor.shape = BHWC(1, 4, 4, 16);
 

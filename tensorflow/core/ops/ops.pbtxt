@@ -2153,6 +2153,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BOOL
       }
     }
   }
@@ -2219,6 +2220,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BOOL
       }
     }
   }
@@ -4292,25 +4294,6 @@ op {
         type: DT_INT64
       }
     }
-  }
-}
-op {
-  name: "BeginEpoch"
-  input_arg {
-    name: "dataset_id"
-    type: DT_INT64
-  }
-  input_arg {
-    name: "address"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "protocol"
-    type: DT_STRING
-  }
-  output_arg {
-    name: "epoch_id"
-    type: DT_INT64
   }
 }
 op {
@@ -8569,6 +8552,29 @@ op {
         type: DT_INT64
       }
     }
+  }
+}
+op {
+  name: "CreateJob"
+  input_arg {
+    name: "dataset_id"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "protocol"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "processing_mode"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "job_token"
+    type: DT_VARIANT
   }
 }
 op {
@@ -21614,8 +21620,8 @@ op {
     type: DT_VARIANT
   }
   input_arg {
-    name: "epoch_id"
-    type: DT_INT64
+    name: "job_token"
+    type: DT_VARIANT
   }
   input_arg {
     name: "iterator"
@@ -23707,6 +23713,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -23962,6 +23969,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }

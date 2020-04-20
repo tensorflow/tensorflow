@@ -542,6 +542,11 @@ class Subgraph {
   // Does nothing if UndoAllDelegates wasn't previously called.
   TfLiteStatus RedoAllDelegates();
 
+  // This removes all delegates.
+  // The old execution plan and nodes are restored. The graph is invokable
+  // afterwards.
+  TfLiteStatus RemoveAllDelegates();
+
   // Cleanups up data reserved for the given node. Does not remove the {node,
   // registration} pair from nodes_and_registrations_.
   void CleanupNode(int node_index);
@@ -553,7 +558,13 @@ class Subgraph {
   void EnsureTensorsVectorCapacity() {
     const size_t required_capacity = tensors_.size() + kTensorsCapacityHeadroom;
     if (required_capacity > tensors_.capacity()) {
-      tensors_.reserve(required_capacity);
+      // Whenever it's required to increase the vector capacity, make it at
+      // least twice bigger. The behavior is consistent with the default
+      // behavior of GCC STL's `std::vector::resize()`. This avoids frequently
+      // allocating and copying the underlying buffer.
+      size_t reserved_capacity =
+          std::max(required_capacity, tensors_.capacity() * 2);
+      tensors_.reserve(reserved_capacity);
       context_.tensors = tensors_.data();
     }
   }

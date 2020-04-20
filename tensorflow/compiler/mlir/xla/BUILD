@@ -1,5 +1,5 @@
 load("//third_party/mlir:tblgen.bzl", "gentbl")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_native_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_native_cc_binary")
 
 package(
     default_visibility = [":friends"],
@@ -331,9 +331,27 @@ cc_library(
     srcs = ["transforms/buffer_assignment.cc"],
     hdrs = ["transforms/buffer_assignment.h"],
     deps = [
-        ":hlo",
-        ":lhlo",
         "@com_google_absl//absl/memory",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "buffer_assignment_test",
+    srcs = ["transforms/buffer_assignment_test.cc"],
+    hdrs = [
+        "transforms/buffer_assignment.h",
+        "transforms/passes.h",
+    ],
+    deps = [
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -516,6 +534,7 @@ cc_library(
         "ir/mlir_hlo_builder.h",
     ],
     deps = [
+        ":attribute_importer",
         ":hlo",
         ":hlo_utils",
         ":type_to_shape",
@@ -686,6 +705,7 @@ cc_library(
         "hlo_module_importer.h",
     ],
     deps = [
+        ":attribute_importer",
         ":hlo",
         ":hlo_utils",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
@@ -702,6 +722,18 @@ cc_library(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
+    ],
+)
+
+cc_library(
+    name = "attribute_importer",
+    srcs = ["attribute_importer.cc"],
+    hdrs = ["attribute_importer.h"],
+    deps = [
+        ":hlo",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/core/platform:types",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -750,7 +782,7 @@ genrule(
     cmd = ("$(location :operator_writer_gen) " +
            "-I external/llvm-project/mlir/include " +
            "-I external/org_tensorflow " +
-           "$(location //tensorflow/compiler/mlir/xla:ir/hlo_ops.td) " +
+           "$(location :ir/hlo_ops.td) " +
            " -o $@"),
     tools = [":operator_writer_gen"],
 )
@@ -761,5 +793,41 @@ cc_library(
     hdrs = ["convert_op_folder.h"],
     deps = [
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "all_xla_passes_for_testing",
+    visibility = [
+        "//tensorflow/compiler/mlir:__subpackages__",
+    ],
+    deps = [
+        ":buffer_assignment",
+        ":buffer_assignment_test",
+        ":hlo",
+        ":hlo_legalize_to_lhlo",
+        ":lhlo",
+        ":lhlo_copy_removal",
+        ":lhlo_fuse_linalg",
+        ":lhlo_legalize_to_affine",
+        ":lhlo_legalize_to_gpu",
+        ":lhlo_legalize_to_parallel_loops",
+        ":xla_dialect_registration",
+        ":xla_legalize_control_flow",
+        ":xla_legalize_tf",
+        ":xla_legalize_tf_with_tf2xla",
+        ":xla_legalize_to_linalg",
+        ":xla_legalize_to_standard",
+        ":xla_lower",
+        ":xla_materialize_broadcasts",
+        ":xla_test_passes",
+    ],
+)
+
+tf_cc_binary(
+    name = "xla-opt",
+    deps = [
+        ":all_xla_passes_for_testing",
+        "//tensorflow/compiler/mlir:tf_mlir_opt_main",
     ],
 )

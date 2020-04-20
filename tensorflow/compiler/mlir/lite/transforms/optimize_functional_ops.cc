@@ -187,7 +187,7 @@ void OptimizeFunctionalOpsPass::runOnOperation() {
   patterns.insert<FoldIfOp>(&getContext(), &inlined_funcs);
 
   ModuleOp module = getOperation();
-  applyPatternsGreedily(module, patterns);
+  applyPatternsAndFoldGreedily(module, patterns);
 
   // Erase inlined functions that don't have any references.
   //

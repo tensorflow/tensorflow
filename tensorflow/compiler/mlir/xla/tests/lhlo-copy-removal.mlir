@@ -1,4 +1,4 @@
-// RUN: tf-opt -lhlo-copy-removal %s -o - | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt -lhlo-copy-removal %s -o - | FileCheck %s --dump-input-on-failure
 
 // CHECK-LABEL: func @remove_simple
 func @remove_simple(%arg0: memref<2x2xf32>) {

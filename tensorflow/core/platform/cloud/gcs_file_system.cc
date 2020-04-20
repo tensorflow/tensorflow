@@ -133,34 +133,6 @@ Status GetTmpFilename(string* filename) {
   return Status::OK();
 }
 
-/// \brief Splits a GCS path to a bucket and an object.
-///
-/// For example, "gs://bucket-name/path/to/file.txt" gets split into
-/// "bucket-name" and "path/to/file.txt".
-/// If fname only contains the bucket and empty_object_ok = true, the returned
-/// object is empty.
-Status ParseGcsPath(StringPiece fname, bool empty_object_ok, string* bucket,
-                    string* object) {
-  StringPiece scheme, bucketp, objectp;
-  io::ParseURI(fname, &scheme, &bucketp, &objectp);
-  if (scheme != "gs") {
-    return errors::InvalidArgument("GCS path doesn't start with 'gs://': ",
-                                   fname);
-  }
-  *bucket = string(bucketp);
-  if (bucket->empty() || *bucket == ".") {
-    return errors::InvalidArgument("GCS path doesn't contain a bucket name: ",
-                                   fname);
-  }
-  absl::ConsumePrefix(&objectp, "/");
-  *object = string(objectp);
-  if (!empty_object_ok && object->empty()) {
-    return errors::InvalidArgument("GCS path doesn't contain an object name: ",
-                                   fname);
-  }
-  return Status::OK();
-}
-
 /// Appends a trailing slash if the name doesn't already have one.
 string MaybeAppendSlash(const string& name) {
   if (name.empty()) {
@@ -1032,6 +1004,34 @@ Status GcsFileSystem::LoadBufferFromGCS(const string& fname, size_t offset,
   }
 
   return Status::OK();
+}
+
+Status GcsFileSystem::ParseGcsPathForScheme(StringPiece fname, string scheme,
+                                            bool empty_object_ok,
+                                            string* bucket, string* object) {
+  StringPiece parsed_scheme, bucketp, objectp;
+  io::ParseURI(fname, &parsed_scheme, &bucketp, &objectp);
+  if (parsed_scheme != scheme) {
+    return errors::InvalidArgument("GCS path doesn't start with 'gs://': ",
+                                   fname);
+  }
+  *bucket = string(bucketp);
+  if (bucket->empty() || *bucket == ".") {
+    return errors::InvalidArgument("GCS path doesn't contain a bucket name: ",
+                                   fname);
+  }
+  absl::ConsumePrefix(&objectp, "/");
+  *object = string(objectp);
+  if (!empty_object_ok && object->empty()) {
+    return errors::InvalidArgument("GCS path doesn't contain an object name: ",
+                                   fname);
+  }
+  return Status::OK();
+}
+
+Status GcsFileSystem::ParseGcsPath(StringPiece fname, bool empty_object_ok,
+                                   string* bucket, string* object) {
+  return ParseGcsPathForScheme(fname, "gs", empty_object_ok, bucket, object);
 }
 
 void GcsFileSystem::ClearFileCaches(const string& fname) {

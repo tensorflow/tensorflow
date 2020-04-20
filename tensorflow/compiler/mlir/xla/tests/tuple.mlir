@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -split-input-file -pass-pipeline='func(canonicalize)' | FileCheck %s
+// RUN: xla-opt %s -split-input-file -pass-pipeline='func(canonicalize)' | FileCheck %s
 
 // CHECK-LABEL: func @fold_access
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]

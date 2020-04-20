@@ -641,6 +641,25 @@ func @pow_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   return %0: tensor<?xf32>
 }
 
+// CHECK-LABEL: func @diag_part
+// CHECK-SAME: %[[ARG:.*]]: tensor<4x3x4x3xf32>
+func @diag_part(%arg0: tensor<4x3x4x3xf32>) -> tensor<4x3xf32> {
+  // CHECK: %[[RS:.*]] = "xla_hlo.reshape"(%[[ARG]]) : (tensor<4x3x4x3xf32>) -> tensor<12x12xf32>
+  // CHECK-DAG: %[[IOTA0:.*]] = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<12x12xi32>
+  // CHECK-DAG: %[[IOTA1:.*]] = "xla_hlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<12x12xi32>
+  // CHECK-DAG: %[[COMP:.*]] = "xla_hlo.compare"(%[[IOTA0]], %[[IOTA1]]) {comparison_direction = "EQ"} : (tensor<12x12xi32>, tensor<12x12xi32>) -> tensor<12x12xi1>
+  // CHECK-DAG: %[[ZERO:.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK-DAG: %[[ZERO_MAT:.*]] = "xla_hlo.broadcast"(%[[ZERO]]) {broadcast_sizes = dense<12> : tensor<2xi64>} : (tensor<f32>) -> tensor<12x12xf32>
+  // CHECK-DAG: %[[SEL:.*]] = "xla_hlo.select"(%[[COMP]], %[[RS]], %[[ZERO_MAT]]) : (tensor<12x12xi1>, tensor<12x12xf32>, tensor<12x12xf32>) -> tensor<12x12xf32>
+  // CHECK-DAG: %[[RED:.*]] = "xla_hlo.reduce"(%[[SEL]], %[[ZERO]])
+  // CHECK-DAG:  xla_hlo.add
+  // CHECK-DAG: {dimensions = dense<0> : tensor<1xi64>} : (tensor<12x12xf32>, tensor<f32>) -> tensor<12xf32>
+  // CHECK-DAG:  %[[RES:.*]] = "xla_hlo.reshape"(%[[RED]]) : (tensor<12xf32>) -> tensor<4x3xf32>
+  // CHECK-DAG:  return %[[RES]] : tensor<4x3xf32>
+  %0 = "tf.DiagPart"(%arg0) : (tensor<4x3x4x3xf32>) -> tensor<4x3xf32>
+  return %0: tensor<4x3xf32>
+}
+
 // CHECK-LABEL: func @einsum
 func @einsum(%arg0: tensor<2x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<2x4xf32> {
   // CHECK:  xla_hlo.einsum
@@ -2045,6 +2064,17 @@ func @sigmoid(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: @sigmoid_grad
+func @sigmoid_grad(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK-DAG: [[MUL0:%.+]] =  xla_hlo.multiply %arg1, %arg0 : tensor<2xf32>
+  // CHECK-DAG: [[ONE:%.+]] = xla_hlo.constant dense<1.000000e+00> : tensor<2xf32>
+  // CHECK-DAG: [[SUB:%.+]] =  xla_hlo.subtract [[ONE]], %arg0 : tensor<2xf32>
+  // CHECK-DAG: [[MUL1:%.+]] =  xla_hlo.multiply [[MUL0]], [[SUB]] : tensor<2xf32>
+  // CHECK: return [[MUL1]]
+  %0 = "tf.SigmoidGrad"(%arg0, %arg1) : (tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
 // CHECK-LABEL: @sin
 func @sin(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  "xla_hlo.sine"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
@@ -2230,7 +2260,16 @@ func @sign(%arg0: tensor<1x2x3x4xf32>) -> tensor<1x2x3x4xf32> {
 func @slice_constant_start(%arg0: tensor<4xi32>) -> tensor<2xi32> {
   // CHECK: %[[START:.*]] = xla_hlo.constant dense<1> : tensor<1xi64>
   // CHECK: %[[START_I64:.*]] = "xla_hlo.convert"(%[[START]]) : (tensor<1xi64>) -> tensor<1xi64>
-  // CHECK: %[[RESULT:.*]] =  "xla_hlo.dynamic-slice"(%arg0, %[[START_I64]]) {slice_sizes = dense<2> : tensor<1xi64>} : (tensor<4xi32>, tensor<1xi64>) -> tensor<2xi32>
+  // CHECK: %[[SLICED_START:.*]] = "xla_hlo.slice"(%[[START_I64]])
+  // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
+  // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
+  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} :
+  // CHECK-DAG-SAME: (tensor<1xi64>) -> tensor<1xi64>
+  // CHECK: %[[RESHAPED_START:.*]] = "xla_hlo.reshape"(%[[SLICED_START:.*]]) :
+  // CHECK-DAG-SAME: (tensor<1xi64>) -> tensor<i64>
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.dynamic-slice"(%arg0, %[[RESHAPED_START]])
+  // CHECK-DAG-SAME: {slice_sizes = dense<2> : tensor<1xi64>} :
+  // CHECK-DAG-SAME: (tensor<4xi32>, tensor<i64>) -> tensor<2xi32>
   // CHECK: return %[[RESULT]] : tensor<2xi32>
   %starts = "tf.Const"() {value = dense<[1]> : tensor<1xi64>} : () -> (tensor<1xi64>)
   %sizes = "tf.Const"() {value = dense<[2]> : tensor<1xi64>} : () -> (tensor<1xi64>)
@@ -2242,7 +2281,12 @@ func @slice_constant_start(%arg0: tensor<4xi32>) -> tensor<2xi32> {
 func @slice_i32_consts(%arg0: tensor<4xi32>) -> tensor<2xi32> {
   // CHECK: %[[START:.*]] = xla_hlo.constant dense<1> : tensor<1xi32>
   // CHECK: %[[START_I64:.*]] = "xla_hlo.convert"(%[[START]]) : (tensor<1xi32>) -> tensor<1xi64>
-  // CHECK: slice_sizes = dense<2> : tensor<1xi64>
+  // CHECK: %[[SLICED_START:.*]] = "xla_hlo.slice"(%[[START_I64]])
+  // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
+  // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
+  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} : (tensor<1xi64>) -> tensor<1xi64>
+  // CHECK: %[[RESHAPED_START:.*]] = "xla_hlo.reshape"(%[[SLICED_START]]) : (tensor<1xi64>) -> tensor<i64>
+  // CHECK: "xla_hlo.dynamic-slice"(%arg0, %[[RESHAPED_START]]) {slice_sizes = dense<2> : tensor<1xi64>} : (tensor<4xi32>, tensor<i64>) -> tensor<2xi32>
   %starts = "tf.Const"() {value = dense<[1]> : tensor<1xi32>} : () -> (tensor<1xi32>)
   %sizes = "tf.Const"() {value = dense<[2]> : tensor<1xi32>} : () -> (tensor<1xi32>)
   %0 = "tf.Slice"(%arg0, %starts, %sizes) : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
@@ -2253,7 +2297,12 @@ func @slice_i32_consts(%arg0: tensor<4xi32>) -> tensor<2xi32> {
 func @slice_constant_start_negative_one_size(%arg0: tensor<4xi32>) -> tensor<3xi32> {
   // CHECK: %[[START:.*]] = xla_hlo.constant dense<1> : tensor<1xi64>
   // CHECK: %[[START_I64:.*]] = "xla_hlo.convert"(%[[START]]) : (tensor<1xi64>) -> tensor<1xi64>
-  // CHECK: %[[RESULT:.*]] =  "xla_hlo.dynamic-slice"(%arg0, %[[START_I64]]) {slice_sizes = dense<3> : tensor<1xi64>} : (tensor<4xi32>, tensor<1xi64>) -> tensor<3xi32>
+  // CHECK: %[[SLICED_START:.*]] = "xla_hlo.slice"(%[[START_I64]])
+  // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
+  // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
+  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} : (tensor<1xi64>) -> tensor<1xi64>
+  // CHECK: %[[RESHAPED_START:.*]] = "xla_hlo.reshape"(%[[SLICED_START]]) : (tensor<1xi64>) -> tensor<i64>
+  // CHECK: %[[RESULT:.*]] =  "xla_hlo.dynamic-slice"(%arg0, %[[RESHAPED_START]]) {slice_sizes = dense<3> : tensor<1xi64>} : (tensor<4xi32>, tensor<i64>) -> tensor<3xi32>
   // CHECK: return %[[RESULT]] : tensor<3xi32>
   %starts = "tf.Const"() {value = dense<[1]> : tensor<1xi64>} : () -> (tensor<1xi64>)
   %sizes = "tf.Const"() {value = dense<[-1]> : tensor<1xi64>} : () -> (tensor<1xi64>)
@@ -2265,7 +2314,24 @@ func @slice_constant_start_negative_one_size(%arg0: tensor<4xi32>) -> tensor<3xi
 func @slice_constant_start_dynamic_shape(%arg0: tensor<?x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
   // CHECK: %[[START:.*]] = xla_hlo.constant dense<[1, 0]> : tensor<2xi64>
   // CHECK: %[[START_I64:.*]] = "xla_hlo.convert"(%[[START]]) : (tensor<2xi64>) -> tensor<2xi64>
-  // CHECK: %[[RESULT:.*]] = "xla_hlo.dynamic-slice"(%arg0, %[[START_I64]]) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<?x4xi32>, tensor<2xi64>) -> tensor<1x4xi32>
+  // CHECK: %[[SLICED_START1:.*]] = "xla_hlo.slice"(%[[START_I64]])
+  // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
+  // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
+  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} :
+  // CHECK-DAG-SAME: (tensor<2xi64>) -> tensor<1xi64>
+  // CHECK: %[[RESHAPED_START1:.*]] = "xla_hlo.reshape"(%[[SLICED_START1]]) :
+  // CHECK-DAG-SAME: (tensor<1xi64>) -> tensor<i64>
+  // CHECK: %[[SLICED_START2:.*]] = "xla_hlo.slice"(%[[START_I64]])
+  // CHECK-DAG-SAME: {limit_indices = dense<2> : tensor<1xi64>,
+  // CHECK-DAG-SAME: start_indices = dense<1> : tensor<1xi64>,
+  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} :
+  // CHECK-DAG-SAME: (tensor<2xi64>) -> tensor<1xi64>
+  // CHECK: %[[RESHAPED_START2:.*]] = "xla_hlo.reshape"(%[[SLICED_START2]]) :
+  // CHECK-DAG-SAME: (tensor<1xi64>) -> tensor<i64>
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.dynamic-slice"
+  // CHECK-DAG-SAME: (%arg0, %[[RESHAPED_START1]], %[[RESHAPED_START2]])
+  // CHECK-DAG-SAME: {slice_sizes = dense<[1, 4]> : tensor<2xi64>} :
+  // CHECK-DAG-SAME: (tensor<?x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
   // CHECK: return %[[RESULT]] : tensor<1x4xi32>
   %starts = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> (tensor<2xi64>)
   %sizes = "tf.Const"() {value = dense<[1, 4]> : tensor<2xi64>} : () -> (tensor<2xi64>)
@@ -2276,7 +2342,14 @@ func @slice_constant_start_dynamic_shape(%arg0: tensor<?x4xi32>, %arg1: tensor<2
 // CHECK-LABEL: slice_variable_start
 func @slice_variable_start(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
   // CHECK: %[[START_I64:.*]] = "xla_hlo.convert"(%arg1) : (tensor<2xi64>) -> tensor<2xi64>
-  // CHECK: %[[RESULT:.*]] = "xla_hlo.dynamic-slice"(%arg0, %[[START_I64]]) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<2xi64>) -> tensor<1x4xi32>
+  // CHECK: %[[SLICED_START1:.*]] = "xla_hlo.slice"(%[[START_I64]])
+  // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
+  // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
+  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} : (tensor<2xi64>) -> tensor<1xi64>
+  // CHECK: %[[RESHAPED_START1:.*]] = "xla_hlo.reshape"(%[[SLICED_START1]]) : (tensor<1xi64>) -> tensor<i64>
+  // CHECK: %[[SLICED_START2:.*]] = "xla_hlo.slice"(%[[START_I64]]) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi64>) -> tensor<1xi64>
+  // CHECK: %[[RESHAPED_START2:.*]] = "xla_hlo.reshape"(%[[SLICED_START2]]) : (tensor<1xi64>) -> tensor<i64>
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.dynamic-slice"(%arg0, %[[RESHAPED_START1]], %[[RESHAPED_START2]]) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
   // CHECK: return %[[RESULT]] : tensor<1x4xi32>
   %sizes = "tf.Const"() {value = dense<[1, 4]> : tensor<2xi64>} : () -> (tensor<2xi64>)
   %0 = "tf.Slice"(%arg0, %arg1, %sizes) : (tensor<3x4xi32>, tensor<2xi64>, tensor<2xi64>) -> tensor<1x4xi32>
@@ -2903,6 +2976,37 @@ func @conv_simple(%arg0: tensor<256x32x32x6xf32>, %arg1: tensor<3x3x3x16xf32>) -
   return %0 : tensor<256x30x30x16xf32>
 }
 
+// CHECK-LABEL: conv3d_simple
+func @conv3d_simple(%arg0: tensor<256x32x32x32x6xf32>, %arg1: tensor<3x3x3x3x16xf32>) -> tensor<256x30x30x30x16xf32> {
+
+  // CHECK: "xla_hlo.convolution"(%arg0, %arg1)
+
+  // Default attributes
+  // CHECK-NOT: lhs_dilation
+  // CHECK-NOT: precision_config
+
+  // CHECK-DAG-SAME: window_strides = dense<[5, 6, 7]>
+  // CHECK-DAG-SAME: padding = dense<[[1, 2], [2, 3], [2, 3]]>
+  // CHECK-DAG-SAME: rhs_dilation = dense<[2, 3, 4]>
+
+  // CHECK-DAG-SAME: dimension_numbers
+  // CHECK-DAG-SAME:   input_batch_dimension = 0
+  // CHECK-DAG-SAME:   input_feature_dimension = 4
+  // CHECK-DAG-SAME:   input_spatial_dimensions = dense<[1, 2, 3]>
+  // CHECK-DAG-SAME:   kernel_input_feature_dimension = 3
+  // CHECK-DAG-SAME:   kernel_output_feature_dimension = 4
+  // CHECK-DAG-SAME:   kernel_spatial_dimensions = dense<[0, 1, 2]>
+  // CHECK-DAG-SAME:   output_batch_dimension = 0
+  // CHECK-DAG-SAME:   output_feature_dimension = 4
+  // CHECK-DAG-SAME:   output_spatial_dimensions = dense<[1, 2, 3]>
+
+  // CHECK-DAG-SAME: feature_group_count = 2
+  // CHECK-DAG-SAME: batch_group_count = 1
+
+  %0 = "tf.Conv3D"(%arg0, %arg1) {data_format = "NDHWC", dilations = [1, 2, 3, 4, 1], padding = "SAME", strides = [1, 5, 6, 7, 1]} : (tensor<256x32x32x32x6xf32>, tensor<3x3x3x3x16xf32>) -> tensor<256x30x30x30x16xf32>
+  return %0 : tensor<256x30x30x30x16xf32>
+}
+
 // CHECK-LABEL: depthwiseconv_simple
 func @depthwiseconv_simple(%arg0: tensor<2x4x5x3xf32>, %arg1: tensor<2x2x3x3xf32>) -> tensor<2x3x4x9xf32> {
   // CHECK: %[[RESHAPED_FILTER:.*]] = "xla_hlo.reshape"(%arg1) : (tensor<2x2x3x3xf32>) -> tensor<2x2x1x9xf32>
@@ -2974,6 +3078,36 @@ func @conv2d_backprop_input(
   return %result : tensor<100x28x28x1xf32>
 }
 
+// CHECK-LABEL: @conv3d_backprop_input
+func @conv3d_backprop_input(%filter: tensor<3x3x3x1x6xf32>, %out_backprop: tensor<2x8x8x8x6xf32>) -> tensor<2x8x8x8x1xf32> {
+  // CHECK: %[[REV_FILTER:.*]] = "xla_hlo.reverse"(%arg0) {dimensions = dense<[0, 1, 2]> : tensor<3xi64>}
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.convolution"(%arg1, %[[REV_FILTER]])
+
+  // CHECK-DAG-SAME: batch_group_count = 1 : i64,
+
+  // CHECK-DAG-SAME: dimension_numbers =
+  // CHECK-DAG-SAME:   input_batch_dimension = 0 : i64
+  // CHECK-DAG-SAME:   input_feature_dimension = 4 : i64
+  // CHECK-DAG-SAME:   input_spatial_dimensions = dense<[1, 2, 3]> : tensor<3xi64>
+  // CHECK-DAG-SAME:   kernel_input_feature_dimension = 4 : i64
+  // CHECK-DAG-SAME:   kernel_output_feature_dimension = 3 : i64
+  // CHECK-DAG-SAME:   kernel_spatial_dimensions = dense<[0, 1, 2]> : tensor<3xi64>
+  // CHECK-DAG-SAME:   output_batch_dimension = 0 : i64
+  // CHECK-DAG-SAME:   output_feature_dimension = 4 : i64
+  // CHECK-DAG-SAME:   output_spatial_dimensions = dense<[1, 2, 3]> : tensor<3xi64>
+
+  // CHECK-DAG-SAME: feature_group_count = 1 : i64
+  // CHECK-DAG-SAME: lhs_dilation = dense<1> : tensor<3xi64>
+  // CHECK-DAG-SAME: padding = dense<1> : tensor<3x2xi64>
+  // CHECK-DAG-SAME: rhs_dilation = dense<1> : tensor<3xi64>
+  // CHECK-DAG-SAME: window_strides = dense<1> : tensor<3xi64>
+
+  // CHECK: return %[[RESULT]]
+  %input_sizes = "tf.Const" () {value = dense<[2, 8, 8, 8, 1]> : tensor<5xi32>} : () -> tensor<5xi32>
+  %result = "tf.Conv3DBackpropInputV2"(%input_sizes, %filter, %out_backprop) {data_format = "NDHWC", dilations = [1, 1, 1, 1, 1],  padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<5xi32>, tensor<3x3x3x1x6xf32>, tensor<2x8x8x8x6xf32>) -> tensor<2x8x8x8x1xf32>
+  return %result : tensor<2x8x8x8x1xf32>
+}
+
 // CHECK-LABEL: @conv2d_backprop_filter
 func @conv2d_backprop_filter(
     %input: tensor<100x28x28x1xf32>,
@@ -3008,6 +3142,35 @@ func @conv2d_backprop_filter(
     use_cudnn_on_gpu = true
   } : (tensor<100x28x28x1xf32>, tensor<4xi32>, tensor<100x26x26x32xf32>) -> tensor<100x28x28x1xf32>
   return %result : tensor<100x28x28x1xf32>
+}
+
+// CHECK-LABEL: @conv3d_backprop_filter
+func @conv3d_backprop_filter(%input: tensor<2x8x8x8x1xf32>, %out_backprop: tensor<2x8x8x8x6xf32>) -> tensor<2x8x8x8x1xf32> {
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.convolution"(%arg0, %arg1)
+
+  // CHECK-DAG-SAME: batch_group_count = 1 : i64
+
+  // CHECK-DAG-SAME: dimension_numbers =
+  // CHECK-DAG-SAME:   input_batch_dimension = 4 : i64
+  // CHECK-DAG-SAME:   input_feature_dimension = 0 : i64
+  // CHECK-DAG-SAME:   input_spatial_dimensions = dense<[1, 2, 3]> : tensor<3xi64>
+  // CHECK-DAG-SAME:   kernel_input_feature_dimension = 0 : i64
+  // CHECK-DAG-SAME:   kernel_output_feature_dimension = 4 : i64
+  // CHECK-DAG-SAME:   kernel_spatial_dimensions = dense<[1, 2, 3]> : tensor<3xi64>
+  // CHECK-DAG-SAME:   output_batch_dimension = 3 : i64
+  // CHECK-DAG-SAME:   output_feature_dimension = 4 : i64
+  // CHECK-DAG-SAME:   output_spatial_dimensions = dense<[0, 1, 2]> : tensor<3xi64>
+
+  // CHECK-DAG-SAME: feature_group_count = 1 : i64
+  // CHECK-DAG-SAME: lhs_dilation = dense<1> : tensor<3xi64>
+  // CHECK-DAG-SAME: padding = dense<1> : tensor<3x2xi64>
+  // CHECK-DAG-SAME: rhs_dilation = dense<1> : tensor<3xi64>
+  // CHECK-DAG-SAME: window_strides = dense<1> : tensor<3xi64>
+
+  // CHECK: return %[[RESULT]]
+  %filter_sizes = "tf.Const"() {value = dense<[3, 3, 3, 1, 6]> : tensor<5xi32>} : () -> tensor<5xi32>
+  %result = "tf.Conv3DBackpropFilterV2"(%input, %filter_sizes, %out_backprop) {data_format = "NDHWC", dilations = [1, 1, 1, 1, 1],  padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<2x8x8x8x1xf32>, tensor<5xi32>, tensor<2x8x8x8x6xf32>) -> tensor<2x8x8x8x1xf32>
+  return %result : tensor<2x8x8x8x1xf32>
 }
 
 // CHECK-LABEL: @cross_replica_sum

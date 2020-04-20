@@ -71,6 +71,7 @@ cc_library(
     deps = [
         ":utils",
         "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools:tool_params",
         "//tensorflow/lite/tools/benchmark:delegate_provider_hdr",
         "//tensorflow/lite/tools/benchmark:tflite_execution_providers",
@@ -100,6 +101,7 @@ cc_test(
     linkopts = tflite_linkopts(),
     deps = [
         ":evaluation_delegate_provider",
+        "//tensorflow/lite/tools:tool_params",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_googletest//:gtest_main",
     ],

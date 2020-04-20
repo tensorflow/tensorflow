@@ -429,10 +429,6 @@ tf_module {
     argspec: "args=[\'input\', \'block_shape\', \'crops\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "BeginEpoch"
-    argspec: "args=[\'dataset_id\', \'address\', \'protocol\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "BesselI0e"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -843,6 +839,10 @@ tf_module {
   member_method {
     name: "CountUpTo"
     argspec: "args=[\'ref\', \'limit\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "CreateJob"
+    argspec: "args=[\'dataset_id\', \'address\', \'protocol\', \'processing_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "CreateSummaryDbWriter"
@@ -2190,7 +2190,7 @@ tf_module {
   }
   member_method {
     name: "MakeDataServiceIterator"
-    argspec: "args=[\'dataset\', \'epoch_id\', \'iterator\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'dataset\', \'job_token\', \'iterator\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "MakeIterator"

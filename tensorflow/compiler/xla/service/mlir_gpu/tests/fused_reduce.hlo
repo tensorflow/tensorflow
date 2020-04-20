@@ -1,3 +1,4 @@
+// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
 HloModule FusedReduce
 
 %add (x: f32[], y: f32[]) -> f32[] {

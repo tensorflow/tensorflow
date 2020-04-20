@@ -267,7 +267,7 @@ void PrepareQuantizePass::runOnFunction() {
     // Currently, only activation stats are imported, so narrow_range = false.
     patterns.insert<PrepareQuantStats>(8, false, false, ctx);
   }
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 
   SanityCheckAndAdjustment(func);
 

@@ -1134,19 +1134,27 @@ XlaOp XlaBuilder::DotGeneral(XlaOp lhs, XlaOp rhs,
                              const DotDimensionNumbers& dimension_numbers,
                              const PrecisionConfig* precision_config) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferDotOpShape(*lhs_shape, *rhs_shape,
                                                         dimension_numbers));
-    *instr.mutable_shape() = shape.ToProto();
-    *instr.mutable_dot_dimension_numbers() = dimension_numbers;
-    if (precision_config != nullptr) {
-      *instr.mutable_precision_config() = *precision_config;
-    }
-    return AddInstruction(std::move(instr), HloOpcode::kDot, {lhs, rhs});
+    return DotGeneralInternal(shape, lhs, rhs, dimension_numbers,
+                              precision_config);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::DotGeneralInternal(
+    const Shape& shape, XlaOp lhs, XlaOp rhs,
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig* precision_config) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  *instr.mutable_dot_dimension_numbers() = dimension_numbers;
+  if (precision_config != nullptr) {
+    *instr.mutable_precision_config() = *precision_config;
+  }
+  return AddInstruction(std::move(instr), HloOpcode::kDot, {lhs, rhs});
 }
 
 Status XlaBuilder::VerifyConvolution(
@@ -1624,16 +1632,21 @@ XlaOp XlaBuilder::CustomCall(
 XlaOp XlaBuilder::Transpose(XlaOp operand,
                             absl::Span<const int64> permutation) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferTransposeShape(
                                          *operand_shape, permutation));
-    *instr.mutable_shape() = shape.ToProto();
-    for (int64 dim : permutation) {
-      instr.add_dimensions(dim);
-    }
-    return AddInstruction(std::move(instr), HloOpcode::kTranspose, {operand});
+    return TransposeInternal(shape, operand, permutation);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::TransposeInternal(
+    const Shape& shape, XlaOp operand, absl::Span<const int64> permutation) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  for (int64 dim : permutation) {
+    instr.add_dimensions(dim);
+  }
+  return AddInstruction(std::move(instr), HloOpcode::kTranspose, {operand});
 }
 
 XlaOp XlaBuilder::Rev(XlaOp operand, absl::Span<const int64> dimensions) {
@@ -1837,25 +1850,31 @@ XlaOp XlaBuilder::Gather(XlaOp input, XlaOp start_indices,
                          absl::Span<const int64> slice_sizes,
                          bool indices_are_sorted) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-    instr.set_indices_are_sorted(indices_are_sorted);
-
     TF_ASSIGN_OR_RETURN(const Shape* input_shape, GetShapePtr(input));
     TF_ASSIGN_OR_RETURN(const Shape* start_indices_shape,
                         GetShapePtr(start_indices));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferGatherShape(
                                          *input_shape, *start_indices_shape,
                                          dimension_numbers, slice_sizes));
-    *instr.mutable_shape() = shape.ToProto();
-
-    *instr.mutable_gather_dimension_numbers() = dimension_numbers;
-    for (int64 bound : slice_sizes) {
-      instr.add_gather_slice_sizes(bound);
-    }
-
-    return AddInstruction(std::move(instr), HloOpcode::kGather,
-                          {input, start_indices});
+    return GatherInternal(shape, input, start_indices, dimension_numbers,
+                          slice_sizes, indices_are_sorted);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::GatherInternal(
+    const Shape& shape, XlaOp input, XlaOp start_indices,
+    const GatherDimensionNumbers& dimension_numbers,
+    absl::Span<const int64> slice_sizes, bool indices_are_sorted) {
+  HloInstructionProto instr;
+  instr.set_indices_are_sorted(indices_are_sorted);
+  *instr.mutable_shape() = shape.ToProto();
+  *instr.mutable_gather_dimension_numbers() = dimension_numbers;
+  for (int64 bound : slice_sizes) {
+    instr.add_gather_slice_sizes(bound);
+  }
+
+  return AddInstruction(std::move(instr), HloOpcode::kGather,
+                        {input, start_indices});
 }
 
 XlaOp XlaBuilder::Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,

@@ -48,8 +48,8 @@ SIFIVE_FE310_LIB_MD5 := "06ee24c4956f8e21670ab3395861fe64"
 KISSFFT_URL="https://github.com/mborgerding/kissfft/archive/v130.zip"
 KISSFFT_MD5="438ba1fef5783cc5f5f201395cc477ca"
 
-RUY_URL="https://github.com/google/ruy/archive/91d62808498cea7ccb48aa59181e218b4ad05701.zip"
-RUY_MD5="5e653ae8863408ede2a0ca104fea5b1e"
+RUY_URL="https://github.com/google/ruy/archive/9f53ba413e6fc879236dcaa3e008915973d67a4f.zip"
+RUY_MD5="ce2c2444cced9dcf6ca6bc908061faa8"
 
 PERSON_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale_2019_11_21.zip"
 PERSON_MODEL_MD5 := "fe2934bd0788f1dcc7af3f0a954542ab"

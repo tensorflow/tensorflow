@@ -1,3 +1,4 @@
+// RUN: xla-gpu-opt -lowering-stage=GPU %s | FileCheck %s -dump-input-on-failure
 HloModule AddMultiply
 
 ENTRY %AddMultiply (x: s32[2,2], y: s32[2,2]) -> s32[2,2] {

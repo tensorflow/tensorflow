@@ -612,6 +612,11 @@ LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(DynamicReshapeOp op, OpLoweringContext ctx) {
+  // This op has no expression in the legacy export format.
+  return failure();
+}
+
 LogicalResult ExportXlaOp(ConditionalOp op, OpLoweringContext ctx) {
   xla::XlaComputation true_branch;
   xla::XlaComputation false_branch;
@@ -1022,8 +1027,7 @@ LogicalResult ConvertToHloModule::Lower(
     return success();
   }
 
-  inst->emitError("unable to lower operation of type '" +
-                  inst->getName().getStringRef().str() + '\'');
+  inst->emitOpError() << "can't be translated to XLA HLO";
   return failure();
 }
 
