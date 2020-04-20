@@ -585,6 +585,10 @@ class NestTest(parameterized.TestCase, test.TestCase):
             shallow_length=len(inp_abc))):
       nest.assert_shallow_structure(inp_abc, inp_ab)
 
+    # shallow structure may be "smaller" than input structure if
+    # ignore_extra_entries=True.
+    nest.assert_shallow_structure(inp_ab, inp_abc, ignore_extra_entries=True)
+
     inp_ab1 = [(1, 1), (2, 2)]
     inp_ab2 = [[1, 1], [2, 2]]
     with self.assertRaisesWithLiteralMatch(
@@ -761,10 +765,19 @@ class NestTest(parameterized.TestCase, test.TestCase):
     with self.assertRaisesRegexp(ValueError, expected_message):  # pylint: disable=g-error-prone-assert-raises
       nest.assert_shallow_structure(shallow_tree, input_tree)
 
+    input_tree = {"c": "c", "d": "d", "b": "b", "a": "a"}
+    shallow_tree = {"c": 1, "a": 2}
+    flattened_shallow_tree = nest.flatten_up_to(
+        shallow_tree, input_tree, ignore_extra_entries=True)
+    # Returns values of input_tree associated with keys of shallow_tree; and
+    # keys are in sorted lexicographic order.
+    self.assertEqual(flattened_shallow_tree, ["a", "c"])
+
   def testFlattenWithTuplePathsUpTo(self):
-    def get_paths_and_values(shallow_tree, input_tree):
+    def get_paths_and_values(shallow_tree, input_tree,
+                             ignore_extra_entries=False):
       path_value_pairs = nest.flatten_with_tuple_paths_up_to(
-          shallow_tree, input_tree)
+          shallow_tree, input_tree, ignore_extra_entries=ignore_extra_entries)
       paths = [p for p, _ in path_value_pairs]
       values = [v for _, v in path_value_pairs]
       return paths, values
@@ -898,6 +911,16 @@ class NestTest(parameterized.TestCase, test.TestCase):
             input_length=len(input_tree),
             shallow_length=len(shallow_tree))):
       get_paths_and_values(shallow_tree, input_tree)
+
+    (flattened_input_tree_paths,
+     flattened_input_tree) = get_paths_and_values(shallow_tree, input_tree,
+                                                  ignore_extra_entries=True)
+    (flattened_shallow_tree_paths,
+     flattened_shallow_tree) = get_paths_and_values(shallow_tree, shallow_tree)
+    self.assertEqual(flattened_input_tree_paths, [("a",), ("c",)])
+    self.assertEqual(flattened_input_tree, ["A", "C"])
+    self.assertEqual(flattened_shallow_tree_paths, [("a",), ("c",)])
+    self.assertEqual(flattened_shallow_tree, [1, 2])
 
     # Using non-iterable elements.
     input_tree = [0]
@@ -1054,6 +1077,15 @@ class NestTest(parameterized.TestCase, test.TestCase):
       nest.map_structure_up_to(
           inp_val,
           lambda val, ops: (val + ops["add"]) * ops["mul"], inp_val, inp_ops)
+
+    shallow_structure = {"c": 1, "a": 2}
+    input_structure = {"a": "a", "b": "b", "c": "c", "d": "d"}
+    out = nest.map_structure_up_to(
+        shallow_structure,
+        lambda x: x + "0",
+        input_structure,
+        ignore_extra_entries=True)
+    self.assertEqual(out, {"a": "a0", "c": "c0"})
 
   def testGetTraverseShallowStructure(self):
     scalar_traverse_input = [3, 4, (1, 2, [0]), [5, 6], {"a": (7,)}, []]
