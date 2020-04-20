@@ -27,6 +27,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 
 #include "third_party/gpus/cuda/include/cusparse.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 
 using gpusparseStatus_t = cusparseStatus_t;
 using gpusparseOperation_t = cusparseOperation_t;
@@ -279,6 +280,19 @@ class GpuSparse {
                const int* csrSortedColIndA, const Scalar* x,
                const Scalar* beta_host, Scalar* y) const;
 
+  // Computes workspace size for sparse - sparse matrix addition of matrices
+  // stored in CSR format.
+  template <typename Scalar>
+  Status CsrgeamBufferSizeExt(int m, int n, const Scalar* alpha,
+                 const gpusparseMatDescr_t descrA, int nnzA,
+                 const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
+                 const int* csrSortedColIndA, const Scalar* beta,
+                 const gpusparseMatDescr_t descrB, int nnzB,
+                 const Scalar* csrSortedValB, const int* csrSortedRowPtrB,
+                 const int* csrSortedColIndB, const gpusparseMatDescr_t descrC,
+                 Scalar* csrSortedValC, int* csrSortedRowPtrC,
+                 int* csrSortedColIndC, size_t* bufferSize);
+
   // Computes sparse-sparse matrix addition of matrices
   // stored in CSR format.  This is part one: calculate nnz of the
   // output.  csrSortedRowPtrC must be preallocated on device with
@@ -289,7 +303,7 @@ class GpuSparse {
                     const gpusparseMatDescr_t descrB, int nnzB,
                     const int* csrSortedRowPtrB, const int* csrSortedColIndB,
                     const gpusparseMatDescr_t descrC, int* csrSortedRowPtrC,
-                    int* nnzTotalDevHostPtr);
+                    int* nnzTotalDevHostPtr, void* workspace);
 
   // Computes sparse - sparse matrix addition of matrices
   // stored in CSR format.  This is part two: perform sparse-sparse
@@ -305,7 +319,7 @@ class GpuSparse {
                  const Scalar* csrSortedValB, const int* csrSortedRowPtrB,
                  const int* csrSortedColIndB, const gpusparseMatDescr_t descrC,
                  Scalar* csrSortedValC, int* csrSortedRowPtrC,
-                 int* csrSortedColIndC);
+                 int* csrSortedColIndC, void* workspace);
 
   // Computes sparse-sparse matrix multiplication of matrices
   // stored in CSR format.  This is part one: calculate nnz of the
