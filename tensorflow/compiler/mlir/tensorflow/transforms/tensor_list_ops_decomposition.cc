@@ -612,6 +612,33 @@ LogicalResult HandleTensorListGatherOp(
   return success();
 }
 
+LogicalResult HandleTensorListScatterIntoExistingListOp(
+    TF::TensorListScatterIntoExistingListOp scatter,
+    llvm::SmallDenseMap<Value, SizeInfo>* buffer_to_size) {
+  auto it = buffer_to_size->find(scatter.input_handle());
+  if (it == buffer_to_size->end()) {
+    return scatter.emitOpError("unknown tensor list");
+  }
+  auto buffer = scatter.input_handle();
+  OpBuilder builder(scatter);
+  auto indices_type = scatter.indices().getType().cast<RankedTensorType>();
+  if (!indices_type) return scatter.emitOpError("unranked indices shape");
+  auto shape_type = RankedTensorType::get({2}, builder.getIntegerType(32));
+  auto shape = builder.create<TF::ConstOp>(
+      scatter.getLoc(),
+      DenseElementsAttr::get(
+          shape_type, {static_cast<int>(indices_type.getDimSize(0)), 1}));
+  auto indices =
+      builder.create<TF::ReshapeOp>(scatter.getLoc(), scatter.indices(), shape);
+  Value tensor_scatter_update = builder.create<TF::TensorScatterUpdateOp>(
+      scatter.getLoc(), buffer, indices, scatter.tensor());
+  scatter.output_handle().replaceAllUsesWith(tensor_scatter_update);
+  scatter.erase();
+  auto size = it->getSecond();
+  (*buffer_to_size)[tensor_scatter_update] = size;
+  return success();
+}
+
 LogicalResult DecomposeTensorListOpsInternal(
     Block* block, ModuleOp module,
     llvm::SmallDenseMap<Value, SizeInfo>* buffer_to_size,
@@ -664,6 +691,13 @@ LogicalResult DecomposeTensorListOpsInternal(
       }
     } else if (auto gather = llvm::dyn_cast<TF::TensorListGatherOp>(&op)) {
       if (failed(HandleTensorListGatherOp(gather, *buffer_to_size))) {
+        return failure();
+      }
+    } else if (auto scatter =
+                   llvm::dyn_cast<TF::TensorListScatterIntoExistingListOp>(
+                       &op)) {
+      if (failed(HandleTensorListScatterIntoExistingListOp(scatter,
+                                                           buffer_to_size))) {
         return failure();
       }
     } else if (auto addn = llvm::dyn_cast<TF::AddNOp>(&op)) {
