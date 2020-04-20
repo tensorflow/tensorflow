@@ -70,6 +70,18 @@ class NoReusePortOption : public ::grpc::ServerBuilderOption {
                          plugins) override {}
 };
 
+// Define an option subclass in order to disable SO_REUSEPORT for the
+// server socket.
+class ReusePortOption : public ::grpc::ServerBuilderOption {
+ public:
+  void UpdateArguments(::grpc::ChannelArguments* args) override {
+    args->SetInt(GRPC_ARG_ALLOW_REUSEPORT, 1);
+  }
+
+  void UpdatePlugins(std::vector<std::unique_ptr<::grpc::ServerBuilderPlugin>>*
+                         plugins) override {}
+};
+
 // static utility function
 RendezvousMgrInterface* NewRpcRendezvousMgr(const WorkerEnv* env) {
   return new RpcRendezvousMgr(env);
@@ -220,8 +232,14 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
                            GetServerCredentials(server_def_), &bound_port_);
   builder.SetMaxMessageSize(std::numeric_limits<int32>::max());
 
-  builder.SetOption(
-      std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption));
+  bool reuse_port = false;
+  ReadBoolFromEnvVar("TF_GRPC_REUSE_PORT", false, &reuse_port)
+      .IgnoreError();
+  auto server_build_option = reuse_port ?
+      std::unique_ptr<::grpc::ServerBuilderOption>(new ReusePortOption) :
+      std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption);
+  builder.SetOption(server_build_option);
+
   // Allow subclasses to specify more args to pass to the gRPC server.
   MaybeMutateBuilder(&builder);
   master_impl_ = CreateMaster(&master_env_);
