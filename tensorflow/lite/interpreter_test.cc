@@ -1079,8 +1079,11 @@ TEST(InterpreterTensorsCapacityTest, TestExceedHeadroom) {
     TfLiteTensor* first_tensor = context->tensors;
 
     int new_tensor_index;
-    context->AddTensors(context, Interpreter::kTensorsCapacityHeadroom + 1,
-                        &new_tensor_index);
+    // Add enough tensors to trigger buffer re-allocation.
+    context->AddTensors(
+        context,
+        (context->tensors_size + Interpreter::kTensorsCapacityHeadroom + 1) * 2,
+        &new_tensor_index);
     EXPECT_NE(first_tensor, context->tensors);
     return kTfLiteOk;
   };
