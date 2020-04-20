@@ -89,7 +89,7 @@ template <DataType T>
 absl::Status DepthwiseConvolution::UploadWeights(
     const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
   const int dst_channels = weights.shape.i * weights.shape.o;
-  const int dst_depth = IntegralDivideRoundUp(dst_channels, 4);
+  const int dst_depth = DivideRoundUp(dst_channels, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
 
@@ -137,7 +137,7 @@ template <DataType S, typename T>
 void DepthwiseConvolution::RearrangeWeightsData(
     const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
   const int dst_channels = weights.shape.i * weights.shape.o;
-  const int dst_depth = IntegralDivideRoundUp(dst_channels, 4);
+  const int dst_depth = DivideRoundUp(dst_channels, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
 

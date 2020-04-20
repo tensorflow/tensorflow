@@ -56,10 +56,10 @@ bool IsChannelsBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
 bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
                                    const CLDevice& device,
                                    const BHWC& dst_shape) {
-  const int tiles_x = IntegralDivideRoundUp(dst_shape.w, 4);
-  const int tiles_y = IntegralDivideRoundUp(dst_shape.h, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+  const int tiles_x = DivideRoundUp(dst_shape.w, 4);
+  const int tiles_y = DivideRoundUp(dst_shape.h, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   const bool suitable_attributes =
       attr.weights.shape.w == 3 && attr.weights.shape.h == 3 &&
       attr.dilations == HW(1, 1) && attr.strides == HW(1, 1);
@@ -82,8 +82,8 @@ absl::Status WinogradFromNode(const CreationContext& creation_context,
     return absl::UnimplementedError("No implementation for this case.");
   }
 
-  const int tiles_x = IntegralDivideRoundUp(output_shape.w, 4);
-  const int tiles_y = IntegralDivideRoundUp(output_shape.h, 4);
+  const int tiles_x = DivideRoundUp(output_shape.w, 4);
+  const int tiles_y = DivideRoundUp(output_shape.h, 4);
   const BHWC shape_0{input_shape.b, 36, tiles_x * tiles_y, input_shape.c};
   const BHWC shape_1{input_shape.b, 36, tiles_x * tiles_y, output_shape.c};
   TensorDescriptor td_0;

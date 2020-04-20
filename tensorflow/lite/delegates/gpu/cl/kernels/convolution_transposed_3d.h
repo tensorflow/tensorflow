@@ -91,8 +91,8 @@ template <DataType T>
 absl::Status ConvolutionTransposed3D::UploadWeights(
     const tflite::gpu::Tensor<OHWDI, T>& weights, CLContext* context) {
   const int dst_depth =
-      AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), block_size_.z);
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
+      AlignByN(DivideRoundUp(weights.shape.o, 4), block_size_.z);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int kernel_x = kernel_size_.x;
   const int kernel_y = kernel_size_.y;
   const int kernel_z = kernel_size_.z;
@@ -162,8 +162,8 @@ template <DataType S, typename T>
 void ConvolutionTransposed3D::RearrangeWeightsData(
     const tflite::gpu::Tensor<OHWDI, S>& weights, absl::Span<T> dst) {
   const int dst_depth =
-      AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), block_size_.w);
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
+      AlignByN(DivideRoundUp(weights.shape.o, 4), block_size_.w);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int kernel_x = kernel_size_.x;
   const int kernel_y = kernel_size_.y;
   const int kernel_z = kernel_size_.z;

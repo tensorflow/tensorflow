@@ -102,7 +102,7 @@ class Add : public NodeShader {
           // Declare workload explicitly because shader depends on gid.z.
           /*workload=*/
           uint3(ctx.input_shapes[0][2], ctx.input_shapes[0][1],
-                IntegralDivideRoundUp(ctx.input_shapes[0][3], 4)),
+                DivideRoundUp(ctx.input_shapes[0][3], 4)),
           /*workgroup=*/uint3(),
           /*source_code=*/"value_0 += $add_buffer[gid.z]$;",
           /*input=*/IOStructure::AUTO,

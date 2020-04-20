@@ -64,7 +64,7 @@ class OpenGlConverterImpl : public TensorObjectConverter {
   }
 
   absl::Status Dispatch(const uint3& workload) {
-    uint3 num_workgroups = IntegralDivideRoundUp(workload, workgroup_size_);
+    uint3 num_workgroups = DivideRoundUp(workload, workgroup_size_);
     if (command_queue_) {
       return command_queue_->Dispatch(program_, num_workgroups);
     }
@@ -256,7 +256,7 @@ class ToTensorConverter : public OpenGlConverterImpl {
       return absl::InvalidArgumentError(
           "ToTensorConverter: output data size does not match expected size.");
     }
-    auto d = IntegralDivideRoundUp(shape_.c, 4);
+    auto d = DivideRoundUp(shape_.c, 4);
     RETURN_IF_ERROR(program_.SetParameter(
         {"sizes",
          int4(static_cast<int32_t>(shape_.w), static_cast<int32_t>(shape_.h),

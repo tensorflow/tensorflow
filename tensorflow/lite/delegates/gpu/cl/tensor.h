@@ -61,7 +61,7 @@ class Tensor {
   int Height() const { return shape_.h; }
   int Depth() const { return shape_.d; }
   int Channels() const { return shape_.c; }
-  int Slices() const { return IntegralDivideRoundUp(shape_.c, 4); }
+  int Slices() const { return DivideRoundUp(shape_.c, 4); }
   int Batch() const { return shape_.b; }
 
   // returns int4(width * batch, height, slices, batch)
