@@ -76,5 +76,5 @@ def bfloat16_scope():
   This enables variables to be read as bfloat16 type when using get_variable.
   """
   with variable_scope.variable_scope(
-      '', custom_getter=_get_custom_getter()) as varscope:
+      'bfloat16', custom_getter=_get_custom_getter()) as varscope:
     yield varscope
