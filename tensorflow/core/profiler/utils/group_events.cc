@@ -194,9 +194,11 @@ void EventNode::SetIsEager(bool is_eager) {
 }
 
 bool EventNode::IsEager() {
-  // It is eagerly executed if its trace context does not include the TF
-  // executor.
-  return FindParent(HostEventType::kExecutorStateProcess) == nullptr;
+  // It is eagerly executed if its trace context includes the EagerKernelExecute
+  // event (which may execute an op eagerly or through the TF executor) but not
+  // the TF executor event.
+  return FindParent(HostEventType::kExecutorStateProcess) == nullptr &&
+         FindParent(HostEventType::kEagerKernelExecute) != nullptr;
 }
 
 bool EventNode::IsNestedIn(EventNode* parent) {
