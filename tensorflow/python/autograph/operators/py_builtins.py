@@ -29,6 +29,7 @@ import six
 
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.autograph.utils import tensors
+from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
@@ -281,7 +282,15 @@ def _tf_tensor_len(s):
 
 
 def _tf_dataset_len(s):
-  return s.reduce(constant_op.constant(0, dtype=dtypes.int32), lambda x, _: x + 1)
+  l = cardinality.cardinality(s)
+
+  def raise_infinite_cardinality_error():
+    with ops.control_dependencies([control_flow_ops.Assert(False, ['len requires non-infinite dataset'])]):
+      return constant_op.constant(-1, dtype=dtypes.int32)
+
+  l = control_flow_ops.cond(l != cardinality.INFINITE, lambda: l, raise_infinite_cardinality_error)
+
+  return l
 
 
 def _py_len(s):
