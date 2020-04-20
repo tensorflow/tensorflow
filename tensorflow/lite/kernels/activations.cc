@@ -430,15 +430,15 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
 
     int input_scale_log2_rounded;
-    bool paramScalePOT =
+    bool param_scale_pot =
         CheckedLog2(input->params.scale, &input_scale_log2_rounded);
 
     data->input_left_shift =
         (15 - kInputIntegerBits) + input_scale_log2_rounded;
-    paramScalePOT &=
+    param_scale_pot &=
         (data->input_left_shift == 0 || data->input_left_shift == 1);
 
-    if (!paramScalePOT) {
+    if (!param_scale_pot) {
       // In case of general scale parameter, we need to do a rescaling.
       // Magic constant 4096:
       // We need to scale down to (-2^3, 2^3) / 3 is kInputIntegerBits/ interval
@@ -526,14 +526,14 @@ TfLiteStatus SigmoidPrepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
 
     int input_scale_log2_rounded;
-    bool paramScalePOT =
+    bool param_scale_pot =
         CheckedLog2(input->params.scale, &input_scale_log2_rounded);
 
     data->input_left_shift =
         (15 - kInputIntegerBits) + input_scale_log2_rounded;
-    paramScalePOT &= (data->input_left_shift == 0);
+    param_scale_pot &= (data->input_left_shift == 0);
 
-    if (!paramScalePOT) {
+    if (!param_scale_pot) {
       // In case of general scale parameter, we need to do a rescaling.
       // Magic constant 4096:
       // We need to scale down to (-2^3, 2^3) / 3 is kInputIntegerBits/ interval

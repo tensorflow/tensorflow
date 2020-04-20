@@ -66,7 +66,7 @@ inline void Tanh(int32_t input_multiplier, int32_t input_left_shift,
   int32_t input_data_mul = (input_multiplier > 0) ? input_multiplier : 1;
 
   for (int i = 0; i < input_size; ++i, ptr_input_data++, ptr_output_data++) {
-    int32_t input_data = (*ptr_input_data)*input_data_mul;
+    int32_t input_data = (*ptr_input_data) * input_data_mul;
 
     if (input_left_shift == 1) {
       input_data <<= 1;
