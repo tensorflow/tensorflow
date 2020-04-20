@@ -151,7 +151,7 @@ int main(int argc, char** argv) {
   string output_registration;
   string tflite_path;
   string namespace_flag;
-  bool for_micro;
+  bool for_micro = false;
   ParseFlagAndInit(&argc, argv, &input_model, &output_registration,
                    &tflite_path, &namespace_flag, &for_micro);
 
