@@ -35,6 +35,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework.memory_checker import MemoryChecker
 from tensorflow.python.layers.pooling import max_pooling3d
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -1531,6 +1532,39 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
         num_sin_ops_found += 1
         self.assertIn('gradient_tape/my_scope/', op.name)
     self.assertEqual(num_sin_ops_found, 2)
+
+  @test_util.assert_no_new_pyobjects_executing_eagerly
+  def testRecomputeGradWithNestedFunctionAndWhileLoop(self):
+
+    @custom_gradient.recompute_grad
+    @def_function.function
+    def outer(x):
+
+      @def_function.function
+      def middle(y):
+
+        @def_function.function
+        def inner(z):
+          return z + 1
+
+        i = constant_op.constant(0.0)
+        c = lambda y, i: i < 10.
+        b = lambda y, i: (inner(y), i + 1.0)
+        y, i = control_flow_ops.while_loop(c, b, [y, i])
+
+        return y
+
+      return middle(x)
+
+    with MemoryChecker() as memory_checker:
+      for _ in range(5):
+        x = variables.Variable(1.0, name='x')
+        with backprop.GradientTape():
+          y = outer(x)
+          self.assertAllEqual(y, 11.0)
+
+    memory_checker.report()
+    memory_checker.assert_no_leak_if_all_possibly_except_one()
 
 
 class JacobianTest(test.TestCase):

@@ -30,6 +30,6 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_sparsification_wrapper, m) {
         return ::SparsificationWrapper::CreateWrapperCPPFromBuffer(data.ptr());
       }))
       .def("SparsifyModel", [](SparsificationWrapper& self) {
-        return tensorflow::pyo_or_throw(self.SparsifyModel());
+        return tensorflow::PyoOrThrow(self.SparsifyModel());
       });
 }

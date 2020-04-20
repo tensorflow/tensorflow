@@ -101,6 +101,7 @@ cc_test(
     linkopts = tflite_linkopts(),
     deps = [
         ":evaluation_delegate_provider",
+        "//tensorflow/lite/tools:tool_params",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_googletest//:gtest_main",
     ],

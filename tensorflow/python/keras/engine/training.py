@@ -100,9 +100,15 @@ def disable_multi_worker(method):
 class Model(network.Network, version_utils.ModelVersionSelector):
   """`Model` groups layers into an object with training and inference features.
 
+  Arguments:
+      inputs: The input(s) of the model: a `keras.Input` object or list of
+          `keras.Input` objects.
+      outputs: The output(s) of the model. See Functional API example below.
+      name: String, the name of the model.
+
   There are two ways to instantiate a `Model`:
 
-  1 - With the "functional API", where you start from `Input`,
+  1 - With the "Functional API", where you start from `Input`,
   you chain layer calls to specify the model's forward pass,
   and finally you create your model from inputs and outputs:
 
@@ -163,9 +169,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
   Once the model is created, you can config the model with losses and metrics
   with `model.compile()`, train the model with `model.fit()`, or use the model
   to do prediction with `model.predict()`.
-
-  Checkout [guide](https://www.tensorflow.org/guide/keras/overview) for
-  additional details.
   """
   _TF_MODULE_IGNORED_PROPERTIES = frozenset(
       itertools.chain(('_train_counter', '_test_counter', '_predict_counter',
@@ -893,6 +896,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
       train_function = self.make_train_function()
       self._train_counter.assign(0)
       callbacks.on_train_begin()
+      training_logs = None
       # Handle fault-tolerance for multi-worker.
       # TODO(omalleyt): Fix the ordering issues that mean this has to
       # happen after `callbacks.on_train_begin`.
@@ -937,10 +941,11 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           epoch_logs.update(val_logs)
 
         callbacks.on_epoch_end(epoch, epoch_logs)
+        training_logs = epoch_logs
         if self.stop_training:
           break
 
-      callbacks.on_train_end()
+      callbacks.on_train_end(logs=training_logs)
       return self.history
 
   def test_step(self, data):
@@ -1168,9 +1173,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               logs = tmp_logs  # No error, now safe to assign to logs.
               end_step = step + data_handler.step_increment
               callbacks.on_test_batch_end(end_step, logs)
-      callbacks.on_test_end()
-
       logs = tf_utils.to_numpy_or_python_type(logs)
+      callbacks.on_test_end(logs=logs)
+
       if return_dict:
         return logs
       else:

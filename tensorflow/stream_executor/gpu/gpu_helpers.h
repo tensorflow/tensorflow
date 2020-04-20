@@ -86,16 +86,16 @@ struct GpuComplexT<std::complex<double>> {
 template <typename T>
 inline const typename GpuComplexT<T>::type* GpuComplex(const T* p) {
   auto* result = reinterpret_cast<const typename GpuComplexT<T>::type*>(p);
-  CHECK_EQ(reinterpret_cast<uintptr_t>(p) % alignof(*result), 0)
-      << "Source pointer is not aligned by " << alignof(*result);
+  CHECK_EQ(reinterpret_cast<uintptr_t>(p) % alignof(decltype(*result)), 0)
+      << "Source pointer is not aligned by " << alignof(decltype(*result));
   return result;
 }
 
 template <typename T>
 inline typename GpuComplexT<T>::type* GpuComplex(T* p) {
   auto* result = reinterpret_cast<typename GpuComplexT<T>::type*>(p);
-  CHECK_EQ(reinterpret_cast<uintptr_t>(p) % alignof(*result), 0)
-      << "Source pointer is not aligned by " << alignof(*result);
+  CHECK_EQ(reinterpret_cast<uintptr_t>(p) % alignof(decltype(*result)), 0)
+      << "Source pointer is not aligned by " << alignof(decltype(*result));
   return result;
 }
 

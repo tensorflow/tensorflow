@@ -232,6 +232,5 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_protobuf//:protobuf_headers",
     ],
 )

@@ -1027,8 +1027,7 @@ LogicalResult ConvertToHloModule::Lower(
     return success();
   }
 
-  inst->emitError("unable to lower operation of type '" +
-                  inst->getName().getStringRef().str() + '\'');
+  inst->emitOpError() << "can't be translated to XLA HLO";
   return failure();
 }
 

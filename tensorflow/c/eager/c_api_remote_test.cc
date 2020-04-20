@@ -226,12 +226,17 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote, bool func) {
   }
   if (remote) {
     TFE_OpSetDevice(matmul, task1_name, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   } else if (!async) {
+    // Set the local device to CPU to easily validate mirroring
+    string cpu_device_name;
+    ASSERT_TRUE(GetDeviceName(ctx, &cpu_device_name, "CPU"));
+    TFE_OpSetDevice(matmul, cpu_device_name.c_str(), status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
     auto remote_arg = tensorflow::TensorHandleFromInterface(h1_task2->handle);
     // The input handles should never change since they have been mirrored.
     ASSERT_FALSE(remote_arg->HasLocalMirror(nullptr));
   }
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TFE_TensorHandle* retvals[1];
   int num_retvals = 1;

@@ -71,6 +71,10 @@ AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6());
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN());
+  AddBuiltin(BuiltinOperator_RESIZE_NEAREST_NEIGHBOR,
+             Register_RESIZE_NEAREST_NEIGHBOR(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
 }
 
 }  // namespace micro

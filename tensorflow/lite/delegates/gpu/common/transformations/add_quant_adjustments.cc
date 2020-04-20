@@ -64,7 +64,7 @@ class AddQuantAdjustments : public NodeTransformation {
 
       // Add one output Value for the new node.
       // The tensor information should rename the same.
-      Value<TensorRef<BHWC>>* adjusted_value = graph->NewValue();
+      Value* adjusted_value = graph->NewValue();
       adjusted_value->tensor = output_value->tensor;
       status =
           graph->SetProducer(quant_and_dequant_node->id, adjusted_value->id);

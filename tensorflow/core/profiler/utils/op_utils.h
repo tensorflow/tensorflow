@@ -35,12 +35,13 @@ class HostOpMetricsDbBuilder : public OpMetricsDbBuilder {
   // observed on a trace, where:
   //   name = the OP name.
   //   category = the OP category.
+  //   is_eager = whether this OP is eagerly executed.
   //   time_ps = the total execution time of the OP in picoseconds, including
   //             the execution time of its children.
   //   children_time_ps = the execution time of the children of this OP in
   //                      picoseconds
   void EnterOp(absl::string_view name, absl::string_view category,
-               uint64 time_ps, uint64 children_time_ps);
+               bool is_eager, uint64 time_ps, uint64 children_time_ps);
 
   // Updates total_host_infeed_enq_duration_ps_ and
   // total_host_infeed_enq_duration_ps_.

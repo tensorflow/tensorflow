@@ -266,7 +266,7 @@ Status Transposer::CreateTransposeNode(
   *transpose_node_name = node_name;
 
   NodeDef node;
-  node.set_name(string(node_name));
+  node.set_name(node_name);
   node.set_op(kOpTranspose);
   node.set_device(string(device));
 

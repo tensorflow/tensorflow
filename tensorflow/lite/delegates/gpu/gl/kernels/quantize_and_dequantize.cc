@@ -40,8 +40,8 @@ value_0 = floor(value_0 + vec4(0.5));
 value_0 = value_0 * vec4($quant_scale$) + vec4($quant_min$);
 )";
 
-    auto attr = absl::any_cast<const QuantizeAndDequantizeAttributes&>(
-        ctx.node->operation.attributes);
+    const auto& attr =
+        absl::any_cast<const QuantizeAndDequantizeAttributes&>(ctx.op_attr);
     *generated_code = {
         /*parameters=*/{{"quant_min", attr.min},
                         {"quant_max", attr.max},

@@ -512,7 +512,7 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
-        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
@@ -562,19 +562,16 @@ cc_library(
 )
 
 cc_library(
-    name = "flatbuffer_translate_lib",
+    name = "flatbuffer_export",
     srcs = [
         "flatbuffer_export.cc",
-        "flatbuffer_import.cc",
-        "utils/convert_type.cc",
     ],
     hdrs = [
         "flatbuffer_export.h",
         "flatbuffer_export_flags.h",
-        "flatbuffer_import.h",
-        "utils/convert_type.h",
     ],
     deps = [
+        ":convert_type",
         ":flatbuffer_tflite_operator_lib",
         ":stateful_ops_utils",
         ":tensorflow_lite",
@@ -592,14 +589,12 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
-        "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/delegates/flex:whitelisted_flex_ops_lib",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/tools/versioning",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -611,6 +606,78 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Translation",
+    ],
+)
+
+cc_library(
+    name = "flatbuffer_import",
+    srcs = [
+        "flatbuffer_import.cc",
+    ],
+    hdrs = [
+        "flatbuffer_import.h",
+    ],
+    deps = [
+        ":convert_type",
+        ":flatbuffer_tflite_operator_lib",
+        ":tensorflow_lite",
+        ":tensorflow_lite_dialect_registration",
+        "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Translation",
+    ],
+)
+
+cc_library(
+    name = "convert_type",
+    srcs = [
+        "utils/convert_type.cc",
+    ],
+    hdrs = [
+        "utils/convert_type.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "flatbuffer_translate_lib",
+    hdrs = [
+        "flatbuffer_export.h",
+        "flatbuffer_export_flags.h",
+        "flatbuffer_import.h",
+        "utils/convert_type.h",
+    ],
+    deps = [
+        ":flatbuffer_export",
+        ":flatbuffer_import",
+        "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:IR",
     ],
 )
 

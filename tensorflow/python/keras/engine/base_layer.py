@@ -1251,9 +1251,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     model.add_loss(lambda: tf.reduce_mean(d.kernel))
     ```
 
-    The `get_losses_for` method allows to retrieve the losses relevant to a
-    specific set of inputs.
-
     Arguments:
       losses: Loss tensor, or list/tuple of tensors. Rather than tensors, losses
         may also be zero-argument callables which create a loss tensor.
@@ -1265,8 +1262,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         to be unconditional, and will apply across all dataflows of the layer
         (e.g. weight regularization losses).
     """
-    def _tag_unconditional(loss):
-      """Process the loss and tag it by setting loss._unconditional_loss."""
+
+    def _tag_callable(loss):
+      """Tags callable loss tensor as `_unconditional_loss`."""
       if callable(loss):
         # We run the loss without autocasting, as regularizers are often
         # numerically unstable in float16.
@@ -1276,7 +1274,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tensor(loss):
         loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
-      loss._unconditional_loss = (inputs is None)  # pylint: disable=protected-access
+      loss._unconditional_loss = True  # pylint: disable=protected-access
       return loss
 
     losses = nest.flatten(losses)
@@ -1286,7 +1284,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     symbolic_losses = []
     for loss in losses:
       if callable(loss):
-        callable_losses.append(functools.partial(_tag_unconditional, loss))
+        callable_losses.append(functools.partial(_tag_callable, loss))
         continue
       if loss is None:
         continue
@@ -1295,9 +1293,9 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # TF Functions should take the eager path.
       if (tf_utils.is_symbolic_tensor(loss) and
           not base_layer_utils.is_in_tf_function()):
-        symbolic_losses.append(_tag_unconditional(loss))
+        symbolic_losses.append(loss)
       elif tensor_util.is_tensor(loss):
-        eager_losses.append(_tag_unconditional(loss))
+        eager_losses.append(loss)
 
     self._callable_losses.extend(callable_losses)
 
@@ -1366,8 +1364,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         self.mean = metrics_module.Mean(name='metric_1')
 
       def call(self, inputs):
-        # Provide same name as in the instance created in __init__
-        self.add_metric(self.mean(x), name='metric_1')
+        self.add_metric(self.mean(x))
         self.add_metric(math_ops.reduce_sum(x), name='metric_2')
         return inputs
     ```
@@ -1714,15 +1711,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Returns:
       List of loss tensors of the layer that depend on `inputs`.
     """
-    if inputs is None:
-      # Requesting unconditional losses.
-      return [l for l in self.losses if l._unconditional_loss]
-
-    # Requesting input-conditional losses.
-    losses = [l for l in self.losses if not l._unconditional_loss]
-    inputs = nest.flatten(inputs)
-    reachable = tf_utils.get_reachable_from_inputs(inputs, losses)
-    return [l for l in losses if l in reachable]
+    return self.losses
 
   @doc_controls.do_not_doc_inheritable
   def get_input_mask_at(self, node_index):
@@ -2253,7 +2242,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
               array_ops.shape(output)[0], activity_loss.dtype)
           # Make activity regularization strength batch-agnostic.
           mean_activity_loss = activity_loss / batch_size
-          self.add_loss(mean_activity_loss, inputs=inputs)
+          self.add_loss(mean_activity_loss)
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):
     flat_outputs = nest.flatten(outputs)

@@ -658,8 +658,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "129cf84e69537ae5c184550f94be18da738d9261"
-    LLVM_SHA256 = "4b56ff735e973ee982c4f24ab5b22d56ad0734f2d12d9c57fe1c21530a5840a0"
+    LLVM_COMMIT = "b6d77e792c3339425a733756b970dbac0da119fb"
+    LLVM_SHA256 = "9d299e918ee5850afd834ed62f93101b4777f6e0d72c37e672f5a8b3558f8dd4"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),

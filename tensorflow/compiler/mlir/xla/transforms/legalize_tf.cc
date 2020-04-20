@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
@@ -778,16 +779,20 @@ NamedAttribute GetConvDimensionNumbersAttr(
 // the paddings attribute anyway requires multiple source op attributes and
 // result op attributes. Defining it as declarative rewrite rule will introduce
 // some duplication in the C++ helper methods.
-template <typename OpT, int num_spatial_dims, bool depthwise_conv = false>
-class ConvertConv : public OpRewritePattern<OpT> {
+template <typename OpTy, int num_spatial_dims, bool depthwise_conv = false>
+class ConvertConvOp : public OpRewritePattern<OpTy> {
  public:
-  using OpRewritePattern<OpT>::OpRewritePattern;
+  using OpRewritePattern<OpTy>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(OpT op,
+  LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
-    tensorflow::TensorFormat format;
-    std::string data_format = op.data_format().str();
-    if (!FormatFromString(data_format, &format)) return failure();
+    tensorflow::TensorFormat data_format;
+    if (!FormatFromString(op.data_format().str(), &data_format))
+      return failure();
+
+    tensorflow::Padding padding;
+    if (!GetPaddingFromString(op.padding().str(), &padding).ok())
+      return failure();
 
     auto input_ty = op.input().getType().template dyn_cast<RankedTensorType>();
     auto filter_ty =
@@ -796,23 +801,8 @@ class ConvertConv : public OpRewritePattern<OpT> {
 
     // Input, filter and the result needs to have static shape for calculation
     // of HLO paddings and feature group count attributes.
-    for (RankedTensorType ty : {input_ty, filter_ty, result_ty}) {
+    for (RankedTensorType ty : {input_ty, filter_ty, result_ty})
       if (!ty || !ty.hasStaticShape()) return failure();
-    }
-
-    int num_dims = num_spatial_dims + 2;
-    tensorflow::Padding padding;
-    if (!GetPaddingFromString(op.padding().str(), &padding).ok())
-      return failure();
-
-    auto get_int = [](Attribute attr) {
-      return attr.template cast<IntegerAttr>().getInt();
-    };
-
-    SmallVector<int64_t, 4> spatial_dim_indices;
-    SmallVector<int64_t, 4> rhs_dilations;
-    SmallVector<int64_t, 4> window_strides;
-    SmallVector<int64_t, 8> paddings;
 
     ArrayRef<Attribute> dilations = op.dilations().getValue();
     ArrayRef<Attribute> strides = op.strides().getValue();
@@ -825,14 +815,24 @@ class ConvertConv : public OpRewritePattern<OpT> {
           op.template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
     }
 
-    for (int i = 0; i < num_spatial_dims; ++i) {
-      int64_t dim = GetTensorSpatialDimIndex(num_dims, format, i);
+    SmallVector<int64_t, num_spatial_dims> spatial_dim_indices;
+    SmallVector<int64_t, num_spatial_dims> rhs_dilations;
+    SmallVector<int64_t, num_spatial_dims> window_strides;
+    SmallVector<int64_t, num_spatial_dims * 2> paddings;
+
+    auto get_int = [](Attribute attr) {
+      return attr.template cast<IntegerAttr>().getInt();
+    };
+
+    constexpr int num_dims = num_spatial_dims + 2;
+    for (auto i : llvm::seq<int>(0, num_spatial_dims)) {
+      const int64_t dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
       spatial_dim_indices.push_back(dim);
 
-      int64_t stride = get_int(strides[dim]);
-      int64_t dilation = get_int(dilations[dim]);
-      window_strides.push_back(stride);
+      const int64_t dilation = get_int(dilations[dim]);
       rhs_dilations.push_back(dilation);
+      const int64_t stride = get_int(strides[dim]);
+      window_strides.push_back(stride);
 
       int64_t pad_low, pad_high;
       if (padding == tensorflow::Padding::EXPLICIT) {
@@ -859,19 +859,19 @@ class ConvertConv : public OpRewritePattern<OpT> {
     auto window_strides_attr = rewriter.getNamedAttr(
         "window_strides", GetI64ElementsAttr(window_strides, &rewriter));
 
-    auto dimension_numbers_attr =
-        GetConvDimensionNumbersAttr(spatial_dim_indices, format, &rewriter);
+    auto dimension_numbers_attr = GetConvDimensionNumbersAttr(
+        spatial_dim_indices, data_format, &rewriter);
 
-    int64_t input_channels =
-        GetDimSize(input_ty, GetTensorFeatureDimIndex(num_dims, format));
+    const int64_t input_channels =
+        GetDimSize(input_ty, GetTensorFeatureDimIndex(num_dims, data_format));
     // Filters data_format is always HWIO so input channels dimension is after
     // all spatial dimensions.
-    int64_t filter_channels = GetDimSize(filter_ty, num_spatial_dims);
+    const int64_t filter_channels = GetDimSize(filter_ty, num_spatial_dims);
     // TensorFlow convolution op verifies that the number of input channels is
     // divisible by the number of filter channels.
     // For depthwise convolution the feature_group_count argument would be set
     // to the input feature dimension.
-    int64_t feature_group_count =
+    const int64_t feature_group_count =
         depthwise_conv ? input_channels : input_channels / filter_channels;
     auto feature_group_count_attr = rewriter.getNamedAttr(
         "feature_group_count", rewriter.getI64IntegerAttr(feature_group_count));
@@ -888,14 +888,12 @@ class ConvertConv : public OpRewritePattern<OpT> {
     // Reshape the filter to {spatial_dims...., 1,in_channels *
     // channel_multiplier}
     if (depthwise_conv) {
-      auto filter_shape = filter_ty.getShape();
-      llvm::SmallVector<int64_t, 4> new_shape(filter_shape.size());
-      for (int i = 0; i < num_spatial_dims; ++i) {
-        new_shape[i] = filter_shape[i];
-      }
-      new_shape[num_spatial_dims] = 1;
-      new_shape[num_spatial_dims + 1] =
-          filter_shape[num_spatial_dims] * filter_shape[num_spatial_dims + 1];
+      ArrayRef<int64_t> filter_shape = filter_ty.getShape();
+      llvm::SmallVector<int64_t, num_dims> new_shape(
+          filter_shape.begin(), filter_shape.begin() + num_spatial_dims);
+      new_shape.push_back(1);
+      new_shape.push_back(filter_shape[num_spatial_dims] *
+                          filter_shape[num_spatial_dims + 1]);
       operands[1] = rewriter.create<xla_hlo::ReshapeOp>(
           op.getLoc(),
           RankedTensorType::get(new_shape, filter_ty.getElementType()),
@@ -910,10 +908,12 @@ class ConvertConv : public OpRewritePattern<OpT> {
   }
 };
 
-using ConvertConv2D = ConvertConv<TF::Conv2DOp, /*num_spatial_dims=*/2>;
-using ConvertDepthConv2D =
-    ConvertConv<TF::DepthwiseConv2dNativeOp, /*num_spatial_dims=*/2,
-                /*depthwise_conv=*/true>;
+using ConvertConv2DOp = ConvertConvOp<TF::Conv2DOp, /*num_spatial_dims=*/2>;
+using ConvertConv3DOp = ConvertConvOp<TF::Conv3DOp, /*num_spatial_dims=*/3>;
+using ConvertDepthConv2DOp =
+    ConvertConvOp<TF::DepthwiseConv2dNativeOp, /*num_spatial_dims=*/2,
+                  /*depthwise_conv=*/true>;
+
 // Converts BF16 FloorDiv op to have casting operators on either end as BF16
 // division can result in strange behavior.
 //
@@ -2731,102 +2731,108 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
   }
 };
 
-// Converts hlo.Conv2DBackpropInputOp into:
+// Converts tf.Conv?DBackpropInputOp into:
 //   %rev_filter = "xla_hlo.reverse"(%filter)
 //   %result = "xla_hlo.convolution"(%out_backprop, %rev_filter)
-class ConvertConv2DBackpropInputOp
-    : public OpRewritePattern<TF::Conv2DBackpropInputOp> {
+template <typename OpTy, int num_spatial_dims>
+class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  using OpRewritePattern<OpTy>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TF::Conv2DBackpropInputOp op,
+  LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
     // Unpack all of the attributes.
     tensorflow::TensorFormat data_format;
-    if (!FormatFromString(op.data_format().str(), &data_format)) {
+    if (!FormatFromString(op.data_format().str(), &data_format))
       return failure();
-    }
+
     tensorflow::Padding padding;
     if (!GetPaddingFromString(op.padding().str(), &padding).ok())
       return failure();
 
     auto out_backprop_ty =
-        op.out_backprop().getType().dyn_cast<RankedTensorType>();
-    if (!out_backprop_ty || !out_backprop_ty.hasStaticShape()) return failure();
-    ArrayRef<int64_t> out_backprop_shape = out_backprop_ty.getShape();
-    auto filter_ty = op.filter().getType().dyn_cast<RankedTensorType>();
-    if (!filter_ty || !filter_ty.hasStaticShape()) return failure();
-    ArrayRef<int64_t> filter_shape = filter_ty.getShape();
-    int num_spatial_dims = 2;
-    Location loc = op.getLoc();
+        op.out_backprop().getType().template dyn_cast<RankedTensorType>();
+    auto filter_ty =
+        op.filter().getType().template dyn_cast<RankedTensorType>();
 
-    int num_dims = num_spatial_dims + 2;
-    int batch_dim = tensorflow::GetTensorBatchDimIndex(num_dims, data_format);
-    int feature_dim =
-        tensorflow::GetTensorFeatureDimIndex(num_dims, data_format);
+    for (RankedTensorType ty : {out_backprop_ty, filter_ty})
+      if (!ty || !ty.hasStaticShape()) return failure();
 
     DenseIntElementsAttr input_shape_attr;
     if (!matchPattern(op.input_sizes(), m_Constant(&input_shape_attr)) ||
-        input_shape_attr.getType().getRank() != 1) {
+        input_shape_attr.getType().getRank() != 1)
       return failure();
-    }
-    auto input_shape =
-        llvm::to_vector<4>(input_shape_attr.getValues<int32_t>());
-    if (input_shape.size() != num_dims) return failure();
 
-    auto batch_dim_attr = rewriter.getI64IntegerAttr(batch_dim);
-    auto feature_dim_attr = rewriter.getI64IntegerAttr(feature_dim);
+    auto input_shape = llvm::to_vector<num_spatial_dims>(
+        input_shape_attr.getValues<int32_t>());
 
+    auto dilations_attr = GetI64ElementsAttr(op.dilations());
+    std::vector<int> dilations{
+        dilations_attr.template getValues<int64_t>().begin(),
+        dilations_attr.template getValues<int64_t>().end()};
     auto strides_attr = GetI64ElementsAttr(op.strides());
     std::vector<tensorflow::int32> strides{
-        strides_attr.getValues<int64_t>().begin(),
-        strides_attr.getValues<int64_t>().end()};
-    auto dilations_attr = GetI64ElementsAttr(op.dilations());
-    std::vector<int> dilations{dilations_attr.getValues<int64_t>().begin(),
-                               dilations_attr.getValues<int64_t>().end()};
-    auto explicit_paddings_attr = GetI64ElementsAttr(op.explicit_paddings());
-    std::vector<tensorflow::int64> explicit_paddings{
-        explicit_paddings_attr.getValues<int64_t>().begin(),
-        explicit_paddings_attr.getValues<int64_t>().end()};
+        strides_attr.template getValues<int64_t>().begin(),
+        strides_attr.template getValues<int64_t>().end()};
 
-    int64_t in_depth = input_shape[feature_dim];
-    int64_t filter_in_depth = filter_shape[num_spatial_dims];
-    int64_t feature_group_count = in_depth / filter_in_depth;
+    std::vector<tensorflow::int64> explicit_paddings;
+    if (padding == tensorflow::Padding::EXPLICIT) {
+      // EXPLICIT padding mode and the associated attribute is limited to
+      // Conv2DBackpropInput. So, fetch attribute by identifier instead of the
+      // op.explicit_paddings() attribute getter.
+      ArrayRef<Attribute> explicit_paddings_attr =
+          op.template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
+      explicit_paddings.reserve(explicit_paddings_attr.size());
+      for (Attribute explicit_padding : explicit_paddings_attr)
+        explicit_paddings.push_back(
+            explicit_padding.cast<IntegerAttr>().getInt());
+    }
 
+    ArrayRef<int64_t> filter_shape = filter_ty.getShape();
     // Reuse dimension computation logic from conv_grad_shape_utils.cc.
     tensorflow::ConvBackpropDimensions dims;
     if (!tensorflow::ConvBackpropComputeDimensionsV2(
-             "", num_spatial_dims, ToTensorShape<int>(input_shape),
+             /*label=*/"", num_spatial_dims,
+             ToTensorShape<int32_t>(input_shape),
              ToTensorShape<int64_t>(filter_shape),
-             ToTensorShape<int64_t>(out_backprop_shape), dilations, strides,
-             padding, explicit_paddings, data_format, &dims)
+             ToTensorShape<int64_t>(out_backprop_ty.getShape()), dilations,
+             strides, padding, explicit_paddings, data_format, &dims)
              .ok()) {
       return failure();
     }
 
     // Compute ConvDimensionNumbers, dilation, and padding.
-    SmallVector<int64_t, 4> kernel_spatial_dims(num_spatial_dims);
-    SmallVector<int64_t, 4> conv_paddings(num_spatial_dims * 2);
-    SmallVector<int64_t, 4> lhs_dilation(num_spatial_dims);
-    SmallVector<int64_t, 4> rhs_dilation(num_spatial_dims);
-    SmallVector<int64_t, 4> ones(num_spatial_dims, 1);
-    SmallVector<int64_t, 4> spatial_dims(num_spatial_dims);
-    for (int i = 0; i < num_spatial_dims; ++i) {
-      int64_t dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
-      spatial_dims[i] = dim;
-      kernel_spatial_dims[i] = i;
+    SmallVector<int64_t, num_spatial_dims> spatial_dims;
+    SmallVector<int64_t, num_spatial_dims> kernel_spatial_dims;
+    SmallVector<int64_t, num_spatial_dims> lhs_dilation;
+    SmallVector<int64_t, num_spatial_dims> rhs_dilation;
+    SmallVector<int64_t, num_spatial_dims * 2> paddings;
 
-      conv_paddings[i * 2] = dims.spatial_dims[i].pad_before;
-      conv_paddings[i * 2 + 1] = dims.spatial_dims[i].pad_after;
-      lhs_dilation[i] = dims.spatial_dims[i].stride;
-      rhs_dilation[i] = dilations[dim];
+    const int num_dims = num_spatial_dims + 2;
+    for (int i : llvm::seq<int>(0, num_spatial_dims)) {
+      const int64_t dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
+      spatial_dims.push_back(dim);
+      kernel_spatial_dims.push_back(i);
+      const auto &spatial_dim_i = dims.spatial_dims[i];
+      lhs_dilation.push_back(spatial_dim_i.stride);
+      rhs_dilation.push_back(dilations[dim]);
+      paddings.push_back(spatial_dim_i.pad_before);
+      paddings.push_back(spatial_dim_i.pad_after);
     }
+
     RankedTensorType paddings_ty = RankedTensorType::get(
         {num_spatial_dims, 2}, rewriter.getIntegerType(64));
-    auto paddings_attr = DenseIntElementsAttr::get(paddings_ty, conv_paddings);
+    auto paddings_attr = DenseIntElementsAttr::get(paddings_ty, paddings);
+
     auto spatial_dims_attr = GetI64ElementsAttr(spatial_dims, &rewriter);
 
     Value filter = op.filter();
+
+    const int feature_dim =
+        tensorflow::GetTensorFeatureDimIndex(num_dims, data_format);
+    const int64_t in_depth = input_shape[feature_dim];
+    const int64_t filter_in_depth = filter_shape[num_spatial_dims];
+    const int64_t feature_group_count = in_depth / filter_in_depth;
 
     if (feature_group_count != 1) {
       /*
@@ -2839,12 +2845,20 @@ class ConvertConv2DBackpropInputOp
 
     // Mirror the filter in the spatial dimensions.
     filter = rewriter.create<ReverseOp>(
-        loc, filter, GetI64ElementsAttr(kernel_spatial_dims, &rewriter));
+        op.getLoc(), filter,
+        GetI64ElementsAttr(kernel_spatial_dims, &rewriter));
+
+    SmallVector<int64_t, num_spatial_dims> ones(num_spatial_dims, 1);
+
+    const int batch_dim =
+        tensorflow::GetTensorBatchDimIndex(num_dims, data_format);
+    auto batch_dim_attr = rewriter.getI64IntegerAttr(batch_dim);
+    auto feature_dim_attr = rewriter.getI64IntegerAttr(feature_dim);
 
     // activation gradients
     //   = gradients (with padding and dilation) <conv> mirrored_weights
     Value result = rewriter.create<ConvOp>(
-        loc, op.getType(), op.out_backprop(), filter,
+        op.getLoc(), op.getType(), op.out_backprop(), filter,
         /*window_strides=*/GetI64ElementsAttr(ones, &rewriter),
         /*padding=*/paddings_attr, GetI64ElementsAttr(lhs_dilation, &rewriter),
         GetI64ElementsAttr(rhs_dilation, &rewriter),
@@ -2874,6 +2888,13 @@ class ConvertConv2DBackpropInputOp
     return success();
   }
 };
+
+using ConvertConv2DBackpropInputOp =
+    ConvertConvBackpropInputOp<TF::Conv2DBackpropInputOp,
+                               /*num_spatial_dims=*/2>;
+using ConvertConv3DBackpropInputOp =
+    ConvertConvBackpropInputOp<TF::Conv3DBackpropInputV2Op,
+                               /*num_spatial_dims=*/3>;
 
 // Converts tf.Conv2DBackpropFilterOp into:
 //   %result = "xla_hlo.convolution"(%input, %out_backprop)
@@ -3860,17 +3881,17 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
   TF::PopulateLoweringTFPatterns(context, &patterns);
   patterns.insert<
       ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBatchMatMulV2Op,
-      ConvertBroadcastToOp, ConvertBF16FloorDivOp, ConvertConv2D,
-      ConvertDepthConv2D, ConvertConv2DBackpropFilterOp,
-      ConvertConv2DBackpropInputOp, ConvertCumsumOp, ConvertDiagPartOp,
-      ConvertEinsumOp, ConvertFusedBatchNormGradOp,
-      ConvertFusedBatchNormGradV2Op, ConvertFusedBatchNormGradV3Op,
-      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp,
-      ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPoolOp,
-      ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
-      ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertRangeOp,
-      ConvertSelectV2Op, ConvertSigmoidOp, ConvertSizeOp,
-      ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertBroadcastToOp, ConvertBF16FloorDivOp, ConvertConv2DOp,
+      ConvertConv3DOp, ConvertDepthConv2DOp, ConvertConv2DBackpropFilterOp,
+      ConvertConv2DBackpropInputOp, ConvertConv3DBackpropInputOp,
+      ConvertCumsumOp, ConvertDiagPartOp, ConvertEinsumOp,
+      ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
+      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op,
+      ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp, ConvertMaxOp,
+      ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPoolOp, ConvertMaxPoolGradOp,
+      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
+      ConvertProdOp, ConvertRangeOp, ConvertSelectV2Op, ConvertSigmoidOp,
+      ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,

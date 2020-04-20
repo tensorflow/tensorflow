@@ -232,8 +232,45 @@ TfLiteStatus HexagonDelegateKernel::Invoke(TfLiteContext* context,
   return kTfLiteOk;
 }
 
+TfLiteStatus HexagonDelegateKernel::ResizeOutputTensors(TfLiteContext* context,
+                                                        TfLiteNode* node) {
+  if (!params_.enable_dynamic_batch_size) return kTfLiteError;
+  int new_batch = -1;
+  for (int i = 0; i < params_.input_batch_dimensions->size; ++i) {
+    // If this input has no dynamic shape skip it.
+    if (params_.input_batch_dimensions->data[i] == -1) continue;
+    int input_tensor_index = node->inputs->data[i];
+    TfLiteTensor* input_tensor = &context->tensors[input_tensor_index];
+    new_batch =
+        input_tensor->dims->data[params_.input_batch_dimensions->data[i]];
+    break;
+  }
+  if (new_batch == -1) {
+    TF_LITE_KERNEL_LOG(context, "Invalid Batch size.");
+    return kTfLiteError;
+  }
+  for (int i = 0; i < node->outputs->size; ++i) {
+    // If this output has no dynamic shape skip it.
+    if (params_.output_batch_dimensions->data[i] == -1) continue;
+    int output_tensor_index = node->outputs->data[i];
+    TfLiteTensor* output_tensor = &context->tensors[output_tensor_index];
+    TfLiteIntArray* new_shape = TfLiteIntArrayCopy(output_tensor->dims);
+    new_shape->data[params_.output_batch_dimensions->data[i]] = new_batch;
+    TF_LITE_ENSURE_OK(context,
+                      context->ResizeTensor(context, output_tensor, new_shape));
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus HexagonDelegateKernel::Prepare(TfLiteContext* context,
                                             TfLiteNode* node) {
+  if (graph_prepared_) {
+    if (!params_.enable_dynamic_batch_size)
+      TF_LITE_KERNEL_LOG(context, "Calling prepare multiple times");
+    // Graph already prepared, but we must resize TFLite output tensors
+    // based on the new input shape.
+    return ResizeOutputTensors(context, node);
+  }
   if (hexagon_nn_ == nullptr) {
     context->ReportError(context, "Hexagon interface not available. prepare");
     return kTfLiteError;
@@ -299,6 +336,9 @@ TfLiteStatus HexagonDelegateKernel::Prepare(TfLiteContext* context,
     PrintDebuggingGraph();
   }
 
+  // Mark graph as prepared, since we can't prepare it multiple times.
+  graph_prepared_ = true;
+
   return kTfLiteOk;
 }
 
@@ -307,6 +347,11 @@ TfLiteStatus HexagonDelegateKernel::BuildGraph(
     const TfLiteIntArray* output_tensors) {
   builder_.reset(
       new delegates::hexagon::GraphBuilder(hexagon_nn_, context, graph_id_));
+  if (params_.enable_dynamic_batch_size) {
+    builder_->AddBatchSeqConfig(params_.max_batch_size,
+                                params_.input_batch_dimensions,
+                                params_.output_batch_dimensions);
+  }
   // Add inputs to the graph.
   builder_->AddInputTensors(input_tensors, context);
 

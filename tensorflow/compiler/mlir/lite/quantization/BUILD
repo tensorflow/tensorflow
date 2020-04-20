@@ -129,6 +129,8 @@ cc_library(
     srcs = ["device_target.cc"],
     hdrs = ["device_target.h"],
     deps = [
+        ":numerical_utils",
+        "@com_google_absl//absl/types:optional",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",

@@ -407,8 +407,9 @@ def : Pat<(TFL_ExpandDimsOp:$expand_dims_op $input, $dim),
            (ConstantOp (GetShape $expand_dims_op))),
           [(AnyStaticShapeTensor $expand_dims_op)]>;
 
-class ValueEquals<string val> : Constraint<CPred<
+class FloatValueEquals<string val> : Constraint<CPred<
   "$0.cast<DenseElementsAttr>().getNumElements() == 1 &&"
+  "$0.isa<DenseFPElementsAttr>() &&"
   "*$0.cast<DenseElementsAttr>().getValues<float>().begin() == " # val>>;
 
 // ReLU patterns
@@ -416,13 +417,13 @@ def : Pat<(TFL_MinimumOp (TFL_MaximumOp $input,
                           (ConstantOp $NegOne)),
            (ConstantOp $One)),
           (TFL_Relu1Op $input),
-          [(ValueEquals<"-1"> $NegOne), (ValueEquals<"1"> $One)]>;
+          [(FloatValueEquals<"-1"> $NegOne), (FloatValueEquals<"1"> $One)]>;
 
 def : Pat<(TFL_MaximumOp (TFL_MinimumOp $input,
                           (ConstantOp $One)),
            (ConstantOp $NegOne)),
           (TFL_Relu1Op $input),
-          [(ValueEquals<"-1"> $NegOne), (ValueEquals<"1"> $One)]>;
+          [(FloatValueEquals<"-1"> $NegOne), (FloatValueEquals<"1"> $One)]>;
 
 def : Pat<(TFL_MaximumOp (TFL_MulOp:$mul_out $input1,
                           (ConstantOp F32ElementsAttr:$alpha), TFL_AF_None),

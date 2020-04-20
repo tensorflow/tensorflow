@@ -1519,6 +1519,27 @@ static LogicalResult Verify(FillOp op) {
   return success();
 }
 
+static ShapedType InferFillOpType(Value dims, Value value) {
+  Type etype = value.getType().cast<ShapedType>().getElementType();
+
+  DenseIntElementsAttr dims_attr;
+  if (!matchPattern(dims, m_Constant(&dims_attr))) {
+    return UnrankedTensorType::get(etype);
+  }
+
+  llvm::SmallVector<int64_t, 4> shape;
+  shape.reserve(dims_attr.getNumElements());
+  for (const APInt &dim : dims_attr.getValues<APInt>()) {
+    shape.push_back(dim.getSExtValue());
+  }
+  return RankedTensorType::get(shape, etype);
+}
+
+void FillOp::build(Builder *builder, OperationState &result, Value dims,
+                   Value value) {
+  FillOp::build(builder, result, InferFillOpType(dims, value), dims, value);
+}
+
 //===----------------------------------------------------------------------===//
 // FusedBatchNormGradOp
 //===----------------------------------------------------------------------===//

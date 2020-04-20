@@ -282,12 +282,25 @@ bool ProcessFunctionLibraryRuntime::IsInstantiatedOnDevice(
 
 FunctionLibraryRuntime::LocalHandle
 ProcessFunctionLibraryRuntime::GetHandleOnDevice(
-    const string& device_name, FunctionLibraryRuntime::Handle handle) const {
+    const string& device_name, FunctionLibraryRuntime::Handle handle,
+    bool include_multi_device) const {
   tf_shared_lock l(mu_);
 
   auto miter = mdevice_data_.find(handle);
   if (miter != mdevice_data_.end()) {
-    return kInvalidLocalHandle;
+    if (!include_multi_device) return kInvalidLocalHandle;
+
+    const MultiDeviceFunctionData& data = *miter->second;
+    if (data.glue_.size() != 1) return kInvalidLocalHandle;
+
+    const auto& pair = *data.glue_.begin();
+    const string& func_device_name = pair.first;
+    const ComponentFunctionData& component_data = pair.second;
+    if (func_device_name != device_name) return kInvalidLocalHandle;
+
+    // Replace the given handle with the handle for the single component
+    // function.
+    handle = component_data.handle_;
   }
 
   auto iter = function_data_.find(handle);

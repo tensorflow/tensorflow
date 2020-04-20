@@ -719,6 +719,16 @@ class ComputationBuilder(object):
     else:
       return Computation(self._builder.Build(), backend=backend)
 
+  def SetUpAlias(self, output_index, param_number, param_index):
+    """Adds a new input/output alias.
+
+    Args:
+      output_index: Iterable of int64 specifying the output index.
+      param_number: Parameter number.
+      param_index: Iterable of int64 specifying parameter index.
+    """
+    return self._builder.SetUpAlias(output_index, param_number, param_index)
+
   def GetShape(self, operand):
     return self._builder.GetShape(operand)
 

@@ -50,7 +50,6 @@ namespace data {
 
 /* static */ constexpr const char* const DataServiceDatasetOp::kDatasetType;
 /* static */ constexpr const char* const DataServiceDatasetOp::kAddress;
-/* static */ constexpr const char* const DataServiceDatasetOp::kEpochId;
 /* static */ constexpr const char* const DataServiceDatasetOp::kProtocol;
 /* static */ constexpr const char* const
     DataServiceDatasetOp::kMaxOutstandingRequests;
@@ -140,13 +139,14 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     Status Initialize(IteratorContext* ctx) override {
       VLOG(3) << "Connecting to " << dataset()->address_
               << " in data service dataset op";
-      if (ctx->epoch_id() == IteratorContext::kNoEpochId) {
-        // TODO(aaudibert): add instructions for passing an epoch id after we
-        // add a Python API.
+      if (ctx->job_token().is_empty()) {
         return errors::FailedPrecondition(
-            "Expected an epoch id, but none found.");
+            "Expected a job token, but none found. To iterate over a dataset "
+            "containing a `distribute` transformation, call `create_job`, "
+            "which will return a job token that you should then use to iterate "
+            "over the dataset via `create_iterator(dataset, job_token).`");
       }
-      epoch_id_ = ctx->epoch_id();
+      job_id_ = ctx->job_token().job_id();
       TF_RETURN_IF_ERROR(CredentialsFactory::CreateClientCredentials(
           dataset()->protocol_, &credentials_));
       return Status::OK();
@@ -244,12 +244,12 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(3) << "Updating task handler threads";
       GetTasksResponse resp;
       GetTasksRequest req;
-      req.set_epoch_id(epoch_id_);
+      req.set_job_id(job_id_);
       grpc::ClientContext client_ctx;
       grpc::Status s = master_stub->GetTasks(&client_ctx, req, &resp);
       if (!s.ok()) {
-        LOG(INFO) << "Failed to get task info for epoch id " << epoch_id_
-                  << ": " << s.error_message() << "(" << s.error_code() << ")";
+        LOG(INFO) << "Failed to get task info for job id " << job_id_ << ": "
+                  << s.error_message() << "(" << s.error_code() << ")";
         return;
       }
       absl::flat_hash_set<int64> task_ids;
@@ -437,7 +437,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     std::queue<std::vector<Tensor>> results_ TF_GUARDED_BY(mu_);
 
     // Set once in Initialize().
-    int64 epoch_id_;
+    int64 job_id_;
     std::shared_ptr<::grpc::ChannelCredentials> credentials_;
     int64 num_unfinished_tasks_ TF_GUARDED_BY(mu_) = 0;
     // Map from task id to task info.

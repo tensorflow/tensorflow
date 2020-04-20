@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -77,6 +78,28 @@ XlaOp MlirHloBuilder::ConstantLiteral(const LiteralSlice& literal) {
   });
 }
 
+StatusOr<XlaOp> MlirHloBuilder::TransposeInternal(
+    const Shape& shape, XlaOp operand, absl::Span<const int64> permutation) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::xla_hlo::TransposeOp>(
+      loc_, ty, GetValue(operand), GetI64ElementsAttr(permutation, &builder_));
+  return MakeXlaOp(op);
+}
+
+StatusOr<XlaOp> MlirHloBuilder::GatherInternal(
+    const Shape& shape, XlaOp input, XlaOp start_indices,
+    const GatherDimensionNumbers& dimension_numbers,
+    absl::Span<const int64> slice_sizes, bool indices_are_sorted) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::xla_hlo::GatherOp>(
+      loc_, ty, GetValue(input), GetValue(start_indices),
+      ConvertGatherDimensionNumbers(dimension_numbers, &builder_),
+      GetI64ElementsAttr(slice_sizes, &builder_));
+  return MakeXlaOp(op);
+}
+
 StatusOr<XlaOp> MlirHloBuilder::ReshapeInternal(const Shape& shape,
                                                 XlaOp operand,
                                                 int64 inferred_dimension) {
@@ -88,6 +111,19 @@ StatusOr<XlaOp> MlirHloBuilder::ReshapeInternal(const Shape& shape,
                                          shape, builder_));
   mlir::Value value = GetValue(operand);
   auto op = builder_.create<mlir::xla_hlo::ReshapeOp>(loc_, ty, value);
+  return MakeXlaOp(op.getResult());
+}
+
+StatusOr<XlaOp> MlirHloBuilder::DotGeneralInternal(
+    const Shape& shape, XlaOp lhs, XlaOp rhs,
+    const DotDimensionNumbers& dimension_number,
+    const PrecisionConfig* precision_config) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::xla_hlo::DotGeneralOp>(
+      loc_, ty, GetValue(lhs), GetValue(rhs),
+      ConvertDotDimensionNumbers(dimension_number, &builder_),
+      ConvertPrecisionConfig(precision_config, &builder_));
   return MakeXlaOp(op.getResult());
 }
 

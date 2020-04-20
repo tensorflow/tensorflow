@@ -90,6 +90,8 @@ TfLiteDelegatePtr HexagonDelegateProvider::CreateTfLiteDelegate(
     options.print_graph_profile = params.Get<bool>("hexagon_profiling");
     options.max_delegated_partitions =
         params.Get<int>("max_delegated_partitions");
+    options.min_nodes_per_partition =
+        params.Get<int>("min_nodes_per_partition");
     delegate = evaluation::CreateHexagonDelegate(
         &options, params.Get<std::string>("hexagon_lib_path"));
 

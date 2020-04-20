@@ -18,7 +18,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
@@ -26,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/stages/object_detection_stage.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
+#include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
 namespace evaluation {
@@ -62,7 +62,7 @@ bool EvaluateModel(const std::string& model_file_path,
   inference_params->set_delegate(ParseStringToDelegateType(delegate));
   if (!delegate.empty() &&
       inference_params->delegate() == TfliteInferenceParams::NONE) {
-    LOG(WARNING) << "Unsupported TFLite delegate: " << delegate;
+    TFLITE_LOG(WARN) << "Unsupported TFLite delegate: " << delegate;
     return false;
   }
 
@@ -77,14 +77,10 @@ bool EvaluateModel(const std::string& model_file_path,
   eval.SetAllLabels(model_labels);
   if (eval.Init(&delegate_providers) != kTfLiteOk) return false;
 
-  // Open output file for writing.
-  std::ofstream ofile;
-  ofile.open(output_file_path, std::ios::out);
-
   const int step = image_paths.size() / 100;
   for (int i = 0; i < image_paths.size(); ++i) {
     if (step > 1 && i % step == 0) {
-      LOG(INFO) << "Finished: " << i / step << "%";
+      TFLITE_LOG(INFO) << "Finished: " << i / step << "%";
     }
 
     const std::string image_name = GetNameFromPath(image_paths[i]);
@@ -93,22 +89,65 @@ bool EvaluateModel(const std::string& model_file_path,
 
     if (debug_mode) {
       ObjectDetectionResult prediction = *eval.GetLatestPrediction();
-      prediction.set_image_name(image_name);
-      ofile << prediction.DebugString();
-      ofile << "======================================================\n";
+      TFLITE_LOG(INFO) << "Image: " << image_name << "\n";
+      for (int i = 0; i < prediction.objects_size(); ++i) {
+        const auto& object = prediction.objects(i);
+        TFLITE_LOG(INFO) << "Object [" << i << "]";
+        TFLITE_LOG(INFO) << "  Score: " << object.score();
+        TFLITE_LOG(INFO) << "  Class-ID: " << object.class_id();
+        TFLITE_LOG(INFO) << "  Bounding Box:";
+        const auto& bounding_box = object.bounding_box();
+        TFLITE_LOG(INFO) << "    Normalized Top: "
+                         << bounding_box.normalized_top();
+        TFLITE_LOG(INFO) << "    Normalized Bottom: "
+                         << bounding_box.normalized_bottom();
+        TFLITE_LOG(INFO) << "    Normalized Left: "
+                         << bounding_box.normalized_left();
+        TFLITE_LOG(INFO) << "    Normalized Right: "
+                         << bounding_box.normalized_right();
+      }
+      TFLITE_LOG(INFO)
+          << "======================================================\n";
     }
   }
 
   // Write metrics to file.
-  EvaluationStageMetrics metrics = eval.LatestMetrics();
+  EvaluationStageMetrics latest_metrics = eval.LatestMetrics();
   if (ground_truth_proto_file.empty()) {
     // mAP metrics are meaningless for no ground truth.
-    metrics.mutable_process_metrics()
+    latest_metrics.mutable_process_metrics()
         ->mutable_object_detection_metrics()
         ->clear_average_precision_metrics();
   }
-  ofile << metrics.DebugString();
-  ofile.close();
+  if (!output_file_path.empty()) {
+    std::ofstream metrics_ofile;
+    metrics_ofile.open(output_file_path, std::ios::out);
+    metrics_ofile << latest_metrics.SerializeAsString();
+    metrics_ofile.close();
+  }
+  TFLITE_LOG(INFO) << "Num evaluation runs: " << latest_metrics.num_runs();
+  const auto object_detection_metrics =
+      latest_metrics.process_metrics().object_detection_metrics();
+  const auto& preprocessing_latency =
+      object_detection_metrics.pre_processing_latency();
+  TFLITE_LOG(INFO) << "Preprocessing latency: avg="
+                   << preprocessing_latency.avg_us() << "(us), std_dev="
+                   << preprocessing_latency.std_deviation_us() << "(us)";
+  const auto& inference_latency = object_detection_metrics.inference_latency();
+  TFLITE_LOG(INFO) << "Inference latency: avg=" << inference_latency.avg_us()
+                   << "(us), std_dev=" << inference_latency.std_deviation_us()
+                   << "(us)";
+  const auto& precision_metrics =
+      object_detection_metrics.average_precision_metrics();
+  for (int i = 0; i < precision_metrics.individual_average_precisions_size();
+       ++i) {
+    const auto ap_metric = precision_metrics.individual_average_precisions(i);
+    TFLITE_LOG(INFO) << "Average Precision [IOU Threshold="
+                     << ap_metric.iou_threshold()
+                     << "]: " << ap_metric.average_precision();
+  }
+  TFLITE_LOG(INFO) << "Overall mAP: "
+                   << precision_metrics.overall_mean_average_precision();
 
   return true;
 }
@@ -167,14 +206,14 @@ int Main(int argc, char* argv[]) {
 
   std::vector<std::string> model_labels;
   if (!ReadFileLines(model_output_labels_path, &model_labels)) {
-    LOG(ERROR) << "Could not read model output labels file";
+    TFLITE_LOG(ERROR) << "Could not read model output labels file";
     return EXIT_FAILURE;
   }
 
   if (!EvaluateModel(model_file_path, model_labels, image_paths,
                      ground_truth_proto_file, delegate, output_file_path,
                      num_interpreter_threads, debug_mode, delegate_providers)) {
-    LOG(ERROR) << "Could not evaluate model";
+    TFLITE_LOG(ERROR) << "Could not evaluate model";
     return EXIT_FAILURE;
   }
 

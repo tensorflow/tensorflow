@@ -54,20 +54,17 @@ namespace gpu {
 namespace metal {
 namespace {
 
-bool IsWidthBroadcastedForSecondInput(
-    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+bool IsWidthBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
   return inputs.size() == 2 &&
          inputs[0]->tensor.shape.w != inputs[1]->tensor.shape.w &&
          inputs[1]->tensor.shape.w == 1;
 }
-bool IsHeightBroadcastedForSecondInput(
-    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+bool IsHeightBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
   return inputs.size() == 2 &&
          inputs[0]->tensor.shape.h != inputs[1]->tensor.shape.h &&
          inputs[1]->tensor.shape.h == 1;
 }
-bool IsChannelsBroadcastedForSecondInput(
-    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+bool IsChannelsBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
   return inputs.size() == 2 &&
          inputs[0]->tensor.shape.c != inputs[1]->tensor.shape.c &&
          inputs[1]->tensor.shape.c == 1;

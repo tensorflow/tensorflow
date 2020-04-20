@@ -110,6 +110,17 @@ except Exception:  # pylint: disable=broad-except
   pass
 
 
+# Uses the same mechanism as above to selectively enable TFRT.
+def is_tfrt_enabled():
+  return False
+
+
+try:
+  from tensorflow.python.framework.is_tfrt_test_true import is_tfrt_enabled  # pylint: disable=g-import-not-at-top, unused-import
+except Exception:  # pylint: disable=broad-except
+  pass
+
+
 def _get_object_count_by_type():
   return collections.Counter([type(obj).__name__ for obj in gc.get_objects()])
 
@@ -1771,6 +1782,30 @@ def disable_mlir_bridge(description):  # pylint: disable=unused-argument
   """Execute the test method only if MLIR bridge is not enabled."""
   execute_func = not is_mlir_bridge_enabled()
   return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_tfrt(unused_description):
+
+  def disable_tfrt_impl(func):
+    """Execute the test method only if tfrt is not enabled."""
+
+    def decorator(func):
+
+      def decorated(self, *args, **kwargs):
+        if is_tfrt_enabled():
+          return
+        else:
+          return func(self, *args, **kwargs)
+
+      return decorated
+
+    if func is not None:
+      return decorator(func)
+
+    return decorator
+
+  return disable_tfrt_impl
 
 
 def for_all_test_methods(decorator, *args, **kwargs):

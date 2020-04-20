@@ -26,8 +26,14 @@ namespace tensorflow {
 namespace grappler {
 
 class MklRemapperTest : public GrapplerTest {
+ public:
+  const string kAddNOp = "AddN";
+  const string kAddOp = "Add";
+  const string kAddV2Op = "AddV2";
+
  protected:
-  void FuseConv2DWithBiasAndAddN(const string& data_format, bool has_relu) {
+  void FuseConv2DWithBiasAndAddNOrAdd(const string& data_format, bool has_relu,
+                                      string add_op, bool add_with_bcast) {
     using ::tensorflow::ops::Placeholder;
 
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -35,9 +41,18 @@ class MklRemapperTest : public GrapplerTest {
     auto input_shape = (data_format == "NHWC")
                            ? ops::Placeholder::Shape({8, 32, 32, 3})
                            : ops::Placeholder::Shape({8, 3, 32, 32});
-    auto input_shape_addn = (data_format == "NHWC")
-                                ? ops::Placeholder::Shape({8, 32, 32, 128})
-                                : ops::Placeholder::Shape({8, 128, 32, 32});
+    auto input_shape_addn = ops::Placeholder::Shape({});
+    if (data_format == "NHWC") {
+      if (add_with_bcast)
+        input_shape_addn = ops::Placeholder::Shape({128});
+      else
+        input_shape_addn = ops::Placeholder::Shape({8, 32, 32, 128});
+    } else {
+      if (add_with_bcast)
+        input_shape_addn = ops::Placeholder::Shape({32});
+      else
+        input_shape_addn = ops::Placeholder::Shape({8, 128, 32, 32});
+    }
     auto filter_shape = ops::Placeholder::Shape({1, 1, 3, 128});
     auto bias_shape = ops::Placeholder::Shape({128});
 
@@ -53,13 +68,31 @@ class MklRemapperTest : public GrapplerTest {
                     ops::Conv2D::Attrs().DataFormat(data_format));
     auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), conv, bias,
                                  ops::BiasAdd::Attrs().DataFormat(data_format));
-    auto addn = ops::AddN(s.WithOpName("addn"),
-                          std::initializer_list<Input>{input_addn, bias_add});
-    if (has_relu) {
-      auto relu = ops::Relu(s.WithOpName("relu"), addn);
-      ops::Identity(s.WithOpName("fetch"), relu);
+    if (add_op == kAddNOp) {
+      auto addn = ops::AddN(s.WithOpName(add_op),
+                            std::initializer_list<Input>{input_addn, bias_add});
+      if (has_relu) {
+        auto relu = ops::Relu(s.WithOpName("relu"), addn);
+        ops::Identity(s.WithOpName("fetch"), relu);
+      } else {
+        ops::Identity(s.WithOpName("fetch"), addn);
+      }
+    } else if (add_op == kAddV2Op) {
+      auto add = ops::AddV2(s.WithOpName(add_op), input_addn, bias_add);
+      if (has_relu) {
+        auto relu = ops::Relu(s.WithOpName("relu"), add);
+        ops::Identity(s.WithOpName("fetch"), relu);
+      } else {
+        ops::Identity(s.WithOpName("fetch"), add);
+      }
     } else {
-      ops::Identity(s.WithOpName("fetch"), addn);
+      auto add = ops::Add(s.WithOpName(add_op), input_addn, bias_add);
+      if (has_relu) {
+        auto relu = ops::Relu(s.WithOpName("relu"), add);
+        ops::Identity(s.WithOpName("fetch"), relu);
+      } else {
+        ops::Identity(s.WithOpName("fetch"), add);
+      }
     }
     auto input_tensor = GenerateRandomTensor<DT_FLOAT>(
         TensorShape(input_shape.shape_.dim_sizes()));
@@ -83,32 +116,48 @@ class MklRemapperTest : public GrapplerTest {
       item.graph.mutable_node(i)->set_device("/device:CPU:0");
     }
 
-    Remapper optimizer(RewriterConfig::ON);
+    // Set Rewriter config to AGGRESSIVE so that we can use Placeholder shape
+    // to test that Add with both inputs having same shape get fused with
+    // Conv2D. Setting this config to AGGRESSIVE is not required for the feature
+    // though.
+    Remapper optimizer(RewriterConfig::AGGRESSIVE);
     GraphDef output;
     TF_CHECK_OK(optimizer.Optimize(nullptr, item, &output));
 
+    bool check_fusion = !add_with_bcast;
     int found = 0;
     for (const NodeDef& node : output.node()) {
-      auto fetch_node_name = has_relu ? "relu" : "addn";
+      auto fetch_node_name = has_relu ? "relu" : add_op;
       if (node.name() == fetch_node_name) {
-        EXPECT_EQ("_FusedConv2D", node.op());
-        EXPECT_EQ("input", node.input(0));
-        EXPECT_EQ("filter", node.input(1));
+        if (check_fusion) {
+          EXPECT_EQ("_FusedConv2D", node.op());
+          EXPECT_EQ("input", node.input(0));
+          EXPECT_EQ("filter", node.input(1));
 
-        EXPECT_EQ(2, node.attr().at("num_args").i());
-        EXPECT_EQ("bias", node.input(2));
-        EXPECT_EQ("input_addn", node.input(3));
+          EXPECT_EQ(2, node.attr().at("num_args").i());
+          EXPECT_EQ("bias", node.input(2));
+          EXPECT_EQ("input_addn", node.input(3));
 
-        const auto fused_ops = node.attr().at("fused_ops").list().s();
-        if (has_relu) {
-          EXPECT_EQ(3, fused_ops.size());
-          EXPECT_EQ("BiasAdd", fused_ops[0]);
-          EXPECT_EQ("Add", fused_ops[1]);
-          EXPECT_EQ("Relu", fused_ops[2]);
+          const auto fused_ops = node.attr().at("fused_ops").list().s();
+          if (has_relu) {
+            EXPECT_EQ(3, fused_ops.size());
+            EXPECT_EQ("BiasAdd", fused_ops[0]);
+            EXPECT_EQ("Add", fused_ops[1]);
+            EXPECT_EQ("Relu", fused_ops[2]);
+          } else {
+            EXPECT_EQ(2, fused_ops.size());
+            EXPECT_EQ("BiasAdd", fused_ops[0]);
+            EXPECT_EQ("Add", fused_ops[1]);
+          }
         } else {
-          EXPECT_EQ(2, fused_ops.size());
-          EXPECT_EQ("BiasAdd", fused_ops[0]);
-          EXPECT_EQ("Add", fused_ops[1]);
+          if (has_relu) {
+            EXPECT_EQ(node.op(), "Relu");
+            ASSERT_EQ(node.input_size(), 1);
+            EXPECT_EQ(node.input(0), add_op);
+          } else {
+            EXPECT_EQ(node.op(), add_op);
+            ASSERT_EQ(node.input_size(), 2);
+          }
         }
         found++;
       }
@@ -123,25 +172,39 @@ class MklRemapperTest : public GrapplerTest {
   }
 };
 
-TEST_F(MklRemapperTest, FuseConv2DWithBiasAndAddN_NHWC_WithoutRelu) {
-  const bool kShouldFuseRelu = false;
-  FuseConv2DWithBiasAndAddN("NHWC", kShouldFuseRelu);
-}
+#define CREATE_CONV2DFUSION_TEST(data_format, addop, relu, bcast)                    \
+  TEST_F(                                                                            \
+      MklRemapperTest,                                                               \
+      FuseConv2DWithBiasAnd##addop##_##data_format##_relu##relu##_addbcast##bcast) { \
+    const bool kShouldFuseRelu = relu;                                               \
+    const bool kIsAddWithBcast = bcast;                                              \
+    FuseConv2DWithBiasAndAddNOrAdd(#data_format, relu, #addop, bcast);               \
+  }
 
-TEST_F(MklRemapperTest, FuseConv2DWithBiasAndAddN_NHWC_WithRelu) {
-  const bool kShouldFuseRelu = true;
-  FuseConv2DWithBiasAndAddN("NHWC", kShouldFuseRelu);
-}
+#define CREATE_CONV2DFUSION_ADD_NOBCAST_TEST(addop)    \
+  CREATE_CONV2DFUSION_TEST(NHWC, addop, false, false); \
+  CREATE_CONV2DFUSION_TEST(NHWC, addop, true, false);  \
+  CREATE_CONV2DFUSION_TEST(NCHW, addop, false, false); \
+  CREATE_CONV2DFUSION_TEST(NCHW, addop, true, false);
 
-TEST_F(MklRemapperTest, FuseConv2DWithBiasAndAddN_NCHW_WithoutRelu) {
-  const bool kShouldFuseRelu = false;
-  FuseConv2DWithBiasAndAddN("NCHW", kShouldFuseRelu);
-}
+CREATE_CONV2DFUSION_ADD_NOBCAST_TEST(AddN);
 
-TEST_F(MklRemapperTest, FuseConv2DWithBiasAndAddN_NCHW_WithRelu) {
-  const bool kShouldFuseRelu = true;
-  FuseConv2DWithBiasAndAddN("NCHW", kShouldFuseRelu);
-}
+#define CREATE_CONV2DFUSION_ADD_BCAST_TEST(addop)      \
+  CREATE_CONV2DFUSION_TEST(NHWC, addop, false, false); \
+  CREATE_CONV2DFUSION_TEST(NHWC, addop, true, false);  \
+  CREATE_CONV2DFUSION_TEST(NCHW, addop, false, false); \
+  CREATE_CONV2DFUSION_TEST(NCHW, addop, true, false);  \
+  CREATE_CONV2DFUSION_TEST(NHWC, addop, false, true);  \
+  CREATE_CONV2DFUSION_TEST(NHWC, addop, true, true);   \
+  CREATE_CONV2DFUSION_TEST(NCHW, addop, false, true);  \
+  CREATE_CONV2DFUSION_TEST(NCHW, addop, true, true);
+
+CREATE_CONV2DFUSION_ADD_BCAST_TEST(Add);
+CREATE_CONV2DFUSION_ADD_BCAST_TEST(AddV2);
+
+#undef CREATE_CONV2DFUSION_ADD_NOBCAST_TEST
+#undef CREATE_CONV2DFUSION_ADD_BCAST_TEST
+#undef CREATE_CONV2DFUSION_TEST
 
 }  // namespace grappler
 }  // namespace tensorflow

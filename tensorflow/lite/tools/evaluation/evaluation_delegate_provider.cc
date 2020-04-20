@@ -124,40 +124,41 @@ std::vector<TfLiteDelegatePtr> DelegateProviders::CreateAllDelegates(
   return delegates;
 }
 
-std::vector<TfLiteDelegatePtr> DelegateProviders::CreateAllDelegates(
+tools::ToolParams DelegateProviders::GetAllParams(
     const TfliteInferenceParams& params) const {
-  tools::ToolParams merged_params;
-  merged_params.Merge(params_);
+  tools::ToolParams tool_params;
+  tool_params.Merge(params_, /*overwrite*/ false);
+
+  if (params.has_num_threads()) {
+    tool_params.Set<int32_t>("num_threads", params.num_threads());
+  }
 
   const auto type = params.delegate();
   switch (type) {
     case TfliteInferenceParams::NNAPI:
-      if (merged_params.HasParam("use_nnapi")) {
-        merged_params.Set<bool>("use_nnapi", true);
+      if (tool_params.HasParam("use_nnapi")) {
+        tool_params.Set<bool>("use_nnapi", true);
       }
       break;
     case TfliteInferenceParams::GPU:
-      if (merged_params.HasParam("use_gpu")) {
-        merged_params.Set<bool>("use_gpu", true);
+      if (tool_params.HasParam("use_gpu")) {
+        tool_params.Set<bool>("use_gpu", true);
       }
       break;
     case TfliteInferenceParams::HEXAGON:
-      if (merged_params.HasParam("use_hexagon")) {
-        merged_params.Set<bool>("use_hexagon", true);
+      if (tool_params.HasParam("use_hexagon")) {
+        tool_params.Set<bool>("use_hexagon", true);
       }
       break;
     case TfliteInferenceParams::XNNPACK:
-      if (merged_params.HasParam("use_xnnpack")) {
-        merged_params.Set<bool>("use_xnnpack", true);
-      }
-      if (params.has_num_threads()) {
-        merged_params.Set<int32_t>("num_threads", params.num_threads());
+      if (tool_params.HasParam("use_xnnpack")) {
+        tool_params.Set<bool>("use_xnnpack", true);
       }
       break;
     default:
       break;
   }
-  return CreateAllDelegates(merged_params);
+  return tool_params;
 }
 
 }  // namespace evaluation

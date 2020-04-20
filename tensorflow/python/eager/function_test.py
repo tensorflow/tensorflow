@@ -442,7 +442,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def f(_):
       return 1.0
 
-    with self.assertRaisesRegexp(AttributeError, 'set'):
+    with self.assertRaisesRegexp(ValueError, r'Got type: set'):
       f(set([]))
 
   def testFuncName(self):

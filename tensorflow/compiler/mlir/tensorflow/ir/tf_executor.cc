@@ -474,7 +474,7 @@ namespace {
 ParseResult ParseSwitchOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 2> op_infos;
   SmallVector<Type, 1> types;
-  if (parser.parseOperandList(op_infos, 2) || parser.parseColonTypeList(types))
+  if (parser.parseOperandList(op_infos) || parser.parseColonTypeList(types))
     return failure();
   if (types.size() != 1)
     return parser.emitError(parser.getNameLoc())
@@ -486,12 +486,15 @@ ParseResult ParseSwitchOp(OpAsmParser &parser, OperationState &result) {
   // type).
   if (types.front().isa<FunctionType>()) {
     FunctionType type = types.front().cast<FunctionType>();
-    if (type.getNumInputs() != 2)
+    if (type.getNumInputs() < 2)
       return parser.emitError(parser.getNameLoc())
              << " expects a single data type and a predicate";
     result.types.assign(type.getResults().begin(), type.getResults().end());
     types.assign(type.getInputs().begin(), type.getInputs().end());
   } else {
+    if (op_infos.size() < 2)
+      return parser.emitError(parser.getNameLoc())
+             << " expects a single data type and a predicate";
     Type control_type = ControlType::get(parser.getBuilder().getContext());
     result.types.append(2, types[0]);
     result.types.push_back(control_type);

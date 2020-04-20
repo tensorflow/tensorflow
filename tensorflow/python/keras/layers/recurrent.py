@@ -2233,8 +2233,8 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
     unit_forget_bias: Boolean.
       If True, add 1 to the bias of the forget gate at initialization.
       Setting it to true will also force `bias_initializer="zeros"`.
-      This is recommended in [Jozefowicz et
-        al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
+      This is recommended in [Jozefowicz et al., 2015](
+        http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix.
     recurrent_regularizer: Regularizer function applied to
@@ -2503,7 +2503,8 @@ class PeepholeLSTMCell(LSTMCell):
   well as the previous hidden state (which is what LSTMCell is limited to).
   This allows PeepholeLSTMCell to better learn precise timings over LSTMCell.
 
-  From [Gers et al.](http://www.jmlr.org/papers/volume3/gers02a/gers02a.pdf):
+  From [Gers et al., 2002](
+    http://www.jmlr.org/papers/volume3/gers02a/gers02a.pdf):
 
   "We find that LSTM augmented by 'peephole connections' from its internal
   cells to its multiplicative gates can learn the fine distinction between
@@ -2512,9 +2513,7 @@ class PeepholeLSTMCell(LSTMCell):
 
   The peephole implementation is based on:
 
-  [Long short-term memory recurrent neural network architectures for
-   large scale acoustic modeling.
-  ](https://research.google.com/pubs/archive/43905.pdf)
+  [Sak et al., 2014](https://research.google.com/pubs/archive/43905.pdf)
 
   Example:
 
@@ -2601,8 +2600,8 @@ class LSTM(RNN):
     unit_forget_bias: Boolean.
       If True, add 1 to the bias of the forget gate at initialization.
       Setting it to true will also force `bias_initializer="zeros"`.
-      This is recommended in [Jozefowicz et
-        al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf).
+      This is recommended in [Jozefowicz et al., 2015](
+        http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf).
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix.
     recurrent_regularizer: Regularizer function applied to

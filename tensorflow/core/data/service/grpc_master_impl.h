@@ -45,7 +45,7 @@ class GrpcMasterImpl : public MasterService::Service {
                       method##Response* response) override;
   HANDLER(RegisterWorker);
   HANDLER(GetOrRegisterDataset);
-  HANDLER(BeginEpoch);
+  HANDLER(CreateJob);
   HANDLER(GetTasks);
 #undef HANDLER
 
