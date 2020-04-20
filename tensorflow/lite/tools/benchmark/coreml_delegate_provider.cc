@@ -72,6 +72,10 @@ TfLiteDelegatePtr CoreMlDelegateProvider::CreateTfLiteDelegate(
   if (params.Get<bool>("use_coreml")) {
     TfLiteCoreMlDelegateOptions coreml_opts = {
         .enabled_devices = TfLiteCoreMlDelegateAllDevices};
+    coreml_opts.max_delegated_partitions =
+        params.Get<int>("max_delegated_partitions");
+    coreml_opts.min_nodes_per_partition =
+        params.Get<int>("min_nodes_per_partition");
     delegate = TfLiteDelegatePtr(TfLiteCoreMlDelegateCreate(&coreml_opts),
                                  &TfLiteCoreMlDelegateDelete);
     if (!delegate) {
