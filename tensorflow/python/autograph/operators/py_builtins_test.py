@@ -123,6 +123,13 @@ class PyBuiltinsTest(test.TestCase):
       tl = py_builtins.len_(data_structures.tf_tensor_list_new([3, 4, 5]))
       self.assertEqual(self.evaluate(tl), 3)
 
+  def test_len_dataset(self):
+    dataset = dataset_ops.DatasetV2.from_tensor_slices([3, 2, 1])
+    self.assertEqual(py_builtins.len_(dataset), 3)
+    with self.cached_session() as sess:
+      t = py_builtins.len_(dataset)
+      self.assertAllEqual(self.evaluate(t), 3)
+
   def test_len_scalar(self):
     with self.assertRaises(ValueError):
       py_builtins.len_(constant_op.constant(1))
