@@ -285,7 +285,8 @@ def _tf_dataset_len(s):
   l = cardinality.cardinality(s)
 
   def raise_infinite_cardinality_error():
-    with ops.control_dependencies([control_flow_ops.Assert(False, ['len requires non-infinite dataset'])]):
+    msg = "len requires non-infinite dataset"
+    with ops.control_dependencies([control_flow_ops.Assert(False, [msg])]):
       return constant_op.constant(-1, dtype=dtypes.int32)
 
   def reduce_unknown_cardinality_dataset(d):
