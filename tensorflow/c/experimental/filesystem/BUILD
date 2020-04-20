@@ -46,7 +46,6 @@ cc_library(
 # Compliance test for modules and for interface
 tf_cc_test(
     name = "modular_filesystem_test",
-    size = "small",
     srcs = ["modular_filesystem_test.cc"],
     linkopts = ["-ldl"],
     tags = [
