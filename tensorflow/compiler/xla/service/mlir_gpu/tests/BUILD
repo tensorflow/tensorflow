@@ -1,6 +1,7 @@
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
+    "tf_exec_properties",
 )
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
@@ -18,9 +19,7 @@ package_group(
 
 glob_lit_tests(
     data = [":test_utilities"],
-    # TODO(141337082): Figure out why the tests do not run successfully in open
-    # source.
-    default_tags = ["no_oss"] + tf_cuda_tests_tags(),
+    default_tags = tf_cuda_tests_tags() + ["config-cuda-only"],
     driver = "@llvm-project//mlir:run_lit.sh",
     exclude = [
         # TODO(b/149302060) Reenable once fusion is fixed.
@@ -28,6 +27,7 @@ glob_lit_tests(
         # TODO(b/137624192): Reenable once we can fuse reductions.
         "fused_reduce.hlo",
     ],
+    exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
     test_file_exts = ["hlo"],
 )
 

@@ -80,8 +80,7 @@ int main(int argc, char **argv) {
                     : opt.CompileAndOutputIr(file->getBuffer().str(),
                                              output->os(), lowering_stage);
   if (!status.ok()) {
-    output->os() << status.error_message();
-    output->keep();
+    LOG(ERROR) << status.error_message();
     return 1;
   }
   output->keep();
