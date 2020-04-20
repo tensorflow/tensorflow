@@ -434,7 +434,8 @@ class CSRSparseMatMulGPUOp : public OpKernel {
 
       int c_nnz_i;
       OP_REQUIRES_OK(ctx, csr_gemm.GetOutputStructure(a_comp, b_comp,
-                                                      c_row_ptr_i, &c_nnz_i));
+                                                      c_row_ptr_i, &c_nnz_i,
+                                                      nullptr));
       c_batch_ptr(i + 1) = c_batch_ptr(i) + c_nnz_i;
     }
 
@@ -464,7 +465,7 @@ class CSRSparseMatMulGPUOp : public OpKernel {
                                   b_input_dense_shape};
       CSRComponent<T> c_comp{c.row_pointers_vec(i), c.col_indices_vec(i),
                              c.values_vec<T>(i), c_dense_shape};
-      OP_REQUIRES_OK(ctx, csr_gemm.Compute(a_comp, b_comp, &c_comp));
+      OP_REQUIRES_OK(ctx, csr_gemm.Compute(a_comp, b_comp, &c_comp, nullptr));
     }
 
     Tensor c_t(cpu_allocator(), DT_VARIANT, TensorShape({}));
@@ -559,10 +560,17 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
     return Status::OK();
   }
 
+  Status GetWorkspaceSize(const ConstCSRComponent<T>& a,
+                          const ConstCSRComponent<T>& b,
+                          size_t* bufferSize) {
+    DCHECK(initialized_);
+    *bufferSize = 0;
+  }
+
   Status GetOutputStructure(const ConstCSRComponent<T>& a,
                             const ConstCSRComponent<T>& b,
                             TTypes<int32>::UnalignedVec c_row_ptr,
-                            int* output_nnz) {
+                            int* output_nnz, void* workspace) {
     DCHECK(initialized_);
 
     const int m =
@@ -598,7 +606,7 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
   }
 
   Status Compute(const ConstCSRComponent<T>& a, const ConstCSRComponent<T>& b,
-                 CSRComponent<T>* c) {
+                 CSRComponent<T>* c, void* workspace) {
     DCHECK(initialized_);
 
     const int m =

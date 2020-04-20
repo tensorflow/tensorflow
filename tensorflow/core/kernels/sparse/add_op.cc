@@ -122,7 +122,8 @@ class CSRSparseMatrixAddFunctor {
                                               rows + 1);
       int c_nnz_i;
       TF_RETURN_IF_ERROR(
-          csr_geam.GetOutputStructure(a_comp, b_comp, c_row_ptr_i, &c_nnz_i));
+          csr_geam.GetOutputStructure(a_comp, b_comp, c_row_ptr_i, &c_nnz_i,
+                                      nullptr));
       c_batch_ptr(i + 1) = c_batch_ptr(i) + c_nnz_i;
     }
 
@@ -151,7 +152,7 @@ class CSRSparseMatrixAddFunctor {
       CSRComponent<T> c_comp{c->row_pointers_vec(i), c->col_indices_vec(i),
                              c->values_vec<T>(i), c_dense_shape_t.vec<int64>()};
 
-      TF_RETURN_IF_ERROR(csr_geam.Compute(a_comp, b_comp, &c_comp));
+      TF_RETURN_IF_ERROR(csr_geam.Compute(a_comp, b_comp, &c_comp, nullptr));
     }
 
     return Status::OK();
@@ -269,10 +270,17 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
     return Status::OK();
   }
 
+  Status GetWorkspaceSize(const ConstCSRComponent<T>& a,
+                          const ConstCSRComponent<T>& b,
+                          size_t* bufferSize) {
+    DCHECK(initialized_);
+    *bufferSize = 0;
+  }
+
   Status GetOutputStructure(const ConstCSRComponent<T>& a,
                             const ConstCSRComponent<T>& b,
                             TTypes<int32>::UnalignedVec c_row_ptr,
-                            int* output_nnz) {
+                            int* output_nnz, void* workspace) {
     DCHECK(initialized_);
 
     const int m = a.row_ptr.size() - 1;
@@ -300,7 +308,7 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
   }
 
   Status Compute(const ConstCSRComponent<T>& a, const ConstCSRComponent<T>& b,
-                 CSRComponent<T>* c) {
+                 CSRComponent<T>* c, void* workspace) {
     DCHECK(initialized_);
 
     const int m = a.row_ptr.size() - 1;
