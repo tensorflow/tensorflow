@@ -40,7 +40,8 @@ void GraphOptimizer::Optimize(
         shape_map,
     const NodePredicate& cse_consider_fn, const NodePredicate& cf_consider_fn,
     bool inline_multi_device_functions,
-    bool inline_impl_selection_group_functions) {
+    bool inline_impl_selection_group_functions,
+    bool inline_with_single_device_body_placer) {
   Graph* g = graph->get();
   DumpGraph("Initial", g);
 
@@ -92,6 +93,13 @@ void GraphOptimizer::Optimize(
       ExpandInlineFunctionsOptions expand_inline_opts;
       expand_inline_opts.native_options.inlined_function_body_placer =
           InlinedFunctionBodyPlacer::SingleDevice();
+
+      // Force single device placement strategy for multi-device function body.
+      if (inline_with_single_device_body_placer) {
+        expand_inline_opts.multi_device_options.inlined_function_body_placer =
+            InlinedFunctionBodyPlacer::SingleDevice();
+      }
+
       if (!inline_multi_device_functions) {
         // GraphOptimizer is running:
         //   (1) After partitioning when executing with a Session API.
@@ -132,7 +140,8 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
   Optimize(runtime, env, device, graph, options.shape_map,
            options.cse_consider_fn, options.cf_consider_fn,
            options.inline_multi_device_functions,
-           options.inline_impl_selection_group_functions);
+           options.inline_impl_selection_group_functions,
+           options.inline_with_single_device_body_placer);
 }
 
 }  // end namespace tensorflow
