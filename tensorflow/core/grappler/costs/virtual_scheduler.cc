@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/transitive_fanin.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
@@ -405,14 +406,10 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
   }
 
   // Get the nodes that would run to output fetch_nodes.
-  bool ill_formed = false;
   std::unordered_map<string, const NodeDef*> name_to_node;
-  const std::vector<const NodeDef*> fetch_fanin_nodes =
-      ComputeTransitiveFanin(graph, fetch_nodes, &name_to_node, &ill_formed);
-  if (ill_formed) {
-    return errors::InvalidArgument(
-        "Ill formed graph or invalid set of fetch nodes specified");
-  }
+  std::vector<const NodeDef*> fetch_fanin_nodes;
+  TF_RETURN_IF_ERROR(ComputeTransitiveFanin(graph, fetch_nodes, &name_to_node,
+                                            &fetch_fanin_nodes));
 
   // Once ComputeTransitiveFanin is complete, only the nodes that can be reached
   // from the fetch nodes are scheduled. So the scheduled nodes should be
