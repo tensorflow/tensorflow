@@ -372,17 +372,6 @@ struct FixKernelFunctionSignatures
   }
 };
 
-void EnableIRPrinting(mlir::PassManager* passManager) {
-  auto enable_if_vlog_is_on = [](mlir::Pass* pass, mlir::Operation* op) {
-    return VLOG_IS_ON(1);
-  };
-  passManager->enableIRPrinting(/*shouldPrintBeforePass=*/enable_if_vlog_is_on,
-                                /*shouldPrintAfterPass=*/{},
-                                /*printModuleScope=*/false,
-                                /*printAfterOnlyOnChange=*/true, llvm::dbgs());
-  passManager->disableMultithreading();
-}
-
 // Extract_element(xla_hlo_scalars_to_dimension_tensor(v_i), i) -> v_i
 //
 // We need to direct fusion to the inner loops. This cannot be done with
@@ -432,7 +421,7 @@ Status LowerLHLOToGPU(mlir::ModuleOp module,
                       llvm::ArrayRef<unsigned> unroll_factors,
                       bool collapseParallelLoops) {
   mlir::PassManager pm(module.getContext());
-  EnableIRPrinting(&pm);
+  applyPassManagerCLOptions(pm);
 
   // We have to anticipate later unrolling in tiling to make sure that we get
   // the requested tiling after unrolling. Compute the new tiling here if
@@ -547,7 +536,7 @@ class LowerToNVVMPass
 Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
   // We cannot verify as the signature of the kernel is rewritten.
   ::mlir::PassManager pm(module.getContext(), /*verifyPasses=*/false);
-  EnableIRPrinting(&pm);
+  applyPassManagerCLOptions(pm);
 
   // Rewrite kernel functions to LLVM IR.
   auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();

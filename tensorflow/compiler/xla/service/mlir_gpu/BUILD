@@ -222,6 +222,7 @@ tf_cc_binary(
         "//tensorflow/compiler/xla/service:gpu_plugin_mlir",
         "//tensorflow/core:lib",
         "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],
 )
