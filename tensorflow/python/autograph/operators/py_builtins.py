@@ -234,6 +234,8 @@ def len_(s):
     return _tf_tensor_list_len(s)
   elif tensor_util.is_tensor(s):
     return _tf_tensor_len(s)
+  if isinstance(s, dataset_ops.DatasetV2):
+    return _tf_dataset_len(s)
   return _py_len(s)
 
 
@@ -276,6 +278,10 @@ def _tf_tensor_len(s):
 
   return control_flow_ops.cond(rank > 0, lambda: array_ops.shape(s)[0],
                                raise_zero_rank_error)
+
+
+def _tf_dataset_len(s):
+  return s.reduce(constant_op.constant(0, dtype=dtypes.int32), lambda x, _: x + 1)
 
 
 def _py_len(s):
