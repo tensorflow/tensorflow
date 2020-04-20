@@ -32,17 +32,18 @@ namespace {
 
 static const int64 kFunctionalOpEventTypes[] = {
     HostEventType::kCallOp,
-    HostEventType::kParallelForOp,
-    HostEventType::kForeverOp,
     HostEventType::kNumericalGradientOpEvalRight,
     HostEventType::kNumericalGradientOpEvalLeft,
     HostEventType::kSymbolicGradientOp,
     HostEventType::kRemoteCallOp,
     HostEventType::kIfOp,
     HostEventType::kCaseOp,
-    HostEventType::kWhileOpEvalCond,
-    HostEventType::kWhileOpStartBody,
-    HostEventType::kForOp,
+    // TODO(b/154510598): Fix handling of the loop ops.
+    // HostEventType::kWhileOpEvalCond,
+    // HostEventType::kWhileOpStartBody,
+    // HostEventType::kForOp,
+    // HostEventType::kParallelForOp,
+    // HostEventType::kForeverOp,
     HostEventType::kPartitionedCallOp,
 };
 
