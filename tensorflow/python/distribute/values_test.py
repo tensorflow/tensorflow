@@ -375,12 +375,12 @@ class RegroupAndSelectDeviceTest(test.TestCase):
   def testNested(self):
     result = values.regroup((_nested_value("1"), _nested_value("2")))
     self.assertIsInstance(result, tuple)
-    self.assertEqual(3, len(result))
+    self.assertLen(result, 3)
     self._is_per_replica(result[0], ["a1", "a2"])
     self._is_per_replica(result[2], ["h1", "h2"])
 
     self.assertIsInstance(result[1], list)
-    self.assertEqual(3, len(result[1]))
+    self.assertLen(result[1], 3)
     self._is_per_replica(result[1][0], ["b1", "b2"])
     self._is_per_replica(result[1][2], ["g1", "g2"])
 
@@ -416,12 +416,12 @@ class RegroupAndSelectDeviceTest(test.TestCase):
     result = values.regroup((_nested_value("1"), _nested_value("2")),
                             values.Mirrored)
     self.assertIsInstance(result, tuple)
-    self.assertEqual(3, len(result))
+    self.assertLen(result, 3)
     self._is_per_replica(result[0], ["a1", "a2"], values.Mirrored)
     self._is_per_replica(result[2], ["h1", "h2"], values.Mirrored)
 
     self.assertIsInstance(result[1], list)
-    self.assertEqual(3, len(result[1]))
+    self.assertLen(result[1], 3)
     self._is_per_replica(result[1][0], ["b1", "b2"], values.Mirrored)
     self._is_per_replica(result[1][2], ["g1", "g2"], values.Mirrored)
 
@@ -444,7 +444,7 @@ class RegroupAndSelectDeviceTest(test.TestCase):
   def testWrapAListOfTwoTuples(self):
     result = values.regroup([("1", "2"), ("3", "4")])
     self.assertIsInstance(result, tuple)
-    self.assertEqual(2, len(result))
+    self.assertLen(result, 2)
     self._is_per_replica(result[0], ("1", "3"), values.PerReplica)
     self._is_per_replica(result[1], ("2", "4"), values.PerReplica)
 
@@ -459,19 +459,19 @@ class RegroupAndSelectDeviceTest(test.TestCase):
     foo = object()
     result = values.regroup((("a", foo), ("b", foo)))
     self.assertIsInstance(result, tuple)
-    self.assertEqual(2, len(result))
+    self.assertLen(result, 2)
     self._is_per_replica(result[0], ["a", "b"])
     self.assertIs(foo, result[1])
 
     # Test select_replica(), should undo the merge done by regroup().
     result_0 = values.select_replica(0, result)
     self.assertIsInstance(result_0, tuple)
-    self.assertEqual(2, len(result_0))
+    self.assertLen(result_0, 2)
     self.assertEqual("a", result_0[0])
     self.assertIs(foo, result_0[1])
     result_1 = values.select_replica(1, result)
     self.assertIsInstance(result_1, tuple)
-    self.assertEqual(2, len(result_1))
+    self.assertLen(result_1, 2)
     self.assertEqual("b", result_1[0])
     self.assertIs(foo, result_1[1])
 
