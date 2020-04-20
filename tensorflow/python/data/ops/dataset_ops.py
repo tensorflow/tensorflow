@@ -3526,6 +3526,8 @@ class RangeDataset(DatasetSource):
     return self._structure
 
 
+# This can be deleted after the forward compatibility window for switching
+# to using dummy resource expires on 5/20.
 class _MemoryCacheDeleter(object):
   """An object which cleans up an anonymous memory cache resource.
 
@@ -3552,15 +3554,20 @@ class _MemoryCacheDeleter(object):
               handle=self._handle, deleter=self._deleter)
 
 
+# This can be deleted after the forward compatibility window for switching
+# to using dummy resource expires on 5/20.
 class _MemoryCache(object):
   """Represents a memory cache resource."""
 
   def __init__(self):
     super(_MemoryCache, self).__init__()
-    self._device = context.context().device_name
-    self._handle, self._deleter = (gen_dataset_ops.anonymous_memory_cache())
-    self._resource_deleter = _MemoryCacheDeleter(
-        handle=self._handle, device=self._device, deleter=self._deleter)
+    if compat.forward_compatible(2020, 5, 20):
+      self._handle = gen_dataset_ops.dummy_memory_cache()
+    else:
+      self._device = context.context().device_name
+      self._handle, self._deleter = gen_dataset_ops.anonymous_memory_cache()
+      self._resource_deleter = _MemoryCacheDeleter(
+          handle=self._handle, device=self._device, deleter=self._deleter)
 
   @property
   def handle(self):
