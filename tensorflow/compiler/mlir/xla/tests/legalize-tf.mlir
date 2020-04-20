@@ -1348,6 +1348,28 @@ func @maxpool_same_padding(%arg0: tensor<2x13x25x7xi32>) -> tensor<2x4x7x7xi32> 
   return %0 : tensor<2x4x7x7xi32>
 }
 
+// CHECK-LABEL: maxpool_3d_valid_padding
+// CHECK-SAME: %[[ARG:.*]]: tensor
+func @maxpool_3d_valid_padding(%arg0: tensor<2x8x12x20x7xf32>) -> tensor<2x8x3x5x7xf32> {
+  // CHECK: %[[INIT:.*]] = xla_hlo.constant dense<0xFF800000> : tensor<f32>
+  // CHECK: "xla_hlo.reduce_window"(%[[ARG]], %[[INIT]])
+  // CHECK: xla_hlo.maximum
+  // CHECK: xla_hlo.return
+  // CHECK: {window_dimensions = dense<[1, 1, 2, 2, 1]> : tensor<5xi64>, window_strides = dense<[1, 1, 4, 4, 1]> : tensor<5xi64>}
+
+  %0 = "tf.MaxPool3D"(%arg0) {data_format = "NDHWC", ksize = [1, 1, 2, 2, 1], padding = "VALID", strides = [1, 1, 4, 4, 1]} : (tensor<2x8x12x20x7xf32>) -> tensor<2x8x3x5x7xf32>
+  return %0 : tensor<2x8x3x5x7xf32>
+}
+
+// CHECK-LABEL: maxpool_3d_same_padding
+// CHECK-SAME: %[[ARG:.*]]: tensor
+func @maxpool_3d_same_padding(%arg0: tensor<2x8x13x25x7xf32>) -> tensor<2x8x4x7x7xf32> {
+  // CHECK: padding = dense<{{\[\[}}0, 0], [0, 0], [0, 1], [1, 1], [0, 0]]> : tensor<5x2xi64>
+
+  %0 = "tf.MaxPool3D"(%arg0) {data_format = "NDHWC", ksize = [1, 1, 2, 3, 1], padding = "SAME", strides = [1, 1, 4, 4, 1]} : (tensor<2x8x13x25x7xf32>) -> tensor<2x8x4x7x7xf32>
+  return %0 : tensor<2x8x4x7x7xf32>
+}
+
 //===----------------------------------------------------------------------===//
 // MaxPoolGrad op legalizations.
 //===----------------------------------------------------------------------===//

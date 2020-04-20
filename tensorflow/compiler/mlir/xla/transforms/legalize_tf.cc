@@ -1319,13 +1319,15 @@ class ConvertFusedBatchNormV3Op
 //
 // Requires padding to be either 'SAME' or 'VALID' and the number of input
 // dimensions to be equal to the size of window dimensions and window strides.
+template <int num_dims>
 static DenseIntElementsAttr GetReduceWindowPadding(
     llvm::ArrayRef<int64_t> input_dims, ArrayAttr window_dims,
     ArrayAttr window_strides, StringRef padding, Builder *builder) {
   if (padding == "VALID") return {};
   DCHECK_EQ(padding.str(), "SAME");
 
-  llvm::SmallVector<tensorflow::int64, 4> input_shape, window_shape, strides;
+  llvm::SmallVector<tensorflow::int64, num_dims> input_shape, window_shape,
+      strides;
   input_shape.reserve(input_dims.size());
   window_shape.reserve(window_shape.size());
   strides.reserve(window_strides.size());
@@ -1340,7 +1342,7 @@ static DenseIntElementsAttr GetReduceWindowPadding(
       ::xla::MakePadding(input_shape, window_shape, strides,
                          ::xla::Padding::kSame);
   int64_t rank = paddings.size();
-  llvm::SmallVector<int64_t, 8> flatten_paddings(rank * 2);
+  llvm::SmallVector<int64_t, num_dims * 2> flatten_paddings(rank * 2);
   for (int i = 0; i < rank; i++) {
     flatten_paddings[2 * i] = paddings[i].first;
     flatten_paddings[2 * i + 1] = paddings[i].second;
@@ -1390,8 +1392,8 @@ class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
     Value init =
         GetScalarConstOfType(sum_element_type, op.getLoc(), 0, &rewriter);
     DenseIntElementsAttr paddings_attr =
-        GetReduceWindowPadding(input_type.getShape(), op.ksize(), op.strides(),
-                               op.padding(), &rewriter);
+        GetReduceWindowPadding<4>(input_type.getShape(), op.ksize(),
+                                  op.strides(), op.padding(), &rewriter);
     auto reduce = rewriter.create<ReduceWindowOp>(
         op.getLoc(), result_type, input_value, init,
         GetI64ElementsAttr(op.ksize()), GetI64ElementsAttr(op.strides()),
@@ -1433,21 +1435,22 @@ class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
 //   %max_pool = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.maximum"]
 //               {window_dimensions = ..., window_strides = ... }
 //
-class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
+template <typename OpTy, int num_dims>
+class ConvertMaxPoolOp : public OpRewritePattern<OpTy> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  using OpRewritePattern<OpTy>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TF::MaxPoolOp op,
+  LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
     Type element_type =
-        op.input().getType().cast<TensorType>().getElementType();
+        op.input().getType().template cast<TensorType>().getElementType();
     if (!element_type.isSignlessIntOrFloat()) return failure();
     Location loc = op.getLoc();
     ConstOp init = GetMinValueForType(element_type, loc, &rewriter);
 
-    auto input_ty = op.input().getType().dyn_cast<RankedTensorType>();
+    auto input_ty = op.input().getType().template dyn_cast<RankedTensorType>();
     if (!input_ty) return failure();
-    DenseIntElementsAttr paddings_attr = GetReduceWindowPadding(
+    DenseIntElementsAttr paddings_attr = GetReduceWindowPadding<num_dims>(
         input_ty.getShape(), op.ksize(), op.strides(), op.padding(), &rewriter);
     auto reduce = rewriter.create<ReduceWindowOp>(
         loc, op.getType(), op.input(), init.getResult(),
@@ -1460,6 +1463,9 @@ class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
     return success();
   }
 };
+
+using ConvertMaxPool2DOp = ConvertMaxPoolOp<TF::MaxPoolOp, /*num_dims=*/4>;
+using ConvertMaxPool3DOp = ConvertMaxPoolOp<TF::MaxPool3DOp, /*num_dims=*/5>;
 
 // Converts SelectV2 to HLO Select op and necessary BroadcastInDim ops on
 // operands.
@@ -2715,7 +2721,7 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
     // ReduceWindow op.
     auto input_ty = op.orig_input().getType().dyn_cast<RankedTensorType>();
     if (!input_ty) return failure();
-    DenseIntElementsAttr paddings_attr = GetReduceWindowPadding(
+    DenseIntElementsAttr paddings_attr = GetReduceWindowPadding<4>(
         input_ty.getShape(), op.ksize(), op.strides(), op.padding(), &rewriter);
 
     auto result = rewriter.create<SelectAndScatterOp>(
@@ -3918,8 +3924,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertEinsumOp, ConvertFusedBatchNormGradOp,
       ConvertFusedBatchNormGradV2Op, ConvertFusedBatchNormGradV3Op,
       ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp,
-      ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPoolOp,
-      ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
+      ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPool2DOp,
+      ConvertMaxPool3DOp, ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
       ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertRangeOp,
       ConvertSelectV2Op, ConvertSigmoidOp, ConvertSizeOp,
       ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
