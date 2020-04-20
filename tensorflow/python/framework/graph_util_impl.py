@@ -119,8 +119,7 @@ def must_run_on_cpu(node, pin_variables_on_cpu=False):
 def _node_name(n):
   if n.startswith("^"):
     return n[1:]
-  else:
-    return n.split(":")[0]
+  return n.split(":")[0]
 
 
 def _get_colocated_node_name(colocated_node_name):
