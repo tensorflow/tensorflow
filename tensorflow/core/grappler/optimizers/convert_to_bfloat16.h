@@ -21,8 +21,8 @@ limitations under the License.
 #endif
 
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/util/env_var.h"
 
 #include <fstream>
 
@@ -36,10 +36,34 @@ namespace grappler {
 class BFloat16Converter : public GraphOptimizer {
  public:
   explicit BFloat16Converter(
-      RewriterConfig::Toggle opt_level = RewriterConfig::OFF) {}
-  ~BFloat16Converter() override {}
+      RewriterConfig::Toggle opt_level = RewriterConfig::OFF) {
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_CONVERT_TO_BFLOAT16_ENABLE_LOG", false,
+                                   &do_logging_));
+    string log_file_name;
+    TF_CHECK_OK(ReadStringFromEnvVar("TF_CONVERT_TO_BFLOAT16_LOGFILE", "",
+                                     &log_file_name));
+    if (do_logging_ && log_file_name != "") {
+      log_file_.open(log_file_name.c_str(),
+                     std::ofstream::out | std::ofstream::app);
+    }
+    non_mkl_bfloat16_ops_.push_back("BiasAdd");
+    non_mkl_bfloat16_ops_.push_back("BiasAddGrad");
+  }
+
+  ~BFloat16Converter() override {
+    if (do_logging_) {
+      log_file_.close();
+    }
+  }
 
   string name() const override { return "bfloat16_converter"; };
+
+  void getList(std::vector<std::string> &mlist, std::string &str_var) {
+    for (auto x : str_util::Split(str_var, ",")) {
+      mlist.push_back(x);
+    }
+  }
+
 
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -50,7 +74,17 @@ class BFloat16Converter : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override {}
 
  private:
-  bool CanOpRunOnCPUDevice(const Node* n) const {
+  bool do_logging_;
+  std::ofstream log_file_;
+  std::vector<std::string> exlist;
+  std::vector<std::string> non_mkl_bfloat16_ops_;
+
+ private:
+  std::ostream& CONVERTER_LOG() {
+    return log_file_.is_open() ? log_file_ : std::cout;
+  }
+
+  inline bool CanOpRunOnCPUDevice(const Node* n) const {
     bool result = true;
     string reason;
 
@@ -71,7 +105,7 @@ class BFloat16Converter : public GraphOptimizer {
       reason = "User has assigned a device that is not CPU.";
     }
 
-    if (!result) {
+    if (result == false) {
       VLOG(1) << name() << ": Skipping rewriting of the node "
               << n->type_string() << ", reason: " << reason;
     }
@@ -162,7 +196,19 @@ class BFloat16Converter : public GraphOptimizer {
       mkl_op_name = "_MklConv2DBackpropFilterWithBias";
     else if (n->type_string() == "_FusedMatMul" && FusedMatMulRewrite(n))
       mkl_op_name = "_MklFusedMatMul";
-    return mkl_op_registry::IsMklOp(mkl_op_name, DT_BFLOAT16);
+
+    // Now check also if there is non-MKL bfloat16 support for the op.
+    // We selectively enable non-MKL bfloat16 ops based on
+    // non_mkl_bfloat16_ops_ list.
+    string kernel = KernelsRegisteredForOp(n->type_string());
+    bool non_mkl_op_supported = false;
+    string search_string = "device='CPU'; T in [DT_BFLOAT16]";
+    if (kernel.find(search_string) != string::npos &&
+        (std::find(non_mkl_bfloat16_ops_.begin(), non_mkl_bfloat16_ops_.end(),
+                   n->type_string()) != non_mkl_bfloat16_ops_.end())) {
+      non_mkl_op_supported = true;
+    }
+    return mkl_op_registry::IsMklOp(mkl_op_name, DT_BFLOAT16) || non_mkl_op_supported;
   }
 
   // Insert a node that casts tensor from 'src_dtype' to 'dst_dtype'
@@ -174,7 +220,7 @@ class BFloat16Converter : public GraphOptimizer {
   // Convert input graph 'g' in-place by replacing FP32 nodes that can
   // operate in BFLOAT16 type. The pass will automatically insert
   // appropriate Cast nodes to convert tensors between FP32 and BFLOAT16 types.
-  Status ConvertToBFloat16(Graph* g);
+  Status ConvertToBFloat16(const std::vector<string>& fetch, Graph* g);
 };
 
 #else  // INTEL_MKL && ENABLE_INTEL_MKL_BFLOAT16
@@ -190,7 +236,8 @@ class BFloat16Converter : public GraphOptimizer {
                   GraphDef* output) override {
     VLOG(WARNING) << "BFloat16Converter is currently supported only for "
                   << "Intel MKL backend. Skipping it for other backends.";
-    return errors::Aborted("Nothing to do.");
+    *output = item.graph;
+    return Status::OK();
   };
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimize_output, double result) override {}

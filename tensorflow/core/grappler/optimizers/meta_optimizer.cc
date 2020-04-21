@@ -90,7 +90,7 @@ int NumIterations(const RewriterConfig& cfg) {
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
          name == "loop_optimizer" || name == "auto_mixed_precision" ||
-         name == "convert_to_bfloat16";
+         name == "bfloat16_converter";
 }
 
 bool IsTFDataFunction(const FunctionDef& func) {
