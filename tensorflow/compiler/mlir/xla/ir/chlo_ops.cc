@@ -13,12 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/xla/ir/hlo_client_ops.h"
+#include "tensorflow/compiler/mlir/xla/ir/chlo_ops.h"
 
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 
 namespace mlir {
-namespace xla_hlo_client {
+namespace xla_chlo {
 
 template <typename T>
 static LogicalResult Verify(T op) {
@@ -90,38 +90,38 @@ static Type GetBroadcastType(Builder* builder, Type x, Type y,
                      broadcast_dimensions);                                  \
   }
 
-BINARY_BUILDER(AddOp);
-BINARY_BUILDER(AndOp);
-BINARY_BUILDER(Atan2Op);
-BINARY_BUILDER(DivOp);
-BINARY_BUILDER(MaxOp);
-BINARY_BUILDER(MinOp);
-BINARY_BUILDER(MulOp);
-BINARY_BUILDER(OrOp);
-BINARY_BUILDER(PowOp);
-BINARY_BUILDER(RemOp);
-BINARY_BUILDER(ShiftLeftOp);
-BINARY_BUILDER(ShiftRightArithmeticOp);
-BINARY_BUILDER(ShiftRightLogicalOp);
-BINARY_BUILDER(SubOp);
-BINARY_BUILDER(XorOp);
+BINARY_BUILDER(BroadcastAddOp);
+BINARY_BUILDER(BroadcastAndOp);
+BINARY_BUILDER(BroadcastAtan2Op);
+BINARY_BUILDER(BroadcastDivOp);
+BINARY_BUILDER(BroadcastMaxOp);
+BINARY_BUILDER(BroadcastMinOp);
+BINARY_BUILDER(BroadcastMulOp);
+BINARY_BUILDER(BroadcastOrOp);
+BINARY_BUILDER(BroadcastPowOp);
+BINARY_BUILDER(BroadcastRemOp);
+BINARY_BUILDER(BroadcastShiftLeftOp);
+BINARY_BUILDER(BroadcastShiftRightArithmeticOp);
+BINARY_BUILDER(BroadcastShiftRightLogicalOp);
+BINARY_BUILDER(BroadcastSubOp);
+BINARY_BUILDER(BroadcastXorOp);
 
 #undef BINARY_BUILDER
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/xla/ir/hlo_client_ops.cc.inc"
+#include "tensorflow/compiler/mlir/xla/ir/chlo_ops.cc.inc"
 
 //===----------------------------------------------------------------------===//
-// xla_hlo_client Dialect Constructor
+// xla_chlo Dialect Constructor
 //===----------------------------------------------------------------------===//
 
 XlaHloClientDialect::XlaHloClientDialect(MLIRContext* context)
     : Dialect(getDialectNamespace(), context) {
   addOperations<
 #define GET_OP_LIST
-#include "tensorflow/compiler/mlir/xla/ir/hlo_client_ops.cc.inc"
+#include "tensorflow/compiler/mlir/xla/ir/chlo_ops.cc.inc"
       >();
 }
 
-}  // namespace xla_hlo_client
+}  // namespace xla_chlo
 }  // namespace mlir

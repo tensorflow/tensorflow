@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_IR_HLO_CLIENT_OPS_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_IR_HLO_CLIENT_OPS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_XLA_IR_CHLO_OPS_H_
+#define TENSORFLOW_COMPILER_MLIR_XLA_IR_CHLO_OPS_H_
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -27,18 +27,18 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffects.h"  // from @llvm-project
 
 namespace mlir {
-namespace xla_hlo_client {
+namespace xla_chlo {
 
 class XlaHloClientDialect : public Dialect {
  public:
   explicit XlaHloClientDialect(MLIRContext *context);
-  static StringRef getDialectNamespace() { return "xla_hlo_client"; }
+  static StringRef getDialectNamespace() { return "xla_chlo"; }
 };
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/xla/ir/hlo_client_ops.h.inc"
+#include "tensorflow/compiler/mlir/xla/ir/chlo_ops.h.inc"
 
-}  // namespace xla_hlo_client
+}  // namespace xla_chlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_IR_HLO_CLIENT_OPS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_XLA_IR_CHLO_OPS_H_
