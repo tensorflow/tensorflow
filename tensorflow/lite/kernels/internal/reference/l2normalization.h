@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_L2NORMALIZATION_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_L2NORMALIZATION_H_
 
+#include <algorithm>
 #include <cmath>
 
 #include "tensorflow/lite/c/common.h"
@@ -76,7 +77,9 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
       int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
           128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
       int32 unclamped_output_val = 128 + rescaled_diff;
-      int32 output_val = std::min(255, std::max(0, unclamped_output_val));
+      int32 output_val =
+          std::min(static_cast<int32>(255),
+                   std::max(static_cast<int32>(0), unclamped_output_val));
       output_data[depth * i + c] = static_cast<uint8>(output_val);
     }
   }
