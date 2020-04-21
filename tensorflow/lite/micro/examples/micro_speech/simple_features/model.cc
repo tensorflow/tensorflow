@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Automatically created from a TensorFlow Lite flatbuffer using the command:
-// xxd -i tiny_conv.tflite > tiny_conv_simple_features_model_data.cc
-// See the README for a full description of the creation process.
+// This is a standard TensorFlow Lite FlatBuffer model file that has been
+// converted into a C data array, so it can be easily compiled into a binary
+// for devices that don't have a file system. It was created using the command:
+// xxd -i model.tflite > model.cc
 
-#include "tensorflow/lite/micro/examples/micro_speech/simple_features/tiny_conv_simple_features_model_data.h"
+#include "tensorflow/lite/micro/examples/micro_speech/simple_features/model.h"
 
-const unsigned char g_tiny_conv_simple_features_model_data[] = {
+const unsigned char g_model[] = {
     0x18, 0x00, 0x00, 0x00, 0x54, 0x46, 0x4c, 0x33, 0x00, 0x00, 0x0e, 0x00,
     0x18, 0x00, 0x04, 0x00, 0x08, 0x00, 0x0c, 0x00, 0x10, 0x00, 0x14, 0x00,
     0x0e, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x08, 0x4d, 0x00, 0x00,
@@ -1670,4 +1671,4 @@ const unsigned char g_tiny_conv_simple_features_model_data[] = {
     0x04, 0x00, 0x00, 0x00, 0xfa, 0xff, 0xff, 0xff, 0x00, 0x19, 0x06, 0x00,
     0x06, 0x00, 0x05, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x09, 0x06, 0x00,
     0x08, 0x00, 0x07, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04};
-const int g_tiny_conv_simple_features_model_data_len = 19800;
+const int g_model_len = 19800;
