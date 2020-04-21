@@ -844,6 +844,65 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
+XLA_TEST_F(ExecutionTest, ReshapeSplitCombineSameTime) {
+  // [<=4, 2, <=2]
+  //       |
+  //    Reshape
+  //       |
+  // [2, <=2, <=4]
+  //
+  // Split one input dynamic dim to multiple output dims while combining two
+  // dimensions together.
+  //
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[4, 2, 2] parameter(0)
+  two = s32[] constant(2)
+  one = s32[] constant(1)
+  param_padded_partial = s32[<=4, 2, 2] set-dimension-size(param, two),
+    dimensions={0}
+
+  param_padded_dynamic = s32[<=4, 2, <=2] set-dimension-size(param_padded_partial,
+                                                             one),
+    dimensions={2}
+  reshaped = s32[2, <=2, <=4] reshape(param_padded_dynamic),
+    inferred_dimension=1
+  init = s32[] constant(0)
+  ROOT reduce = s32[] reduce(reshaped, init),
+      dimensions={0, 1, 2},
+      to_apply=update_s32
+}
+)";
+
+  // First and last dims are dynamic. Padded data are expressed as -1.
+  Literal operand = LiteralUtil::CreateR3<int32>({{{0, -1}, {1, -1}},
+                                                  {{2, -1}, {3, -1}},
+                                                  {{-1, -1}, {-1, -1}},
+                                                  {{-1, -1}, {-1, -1}}});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand});
+
+  // Reshaping (with correct reshape rewriting) produces:
+  // [[[0, 1, -1, -1], [-1, -1, -1, -1]], [[2, 3, -1, -1], [-1, -1, -1, -1]]]
+  //
+  //  Dynamic padder auto pads -1 with 0.
+  //
+  // Reducing it produces 0 + 1 + 2 + 3 = 6
+
+  Literal expected = LiteralUtil::CreateR0<int32>(6);
+
+  EXPECT_EQ(result, expected);
+}
+
 XLA_TEST_F(ExecutionTest, DoubleDynamicDimension) {
   const string hlo_text = R"(
 HloModule TensorFlowScatterV1
