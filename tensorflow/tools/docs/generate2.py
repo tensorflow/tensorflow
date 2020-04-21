@@ -227,7 +227,7 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
 
   out_path = pathlib.Path(output_dir)
   num_files = len(list(out_path.rglob("*")))
-  if num_files < 2500:
+  if num_files < 2000:
     raise ValueError("The TensorFlow api should be more than 2500 files"
                      "(found {}).".format(num_files))
   expected_path_contents = {
