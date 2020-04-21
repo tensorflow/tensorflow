@@ -811,6 +811,8 @@ static inline Status Csru2csrImpl(SparseFnT op, BufferSizeFnT buffer_size_op,
 
 TF_CALL_LAPACK_TYPES(CSRU2CSR_INSTANCE);
 
+#if CUDA_VERSION < 10010
+
 template <typename Scalar, typename SparseFnT>
 static inline Status Csr2cscImpl(SparseFnT op, OpKernelContext* context,
                                  cusparseHandle_t cusparse_handle, int m, int n,
@@ -838,6 +840,56 @@ static inline Status Csr2cscImpl(SparseFnT op, OpKernelContext* context,
   }
 
 TF_CALL_LAPACK_TYPES(CSR2CSC_INSTANCE);
+
+#else
+
+template <typename Scalar>
+static inline Status Csr2cscImpl(cudaDataType_t dtype, OpKernelContext* context,
+                                 cusparseHandle_t cusparse_handle, int m, int n,
+                                 int nnz, const Scalar* csrVal,
+                                 const int* csrRowPtr, const int* csrColInd,
+                                 Scalar* cscVal, int* cscRowInd, int* cscColPtr,
+                                 const cusparseAction_t copyValues) {
+  size_t bufferSize;
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCsr2cscEx2_bufferSize(
+                         cusparse_handle, m, n, nnz,
+                         AsCudaComplex(csrVal), csrRowPtr, csrColInd,
+                         AsCudaComplex(cscVal), cscColPtr, cscRowInd,
+                         dtype, copyValues, CUSPARSE_INDEX_BASE_ZERO,
+                         CUSPARSE_CSR2CSC_ALG2, &bufferSize));
+
+  Tensor buffer;
+  TF_RETURN_IF_ERROR(context->allocate_temp(DataTypeToEnum<Scalar>::value,
+                                           {bufferSize}, &buffer));
+
+  DCHECK(buffer.flat<Scalar>().data() != nullptr);
+
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCsr2cscEx2(
+                         cusparse_handle, m, n, nnz,
+                         AsCudaComplex(csrVal), csrRowPtr, csrColInd,
+                         AsCudaComplex(cscVal), cscColPtr, cscRowInd,
+                         dtype, copyValues, CUSPARSE_INDEX_BASE_ZERO,
+                         CUSPARSE_CSR2CSC_ALG2,
+                          buffer.flat<Scalar>().data()));
+
+  return Status::OK();
+}
+
+#define CSR2CSC_INSTANCE(Scalar, cudaDataType)                               \
+  template <>                                                                \
+  Status GpuSparse::Csr2csc<Scalar>(                                         \
+      int m, int n, int nnz, const Scalar* csrVal, const int* csrRowPtr,     \
+      const int* csrColInd, Scalar* cscVal, int* cscRowInd, int* cscColPtr,  \
+      const cusparseAction_t copyValues) {                                   \
+    DCHECK(initialized_);                                                    \
+    return Csr2cscImpl(cudaDataType, context_,                               \
+                       *gpusparse_handle_, m, n, nnz, csrVal, csrRowPtr,     \
+                       csrColInd, cscVal, cscRowInd, cscColPtr, copyValues); \
+  }
+
+TF_CALL_CUSPARSE_DTYPES(CSR2CSC_INSTANCE);
+
+#endif  // CUDA_VERSION < 100010
 
 }  // namespace tensorflow
 
