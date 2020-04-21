@@ -350,7 +350,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     _keras_api_gauge.get_cell('compile').set(True)
     with self.distribute_strategy.scope():
       self._validate_compile(optimizer, metrics, **kwargs)
-      self._run_eagerly = kwargs.pop('run_eagerly', None)
+      self._run_eagerly = run_eagerly
 
       self.optimizer = self._get_optimizer(optimizer)
       self.compiled_loss = compile_utils.LossesContainer(
