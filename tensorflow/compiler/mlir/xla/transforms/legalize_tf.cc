@@ -3780,22 +3780,16 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
                                 PatternRewriter &rewriter) const override {
     // TODO(b/148313088): define sharding attribute struct in MLIR intead of
     // using a string.
-    auto sharding = op.getAttrOfType<StringAttr>("_XlaSharding");
-    if (!sharding) {
-      return failure();
-    }
+    if (!op._XlaSharding().hasValue()) return failure();
 
     // _XlaSharding attribute in TF is a serialized string of the OpSharding
     // proto, so convert to a text form here.
     ::xla::OpSharding sharding_proto;
     std::string sharding_str;
-    if (!sharding_proto.ParseFromString(sharding.getValue().str())) {
+    if (!sharding_proto.ParseFromString(op._XlaSharding().getValue().str()) ||
+        !::tensorflow::protobuf::TextFormat::PrintToString(sharding_proto,
+                                                           &sharding_str))
       return failure();
-    }
-    if (!::tensorflow::protobuf::TextFormat::PrintToString(sharding_proto,
-                                                           &sharding_str)) {
-      return failure();
-    }
 
     auto custom_call = rewriter.create<xla_hlo::CustomCallOp>(
         op.getLoc(), op.getType(), op.input(),

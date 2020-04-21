@@ -37,17 +37,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-const char* const kXlaShardingAttrName = "_XlaSharding";
 const char* const kInputShardingAttr = "input_sharding_configuration";
 const char* const kOutputShardingAttr = "output_sharding_configuration";
-
-llvm::Optional<mlir::StringRef> ParseShardingAttribute(
-    mlir::Operation* operation) {
-  const auto& sharding_attr =
-      operation->getAttrOfType<mlir::StringAttr>(kXlaShardingAttrName);
-  if (!sharding_attr) return llvm::Optional<mlir::StringRef>();
-  return sharding_attr.getValue();
-}
 
 namespace {
 
