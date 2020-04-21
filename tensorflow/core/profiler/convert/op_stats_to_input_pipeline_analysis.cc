@@ -602,7 +602,7 @@ bool InputAnalysis(double input_percent, double all_other_percent,
     *input_classification = "both";
     string all_other_percent_str = absl::StrFormat("%.1lf", all_other_percent);
     *input_statement = absl::StrCat(
-        "Your program in POTENTIALLY input-bound because ",
+        "Your program is POTENTIALLY input-bound because ",
         all_other_percent_str,
         "% of the total step time sampled is spent on 'All Others' time (which "
         "could be due to I/O or Python execution or both).");
