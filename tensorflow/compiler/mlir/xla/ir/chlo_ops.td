@@ -22,12 +22,12 @@ limitations under the License.
 //
 // The typical use of this dialect is for client libraries to be able to emit
 // less constrained ops and rely on the conversion framework to lower any
-// xla_hlo_client ops to canonical xla_hlo ops.
+// xla_chlo ops to canonical xla_hlo ops.
 //
 // See: https://www.tensorflow.org/xla/operation_semantics
 
-#ifndef HLO_CLIENT_OPS
-#define HLO_CLIENT_OPS
+#ifndef CHLO_OPS
+#define CHLO_OPS
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/SideEffects.td"
@@ -43,8 +43,8 @@ def HLOClient_Dialect : Dialect {
   let description = [{
     This dialect contains ops that align closely with the API surface area
     of the XlaBuilder C++ API, where such ops have semantics that go beyond
-    exists in the lower level dialects (such as `xla_hlo`). Essentially,
-    whenever the client library provides uses syntactic sugar or composition
+    what exists in the lower level dialects (such as `xla_hlo`). Essentially,
+    whenever the client library uses syntactic sugar or composition
     of multiple ops for an API call, this dialect tries to model the API call
     and provide conversion patterns to fully materialize into lower level
     dialects.
@@ -64,8 +64,9 @@ class HLOClient_Op<string mnemonic, list<OpTrait> traits> :
 // broadcasting (via the broadcast_dimensions attribute) and implicit degenerate
 // shape broadcasting.
 //
-// These have 1:1 correspondence with same-named ops in the xla_hlo dialect;
-// however, those operations do not support broadcasting.
+// These correspond to operations in the xla_hlo dialect without the
+// "broadcast_" prefix, except that those ops require same-shaped operands and
+// results.
 //
 // See:
 //   https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
@@ -305,4 +306,4 @@ def HLOClient_BroadcastXorOp : HLOClient_BroadcastBinaryLogicalElementwiseOp<
   }];
 }
 
-#endif  // HLO_CLIENT_OPS
+#endif  // CHLO_OPS
