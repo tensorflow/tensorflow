@@ -7,7 +7,7 @@ The application listens to its surroundings with a microphone and indicates
 when it has detected a word by lighting an LED or displaying data on a
 screen, depending on the capabilities of the device.
 
-![Animation on Arduino](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/hello_world/images/animation_on_arduino.gif)
+![Animation on Arduino](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/micro_speech/images/animation_on_arduino.gif)
 
 The code has a small footprint (for example, around 22 kilobytes on a Cortex
 M3) and only uses about 10 kilobytes of RAM for working memory, so it's able to
@@ -27,10 +27,10 @@ kilobytes of Flash.
 
 ## Deploy to Arduino
 
-The following instructions will help you build and deploy this sample
+The following instructions will help you build and deploy this example
 to [Arduino](https://www.arduino.cc/) devices.
 
-The sample has been tested with the following devices:
+The example has been tested with the following devices:
 
 - [Arduino Nano 33 BLE Sense](https://store.arduino.cc/usa/nano-33-ble-sense-with-headers)
 
@@ -84,11 +84,11 @@ If you don't see any output, repeat the process again.
 
 ## Deploy to ESP32
 
-The following instructions will help you build and deploy this sample to
+The following instructions will help you build and deploy this example to
 [ESP32](https://www.espressif.com/en/products/hardware/esp32/overview) devices
 using the [ESP IDF](https://github.com/espressif/esp-idf).
 
-The sample has been tested on ESP-IDF version 4.0 with the following devices: -
+The example has been tested on ESP-IDF version 4.0 with the following devices: -
 [ESP32-DevKitC](http://esp-idf.readthedocs.io/en/latest/get-started/get-started-devkitc.html) -
 [ESP-EYE](https://github.com/espressif/esp-who/blob/master/docs/en/get-started/ESP-EYE_Getting_Started_Guide.md)
 
@@ -139,7 +139,7 @@ monitor`
 
 ## Deploy to SparkFun Edge
 
-The following instructions will help you build and deploy this sample on the
+The following instructions will help you build and deploy this example on the
 [SparkFun Edge development board](https://sparkfun.com/products/15170).
 
 The program will toggle the blue LED on and off with each inference. It will
@@ -288,7 +288,7 @@ followed by the `K` key, then hit the `Y` key.
 
 ## Deploy to STM32F746
 
-The following instructions will help you build and deploy the sample to the
+The following instructions will help you build and deploy the example to the
 [STM32F7 discovery kit](https://os.mbed.com/platforms/ST-Discovery-F746NG/)
 using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
 
@@ -392,7 +392,7 @@ followed by the `K` key, then hit the `Y` key.
 
 ## Deploy to NXP FRDM K66F
 
-The following instructions will help you build and deploy the sample to the
+The following instructions will help you build and deploy the example to the
 [NXP FRDM K66F](https://www.nxp.com/design/development-boards/freedom-development-boards/mcu-boards/freedom-development-platform-for-kinetis-k66-k65-and-k26-mcus:FRDM-K66F)
 using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
 
