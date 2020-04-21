@@ -404,13 +404,6 @@ void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
   }
 }
 
-namespace {
-static void UpdateList(gtl::FlatSet<string>* list, const string& values_to_add){
-
-}
-
-} // namespace
-
 Status SegmentGraph(const Graph* tf_graph,
                     const std::function<Status(const Node*)>& candidate_fn,
                     const std::function<bool(const Edge*)>& input_candidate_fn,
