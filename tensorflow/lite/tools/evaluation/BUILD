@@ -57,6 +57,7 @@ cc_library(
         "//conditions:default": [],
     }) + select({
         "//tensorflow:fuchsia": [],
+        "//tensorflow:windows": [],
         "//conditions:default": [
             "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         ],
@@ -73,8 +74,8 @@ cc_library(
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools:tool_params",
-        "//tensorflow/lite/tools/benchmark:delegate_provider_hdr",
-        "//tensorflow/lite/tools/benchmark:tflite_execution_providers",
+        "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
+        "//tensorflow/lite/tools/delegates:tflite_execution_providers",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
     ],
 )

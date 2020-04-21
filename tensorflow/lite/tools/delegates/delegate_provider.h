@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_TOOLS_BENCHMARK_DELEGATE_PROVIDER_H_
-#define TENSORFLOW_LITE_TOOLS_BENCHMARK_DELEGATE_PROVIDER_H_
+#ifndef TENSORFLOW_LITE_TOOLS_DELEGATES_DELEGATE_PROVIDER_H_
+#define TENSORFLOW_LITE_TOOLS_DELEGATES_DELEGATE_PROVIDER_H_
 
 #include <string>
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/logging.h"
+#include "tensorflow/lite/tools/tool_params.h"
 
 namespace tflite {
-namespace benchmark {
+namespace tools {
 
 // Same w/ Interpreter::TfLiteDelegatePtr to avoid pulling
 // tensorflow/lite/interpreter.h dependency
@@ -36,31 +36,30 @@ class DelegateProvider {
  public:
   virtual ~DelegateProvider() {}
 
-  // Create a list of command-line parsable flags based on benchmark params
-  // inside 'params' whose value will be set to the corresponding runtime flag
-  // value.
-  virtual std::vector<Flag> CreateFlags(BenchmarkParams* params) const = 0;
+  // Create a list of command-line parsable flags based on tool params inside
+  // 'params' whose value will be set to the corresponding runtime flag value.
+  virtual std::vector<Flag> CreateFlags(ToolParams* params) const = 0;
 
-  // Log benchmark params.
-  virtual void LogParams(const BenchmarkParams& params) const = 0;
+  // Log tool params.
+  virtual void LogParams(const ToolParams& params) const = 0;
 
-  // Create a TfLiteDelegate based on benchmark params.
+  // Create a TfLiteDelegate based on tool params.
   virtual TfLiteDelegatePtr CreateTfLiteDelegate(
-      const BenchmarkParams& params) const = 0;
+      const ToolParams& params) const = 0;
 
   virtual std::string GetName() const = 0;
 
-  const BenchmarkParams& DefaultParams() const { return default_params_; }
+  const ToolParams& DefaultParams() const { return default_params_; }
 
  protected:
   template <typename T>
-  Flag CreateFlag(const char* name, BenchmarkParams* params,
+  Flag CreateFlag(const char* name, ToolParams* params,
                   const std::string& usage) const {
     return Flag(
         name, [params, name](const T& val) { params->Set<T>(name, val); },
         default_params_.Get<T>(name), usage, Flag::kOptional);
   }
-  BenchmarkParams default_params_;
+  ToolParams default_params_;
 };
 
 using DelegateProviderPtr = std::unique_ptr<DelegateProvider>;
@@ -102,7 +101,7 @@ class DelegateProviderRegistrar {
 inline const DelegateProviderList& GetRegisteredDelegateProviders() {
   return DelegateProviderRegistrar::GetProviders();
 }
-}  // namespace benchmark
+}  // namespace tools
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_TOOLS_BENCHMARK_DELEGATE_PROVIDER_H_
+#endif  // TENSORFLOW_LITE_TOOLS_DELEGATES_DELEGATE_PROVIDER_H_

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
-#include "tensorflow/lite/tools/benchmark/delegate_provider.h"
+#include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/delegate.h"
@@ -28,39 +28,37 @@ limitations under the License.
 #endif
 
 namespace tflite {
-namespace benchmark {
+namespace tools {
 
 class GpuDelegateProvider : public DelegateProvider {
  public:
   GpuDelegateProvider() {
-    default_params_.AddParam("use_gpu", BenchmarkParam::Create<bool>(false));
+    default_params_.AddParam("use_gpu", ToolParam::Create<bool>(false));
 #if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
     default_params_.AddParam("gpu_precision_loss_allowed",
-                             BenchmarkParam::Create<bool>(true));
+                             ToolParam::Create<bool>(true));
 #endif
 #if defined(__ANDROID__)
     default_params_.AddParam("gpu_experimental_enable_quant",
-                             BenchmarkParam::Create<bool>(true));
+                             ToolParam::Create<bool>(true));
 #endif
 #if defined(REAL_IPHONE_DEVICE)
     default_params_.AddParam("gpu_wait_type",
-                             BenchmarkParam::Create<std::string>(""));
+                             ToolParam::Create<std::string>(""));
 #endif
   }
 
-  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
+  std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const BenchmarkParams& params) const final;
+  void LogParams(const ToolParams& params) const final;
 
-  TfLiteDelegatePtr CreateTfLiteDelegate(
-      const BenchmarkParams& params) const final;
+  TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
   std::string GetName() const final { return "GPU"; }
 };
 REGISTER_DELEGATE_PROVIDER(GpuDelegateProvider);
 
-std::vector<Flag> GpuDelegateProvider::CreateFlags(
-    BenchmarkParams* params) const {
+std::vector<Flag> GpuDelegateProvider::CreateFlags(ToolParams* params) const {
   std::vector<Flag> flags = {
     CreateFlag<bool>("use_gpu", params, "use gpu"),
 #if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
@@ -83,7 +81,7 @@ std::vector<Flag> GpuDelegateProvider::CreateFlags(
   return flags;
 }
 
-void GpuDelegateProvider::LogParams(const BenchmarkParams& params) const {
+void GpuDelegateProvider::LogParams(const ToolParams& params) const {
   TFLITE_LOG(INFO) << "Use gpu : [" << params.Get<bool>("use_gpu") << "]";
 #if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
   TFLITE_LOG(INFO) << "Allow lower precision in gpu : ["
@@ -100,7 +98,7 @@ void GpuDelegateProvider::LogParams(const BenchmarkParams& params) const {
 }
 
 TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
-    const BenchmarkParams& params) const {
+    const ToolParams& params) const {
   TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
 
   if (params.Get<bool>("use_gpu")) {
@@ -139,8 +137,8 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
     delegate = TfLiteDelegatePtr(TFLGpuDelegateCreate(&gpu_opts),
                                  &TFLGpuDelegateDelete);
 #else
-    TFLITE_LOG(WARN) << "The GPU delegate compile options are only supported "
-                        "to be benchmarked on Android or iOS platforms.";
+    TFLITE_LOG(WARN) << "The GPU delegate compile options are only supported on"
+                        "Android or iOS platforms.";
     delegate = evaluation::CreateGPUDelegate();
 #endif
 
@@ -151,5 +149,5 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
   return delegate;
 }
 
-}  // namespace benchmark
+}  // namespace tools
 }  // namespace tflite

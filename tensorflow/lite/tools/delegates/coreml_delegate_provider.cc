@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
-#include "tensorflow/lite/tools/benchmark/delegate_provider.h"
+#include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 #if defined(__APPLE__)
 #if TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR
@@ -25,28 +25,27 @@ limitations under the License.
 #endif
 
 namespace tflite {
-namespace benchmark {
+namespace tools {
 
 class CoreMlDelegateProvider : public DelegateProvider {
  public:
   CoreMlDelegateProvider() {
 #if defined(REAL_IPHONE_DEVICE)
-    default_params_.AddParam("use_coreml", BenchmarkParam::Create<bool>(true));
+    default_params_.AddParam("use_coreml", ToolParam::Create<bool>(true));
 #endif
   }
-  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
+  std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const BenchmarkParams& params) const final;
+  void LogParams(const ToolParams& params) const final;
 
-  TfLiteDelegatePtr CreateTfLiteDelegate(
-      const BenchmarkParams& params) const final;
+  TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
   std::string GetName() const final { return "COREML"; }
 };
 REGISTER_DELEGATE_PROVIDER(CoreMlDelegateProvider);
 
 std::vector<Flag> CoreMlDelegateProvider::CreateFlags(
-    BenchmarkParams* params) const {
+    ToolParams* params) const {
 #if defined(REAL_IPHONE_DEVICE)
   std::vector<Flag> flags = {
       CreateFlag<bool>("use_coreml", params, "use Core ML"),
@@ -57,7 +56,7 @@ std::vector<Flag> CoreMlDelegateProvider::CreateFlags(
 #endif
 }
 
-void CoreMlDelegateProvider::LogParams(const BenchmarkParams& params) const {
+void CoreMlDelegateProvider::LogParams(const ToolParams& params) const {
 #if defined(REAL_IPHONE_DEVICE)
   TFLITE_LOG(INFO) << "Use Core ML : [" << params.Get<bool>("use_coreml")
                    << "]";
@@ -65,7 +64,7 @@ void CoreMlDelegateProvider::LogParams(const BenchmarkParams& params) const {
 }
 
 TfLiteDelegatePtr CoreMlDelegateProvider::CreateTfLiteDelegate(
-    const BenchmarkParams& params) const {
+    const ToolParams& params) const {
   TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
 
 #if defined(REAL_IPHONE_DEVICE)
@@ -88,5 +87,5 @@ TfLiteDelegatePtr CoreMlDelegateProvider::CreateTfLiteDelegate(
   return delegate;
 }
 
-}  // namespace benchmark
+}  // namespace tools
 }  // namespace tflite

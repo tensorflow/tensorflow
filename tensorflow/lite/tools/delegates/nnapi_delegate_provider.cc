@@ -14,40 +14,38 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
-#include "tensorflow/lite/tools/benchmark/delegate_provider.h"
+#include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 #if defined(__ANDROID__)
 #include "tensorflow/lite/nnapi/nnapi_util.h"
 #endif
 
 namespace tflite {
-namespace benchmark {
+namespace tools {
 
 class NnapiDelegateProvider : public DelegateProvider {
  public:
   NnapiDelegateProvider() {
-    default_params_.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
+    default_params_.AddParam("use_nnapi", ToolParam::Create<bool>(false));
     default_params_.AddParam("nnapi_execution_preference",
-                             BenchmarkParam::Create<std::string>(""));
+                             ToolParam::Create<std::string>(""));
     default_params_.AddParam("nnapi_accelerator_name",
-                             BenchmarkParam::Create<std::string>(""));
+                             ToolParam::Create<std::string>(""));
     default_params_.AddParam("disable_nnapi_cpu",
-                             BenchmarkParam::Create<bool>(false));
+                             ToolParam::Create<bool>(false));
   }
 
-  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
+  std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const BenchmarkParams& params) const final;
+  void LogParams(const ToolParams& params) const final;
 
-  TfLiteDelegatePtr CreateTfLiteDelegate(
-      const BenchmarkParams& params) const final;
+  TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
   std::string GetName() const final { return "NNAPI"; }
 };
 REGISTER_DELEGATE_PROVIDER(NnapiDelegateProvider);
 
-std::vector<Flag> NnapiDelegateProvider::CreateFlags(
-    BenchmarkParams* params) const {
+std::vector<Flag> NnapiDelegateProvider::CreateFlags(ToolParams* params) const {
   std::vector<Flag> flags = {
       CreateFlag<bool>("use_nnapi", params, "use nnapi delegate api"),
       CreateFlag<std::string>("nnapi_execution_preference", params,
@@ -63,7 +61,7 @@ std::vector<Flag> NnapiDelegateProvider::CreateFlags(
   return flags;
 }
 
-void NnapiDelegateProvider::LogParams(const BenchmarkParams& params) const {
+void NnapiDelegateProvider::LogParams(const ToolParams& params) const {
 #if defined(__ANDROID__)
   TFLITE_LOG(INFO) << "Use nnapi : [" << params.Get<bool>("use_nnapi") << "]";
   if (params.Get<bool>("use_nnapi")) {
@@ -90,7 +88,7 @@ void NnapiDelegateProvider::LogParams(const BenchmarkParams& params) const {
 }
 
 TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
-    const BenchmarkParams& params) const {
+    const ToolParams& params) const {
   TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
   if (params.Get<bool>("use_nnapi")) {
     StatefulNnApiDelegate::Options options;
@@ -150,5 +148,5 @@ TfLiteDelegatePtr NnapiDelegateProvider::CreateTfLiteDelegate(
   return delegate;
 }
 
-}  // namespace benchmark
+}  // namespace tools
 }  // namespace tflite

@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/benchmark/delegate_provider.h"
+#include "tensorflow/lite/tools/delegates/delegate_provider.h"
 
 #if defined(_WIN32)
 #include <Windows.h>
@@ -25,7 +25,7 @@ limitations under the License.
 #include <vector>
 
 namespace tflite {
-namespace benchmark {
+namespace tools {
 namespace {
 // Library Support construct to handle dynamic library operations
 #if defined(_WIN32)
@@ -97,24 +97,23 @@ class ExternalDelegateProvider : public DelegateProvider {
  public:
   ExternalDelegateProvider() {
     default_params_.AddParam("external_delegate_path",
-                             BenchmarkParam::Create<std::string>(""));
+                             ToolParam::Create<std::string>(""));
     default_params_.AddParam("external_delegate_options",
-                             BenchmarkParam::Create<std::string>(""));
+                             ToolParam::Create<std::string>(""));
   }
 
-  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
+  std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const BenchmarkParams& params) const final;
+  void LogParams(const ToolParams& params) const final;
 
-  TfLiteDelegatePtr CreateTfLiteDelegate(
-      const BenchmarkParams& params) const final;
+  TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
   std::string GetName() const final { return "EXTERNAL"; }
 };
 REGISTER_DELEGATE_PROVIDER(ExternalDelegateProvider);
 
 std::vector<Flag> ExternalDelegateProvider::CreateFlags(
-    BenchmarkParams* params) const {
+    ToolParams* params) const {
   std::vector<Flag> flags = {
       CreateFlag<std::string>("external_delegate_path", params,
                               "The library path for the underlying external."),
@@ -124,7 +123,7 @@ std::vector<Flag> ExternalDelegateProvider::CreateFlags(
   return flags;
 }
 
-void ExternalDelegateProvider::LogParams(const BenchmarkParams& params) const {
+void ExternalDelegateProvider::LogParams(const ToolParams& params) const {
   TFLITE_LOG(INFO) << "External delegate path : ["
                    << params.Get<std::string>("external_delegate_path") << "]";
   TFLITE_LOG(INFO) << "External delegate options : ["
@@ -133,7 +132,7 @@ void ExternalDelegateProvider::LogParams(const BenchmarkParams& params) const {
 }
 
 TfLiteDelegatePtr ExternalDelegateProvider::CreateTfLiteDelegate(
-    const BenchmarkParams& params) const {
+    const ToolParams& params) const {
   TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
   std::string lib_path = params.Get<std::string>("external_delegate_path");
   if (!lib_path.empty()) {
@@ -167,5 +166,5 @@ TfLiteDelegatePtr ExternalDelegateProvider::CreateTfLiteDelegate(
   }
   return delegate;
 }
-}  // namespace benchmark
+}  // namespace tools
 }  // namespace tflite

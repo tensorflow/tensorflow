@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
-#include "tensorflow/lite/tools/benchmark/delegate_provider.h"
+#include "tensorflow/lite/tools/delegates/delegate_provider.h"
 
 namespace tflite {
-namespace benchmark {
+namespace tools {
 
 // This class actually doesn't provide any TFLite delegate instances, it simply
 // provides common params and flags that are common to all actual delegate
@@ -25,23 +25,22 @@ namespace benchmark {
 class DefaultExecutionProvider : public DelegateProvider {
  public:
   DefaultExecutionProvider() {
-    default_params_.AddParam("num_threads", BenchmarkParam::Create<int32_t>(1));
+    default_params_.AddParam("num_threads", ToolParam::Create<int32_t>(1));
     default_params_.AddParam("max_delegated_partitions",
-                             BenchmarkParam::Create<int32_t>(0));
+                             ToolParam::Create<int32_t>(0));
     default_params_.AddParam("min_nodes_per_partition",
-                             BenchmarkParam::Create<int32_t>(0));
+                             ToolParam::Create<int32_t>(0));
   }
 
-  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
-  void LogParams(const BenchmarkParams& params) const final;
-  TfLiteDelegatePtr CreateTfLiteDelegate(
-      const BenchmarkParams& params) const final;
+  std::vector<Flag> CreateFlags(ToolParams* params) const final;
+  void LogParams(const ToolParams& params) const final;
+  TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
   std::string GetName() const final { return "Default-NoDelegate"; }
 };
 REGISTER_DELEGATE_PROVIDER(DefaultExecutionProvider);
 
 std::vector<Flag> DefaultExecutionProvider::CreateFlags(
-    BenchmarkParams* params) const {
+    ToolParams* params) const {
   std::vector<Flag> flags = {
       CreateFlag<int32_t>("num_threads", params,
                           "number of threads used for inference on CPU."),
@@ -55,7 +54,7 @@ std::vector<Flag> DefaultExecutionProvider::CreateFlags(
   return flags;
 }
 
-void DefaultExecutionProvider::LogParams(const BenchmarkParams& params) const {
+void DefaultExecutionProvider::LogParams(const ToolParams& params) const {
   TFLITE_LOG(INFO) << "#threads used for CPU inference: ["
                    << params.Get<int32_t>("num_threads") << "]";
   TFLITE_LOG(INFO) << "Max number of delegated partitions : ["
@@ -65,9 +64,9 @@ void DefaultExecutionProvider::LogParams(const BenchmarkParams& params) const {
 }
 
 TfLiteDelegatePtr DefaultExecutionProvider::CreateTfLiteDelegate(
-    const BenchmarkParams& params) const {
+    const ToolParams& params) const {
   return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 }
 
-}  // namespace benchmark
+}  // namespace tools
 }  // namespace tflite

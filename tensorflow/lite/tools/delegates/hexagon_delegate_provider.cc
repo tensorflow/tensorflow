@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <string>
 
-#include "tensorflow/lite/tools/benchmark/delegate_provider.h"
+#include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
 #if (defined(ANDROID) || defined(__ANDROID__)) && \
@@ -27,35 +27,32 @@ limitations under the License.
 #endif
 
 namespace tflite {
-namespace benchmark {
+namespace tools {
 
 class HexagonDelegateProvider : public DelegateProvider {
  public:
   HexagonDelegateProvider() {
 #if defined(TFLITE_ENABLE_HEXAGON)
-    default_params_.AddParam("use_hexagon",
-                             BenchmarkParam::Create<bool>(false));
-    default_params_.AddParam(
-        "hexagon_lib_path",
-        BenchmarkParam::Create<std::string>("/data/local/tmp"));
+    default_params_.AddParam("use_hexagon", ToolParam::Create<bool>(false));
+    default_params_.AddParam("hexagon_lib_path",
+                             ToolParam::Create<std::string>("/data/local/tmp"));
     default_params_.AddParam("hexagon_profiling",
-                             BenchmarkParam::Create<bool>(false));
+                             ToolParam::Create<bool>(false));
 #endif
   }
 
-  std::vector<Flag> CreateFlags(BenchmarkParams* params) const final;
+  std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const BenchmarkParams& params) const final;
+  void LogParams(const ToolParams& params) const final;
 
-  TfLiteDelegatePtr CreateTfLiteDelegate(
-      const BenchmarkParams& params) const final;
+  TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
   std::string GetName() const final { return "Hexagon"; }
 };
 REGISTER_DELEGATE_PROVIDER(HexagonDelegateProvider);
 
 std::vector<Flag> HexagonDelegateProvider::CreateFlags(
-    BenchmarkParams* params) const {
+    ToolParams* params) const {
 #if defined(TFLITE_ENABLE_HEXAGON)
   std::vector<Flag> flags = {
       CreateFlag<bool>("use_hexagon", params, "Use Hexagon delegate"),
@@ -70,7 +67,7 @@ std::vector<Flag> HexagonDelegateProvider::CreateFlags(
 #endif
 }
 
-void HexagonDelegateProvider::LogParams(const BenchmarkParams& params) const {
+void HexagonDelegateProvider::LogParams(const ToolParams& params) const {
 #if defined(TFLITE_ENABLE_HEXAGON)
   TFLITE_LOG(INFO) << "Use Hexagon : [" << params.Get<bool>("use_hexagon")
                    << "]";
@@ -82,7 +79,7 @@ void HexagonDelegateProvider::LogParams(const BenchmarkParams& params) const {
 }
 
 TfLiteDelegatePtr HexagonDelegateProvider::CreateTfLiteDelegate(
-    const BenchmarkParams& params) const {
+    const ToolParams& params) const {
   TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
 #if defined(TFLITE_ENABLE_HEXAGON)
   if (params.Get<bool>("use_hexagon")) {
@@ -105,5 +102,5 @@ TfLiteDelegatePtr HexagonDelegateProvider::CreateTfLiteDelegate(
   return delegate;
 }
 
-}  // namespace benchmark
+}  // namespace tools
 }  // namespace tflite

@@ -78,7 +78,7 @@ TfLiteDelegatePtr CreateTfLiteDelegate(const TfliteInferenceParams& params,
 }
 
 DelegateProviders::DelegateProviders()
-    : delegates_list_(benchmark::GetRegisteredDelegateProviders()),
+    : delegates_list_(tools::GetRegisteredDelegateProviders()),
       delegates_map_([=]() -> std::unordered_map<std::string, int> {
         std::unordered_map<std::string, int> delegates_map;
         for (int i = 0; i < delegates_list_.size(); ++i) {
