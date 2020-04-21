@@ -16,9 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_EGL_SYNC_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_EGL_SYNC_H_
 
-#include <EGL/egl.h>
-#include <EGL/eglext.h>
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/gl/portable_egl.h"
 
 namespace tflite {
 namespace gpu {

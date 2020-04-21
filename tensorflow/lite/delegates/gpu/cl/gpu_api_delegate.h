@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <stdint.h>
 
-#include <EGL/egl.h>
-#include <GLES3/gl31.h>
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/gpu/delegate.h"
+#include "tensorflow/lite/delegates/gpu/gl/portable_egl.h"
+#include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
 
 #ifdef SWIG
 #define TFL_CAPI_EXPORT

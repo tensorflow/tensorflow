@@ -18,8 +18,6 @@ limitations under the License.
 
 #include <vector>
 
-#include <EGL/egl.h>
-#include <EGL/eglext.h>
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
@@ -30,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/gl/portable_egl.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
 #include "tensorflow/lite/delegates/gpu/spi.h"
 

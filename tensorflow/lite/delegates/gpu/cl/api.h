@@ -19,11 +19,11 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
-#include <EGL/egl.h>
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/gl/portable_egl.h"
 
 // Usage example:
 //

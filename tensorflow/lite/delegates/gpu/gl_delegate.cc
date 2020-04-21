@@ -22,8 +22,6 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include <EGL/egl.h>
-#include <GLES3/gl31.h>
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
@@ -43,6 +41,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/egl_environment.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/registry.h"
+#include "tensorflow/lite/delegates/gpu/gl/portable_egl.h"
+#include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
 #include "tensorflow/lite/delegates/gpu/gl/request_gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/gl/workgroups/best_effort_calculator.h"
 #include "tensorflow/lite/minimal_logging.h"
