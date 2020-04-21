@@ -3694,7 +3694,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
         auto bcast_width = ShapeUtil::GetDimension(updated_shape, dim);
         padding_config_dim->set_edge_padding_low(beg);
         padding_config_dim->set_edge_padding_high(
-            std::max(bcast_width - (beg + update_width), 0LL));
+            std::max(bcast_width - (beg + update_width), int64{0}));
         // dynamic_update_slice does not specify a stride
         padding_config_dim->set_interior_padding(0);
       }
