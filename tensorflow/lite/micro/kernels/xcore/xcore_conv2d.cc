@@ -1,9 +1,8 @@
+#include "lib_ops/api/conv2d.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
-
-#include "lib_ops/api/conv2d.h"
 
 namespace tflite {
 namespace ops {
@@ -99,7 +98,6 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
                                     &data);
   ::xcore::conv::Conv2D_Deep *op =
       new (data)::xcore::conv::Conv2D_Deep(conv2d_params, par_regions);
-
   return op;
 }
 
@@ -147,17 +145,17 @@ namespace n1x1 {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   ::xcore::conv::Conv2DParams conv2d_legacy_params;
-  padding_mode_t padding_mode;
+  ::xcore::ParRegionArray par_regions;
 
   if (buffer)
-    parse_custom_options(buffer, length, conv2d_legacy_params, nullptr, nullptr,
-                         &padding_mode);
+    parse_custom_options(buffer, length, conv2d_legacy_params, nullptr,
+                         &par_regions);
 
   void *data = nullptr;
   context->AllocatePersistentBuffer(context, sizeof(::xcore::conv::Conv2D_1x1),
                                     &data);
   ::xcore::conv::Conv2D_1x1 *op =
-      new (data)::xcore::conv::Conv2D_1x1(conv2d_legacy_params, padding_mode);
+      new (data)::xcore::conv::Conv2D_1x1(conv2d_legacy_params, par_regions);
 
   return op;
 }
@@ -215,13 +213,16 @@ namespace depthwise {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   ::xcore::conv::Conv2DParams conv2d_params;
-  if (buffer) parse_custom_options(buffer, length, conv2d_params);
+  ::xcore::ParRegionArray par_regions;
+
+  if (buffer)
+    parse_custom_options(buffer, length, conv2d_params, nullptr, &par_regions);
 
   void *data = nullptr;
   context->AllocatePersistentBuffer(
       context, sizeof(::xcore::conv::Conv2D_Depthwise), &data);
   ::xcore::conv::Conv2D_Depthwise *op =
-      new (data)::xcore::conv::Conv2D_Depthwise(conv2d_params);
+      new (data)::xcore::conv::Conv2D_Depthwise(conv2d_params, par_regions);
 
   return op;
 }
