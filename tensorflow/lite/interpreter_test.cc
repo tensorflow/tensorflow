@@ -1094,7 +1094,7 @@ TEST(InterpreterTensorsCapacityTest, TestExceedHeadroom) {
 }
 
 struct TestExternalContext : public TfLiteExternalContext {
-  static const TfLiteExternalContextType kType = kTfLiteGemmLowpContext;
+  static constexpr TfLiteExternalContextType kType = kTfLiteGemmLowpContext;
 
   static TestExternalContext* Get(TfLiteContext* context) {
     return reinterpret_cast<TestExternalContext*>(
