@@ -774,10 +774,10 @@ StatusOr<std::shared_ptr<SharedDeviceBuffer>> PyLocalBuffer::Release(
         }
       }
       if (block_stream != nullptr) {
+        se::Stream* block_stream_ptr = block_stream.release();
         local_device_state->ThenExecuteOnCallbackThread(
-            block_stream.get(),
-            [device_buffer, block_stream_ptr{block_stream.release()},
-             local_device_state]() {
+            block_stream_ptr,
+            [device_buffer, block_stream_ptr, local_device_state]() {
               local_device_state->ReturnStreamToPool(
                   std::unique_ptr<se::Stream>(block_stream_ptr));
             });
