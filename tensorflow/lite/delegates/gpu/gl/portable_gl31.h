@@ -33,4 +33,12 @@ limitations under the License.
 
 #include <GLES3/gl31.h>
 
+// Workaround for the awful decisions made in X11
+#ifdef Status
+#undef Status
+#endif //Status
+#ifdef Success
+#undef Success
+#endif //Success
+
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_GL_PORTABLE_GL31_H_
