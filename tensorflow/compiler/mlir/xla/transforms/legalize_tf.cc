@@ -56,6 +56,8 @@ namespace mlir {
 namespace xla_hlo {
 namespace {
 
+constexpr char kShardingAttr[] = "xla_hlo.sharding";
+
 class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
  public:
   LegalizeTF() = default;
@@ -3241,6 +3243,19 @@ class ConvertInfeedDequeueTupleOp
     auto data_and_token =
         rewriter.create<InfeedOp>(op.getLoc(), data_and_token_type, token,
                                   /*infeed_config=*/rewriter.getStringAttr(""));
+    if (op._XlaSharding().hasValue()) {
+      // _XlaSharding attribute in TF is a serialized string of the OpSharding
+      // proto, so convert to a text form here.
+      ::xla::OpSharding sharding_proto;
+      std::string sharding_str;
+      if (!sharding_proto.ParseFromString(op._XlaSharding().getValue().str()) ||
+          !::tensorflow::protobuf::TextFormat::PrintToString(sharding_proto,
+                                                             &sharding_str))
+        return failure();
+
+      data_and_token.setAttr(kShardingAttr,
+                             rewriter.getStringAttr(sharding_str));
+    }
 
     // The infeed instruction produces a tuple of the infeed data and a token
     // type. Emit get_tuple_element to get infeed data tuple.
@@ -3796,8 +3811,7 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
         /*call_target_name=*/rewriter.getStringAttr("Sharding"),
         /*has_side_effect=*/rewriter.getBoolAttr(false),
         /*backend_config=*/rewriter.getStringAttr(""));
-    custom_call.setAttr("xla_hlo.sharding",
-                        rewriter.getStringAttr(sharding_str));
+    custom_call.setAttr(kShardingAttr, rewriter.getStringAttr(sharding_str));
     rewriter.replaceOp(op, custom_call.getResult());
 
     return success();
