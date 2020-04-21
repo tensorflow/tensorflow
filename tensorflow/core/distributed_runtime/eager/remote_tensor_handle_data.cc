@@ -173,6 +173,10 @@ Status RemoteTensorHandleData::IsPoisoned() const {
 }
 
 Status RemoteTensorHandleData::SetShape(const TensorShape& shape) {
+  // If `is_ready_` is set previously due to poisoning, return the original
+  // error that poisoned this tensor.
+  TF_RETURN_IF_ERROR(IsPoisoned());
+
   mutex_lock l(mu_);
   if (is_ready_) {
     return errors::Internal("SetShape is only called on non-ready handles.");
