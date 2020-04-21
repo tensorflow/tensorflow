@@ -813,6 +813,7 @@ cc_test(
     }),
     linkstatic = 1,
     deps = [
+        ":common",
         ":quantization_util",
         ":tensor_utils",
         "//tensorflow/lite/c:common",
