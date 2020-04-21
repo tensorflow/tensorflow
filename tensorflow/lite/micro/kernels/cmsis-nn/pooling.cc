@@ -106,7 +106,7 @@ TfLiteStatus AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
 
   TFLITE_DCHECK_LE(activation_min, activation_max);
 
-#if defined(__ARM_FEATURE_DSP)
+#if defined(__ARM_FEATURE_DSP) || defined(__ARM_FEATURE_MVE)
   RuntimeShape input_shape = GetTensorShape(input);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
 
@@ -283,7 +283,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-#if defined(__ARM_FEATURE_DSP)
+#if defined(__ARM_FEATURE_DSP) || defined(__ARM_FEATURE_MVE)
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 

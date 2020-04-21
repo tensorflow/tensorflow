@@ -115,7 +115,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-#if defined(__ARM_FEATURE_DSP)
+#if defined(__ARM_FEATURE_DSP) || defined(__ARM_FEATURE_MVE)
   OpData data;
   int32_t buf_size = 0;
 
@@ -240,7 +240,7 @@ TfLiteStatus EvalQuantizedPerChannel(
   quant_params.multiplier = data->per_channel_output_multiplier;
   quant_params.shift = data->per_channel_output_shift;
 
-#if defined(__ARM_FEATURE_DSP)
+#if defined(__ARM_FEATURE_DSP) || defined(__ARM_FEATURE_MVE)
   RuntimeShape filter_shape = GetTensorShape(filter);
   RuntimeShape input_shape = GetTensorShape(input);
   RuntimeShape output_shape = GetTensorShape(output);

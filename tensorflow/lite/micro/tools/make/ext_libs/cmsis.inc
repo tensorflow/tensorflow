@@ -8,11 +8,6 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
     THIRD_PARTY_DOWNLOADS += \
       $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
 
-    ifneq (,$(filter $(TARGET_ARCH), cortex-m55))
-      CCFLAGS += -DARM_MATH_MVEI
-      CXXFLAGS += -DARM_MATH_MVEI
-    endif
-
     CMSIS_PATH = $(MAKEFILE_DIR)/downloads/cmsis/
 
     # Include CMSIS-NN files

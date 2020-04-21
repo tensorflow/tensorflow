@@ -84,11 +84,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
   TF_LITE_ENSURE_MSG(context, input->type == filter->type,
                      "Hybrid models are not supported on TFLite Micro.");
-#if defined(__ARM_FEATURE_DSP)
+
+#if defined(__ARM_FEATURE_DSP) || defined(__ARM_FEATURE_MVE)
   RuntimeShape filter_shape = GetTensorShape(filter);
   const int filter_dim_count = filter_shape.DimensionsCount();
   const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
-
   const int32_t buf_size = arm_fully_connected_s8_get_buffer_size(accum_depth);
 
   int* buffer_idx = reinterpret_cast<int*>(node->user_data);
@@ -101,6 +101,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     *buffer_idx = -1;
   }
 #endif
+
   return kTfLiteOk;
 }
 
@@ -116,7 +117,7 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   const int filter_dim_count = filter_shape.DimensionsCount();
   const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
 
-#if defined(__ARM_FEATURE_DSP)
+#if defined(__ARM_FEATURE_DSP) || defined(__ARM_FEATURE_MVE)
   int16_t* buf = nullptr;
 
   auto* buffer_idx = reinterpret_cast<int*>(node->user_data);
