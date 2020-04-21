@@ -488,9 +488,6 @@ class ActivityAnalyzer(transformer.Base):
   def visit_GeneratorExp(self, node):
     return self._process_comprehension(node)
 
-  def visit_arguments(self, node):
-    return self._process_statement(node)
-
   def visit_ClassDef(self, node):
     with self.state[_FunctionOrClass] as fn:
       fn.node = node
@@ -510,6 +507,24 @@ class ActivityAnalyzer(transformer.Base):
       self._exit_scope()
       return node
 
+  def _visit_node_list(self, nodes):
+    return [(None if n is None else self.visit(n)) for n in nodes]
+
+  def _visit_arg_defaults(self, node):
+    node.args.kw_defaults = self._visit_node_list(node.args.kw_defaults)
+    node.args.defaults = self._visit_node_list(node.args.defaults)
+    return node
+
+  def _visit_arg_declarations(self, node):
+    node.args.posonlyargs = self._visit_node_list(node.args.posonlyargs)
+    node.args.args = self._visit_node_list(node.args.args)
+    if node.args.vararg is not None:
+      node.args.vararg = self.visit(node.args.vararg)
+    node.args.kwonlyargs = self._visit_node_list(node.args.kwonlyargs)
+    if node.args.kwarg is not None:
+      node.args.kwarg = self.visit(node.args.kwarg)
+    return node
+
   def visit_FunctionDef(self, node):
     with self.state[_FunctionOrClass] as fn:
       fn.node = node
@@ -517,6 +532,11 @@ class ActivityAnalyzer(transformer.Base):
       # of its name, along with the usage of any decorator accompanying it.
       self._enter_scope(False)
       node.decorator_list = self.visit_block(node.decorator_list)
+
+      # Arg defaults affect the defining context - they are being evaluated
+      # at definition.
+      node = self._visit_arg_defaults(node)
+
       function_name = qual_names.QN(node.name)
       self.scope.modified.add(function_name)
       self.scope.bound.add(function_name)
@@ -524,7 +544,15 @@ class ActivityAnalyzer(transformer.Base):
 
       # A separate Scope tracks the actual function definition.
       self._enter_scope(True)
-      node.args = self.visit(node.args)
+
+      # Keep a separate scope for the arguments node, which is used in the CFG.
+      self._enter_scope(False)
+
+      # Arg declarations only affect the function itself, and have no effect
+      # in the defining context whatsoever.
+      node = self._visit_arg_declarations(node)
+
+      self._exit_and_record_scope(node.args)
 
       # Track the body separately. This is for compatibility reasons, it may not
       # be strictly needed.
@@ -532,16 +560,35 @@ class ActivityAnalyzer(transformer.Base):
       node.body = self.visit_block(node.body)
       self._exit_and_record_scope(node, NodeAnno.BODY_SCOPE)
 
-      self._exit_scope()
+      self._exit_and_record_scope(node, NodeAnno.ARGS_AND_BODY_SCOPE)
       return node
 
   def visit_Lambda(self, node):
     # Lambda nodes are treated in roughly the same way as FunctionDef nodes.
     with self.state[_FunctionOrClass] as fn:
       fn.node = node
-      self._enter_scope(True)
-      node = self.generic_visit(node)
+      # The Lambda node itself has a Scope object that tracks the creation
+      # of its name, along with the usage of any decorator accompanying it.
+      self._enter_scope(False)
+      node = self._visit_arg_defaults(node)
       self._exit_and_record_scope(node)
+
+      # A separate Scope tracks the actual function definition.
+      self._enter_scope(True)
+
+      # Keep a separate scope for the arguments node, which is used in the CFG.
+      self._enter_scope(False)
+      node = self._visit_arg_declarations(node)
+      self._exit_and_record_scope(node.args)
+
+      # Track the body separately. This is for compatibility reasons, it may not
+      # be strictly needed.
+      # TODO(mdan): Do remove it, it's confusing.
+      self._enter_scope(False)
+      node.body = self.visit(node.body)
+      self._exit_and_record_scope(node, NodeAnno.BODY_SCOPE)
+
+      self._exit_and_record_scope(node, NodeAnno.ARGS_AND_BODY_SCOPE)
       return node
 
   def visit_With(self, node):
