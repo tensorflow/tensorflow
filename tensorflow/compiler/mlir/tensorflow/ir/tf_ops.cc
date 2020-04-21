@@ -2204,6 +2204,28 @@ OpFoldResult PowOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// QrOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that,
+//
+// * Input type, if ranked, must have at least 2 dimensions and at most
+//   INT32_MAX dimensions.
+//
+static LogicalResult Verify(QrOp op) {
+  auto ttype = op.input().getType().cast<TensorType>();
+  if (!ttype.hasRank()) return success();
+  if (!HasRankAtLeast(op.input(), 2))
+    return op.emitOpError(
+        "requires ranked input tensor to be of rank 2 or more");
+  if (!HasRankAtMost(op.input(), std::numeric_limits<int32_t>::max()))
+    return op.emitOpError(
+        "requires ranked input tensor to be of rank INT32_MAX or less");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ReciprocalOp
 //===----------------------------------------------------------------------===//
 

@@ -4047,3 +4047,180 @@ func @batchmatmulv2_adj_complex(%arg0: tensor<5x2xcomplex<f32>>, %arg1: tensor<2
   %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = true, adj_y = true, device = ""} : (tensor<5x2xcomplex<f32>>, tensor<2x4xcomplex<f32>>) -> tensor<5x4xcomplex<f32>>
   return %0 : tensor<5x4xcomplex<f32>>
 }
+
+// CHECK:  func @qr([[VAL_0:%.*]]: tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<500x75x75xf32>)
+func @qr(%arg0: tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<500x75x75xf32>) {
+// CHECK:    [[VAL_1:%.*]] = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<100x100xi32>
+// CHECK:    [[VAL_2:%.*]] = "xla_hlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<100x100xi32>
+// CHECK:    [[VAL_3:%.*]] = "xla_hlo.compare"([[VAL_1]], [[VAL_2]]) {comparison_direction = "EQ"} : (tensor<100x100xi32>, tensor<100x100xi32>) -> tensor<100x100xi1>
+// CHECK:    [[VAL_4:%.*]] = "xla_hlo.convert"([[VAL_3]]) : (tensor<100x100xi1>) -> tensor<100x100xf32>
+// CHECK:    [[VAL_5:%.*]] = "xla_hlo.broadcast"([[VAL_4]]) {broadcast_sizes = dense<500> : tensor<1xi64>} : (tensor<100x100xf32>) -> tensor<500x100x100xf32>
+// CHECK:    [[VAL_6:%.*]] = "xla_hlo.slice"([[VAL_0]]) {limit_indices = dense<[500, 100, 75]> : tensor<3xi64>, start_indices = dense<0> : tensor<3xi64>, strides = dense<1> : tensor<3xi64>} : (tensor<500x100x75xf32>) -> tensor<500x100x75xf32>
+// CHECK:    [[VAL_7:%.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:    [[VAL_8:%.*]] = "xla_hlo.broadcast"([[VAL_7]]) {broadcast_sizes = dense<[500, 100, 75]> : tensor<3xi64>} : (tensor<f32>) -> tensor<500x100x75xf32>
+// CHECK:    [[VAL_9:%.*]] = "xla_hlo.broadcast"([[VAL_7]]) {broadcast_sizes = dense<[500, 75]> : tensor<2xi64>} : (tensor<f32>) -> tensor<500x75xf32>
+// CHECK:    [[VAL_10:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+// CHECK:    [[VAL_11:%.*]] = "xla_hlo.tuple"([[VAL_10]], [[VAL_6]], [[VAL_8]], [[VAL_9]]) : (tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>) -> tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>
+// CHECK:    [[VAL_12:%.*]] = "xla_hlo.while"([[VAL_11]]) ( {
+// CHECK:         ^bb0([[VAL_13:%.*]]: tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>):
+// CHECK:           [[VAL_14:%.*]] = "xla_hlo.get_tuple_element"([[VAL_13]]) {index = 0 : i32} : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tensor<i32>
+// CHECK:           [[VAL_15:%.*]] = xla_hlo.constant dense<75> : tensor<i32>
+// CHECK:           [[VAL_16:%.*]] = "xla_hlo.compare"([[VAL_14]], [[VAL_15]]) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK:           "xla_hlo.return"([[VAL_16]]) : (tensor<i1>) -> ()
+// CHECK:         },  {
+// CHECK:         ^bb0([[VAL_17:%.*]]: tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>):
+// CHECK:           [[VAL_18:%.*]] = "xla_hlo.get_tuple_element"([[VAL_17]]) {index = 0 : i32} : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tensor<i32>
+// CHECK:           [[VAL_19:%.*]] = "xla_hlo.get_tuple_element"([[VAL_17]]) {index = 1 : i32} : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tensor<500x100x75xf32>
+// CHECK:           [[VAL_20:%.*]] = "xla_hlo.get_tuple_element"([[VAL_17]]) {index = 2 : i32} : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tensor<500x100x75xf32>
+// CHECK:           [[VAL_21:%.*]] = "xla_hlo.get_tuple_element"([[VAL_17]]) {index = 3 : i32} : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tensor<500x75xf32>
+// CHECK:           [[VAL_22:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+// CHECK:           [[VAL_23:%.*]] = "xla_hlo.dynamic-slice"([[VAL_19]], [[VAL_22]], [[VAL_22]], [[VAL_18]]) {slice_sizes = dense<[500, 100, 1]> : tensor<3xi64>} : (tensor<500x100x75xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<500x100x1xf32>
+// CHECK:           [[VAL_24:%.*]] = "xla_hlo.reshape"([[VAL_23]]) : (tensor<500x100x1xf32>) -> tensor<500x100xf32>
+// CHECK:           [[VAL_25:%.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           [[VAL_26:%.*]] = xla_hlo.constant dense<1.000000e+00> : tensor<f32>
+// CHECK:           [[VAL_27:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+// CHECK:           [[VAL_28:%.*]] = "xla_hlo.dynamic-slice"([[VAL_24]], [[VAL_27]], [[VAL_18]]) {slice_sizes = dense<[500, 1]> : tensor<2xi64>} : (tensor<500x100xf32>, tensor<i32>, tensor<i32>) -> tensor<500x1xf32>
+// CHECK:           [[VAL_29:%.*]] = "xla_hlo.reshape"([[VAL_28]]) : (tensor<500x1xf32>) -> tensor<500xf32>
+// CHECK:           [[VAL_30:%.*]] = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<100xi32>
+// CHECK:           [[VAL_31:%.*]] = "xla_hlo.compare"([[VAL_30]], [[VAL_18]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = "GT"} : (tensor<100xi32>, tensor<i32>) -> tensor<100xi1>
+// CHECK:           [[VAL_32:%.*]] = "xla_hlo.convert"([[VAL_31]]) : (tensor<100xi1>) -> tensor<100xf32>
+// CHECK:           [[VAL_33:%.*]] = "xla_hlo.multiply"([[VAL_24]], [[VAL_32]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<500x100xf32>, tensor<100xf32>) -> tensor<500x100xf32>
+// CHECK:           [[VAL_34:%.*]] = xla_hlo.multiply [[VAL_33]], [[VAL_33]] : tensor<500x100xf32>
+// CHECK:           [[VAL_35:%.*]] = "xla_hlo.reduce"([[VAL_34]], [[VAL_25]]) ( {
+// CHECK:           ^bb0([[VAL_36:%.*]]: tensor<f32>, [[VAL_37:%.*]]: tensor<f32>):
+// CHECK:             [[VAL_38:%.*]] = xla_hlo.add [[VAL_36]], [[VAL_37]] : tensor<f32>
+// CHECK:             "xla_hlo.return"([[VAL_38]]) : (tensor<f32>) -> ()
+// CHECK:           }) {dimensions = dense<1> : tensor<1xi64>} : (tensor<500x100xf32>, tensor<f32>) -> tensor<500xf32>
+// CHECK:           [[VAL_39:%.*]] = xla_hlo.multiply [[VAL_29]], [[VAL_29]] : tensor<500xf32>
+// CHECK:           [[VAL_40:%.*]] = xla_hlo.add [[VAL_39]], [[VAL_41:%.*]] : tensor<500xf32>
+// CHECK:           [[VAL_42:%.*]] = "xla_hlo.sqrt"([[VAL_40]]) : (tensor<500xf32>) -> tensor<500xf32>
+// CHECK:           [[VAL_43:%.*]] = "xla_hlo.compare"([[VAL_41]], [[VAL_25]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = "EQ"} : (tensor<500xf32>, tensor<f32>) -> tensor<500xi1>
+// CHECK:           [[VAL_44:%.*]] = "xla_hlo.compare"([[VAL_29]], [[VAL_25]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = "LT"} : (tensor<500xf32>, tensor<f32>) -> tensor<500xi1>
+// CHECK:           [[VAL_45:%.*]] = "xla_hlo.broadcast"([[VAL_26]]) {broadcast_sizes = dense<500> : tensor<1xi64>} : (tensor<f32>) -> tensor<500xf32>
+// CHECK:           [[VAL_46:%.*]] = "xla_hlo.negate"([[VAL_45]]) : (tensor<500xf32>) -> tensor<500xf32>
+// CHECK:           [[VAL_47:%.*]] = "xla_hlo.select"([[VAL_44]], [[VAL_45]], [[VAL_46]]) : (tensor<500xi1>, tensor<500xf32>, tensor<500xf32>) -> tensor<500xf32>
+// CHECK:           [[VAL_48:%.*]] = xla_hlo.multiply [[VAL_47]], [[VAL_42]] {broadcast_dimensions = dense<[]> : tensor<0xi64>} : tensor<500xf32>
+// CHECK:           [[VAL_49:%.*]] = "xla_hlo.select"([[VAL_43]], [[VAL_29]], [[VAL_48]]) : (tensor<500xi1>, tensor<500xf32>, tensor<500xf32>) -> tensor<500xf32>
+// CHECK:           [[VAL_50:%.*]] = xla_hlo.subtract [[VAL_49]], [[VAL_29]] : tensor<500xf32>
+// CHECK:           [[VAL_51:%.*]] = xla_hlo.divide [[VAL_50]], [[VAL_49]] : tensor<500xf32>
+// CHECK:           [[VAL_52:%.*]] = "xla_hlo.broadcast"([[VAL_25]]) {broadcast_sizes = dense<500> : tensor<1xi64>} : (tensor<f32>) -> tensor<500xf32>
+// CHECK:           [[VAL_53:%.*]] = "xla_hlo.select"([[VAL_43]], [[VAL_52]], [[VAL_51]]) : (tensor<500xi1>, tensor<500xf32>, tensor<500xf32>) -> tensor<500xf32>
+// CHECK:           [[VAL_54:%.*]] = xla_hlo.subtract [[VAL_29]], [[VAL_49]] : tensor<500xf32>
+// CHECK:           [[VAL_55:%.*]] = "xla_hlo.select"([[VAL_43]], [[VAL_45]], [[VAL_54]]) : (tensor<500xi1>, tensor<500xf32>, tensor<500xf32>) -> tensor<500xf32>
+// CHECK:           [[VAL_56:%.*]] = "xla_hlo.compare"([[VAL_30]], [[VAL_18]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = "EQ"} : (tensor<100xi32>, tensor<i32>) -> tensor<100xi1>
+// CHECK:           [[VAL_57:%.*]] = "xla_hlo.convert"([[VAL_56]]) : (tensor<100xi1>) -> tensor<100xf32>
+// CHECK:           [[VAL_58:%.*]] = "xla_hlo.broadcast"([[VAL_57]]) {broadcast_sizes = dense<1> : tensor<1xi64>} : (tensor<100xf32>) -> tensor<1x100xf32>
+// CHECK:           [[VAL_59:%.*]] = "xla_hlo.divide"([[VAL_33]], [[VAL_55]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<500x100xf32>, tensor<500xf32>) -> tensor<500x100xf32>
+// CHECK:           [[VAL_60:%.*]] = "xla_hlo.add"([[VAL_58]], [[VAL_59]]) : (tensor<1x100xf32>, tensor<500x100xf32>) -> tensor<500x100xf32>
+// CHECK:           [[VAL_61:%.*]] = "xla_hlo.reshape"([[VAL_60]]) : (tensor<500x100xf32>) -> tensor<500x1x100xf32>
+// CHECK:           [[VAL_62:%.*]] = "xla_hlo.dot_general"([[VAL_61]], [[VAL_19]]) {dot_dimension_numbers = {lhs_batching_dimensions = dense<0> : tensor<1xi64>, lhs_contracting_dimensions = dense<2> : tensor<1xi64>, rhs_batching_dimensions = dense<0> : tensor<1xi64>, rhs_contracting_dimensions = dense<1> : tensor<1xi64>}, precision_config = ["HIGHEST", "HIGHEST"]} : (tensor<500x1x100xf32>, tensor<500x100x75xf32>) -> tensor<500x1x75xf32>
+// CHECK:           [[VAL_63:%.*]] = "xla_hlo.dot_general"([[VAL_61]], [[VAL_62]]) {dot_dimension_numbers = {lhs_batching_dimensions = dense<0> : tensor<1xi64>, lhs_contracting_dimensions = dense<1> : tensor<1xi64>, rhs_batching_dimensions = dense<0> : tensor<1xi64>, rhs_contracting_dimensions = dense<1> : tensor<1xi64>}, precision_config = ["HIGHEST", "HIGHEST"]} : (tensor<500x1x100xf32>, tensor<500x1x75xf32>) -> tensor<500x100x75xf32>
+// CHECK:           [[VAL_64:%.*]] = "xla_hlo.multiply"([[VAL_53]], [[VAL_63]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<500xf32>, tensor<500x100x75xf32>) -> tensor<500x100x75xf32>
+// CHECK:           [[VAL_65:%.*]] = xla_hlo.subtract [[VAL_19]], [[VAL_64]] : tensor<500x100x75xf32>
+// CHECK:           [[VAL_66:%.*]] = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<100x1xi32>
+// CHECK:           [[VAL_67:%.*]] = "xla_hlo.compare"([[VAL_66]], [[VAL_18]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = "LT"} : (tensor<100x1xi32>, tensor<i32>) -> tensor<100x1xi1>
+// CHECK:           [[VAL_68:%.*]] = "xla_hlo.convert"([[VAL_67]]) : (tensor<100x1xi1>) -> tensor<100x1xf32>
+// CHECK:           [[VAL_69:%.*]] = "xla_hlo.compare"([[VAL_66]], [[VAL_18]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = "EQ"} : (tensor<100x1xi32>, tensor<i32>) -> tensor<100x1xi1>
+// CHECK:           [[VAL_70:%.*]] = "xla_hlo.convert"([[VAL_69]]) : (tensor<100x1xi1>) -> tensor<100x1xf32>
+// CHECK:           [[VAL_71:%.*]] = "xla_hlo.broadcast"([[VAL_70]]) {broadcast_sizes = dense<1> : tensor<1xi64>} : (tensor<100x1xf32>) -> tensor<1x100x1xf32>
+// CHECK:           [[VAL_72:%.*]] = "xla_hlo.multiply"([[VAL_23]], [[VAL_68]]) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<500x100x1xf32>, tensor<100x1xf32>) -> tensor<500x100x1xf32>
+// CHECK:           [[VAL_73:%.*]] = "xla_hlo.multiply"([[VAL_49]], [[VAL_71]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<500xf32>, tensor<1x100x1xf32>) -> tensor<500x100x1xf32>
+// CHECK:           [[VAL_74:%.*]] = xla_hlo.add [[VAL_72]], [[VAL_73]] : tensor<500x100x1xf32>
+// CHECK:           [[VAL_75:%.*]] = "xla_hlo.broadcast_in_dim"([[VAL_74]]) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<500x100x1xf32>) -> tensor<500x100x75xf32>
+// CHECK:           [[VAL_76:%.*]] = "xla_hlo.iota"() {iota_dimension = 2 : i64} : () -> tensor<500x100x75xi32>
+// CHECK:           [[VAL_77:%.*]] = "xla_hlo.compare"([[VAL_76]], [[VAL_18]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = "EQ"} : (tensor<500x100x75xi32>, tensor<i32>) -> tensor<500x100x75xi1>
+// CHECK:           [[VAL_78:%.*]] = "xla_hlo.select"([[VAL_77]], [[VAL_75]], [[VAL_65]]) : (tensor<500x100x75xi1>, tensor<500x100x75xf32>, tensor<500x100x75xf32>) -> tensor<500x100x75xf32>
+// CHECK:           [[VAL_79:%.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           [[VAL_80:%.*]] = "xla_hlo.broadcast"([[VAL_79]]) {broadcast_sizes = dense<[500, 100, 75]> : tensor<3xi64>} : (tensor<f32>) -> tensor<500x100x75xf32>
+// CHECK:           [[VAL_81:%.*]] = "xla_hlo.add"([[VAL_80]], [[VAL_60]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<500x100x75xf32>, tensor<500x100xf32>) -> tensor<500x100x75xf32>
+// CHECK:           [[VAL_82:%.*]] = "xla_hlo.select"([[VAL_77]], [[VAL_81]], [[VAL_80]]) : (tensor<500x100x75xi1>, tensor<500x100x75xf32>, tensor<500x100x75xf32>) -> tensor<500x100x75xf32>
+// CHECK:           [[VAL_83:%.*]] = xla_hlo.add [[VAL_20]], [[VAL_82]] : tensor<500x100x75xf32>
+// CHECK:           [[VAL_84:%.*]] = "xla_hlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<500x75xi32>
+// CHECK:           [[VAL_85:%.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           [[VAL_86:%.*]] = "xla_hlo.broadcast"([[VAL_85]]) {broadcast_sizes = dense<[500, 75]> : tensor<2xi64>} : (tensor<f32>) -> tensor<500x75xf32>
+// CHECK:           [[VAL_87:%.*]] = "xla_hlo.compare"([[VAL_84]], [[VAL_18]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = "EQ"} : (tensor<500x75xi32>, tensor<i32>) -> tensor<500x75xi1>
+// CHECK:           [[VAL_88:%.*]] = "xla_hlo.add"([[VAL_86]], [[VAL_53]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<500x75xf32>, tensor<500xf32>) -> tensor<500x75xf32>
+// CHECK:           [[VAL_89:%.*]] = "xla_hlo.select"([[VAL_87]], [[VAL_88]], [[VAL_86]]) : (tensor<500x75xi1>, tensor<500x75xf32>, tensor<500x75xf32>) -> tensor<500x75xf32>
+// CHECK:           [[VAL_90:%.*]] = xla_hlo.add [[VAL_21]], [[VAL_89]] : tensor<500x75xf32>
+// CHECK:           [[VAL_91:%.*]] = xla_hlo.constant dense<1> : tensor<i32>
+// CHECK:           [[VAL_92:%.*]] = xla_hlo.add [[VAL_18]], [[VAL_91]] {broadcast_dimensions = dense<[]> : tensor<0xi64>} : tensor<i32>
+// CHECK:           [[VAL_93:%.*]] = "xla_hlo.tuple"([[VAL_92]], [[VAL_78]], [[VAL_83]], [[VAL_90]]) : (tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>) -> tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>
+// CHECK:           "xla_hlo.return"([[VAL_93]]) : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> ()
+// CHECK:         }) : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>
+// CHECK:    [[VAL_94:%.*]] = "xla_hlo.get_tuple_element"([[VAL_95:%.*]]) {index = 1 : i32} : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tensor<500x100x75xf32>
+// CHECK:    [[VAL_96:%.*]] = "xla_hlo.get_tuple_element"([[VAL_95]]) {index = 2 : i32} : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tensor<500x100x75xf32>
+// CHECK:    [[VAL_97:%.*]] = "xla_hlo.get_tuple_element"([[VAL_95]]) {index = 3 : i32} : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tensor<500x75xf32>
+// CHECK:    [[VAL_98:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+// CHECK:    [[VAL_99:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+// CHECK:    [[VAL_100:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+// CHECK:    [[VAL_101:%.*]] = "xla_hlo.dynamic-update-slice"([[VAL_0]], [[VAL_94]], [[VAL_100]], [[VAL_98]], [[VAL_99]]) : (tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<500x100x75xf32>
+// CHECK:    [[VAL_102:%.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:    [[VAL_103:%.*]] = "xla_hlo.broadcast"([[VAL_102]]) {broadcast_sizes = dense<[500, 100, 75]> : tensor<3xi64>} : (tensor<f32>) -> tensor<500x100x75xf32>
+// CHECK:    [[VAL_104:%.*]] = "xla_hlo.slice"([[VAL_96]]) {limit_indices = dense<[500, 100, 1]> : tensor<3xi64>, start_indices = dense<0> : tensor<3xi64>, strides = dense<1> : tensor<3xi64>} : (tensor<500x100x75xf32>) -> tensor<500x100x1xf32>
+// CHECK:    [[VAL_105:%.*]] = "xla_hlo.slice"([[VAL_97]]) {limit_indices = dense<[500, 1]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<500x75xf32>) -> tensor<500x1xf32>
+// CHECK:    [[VAL_106:%.*]] = "xla_hlo.negate"([[VAL_105]]) : (tensor<500x1xf32>) -> tensor<500x1xf32>
+// CHECK:    [[VAL_107:%.*]] = "xla_hlo.multiply"([[VAL_106]], [[VAL_104]]) {broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<500x1xf32>, tensor<500x100x1xf32>) -> tensor<500x100x1xf32>
+// CHECK:    [[VAL_108:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+// CHECK:    [[VAL_109:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+// CHECK:    [[VAL_110:%.*]] = "xla_hlo.dynamic-update-slice"([[VAL_103]], [[VAL_107]], [[VAL_109]], [[VAL_109]], [[VAL_108]]) : (tensor<500x100x75xf32>, tensor<500x100x1xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<500x100x75xf32>
+// CHECK:    [[VAL_111:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+// CHECK:    [[VAL_112:%.*]] = "xla_hlo.tuple"([[VAL_111]], [[VAL_110]], [[VAL_96]], [[VAL_97]]) : (tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>) -> tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>
+// CHECK:    [[VAL_113:%.*]] = "xla_hlo.while"([[VAL_112]]) ( {
+// CHECK:         ^bb0([[VAL_114:%.*]]: tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>):
+// CHECK:           [[VAL_115:%.*]] = "xla_hlo.get_tuple_element"([[VAL_114]]) {index = 0 : i32} : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tensor<i32>
+// CHECK:           [[VAL_116:%.*]] = xla_hlo.constant dense<74> : tensor<i32>
+// CHECK:           [[VAL_117:%.*]] = "xla_hlo.compare"([[VAL_115]], [[VAL_116]]) {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+// CHECK:           "xla_hlo.return"([[VAL_117]]) : (tensor<i1>) -> ()
+// CHECK:         },  {
+// CHECK:         ^bb0([[VAL_118:%.*]]: tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>):
+// CHECK:           [[VAL_119:%.*]] = "xla_hlo.get_tuple_element"([[VAL_118]]) {index = 0 : i32} : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tensor<i32>
+// CHECK:           [[VAL_120:%.*]] = "xla_hlo.get_tuple_element"([[VAL_118]]) {index = 1 : i32} : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tensor<500x100x75xf32>
+// CHECK:           [[VAL_121:%.*]] = "xla_hlo.get_tuple_element"([[VAL_118]]) {index = 2 : i32} : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tensor<500x100x75xf32>
+// CHECK:           [[VAL_122:%.*]] = "xla_hlo.get_tuple_element"([[VAL_118]]) {index = 3 : i32} : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tensor<500x75xf32>
+// CHECK:           [[VAL_123:%.*]] = xla_hlo.constant dense<1> : tensor<i32>
+// CHECK:           [[VAL_124:%.*]] = xla_hlo.add [[VAL_119]], [[VAL_123]] : tensor<i32>
+// CHECK:           [[VAL_125:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+// CHECK:           [[VAL_126:%.*]] = "xla_hlo.dynamic-slice"([[VAL_121]], [[VAL_125]], [[VAL_125]], [[VAL_124]]) {slice_sizes = dense<[500, 100, 1]> : tensor<3xi64>} : (tensor<500x100x75xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<500x100x1xf32>
+// CHECK:           [[VAL_127:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+// CHECK:           [[VAL_128:%.*]] = "xla_hlo.dynamic-slice"([[VAL_122]], [[VAL_127]], [[VAL_124]]) {slice_sizes = dense<[500, 1]> : tensor<2xi64>} : (tensor<500x75xf32>, tensor<i32>, tensor<i32>) -> tensor<500x1xf32>
+// CHECK:           [[VAL_129:%.*]] = "xla_hlo.iota"() {iota_dimension = 2 : i64} : () -> tensor<500x100x75xi32>
+// CHECK:           [[VAL_130:%.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+// CHECK:           [[VAL_131:%.*]] = "xla_hlo.broadcast"([[VAL_130]]) {broadcast_sizes = dense<[500, 100, 75]> : tensor<3xi64>} : (tensor<f32>) -> tensor<500x100x75xf32>
+// CHECK:           [[VAL_132:%.*]] = "xla_hlo.compare"([[VAL_129]], [[VAL_124]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>, comparison_direction = "GE"} : (tensor<500x100x75xi32>, tensor<i32>) -> tensor<500x100x75xi1>
+// CHECK:           [[VAL_133:%.*]] = "xla_hlo.select"([[VAL_132]], [[VAL_131]], [[VAL_121]]) : (tensor<500x100x75xi1>, tensor<500x100x75xf32>, tensor<500x100x75xf32>) -> tensor<500x100x75xf32>
+// CHECK:           [[VAL_134:%.*]] = "xla_hlo.dot_general"([[VAL_133]], [[VAL_126]]) {dot_dimension_numbers = {lhs_batching_dimensions = dense<0> : tensor<1xi64>, lhs_contracting_dimensions = dense<1> : tensor<1xi64>, rhs_batching_dimensions = dense<0> : tensor<1xi64>, rhs_contracting_dimensions = dense<1> : tensor<1xi64>}, precision_config = ["HIGHEST", "HIGHEST"]} : (tensor<500x100x75xf32>, tensor<500x100x1xf32>) -> tensor<500x75x1xf32>
+// CHECK:           [[VAL_135:%.*]] = "xla_hlo.dot_general"([[VAL_120]], [[VAL_134]]) {dot_dimension_numbers = {lhs_batching_dimensions = dense<0> : tensor<1xi64>, lhs_contracting_dimensions = dense<2> : tensor<1xi64>, rhs_batching_dimensions = dense<0> : tensor<1xi64>, rhs_contracting_dimensions = dense<1> : tensor<1xi64>}, precision_config = ["HIGHEST", "HIGHEST"]} : (tensor<500x100x75xf32>, tensor<500x75x1xf32>) -> tensor<500x100x1xf32>
+// CHECK:           [[VAL_136:%.*]] = "xla_hlo.negate"([[VAL_128]]) : (tensor<500x1xf32>) -> tensor<500x1xf32>
+// CHECK:           [[VAL_137:%.*]] = xla_hlo.add [[VAL_126]], [[VAL_135]] : tensor<500x100x1xf32>
+// CHECK:           [[VAL_138:%.*]] = "xla_hlo.multiply"([[VAL_136]], [[VAL_137]]) {broadcast_dimensions = dense<[0, 2]> : tensor<2xi64>} : (tensor<500x1xf32>, tensor<500x100x1xf32>) -> tensor<500x100x1xf32>
+// CHECK:           [[VAL_139:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+// CHECK:           [[VAL_140:%.*]] = "xla_hlo.dynamic-update-slice"([[VAL_120]], [[VAL_138]], [[VAL_139]], [[VAL_139]], [[VAL_124]]) : (tensor<500x100x75xf32>, tensor<500x100x1xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<500x100x75xf32>
+// CHECK:           [[VAL_141:%.*]] = xla_hlo.constant dense<1> : tensor<i32>
+// CHECK:           [[VAL_142:%.*]] = xla_hlo.add [[VAL_119]], [[VAL_141]] {broadcast_dimensions = dense<[]> : tensor<0xi64>} : tensor<i32>
+// CHECK:           [[VAL_143:%.*]] = "xla_hlo.tuple"([[VAL_142]], [[VAL_140]], [[VAL_121]], [[VAL_122]]) : (tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>) -> tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>
+// CHECK:           "xla_hlo.return"([[VAL_143]]) : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> ()
+// CHECK:         }) : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>
+// CHECK:    [[VAL_144:%.*]] = "xla_hlo.get_tuple_element"([[VAL_145:%.*]]) {index = 1 : i32} : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tensor<500x100x75xf32>
+// CHECK:    [[VAL_146:%.*]] = "xla_hlo.get_tuple_element"([[VAL_145]]) {index = 2 : i32} : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tensor<500x100x75xf32>
+// CHECK:    [[VAL_147:%.*]] = "xla_hlo.get_tuple_element"([[VAL_145]]) {index = 3 : i32} : (tuple<tensor<i32>, tensor<500x100x75xf32>, tensor<500x100x75xf32>, tensor<500x75xf32>>) -> tensor<500x75xf32>
+// CHECK:    [[VAL_148:%.*]] = "xla_hlo.slice"([[VAL_101]]) {limit_indices = dense<[500, 100, 75]> : tensor<3xi64>, start_indices = dense<[0, 0, 75]> : tensor<3xi64>, strides = dense<1> : tensor<3xi64>} : (tensor<500x100x75xf32>) -> tensor<500x100x0xf32>
+// CHECK:    [[VAL_149:%.*]] = "xla_hlo.dot_general"([[VAL_144]], [[VAL_148]]) {dot_dimension_numbers = {lhs_batching_dimensions = dense<0> : tensor<1xi64>, lhs_contracting_dimensions = dense<1> : tensor<1xi64>, rhs_batching_dimensions = dense<0> : tensor<1xi64>, rhs_contracting_dimensions = dense<1> : tensor<1xi64>}, precision_config = ["HIGHEST", "HIGHEST"]} : (tensor<500x100x75xf32>, tensor<500x100x0xf32>) -> tensor<500x75x0xf32>
+// CHECK:    [[VAL_150:%.*]] = "xla_hlo.dot_general"([[VAL_96]], [[VAL_149]]) {dot_dimension_numbers = {lhs_batching_dimensions = dense<0> : tensor<1xi64>, lhs_contracting_dimensions = dense<2> : tensor<1xi64>, rhs_batching_dimensions = dense<0> : tensor<1xi64>, rhs_contracting_dimensions = dense<1> : tensor<1xi64>}, precision_config = ["HIGHEST", "HIGHEST"]} : (tensor<500x100x75xf32>, tensor<500x75x0xf32>) -> tensor<500x100x0xf32>
+// CHECK:    [[VAL_151:%.*]] = xla_hlo.add [[VAL_148]], [[VAL_150]] : tensor<500x100x0xf32>
+// CHECK:    [[VAL_152:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+// CHECK:    [[VAL_153:%.*]] = xla_hlo.constant dense<75> : tensor<i32>
+// CHECK:    [[VAL_154:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+// CHECK:    [[VAL_155:%.*]] = "xla_hlo.dynamic-update-slice"([[VAL_101]], [[VAL_151]], [[VAL_154]], [[VAL_152]], [[VAL_153]]) : (tensor<500x100x75xf32>, tensor<500x100x0xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<500x100x75xf32>
+// CHECK:    [[VAL_156:%.*]] = "xla_hlo.slice"([[VAL_5]]) {limit_indices = dense<[500, 100, 100]> : tensor<3xi64>, start_indices = dense<0> : tensor<3xi64>, strides = dense<1> : tensor<3xi64>} : (tensor<500x100x100xf32>) -> tensor<500x100x100xf32>
+// CHECK:    [[VAL_157:%.*]] = "xla_hlo.dot_general"([[VAL_156]], [[VAL_144]]) {dot_dimension_numbers = {lhs_batching_dimensions = dense<0> : tensor<1xi64>, lhs_contracting_dimensions = dense<2> : tensor<1xi64>, rhs_batching_dimensions = dense<0> : tensor<1xi64>, rhs_contracting_dimensions = dense<1> : tensor<1xi64>}, precision_config = ["HIGHEST", "HIGHEST"]} : (tensor<500x100x100xf32>, tensor<500x100x75xf32>) -> tensor<500x100x75xf32>
+// CHECK:    [[VAL_158:%.*]] = "xla_hlo.dot_general"([[VAL_157]], [[VAL_96]]) {dot_dimension_numbers = {lhs_batching_dimensions = dense<0> : tensor<1xi64>, lhs_contracting_dimensions = dense<2> : tensor<1xi64>, rhs_batching_dimensions = dense<0> : tensor<1xi64>, rhs_contracting_dimensions = dense<2> : tensor<1xi64>}, precision_config = ["HIGHEST", "HIGHEST"]} : (tensor<500x100x75xf32>, tensor<500x100x75xf32>) -> tensor<500x100x100xf32>
+// CHECK:    [[VAL_159:%.*]] = xla_hlo.add [[VAL_156]], [[VAL_158]] : tensor<500x100x100xf32>
+// CHECK:    [[VAL_160:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+// CHECK:    [[VAL_161:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+// CHECK:    [[VAL_162:%.*]] = "xla_hlo.dynamic-update-slice"([[VAL_5]], [[VAL_159]], [[VAL_161]], [[VAL_161]], [[VAL_160]]) : (tensor<500x100x100xf32>, tensor<500x100x100xf32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<500x100x100xf32>
+// CHECK:    [[VAL_163:%.*]] = "xla_hlo.slice"([[VAL_162]]) {limit_indices = dense<[500, 100, 75]> : tensor<3xi64>, start_indices = dense<0> : tensor<3xi64>, strides = dense<1> : tensor<3xi64>} : (tensor<500x100x100xf32>) -> tensor<500x100x75xf32>
+// CHECK:    [[VAL_164:%.*]] = "xla_hlo.slice"([[VAL_155]]) {limit_indices = dense<[500, 75, 75]> : tensor<3xi64>, start_indices = dense<0> : tensor<3xi64>, strides = dense<1> : tensor<3xi64>} : (tensor<500x100x75xf32>) -> tensor<500x75x75xf32>
+// CHECK:    return [[VAL_163]], [[VAL_164]] : tensor<500x100x75xf32>, tensor<500x75x75xf32>
+  %0:2 = "tf.Qr"(%arg0) {full_matrices = false} : (tensor<500x100x75xf32>) -> (tensor<500x100x75xf32>, tensor<500x75x75xf32>)
+  return %0#0, %0#1 : tensor<500x100x75xf32>, tensor<500x75x75xf32>
+}

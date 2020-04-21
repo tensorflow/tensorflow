@@ -270,8 +270,122 @@ static ConstOp GetMaxValueForType(Type ty, Location loc,
 // Returns int or float scalar DenseElementsAttr attribute with the given
 // element type and the value.
 static ConstOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,
-                                    PatternRewriter *rewriter) {
-  return rewriter->create<ConstOp>(loc, xla::GetScalarOfType(ty, raw_value));
+                                    OpBuilder *builder) {
+  return builder->create<ConstOp>(loc, xla::GetScalarOfType(ty, raw_value));
+}
+
+// Creates an xla_hlo::SliceOp where the major dimensions have full size, and
+// the minor dimensions have the provided offsets and sizes.
+static Value SliceInMinorDims(Location loc, Value v,
+                              ArrayRef<int64_t> minor_starts,
+                              ArrayRef<int64_t> minor_limits,
+                              OpBuilder *builder) {
+  auto type = v.getType().cast<RankedTensorType>();
+  llvm::SmallVector<int64_t, 4> slice_starts(type.getRank(), 0);
+  int64_t major_dims = type.getRank() - minor_starts.size();
+  std::copy(minor_starts.begin(), minor_starts.end(),
+            slice_starts.begin() + major_dims);
+  auto slice_limits = llvm::to_vector<4>(type.getShape());
+  std::copy(minor_limits.begin(), minor_limits.end(),
+            slice_limits.begin() + major_dims);
+  llvm::SmallVector<int64_t, 4> slice_strides(type.getRank(), 1);
+  return builder->create<SliceOp>(loc, v,
+                                  GetI64ElementsAttr(slice_starts, builder),
+                                  GetI64ElementsAttr(slice_limits, builder),
+                                  GetI64ElementsAttr(slice_strides, builder));
+}
+
+// Creates a vector of index values:
+//  [0, 0, ..., minor_indices[0], minor_indices[1], ... minor_indices[-1]]
+// with length `rank`.
+static llvm::SmallVector<Value, 4> CreateFullIndexVectorFromMinorIndices(
+    Location loc, ArrayRef<Value> minor_indices, int64_t rank,
+    OpBuilder *builder) {
+  auto zero =
+      GetScalarConstOfType(getElementTypeOrSelf(minor_indices[0].getType()),
+                           loc, 0, builder)
+          .output();
+  llvm::SmallVector<Value, 4> indices(rank, zero);
+  std::copy(minor_indices.begin(), minor_indices.end(),
+            indices.begin() + (rank - minor_indices.size()));
+  return indices;
+}
+
+// Creates an xla_hlo::DynamicSliceOp where the major dimensions have full size,
+// and the minor dimensions have the provided offsets and sizes.
+static Value DynamicSliceInMinorDims(Location loc, Value v,
+                                     ArrayRef<Value> minor_starts,
+                                     ArrayRef<int64_t> minor_sizes,
+                                     OpBuilder *builder) {
+  if (minor_starts.empty()) return v;
+  auto type = v.getType().cast<RankedTensorType>();
+  auto slice_starts = CreateFullIndexVectorFromMinorIndices(
+      loc, minor_starts, type.getRank(), builder);
+  int64_t major_dims = type.getRank() - minor_starts.size();
+  auto slice_sizes = llvm::to_vector<4>(type.getShape());
+  std::copy(minor_sizes.begin(), minor_sizes.end(),
+            slice_sizes.begin() + major_dims);
+  auto slice_type = RankedTensorType::get(slice_sizes, type.getElementType());
+  return builder->create<xla_hlo::DynamicSliceOp>(
+      loc, slice_type, v, slice_starts,
+      GetI64ElementsAttr(slice_sizes, builder));
+}
+
+// Creates an xla_hlo::DynamicUpdateSliceOp where the major dimensions have zero
+// offsets, and the minor dimensions have the provided offsets.
+static Value DynamicUpdateSliceInMinorDims(Location loc, Value v, Value update,
+                                           ArrayRef<Value> minor_starts,
+                                           OpBuilder *builder) {
+  if (minor_starts.empty()) return v;
+  auto type = v.getType().cast<RankedTensorType>();
+  auto dus_starts = CreateFullIndexVectorFromMinorIndices(
+      loc, minor_starts, type.getRank(), builder);
+  return builder->create<DynamicUpdateSliceOp>(loc, type, v, update,
+                                               llvm::makeArrayRef(dus_starts));
+}
+
+// Creates an xla_hlo::DynamicUpdateSliceOp where the major dimensions have zero
+// offsets, and the minor dimensions have the provided static offsets.
+static Value UpdateSliceInMinorDims(Location loc, Value v, Value update,
+                                    ArrayRef<int64_t> minor_starts,
+                                    OpBuilder *builder) {
+  llvm::SmallVector<Value, 4> dus_starts(minor_starts.size());
+  for (int64_t i = 0; i < minor_starts.size(); ++i) {
+    dus_starts[i] = GetScalarConstOfType(builder->getIntegerType(32), loc,
+                                         minor_starts[i], builder);
+  }
+  return DynamicUpdateSliceInMinorDims(loc, v, update, dus_starts, builder);
+}
+
+// Creates a batch dot using xla_hlo::DotGeneralOp.
+Value BatchDot(Location loc, Value lhs, bool transpose_lhs, Value rhs,
+               bool transpose_rhs, int64_t num_batch_dims,
+               ArrayAttr precision_config, OpBuilder *builder) {
+  auto batch_dimensions = GetI64ElementsAttr(
+      llvm::to_vector<4>(llvm::seq<int64_t>(0, num_batch_dims)), builder);
+  auto lhs_contracting_dimensions = GetI64ElementsAttr(
+      llvm::makeArrayRef({transpose_lhs ? num_batch_dims : num_batch_dims + 1}),
+      builder);
+  auto rhs_contracting_dimensions = GetI64ElementsAttr(
+      llvm::makeArrayRef({transpose_rhs ? num_batch_dims + 1 : num_batch_dims}),
+      builder);
+  auto dimension_numbers = DotDimensionNumbers::get(
+      /*lhs_batching_dimensions=*/batch_dimensions,
+      /*rhs_batching_dimensions=*/batch_dimensions,
+      /*lhs_contracting_dimensions=*/lhs_contracting_dimensions,
+      /*rhs_contracting_dimensions=*/rhs_contracting_dimensions,
+      builder->getContext());
+  auto lhs_shape = lhs.getType().cast<RankedTensorType>().getShape();
+  auto rhs_shape = rhs.getType().cast<RankedTensorType>().getShape();
+  auto shape = llvm::to_vector<4>(lhs_shape);
+  shape[shape.size() - 2] =
+      transpose_lhs ? lhs_shape.back() : lhs_shape[lhs_shape.size() - 2];
+  shape[shape.size() - 1] =
+      transpose_rhs ? rhs_shape[rhs_shape.size() - 2] : rhs_shape.back();
+  Type element_type = getElementTypeOrSelf(lhs.getType());
+  return builder->create<DotGeneralOp>(
+      loc, RankedTensorType::get(shape, element_type), lhs, rhs,
+      dimension_numbers, precision_config);
 }
 
 // Builds body for reduce op by using the using the template binary op as the
@@ -3917,6 +4031,511 @@ class ConvertCumsumOp : public OpRewritePattern<TF::CumsumOp> {
   }
 };
 
+// Converts a TF QR op to HLO.
+class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::QrOp op,
+                                PatternRewriter &rewriter) const override {
+    // Block Householder QR Factorization. Algorithm 5.2.2 of Golub and van
+    // Loan. def qr_blocked(a, block_size):
+    //   m = a.shape[0]
+    //   n = a.shape[1]
+    //   q = np.eye(m)
+    //   for i in xrange(0, min(m, n), block_size):
+    //     k = min(block_size, min(m, n) - s)
+    //     (a, vs, taus) = qr(a[i:, i:i+k])
+    //     y = vs
+    //     w = ComputeWYRepresentation(vs, taus, m-i, k)
+    //     a[i:, i+r:] += np.dot(y, np.dot(w.T, a[i:, i+k:]))
+    //     q[:, i:] += np.dot(q[:, i:], np.dot(w, y.T))
+    //   return (q, a)
+    auto type = op.input().getType().dyn_cast<RankedTensorType>();
+    if (!type || !type.hasStaticShape()) return failure();
+    // The block size is chosen to match old bridge lowering.
+    constexpr int64_t kBlockSize = 128;
+    Value a = op.input();
+    int64_t m = type.getDimSize(type.getRank() - 2);
+    int64_t n = type.getDimSize(type.getRank() - 1);
+    int64_t p = std::min(m, n);
+    auto batch_dims = type.getShape().drop_back(2);
+    auto iota_type = RankedTensorType::get({m, m}, rewriter.getIntegerType(32));
+    auto iota0 = rewriter.create<IotaOp>(op.getLoc(), iota_type,
+                                         rewriter.getI64IntegerAttr(0));
+    auto iota1 = rewriter.create<IotaOp>(op.getLoc(), iota_type,
+                                         rewriter.getI64IntegerAttr(1));
+    Value compare = rewriter.create<CompareOp>(
+        op.getLoc(), iota0, iota1,
+        /*broadcast_dimensions=*/nullptr,
+        StringAttr::get("EQ", rewriter.getContext()));
+    Value identity_matrix =
+        rewriter.create<ConvertOp>(op.getLoc(), compare, type.getElementType());
+    auto q_shape = llvm::to_vector<4>(type.getShape());
+    q_shape.back() = m;
+    Value q = rewriter.create<BroadcastOp>(
+        op.getLoc(), RankedTensorType::get(q_shape, type.getElementType()),
+        identity_matrix, GetI64ElementsAttr(batch_dims, &rewriter));
+    auto precision_config = rewriter.getStrArrayAttr({"HIGHEST", "HIGHEST"});
+    for (int64_t i = 0; i < p; i += kBlockSize) {
+      int64_t k = std::min(kBlockSize, p - i);
+      auto a_block =
+          SliceInMinorDims(op.getLoc(), a, {i, i}, {m, i + k}, &rewriter);
+      Value r_block;
+      Value taus;
+      Value vs;
+      QRBlock(op.getLoc(), a_block, &r_block, &taus, &vs, &rewriter);
+      a = UpdateSliceInMinorDims(op.getLoc(), a, r_block, {i, i}, &rewriter);
+
+      // Compute the I-WY block representation of a product of Householder
+      // matrices.
+      Value w =
+          ComputeWYRepresentation(op.getLoc(), type.getElementType(),
+                                  batch_dims, vs, taus, m - i, k, &rewriter);
+      auto y = vs;
+
+      // a[i:, i+k:] += np.dot(Y, np.dot(W.T, a[i:, i+k:]))
+      Value a_panel =
+          SliceInMinorDims(op.getLoc(), a, {i, i + k}, {m, n}, &rewriter);
+      auto a_update = BatchDot(op.getLoc(), w, true, a_panel, false,
+                               batch_dims.size(), precision_config, &rewriter);
+      a_update = BatchDot(op.getLoc(), y, false, a_update, false,
+                          batch_dims.size(), precision_config, &rewriter);
+      a_panel = rewriter.create<AddOp>(op.getLoc(), a_panel, a_update,
+                                       /*broadcast_dimensions=*/nullptr);
+      a = UpdateSliceInMinorDims(op.getLoc(), a, a_panel, {i, i + k},
+                                 &rewriter);
+
+      // q[:, i:] += np.dot(np.dot(q[:, i:], W), Y.T))
+      Value q_panel =
+          SliceInMinorDims(op.getLoc(), q, {0, i}, {m, m}, &rewriter);
+      Value q_update = BatchDot(op.getLoc(), q_panel, false, w, false,
+                                batch_dims.size(), precision_config, &rewriter);
+      q_update = BatchDot(op.getLoc(), q_update, false, y, true,
+                          batch_dims.size(), precision_config, &rewriter);
+      q_panel = rewriter.create<AddOp>(op.getLoc(), q_panel, q_update,
+                                       /*broadcast_dimensions=*/nullptr);
+      q = UpdateSliceInMinorDims(op.getLoc(), q, q_panel, {i}, &rewriter);
+    }
+    // full_matrices is false when only a partial result in needed. Slice to the
+    // needed dimensions here.
+    if (!op.full_matrices()) {
+      q = SliceInMinorDims(op.getLoc(), q, {0, 0}, {m, p}, &rewriter);
+      a = SliceInMinorDims(op.getLoc(), a, {0, 0}, {p, n}, &rewriter);
+    }
+    rewriter.replaceOp(op, {q, a});
+    return success();
+  }
+
+ private:
+  // Computes a Householder reflection of the form:
+  // H = I - tau v v.T.
+  // such that
+  // H . ( x1  ) = ( x1   )
+  //     ( x2  ) = ( x2   )
+  //     ( ... ) = ( ...  )
+  //     ( xk  ) = ( beta )
+  //     ( ... )   ( 0    )
+  //     ( ... )   ( 0    )
+  // Unlike the usual formulation, we allow the caller to supply 'k' rather than
+  // only providing the relevant part of 'x' to maintain XLA's static shape
+  // invariant. In addition, the implementation supports batching.
+  // Pseudo-code, without batching:
+  //   alpha = x[k]
+  //   x_copy = np.copy(x)
+  //   x_copy[:k+1] = 0
+  //   xnorm = norm2(x_copy)
+  //   if xnorm == 0:
+  //     beta = alpha
+  //     tau = 0
+  //     v = np.zeros_like(x)
+  //   else:
+  //     beta = - np.sign(alpha) * dlapy2(alpha, xnorm)
+  //     tau = (beta - alpha) / beta
+  //     v = x / (alpha - beta)
+  //   v[k] = 1
+  //   return (v, tau, beta)
+  void House(Location loc, Value x, Value k, ArrayRef<int64_t> batch_dims,
+             const int64_t m, OpBuilder *builder, Value *v, Value *tau,
+             Value *beta) const {
+    auto x_type = x.getType().cast<RankedTensorType>();
+
+    llvm::SmallVector<int64_t, 4> batch_dim_ids(batch_dims.size());
+    std::iota(batch_dim_ids.begin(), batch_dim_ids.end(), 0);
+    const int64_t minor_dim = batch_dims.size();
+
+    Value zero = GetScalarConstOfType(x_type.getElementType(), loc, 0, builder);
+    Value one = GetScalarConstOfType(x_type.getElementType(), loc, 1, builder);
+
+    // alpha = x[k]
+    Value alpha = DynamicSliceInMinorDims(loc, x, {k}, {1}, builder);
+    alpha = builder->create<ReshapeOp>(
+        loc, RankedTensorType::get(batch_dims, x_type.getElementType()), alpha);
+
+    // Compute x[k+1:] (padded with zeros in elements 0..k)
+    Value iota = builder->create<IotaOp>(
+        loc, RankedTensorType::get({m}, builder->getIntegerType(32)),
+        builder->getI64IntegerAttr(0));
+    Value gtk = builder->create<CompareOp>(
+        loc, iota, k, GetI64ElementsAttr({}, builder),
+        StringAttr::get("GT", builder->getContext()));
+    gtk = builder->create<ConvertOp>(loc, gtk, x_type.getElementType());
+    Value x_after_k = builder->create<MulOp>(
+        loc, x, gtk, GetI64ElementsAttr({minor_dim}, builder));
+    Value x_after_k_sq = builder->create<MulOp>(
+        loc, x_after_k, x_after_k, /*broadcast_dimensions=*/nullptr);
+    // sigma = np.dot(x[k+1:], x[k+1:])
+    auto sigma = builder->create<ReduceOp>(
+        loc, x_after_k_sq, zero, GetI64ElementsAttr({minor_dim}, builder));
+    BuildReduceBody<AddOp>(x_type.getElementType(), &sigma.body(), builder);
+    // mu = np.sqrt(x[k]*x[k] + sigma)
+    Value alpha_sq = builder->create<MulOp>(loc, alpha, alpha,
+                                            /*broadcast_dimensions=*/nullptr);
+    Value mu = builder->create<SqrtOp>(
+        loc, builder->create<AddOp>(loc, alpha_sq, sigma.getResult(0),
+                                    /*broadcast_dimensions=*/nullptr));
+
+    Value sigma_is_zero = builder->create<CompareOp>(
+        loc, sigma.getResult(0), zero, GetI64ElementsAttr({}, builder),
+        StringAttr::get("EQ", builder->getContext()));
+    Value alpha_is_negative = builder->create<CompareOp>(
+        loc, alpha, zero, GetI64ElementsAttr({}, builder),
+        StringAttr::get("LT", builder->getContext()));
+    auto batch_size_one = builder->create<BroadcastOp>(
+        loc, alpha.getType(), one, GetI64ElementsAttr(batch_dims, builder));
+    Value signed_mu = builder->create<MulOp>(
+        loc,
+        builder->create<SelectOp>(loc, mu.getType(), alpha_is_negative,
+                                  batch_size_one,
+                                  builder->create<NegOp>(loc, batch_size_one)),
+        mu, GetI64ElementsAttr({}, builder));
+    *beta = builder->create<SelectOp>(loc, alpha.getType(), sigma_is_zero,
+                                      alpha, signed_mu);
+    *tau = builder->create<DivOp>(
+        loc,
+        builder->create<SubOp>(loc, *beta, alpha,
+                               /*broadcast_dimensions=*/nullptr),
+        *beta,
+        /*broadcast_dimensions=*/nullptr);
+    Value zero_tau = builder->create<BroadcastOp>(
+        loc, alpha.getType(), zero, GetI64ElementsAttr(batch_dims, builder));
+    *tau = builder->create<SelectOp>(loc, alpha.getType(), sigma_is_zero,
+                                     zero_tau, *tau);
+    Value divisor = builder->create<SubOp>(loc, alpha, *beta,
+                                           /*broadcast_dimensions=*/nullptr);
+    divisor = builder->create<SelectOp>(loc, divisor.getType(), sigma_is_zero,
+                                        batch_size_one, divisor);
+
+    Value eqk = builder->create<CompareOp>(
+        loc, iota, k, GetI64ElementsAttr({}, builder),
+        StringAttr::get("EQ", builder->getContext()));
+    eqk = builder->create<ConvertOp>(loc, eqk, x_type.getElementType());
+    llvm::SmallVector<int64_t, 4> e_k_shape(batch_dims.size(), 1);
+    e_k_shape.push_back(m);
+    auto e_k = builder->create<BroadcastOp>(
+        loc, RankedTensorType::get(e_k_shape, x_type.getElementType()), eqk,
+        GetI64ElementsAttr(llvm::SmallVector<int64_t, 4>(batch_dims.size(), 1),
+                           builder));
+
+    // Form v as [0, 0, ..., 1] ++ x[k+1:] / divisor
+    // If sigma is zero, x[k+1:] is zero, so use any non-zero divisor.
+    *v = builder->create<AddOp>(
+        loc, e_k,
+        builder->create<DivOp>(loc, x_after_k, divisor,
+                               GetI64ElementsAttr(batch_dim_ids, builder)),
+        /*broadcast_dimensions=*/nullptr);
+  }
+
+  // Householder QR decomposition. Algorithm 5.2.1 from Golub and Van
+  // Loan "Matrix Computations", 4th Edition. This is an unblocked
+  // implementation used as an inner routine of the blocked implementation.
+  // Algorithm is adapted slightly so the shapes inside the loop are static, at
+  // the cost of some redundant computation. Since this is used as an inner
+  // block kernel, accumulates the Householder transformations (vs, taus) rather
+  // than the matrix q. Equivalent Python code, without batching: def qr(a):
+  //   m = a.shape[0]
+  //   n = a.shape[1]
+  //   vs = np.zeros([m, n])
+  //   taus = np.zeros([n])
+  //   for j in xrange(min(m, n)):
+  //     v, tau, beta = house(a[:, j], j)
+  //     # Unusually, we apply the Householder transformation to the entirety of
+  //     # a, wasting FLOPs to maintain the static shape invariant that XLA
+  //     # requires. For columns that precede j this has no effect.
+  //     a[:, :] -= tau * np.dot(v[:, np.newaxis],
+  //                              np.dot(v[np.newaxis, :], a[:, :]))
+  //     # Form column j explicitly rather than relying on the precision of the
+  //     # Householder update.
+  //     a[j, j] = beta
+  //     a[j+1:, j] = np.zeros([m - j - 1], dtype=a.dtype)
+  //     vs[:, j] = v
+  //     taus[j] = tau
+  //   return (q, vs, taus)
+  void QRBlock(Location loc, Value a, Value *r, Value *taus, Value *vs,
+               PatternRewriter *rewriter) const {
+    auto a_type = a.getType().cast<RankedTensorType>();
+    const int num_dims = a_type.getRank();
+    assert(num_dims >= 2 && "Argument to QR must have rank >= 2");
+
+    const int64_t m = a_type.getDimSize(a_type.getRank() - 2);
+    const int64_t n = a_type.getDimSize(a_type.getRank() - 1);
+
+    const int64_t num_batch_dims = num_dims - 2;
+    auto batch_dims = a_type.getShape().take_front(num_batch_dims);
+    llvm::SmallVector<int64_t, 4> batch_dim_indices(batch_dims.size());
+    std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
+
+    auto qr_body_fn = [&](Location loc, Value j, ArrayRef<Value> old_values,
+                          SmallVectorImpl<Value> *new_values,
+                          OpBuilder *builder) {
+      auto a = old_values[0];
+      auto vs = old_values[1];
+      auto taus = old_values[2];
+
+      // v, beta = house(a[:, j], j)
+      auto x = DynamicSliceInMinorDims(loc, a, {j}, {1}, builder);
+      auto x_collapsed_shape = llvm::to_vector<4>(batch_dims);
+      x_collapsed_shape.push_back(m);
+      auto x_collapsed = builder->create<ReshapeOp>(
+          loc,
+          RankedTensorType::get(x_collapsed_shape,
+                                getElementTypeOrSelf(x.getType())),
+          x);
+      Value v, tau, beta;
+      House(loc, x_collapsed, j, batch_dims, m, builder, &v, &tau, &beta);
+
+      auto shape = llvm::to_vector<4>(batch_dims);
+      shape.append({1, m});
+      auto v_broadcast = builder->create<ReshapeOp>(
+          loc, RankedTensorType::get(shape, getElementTypeOrSelf(v.getType())),
+          v);
+      // a[:, :] -= tau * np.dot(v[:, np.newaxis],
+      //                          np.dot(v[np.newaxis, :], a[:, :]))
+      auto precision = builder->getStrArrayAttr({"HIGHEST", "HIGHEST"});
+      auto vva = BatchDot(loc, v_broadcast, false, a, false, num_batch_dims,
+                          precision, builder);
+      vva = BatchDot(loc, v_broadcast, true, vva, false, num_batch_dims,
+                     precision, builder);
+      auto tau_x_vva = builder->create<MulOp>(
+          loc, tau, vva, GetI64ElementsAttr(batch_dim_indices, builder));
+      a = builder->create<SubOp>(loc, a, tau_x_vva,
+                                 /*broadcast_dimensions=*/nullptr);
+
+      // It is more precise to populate column 'k' explicitly, rather than
+      // computing it implicitly by applying the Householder transformation.
+      // a[k,k] = beta
+      // a[k+1:,k] = np.zeros([m-k-1], dtype=a.dtype)
+      auto iota = builder->create<IotaOp>(
+          loc, RankedTensorType::get({m, 1}, builder->getIntegerType(32)),
+          builder->getI64IntegerAttr(0));
+      Value predecessor_mask = builder->create<CompareOp>(
+          loc, iota, j, GetI64ElementsAttr({}, builder),
+          StringAttr::get("LT", builder->getContext()));
+      predecessor_mask = builder->create<ConvertOp>(loc, predecessor_mask,
+                                                    a_type.getElementType());
+      Value mask = builder->create<CompareOp>(
+          loc, iota, j, GetI64ElementsAttr({}, builder),
+          StringAttr::get("EQ", builder->getContext()));
+      mask = builder->create<ConvertOp>(loc, mask, a_type.getElementType());
+      llvm::SmallVector<int64_t, 4> broadcast_mask_shape(a_type.getRank(), 1);
+      broadcast_mask_shape[a_type.getRank() - 2] = m;
+      mask = builder->create<BroadcastOp>(
+          loc,
+          RankedTensorType::get(broadcast_mask_shape, a_type.getElementType()),
+          mask,
+          GetI64ElementsAttr(llvm::SmallVector<int64_t, 4>(num_batch_dims, 1),
+                             builder));
+      Value predecessor_masked_x = builder->create<MulOp>(
+          loc, x, predecessor_mask,
+          GetI64ElementsAttr({num_dims - 2, num_dims - 1}, builder));
+      Value masked_beta = builder->create<MulOp>(
+          loc, beta, mask, GetI64ElementsAttr(batch_dim_indices, builder));
+      Value new_x =
+          builder->create<AddOp>(loc, predecessor_masked_x, masked_beta,
+                                 /*broadcast_dimensions=*/nullptr);
+      // Update a[:,j]
+      llvm::SmallVector<int64_t, 4> dim_ids(num_dims);
+      std::iota(dim_ids.begin(), dim_ids.end(), 0);
+      new_x = builder->create<BroadcastInDimOp>(
+          loc, a_type, new_x, GetI64ElementsAttr(dim_ids, builder));
+      const int64_t minor_dim = num_batch_dims;
+      auto iota_mn = builder->create<IotaOp>(
+          loc,
+          RankedTensorType::get(a_type.getShape(), builder->getIntegerType(32)),
+          builder->getI64IntegerAttr(minor_dim + 1));
+      Value xa_mask = builder->create<CompareOp>(
+          loc, iota_mn, j, GetI64ElementsAttr({}, builder),
+          StringAttr::get("EQ", builder->getContext()));
+      a = builder->create<SelectOp>(loc, a_type, xa_mask, new_x, a);
+
+      // vs[:, j] = v
+      llvm::SmallVector<int64_t, 4> vs_broadcast_dims(num_batch_dims + 1);
+      std::iota(vs_broadcast_dims.begin(), vs_broadcast_dims.end(), 0);
+      Value vs_zeros =
+          GetScalarConstOfType(a_type.getElementType(), loc, 0, builder);
+      vs_zeros = builder->create<BroadcastOp>(
+          loc, vs.getType(), vs_zeros,
+          GetI64ElementsAttr(vs.getType().cast<RankedTensorType>().getShape(),
+                             builder));
+      auto vs_update = builder->create<SelectOp>(
+          loc, vs.getType(), xa_mask,
+          builder->create<AddOp>(
+              loc, vs_zeros, v, GetI64ElementsAttr(vs_broadcast_dims, builder)),
+          vs_zeros);
+      vs = builder->create<AddOp>(loc, vs, vs_update,
+                                  /*broadcast_dimensions=*/nullptr);
+
+      // taus[j] = tau
+      llvm::SmallVector<int64_t, 4> tau_broadcast_dims(batch_dims.size());
+      std::iota(tau_broadcast_dims.begin(), tau_broadcast_dims.end(), 0);
+
+      auto iota_shape = llvm::to_vector<4>(batch_dims);
+      iota_shape.push_back(n);
+      auto iota_n = builder->create<IotaOp>(
+          loc, RankedTensorType::get(iota_shape, builder->getIntegerType(32)),
+          builder->getI64IntegerAttr(minor_dim));
+      Value taus_zeros =
+          GetScalarConstOfType(a_type.getElementType(), loc, 0, builder);
+      taus_zeros = builder->create<BroadcastOp>(
+          loc, taus.getType(), taus_zeros,
+          GetI64ElementsAttr(taus.getType().cast<RankedTensorType>().getShape(),
+                             builder));
+      Value taus_mask = builder->create<CompareOp>(
+          loc, iota_n, j, GetI64ElementsAttr({}, builder),
+          StringAttr::get("EQ", builder->getContext()));
+      auto taus_update = builder->create<SelectOp>(
+          loc, taus.getType(), taus_mask,
+          builder->create<AddOp>(
+              loc, taus_zeros, tau,
+              GetI64ElementsAttr(tau_broadcast_dims, builder)),
+          taus_zeros);
+      taus = builder->create<AddOp>(loc, taus, taus_update,
+                                    /*broadcast_dimensions=*/nullptr);
+      new_values->assign({a, vs, taus});
+    };
+
+    Value zero =
+        GetScalarConstOfType(a_type.getElementType(), loc, 0, rewriter);
+    *vs = rewriter->create<BroadcastOp>(
+        loc, a_type, zero, GetI64ElementsAttr(a_type.getShape(), rewriter));
+    auto taus_shape = llvm::to_vector<4>(batch_dims);
+    taus_shape.push_back(n);
+    *taus = rewriter->create<BroadcastOp>(
+        loc, RankedTensorType::get(taus_shape, a_type.getElementType()), zero,
+        GetI64ElementsAttr(taus_shape, rewriter));
+
+    SmallVector<Value, 4> while_output;
+    CreateWhile32(loc, std::min(m, n), qr_body_fn, {a, *vs, *taus},
+                  &while_output, rewriter);
+    *r = while_output[0];
+    *vs = while_output[1];
+    *taus = while_output[2];
+  }
+
+  // Computes W and Y such that I-WY is equivalent to the sequence of
+  // Householder
+  // transformations given by vs and taus.
+  // Golub and van Loan, "Matrix Computations", algorithm 5.1.2.
+  // Y = np.zeros([m, n])
+  // W = np.zeros([m, n])
+  // Y[:, 0] = vs[:, 0]
+  // W[:, 0] = -taus[0] * vs[:, 0]
+  // for j in xrange(1, n):
+  //   v = vs[:, j]
+  //   z = -taus[j] * v - taus[j] * np.dot(W, np.dot(Y.T, v))
+  //   W[:, j] = z
+  //   Y[:, j] = v
+  // return W
+  // There is no need to return Y since at termination of the loop it is equal
+  // to vs.
+  Value ComputeWYRepresentation(Location loc, Type data_type,
+                                ArrayRef<int64_t> batch_dims, Value vs,
+                                Value taus, int64_t m, int64_t n,
+                                PatternRewriter *rewriter) const {
+    int64_t n_index = batch_dims.size() + 1;
+    llvm::SmallVector<int64_t, 4> batch_dim_indices(batch_dims.size());
+    std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
+
+    auto body_fn = [&](Location loc, Value j, ArrayRef<Value> old_values,
+                       SmallVectorImpl<Value> *new_values, OpBuilder *builder) {
+      // w has shape [..., m, n]
+      auto w = old_values[0];
+      const auto vs = old_values[1];
+      const auto taus = old_values[2];
+
+      // Want j values in range [1, ... n).
+      j = builder->create<AddOp>(
+          loc, j,
+          GetScalarConstOfType(getElementTypeOrSelf(j.getType()), loc, 1,
+                               builder),
+          /*broadcast_dimensions=*/nullptr);
+      // vs has shape [..., m, 1]
+      auto v = DynamicSliceInMinorDims(loc, vs, {j}, {1}, builder);
+      // beta has shape [..., 1]
+      auto beta = DynamicSliceInMinorDims(loc, taus, {j}, {1}, builder);
+
+      auto iota_shape = llvm::to_vector<4>(batch_dims);
+      iota_shape.append({m, n});
+      auto iota_mn = builder->create<IotaOp>(
+          loc, RankedTensorType::get(iota_shape, builder->getIntegerType(32)),
+          builder->getI64IntegerAttr(n_index));
+
+      // y has shape [..., m, n]
+      Value zero = GetScalarConstOfType(getElementTypeOrSelf(vs.getType()), loc,
+                                        0, builder);
+      zero = builder->create<BroadcastOp>(
+          loc, vs.getType(), zero,
+          GetI64ElementsAttr(vs.getType().cast<RankedTensorType>().getShape(),
+                             builder));
+      auto compare = builder->create<CompareOp>(
+          loc, iota_mn, j, GetI64ElementsAttr({}, builder),
+          StringAttr::get("GE", builder->getContext()));
+      auto y = builder->create<SelectOp>(loc, vs.getType(), compare, zero, vs);
+
+      // yv has shape [..., n, 1]
+      auto precision = builder->getStrArrayAttr({"HIGHEST", "HIGHEST"});
+      auto yv = BatchDot(loc, y, true, v, false, batch_dims.size(), precision,
+                         builder);
+      // wyv has shape [..., m, 1]
+      auto wyv = BatchDot(loc, w, false, yv, false, batch_dims.size(),
+                          precision, builder);
+
+      // z = -beta * (v + wyv)
+      auto neg_beta = builder->create<NegOp>(loc, beta);
+      auto v_wyv = builder->create<AddOp>(loc, v, wyv,
+                                          /*broadcast_dimensions=*/nullptr);
+      auto beta_broadcast_dims = llvm::to_vector<4>(batch_dim_indices);
+      beta_broadcast_dims.push_back(n_index);
+      auto z = builder->create<MulOp>(
+          loc, neg_beta, v_wyv,
+          GetI64ElementsAttr(beta_broadcast_dims, builder));
+
+      w = DynamicUpdateSliceInMinorDims(loc, w, z, {j}, builder);
+      new_values->assign({w, vs, taus});
+    };
+
+    Value w =
+        GetScalarConstOfType(getElementTypeOrSelf(data_type), loc, 0, rewriter);
+    auto w_shape = llvm::to_vector<4>(batch_dims);
+    w_shape.append({m, n});
+    w = rewriter->create<BroadcastOp>(loc,
+                                      RankedTensorType::get(w_shape, data_type),
+                                      w, GetI64ElementsAttr(w_shape, rewriter));
+    auto v = SliceInMinorDims(loc, vs, {0}, {1}, rewriter);
+    auto beta = SliceInMinorDims(loc, taus, {0}, {1}, rewriter);
+    auto neg_beta = rewriter->create<NegOp>(loc, beta);
+    auto beta_broadcast_dims = llvm::to_vector<4>(batch_dim_indices);
+    beta_broadcast_dims.push_back(n_index);
+    auto bv = rewriter->create<MulOp>(
+        loc, neg_beta, v, GetI64ElementsAttr(beta_broadcast_dims, rewriter));
+    w = UpdateSliceInMinorDims(loc, w, bv, {0}, rewriter);
+
+    SmallVector<Value, 4> while_output;
+    CreateWhile32(loc, n - 1, body_fn, {w, vs, taus}, &while_output, rewriter);
+    return while_output[0];
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
 LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
@@ -3942,8 +4561,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPool2DOp,
       ConvertMaxPool3DOp, ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp,
       ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
-      ConvertProdOp, ConvertRangeOp, ConvertSelectV2Op, ConvertSigmoidOp,
-      ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertProdOp, ConvertQrOp, ConvertRangeOp, ConvertSelectV2Op,
+      ConvertSigmoidOp, ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
