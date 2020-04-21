@@ -170,6 +170,9 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
 
   AbstractTensorHandleInterface* CreateLocalHandle(
       AbstractTensorInterface* t) override;
+  AbstractTensorHandleInterface* CopyTensorHandleToDevice(
+      AbstractTensorHandleInterface* handle, const char* device_name,
+      Status* status) override;
   AbstractOperationInterface* CreateOperation() override;
 
   void ListDevices(std::vector<DeviceAttributes>* devices) override;
