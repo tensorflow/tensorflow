@@ -747,14 +747,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);
-      // TODO(b/154341936): Explicitly stopping and starting this iterator
-      // should not be necessary, but the `kImpl` added to the prefix passed
-      // to `iterator_` when it was created prevents the model from identifying
-      // this iterator as the output of `iterator_`.
-      RecordStop(ctx);
-      Status s = iterator_->GetNext(ctx, out_tensors, end_of_sequence);
-      RecordStart(ctx);
-      return s;
+      return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
     }
 
    protected:
