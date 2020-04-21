@@ -471,6 +471,8 @@ TF_CALL_CUSPARSE_DTYPES(SPMM_INSTANCE);
 
 #endif
 
+#if CUDA_VERSION < 10020
+
 template <typename Scalar, typename SparseFnT>
 static inline Status CsrmvImpl(
     SparseFnT op, OpKernelContext* context, cusparseHandle_t cusparse_handle,
@@ -509,6 +511,111 @@ static inline Status CsrmvImpl(
   }
 
 TF_CALL_LAPACK_TYPES(CSRMV_INSTANCE);
+
+#else
+
+template <typename Scalar>
+static inline Status CsrmvExImpl(
+    cudaDataType_t dtype, OpKernelContext* context, cusparseHandle_t cusparse_handle,
+    cusparseOperation_t transA, int m, int n, int nnz, const Scalar* alpha_host,
+    const Scalar* csrSortedValA, const int* csrSortedRowPtrA, const int* csrSortedColIndA,
+    const Scalar* x, const Scalar* beta_host, Scalar* y) {
+  cusparseMatDescr_t descrA;
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateMatDescr(&descrA));
+  TF_RETURN_IF_GPUSPARSE_ERROR(
+      cusparseSetMatType(descrA, CUSPARSE_MATRIX_TYPE_GENERAL));
+  TF_RETURN_IF_GPUSPARSE_ERROR(
+      cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO));
+  // CUSPARSE_ALG_MERGE_PATH algo only supports non-transpose matrix.
+  DCHECK(transA == CUSPARSE_OPERATION_NON_TRANSPOSE);
+
+  size_t bufferSize;
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCsrmvEx_bufferSize(
+      cusparse_handle, CUSPARSE_ALG_MERGE_PATH, transA, m, n, nnz,
+      alpha_host, dtype, descrA, csrSortedValA, dtype, csrSortedRowPtrA,
+      csrSortedColIndA, x, dtype, beta_host, dtype, y, dtype, dtype,
+      &bufferSize));
+
+  Tensor buffer;
+  TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT8, {bufferSize}, &buffer));
+  auto pBuffer = buffer.flat<int8>();
+  DCHECK(pBuffer.data() != nullptr);
+
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCsrmvEx(
+      cusparse_handle, CUSPARSE_ALG_MERGE_PATH, transA, m, n, nnz,
+      alpha_host, dtype, descrA, csrSortedValA, dtype, csrSortedRowPtrA,
+      csrSortedColIndA, x, dtype, beta_host, dtype, y, dtype, dtype,
+      pBuffer.data()));
+
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyMatDescr(descrA));
+  return Status::OK();
+}
+
+template <typename Scalar>
+static inline Status SpMVImpl(
+    cudaDataType_t dtype, OpKernelContext* context, cusparseHandle_t cusparse_handle,
+    cusparseOperation_t transA, int m, int n, int nnz, const Scalar* alpha_host,
+    const Scalar* csrSortedValA, const int* csrSortedRowPtrA, const int* csrSortedColIndA,
+    const Scalar* x, const Scalar* beta_host, Scalar* y) {
+  cusparseSpMatDescr_t matA;
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateCsr(&matA, m, n, nnz,
+                              const_cast<int*>(csrSortedRowPtrA),
+                              const_cast<int*>(csrSortedColIndA),
+                              const_cast<Scalar*>(csrSortedValA),
+                              CUSPARSE_INDEX_32I, CUSPARSE_INDEX_32I,
+                              CUSPARSE_INDEX_BASE_ZERO, dtype));
+
+  cusparseDnVecDescr_t vecX, vecY;
+  int sizeX = (transA == CUSPARSE_OPERATION_NON_TRANSPOSE) ? n : m;
+  int sizeY = (transA == CUSPARSE_OPERATION_NON_TRANSPOSE) ? m : n;
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateDnVec(
+                              &vecX, sizeX, const_cast<Scalar*>(x), dtype));
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateDnVec(&vecY, sizeY, y, dtype));
+
+  size_t bufferSize;
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpMV_bufferSize(
+      cusparse_handle, transA, alpha_host, matA, vecX,
+      beta_host, vecY, dtype, CUSPARSE_CSRMV_ALG1, &bufferSize));
+
+  Tensor buffer;
+  TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT8, {bufferSize}, &buffer));
+  auto pBuffer = buffer.flat<int8>();
+  DCHECK(pBuffer.data() != nullptr);
+
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseSpMV(
+      cusparse_handle, transA, alpha_host, matA, vecX,
+      beta_host, vecY, dtype, CUSPARSE_CSRMV_ALG1, pBuffer.data()));
+
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnVec(vecY));
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroyDnVec(vecX));
+  TF_RETURN_IF_GPUSPARSE_ERROR(cusparseDestroySpMat(matA));
+  return Status::OK();
+}
+
+#define CSRMV_INSTANCE(Scalar, cudaDataType)                                 \
+  template <>                                                                \
+  Status GpuSparse::Csrmv<Scalar>(                                           \
+      cusparseOperation_t transA, int m, int n, int nnz,                     \
+      const Scalar* alpha_host, const Scalar* csrSortedValA,                 \
+      const int* csrSortedRowPtrA, const int* csrSortedColIndA,              \
+      const Scalar* x, const Scalar* beta_host, Scalar* y) const {           \
+    DCHECK(initialized_);                                                    \
+    if (transA == CUSPARSE_OPERATION_NON_TRANSPOSE) {                        \
+      return CsrmvExImpl(cudaDataType, context_, *gpusparse_handle_,         \
+                         transA, m, n, nnz, alpha_host,                      \
+                         csrSortedValA, csrSortedRowPtrA, csrSortedColIndA,  \
+                         x, beta_host, y);                                   \
+    } else {                                                                 \
+      return SpMVImpl(cudaDataType, context_, *gpusparse_handle_,            \
+                      transA, m, n, nnz, alpha_host,                         \
+                      csrSortedValA, csrSortedRowPtrA, csrSortedColIndA,     \
+                      x, beta_host, y);                                      \
+    }                                                                        \
+  }
+
+TF_CALL_CUSPARSE_DTYPES(CSRMV_INSTANCE);
+
+#endif  // CUDA_VERSION < 10020
 
 #if CUDA_VERSION < 10000
 

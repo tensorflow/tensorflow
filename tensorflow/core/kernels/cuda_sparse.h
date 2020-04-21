@@ -305,12 +305,20 @@ class GpuSparse {
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csrmv_mergepath
   //
   // **NOTE** This is an in-place operation for data in y.
+#if CUDA_VERSION < 10020
   template <typename Scalar>
   Status Csrmv(gpusparseOperation_t transA, int m, int n, int nnz,
                const Scalar* alpha_host, const gpusparseMatDescr_t descrA,
                const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
                const int* csrSortedColIndA, const Scalar* x,
                const Scalar* beta_host, Scalar* y) const;
+#else
+  template <typename Scalar>
+  Status Csrmv(gpusparseOperation_t transA, int m, int n, int nnz,
+               const Scalar* alpha_host, const Scalar* csrSortedValA,
+               const int* csrSortedRowPtrA, const int* csrSortedColIndA,
+               const Scalar* x, const Scalar* beta_host, Scalar* y) const;
+#endif  // CUDA_VERSION < 10020
 
   // Computes workspace size for sparse - sparse matrix addition of matrices
   // stored in CSR format.
