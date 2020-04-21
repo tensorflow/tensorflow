@@ -108,8 +108,8 @@ TfLiteStatus RecognizeCommands::ProcessLatestResults(
 
   // Find the current highest scoring category.
   int current_top_index = 0;
-  int32_t current_top_score = 0;
-  for (int i = 0; i < kCategoryCount; ++i) {
+  int32_t current_top_score = average_scores[current_top_index];
+  for (int i = 1; i < kCategoryCount; ++i) {
     if (average_scores[i] > current_top_score) {
       current_top_score = average_scores[i];
       current_top_index = i;
