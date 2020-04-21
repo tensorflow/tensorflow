@@ -41,8 +41,12 @@ except ImportError:
 bfloat16 = xla_client.bfloat16
 ops = xla_client.ops
 
+# We choose to ignore pylint's complaints about complex comprehensions, which we
+# use widely for parameterizing tests.
+# pylint: disable=g-complex-comprehension
 
-class ComputationTest(absltest.TestCase):
+
+class ComputationTest(parameterized.TestCase):
   """Base class for running an XLA Computation through the local client."""
 
   def _NewComputation(self, name=None):
@@ -83,11 +87,6 @@ class ComputationTest(absltest.TestCase):
 def NumpyArrayF32(*args, **kwargs):
   """Convenience wrapper to create Numpy arrays with a np.float32 dtype."""
   return np.array(*args, dtype=np.float32, **kwargs)
-
-
-def NumpyArrayF64(*args, **kwargs):
-  """Convenience wrapper to create Numpy arrays with a np.float64 dtype."""
-  return np.array(*args, dtype=np.float64, **kwargs)
 
 
 def NumpyArrayS32(*args, **kwargs):
@@ -171,86 +170,48 @@ class ComputationHashTest(absltest.TestCase):
 class ComputationsWithConstantsTest(ComputationTest):
   """Tests focusing on Constant ops."""
 
-  def testConstantScalarSumS8(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.int8, bfloat16, np.float32, np.float64, np.int32,
+                  np.int64])
+  def testConstantScalarSum(self, dtype):
     c = self._NewComputation()
-    ops.Add(ops.Constant(c, np.int8(1)), ops.Constant(c, np.int8(2)))
-    self._ExecuteAndCompareExact(c, expected=[np.int8(3)])
+    ops.Add(ops.Constant(c, dtype(1.11)), ops.Constant(c, dtype(3.14)))
+    self._ExecuteAndCompareClose(c, expected=[dtype(1.11) + dtype(3.14)])
 
-  def testConstantScalarSumBF16(self):
-    c = self._NewComputation()
-    ops.Add(ops.Constant(c, bfloat16(1.11)), ops.Constant(c, bfloat16(3.14)))
-    self._ExecuteAndCompareClose(c, expected=[bfloat16(4.25)])
-
-  def testConstantScalarSumF32(self):
-    c = self._NewComputation()
-    ops.Add(
-        ops.Constant(c, np.float32(1.11)), ops.Constant(c, np.float32(3.14)))
-    self._ExecuteAndCompareClose(c, expected=[4.25])
-
-  def testConstantScalarSumF64(self):
-    c = self._NewComputation()
-    ops.Add(
-        ops.Constant(c, np.float64(1.11)), ops.Constant(c, np.float64(3.14)))
-    self._ExecuteAndCompareClose(c, expected=[4.25])
-
-  def testConstantScalarSumS32(self):
-    c = self._NewComputation()
-    ops.Add(ops.Constant(c, np.int32(1)), ops.Constant(c, np.int32(2)))
-    self._ExecuteAndCompareClose(c, expected=[3])
-
-  def testConstantScalarSumS64(self):
-    c = self._NewComputation()
-    ops.Add(ops.Constant(c, np.int64(1)), ops.Constant(c, np.int64(2)))
-    self._ExecuteAndCompareClose(c, expected=[3])
-
-  def testConstantVectorMulF16(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float16, np.float32, np.float64])
+  def testConstantVectorMul(self, dtype):
     c = self._NewComputation()
     ops.Mul(
-        ops.Constant(c, np.array([2.5, 3.3, -1.2, 0.7], np.float16)),
-        ops.Constant(c, np.array([-1.2, 2, -2, -3], np.float16)))
+        ops.Constant(c, np.array([2.5, 3.3, -1.2, 0.7], dtype)),
+        ops.Constant(c, np.array([-1.2, 2, -2, -3], dtype)))
     self._ExecuteAndCompareClose(
-        c, expected=[np.array([-3, 6.6, 2.4, -2.1], np.float16)], rtol=2e-3)
+        c, expected=[np.array([-3, 6.6, 2.4, -2.1], dtype)], rtol=2e-3)
 
-  def testConstantVectorMulF32(self):
-    c = self._NewComputation()
-    ops.Mul(
-        ops.Constant(c, NumpyArrayF32([2.5, 3.3, -1.2, 0.7])),
-        ops.Constant(c, NumpyArrayF32([-1.2, 2, -2, -3])))
-    self._ExecuteAndCompareClose(c, expected=[[-3, 6.6, 2.4, -2.1]])
-
-  def testConstantVectorMulF64(self):
-    c = self._NewComputation()
-    ops.Mul(
-        ops.Constant(c, NumpyArrayF64([2.5, 3.3, -1.2, 0.7])),
-        ops.Constant(c, NumpyArrayF64([-1.2, 2, -2, -3])))
-    self._ExecuteAndCompareClose(c, expected=[[-3, 6.6, 2.4, -2.1]])
-
-  def testConstantVectorScalarDivF32(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testConstantVectorScalarDiv(self, dtype):
     c = self._NewComputation()
     ops.Div(
-        ops.Constant(c, NumpyArrayF32([1.5, 2.5, 3.0, -10.8])),
-        ops.Constant(c, np.float32(2.0)))
+        ops.Constant(c, np.array([1.5, 2.5, 3.0, -10.8], dtype=dtype)),
+        ops.Constant(c, dtype(2.0)))
     self._ExecuteAndCompareClose(c, expected=[[0.75, 1.25, 1.5, -5.4]])
 
-  def testConstantVectorScalarDivF64(self):
-    c = self._NewComputation()
-    ops.Div(
-        ops.Constant(c, NumpyArrayF64([1.5, 2.5, 3.0, -10.8])),
-        ops.Constant(c, np.float64(2.0)))
-    self._ExecuteAndCompareClose(c, expected=[[0.75, 1.25, 1.5, -5.4]])
-
-  def testConstantVectorScalarPowF32(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testConstantVectorScalarPow(self, dtype):
     c = self._NewComputation()
     ops.Pow(
-        ops.Constant(c, NumpyArrayF32([1.5, 2.5, 3.0])),
-        ops.Constant(c, np.float32(2.)))
-    self._ExecuteAndCompareClose(c, expected=[[2.25, 6.25, 9.]])
-
-  def testConstantVectorScalarPowF64(self):
-    c = self._NewComputation()
-    ops.Pow(
-        ops.Constant(c, NumpyArrayF64([1.5, 2.5, 3.0])),
-        ops.Constant(c, np.float64(2.)))
+        ops.Constant(c, np.array([1.5, 2.5, 3.0], dtype=dtype)),
+        ops.Constant(c, dtype(2.)))
     self._ExecuteAndCompareClose(c, expected=[[2.25, 6.25, 9.]])
 
   def testIota(self):
@@ -286,11 +247,15 @@ class ComputationsWithConstantsTest(ComputationTest):
         ops.Constant(c, NumpyArrayBool([True, True, False, False])))
     self._ExecuteAndCompareExact(c, expected=[[False, True, True, False]])
 
-  def testSum2DF32(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testSum2D(self, dtype):
     c = self._NewComputation()
     ops.Add(
-        ops.Constant(c, NumpyArrayF32([[1, 2, 3], [4, 5, 6]])),
-        ops.Constant(c, NumpyArrayF32([[1, -1, 1], [-1, 1, -1]])))
+        ops.Constant(c, np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype)),
+        ops.Constant(c, np.array([[1, -1, 1], [-1, 1, -1]], dtype=dtype)))
     self._ExecuteAndCompareClose(c, expected=[[[2, 1, 4], [3, 6, 5]]])
 
   def testShiftLeft(self):
@@ -314,73 +279,49 @@ class ComputationsWithConstantsTest(ComputationTest):
         ops.Constant(c, NumpyArrayS32([1])))
     self._ExecuteAndCompareClose(c, expected=[[2**31 - 1]])
 
-  def testSum2DF64(self):
-    c = self._NewComputation()
-    ops.Add(
-        ops.Constant(c, NumpyArrayF64([[1, 2, 3], [4, 5, 6]])),
-        ops.Constant(c, NumpyArrayF64([[1, -1, 1], [-1, 1, -1]])))
-    self._ExecuteAndCompareClose(c, expected=[[[2, 1, 4], [3, 6, 5]]])
-
-  def testSum2DWith1DBroadcastDim0F32(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testSum2DWith1DBroadcastDim0(self, dtype):
     # sum of a 2D array with a 1D array where the latter is replicated across
     # dimension 0 to match the former's shape.
     c = self._NewComputation()
     ops.Add(
-        ops.Constant(c, NumpyArrayF32([[1, 2, 3], [4, 5, 6], [7, 8, 9]])),
-        ops.Constant(c, NumpyArrayF32([10, 20, 30])),
+        ops.Constant(c, np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]],
+                                 dtype=dtype)),
+        ops.Constant(c, np.array([10, 20, 30], dtype=dtype)),
         broadcast_dimensions=(0,))
     self._ExecuteAndCompareClose(
         c, expected=[[[11, 12, 13], [24, 25, 26], [37, 38, 39]]])
 
-  def testSum2DWith1DBroadcastDim0F64(self):
-    # sum of a 2D array with a 1D array where the latter is replicated across
-    # dimension 0 to match the former's shape.
-    c = self._NewComputation()
-    ops.Add(
-        ops.Constant(c, NumpyArrayF64([[1, 2, 3], [4, 5, 6], [7, 8, 9]])),
-        ops.Constant(c, NumpyArrayF64([10, 20, 30])),
-        broadcast_dimensions=(0,))
-    self._ExecuteAndCompareClose(
-        c, expected=[[[11, 12, 13], [24, 25, 26], [37, 38, 39]]])
-
-  def testSum2DWith1DBroadcastDim1F32(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testSum2DWith1DBroadcastDim1(self, dtype):
     # sum of a 2D array with a 1D array where the latter is replicated across
     # dimension 1 to match the former's shape.
     c = self._NewComputation()
     ops.Add(
-        ops.Constant(c, NumpyArrayF32([[1, 2, 3], [4, 5, 6], [7, 8, 9]])),
-        ops.Constant(c, NumpyArrayF32([10, 20, 30])),
+        ops.Constant(c, np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]],
+                                 dtype=dtype)),
+        ops.Constant(c, np.array([10, 20, 30], dtype=dtype)),
         broadcast_dimensions=(1,))
     self._ExecuteAndCompareClose(
         c, expected=[[[11, 22, 33], [14, 25, 36], [17, 28, 39]]])
 
-  def testSum2DWith1DBroadcastDim1F64(self):
-    # sum of a 2D array with a 1D array where the latter is replicated across
-    # dimension 1 to match the former's shape.
-    c = self._NewComputation()
-    ops.Add(
-        ops.Constant(c, NumpyArrayF64([[1, 2, 3], [4, 5, 6], [7, 8, 9]])),
-        ops.Constant(c, NumpyArrayF64([10, 20, 30])),
-        broadcast_dimensions=(1,))
-    self._ExecuteAndCompareClose(
-        c, expected=[[[11, 22, 33], [14, 25, 36], [17, 28, 39]]])
-
-  def testConstantAxpyF32(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testConstantAxpy(self, dtype):
     c = self._NewComputation()
     ops.Add(
         ops.Mul(
-            ops.Constant(c, np.float32(2)),
-            ops.Constant(c, NumpyArrayF32([2.2, 3.3, 4.4, 5.5]))),
-        ops.Constant(c, NumpyArrayF32([100, -100, 200, -200])))
-    self._ExecuteAndCompareClose(c, expected=[[104.4, -93.4, 208.8, -189]])
-
-  def testConstantAxpyF64(self):
-    c = self._NewComputation()
-    ops.Add(
-        ops.Mul(
-            ops.Constant(c, np.float64(2)),
-            ops.Constant(c, NumpyArrayF64([2.2, 3.3, 4.4, 5.5]))),
-        ops.Constant(c, NumpyArrayF64([100, -100, 200, -200])))
+            ops.Constant(c, dtype(2)),
+            ops.Constant(c, np.array([2.2, 3.3, 4.4, 5.5], dtype=dtype))),
+        ops.Constant(c, np.array([100, -100, 200, -200], dtype)))
     self._ExecuteAndCompareClose(c, expected=[[104.4, -93.4, 208.8, -189]])
 
   def testCustomCall(self):
@@ -421,61 +362,36 @@ class ComputationFromProtoTest(absltest.TestCase):
 class ParametersTest(ComputationTest):
   """Tests focusing on Parameter ops and argument-passing."""
 
-  def setUp(self):
-    self.f32_scalar_2 = NumpyArrayF32(2.0)
-    self.f32_4vector = NumpyArrayF32([-2.3, 3.3, -4.3, 5.3])
-    self.f64_scalar_2 = NumpyArrayF64(2.0)
-    self.f64_4vector = NumpyArrayF64([-2.3, 3.3, -4.3, 5.3])
-    self.s32_scalar_3 = NumpyArrayS32(3)
-    self.s32_4vector = NumpyArrayS32([10, 15, -2, 7])
-    self.s64_scalar_3 = NumpyArrayS64(3)
-    self.s64_4vector = NumpyArrayS64([10, 15, -2, 7])
-
-  def testScalarTimesVectorS32(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.int32, np.int64])
+  def testScalarTimesVector(self, dtype):
     c = self._NewComputation()
-    p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(self.s32_scalar_3))
-    p1 = ops.Parameter(c, 1, xla_client.shape_from_pyval(self.s32_4vector))
+    arg0 = np.array(3, dtype=dtype)
+    arg1 = np.array([10, 15, -2, 7], dtype=dtype)
+    p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(arg0))
+    p1 = ops.Parameter(c, 1, xla_client.shape_from_pyval(arg1))
     ops.Mul(p0, p1)
     self._ExecuteAndCompareExact(
-        c,
-        arguments=[self.s32_scalar_3, self.s32_4vector],
-        expected=[[30, 45, -6, 21]])
+        c, arguments=[arg0, arg1], expected=[arg0 * arg1])
 
-  def testScalarTimesVectorS64(self):
-    c = self._NewComputation()
-    p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(self.s64_scalar_3))
-    p1 = ops.Parameter(c, 1, xla_client.shape_from_pyval(self.s64_4vector))
-    ops.Mul(p0, p1)
-    self._ExecuteAndCompareExact(
-        c,
-        arguments=[self.s64_scalar_3, self.s64_4vector],
-        expected=[[30, 45, -6, 21]])
-
-  def testScalarMinusVectorExplicitNumberingF32(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testScalarMinusVectorExplicitNumbering(self, dtype):
     # Use explicit numbering and pass parameter_num first. Sub is used since
     # it's not commutative and can help catch parameter reversal within the
     # computation.
     c = self._NewComputation()
-    p1 = ops.Parameter(c, 1, xla_client.shape_from_pyval(self.f32_4vector))
-    p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(self.f32_scalar_2))
+    arg0 = np.array(2.0, dtype=dtype)
+    arg1 = np.array([-2.3, 3.3, -4.3, 5.3], dtype=dtype)
+    p1 = ops.Parameter(c, 1, xla_client.shape_from_pyval(arg1))
+    p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(arg0))
     ops.Sub(p1, p0)
     self._ExecuteAndCompareClose(
-        c,
-        arguments=[self.f32_scalar_2, self.f32_4vector],
-        expected=[[-4.3, 1.3, -6.3, 3.3]])
-
-  def testScalarMinusVectorExplicitNumberingF64(self):
-    # Use explicit numbering and pass parameter_num first. Sub is used since
-    # it's not commutative and can help catch parameter reversal within the
-    # computation.
-    c = self._NewComputation()
-    p1 = ops.Parameter(c, 1, xla_client.shape_from_pyval(self.f64_4vector))
-    p0 = ops.Parameter(c, 0, xla_client.shape_from_pyval(self.f64_scalar_2))
-    ops.Sub(p1, p0)
-    self._ExecuteAndCompareClose(
-        c,
-        arguments=[self.f64_scalar_2, self.f64_4vector],
-        expected=[[-4.3, 1.3, -6.3, 3.3]])
+        c, arguments=[arg0, arg1], expected=[arg1 - arg0])
 
 
 class BufferTest(ComputationTest):
@@ -565,80 +481,63 @@ class SingleOpTest(ComputationTest):
   around the op being tested.
   """
 
-  def testConcatenateF32(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testConcatenate(self, dtype):
     c = self._NewComputation()
     args = (
-        ops.Constant(c, NumpyArrayF32([1.0, 2.0, 3.0])),
-        ops.Constant(c, NumpyArrayF32([4.0, 5.0, 6.0])),
+        ops.Constant(c, np.array([1.0, 2.0, 3.0], dtype=dtype)),
+        ops.Constant(c, np.array([4.0, 5.0, 6.0], dtype=dtype)),
     )
     ops.ConcatInDim(c, args, dimension=0)
-    self._ExecuteAndCompareClose(c, expected=[[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]])
+    self._ExecuteAndCompareClose(
+        c, expected=[np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], dtype=dtype)])
 
-  def testConcatenateF64(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}_{}".format(src_dtype.__name__, dst_dtype.__name__),
+      "src_dtype": src_dtype,
+      "dst_dtype": dst_dtype,
+  } for src_dtype, dst_dtype in itertools.permutations(
+      [np.bool, np.int32, np.int64, np.float32, np.float64], 2))
+  def testConvertElementType(self, src_dtype, dst_dtype):
     c = self._NewComputation()
-    args = (
-        ops.Constant(c, NumpyArrayF64([1.0, 2.0, 3.0])),
-        ops.Constant(c, NumpyArrayF64([4.0, 5.0, 6.0])),
-    )
-    ops.ConcatInDim(c, args, dimension=0)
-    self._ExecuteAndCompareClose(c, expected=[[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]])
+    x = np.array([0, 1, 0, 0, 1], dtype=src_dtype)
+    ops.ConvertElementType(
+        ops.Constant(c, x), xla_client.dtype_to_etype(dst_dtype))
 
-  def testConvertElementType(self):
-    xla_types = {
-        np.bool: xla_client.PrimitiveType.PRED,
-        np.int32: xla_client.PrimitiveType.S32,
-        np.int64: xla_client.PrimitiveType.S64,
-        np.float32: xla_client.PrimitiveType.F32,
-        np.float64: xla_client.PrimitiveType.F64,
-    }
+    backend = xla_client.get_local_backend()
+    result = xla_client.execute_with_python_values(backend.compile(c.Build()))
+    self.assertLen(result, 1)
+    expected = np.array(x, dtype=dst_dtype)
 
-    def _ConvertAndTest(template, src_dtype, dst_dtype):
-      c = self._NewComputation()
-      x = ops.Constant(c, np.array(template, dtype=src_dtype))
-      ops.ConvertElementType(x, xla_types[dst_dtype])
+    self.assertEqual(result[0].shape, expected.shape)
+    self.assertEqual(result[0].dtype, expected.dtype)
+    np.testing.assert_equal(result[0], expected)
 
-      backend = xla_client.get_local_backend()
-      result = xla_client.execute_with_python_values(backend.compile(c.Build()))
-      self.assertLen(result, 1)
-      expected = np.array(template, dtype=dst_dtype)
+  # pylint: disable=bad-continuation
+  @parameterized.named_parameters({
+      "testcase_name": "_{}_{}".format(src_dtype.__name__, dst_dtype.__name__),
+      "src_dtype": src_dtype,
+      "dst_dtype": dst_dtype,
+    } for dtypes in [[np.int32, np.float32], [np.int64, np.float64]]
+      for src_dtype, dst_dtype in itertools.permutations(dtypes, 2))
+  def testBitcastConvertType(self, src_dtype, dst_dtype):
+    c = self._NewComputation()
+    x = np.array([0, 1, 0, 0, 1], dtype=src_dtype)
+    ops.BitcastConvertType(
+        ops.Constant(c, x), xla_client.dtype_to_etype(dst_dtype))
 
-      self.assertEqual(result[0].shape, expected.shape)
-      self.assertEqual(result[0].dtype, expected.dtype)
-      np.testing.assert_equal(result[0], expected)
+    backend = xla_client.get_local_backend()
+    result = xla_client.execute_with_python_values(backend.compile(c.Build()))
+    self.assertLen(result, 1)
+    expected = x.view(dst_dtype)
 
-    x = [0, 1, 0, 0, 1]
-    for src_dtype, dst_dtype in itertools.product(xla_types, xla_types):
-      _ConvertAndTest(x, src_dtype, dst_dtype)
-
-  def testBitcastConvertType(self):
-    xla_x32_types = {
-        np.int32: xla_client.PrimitiveType.S32,
-        np.float32: xla_client.PrimitiveType.F32,
-    }
-
-    xla_x64_types = {
-        np.int64: xla_client.PrimitiveType.S64,
-        np.float64: xla_client.PrimitiveType.F64,
-    }
-
-    def _ConvertAndTest(template, src_dtype, dst_dtype, dst_etype):
-      c = self._NewComputation()
-      x = ops.Constant(c, np.array(template, dtype=src_dtype))
-      ops.BitcastConvertType(x, dst_etype)
-
-      backend = xla_client.get_local_backend()
-      result = xla_client.execute_with_python_values(backend.compile(c.Build()))
-      self.assertLen(result, 1)
-      expected = np.array(template, src_dtype).view(dst_dtype)
-
-      self.assertEqual(result[0].shape, expected.shape)
-      self.assertEqual(result[0].dtype, expected.dtype)
-      np.testing.assert_equal(result[0], expected)
-
-    x = [0, 1, 0, 0, 1]
-    for xla_types in [xla_x32_types, xla_x64_types]:
-      for src_dtype, dst_dtype in itertools.product(xla_types, xla_types):
-        _ConvertAndTest(x, src_dtype, dst_dtype, xla_types[dst_dtype])
+    self.assertEqual(result[0].shape, expected.shape)
+    self.assertEqual(result[0].dtype, expected.dtype)
+    np.testing.assert_equal(result[0], expected)
+  # pylint: enable=bad-continuation
 
   # TODO(b/123523486) implement AllToAll on CPU
   def DISABLED_testAllToAllOneReplica(self):
@@ -682,31 +581,25 @@ class SingleOpTest(ComputationTest):
           ops.Constant(c, lhs), xla_client.make_replica_groups([[0]]))
       self._ExecuteAndCompareExact(c, expected=[lhs])
 
-  def testDotMatrixVectorF32(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testDotMatrixVector(self, dtype):
     c = self._NewComputation()
-    lhs = NumpyArrayF32([[2.0, 3.0], [4.0, 5.0]])
-    rhs = NumpyArrayF32([[10.0], [20.0]])
+    lhs = np.array([[2.0, 3.0], [4.0, 5.0]], dtype=dtype)
+    rhs = np.array([[10.0], [20.0]], dtype=dtype)
     ops.Dot(ops.Constant(c, lhs), ops.Constant(c, rhs))
     self._ExecuteAndCompareClose(c, expected=[np.dot(lhs, rhs)])
 
-  def testDotMatrixVectorF64(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testDotMatrixMatrix(self, dtype):
     c = self._NewComputation()
-    lhs = NumpyArrayF64([[2.0, 3.0], [4.0, 5.0]])
-    rhs = NumpyArrayF64([[10.0], [20.0]])
-    ops.Dot(ops.Constant(c, lhs), ops.Constant(c, rhs))
-    self._ExecuteAndCompareClose(c, expected=[np.dot(lhs, rhs)])
-
-  def testDotMatrixMatrixF32(self):
-    c = self._NewComputation()
-    lhs = NumpyArrayF32([[2.0, 3.0], [4.0, 5.0]])
-    rhs = NumpyArrayF32([[10.0, 20.0], [100.0, 200.0]])
-    ops.Dot(ops.Constant(c, lhs), ops.Constant(c, rhs))
-    self._ExecuteAndCompareClose(c, expected=[np.dot(lhs, rhs)])
-
-  def testDotMatrixMatrixF64(self):
-    c = self._NewComputation()
-    lhs = NumpyArrayF64([[2.0, 3.0], [4.0, 5.0]])
-    rhs = NumpyArrayF64([[10.0, 20.0], [100.0, 200.0]])
+    lhs = np.array([[2.0, 3.0], [4.0, 5.0]], dtype=dtype)
+    rhs = np.array([[10.0, 20.0], [100.0, 200.0]], dtype=dtype)
     ops.Dot(ops.Constant(c, lhs), ops.Constant(c, rhs))
     self._ExecuteAndCompareClose(c, expected=[np.dot(lhs, rhs)])
 
@@ -1425,49 +1318,24 @@ class SingleOpTest(ComputationTest):
 class EmbeddedComputationsTest(ComputationTest):
   """Tests for XLA graphs with embedded computations (such as maps)."""
 
-  def _CreateConstantS32Computation(self):
-    """Computation (f32) -> s32 that returns a constant 1 for any input."""
-    c = self._NewComputation("constant_s32_one")
-    # TODO(eliben): consider adding a nicer way to create new parameters without
-    # having to create dummy Numpy arrays or populating Shape messages. Perhaps
-    # we need our own (Python-client-own) way to represent Shapes conveniently.
-    ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayF32(0)))
-    ops.Constant(c, np.int32(1))
+  def _CreateConstantComputation(self, in_dtype, out_dtype):
+    """Computation (A) -> B that returns a constant 1 for any input."""
+    c = self._NewComputation("constant_{}_{}_one".format(
+        in_dtype.__name__, out_dtype.__name__))
+    ops.Parameter(c, 0,
+                  xla_client.shape_from_pyval(np.array(0, dtype=in_dtype)))
+    ops.Constant(c, out_dtype(1))
     return c.Build()
 
-  def _CreateConstantS64Computation(self):
-    """Computation (f64) -> s64 that returns a constant 1 for any input."""
-    c = self._NewComputation("constant_s64_one")
-    # TODO(eliben): consider adding a nicer way to create new parameters without
-    # having to create dummy Numpy arrays or populating Shape messages. Perhaps
-    # we need our own (Python-client-own) way to represent Shapes conveniently.
-    ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayF64(0)))
-    ops.Constant(c, np.int64(1))
-    return c.Build()
-
-  def _CreateConstantF32Computation(self):
-    """Computation (f32) -> f32 that returns a constant 1.0 for any input."""
-    c = self._NewComputation("constant_f32_one")
-    ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayF32(0)))
-    ops.Constant(c, np.float32(1.0))
-    return c.Build()
-
-  def _CreateConstantF64Computation(self):
-    """Computation (f64) -> f64 that returns a constant 1.0 for any input."""
-    c = self._NewComputation("constant_f64_one")
-    ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayF64(0)))
-    ops.Constant(c, np.float64(1.0))
-    return c.Build()
-
-  def _CreateMulF32By2Computation(self):
-    """Computation (f32) -> f32 that multiplies its parameter by 2."""
+  def _CreateMulBy2Computation(self, dtype):
+    """Computation (dtype) -> dtype that multiplies its parameter by 2."""
     c = self._NewComputation("mul_f32_by2")
     ops.Mul(
         ops.Parameter(
             c, 0,
-            xla_client.shape_from_pyval(
-                NumpyArrayF32(0)).with_major_to_minor_layout_if_absent()),
-        ops.Constant(c, np.float32(2.0)))
+            xla_client.shape_from_pyval(np.array(
+                0, dtype=dtype)).with_major_to_minor_layout_if_absent()),
+        ops.Constant(c, dtype(2.0)))
     return c.Build()
 
   def _CreateMulF32ByParamComputation(self):
@@ -1478,196 +1346,100 @@ class EmbeddedComputationsTest(ComputationTest):
         ops.Parameter(c, 1, xla_client.shape_from_pyval(NumpyArrayF32(0))))
     return c.Build()
 
-  def _CreateMulF64By2Computation(self):
-    """Computation (f64) -> f64 that multiplies its parameter by 2."""
-    c = self._NewComputation("mul_f64_by2")
-    ops.Mul(
-        ops.Parameter(
-            c, 0,
-            xla_client.shape_from_pyval(
-                NumpyArrayF64(0)).with_major_to_minor_layout_if_absent()),
-        ops.Constant(c, np.float64(2.0)))
-    return c.Build()
-
-  def _CreateBinaryAddS32Computation(self):
-    """Computation (s32, s32) -> s32 that adds its two parameters."""
+  def _CreateBinaryAddComputation(self, dtype):
+    """Computation (dtype, dtype) -> dtype that adds its two parameters."""
     c = self._NewComputation("add_param0_by_param1")
-    ops.Add(
-        ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayS32(0))),
-        ops.Parameter(c, 1, xla_client.shape_from_pyval(NumpyArrayS32(0))))
+    shape = xla_client.shape_from_pyval(np.array(0, dtype=dtype))
+    shape = shape.with_major_to_minor_layout_if_absent()
+    ops.Add(ops.Parameter(c, 0, shape), ops.Parameter(c, 1, shape))
     return c.Build()
 
-  def _CreateBinaryAddF32Computation(self):
-    """Computation (f32, f32) -> f32 that adds its two parameters."""
-    c = self._NewComputation("add_param0_by_param1")
-    ops.Add(
-        ops.Parameter(
-            c, 0,
-            xla_client.shape_from_pyval(
-                NumpyArrayF32(0)).with_major_to_minor_layout_if_absent()),
-        ops.Parameter(
-            c, 1,
-            xla_client.shape_from_pyval(
-                NumpyArrayF32(0)).with_major_to_minor_layout_if_absent()))
-    return c.Build()
-
-  def _CreateBinaryAddF64Computation(self):
-    """Computation (f64, f64) -> f64 that adds its two parameters."""
-    c = self._NewComputation("add_param0_by_param1")
-    ops.Add(
-        ops.Parameter(
-            c, 0,
-            xla_client.shape_from_pyval(
-                NumpyArrayF64(0)).with_major_to_minor_layout_if_absent()),
-        ops.Parameter(
-            c, 1,
-            xla_client.shape_from_pyval(
-                NumpyArrayF64(0)).with_major_to_minor_layout_if_absent()))
-    return c.Build()
-
-  def _CreateBinaryDivF32Computation(self):
-    """Computation (f32, f32) -> f32 that divides its two parameters."""
-    c = self._NewComputation("div_param0_by_param1")
-    ops.Div(
-        ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayF32(0))),
-        ops.Parameter(c, 1, xla_client.shape_from_pyval(NumpyArrayF32(0))))
-    return c.Build()
-
-  def _CreateBinaryDivF64Computation(self):
-    """Computation (f64, f64) -> f64 that divides its two parameters."""
-    c = self._NewComputation("div_param0_by_param1")
-    ops.Div(
-        ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayF64(0))),
-        ops.Parameter(c, 1, xla_client.shape_from_pyval(NumpyArrayF64(0))))
-    return c.Build()
-
-  def _CreateTestF32Lt10Computation(self):
-    """Computation (f32) -> bool that tests if its parameter is less than 10."""
-    c = self._NewComputation("test_f32_lt_10")
-    ops.Lt(
-        ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayF32(0))),
-        ops.Constant(c, np.float32(10.)))
-    return c.Build()
-
-  def _CreateTestF64Lt10Computation(self):
-    """Computation (f64) -> bool that tests if its parameter is less than 10."""
-    c = self._NewComputation("test_f64_lt_10")
-    ops.Lt(
-        ops.Parameter(c, 0, xla_client.shape_from_pyval(NumpyArrayF64(0))),
-        ops.Constant(c, np.float64(10.)))
-    return c.Build()
-
-  def _CreateBinaryGeF32Computation(self):
-    """Computation (f32, f32) -> bool that tests first_param >= second_param."""
+  def _CreateBinaryGeComputation(self, dtype):
+    """Computation (dtype, dtype) -> bool that tests param0 >= param1."""
     c = self._NewComputation("param0_lt_param1")
-    ops.Ge(
-        ops.Parameter(
-            c, 0,
-            xla_client.shape_from_pyval(
-                NumpyArrayF32(0)).with_major_to_minor_layout_if_absent()),
-        ops.Parameter(
-            c, 1,
-            xla_client.shape_from_pyval(
-                NumpyArrayF32(0)).with_major_to_minor_layout_if_absent()))
+    shape = xla_client.shape_from_pyval(np.array(0, dtype=dtype))
+    shape = shape.with_major_to_minor_layout_if_absent()
+    ops.Ge(ops.Parameter(c, 0, shape), ops.Parameter(c, 1, shape))
     return c.Build()
 
-  def _CreateBinaryGeF64Computation(self):
-    """Computation (f64, f64) -> bool that tests first_param >= second_param."""
-    c = self._NewComputation("param0_lt_param1")
-    ops.Ge(
-        ops.Parameter(
-            c, 0,
-            xla_client.shape_from_pyval(
-                NumpyArrayF64(0)).with_major_to_minor_layout_if_absent()),
-        ops.Parameter(
-            c, 1,
-            xla_client.shape_from_pyval(
-                NumpyArrayF64(0)).with_major_to_minor_layout_if_absent()))
-    return c.Build()
+  def _MakeSample3DArray(self, dtype):
+    return np.array([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]],
+                     [[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]],
+                    dtype=dtype)
 
-  def _MakeSample3DArrayF32(self):
-    return NumpyArrayF32([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]],
-                          [[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]])
-
-  def _MakeSample3DArrayF64(self):
-    return NumpyArrayF64([[[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]],
-                          [[1, 2, 3], [4, 5, 6]], [[1, 2, 3], [4, 5, 6]]])
-
-  def testCallF32(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testCall(self, dtype):
     c = self._NewComputation()
     ops.Call(
         c,
-        self._CreateMulF32By2Computation(),
-        operands=(ops.Constant(c, np.float32(5.0)),))
+        self._CreateMulBy2Computation(dtype),
+        operands=(ops.Constant(c, dtype(5.0)),))
     self._ExecuteAndCompareClose(c, expected=[10.0])
 
-  def testCallF64(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}_{}".format(in_dtype.__name__, out_dtype.__name__),
+      "in_dtype": in_dtype,
+      "out_dtype": out_dtype,
+  } for in_dtype, out_dtype in [[np.float32, np.int32], [np.float64, np.int64]])
+  def testMapEachElementToConstant(self, in_dtype, out_dtype):
     c = self._NewComputation()
-    ops.Call(
-        c,
-        self._CreateMulF64By2Computation(),
-        operands=(ops.Constant(c, np.float64(5.0)),))
-    self._ExecuteAndCompareClose(c, expected=[10.0])
-
-  def testMapEachElementToS32Constant(self):
-    c = self._NewComputation()
-    ops.Map(c, [ops.Constant(c, NumpyArrayF32([1.0, 2.0, 3.0, 4.0]))],
-            self._CreateConstantS32Computation(), [0])
+    ops.Map(c,
+            [ops.Constant(c, np.array([1.0, 2.0, 3.0, 4.0], dtype=in_dtype))],
+            self._CreateConstantComputation(in_dtype, out_dtype), [0])
     self._ExecuteAndCompareExact(c, expected=[[1, 1, 1, 1]])
 
-  def testMapEachElementToS64Constant(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testMapMulBy2(self, dtype):
     c = self._NewComputation()
-    ops.Map(c, [ops.Constant(c, NumpyArrayF64([1.0, 2.0, 3.0, 4.0]))],
-            self._CreateConstantS64Computation(), [0])
-    self._ExecuteAndCompareExact(c, expected=[[1, 1, 1, 1]])
-
-  def testMapMulBy2F32(self):
-    c = self._NewComputation()
-    ops.Map(c, [ops.Constant(c, NumpyArrayF32([1.0, 2.0, 3.0, 4.0]))],
-            self._CreateMulF32By2Computation(), [0])
+    ops.Map(c, [ops.Constant(c, np.array([1.0, 2.0, 3.0, 4.0], dtype=dtype))],
+            self._CreateMulBy2Computation(dtype), [0])
     self._ExecuteAndCompareClose(c, expected=[[2.0, 4.0, 6.0, 8.0]])
 
-  def testMapMulBy2F64(self):
-    c = self._NewComputation()
-    ops.Map(c, [ops.Constant(c, NumpyArrayF64([1.0, 2.0, 3.0, 4.0]))],
-            self._CreateMulF64By2Computation(), [0])
-    self._ExecuteAndCompareClose(c, expected=[[2.0, 4.0, 6.0, 8.0]])
-
-  def testSimpleMapChainF32(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testSimpleMapChain(self, dtype):
     # Chains a map of constant-f32 with a map of mul-by-2
     c = self._NewComputation()
-    const_f32 = ops.Map(c,
-                        [ops.Constant(c, NumpyArrayF32([1.0, 2.0, 3.0, 4.0]))],
-                        self._CreateConstantF32Computation(), [0])
-    ops.Map(c, [const_f32], self._CreateMulF32By2Computation(), [0])
+    const = ops.Map(
+        c, [ops.Constant(c, np.array([1.0, 2.0, 3.0, 4.0], dtype=dtype))],
+        self._CreateConstantComputation(dtype, dtype), [0])
+    ops.Map(c, [const], self._CreateMulBy2Computation(dtype), [0])
     self._ExecuteAndCompareClose(c, expected=[[2.0, 2.0, 2.0, 2.0]])
 
-  def testSimpleMapChainF64(self):
-    # Chains a map of constant-f64 with a map of mul-by-2
-    c = self._NewComputation()
-    const_f64 = ops.Map(c,
-                        [ops.Constant(c, NumpyArrayF64([1.0, 2.0, 3.0, 4.0]))],
-                        self._CreateConstantF64Computation(), [0])
-    ops.Map(c, [const_f64], self._CreateMulF64By2Computation(), [0])
-    self._ExecuteAndCompareClose(c, expected=[[2.0, 2.0, 2.0, 2.0]])
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testDivVectorsWithMap(self, dtype):
 
-  def testDivVectorsWithMapF32(self):
+    def DivComputation():
+      c = self._NewComputation("div_param0_by_param1")
+      shape = xla_client.shape_from_pyval(np.array(0, dtype=dtype))
+      ops.Div(ops.Parameter(c, 0, shape), ops.Parameter(c, 1, shape))
+      return c.Build()
+
     c = self._NewComputation()
-    ops.Map(c, (ops.Constant(c, NumpyArrayF32([1.0, 2.0, 3.0, 4.0])),
-                ops.Constant(c, NumpyArrayF32([5.0, 5.0, 4.0, 4.0]))),
-            self._CreateBinaryDivF32Computation(), [0])
+    ops.Map(c, (ops.Constant(c, np.array([1.0, 2.0, 3.0, 4.0], dtype=dtype)),
+                ops.Constant(c, np.array([5.0, 5.0, 4.0, 4.0], dtype=dtype))),
+            DivComputation(), [0])
     self._ExecuteAndCompareClose(c, expected=[[0.2, 0.4, 0.75, 1.0]])
 
-  def testDivVectorsWithMapF64(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testSelectAndScatter(self, dtype):
     c = self._NewComputation()
-    ops.Map(c, (ops.Constant(c, NumpyArrayF64([1.0, 2.0, 3.0, 4.0])),
-                ops.Constant(c, NumpyArrayF64([5.0, 5.0, 4.0, 4.0]))),
-            self._CreateBinaryDivF64Computation(), [0])
-    self._ExecuteAndCompareClose(c, expected=[[0.2, 0.4, 0.75, 1.0]])
-
-  def testSelectAndScatterF32(self):
-    c = self._NewComputation()
-    operand = ops.Constant(c, NumpyArrayF32([[1., 2., 6.], [4., 5., 3.]]))
+    operand = ops.Constant(c, np.array([[1., 2., 6.], [4., 5., 3.]],
+                                       dtype=dtype))
     window_dimensions = (2, 1)
     window_strides = (1, 2)
     padding = xla_client.window_padding_type_to_pad_values(
@@ -1675,141 +1447,69 @@ class EmbeddedComputationsTest(ComputationTest):
         c.GetShape(operand).dimensions(), window_dimensions, window_strides)
     ops.SelectAndScatterWithGeneralPadding(
         operand,
-        select=self._CreateBinaryGeF32Computation(),
+        select=self._CreateBinaryGeComputation(dtype),
         window_dimensions=window_dimensions,
         window_strides=window_strides,
         padding=padding,
-        source=ops.Constant(c, NumpyArrayF32([[0.1, 0.2]])),
-        init_value=ops.Constant(c, NumpyArrayF32(1)),
-        scatter=self._CreateBinaryAddF32Computation())
+        source=ops.Constant(c, np.array([[0.1, 0.2]], dtype=dtype)),
+        init_value=ops.Constant(c, np.array(1, dtype=dtype)),
+        scatter=self._CreateBinaryAddComputation(dtype))
     self._ExecuteAndCompareClose(c, expected=[[[1., 1., 1.2], [1.1, 1., 1.]]])
 
-  def testSelectAndScatterF64(self):
-    c = self._NewComputation()
-    operand = ops.Constant(c, NumpyArrayF64([[1., 2., 6.], [4., 5., 3.]]))
-    window_dimensions = (2, 1)
-    window_strides = (1, 2)
-    padding = xla_client.window_padding_type_to_pad_values(
-        xla_client.PaddingType.VALID,
-        c.GetShape(operand).dimensions(), window_dimensions, window_strides)
-    ops.SelectAndScatterWithGeneralPadding(
-        operand,
-        select=self._CreateBinaryGeF64Computation(),
-        window_dimensions=window_dimensions,
-        window_strides=window_strides,
-        padding=padding,
-        source=ops.Constant(c, NumpyArrayF64([[0.1, 0.2]])),
-        init_value=ops.Constant(c, NumpyArrayF64(1)),
-        scatter=self._CreateBinaryAddF64Computation())
-    self._ExecuteAndCompareClose(c, expected=[[[1., 1., 1.2], [1.1, 1., 1.]]])
-
-  def testReduce1DtoScalarF32(self):
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testReduce1DtoScalar(self, dtype):
     c = self._NewComputation()
     ops.Reduce(
         c,
-        operands=[ops.Constant(c, NumpyArrayF32([1.0, 2.0, 3.0, 4.0]))],
-        init_values=[ops.Constant(c, np.float32(0))],
-        computation=self._CreateBinaryAddF32Computation(),
+        operands=[ops.Constant(c, np.array([1.0, 2.0, 3.0, 4.0], dtype=dtype))],
+        init_values=[ops.Constant(c, dtype(0))],
+        computation=self._CreateBinaryAddComputation(dtype),
         dimensions_to_reduce=[0])
     self._ExecuteAndCompareClose(c, expected=[10])
 
-  def testReduce1DtoScalarF64(self):
-    c = self._NewComputation()
-    ops.Reduce(
-        c,
-        operands=[ops.Constant(c, NumpyArrayF64([1.0, 2.0, 3.0, 4.0]))],
-        init_values=[ops.Constant(c, np.float64(0))],
-        computation=self._CreateBinaryAddF64Computation(),
-        dimensions_to_reduce=[0])
-    self._ExecuteAndCompareClose(c, expected=[10])
-
-  def testReduce2DTo1DDim0F32(self):
-    input_array = NumpyArrayF32([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+  @parameterized.named_parameters({
+      "testcase_name": "_{}_dim{}".format(dtype.__name__, dim),
+      "dtype": dtype,
+      "dim": dim,
+  } for dtype in [np.float32, np.float64] for dim in range(2))
+  def testReduce2DTo1D(self, dtype, dim):
+    input_array = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=dtype)
     c = self._NewComputation()
     ops.Reduce(
         c,
         operands=[ops.Constant(c, input_array)],
-        init_values=[ops.Constant(c, np.float32(0))],
-        computation=self._CreateBinaryAddF32Computation(),
-        dimensions_to_reduce=[0])
-    self._ExecuteAndCompareClose(c, expected=[[5, 7, 9]])
+        init_values=[ops.Constant(c, dtype(0))],
+        computation=self._CreateBinaryAddComputation(dtype),
+        dimensions_to_reduce=[dim])
+    self._ExecuteAndCompareClose(c, expected=[np.sum(input_array, axis=dim)])
 
-  def testReduce2DTo1DDim0F64(self):
-    input_array = NumpyArrayF64([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+  @parameterized.named_parameters({
+      "testcase_name": "_{}_dims[{}]".format(dtype.__name__, dims),
+      "dtype": dtype,
+      "dims": tuple(dims)
+  }
+                                  for dtype in [np.float32, np.float64]
+                                  for dims in itertools.permutations(range(3)))
+  def testReduce3DAllPossibleWaysF32(self, dtype, dims):
+    input_array = self._MakeSample3DArray(dtype)
     c = self._NewComputation()
     ops.Reduce(
         c,
         operands=[ops.Constant(c, input_array)],
-        init_values=[ops.Constant(c, np.float64(0))],
-        computation=self._CreateBinaryAddF64Computation(),
-        dimensions_to_reduce=[0])
-    self._ExecuteAndCompareClose(c, expected=[[5, 7, 9]])
+        init_values=[ops.Constant(c, dtype(0))],
+        computation=self._CreateBinaryAddComputation(dtype),
+        dimensions_to_reduce=dims)
+    self._ExecuteAndCompareClose(c, expected=[np.sum(input_array, axis=dims)])
 
-  def testReduce2DTo1DDim1F32(self):
-    input_array = NumpyArrayF32([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-    c = self._NewComputation()
-    ops.Reduce(
-        c,
-        operands=[ops.Constant(c, input_array)],
-        init_values=[ops.Constant(c, np.float32(0))],
-        computation=self._CreateBinaryAddF32Computation(),
-        dimensions_to_reduce=[1])
-    self._ExecuteAndCompareClose(c, expected=[[6, 15]])
-
-  def testReduce2DTo1DDim1F64(self):
-    input_array = NumpyArrayF64([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-    c = self._NewComputation()
-    ops.Reduce(
-        c,
-        operands=[ops.Constant(c, input_array)],
-        init_values=[ops.Constant(c, np.float64(0))],
-        computation=self._CreateBinaryAddF64Computation(),
-        dimensions_to_reduce=[1])
-    self._ExecuteAndCompareClose(c, expected=[[6, 15]])
-
-  def testReduce3DAllPossibleWaysF32(self):
-    input_array = self._MakeSample3DArrayF32()
-
-    def _ReduceAndTest(*dims):
-      c = self._NewComputation()
-      ops.Reduce(
-          c,
-          operands=[ops.Constant(c, input_array)],
-          init_values=[ops.Constant(c, np.float32(0))],
-          computation=self._CreateBinaryAddF32Computation(),
-          dimensions_to_reduce=dims)
-      self._ExecuteAndCompareClose(
-          c, expected=[np.sum(input_array, axis=tuple(dims))])
-
-    _ReduceAndTest(0)
-    _ReduceAndTest(0, 1)
-    _ReduceAndTest(0, 2)
-    _ReduceAndTest(1, 2)
-    _ReduceAndTest(0, 1, 2)
-
-  def testReduce3DAllPossibleWaysF64(self):
-    input_array = self._MakeSample3DArrayF64()
-
-    def _ReduceAndTest(*dims):
-      c = self._NewComputation()
-      ops.Reduce(
-          c,
-          operands=[ops.Constant(c, input_array)],
-          init_values=[ops.Constant(c, np.float64(0))],
-          computation=self._CreateBinaryAddF64Computation(),
-          dimensions_to_reduce=dims)
-      self._ExecuteAndCompareClose(
-          c, expected=[np.sum(input_array, axis=tuple(dims))])
-
-    _ReduceAndTest(0)
-    _ReduceAndTest(0)
-    _ReduceAndTest(0, 1)
-    _ReduceAndTest(0, 2)
-    _ReduceAndTest(1, 2)
-    _ReduceAndTest(0, 1, 2)
-
-  def testReduceWindowValidUnitStridesF32(self):
-    input_array = NumpyArrayF32([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testReduceWindowValidUnitStrides(self, dtype):
+    input_array = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=dtype)
     c = self._NewComputation()
     window_dimensions = (2, 1)
     window_strides = (1, 1)
@@ -1818,8 +1518,8 @@ class EmbeddedComputationsTest(ComputationTest):
         window_strides)
     ops.ReduceWindowWithGeneralPadding(
         operand=ops.Constant(c, input_array),
-        init_value=ops.Constant(c, np.float32(0)),
-        computation=self._CreateBinaryAddF32Computation(),
+        init_value=ops.Constant(c, dtype(0)),
+        computation=self._CreateBinaryAddComputation(dtype),
         window_dimensions=window_dimensions,
         window_strides=window_strides,
         base_dilations=[],
@@ -1827,8 +1527,12 @@ class EmbeddedComputationsTest(ComputationTest):
         padding=padding)
     self._ExecuteAndCompareClose(c, expected=[[[5., 7., 9.]]])
 
-  def testReduceWindowSameUnitStridesF32(self):
-    input_array = NumpyArrayF32([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testReduceWindowSameUnitStrides(self, dtype):
+    input_array = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=dtype)
     c = self._NewComputation()
     window_dimensions = (2, 1)
     window_strides = (1, 1)
@@ -1837,8 +1541,8 @@ class EmbeddedComputationsTest(ComputationTest):
         window_strides)
     ops.ReduceWindowWithGeneralPadding(
         operand=ops.Constant(c, input_array),
-        init_value=ops.Constant(c, np.float32(0)),
-        computation=self._CreateBinaryAddF32Computation(),
+        init_value=ops.Constant(c, dtype(0)),
+        computation=self._CreateBinaryAddComputation(dtype),
         window_dimensions=window_dimensions,
         window_strides=window_strides,
         base_dilations=[],
@@ -1846,8 +1550,12 @@ class EmbeddedComputationsTest(ComputationTest):
         padding=padding)
     self._ExecuteAndCompareClose(c, expected=[[[5., 7., 9.], [4., 5., 6.]]])
 
-  def testReduceWindowValidGeneralStridesF32(self):
-    input_array = NumpyArrayF32([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testReduceWindowValidGeneralStrides(self, dtype):
+    input_array = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=dtype)
     c = self._NewComputation()
     window_dimensions = (2, 1)
     window_strides = (1, 2)
@@ -1856,8 +1564,8 @@ class EmbeddedComputationsTest(ComputationTest):
         window_strides)
     ops.ReduceWindowWithGeneralPadding(
         operand=ops.Constant(c, input_array),
-        init_value=ops.Constant(c, np.float32(0)),
-        computation=self._CreateBinaryAddF32Computation(),
+        init_value=ops.Constant(c, dtype(0)),
+        computation=self._CreateBinaryAddComputation(dtype),
         window_dimensions=window_dimensions,
         window_strides=window_strides,
         base_dilations=[],
@@ -1865,76 +1573,22 @@ class EmbeddedComputationsTest(ComputationTest):
         padding=padding)
     self._ExecuteAndCompareClose(c, expected=[[[5., 9.]]])
 
-  def testReduceWindowValidUnitStridesF64(self):
-    input_array = NumpyArrayF64([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-    c = self._NewComputation()
-    window_dimensions = (2, 1)
-    window_strides = (1, 1)
-    padding = xla_client.window_padding_type_to_pad_values(
-        xla_client.PaddingType.VALID, input_array.shape, window_dimensions,
-        window_strides)
-    ops.ReduceWindowWithGeneralPadding(
-        operand=ops.Constant(c, input_array),
-        init_value=ops.Constant(c, np.float64(0)),
-        computation=self._CreateBinaryAddF64Computation(),
-        window_dimensions=window_dimensions,
-        window_strides=window_strides,
-        base_dilations=[],
-        window_dilations=[],
-        padding=padding)
-    self._ExecuteAndCompareClose(c, expected=[[[5., 7., 9.]]])
+  @parameterized.named_parameters({
+      "testcase_name": "_{}".format(dtype.__name__),
+      "dtype": dtype,
+  } for dtype in [np.float32, np.float64])
+  def testWhile(self, dtype):
 
-  def testReduceWindowSameUnitStridesF64(self):
-    input_array = NumpyArrayF64([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-    c = self._NewComputation()
-    window_dimensions = (2, 1)
-    window_strides = (1, 1)
-    padding = xla_client.window_padding_type_to_pad_values(
-        xla_client.PaddingType.SAME, input_array.shape, window_dimensions,
-        window_strides)
-    ops.ReduceWindowWithGeneralPadding(
-        operand=ops.Constant(c, input_array),
-        init_value=ops.Constant(c, np.float64(0)),
-        computation=self._CreateBinaryAddF64Computation(),
-        window_dimensions=window_dimensions,
-        window_strides=window_strides,
-        base_dilations=[],
-        window_dilations=[],
-        padding=padding)
-    self._ExecuteAndCompareClose(c, expected=[[[5., 7., 9.], [4., 5., 6.]]])
+    def LessThan10Cond():
+      c = self._NewComputation("test_lt_10")
+      shape = xla_client.shape_from_pyval(np.array(0, dtype=dtype))
+      ops.Lt(ops.Parameter(c, 0, shape), ops.Constant(c, dtype(10.)))
+      return c.Build()
 
-  def testReduceWindowValidGeneralStridesF64(self):
-    input_array = NumpyArrayF64([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    cond = LessThan10Cond()
+    body = self._CreateMulBy2Computation(dtype)
     c = self._NewComputation()
-    window_dimensions = (2, 1)
-    window_strides = (1, 2)
-    padding = xla_client.window_padding_type_to_pad_values(
-        xla_client.PaddingType.VALID, input_array.shape, window_dimensions,
-        window_strides)
-    ops.ReduceWindowWithGeneralPadding(
-        operand=ops.Constant(c, input_array),
-        init_value=ops.Constant(c, np.float64(0)),
-        computation=self._CreateBinaryAddF64Computation(),
-        window_dimensions=window_dimensions,
-        window_strides=window_strides,
-        base_dilations=[],
-        window_dilations=[],
-        padding=padding)
-    self._ExecuteAndCompareClose(c, expected=[[[5., 9.]]])
-
-  def testWhileF32(self):
-    cond = self._CreateTestF32Lt10Computation()
-    body = self._CreateMulF32By2Computation()
-    c = self._NewComputation()
-    init = ops.Constant(c, np.float32(1.))
-    ops.While(cond, body, init)
-    self._ExecuteAndCompareClose(c, expected=[16.])
-
-  def testWhileF64(self):
-    cond = self._CreateTestF64Lt10Computation()
-    body = self._CreateMulF64By2Computation()
-    c = self._NewComputation()
-    init = ops.Constant(c, np.float64(1.))
+    init = ops.Constant(c, dtype(1.))
     ops.While(cond, body, init)
     self._ExecuteAndCompareClose(c, expected=[16.])
 
@@ -1942,9 +1596,9 @@ class EmbeddedComputationsTest(ComputationTest):
     c = self._NewComputation()
     pred = ops.Constant(c, np.bool_(True))
     true_operand = ops.Constant(c, np.float32(3.))
-    true_computation = self._CreateMulF32By2Computation()
+    true_computation = self._CreateMulBy2Computation(np.float32)
     false_operand = ops.Constant(c, np.float32(2.))
-    false_computation = self._CreateConstantF32Computation()
+    false_computation = self._CreateConstantComputation(np.float32, np.float32)
     ops.Conditional(pred, true_operand, true_computation, false_operand,
                     false_computation)
     self._ExecuteAndCompareClose(c, expected=[6.])
@@ -1953,9 +1607,9 @@ class EmbeddedComputationsTest(ComputationTest):
     c = self._NewComputation()
     pred = ops.Constant(c, np.bool_(False))
     true_operand = ops.Constant(c, np.float32(3.))
-    true_computation = self._CreateMulF32By2Computation()
+    true_computation = self._CreateMulBy2Computation(np.float32)
     false_operand = ops.Constant(c, np.float32(2.))
-    false_computation = self._CreateConstantF32Computation()
+    false_computation = self._CreateConstantComputation(np.float32, np.float32)
     ops.Conditional(pred, true_operand, true_computation, false_operand,
                     false_computation)
     self._ExecuteAndCompareClose(c, expected=[1.])
@@ -2032,7 +1686,8 @@ class EmbeddedComputationsTest(ComputationTest):
     c = self._NewComputation()
     ops.Scatter(
         ops.Constant(c, a), ops.Constant(c, scatter_indices),
-        ops.Constant(c, updates), self._CreateBinaryAddS32Computation(), dnums)
+        ops.Constant(c, updates), self._CreateBinaryAddComputation(np.int32),
+        dnums)
     expected = np.array([[10, 21, 32], [3, 4, 5], [76, 87, 98]], dtype=np.int32)
     self._ExecuteAndCompareClose(c, expected=[expected])
 
