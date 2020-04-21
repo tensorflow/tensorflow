@@ -63,11 +63,10 @@ void GenerateFileContent(const std::string& tflite_path,
 
   if (for_micro) {
     if (!builtin_ops.empty()) {
-      fout << "#include \"" << tflite_path
-           << "/experimental/micro/kernels/micro_ops.h\"\n";
+      fout << "#include \"" << tflite_path << "/micro/kernels/micro_ops.h\"\n";
     }
     fout << "#include \"" << tflite_path
-         << "/experimental/micro/micro_mutable_op_resolver.h\"\n";
+         << "/micro/micro_mutable_op_resolver.h\"\n";
   } else {
     if (!builtin_ops.empty()) {
       fout << "#include \"" << tflite_path
