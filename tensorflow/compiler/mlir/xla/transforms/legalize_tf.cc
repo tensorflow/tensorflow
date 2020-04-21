@@ -1352,7 +1352,7 @@ static DenseIntElementsAttr GetReduceWindowPadding(
       flatten_paddings);
 }
 
-// Converts MaxPool op to HLO ReduceWindow op by setting appropriate window
+// Converts AvgPool op to HLO ReduceWindow op by setting appropriate window
 // dimensions with add as the reduction function. The reduction result is
 // then divided by the number of elements in the window.
 class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
@@ -2705,23 +2705,25 @@ class ConvertTileOp : public OpRewritePattern<TF::TileOp> {
   }
 };
 
-class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
+template <typename OpTy, int num_dims>
+class ConvertMaxPoolGradOp : public OpRewritePattern<OpTy> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  using OpRewritePattern<OpTy>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TF::MaxPoolGradOp op,
+  LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
     Type element_type =
-        op.orig_input().getType().cast<TensorType>().getElementType();
+        op.orig_input().getType().template cast<TensorType>().getElementType();
 
     // Compute paddings using the original input and kernel shape and strides.
     // Here, ReduceWindow op as used as the MaxPool op is lowered to the
     // ReduceWindow op.
-    auto input_ty = op.orig_input().getType().dyn_cast<RankedTensorType>();
+    auto input_ty =
+        op.orig_input().getType().template dyn_cast<RankedTensorType>();
     if (!input_ty) return failure();
-    DenseIntElementsAttr paddings_attr = GetReduceWindowPadding<4>(
+    DenseIntElementsAttr paddings_attr = GetReduceWindowPadding<num_dims>(
         input_ty.getShape(), op.ksize(), op.strides(), op.padding(), &rewriter);
 
     auto result = rewriter.create<SelectAndScatterOp>(
@@ -2751,6 +2753,11 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
     return success();
   }
 };
+
+using ConvertMaxPool2DGradOp =
+    ConvertMaxPoolGradOp<TF::MaxPoolGradOp, /*num_dims=*/4>;
+using ConvertMaxPool3DGradOp =
+    ConvertMaxPoolGradOp<TF::MaxPool3DGradOp, /*num_dims=*/5>;
 
 // Converts tf.Conv?DBackpropInputOp into:
 //   %rev_filter = "xla_hlo.reverse"(%filter)
@@ -3925,10 +3932,10 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertFusedBatchNormGradV2Op, ConvertFusedBatchNormGradV3Op,
       ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp,
       ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPool2DOp,
-      ConvertMaxPool3DOp, ConvertMaxPoolGradOp, ConvertMeanOp, ConvertOneHotOp,
-      ConvertOutfeedEnqueueTupleOp, ConvertProdOp, ConvertRangeOp,
-      ConvertSelectV2Op, ConvertSigmoidOp, ConvertSizeOp,
-      ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertMaxPool3DOp, ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp,
+      ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
+      ConvertProdOp, ConvertRangeOp, ConvertSelectV2Op, ConvertSigmoidOp,
+      ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,
