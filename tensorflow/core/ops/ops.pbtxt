@@ -10517,6 +10517,13 @@ op {
     type: DT_VARIANT
   }
   attr {
+    name: "task_refresh_interval_hint_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
     name: "output_types"
     type: "list(type)"
     has_minimum: true
