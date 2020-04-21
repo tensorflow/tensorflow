@@ -264,6 +264,7 @@ TEST_F(BFloat16ConverterTest, ContextBasedRewritePositive) {
   }
 }
 
+#if 0
 // Test for context-based rewrite feature. Mul operator in the graph should not
 // be rewritten with BFloat16 type since it has all the inputs coming from
 // non-MKL operators.
@@ -318,6 +319,7 @@ TEST_F(BFloat16ConverterTest, ContextBasedRewriteNegative) {
     test::ExpectClose(tensors_expected[i], tensors[i], -1, 5e-2);
   }
 }
+#endif
 
 // Check that Conv2D is fused even in BFloat16 format.
 //
