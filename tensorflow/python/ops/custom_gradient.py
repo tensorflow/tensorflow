@@ -344,7 +344,7 @@ def _graph_mode_decorator(f, args, kwargs):
 
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
   variables_in_signature = ("variables" in grad_argspec.args or
-                            grad_argspec.varkw)
+                            grad_argspec.varkw or "variables" in grad_argspec.kwonlyargs)
   if variables and not variables_in_signature:
     raise TypeError("If using @custom_gradient with a function that "
                     "uses variables, then grad_fn must accept a keyword "
