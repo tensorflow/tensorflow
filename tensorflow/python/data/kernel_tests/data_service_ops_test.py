@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
+
 from absl.testing import parameterized
 
 from tensorflow.python.data.experimental.ops import data_service_ops
@@ -136,6 +138,78 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     iterator = data_service_ops.create_iterator(ds, token)
     results = [elem.numpy() for elem in iterator]
     self.assertCountEqual(num_workers * list(range(num_elements)), results)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testAddWorkerMidJob(self):
+    self._master = server_lib.MasterServer(PROTOCOL)
+    master_address = self._master.target[len(PROTOCOL + "://"):]
+    self._worker = server_lib.WorkerServer(
+        PROTOCOL, master_address=master_address)
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = ds.apply(
+        data_service_ops._distribute(
+            self._master.target, task_refresh_interval_hint_ms=20))
+    token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
+    iterator = data_service_ops.create_iterator(ds, token)
+    results = []
+    # Read halfway through the dataset.
+    for _ in range(num_elements // 2):
+      results.append(next(iterator).numpy())
+
+    self._new_worker = server_lib.WorkerServer(
+        PROTOCOL, master_address=master_address)
+
+    # Give the client time to notice the new task.
+    time.sleep(50 / 1000)  # 50ms
+
+    for elem in iterator:
+      results.append(elem.numpy())
+
+    # It is possible that reading from the first worker completes before the
+    # client notices the second worker. We allow this to avoid flaky failures.
+    if len(results) == num_elements:
+      self.assertEqual(list(range(num_elements)), results)
+    else:
+      self.assertCountEqual(2 * list(range(num_elements)), results)
+
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         combinations.combine(use_same_port=[True, False])))
+  def testRestartWorker(self, use_same_port):
+    self._master = server_lib.MasterServer(PROTOCOL)
+    master_address = self._master.target[len(PROTOCOL + "://"):]
+    self._worker = server_lib.WorkerServer(
+        PROTOCOL, master_address=master_address)
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements)
+    ds = ds.apply(
+        data_service_ops._distribute(
+            self._master.target, task_refresh_interval_hint_ms=20))
+    token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
+    iterator = data_service_ops.create_iterator(ds, token)
+    # Read halfway through the dataset.
+    for i in range(num_elements // 2):
+      self.assertEqual(i, next(iterator).numpy())
+
+    # Stop the original worker and start a new one.
+    port = 0
+    if use_same_port:
+      worker_address = self._worker.target[len(PROTOCOL + "://"):]
+      port = int(worker_address.split(":")[1])
+    self._worker.stop()
+    self._new_worker = server_lib.WorkerServer(
+        PROTOCOL, master_address=master_address, port=port)
+
+    # There may be one last element prefetched from the first worker before it
+    # was stopped.
+    val = next(iterator).numpy()
+    self.assertTrue(val == 0 or val == num_elements // 2)
+    start_val = 1 if val == 0 else 0
+
+    # The dataset starts over now that we read from the new worker.
+    for i in range(start_val, num_elements):
+      self.assertEqual(i, next(iterator).numpy())
 
   @combinations.generate(test_base.eager_only_combinations())
   def testInsideFunction(self):

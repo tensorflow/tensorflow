@@ -60,8 +60,8 @@ namespace data {
 // the current attempt to complete and perform no more retries.
 const int64 kRetryTimeoutMicros = 1000LL * 1000 * 60 * 60;  // 60 minutes.
 
-// How often to refresh the task list.
-const int64 kRefreshTasksIntervalMicros = 1000LL * 1000 * 60;  // 60 seconds.
+// Default interval between task list refreshes.
+const int64 kDefaultTaskRefreshIntervalMs = 1000 * 60;  // 60 seconds.
 
 // Dataset for reading data from the tf.data service non-deterministically.
 //
@@ -71,13 +71,14 @@ const int64 kRefreshTasksIntervalMicros = 1000LL * 1000 * 60;  // 60 seconds.
 class DataServiceDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const std::string& address,
-          const std::string& protocol, const int64 max_outstanding_requests,
-          const DataTypeVector& output_types,
+          const std::string& protocol, int64 max_outstanding_requests,
+          int64 task_refresh_interval_ms, const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
         address_(address),
         protocol_(protocol),
         max_outstanding_requests_(max_outstanding_requests),
+        task_refresh_interval_ms_(task_refresh_interval_ms),
         output_types_(output_types),
         output_shapes_(output_shapes) {}
 
@@ -117,8 +118,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(
         b->AddScalar(max_outstanding_requests_, &max_outstanding_requests));
 
-    TF_RETURN_IF_ERROR(b->AddDataset(
-        this, {address, protocol, max_outstanding_requests}, {}, output));
+    AttrValue task_refresh_interval_hint_ms;
+    b->BuildAttrValue(task_refresh_interval_ms_,
+                      &task_refresh_interval_hint_ms);
+
+    TF_RETURN_IF_ERROR(
+        b->AddDataset(this, {address, protocol, max_outstanding_requests},
+                      {std::make_pair(kTaskRefreshIntervalHintMs,
+                                      task_refresh_interval_hint_ms)},
+                      output));
     return Status::OK();
   }
 
@@ -158,8 +166,10 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(3) << "Calling GetNext in data service dataset op";
       mutex_lock l(mu_);
       if (!task_thread_manager_ && !cancelled_) {
-        task_thread_manager_ = ctx->StartThread(
-            "task-thread-manager", [this, ctx]() { TaskThreadManager(ctx); });
+        task_thread_manager_ =
+            ctx->StartThread("task-thread-manager", [this, ctx]() {
+              TaskThreadManager(absl::make_unique<IteratorContext>(*ctx));
+            });
       }
 
       // tasks_.empty() indicates that we haven't yet received tasks from the
@@ -208,13 +218,15 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       std::unique_ptr<WorkerService::Stub> worker_stub;
       std::unique_ptr<Thread> thread;
       bool end_of_sequence = false;
+      // Indicates that the thread has finished running.
+      bool finished = false;
     } TaskThread;
 
     // Periodically refresh the task list.
     // Maintain one thread fetching elements for each task.
     // TODO(aaudibert): Instead of polling, have master send updates when
     // the list of tasks changes.
-    void TaskThreadManager(IteratorContext* ctx) {
+    void TaskThreadManager(std::unique_ptr<IteratorContext> ctx) {
       VLOG(3) << "Starting task handler manager";
       auto channel = ::grpc::CreateChannel(dataset()->address_, credentials_);
       std::unique_ptr<MasterService::Stub> master_stub =
@@ -231,11 +243,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             cv_.wait_for(l, std::chrono::microseconds(remaining_time));
           }
           if (cancelled_) {
+            VLOG(3) << "Task thread manager finished";
             return;
           }
         }
-        UpdateTaskThreads(master_stub.get(), ctx);
-        next_check = Env::Default()->NowMicros() + kRefreshTasksIntervalMicros;
+        UpdateTaskThreads(master_stub.get(), ctx.get());
+        next_check = Env::Default()->NowMicros() +
+                     dataset()->task_refresh_interval_ms_ * 1000;
       }
     }
 
@@ -271,7 +285,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       // Mark deleted tasks and clean up finished task threads.
       for (auto it = task_threads_.begin(); it != task_threads_.end();) {
         TaskThread* task_thread = it->second.get();
-        if (task_thread->end_of_sequence) {
+        if (task_thread->finished) {
           task_threads_.erase(it++);
           continue;
         }
@@ -287,11 +301,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     }
 
     void RunTaskThread(TaskThread* task_handler) {
-      auto cleanup = gtl::MakeCleanup([this]() {
+      auto cleanup = gtl::MakeCleanup([this, task_handler]() {
         mutex_lock l(mu_);
         outstanding_requests_--;
         num_unfinished_tasks_--;
         cv_.notify_all();
+        VLOG(3) << "Task thread " << task_handler->task_id << " finished";
+        task_handler->finished = true;
       });
       {
         mutex_lock l(mu_);
@@ -339,72 +355,31 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
+    // Fetches an element from a task and adds the element to `results_`.
+    //
+    // If the task reaches end_of_sequence or is cancelled (e.g. due to a
+    // worker dying), FetchElement returns Status::OK() without adding to
+    // `results_`.
     Status FetchElement(TaskThread* task_handler, int64 deadline_micros) {
-      VLOG(3) << "Fetchng an element for task id " << task_handler->task_id;
+      VLOG(3) << "Fetching an element for task id " << task_handler->task_id;
       GetElementResponse resp;
-      TF_RETURN_IF_ERROR(
-          GetElementWithDeadline(task_handler, &resp, deadline_micros));
-      std::vector<Tensor> element;
-      if (!resp.end_of_sequence()) {
-        TF_RETURN_IF_ERROR(
-            service_util::Uncompress(resp.compressed_element(), &element));
-      }
-      mutex_lock l(mu_);
-      if (resp.end_of_sequence()) {
-        task_handler->end_of_sequence = true;
-        return Status::OK();
-      }
-      results_.push(std::move(element));
-      cv_.notify_all();
-      VLOG(3) << "Fetched an element for task id " << task_handler->task_id;
-      return Status::OK();
-    }
-
-    Status CreateWorkerStub(const std::string& worker_address,
-                            std::unique_ptr<WorkerService::Stub>* stub) {
-      ::grpc::ChannelArguments args;
-      args.SetMaxReceiveMessageSize(-1);
-      std::shared_ptr<::grpc::ChannelCredentials> credentials;
-      TF_RETURN_IF_ERROR(CredentialsFactory::CreateClientCredentials(
-          dataset()->protocol_, &credentials));
-      auto channel =
-          ::grpc::CreateCustomChannel(worker_address, credentials, args);
-      *stub = WorkerService::NewStub(channel);
-      return Status::OK();
-    }
-
-    Status GetElementWithDeadline(TaskThread* task_handler,
-                                  GetElementResponse* resp,
-                                  int64 deadline_micros) {
-      return RetryWithDeadline(
-          [task_handler, resp] {
-            GetElementRequest req;
-            req.set_task_id(task_handler->task_id);
-            grpc::ClientContext client_ctx;
-            grpc::Status s =
-                task_handler->worker_stub->GetElement(&client_ctx, req, resp);
-            if (s.ok()) {
-              return Status::OK();
-            }
-            return grpc_util::WrapError("Failed to fetch an element", s);
-          },
-          deadline_micros);
-    }
-
-    static bool ShouldRetryError(error::Code error_code) {
-      // Retry all errors that could indicate preemption.
-      return error_code == error::Code::UNAVAILABLE ||
-             error_code == error::Code::CANCELLED ||
-             error_code == error::Code::ABORTED;
-    }
-
-    static Status RetryWithDeadline(const std::function<Status()>& call,
-                                    int64 deadline_micros) {
-      Status s;
       for (int num_retries = 0;; ++num_retries) {
-        s = call();
-        if (s.ok() || !ShouldRetryError(s.code())) {
+        Status s = RequestElement(task_handler, &resp);
+        if (s.ok()) {
+          break;
+        }
+        // Retry all errors that could indicate preemption.
+        if (!errors::IsUnavailable(s) && !errors::IsCancelled(s) &&
+            !errors::IsAborted(s)) {
           return s;
+        }
+        {
+          mutex_lock l(mu_);
+          // If `UpdateTaskThreads` finds that the task has been cancelled, it
+          // will set end_of_sequence to `true`.
+          if (task_handler->end_of_sequence || cancelled_) {
+            return Status::OK();
+          }
         }
         const int64 now_micros = EnvTime::NowMicros();
         if (now_micros > deadline_micros) {
@@ -421,6 +396,46 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
                 : deadline_micros;
         Env::Default()->SleepForMicroseconds(backoff_until - now_micros);
       }
+
+      std::vector<Tensor> element;
+      if (!resp.end_of_sequence()) {
+        TF_RETURN_IF_ERROR(
+            service_util::Uncompress(resp.compressed_element(), &element));
+      }
+      mutex_lock l(mu_);
+      if (resp.end_of_sequence()) {
+        task_handler->end_of_sequence = true;
+        return Status::OK();
+      }
+      results_.push(std::move(element));
+      cv_.notify_all();
+      VLOG(3) << "Fetched an element for task id " << task_handler->task_id;
+      return Status::OK();
+    }
+
+    Status RequestElement(TaskThread* task_handler, GetElementResponse* resp) {
+      GetElementRequest req;
+      req.set_task_id(task_handler->task_id);
+      grpc::ClientContext client_ctx;
+      grpc::Status s =
+          task_handler->worker_stub->GetElement(&client_ctx, req, resp);
+      if (s.ok()) {
+        return Status::OK();
+      }
+      return grpc_util::WrapError("Failed to request an element", s);
+    }
+
+    Status CreateWorkerStub(const std::string& worker_address,
+                            std::unique_ptr<WorkerService::Stub>* stub) {
+      ::grpc::ChannelArguments args;
+      args.SetMaxReceiveMessageSize(-1);
+      std::shared_ptr<::grpc::ChannelCredentials> credentials;
+      TF_RETURN_IF_ERROR(CredentialsFactory::CreateClientCredentials(
+          dataset()->protocol_, &credentials));
+      auto channel =
+          ::grpc::CreateCustomChannel(worker_address, credentials, args);
+      *stub = WorkerService::NewStub(channel);
+      return Status::OK();
     }
 
     mutex mu_;
@@ -455,12 +470,18 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
   const tstring address_;
   const tstring protocol_;
   const int64 max_outstanding_requests_;
+  const int64 task_refresh_interval_ms_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
 };
 
 DataServiceDatasetOp::DataServiceDatasetOp(OpKernelConstruction* ctx)
     : DatasetOpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr(kTaskRefreshIntervalHintMs,
+                                   &task_refresh_interval_hint_ms_));
+  if (task_refresh_interval_hint_ms_ == model::kAutotune) {
+    task_refresh_interval_hint_ms_ = kDefaultTaskRefreshIntervalMs;
+  }
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
 }
@@ -488,7 +509,8 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
                               model::kAutotune));
 
   *output = new Dataset(ctx, address, protocol, max_outstanding_requests,
-                        output_types_, output_shapes_);
+                        task_refresh_interval_hint_ms_, output_types_,
+                        output_shapes_);
 }
 
 REGISTER_KERNEL_BUILDER(Name("DataServiceDataset").Device(DEVICE_CPU),

@@ -52,7 +52,8 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
                dataset_id,
                address,
                protocol,
-               max_outstanding_requests=None):
+               max_outstanding_requests=None,
+               task_refresh_interval_hint_ms=None):
     """Constructs a _DataServiceDatasetV2.
 
     Args:
@@ -66,21 +67,27 @@ class _DataServiceDatasetV2(dataset_ops.DatasetSource):
         requested at the same time. You can use this option to control the
         amount of memory used, since `distribute` won't use more than
         `element_size` * `max_outstanding_requests` of memory.
+      task_refresh_interval_hint_ms: (Optional.) A hint for how often to query
+        the master for task changes.
     """
 
     if max_outstanding_requests is None:
       max_outstanding_requests = dataset_ops.AUTOTUNE
+    if task_refresh_interval_hint_ms is None:
+      task_refresh_interval_hint_ms = dataset_ops.AUTOTUNE
 
     self._element_spec = input_dataset.element_spec
     self._dataset_id = dataset_id
     self._address = address
     self._protocol = protocol
     self._max_outstanding_requests = max_outstanding_requests
+    self._task_refresh_interval_hint_ms = task_refresh_interval_hint_ms
 
     variant_tensor = gen_experimental_dataset_ops.data_service_dataset(
         address=address,
         protocol=protocol,
         max_outstanding_requests=max_outstanding_requests,
+        task_refresh_interval_hint_ms=task_refresh_interval_hint_ms,
         **self._flat_structure)
     super(_DataServiceDatasetV2, self).__init__(variant_tensor)
 
@@ -106,14 +113,15 @@ class _DataServiceDatasetV1(dataset_ops.DatasetV1Adapter):
 
   @functools.wraps(_DataServiceDatasetV2.__init__)
   def __init__(self, input_dataset, dataset_id, address, protocol,
-               max_outstanding_requests):
+               max_outstanding_requests, task_refresh_interval_hint_ms):
 
     self._wrapped = _DataServiceDatasetV2(
         input_dataset=input_dataset,
         dataset_id=dataset_id,
         address=address,
         protocol=protocol,
-        max_outstanding_requests=max_outstanding_requests)
+        max_outstanding_requests=max_outstanding_requests,
+        task_refresh_interval_hint_ms=task_refresh_interval_hint_ms)
     super(_DataServiceDatasetV1, self).__init__(self._wrapped)
 
   @property
@@ -135,29 +143,13 @@ else:
   _DataServiceDataset = _DataServiceDatasetV1
 
 
-def distribute(service, max_outstanding_requests=None):
+def _distribute(service,
+                max_outstanding_requests=None,
+                task_refresh_interval_hint_ms=None):
   """A transformation that moves dataset processing to the tf.data service.
 
-  ```
-  dataset = tf.data.Dataset.range(10)
-  dataset = dataset.map(lambda x: x*x)
-  dataset = dataset.apply(
-      tf.data.experimental.service.distribute("grpc://dataservice:5000"))
-  dataset = dataset.map(lambda x: x+10)
-
-  job_token = tf.data.experimental.service.create_job(dataset)
-  it = tf.data.experimental.service.create_iterator(dataset, job_token)
-  for element in it:
-    # process element
-  ```
-
-  In the above example, the first two lines (before the call to `distribute`)
-  will be executed on tf.data workers, and the elements provided over
-  RPC. The remaining transformations (after the call to `distribute`) will be
-  executed locally.
-
-  The token returned from `create_job` may be used to create multiple
-  coordinated iterators which consume data from the same job.
+  This transformation is similar to `distribute`, but supports additional
+  parameters which we do not yet want to add to the public Python API.
 
   Args:
     service: A string indicating how to connect to the tf.data service. The
@@ -167,6 +159,8 @@ def distribute(service, max_outstanding_requests=None):
       requested at the same time. You can use this option to control the amount
       of memory used, since `distribute` won't use more than `element_size` *
       `max_outstanding_requests` of memory.
+    task_refresh_interval_hint_ms: (Optional.) A hint for how often to query the
+      master for task changes.
 
   Returns:
     Dataset: A `Dataset` of the elements produced by the data service.
@@ -205,9 +199,49 @@ def distribute(service, max_outstanding_requests=None):
         dataset_id=dataset_id,
         address=address,
         protocol=protocol,
-        max_outstanding_requests=max_outstanding_requests)
+        max_outstanding_requests=max_outstanding_requests,
+        task_refresh_interval_hint_ms=task_refresh_interval_hint_ms)
 
   return _apply_fn
+
+
+def distribute(service, max_outstanding_requests=None):
+  """A transformation that moves dataset processing to the tf.data service.
+
+  ```
+  dataset = tf.data.Dataset.range(10)
+  dataset = dataset.map(lambda x: x*x)
+  dataset = dataset.apply(
+      tf.data.experimental.service.distribute("grpc://dataservice:5000"))
+  dataset = dataset.map(lambda x: x+10)
+
+  job_token = tf.data.experimental.service.create_job(dataset)
+  it = tf.data.experimental.service.create_iterator(dataset, job_token)
+  for element in it:
+    # process element
+  ```
+
+  In the above example, the first two lines (before the call to `distribute`)
+  will be executed on tf.data workers, and the elements provided over
+  RPC. The remaining transformations (after the call to `distribute`) will be
+  executed locally.
+
+  The token returned from `create_job` may be used to create multiple
+  coordinated iterators which consume data from the same job.
+
+  Args:
+    service: A string indicating how to connect to the tf.data service. The
+      string should be in the format <protocol>://<address>, e.g.
+      grpc://localhost:5000.
+    max_outstanding_requests: (Optional.) A limit on how many elements may be
+      requested at the same time. You can use this option to control the amount
+      of memory used, since `distribute` won't use more than `element_size` *
+      `max_outstanding_requests` of memory.
+
+  Returns:
+    Dataset: A `Dataset` of the elements produced by the data service.
+  """
+  return _distribute(service, max_outstanding_requests)
 
 
 def create_job(dataset, processing_mode):
