@@ -1307,10 +1307,18 @@ void* SubgraphInit(TfLiteContext* context, const char* buffer, size_t length) {
 }
 
 TfLiteStatus SubgraphPrepare(TfLiteContext* context, TfLiteNode* node) {
+  if (node->user_data == nullptr) {
+    return kTfLiteError;
+  }
+
   return static_cast<Subgraph*>(node->user_data)->Prepare(context);
 }
 
 TfLiteStatus SubgraphInvoke(TfLiteContext* context, TfLiteNode* node) {
+  if (node->user_data == nullptr) {
+    return kTfLiteError;
+  }
+
   return static_cast<Subgraph*>(node->user_data)->Invoke(context);
 }
 

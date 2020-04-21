@@ -1011,13 +1011,8 @@ TEST_F(AlgebraicSimplifierTest, PowerOfPower) {
   builder.AddInstruction(HloInstruction::CreateBinary(r1f32, HloOpcode::kPower,
                                                       inner_power, exp2));
 
-  auto computation = m->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
-  EXPECT_THAT(
-      computation->root_instruction(),
-      GmockMatch(m::Power(m::Op().Is(base),
-                          m::Multiply(m::Op().Is(exp1), m::Op().Is(exp2)))));
+  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 }
 
 // Don't simplify pow(pow(A, X), Y) => pow(A, X*Y) if X and Y are complex

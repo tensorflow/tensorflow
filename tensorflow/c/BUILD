@@ -118,6 +118,12 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
+cc_library(
+    name = "c_api_macros",
+    hdrs = ["c_api_macros.h"],
+    visibility = ["//visibility:public"],
+)
+
 tf_cuda_library(
     name = "c_api",
     hdrs = [

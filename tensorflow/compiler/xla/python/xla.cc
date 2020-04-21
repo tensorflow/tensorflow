@@ -310,6 +310,13 @@ void BuildOpsSubmodule(py::module* m) {
   // XlaBuilder.
   py::module ops = m->def_submodule("ops", "XLA operations");
 
+  py::enum_<TriangularSolveOptions::Transpose>(
+      ops, "TriangularSolveOptions_Transpose")
+      .value("TRANSPOSE_INVALID", TriangularSolveOptions::TRANSPOSE_INVALID)
+      .value("NO_TRANSPOSE", TriangularSolveOptions::NO_TRANSPOSE)
+      .value("TRANSPOSE", TriangularSolveOptions::TRANSPOSE)
+      .value("ADJOINT", TriangularSolveOptions::ADJOINT);
+
   ops.def("AfterAll", &AfterAll, py::arg("builder"), py::arg("tokens"));
   ops.def(
       "AllReduce",
@@ -329,7 +336,7 @@ void BuildOpsSubmodule(py::module* m) {
   ops.def("CrossReplicaSum",
           static_cast<XlaOp (*)(XlaOp, absl::Span<const ReplicaGroup>)>(
               &CrossReplicaSum),
-          py::arg("operand"), py::arg("replica_groups"));
+          py::arg("operand"), py::arg("replica_groups") = py::list());
   ops.def("BitcastConvertType", &BitcastConvertType, py::arg("operand"),
           py::arg("new_element_type"));
   ops.def("Broadcast", &Broadcast, py::arg("operand"), py::arg("sizes"));
@@ -353,6 +360,7 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("predicate"), py::arg("true_operand"),
           py::arg("true_computation"), py::arg("false_operand"),
           py::arg("false_computation"));
+  ops.def("Constant", &ConstantLiteral, py::arg("builder"), py::arg("literal"));
   ops.def("ConstantLiteral", &ConstantLiteral, py::arg("builder"),
           py::arg("literal"));
   ops.def("ConvGeneralDilated", &ConvGeneralDilated, py::arg("lhs"),
@@ -363,13 +371,28 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("precision_config") = nullptr);
   ops.def("ConvertElementType", &ConvertElementType, py::arg("operand"),
           py::arg("new_element_type"));
-  ops.def("CustomCall", &CustomCall, py::arg("builder"),
-          py::arg("call_target_name"), py::arg("operands"), py::arg("shape"),
-          py::arg("opaque"));
-  ops.def("CustomCallWithLayout", &CustomCallWithLayout, py::arg("builder"),
-          py::arg("call_target_name"), py::arg("operands"),
-          py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
-          py::arg("opaque"));
+  ops.def(
+      "CustomCall",
+      [](XlaBuilder* builder, const py::bytes& call_target_name,
+         absl::Span<const XlaOp> operands, const Shape& shape,
+         const py::bytes& opaque) -> XlaOp {
+        return CustomCall(builder, call_target_name, operands, shape, opaque);
+      },
+      py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
+      py::arg("shape"), py::arg("opaque") = py::bytes(""));
+  ops.def(
+      "CustomCallWithLayout",
+      [](XlaBuilder* builder, const py::bytes& call_target_name,
+         absl::Span<const XlaOp> operands, const Shape& shape_with_layout,
+         absl::Span<const Shape> operand_shapes_with_layout,
+         const py::bytes& opaque) -> XlaOp {
+        return CustomCallWithLayout(builder, call_target_name, operands,
+                                    shape_with_layout,
+                                    operand_shapes_with_layout, opaque);
+      },
+      py::arg("builder"), py::arg("call_target_name"), py::arg("operands"),
+      py::arg("shape_with_layout"), py::arg("operand_shapes_with_layout"),
+      py::arg("opaque") = py::bytes(""));
   ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
           py::arg("precision_config") = nullptr);
   ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
@@ -388,7 +411,7 @@ void BuildOpsSubmodule(py::module* m) {
 
   ops.def("Gather", &Gather, py::arg("a"), py::arg("start_indices"),
           py::arg("dimension_numbers"), py::arg("slice_sizes"),
-          py::arg("indices_are_sorted"));
+          py::arg("indices_are_sorted") = false);
   ops.def("GetTupleElement", &GetTupleElement, py::arg("tuple_data"),
           py::arg("index"));
   ops.def("InfeedWithToken", &InfeedWithToken, py::arg("token"),
@@ -401,7 +424,7 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("builder"), py::arg("type"), py::arg("size"));
   ops.def("Map", &Map, py::arg("builder"), py::arg("operands"),
           py::arg("computation"), py::arg("dimensions"),
-          py::arg("static_operands"));
+          py::arg("static_operands") = py::list());
   ops.def("NextAfter", &NextAfter, py::arg("from"), py::arg("to"));
   ops.def("OutfeedWithToken", &OutfeedWithToken, py::arg("operand"),
           py::arg("token"), py::arg("shape_with_layout"),
@@ -410,15 +433,11 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("padding_config"));
   ops.def("Parameter",
           static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
-                                const std::string&)>(&Parameter),
-          py::arg("builder"), py::arg("parameter_number"), py::arg("shape"),
-          py::arg("name"));
-  ops.def("Parameter",
-          static_cast<XlaOp (*)(XlaBuilder*, int64, const Shape&,
                                 const std::string&, const std::vector<bool>&)>(
               &Parameter),
           py::arg("builder"), py::arg("parameter_number"), py::arg("shape"),
-          py::arg("name"), py::arg("replicated_at_leaf_buffers"));
+          py::arg("name") = "",
+          py::arg("replicated_at_leaf_buffers") = std::vector<bool>());
   ops.def(
       "QR",
       [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
@@ -1398,13 +1417,6 @@ PYBIND11_MODULE(xla_extension, m) {
               DLPackManagedTensorToBuffer(tensor, client.get()));
           return WrapWithClient(std::move(client), std::move(buffer));
         });
-
-  py::enum_<TriangularSolveOptions::Transpose>(
-      m, "TriangularSolveOptions_Transpose")
-      .value("TRANSPOSE_INVALID", TriangularSolveOptions::TRANSPOSE_INVALID)
-      .value("NO_TRANSPOSE", TriangularSolveOptions::NO_TRANSPOSE)
-      .value("TRANSPOSE", TriangularSolveOptions::TRANSPOSE)
-      .value("ADJOINT", TriangularSolveOptions::ADJOINT);
 
   py::enum_<PrecisionConfig::Precision>(m, "PrecisionConfig_Precision")
       .value("DEFAULT", PrecisionConfig::DEFAULT)

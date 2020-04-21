@@ -54,6 +54,9 @@ class MlirHloBuilder : public XlaBuilder {
   // TODO(hinsu): Add a constructor to build a new MLIR function from scratch
   // and override Build methods.
 
+  MlirHloBuilder(std::string name, mlir::OpBuilder builder, mlir::Location loc)
+      : XlaBuilder(name), builder_(builder), loc_(loc) {}
+
   MlirHloBuilder(const MlirHloBuilder&) = delete;
   MlirHloBuilder& operator=(const MlirHloBuilder&) = delete;
 
@@ -73,6 +76,17 @@ class MlirHloBuilder : public XlaBuilder {
   mlir::Value GetValue(XlaOp op) {
     void* ptr = reinterpret_cast<void*>(op.handle());
     return mlir::Value::getFromOpaquePointer(ptr);
+  }
+
+  // Returns MLIR values corresponding to the given XLA ops.
+  //
+  // Requires that the ops were created by this builder.
+  std::vector<mlir::Value> GetValues(absl::Span<const XlaOp> ops) {
+    std::vector<mlir::Value> values;
+    for (auto xla_op : ops) {
+      values.push_back(GetValue(xla_op));
+    }
+    return values;
   }
 
   // Sets location for newly built ops, until reset.
@@ -119,6 +133,34 @@ class MlirHloBuilder : public XlaBuilder {
 
   StatusOr<XlaOp> AddOpWithShape(HloOpcode opcode, const Shape& shape,
                                  absl::Span<const XlaOp> operands) override;
+
+  XlaOp CreateToken() override;
+
+  StatusOr<XlaOp> InfeedWithTokenInternal(const Shape& infeed_instruction_shape,
+                                          XlaOp token,
+                                          const string& config) override;
+  StatusOr<XlaOp> OutfeedWithTokenInternal(
+      XlaOp operand, XlaOp token, const Shape& shape_with_layout,
+      const string& outfeed_config) override;
+
+  StatusOr<XlaOp> ConcatInDimInternal(const Shape& shape,
+                                      absl::Span<const XlaOp> operands,
+                                      int64 dimension) override;
+
+  StatusOr<XlaOp> GetTupleElementInternal(const Shape& shape, XlaOp tuple_data,
+                                          int64 index) override;
+
+  StatusOr<XlaOp> SliceInternal(const Shape& shape, XlaOp operand,
+                                absl::Span<const int64> start_indices,
+                                absl::Span<const int64> limit_indices,
+                                absl::Span<const int64> strides) override;
+
+  StatusOr<XlaOp> PadInternal(const Shape& shape, XlaOp operand,
+                              XlaOp padding_value,
+                              const PaddingConfig& padding_config) override;
+
+  StatusOr<XlaOp> TupleInternal(const Shape& shape,
+                                absl::Span<const XlaOp> elements) override;
 
   // Creates HLO dialect op and returns the result as an XlaOp.
   StatusOr<XlaOp> CreateOp(const std::string& op_name, const Shape& shape,

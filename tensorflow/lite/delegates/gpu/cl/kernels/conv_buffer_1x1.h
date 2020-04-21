@@ -135,8 +135,8 @@ absl::Status ConvBuffer1x1::UploadDataForWinograd4x4To6x6(
 template <DataType T>
 absl::Status ConvBuffer1x1::UploadWeights(
     const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
 
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
   const int float4_size = f32_weights ? sizeof(float4) : sizeof(half4);

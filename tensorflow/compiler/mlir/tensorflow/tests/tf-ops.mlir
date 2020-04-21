@@ -725,10 +725,10 @@ func @testFusedBatchNormWrongMeanType(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor
 
 // -----
 // Test invalid tf.FusedBatchNorm
-func @testFusedBatchNormWrongVarianceType(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<*xf32>) -> tensor<8x8x8x8xf32> {
-^bb0(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<*xf32>):
+func @testFusedBatchNormWrongVarianceType(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<10x2xf32>) -> tensor<8x8x8x8xf32> {
+^bb0(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<10x2xf32>):
   // expected-error @+1 {{requires variance to be a 1D float tensor}}
-  %0:5 = "tf.FusedBatchNorm"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<*xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<*xf32>)
+  %0:5 = "tf.FusedBatchNorm"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<10x2xf32>) -> (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<10x2xf32>)
   return %0#0 : tensor<8x8x8x8xf32>
 }
 
@@ -1297,11 +1297,11 @@ func @testShapeWrongResultElemType(%arg0: tensor<1x32x32x16xf32>) -> tensor<4xf3
 
 // -----
 
-func @testShapeWrongResultDim(tensor<1x32x32x16xf32>) -> tensor<*xi32> {
+func @testShapeWrongResultDim(tensor<1x32x32x16xf32>) -> tensor<3x2xi32> {
 ^bb0(%arg0: tensor<1x32x32x16xf32>):
   // expected-error @+1 {{requires 1D type for result}}
-  %0 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<1x32x32x16xf32>) -> tensor<*xi32>
-  return %0 : tensor<*xi32>
+  %0 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<1x32x32x16xf32>) -> tensor<3x2xi32>
+  return %0 : tensor<3x2xi32>
 }
 
 // -----
@@ -1341,11 +1341,11 @@ func @testShapeNWrongResultElemType(%arg0: tensor<1x32x32x16xf32>) -> tensor<4xf
 
 // -----
 
-func @testShapeNWrongResultDim(tensor<1x32x32x16xf32>) -> tensor<*xi32> {
+func @testShapeNWrongResultDim(tensor<1x32x32x16xf32>) -> tensor<2x2xi32> {
 ^bb0(%arg0: tensor<1x32x32x16xf32>):
   // expected-error @+1 {{requires 1D type for result #1}}
-  %0:2 = "tf.ShapeN"(%arg0, %arg0) : (tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>) -> (tensor<4xi32>, tensor<*xi32>)
-  return %0#1 : tensor<*xi32>
+  %0:2 = "tf.ShapeN"(%arg0, %arg0) : (tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>) -> (tensor<4xi32>, tensor<2x2xi32>)
+  return %0#1 : tensor<2x2xi32>
 }
 
 // -----
@@ -1402,10 +1402,10 @@ func @testVariableShapeWrongResultElemType(%arg0: tensor<*x!tf.resource<tensor<1
 
 // -----
 
-func @testVariableShapeWrongResultDim(%arg0: tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<*xi32> {
+func @testVariableShapeWrongResultDim(%arg0: tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<2x3xi32> {
   // expected-error @+1 {{requires 1D type for result}}
-  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<*xi32>
-  return %0 : tensor<*xi32>
+  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<2x3xi32>
+  return %0 : tensor<2x3xi32>
 }
 
 // -----

@@ -8856,6 +8856,32 @@ size: size of the output list
   );
 }
 
+def TF_TensorListScatterIntoExistingListOp : TF_Op<"TensorListScatterIntoExistingList", [NoSideEffect]> {
+  let summary = "Scatters tensor at indices in an input list.";
+
+  let description = [{
+Each member of the TensorList corresponds to one row of the input tensor,
+specified by the given index (see `tf.gather`).
+
+input_handle: The list to scatter into.
+tensor: The input tensor.
+indices: The indices used to index into the list.
+output_handle: The TensorList.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle,
+    TF_Tensor:$tensor,
+    I32Tensor:$indices
+  );
+
+  let results = (outs
+    TF_VariantTensor:$output_handle
+  );
+
+  TF_DerivedOperandTypeAttr element_dtype = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_TensorListSetItemOp : TF_Op<"TensorListSetItem", [NoSideEffect]> {
   let summary = "";
 

@@ -830,6 +830,13 @@ class Function(object):
   def function_spec(self):
     return self._function_spec
 
+  def pretty_printed_concrete_signatures(self, verbose=True):
+    joiner = "\n\n" if verbose else "\n"
+    return joiner.join([
+        c.pretty_printed_signature(verbose=verbose)
+        for c in self._list_all_concrete_functions()
+    ])
+
   def _initialize_uninitialized_variables(self, initializers):
     """Make and call a `ConcreteFunction` which initializes variables."""
 
@@ -913,12 +920,8 @@ class Function(object):
 
     return initialize_variables.get_concrete_function()
 
-  def _list_all_concrete_functions_for_serialization(self):
-    """Returns all concrete functions for serialization.
-
-    Returns:
-      A list of instances of `ConcreteFunction`.
-    """
+  def _list_all_concrete_functions(self):
+    """Returns all concrete functions."""
     if self.input_signature is not None:
       self.get_concrete_function()
     concrete_functions = []
@@ -930,6 +933,15 @@ class Function(object):
       concrete_functions.extend(
           self._stateless_fn._function_cache.all_values())
     # pylint: enable=protected-access
+    return concrete_functions
+
+  def _list_all_concrete_functions_for_serialization(self):
+    """Returns all concrete functions for serialization.
+
+    Returns:
+      A list of instances of `ConcreteFunction`.
+    """
+    concrete_functions = self._list_all_concrete_functions()
     seen_signatures = []
     for concrete_function in concrete_functions:
       signature = concrete_function.structured_input_signature

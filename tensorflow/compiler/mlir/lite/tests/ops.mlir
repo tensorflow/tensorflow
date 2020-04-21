@@ -225,10 +225,10 @@ func @testZerosLike(tensor<? x f32>) -> tensor<? x f32> {
 }
 
 // CHECK-LABEL: testDequantize
-func @testDequantize(tensor<? x i32>) -> tensor<? x f32> {
-^bb0(%arg0: tensor<? x i32>):
-  // CHECK: "tfl.dequantize"(%arg0) : (tensor<?xi32>) -> tensor<?xf32>
-  %0 = "tfl.dequantize"(%arg0): (tensor<? x i32>) -> tensor<? x f32>
+func @testDequantize(tensor<? x !quant.uniform<i8:f32, 0.1>>) -> tensor<? x f32> {
+^bb0(%arg0: tensor<? x !quant.uniform<i8:f32, 0.1>>):
+  // CHECK: "tfl.dequantize"(%arg0) : (tensor<?x!quant.uniform<i8:f32, 1.000000e-01>>) -> tensor<?xf32>
+  %0 = "tfl.dequantize"(%arg0): (tensor<? x !quant.uniform<i8:f32, 0.1>>) -> tensor<? x f32>
   return %0 : tensor<? x f32>
 }
 
@@ -609,9 +609,9 @@ func @testLstmIntermediates(%arg0: tensor<1x528x!quant.uniform<i8:f32, 0.0372480
 // -----
 
 // CHECK-LABEL: testBidirectionalSequenceLstm
-func @testBidirectionalSequenceLstm(%arg0: tensor<? x f32>, %arg1: none, %arg2: tensor<? x f32>, %arg3: tensor<? x f32>, %arg4: tensor<? x f32>, %arg5: tensor<? x f32>, %arg6: tensor<? x f32>, %arg7: tensor<? x f32>, %arg8: tensor<? x f32>, %arg9: tensor<? x f32>, %arg10: tensor<? x f32>, %arg11: tensor<? x f32>, %arg12: tensor<? x f32>, %arg13: tensor<? x f32>, %arg14: tensor<? x f32>, %arg15: tensor<? x f32>, %arg16: tensor<? x f32>, %arg17: tensor<? x f32>, %arg18: tensor<? x f32>, %arg19: tensor<? x f32>, %arg20: tensor<? x f32>, %arg21: tensor<? x f32>, %arg22: tensor<? x f32>, %arg23: tensor<? x f32>, %arg24: tensor<? x f32>, %arg25: tensor<? x f32>, %arg26: tensor<? x f32>, %arg27: tensor<? x f32>, %arg28: tensor<? x f32>, %arg29: tensor<? x f32>, %arg30: tensor<? x f32>, %arg31: tensor<? x f32>, %arg32: tensor<? x f32>, %arg33: tensor<? x f32>, %arg34: tensor<? x f32>, %arg35: tensor<? x f32>, %arg36: tensor<? x f32>, %arg37: tensor<? x f32>, %arg38: tensor<? x f32>, %arg39: tensor<? x f32>, %arg40: tensor<? x f32>, %arg41: tensor<? x f32>, %arg42: tensor<? x f32>, %arg43: tensor<? x f32>, %arg44: tensor<? x f32>, %arg45: tensor<? x f32>, %arg46: tensor<? x f32>, %arg47: tensor<? x f32>) -> tensor<? x f32> {
-  // CHECK: "tfl.bidirectional_sequence_lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15, %arg16, %arg17, %arg18, %arg19, %arg20, %arg21, %arg22, %arg23, %arg24, %arg25, %arg26, %arg27, %arg28, %arg29, %arg30, %arg31, %arg32, %arg33, %arg34, %arg35, %arg36, %arg37, %arg38, %arg39, %arg40, %arg41, %arg42, %arg43, %arg44, %arg45, %arg46, %arg47) {cell_clip = 1.000000e+00 : f32, fused_activation_function = "NONE", merge_outputs = true, time_major = false} : (tensor<?xf32>, none, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,  tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,  tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,  tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,  tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,  tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,  tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,  tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,  tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) -> (tensor<?xf32>, tensor<?xf32>)
-  %0:2 = "tfl.bidirectional_sequence_lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15, %arg16, %arg17, %arg18, %arg19, %arg20, %arg21, %arg22, %arg23, %arg24, %arg25, %arg26, %arg27, %arg28, %arg29, %arg30, %arg31, %arg32, %arg33, %arg34, %arg35, %arg36, %arg37, %arg38, %arg39, %arg40, %arg41, %arg42, %arg43, %arg44, %arg45, %arg46, %arg47) {cell_clip = 1.000000e+00 : f32, fused_activation_function = "NONE", merge_outputs = true, time_major = false} : (tensor<?xf32>, none, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,  tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,  tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,  tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,  tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,  tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,  tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,  tensor<?xf32>, tensor<?xf32>, tensor<?xf32>,  tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) -> (tensor<?xf32>, tensor<?xf32>)
+func @testBidirectionalSequenceLstm(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?xf32>, %arg2: tensor<?x?xf32>, %arg3: tensor<?x?xf32>, %arg4: tensor<?x?xf32>, %arg5: tensor<?x?xf32>, %arg6: tensor<?x?xf32>, %arg7: tensor<?x?xf32>, %arg8: tensor<?x?xf32>, %arg9: tensor<?xf32>, %arg10: tensor<?xf32>, %arg11: tensor<?xf32>, %arg12: tensor<?xf32>, %arg13: tensor<?xf32>, %arg14: tensor<?xf32>, %arg15: tensor<?xf32>, %arg16: tensor<?x?xf32>, %arg17: tensor<?xf32>, %arg18: tensor<?x?xf32>, %arg19: tensor<?x?xf32>, %arg20: tensor<?x?xf32>, %arg21: tensor<?x?xf32>, %arg22: tensor<?x?xf32>, %arg23: tensor<?x?xf32>, %arg24: tensor<?x?xf32>, %arg25: tensor<?x?xf32>, %arg26: tensor<?xf32>, %arg27: tensor<?xf32>, %arg28: tensor<?xf32>, %arg29: tensor<?xf32>, %arg30: tensor<?xf32>, %arg31: tensor<?xf32>, %arg32: tensor<?xf32>, %arg33: tensor<?x?xf32>, %arg34: tensor<?xf32>, %arg35: tensor<?xf32>, %arg36: tensor<?xf32>, %arg37: tensor<?xf32>, %arg38: tensor<?xf32>, %arg39: tensor<?xf32>, %arg40: tensor<?xf32>, %arg41: tensor<?xf32>, %arg42: tensor<?xf32>, %arg43: tensor<?xf32>, %arg44: tensor<?xf32>, %arg45: tensor<?xf32>, %arg46: tensor<?xf32>, %arg47: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK: "tfl.bidirectional_sequence_lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15, %arg16, %arg17, %arg18, %arg19, %arg20, %arg21, %arg22, %arg23, %arg24, %arg25, %arg26, %arg27, %arg28, %arg29, %arg30, %arg31, %arg32, %arg33, %arg34, %arg35, %arg36, %arg37, %arg38, %arg39, %arg40, %arg41, %arg42, %arg43, %arg44, %arg45, %arg46, %arg47) {cell_clip = 1.000000e+00 : f32, fused_activation_function = "NONE", merge_outputs = true, time_major = false} : (tensor<?x?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?x?xf32>, tensor<?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?x?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) -> (tensor<?xf32>, tensor<?xf32>)
+  %0:2 = "tfl.bidirectional_sequence_lstm"(%arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6, %arg7, %arg8, %arg9, %arg10, %arg11, %arg12, %arg13, %arg14, %arg15, %arg16, %arg17, %arg18, %arg19, %arg20, %arg21, %arg22, %arg23, %arg24, %arg25, %arg26, %arg27, %arg28, %arg29, %arg30, %arg31, %arg32, %arg33, %arg34, %arg35, %arg36, %arg37, %arg38, %arg39, %arg40, %arg41, %arg42, %arg43, %arg44, %arg45, %arg46, %arg47) {cell_clip = 1.000000e+00 : f32, fused_activation_function = "NONE", merge_outputs = true, time_major = false} : (tensor<?x?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?x?xf32>, tensor<?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?x?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?x?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>, tensor<?xf32>) -> (tensor<?xf32>, tensor<?xf32>)
   return %0#0 : tensor<?xf32>
 }
 
@@ -1444,16 +1444,16 @@ func @testRelu6WithQuantizedTypes(%arg0 : tensor<10x!quant.uniform<u8:f32, 1.0>>
 
 // -----
 
-func @testEmbeddingLookup(%arg0 : tensor<?xi32>, %arg1 : tensor<?xf32>) -> tensor<?xf32> {
-  %0 = "tfl.embedding_lookup"(%arg0, %arg1) : (tensor<?xi32>,tensor<?xf32>) -> tensor<?xf32>
+func @testEmbeddingLookup(%arg0 : tensor<?xi32>, %arg1 : tensor<?x?xf32>) -> tensor<?xf32> {
+  %0 = "tfl.embedding_lookup"(%arg0, %arg1) : (tensor<?xi32>,tensor<?x?xf32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 
 // -----
 
-func @testEmbeddingLookupValueAndResultElementTypeTraitFailed(%arg0 : tensor<?xi32>, %arg1 : tensor<?xi8>) -> tensor<?xf32> {
+func @testEmbeddingLookupValueAndResultElementTypeTraitFailed(%arg0 : tensor<?xi32>, %arg1 : tensor<?x?xi8>) -> tensor<?xf32> {
   // expected-error @+1 {{'tfl.embedding_lookup' op failed to verify that value and output must have same element type}}
-  %0 = "tfl.embedding_lookup"(%arg0, %arg1) : (tensor<?xi32>,tensor<?xi8>) -> tensor<?xf32>
+  %0 = "tfl.embedding_lookup"(%arg0, %arg1) : (tensor<?xi32>,tensor<?x?xi8>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
 }
 

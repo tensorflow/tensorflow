@@ -1348,6 +1348,28 @@ func @maxpool_same_padding(%arg0: tensor<2x13x25x7xi32>) -> tensor<2x4x7x7xi32> 
   return %0 : tensor<2x4x7x7xi32>
 }
 
+// CHECK-LABEL: maxpool_3d_valid_padding
+// CHECK-SAME: %[[ARG:.*]]: tensor
+func @maxpool_3d_valid_padding(%arg0: tensor<2x8x12x20x7xf32>) -> tensor<2x8x3x5x7xf32> {
+  // CHECK: %[[INIT:.*]] = xla_hlo.constant dense<0xFF800000> : tensor<f32>
+  // CHECK: "xla_hlo.reduce_window"(%[[ARG]], %[[INIT]])
+  // CHECK: xla_hlo.maximum
+  // CHECK: xla_hlo.return
+  // CHECK: {window_dimensions = dense<[1, 1, 2, 2, 1]> : tensor<5xi64>, window_strides = dense<[1, 1, 4, 4, 1]> : tensor<5xi64>}
+
+  %0 = "tf.MaxPool3D"(%arg0) {data_format = "NDHWC", ksize = [1, 1, 2, 2, 1], padding = "VALID", strides = [1, 1, 4, 4, 1]} : (tensor<2x8x12x20x7xf32>) -> tensor<2x8x3x5x7xf32>
+  return %0 : tensor<2x8x3x5x7xf32>
+}
+
+// CHECK-LABEL: maxpool_3d_same_padding
+// CHECK-SAME: %[[ARG:.*]]: tensor
+func @maxpool_3d_same_padding(%arg0: tensor<2x8x13x25x7xf32>) -> tensor<2x8x4x7x7xf32> {
+  // CHECK: padding = dense<{{\[\[}}0, 0], [0, 0], [0, 1], [1, 1], [0, 0]]> : tensor<5x2xi64>
+
+  %0 = "tf.MaxPool3D"(%arg0) {data_format = "NDHWC", ksize = [1, 1, 2, 3, 1], padding = "SAME", strides = [1, 1, 4, 4, 1]} : (tensor<2x8x13x25x7xf32>) -> tensor<2x8x4x7x7xf32>
+  return %0 : tensor<2x8x4x7x7xf32>
+}
+
 //===----------------------------------------------------------------------===//
 // MaxPoolGrad op legalizations.
 //===----------------------------------------------------------------------===//
@@ -3142,6 +3164,35 @@ func @conv2d_backprop_filter(
     use_cudnn_on_gpu = true
   } : (tensor<100x28x28x1xf32>, tensor<4xi32>, tensor<100x26x26x32xf32>) -> tensor<100x28x28x1xf32>
   return %result : tensor<100x28x28x1xf32>
+}
+
+// CHECK-LABEL: @conv3d_backprop_filter
+func @conv3d_backprop_filter(%input: tensor<2x8x8x8x1xf32>, %out_backprop: tensor<2x8x8x8x6xf32>) -> tensor<2x8x8x8x1xf32> {
+  // CHECK: %[[RESULT:.*]] = "xla_hlo.convolution"(%arg0, %arg1)
+
+  // CHECK-DAG-SAME: batch_group_count = 1 : i64
+
+  // CHECK-DAG-SAME: dimension_numbers =
+  // CHECK-DAG-SAME:   input_batch_dimension = 4 : i64
+  // CHECK-DAG-SAME:   input_feature_dimension = 0 : i64
+  // CHECK-DAG-SAME:   input_spatial_dimensions = dense<[1, 2, 3]> : tensor<3xi64>
+  // CHECK-DAG-SAME:   kernel_input_feature_dimension = 0 : i64
+  // CHECK-DAG-SAME:   kernel_output_feature_dimension = 4 : i64
+  // CHECK-DAG-SAME:   kernel_spatial_dimensions = dense<[1, 2, 3]> : tensor<3xi64>
+  // CHECK-DAG-SAME:   output_batch_dimension = 3 : i64
+  // CHECK-DAG-SAME:   output_feature_dimension = 4 : i64
+  // CHECK-DAG-SAME:   output_spatial_dimensions = dense<[0, 1, 2]> : tensor<3xi64>
+
+  // CHECK-DAG-SAME: feature_group_count = 1 : i64
+  // CHECK-DAG-SAME: lhs_dilation = dense<1> : tensor<3xi64>
+  // CHECK-DAG-SAME: padding = dense<1> : tensor<3x2xi64>
+  // CHECK-DAG-SAME: rhs_dilation = dense<1> : tensor<3xi64>
+  // CHECK-DAG-SAME: window_strides = dense<1> : tensor<3xi64>
+
+  // CHECK: return %[[RESULT]]
+  %filter_sizes = "tf.Const"() {value = dense<[3, 3, 3, 1, 6]> : tensor<5xi32>} : () -> tensor<5xi32>
+  %result = "tf.Conv3DBackpropFilterV2"(%input, %filter_sizes, %out_backprop) {data_format = "NDHWC", dilations = [1, 1, 1, 1, 1],  padding = "SAME", strides = [1, 1, 1, 1, 1]} : (tensor<2x8x8x8x1xf32>, tensor<5xi32>, tensor<2x8x8x8x6xf32>) -> tensor<2x8x8x8x1xf32>
+  return %result : tensor<2x8x8x8x1xf32>
 }
 
 // CHECK-LABEL: @cross_replica_sum

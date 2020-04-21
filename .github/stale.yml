@@ -25,7 +25,7 @@ daysUntilStale: 7
 daysUntilClose: 7
 # Issues or Pull Requests with these labels will never be considered stale. Set to `[]` to disable
 onlyLabels:
- - awaitingResponse
+ - stat:awaiting response
 # Comment to post when marking as stale. Set to `false` to disable
 markComment: >
   This issue has been automatically marked as stale because it has not had

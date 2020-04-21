@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_SNAPSHOT_UTIL_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_EXPERIMENTAL_SNAPSHOT_UTIL_H_
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/io/compression.h"
@@ -119,6 +120,18 @@ class Reader {
                        const DataTypeVector& dtypes,
                        std::unique_ptr<Reader>* out_reader);
 
+  // Returns a nested dataset for a set of given snapshot file names.
+  //
+  // This function takes a vector of snapshot files, and returns a nested
+  // dataset. Each element within the nested dataset is itself a dataset, and
+  // contains all the elements written out to each individual snapshot file.
+  static Status MakeNestedDataset(Env* env,
+                                  const std::vector<std::string>& filenames,
+                                  const string& compression_type, int version,
+                                  const DataTypeVector& dtypes,
+                                  const std::vector<PartialTensorShape>& shapes,
+                                  DatasetBase** output);
+
   Status ReadTensors(std::vector<Tensor>* read_tensors);
 
  private:
@@ -150,6 +163,9 @@ class Reader {
   int num_simple_ = 0;
   int num_complex_ = 0;
   std::vector<bool> simple_tensor_mask_;  // true for simple, false for complex.
+
+  class Dataset;
+  class NestedDataset;
 };
 
 Status WriteMetadataFile(const string& hash_dir,

@@ -860,14 +860,19 @@ def sparse_reshape(sp_input, shape, name=None):
       original_reshaped_shape = list(reshaped_shape_const)  # A copy
       in_shape_size = np.prod(sp_input.shape.as_list())
       num_implied = sum(dim is None for dim in reshaped_shape_const)
-      if num_implied == 1:
+
+      # If there is a 0 dim in the user-provided shape, we cannot infer the
+      # unknown dim reliably. This is why we skip the `if` branch below when
+      # a 0 is present in `reshaped_shape_const`. Same below.
+      if num_implied == 1 and 0 not in reshaped_shape_const:
         implied_idx = original_reshaped_shape.index(None)
         non_implied_idx = (
             original_reshaped_shape[:implied_idx] +
             original_reshaped_shape[implied_idx + 1:])
         reshaped_shape_const[implied_idx] = int(
             in_shape_size // np.prod(non_implied_idx))
-      if num_implied <= 1:
+      if num_implied == 0 or (num_implied == 1 and
+                              0 not in reshaped_shape_const):
         reshaped_size = np.prod(reshaped_shape_const)
         if reshaped_size != in_shape_size:
           raise ValueError(

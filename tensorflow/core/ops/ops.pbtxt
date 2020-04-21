@@ -12499,6 +12499,14 @@ op {
   }
 }
 op {
+  name: "DummyMemoryCache"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
+}
+op {
   name: "DynamicPartition"
   input_arg {
     name: "data"
