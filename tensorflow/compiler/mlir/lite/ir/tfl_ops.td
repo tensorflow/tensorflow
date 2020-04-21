@@ -237,11 +237,28 @@ class TFL_TFTypesWithSameBits<int i, int j, int num> :
     Or<[CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isa<mlir::TF::Quint" # num # "Type>()">,
         CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isUnsignedInteger(" # num # ")">]>]>;
 
-class TFL_OperandHasRankLessThan<int n, int m> :
-  PredOpTrait<"operand " # n # " is maximum " # m # "-D",
+class TFL_OperandHasRankLessThanOrEqualTo<int n, int m> :
+  PredOpTrait<"operand " # n # " is at most " # m # "-D",
     Or<[TFL_OperandIsUnrankedPred<n>,
       CPred<"$_op.getOperand(" # n #
       ").getType().cast<ShapedType>().getRank() <= " # m>]>>;
+
+class TFL_OperandHasRankGreaterThanOrEqualTo<int n, int m> :
+  PredOpTrait<"operand " # n # " is at least " # m # "-D",
+    Or<[TFL_OperandIsUnrankedPred<n>,
+      CPred<"$_op.getOperand(" # n #
+      ").getType().cast<ShapedType>().getRank() >= " # m>]>>;
+
+class TFL_OperandHasRankRange<int n, int x, int y> :
+  PredOpTrait<"operand " # n # " has rank range [" # x # ", " # y # "]",
+    Or<[TFL_OperandIsUnrankedPred<n>,
+      CPred<"$_op.getOperand(" # n # ").getType().cast<ShapedType>().getRank() "
+      ">= " # x # " && $_op.getOperand(" # n # ").getType().cast<ShapedType>()."
+      "getRank() <= " # y>]>>;
+
+def TFL_FloatNonNegative : AttrConstraint<
+    CPred<"!$_self.cast<FloatAttr>().getValue().isNegative()">,
+    "whose value is non-negative">;
 
 // This is a quantization-aware version of TCresVTEtIsSameAsOp
 class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
@@ -474,7 +491,12 @@ def TFL_TransposeConvOp:
 }
 
 def TFL_Convolution2DTransposeBiasOp :
-  Op<TFL_Dialect, "convolution_2d_transpose_bias", [NoSideEffect]> {
+  Op<TFL_Dialect, "convolution_2d_transpose_bias", [
+    NoSideEffect,
+    TFL_OperandHasRank<0, 4>,
+    TFL_OperandHasRank<1, 4>,
+    TFL_OperandHasRankLessThanOrEqualTo<2, 1>
+  ]> {
   let summary = " Transpose convolution with bias operator";
 
   let description = [{
@@ -489,15 +511,15 @@ Note this is a custom op that is not supported in the standard runtime.
   }];
 
   let arguments = (
-    ins AnyTensor:$input,
-    AnyTensor:$filter,
-    TFL_TensorOfOrNone<[AnyType]>:$bias,
+    ins TFL_FpTensor:$input,
+    TFL_FpTensor:$filter,
+    TFL_TensorOfOrNone<[F32]>:$bias,
     TFL_PaddingAttr:$padding,
-    I32Attr:$stride_h,
-    I32Attr:$stride_w
+    Confined<I32Attr, [IntPositive]>:$stride_h,
+    Confined<I32Attr, [IntPositive]>:$stride_w
   );
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_FpTensor:$output);
 }
 
 def TFL_AveragePool2DOp:
@@ -608,14 +630,14 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
 
   let arguments = (
     ins TFL_VariadicTensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, QI16, TFL_Uint8]>:$values,
+      [F32, I64, I32, I16, I8, QI8, QUI8, TFL_Uint8]>:$values,
     I32Attr:$axis,
     TFL_AFAttr:$fused_activation_function
   );
 
   let results = (outs
     TFL_TensorOf<
-      [F32, I64, I32, I16, I8, QI8, QUI8, QI16, TFL_Uint8]>:$output
+      [F32, I64, I32, I16, I8, QI8, QUI8, TFL_Uint8]>:$output
   );
 
   let hasOptions = 1;
@@ -1175,7 +1197,9 @@ def TFL_EluOp: TFL_Op<"elu", [NoSideEffect, SameOperandsAndResultType]> {
 def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
     [NoSideEffect,
      PredOpTrait<"value and output must have same element type",
-       TCresVTEtIsSameAsOp<0, 1>>
+       TFL_TCresVTEtIsSameAsOp<0, 1>>,
+     TFL_OperandHasRank<0, 1>,
+     TFL_OperandHasRankGreaterThanOrEqualTo<1, 2>
     ]> {
   let summary = "Embedding lookup operator";
 
@@ -1193,6 +1217,8 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
 def TFL_EqualOp: TFL_Op<"equal", [Commutative, ResultsBroadcastableShape,
     NoQuantizableResult,
+    ResultsBroadcastableShape,
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 4>,
     PredOpTrait<"Operands have same value type", TCopVTEtIsSameAs<0, 1>>]> {
   let summary = "Equal operator";
 
@@ -1202,8 +1228,8 @@ def TFL_EqualOp: TFL_Op<"equal", [Commutative, ResultsBroadcastableShape,
 
   let arguments = (
     ins
-    TFL_TensorOf<[I1, F32, I32, I64, I8, QI8, QUI8, TFL_Uint8]>:$x,
-    TFL_TensorOf<[I1, F32, I32, I64, I8, QI8, QUI8, TFL_Uint8]>:$y
+    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, TFL_Uint8]>:$x,
+    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, TFL_Uint8]>:$y
   );
 
   let results = (outs TFL_BoolTensor:$output);
@@ -2734,7 +2760,10 @@ def TFL_BatchToSpaceNdOp: TFL_Op<"batch_to_space_nd", [
     NoSideEffect,
     SameOperandsAndResultsScale,
     PredOpTrait<"input and output must have same element type",
-      TCresVTEtIsSameAsOp<0, 0>>
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_OperandHasRankRange<0, 3, 4>,
+    TFL_OperandHasRank<1, 1>,
+    TFL_OperandHasRank<2, 2>
   ]> {
   let summary = "BatchToSpaceNd operator";
 
@@ -2743,13 +2772,13 @@ def TFL_BatchToSpaceNdOp: TFL_Op<"batch_to_space_nd", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I32, I64, QI8, QUI8]>:$input,
+    TFL_TensorOf<[F32, I8, I32, I64, UI8, QI8, QUI8]>:$input,
     TFL_TensorOf<[I32]>:$block_shape,
     TFL_TensorOf<[I32]>:$indices
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I16, I32, I64, QI8, QUI8]>:$output
+    TFL_TensorOf<[F32, I16, I32, I64, UI8, QI8, QUI8]>:$output
   );
 }
 
@@ -2808,7 +2837,8 @@ def TFL_DepthToSpaceOp: TFL_Op<"depth_to_space", [
     NoSideEffect,
     SameOperandsAndResultsScale,
     PredOpTrait<"input and output must have same element type",
-      TFL_TCresVTEtIsSameAsOp<0, 0>>
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_OperandHasRankLessThanOrEqualTo<0, 4>
   ]> {
   let summary = "DepthToSpace operator";
 
@@ -2822,12 +2852,12 @@ def TFL_DepthToSpaceOp: TFL_Op<"depth_to_space", [
    }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I8, I32, I64, TFL_Uint8, TFL_Quint8, QUI8]>:$input,
-    I32Attr:$block_size
+    TFL_TensorOf<[F32, I8, I32, I64, TFL_Quint8, TFL_Uint8, UI8, QI8, QUI8]>:$input,
+    Confined<I32Attr, [IntPositive]>:$block_size
   );
 
   let results = (outs
-    TFL_TensorOf<[F32, I8, I32, I64, TFL_Uint8, TFL_Quint8, QUI8]>:$output
+    TFL_TensorOf<[F32, I8, I32, I64, TFL_Quint8, TFL_Uint8, UI8, QI8, QUI8]>:$output
   );
 
   let hasOptions = 1;
@@ -3096,9 +3126,9 @@ def TFL_DequantizeOp: TFL_Op<"dequantize", [NoQuantizableResult]> {
     quantization parameters.
   }];
 
-  let arguments = (ins AnyTensor:$input);
+  let arguments = (ins TFL_TensorOf<[QI8, QUI8, QI16, F16]>:$input);
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_FpTensor:$output);
 }
 
 def TFL_FakeQuantOp : TFL_Op<"fake_quant", [NoSideEffect]> {
@@ -3210,9 +3240,9 @@ def TFL_DensifyOp: TFL_Op<"densify", [NoSideEffect,
     Converts sparse tensor to dense format.
   }];
 
-  let arguments = (ins AnyTensor:$input);
+  let arguments = (ins TFL_TensorOf<[F32, I8]>:$input);
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[F32, I8]>:$output);
 }
 
 //===----------------------------------------------------------------------===//
@@ -3275,16 +3305,16 @@ def TFL_BasicLSTMOp : TFL_Op<"basic_lstm", [NoSideEffect,
   }];
 
   let arguments = (
-    ins TFL_TensorOf<[F32, I8, QI8, QUI8, QI16, QUI16]>:$data_input,
-    TFL_TensorOf<[F32, I8, QI8, QUI8, QI16, QUI16]>:$prev_activ_input,
-    TFL_TensorOf<[F32, I8, QI8, QUI8, QI16, QUI16]>:$weights_input,
-    TFL_TensorOf<[F32, QI32, QUI32]>:$biases_input,
-    TFL_TensorOf<[F32, I8, QI8, QUI8, QI16, QUI16]>:$prev_state_input,
+    ins TFL_TensorOf<[F32, QUI8]>:$data_input,
+    TFL_TensorOf<[F32, QUI8]>:$prev_activ_input,
+    TFL_TensorOf<[F32, QUI8]>:$weights_input,
+    TFL_TensorOf<[F32, QI32]>:$biases_input,
+    TFL_TensorOf<[F32, QI16]>:$prev_state_input,
 
     // Attributes
     DefaultValuedAttr<TFL_AFAttr, "TANH">:$fused_activation_function,
-    DefaultValuedAttr<F32Attr, "0.0f">:$cell_clip,
-    DefaultValuedAttr<F32Attr, "0.0f">:$proj_clip,
+    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
+    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     // Since this op is the BASIC kernel only, constrain it.
     Confined<
       DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "BASIC">,
@@ -3293,10 +3323,10 @@ def TFL_BasicLSTMOp : TFL_Op<"basic_lstm", [NoSideEffect,
 
   let hasOptions = 1;
 
-  let results = (outs TFL_2DTensorOf<[F32, I8, QI8, QUI8, QI16, QUI16]>:$activ_output,
-                      TFL_2DTensorOf<[F32, I8, QI8, QUI8, QI16, QUI16]>:$state_output,
-                      TFL_2DTensorOf<[F32, I8, QI8, QUI8, QI16, QUI16]>:$concat_temp,
-                      TFL_2DTensorOf<[F32, I8, QI8, QUI8, QI16, QUI16]>:$activ_temp);
+  let results = (outs TFL_2DTensorOf<[F32, QUI8]>:$activ_output,
+                      TFL_2DTensorOf<[F32, QUI16]>:$state_output,
+                      TFL_2DTensorOf<[F32, QUI8]>:$concat_temp,
+                      TFL_2DTensorOf<[F32, QUI16]>:$activ_temp);
 }
 
 // This is the FULL kernel type LSTM op.
@@ -3526,6 +3556,41 @@ def TFL_BidirectionalSequenceLSTMOp :
            BidiLstmOptionalPeepholeWeightConstraint,
            BidiLstmProjectionWeightBiasConstraint,
            LstmResultConstraint,
+           TFL_OperandHasRank<0, 3>,   // input
+           TFL_OperandHasRank<1, 2>,   // fw_input_to_input_weights
+           TFL_OperandHasRank<2, 2>,   // fw_input_to_forget_weights
+           TFL_OperandHasRank<3, 2>,   // fw_input_to_cell_weights
+           TFL_OperandHasRank<4, 2>,   // fw_input_to_output_weights
+           TFL_OperandHasRank<5, 2>,   // fw_recurrent_to_input_weights
+           TFL_OperandHasRank<6, 2>,   // fw_recurrent_to_forget_weights
+           TFL_OperandHasRank<7, 2>,   // fw_recurrent_to_cell_weights
+           TFL_OperandHasRank<8, 2>,   // fw_recurrent_to_output_weights
+           TFL_OperandHasRank<9, 1>,   // fw_cell_to_input_weights
+           TFL_OperandHasRank<10, 1>,  // fw_cell_to_forget_weights
+           TFL_OperandHasRank<11, 1>,  // fw_cell_to_output_weights
+           TFL_OperandHasRank<12, 1>,  // fw_input_gate_bias
+           TFL_OperandHasRank<13, 1>,  // fw_forget_gate_bias
+           TFL_OperandHasRank<14, 1>,  // fw_cell_bias
+           TFL_OperandHasRank<15, 1>,  // fw_output_gate_bias
+           TFL_OperandHasRank<16, 2>,  // fw_projection_weights
+           TFL_OperandHasRank<17, 1>,  // fw_projection_bias
+           TFL_OperandHasRank<18, 2>,  // bw_input_to_input_weights
+           TFL_OperandHasRank<19, 2>,  // bw_input_to_forget_weights
+           TFL_OperandHasRank<20, 2>,  // bw_input_to_cell_weights
+           TFL_OperandHasRank<21, 2>,  // bw_input_to_output_weights
+           TFL_OperandHasRank<22, 2>,  // bw_recurrent_to_input_weights
+           TFL_OperandHasRank<23, 2>,  // bw_recurrent_to_forget_weights
+           TFL_OperandHasRank<24, 2>,  // bw_recurrent_to_cell_weights
+           TFL_OperandHasRank<25, 2>,  // bw_recurrent_to_output_weights
+           TFL_OperandHasRank<26, 1>,  // bw_cell_to_input_weights
+           TFL_OperandHasRank<27, 1>,  // bw_cell_to_forget_weights
+           TFL_OperandHasRank<28, 1>,  // bw_cell_to_output_weights
+           TFL_OperandHasRank<29, 1>,  // bw_input_gate_bias
+           TFL_OperandHasRank<30, 1>,  // bw_forget_gate_bias
+           TFL_OperandHasRank<31, 1>,  // bw_cell_bias
+           TFL_OperandHasRank<32, 1>,  // bw_output_gate_bias
+           TFL_OperandHasRank<33, 2>,  // bw_projection_weights
+           TFL_OperandHasRank<34, 1>,  // bw_projection_bias
            TFL_StatefulOp]> {
   let summary = "Bidirectional sequence lstm operator";
 
@@ -3619,8 +3684,8 @@ def TFL_BidirectionalSequenceLSTMOp :
 
     // Attributes
     TFL_AFAttr:$fused_activation_function,
-    DefaultValuedAttr<F32Attr, "0.0f">:$cell_clip,
-    DefaultValuedAttr<F32Attr, "0.0f">:$proj_clip,
+    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$cell_clip,
+    Confined<DefaultValuedAttr<F32Attr, "0.0f">, [TFL_FloatNonNegative]>:$proj_clip,
     BoolAttr:$merge_outputs,
     BoolAttr:$time_major
   );
