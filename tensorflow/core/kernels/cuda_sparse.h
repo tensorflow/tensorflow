@@ -321,11 +321,27 @@ class GpuSparse {
                  Scalar* csrSortedValC, int* csrSortedRowPtrC,
                  int* csrSortedColIndC, void* workspace);
 
+#if CUDA_VERSION >= 10000
+  // Computes sparse-sparse matrix multiplication of matrices
+  // stored in CSR format.  This is part zero: calculate required workspace
+  // size.
+  template<typename Scalar>
+  Status CsrgemmBufferSize(int m, int n, int k,
+                           const gpusparseMatDescr_t descrA, int nnzA,
+                           const int* csrSortedRowPtrA,
+                           const int* csrSortedColIndA,
+                           const gpusparseMatDescr_t descrB, int nnzB,
+                           const int* csrSortedRowPtrB,
+                           const int* csrSortedColIndB,
+                           csrgemm2Info_t info, size_t* workspaceBytes);
+#endif
+
   // Computes sparse-sparse matrix multiplication of matrices
   // stored in CSR format.  This is part one: calculate nnz of the
   // output.  csrSortedRowPtrC must be preallocated on device with
   // m + 1 entries.  See:
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csrgemm.
+#if CUDA_VERSION < 10000
   Status CsrgemmNnz(gpusparseOperation_t transA, gpusparseOperation_t transB,
                     int m, int k, int n, const gpusparseMatDescr_t descrA,
                     int nnzA, const int* csrSortedRowPtrA,
@@ -334,12 +350,23 @@ class GpuSparse {
                     const int* csrSortedRowPtrB, const int* csrSortedColIndB,
                     const gpusparseMatDescr_t descrC, int* csrSortedRowPtrC,
                     int* nnzTotalDevHostPtr);
+#else
+  Status CsrgemmNnz(int m, int n, int k, const gpusparseMatDescr_t descrA,
+                    int nnzA, const int* csrSortedRowPtrA,
+                    const int* csrSortedColIndA,
+                    const gpusparseMatDescr_t descrB, int nnzB,
+                    const int* csrSortedRowPtrB, const int* csrSortedColIndB,
+                    const gpusparseMatDescr_t descrC, int* csrSortedRowPtrC,
+                    int* nnzTotalDevHostPtr, csrgemm2Info_t info,
+                    void* workspace);
+#endif
 
   // Computes sparse - sparse matrix matmul of matrices
   // stored in CSR format.  This is part two: perform sparse-sparse
   // addition.  csrValC and csrColIndC must be allocated on the device
   // with nnzTotalDevHostPtr entries (as calculated by CsrgemmNnz).  See:
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csrgemm.
+#if CUDA_VERSION < 10000
   template <typename Scalar>
   Status Csrgemm(gpusparseOperation_t transA, gpusparseOperation_t transB,
                  int m, int k, int n, const gpusparseMatDescr_t descrA,
@@ -350,6 +377,19 @@ class GpuSparse {
                  const int* csrSortedColIndB, const gpusparseMatDescr_t descrC,
                  Scalar* csrSortedValC, int* csrSortedRowPtrC,
                  int* csrSortedColIndC);
+#else
+  template <typename Scalar>
+  Status Csrgemm(int m, int n, int k,
+                 const gpusparseMatDescr_t descrA, int nnzA,
+                 const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
+                 const int* csrSortedColIndA, const gpusparseMatDescr_t descrB,
+                 int nnzB, const Scalar* csrSortedValB,
+                 const int* csrSortedRowPtrB, const int* csrSortedColIndB,
+                 const gpusparseMatDescr_t descrC,
+                 Scalar* csrSortedValC, int* csrSortedRowPtrC,
+                 int* csrSortedColIndC, const csrgemm2Info_t info,
+                 void* workspace);
+#endif
 
   // In-place reordering of unsorted CSR to sorted CSR.
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csru2csr
