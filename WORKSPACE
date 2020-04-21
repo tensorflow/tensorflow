@@ -18,8 +18,6 @@ load("//tensorflow:workspace.bzl", "tf_repositories")
 # Please add all new TensorFlow dependencies in workspace.bzl.
 tf_repositories()
 
-register_execution_platforms("@local_execution_config_platform//:platform")
-register_toolchains("@local_execution_config_python//:py_toolchain")
 register_toolchains("@local_config_python//:py_toolchain")
 
 load("@io_bazel_rules_closure//closure:defs.bzl", "closure_repositories")
