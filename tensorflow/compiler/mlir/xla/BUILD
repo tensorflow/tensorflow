@@ -12,7 +12,6 @@ package_group(
     packages = [
         "//babelfish/device/...",
         "//learning/brain/experimental/mlir/...",
-        "//learning/brain/experimental/swift_mlir/...",
         "//learning/brain/google/xla/kernels/...",
         "//learning/brain/swift/swift_mlir/...",
         "//learning/pathways/data_parallel/tf2xla/...",
