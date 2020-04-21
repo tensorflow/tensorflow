@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
@@ -90,6 +91,10 @@ bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
          name == "loop_optimizer" || name == "auto_mixed_precision" ||
          name == "convert_to_bfloat16";
+}
+
+bool IsTFDataFunction(const FunctionDef& func) {
+  return func.attr().contains(data::kTFDataFunction);
 }
 
 // Creates a function library stub from a real function library: copy only
@@ -704,6 +709,9 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
       // They should be specialized to their instantiation type parameters by
       // the function optimizer, before we can optimize function body.
       if (IsParametrized(func)) continue;
+
+      // Skip tf.data functions as they are optimized by tf.data meta optimizer.
+      if (IsTFDataFunction(func)) continue;
 
       VLOG(3) << "Optimize function: function=" << func_name << " ["
               << function_idx++ << " of "

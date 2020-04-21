@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/common_runtime/eager/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/function.h"
@@ -161,49 +160,9 @@ AbstractTensorInterface* EagerContext::CreateBoolScalar(bool value) {
   return new TensorInterface(Tensor(value));
 }
 
-AbstractTensorInterface* EagerContext::CreateInt64Tensor(
-    absl::Span<const int64> dim_sizes) {
-  return new TensorInterface(Tensor(DT_INT64, TensorShape(dim_sizes)));
-}
-
-AbstractTensorInterface* EagerContext::CreateUint64Tensor(
-    absl::Span<const int64> dim_sizes) {
-  return new TensorInterface(Tensor(DT_UINT64, TensorShape(dim_sizes)));
-}
-
-AbstractTensorInterface* EagerContext::CreateInt32Tensor(
-    absl::Span<const int64> dim_sizes) {
-  return new TensorInterface(Tensor(DT_INT32, TensorShape(dim_sizes)));
-}
-
-AbstractTensorInterface* EagerContext::CreateFloatTensor(
-    absl::Span<const int64> dim_sizes) {
-  return new TensorInterface(Tensor(DT_FLOAT, TensorShape(dim_sizes)));
-}
-
-AbstractTensorInterface* EagerContext::CreateDoubleTensor(
-    absl::Span<const int64> dim_sizes) {
-  return new TensorInterface(Tensor(DT_DOUBLE, TensorShape(dim_sizes)));
-}
-
-AbstractTensorInterface* EagerContext::CreateHalfTensor(
-    absl::Span<const int64> dim_sizes) {
-  return new TensorInterface(Tensor(DT_HALF, TensorShape(dim_sizes)));
-}
-
-AbstractTensorInterface* EagerContext::CreateStringTensor(
-    absl::Span<const int64> dim_sizes) {
-  return new TensorInterface(Tensor(DT_STRING, TensorShape(dim_sizes)));
-}
-
-AbstractTensorInterface* EagerContext::CreateComplex128Tensor(
-    absl::Span<const int64> dim_sizes) {
-  return new TensorInterface(Tensor(DT_COMPLEX128, TensorShape(dim_sizes)));
-}
-
-AbstractTensorInterface* EagerContext::CreateBoolTensor(
-    absl::Span<const int64> dim_sizes) {
-  return new TensorInterface(Tensor(DT_BOOL, TensorShape(dim_sizes)));
+AbstractTensorInterface* EagerContext::CreateTensor(
+    DataType dtype, absl::Span<const int64> dim_sizes) {
+  return new TensorInterface(Tensor(dtype, TensorShape(dim_sizes)));
 }
 
 void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
@@ -218,17 +177,10 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
         *r = CreateRendezvous(step_id);
         return Status::OK();
       }};
-  if (lazy_copy_function_remote_inputs_) {
-    pflr_.reset(new eager::EagerProcessFunctionLibraryRuntime(
-        device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-        thread_pool, cluster_flr, custom_kernel_creator,
-        /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
-  } else {
-    pflr_.reset(new ProcessFunctionLibraryRuntime(
-        device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-        thread_pool, cluster_flr, custom_kernel_creator,
-        /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
-  }
+  pflr_.reset(new ProcessFunctionLibraryRuntime(
+      device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
+      thread_pool, cluster_flr, custom_kernel_creator,
+      /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
 }
 
 void EagerContext::InitPrioritizedDeviceTypeList() {

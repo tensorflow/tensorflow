@@ -16,15 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_IF_WHILE_UTILS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_IF_WHILE_UTILS_H_
 
-#include <functional>
-#include <vector>
-
-#include "absl/container/inlined_vector.h"
-#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 

@@ -55,11 +55,6 @@ class EagerContext;
 // (unrelated to python TensorHandle).
 class TensorHandle : public AbstractTensorHandleInterface,
                      public core::RefCounted {
-  // Custom devices do many of the same things as physical Devices, but have a
-  // much more restricted interface. We pass around ambiguous pointers since
-  // TensorHandles may be placed either on custom or physical devices.
-  using VariantDevice = absl::variant<Device*, CustomDevice*>;
-
   // TensorHandle for dtype != DT_RESOURCE
   TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
                Device* resource_device, EagerContext* ctx);
@@ -189,6 +184,7 @@ class TensorHandle : public AbstractTensorHandleInterface,
   // tensor for a specific device.
   void Poison(Status status, const Device* d);
 
+  // TODO(b/154282629): Consider moving it to EagerContext.
   Status CopyToDevice(const EagerContext& ctx, tensorflow::Device* d,
                       tensorflow::Tensor* output);
 
@@ -291,18 +287,17 @@ class TensorHandle : public AbstractTensorHandleInterface,
 };
 
 // Checks whether a VariantDevice contains a custom device.
-bool VariantDeviceIsCustom(absl::variant<Device*, CustomDevice*> device);
+bool VariantDeviceIsCustom(VariantDevice device);
 
 // Wraps device->name() or CustomDevice->name().
-string VariantDeviceName(absl::variant<Device*, CustomDevice*> device);
+string VariantDeviceName(VariantDevice device);
 
 // Wraps device->DebugString() or CustomDevice->name().
-string VariantDeviceDebugString(absl::variant<Device*, CustomDevice*> device);
+string VariantDeviceDebugString(VariantDevice device);
 
 // Indicates either HostCPU or an unset physical device. We never set a null
 // CustomDevice*.
-const absl::variant<Device*, CustomDevice*> kVariantDeviceNull =
-    static_cast<Device*>(nullptr);
+const VariantDevice kVariantDeviceNull = static_cast<Device*>(nullptr);
 
 // Returns the device backing the resource. Else, returns nullptr.
 Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx);

@@ -36,7 +36,7 @@ using FuncSet = llvm::SmallSet<FuncOp, 4>;
 
 // Module pass to optimize TensorFlow functional ops.
 struct OptimizeFunctionalOpsPass
-    : public OperationPass<OptimizeFunctionalOpsPass, ModuleOp> {
+    : public PassWrapper<OptimizeFunctionalOpsPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -187,7 +187,7 @@ void OptimizeFunctionalOpsPass::runOnOperation() {
   patterns.insert<FoldIfOp>(&getContext(), &inlined_funcs);
 
   ModuleOp module = getOperation();
-  applyPatternsGreedily(module, patterns);
+  applyPatternsAndFoldGreedily(module, patterns);
 
   // Erase inlined functions that don't have any references.
   //
@@ -198,7 +198,7 @@ void OptimizeFunctionalOpsPass::runOnOperation() {
 }
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeFunctionalOpsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeFunctionalOpsPass() {
   return std::make_unique<OptimizeFunctionalOpsPass>();
 }
 

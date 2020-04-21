@@ -58,7 +58,7 @@ RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/t
 ENV LANG C.UTF-8
 
 RUN apt-get update && apt-get install -y \
-    python3
+    python3 \
     python3-pip
 
 RUN python3 -m pip --no-cache-dir install --upgrade \
@@ -78,7 +78,7 @@ RUN apt-get update && apt-get install -y \
     virtualenv \
     swig
 
-RUN ${PIP} --no-cache-dir install \
+RUN python3 -m pip --no-cache-dir install \
     Pillow \
     h5py \
     keras_preprocessing \
@@ -93,7 +93,7 @@ RUN ${PIP} --no-cache-dir install \
     enum34
 
 # Install bazel
-ARG BAZEL_VERSION=2.0.0
+ARG BAZEL_VERSION=3.0.0
 RUN mkdir /bazel && \
     wget -O /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
     wget -O /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \

@@ -52,13 +52,13 @@ namespace mlir {
 namespace xla_hlo {
 namespace {
 class LegalizeTFControlFlow
-    : public OperationPass<LegalizeTFControlFlow, ModuleOp> {
+    : public PassWrapper<LegalizeTFControlFlow, OperationPass<ModuleOp>> {
  public:
   void runOnOperation() override;
 };
 }  // namespace
 
-std::unique_ptr<mlir::OpPassBase<mlir::ModuleOp>>
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createLegalizeTFControlFlowPass() {
   return std::make_unique<LegalizeTFControlFlow>();
 }

@@ -38,6 +38,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.platform import device_context
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
@@ -87,8 +88,8 @@ class BatchNormalizationBase(Layer):
     gamma_regularizer: Optional regularizer for the gamma weight.
     beta_constraint: Optional constraint for the beta weight.
     gamma_constraint: Optional constraint for the gamma weight.
-    renorm: Whether to use Batch Renormalization
-      (https://arxiv.org/abs/1702.03275). This adds extra variables during
+    renorm: Whether to use [Batch Renormalization](
+      https://arxiv.org/abs/1702.03275). This adds extra variables during
       training. The inference is the same for either value of this parameter.
     renorm_clipping: A dictionary that may map keys 'rmax', 'rmin', 'dmax' to
       scalar `Tensors` used to clip the renorm correction. The correction
@@ -163,9 +164,9 @@ class BatchNormalizationBase(Layer):
 
     \\({y_i} = {\gamma * \hat{x_i} + \beta}\\)
 
-  References:
-  - [Batch Normalization: Accelerating Deep Network Training by Reducing
-    Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
+  Reference:
+
+    - [Ioffe and Szegedy, 2015](https://arxiv.org/abs/1502.03167).
   """
 
   # By default, the base class uses V2 behavior. The BatchNormalization V1
@@ -536,9 +537,11 @@ class BatchNormalizationBase(Layer):
     # TODO(b/129279393): Support zero batch input in non DistributionStrategy
     # code as well.
     if self._support_zero_size_input():
-      inputs_size = array_ops.size(inputs)
+      # Keras assumes that batch dimension is the first dimension for Batch
+      # Normalization.
+      input_batch_size = array_ops.shape(inputs)[0]
     else:
-      inputs_size = None
+      input_batch_size = None
 
     # TODO(rmlarsen): Support using fused avg updates for non-eager execution
     # after fixing graph pattern matching and enabling fused_batch_norm to
@@ -546,7 +549,8 @@ class BatchNormalizationBase(Layer):
     use_fused_avg_updates = (
         compat.forward_compatible(2020, 3, 6) and
         ops.executing_eagerly_outside_functions() and
-        isinstance(self.momentum, (float, int)))
+        isinstance(self.momentum, (float, int)) and
+        device_context.enclosing_tpu_context() is None)
     if use_fused_avg_updates:
       exponential_avg_factor = 1.0 - self.momentum
     else:
@@ -598,10 +602,12 @@ class BatchNormalizationBase(Layer):
           data_format=self._data_format)
 
     train_op = _fused_batch_norm_training
-    if use_fused_avg_updates and inputs_size is not None:
-      train_op = lambda: tf_utils.smart_cond(inputs_size > 0,
+    if use_fused_avg_updates and input_batch_size is not None:
+      # pylint: disable=g-long-lambda
+      train_op = lambda: tf_utils.smart_cond(input_batch_size > 0,
                                              _fused_batch_norm_training,
                                              _fused_batch_norm_training_empty)
+      # pylint: enable=g-long-lambda
 
     output, mean, variance = tf_utils.smart_cond(training, train_op,
                                                  _fused_batch_norm_inference)
@@ -622,7 +628,7 @@ class BatchNormalizationBase(Layer):
           return self._assign_new_value(self.moving_mean, mean)
         else:
           return self._assign_moving_average(self.moving_mean, mean, momentum,
-                                             inputs_size)
+                                             input_batch_size)
 
       def variance_update():
         """Update self.moving_variance with the most recent data point."""
@@ -630,7 +636,7 @@ class BatchNormalizationBase(Layer):
           return self._assign_new_value(self.moving_variance, variance)
         else:
           return self._assign_moving_average(self.moving_variance, variance,
-                                             momentum, inputs_size)
+                                             momentum, input_batch_size)
 
       self.add_update(mean_update)
       self.add_update(variance_update)
@@ -704,9 +710,9 @@ class BatchNormalizationBase(Layer):
     # TODO(b/129279393): Support zero batch input in non DistributionStrategy
     # code as well.
     if self._support_zero_size_input():
-      inputs_size = array_ops.size(inputs)
-      mean = array_ops.where(inputs_size > 0, mean, K.zeros_like(mean))
-      variance = array_ops.where(inputs_size > 0, variance,
+      input_batch_size = array_ops.shape(inputs)[0]
+      mean = array_ops.where(input_batch_size > 0, mean, K.zeros_like(mean))
+      variance = array_ops.where(input_batch_size > 0, variance,
                                  K.zeros_like(variance))
     return mean, variance
 
@@ -820,12 +826,15 @@ class BatchNormalizationBase(Layer):
         new_mean, new_variance = mean, variance
 
       if self._support_zero_size_input():
-        inputs_size = array_ops.size(inputs)
+        # Keras assumes that batch dimension is the first dimension for Batch
+        # Normalization.
+        input_batch_size = array_ops.shape(inputs)[0]
       else:
-        inputs_size = None
+        input_batch_size = None
+
       if self.renorm:
         r, d, new_mean, new_variance = self._renorm_correction_and_moments(
-            new_mean, new_variance, training, inputs_size)
+            new_mean, new_variance, training, input_batch_size)
         # When training, the normalized values (say, x) will be transformed as
         # x * gamma + beta without renorm, and (x * r + d) * gamma + beta
         # = x * (r * gamma) + (d * gamma + beta) with renorm.
@@ -836,7 +845,7 @@ class BatchNormalizationBase(Layer):
       def _do_update(var, value):
         """Compute the updates for mean and variance."""
         return self._assign_moving_average(var, value, self.momentum,
-                                           inputs_size)
+                                           input_batch_size)
 
       def mean_update():
         true_branch = lambda: _do_update(self.moving_mean, new_mean)
@@ -962,24 +971,111 @@ class LayerNormalization(Layer):
   i.e. applies a transformation that maintains the mean activation within each
   example close to 0 and the activation standard deviation close to 1.
 
+  Given a tensor `inputs`, moments are calculated and normalization
+  is performed across the axes specified in `axis`.
+
+  Example:
+
+  >>> data = tf.constant(np.arange(10).reshape(5, 2) * 10, dtype=tf.float32)
+  >>> print(data)
+  tf.Tensor(
+  [[ 0. 10.]
+   [20. 30.]
+   [40. 50.]
+   [60. 70.]
+   [80. 90.]], shape=(5, 2), dtype=float32)
+
+  >>> layer = tf.keras.layers.LayerNormalization(axis=1)
+  >>> output = layer(data)
+  >>> print(output)
+  tf.Tensor(
+  [[-1. 1.]
+   [-1. 1.]
+   [-1. 1.]
+   [-1. 1.]
+   [-1. 1.]], shape=(5, 2), dtype=float32)
+
+  Notice that with Layer Normalization the normalization happens across the
+  axes *within* each example, rather than across different examples in the
+  batch.
+
+  If `scale` or `center` are enabled, the layer will scale the normalized
+  outputs by broadcasting them with a trainable variable `gamma`, and center
+  the outputs by broadcasting with a trainable variable `beta`. `gamma` will
+  default to a ones tensor and `beta` will default to a zeros tensor, so that
+  centering and scaling are no-ops before training has begun.
+
+  So, with scaling and centering enabled the normalization equations
+  are as follows:
+    Let the intermediate activations for a mini-batch to be the `inputs`.
+
+    For each sample `x_i` in `inputs` with `k` features, we compute the mean and
+    variance of the sample:
+
+    ```python
+    mean_i = sum(x_i[j] for j in range(k)) / k
+    var_i = sum((x_i[j] - mean_i) ** 2 for j in range(k)) / k
+    ```
+
+    and then compute a normalized `x_i_normalized`, including a small factor
+    `epsilon` for numerical stability.
+
+    ```python
+    x_i_normalized = (x_i - mean_i) / sqrt(var_i + epsilon)
+    ```
+
+    And finally `x_i_normalized ` is linearly transformed by `gamma` and `beta`,
+    which are learned parameters:
+
+    ```python
+    output_i = x_i_normalized * gamma + beta
+    ```
+
+  `gamma` and `beta` will span the axes of `inputs` specified in `axis`, and
+  this part of the inputs' shape must be fully defined.
+
+  For example:
+
+  >>> layer = tf.keras.layers.LayerNormalization(axis=[1, 2, 3])
+  >>> layer.build([5, 20, 30, 40])
+  >>> print(layer.beta.shape)
+  (20, 30, 40)
+  >>> print(layer.gamma.shape)
+  (20, 30, 40)
+
+  Note that other implementations of layer normalization may choose to define
+  `gamma` and `beta` over a separate set of axes from the axes being
+  normalized across. For example, Group Normalization
+  ([Wu et al. 2018](https://arxiv.org/abs/1803.08494)) with group size of 1
+  corresponds to a Layer Normalization that normalizes across height, width,
+  and channel and has `gamma` and `beta` span only the channel dimension.
+  So, this Layer Normalization implementation will not match a Group
+  Normalization layer with group size set to 1.
+
+
   Arguments:
-    axis: Integer or List/Tuple. The axis that should be normalized
-      (typically the features axis).
+    axis: Integer or List/Tuple. The axis or axes
+      to normalize across. Typically this is the features axis/axes. The
+      left-out axes are typically the batch axis/axes.
+      This argument defaults to `-1`, the last dimension in the input.
     epsilon: Small float added to variance to avoid dividing by zero.
+      Defaults to 1e-3
     center: If True, add offset of `beta` to normalized tensor.
-        If False, `beta` is ignored.
+        If False, `beta` is ignored. Defaults to True.
     scale: If True, multiply by `gamma`.
-      If False, `gamma` is not used.
+      If False, `gamma` is not used. Defaults to True.
       When the next layer is linear (also e.g. `nn.relu`),
       this can be disabled since the scaling
       will be done by the next layer.
-    beta_initializer: Initializer for the beta weight.
-    gamma_initializer: Initializer for the gamma weight.
-    beta_regularizer: Optional regularizer for the beta weight.
+    beta_initializer: Initializer for the beta weight. Defaults to zeros.
+    gamma_initializer: Initializer for the gamma weight. Defaults to ones.
+    beta_regularizer: Optional regularizer for the beta weight. None by default.
     gamma_regularizer: Optional regularizer for the gamma weight.
-    beta_constraint: Optional constraint for the beta weight.
-    gamma_constraint: Optional constraint for the gamma weight.
+      None by default.
+    beta_constraint: Optional constraint for the beta weight. None by default.
+    gamma_constraint: Optional constraint for the gamma weight. None by default.
     trainable: Boolean, if `True` the variables will be marked as trainable.
+      Defaults to True.
 
   Input shape:
     Arbitrary. Use the keyword argument `input_shape`
@@ -989,8 +1085,8 @@ class LayerNormalization(Layer):
   Output shape:
     Same shape as input.
 
-  References:
-    - [Layer Normalization](https://arxiv.org/abs/1607.06450)
+  Reference:
+    - [Lei Ba et al., 2016](https://arxiv.org/abs/1607.06450).
   """
 
   def __init__(self,
@@ -1109,7 +1205,7 @@ class LayerNormalization(Layer):
     input_shape = inputs.shape
     ndims = len(input_shape)
 
-    # Broadcasting only necessary for norm where the axis is not just
+    # Broadcasting only necessary for norm when the axis is not just
     # the last dimension
     broadcast_shape = [1] * ndims
     for dim in self.axis:

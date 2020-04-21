@@ -317,7 +317,7 @@ namespace {
 template <typename Device, typename T>
 class ParameterizedTruncatedNormalOp : public OpKernel {
   // Reshape batches so each batch is this size if possible.
-  static const int32 kDesiredBatchSize = 100;
+  static constexpr int32 kDesiredBatchSize = 100;
 
  public:
   explicit ParameterizedTruncatedNormalOp(OpKernelConstruction* context)

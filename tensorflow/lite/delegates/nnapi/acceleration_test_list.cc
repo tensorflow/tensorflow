@@ -263,6 +263,8 @@ FloatPoolingOpTest/L2PoolActivationRelu.*,29
 FloatPoolingOpTest/.+
 # Image is too big
 -QuantizedPoolingOpTest/AveragePoolImageSize17
+# Int16 unsupported
+-QuantizedPoolingOpTest/SymmetricAveragePool16
 QuantizedPoolingOpTest/.+
 QuantizedUInt8PoolingOpTest/.+
 
@@ -349,6 +351,7 @@ SVDFOpTest/BlackBoxTestRank2
 # tile_test
 -TileTest/TileTest/Int64.+/.+
 -TileTest/TileTest/Boolean.+/.+
+-TileTest/TileTest/String.+/.+
 # Const tensor only
 TileTest/TileTest/.+/0,29
 

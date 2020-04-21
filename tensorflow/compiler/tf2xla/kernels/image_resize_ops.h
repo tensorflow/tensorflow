@@ -16,8 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_IMAGE_RESIZE_OPS_H_
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 
 namespace tensorflow {
 

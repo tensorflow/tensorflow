@@ -98,7 +98,8 @@ constexpr char kBadArrayAttrLengthMsg[] =
 //    %4 = "tf.SomeOp"(%3)
 
 namespace {
-struct TPURewritePass : public OperationPass<TPURewritePass, ModuleOp> {
+struct TPURewritePass
+    : public PassWrapper<TPURewritePass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -223,7 +224,7 @@ LogicalResult SetMetadataProtoPaddingMap(
   if (!padding_map)
     return op.emitOpError(CreateMissingAttributeMsg(kPaddingMapAttr));
 
-  for (const auto padding_and_idx : llvm::enumerate(padding_map)) {
+  for (const auto& padding_and_idx : llvm::enumerate(padding_map)) {
     auto& padding_attr = padding_and_idx.value();
     auto padding_attr_str = padding_attr.dyn_cast<StringAttr>();
     if (!padding_attr_str)
@@ -770,7 +771,7 @@ void TPURewritePass::runOnOperation() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTPURewritePass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass() {
   return std::make_unique<TPURewritePass>();
 }
 

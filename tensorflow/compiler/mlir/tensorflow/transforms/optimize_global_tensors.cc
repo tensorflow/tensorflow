@@ -41,7 +41,7 @@ namespace mlir {
 namespace tf_saved_model {
 namespace {
 struct OptimizeGlobalTensorsPass
-    : public OperationPass<OptimizeGlobalTensorsPass, ModuleOp> {
+    : public PassWrapper<OptimizeGlobalTensorsPass, OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
 
@@ -296,7 +296,7 @@ static PassRegistration<OptimizeGlobalTensorsPass> pass(
     "tf-saved-model-optimize-global-tensors",
     "Optimize tf_saved_model.global_tensor's.");
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeGlobalTensorsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateOptimizeGlobalTensorsPass() {
   return std::make_unique<OptimizeGlobalTensorsPass>();
 }
 

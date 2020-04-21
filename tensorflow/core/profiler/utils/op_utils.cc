@@ -34,13 +34,14 @@ double GetCappedPerf(double perf, uint64 time, double rate_limit) {
 }  // namespace
 
 void HostOpMetricsDbBuilder::EnterOp(absl::string_view name,
-                                     absl::string_view category, uint64 time_ps,
-                                     uint64 children_time_ps) {
+                                     absl::string_view category, bool is_eager,
+                                     uint64 time_ps, uint64 children_time_ps) {
   uint64 self_time_ps = time_ps - children_time_ps;
   DCHECK_GE(time_ps, self_time_ps);
   OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(/*hlo_module_id=*/0, name);
   if (op_metrics->category().empty())
     op_metrics->set_category(category.data(), category.size());
+  op_metrics->set_is_eager(op_metrics->is_eager() || is_eager);
   op_metrics->set_occurrences(op_metrics->occurrences() + 1);
   op_metrics->set_time_ps(op_metrics->time_ps() + time_ps);
   op_metrics->set_self_time_ps(op_metrics->self_time_ps() + self_time_ps);
@@ -56,10 +57,13 @@ void HostOpMetricsDbBuilder::UpdateHostInfeedEnqInfo(
       start_timestamp_ps_diff);
 }
 
-void DeviceOpMetricsDbBuilder::EnterOp(
-    uint64 program_id, absl::string_view name, absl::string_view category,
-    absl::string_view provenance, uint64 occurrences, uint64 time_ps,
-    uint64 children_time_ps, int64 flops, int64 bytes_accessed) {
+void DeviceOpMetricsDbBuilder::EnterOp(uint64 program_id,
+                                       absl::string_view name,
+                                       absl::string_view category,
+                                       absl::string_view provenance,
+                                       bool is_eager, uint64 occurrences,
+                                       uint64 time_ps, uint64 children_time_ps,
+                                       int64 flops, int64 bytes_accessed) {
   uint64 self_time_ps = time_ps - children_time_ps;
   DCHECK_GE(time_ps, self_time_ps);
   OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(program_id, name);
@@ -68,6 +72,7 @@ void DeviceOpMetricsDbBuilder::EnterOp(
                                                     : string(category));
   if (op_metrics->provenance().empty())
     op_metrics->set_provenance(string(provenance));
+  op_metrics->set_is_eager(op_metrics->is_eager() || is_eager);
   op_metrics->set_occurrences(op_metrics->occurrences() + occurrences);
   op_metrics->set_time_ps(op_metrics->time_ps() + time_ps);
   op_metrics->set_self_time_ps(op_metrics->self_time_ps() + self_time_ps);

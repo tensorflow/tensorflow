@@ -301,8 +301,6 @@ do
       if [[ "${PYTHON}" == "python3" ]]; then
         TF_DOCKER_BUILD_ARGS+=("--build-arg WHL_DIR=/tmp/pip3")
         TF_DOCKER_BUILD_ARGS+=("--build-arg PIP=pip3")
-        FINAL_TAG="${FINAL_TAG}-py3"
-        ROOT_CONTAINER_TAG="${ROOT_CONTAINER_TAG}-py3"
       fi
 
       TF_DOCKER_BUILD_ARGS+=("--build-arg PYTHON=${PYTHON}")

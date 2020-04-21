@@ -31,9 +31,11 @@ limitations under the License.
 
 namespace tensorflow {
 
-void Reshape(OpKernelContext *context, const Tensor &input_indices_in,
-             const Tensor &input_shape_in, const Tensor &target_shape_in,
-             int output_indices_idx, int output_shape_idx) {
+void ReshapeSparseTensor(OpKernelContext *context,
+                         const Tensor &input_indices_in,
+                         const Tensor &input_shape_in,
+                         const Tensor &target_shape_in, int output_indices_idx,
+                         int output_shape_idx) {
   OP_REQUIRES(context, TensorShapeUtils::IsMatrix(input_indices_in.shape()),
               errors::InvalidArgument(
                   "Input indices should be a matrix but received shape ",

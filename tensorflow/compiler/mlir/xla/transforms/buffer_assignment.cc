@@ -343,7 +343,8 @@ class BufferAssignmentAnalysis {
 /// the right positions. It uses the algorithm described at the top of the file.
 // TODO(dfki): create a templated version that allows to match dialect-specific
 // alloc/dealloc nodes and to insert dialect-specific dealloc node.
-struct BufferAssignmentPass : mlir::FunctionPass<BufferAssignmentPass> {
+struct BufferAssignmentPass
+    : mlir::PassWrapper<BufferAssignmentPass, FunctionPass> {
   void runOnFunction() override {
     // Get required analysis information first.
     auto& analysis = getAnalysis<BufferAssignmentAnalysis>();
@@ -370,8 +371,7 @@ struct BufferAssignmentPass : mlir::FunctionPass<BufferAssignmentPass> {
       // If there is an existing dealloc, move it to the right place.
       if (deallocs.size()) {
         Operation* nextOp = positions.getDeallocPosition()->getNextNode();
-        if (!nextOp)
-          nextOp = &positions.getDeallocPosition()->getBlock()->back();
+        assert(nextOp && "Invalid Dealloc operation position");
         (*deallocs.begin())->moveBefore(nextOp);
       } else {
         // If there is no dealloc node, insert one in the right place.
@@ -396,18 +396,8 @@ BufferAssignmentPlacer::BufferAssignmentPlacer(Operation* op)
 /// Computes the actual position to place allocs for the given value.
 OpBuilder::InsertPoint BufferAssignmentPlacer::computeAllocPosition(
     Value value) {
-  Operation* insertOp;
-  if (auto arg = value.dyn_cast<BlockArgument>()) {
-    // This is a block argument which has to be allocated in the scope
-    // of its associated terminator.
-    auto domNode = dominators.getNode(arg.getOwner());
-    assert(domNode != nullptr && "Cannot find dominator info");
-    auto idomNode = domNode->getIDom();
-    assert(idomNode != nullptr && "There is no parent dominator");
-    insertOp = idomNode->getBlock()->getTerminator();
-  } else {
-    insertOp = value.getDefiningOp();
-  }
+  Operation* insertOp = value.getDefiningOp();
+  assert(insertOp && "There is not a defining operation for the input value");
   OpBuilder opBuilder(insertOp);
   return opBuilder.saveInsertionPoint();
 }
@@ -456,14 +446,25 @@ LogicalResult FunctionAndBlockSignatureConverter::matchAndRewrite(
   return success();
 }
 
-// Adding functions whose arguments are memref type to the set of legal
-// operations.
+/// A helper method to make the functions, whose all block argument types are
+/// Memref or non-shaped type, legal. BufferAssignmentPlacer expects all
+/// function and block argument types are in Memref or non-shaped type. Using
+/// this helper method and additionally, FunctionAndBlockSignatureConverter as a
+/// pattern conversion make sure that the type of block arguments are compatible
+/// with using BufferAssignmentPlacer.
 void FunctionAndBlockSignatureConverter::addDynamicallyLegalFuncOp(
     ConversionTarget& target) {
-  target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-    auto inputs = op.getType().getInputs();
-    return std::all_of(inputs.begin(), inputs.end(),
-                       [](Type input) { return input.isa<MemRefType>(); });
+  auto isLegalBlockArg = [](BlockArgument arg) -> bool {
+    auto type = arg.getType();
+    return type.isa<MemRefType>() || !type.isa<ShapedType>();
+  };
+  target.addDynamicallyLegalOp<FuncOp>([&](FuncOp funcOp) {
+    bool legality = true;
+    for (auto& block2 : funcOp.getBlocks()) {
+      legality &= llvm::all_of(block2.getArguments(), isLegalBlockArg);
+      if (!legality) break;
+    }
+    return legality;
   });
 }
 
@@ -471,7 +472,7 @@ void FunctionAndBlockSignatureConverter::addDynamicallyLegalFuncOp(
 // Buffer assignment pass registrations
 //===----------------------------------------------------------------------===//
 
-std::unique_ptr<OpPassBase<FuncOp>> createBufferAssignmentPass() {
+std::unique_ptr<OperationPass<FuncOp>> createBufferAssignmentPass() {
   return absl::make_unique<BufferAssignmentPass>();
 }
 
@@ -479,23 +480,6 @@ static PassRegistration<BufferAssignmentPass> buffer_assignment_pass(
     "buffer-assignment",
     "Executes buffer assignment pass to automatically move alloc and dealloc "
     "operations into their proper positions");
-
-/// A simple pass to print debug/test information for the buffer assignment
-/// analysis.
-struct BufferAssignmentTestPass : mlir::FunctionPass<BufferAssignmentTestPass> {
-  void runOnFunction() override {
-    llvm::outs() << "Testing : " << getFunction().getName() << "\n";
-    getAnalysis<BufferAssignmentAnalysis>().print(llvm::outs());
-  };
-};
-
-std::unique_ptr<OpPassBase<FuncOp>> createBufferAssignmentTestPass() {
-  return absl::make_unique<BufferAssignmentTestPass>();
-}
-
-static PassRegistration<BufferAssignmentTestPass> buffer_assignment_test_pass(
-    "test-buffer-assignment",
-    "Outputs debug test information for the buffer assignment analysis");
 
 }  // namespace xla
 }  // namespace mlir

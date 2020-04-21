@@ -326,8 +326,7 @@ Status TensorHandle::TensorValue(const Device* d, tensorflow::TensorValue* t) {
   return mirror.TensorValue(t);
 }
 
-TensorHandle::VariantDevice TensorHandle::DeviceOrHostCPU(
-    const EagerContext& ctx) const {
+VariantDevice TensorHandle::DeviceOrHostCPU(const EagerContext& ctx) const {
   if (VariantDeviceIsCustom(device_)) {
     return device_;
   } else {
@@ -450,7 +449,7 @@ Status TensorHandle::NumElements(int64* num_elements) const {
 Status TensorHandle::Unprotect(const Device* d) {
   DVLOG(3) << "Unprotect on TensorHandle: " << this << " device: " << d;
 
-  if (d == absl::get<Device*>(device_)) {
+  if (!IsRemote() && (d == absl::get<Device*>(device_))) {
     auto& data = absl::get<LocalTensorHandleData>(data_);
     return data.Unprotect();
   }
@@ -788,16 +787,18 @@ Status TensorHandle::CopyToDevice(const EagerContext& ctx,
   return status;
 }
 
-bool VariantDeviceIsCustom(
-    absl::variant<Device*, CustomDevice*> variant_device) {
+bool VariantDeviceIsCustom(VariantDevice variant_device) {
   return variant_device.index() != 0;
 }
 
-string VariantDeviceName(absl::variant<Device*, CustomDevice*> device) {
+string VariantDeviceName(VariantDevice device) {
+  if (device == kVariantDeviceNull) {
+    return "[]";
+  }
   return absl::visit([](auto* device) { return device->name(); }, device);
 }
 
-string VariantDeviceDebugString(absl::variant<Device*, CustomDevice*> device) {
+string VariantDeviceDebugString(VariantDevice device) {
   if (device == kVariantDeviceNull) {
     return "[]";
   } else if (VariantDeviceIsCustom(device)) {

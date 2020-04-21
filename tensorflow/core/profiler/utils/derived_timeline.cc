@@ -209,11 +209,12 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
       if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
       } else if (stat.Type() == StatType::kLevel0) {
-        tf_op_full_name = stat.StrValue();
+        tf_op_full_name = stat.StrOrRefValue();
       } else if (stat.Type() == StatType::kHloOp) {
-        hlo_op_names = absl::StrSplit(stat.StrValue(), kAnnotationDelimiter);
+        hlo_op_names =
+            absl::StrSplit(stat.StrOrRefValue(), kAnnotationDelimiter);
       } else if (stat.Type() == StatType::kHloModule) {
-        hlo_module_name = stat.StrValue();
+        hlo_module_name = stat.StrOrRefValue();
       } else if (stat.Type() == StatType::kKernelDetails) {
         is_kernel = true;
       }

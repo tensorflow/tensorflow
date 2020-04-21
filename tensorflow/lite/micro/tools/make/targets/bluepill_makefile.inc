@@ -37,8 +37,8 @@ ifeq ($(TARGET), bluepill)
     -Wmissing-field-initializers \
     -Wno-unused-parameter \
     -Wno-write-strings \
+    -Wunused-function \
     -fno-delete-null-pointer-checks \
-    -fno-threadsafe-statics \
     -fomit-frame-pointer \
     -fpermissive \
     -fno-use-cxa-atexit \

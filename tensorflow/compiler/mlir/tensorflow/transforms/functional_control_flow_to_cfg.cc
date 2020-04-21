@@ -34,7 +34,7 @@ namespace TF {
 namespace {
 
 struct FunctionalControlFlowToCFG
-    : public FunctionPass<FunctionalControlFlowToCFG> {
+    : public PassWrapper<FunctionalControlFlowToCFG, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -312,7 +312,7 @@ void FunctionalControlFlowToCFG::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFFunctionalControlFlowToCFG() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG() {
   return std::make_unique<FunctionalControlFlowToCFG>();
 }
 

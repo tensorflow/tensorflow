@@ -39,6 +39,7 @@ py_library(
         "qual_names.py",
         "templates.py",
         "transformer.py",
+        "transpiler.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
@@ -228,5 +229,16 @@ py_test(
         ":pyct",
         "//tensorflow/python:client_testlib",
         "@gast_archive//:gast",
+    ],
+)
+
+py_test(
+    name = "transpiler_test",
+    srcs = ["transpiler_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
     ],
 )

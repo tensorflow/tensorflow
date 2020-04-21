@@ -17,33 +17,22 @@ limitations under the License.
 // TODO(misard,phawkins): handle random number generator seeds/states correctly.
 // TODO(misard,phawkins): add tests.
 
-#include <math.h>
-
-#include <utility>
-#include <vector>
-
-#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/lib/random.h"
+#include "tensorflow/compiler/tf2xla/lib/util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 namespace {
@@ -349,13 +338,20 @@ class ParameterizedTruncatedNormalOp : public XlaOpKernel {
            "reproducible behavior is desired.";
     xla::XlaOp uniform = xla::RngUniform(min_positive, one, xla_shape);
 
-    xla::XlaOp means = ctx->Input(1);
-    xla::XlaOp stddevs = ctx->Input(2);
-    xla::XlaOp minvals = ctx->Input(3);
-    xla::XlaOp maxvals = ctx->Input(4);
+    auto result = b->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
+      TF_ASSIGN_OR_RETURN(xla::XlaOp means,
+                          BroadcastTo(ctx->Input(1), shape.dim_sizes()));
+      TF_ASSIGN_OR_RETURN(xla::XlaOp stddevs,
+                          BroadcastTo(ctx->Input(2), shape.dim_sizes()));
+      TF_ASSIGN_OR_RETURN(xla::XlaOp minvals,
+                          BroadcastTo(ctx->Input(3), shape.dim_sizes()));
+      TF_ASSIGN_OR_RETURN(xla::XlaOp maxvals,
+                          BroadcastTo(ctx->Input(4), shape.dim_sizes()));
+      return ParameterizedTruncatedNormal(uniform, means, stddevs, minvals,
+                                          maxvals);
+    });
 
-    ctx->SetOutput(0, ParameterizedTruncatedNormal(uniform, means, stddevs,
-                                                   minvals, maxvals));
+    ctx->SetOutput(0, result);
   }
 };
 

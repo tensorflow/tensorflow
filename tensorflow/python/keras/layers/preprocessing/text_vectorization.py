@@ -592,6 +592,9 @@ class TextVectorization(CombinerPreprocessingLayer):
     return inputs
 
   def call(self, inputs):
+    if inputs.shape.rank == 1:
+      inputs = array_ops.expand_dims(inputs, axis=-1)
+
     self._called = True
     inputs = self._preprocess(inputs)
 

@@ -238,6 +238,7 @@ FRAMEWORK_PROTO_SRCS = [
 
 PROFILER_PROTO_SRCS = [
     "//tensorflow/core/profiler/protobuf:xplane.proto",
+    "//tensorflow/core/profiler:profiler_options.proto",
 ]
 
 ERROR_CODES_PROTO_SRCS = [
@@ -1140,6 +1141,15 @@ cc_library(
 )
 
 cc_library(
+    name = "distributed_tensorflow_dependencies",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+        "//tensorflow/core/kernels:data_service_ops",
+    ],
+)
+
+cc_library(
     name = "testlib_kernels_impl",
     deps = [
         "//tensorflow/core/kernels:aggregate_ops",
@@ -1443,7 +1453,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":ios_tensorflow_lib",
-        ":portable_test_proto_lib",
         "//tensorflow/core/platform/default/build_config:gtest",
         "//third_party/eigen3",
     ],
@@ -2056,7 +2065,13 @@ cc_library(
         "//tensorflow/core/platform/default:logging.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-ldl",
+        ],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":platform_base",
@@ -2162,6 +2177,7 @@ tf_proto_library(
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/lib/core:error_codes_proto",
         "//tensorflow/core/profiler/protobuf:xplane_proto",
+        "//tensorflow/core/profiler:profiler_options_proto",
         "//tensorflow/core/util:protos_all",
         "//tensorflow/core/util:test_log_proto_impl",
     ],
@@ -2194,7 +2210,8 @@ filegroup(
 filegroup(
     name = "framework_internal_public_headers",
     srcs = [
-        "//tensorflow/core/framework:model.h",  # only needed for tests
+        "//tensorflow/core/framework:metrics.h",
+        "//tensorflow/core/framework:model.h",
         "//tensorflow/core/framework:op_segment.h",
         "//tensorflow/core/framework:rendezvous.h",  # only needed for tests
         "//tensorflow/core/framework:resource_var.h",
@@ -2284,6 +2301,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "//third_party/eigen3",
         "//tensorflow/core/example:feature_util",
@@ -2543,7 +2561,6 @@ tf_cc_tests(
     ],
     create_named_test_suite = True,
     deps = [
-        ":core_cpu_internal",
         ":lib",
         ":lib_internal",
         ":lib_test_internal",

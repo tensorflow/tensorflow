@@ -17,20 +17,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/index_ops.h"
 
-#include <string>
-
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
-#include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 XlaArgMinMaxOp::XlaArgMinMaxOp(OpKernelConstruction* ctx, bool is_min)
@@ -80,7 +77,7 @@ void XlaArgMinMaxOp::Compile(XlaOpKernelContext* ctx) {
     if (is_gpu_) {
       output = xla::ArgMaxTwoPass(input, index_xla_type, axis);
     } else {
-      output = xla::ArgMax(input, index_xla_type, axis);
+      output = xla::ArgMax(input, index_xla_type, axis, /*stable=*/true);
     }
   }
 
@@ -89,8 +86,7 @@ void XlaArgMinMaxOp::Compile(XlaOpKernelContext* ctx) {
 
 XlaArgMaxOp::XlaArgMaxOp(OpKernelConstruction* ctx)
     : XlaArgMinMaxOp(ctx, /*is_min=*/false) {}
-REGISTER_XLA_OP(Name("ArgMax")
-                    .CompileTimeConstantInput("dimension"),
+REGISTER_XLA_OP(Name("ArgMax").CompileTimeConstantInput("dimension"),
                 XlaArgMaxOp);
 
 namespace {

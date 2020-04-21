@@ -1110,6 +1110,16 @@ class TextVectorizationOutputTest(
     output_dataset = model.predict(input_array)
     self.assertAllClose(expected_output, output_dataset)
 
+  def test_accept_1D_input(self):
+    input_array = np.array(["earth wind and fire",
+                            "fire and earth michigan"])
+    layer = get_layer_class()(
+        standardize=None,
+        split=None,
+        output_mode="int")
+    layer.adapt(input_array)
+    _ = layer(input_array)
+
 
 @keras_parameterized.run_all_keras_modes
 class TextVectorizationModelBuildingTest(

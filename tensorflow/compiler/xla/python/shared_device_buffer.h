@@ -117,6 +117,18 @@ class BufferDefinitionEvent {
 // of memory under all of the allocation model semantics.
 class SharedDeviceBuffer {
  public:
+  // Helper object to keep track of usage of the buffer on streams.
+  struct StreamAndEvent {
+    // A stream the buffer has been used on.
+    se::Stream* stream;
+    // An event that is later than the most recent usage of the buffer on
+    // stream.
+    std::shared_ptr<BufferDefinitionEvent> event;
+    // True if and only if a reference to the buffer is kept live until after
+    // the host knows that event is complete.
+    bool reference_held;
+  };
+
   // Converts a ScopedShapedBuffer into a SharedDeviceBuffer. Takes ownership of
   // the buffers of the shaped_buffer.
   static std::shared_ptr<SharedDeviceBuffer> FromScopedShapedBuffer(
@@ -124,62 +136,35 @@ class SharedDeviceBuffer {
       absl::Span<const std::shared_ptr<BufferDefinitionEvent>>
           definition_events);
 
-  // Helper class to retain a "hold" on a SharedDeviceBuffer while it is being
-  // enqueued on a stream. If the enqueue completes successfully the hold
-  // should be released using a call to Convert. If the ScopedUsage is deleted
-  // without Convert being called, e.g., on error, the hold is dropped.
-  // Deletion of a buffer will block until all ScopedUsage objects referencing
-  // it are either deleted or have their Convert methods called.
-  class ScopedUsage {
-   public:
-    ScopedUsage() = default;
-    ~ScopedUsage();
-    ScopedUsage(ScopedUsage&&) = default;
-    ScopedUsage(const ScopedUsage&) = delete;
-    ScopedUsage& operator=(const ScopedUsage&) = delete;
-
-    ScopedUsage& Acquire(std::shared_ptr<SharedDeviceBuffer> parent);
-    std::shared_ptr<SharedDeviceBuffer> Release();
-    void Transfer(std::shared_ptr<SharedDeviceBuffer> parent);
-
-    bool IsValid() { return parent_ != nullptr; }
-    SharedDeviceBuffer* operator->() const { return parent_.get(); }
-    const SharedDeviceBuffer& operator*() const { return *parent_; }
-    std::shared_ptr<SharedDeviceBuffer> buffer_reference() const {
-      return parent_;
-    }
-
-    // Converts the usage hold into a usage event.
-    //
-    //   usage_stream:   a stream that the buffer was used on.
-    //   event:          an event that has been recorded on usage_stream after
-    //                   the buffer was used.
-    //   reference_held: true if and only if the caller has caused a memory
-    //                   reference to *this to stay live until after the host
-    //                   is sure that the usage (transfer or execution) has
-    //                   completed.
-    void Convert(se::Stream* usage_stream,
-                 std::shared_ptr<BufferDefinitionEvent> event,
-                 bool reference_held);
-
-   private:
-    std::shared_ptr<SharedDeviceBuffer> parent_;
-  };
-
-  // Increments the count of external frameworks, e.g., Numpy, that the buffer
-  // is shared with. Operations that require exclusive access, such as update in
-  // place, will fail if any external references are held.
-  void AddExternalReference();
-
-  // Decrements the count of external frameworks that the buffer is shared with.
-  void DropExternalReference();
-
   // Builds a ShapedBuffer view onto the buffers of 'tree'. We require but do
   // not verify that TransferManager::HostShapeToDeviceShape(on_host_shape) ==
   // on_device_shape().
   ShapedBuffer AsShapedBuffer(const Shape& on_host_shape,
                               const Shape& on_device_shape,
                               se::Platform* platform) const;
+
+  // Adds the owned device buffers in order to 'iterator'. Used to add the
+  // buffers to an ExecutionInput. We require but do not verify that 'iterator'
+  // when passed in is pointing to a sub-tuple of the ExecutionInput whose
+  // on_device_shape matches that of the SharedDeviceBuffer. 'end' is used to
+  // check that 'iterator' doesn't run out of bounds.
+  void AddToInputAsImmutable(
+      ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
+      const ShapeTree<MaybeOwningDeviceMemory>::iterator& end) const;
+
+  // Adds the owned device buffers in order to 'iterator', marking them as
+  // available to be donated. If donation succeeds, i.e., execution_input is
+  // subsequently successfully enqueued to a computation,
+  // this->ReleaseDeviceMemory() must be called to avoid freeing the device
+  // memory twice. We require but do not verify that 'iterator' when passed in
+  // is pointing to a sub-tuple of execution_input whose on_device_shape matches
+  // that of the SharedDeviceBuffer. 'end' is used to check that 'iterator'
+  // doesn't run out of bounds.
+  void AddToInputAsDonated(
+      ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
+      const ShapeTree<MaybeOwningDeviceMemory>::iterator& end,
+      ExecutionInput* execution_input,
+      se::DeviceMemoryAllocator* allocator) const;
 
   se::DeviceMemoryAllocator* allocator() const { return allocator_; }
   int device_ordinal() const { return device_ordinal_; }
@@ -193,46 +178,15 @@ class SharedDeviceBuffer {
       const {
     return definition_events_;
   }
+  absl::Span<const StreamAndEvent> usage_events() const {
+    return usage_events_;
+  }
 
-  // Helper object to keep track of usage of the buffer on streams.
-  struct StreamAndEvent {
-    // A stream the buffer has been used on.
-    se::Stream* stream;
-    // An event that is later than the most recent usage of the buffer on
-    // stream.
-    std::shared_ptr<BufferDefinitionEvent> event;
-    // True if and only if a reference to the buffer is kept live until after
-    // the host knows that event is complete.
-    bool reference_held;
-  };
-  using StreamAndEventContainer = absl::InlinedVector<StreamAndEvent, 3>;
-  // Returns the set of streams that the buffer was used on, and for each stream
-  // an event later than the last use of the buffer. After
-  // LockUseAndTransferUsageEvents is called it is illegal to use the buffer on
-  // any stream and, e.g. AddUsageHold will CHECK fail.
-  StreamAndEventContainer LockUseAndTransferUsageEvents();
+  // Relinquishes ownership of the buffer's device memory, e.g., after the
+  // buffer is passed to a computation that aliases its inputs to outputs.
+  void ReleaseDeviceMemory() { device_memory_.clear(); }
 
-  SharedDeviceBuffer()
-      : in_use_(true), usage_holds_(0), external_references_(0) {}
-  SharedDeviceBuffer(se::DeviceMemoryAllocator* allocator, int device_ordinal,
-                     absl::Span<se::DeviceMemoryBase const> device_memory,
-                     absl::Span<const std::shared_ptr<BufferDefinitionEvent>>
-                         definition_events,
-                     std::function<void()> on_delete_callback);
-  ~SharedDeviceBuffer();
-
- private:
-  friend class ScopedUsage;
-
-  // Indicates that the buffer is going to be used on a stream. Deletion of
-  // the buffer will block until there are no remaining ScopedUsage objects.
-  void AddUsageHold();
-
-  // Indicates that a previous usage hold can be discarded, e.g., because of an
-  // error while an action was being enqueued on a stream.
-  void DropUsageHold();
-
-  // Indicates that a previous usage hold can be converted into a usage event.
+  // Indicates that the buffer has been used on a stream.
   //
   //   usage_stream:   a stream that the buffer was used on.
   //   event:          an event that has been recorded on usage_stream after the
@@ -241,10 +195,26 @@ class SharedDeviceBuffer {
   //                   reference to *this to stay live until after the host
   //                   is sure that the usage (transfer or execution) has
   //                   completed.
-  void ConvertUsageHold(se::Stream* usage_stream,
-                        std::shared_ptr<BufferDefinitionEvent> event,
-                        bool reference_held);
+  void AddUsageEvent(se::Stream* usage_stream,
+                     std::shared_ptr<BufferDefinitionEvent> event,
+                     bool reference_held);
 
+  using StreamAndEventContainer = absl::InlinedVector<StreamAndEvent, 3>;
+  // Returns the set of streams that the buffer was used on, and for each stream
+  // an event later than the last use of the buffer. After
+  // LockUseAndTransferUsageEvents is called it is illegal to use the buffer on
+  // any stream and, e.g. AddUsageHold will CHECK fail.
+  StreamAndEventContainer LockUseAndTransferUsageEvents();
+
+  SharedDeviceBuffer() : in_use_(true) {}
+  SharedDeviceBuffer(se::DeviceMemoryAllocator* allocator, int device_ordinal,
+                     absl::Span<se::DeviceMemoryBase const> device_memory,
+                     absl::Span<const std::shared_ptr<BufferDefinitionEvent>>
+                         definition_events,
+                     std::function<void()> on_delete_callback);
+  ~SharedDeviceBuffer();
+
+ private:
   // Are the buffers in device_memory_ owned? If so, which allocator and device
   // ordinal? May be nullptr, indicating the buffers are not owned.
   se::DeviceMemoryAllocator* allocator_;
@@ -261,27 +231,24 @@ class SharedDeviceBuffer {
   absl::InlinedVector<std::shared_ptr<BufferDefinitionEvent>, 2>
       definition_events_;
 
-  absl::Mutex mu_;
   // in_use_ starts out true, and is set to false when the buffer is released
   // from its owning PyLocalBuffer. Once in_use_ is false, the buffer may no
   // longer be used on any stream.
-  bool in_use_ TF_GUARDED_BY(mu_);
-  // Count of operations that are currently enqueuing the buffer onto a stream.
-  int usage_holds_ TF_GUARDED_BY(mu_);
+  bool in_use_;
   // Set of streams that the buffer has ever been used on, see comment on
   // StreamAndEvent.
-  StreamAndEventContainer usage_events_ TF_GUARDED_BY(mu_);
-  // Count of external frameworks that hold a reference to this buffer.
-  int external_references_ TF_GUARDED_BY(mu_);
+  StreamAndEventContainer usage_events_;
 
   // A callback to call when the SharedDeviceBuffer is about to be destroyed.
   std::function<void()> on_delete_callback_;
 };
 
-// Populates 'events' with the set of buffer definition events for buffer.
-void GetDeviceBufferDefinitionEvents(
-    const SharedDeviceBuffer& buffer,
-    absl::flat_hash_set<BufferDefinitionEvent*>* events);
+// Populates 'events' with the set of buffer events for buffer. If
+// get_usage_events=true populates with the latest usage events, otherwise
+// populates with the definition events.
+void GetDeviceBufferEvents(const SharedDeviceBuffer& buffer,
+                           bool get_usage_events,
+                           absl::flat_hash_set<BufferDefinitionEvent*>* events);
 
 // Waits for all of the definition events in a buffer on 'stream'.
 void WaitForBufferDefinitionEventsOnStream(const SharedDeviceBuffer& buffer,

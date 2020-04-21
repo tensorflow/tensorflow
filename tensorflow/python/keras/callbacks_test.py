@@ -873,6 +873,44 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       cb_list.on_predict_batch_end(logs)
       cb_list.on_predict_end(logs)
 
+  def test_ProgbarLogger_verbose_2_nonblocking(self):
+    # Should only cause a sync block on epoch end methods.
+    callback = keras.callbacks.ProgbarLogger(count_mode='steps')
+    self.assertTrue(callback._supports_tf_logs)
+
+    model = keras.Sequential([keras.layers.Dense(1)])
+    cb_list = keras.callbacks.CallbackList([callback],
+                                           model=model,
+                                           epochs=1,
+                                           steps=10,
+                                           verbose=2)
+
+    with context.eager_mode():
+      tensor = ops.convert_to_tensor(1.)
+
+    def mock_numpy():
+      raise RuntimeError(
+          'If this error is seen, ModelCheckpoint is causing a blocking '
+          'NumPy conversion even when not checkpointing.')
+
+    with test.mock.patch.object(tensor, 'numpy', mock_numpy):
+      logs = {'metric': tensor}
+
+      cb_list.on_train_begin(logs)
+      cb_list.on_epoch_begin(0, logs)
+      cb_list.on_train_batch_begin(0, logs)
+      cb_list.on_train_batch_end(0, logs)
+
+      cb_list.on_test_begin(logs)
+      cb_list.on_test_batch_begin(0, logs)
+      cb_list.on_test_batch_end(0, logs)
+      cb_list.on_test_end(logs)
+
+      with self.assertRaisesRegexp(RuntimeError, 'NumPy conversion'):
+        # on_epoch_end should still block.
+        cb_list.on_epoch_end(0, logs)
+      cb_list.on_train_end(logs)
+
   def test_EarlyStopping(self):
     with self.cached_session():
       np.random.seed(123)
@@ -1879,6 +1917,39 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/2'),
         },
     )
+
+  def test_TensorBoard_projector_callback(self):
+    layers = [
+        keras.layers.Embedding(10, 10, name='test_embedding'),
+        keras.layers.Dense(10, activation='relu'),
+        keras.layers.Dense(1, activation='sigmoid')
+    ]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(10,))
+    model.compile(
+        optimizer='adam',
+        loss=keras.losses.BinaryCrossentropy(from_logits=True),
+        run_eagerly=testing_utils.should_run_eagerly())
+    x, y = np.ones((10, 10)), np.ones((10, 10))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir,
+        embeddings_freq=1,
+        embeddings_metadata={'test_embedding': 'metadata.tsv'})
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+
+    with open(os.path.join(self.logdir, 'projector_config.pbtxt')) as f:
+      self.assertEqual(
+          f.readlines(), [
+              'embeddings {\n',
+              '  tensor_name: "test_embedding/.ATTRIBUTES/VARIABLE_VALUE"\n',
+              '  metadata_path: "metadata.tsv"\n',
+              '}\n'])
 
   def test_custom_summary(self):
     if not context.executing_eagerly():

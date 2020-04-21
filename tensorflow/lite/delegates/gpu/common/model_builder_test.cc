@@ -828,6 +828,187 @@ TEST(ModelBuilderTest, GetOpsToReplaceSelectsCorrectDequantsGreaterFirst) {
   TfLiteIntArrayFree(ops_to_replace);
 }
 
+// Adds the pattern:
+//
+// float -> QUANTIZE -> ADD -> DEQUANTIZE -> float
+// float -> QUANTIZE ----^
+//
+// The tensors between the QUANTIZE & DEQUANTIZE nodes are int8.
+class InterpreterQuantized : public DelegatedInterpreter {
+ public:
+  InterpreterQuantized() : DelegatedInterpreter(4) {
+    void* builtin_data = malloc(sizeof(int));
+    EXPECT_EQ(interpreter_.AddTensors(6), kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetInputs({0, 3}), kTfLiteOk);
+    EXPECT_EQ(interpreter_.SetOutputs({5}), kTfLiteOk);
+
+    // QUANTIZE 1
+    const TfLiteRegistration reg_quant0 = {/*init=*/nullptr,
+                                           /*free=*/nullptr,
+                                           /*prepare=*/nullptr,
+                                           /*invoke=*/nullptr,
+                                           /*profiling_string=*/nullptr,
+                                           kTfLiteBuiltinQuantize};
+    EXPECT_EQ(interpreter_.AddNodeWithParameters(
+                  /*inputs=*/{0}, /*outputs=*/{1}, /*init_data=*/nullptr,
+                  /*init_data_size=*/0, /*builtin_data=*/nullptr,
+                  /*registration=*/&reg_quant0),
+              kTfLiteOk);
+
+    // QUANTIZE 2
+    const TfLiteRegistration reg_quant1 = {/*init=*/nullptr,
+                                           /*free=*/nullptr,
+                                           /*prepare=*/nullptr,
+                                           /*invoke=*/nullptr,
+                                           /*profiling_string=*/nullptr,
+                                           kTfLiteBuiltinQuantize};
+    EXPECT_EQ(interpreter_.AddNodeWithParameters(
+                  /*inputs=*/{3}, /*outputs=*/{2}, /*init_data=*/nullptr,
+                  /*init_data_size=*/0, /*builtin_data=*/nullptr,
+                  /*registration=*/&reg_quant1),
+              kTfLiteOk);
+
+    // ADD
+    const TfLiteRegistration reg_add0 = {
+        [](TfLiteContext* context, const char* buffer, size_t length) {
+          return reinterpret_cast<void*>(new int(1));
+        },
+        [](TfLiteContext* context, void* buffer) {
+          delete reinterpret_cast<int*>(buffer);
+        },
+        nullptr,
+        nullptr,
+        nullptr,
+        kTfLiteBuiltinAdd};
+    EXPECT_EQ(interpreter_.AddNodeWithParameters(
+                  /*inputs=*/{1, 2}, /*outputs=*/{4}, /*init_data=*/nullptr,
+                  /*init_data_size=*/0,
+                  /*builtin_data=*/builtin_data,
+                  /*registration=*/&reg_add0),
+              kTfLiteOk);
+
+    // DEQUANTIZE
+    const TfLiteRegistration reg_dequant0 = {/*init=*/nullptr,
+                                             /*free=*/nullptr,
+                                             /*prepare=*/nullptr,
+                                             /*invoke=*/nullptr,
+                                             /*profiling_string=*/nullptr,
+                                             kTfLiteBuiltinDequantize};
+    EXPECT_EQ(interpreter_.AddNodeWithParameters(
+                  /*inputs=*/{4}, /*outputs=*/{5}, /*init_data=*/nullptr,
+                  /*init_data_size=*/0, /*builtin_data=*/nullptr,
+                  /*registration=*/&reg_dequant0),
+              kTfLiteOk);
+
+    const std::vector<int> dims = {1, 3, 3, 2};
+
+    // Input & output tensors are floating-point.
+    TfLiteQuantization no_quantization;
+    no_quantization.type = kTfLiteNoQuantization;
+    EXPECT_EQ(
+        interpreter_.SetTensorParametersReadWrite(
+            0, TfLiteType::kTfLiteFloat32, "t0", dims, no_quantization, false),
+        kTfLiteOk);
+    EXPECT_EQ(
+        interpreter_.SetTensorParametersReadWrite(
+            3, TfLiteType::kTfLiteFloat32, "t3", dims, no_quantization, false),
+        kTfLiteOk);
+    EXPECT_EQ(
+        interpreter_.SetTensorParametersReadWrite(
+            5, TfLiteType::kTfLiteFloat32, "t5", dims, no_quantization, false),
+        kTfLiteOk);
+    // Other tensors are int8.
+    float scale = 0.5f;
+    int32_t zero_point = 12;
+    TfLiteQuantization rw_quantization;
+    rw_quantization.type = kTfLiteAffineQuantization;
+    auto* rw_affine_quantization = static_cast<TfLiteAffineQuantization*>(
+        malloc(sizeof(TfLiteAffineQuantization)));
+    rw_affine_quantization->scale = TfLiteFloatArrayCreate(1);
+    rw_affine_quantization->zero_point = TfLiteIntArrayCreate(1);
+    rw_affine_quantization->scale->data[0] = scale;
+    rw_affine_quantization->zero_point->data[0] = zero_point;
+    rw_quantization.params = rw_affine_quantization;
+    EXPECT_EQ(
+        interpreter_.SetTensorParametersReadWrite(
+            1, TfLiteType::kTfLiteInt8, "t1", dims, rw_quantization, false),
+        kTfLiteOk);
+    EXPECT_EQ(
+        interpreter_.SetTensorParametersReadWrite(
+            2, TfLiteType::kTfLiteInt8, "t2", dims, rw_quantization, false),
+        kTfLiteOk);
+    EXPECT_EQ(
+        interpreter_.SetTensorParametersReadWrite(
+            4, TfLiteType::kTfLiteInt8, "t4", dims, rw_quantization, false),
+        kTfLiteOk);
+
+    exec_plan()->data[0] = 0;
+    exec_plan()->data[1] = 1;
+    exec_plan()->data[2] = 2;
+    exec_plan()->data[3] = 3;
+  }
+};
+
+InterpreterQuantized* interpreter_quant = new InterpreterQuantized();
+TEST(ModelBuilderTest, GetOpsToReplace_AllowQuantOps) {
+  TfLiteContext* context = interpreter_quant->context();
+
+  // These functions are meant to be called inside delegates. Swap out
+  // for similar functions to permit direct calling of GetOpsToReplace.
+  context->GetExecutionPlan = [](struct TfLiteContext* context,
+                                 TfLiteIntArray** execution_plan) {
+    *execution_plan = interpreter_quant->exec_plan();
+    return kTfLiteOk;
+  };
+  context->GetNodeAndRegistration = [](struct TfLiteContext*, int node_index,
+                                       TfLiteNode** node,
+                                       TfLiteRegistration** registration) {
+    auto& node_and_reg =
+        interpreter_quant->nodes_and_registration()[node_index];
+    *node = &node_and_reg.first;
+    *registration = &node_and_reg.second;
+    return kTfLiteOk;
+  };
+  context->PreviewDelegatePartitioning =
+      [](struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
+         TfLiteDelegateParams** partition_params_array, int* num_partitions) {
+        if (nodes_to_replace->size == 0) {
+          *num_partitions = 0;
+          return kTfLiteOk;
+        }
+        auto params = interpreter_quant->add_delegate_params();
+        params->nodes_to_replace = TfLiteIntArrayCreate(3);
+        params->nodes_to_replace->data[0] = 0;
+        params->nodes_to_replace->data[1] = 1;
+        params->nodes_to_replace->data[2] = 2;
+        params->input_tensors = TfLiteIntArrayCreate(2);
+        params->input_tensors->data[0] = 0;
+        params->input_tensors->data[1] = 3;
+        params->output_tensors = TfLiteIntArrayCreate(1);
+        params->output_tensors->data[0] = 4;
+
+        *partition_params_array = interpreter_quant->delegate_params();
+        *num_partitions = interpreter_quant->num_delegate_params();
+        return kTfLiteOk;
+      };
+
+  TfLiteIntArray* ops_to_replace =
+      GetOpsToReplace(context, /**allow_quant_ops=*/true);
+  // If we allow quant ops, two QUANTIZE & one ADD node should be accepted.
+  EXPECT_EQ(ops_to_replace->size, 3);
+  EXPECT_EQ(0, ops_to_replace->data[0]);
+  EXPECT_EQ(1, ops_to_replace->data[1]);
+  EXPECT_EQ(2, ops_to_replace->data[2]);
+
+  TfLiteIntArray* ops_to_replace_without_quant =
+      GetOpsToReplace(context, /**allow_quant_ops=*/false);
+  // No ops should be accepted.
+  EXPECT_EQ(ops_to_replace_without_quant->size, 0);
+
+  TfLiteIntArrayFree(ops_to_replace);
+  TfLiteIntArrayFree(ops_to_replace_without_quant);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace tflite

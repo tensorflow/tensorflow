@@ -613,4 +613,58 @@ def TF_FusedBatchNormExOp : TF_Op<"_FusedBatchNormEx", [NoSideEffect]> {
   TF_DerivedOperandSizeAttr num_side_inputs = TF_DerivedOperandSizeAttr<5>;
 }
 
+def TF_RecvTPUEmbeddingActivationsOp : TF_Op<"RecvTPUEmbeddingActivations", []> {
+  let summary = "An op that receives embedding activations on the TPU.";
+
+  let description = [{
+The TPU system performs the embedding lookups and aggregations specified by
+the arguments to TPUEmbeddingEnqueue(Integer/Sparse/SparseTensor)Batch. The
+results of these aggregations are visible to the Tensorflow Graph as the
+outputs of a RecvTPUEmbeddingActivations op. This op returns a list containing
+one Tensor of activations per table specified in the model. There can be at
+most one RecvTPUEmbeddingActivations op in the TPU graph.
+  }];
+
+  let arguments = (ins
+    StrAttr:$config
+  );
+
+  let results = (outs
+    Variadic<F32Tensor>:$outputs
+  );
+
+  TF_DerivedResultSizeAttr num_outputs = TF_DerivedResultSizeAttr<0>;
+}
+
+// Multiple variadic operands with different sizes are not supported by the
+// dialect generator, so we manually added the op.
+def TF_SendTPUEmbeddingGradientsOp : TF_Op<"SendTPUEmbeddingGradients", [AttrSizedOperandSegments]> {
+  let summary = "Performs gradient updates of embedding tables.";
+
+  let description = [{
+inputs: A TensorList of gradients with which to update embedding tables.
+    This argument has the same length and shapes as the return value of
+    RecvTPUEmbeddingActivations, but contains gradients of the model's loss
+    with respect to the embedding activations. The embedding tables are updated
+    from these gradients via the optimizer specified in the TPU embedding
+    configuration given to tpu.initialize_system.
+learning_rates: A TensorList of float32 scalars, one for each dynamic learning
+    rate tag: see the comments in
+    //third_party/tensorflow/core/protobuf/tpu/optimization_parameters.proto.
+    Multiple tables can share the same dynamic learning rate tag as specified
+    in the configuration. If the learning rates for all tables are constant,
+    this list should be empty.
+config: Serialized TPUEmbeddingConfiguration proto.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$inputs,
+    Variadic<TF_Tensor>:$learning_rates,
+    StrAttr:$config
+  );
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+  TF_DerivedOperandSizeAttr NN = TF_DerivedOperandSizeAttr<1>;
+}
+
 #endif // TF_OPS

@@ -1014,6 +1014,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -1215,8 +1216,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras/layers",
         "@six_archive//:six",
     ],
 )
@@ -2917,6 +2916,7 @@ cuda_py_test(
     srcs = ["conv_ops_test.py"],
     shard_count = 4,
     tags = [
+        "nogpu",  # TODO(b/153763253); flaky
         "optonly",  # times out
     ],
     deps = [

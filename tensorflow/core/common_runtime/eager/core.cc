@@ -21,8 +21,7 @@ limitations under the License.
 
 namespace {
 
-bool IsCPU(
-    absl::variant<tensorflow::Device*, tensorflow::CustomDevice*> variant) {
+bool IsCPU(tensorflow::VariantDevice variant) {
   if (VariantDeviceIsCustom(variant)) {
     return false;
   }
@@ -41,7 +40,7 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
     auto* custom_device = absl::get<CustomDevice*>(device());
     TensorHandle* copy;
     *status = custom_device->CopyTensorFromDevice(
-        this, "/job:localhost/task:0/replica:0/device:CPU:0", &copy);
+        this, "/job:localhost/replica:0/task:0/device:CPU:0", &copy);
     if (status->ok()) {
       return copy->Resolve(status);
     } else {
@@ -97,6 +96,48 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
     delete tf_tensor;
     return retval;
   }
+}
+
+AbstractTensorHandleInterface* EagerContext::CopyTensorHandleToDevice(
+    AbstractTensorHandleInterface* handle, const char* device_name,
+    Status* status) {
+  TensorHandle* input = TensorHandleFromInterface(handle);
+  TensorHandle* result = nullptr;
+  Device* device;
+  *status = this->FindDeviceFromName(device_name, &device);
+  if (!status->ok()) {
+    tensorflow::CustomDevice* dev;
+    *status = this->FindCustomDeviceFromName(device_name, &dev);
+    if (status->ok()) {
+      *status = dev->CopyTensorToDevice(input, &result);
+      if (status->ok()) {
+        return result;
+      }
+    }
+    return nullptr;
+  }
+  // Handle tensor handles currently in custom devices
+  const char* handle_device_name = input->DeviceName(status);
+  if (!status->ok()) {
+    return nullptr;
+  }
+  tensorflow::CustomDevice* dev;
+  *status = this->FindCustomDeviceFromName(handle_device_name, &dev);
+  if (status->ok()) {
+    *status = dev->CopyTensorFromDevice(input, device_name, &result);
+    if (status->ok()) {
+      return result;
+    }
+    return nullptr;
+  }
+
+  // Handle regular case.
+  *status =
+      EagerCopyToDevice(input, this, &this->Executor(), device, false, &result);
+  if (status->ok()) {
+    return result;
+  }
+  return nullptr;
 }
 
 // TODO(b/152902651): We unfortunately need to put this EagerContext function

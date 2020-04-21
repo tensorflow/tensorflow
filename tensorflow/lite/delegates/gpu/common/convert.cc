@@ -44,12 +44,11 @@ absl::Status ConvertToPHWO4I4(absl::Span<const float> in, const OHWI& shape,
   }
 
   float* output = out.data();
-  for (int p = 0; p < IntegralDivideRoundUp(shape.o, kPhwo4i4ChannelsInPlane);
-       ++p) {
+  for (int p = 0; p < DivideRoundUp(shape.o, kPhwo4i4ChannelsInPlane); ++p) {
     for (int h = 0; h < shape.h; ++h) {
       for (int w = 0; w < shape.w; ++w) {
-        for (int c = 0;
-             c < IntegralDivideRoundUp(shape.i, kPhwo4i4ChannelsInPlane); ++c) {
+        for (int c = 0; c < DivideRoundUp(shape.i, kPhwo4i4ChannelsInPlane);
+             ++c) {
           for (int co = 0; co < kPhwo4i4ChannelsInPlane; ++co) {
             for (int ci = 0; ci < kPhwo4i4ChannelsInPlane; ++ci) {
               float value = 0;
@@ -106,7 +105,7 @@ std::vector<float> ConvertToPHWO4I4Transposed(
 
 uint3 Get3DSizeForPHWO4I4(const OHWI& shape) {
   return uint3(AlignByN(shape.i, 4), shape.h * shape.w,
-               IntegralDivideRoundUp(shape.o, 4));
+               DivideRoundUp(shape.o, 4));
 }
 
 // Layout is Po,H,W,OI4x4.
@@ -123,8 +122,8 @@ absl::Status ConvertToPHWO4I4(absl::Span<const float> in, const IHWO& shape,
         out.size(), " != ", GetElementsSizeForPHWO4I4(shape)));
   }
 
-  const int dst_depth = IntegralDivideRoundUp(shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(shape.i, 4);
+  const int dst_depth = DivideRoundUp(shape.o, 4);
+  const int src_depth = DivideRoundUp(shape.i, 4);
 
   float* output = out.data();
   for (int f = 0; f < dst_depth; ++f) {
@@ -178,8 +177,7 @@ absl::Status ConvertToPIOHW4(absl::Span<const float> in, const OHWI& shape,
   }
 
   int32_t output_channels = shape.o * shape.i;
-  int32_t num_planes =
-      IntegralDivideRoundUp(output_channels, kPiohw4ChannelsInPlane);
+  int32_t num_planes = DivideRoundUp(output_channels, kPiohw4ChannelsInPlane);
   float* output = out.data();
   for (int p = 0; p < num_planes; ++p) {
     for (int h = 0; h < shape.h; ++h) {
@@ -232,7 +230,7 @@ absl::Status ConvertToPHWC4(absl::Span<const float> in, const BHWC& shape,
     return absl::OkStatus();
   }
   // Layout is Pc,H,W,C4 where P - is a plane based on channels.
-  int num_planes = IntegralDivideRoundUp(shape.c, kPhwc4ChannelsInPlane);
+  int num_planes = DivideRoundUp(shape.c, kPhwc4ChannelsInPlane);
   const int num_pixels = shape.h * shape.w;
   // A layer is a set of kPhwc4ChannelsInPlane channels images.
   const int num_full_planes = shape.c / kPhwc4ChannelsInPlane;
@@ -281,7 +279,7 @@ absl::Status ConvertToPHWC4Half(absl::Span<const float> in, const BHWC& shape,
   RETURN_IF_ERROR(ValidateConvertToPHWC4(in, shape, out));
 
   // Layout is Pc,H,W,C4 where P - is a plane based on channels.
-  int num_planes = IntegralDivideRoundUp(shape.c, kPhwc4ChannelsInPlane);
+  int num_planes = DivideRoundUp(shape.c, kPhwc4ChannelsInPlane);
   const int num_pixels = shape.h * shape.w;
   // A layer is a set of kPhwc4ChannelsInPlane channels images.
   const int num_full_planes = shape.c / kPhwc4ChannelsInPlane;
@@ -407,7 +405,7 @@ absl::Status ConvertFromPHWC4(absl::Span<const float> in, const BHWC& shape,
     return absl::OkStatus();
   }
 
-  int num_planes = IntegralDivideRoundUp(shape.c, kPhwc4ChannelsInPlane);
+  int num_planes = DivideRoundUp(shape.c, kPhwc4ChannelsInPlane);
   const int num_pixels = shape.h * shape.w;
   const int padded_size = num_pixels * num_planes * kPhwc4ChannelsInPlane;
   // A layer is a set of kPhwc4ChannelsInPlane channels images.
@@ -449,7 +447,7 @@ absl::Status ConvertFromPHWC4(absl::Span<const float> in, const BHWC& shape,
 absl::Status ConvertFromPHWC4Half(absl::Span<const HalfBits> in,
                                   const BHWC& shape, absl::Span<float> out) {
   RETURN_IF_ERROR(ValidateConvertFromPHWC4(in, shape, out));
-  int num_planes = IntegralDivideRoundUp(shape.c, kPhwc4ChannelsInPlane);
+  int num_planes = DivideRoundUp(shape.c, kPhwc4ChannelsInPlane);
   const int num_pixels = shape.h * shape.w;
   const int padded_size = num_pixels * num_planes * kPhwc4ChannelsInPlane;
   // A layer is a set of kPhwc4ChannelsInPlane channels images.

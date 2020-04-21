@@ -141,6 +141,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     // bitcast. This leads to having to linearize and then delinearize the
     // index.
     options.set_replace_transpose_with_bitcast(false);
+    options.set_enable_conv_operand_swap(false);
     options.set_cudnn_batchnorm_forward_training_metadata(
         kCudnnBatchNormForwardTrainingCallTarget);
     pass.AddPass<AlgebraicSimplifier>(options);
@@ -243,7 +244,7 @@ bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
   // and warn when a file is not used to ease catching typo in filename.
   std::string prefix = xla::FilenameFor(*module, "", *ptx);
   std::string matched_filename;
-  for (const string full_filename :
+  for (const string& full_filename :
        module->config().debug_options().xla_gpu_ptx_file()) {
     // To ease comparing many PTX versions, accept different suffixes then
     // the original filename.

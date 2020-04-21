@@ -26,7 +26,13 @@ namespace memory {
 
 const int MemoryUsage::kValueNotSet = 0;
 
-// TODO(b/139812778): Support to retrieve memory usage on other platforms.
+bool MemoryUsage::IsSupported() {
+#ifdef __linux__
+  return true;
+#endif
+  return false;
+}
+
 MemoryUsage GetMemoryUsage() {
   MemoryUsage result;
 #ifdef __linux__

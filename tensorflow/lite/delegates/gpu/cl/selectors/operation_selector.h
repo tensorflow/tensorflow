@@ -29,11 +29,12 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-absl::Status GPUOperationFromNode(
-    const CreationContext& creation_context, const OperationDef& op_def,
-    ModelHints hints, const std::vector<Value<TensorRef<BHWC>>*>& inputs,
-    const std::vector<Value<TensorRef<BHWC>>*>& outputs, const Node& node,
-    GPUOperationsSubgraph* gpu_subgraph);
+absl::Status GPUOperationFromNode(const CreationContext& creation_context,
+                                  const OperationDef& op_def, ModelHints hints,
+                                  const std::vector<Value*>& inputs,
+                                  const std::vector<Value*>& outputs,
+                                  const Node& node,
+                                  GPUOperationsSubgraph* gpu_subgraph);
 
 }  // namespace cl
 }  // namespace gpu

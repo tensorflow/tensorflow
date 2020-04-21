@@ -91,7 +91,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   node->user_data = buffer_idx;
   if (buf_size > 0) {
-    context->RequestScratchBufferInArena(context, buf_size, buffer_idx);
+    TF_LITE_ENSURE_STATUS(
+        context->RequestScratchBufferInArena(context, buf_size, buffer_idx));
   } else {
     *buffer_idx = -1;
   }
@@ -186,9 +187,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       TF_LITE_FULLY_CONNECTED(int16_t);
       break;
     default:
-      TF_LITE_KERNEL_LOG(
-          context,
-          "Quantized FullyConnected expects output data type uint8 or int16");
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(output->type), output->type);
       return kTfLiteError;
   }
 
@@ -241,8 +241,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                            output);
 
     default:
-      TF_LITE_KERNEL_LOG(context, "Type %d not currently supported.",
-                         filter->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input->type), input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

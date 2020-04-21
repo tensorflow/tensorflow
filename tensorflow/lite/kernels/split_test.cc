@@ -26,8 +26,8 @@ using ::testing::ElementsAreArray;
 constexpr int kAxisIsATensor = -1000;
 
 enum class TestType {
-  CONST = 0,
-  DYNAMIC = 1,
+  kConst = 0,
+  kDynamic = 1,
 };
 
 class SplitOpModel : public SingleOpModel {
@@ -83,7 +83,7 @@ void Check(TestType test_type, int axis, int num_splits,
        << " and num_splits=" << num_splits;
     return ss.str();
   };
-  if (test_type == TestType::DYNAMIC) {
+  if (test_type == TestType::kDynamic) {
     SplitOpModel m({type, input_shape}, num_splits);
     m.SetInput(input_data);
     m.SetAxis(axis);
@@ -110,18 +110,18 @@ void Check(TestType test_type, int axis, int num_splits,
 template <typename T>
 class SplitOpTest : public ::testing::Test {
  public:
-  static std::vector<TestType> _range_;
+  static std::vector<TestType> range_;
 };
 
 template <>
-std::vector<TestType> SplitOpTest<TestType>::_range_{TestType::CONST,
-                                                     TestType::DYNAMIC};
+std::vector<TestType> SplitOpTest<TestType>::range_{TestType::kConst,
+                                                    TestType::kDynamic};
 
 using DataTypes = ::testing::Types<float, int8_t, int16_t>;
 TYPED_TEST_SUITE(SplitOpTest, DataTypes);
 
 TYPED_TEST(SplitOpTest, FourDimensional) {
-  for (TestType test_type : SplitOpTest<TestType>::_range_) {
+  for (TestType test_type : SplitOpTest<TestType>::range_) {
     Check<TypeParam>(/*axis_as_tensor*/ test_type,
                      /*axis=*/0, /*num_splits=*/2, {2, 2, 2, 2}, {1, 2, 2, 2},
                      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
@@ -158,7 +158,7 @@ TYPED_TEST(SplitOpTest, FourDimensional) {
 }
 
 TYPED_TEST(SplitOpTest, FourDimensionalInt8) {
-  for (TestType test_type : SplitOpTest<TestType>::_range_) {
+  for (TestType test_type : SplitOpTest<TestType>::range_) {
     Check<TypeParam>(/*axis_as_tensor*/ test_type,
                      /*axis=*/0, /*num_splits=*/2, {2, 2, 2, 2}, {1, 2, 2, 2},
                      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
@@ -195,7 +195,7 @@ TYPED_TEST(SplitOpTest, FourDimensionalInt8) {
 }
 
 TYPED_TEST(SplitOpTest, FourDimensionalInt32) {
-  for (TestType test_type : SplitOpTest<TestType>::_range_) {
+  for (TestType test_type : SplitOpTest<TestType>::range_) {
     Check<TypeParam>(/*axis_as_tensor*/ test_type,
                      /*axis=*/0, /*num_splits=*/2, {2, 2, 2, 2}, {1, 2, 2, 2},
                      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
@@ -232,7 +232,7 @@ TYPED_TEST(SplitOpTest, FourDimensionalInt32) {
 }
 
 TYPED_TEST(SplitOpTest, OneDimensional) {
-  for (TestType test_type : SplitOpTest<TestType>::_range_) {
+  for (TestType test_type : SplitOpTest<TestType>::range_) {
     Check<TypeParam>(
         /*axis_as_tensor*/ test_type,
         /*axis=*/0, /*num_splits=*/8, {8}, {1}, {1, 2, 3, 4, 5, 6, 7, 8},
@@ -241,7 +241,7 @@ TYPED_TEST(SplitOpTest, OneDimensional) {
 }
 
 TYPED_TEST(SplitOpTest, NegativeAxis) {
-  for (TestType test_type : SplitOpTest<TestType>::_range_) {
+  for (TestType test_type : SplitOpTest<TestType>::range_) {
     Check<TypeParam>(/*axis_as_tensor*/ test_type,
                      /*axis=*/-4, /*num_splits=*/2, {2, 2, 2, 2}, {1, 2, 2, 2},
                      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},

@@ -46,12 +46,19 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
 InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
     const OpStats& op_stats, const HardwareType& hardware_type);
 
-void InfeedAnalysis(double infeed_percent, string* input_classification,
-                    string* input_statement);
+// Returns true if explanation for "All Others" time is also included in
+// input_statement.
+bool InputAnalysis(double input_percent, double all_other_percent,
+                   string* input_classification, string* input_statement);
+
+void OutputAnalysis(double output_percent, string* output_classification,
+                    string* output_statement);
 
 string GetSummaryNextStep(absl::string_view input_classification,
                           const InputTimeBreakdown& breakdown);
 
+void AddErrorMessages(const OpStats& op_stats,
+                      InputPipelineAnalysisResult* result);
 }  // namespace profiler
 }  // namespace tensorflow
 

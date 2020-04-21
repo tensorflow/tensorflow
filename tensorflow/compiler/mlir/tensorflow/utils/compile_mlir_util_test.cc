@@ -46,7 +46,7 @@ TEST(CompileSerializedMlirToXlaHloTest, InvalidSerializedMlirModule) {
   XlaCompiler::CompilationResult compilation_result;
 
   Status s = CompileSerializedMlirToXlaHlo(
-      invalid_mlir_module, arg_shapes,
+      invalid_mlir_module, arg_shapes, "XLA_CPU_JIT",
       /*use_tuple_args=*/true, TestShapeRepresentation, &compilation_result);
   EXPECT_EQ(s.code(), tensorflow::errors::Code::INVALID_ARGUMENT);
   EXPECT_EQ(s.ToString(),
@@ -68,7 +68,7 @@ TEST(CompileSerializedMlirToXlaHloTest, TupleArgs) {
   XlaCompiler::CompilationResult compilation_result;
 
   Status s = CompileSerializedMlirToXlaHlo(
-      kBinaryAddModule, arg_shapes,
+      kBinaryAddModule, arg_shapes, "XLA_CPU_JIT",
       /*use_tuple_args=*/true, TestShapeRepresentation, &compilation_result);
   TF_ASSERT_OK(s);
 
@@ -126,7 +126,7 @@ TEST(CompileSerializedMlirToXlaHloTest, IndividualArgs) {
   XlaCompiler::CompilationResult compilation_result;
 
   Status s = CompileSerializedMlirToXlaHlo(
-      kBinaryAddModule, arg_shapes,
+      kBinaryAddModule, arg_shapes, "XLA_CPU_JIT",
       /*use_tuple_args=*/false, TestShapeRepresentation, &compilation_result);
   TF_ASSERT_OK(s);
 
@@ -197,7 +197,7 @@ TEST(CompileSerializedMlirToXlaHloTest, CompileTimeConstantFoldedSuccess) {
   XlaCompiler::CompilationResult compilation_result;
 
   Status s = CompileSerializedMlirToXlaHlo(
-      mlir_module, arg_shapes,
+      mlir_module, arg_shapes, "XLA_CPU_JIT",
       /*use_tuple_args=*/true, TestShapeRepresentation, &compilation_result);
   TF_ASSERT_OK(s);
 
@@ -236,7 +236,7 @@ TEST(CompileSerializedMlirToXlaHloTest, ShapeInference) {
   XlaCompiler::CompilationResult compilation_result;
 
   Status s = CompileSerializedMlirToXlaHlo(
-      mlir_module, arg_shapes,
+      mlir_module, arg_shapes, "XLA_CPU_JIT",
       /*use_tuple_args=*/true, TestShapeRepresentation, &compilation_result);
   TF_ASSERT_OK(s);
 
@@ -267,7 +267,7 @@ module attributes {tf.versions = {producer = 179 : i32}} {
   XlaCompiler::CompilationResult compilation_result;
 
   Status s = CompileSerializedMlirToXlaHlo(
-      mlir_module, arg_shapes,
+      mlir_module, arg_shapes, "XLA_CPU_JIT",
       /*use_tuple_args=*/true, TestShapeRepresentation, &compilation_result);
   TF_ASSERT_OK(s);
 
@@ -325,7 +325,7 @@ module attributes {tf.versions = {producer = 179 : i32}} {
   XlaCompiler::CompilationResult compilation_result;
 
   Status s = CompileSerializedMlirToXlaHlo(
-      mlir_module, arg_shapes,
+      mlir_module, arg_shapes, "XLA_CPU_JIT",
       /*use_tuple_args=*/true, TestShapeRepresentation, &compilation_result);
   TF_ASSERT_OK(s);
 
@@ -362,7 +362,7 @@ module attributes {tf.versions = {producer = 179 : i32}} {
   XlaCompiler::CompilationResult compilation_result;
 
   Status s = CompileSerializedMlirToXlaHlo(
-      mlir_module, arg_shapes,
+      mlir_module, arg_shapes, "XLA_CPU_JIT",
       /*use_tuple_args=*/true, TestShapeRepresentation, &compilation_result);
   ASSERT_FALSE(s.ok());
   EXPECT_EQ(s.error_message(),
@@ -384,7 +384,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
   XlaCompiler::CompilationResult compilation_result;
 
   Status s = CompileSerializedMlirToXlaHlo(
-      mlir_module, arg_shapes,
+      mlir_module, arg_shapes, "XLA_CPU_JIT",
       /*use_tuple_args=*/true, TestShapeRepresentation, &compilation_result);
   TF_ASSERT_OK(s);
 
@@ -424,9 +424,10 @@ TEST(CompileGraphToXlaHlo, Basic) {
   test::graph::Retval(&graph, 0, arg);
 
   XlaCompiler::CompilationResult result;
-  TF_ASSERT_OK(CompileGraphToXlaHlo(
-      graph, /*arg_shapes=*/{TensorShape()}, /*use_tuple_args=*/false, flib_def,
-      GraphDebugInfo(), /*shape_representation_fn=*/nullptr, &result));
+  TF_ASSERT_OK(
+      CompileGraphToXlaHlo(graph, /*arg_shapes=*/{TensorShape()}, "XLA_CPU_JIT",
+                           /*use_tuple_args=*/false, flib_def, GraphDebugInfo(),
+                           /*shape_representation_fn=*/nullptr, &result));
 
   const xla::HloModuleConfig module_config(
       result.computation->GetProgramShape().ValueOrDie());

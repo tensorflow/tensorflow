@@ -18,9 +18,11 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
 namespace xla {
@@ -76,6 +78,28 @@ XlaOp MlirHloBuilder::ConstantLiteral(const LiteralSlice& literal) {
   });
 }
 
+StatusOr<XlaOp> MlirHloBuilder::TransposeInternal(
+    const Shape& shape, XlaOp operand, absl::Span<const int64> permutation) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::xla_hlo::TransposeOp>(
+      loc_, ty, GetValue(operand), GetI64ElementsAttr(permutation, &builder_));
+  return MakeXlaOp(op);
+}
+
+StatusOr<XlaOp> MlirHloBuilder::GatherInternal(
+    const Shape& shape, XlaOp input, XlaOp start_indices,
+    const GatherDimensionNumbers& dimension_numbers,
+    absl::Span<const int64> slice_sizes, bool indices_are_sorted) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::xla_hlo::GatherOp>(
+      loc_, ty, GetValue(input), GetValue(start_indices),
+      ConvertGatherDimensionNumbers(dimension_numbers, &builder_),
+      GetI64ElementsAttr(slice_sizes, &builder_));
+  return MakeXlaOp(op);
+}
+
 StatusOr<XlaOp> MlirHloBuilder::ReshapeInternal(const Shape& shape,
                                                 XlaOp operand,
                                                 int64 inferred_dimension) {
@@ -87,6 +111,19 @@ StatusOr<XlaOp> MlirHloBuilder::ReshapeInternal(const Shape& shape,
                                          shape, builder_));
   mlir::Value value = GetValue(operand);
   auto op = builder_.create<mlir::xla_hlo::ReshapeOp>(loc_, ty, value);
+  return MakeXlaOp(op.getResult());
+}
+
+StatusOr<XlaOp> MlirHloBuilder::DotGeneralInternal(
+    const Shape& shape, XlaOp lhs, XlaOp rhs,
+    const DotDimensionNumbers& dimension_number,
+    const PrecisionConfig* precision_config) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::xla_hlo::DotGeneralOp>(
+      loc_, ty, GetValue(lhs), GetValue(rhs),
+      ConvertDotDimensionNumbers(dimension_number, &builder_),
+      ConvertPrecisionConfig(precision_config, &builder_));
   return MakeXlaOp(op.getResult());
 }
 
@@ -102,12 +139,21 @@ StatusOr<XlaOp> MlirHloBuilder::InDimBroadcast(
   return MakeXlaOp(op.getResult());
 }
 
-XlaOp MlirHloBuilder::BinaryOpNoBroadcast(
-    HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
-    absl::optional<ComparisonDirection> direction) {
+StatusOr<XlaOp> MlirHloBuilder::Compare(const Shape& shape, XlaOp lhs,
+                                        XlaOp rhs,
+                                        ComparisonDirection direction) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  auto op = builder_.create<mlir::xla_hlo::CompareOp>(
+      loc_, ty, GetValue(lhs), GetValue(rhs),
+      /*broadcast_dimensions=*/mlir::DenseIntElementsAttr(),
+      builder_.getStringAttr(ComparisonDirectionToString(direction)));
+  return MakeXlaOp(op.getResult());
+}
+
+XlaOp MlirHloBuilder::BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape,
+                                          XlaOp lhs, XlaOp rhs) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    if (direction.has_value())
-      return Unimplemented("direction attribute not yet supported");
     return CreateOp(GetMlirOpName(binop), shape, {lhs, rhs}, /*attributes=*/{});
   });
 }
@@ -117,6 +163,90 @@ StatusOr<XlaOp> MlirHloBuilder::AddOpWithShape(
   return CreateOp(GetMlirOpName(opcode), shape,
                   llvm::makeArrayRef<XlaOp>(operands.data(), operands.size()),
                   /*attributes=*/{});
+}
+
+XlaOp MlirHloBuilder::CreateToken() {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    return MakeXlaOp(builder_.create<mlir::xla_hlo::CreateTokenOp>(
+        loc_, mlir::xla_hlo::TokenType::get(builder_.getContext())));
+  });
+}
+
+StatusOr<XlaOp> MlirHloBuilder::InfeedWithTokenInternal(
+    const Shape& infeed_instruction_shape, XlaOp token, const string& config) {
+  TF_ASSIGN_OR_RETURN(mlir::Type result_type,
+                      ConvertShapeToType<mlir::RankedTensorType>(
+                          infeed_instruction_shape, builder_));
+  return MakeXlaOp(builder_.create<mlir::xla_hlo::InfeedOp>(
+      loc_, result_type, GetValue(token),
+      /*infeed_config=*/config));
+}
+
+StatusOr<XlaOp> MlirHloBuilder::OutfeedWithTokenInternal(
+    XlaOp operand, XlaOp token, const Shape& shape_with_layout,
+    const string& outfeed_config) {
+  auto token_type = mlir::xla_hlo::TokenType::get(builder_.getContext());
+  return MakeXlaOp(builder_.create<mlir::xla_hlo::OutfeedOp>(
+      loc_, token_type, GetValue(operand), GetValue(token), outfeed_config));
+}
+
+StatusOr<XlaOp> MlirHloBuilder::ConcatInDimInternal(
+    const Shape& shape, absl::Span<const XlaOp> operands, int64 dimension) {
+  TF_ASSIGN_OR_RETURN(
+      mlir::Type result_type,
+      ConvertShapeToType<mlir::RankedTensorType>(shape, builder_));
+  auto mlir_operands = GetValues(operands);
+  return MakeXlaOp(builder_.create<mlir::xla_hlo::ConcatenateOp>(
+      loc_, result_type, mlir_operands, builder_.getI64IntegerAttr(dimension)));
+}
+
+StatusOr<XlaOp> MlirHloBuilder::GetTupleElementInternal(const Shape& shape,
+                                                        XlaOp tuple_data,
+                                                        int64 index) {
+  TF_ASSIGN_OR_RETURN(
+      mlir::Type result_type,
+      ConvertShapeToType<mlir::RankedTensorType>(shape, builder_));
+  return MakeXlaOp(builder_.create<mlir::xla_hlo::GetTupleElementOp>(
+      loc_, result_type, GetValue(tuple_data),
+      builder_.getI32IntegerAttr(index)));
+}
+
+StatusOr<XlaOp> MlirHloBuilder::SliceInternal(
+    const Shape& shape, XlaOp operand, absl::Span<const int64> start_indices,
+    absl::Span<const int64> limit_indices, absl::Span<const int64> strides) {
+  return MakeXlaOp(builder_.create<mlir::xla_hlo::SliceOp>(
+      loc_, GetValue(operand), GetI64ElementsAttr(start_indices, &builder_),
+      GetI64ElementsAttr(limit_indices, &builder_),
+      GetI64ElementsAttr(strides, &builder_)));
+}
+
+StatusOr<XlaOp> MlirHloBuilder::PadInternal(
+    const Shape& shape, XlaOp operand, XlaOp padding_value,
+    const PaddingConfig& padding_config) {
+  TF_ASSIGN_OR_RETURN(
+      mlir::Type result_type,
+      ConvertShapeToType<mlir::RankedTensorType>(shape, builder_));
+  std::vector<int64> low;
+  std::vector<int64> high;
+  std::vector<int64> internal;
+  for (auto& dimension : padding_config.dimensions()) {
+    low.push_back(dimension.edge_padding_low());
+    high.push_back(dimension.edge_padding_high());
+    internal.push_back(dimension.interior_padding());
+  }
+  return MakeXlaOp(builder_.create<mlir::xla_hlo::PadOp>(
+      loc_, result_type, GetValue(operand), GetValue(padding_value),
+      GetI64ElementsAttr(low, &builder_), GetI64ElementsAttr(high, &builder_),
+      GetI64ElementsAttr(internal, &builder_)));
+}
+
+StatusOr<XlaOp> MlirHloBuilder::TupleInternal(
+    const Shape& shape, absl::Span<const XlaOp> elements) {
+  mlir::SmallVector<mlir::Value, 4> operands;
+  for (auto& element : elements) {
+    operands.push_back(GetValue(element));
+  }
+  return MakeXlaOp(builder_.create<mlir::xla_hlo::TupleOp>(loc_, operands));
 }
 
 StatusOr<XlaOp> MlirHloBuilder::CreateOp(

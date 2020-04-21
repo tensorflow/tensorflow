@@ -127,7 +127,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         input_depth, filter_width, filter_height);
 
     if (buf_size > 0) {
-      context->RequestScratchBufferInArena(context, buf_size, buffer_idx);
+      TF_LITE_ENSURE_STATUS(
+          context->RequestScratchBufferInArena(context, buf_size, buffer_idx));
     }
   }
 #endif

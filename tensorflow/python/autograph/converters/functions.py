@@ -54,8 +54,8 @@ class FunctionTransformer(converter.Base):
     # ControlStatusCtx(autograph=ENABLED) when user_requested is True. See
     # function_wrappers.py.
     if fn_scope.level == 2:
-      return self.ctx.program.options
-    return self.ctx.program.options.call_options()
+      return self.ctx.user.options
+    return self.ctx.user.options.call_options()
 
   def visit_Lambda(self, node):
     with self.state[_Function] as fn_scope:

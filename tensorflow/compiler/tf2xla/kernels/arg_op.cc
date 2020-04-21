@@ -13,19 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <vector>
-
-#include "tensorflow/compiler/tf2xla/xla_context.h"
-#include "tensorflow/compiler/tf2xla/xla_expression.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/framework/kernel_def_builder.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
@@ -44,19 +39,19 @@ class XlaArgOp : public XlaOpKernel {
     // compilation. Use the usual implementation of _Arg.
     auto frame = ctx->call_frame();
     if (frame != nullptr) {
-      Tensor val;
+      const Tensor* val;
       OP_REQUIRES_OK(ctx, frame->GetArg(index_, &val));
       // Types that cannot be copied using memcpy (like DT_STRING) are wrapped
       // in a DT_UINT8 and hence the type mismatches. Skip the test in such
       // cases. See XlaOpKernelContext::SetOutputExpression for details.
       if (DataTypeCanUseMemcpy(dtype_)) {
-        OP_REQUIRES(ctx, val.dtype() == dtype_,
+        OP_REQUIRES(ctx, val->dtype() == dtype_,
                     errors::InvalidArgument(
-                        "Type mismatch: actual ", DataTypeString(val.dtype()),
+                        "Type mismatch: actual ", DataTypeString(val->dtype()),
                         " vs. expect ", DataTypeString(dtype_)));
       }
       // Forwards the argument from the frame.
-      ctx->op_kernel_context()->set_output(0, val);
+      ctx->op_kernel_context()->set_output(0, *val);
       return;
     }
 

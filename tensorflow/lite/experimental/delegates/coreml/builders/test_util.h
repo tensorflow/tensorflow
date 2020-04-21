@@ -29,6 +29,7 @@ class SingleOpModelWithCoreMlDelegate : public tflite::SingleOpModel {
 
   static const char kDelegateName[];
 
+  void ApplyDelegate();
   void ApplyDelegateAndInvoke();
 
   tflite::Interpreter* interpreter() { return interpreter_.get(); }
@@ -38,7 +39,10 @@ class SingleOpModelWithCoreMlDelegate : public tflite::SingleOpModel {
 
  private:
   tflite::Interpreter::TfLiteDelegatePtr delegate_;
-  TfLiteCoreMlDelegateOptions params_ = {0};
+  TfLiteCoreMlDelegateOptions params_ = {
+      .enabled_devices = TfLiteCoreMlDelegateAllDevices,
+      .min_nodes_per_partition = 1,
+  };
 };
 
 }  // namespace coreml
@@ -48,7 +52,9 @@ class SingleOpModelWithCoreMlDelegate : public tflite::SingleOpModel {
 @interface BaseOpTest : XCTestCase
 @property tflite::delegates::coreml::SingleOpModelWithCoreMlDelegate* model;
 - (void)validateInterpreter:(tflite::Interpreter*)interpreter;
+- (void)checkInterpreterNotDelegated:(tflite::Interpreter*)interpreter;
 - (void)invokeAndValidate;
+- (void)invokeAndCheckNotDelegated;
 @end
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_COREML_BUILDERS_TEST_UTIL_H_

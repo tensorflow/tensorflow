@@ -31,6 +31,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
+from tensorflow.python.keras.layers import serialization as layer_serialization
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import parsing_ops
@@ -169,6 +170,14 @@ class SequenceFeatures(fc._BaseFeaturesLayer):
     sequence_length = _assert_all_equal_and_return(sequence_lengths)
 
     return self._verify_and_concat_tensors(output_tensors), sequence_length
+
+
+layer_serialization.inject_feature_column_v1_objects(
+    'SequenceFeatures', SequenceFeatures)
+
+
+layer_serialization.inject_feature_column_v2_objects(
+    'SequenceFeatures', SequenceFeatures)
 
 
 def concatenate_context_input(context_input, sequence_input):

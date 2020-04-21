@@ -570,7 +570,8 @@ class CudnnSupport : public dnn::DnnSupport {
                          DeviceMemoryBase costs_data,
                          const dnn::RnnStateTensorDescriptor& grads_desc,
                          DeviceMemoryBase grads_data,
-                         DeviceMemory<uint8> scratch_memory) override;
+                         DeviceMemory<uint8> scratch_memory,
+                         int ctc_loss_algo_id) override;
 
   bool DoTransformTensor(Stream* stream, const dnn::BatchDescriptor& input_desc,
                          dnn::DataType input_type,
@@ -689,7 +690,7 @@ class CudnnSupport : public dnn::DnnSupport {
       absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
       const CudnnRnnStateTensorDescriptor& grads_desc,
       DeviceMemoryBase grads_data, const CudnnCtcLossDescriptor& ctc_loss_desc,
-      DeviceMemory<uint8> scratch_memory);
+      DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id);
 
  private:
   port::Status DoPrepareForConvolution(
@@ -711,8 +712,8 @@ class CudnnSupport : public dnn::DnnSupport {
       absl::Span<const int> labels_data,
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data,
-      ScratchAllocator* scratch_allocator,
-      DeviceMemory<uint8>* scratch_memory) override;
+      ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
+      int* ctc_loss_algo_id) override;
 
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnSupport);
 };

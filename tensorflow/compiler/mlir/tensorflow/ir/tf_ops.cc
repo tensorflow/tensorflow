@@ -55,7 +55,6 @@ limitations under the License.
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Support/STLExtras.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -83,8 +82,7 @@ static RankedTensorType GetRankedTensorTypeForOperand(Value operand) {
 
 // Returns true if the given `value` is of ranked float tensor type with the
 // given `rank`.
-static inline bool isOfRankedFloatTensorType(Value value, int rank) {
-  RankedTensorType type = GetRankedTensorTypeForOperand(value);
+static inline bool IsOfRankedFloatTensorType(RankedTensorType type, int rank) {
   return type && type.getRank() == rank &&
          type.getElementType().isa<FloatType>();
 }
@@ -208,7 +206,7 @@ static Type InferReductionOpType(Value input, Value reduction_indices,
 
   int64_t num_reduce_dim = 0;
   llvm::SmallVector<bool, 4> is_reduce_dim(rank, false);
-  for (APInt index : indices.getValues<APInt>()) {
+  for (const APInt &index : indices.getValues<APInt>()) {
     int64_t dim = GetDimForAxis(index.getSExtValue(), rank);
     // Invalid input.
     if (dim < 0 || dim >= rank) return UnrankedTensorType::get(element_ty);
@@ -404,11 +402,11 @@ static bool AreCancellablePermutations(DenseIntElementsAttr perm0,
   if (perm0.getNumElements() != perm1.getNumElements()) return false;
 
   SmallVector<int64_t, 8> perm0_values;
-  for (auto value : perm0.getIntValues())
+  for (const auto &value : perm0.getIntValues())
     perm0_values.push_back(value.getSExtValue());
 
   SmallVector<int64_t, 8> perm1_values;
-  for (auto value : perm1.getIntValues())
+  for (const auto &value : perm1.getIntValues())
     perm1_values.push_back(value.getSExtValue());
 
   for (int i = 0; i < perm0_values.size(); ++i) {
@@ -1462,10 +1460,12 @@ static LogicalResult Verify(FakeQuantWithMinMaxArgsOp op) {
 // FakeQuantWithMinMaxVarsOp
 //===----------------------------------------------------------------------===//
 static LogicalResult Verify(FakeQuantWithMinMaxVarsOp op) {
-  if (!isOfRankedFloatTensorType(op.min(), 0))
+  auto min = GetRankedTensorTypeForOperand(op.min());
+  if (min && !IsOfRankedFloatTensorType(min, 0))
     return op.emitOpError("requires min to be a 0d float tensor");
 
-  if (!isOfRankedFloatTensorType(op.max(), 0))
+  auto max = GetRankedTensorTypeForOperand(op.max());
+  if (max && !IsOfRankedFloatTensorType(max, 0))
     return op.emitOpError("requires max to be a 0d float tensor");
 
   int64_t num_bits = op.num_bits().getSExtValue();
@@ -1480,30 +1480,33 @@ static LogicalResult Verify(FakeQuantWithMinMaxVarsOp op) {
 // FakeQuantWithMinMaxVarsPerChannelOp
 //===----------------------------------------------------------------------===//
 static LogicalResult Verify(FakeQuantWithMinMaxVarsPerChannelOp op) {
-  if (!isOfRankedFloatTensorType(op.min(), 1))
+  auto min = GetRankedTensorTypeForOperand(op.min());
+  if (min && !IsOfRankedFloatTensorType(min, 1))
     return op.emitOpError("requires min to be a 1d float tensor");
 
-  if (!isOfRankedFloatTensorType(op.max(), 1))
+  auto max = GetRankedTensorTypeForOperand(op.max());
+  if (max && !IsOfRankedFloatTensorType(max, 1))
     return op.emitOpError("requires max to be a 1d float tensor");
 
   Value inputs = op.inputs();
-  if (!HasRankAtLeast(inputs, 1) ||
-      inputs.getType().isa<UnrankedTensorType>()) {
+  if (!HasRankAtLeast(inputs, 1))
     return op.emitError("requires inputs to be at least 1d float tensor");
-  }
 
-  auto inputsType = inputs.getType().cast<ShapedType>();
-  int depth = inputsType.getDimSize(inputsType.getRank() - 1);
-  if (op.min().getType().cast<ShapedType>().getDimSize(0) != depth ||
-      op.max().getType().cast<ShapedType>().getDimSize(0) != depth) {
-    return op.emitOpError(
-        "requires min and max to have same size as last dimension of inputs");
-  }
   int64_t num_bits = op.num_bits().getSExtValue();
   if (num_bits < 2 || num_bits > 16) {
     return op.emitOpError(
         "requires num_bits to be between 2 and 16, inclusive");
   }
+
+  auto inputs_type = inputs.getType().dyn_cast<RankedTensorType>();
+  if (!inputs_type) return success();
+  int depth = inputs_type.getDimSize(inputs_type.getRank() - 1);
+  if ((min && min.getDimSize(0) != depth) ||
+      (max && max.getDimSize(0) != depth)) {
+    return op.emitOpError(
+        "requires min and max to have same size as last dimension of inputs");
+  }
+
   return success();
 }
 
@@ -1518,6 +1521,27 @@ static LogicalResult Verify(FillOp op) {
     return op.emitOpError() << "requires value to be a scalar";
 
   return success();
+}
+
+static ShapedType InferFillOpType(Value dims, Value value) {
+  Type etype = value.getType().cast<ShapedType>().getElementType();
+
+  DenseIntElementsAttr dims_attr;
+  if (!matchPattern(dims, m_Constant(&dims_attr))) {
+    return UnrankedTensorType::get(etype);
+  }
+
+  llvm::SmallVector<int64_t, 4> shape;
+  shape.reserve(dims_attr.getNumElements());
+  for (const APInt &dim : dims_attr.getValues<APInt>()) {
+    shape.push_back(dim.getSExtValue());
+  }
+  return RankedTensorType::get(shape, etype);
+}
+
+void FillOp::build(Builder *builder, OperationState &result, Value dims,
+                   Value value) {
+  FillOp::build(builder, result, InferFillOpType(dims, value), dims, value);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1553,19 +1577,24 @@ StringRef FusedBatchNormGradV3Op::GetOptimalLayout(
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(FusedBatchNormOp op) {
-  if (!isOfRankedFloatTensorType(op.x(), 4))
+  auto x = GetRankedTensorTypeForOperand(op.x());
+  if (x && !IsOfRankedFloatTensorType(x, 4))
     return op.emitOpError("requires x to be a 4D float tensor");
 
-  if (!isOfRankedFloatTensorType(op.scale(), 1))
+  auto scale = GetRankedTensorTypeForOperand(op.scale());
+  if (scale && !IsOfRankedFloatTensorType(scale, 1))
     return op.emitOpError("requires scale to be a 1D float tensor");
 
-  if (!isOfRankedFloatTensorType(op.offset(), 1))
+  auto offset = GetRankedTensorTypeForOperand(op.offset());
+  if (offset && !IsOfRankedFloatTensorType(offset, 1))
     return op.emitOpError("requires offset to be a 1D float tensor");
 
-  if (!isOfRankedFloatTensorType(op.mean(), 1))
+  auto mean = GetRankedTensorTypeForOperand(op.mean());
+  if (mean && !IsOfRankedFloatTensorType(mean, 1))
     return op.emitOpError("requires mean to be a 1D float tensor");
 
-  if (!isOfRankedFloatTensorType(op.variance(), 1))
+  auto variance = GetRankedTensorTypeForOperand(op.variance());
+  if (variance && !IsOfRankedFloatTensorType(variance, 1))
     return op.emitOpError("requires variance to be a 1D float tensor");
 
   // TODO(antiagainst): check attributes
@@ -2258,7 +2287,7 @@ static LogicalResult Verify(ReshapeOp op) {
   if (rank_by_shape == -1 || !type_of_tensor.hasStaticShape()) return success();
   int64_t num_by_tensor = type_of_tensor.getNumElements();
 
-  auto out_ty = op.getType().cast<RankedTensorType>();
+  auto out_ty = op.getType().dyn_cast<RankedTensorType>();
   if (out_ty && out_ty.hasStaticShape()) {
     int64_t num_output_elements = out_ty.getNumElements();
     if (num_by_tensor != num_output_elements)
@@ -2417,7 +2446,8 @@ LogicalResult VerifyShapeOperandAndResult(Operation *op, Type operand_type,
       variadic_idx < 0 ? "" : llvm::formatv(" #{0}", variadic_idx).str();
 
   auto result_ranked_type = result_type.dyn_cast<RankedTensorType>();
-  if (!result_ranked_type || result_ranked_type.getShape().size() != 1)
+  if (!result_ranked_type) return success();
+  if (result_ranked_type.getShape().size() != 1)
     return op->emitOpError("requires 1D type for result") << variadic_idx_str;
 
   auto operand_ranked_type = operand_type.dyn_cast_or_null<RankedTensorType>();
@@ -2548,12 +2578,15 @@ static LogicalResult Verify(SizeOp op) {
 // SliceOp
 //===----------------------------------------------------------------------===//
 
-// Verifies that,
+// Verifies that:
 //
 // - operands begin and size are 1D with the same number of elements.
 // - if the input is a ranked tensor, the rank of the input equals the number
 //   of elements in operands begin and size.
-// - if begin are constants, 0 <= begin[i] < input_ty.getShape()[i]
+// - if begin are constants, that
+//   0 <= begin[i] <= begin[i] + size[i] <= input_ty.getShape()[i]
+// - if begins aren't constant but the input is a ranked tensor, that
+//   size[i] <= input_ty.getShape()[i]
 //
 static LogicalResult Verify(SliceOp op) {
   RankedTensorType begin_ty = GetRankedTensorTypeForOperand(op.begin());
@@ -2587,7 +2620,7 @@ static LogicalResult Verify(SliceOp op) {
     bool constant_slice_sizes =
         matchPattern(op.size(), m_Constant(&slice_sizes));
     int dim = 0;
-    for (APInt raw_begin_index : begin_indices.getValues<APInt>()) {
+    for (const APInt &raw_begin_index : begin_indices.getValues<APInt>()) {
       int64_t begin_index = raw_begin_index.getSExtValue();
       int64_t input_size = input_ty ? input_ty.getShape()[dim] : -1;
       int64_t slice_size = constant_slice_sizes
@@ -2602,6 +2635,20 @@ static LogicalResult Verify(SliceOp op) {
                << "requires 0 <= begin[i] <= begin[i] + size[i] <= Di";
       }
       ++dim;
+    }
+  } else if (input_ty) {
+    // If the inputs are ranked, we can do a few more sanity checks.
+    DenseIntElementsAttr slice_sizes;
+    if (matchPattern(op.size(), m_Constant(&slice_sizes))) {
+      auto input_shape = input_ty.getShape();
+      for (int64_t i = 0; i < input_ty.getRank(); ++i) {
+        int64_t slice_size = slice_sizes.getValue<IntegerAttr>(i).getInt();
+        int64_t input_size = input_shape[i];
+        if (slice_size != -1 && input_size != -1 && slice_size > input_size) {
+          return op.emitOpError() << "requires size[i] <= Di, even if begin[i] "
+                                     "is unknown at compile time";
+        }
+      }
     }
   }
 
@@ -3340,7 +3387,7 @@ void TransposeOp::build(Builder *builder, OperationState &result, Value x,
           x_type.getDimSize((*attr_shape.begin()).getSExtValue()));
     } else {
       const_shape.reserve(attr_shape.getNumElements());
-      for (auto dim : attr_shape)
+      for (const auto &dim : attr_shape)
         const_shape.push_back(x_type.getDimSize(dim.getSExtValue()));
     }
     return TransposeOp::build(

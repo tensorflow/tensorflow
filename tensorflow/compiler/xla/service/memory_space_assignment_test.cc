@@ -103,6 +103,21 @@ class MemorySpaceAssignmentTest : public HloTestBase,
       return true;
     };
 
+    // Only check parameters in default memory if the original module didn't
+    // have the parameters in alternate memory.
+    bool check_parameters_in_default_memory = true;
+    for (const HloInstruction* parameter :
+         module->entry_computation()->parameter_instructions()) {
+      ShapeUtil::ForEachSubshape(
+          parameter->shape(),
+          [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+            if (subshape.has_layout() &&
+                subshape.layout().memory_space() == kAlternateMemorySpace) {
+              check_parameters_in_default_memory = false;
+            }
+          });
+    }
+
     MemorySpaceAssignment::Options options;
     options.alternate_memory_space = kAlternateMemorySpace;
     options.max_size_in_bytes = 128;
@@ -125,6 +140,9 @@ class MemorySpaceAssignmentTest : public HloTestBase,
         MemorySpaceAssignment::Run(module, *hlo_live_range, *alias_analysis,
                                    options)
             .ValueOrDie();
+    if (check_parameters_in_default_memory) {
+      CheckParametersInDefaultMemory(module);
+    }
     CheckPresetAssignments(preset_assignments.get());
     return preset_assignments;
   }
@@ -145,6 +163,24 @@ class MemorySpaceAssignmentTest : public HloTestBase,
       EXPECT_EQ(subshape.layout().memory_space(), kAlternateMemorySpace)
           << "Exported position is not in alternate mem: "
           << position.ToString();
+    }
+  }
+
+  void CheckParametersInDefaultMemory(const HloModule* module) {
+    // Check that all the entry parameter subshapes are placed in default
+    // memory.
+    const HloComputation* entry_computation = module->entry_computation();
+    for (const HloInstruction* parameter :
+         entry_computation->parameter_instructions()) {
+      ShapeUtil::ForEachSubshape(
+          parameter->shape(),
+          [&](const Shape& subshape, const ShapeIndex& /*index*/) {
+            if (subshape.has_layout()) {
+              EXPECT_NE(subshape.layout().memory_space(), kAlternateMemorySpace)
+                  << "Parameter not in default memory: "
+                  << parameter->ToString();
+            }
+          });
     }
   }
 
@@ -1250,9 +1286,335 @@ TEST_P(MemorySpaceAssignmentTest, WhileAllocationBug) {
     if (instruction->opcode() == HloOpcode::kWhile) {
       const Shape& while_subshape =
           ShapeUtil::GetSubshape(instruction->shape(), {0});
-      EXPECT_NE(while_subshape.layout().memory_space(), kAlternateMemorySpace);
+      // We expect shape {0} to either be in default memory for the entire while
+      // loop or there has to be an eviction within the while loop.
+      if (while_subshape.layout().memory_space() == kAlternateMemorySpace) {
+        const HloInstruction* body_param =
+            instruction->while_body()->parameter_instruction(0);
+        const HloInstruction* gte = nullptr;
+        for (const HloInstruction* user : body_param->users()) {
+          if (user->opcode() == HloOpcode::kGetTupleElement &&
+              user->tuple_index() == 0) {
+            gte = user;
+            break;
+          }
+        }
+        EXPECT_NE(gte, nullptr);
+        const HloInstruction* copy_start = nullptr;
+        for (const HloInstruction* user : gte->users()) {
+          if (user->opcode() == HloOpcode::kCopyStart) {
+            copy_start = user;
+            break;
+          }
+        }
+        EXPECT_NE(copy_start, nullptr);
+        const Shape& copy_start_subshape =
+            ShapeUtil::GetSubshape(copy_start->shape(), {0});
+
+        EXPECT_NE(copy_start_subshape.layout().memory_space(),
+                  kAlternateMemorySpace);
+      }
     }
   }
+}
+
+TEST_P(MemorySpaceAssignmentTest, ConsecutiveWhileLoops) {
+  absl::string_view hlo_string = R"(
+  HloModule WhileAllocationBug, is_scheduled=true
+
+  %WhileBody (body_param: (f32[4,3], f32[4,3], f32[])) -> (f32[4,3], f32[4,3], f32[]) {
+    %body_param = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element.1 = f32[] get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %body_param), index=2
+    %get-tuple-element.2 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %body_param), index=0
+    %get-tuple-element.3 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %body_param), index=1
+    %constant.1 = f32[] constant(1)
+    %add = f32[] add(f32[] %get-tuple-element.1, f32[] %constant.1)
+    %constant.2 = f32[4,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 }, { 1, 2, 3 }, { 4, 5, 6 } })
+    %multiply = f32[4,3]{1,0} multiply(f32[4,3]{1,0} %get-tuple-element.2, f32[4,3]{1,0} %get-tuple-element.3)
+    %multiply2 = f32[4,3]{1,0} multiply(f32[4,3]{1,0} %multiply, f32[4,3]{1,0} %multiply)
+    %add.1 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.2, f32[4,3]{1,0} %constant.2)
+    %add.2 = f32[4,3]{1,0} add(f32[4,3]{1,0} %add.1, f32[4,3]{1,0} %multiply2)
+    ROOT %tuple = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) tuple(f32[4,3]{1,0} %add.2, f32[4,3]{1,0} %get-tuple-element.3, f32[] %add)
+  }
+
+  %WhileCond (cond_param: (f32[4,3], f32[4,3], f32[])) -> pred[] {
+    %cond_param = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element = f32[] get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %cond_param), index=2
+    %constant = f32[] constant(50)
+    ROOT %compare = pred[] compare(f32[] %get-tuple-element, f32[] %constant), direction=LT
+  }
+
+  %WhileBody2 (body_param: (f32[4,3], f32[4,3], f32[])) -> (f32[4,3], f32[4,3], f32[]) {
+    %body_param = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element.1 = f32[] get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %body_param), index=2
+    %get-tuple-element.2 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %body_param), index=0
+    %get-tuple-element.3 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %body_param), index=1
+    %constant.1 = f32[] constant(1)
+    %add = f32[] add(f32[] %get-tuple-element.1, f32[] %constant.1)
+    %constant.2 = f32[4,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 }, { 1, 2, 3 }, { 4, 5, 6 } })
+    %multiply = f32[4,3]{1,0} multiply(f32[4,3]{1,0} %get-tuple-element.2, f32[4,3]{1,0} %get-tuple-element.3)
+    %multiply2 = f32[4,3]{1,0} multiply(f32[4,3]{1,0} %multiply, f32[4,3]{1,0} %multiply)
+    %add.1 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.2, f32[4,3]{1,0} %constant.2)
+    %add.2 = f32[4,3]{1,0} add(f32[4,3]{1,0} %add.1, f32[4,3]{1,0} %multiply2)
+    ROOT %tuple = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) tuple(f32[4,3]{1,0} %add.2, f32[4,3]{1,0} %get-tuple-element.3, f32[] %add)
+  }
+
+  %WhileCond2 (cond_param: (f32[4,3], f32[4,3], f32[])) -> pred[] {
+    %cond_param = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element = f32[] get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %cond_param), index=2
+    %constant = f32[] constant(50)
+    ROOT %compare = pred[] compare(f32[] %get-tuple-element, f32[] %constant), direction=LT
+  }
+
+  ENTRY %Entry (param_data: f32[4,3], param_iter: f32[], p2: f32[4,3]) -> f32[4,3] {
+    %param_iter = f32[] parameter(1)
+    %param_data = f32[4,3]{1,0} parameter(0)
+    %p2 = f32[4,3]{1,0} parameter(2)
+    %neg0 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %p2)
+    %neg1 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg0)
+    %neg2 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg1)
+    %neg3 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg2)
+    %neg4 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg3)
+    %neg5 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg4)
+    %neg6 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg5)
+    %add.4 = f32[4,3]{1,0} add(f32[4,3]{1,0} %neg6, f32[4,3]{1,0} %p2)
+    %tuple.1 = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) tuple(f32[4,3]{1,0} add.4, f32[4,3]{1,0} param_data, f32[] %param_iter)
+    %while = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) while((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %tuple.1), condition=%WhileCond, body=%WhileBody
+    %get-tuple-element.4 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %while), index=0
+    %add.3 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.4, f32[4,3]{1,0} %add.4)
+    %get-tuple-element.5 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %while), index=1
+    %tuple.2 = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) tuple(f32[4,3]{1,0} add.3, f32[4,3]{1,0} get-tuple-element.5, f32[] %param_iter)
+    %while.1 = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) while((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %tuple.2), condition=%WhileCond2, body=%WhileBody2
+    %get-tuple-element.6 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %while.1), index=0
+    ROOT %add.5 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.6, f32[4,3]{1,0} %add.3)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, WhileLiveRangeBug) {
+  // Tests against while live ranges being incorrect and the verifier
+  // complaining about a conflict.
+  absl::string_view hlo_string = R"(
+  HloModule WhileAllocationBug, is_scheduled=true
+
+  %WhileBody (body_param: (f32[4,3], f32[4,3], f32[])) -> (f32[4,3], f32[4,3], f32[]) {
+    %body_param = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element.1 = f32[] get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %body_param), index=2
+    %get-tuple-element.2 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %body_param), index=0
+    %get-tuple-element.3 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %body_param), index=1
+    %neg10 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %get-tuple-element.2)
+    %neg11 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg10)
+    %neg12 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg11)
+    %neg13 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg12)
+    %neg14 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg13)
+    %neg15 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg14)
+    %neg16 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg15)
+    %neg17 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg16)
+    %neg18 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg17)
+    %neg19 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg18)
+    %neg20 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg19)
+    %constant.1 = f32[] constant(1)
+    %add = f32[] add(f32[] %get-tuple-element.1, f32[] %constant.1)
+    %constant.2 = f32[4,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 }, { 1, 2, 3 }, { 4, 5, 6 } })
+    %multiply = f32[4,3]{1,0} multiply(f32[4,3]{1,0} %neg20, f32[4,3]{1,0} %neg20)
+    %multiply2 = f32[4,3]{1,0} multiply(f32[4,3]{1,0} %multiply, f32[4,3]{1,0} %multiply)
+    %add.1 = f32[4,3]{1,0} add(f32[4,3]{1,0} get-tuple-element.3, f32[4,3]{1,0} %constant.2)
+    %add.2 = f32[4,3]{1,0} add(f32[4,3]{1,0} %add.1, f32[4,3]{1,0} %multiply2)
+    ROOT %tuple = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) tuple(f32[4,3]{1,0} %add.2, f32[4,3]{1,0} %get-tuple-element.3, f32[] %add)
+  }
+
+  %WhileCond (cond_param: (f32[4,3], f32[4,3], f32[])) -> pred[] {
+    %cond_param = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element = f32[] get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %cond_param), index=2
+    %constant = f32[] constant(50)
+    ROOT %compare = pred[] compare(f32[] %get-tuple-element, f32[] %constant), direction=LT
+  }
+
+  ENTRY %Entry (param_data: f32[4,3], param_iter: f32[], p2: f32[4,3]) -> f32[4,3] {
+    %param_iter = f32[] parameter(1)
+    %param_data = f32[4,3]{1,0} parameter(0)
+    %p2 = f32[4,3]{1,0} parameter(2)
+    %neg0 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %p2)
+    %neg1 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg0)
+    %neg2 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg1)
+    %neg3 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg2)
+    %neg4 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg3)
+    %neg5 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg4)
+    %neg6 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg5)
+    %add.4 = f32[4,3]{1,0} add(f32[4,3]{1,0} %neg6, f32[4,3]{1,0} %p2)
+    %tuple.1 = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) tuple(f32[4,3]{1,0} add.4, f32[4,3]{1,0} param_data, f32[] %param_iter)
+    %while = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) while((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %tuple.1), condition=%WhileCond, body=%WhileBody
+    %get-tuple-element.4 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %while), index=0
+    %get-tuple-element.5 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %while), index=1
+    %add.3 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.4, f32[4,3]{1,0} %add.4)
+    ROOT %add.5 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.5, f32[4,3]{1,0} %add.3)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, ConsecutiveWhileLoopsOneBuffer) {
+  // Tests against a bug when there are consecutive while loops with one buffer
+  // (the value doesn't change in the buffer), the parameter can be colored in
+  // the alternate memory space.
+  absl::string_view hlo_string = R"(
+  HloModule WhileAllocationBug, is_scheduled=true
+
+  %WhileBody (body_param: (f32[4,3], f32[4,3], f32[])) -> (f32[4,3], f32[4,3], f32[]) {
+    %body_param = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element.1 = f32[] get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %body_param), index=2
+    %get-tuple-element.2 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %body_param), index=0
+    %get-tuple-element.3 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %body_param), index=1
+    %neg10 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %get-tuple-element.2)
+    %neg11 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg10)
+    %neg12 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg11)
+    %neg13 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg12)
+    %neg14 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg13)
+    %neg15 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg14)
+    %neg16 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg15)
+    %neg17 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg16)
+    %neg18 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg17)
+    %neg19 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg18)
+    %neg20 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg19)
+    %constant.1 = f32[] constant(1)
+    %add = f32[] add(f32[] %get-tuple-element.1, f32[] %constant.1)
+    %constant.2 = f32[4,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 }, { 1, 2, 3 }, { 4, 5, 6 } })
+    %multiply = f32[4,3]{1,0} multiply(f32[4,3]{1,0} %neg20, f32[4,3]{1,0} %neg20)
+    %multiply2 = f32[4,3]{1,0} multiply(f32[4,3]{1,0} %multiply, f32[4,3]{1,0} %multiply)
+    %add.1 = f32[4,3]{1,0} add(f32[4,3]{1,0} get-tuple-element.3, f32[4,3]{1,0} %constant.2)
+    %add.2 = f32[4,3]{1,0} add(f32[4,3]{1,0} %add.1, f32[4,3]{1,0} %multiply2)
+    ROOT %tuple = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) tuple(f32[4,3]{1,0} %add.2, f32[4,3]{1,0} %get-tuple-element.3, f32[] %add)
+  }
+
+  %WhileCond (cond_param: (f32[4,3], f32[4,3], f32[])) -> pred[] {
+    %cond_param = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element = f32[] get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %cond_param), index=2
+    %constant = f32[] constant(50)
+    ROOT %compare = pred[] compare(f32[] %get-tuple-element, f32[] %constant), direction=LT
+  }
+
+  %WhileBody2 (body_param: (f32[4,3], f32[4,3], f32[])) -> (f32[4,3], f32[4,3], f32[]) {
+    %body_param = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element.1 = f32[] get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %body_param), index=2
+    %get-tuple-element.2 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %body_param), index=0
+    %get-tuple-element.3 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %body_param), index=1
+    %neg10 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %get-tuple-element.2)
+    %neg11 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg10)
+    %neg12 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg11)
+    %neg13 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg12)
+    %neg14 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg13)
+    %neg15 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg14)
+    %neg16 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg15)
+    %neg17 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg16)
+    %neg18 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg17)
+    %neg19 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg18)
+    %neg20 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg19)
+    %constant.1 = f32[] constant(1)
+    %add = f32[] add(f32[] %get-tuple-element.1, f32[] %constant.1)
+    %constant.2 = f32[4,3]{1,0} constant({ { 1, 2, 3 }, { 4, 5, 6 }, { 1, 2, 3 }, { 4, 5, 6 } })
+    %multiply = f32[4,3]{1,0} multiply(f32[4,3]{1,0} %neg20, f32[4,3]{1,0} %neg20)
+    %multiply2 = f32[4,3]{1,0} multiply(f32[4,3]{1,0} %multiply, f32[4,3]{1,0} %multiply)
+    %add.1 = f32[4,3]{1,0} add(f32[4,3]{1,0} get-tuple-element.3, f32[4,3]{1,0} %constant.2)
+    %add.2 = f32[4,3]{1,0} add(f32[4,3]{1,0} %add.1, f32[4,3]{1,0} %multiply2)
+    ROOT %tuple = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) tuple(f32[4,3]{1,0} %add.2, f32[4,3]{1,0} %get-tuple-element.3, f32[] %add)
+  }
+
+  %WhileCond2 (cond_param: (f32[4,3], f32[4,3], f32[])) -> pred[] {
+    %cond_param = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) parameter(0)
+    %get-tuple-element = f32[] get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %cond_param), index=2
+    %constant = f32[] constant(50)
+    ROOT %compare = pred[] compare(f32[] %get-tuple-element, f32[] %constant), direction=LT
+  }
+
+  ENTRY %Entry (param_data: f32[4,3], param_iter: f32[], p2: f32[4,3]) -> f32[4,3] {
+    %param_iter = f32[] parameter(1)
+    %param_data = f32[4,3]{1,0} parameter(0)
+    %p2 = f32[4,3]{1,0} parameter(2)
+    %neg0 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %p2)
+    %neg1 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg0)
+    %neg2 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg1)
+    %neg3 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg2)
+    %neg4 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg3)
+    %neg5 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg4)
+    %neg6 = f32[4,3]{1,0} negate(f32[4,3]{1,0} %neg5)
+    %add.4 = f32[4,3]{1,0} add(f32[4,3]{1,0} %neg6, f32[4,3]{1,0} %p2)
+    %tuple.1 = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) tuple(f32[4,3]{1,0} add.4, f32[4,3]{1,0} param_data, f32[] %param_iter)
+    %while = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) while((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %tuple.1), condition=%WhileCond, body=%WhileBody
+    %get-tuple-element.4 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %while), index=0
+    %add.3 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.4, f32[4,3]{1,0} %add.4)
+    %tuple.2 = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) tuple(f32[4,3]{1,0} add.3, f32[4,3]{1,0} param_data, f32[] %param_iter)
+    %while.1 = (f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) while((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %tuple.2), condition=%WhileCond2, body=%WhileBody2
+    %get-tuple-element.5 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %while.1), index=0
+    %get-tuple-element.6 = f32[4,3]{1,0} get-tuple-element((f32[4,3]{1,0}, f32[4,3]{1,0}, f32[]) %while.1), index=1
+    ROOT %add.5 = f32[4,3]{1,0} add(f32[4,3]{1,0} %get-tuple-element.5, f32[4,3]{1,0} %get-tuple-element.6)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, WhileCondAliasBug) {
+  // While loop is the root of the entry computation. We should ensure the
+  // output of the entry computation remains to be in default memory space.
+  // Test from //third_party/tensorflow/compiler/xla/tests:while_test
+  // WhileTest.WhileWithPrngScalarResult.
+  absl::string_view hlo_string = R"(
+  HloModule WhileWithPrngScalarResult.18, is_scheduled=true
+
+  %fused_computation (param_0.1: s32[6], param_1.3: s32[1], param_2.3: s32[5]) -> s32[6] {
+    %param_1.3 = s32[1]{0:T(128)} parameter(1)
+    %constant.2 = s32[]{:T(128)} constant(-2147483648)
+    %pad.2 = s32[6]{0:T(128)} pad(s32[1]{0:T(128)} %param_1.3, s32[]{:T(128)} %constant.2), padding=0_5
+    %param_2.3 = s32[5]{0:T(128)} parameter(2)
+    %pad.3 = s32[6]{0:T(128)} pad(s32[5]{0:T(128)} %param_2.3, s32[]{:T(128)} %constant.2), padding=1_0
+    %maximum.1 = s32[6]{0:T(128)} maximum(s32[6]{0:T(128)} %pad.2, s32[6]{0:T(128)} %pad.3)
+    %param_0.1 = s32[6]{0:T(128)} parameter(0)
+    ROOT %add.0 = s32[6]{0:T(128)} add(s32[6]{0:T(128)} %maximum.1, s32[6]{0:T(128)} %param_0.1)
+  }
+
+  %body.3 (prev.4: s32[6]) -> s32[6] {
+    %constant.7 = s32[]{:T(128)} constant(100)
+    %constant.6 = s32[]{:T(128)} constant(0)
+    %constant.5 = s32[1]{0:T(128)} constant({1})
+    %prev.4 = s32[6]{0:T(128)} parameter(0)
+    %rng.8 = s32[5]{0:T(128)} rng(s32[]{:T(128)} %constant.6, s32[]{:T(128)} %constant.7), distribution=rng_uniform
+    ROOT %fusion = s32[6]{0:T(128)} fusion(s32[6]{0:T(128)} %prev.4, s32[1]{0:T(128)} %constant.5, s32[5]{0:T(128)} %rng.8), kind=kLoop, calls=%fused_computation
+  }
+
+  %WhileWithPrngScalarResult.11 (prev.12: s32[6]) -> pred[] {
+    %constant.15 = s32[]{:T(128)} constant(1)
+    %prev.12 = s32[6]{0:T(128)} parameter(0)
+    %bitcast.1 = s32[1]{0:T(128)} bitcast(s32[6]{0:T(128)} %prev.12)
+    %bitcast = s32[]{:T(128)} bitcast(s32[1]{0:T(128)} %bitcast.1)
+    ROOT %compare.16 = pred[]{:T(128)E(32)} compare(s32[]{:T(128)} %constant.15, s32[]{:T(128)} %bitcast), direction=GT
+  }
+
+  ENTRY %WhileWithPrngScalarResult.18 () -> s32[6] {
+    %constant.1 = s32[]{:T(128)} constant(0)
+    %broadcast.2 = s32[6]{0:T(128)} broadcast(s32[]{:T(128)} %constant.1), dimensions={}
+    ROOT %while.17 = s32[6]{0:T(128)} while(s32[6]{0:T(128)} %broadcast.2), condition=%WhileWithPrngScalarResult.11, body=%body.3
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+  // Expect the output to have default memory space.
+  EXPECT_EQ(module->entry_computation()
+                ->root_instruction()
+                ->shape()
+                .layout()
+                .memory_space(),
+            kDefaultMemorySpace);
 }
 
 TEST_P(MemorySpaceAssignmentTest, ControlPredecessorsBug) {
@@ -2070,12 +2432,6 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
                     /*max_prefetch_interval=*/25);
 
-  int64 memory_space_across_while = kDefaultMemorySpace;
-  bool allocate_across_sequential_calls = GetParam();
-  if (allocate_across_sequential_calls) {
-    memory_space_across_while = kAlternateMemorySpace;
-  }
-
   // Index {0} of the while loop argument is not written inside the while loop,
   // so it can be trivially placed in the alternate memory space.
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {0})->mutable_layout() =
@@ -2087,12 +2443,11 @@ TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{}, /*tiles=*/{}, /*element_size_in_bits=*/0,
           kDefaultMemorySpace);
-  // Index {2} of the while loop argument is placed in the alternate memory if
-  // we enable the allocate_across_sequential_calls option.
+  // Index {2} of the while loop is placed in the default memory.
   *ShapeUtil::GetMutableSubshape(&tuple_shape, {2})->mutable_layout() =
       LayoutUtil::MakeLayout(
           /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
-          memory_space_across_while);
+          kDefaultMemorySpace);
 
   // Expect the layout for the while loop and its aliased buffers.
   EXPECT_THAT(while_op, op::ShapeWithLayout(tuple_shape));

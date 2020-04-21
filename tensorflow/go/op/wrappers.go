@@ -9848,32 +9848,17 @@ func EncodeProto(scope *Scope, sizes tf.Output, values []tf.Output, field_names 
 // Creates an iterator for reading from the tf.data service.
 //
 // Returns the created operation.
-func MakeDataServiceIterator(scope *Scope, dataset tf.Output, epoch_id tf.Output, iterator tf.Output) (o *tf.Operation) {
+func MakeDataServiceIterator(scope *Scope, dataset tf.Output, job_token tf.Output, iterator tf.Output) (o *tf.Operation) {
 	if scope.Err() != nil {
 		return
 	}
 	opspec := tf.OpSpec{
 		Type: "MakeDataServiceIterator",
 		Input: []tf.Input{
-			dataset, epoch_id, iterator,
+			dataset, job_token, iterator,
 		},
 	}
 	return scope.AddOperation(opspec)
-}
-
-// Begins a tf.data service dataset epoch.
-func BeginEpoch(scope *Scope, dataset_id tf.Output, address tf.Output, protocol tf.Output) (epoch_id tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "BeginEpoch",
-		Input: []tf.Input{
-			dataset_id, address, protocol,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Registers a dataset with the tf.data service.
@@ -29651,6 +29636,14 @@ func ResourceSparseApplyFtrlUseLocking(value bool) ResourceSparseApplyFtrlAttr {
 	}
 }
 
+// ResourceSparseApplyFtrlMultiplyLinearByLr sets the optional multiply_linear_by_lr attribute to value.
+// If not specified, defaults to false
+func ResourceSparseApplyFtrlMultiplyLinearByLr(value bool) ResourceSparseApplyFtrlAttr {
+	return func(m optionalAttr) {
+		m["multiply_linear_by_lr"] = value
+	}
+}
+
 // Update relevant entries in '*var' according to the Ftrl-proximal scheme.
 //
 // That is for rows we have grad for, we update var, accum and linear as follows:
@@ -30661,6 +30654,14 @@ type ResourceApplyFtrlV2Attr func(optionalAttr)
 func ResourceApplyFtrlV2UseLocking(value bool) ResourceApplyFtrlV2Attr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
+	}
+}
+
+// ResourceApplyFtrlV2MultiplyLinearByLr sets the optional multiply_linear_by_lr attribute to value.
+// If not specified, defaults to false
+func ResourceApplyFtrlV2MultiplyLinearByLr(value bool) ResourceApplyFtrlV2Attr {
+	return func(m optionalAttr) {
+		m["multiply_linear_by_lr"] = value
 	}
 }
 
@@ -36051,6 +36052,14 @@ type ResourceApplyFtrlAttr func(optionalAttr)
 func ResourceApplyFtrlUseLocking(value bool) ResourceApplyFtrlAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
+	}
+}
+
+// ResourceApplyFtrlMultiplyLinearByLr sets the optional multiply_linear_by_lr attribute to value.
+// If not specified, defaults to false
+func ResourceApplyFtrlMultiplyLinearByLr(value bool) ResourceApplyFtrlAttr {
+	return func(m optionalAttr) {
+		m["multiply_linear_by_lr"] = value
 	}
 }
 
@@ -42257,6 +42266,14 @@ func ResourceSparseApplyFtrlV2UseLocking(value bool) ResourceSparseApplyFtrlV2At
 	}
 }
 
+// ResourceSparseApplyFtrlV2MultiplyLinearByLr sets the optional multiply_linear_by_lr attribute to value.
+// If not specified, defaults to false
+func ResourceSparseApplyFtrlV2MultiplyLinearByLr(value bool) ResourceSparseApplyFtrlV2Attr {
+	return func(m optionalAttr) {
+		m["multiply_linear_by_lr"] = value
+	}
+}
+
 // Update relevant entries in '*var' according to the Ftrl-proximal scheme.
 //
 // That is for rows we have grad for, we update var, accum and linear as follows:
@@ -46788,6 +46805,21 @@ func LoadTPUEmbeddingFTRLParameters(scope *Scope, parameters tf.Output, accumula
 	return scope.AddOperation(opspec)
 }
 
+// Creates a tf.data service job.
+func CreateJob(scope *Scope, dataset_id tf.Output, address tf.Output, protocol tf.Output, processing_mode tf.Output) (job_token tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "CreateJob",
+		Input: []tf.Input{
+			dataset_id, address, protocol, processing_mode,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Conv3DBackpropInputAttr is an optional argument to Conv3DBackpropInput.
 type Conv3DBackpropInputAttr func(optionalAttr)
 
@@ -48480,7 +48512,7 @@ func MaxPool3DGradDataFormat(value string) MaxPool3DGradAttr {
 	}
 }
 
-// Computes gradients of max pooling function.
+// Computes gradients of 3D max pooling function.
 //
 // Arguments:
 //	orig_input: The original input tensor.

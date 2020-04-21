@@ -136,10 +136,6 @@ class DefaultTensorTie : public TensorTie {
     if (!IsValid(def().external_def, obj)) {
       return absl::InvalidArgumentError("Given object is not valid");
     }
-    // TODO(akulik): external object should propagate to internal.
-    if (IsSameDef()) {
-      return absl::UnimplementedError("Not supported");
-    }
     external_obj_ = obj;
     return absl::OkStatus();
   }
@@ -573,7 +569,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
           } else {
             shader_index = it->second;
           }
-          auto num_workgroups = IntegralDivideRoundUp(code.workload, workgroup);
+          auto num_workgroups = DivideRoundUp(code.workload, workgroup);
           return runtime_ptr->AddProgram(shaders[shader_index], code.parameters,
                                          code.objects, num_workgroups);
         }));
@@ -584,23 +580,30 @@ class InferenceBuilderImpl : public InferenceBuilder {
 
  private:
   // Links internal tensors with external user-facing objects.
-  std::vector<TensorTieDef> LinkTensors(
-      const std::vector<Value<TensorRef<BHWC>>*>& values) {
+  std::vector<TensorTieDef> LinkTensors(const std::vector<Value*>& values) {
     std::vector<TensorTieDef> links;
     links.reserve(values.size());
     for (const auto& value : values) {
-      TensorObjectDef def;
+      TensorObjectDef external_def;
       // So far the compiler always forces inputs and outputs to be in the fixed
       // format.
       const auto& shape = value->tensor.shape;
-      def.dimensions = Dimensions(shape.b, shape.h, shape.w, shape.c);
-      def.object_def.data_type = DataType::FLOAT32;
-      def.object_def.data_layout = DataLayout::DHWC4;
-      def.object_def.object_type = gpu::ObjectType::OPENGL_SSBO;
-      def.object_def.user_provided = true;
+      external_def.dimensions = Dimensions(shape.b, shape.h, shape.w, shape.c);
+      external_def.object_def.data_type = DataType::FLOAT32;
+      external_def.object_def.data_layout = DataLayout::DHWC4;
+      external_def.object_def.object_type = gpu::ObjectType::OPENGL_SSBO;
+
+      // Internal object is not expected to be provided by user because: if
+      // external and internal objects have same defs, the external object is
+      // propagated and just used as an internal one; otherwise, if they have
+      // different defs, internal object will be created, because it is not
+      // provided by user.
+      TensorObjectDef internal_def = external_def;
+      external_def.object_def.user_provided = true;
+      internal_def.object_def.user_provided = false;
       AccessType access =
           graph_.IsGraphInput(value->id) ? AccessType::READ : AccessType::WRITE;
-      links.push_back({value->id, access, def, def});
+      links.push_back({value->id, access, internal_def, external_def});
     }
     return links;
   }

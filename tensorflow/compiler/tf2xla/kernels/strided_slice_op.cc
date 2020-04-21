@@ -15,28 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/util/strided_slice_op.h"
 
-#include <algorithm>
-#include <vector>
-
-#include "absl/container/inlined_vector.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/shape.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/ops_util.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/core/platform/mem.h"
 
 namespace tensorflow {
 namespace {
@@ -209,7 +202,7 @@ class StridedSliceOp : public XlaOpKernel {
           ctx, output_elements == input_elements_sliced,
           errors::InvalidArgument(
               "The number of output elements ", output_elements,
-              "  has to equal to number of input elements that are sliced ",
+              " has to equal to number of input elements that are sliced ",
               input_elements_sliced, " when input indices are not constant."));
 
       for (int64 i = 0; i < ctx->InputShape("begin").dims(); ++i) {

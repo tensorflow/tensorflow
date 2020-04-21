@@ -22,8 +22,13 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/python/saved_model_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/toco/import_tensorflow.h"
 #include "tensorflow/lite/toco/logging/conversion_log_util.h"
 #include "tensorflow/lite/toco/logging/toco_conversion_log.pb.h"
@@ -145,6 +150,13 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
     }
   }
 
+  tensorflow::GraphDef graph_def;
+  if (!graph_def.ParseFromString(input_contents_txt)) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Failed to convert GraphDef to Python String.");
+    return nullptr;
+  }
+
   auto& dump_options = *GraphVizDumpOptions::singleton();
   if (toco_flags.has_dump_graphviz_dir()) {
     dump_options.dump_graphviz = toco_flags.dump_graphviz_dir();
@@ -213,6 +225,41 @@ PyObject* TocoGetPotentiallySupportedOps() {
     PyList_SetItem(list, i, op_dict);
   }
   return list;
+}
+
+PyObject* MlirQuantizeModel(PyObject* data, bool fully_quantize) {
+  using tflite::interpreter_wrapper::PythonErrorReporter;
+  char* buf = nullptr;
+  Py_ssize_t length;
+  std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
+
+  if (tflite::python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
+    PyErr_Format(PyExc_ValueError, "Failed to convert input PyObject");
+    return nullptr;
+  }
+  std::unique_ptr<tflite::FlatBufferModel> model =
+      tflite::FlatBufferModel::BuildFromBuffer(buf, length,
+                                               error_reporter.get());
+  if (!model) {
+    PyErr_Format(PyExc_ValueError, "Invalid model");
+    return nullptr;
+  }
+  auto tflite_model = absl::make_unique<tflite::ModelT>();
+  model->GetModel()->UnPackTo(tflite_model.get(), nullptr);
+
+  flatbuffers::FlatBufferBuilder builder;
+  auto status = mlir::lite::QuantizeModel(
+      *tflite_model, tflite::TensorType::TensorType_FLOAT32,
+      tflite::TensorType::TensorType_FLOAT32, {}, fully_quantize, &builder,
+      error_reporter.get());
+
+  if (status != kTfLiteOk) {
+    error_reporter->exception();
+    return nullptr;
+  }
+  return tflite::python_utils::ConvertToPyString(
+      reinterpret_cast<const char*>(builder.GetCurrentBufferPointer()),
+      builder.GetSize());
 }
 
 }  // namespace toco

@@ -71,20 +71,28 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-}  // namespace
-
-void SoftmaxQuantized(const TfLiteTensor* input, TfLiteTensor* output,
-                      const SoftmaxParams& op_params) {
-  if (output->type == kTfLiteInt16) {
-    tflite::reference_ops::Softmax(
-        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-        GetTensorShape(output), GetTensorData<int16_t>(output));
-  } else {
-    tflite::reference_ops::Softmax(
-        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-        GetTensorShape(output), GetTensorData<int8_t>(output));
+TfLiteStatus SoftmaxQuantized(TfLiteContext* context, const TfLiteTensor* input,
+                              TfLiteTensor* output,
+                              const SoftmaxParams& op_params) {
+  switch (output->type) {
+    case kTfLiteInt16:
+      tflite::reference_ops::Softmax(
+          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+          GetTensorShape(output), GetTensorData<int16_t>(output));
+      return kTfLiteOk;
+    case kTfLiteInt8:
+      tflite::reference_ops::Softmax(
+          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+          GetTensorShape(output), GetTensorData<int8_t>(output));
+      return kTfLiteOk;
+    default:
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(output->type), output->type);
+      return kTfLiteError;
   }
 }
+
+}  // namespace
 
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = static_cast<TfLiteSoftmaxParams*>(node->builtin_data);
@@ -113,14 +121,11 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
 
   switch (input->type) {
-    case kTfLiteInt8: {
-      SoftmaxQuantized(input, output, *op_params);
-      return kTfLiteOk;
-    }
+    case kTfLiteInt8:
+      return SoftmaxQuantized(context, input, output, *op_params);
     default:
-      TF_LITE_KERNEL_LOG(context,
-                         "Only int8_t input supported currently, got %d.",
-                         input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input->type), input->type);
       return kTfLiteError;
   }
 }

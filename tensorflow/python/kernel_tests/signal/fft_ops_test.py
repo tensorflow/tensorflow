@@ -662,6 +662,18 @@ class FFTShiftTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(y_fftshift_res, np.fft.fftshift(x_np, axes=axes))
     self.assertAllClose(y_ifftshift_res, np.fft.ifftshift(x_np, axes=axes))
 
+  def test_negative_axes(self):
+    with self.session():
+      freqs = [[0, 1, 2], [3, 4, -4], [-3, -2, -1]]
+      shifted = [[-1, -3, -2], [2, 0, 1], [-4, 3, 4]]
+      self.assertAllEqual(fft_ops.fftshift(freqs, axes=(0, -1)), shifted)
+      self.assertAllEqual(fft_ops.ifftshift(shifted, axes=(0, -1)), freqs)
+      self.assertAllEqual(
+          fft_ops.fftshift(freqs, axes=-1), fft_ops.fftshift(freqs, axes=(1,)))
+      self.assertAllEqual(
+          fft_ops.ifftshift(shifted, axes=-1),
+          fft_ops.ifftshift(shifted, axes=(1,)))
+
 
 if __name__ == "__main__":
   test.main()

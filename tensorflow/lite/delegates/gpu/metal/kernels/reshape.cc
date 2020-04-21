@@ -159,11 +159,11 @@ std::vector<ComputeTaskDescriptorPtr> Reshape(int id, ValueId input_id,
 
   desc->resize_function = [attr](const std::map<ValueId, BHWC>& buffers) {
     const uint3 grid = uint3(attr.new_shape.w, attr.new_shape.h,
-                             IntegralDivideRoundUp(attr.new_shape.c, 4));
+                             DivideRoundUp(attr.new_shape.c, 4));
     const uint3 groups_size = GetWorkGroupSizeForGrid(grid);
-    int groups_x = IntegralDivideRoundUp(grid.x, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(grid.y, groups_size.y);
-    int groups_z = IntegralDivideRoundUp(grid.z, groups_size.z);
+    int groups_x = DivideRoundUp(grid.x, groups_size.x);
+    int groups_y = DivideRoundUp(grid.y, groups_size.y);
+    int groups_z = DivideRoundUp(grid.z, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 
@@ -197,14 +197,14 @@ std::vector<ComputeTaskDescriptorPtr> Reshapex4(int id, ValueId input_id,
          const auto& dst_dim = buffers.find(output_id)->second;
          std::vector<int32_t> uniform_params{
              // int4 src_size
-             src_dim.w, src_dim.h, IntegralDivideRoundUp(src_dim.c, 4),
+             src_dim.w, src_dim.h, DivideRoundUp(src_dim.c, 4),
              src_dim.w * src_dim.h,
              // int4 dst_size
-             dst_dim.w, dst_dim.h, IntegralDivideRoundUp(dst_dim.c, 4),
+             dst_dim.w, dst_dim.h, DivideRoundUp(dst_dim.c, 4),
              dst_dim.w * dst_dim.h,
              // int2 plane_xz
-             src_dim.w * IntegralDivideRoundUp(src_dim.c, 4),
-             dst_dim.w * IntegralDivideRoundUp(dst_dim.c, 4),
+             src_dim.w * DivideRoundUp(src_dim.c, 4),
+             dst_dim.w * DivideRoundUp(dst_dim.c, 4),
              0,  // dummy, for alignment
              0,  // dummy, for alignment
              0,  // dummy, for alignment
@@ -218,11 +218,11 @@ std::vector<ComputeTaskDescriptorPtr> Reshapex4(int id, ValueId input_id,
 
   desc->resize_function = [attr](const std::map<ValueId, BHWC>& buffers) {
     const uint3 grid = uint3(attr.new_shape.w, attr.new_shape.h,
-                             IntegralDivideRoundUp(attr.new_shape.c, 4));
+                             DivideRoundUp(attr.new_shape.c, 4));
     const uint3 groups_size = GetWorkGroupSizeForGrid(grid);
-    int groups_x = IntegralDivideRoundUp(grid.x, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(grid.y, groups_size.y);
-    int groups_z = IntegralDivideRoundUp(grid.z, groups_size.z);
+    int groups_x = DivideRoundUp(grid.x, groups_size.x);
+    int groups_y = DivideRoundUp(grid.y, groups_size.y);
+    int groups_z = DivideRoundUp(grid.z, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 

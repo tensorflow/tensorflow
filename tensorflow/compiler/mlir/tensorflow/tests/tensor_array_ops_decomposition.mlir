@@ -322,7 +322,7 @@ func @main() -> () {
 }
 // CHECK-LABEL: func @callee
 // CHECK-SAME: (%[[OCARG0:.*]]: tensor<!tf.resource>) -> tensor<!tf.resource>
-func @callee(%arg0: tensor<!tf.resource>) -> tensor<!tf.resource> {
+func @callee(%arg0: tensor<!tf.resource>) -> tensor<!tf.resource> attributes {sym_visibility = "public"} {
   %const1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %elem = "tf._SomeOp"() : () -> tensor<3xf32>
   %flow = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
@@ -340,6 +340,75 @@ func @callee(%arg0: tensor<!tf.resource>) -> tensor<!tf.resource> {
 // CHECK: %[[UPDATE2:.*]] = "tf.XlaDynamicUpdateSlice"(%[[READ2]],
 // CHECK: "tf.AssignVariableOp"(%[[CARG2]], %[[UPDATE2]])
 // CHECK: return %[[CARG0]]
+
+// -----
+
+// Tests (Stateful)PartitionedCall op with private callee function.
+
+// CHECK-LABEL: func @main
+func @main() -> () {
+  // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+  %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+  %index = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: %[[VAR:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<5x3xf32>>>
+  %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = "tfshape$dim { size: 3 }", dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf.resource>, tensor<f32>)
+  // CHECK: %[[COND:.*]] = "tf._SomeOp"() : () -> tensor<i1>
+  %cond = "tf._SomeOp"() : () -> tensor<i1>
+  // CHECK: %[[GVAR1:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<5x3xf32>>>
+  %grad:2 = "tf.TensorArrayGradV3"(%ta#0, %ta#1) {source = "a"} : (tensor<!tf.resource>, tensor<f32>) -> (tensor<!tf.resource>, tensor<f32>)
+  // CHECK: %[[GVAR2:.*]] = "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<5x3xf32>>>
+  // CHECK: "tf.StatefulPartitionedCall"(%[[VAR]], %[[GVAR1]], %[[GVAR2]])
+  // CHECK-SAME: f = @callee
+  %call = "tf.StatefulPartitionedCall"(%ta#0) {f = @callee, config = "", config_proto = "", executor_type = ""}
+    : (tensor<!tf.resource>) -> tensor<!tf.resource>
+  // CHECK: "tf.PartitionedCall"(%[[VAR]], %[[GVAR1]], %[[GVAR2]])
+  // CHECK-SAME: f = @callee
+  %call2 = "tf.PartitionedCall"(%call) {f = @callee, config = "", config_proto = "", executor_type = ""}
+    : (tensor<!tf.resource>) -> tensor<!tf.resource>
+  // CHECK: %[[READ:.*]] = "tf.ReadVariableOp"(%[[VAR]]) : (tensor<!tf.resource<tensor<5x3xf32>>>) -> tensor<5x3xf32>
+  // CHECK: "tf.Slice"(%[[READ]],
+  %read = "tf.TensorArrayReadV3"(%call2, %index, %ta#1) : (tensor<!tf.resource>, tensor<i32>, tensor<f32>) -> tensor<3xf32>
+  return
+}
+// CHECK: func @callee(%[[CARG0:.*]]: tensor<!tf.resource<tensor<5x3xf32>>>, %[[CARG1:.*]]: tensor<!tf.resource<tensor<5x3xf32>>>, %[[CARG2:.*]]: tensor<!tf.resource<tensor<5x3xf32>>>)
+func @callee(%arg0: tensor<!tf.resource>) -> tensor<!tf.resource> attributes {sym_visibility = "private"} {
+  // CHECK: %[[READ1:.*]] = "tf.ReadVariableOp"(%[[CARG1]]) : (tensor<!tf.resource<tensor<5x3xf32>>>) -> tensor<5x3xf32>
+  // CHECK: %[[UPDATE1:.*]] = "tf.XlaDynamicUpdateSlice"(%[[READ1]],
+  // CHECK: "tf.AssignVariableOp"(%[[CARG1]], %[[UPDATE1]])
+  // CHECK: %[[READ2:.*]] = "tf.ReadVariableOp"(%[[CARG2]]) : (tensor<!tf.resource<tensor<5x3xf32>>>) -> tensor<5x3xf32>
+  // CHECK: %[[UPDATE2:.*]] = "tf.XlaDynamicUpdateSlice"(%[[READ2]],
+  // CHECK: "tf.AssignVariableOp"(%[[CARG2]], %[[UPDATE2]])
+  %const1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %elem = "tf._SomeOp"() : () -> tensor<3xf32>
+  %flow = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
+  %grad:2 = "tf.TensorArrayGradV3"(%arg0, %flow) {source = "a"} : (tensor<!tf.resource>, tensor<f32>) -> (tensor<!tf.resource>, tensor<f32>)
+  %gwrite = "tf.TensorArrayWriteV3"(%grad#0, %const1, %elem, %grad#1) : (tensor<!tf.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
+  %grad2:2 = "tf.TensorArrayGradV3"(%arg0, %flow) {source = "b"} : (tensor<!tf.resource>, tensor<f32>) -> (tensor<!tf.resource>, tensor<f32>)
+  %gwrite2 = "tf.TensorArrayWriteV3"(%grad2#0, %const1, %elem, %grad2#1) : (tensor<!tf.resource>, tensor<i32>, tensor<3xf32>, tensor<f32>) -> tensor<f32>
+  // CHECK: return %[[CARG0]]
+  return %arg0 : tensor<!tf.resource>
+}
+
+// -----
+
+// Tests PartitionedCall op with no signature change on callee.
+
+// CHECK-LABEL: func @main
+func @main() -> () {
+  %call = "tf.PartitionedCall"() {f = @callee, config = "", config_proto = "", executor_type = ""} : () -> tensor<i32>
+  return
+}
+// CHECK: func @callee() -> tensor<i32>
+func @callee() -> tensor<i32> attributes {sym_visibility = "public"} {
+  %size = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: "tf.MlirLocalVarOp"() : () -> tensor<!tf.resource<tensor<5xf32>>>
+  // CHECK: "tf.AssignVariableOp"
+  %ta:2 = "tf.TensorArrayV3"(%size) {dtype = f32, element_shape = "tfshape$", dynamic_size = false, clear_after_read = true, identical_element_shapes = true, tensor_array_name = "ta"} : (tensor<i32>) -> (tensor<!tf.resource>, tensor<f32>)
+  // CHECK: %[[SIZE:.*]] = "tf.Const"() {value = dense<5> : tensor<i32>} : () -> tensor<i32>
+  %size_out = "tf.TensorArraySizeV3"(%ta#0, %ta#1) : (tensor<!tf.resource>, tensor<f32>) -> tensor<i32>
+  // CHECK: return %[[SIZE]] : tensor<i32>
+  return %size_out : tensor<i32>
+}
 
 // -----
 

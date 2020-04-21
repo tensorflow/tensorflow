@@ -27,7 +27,7 @@ void SingleOpModelWithCoreMlDelegate::ApplyDelegateAndInvoke() {
       delegate_ptr, [](TfLiteDelegate* delegate) { TfLiteCoreMlDelegateDelete(delegate); });
   // Add delegate.
   // TODO(karimnosseir): This doesn't actually make the test fail, switch to something else.
-  ASSERT_TRUE(interpreter_->ModifyGraphWithDelegate(delegate_.get()) != kTfLiteError);
+  ASSERT_TRUE(interpreter_->ModifyGraphWithDelegate(delegate_.get()) == kTfLiteOk);
 
   Invoke();
 }
@@ -51,9 +51,30 @@ void SingleOpModelWithCoreMlDelegate::ApplyDelegateAndInvoke() {
       std::string(tflite::delegates::coreml::SingleOpModelWithCoreMlDelegate::kDelegateName));
 }
 
+- (void)checkInterpreterNotDelegated:(tflite::Interpreter*)interpreter {
+  // Make sure we have valid interpreter.
+  XCTAssertTrue(interpreter != nullptr);
+  for (int node_idx : interpreter->execution_plan()) {
+    // Make sure no node is delegated.
+    XCTAssertEqual(interpreter->execution_plan().size(), 1);
+    const auto* node_and_reg = interpreter->node_and_registration(node_idx);
+    XCTAssertTrue(node_and_reg != nullptr);
+    if (node_and_reg->second.custom_name != nullptr) {
+      XCTAssertTrue(
+          node_and_reg->second.custom_name !=
+          std::string(tflite::delegates::coreml::SingleOpModelWithCoreMlDelegate::kDelegateName));
+    }
+  }
+}
+
 - (void)invokeAndValidate {
   _model->ApplyDelegateAndInvoke();
   [self validateInterpreter:_model->interpreter()];
+}
+
+- (void)invokeAndCheckNotDelegated {
+  _model->ApplyDelegateAndInvoke();
+  [self checkInterpreterNotDelegated:_model->interpreter()];
 }
 
 @end

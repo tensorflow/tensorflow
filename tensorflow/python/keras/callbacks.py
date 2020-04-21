@@ -27,7 +27,6 @@ import io
 import json
 import os
 import re
-import tempfile
 import time
 
 import numpy as np
@@ -44,6 +43,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.data_utils import Sequence
 from tensorflow.python.keras.utils.generic_utils import Progbar
+from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
@@ -190,6 +190,7 @@ def make_logs(model, logs, outputs, mode, prefix=''):
   return logs
 
 
+@keras_export('keras.callbacks.CallbackList')
 class CallbackList(object):
   """Container abstracting a list of callbacks."""
 
@@ -199,15 +200,19 @@ class CallbackList(object):
                add_progbar=False,
                model=None,
                **params):
-    """Creates a container for `Callbacks`.
+    """Container for `Callback` instances.
+
+    This object wraps a list of `Callback` instances, making it possible
+    to call them all at once via a single endpoint
+    (e.g. `callback_list.on_epoch_end(...)`).
 
     Arguments:
       callbacks: List of `Callback` instances.
       add_history: Whether a `History` callback should be added, if one does not
-        already exist in `callback`s.
+        already exist in the `callbacks` list.
       add_progbar: Whether a `ProgbarLogger` callback should be added, if one
-        does not already exist in `callback`s.
-      model: The `Model` these `Callback`s are used with.`
+        does not already exist in the `callbacks` list.
+      model: The `Model` these callbacks are used with.
       **params: If provided, parameters will be passed to each `Callback` via
         `Callback.set_params`.
     """
@@ -714,8 +719,9 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        logs: Dict. Currently no data is passed to this argument for this method
-          but that may change in the future.
+        logs: Dict. Currently the output of the last call to `on_epoch_end()`
+          is passed to this argument for this method but that may change in
+          the future.
     """
 
   @doc_controls.for_subclass_implementers
@@ -736,7 +742,8 @@ class Callback(object):
     Subclasses should override for any actions to run.
 
     Arguments:
-        logs: Dict. Currently no data is passed to this argument for this method
+        logs: Dict. Currently the output of the last call to
+          `on_test_batch_end()` is passed to this argument for this method
           but that may change in the future.
     """
 
@@ -863,6 +870,7 @@ class ProgbarLogger(Callback):
 
   def __init__(self, count_mode='samples', stateful_metrics=None):
     super(ProgbarLogger, self).__init__()
+    self._supports_tf_logs = True
     if count_mode == 'samples':
       self.use_steps = False
     elif count_mode == 'steps':
@@ -931,8 +939,7 @@ class ProgbarLogger(Callback):
     self.seen = 0
     self.progbar = None
 
-  def _batch_update_progbar(self, batch, logs=None):
-    """Updates the progbar."""
+  def _maybe_init_progbar(self):
     if self.stateful_metrics is None:
       if self.model:
         self.stateful_metrics = (set(m.name for m in self.model.metrics))
@@ -946,22 +953,33 @@ class ProgbarLogger(Callback):
           stateful_metrics=self.stateful_metrics,
           unit_name='step' if self.use_steps else 'sample')
 
-    logs = copy.copy(logs) if logs else {}
-    batch_size = logs.pop('size', 0)
-    num_steps = logs.pop('num_steps', 1)  # DistStrat can run >1 steps.
-    logs.pop('batch', None)
+  def _batch_update_progbar(self, batch, logs=None):
+    """Updates the progbar."""
+    logs = logs or {}
+    self._maybe_init_progbar()
     if self.use_steps:
       self.seen = batch + 1  # One-indexed.
     else:
+      # v1 path only.
+      logs = copy.copy(logs)
+      batch_size = logs.pop('size', 0)
+      num_steps = logs.pop('num_steps', 1)
+      logs.pop('batch', None)
       add_seen = num_steps * batch_size
       self.seen += add_seen
-    self.progbar.update(self.seen, list(logs.items()), finalize=False)
+
+    if self.verbose == 1:
+      # Only block async when verbose = 1.
+      logs = tf_utils.to_numpy_or_python_type(logs)
+      self.progbar.update(self.seen, list(logs.items()), finalize=False)
 
   def _finalize_progbar(self, logs):
+    logs = logs or {}
+    self._maybe_init_progbar()
     if self.target is None:
       self.target = self.seen
       self.progbar.target = self.seen
-    logs = logs or {}
+    logs = tf_utils.to_numpy_or_python_type(logs)
     self.progbar.update(self.seen, list(logs.items()), finalize=True)
 
 
@@ -1033,12 +1051,12 @@ class ModelCheckpoint(Callback):
   ```
 
   Arguments:
-      filepath: string, path to save the model file. `filepath` can contain
-        named formatting options, which will be filled the value of `epoch` and
-        keys in `logs` (passed in `on_epoch_end`). For example: if `filepath` is
-        `weights.{epoch:02d}-{val_loss:.2f}.hdf5`, then the model checkpoints
-        will be saved with the epoch number and the validation loss in the
-        filename.
+      filepath: string or `PathLike`, path to save the model file. `filepath`
+        can contain named formatting options, which will be filled the value of
+        `epoch` and keys in `logs` (passed in `on_epoch_end`). For example: if
+        `filepath` is `weights.{epoch:02d}-{val_loss:.2f}.hdf5`, then the model
+        checkpoints will be saved with the epoch number and the validation loss
+        in the filename.
       monitor: quantity to monitor.
       verbose: verbosity mode, 0 or 1.
       save_best_only: if `save_best_only=True`, the latest best model according
@@ -1079,7 +1097,7 @@ class ModelCheckpoint(Callback):
     self._supports_tf_logs = True
     self.monitor = monitor
     self.verbose = verbose
-    self.filepath = filepath
+    self.filepath = path_to_string(filepath)
     self.save_best_only = save_best_only
     self.save_weights_only = save_weights_only
     self.save_freq = save_freq
@@ -1284,36 +1302,24 @@ class ModelCheckpoint(Callback):
   def _get_file_path(self, epoch, logs):
     """Returns the file path for checkpoint."""
     # pylint: disable=protected-access
-    if not self.model._in_multi_worker_mode(
-    ) or multi_worker_util.should_save_checkpoint():
-      try:
-        # `filepath` may contain placeholders such as `{epoch:02d}` and
-        # `{mape:.2f}`. A mismatch between logged metrics and the path's
-        # placeholders can cause formatting to fail.
-        return self.filepath.format(epoch=epoch + 1, **logs)
-      except KeyError as e:
-        raise KeyError('Failed to format this callback filepath: "{}". '
-                       'Reason: {}'.format(self.filepath, e))
-    else:
-      # If this is multi-worker training, and this worker should not
-      # save checkpoint, we use a temp filepath to store a dummy checkpoint, so
-      # it writes to a file that will be removed at the end of `_save_model()`
-      # call. This is because the SyncOnReadVariable needs to be synced across
-      # all the workers in order to be read, and all workers need to initiate
-      # that.
-      self._temp_file_dir = tempfile.mkdtemp()
-      extension = os.path.splitext(self.filepath)[1]
-      return os.path.join(self._temp_file_dir, 'temp' + extension)
+    try:
+      # `filepath` may contain placeholders such as `{epoch:02d}` and
+      # `{mape:.2f}`. A mismatch between logged metrics and the path's
+      # placeholders can cause formatting to fail.
+      file_path = self.filepath.format(epoch=epoch + 1, **logs)
+    except KeyError as e:
+      raise KeyError('Failed to format this callback filepath: "{}". '
+                     'Reason: {}'.format(self.filepath, e))
+    self._write_filepath = distributed_file_utils.write_filepath(
+        file_path, self.model.distribute_strategy)
+    return self._write_filepath
 
   def _maybe_remove_file(self):
     # Remove the checkpoint directory in multi-worker training where this worker
     # should not checkpoint. It is a dummy directory previously saved for sync
     # distributed training.
-
-    if (self.model._in_multi_worker_mode() and  # pylint: disable=protected-access
-        not multi_worker_util.should_save_checkpoint()):
-      file_io.delete_recursively(self._temp_file_dir)
-      del self._temp_file_dir
+    distributed_file_utils.remove_temp_dir_with_filepath(
+        self._write_filepath, self.model.distribute_strategy)
 
   def _get_most_recently_modified_file_matching_pattern(self, pattern):
     """Returns the most recently modified filepath matching pattern.
@@ -1769,7 +1775,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self._supports_tf_logs = True
     self._validate_kwargs(kwargs)
 
-    self.log_dir = log_dir
+    self.log_dir = path_to_string(log_dir)
     self.histogram_freq = histogram_freq
     self.write_graph = write_graph
     self.write_images = write_images
@@ -1871,41 +1877,33 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   def _configure_embeddings(self):
     """Configure the Projector for embeddings."""
     # TODO(omalleyt): Add integration tests.
+    from google.protobuf import text_format
     from tensorflow.python.keras.layers import embeddings
-    try:
-      from tensorboard.plugins import projector
-    except ImportError:
-      raise ImportError('Failed to import TensorBoard. Please make sure that '
-                        'TensorBoard integration is complete."')
-    config = projector.ProjectorConfig()
+    from tensorflow.python.keras.protobuf import projector_config_pb2
+
+    config = projector_config_pb2.ProjectorConfig()
     for layer in self.model.layers:
       if isinstance(layer, embeddings.Embedding):
         embedding = config.embeddings.add()
-        embedding.tensor_name = layer.embeddings.name
+        embedding.tensor_name = layer.name + '/.ATTRIBUTES/VARIABLE_VALUE'
 
         if self.embeddings_metadata is not None:
           if isinstance(self.embeddings_metadata, str):
             embedding.metadata_path = self.embeddings_metadata
           else:
-            if layer.name in embedding.metadata_path:
+            if layer.name in self.embeddings_metadata.keys():
               embedding.metadata_path = self.embeddings_metadata.pop(layer.name)
 
-    if self.embeddings_metadata:
+    if self.embeddings_metadata and not isinstance(self.embeddings_metadata,
+                                                   str):
       raise ValueError('Unrecognized `Embedding` layer names passed to '
                        '`keras.callbacks.TensorBoard` `embeddings_metadata` '
                        'argument: ' + str(self.embeddings_metadata.keys()))
 
-    class DummyWriter(object):
-      """Dummy writer to conform to `Projector` API."""
-
-      def __init__(self, logdir):
-        self.logdir = logdir
-
-      def get_logdir(self):
-        return self.logdir
-
-    writer = DummyWriter(self._log_write_dir)
-    projector.visualize_embeddings(writer, config)
+    config_pbtxt = text_format.MessageToString(config)
+    path = os.path.join(self._log_write_dir, 'projector_config.pbtxt')
+    with open(path, 'w') as f:
+      f.write(config_pbtxt)
 
   def _push_writer(self, writer, step):
     """Sets the default writer for custom batch-level summaries."""
@@ -2121,9 +2119,6 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
                                    'keras_embedding.ckpt-{}'.format(epoch))
     self.model.save_weights(embeddings_ckpt)
 
-  def _implements_train_batch_hooks(self):
-    return not (self._start_batch == 0 and self._stop_batch == 0)
-
 
 @keras_export('keras.callbacks.ReduceLROnPlateau')
 class ReduceLROnPlateau(Callback):
@@ -2272,7 +2267,7 @@ class CSVLogger(Callback):
 
   def __init__(self, filename, separator=',', append=False):
     self.sep = separator
-    self.filename = filename
+    self.filename = path_to_string(filename)
     self.append = append
     self.writer = None
     self.keys = None

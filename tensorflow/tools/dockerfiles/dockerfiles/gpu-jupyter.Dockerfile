@@ -78,7 +78,7 @@ RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/lib
 ENV LANG C.UTF-8
 
 RUN apt-get update && apt-get install -y \
-    python3
+    python3 \
     python3-pip
 
 RUN python3 -m pip --no-cache-dir install --upgrade \
@@ -97,7 +97,7 @@ RUN ln -s $(which python3) /usr/local/bin/python
 # Installs the latest version by default.
 ARG TF_PACKAGE=tensorflow
 ARG TF_PACKAGE_VERSION=
-RUN ${PIP} install --no-cache-dir ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
+RUN python3 -m pip install --no-cache-dir ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc

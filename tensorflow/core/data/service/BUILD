@@ -279,6 +279,7 @@ cc_library(
         ":credentials_factory",
         ":grpc_master_impl",
         ":grpc_worker_impl",
+        ":local_credentials_factory",
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow",
         tf_grpc_cc_dependency(),

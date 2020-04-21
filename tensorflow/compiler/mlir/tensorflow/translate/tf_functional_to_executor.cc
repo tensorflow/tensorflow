@@ -40,7 +40,7 @@ namespace {
 //      return %graph_results#...
 //    }
 struct FunctionalToExecutorDialectConversion
-    : public FunctionPass<FunctionalToExecutorDialectConversion> {
+    : public PassWrapper<FunctionalToExecutorDialectConversion, FunctionPass> {
   void runOnFunction() override;
 };
 }  // end anonymous namespace
@@ -95,7 +95,7 @@ void FunctionalToExecutorDialectConversion::runOnFunction() {
   }
 }
 
-std::unique_ptr<OpPassBase<FuncOp>>
+std::unique_ptr<OperationPass<FuncOp>>
 CreateFunctionalToExecutorDialectConversionPass() {
   return std::make_unique<FunctionalToExecutorDialectConversion>();
 }

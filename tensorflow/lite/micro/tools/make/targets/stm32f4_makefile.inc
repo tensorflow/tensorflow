@@ -31,6 +31,7 @@ ifeq ($(TARGET), stm32f4)
     -Wno-missing-field-initializers \
     -Wno-write-strings \
     -Wno-sign-compare \
+    -Wunused-function \
     -fno-delete-null-pointer-checks \
     -fomit-frame-pointer \
     -fpermissive \

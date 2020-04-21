@@ -20,9 +20,11 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/core/profiler/utils/xplane_visitor.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -30,17 +32,18 @@ namespace {
 
 static const int64 kFunctionalOpEventTypes[] = {
     HostEventType::kCallOp,
-    HostEventType::kParallelForOp,
-    HostEventType::kForeverOp,
     HostEventType::kNumericalGradientOpEvalRight,
     HostEventType::kNumericalGradientOpEvalLeft,
     HostEventType::kSymbolicGradientOp,
     HostEventType::kRemoteCallOp,
     HostEventType::kIfOp,
     HostEventType::kCaseOp,
-    HostEventType::kWhileOpEvalCond,
-    HostEventType::kWhileOpStartBody,
-    HostEventType::kForOp,
+    // TODO(b/154510598): Fix handling of the loop ops.
+    // HostEventType::kWhileOpEvalCond,
+    // HostEventType::kWhileOpStartBody,
+    // HostEventType::kForOp,
+    // HostEventType::kParallelForOp,
+    // HostEventType::kForeverOp,
     HostEventType::kPartitionedCallOp,
 };
 
@@ -49,6 +52,7 @@ void CreateStatMetadata(XPlane* plane) {
   XPlaneBuilder builder(plane);
   builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId));
   builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kStepName));
+  builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kIsEager));
 }
 
 // Returns event type if it is a KernelLaunch or KernelExecute event.
@@ -64,6 +68,12 @@ absl::optional<int64> GetKernelEventType(const XPlaneVisitor& visitor,
   return absl::nullopt;
 }
 
+bool IsTfOpEvent(const XPlaneVisitor& visitor, const XEvent& event) {
+  TfOp tf_op =
+      ParseTfOpFullname(visitor.GetEventMetadata(event.metadata_id())->name());
+  return tf_op.category == Category::kTensorFlow;
+}
+
 int64 GetEventType(const XPlaneVisitor& visitor, const XEvent& event) {
   if (absl::optional<int64> event_type = visitor.GetEventType(event)) {
     return *event_type;
@@ -74,6 +84,8 @@ int64 GetEventType(const XPlaneVisitor& visitor, const XEvent& event) {
     // TODO(148346217): Make XPlaneVisitor support KernelLaunch and
     // KernelExecute event types.
     return *kernel_event_type;
+  } else if (IsTfOpEvent(visitor, event)) {
+    return HostEventType::kTfOpRun;
   } else {
     return HostEventType::kUnknownHostEventType;
   }
@@ -144,7 +156,8 @@ const XStat* EventNode::GetContextStat(int64 stat_type) const {
 std::string EventNode::GetGroupName() const {
   std::vector<std::string> name_parts;
   if (const XStat* graph_type_stat = GetContextStat(StatType::kGraphType)) {
-    name_parts.push_back(graph_type_stat->str_value());
+    XStatVisitor stat(visitor_, graph_type_stat);
+    name_parts.push_back(stat.ToString());
   }
   int64 step_num = group_id_.value_or(0);
   if (const XStat* step_num_stat = GetContextStat(StatType::kStepNum)) {
@@ -175,8 +188,32 @@ void EventNode::AddStepName(absl::string_view step_name) {
                      step_name, event_);
 }
 
+void EventNode::SetIsEager(bool is_eager) {
+  AddOrUpdateIntStat(*visitor_->GetStatMetadataId(StatType::kIsEager),
+                     is_eager ? 1 : 0, event_);
+}
+
+bool EventNode::IsEager() {
+  // It is eagerly executed if its trace context includes the EagerKernelExecute
+  // event (which may execute an op eagerly or through the TF executor) but not
+  // the TF executor event.
+  return FindParent(HostEventType::kExecutorStateProcess) == nullptr &&
+         FindParent(HostEventType::kEagerKernelExecute) != nullptr;
+}
+
 bool EventNode::IsNestedIn(EventNode* parent) {
   return parent && IsNested(GetEvent(), parent->GetEvent());
+}
+
+EventNode* EventNode::FindParent(int64 event_type) {
+  if (parent_) {
+    if (GetEventType(parent_->GetPlaneVisitor(), parent_->GetEvent()) ==
+        event_type) {
+      return parent_;
+    }
+    return parent_->FindParent(event_type);
+  }
+  return nullptr;
 }
 
 void EventForest::ConnectIntraThread(const XPlaneVisitor& visitor,
@@ -271,6 +308,24 @@ void EventForest::CreateEventGroup(
   }
 }
 
+void EventForest::MarkEagerlyExecutedGpuKernels() {
+  auto kernel_execute_event_node_list =
+      gtl::FindOrNull(event_node_map_, HostEventType::kKernelExecute);
+  if (!kernel_execute_event_node_list) return;
+  for (auto& kernel_execute_event_node : *kernel_execute_event_node_list) {
+    kernel_execute_event_node->SetIsEager(kernel_execute_event_node->IsEager());
+  }
+}
+
+void EventForest::MarkEagerlyExecutedCpuTfOps() {
+  auto tf_op_run_event_node_list =
+      gtl::FindOrNull(event_node_map_, HostEventType::kTfOpRun);
+  if (!tf_op_run_event_node_list) return;
+  for (auto& tf_op_run_event_node : *tf_op_run_event_node_list) {
+    tf_op_run_event_node->SetIsEager(tf_op_run_event_node->IsEager());
+  }
+}
+
 void EventForest::CreateVirtualEventsForHostTrainingLoop() {
   VirtualEventNodeMap virtual_event_node_map;
   auto executor_event_node_list =
@@ -349,6 +404,8 @@ EventForest::EventForest(
     CreateVirtualEventsForAsyncExecutor();
   }
   CreateEventGroup(root_event_types);
+  MarkEagerlyExecutedGpuKernels();
+  MarkEagerlyExecutedCpuTfOps();
 }
 
 std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {

@@ -52,6 +52,7 @@ enum HostEventType {
   kSessionRun,
   kFunctionRun,
   kRunGraph,
+  kTfOpRun,
   kEagerKernelExecute,
   kExecutorStateProcess,
   kExecutorDoneCallback,
@@ -119,6 +120,8 @@ enum StatType {
   kRequestedBytes,
   kAllocationBytes,
   kAddress,
+  kRegionType,
+  kDataType,
   kTensorShapes,
   // Device trace arguments.
   kDeviceId,
@@ -137,6 +140,7 @@ enum StatType {
   kHloOp,
   kHloModule,
   kEquation,
+  kIsEager,
   // Performance counter related.
   kRawValue,
   kScaledValue,
