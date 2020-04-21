@@ -35,6 +35,11 @@ using gpusparseMatDescr_t = cusparseMatDescr_t;
 using gpusparseAction_t = cusparseAction_t;
 using gpusparseHandle_t = cusparseHandle_t;
 using gpuStream_t = cudaStream_t;
+#if CUDA_VERSION >= 10020
+using gpusparseDnMatDescr_t = cusparseDnMatDescr_t;
+using gpusparseSpMatDescr_t = cusparseSpMatDescr_t;
+using gpusparseSpMMAlg_t = cusparseSpMMAlg_t;
+#endif
 
 #elif TENSORFLOW_USE_ROCM
 
@@ -248,6 +253,8 @@ class GpuSparse {
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-coo2csr.
   Status Coo2csr(const int* cooRowInd, int nnz, int m, int* csrRowPtr) const;
 
+
+#if CUDA_VERSION < 10020
   // Sparse-dense matrix multiplication C = alpha * op(A) * op(B)  + beta * C,
   // where A is a sparse matrix in CSR format, B and C are dense tall
   // matrices.  This routine allows transposition of matrix B, which
@@ -267,6 +274,31 @@ class GpuSparse {
                const int* csrSortedRowPtrA, const int* csrSortedColIndA,
                const Scalar* B, int ldb, const Scalar* beta_host, Scalar* C,
                int ldc) const;
+#else
+  // Workspace size query for sparse-dense matrix multiplication. Helper function
+  // for SpMM which computes y = alpha * op(A) * op(B) + beta * C, where A is
+  // a sparse matrix in CSR format, B and C are dense matricies in column-major
+  // format. Returns needed workspace size in bytes.
+  template <typename Scalar>
+  Status SpMMBufferSize(gpusparseOperation_t transA, gpusparseOperation_t transB,
+                        const Scalar* alpha, const gpusparseSpMatDescr_t matA,
+                        const gpusparseDnMatDescr_t matB, const Scalar* beta,
+                        gpusparseDnMatDescr_t matC, gpusparseSpMMAlg_t alg,
+                        size_t* bufferSize) const;
+
+  // Sparse-dense matrix multiplication y = alpha * op(A) * op(B) + beta * C,
+  // where A is a sparse matrix in CSR format, B and C are dense matricies in
+  // column-major format. Buffer is assumed to be at least as large as the
+  // workspace size returned by SpMMBufferSize().
+  //
+  // **NOTE** This is an in-place operation for data in C.
+  template <typename Scalar>
+  Status SpMM(gpusparseOperation_t transA, gpusparseOperation_t transB,
+              const Scalar* alpha, const gpusparseSpMatDescr_t matA,
+              const gpusparseDnMatDescr_t matB, const Scalar* beta,
+              gpusparseDnMatDescr_t matC, gpusparseSpMMAlg_t alg,
+              int8* buffer) const;
+#endif
 
   // Sparse-dense vector multiplication y = alpha * op(A) * x  + beta * y,
   // where A is a sparse matrix in CSR format, x and y are dense vectors. See:
