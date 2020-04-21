@@ -43,17 +43,20 @@ cc_library(
     ],
 )
 
-############################## Integration tests ###############################
+################################ Tester classes ################################
 
 cc_library(
-    name = "test_main",
+    name = "binary_elementwise_tester",
     testonly = 1,
-    linkopts = select({
-        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
-        "//conditions:default": [],
-    }),
+    srcs = ["binary_elementwise_tester.cc"],
+    hdrs = ["binary_elementwise_tester.h"],
     deps = [
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 
@@ -87,6 +90,20 @@ cc_library(
     ],
 )
 
+############################## Integration tests ###############################
+
+cc_library(
+    name = "test_main",
+    testonly = 1,
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_test(
     name = "average_pool_2d_test",
     srcs = ["average_pool_2d_test.cc"],
@@ -111,6 +128,36 @@ cc_test(
     }),
     deps = [
         ":pool_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "add_test",
+    srcs = ["add_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":binary_elementwise_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "mul_test",
+    srcs = ["mul_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":binary_elementwise_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
