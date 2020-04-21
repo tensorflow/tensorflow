@@ -275,7 +275,6 @@ bool GenerateBroadcastForBinaryOp(SrcOp op, PatternRewriter *rewriter,
   return true;
 } 
 
-
 template <typename SrcOp>
 struct BinaryOpWithBroadcastConvert : public OpRewritePattern<SrcOp> {
   explicit BinaryOpWithBroadcastConvert(MLIRContext *context)
@@ -288,6 +287,7 @@ struct BinaryOpWithBroadcastConvert : public OpRewritePattern<SrcOp> {
 
     if (!GenerateBroadcastForBinaryOp(op, &rewriter, &new_lhs, &new_rhs))
       return failure();
+
     // Replace the original op with a new one that uses the new args.
     // New args are broadcasts, so no dims are needed on the replacement op.
     rewriter.replaceOpWithNewOp<SrcOp>(op, op.getType(), new_lhs, new_rhs,
