@@ -429,7 +429,7 @@ Status SegmentGraph(const Graph* tf_graph,
   // Getting the nodes blacklisted for conversion
   string tftrt_node_blacklist_str;
   TF_CHECK_OK(ReadStringFromEnvVar(
-    "TF_TRT_BLACKLIST_OPS", "", &tftrt_node_blacklist_str
+    "TF_TRT_OP_BLACKLIST", "", &tftrt_node_blacklist_str
   ));
 
   auto tftrt_node_blacklist = gtl::FlatSet<string>{};
@@ -465,7 +465,7 @@ Status SegmentGraph(const Graph* tf_graph,
         LOG(WARNING) << "Blacklisted as TF-TRT candidate, "
                 << "(Op type: " << node->tf_node()->type_string() << "), "
                 << "(Op name: " << node->name() << "), "
-                << "(Reason: Blacklisted with the env var TF_TRT_BLACKLIST_OPS)";
+                << "(Reason: Blacklisted with the env var TF_TRT_OP_BLACKLIST)";
         unsupported_ops.emplace(node->tf_node()->type_string());
         num_unsupported_ops++;
         node = nullptr;
