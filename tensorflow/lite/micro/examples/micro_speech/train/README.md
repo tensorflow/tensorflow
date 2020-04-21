@@ -34,14 +34,13 @@ go
 
 ## Overview
 
-1. Training Jupyter Notebook: [`train_micro_speech_model.ipynb`]
-(https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/micro_speech/train/train_micro_speech_model.ipynb)
-. The training scripts used in this notebook is defined the
+1. Training Jupyter Notebook: [`train_micro_speech_model.ipynb`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/micro/examples/micro_speech/train/train_micro_speech_model.ipynb).
+The training scripts used in this notebook is defined the
 [Simple Audio Recognition](https://www.tensorflow.org/tutorials/sequences/audio_recognition)
 tutorial.
 2. Dataset Type: **Speech**
-3. Dataset: Speech Commands, Version 2. ([Download Link](https://storage.cloud.google.com/download.tensorflow.org/data/speech_commands_v0.02.tar.gz)
-, [Paper](https://arxiv.org/abs/1804.03209))
+3. Dataset: Speech Commands, Version 2. ([Download Link](https://storage.cloud.google.com/download.tensorflow.org/data/speech_commands_v0.02.tar.gz), 
+[Paper](https://arxiv.org/abs/1804.03209))
 4. Deep Learning Framework: **TensorFlow 1.5**
 5. Language: **Python 3.7**
 6. Model Size: **<20 kB**
@@ -60,10 +59,8 @@ includes the following 3 model files:
 | Name | Format | Target Framework | Target Device |
 | :------------- |:-------------|:-------------|-----|
 | `model.pb` | Frozen GraphDef | TensorFlow | Large-Scale/Cloud/Servers   |
-| `model.tflite` *(<20 kB)*  | Fully Quantized* TFLite Model |
-TensorFlow Lite | Mobile Devices|
-| `model.cc`  | C Source File | TensorFlow Lite for Microcontrollers |
-Microcontrollers |
+| `model.tflite` *(<20 kB)* | Fully Quantized* TFLite Model | TensorFlow Lite | Mobile Devices|
+| `model.cc` | C Source File | TensorFlow Lite for Microcontrollers | Microcontrollers |
 
 **Fully quantized implies that the model is **strictly int8** quantized
 including the input(s)and output(s).*
@@ -154,8 +151,8 @@ simpler model for accurate results.
 
 ## Dataset
 
-The Speech Commands Dataset. ([Download Link](https://storage.cloud.google.com/download.tensorflow.org/data/speech_commands_v0.02.tar.gz)
-,[Paper](https://arxiv.org/abs/1804.03209)) consists of over 105,000 WAVE audio
+The Speech Commands Dataset. ([Download Link](https://storage.cloud.google.com/download.tensorflow.org/data/speech_commands_v0.02.tar.gz), 
+[Paper](https://arxiv.org/abs/1804.03209)) consists of over 105,000 WAVE audio
 files of people saying thirty different words. This data was collected by
 Google and released under a CC BY license. You can help improve it by
 contributing five minutes of your own voice. The archive is over 2GB, so this
