@@ -672,6 +672,12 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
             // interval (5-6) can be allocated separately and this buffer
             // doesn't waste alternate memory space within the while loop body.
             HloComputation* while_body = use.instruction->while_body();
+            // We require while body ROOTs to be the last in the schedule.
+            CHECK_EQ(
+                instruction_schedule.at(while_body->root_instruction()) + 1,
+                instruction_schedule.at(use.instruction))
+                << "While body ROOTs need to be the last in the schedule!  "
+                   "Please run RootInstructionSinker.";
             // Replace the use time with the parameter time so that we can
             // decide on alternate memory allocations within the while loop body
             // when we look at uses within the while loop body.

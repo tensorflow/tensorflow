@@ -4118,6 +4118,28 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "root_instruction_sinker",
+    srcs = ["root_instruction_sinker.cc"],
+    hdrs = ["root_instruction_sinker.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        ":tuple_util",
+    ],
+)
+
+tf_cc_test(
+    name = "root_instruction_sinker_test",
+    srcs = ["root_instruction_sinker_test.cc"],
+    deps = [
+        ":hlo_matchers",
+        ":root_instruction_sinker",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
     name = "while_util",
     srcs = ["while_util.cc"],
     hdrs = ["while_util.h"],
