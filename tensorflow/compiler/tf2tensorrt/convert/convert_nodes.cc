@@ -2027,6 +2027,24 @@ Status Conv2DPaddingHelper(OpConverterParams* params, const TFAttrs& attrs,
   return Status::OK();
 }
 
+namespace {
+// Extracts the spatial dimensions from `output_sizes` and returns them as a
+// vector of size 2.
+std::vector<int64_t> GetSpatialDimsFromOutputSizes(
+    const TRT_TensorOrWeights& output_sizes, const int h_index,
+    const int w_index) {
+  // We use h_index and w_index instead of 1 and 2 because we haven't
+  // transposed output_sizes along with the input.
+  const TRT_ShapedWeights& weights = output_sizes.weights();
+  const int output_sizes_length = weights.count();
+  auto output_sizes_values = static_cast<int*>(weights.GetValues());
+  // The length of output_sizes can be 2 or 4. When the length is 4,
+  // output_sizes represents <height,width>.
+  return {output_sizes_values[output_sizes_length == 4 ? h_index : 0],
+          output_sizes_values[output_sizes_length == 4 ? w_index : 1]};
+}
+}  // namespace
+
 Status ConvertConv2DHelper(OpConverterParams* params, int group,
                            bool is_conv2d_backprop_input) {
   const auto& inputs = params->inputs;
@@ -2125,11 +2143,8 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
     // For backprop, calculate padding based on "input_sizes" input, which
     // actually corresponds to output size. ("input_sizes" makes sense in the
     // context of Conv2DBackpropInput).
-    // We use h_index and w_index instead of 1 and 2 because we havent
-    // transposed backprop_output_size along with the input.
-    auto output_size_weights =
-        static_cast<int*>(backprop_output_size.weights().GetValues());
-    input_dims = {output_size_weights[h_index], output_size_weights[w_index]};
+    input_dims =
+        GetSpatialDimsFromOutputSizes(backprop_output_size, h_index, w_index);
   } else {
     // Use 1 and 2 because tensor_dim has the dimensions of the transposed
     // input.
@@ -2189,22 +2204,24 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   // argument output_shape and thus the TRT output shape could be wrong
   // in case of strides>1.
   if (is_conv2d_backprop_input) {
-    auto tf_output_shape =
-        static_cast<int*>(backprop_output_size.weights().GetValues());
+    std::vector<int64_t> output_spatial_dims =
+        GetSpatialDimsFromOutputSizes(backprop_output_size, h_index, w_index);
+    const int output_height = output_spatial_dims[0];
+    const int output_width = output_spatial_dims[1];
     nvinfer1::Dims trt_output_shape = output_tensor->getDimensions();
     // What determines the padding size is the difference between the given
     // input_sizes (tf_output_shape) and TRT computed size.
-    const int height_diff = tf_output_shape[h_index] - trt_output_shape.d[1];
-    const int width_diff = tf_output_shape[w_index] - trt_output_shape.d[2];
+    const int height_diff = output_height - trt_output_shape.d[1];
+    const int width_diff = output_width - trt_output_shape.d[2];
     if ((height_diff < 0) || (width_diff < 0)) {
       return errors::InvalidArgument(
           "input_sizes argument of Conv2DBackprop (i.e. output_shape argument "
           "of conv2d_transpose) ",
           "is too small for the given out_backprop argument of Conv2DBackprop "
           "(i.e. input argument of conv2d_transpose). Expect: ",
-          "(", tf_output_shape[h_index], ", ", tf_output_shape[w_index],
-          ") >= ", "(", trt_output_shape.d[1], ", ", trt_output_shape.d[2],
-          ") for op ", node_def.name());
+          "(", output_height, ", ", output_width, ") >= ", "(",
+          trt_output_shape.d[1], ", ", trt_output_shape.d[2], ") for op ",
+          node_def.name());
     }
     // Only add a padding layer if padding sizes are larger than 0
     if ((height_diff > 0) || (width_diff > 0)) {
