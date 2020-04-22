@@ -34,6 +34,10 @@ cc_library(
             "-lEGL",
             "-lGLESv3",
         ],
+        "//tensorflow:gles": [
+            "-lEGL",
+            "-lGLESv2",
+        ],
         "//conditions:default": [],
     }),
     deps = [
@@ -121,6 +125,11 @@ cc_binary(
             "-lGLESv3",
             "-fvisibility=hidden",
         ],
+        "//tensorflow:gles": [
+            "-lEGL",
+            "-lGLESv2",
+            "-fvisibility=hidden",
+        ],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-fvisibility=hidden",
@@ -144,6 +153,11 @@ cc_binary(
         "//tensorflow:android": [
             "-lEGL",
             "-lGLESv3",
+            "-fvisibility=hidden",
+        ],
+        "//tensorflow:gles": [
+            "-lEGL",
+            "-lGLESv2",
             "-fvisibility=hidden",
         ],
         "//tensorflow:windows": [],
