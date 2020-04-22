@@ -52,29 +52,29 @@ and the following optional parameters:
 ### TFLite delegate parameters
 The tool supports all runtime/delegate parameters introduced by
 [the delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates).
-The following simply lists the names of all of them w/ additional notes where
-applicable:
+The following simply lists the names of these parameters and additional notes
+where applicable. For details about each parameter, please refer to
+[this page](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/delegates/README.md#tflite-delegate-registrar).
 #### Common parameters
 * `max_delegated_partitions`: `int` (default=0) \
 Note when `use_legacy_nnapi` is selected, this parameter won't work.
 * `min_nodes_per_partition`:`int` (default=0)
 
-#### GPU delegate provider
+#### GPU delegate
 * `use_gpu`: `bool` (default=false)
 * `gpu_precision_loss_allowed`: `bool` (default=true)
 * `gpu_experimental_enable_quant`: `bool` (default=true)
 * `gpu_backend`: `string` (default="")
 * `gpu_wait_type`: `str` (default="")
 
-### NNAPI delegate provider
-
+#### NNAPI delegate
 *   `use_nnapi`: `bool` (default=false) \
     Note some Android P devices will fail to use NNAPI for models in
     `/data/local/tmp/` and this benchmark tool will not correctly use NNAPI.
 *   `nnapi_accelerator_name`: `str` (default="")
 *   `disable_nnapi_cpu`: `bool` (default=false)
 
-#### Hexagon delegate provider
+#### Hexagon delegate
 * `use_hexagon`: `bool` (default=false)
 * `hexagon_profiling`: `bool` (default=false) \
 Note enabling this option will not produce profiling results outputs unless
@@ -82,13 +82,13 @@ Note enabling this option will not produce profiling results outputs unless
 the profile of ops on hexagon DSP will be added to the profile table. Note that,
 the reported data on hexagon is in cycles, not in ms like on cpu.
 
-#### XNNPACK delegate provider
+#### XNNPACK delegate
 *   `use_xnnpack`: `bool` (default=false)
 
-#### CoreML delegate provider
+#### CoreML delegate
 *   `use_coreml`: `bool` (default=false)
 
-#### External delegate provider
+#### External delegate
 *   `external_delegate_path`: `string` (default="")
 *   `external_delegate_options`: `string` (default="")
 
