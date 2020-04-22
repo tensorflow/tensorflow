@@ -371,9 +371,14 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 // CHECK:  }
 
 // Use selected ivs to load element from the SRC buffer.
-// CHECK: [[CUR_RES:%.*]] = load [[RESULT_BUF]]{{\[}}[[SEL_RES_I:%.*]]#0,
-// CHECK-SAME:                   [[SEL_RES_I]]#1] : memref<112x112xf32>
 // CHECK: [[SRC_ELEM:%.*]] = load [[SRC_BUF]]{{\[}}[[II]], [[JJ]]]
+
+// Update of RESULT[SELECTED_I, SELECTED_J] should be done atomically, because
+// it may happen that several other threads select the same IVs if the windows
+// overlap.
+// CHECK: generic_atomic_rmw [[RESULT_BUF]]{{\[}}[[SEL_RES_I]]#0,
+// CHECK-SAME:                 [[SEL_RES_I]]#1] : memref<112x112xf32>
+// CHECK: ^bb0([[CUR_RES:%.*]]: f32):
 
 // Allocate buffers for ARG element, current selected value to adapt LHLO code.
 // CHECK:  [[SRC_ELEM_BUF:%.*]] = alloc() : memref<f32>
@@ -387,8 +392,8 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 // CHECK-SAME: (memref<f32>, memref<f32>, memref<f32>) -> ()
 // CHECK:  [[RES:%.*]] = load [[RES_BUF]][] : memref<f32>
 
-// Update RESULT[SELECTED_I, SELECTED_J] with RES.
-// CHECK:  store [[RES]], [[RESULT_BUF]]{{\[}}[[SEL_RES_I]]#0, [[SEL_RES_I]]#1]
+// Atomic RMW terminator that returns updated value.
+// CHECK:  atomic_yield [[RES]] : f32
 
 // Parallel loop over source buffer yield
 // CHECK:  loop.yield
