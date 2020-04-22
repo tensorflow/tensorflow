@@ -2596,7 +2596,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     VLOG(2) << StrFormat("update_sizes[%d] = %d", dim, update_dim_size);
   }
 
-  return operand_shape;
+  auto result_shape = operand_shape;
+
+  // If any of the operand shape and update shape is dynamic, update the result
+  // dimension to dynamic.
+  for (int64 i = 0; i < update_shape.rank(); ++i) {
+    if (update_shape.is_dynamic_dimension(i) ||
+        operand_shape.is_dynamic_dimension(i)) {
+      result_shape.set_dynamic_dimension(i, true);
+    }
+  }
+
+  return result_shape;
 }
 
 /*static */ StatusOr<Shape> ShapeInference::InferReverseShape(

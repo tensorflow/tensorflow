@@ -460,14 +460,18 @@ func @main(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tensor<10
 // -----
 
 // CHECK:  HloModule
-func @main(%arg: tensor<4x2xf32>) -> tensor<i32> {
-  %0 = "xla_hlo.get_dimension_size"(%arg) {dimension = 1 : i32} : (tensor<4x2xf32>) -> tensor<i32>
-  return %0 : tensor<i32>
+func @main(%arg: tensor<4x2xf32>, %size: tensor<i32>) -> tensor<i32> {
+  %0 = "xla_hlo.set_dimension_size"(%arg, %size) {dimension = 1 : i32} : (tensor<4x2xf32>, tensor<i32>) -> tensor<4x2xf32>
+  %1 = "xla_hlo.get_dimension_size"(%0) {dimension = 1 : i32} : (tensor<4x2xf32>) -> tensor<i32>
+  return %1 : tensor<i32>
 }
 
 // CHECK:  ENTRY
 // CHECK:  [[ARG:%.*]] = f32[4,2] parameter(0)
-// CHECK:  s32[] get-dimension-size(f32[4,2] [[ARG]]), dimensions={1}
+// CHECK:  [[SIZE:%.*]] = s32[] parameter(1)
+// CHECK:  [[DYNAMIC:%.*]] = f32[4,<=2] set-dimension-size(f32[4,2] [[ARG]], s32[] [[SIZE]]), dimensions={1}
+// CHECK:  ROOT %[[RESULT:.*]] = s32[] get-dimension-size(f32[4,<=2] [[DYNAMIC]]), dimensions={1}
+
 
 // -----
 
