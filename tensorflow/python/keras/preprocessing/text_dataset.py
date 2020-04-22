@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras image dataset loading utilities."""
-# pylint: disable=g-classes-have-attributes
+"""Keras text dataset generation utilities."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,62 +20,53 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.preprocessing import dataset_utils
-from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import io_ops
-from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.ops import string_ops
 
 
-WHITELIST_FORMATS = ('.bmp', '.gif', '.jpeg', '.jpg', '.png')
-
-
-@keras_export('keras.preprocessing.image_dataset_from_directory', v1=[])
-def image_dataset_from_directory(directory,
-                                 labels='inferred',
-                                 label_mode='int',
-                                 class_names=None,
-                                 color_mode='rgb',
-                                 batch_size=32,
-                                 image_size=(256, 256),
-                                 shuffle=True,
-                                 seed=None,
-                                 validation_split=None,
-                                 subset=None,
-                                 interpolation='bilinear',
-                                 follow_links=False):
-  """Generates a `tf.data.Dataset` from image files in a directory.
+def text_dataset_from_directory(directory,
+                                labels='inferred',
+                                label_mode='int',
+                                class_names=None,
+                                batch_size=32,
+                                max_length=None,
+                                shuffle=True,
+                                seed=None,
+                                validation_split=None,
+                                subset=None,
+                                follow_links=False):
+  """Generates a `tf.data.Dataset` from text files in a directory.
 
   If your directory structure is:
 
   ```
   main_directory/
   ...class_a/
-  ......a_image_1.jpg
-  ......a_image_2.jpg
+  ......a_text_1.txt
+  ......a_text_2.txt
   ...class_b/
-  ......b_image_1.jpg
-  ......b_image_2.jpg
+  ......b_text_1.txt
+  ......b_text_2.txt
   ```
 
-  Then calling `image_dataset_from_directory(main_directory, labels='inferred')`
-  will return a `tf.data.Dataset` that yields batches of images from
+  Then calling `text_dataset_from_directory(main_directory, labels='inferred')`
+  will return a `tf.data.Dataset` that yields batches of texts from
   the subdirectories `class_a` and `class_b`, together with labels
   0 and 1 (0 corresponding to `class_a` and 1 corresponding to `class_b`).
 
-  Supported image formats: jpeg, png, bmp, gif.
-  Animated gifs are truncated to the first frame.
+  Only `.txt` files are supported at this time.
 
   Arguments:
     directory: Directory where the data is located.
         If `labels` is "inferred", it should contain
-        subdirectories, each containing images for a class.
+        subdirectories, each containing text files for a class.
         Otherwise, the directory structure is ignored.
     labels: Either "inferred"
         (labels are generated from the directory structure),
         or a list/tuple of integer labels of the same size as the number of
-        image files found in the directory. Labels should be sorted according
-        to the alphanumeric order of the image file paths
+        text files found in the directory. Labels should be sorted according
+        to the alphanumeric order of the text file paths
         (obtained via `os.walk(directory)` in Python).
     label_mode:
         - 'int': means that the labels are encoded as integers
@@ -92,14 +82,9 @@ def image_dataset_from_directory(directory,
         list of class names (must match names of subdirectories). Used
         to control the order of the classes
         (otherwise alphanumerical order is used).
-    color_mode: One of "grayscale", "rgb", "rgba". Default: "rgb".
-        Whether the images will be converted to
-        have 1, 3, or 4 channels.
     batch_size: Size of the batches of data. Default: 32.
-    image_size: Size to resize images to after they are read from disk.
-        Defaults to `(256, 256)`.
-        Since the pipeline processes batches of images that must all have
-        the same size, this must be provided.
+    max_length: Maximum size of a text string. Texts longer than this will
+      be truncated to `max_length`.
     shuffle: Whether to shuffle the data. Default: True.
         If set to False, sorts the data in alphanumeric order.
     seed: Optional random seed for shuffling and transformations.
@@ -107,20 +92,16 @@ def image_dataset_from_directory(directory,
         fraction of data to reserve for validation.
     subset: One of "training" or "validation".
         Only used if `validation_split` is set.
-    interpolation: String, the interpolation method used when resizing images.
-      Defaults to `bilinear`. Supports `bilinear`, `nearest`, `bicubic`,
-      `area`, `lanczos3`, `lanczos5`, `gaussian`, `mitchellcubic`.
     follow_links: Whether to visits subdirectories pointed to by symlinks.
         Defaults to False.
 
   Returns:
     A `tf.data.Dataset` object.
-      - If `label_mode` is None, it yields `float32` tensors of shape
-        `(batch_size, image_size[0], image_size[1], num_channels)`,
-        encoding images (see below for rules regarding `num_channels`).
-      - Otherwise, it yields a tuple `(images, labels)`, where `images`
-        has shape `(batch_size, image_size[0], image_size[1], num_channels)`,
-        and `labels` follows the format described below.
+      - If `label_mode` is None, it yields `string` tensors of shape
+        `(batch_size,)`, containing the contents of a batch of text files.
+      - Otherwise, it yields a tuple `(texts, labels)`, where `texts`
+        has shape `(batch_size,)` and `labels` follows the format described
+        below.
 
   Rules regarding labels format:
     - if `label_mode` is `int`, the labels are an `int32` tensor of shape
@@ -130,23 +111,15 @@ def image_dataset_from_directory(directory,
     - if `label_mode` is `categorial`, the labels are a `float32` tensor
       of shape `(batch_size, num_classes)`, representing a one-hot
       encoding of the class index.
-
-  Rules regarding number of channels in the yielded images:
-    - if `color_mode` is `grayscale`,
-      there's 1 channel in the image tensors.
-    - if `color_mode` is `rgb`,
-      there are 3 channel in the image tensors.
-    - if `color_mode` is `rgba`,
-      there are 4 channel in the image tensors.
   """
   if labels != 'inferred':
     if not isinstance(labels, (list, tuple)):
       raise ValueError(
           '`labels` argument should be a list/tuple of integer labels, of '
-          'the same size as the number of image files in the target '
+          'the same size as the number of text files in the target '
           'directory. If you wish to infer the labels from the subdirectory '
           'names in the target directory, pass `labels="inferred"`. '
-          'If you wish to get a dataset that only contains images '
+          'If you wish to get a dataset that only contains text samples '
           '(no labels), pass `labels=None`.')
     if class_names:
       raise ValueError('You can only pass `class_names` if the labels are '
@@ -156,24 +129,13 @@ def image_dataset_from_directory(directory,
     raise ValueError(
         '`label_mode` argument must be one of "int", "categorical", "binary", '
         'or None. Received: %s' % (label_mode,))
-  if color_mode == 'rgb':
-    num_channels = 3
-  elif color_mode == 'rgba':
-    num_channels = 4
-  elif color_mode == 'grayscale':
-    num_channels = 1
-  else:
-    raise ValueError(
-        '`color_mode` must be one of {"rbg", "rgba", "grayscale"}. '
-        'Received: %s' % (color_mode,))
-  interpolation = image_preprocessing.get_interpolation(interpolation)
 
   if seed is None:
     seed = np.random.randint(1e6)
-  image_paths, labels, class_names = dataset_utils.index_directory(
+  file_paths, labels, class_names = dataset_utils.index_directory(
       directory,
       labels,
-      formats=WHITELIST_FORMATS,
+      formats=('.txt',),
       class_names=class_names,
       shuffle=shuffle,
       seed=seed,
@@ -184,17 +146,15 @@ def image_dataset_from_directory(directory,
         'When passing `label_mode="binary", there must exactly 2 classes. '
         'Found the following classes: %s' % (class_names,))
 
-  image_paths, labels = dataset_utils.get_training_or_validation_split(
-      image_paths, labels, validation_split, subset)
+  file_paths, labels = dataset_utils.get_training_or_validation_split(
+      file_paths, labels, validation_split, subset)
 
   dataset = paths_and_labels_to_dataset(
-      image_paths=image_paths,
-      image_size=image_size,
-      num_channels=num_channels,
+      file_paths=file_paths,
       labels=labels,
       label_mode=label_mode,
       num_classes=len(class_names),
-      interpolation=interpolation)
+      max_length=max_length)
   if shuffle:
     # Shuffle locally at each iteration
     dataset = dataset.shuffle(buffer_size=batch_size * 8, seed=seed)
@@ -204,26 +164,23 @@ def image_dataset_from_directory(directory,
   return dataset
 
 
-def paths_and_labels_to_dataset(image_paths,
-                                image_size,
-                                num_channels,
+def paths_and_labels_to_dataset(file_paths,
                                 labels,
                                 label_mode,
                                 num_classes,
-                                interpolation):
-  """Constructs a dataset of images and labels."""
-  # TODO(fchollet): consider making num_parallel_calls settable
-  path_ds = dataset_ops.Dataset.from_tensor_slices(image_paths)
-  img_ds = path_ds.map(
-      lambda x: path_to_image(x, image_size, num_channels, interpolation))
+                                max_length):
+  """Constructs a dataset of text strings and labels."""
+  path_ds = dataset_ops.Dataset.from_tensor_slices(file_paths)
+  string_ds = path_ds.map(
+      lambda x: path_to_string_content(x, max_length))
   if label_mode:
     label_ds = dataset_utils.labels_to_dataset(labels, label_mode, num_classes)
-    img_ds = dataset_ops.Dataset.zip((img_ds, label_ds))
-  return img_ds
+    string_ds = dataset_ops.Dataset.zip((string_ds, label_ds))
+  return string_ds
 
 
-def path_to_image(path, image_size, num_channels, interpolation):
-  img = io_ops.read_file(path)
-  img = image_ops.decode_image(
-      img, channels=num_channels, expand_animations=False)
-  return image_ops.resize_images_v2(img, image_size, method=interpolation)
+def path_to_string_content(path, max_length):
+  txt = io_ops.read_file(path)
+  if max_length is not None:
+    txt = string_ops.substr(txt, 0, max_length)
+  return txt

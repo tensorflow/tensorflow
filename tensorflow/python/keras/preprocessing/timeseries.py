@@ -106,8 +106,8 @@ def timeseries_dataset_from_array(
   ```python
   input_data = data[:-10]
   targets = data[10:]
-  dataset = tf.keras.preprocessing.timeseries.dataset_from_array(
-    input_data, targets, sequence_length=10)
+  dataset = tf.keras.preprocessing.timeseries_dataset_from_array(
+      input_data, targets, sequence_length=10)
   for batch in dataset:
     inputs, targets = batch
     assert np.array_equal(inputs[0], data[:10])  # First sequence: steps [0-9]
