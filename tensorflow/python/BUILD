@@ -2477,9 +2477,11 @@ tf_py_test(
     main = "framework/sparse_tensor_test.py",
     python_version = "PY3",
     deps = [
+        ":array_ops",
         ":framework",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
+        ":math_ops",
         ":platform_test",
         "//tensorflow/core:protos_all_py",
     ],

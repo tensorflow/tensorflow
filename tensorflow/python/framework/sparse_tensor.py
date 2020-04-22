@@ -132,38 +132,9 @@ class SparseTensor(tensor_like.TensorLike, composite_tensor.CompositeTensor):
       # is a VariableOp and updating users of SparseTensor.
       values = ops.convert_to_tensor(values, name="values")
 
-      # Can't check `if context.executing_eagerly()` here because sparse
-      # placeholders can still be used in eager context, when building a
-      # functional model.
-      if isinstance(indices, ops.EagerTensor):
-        try:
-          dense_shape = ops.convert_to_tensor(
-              dense_shape, name="dense_shape", dtype=dtypes.int64)
-          dense_shape_default = tensor_shape.TensorShape(dense_shape)
-        except ValueError:
-          raise ValueError("Unable to create eager SparseTensor. Check that "
-                           "your shape is correctly defined. Eager "
-                           "SparseTensors don't support unknown dimesions.\n"
-                           "got shape:\n    {}".format(dense_shape))
-      else:
-        if isinstance(dense_shape, ops.Tensor):
-          dense_shape_default = tensor_util.constant_value_as_shape(dense_shape)
-        else:
-          dense_shape_default = []
-          for dim in dense_shape:
-            if isinstance(dim, ops.Tensor):
-              # There is code passing lists of constant tensors.
-              dim = tensor_util.constant_value(dim)
-            if dim == -1:
-              # -1 may be passed for unknown shapes.
-              dim = None
-
-            dense_shape_default.append(dim)
-
-        dense_shape_default = tensor_shape.TensorShape(dense_shape_default)
-
-        dense_shape = ops.convert_to_tensor(
-            dense_shape, name="dense_shape", dtype=dtypes.int64)
+      dense_shape = ops.convert_to_tensor(
+          dense_shape, name="dense_shape", dtype=dtypes.int64)
+      dense_shape_default = tensor_util.constant_value_as_shape(dense_shape)
 
     self._indices = indices
     self._values = values
