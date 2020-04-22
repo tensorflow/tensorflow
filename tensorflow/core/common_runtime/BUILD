@@ -218,16 +218,14 @@ filegroup(
         "debugger_state_interface.h",
         "device_resolver_local.h",
         "dma_helper.h",
-        "entry.h",
         "executor.h",
         "executor_factory.h",
         "function_optimization_registry.h",
         "graph_optimizer.h",
-        "graph_view.h",
-        "immutable_executor_state.h",
         "input_colocation_exemption_registry.h",
         "isolate_placer_inspection_required_ops_pass.h",
         "local_device.h",
+        "local_executor_params.h",
         "lower_function_call_op.h",
         "lower_if_op.h",
         "lower_case_op.h",
@@ -236,14 +234,11 @@ filegroup(
         "memory_types.h",
         "mkl_cpu_allocator.h",
         "optimization_registry.h",
-        "pending_counts.h",
         "partitioning_utils.h",
         "placer.h",
         "process_util.h",
         "inspecting_placer.h",
         "profile_handler.h",
-        "propagator_debug_utils.h",
-        "propagator_state.h",
         "renamed_device.h",
         "rendezvous_mgr.h",
         "rendezvous_util.h",
@@ -252,7 +247,6 @@ filegroup(
         "ring_alg.h",
         "ring_gatherer.h",
         "session_factory.h",
-        "simple_propagator_state.h",
         "single_threaded_cpu_device.h",
         "stats_publisher_interface.h",
         "step_stats_collector.h",
@@ -488,6 +482,49 @@ cc_library(
 )
 
 cc_library(
+    name = "executor",
+    srcs = ["executor.cc"],
+    hdrs = ["executor.h"],
+    copts = tf_copts(),
+    deps = [
+        ":costmodel_manager",
+        ":device",
+        ":entry",
+        ":executor_factory",
+        ":graph_view",
+        ":immutable_executor_state",
+        ":local_executor_params",
+        ":pending_counts",
+        ":propagator_state",
+        ":renamed_device",
+        ":simple_propagator_state",
+        ":step_stats_collector",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:annotated_traceme",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
+        "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/memory",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "executor_factory",
+    srcs = ["executor_factory.cc"],
+    hdrs = ["executor_factory.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "graph_view",
     srcs = ["graph_view.cc"],
     hdrs = ["graph_view.h"],
@@ -539,6 +576,23 @@ cc_library(
 )
 
 cc_library(
+    name = "immutable_executor_state",
+    srcs = ["immutable_executor_state.cc"],
+    hdrs = ["immutable_executor_state.h"],
+    copts = tf_copts(),
+    deps = [
+        ":graph_view",
+        ":local_executor_params",
+        ":pending_counts",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
     name = "input_colocation_exemption_registry",
     srcs = ["input_colocation_exemption_registry.cc"],
     hdrs = ["input_colocation_exemption_registry.h"],
@@ -561,6 +615,16 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "local_executor_params",
+    hdrs = ["local_executor_params.h"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -685,6 +749,36 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "propagator_debug_utils",
+    srcs = ["propagator_debug_utils.cc"],
+    hdrs = ["propagator_debug_utils.h"],
+    copts = tf_copts(),
+    deps = [
+        ":entry",
+        ":graph_view",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "propagator_state",
+    srcs = ["propagator_state.cc"],
+    hdrs = ["propagator_state.h"],
+    copts = tf_copts(),
+    deps = [
+        ":entry",
+        ":graph_view",
+        ":immutable_executor_state",
+        ":pending_counts",
+        ":propagator_debug_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
     ],
 )
 
@@ -857,6 +951,23 @@ cc_library(
 )
 
 cc_library(
+    name = "simple_propagator_state",
+    srcs = ["simple_propagator_state.cc"],
+    hdrs = ["simple_propagator_state.h"],
+    copts = tf_copts(),
+    deps = [
+        ":entry",
+        ":graph_view",
+        ":immutable_executor_state",
+        ":pending_counts",
+        ":propagator_debug_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
+    ],
+)
+
+cc_library(
     name = "single_threaded_cpu_device",
     srcs = ["single_threaded_cpu_device.cc"],
     hdrs = [
@@ -952,13 +1063,10 @@ tf_cuda_library(
         "colocation_graph.cc",
         "composite_device.cc",
         "constant_folding.cc",
-        "executor.cc",
-        "executor_factory.cc",
         "function.cc",
         "function_optimization_registry.cc",
         "graph_optimizer.cc",
         "graph_runner.cc",
-        "immutable_executor_state.cc",
         "inspecting_placer.cc",
         "isolate_placer_inspection_required_ops_pass.cc",
         "lower_case_op.cc",
@@ -970,9 +1078,6 @@ tf_cuda_library(
         "placer_inspection_required_ops_utils.cc",
         "placer_inspection_required_ops_utils.h",
         "process_function_library_runtime.cc",
-        "propagator_debug_utils.cc",
-        "propagator_state.cc",
-        "simple_propagator_state.cc",
         "//tensorflow/core/graph:core_cpu_impl_srcs",
     ],
     hdrs = [":core_cpu_lib_headers"],
@@ -980,10 +1085,17 @@ tf_cuda_library(
     deps = [
         ":device",
         ":entry",
+        ":executor",
+        ":executor_factory",
         ":graph_view",
+        ":local_executor_params",
+        ":immutable_executor_state",
         ":input_colocation_exemption_registry",
         ":pending_counts",
+        ":propagator_debug_utils",
+        ":propagator_state",
         ":session_options",
+        ":simple_propagator_state",
         ":single_threaded_cpu_device",
         "//tensorflow/core:graph",
         "//tensorflow/core:framework",
@@ -1277,6 +1389,7 @@ tf_cc_tests(
         ":core_cpu",
         ":core_cpu_internal",
         ":direct_session_internal",
+        ":pending_counts",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:function_ops",
