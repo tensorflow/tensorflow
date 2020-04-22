@@ -33,8 +33,6 @@ ABSL_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
 ABSL_CONST_INIT extern const absl::string_view kCuptiDriverApiPlaneName;
 // Name of XPlane that contains profile metadata such as XLA debug info.
 ABSL_CONST_INIT extern const absl::string_view kMetadataPlane;
-// Name of XPlane that contains kpi related metrics.
-ABSL_CONST_INIT extern const absl::string_view kTFStreamzPlane;
 
 // Id of XPlane that contains TraceMe events.
 ABSL_CONST_INIT extern const int32 kHostPlaneId;
@@ -45,11 +43,6 @@ ABSL_CONST_INIT extern const int32 kGpuPlaneBaseId;
 ABSL_CONST_INIT extern const int32 kCuptiDriverApiPlaneId;
 // Id of XPlane that contains profile metadata such as XLA debug info.
 ABSL_CONST_INIT extern const int32 kMetadataPlaneId;
-// Id of XPlane that contains kpi related metrics.
-ABSL_CONST_INIT extern const int32 kTFStreamzPlaneId;
-
-ABSL_CONST_INIT extern const int32 kThreadGroupMinPlaneId;
-ABSL_CONST_INIT extern const int32 kThreadGroupMaxPlaneId;
 
 // Interesting event types (i.e., TraceMe names).
 enum HostEventType {

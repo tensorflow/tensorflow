@@ -26,16 +26,11 @@ const absl::string_view kHostThreads = "/host:CPU";
 const absl::string_view kGpuPlanePrefix = "/device:GPU:";
 const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
 const absl::string_view kMetadataPlane = "/host:metadata";
-const absl::string_view kTFStreamzPlane = "/host:tfstreamz";
 
 const int32 kHostPlaneId = 49;
 const int32 kGpuPlaneBaseId = 0;
 const int32 kCuptiDriverApiPlaneId = 50;
-const int32 kMetadataPlaneId = 99;
-const int32 kTFStreamzPlaneId = 98;
-
-const int32 kThreadGroupMinPlaneId = kCuptiDriverApiPlaneId + 1;
-const int32 kThreadGroupMaxPlaneId = kTFStreamzPlaneId - 1;
+const int32 kMetadataPlaneId = 51;
 
 namespace {
 
