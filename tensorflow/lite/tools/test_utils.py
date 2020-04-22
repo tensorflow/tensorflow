@@ -14,7 +14,7 @@
 # ==============================================================================
 """Utility functions that support testing.
 
-All functions that can be commonly used by various tests are in this file.
+All functions that can be commonly used by various tests.
 """
 
 from __future__ import absolute_import
@@ -25,7 +25,7 @@ from flatbuffers.python import flatbuffers
 from tensorflow.lite.python import schema_py_generated as schema_fb
 
 
-def build_mock_model():
+def build_mock_flatbuffer_model():
   """Creates a flatbuffer containing an example model."""
   builder = flatbuffers.Builder(1024)
 
@@ -205,10 +205,14 @@ def build_mock_model():
   return model
 
 
-def build_mock_model_python_object():
-  """Creates a python flatbuffer object containing an example model."""
-  model_mock = build_mock_model()
-  model_obj = schema_fb.Model.GetRootAsModel(model_mock, 0)
-  model = schema_fb.ModelT.InitFromObj(model_obj)
-
+def load_model_from_flatbuffer(flatbuffer_model):
+  """Loads a model as a python object from a flatbuffer model."""
+  model = schema_fb.Model.GetRootAsModel(flatbuffer_model, 0)
+  model = schema_fb.ModelT.InitFromObj(model)
   return model
+
+
+def build_mock_model():
+  """Creates an object containing an example model."""
+  model = build_mock_flatbuffer_model()
+  return load_model_from_flatbuffer(model)

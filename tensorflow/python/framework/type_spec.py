@@ -83,7 +83,11 @@ class TypeSpec(object):
 
   @abc.abstractproperty
   def value_type(self):
-    """The Python type for values that are compatible with this TypeSpec."""
+    """The Python type for values that are compatible with this TypeSpec.
+
+    In particular, all values that are compatible with this TypeSpec must be an
+    instance of this type.
+    """
     raise NotImplementedError("%s.value_type" % type(self).__name__)
 
   def is_compatible_with(self, spec_or_value):

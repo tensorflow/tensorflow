@@ -63,6 +63,9 @@ Status DataServiceMasterImpl::RegisterWorker(
   // Allocate tasks to the worker.
   for (auto& entry : jobs_) {
     Job& job = entry.second;
+    if (job.finished) {
+      continue;
+    }
     int64 task_id = next_task_id_++;
     DCHECK(!tasks_.contains(task_id));
     Task& task = tasks_[task_id];
@@ -70,6 +73,7 @@ Status DataServiceMasterImpl::RegisterWorker(
     task.dataset_id = job.dataset_id;
     task.worker_address = request->worker_address();
     job.task_ids.push_back(task_id);
+    job.total_tasks++;
 
     TaskDef* task_def = response->add_tasks();
     *task_def->mutable_dataset() =
@@ -162,6 +166,7 @@ Status DataServiceMasterImpl::CreateJob(const CreateJobRequest* request,
     TF_RETURN_IF_ERROR(CreateWorkerStub(worker.address, protocol_, &stub));
     // TODO(aaudibert): perform these calls asynchronously.
     TF_RETURN_IF_ERROR(AllocateTaskToWorker(task, &worker));
+    job.total_tasks++;
   }
 
   VLOG(3) << "Beginning job " << job_id << " for dataset "
@@ -210,6 +215,8 @@ Status DataServiceMasterImpl::GetTasks(const GetTasksRequest* request,
     task_info->set_worker_address(task.worker_address);
     task_info->set_id(task.id);
   }
+  job.finished = job.total_tasks > 0 && job.task_ids.empty();
+  response->set_job_finished(job.finished);
   VLOG(3) << "Found " << response->task_info_size() << " tasks for job id "
           << request->job_id();
   return Status::OK();

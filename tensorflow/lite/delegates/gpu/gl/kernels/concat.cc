@@ -210,7 +210,7 @@ vec4 val = vec4(0.0f);
     // * - you are going to write into these cells
     // @ - you will fill these cells next cycles
     // ^ - first elem you start writing from
-    int blocks_amount = IntegralDivideRoundUp<int>(in_ch, 4);
+    int blocks_amount = DivideRoundUp<int>(in_ch, 4);
     code += "// Aligned case\n";
     code += "// I'm going to make " + std::to_string(blocks_amount) +
             " write(s)\n\n";

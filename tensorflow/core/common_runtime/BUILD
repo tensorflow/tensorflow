@@ -53,6 +53,7 @@ package(
 tf_cuda_library(
     name = "core_cpu",
     hdrs = [
+        "composite_device.h",
         "device.h",
         "device_factory.h",
         "function.h",
@@ -145,6 +146,7 @@ filegroup(
 filegroup(
     name = "core_cpu_base_headers",
     srcs = [
+        "composite_device.h",
         "device.h",
         "device_factory.h",
         "device_mgr.h",
@@ -274,6 +276,7 @@ tf_cuda_library(
         "collective_rma_local.cc",
         "collective_util.cc",
         "colocation_graph.cc",
+        "composite_device.cc",
         "constant_folding.cc",
         "copy_tensor.cc",
         "costmodel_manager.cc",
@@ -526,6 +529,22 @@ tf_cc_test(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "composite_device_test",
+    size = "small",
+    srcs = [
+        "composite_device_test.cc",
+    ],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    deps = [
+        ":core_cpu",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 

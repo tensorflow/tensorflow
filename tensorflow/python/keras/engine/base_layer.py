@@ -1484,9 +1484,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     dependent on `a` and some on `b`. This method automatically keeps track
     of dependencies.
 
-    The `get_updates_for` method allows to retrieve the updates relevant to a
-    specific set of inputs.
-
     This call is ignored when eager execution is enabled (in that case, variable
     updates are run on the fly and thus do not need to be tracked for later
     execution).
@@ -1518,12 +1515,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
             update()
       return
 
-    if call_context.in_call:
-      relevant_inputs = call_context.inputs
-    else:
-      inbound_nodes = getattr(self, '_inbound_nodes', [])
-      relevant_inputs = [node.input_tensors for node in inbound_nodes]
-
     def process_update(x):
       """Standardize update ops.
 
@@ -1545,9 +1536,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         update = x.op
       else:
         update = ops.convert_to_tensor_v2(x)
-
-      reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, [update])
-      update._unconditional_update = update not in reachable
       return update
 
     updates = [process_update(x) for x in updates]
@@ -1691,15 +1679,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     Returns:
       List of update ops of the layer that depend on `inputs`.
     """
-    if inputs is None:
-      # Requesting unconditional updates.
-      return [u for u in self.updates if u._unconditional_update]
-
-    # Requesting input-conditional updates.
-    updates = [u for u in self.updates if not u._unconditional_update]
-    inputs = nest.flatten(inputs)
-    reachable = tf_utils.get_reachable_from_inputs(inputs, updates)
-    return [u for u in updates if u in reachable]
+    return self.updates
 
   @doc_controls.do_not_doc_inheritable
   def get_losses_for(self, inputs):

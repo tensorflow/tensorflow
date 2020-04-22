@@ -77,6 +77,9 @@ class DataServiceMasterImpl {
     int64 id;
     int64 dataset_id;
     std::vector<int64> task_ids;
+    // The total number of tasks that have been created for this job.
+    int64 total_tasks = 0;
+    bool finished = false;
   } Job;
 
   typedef struct Task {

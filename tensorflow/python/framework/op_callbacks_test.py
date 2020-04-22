@@ -109,7 +109,8 @@ class _NumpyFunctionCallback(object):
         if compat.as_bytes(op_type) in (_ENTER_OP, _EXIT_OP, _IF_OP, _MERGE_OP,
                                         _NEXT_ITERATION_OP, _STATELESS_IF_OP,
                                         _SWITCH_OP, _WHILE_OP, _IDENTITY_OP,
-                                        _VAR_HANDLE_OP, _PLACEHOLDER_OP):
+                                        _VAR_HANDLE_OP, _PLACEHOLDER_OP,
+                                        _CONSTANT_OP):
           # TODO(cais): Overriding the output of StatelessIf, If and While ops
           # currently fails with error. Investigate (b/139668453).
           # Avoid instrumenting Identity ops as well, as they are inserted
@@ -724,7 +725,7 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
   def testOverrideDTypeInFuncGraph(self):
     def to_float64(op_type, inputs, attrs, outputs, op_name=None, graph=None):
       del inputs, attrs, op_name, graph  # Unused.
-      if op_type == "Placeholder":
+      if op_type in ("Const", "Placeholder"):
         return outputs
       else:
         return [math_ops.cast(output, dtypes.float64) for output in outputs]
@@ -750,6 +751,17 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
     w = control_flow_ops.group([z])
     self.assertIsNone(w)
     self.assertEqual(instrument.eager_op_types, [_ADD_OP])
+
+  def testOpCallbackCapturesConstTensors(self):
+    instrument = _NumpyFunctionCallback()
+    op_callbacks.add_op_callback(instrument.callback)
+
+    @def_function.function
+    def times_two_plus_three(x):
+      return x * 2.0 + 3.0
+
+    self.assertAllClose(times_two_plus_three(constant_op.constant(10.0)), 23.0)
+    self.assertEqual(instrument.graph_op_types.count(b"Const"), 2)
 
   @test_util.run_in_graph_and_eager_modes
   def testOpCallbackWorksWithGradientTape(self):

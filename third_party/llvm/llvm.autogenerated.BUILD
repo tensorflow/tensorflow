@@ -4330,7 +4330,6 @@ cc_library(
         ":x86_defs",
         ":x86_desc",
         ":x86_info",
-        ":x86_utils",
     ],
 )
 
@@ -4355,7 +4354,6 @@ cc_library(
         ":mc_disassembler",
         ":support",
         ":x86_info",
-        ":x86_utils",
     ],
 )
 
@@ -4401,27 +4399,6 @@ cc_library(
         ":mc",
         ":support",
         ":x86_target_gen",
-    ],
-)
-
-cc_library(
-    name = "x86_utils",
-    srcs = glob([
-        "lib/Target/X86/Utils/*.c",
-        "lib/Target/X86/Utils/*.cpp",
-        "lib/Target/X86/Utils/*.inc",
-    ]),
-    hdrs = glob([
-        "include/llvm/Target/X86/Utils/*.h",
-        "include/llvm/Target/X86/Utils/*.def",
-        "include/llvm/Target/X86/Utils/*.inc",
-        "lib/Target/X86/Utils/*.h",
-    ]),
-    copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/X86"],
-    deps = [
-        ":code_gen",
-        ":config",
-        ":support",
     ],
 )
 

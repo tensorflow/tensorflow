@@ -1,5 +1,4 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
 package(
@@ -126,13 +125,12 @@ py_library(
     ],
 )
 
-tf_cc_binary(
+cc_binary(
     name = "generate_op_registrations",
     srcs = ["gen_op_registration_main.cc"],
     deps = [
+        ":command_line_flags",
         ":gen_op_registration",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
     ],
 )

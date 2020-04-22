@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-shape-inference -verify-diagnostics | FileCheck %s -dump-input=fail -color
+// RUN: tf-opt %s -tf-shape-inference -verify-diagnostics | FileCheck %s -dump-input=fail
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 130 : i32}} {
 // CHECK-LABEL: func @main(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32>
@@ -69,6 +69,15 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
       padding = "VALID", strides = [1, 1, 1, 1]
     } : (tensor<4xi32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>) -> tensor<?x?x?x?xf32>
     return %1 : tensor<?x?x?x?xf32>
+  }
+
+// Tests where tf.Const's value needs to be refined.
+
+  func @const_refine() -> tensor<*xi32> {
+    %0 = "tf.Const"() {value = dense<[3, 2]> : tensor<2xi32>} : () -> tensor<*xi32>
+    // CHECK: "tf.Const"
+    // CHECK-SAME: -> tensor<2xi32>
+    return %0 : tensor<*xi32>
   }
 
 // Tests the case where an op's shape function returns non-fully-defined shapes.

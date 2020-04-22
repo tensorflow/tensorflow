@@ -56,6 +56,8 @@ namespace mlir {
 namespace xla_hlo {
 namespace {
 
+constexpr char kShardingAttr[] = "xla_hlo.sharding";
+
 class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
  public:
   LegalizeTF() = default;
@@ -113,6 +115,28 @@ static DenseIntElementsAttr GetI32ElementsAttr(ArrayRef<int32_t> values,
   RankedTensorType ty = RankedTensorType::get(
       {static_cast<int32_t>(values.size())}, builder->getIntegerType(32));
   return DenseIntElementsAttr::get(ty, values);
+}
+
+// Returns a 1-d i64 elements attribute populated with numbers from start to
+// end, excluding.
+static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
+                                                     Builder *builder) {
+  int size = end - start;
+
+  SmallVector<int64_t, 4> vals;
+  vals.resize(size);
+  std::iota(vals.begin(), vals.end(), start);
+
+  TensorType ty = RankedTensorType::get({size}, builder->getIntegerType(64));
+  return DenseIntElementsAttr::get(ty, vals);
+}
+
+// Returns a 1-d i64 elements attribute populated with `val` repeated `size`
+// times.
+static DenseIntElementsAttr GetI64ElementsAttrForValue(int size, int64_t val,
+                                                       Builder *builder) {
+  TensorType ty = RankedTensorType::get({size}, builder->getIntegerType(64));
+  return DenseIntElementsAttr::get(ty, val);
 }
 
 // Returns the corresponding type that should be used for performing sum
@@ -194,10 +218,17 @@ int64_t GetDimSize(Type ty, int64_t index) {
   return ranked_ty.getDimSize(index);
 }
 
-template <typename T>
+template <typename T, int num_dims>
 tensorflow::TensorShape ToTensorShape(llvm::ArrayRef<T> sizes) {
-  return tensorflow::TensorShape(
-      llvm::SmallVector<tensorflow::int64, 4>(sizes.begin(), sizes.end()));
+  return tensorflow::TensorShape(llvm::SmallVector<tensorflow::int64, num_dims>(
+      sizes.begin(), sizes.end()));
+}
+
+template <typename T, int num_dims>
+tensorflow::TensorShape ToTensorShape(
+    llvm::iterator_range<DenseElementsAttr::ElementIterator<T>> sizes) {
+  return tensorflow::TensorShape(llvm::SmallVector<tensorflow::int64, num_dims>(
+      sizes.begin(), sizes.end()));
 }
 
 // Returns minimal value for the given int or float element type.
@@ -239,8 +270,122 @@ static ConstOp GetMaxValueForType(Type ty, Location loc,
 // Returns int or float scalar DenseElementsAttr attribute with the given
 // element type and the value.
 static ConstOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,
-                                    PatternRewriter *rewriter) {
-  return rewriter->create<ConstOp>(loc, xla::GetScalarOfType(ty, raw_value));
+                                    OpBuilder *builder) {
+  return builder->create<ConstOp>(loc, xla::GetScalarOfType(ty, raw_value));
+}
+
+// Creates an xla_hlo::SliceOp where the major dimensions have full size, and
+// the minor dimensions have the provided offsets and sizes.
+static Value SliceInMinorDims(Location loc, Value v,
+                              ArrayRef<int64_t> minor_starts,
+                              ArrayRef<int64_t> minor_limits,
+                              OpBuilder *builder) {
+  auto type = v.getType().cast<RankedTensorType>();
+  llvm::SmallVector<int64_t, 4> slice_starts(type.getRank(), 0);
+  int64_t major_dims = type.getRank() - minor_starts.size();
+  std::copy(minor_starts.begin(), minor_starts.end(),
+            slice_starts.begin() + major_dims);
+  auto slice_limits = llvm::to_vector<4>(type.getShape());
+  std::copy(minor_limits.begin(), minor_limits.end(),
+            slice_limits.begin() + major_dims);
+  llvm::SmallVector<int64_t, 4> slice_strides(type.getRank(), 1);
+  return builder->create<SliceOp>(loc, v,
+                                  GetI64ElementsAttr(slice_starts, builder),
+                                  GetI64ElementsAttr(slice_limits, builder),
+                                  GetI64ElementsAttr(slice_strides, builder));
+}
+
+// Creates a vector of index values:
+//  [0, 0, ..., minor_indices[0], minor_indices[1], ... minor_indices[-1]]
+// with length `rank`.
+static llvm::SmallVector<Value, 4> CreateFullIndexVectorFromMinorIndices(
+    Location loc, ArrayRef<Value> minor_indices, int64_t rank,
+    OpBuilder *builder) {
+  auto zero =
+      GetScalarConstOfType(getElementTypeOrSelf(minor_indices[0].getType()),
+                           loc, 0, builder)
+          .output();
+  llvm::SmallVector<Value, 4> indices(rank, zero);
+  std::copy(minor_indices.begin(), minor_indices.end(),
+            indices.begin() + (rank - minor_indices.size()));
+  return indices;
+}
+
+// Creates an xla_hlo::DynamicSliceOp where the major dimensions have full size,
+// and the minor dimensions have the provided offsets and sizes.
+static Value DynamicSliceInMinorDims(Location loc, Value v,
+                                     ArrayRef<Value> minor_starts,
+                                     ArrayRef<int64_t> minor_sizes,
+                                     OpBuilder *builder) {
+  if (minor_starts.empty()) return v;
+  auto type = v.getType().cast<RankedTensorType>();
+  auto slice_starts = CreateFullIndexVectorFromMinorIndices(
+      loc, minor_starts, type.getRank(), builder);
+  int64_t major_dims = type.getRank() - minor_starts.size();
+  auto slice_sizes = llvm::to_vector<4>(type.getShape());
+  std::copy(minor_sizes.begin(), minor_sizes.end(),
+            slice_sizes.begin() + major_dims);
+  auto slice_type = RankedTensorType::get(slice_sizes, type.getElementType());
+  return builder->create<xla_hlo::DynamicSliceOp>(
+      loc, slice_type, v, slice_starts,
+      GetI64ElementsAttr(slice_sizes, builder));
+}
+
+// Creates an xla_hlo::DynamicUpdateSliceOp where the major dimensions have zero
+// offsets, and the minor dimensions have the provided offsets.
+static Value DynamicUpdateSliceInMinorDims(Location loc, Value v, Value update,
+                                           ArrayRef<Value> minor_starts,
+                                           OpBuilder *builder) {
+  if (minor_starts.empty()) return v;
+  auto type = v.getType().cast<RankedTensorType>();
+  auto dus_starts = CreateFullIndexVectorFromMinorIndices(
+      loc, minor_starts, type.getRank(), builder);
+  return builder->create<DynamicUpdateSliceOp>(loc, type, v, update,
+                                               llvm::makeArrayRef(dus_starts));
+}
+
+// Creates an xla_hlo::DynamicUpdateSliceOp where the major dimensions have zero
+// offsets, and the minor dimensions have the provided static offsets.
+static Value UpdateSliceInMinorDims(Location loc, Value v, Value update,
+                                    ArrayRef<int64_t> minor_starts,
+                                    OpBuilder *builder) {
+  llvm::SmallVector<Value, 4> dus_starts(minor_starts.size());
+  for (int64_t i = 0; i < minor_starts.size(); ++i) {
+    dus_starts[i] = GetScalarConstOfType(builder->getIntegerType(32), loc,
+                                         minor_starts[i], builder);
+  }
+  return DynamicUpdateSliceInMinorDims(loc, v, update, dus_starts, builder);
+}
+
+// Creates a batch dot using xla_hlo::DotGeneralOp.
+Value BatchDot(Location loc, Value lhs, bool transpose_lhs, Value rhs,
+               bool transpose_rhs, int64_t num_batch_dims,
+               ArrayAttr precision_config, OpBuilder *builder) {
+  auto batch_dimensions = GetI64ElementsAttr(
+      llvm::to_vector<4>(llvm::seq<int64_t>(0, num_batch_dims)), builder);
+  auto lhs_contracting_dimensions = GetI64ElementsAttr(
+      llvm::makeArrayRef({transpose_lhs ? num_batch_dims : num_batch_dims + 1}),
+      builder);
+  auto rhs_contracting_dimensions = GetI64ElementsAttr(
+      llvm::makeArrayRef({transpose_rhs ? num_batch_dims + 1 : num_batch_dims}),
+      builder);
+  auto dimension_numbers = DotDimensionNumbers::get(
+      /*lhs_batching_dimensions=*/batch_dimensions,
+      /*rhs_batching_dimensions=*/batch_dimensions,
+      /*lhs_contracting_dimensions=*/lhs_contracting_dimensions,
+      /*rhs_contracting_dimensions=*/rhs_contracting_dimensions,
+      builder->getContext());
+  auto lhs_shape = lhs.getType().cast<RankedTensorType>().getShape();
+  auto rhs_shape = rhs.getType().cast<RankedTensorType>().getShape();
+  auto shape = llvm::to_vector<4>(lhs_shape);
+  shape[shape.size() - 2] =
+      transpose_lhs ? lhs_shape.back() : lhs_shape[lhs_shape.size() - 2];
+  shape[shape.size() - 1] =
+      transpose_rhs ? rhs_shape[rhs_shape.size() - 2] : rhs_shape.back();
+  Type element_type = getElementTypeOrSelf(lhs.getType());
+  return builder->create<DotGeneralOp>(
+      loc, RankedTensorType::get(shape, element_type), lhs, rhs,
+      dimension_numbers, precision_config);
 }
 
 // Builds body for reduce op by using the using the template binary op as the
@@ -566,20 +711,6 @@ static Type ChangeTensorElementType(Builder *b, Type tensor_type,
 //===----------------------------------------------------------------------===//
 // Softmax op utilities.
 //===----------------------------------------------------------------------===//
-
-// Returns a 1-d i64 elements attribute populated with numbers from start to
-// end, excluding.
-static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
-                                                     Builder *builder) {
-  int size = end - start;
-
-  SmallVector<int64_t, 4> vals;
-  vals.resize(size);
-  std::iota(vals.begin(), vals.end(), start);
-
-  TensorType ty = RankedTensorType::get({size}, builder->getIntegerType(64));
-  return DenseIntElementsAttr::get(ty, vals);
-}
 
 // Returns the type to use for accumulating the given type.
 static Type GetAccumulationType(Type ty) {
@@ -1304,13 +1435,15 @@ class ConvertFusedBatchNormV3Op
 //
 // Requires padding to be either 'SAME' or 'VALID' and the number of input
 // dimensions to be equal to the size of window dimensions and window strides.
+template <int num_dims>
 static DenseIntElementsAttr GetReduceWindowPadding(
     llvm::ArrayRef<int64_t> input_dims, ArrayAttr window_dims,
     ArrayAttr window_strides, StringRef padding, Builder *builder) {
   if (padding == "VALID") return {};
   DCHECK_EQ(padding.str(), "SAME");
 
-  llvm::SmallVector<tensorflow::int64, 4> input_shape, window_shape, strides;
+  llvm::SmallVector<tensorflow::int64, num_dims> input_shape, window_shape,
+      strides;
   input_shape.reserve(input_dims.size());
   window_shape.reserve(window_shape.size());
   strides.reserve(window_strides.size());
@@ -1325,7 +1458,7 @@ static DenseIntElementsAttr GetReduceWindowPadding(
       ::xla::MakePadding(input_shape, window_shape, strides,
                          ::xla::Padding::kSame);
   int64_t rank = paddings.size();
-  llvm::SmallVector<int64_t, 8> flatten_paddings(rank * 2);
+  llvm::SmallVector<int64_t, num_dims * 2> flatten_paddings(rank * 2);
   for (int i = 0; i < rank; i++) {
     flatten_paddings[2 * i] = paddings[i].first;
     flatten_paddings[2 * i + 1] = paddings[i].second;
@@ -1335,7 +1468,7 @@ static DenseIntElementsAttr GetReduceWindowPadding(
       flatten_paddings);
 }
 
-// Converts MaxPool op to HLO ReduceWindow op by setting appropriate window
+// Converts AvgPool op to HLO ReduceWindow op by setting appropriate window
 // dimensions with add as the reduction function. The reduction result is
 // then divided by the number of elements in the window.
 class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
@@ -1375,8 +1508,8 @@ class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
     Value init =
         GetScalarConstOfType(sum_element_type, op.getLoc(), 0, &rewriter);
     DenseIntElementsAttr paddings_attr =
-        GetReduceWindowPadding(input_type.getShape(), op.ksize(), op.strides(),
-                               op.padding(), &rewriter);
+        GetReduceWindowPadding<4>(input_type.getShape(), op.ksize(),
+                                  op.strides(), op.padding(), &rewriter);
     auto reduce = rewriter.create<ReduceWindowOp>(
         op.getLoc(), result_type, input_value, init,
         GetI64ElementsAttr(op.ksize()), GetI64ElementsAttr(op.strides()),
@@ -1418,21 +1551,22 @@ class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
 //   %max_pool = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.maximum"]
 //               {window_dimensions = ..., window_strides = ... }
 //
-class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
+template <typename OpTy, int num_dims>
+class ConvertMaxPoolOp : public OpRewritePattern<OpTy> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  using OpRewritePattern<OpTy>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TF::MaxPoolOp op,
+  LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
     Type element_type =
-        op.input().getType().cast<TensorType>().getElementType();
+        op.input().getType().template cast<TensorType>().getElementType();
     if (!element_type.isSignlessIntOrFloat()) return failure();
     Location loc = op.getLoc();
     ConstOp init = GetMinValueForType(element_type, loc, &rewriter);
 
-    auto input_ty = op.input().getType().dyn_cast<RankedTensorType>();
+    auto input_ty = op.input().getType().template dyn_cast<RankedTensorType>();
     if (!input_ty) return failure();
-    DenseIntElementsAttr paddings_attr = GetReduceWindowPadding(
+    DenseIntElementsAttr paddings_attr = GetReduceWindowPadding<num_dims>(
         input_ty.getShape(), op.ksize(), op.strides(), op.padding(), &rewriter);
     auto reduce = rewriter.create<ReduceWindowOp>(
         loc, op.getType(), op.input(), init.getResult(),
@@ -1445,6 +1579,9 @@ class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
     return success();
   }
 };
+
+using ConvertMaxPool2DOp = ConvertMaxPoolOp<TF::MaxPoolOp, /*num_dims=*/4>;
+using ConvertMaxPool3DOp = ConvertMaxPoolOp<TF::MaxPool3DOp, /*num_dims=*/5>;
 
 // Converts SelectV2 to HLO Select op and necessary BroadcastInDim ops on
 // operands.
@@ -2684,23 +2821,25 @@ class ConvertTileOp : public OpRewritePattern<TF::TileOp> {
   }
 };
 
-class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
+template <typename OpTy, int num_dims>
+class ConvertMaxPoolGradOp : public OpRewritePattern<OpTy> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  using OpRewritePattern<OpTy>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TF::MaxPoolGradOp op,
+  LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
 
     Type element_type =
-        op.orig_input().getType().cast<TensorType>().getElementType();
+        op.orig_input().getType().template cast<TensorType>().getElementType();
 
     // Compute paddings using the original input and kernel shape and strides.
     // Here, ReduceWindow op as used as the MaxPool op is lowered to the
     // ReduceWindow op.
-    auto input_ty = op.orig_input().getType().dyn_cast<RankedTensorType>();
+    auto input_ty =
+        op.orig_input().getType().template dyn_cast<RankedTensorType>();
     if (!input_ty) return failure();
-    DenseIntElementsAttr paddings_attr = GetReduceWindowPadding(
+    DenseIntElementsAttr paddings_attr = GetReduceWindowPadding<num_dims>(
         input_ty.getShape(), op.ksize(), op.strides(), op.padding(), &rewriter);
 
     auto result = rewriter.create<SelectAndScatterOp>(
@@ -2730,6 +2869,11 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
     return success();
   }
 };
+
+using ConvertMaxPool2DGradOp =
+    ConvertMaxPoolGradOp<TF::MaxPoolGradOp, /*num_dims=*/4>;
+using ConvertMaxPool3DGradOp =
+    ConvertMaxPoolGradOp<TF::MaxPool3DGradOp, /*num_dims=*/5>;
 
 // Converts tf.Conv?DBackpropInputOp into:
 //   %rev_filter = "xla_hlo.reverse"(%filter)
@@ -2763,8 +2907,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
         input_shape_attr.getType().getRank() != 1)
       return failure();
 
-    auto input_shape = llvm::to_vector<num_spatial_dims>(
-        input_shape_attr.getValues<int32_t>());
+    auto input_shape = input_shape_attr.getValues<int32_t>();
 
     auto dilations_attr = GetI64ElementsAttr(op.dilations());
     std::vector<int> dilations{
@@ -2788,31 +2931,30 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
             explicit_padding.cast<IntegerAttr>().getInt());
     }
 
+    constexpr int num_dims = num_spatial_dims + 2;
     ArrayRef<int64_t> filter_shape = filter_ty.getShape();
+
     // Reuse dimension computation logic from conv_grad_shape_utils.cc.
     tensorflow::ConvBackpropDimensions dims;
     if (!tensorflow::ConvBackpropComputeDimensionsV2(
              /*label=*/"", num_spatial_dims,
-             ToTensorShape<int32_t>(input_shape),
-             ToTensorShape<int64_t>(filter_shape),
-             ToTensorShape<int64_t>(out_backprop_ty.getShape()), dilations,
-             strides, padding, explicit_paddings, data_format, &dims)
+             ToTensorShape<int32_t, num_dims>(input_shape),
+             ToTensorShape<int64_t, num_dims>(filter_shape),
+             ToTensorShape<int64_t, num_dims>(out_backprop_ty.getShape()),
+             dilations, strides, padding, explicit_paddings, data_format, &dims)
              .ok()) {
       return failure();
     }
 
     // Compute ConvDimensionNumbers, dilation, and padding.
     SmallVector<int64_t, num_spatial_dims> spatial_dims;
-    SmallVector<int64_t, num_spatial_dims> kernel_spatial_dims;
     SmallVector<int64_t, num_spatial_dims> lhs_dilation;
     SmallVector<int64_t, num_spatial_dims> rhs_dilation;
     SmallVector<int64_t, num_spatial_dims * 2> paddings;
 
-    const int num_dims = num_spatial_dims + 2;
     for (int i : llvm::seq<int>(0, num_spatial_dims)) {
       const int64_t dim = GetTensorSpatialDimIndex(num_dims, data_format, i);
       spatial_dims.push_back(dim);
-      kernel_spatial_dims.push_back(i);
       const auto &spatial_dim_i = dims.spatial_dims[i];
       lhs_dilation.push_back(spatial_dim_i.stride);
       rhs_dilation.push_back(dilations[dim]);
@@ -2830,7 +2972,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
 
     const int feature_dim =
         tensorflow::GetTensorFeatureDimIndex(num_dims, data_format);
-    const int64_t in_depth = input_shape[feature_dim];
+    const int64_t in_depth = *(input_shape.begin() + feature_dim);
     const int64_t filter_in_depth = filter_shape[num_spatial_dims];
     const int64_t feature_group_count = in_depth / filter_in_depth;
 
@@ -2843,12 +2985,12 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
       return failure();
     }
 
-    // Mirror the filter in the spatial dimensions.
-    filter = rewriter.create<ReverseOp>(
-        op.getLoc(), filter,
-        GetI64ElementsAttr(kernel_spatial_dims, &rewriter));
+    auto kernel_spatial_dims_attr =
+        GetI64ElementsAttrForSeq(0, num_spatial_dims, &rewriter);
 
-    SmallVector<int64_t, num_spatial_dims> ones(num_spatial_dims, 1);
+    // Mirror the filter in the spatial dimensions.
+    filter = rewriter.create<ReverseOp>(op.getLoc(), filter,
+                                        kernel_spatial_dims_attr);
 
     const int batch_dim =
         tensorflow::GetTensorBatchDimIndex(num_dims, data_format);
@@ -2859,7 +3001,9 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
     //   = gradients (with padding and dilation) <conv> mirrored_weights
     Value result = rewriter.create<ConvOp>(
         op.getLoc(), op.getType(), op.out_backprop(), filter,
-        /*window_strides=*/GetI64ElementsAttr(ones, &rewriter),
+        /*window_strides=*/
+        GetI64ElementsAttrForValue(/*size=*/num_spatial_dims, /*val=*/1,
+                                   &rewriter),
         /*padding=*/paddings_attr, GetI64ElementsAttr(lhs_dilation, &rewriter),
         GetI64ElementsAttr(rhs_dilation, &rewriter),
         ConvDimensionNumbers::get(
@@ -2873,8 +3017,7 @@ class ConvertConvBackpropInputOp : public OpRewritePattern<OpTy> {
             rewriter.getI64IntegerAttr(num_spatial_dims + 1),
             /*kernel_output_feature_dimension=*/
             rewriter.getI64IntegerAttr(num_spatial_dims),
-            /*kernel_spatial_dimensions=*/
-            GetI64ElementsAttr(kernel_spatial_dims, &rewriter),
+            /*kernel_spatial_dimensions=*/kernel_spatial_dims_attr,
             /*output_batch_dimension=*/batch_dim_attr,
             /*output_feature_dimension=*/feature_dim_attr,
             /*output_spatial_dimensions=*/spatial_dims_attr,
@@ -2896,67 +3039,72 @@ using ConvertConv3DBackpropInputOp =
     ConvertConvBackpropInputOp<TF::Conv3DBackpropInputV2Op,
                                /*num_spatial_dims=*/3>;
 
-// Converts tf.Conv2DBackpropFilterOp into:
+// Converts tf.Conv?DBackpropFilterOp into:
 //   %result = "xla_hlo.convolution"(%input, %out_backprop)
-class ConvertConv2DBackpropFilterOp
-    : public OpRewritePattern<TF::Conv2DBackpropFilterOp> {
+template <typename OpTy, int num_spatial_dims>
+class ConvertConvBackpropFilterOp : public OpRewritePattern<OpTy> {
  public:
-  using OpRewritePattern::OpRewritePattern;
+  using OpRewritePattern<OpTy>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TF::Conv2DBackpropFilterOp op,
+  LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter &rewriter) const override {
     // Unpack all of the attributes.
     tensorflow::TensorFormat data_format;
-    if (!FormatFromString(op.data_format().str(), &data_format)) {
+    if (!FormatFromString(op.data_format().str(), &data_format))
       return failure();
-    }
+
     tensorflow::Padding padding;
     if (!GetPaddingFromString(op.padding().str(), &padding).ok())
       return failure();
 
     auto out_backprop_ty =
-        op.out_backprop().getType().dyn_cast<RankedTensorType>();
-    if (!out_backprop_ty || !out_backprop_ty.hasStaticShape()) return failure();
+        op.out_backprop().getType().template dyn_cast<RankedTensorType>();
+    auto input_ty = op.input().getType().template dyn_cast<RankedTensorType>();
+
+    for (RankedTensorType ty : {out_backprop_ty, input_ty})
+      if (!ty || !ty.hasStaticShape()) return failure();
+
     ArrayRef<int64_t> out_backprop_shape = out_backprop_ty.getShape();
-    auto input_ty = op.input().getType().dyn_cast<RankedTensorType>();
-    if (!input_ty || !input_ty.hasStaticShape()) return failure();
     ArrayRef<int64_t> input_shape = input_ty.getShape();
 
     DenseIntElementsAttr filter_shape_attr;
     if (!matchPattern(op.filter_sizes(), m_Constant(&filter_shape_attr)) ||
-        filter_shape_attr.getType().getRank() != 1) {
+        filter_shape_attr.getType().getRank() != 1)
       return failure();
-    }
 
+    auto dilations_attr = GetI64ElementsAttr(op.dilations());
+    std::vector<int> dilations{
+        dilations_attr.template getValues<int64_t>().begin(),
+        dilations_attr.template getValues<int64_t>().end()};
     auto strides_attr = GetI64ElementsAttr(op.strides());
     std::vector<tensorflow::int32> strides{
-        strides_attr.getValues<int64_t>().begin(),
-        strides_attr.getValues<int64_t>().end()};
-    auto dilations_attr = GetI64ElementsAttr(op.dilations());
-    SmallVector<int, 4> dilations{dilations_attr.getValues<int64_t>().begin(),
-                                  dilations_attr.getValues<int64_t>().end()};
-    auto explicit_paddings_attr = GetI64ElementsAttr(op.explicit_paddings());
-    SmallVector<tensorflow::int64, 4> explicit_paddings{
-        explicit_paddings_attr.getValues<int64_t>().begin(),
-        explicit_paddings_attr.getValues<int64_t>().end()};
+        strides_attr.template getValues<int64_t>().begin(),
+        strides_attr.template getValues<int64_t>().end()};
 
-    int num_spatial_dims = 2;
-    int num_dims = num_spatial_dims + 2;
-    int batch_dim = tensorflow::GetTensorBatchDimIndex(num_dims, data_format);
-    int feature_dim =
-        tensorflow::GetTensorFeatureDimIndex(num_dims, data_format);
+    std::vector<tensorflow::int64> explicit_paddings;
+    if (padding == tensorflow::Padding::EXPLICIT) {
+      // EXPLICIT padding mode and the associated attribute is limited to
+      // Conv2DBackpropFilter. So, fetch attribute by identifier instead of the
+      // op.explicit_paddings() attribute getter.
+      ArrayRef<Attribute> explicit_paddings_attr =
+          op.template getAttrOfType<ArrayAttr>("explicit_paddings").getValue();
+      explicit_paddings.reserve(explicit_paddings_attr.size());
+      for (Attribute explicit_padding : explicit_paddings_attr)
+        explicit_paddings.push_back(
+            explicit_padding.cast<IntegerAttr>().getInt());
+    }
 
-    auto filter_shape =
-        llvm::to_vector<4>(filter_shape_attr.getValues<int32_t>());
-    if (filter_shape.size() != num_dims) return failure();
+    constexpr int num_dims = num_spatial_dims + 2;
+    auto filter_shape = filter_shape_attr.getValues<int32_t>();
 
     // Reuse dimension computation logic from conv_grad_shape_utils.cc.
     tensorflow::ConvBackpropDimensions dims;
     if (!tensorflow::ConvBackpropComputeDimensionsV2(
-             "", num_spatial_dims, ToTensorShape<int64_t>(input_shape),
-             ToTensorShape<int>(filter_shape),
-             ToTensorShape<int64_t>(out_backprop_shape), dilations, strides,
-             padding, explicit_paddings, data_format, &dims)
+             /*label=*/"", num_spatial_dims,
+             ToTensorShape<int64_t, num_dims>(input_shape),
+             ToTensorShape<int32_t, num_dims>(filter_shape),
+             ToTensorShape<int64_t, num_dims>(out_backprop_shape), dilations,
+             strides, padding, explicit_paddings, data_format, &dims)
              .ok()) {
       return failure();
     }
@@ -2967,9 +3115,12 @@ class ConvertConv2DBackpropFilterOp
     // 1. In the case of group convolution, move the num_groups dimension before
     // the batch dimension
     // 2. Swap the roles of the batch and feature dimensions.
-    int64_t in_depth = input_shape[feature_dim];
-    int64_t filter_in_depth = filter_shape[num_spatial_dims];
-    int64_t feature_group_count = in_depth / filter_in_depth;
+    const int feature_dim =
+        tensorflow::GetTensorFeatureDimIndex(num_dims, data_format);
+    const int64_t in_depth = input_shape[feature_dim];
+    const int64_t filter_in_depth = *(filter_shape.begin() + num_spatial_dims);
+    const int64_t feature_group_count = in_depth / filter_in_depth;
+
     if (feature_group_count != 1) {
       /*
           // TODO(parkers): translate this code to mlir.
@@ -2981,21 +3132,20 @@ class ConvertConv2DBackpropFilterOp
     }
 
     // Compute ConvDimensionNumbers, dilation, and padding.
-    SmallVector<int64_t, 8> conv_padding(num_spatial_dims * 2);
-    SmallVector<int64_t, 4> rhs_dilation(num_spatial_dims);
-    SmallVector<int64_t, 4> window_strides(num_spatial_dims);
-    SmallVector<int64_t, 4> lhs_dilation(num_spatial_dims, 1);
-    SmallVector<int64_t, 4> spatial_dims(num_spatial_dims);
-    SmallVector<int64_t, 4> kernel_spatial_dims(num_spatial_dims);
+    SmallVector<int64_t, num_spatial_dims> spatial_dims;
+    SmallVector<int64_t, num_spatial_dims> kernel_spatial_dims;
+    SmallVector<int64_t, num_spatial_dims> rhs_dilation;
+    SmallVector<int64_t, num_spatial_dims * 2> paddings;
+    SmallVector<int64_t, num_spatial_dims> window_strides;
 
     // The filter gradients are computed by a convolution of the input
     // activations and the output gradients, with some appropriate padding.
     // See the comment at the top of conv_grad_ops.h for details.
 
-    for (int64_t i = 0; i < num_spatial_dims; ++i) {
-      int64_t dim =
+    for (int i : llvm::seq<int>(0, num_spatial_dims)) {
+      const int64_t dim =
           tensorflow::GetTensorSpatialDimIndex(num_dims, data_format, i);
-      kernel_spatial_dims[i] = dim;
+      kernel_spatial_dims.push_back(dim);
       // Besides padding the input, we will also expand output_rows to
       //    expanded_out_rows = (output_rows - 1) * stride + 1
       // with zeros in between:
@@ -3004,8 +3154,9 @@ class ConvertConv2DBackpropFilterOp
       //
       // This is done by specifying the window dilation factors in the
       // convolution HLO below.
-      rhs_dilation[i] = dims.spatial_dims[i].stride;
-      window_strides[i] = dilations[dim];
+      const auto &spatial_dim_i = dims.spatial_dims[i];
+      rhs_dilation.push_back(spatial_dim_i.stride);
+      window_strides.push_back(dilations[dim]);
 
       // We will also need to pad the input with zeros such that after the
       // convolution, we get the right size for the filter.
@@ -3013,8 +3164,8 @@ class ConvertConv2DBackpropFilterOp
       // expanded_out_rows as a filter, we should get filter_rows back.
 
       const int64_t padded_in_size =
-          dims.spatial_dims[i].expanded_output_size +
-          (dims.spatial_dims[i].filter_size - 1) * dilations[dim];
+          spatial_dim_i.expanded_output_size +
+          (spatial_dim_i.filter_size - 1) * dilations[dim];
 
       // However it can be smaller than input_rows: in this
       // case it means some of the inputs are not used.
@@ -3030,8 +3181,7 @@ class ConvertConv2DBackpropFilterOp
       // and input "C" is not used at all.
       //
       // We apply negative padding in this case.
-      const int64_t pad_total =
-          padded_in_size - dims.spatial_dims[i].input_size;
+      const int64_t pad_total = padded_in_size - spatial_dim_i.input_size;
 
       // + For the EXPLICIT padding, we pad the top/left side with the explicit
       //   padding and pad the bottom/right side with the remaining space.
@@ -3048,26 +3198,27 @@ class ConvertConv2DBackpropFilterOp
                                      : padding == tensorflow::Padding::SAME
                                            ? std::max<int64_t>(pad_total / 2, 0)
                                            : 0;
-      conv_padding[i * 2] = pad_before;
-      conv_padding[i * 2 + 1] = pad_total - pad_before;
+      paddings.push_back(pad_before);
+      paddings.push_back(pad_total - pad_before);
     }
 
     RankedTensorType paddings_ty = RankedTensorType::get(
         {num_spatial_dims, 2}, rewriter.getIntegerType(64));
-    auto paddings_attr = DenseIntElementsAttr::get(paddings_ty, conv_padding);
-    auto out_spatial_dims_attr =
-        GetI64ElementsAttrForSeq(0, num_spatial_dims, &rewriter);
+    auto paddings_attr = DenseIntElementsAttr::get(paddings_ty, paddings);
     auto kernel_spatial_dims_attr =
         GetI64ElementsAttr(kernel_spatial_dims, &rewriter);
 
+    const int batch_dim =
+        tensorflow::GetTensorBatchDimIndex(num_dims, data_format);
     auto batch_dim_attr = rewriter.getI64IntegerAttr(batch_dim);
     auto feature_dim_attr = rewriter.getI64IntegerAttr(feature_dim);
 
-    Location loc = op.getLoc();
     Value result = rewriter.create<ConvOp>(
-        loc, op.getType(), op.input(), op.out_backprop(),
+        op.getLoc(), op.getType(), op.input(), op.out_backprop(),
         /*window_strides=*/GetI64ElementsAttr(window_strides, &rewriter),
-        /*padding=*/paddings_attr, GetI64ElementsAttr(lhs_dilation, &rewriter),
+        /*padding=*/paddings_attr, /*lhs_dilation=*/
+        GetI64ElementsAttrForValue(/*size=*/num_spatial_dims, /*val=*/1,
+                                   &rewriter),
         GetI64ElementsAttr(rhs_dilation, &rewriter),
         ConvDimensionNumbers::get(
             // Swap batch_dim and feature_dim in the activations.
@@ -3085,7 +3236,8 @@ class ConvertConv2DBackpropFilterOp
             rewriter.getI64IntegerAttr(num_spatial_dims),
             /*output_feature_dimension=*/
             rewriter.getI64IntegerAttr(num_spatial_dims + 1),
-            /*output_spatial_dimensions=*/out_spatial_dims_attr,
+            /*output_spatial_dimensions=*/
+            GetI64ElementsAttrForSeq(0, num_spatial_dims, &rewriter),
             rewriter.getContext()),
         rewriter.getI64IntegerAttr(feature_group_count),
         /*batch_group_count=*/rewriter.getI64IntegerAttr(1),
@@ -3096,6 +3248,13 @@ class ConvertConv2DBackpropFilterOp
     return success();
   }
 };
+
+using ConvertConv2DBackpropFilterOp =
+    ConvertConvBackpropFilterOp<TF::Conv2DBackpropFilterOp,
+                                /*num_spatial_dims=*/2>;
+using ConvertConv3DBackpropFilterOp =
+    ConvertConvBackpropFilterOp<TF::Conv3DBackpropFilterV2Op,
+                                /*num_spatial_dims=*/3>;
 
 class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
  public:
@@ -3198,6 +3357,19 @@ class ConvertInfeedDequeueTupleOp
     auto data_and_token =
         rewriter.create<InfeedOp>(op.getLoc(), data_and_token_type, token,
                                   /*infeed_config=*/rewriter.getStringAttr(""));
+    if (op._XlaSharding().hasValue()) {
+      // _XlaSharding attribute in TF is a serialized string of the OpSharding
+      // proto, so convert to a text form here.
+      ::xla::OpSharding sharding_proto;
+      std::string sharding_str;
+      if (!sharding_proto.ParseFromString(op._XlaSharding().getValue().str()) ||
+          !::tensorflow::protobuf::TextFormat::PrintToString(sharding_proto,
+                                                             &sharding_str))
+        return failure();
+
+      data_and_token.setAttr(kShardingAttr,
+                             rewriter.getStringAttr(sharding_str));
+    }
 
     // The infeed instruction produces a tuple of the infeed data and a token
     // type. Emit get_tuple_element to get infeed data tuple.
@@ -3737,30 +3909,23 @@ class ConvertXlaShardingOp : public OpRewritePattern<TF::XlaShardingOp> {
                                 PatternRewriter &rewriter) const override {
     // TODO(b/148313088): define sharding attribute struct in MLIR intead of
     // using a string.
-    auto sharding = op.getAttrOfType<StringAttr>("_XlaSharding");
-    if (!sharding) {
-      return failure();
-    }
+    if (!op._XlaSharding().hasValue()) return failure();
 
     // _XlaSharding attribute in TF is a serialized string of the OpSharding
     // proto, so convert to a text form here.
     ::xla::OpSharding sharding_proto;
     std::string sharding_str;
-    if (!sharding_proto.ParseFromString(sharding.getValue().str())) {
+    if (!sharding_proto.ParseFromString(op._XlaSharding().getValue().str()) ||
+        !::tensorflow::protobuf::TextFormat::PrintToString(sharding_proto,
+                                                           &sharding_str))
       return failure();
-    }
-    if (!::tensorflow::protobuf::TextFormat::PrintToString(sharding_proto,
-                                                           &sharding_str)) {
-      return failure();
-    }
 
     auto custom_call = rewriter.create<xla_hlo::CustomCallOp>(
         op.getLoc(), op.getType(), op.input(),
         /*call_target_name=*/rewriter.getStringAttr("Sharding"),
         /*has_side_effect=*/rewriter.getBoolAttr(false),
         /*backend_config=*/rewriter.getStringAttr(""));
-    custom_call.setAttr("xla_hlo.sharding",
-                        rewriter.getStringAttr(sharding_str));
+    custom_call.setAttr(kShardingAttr, rewriter.getStringAttr(sharding_str));
     rewriter.replaceOp(op, custom_call.getResult());
 
     return success();
@@ -3866,6 +4031,511 @@ class ConvertCumsumOp : public OpRewritePattern<TF::CumsumOp> {
   }
 };
 
+// Converts a TF QR op to HLO.
+class ConvertQrOp : public OpRewritePattern<TF::QrOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::QrOp op,
+                                PatternRewriter &rewriter) const override {
+    // Block Householder QR Factorization. Algorithm 5.2.2 of Golub and van
+    // Loan. def qr_blocked(a, block_size):
+    //   m = a.shape[0]
+    //   n = a.shape[1]
+    //   q = np.eye(m)
+    //   for i in xrange(0, min(m, n), block_size):
+    //     k = min(block_size, min(m, n) - s)
+    //     (a, vs, taus) = qr(a[i:, i:i+k])
+    //     y = vs
+    //     w = ComputeWYRepresentation(vs, taus, m-i, k)
+    //     a[i:, i+r:] += np.dot(y, np.dot(w.T, a[i:, i+k:]))
+    //     q[:, i:] += np.dot(q[:, i:], np.dot(w, y.T))
+    //   return (q, a)
+    auto type = op.input().getType().dyn_cast<RankedTensorType>();
+    if (!type || !type.hasStaticShape()) return failure();
+    // The block size is chosen to match old bridge lowering.
+    constexpr int64_t kBlockSize = 128;
+    Value a = op.input();
+    int64_t m = type.getDimSize(type.getRank() - 2);
+    int64_t n = type.getDimSize(type.getRank() - 1);
+    int64_t p = std::min(m, n);
+    auto batch_dims = type.getShape().drop_back(2);
+    auto iota_type = RankedTensorType::get({m, m}, rewriter.getIntegerType(32));
+    auto iota0 = rewriter.create<IotaOp>(op.getLoc(), iota_type,
+                                         rewriter.getI64IntegerAttr(0));
+    auto iota1 = rewriter.create<IotaOp>(op.getLoc(), iota_type,
+                                         rewriter.getI64IntegerAttr(1));
+    Value compare = rewriter.create<CompareOp>(
+        op.getLoc(), iota0, iota1,
+        /*broadcast_dimensions=*/nullptr,
+        StringAttr::get("EQ", rewriter.getContext()));
+    Value identity_matrix =
+        rewriter.create<ConvertOp>(op.getLoc(), compare, type.getElementType());
+    auto q_shape = llvm::to_vector<4>(type.getShape());
+    q_shape.back() = m;
+    Value q = rewriter.create<BroadcastOp>(
+        op.getLoc(), RankedTensorType::get(q_shape, type.getElementType()),
+        identity_matrix, GetI64ElementsAttr(batch_dims, &rewriter));
+    auto precision_config = rewriter.getStrArrayAttr({"HIGHEST", "HIGHEST"});
+    for (int64_t i = 0; i < p; i += kBlockSize) {
+      int64_t k = std::min(kBlockSize, p - i);
+      auto a_block =
+          SliceInMinorDims(op.getLoc(), a, {i, i}, {m, i + k}, &rewriter);
+      Value r_block;
+      Value taus;
+      Value vs;
+      QRBlock(op.getLoc(), a_block, &r_block, &taus, &vs, &rewriter);
+      a = UpdateSliceInMinorDims(op.getLoc(), a, r_block, {i, i}, &rewriter);
+
+      // Compute the I-WY block representation of a product of Householder
+      // matrices.
+      Value w =
+          ComputeWYRepresentation(op.getLoc(), type.getElementType(),
+                                  batch_dims, vs, taus, m - i, k, &rewriter);
+      auto y = vs;
+
+      // a[i:, i+k:] += np.dot(Y, np.dot(W.T, a[i:, i+k:]))
+      Value a_panel =
+          SliceInMinorDims(op.getLoc(), a, {i, i + k}, {m, n}, &rewriter);
+      auto a_update = BatchDot(op.getLoc(), w, true, a_panel, false,
+                               batch_dims.size(), precision_config, &rewriter);
+      a_update = BatchDot(op.getLoc(), y, false, a_update, false,
+                          batch_dims.size(), precision_config, &rewriter);
+      a_panel = rewriter.create<AddOp>(op.getLoc(), a_panel, a_update,
+                                       /*broadcast_dimensions=*/nullptr);
+      a = UpdateSliceInMinorDims(op.getLoc(), a, a_panel, {i, i + k},
+                                 &rewriter);
+
+      // q[:, i:] += np.dot(np.dot(q[:, i:], W), Y.T))
+      Value q_panel =
+          SliceInMinorDims(op.getLoc(), q, {0, i}, {m, m}, &rewriter);
+      Value q_update = BatchDot(op.getLoc(), q_panel, false, w, false,
+                                batch_dims.size(), precision_config, &rewriter);
+      q_update = BatchDot(op.getLoc(), q_update, false, y, true,
+                          batch_dims.size(), precision_config, &rewriter);
+      q_panel = rewriter.create<AddOp>(op.getLoc(), q_panel, q_update,
+                                       /*broadcast_dimensions=*/nullptr);
+      q = UpdateSliceInMinorDims(op.getLoc(), q, q_panel, {i}, &rewriter);
+    }
+    // full_matrices is false when only a partial result in needed. Slice to the
+    // needed dimensions here.
+    if (!op.full_matrices()) {
+      q = SliceInMinorDims(op.getLoc(), q, {0, 0}, {m, p}, &rewriter);
+      a = SliceInMinorDims(op.getLoc(), a, {0, 0}, {p, n}, &rewriter);
+    }
+    rewriter.replaceOp(op, {q, a});
+    return success();
+  }
+
+ private:
+  // Computes a Householder reflection of the form:
+  // H = I - tau v v.T.
+  // such that
+  // H . ( x1  ) = ( x1   )
+  //     ( x2  ) = ( x2   )
+  //     ( ... ) = ( ...  )
+  //     ( xk  ) = ( beta )
+  //     ( ... )   ( 0    )
+  //     ( ... )   ( 0    )
+  // Unlike the usual formulation, we allow the caller to supply 'k' rather than
+  // only providing the relevant part of 'x' to maintain XLA's static shape
+  // invariant. In addition, the implementation supports batching.
+  // Pseudo-code, without batching:
+  //   alpha = x[k]
+  //   x_copy = np.copy(x)
+  //   x_copy[:k+1] = 0
+  //   xnorm = norm2(x_copy)
+  //   if xnorm == 0:
+  //     beta = alpha
+  //     tau = 0
+  //     v = np.zeros_like(x)
+  //   else:
+  //     beta = - np.sign(alpha) * dlapy2(alpha, xnorm)
+  //     tau = (beta - alpha) / beta
+  //     v = x / (alpha - beta)
+  //   v[k] = 1
+  //   return (v, tau, beta)
+  void House(Location loc, Value x, Value k, ArrayRef<int64_t> batch_dims,
+             const int64_t m, OpBuilder *builder, Value *v, Value *tau,
+             Value *beta) const {
+    auto x_type = x.getType().cast<RankedTensorType>();
+
+    llvm::SmallVector<int64_t, 4> batch_dim_ids(batch_dims.size());
+    std::iota(batch_dim_ids.begin(), batch_dim_ids.end(), 0);
+    const int64_t minor_dim = batch_dims.size();
+
+    Value zero = GetScalarConstOfType(x_type.getElementType(), loc, 0, builder);
+    Value one = GetScalarConstOfType(x_type.getElementType(), loc, 1, builder);
+
+    // alpha = x[k]
+    Value alpha = DynamicSliceInMinorDims(loc, x, {k}, {1}, builder);
+    alpha = builder->create<ReshapeOp>(
+        loc, RankedTensorType::get(batch_dims, x_type.getElementType()), alpha);
+
+    // Compute x[k+1:] (padded with zeros in elements 0..k)
+    Value iota = builder->create<IotaOp>(
+        loc, RankedTensorType::get({m}, builder->getIntegerType(32)),
+        builder->getI64IntegerAttr(0));
+    Value gtk = builder->create<CompareOp>(
+        loc, iota, k, GetI64ElementsAttr({}, builder),
+        StringAttr::get("GT", builder->getContext()));
+    gtk = builder->create<ConvertOp>(loc, gtk, x_type.getElementType());
+    Value x_after_k = builder->create<MulOp>(
+        loc, x, gtk, GetI64ElementsAttr({minor_dim}, builder));
+    Value x_after_k_sq = builder->create<MulOp>(
+        loc, x_after_k, x_after_k, /*broadcast_dimensions=*/nullptr);
+    // sigma = np.dot(x[k+1:], x[k+1:])
+    auto sigma = builder->create<ReduceOp>(
+        loc, x_after_k_sq, zero, GetI64ElementsAttr({minor_dim}, builder));
+    BuildReduceBody<AddOp>(x_type.getElementType(), &sigma.body(), builder);
+    // mu = np.sqrt(x[k]*x[k] + sigma)
+    Value alpha_sq = builder->create<MulOp>(loc, alpha, alpha,
+                                            /*broadcast_dimensions=*/nullptr);
+    Value mu = builder->create<SqrtOp>(
+        loc, builder->create<AddOp>(loc, alpha_sq, sigma.getResult(0),
+                                    /*broadcast_dimensions=*/nullptr));
+
+    Value sigma_is_zero = builder->create<CompareOp>(
+        loc, sigma.getResult(0), zero, GetI64ElementsAttr({}, builder),
+        StringAttr::get("EQ", builder->getContext()));
+    Value alpha_is_negative = builder->create<CompareOp>(
+        loc, alpha, zero, GetI64ElementsAttr({}, builder),
+        StringAttr::get("LT", builder->getContext()));
+    auto batch_size_one = builder->create<BroadcastOp>(
+        loc, alpha.getType(), one, GetI64ElementsAttr(batch_dims, builder));
+    Value signed_mu = builder->create<MulOp>(
+        loc,
+        builder->create<SelectOp>(loc, mu.getType(), alpha_is_negative,
+                                  batch_size_one,
+                                  builder->create<NegOp>(loc, batch_size_one)),
+        mu, GetI64ElementsAttr({}, builder));
+    *beta = builder->create<SelectOp>(loc, alpha.getType(), sigma_is_zero,
+                                      alpha, signed_mu);
+    *tau = builder->create<DivOp>(
+        loc,
+        builder->create<SubOp>(loc, *beta, alpha,
+                               /*broadcast_dimensions=*/nullptr),
+        *beta,
+        /*broadcast_dimensions=*/nullptr);
+    Value zero_tau = builder->create<BroadcastOp>(
+        loc, alpha.getType(), zero, GetI64ElementsAttr(batch_dims, builder));
+    *tau = builder->create<SelectOp>(loc, alpha.getType(), sigma_is_zero,
+                                     zero_tau, *tau);
+    Value divisor = builder->create<SubOp>(loc, alpha, *beta,
+                                           /*broadcast_dimensions=*/nullptr);
+    divisor = builder->create<SelectOp>(loc, divisor.getType(), sigma_is_zero,
+                                        batch_size_one, divisor);
+
+    Value eqk = builder->create<CompareOp>(
+        loc, iota, k, GetI64ElementsAttr({}, builder),
+        StringAttr::get("EQ", builder->getContext()));
+    eqk = builder->create<ConvertOp>(loc, eqk, x_type.getElementType());
+    llvm::SmallVector<int64_t, 4> e_k_shape(batch_dims.size(), 1);
+    e_k_shape.push_back(m);
+    auto e_k = builder->create<BroadcastOp>(
+        loc, RankedTensorType::get(e_k_shape, x_type.getElementType()), eqk,
+        GetI64ElementsAttr(llvm::SmallVector<int64_t, 4>(batch_dims.size(), 1),
+                           builder));
+
+    // Form v as [0, 0, ..., 1] ++ x[k+1:] / divisor
+    // If sigma is zero, x[k+1:] is zero, so use any non-zero divisor.
+    *v = builder->create<AddOp>(
+        loc, e_k,
+        builder->create<DivOp>(loc, x_after_k, divisor,
+                               GetI64ElementsAttr(batch_dim_ids, builder)),
+        /*broadcast_dimensions=*/nullptr);
+  }
+
+  // Householder QR decomposition. Algorithm 5.2.1 from Golub and Van
+  // Loan "Matrix Computations", 4th Edition. This is an unblocked
+  // implementation used as an inner routine of the blocked implementation.
+  // Algorithm is adapted slightly so the shapes inside the loop are static, at
+  // the cost of some redundant computation. Since this is used as an inner
+  // block kernel, accumulates the Householder transformations (vs, taus) rather
+  // than the matrix q. Equivalent Python code, without batching: def qr(a):
+  //   m = a.shape[0]
+  //   n = a.shape[1]
+  //   vs = np.zeros([m, n])
+  //   taus = np.zeros([n])
+  //   for j in xrange(min(m, n)):
+  //     v, tau, beta = house(a[:, j], j)
+  //     # Unusually, we apply the Householder transformation to the entirety of
+  //     # a, wasting FLOPs to maintain the static shape invariant that XLA
+  //     # requires. For columns that precede j this has no effect.
+  //     a[:, :] -= tau * np.dot(v[:, np.newaxis],
+  //                              np.dot(v[np.newaxis, :], a[:, :]))
+  //     # Form column j explicitly rather than relying on the precision of the
+  //     # Householder update.
+  //     a[j, j] = beta
+  //     a[j+1:, j] = np.zeros([m - j - 1], dtype=a.dtype)
+  //     vs[:, j] = v
+  //     taus[j] = tau
+  //   return (q, vs, taus)
+  void QRBlock(Location loc, Value a, Value *r, Value *taus, Value *vs,
+               PatternRewriter *rewriter) const {
+    auto a_type = a.getType().cast<RankedTensorType>();
+    const int num_dims = a_type.getRank();
+    assert(num_dims >= 2 && "Argument to QR must have rank >= 2");
+
+    const int64_t m = a_type.getDimSize(a_type.getRank() - 2);
+    const int64_t n = a_type.getDimSize(a_type.getRank() - 1);
+
+    const int64_t num_batch_dims = num_dims - 2;
+    auto batch_dims = a_type.getShape().take_front(num_batch_dims);
+    llvm::SmallVector<int64_t, 4> batch_dim_indices(batch_dims.size());
+    std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
+
+    auto qr_body_fn = [&](Location loc, Value j, ArrayRef<Value> old_values,
+                          SmallVectorImpl<Value> *new_values,
+                          OpBuilder *builder) {
+      auto a = old_values[0];
+      auto vs = old_values[1];
+      auto taus = old_values[2];
+
+      // v, beta = house(a[:, j], j)
+      auto x = DynamicSliceInMinorDims(loc, a, {j}, {1}, builder);
+      auto x_collapsed_shape = llvm::to_vector<4>(batch_dims);
+      x_collapsed_shape.push_back(m);
+      auto x_collapsed = builder->create<ReshapeOp>(
+          loc,
+          RankedTensorType::get(x_collapsed_shape,
+                                getElementTypeOrSelf(x.getType())),
+          x);
+      Value v, tau, beta;
+      House(loc, x_collapsed, j, batch_dims, m, builder, &v, &tau, &beta);
+
+      auto shape = llvm::to_vector<4>(batch_dims);
+      shape.append({1, m});
+      auto v_broadcast = builder->create<ReshapeOp>(
+          loc, RankedTensorType::get(shape, getElementTypeOrSelf(v.getType())),
+          v);
+      // a[:, :] -= tau * np.dot(v[:, np.newaxis],
+      //                          np.dot(v[np.newaxis, :], a[:, :]))
+      auto precision = builder->getStrArrayAttr({"HIGHEST", "HIGHEST"});
+      auto vva = BatchDot(loc, v_broadcast, false, a, false, num_batch_dims,
+                          precision, builder);
+      vva = BatchDot(loc, v_broadcast, true, vva, false, num_batch_dims,
+                     precision, builder);
+      auto tau_x_vva = builder->create<MulOp>(
+          loc, tau, vva, GetI64ElementsAttr(batch_dim_indices, builder));
+      a = builder->create<SubOp>(loc, a, tau_x_vva,
+                                 /*broadcast_dimensions=*/nullptr);
+
+      // It is more precise to populate column 'k' explicitly, rather than
+      // computing it implicitly by applying the Householder transformation.
+      // a[k,k] = beta
+      // a[k+1:,k] = np.zeros([m-k-1], dtype=a.dtype)
+      auto iota = builder->create<IotaOp>(
+          loc, RankedTensorType::get({m, 1}, builder->getIntegerType(32)),
+          builder->getI64IntegerAttr(0));
+      Value predecessor_mask = builder->create<CompareOp>(
+          loc, iota, j, GetI64ElementsAttr({}, builder),
+          StringAttr::get("LT", builder->getContext()));
+      predecessor_mask = builder->create<ConvertOp>(loc, predecessor_mask,
+                                                    a_type.getElementType());
+      Value mask = builder->create<CompareOp>(
+          loc, iota, j, GetI64ElementsAttr({}, builder),
+          StringAttr::get("EQ", builder->getContext()));
+      mask = builder->create<ConvertOp>(loc, mask, a_type.getElementType());
+      llvm::SmallVector<int64_t, 4> broadcast_mask_shape(a_type.getRank(), 1);
+      broadcast_mask_shape[a_type.getRank() - 2] = m;
+      mask = builder->create<BroadcastOp>(
+          loc,
+          RankedTensorType::get(broadcast_mask_shape, a_type.getElementType()),
+          mask,
+          GetI64ElementsAttr(llvm::SmallVector<int64_t, 4>(num_batch_dims, 1),
+                             builder));
+      Value predecessor_masked_x = builder->create<MulOp>(
+          loc, x, predecessor_mask,
+          GetI64ElementsAttr({num_dims - 2, num_dims - 1}, builder));
+      Value masked_beta = builder->create<MulOp>(
+          loc, beta, mask, GetI64ElementsAttr(batch_dim_indices, builder));
+      Value new_x =
+          builder->create<AddOp>(loc, predecessor_masked_x, masked_beta,
+                                 /*broadcast_dimensions=*/nullptr);
+      // Update a[:,j]
+      llvm::SmallVector<int64_t, 4> dim_ids(num_dims);
+      std::iota(dim_ids.begin(), dim_ids.end(), 0);
+      new_x = builder->create<BroadcastInDimOp>(
+          loc, a_type, new_x, GetI64ElementsAttr(dim_ids, builder));
+      const int64_t minor_dim = num_batch_dims;
+      auto iota_mn = builder->create<IotaOp>(
+          loc,
+          RankedTensorType::get(a_type.getShape(), builder->getIntegerType(32)),
+          builder->getI64IntegerAttr(minor_dim + 1));
+      Value xa_mask = builder->create<CompareOp>(
+          loc, iota_mn, j, GetI64ElementsAttr({}, builder),
+          StringAttr::get("EQ", builder->getContext()));
+      a = builder->create<SelectOp>(loc, a_type, xa_mask, new_x, a);
+
+      // vs[:, j] = v
+      llvm::SmallVector<int64_t, 4> vs_broadcast_dims(num_batch_dims + 1);
+      std::iota(vs_broadcast_dims.begin(), vs_broadcast_dims.end(), 0);
+      Value vs_zeros =
+          GetScalarConstOfType(a_type.getElementType(), loc, 0, builder);
+      vs_zeros = builder->create<BroadcastOp>(
+          loc, vs.getType(), vs_zeros,
+          GetI64ElementsAttr(vs.getType().cast<RankedTensorType>().getShape(),
+                             builder));
+      auto vs_update = builder->create<SelectOp>(
+          loc, vs.getType(), xa_mask,
+          builder->create<AddOp>(
+              loc, vs_zeros, v, GetI64ElementsAttr(vs_broadcast_dims, builder)),
+          vs_zeros);
+      vs = builder->create<AddOp>(loc, vs, vs_update,
+                                  /*broadcast_dimensions=*/nullptr);
+
+      // taus[j] = tau
+      llvm::SmallVector<int64_t, 4> tau_broadcast_dims(batch_dims.size());
+      std::iota(tau_broadcast_dims.begin(), tau_broadcast_dims.end(), 0);
+
+      auto iota_shape = llvm::to_vector<4>(batch_dims);
+      iota_shape.push_back(n);
+      auto iota_n = builder->create<IotaOp>(
+          loc, RankedTensorType::get(iota_shape, builder->getIntegerType(32)),
+          builder->getI64IntegerAttr(minor_dim));
+      Value taus_zeros =
+          GetScalarConstOfType(a_type.getElementType(), loc, 0, builder);
+      taus_zeros = builder->create<BroadcastOp>(
+          loc, taus.getType(), taus_zeros,
+          GetI64ElementsAttr(taus.getType().cast<RankedTensorType>().getShape(),
+                             builder));
+      Value taus_mask = builder->create<CompareOp>(
+          loc, iota_n, j, GetI64ElementsAttr({}, builder),
+          StringAttr::get("EQ", builder->getContext()));
+      auto taus_update = builder->create<SelectOp>(
+          loc, taus.getType(), taus_mask,
+          builder->create<AddOp>(
+              loc, taus_zeros, tau,
+              GetI64ElementsAttr(tau_broadcast_dims, builder)),
+          taus_zeros);
+      taus = builder->create<AddOp>(loc, taus, taus_update,
+                                    /*broadcast_dimensions=*/nullptr);
+      new_values->assign({a, vs, taus});
+    };
+
+    Value zero =
+        GetScalarConstOfType(a_type.getElementType(), loc, 0, rewriter);
+    *vs = rewriter->create<BroadcastOp>(
+        loc, a_type, zero, GetI64ElementsAttr(a_type.getShape(), rewriter));
+    auto taus_shape = llvm::to_vector<4>(batch_dims);
+    taus_shape.push_back(n);
+    *taus = rewriter->create<BroadcastOp>(
+        loc, RankedTensorType::get(taus_shape, a_type.getElementType()), zero,
+        GetI64ElementsAttr(taus_shape, rewriter));
+
+    SmallVector<Value, 4> while_output;
+    CreateWhile32(loc, std::min(m, n), qr_body_fn, {a, *vs, *taus},
+                  &while_output, rewriter);
+    *r = while_output[0];
+    *vs = while_output[1];
+    *taus = while_output[2];
+  }
+
+  // Computes W and Y such that I-WY is equivalent to the sequence of
+  // Householder
+  // transformations given by vs and taus.
+  // Golub and van Loan, "Matrix Computations", algorithm 5.1.2.
+  // Y = np.zeros([m, n])
+  // W = np.zeros([m, n])
+  // Y[:, 0] = vs[:, 0]
+  // W[:, 0] = -taus[0] * vs[:, 0]
+  // for j in xrange(1, n):
+  //   v = vs[:, j]
+  //   z = -taus[j] * v - taus[j] * np.dot(W, np.dot(Y.T, v))
+  //   W[:, j] = z
+  //   Y[:, j] = v
+  // return W
+  // There is no need to return Y since at termination of the loop it is equal
+  // to vs.
+  Value ComputeWYRepresentation(Location loc, Type data_type,
+                                ArrayRef<int64_t> batch_dims, Value vs,
+                                Value taus, int64_t m, int64_t n,
+                                PatternRewriter *rewriter) const {
+    int64_t n_index = batch_dims.size() + 1;
+    llvm::SmallVector<int64_t, 4> batch_dim_indices(batch_dims.size());
+    std::iota(batch_dim_indices.begin(), batch_dim_indices.end(), 0);
+
+    auto body_fn = [&](Location loc, Value j, ArrayRef<Value> old_values,
+                       SmallVectorImpl<Value> *new_values, OpBuilder *builder) {
+      // w has shape [..., m, n]
+      auto w = old_values[0];
+      const auto vs = old_values[1];
+      const auto taus = old_values[2];
+
+      // Want j values in range [1, ... n).
+      j = builder->create<AddOp>(
+          loc, j,
+          GetScalarConstOfType(getElementTypeOrSelf(j.getType()), loc, 1,
+                               builder),
+          /*broadcast_dimensions=*/nullptr);
+      // vs has shape [..., m, 1]
+      auto v = DynamicSliceInMinorDims(loc, vs, {j}, {1}, builder);
+      // beta has shape [..., 1]
+      auto beta = DynamicSliceInMinorDims(loc, taus, {j}, {1}, builder);
+
+      auto iota_shape = llvm::to_vector<4>(batch_dims);
+      iota_shape.append({m, n});
+      auto iota_mn = builder->create<IotaOp>(
+          loc, RankedTensorType::get(iota_shape, builder->getIntegerType(32)),
+          builder->getI64IntegerAttr(n_index));
+
+      // y has shape [..., m, n]
+      Value zero = GetScalarConstOfType(getElementTypeOrSelf(vs.getType()), loc,
+                                        0, builder);
+      zero = builder->create<BroadcastOp>(
+          loc, vs.getType(), zero,
+          GetI64ElementsAttr(vs.getType().cast<RankedTensorType>().getShape(),
+                             builder));
+      auto compare = builder->create<CompareOp>(
+          loc, iota_mn, j, GetI64ElementsAttr({}, builder),
+          StringAttr::get("GE", builder->getContext()));
+      auto y = builder->create<SelectOp>(loc, vs.getType(), compare, zero, vs);
+
+      // yv has shape [..., n, 1]
+      auto precision = builder->getStrArrayAttr({"HIGHEST", "HIGHEST"});
+      auto yv = BatchDot(loc, y, true, v, false, batch_dims.size(), precision,
+                         builder);
+      // wyv has shape [..., m, 1]
+      auto wyv = BatchDot(loc, w, false, yv, false, batch_dims.size(),
+                          precision, builder);
+
+      // z = -beta * (v + wyv)
+      auto neg_beta = builder->create<NegOp>(loc, beta);
+      auto v_wyv = builder->create<AddOp>(loc, v, wyv,
+                                          /*broadcast_dimensions=*/nullptr);
+      auto beta_broadcast_dims = llvm::to_vector<4>(batch_dim_indices);
+      beta_broadcast_dims.push_back(n_index);
+      auto z = builder->create<MulOp>(
+          loc, neg_beta, v_wyv,
+          GetI64ElementsAttr(beta_broadcast_dims, builder));
+
+      w = DynamicUpdateSliceInMinorDims(loc, w, z, {j}, builder);
+      new_values->assign({w, vs, taus});
+    };
+
+    Value w =
+        GetScalarConstOfType(getElementTypeOrSelf(data_type), loc, 0, rewriter);
+    auto w_shape = llvm::to_vector<4>(batch_dims);
+    w_shape.append({m, n});
+    w = rewriter->create<BroadcastOp>(loc,
+                                      RankedTensorType::get(w_shape, data_type),
+                                      w, GetI64ElementsAttr(w_shape, rewriter));
+    auto v = SliceInMinorDims(loc, vs, {0}, {1}, rewriter);
+    auto beta = SliceInMinorDims(loc, taus, {0}, {1}, rewriter);
+    auto neg_beta = rewriter->create<NegOp>(loc, beta);
+    auto beta_broadcast_dims = llvm::to_vector<4>(batch_dim_indices);
+    beta_broadcast_dims.push_back(n_index);
+    auto bv = rewriter->create<MulOp>(
+        loc, neg_beta, v, GetI64ElementsAttr(beta_broadcast_dims, rewriter));
+    w = UpdateSliceInMinorDims(loc, w, bv, {0}, rewriter);
+
+    SmallVector<Value, 4> while_output;
+    CreateWhile32(loc, n - 1, body_fn, {w, vs, taus}, &while_output, rewriter);
+    return while_output[0];
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
 LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
@@ -3883,15 +4553,16 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
       ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBatchMatMulV2Op,
       ConvertBroadcastToOp, ConvertBF16FloorDivOp, ConvertConv2DOp,
       ConvertConv3DOp, ConvertDepthConv2DOp, ConvertConv2DBackpropFilterOp,
-      ConvertConv2DBackpropInputOp, ConvertConv3DBackpropInputOp,
-      ConvertCumsumOp, ConvertDiagPartOp, ConvertEinsumOp,
-      ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
-      ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op,
-      ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp, ConvertMaxOp,
-      ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPoolOp, ConvertMaxPoolGradOp,
+      ConvertConv3DBackpropFilterOp, ConvertConv2DBackpropInputOp,
+      ConvertConv3DBackpropInputOp, ConvertCumsumOp, ConvertDiagPartOp,
+      ConvertEinsumOp, ConvertFusedBatchNormGradOp,
+      ConvertFusedBatchNormGradV2Op, ConvertFusedBatchNormGradV3Op,
+      ConvertFusedBatchNormV3Op, ConvertInfeedDequeueTupleOp, ConvertLinSpaceOp,
+      ConvertMaxOp, ConvertMinOp, ConvertAvgPoolOp, ConvertMaxPool2DOp,
+      ConvertMaxPool3DOp, ConvertMaxPool2DGradOp, ConvertMaxPool3DGradOp,
       ConvertMeanOp, ConvertOneHotOp, ConvertOutfeedEnqueueTupleOp,
-      ConvertProdOp, ConvertRangeOp, ConvertSelectV2Op, ConvertSigmoidOp,
-      ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+      ConvertProdOp, ConvertQrOp, ConvertRangeOp, ConvertSelectV2Op,
+      ConvertSigmoidOp, ConvertSizeOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
       ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp, ConvertSplitVOp,
       ConvertStridedSliceOp, ConvertStridedSliceGradOp, ConvertSumOp,
       ConvertTensorScatterUpdateOp, ConvertTileOp, ConvertTopKV2Op,

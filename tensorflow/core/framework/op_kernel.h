@@ -694,8 +694,8 @@ class OpKernelContext {
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
 
     // Support for forwarding reservations (used by ScopedAllocator).
-    static const int kNeverForward = -2;
-    static const int kNoReservation = -1;
+    static constexpr int kNeverForward = -2;
+    static constexpr int kNoReservation = -1;
     // Values in [0,...) represent reservations for the indexed output.
     const int* forward_from_array = nullptr;
 

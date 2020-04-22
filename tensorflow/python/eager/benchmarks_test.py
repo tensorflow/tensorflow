@@ -40,6 +40,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
+from tensorflow.python.eager import benchmarks_test_base
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import def_function
@@ -106,7 +107,7 @@ def run_benchmark(func, num_iters, execution_mode=None):
     return end - start
 
 
-class MicroBenchmarks(test.Benchmark):
+class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
   def __init__(self):
     # TODO(b/153054118): Add tf.RandomUniform
@@ -145,20 +146,7 @@ class MicroBenchmarks(test.Benchmark):
     return name
 
   def _run(self, func, num_iters, execution_mode=None):
-    total_time = run_benchmark(func, num_iters, execution_mode)
-    mean_us = total_time * 1e6 / num_iters
-    benchmark_name = self._get_benchmark_name()
-
-    self.report_benchmark(
-        iters=num_iters,
-        wall_time=mean_us,
-        extras={
-            "examples_per_sec":
-                float("{0:.3f}".format(num_iters / total_time)),
-            "us_per_example":
-                float("{0:.3f}".format(total_time * 1e6 / num_iters))
-        },
-        name=benchmark_name)
+    self.run_report(run_benchmark, func, num_iters, execution_mode)
 
   def benchmark_create_np_array(self):
     func = lambda: np.array([3.0])
@@ -166,7 +154,6 @@ class MicroBenchmarks(test.Benchmark):
 
   def _benchmark_create_tensor(self, value, dtype, device):
     """Benchmark overheads of creating a Tensor object."""
-    ctx = context.context()
     if device == GPU:
       # Warmup the GPU
       ops.EagerTensor(value, device=device)

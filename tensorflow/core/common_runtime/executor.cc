@@ -200,9 +200,9 @@ class ExecutorImpl : public Executor {
     // Initial time (in CPU cycles) we expect an operation to take.  Used to
     // determine whether an operation should be place in a threadpool.
     // Operations start out "expensive".
-    static const uint64 kInitialCostEstimateCycles = 100 * 1000 * 1000;
-    static const uint64 kOpIsExpensiveThresholdCycles = 5000;
-    static const uint64 kCostDecay = 10;
+    static constexpr uint64 kInitialCostEstimateCycles = 100 * 1000 * 1000;
+    static constexpr uint64 kOpIsExpensiveThresholdCycles = 5000;
+    static constexpr uint64 kCostDecay = 10;
 
     std::unique_ptr<std::atomic<bool>[]> is_expensive_;
     std::unique_ptr<std::atomic_uint_fast64_t[]> cost_estimates_;

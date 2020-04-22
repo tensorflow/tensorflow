@@ -63,8 +63,8 @@ class RecordReader {
   //  uint32    masked crc of length
   //  byte      data[length]
   //  uint32    masked crc of data
-  static const size_t kHeaderSize = sizeof(uint64) + sizeof(uint32);
-  static const size_t kFooterSize = sizeof(uint32);
+  static constexpr size_t kHeaderSize = sizeof(uint64) + sizeof(uint32);
+  static constexpr size_t kFooterSize = sizeof(uint32);
 
   // Statistics (sizes are in units of bytes)
   struct Stats {

@@ -2969,26 +2969,6 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
                                             MakeScalarLike(lhs, 1), lhs));
   }
 
-  VLOG(10) << "trying transform [pow(pow(A, X), Y) => pow(A, X*Y)]: "
-           << power->ToString();
-
-  // Don't perform this optimization if either of the exponents is complex; this
-  // identity is true only for real-valued exponents.  In addition, we cowardly
-  // refuse to do this transformation if the two exponents have different
-  // element types.
-  if (lhs->opcode() == HloOpcode::kPower &&
-      !ShapeUtil::ElementIsComplex(lhs->operand(1)->shape()) &&
-      !ShapeUtil::ElementIsComplex(rhs->shape()) &&
-      ShapeUtil::SameElementType(lhs->operand(1)->shape(), rhs->shape())) {
-    auto exponent_product =
-        computation_->AddInstruction(HloInstruction::CreateBinary(
-            rhs->shape(), HloOpcode::kMultiply, lhs->mutable_operand(1), rhs));
-    return ReplaceWithNewInstruction(
-        power, HloInstruction::CreateBinary(power->shape(), HloOpcode::kPower,
-                                            lhs->mutable_operand(0),
-                                            exponent_product));
-  }
-
   return Status::OK();
 }
 
@@ -3714,7 +3694,7 @@ Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
         auto bcast_width = ShapeUtil::GetDimension(updated_shape, dim);
         padding_config_dim->set_edge_padding_low(beg);
         padding_config_dim->set_edge_padding_high(
-            std::max(bcast_width - (beg + update_width), 0LL));
+            std::max(bcast_width - (beg + update_width), int64{0}));
         // dynamic_update_slice does not specify a stride
         padding_config_dim->set_interior_padding(0);
       }

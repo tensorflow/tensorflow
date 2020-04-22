@@ -57,6 +57,7 @@ namespace {
 
 constexpr char kFusedConv2D[] = "_FusedConv2D";
 constexpr char kFusedMatMul[] = "_FusedMatMul";
+constexpr char kFusedDepthwiseConv2dNative[] = "_FusedDepthwiseConv2dNative";
 constexpr char kFusedBatchNormEx[] = "_FusedBatchNormEx";
 
 constexpr char kDataFormat[] = "data_format";
@@ -279,12 +280,24 @@ bool IsCpuCompatibleMatMul(const NodeDef* matmul) {
   return NodeIsOnCpu(matmul) && IsCpuCompatibleDataType(matmul);
 }
 
+bool IsCpuCompatibleDepthwiseConv2dNative(const NodeDef* dw_conv2d) {
+  DCHECK(IsDepthwiseConv2dNative(*dw_conv2d))
+      << "Expected DepthwiseConv2dNative op";
+  return NodeIsOnCpu(dw_conv2d) && IsCpuCompatibleDataType(dw_conv2d);
+}
+
 // Checks if we can rewrite a pattern to the `_Fused{Conv2D,MatMul}` on CPU.
 template <typename Pattern>
 bool IsCpuCompatible(const RemapperContext& ctx, const Pattern& matched) {
   const NodeDef& node = ctx.graph_view.graph()->node(matched.contraction);
   if (IsConv2D(node)) {
     return IsCpuCompatibleConv2D(&node);
+  } else if (IsDepthwiseConv2dNative(node)) {
+#ifdef INTEL_MKL
+    return IsCpuCompatibleDepthwiseConv2dNative(&node);
+#else
+    return false;
+#endif  // INTEL_MKL
   } else if (IsMatMul(node)) {
     return IsCpuCompatibleMatMul(&node);
   } else {
@@ -381,11 +394,12 @@ bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
   const auto* contraction_node_view = regular_fanin_0.node_view();
   const auto* contraction_node_def = contraction_node_view->node();
 
-  bool is_conv2d_or_matmul =
-      IsConv2D(*contraction_node_def) || IsMatMul(*contraction_node_def);
+  // Conv2D, MatMul or DepthwiseConv2D
+  bool is_contraction = IsConv2D(*contraction_node_def) ||
+                        IsMatMul(*contraction_node_def) ||
+                        IsDepthwiseConv2dNative(*contraction_node_def);
 
-  if (!is_conv2d_or_matmul ||
-      !HaveSameDataType(node_def, contraction_node_def) ||
+  if (!is_contraction || !HaveSameDataType(node_def, contraction_node_def) ||
       HasControlFaninOrFanout(*contraction_node_view) ||
       !HasAtMostOneFanoutAtPort0(*contraction_node_view) ||
       IsInPreserveSet(ctx, contraction_node_def))
@@ -902,6 +916,21 @@ void CopyConv2DAttributes(const NodeDef& conv2d, NodeDef* fused_conv2d) {
   (*attr)["use_cudnn_on_gpu"] = src_attr.at("use_cudnn_on_gpu");
 }
 
+void CopyDepthwiseConv2dNativeAttributes(const NodeDef& dw_conv2d,
+                                         NodeDef* fused_dw_conv2d) {
+  DCHECK(IsDepthwiseConv2dNative(dw_conv2d))
+      << "Input node must be a DepthwiseConv2dNative";
+
+  auto* attr = fused_dw_conv2d->mutable_attr();
+  auto& src_attr = dw_conv2d.attr();
+
+  (*attr)["T"] = src_attr.at("T");
+  (*attr)["strides"] = src_attr.at("strides");
+  (*attr)["padding"] = src_attr.at("padding");
+  (*attr)["dilations"] = src_attr.at("dilations");
+  (*attr)["data_format"] = src_attr.at("data_format");
+}
+
 void CopyFusedBatchNormAttributes(const NodeDef& fused_batch_norm,
                                   NodeDef* fused_batch_norm_ex) {
   DCHECK(IsFusedBatchNorm(fused_batch_norm))
@@ -966,6 +995,9 @@ Status AddFusedContractionNode(RemapperContext* ctx,
   if (IsConv2D(contraction)) {
     fused_op.set_op(kFusedConv2D);
     CopyConv2DAttributes(contraction, &fused_op);
+  } else if (IsDepthwiseConv2dNative(contraction)) {
+    fused_op.set_op(kFusedDepthwiseConv2dNative);
+    CopyDepthwiseConv2dNativeAttributes(contraction, &fused_op);
   } else if (IsMatMul(contraction)) {
     fused_op.set_op(kFusedMatMul);
     CopyMatMulAttributes(contraction, &fused_op);
@@ -1010,6 +1042,9 @@ Status AddFusedContractionNode(
   if (IsConv2D(contraction)) {
     fused_op.set_op(kFusedConv2D);
     CopyConv2DAttributes(contraction, &fused_op);
+  } else if (IsDepthwiseConv2dNative(contraction)) {
+    fused_op.set_op(kFusedDepthwiseConv2dNative);
+    CopyDepthwiseConv2dNativeAttributes(contraction, &fused_op);
   } else if (IsMatMul(contraction)) {
     fused_op.set_op(kFusedMatMul);
     CopyMatMulAttributes(contraction, &fused_op);
@@ -1701,7 +1736,8 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       ctx.inferred_graph_properties = true;
     }
 
-    // Remap {Conv2D,MatMul}+BiasAdd into the _Fused{Conv2D,MatMul}
+    // Remap {Conv2D,DepthwiseConv2D,MatMul}+BiasAdd into the
+    // _Fused{Conv2D,DepthwiseConv2dNative,MatMul}
     ContractionWithBiasAdd contract_with_bias;
     if (allow_non_differentiable_rewrites &&
         FindContractionWithBias(ctx, i, &contract_with_bias)) {
@@ -1710,7 +1746,8 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
-    // Remap {Conv2D,MatMul}+BiasAdd+Activation into the _Fused{Conv2D,MatMul}.
+    // Remap {Conv2D,DepthwiseConv2D,MatMul}+BiasAdd+Activation into the
+    // _Fused{Conv2D,DepthwiseConv2dNative,MatMul}.
     ContractionWithBiasAddAndActivation contract_with_bias_and_activation;
     if (allow_non_differentiable_rewrites &&
         FindContractionWithBiasAndActivation(

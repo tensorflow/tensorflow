@@ -147,8 +147,8 @@ absl::Status Conv3D::UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights,
                                    CLContext* context) {
   const int block_size = conv_params_.block_size.w;
   const int dst_slices =
-      AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), block_size);
-  const int src_slices = IntegralDivideRoundUp(weights.shape.i, 4);
+      AlignByN(DivideRoundUp(weights.shape.o, 4), block_size);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
   const int kernel_x = kernel_size_.x;
   const int kernel_y = kernel_size_.y;
   const int kernel_z = kernel_size_.z;
@@ -219,8 +219,8 @@ void Conv3D::RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
                                   absl::Span<T> dst) {
   const int block_size = conv_params_.block_size.w;
   const int dst_slices =
-      AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), block_size);
-  const int src_slices = IntegralDivideRoundUp(weights.shape.i, 4);
+      AlignByN(DivideRoundUp(weights.shape.o, 4), block_size);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
   const int kernel_x = kernel_size_.x;
   const int kernel_y = kernel_size_.y;
   const int kernel_z = kernel_size_.z;

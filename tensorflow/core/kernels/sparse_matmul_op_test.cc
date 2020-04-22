@@ -311,7 +311,7 @@ class SparseMatmulOpTest : public ::testing::Test {
 #elif defined EIGEN_VECTORIZE_AVX || defined EIGEN_VECTORIZE_AVX2
   static const int kMaxPacketSize = 8;
 #else
-  static const int kMaxPacketSize = 4;
+  static constexpr int kMaxPacketSize = 4;
 #endif
   typedef typename Eigen::internal::packet_traits<float>::type Packet;
   const int PacketSize;

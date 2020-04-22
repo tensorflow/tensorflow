@@ -12,7 +12,6 @@ package_group(
     packages = [
         "//babelfish/device/...",
         "//learning/brain/experimental/mlir/...",
-        "//learning/brain/experimental/swift_mlir/...",
         "//learning/brain/google/xla/kernels/...",
         "//learning/brain/swift/swift_mlir/...",
         "//learning/pathways/data_parallel/tf2xla/...",
@@ -31,7 +30,7 @@ exports_files(["ir/hlo_ops.td"])
 filegroup(
     name = "hlo_ops_td_files",
     srcs = [
-        "ir/hlo_client_ops.td",
+        "ir/chlo_ops.td",
         "ir/hlo_ops.td",
         "ir/hlo_ops_base.td",
         "ir/hlo_utils.td",
@@ -43,13 +42,13 @@ filegroup(
 )
 
 gentbl(
-    name = "hlo_client_ops_inc_gen",
+    name = "chlo_ops_inc_gen",
     tbl_outs = [
-        ("-gen-op-decls", "ir/hlo_client_ops.h.inc"),
-        ("-gen-op-defs", "ir/hlo_client_ops.cc.inc"),
+        ("-gen-op-decls", "ir/chlo_ops.h.inc"),
+        ("-gen-op-defs", "ir/chlo_ops.cc.inc"),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "ir/hlo_client_ops.td",
+    td_file = "ir/chlo_ops.td",
     td_srcs = [
         ":hlo_ops_td_files",
     ],
@@ -470,12 +469,28 @@ cc_library(
 )
 
 cc_library(
+    name = "chlo_legalize_to_hlo",
+    srcs = [
+        "transforms/chlo_legalize_to_hlo.cc",
+    ],
+    deps = [
+        ":hlo",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+)
+
+cc_library(
     name = "xla_test_passes",
     srcs = [
+        "transforms/chlo_legalize_to_hlo_pass.cc",
         "transforms/materialize_broadcasts_pass.cc",
         "transforms/unfuse_batch_norm_pass.cc",
     ],
     deps = [
+        ":chlo_legalize_to_hlo",
         ":hlo",
         ":xla_materialize_broadcasts",
         ":xla_unfuse_batch_norm",
@@ -490,14 +505,14 @@ cc_library(
 cc_library(
     name = "hlo",
     srcs = [
-        "ir/hlo_client_ops.cc",
+        "ir/chlo_ops.cc",
         "ir/hlo_ops.cc",
         "ir/hlo_ops.cc.inc",
         "ir/hlo_ops.h.inc",
         "ir/hlo_utils.cc",
     ],
     hdrs = [
-        "ir/hlo_client_ops.h",
+        "ir/chlo_ops.h",
         "ir/hlo_ops.h",
         "ir/hlo_utils.h",
         "transforms/passes.h",
@@ -505,8 +520,8 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":chlo_ops_inc_gen",
         ":convert_op_folder",
-        ":hlo_client_ops_inc_gen",
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_inc_gen",
         ":xla_canonicalize_inc_gen",
@@ -804,6 +819,7 @@ cc_library(
     deps = [
         ":buffer_assignment",
         ":buffer_assignment_test",
+        ":chlo_legalize_to_hlo",
         ":hlo",
         ":hlo_legalize_to_lhlo",
         ":lhlo",

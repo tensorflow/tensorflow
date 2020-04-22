@@ -32,17 +32,18 @@ namespace {
 
 static const int64 kFunctionalOpEventTypes[] = {
     HostEventType::kCallOp,
-    HostEventType::kParallelForOp,
-    HostEventType::kForeverOp,
     HostEventType::kNumericalGradientOpEvalRight,
     HostEventType::kNumericalGradientOpEvalLeft,
     HostEventType::kSymbolicGradientOp,
     HostEventType::kRemoteCallOp,
     HostEventType::kIfOp,
     HostEventType::kCaseOp,
-    HostEventType::kWhileOpEvalCond,
-    HostEventType::kWhileOpStartBody,
-    HostEventType::kForOp,
+    // TODO(b/154510598): Fix handling of the loop ops.
+    // HostEventType::kWhileOpEvalCond,
+    // HostEventType::kWhileOpStartBody,
+    // HostEventType::kForOp,
+    // HostEventType::kParallelForOp,
+    // HostEventType::kForeverOp,
     HostEventType::kPartitionedCallOp,
 };
 
@@ -193,9 +194,11 @@ void EventNode::SetIsEager(bool is_eager) {
 }
 
 bool EventNode::IsEager() {
-  // It is eagerly executed if its trace context does not include the TF
-  // executor.
-  return FindParent(HostEventType::kExecutorStateProcess) == nullptr;
+  // It is eagerly executed if its trace context includes the EagerKernelExecute
+  // event (which may execute an op eagerly or through the TF executor) but not
+  // the TF executor event.
+  return FindParent(HostEventType::kExecutorStateProcess) == nullptr &&
+         FindParent(HostEventType::kEagerKernelExecute) != nullptr;
 }
 
 bool EventNode::IsNestedIn(EventNode* parent) {
