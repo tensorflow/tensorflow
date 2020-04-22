@@ -2166,6 +2166,12 @@ func @sin_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
+// CHECK-LABEL: func @round
+func @round(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK:  "xla_hlo.round_nearest_afz"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %0 = "tf.Round"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
 
 // CHECK-LABEL: func @rsqrt
 func @rsqrt(%arg0: tensor<2xf32>) -> tensor<2xf32> {
