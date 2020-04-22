@@ -29,10 +29,6 @@ limitations under the License.
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-<<<<<<< HEAD
-#include "gpu_prim.h"
-=======
->>>>>>> upstream/master
 
 namespace tensorflow {
 

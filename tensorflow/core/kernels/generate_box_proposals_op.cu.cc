@@ -20,10 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-<<<<<<< HEAD
-#include "gpu_prim.h"
-=======
->>>>>>> upstream/master
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"

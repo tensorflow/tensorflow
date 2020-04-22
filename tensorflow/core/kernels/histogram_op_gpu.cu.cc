@@ -27,10 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-<<<<<<< HEAD
-#include "gpu_prim.h"
-=======
->>>>>>> upstream/master
 
 namespace tensorflow {
 

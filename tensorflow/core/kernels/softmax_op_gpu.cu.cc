@@ -29,10 +29,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/reduction_ops_common.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
-<<<<<<< HEAD
-#include "gpu_prim.h"
-=======
->>>>>>> upstream/master
 
 namespace tensorflow {
 

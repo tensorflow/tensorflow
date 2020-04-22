@@ -524,11 +524,7 @@ cc_library(
         "@cub_archive//:cub",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
-<<<<<<< HEAD
-    ]) 
-=======
     ]),
->>>>>>> upstream/master
 )
 
 cc_library(
@@ -1409,15 +1405,9 @@ tf_kernel_library(
         "where_op_gpu_impl_8.cu.cc",
     ],
     deps = if_cuda_or_rocm([
-<<<<<<< HEAD
-        ":cuda_solvers",
-    ]) + [":gpu_prim_hdrs",]
-    + ARRAY_DEPS,
-=======
                ":cuda_solvers",
            ]) + [":gpu_prim_hdrs"] +
            ARRAY_DEPS,
->>>>>>> upstream/master
 )
 
 cc_library(
@@ -2659,11 +2649,7 @@ tf_kernel_library(
         ":gather_functor",
         ":gpu_prim_hdrs",
         "//tensorflow/core:framework_internal",
-<<<<<<< HEAD
-        ":gpu_prim_hdrs"],
-=======
     ],
->>>>>>> upstream/master
 )
 
 tf_kernel_library(
@@ -3105,12 +3091,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "generate_box_proposals_op",
     gpu_srcs = ["generate_box_proposals_op.cu.cc"],
-<<<<<<< HEAD
-    deps = [":gpu_prim_hdrs"]
-    + if_cuda_or_rocm([
-=======
-    deps = [":gpu_prim_hdrs"] + if_cuda([
->>>>>>> upstream/master
+    deps = [":gpu_prim_hdrs"] + if_cuda_or_rocm([
         ":non_max_suppression_op_gpu",
     ]),
 )
@@ -4196,16 +4177,10 @@ tf_kernel_library(
     name = "reduction_ops",
     gpu_srcs = ["reduction_gpu_kernels.cu.h"],
     prefix = "reduction_ops",
-<<<<<<< HEAD
-    deps = MATH_DEPS + 
-    [":gpu_prim_hdrs",
-    ":transpose_functor"],
-=======
     deps = MATH_DEPS + [
         ":gpu_prim_hdrs",
         ":transpose_functor",
     ],
->>>>>>> upstream/master
 )
 
 tf_kernel_library(
@@ -4908,11 +4883,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
-<<<<<<< HEAD
-        ],
-=======
     ],
->>>>>>> upstream/master
 )
 
 tf_kernel_library(
@@ -4921,21 +4892,12 @@ tf_kernel_library(
     deps = [
         ":gpu_prim_hdrs",
         ":reduction_ops",
-<<<<<<< HEAD
-        ":gpu_prim_hdrs",
-        "//third_party/eigen3",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:nn_grad"],
-=======
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_grad",
         "//third_party/eigen3",
     ],
->>>>>>> upstream/master
 )
 
 tf_cuda_cc_test(

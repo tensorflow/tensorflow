@@ -32,10 +32,6 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_launch_config.h"
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/permutation_output_iterator.h"
-<<<<<<< HEAD
-#include "gpu_prim.h"
-=======
->>>>>>> upstream/master
 
 namespace tensorflow {
 

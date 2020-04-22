@@ -24,11 +24,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse_xent_op.h"
 #include "tensorflow/core/platform/types.h"
 
-<<<<<<< HEAD
-#include "gpu_prim.h"
-
-=======
->>>>>>> upstream/master
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;

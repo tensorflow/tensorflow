@@ -47,10 +47,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 #include "tensorflow/core/util/transform_output_iterator.h"
-<<<<<<< HEAD
-#include "gpu_prim.h"
-=======
->>>>>>> upstream/master
 
 namespace tensorflow {
 

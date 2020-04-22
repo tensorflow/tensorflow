@@ -18,10 +18,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-<<<<<<< HEAD
-#include "../gpu_prim.h"
-=======
->>>>>>> upstream/master
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/cuda_sparse.h"
