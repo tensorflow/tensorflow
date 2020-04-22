@@ -319,6 +319,9 @@ message ExecutionOptions {
   // Number of partitions of the computation to run (model parallelism).
   // If zero, uses the default number of partitions for the XLA service.
   int32 num_partitions = 9;
+
+  // Used to identify a set of programs that should be launch together.
+  int32 launch_id = 10;
 }
 
 message GetDeviceHandlesRequest {
