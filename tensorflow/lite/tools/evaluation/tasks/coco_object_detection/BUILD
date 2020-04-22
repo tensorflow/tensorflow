@@ -43,7 +43,7 @@ cc_binary(
     copts = tflite_copts(),
     linkopts = task_linkopts(),
     deps = [
-        ":run_eval_lib",
         "//tensorflow/lite/tools/evaluation/tasks:task_executor_main",
+        ":run_eval_lib",
     ],
 )
