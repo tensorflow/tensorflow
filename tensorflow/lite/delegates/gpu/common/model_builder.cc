@@ -378,7 +378,7 @@ absl::Status ParseInputsWithConstTensor(Node* node, ObjectReader* reader,
       constant_dims = input0->dims;
     }
     RETURN_IF_ERROR(reader->AddInput(node, runtime_tensor));
-    if (constant_dims->size <= 0) {
+    if (constant_dims->size <= 0 || NumElements(constant_dims) == 1) {
       Tensor<Scalar, DataType::FLOAT32> tensor;
       RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
       *tensor_or_scalar = tensor.data[0];
