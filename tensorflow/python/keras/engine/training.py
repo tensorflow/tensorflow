@@ -1424,7 +1424,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                          max_queue_size=10,
                          workers=1,
                          use_multiprocessing=False,
-                         class_weight=class_weight,
                          verbose=0):
     """Evaluates the model on a data generator.
 
@@ -1442,7 +1441,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         workers=workers,
         use_multiprocessing=use_multiprocessing,
         verbose=verbose,
-        class_weight=class_weight,
         callbacks=callbacks)
 
   @deprecation.deprecated(
