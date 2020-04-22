@@ -69,8 +69,14 @@ and the following optional parameters:
     benchmark tool will not correctly use NNAPI.
 *   `max_delegated_partitions`: `int` (default=0, i.e. no limit) \
     The maximum number of partitions that will be delegated. \
-    Currently supported only by the NNAPI Delegate and it won't work \
-    if `use_legacy_nnapi` has been selected.
+    Currently supported by the Hexagon delegate or the NNAPI delegate but won't
+    work if `use_legacy_nnapi` has been selected.
+*   `min_nodes_per_partition`: `int` (default=0, i.e. default choice implemented
+    by each delegate) \
+    The minimal number of TFLite graph nodes of a partition that needs to be
+    reached to be delegated. A negative value or 0 means to use the default
+    choice of each delegate. \
+    This option is currently only supported by the Hexagon delegate.
 *   `disable_nnapi_cpu`: `bool` (default=false) \
     Excludes the
     [NNAPI CPU reference implementation](https://developer.android.com/ndk/guides/neuralnetworks#device-assignment)
@@ -80,6 +86,13 @@ and the following optional parameters:
     Whether to use the
     [GPU accelerator delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/gpu).
     This option is currently only available on Android and iOS devices.
+*   `gpu_precision_loss_allowed`: `bool` (default=true) \
+    Whethre to allow the GPU delegate to carry out computation with some
+    precision loss (i.e. processing in FP16) or not. If allowed, the performance
+    will increase.
+*   `gpu_experimental_enable_quant`: `bool` (default=true) \
+    Whether to allow the GPU delegate to run a quantized model or not. This
+    option is currently only available on Android.
 *   `gpu_wait_type`: `str` (default="") \
     Which GPU wait_type option to use, when using GPU delegate on iOS. Should be
     one of the following: passive, active, do_not_wait, aggressive. When left

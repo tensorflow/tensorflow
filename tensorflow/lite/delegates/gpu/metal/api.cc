@@ -54,20 +54,17 @@ namespace gpu {
 namespace metal {
 namespace {
 
-bool IsWidthBroadcastedForSecondInput(
-    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+bool IsWidthBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
   return inputs.size() == 2 &&
          inputs[0]->tensor.shape.w != inputs[1]->tensor.shape.w &&
          inputs[1]->tensor.shape.w == 1;
 }
-bool IsHeightBroadcastedForSecondInput(
-    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+bool IsHeightBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
   return inputs.size() == 2 &&
          inputs[0]->tensor.shape.h != inputs[1]->tensor.shape.h &&
          inputs[1]->tensor.shape.h == 1;
 }
-bool IsChannelsBroadcastedForSecondInput(
-    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+bool IsChannelsBroadcastedForSecondInput(const std::vector<Value*>& inputs) {
   return inputs.size() == 2 &&
          inputs[0]->tensor.shape.c != inputs[1]->tensor.shape.c &&
          inputs[1]->tensor.shape.c == 1;
@@ -170,10 +167,10 @@ std::vector<ComputeTaskDescriptorPtr> SelectWinograd36To4x4(
 
 bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
                                    const BHWC& dst_shape) {
-  const int tiles_x = IntegralDivideRoundUp(dst_shape.w, 4);
-  const int tiles_y = IntegralDivideRoundUp(dst_shape.h, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+  const int tiles_x = DivideRoundUp(dst_shape.w, 4);
+  const int tiles_y = DivideRoundUp(dst_shape.h, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
   const bool suitable_attributes =
       attr.weights.shape.w == 3 && attr.weights.shape.h == 3 &&
       attr.dilations == HW(1, 1) && attr.strides == HW(1, 1);
@@ -232,8 +229,8 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       auto attr =
           absl::any_cast<Convolution2DAttributes>(node->operation.attributes);
       if (IsSuitableForWinograd4x4To6x6(attr, dst_shape)) {
-        int tiles_x = IntegralDivideRoundUp(dst_shape.w, 4);
-        int tiles_y = IntegralDivideRoundUp(dst_shape.h, 4);
+        int tiles_x = DivideRoundUp(dst_shape.w, 4);
+        int tiles_y = DivideRoundUp(dst_shape.h, 4);
 
         Winograd4x4To36Attributes wino_up_attr;
         wino_up_attr.padding = attr.padding;

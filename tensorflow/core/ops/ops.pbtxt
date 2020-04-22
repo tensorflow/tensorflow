@@ -2153,6 +2153,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BOOL
       }
     }
   }
@@ -2219,6 +2220,7 @@ op {
         type: DT_HALF
         type: DT_UINT32
         type: DT_UINT64
+        type: DT_BOOL
       }
     }
   }
@@ -4350,25 +4352,6 @@ op {
         type: DT_INT64
       }
     }
-  }
-}
-op {
-  name: "BeginEpoch"
-  input_arg {
-    name: "dataset_id"
-    type: DT_INT64
-  }
-  input_arg {
-    name: "address"
-    type: DT_STRING
-  }
-  input_arg {
-    name: "protocol"
-    type: DT_STRING
-  }
-  output_arg {
-    name: "epoch_id"
-    type: DT_INT64
   }
 }
 op {
@@ -8630,6 +8613,29 @@ op {
   }
 }
 op {
+  name: "CreateJob"
+  input_arg {
+    name: "dataset_id"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "protocol"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "processing_mode"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "job_token"
+    type: DT_VARIANT
+  }
+}
+op {
   name: "CreateSummaryDbWriter"
   input_arg {
     name: "writer"
@@ -10567,6 +10573,13 @@ op {
   output_arg {
     name: "handle"
     type: DT_VARIANT
+  }
+  attr {
+    name: "task_refresh_interval_hint_ms"
+    type: "int"
+    default_value {
+      i: -1
+    }
   }
   attr {
     name: "output_types"
@@ -12551,6 +12564,14 @@ op {
   }
 }
 op {
+  name: "DummyMemoryCache"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
+}
+op {
   name: "DynamicPartition"
   input_arg {
     name: "data"
@@ -13431,6 +13452,9 @@ op {
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_COMPLEX64
         type: DT_QUINT8
         type: DT_QINT8
@@ -21672,8 +21696,8 @@ op {
     type: DT_VARIANT
   }
   input_arg {
-    name: "epoch_id"
-    type: DT_INT64
+    name: "job_token"
+    type: DT_VARIANT
   }
   input_arg {
     name: "iterator"
@@ -23765,6 +23789,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -24020,6 +24045,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_INT16
         type: DT_INT32
         type: DT_INT64
       }
@@ -25418,6 +25444,9 @@ op {
         type: DT_INT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_UINT16
+        type: DT_UINT32
+        type: DT_UINT64
         type: DT_COMPLEX64
         type: DT_QUINT8
         type: DT_QINT8

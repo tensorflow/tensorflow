@@ -129,7 +129,45 @@ void TestRemoteExecute(bool async) {
 TEST(CAPI, RemoteExecute) { TestRemoteExecute(false); }
 TEST(CAPI, RemoteExecuteAsync) { TestRemoteExecute(true); }
 
-void TestRemoteExecuteSilentCopies(bool async, bool remote) {
+string MatMulFunction() {
+  tensorflow::FunctionDef def;
+  CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
+      "    signature {"
+      "      name: 'MatMulFunction'"
+      "      input_arg {"
+      "        name: 'a'"
+      "        type: DT_FLOAT"
+      "      }"
+      "      input_arg {"
+      "        name: 'b'"
+      "        type: DT_FLOAT"
+      "      }"
+      "      output_arg {"
+      "        name: 'm'"
+      "        type: DT_FLOAT"
+      "      }"
+      "    }"
+      "    node_def {"
+      "      name: 'matmul'"
+      "      op: 'MatMul'"
+      "      input: 'a'"
+      "      input: 'b'"
+      "      attr {"
+      "        key: 'T'"
+      "        value {"
+      "          type: DT_FLOAT"
+      "        }"
+      "      }"
+      "    }"
+      "    ret {"
+      "      key: 'm'"
+      "      value: 'matmul:product'"
+      "    }",
+      &def));
+  return def.SerializeAsString();
+}
+
+void TestRemoteExecuteSilentCopies(bool async, bool remote, bool func) {
   tensorflow::ServerDef server_def = GetServerDef(3);
 
   // This server def has the task index set to 0.
@@ -169,12 +207,36 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote) {
       TFE_TensorHandleCopyToDevice(h1_task0, ctx, task2_name, status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
-  // Handles are on task0 (local), and task2, but op is on task1.
-  TFE_Op* matmul = MatMulOp(ctx, h0_task0, h1_task2);
+  TFE_Op* matmul = nullptr;
+  if (func) {
+    string function_def = MatMulFunction();
+    TFE_ContextAddFunctionDef(ctx, function_def.data(), function_def.size(),
+                              status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+    matmul = TFE_NewOp(ctx, "MatMulFunction", status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_OpAddInput(matmul, h0_task0, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_OpAddInput(matmul, h1_task2, status);
+    ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  } else {
+    // Handles are on task0 (local), and task2, but op is on task1.
+    matmul = MatMulOp(ctx, h0_task0, h1_task2);
+  }
   if (remote) {
     TFE_OpSetDevice(matmul, task1_name, status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  } else if (!async) {
+    // Set the local device to CPU to easily validate mirroring
+    string cpu_device_name;
+    ASSERT_TRUE(GetDeviceName(ctx, &cpu_device_name, "CPU"));
+    TFE_OpSetDevice(matmul, cpu_device_name.c_str(), status);
+    EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    auto remote_arg = tensorflow::TensorHandleFromInterface(h1_task2->handle);
+    // The input handles should never change since they have been mirrored.
+    ASSERT_FALSE(remote_arg->HasLocalMirror(nullptr));
   }
-  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TFE_TensorHandle* retvals[1];
   int num_retvals = 1;
@@ -182,12 +244,10 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote) {
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   // TODO(gjn): Add support for waiting on async local mirrors
-  if (!async) {
+  if (!remote && !async) {
     auto remote_arg = tensorflow::TensorHandleFromInterface(h1_task2->handle);
-    tensorflow::EagerOperation* op =
-        tensorflow::OperationFromInterface(matmul->operation);
     // The input handles should never change since they have been mirrored.
-    ASSERT_EQ(op->Inputs()[1], remote_arg);
+    ASSERT_TRUE(remote_arg->HasLocalMirror(nullptr));
   }
 
   auto* retval_task0 = TFE_TensorHandleCopyToDevice(
@@ -217,6 +277,9 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote) {
   TFE_ExecutorWaitForAllPendingNodes(executor, status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteExecutor(executor);
+  if (func) {
+    TFE_ContextRemoveFunction(ctx, "MatMulFunction", status);
+  }
   TFE_DeleteContext(ctx);
 
   TF_DeleteStatus(status);
@@ -227,16 +290,22 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote) {
 }
 
 TEST(CAPI, RemoteExecuteSilentCopies) {
-  TestRemoteExecuteSilentCopies(false, true);
+  TestRemoteExecuteSilentCopies(false, true, false);
 }
 TEST(CAPI, RemoteExecuteSilentCopiesAsync) {
-  TestRemoteExecuteSilentCopies(true, true);
+  TestRemoteExecuteSilentCopies(true, true, false);
+}
+TEST(CAPI, RemoteExecuteSilentCopiesAsyncFunc) {
+  TestRemoteExecuteSilentCopies(true, true, true);
 }
 TEST(CAPI, RemoteExecuteSilentCopiesLocal) {
-  TestRemoteExecuteSilentCopies(false, false);
+  TestRemoteExecuteSilentCopies(false, false, false);
 }
 TEST(CAPI, RemoteExecuteSilentCopiesLocalAsync) {
-  TestRemoteExecuteSilentCopies(true, false);
+  TestRemoteExecuteSilentCopies(true, false, false);
+}
+TEST(CAPI, RemoteExecuteSilentCopiesLocalAsyncFunc) {
+  TestRemoteExecuteSilentCopies(true, false, true);
 }
 
 void TestRemoteExecuteDeleteContextWithOutstandingRPC(bool async) {

@@ -92,8 +92,8 @@ class Masking(Layer):
   # The time step 3 and 5 will be skipped from LSTM calculation.
   ```
 
-  See [the masking and padding
-  guide](https://www.tensorflow.org/guide/keras/masking_and_padding)
+  See [the masking and padding guide](
+    https://www.tensorflow.org/guide/keras/masking_and_padding)
   for more details.
   """
 
@@ -734,15 +734,15 @@ class Lambda(Layer):
   The `Lambda` layer exists so that arbitrary TensorFlow functions
   can be used when constructing `Sequential` and Functional API
   models. `Lambda` layers are best suited for simple operations or
-  quick experimentation. For more advanced usecases, follow 
+  quick experimentation. For more advanced usecases, follow
   [this guide](https://www.tensorflow.org/guide/keras/custom_layers_and_models)
-  for subclassing `tf.keras.layers.Layer`. 
-  
-  The main reason to subclass `tf.keras.layers.Layer` instead of using a 
-  `Lambda` layer is saving and inspecting a Model. `Lambda` layers 
-  are saved by serializing the Python bytecode, whereas subclassed 
-  Layers can be saved via overriding their `get_config` method. Overriding 
-  `get_config` improves the portability of Models. Models that rely on 
+  for subclassing `tf.keras.layers.Layer`.
+
+  The main reason to subclass `tf.keras.layers.Layer` instead of using a
+  `Lambda` layer is saving and inspecting a Model. `Lambda` layers
+  are saved by serializing the Python bytecode, whereas subclassed
+  Layers can be saved via overriding their `get_config` method. Overriding
+  `get_config` improves the portability of Models. Models that rely on
   subclassed Layers are also often easier to visualize and reason about.
 
   Examples:

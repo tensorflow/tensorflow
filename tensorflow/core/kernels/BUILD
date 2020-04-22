@@ -524,7 +524,11 @@ cc_library(
         "@cub_archive//:cub",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
+<<<<<<< HEAD
     ]) 
+=======
+    ]),
+>>>>>>> upstream/master
 )
 
 cc_library(
@@ -1371,7 +1375,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "unique_op",
     prefix = "unique_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 tf_kernel_library(
@@ -1403,9 +1409,15 @@ tf_kernel_library(
         "where_op_gpu_impl_8.cu.cc",
     ],
     deps = if_cuda_or_rocm([
+<<<<<<< HEAD
         ":cuda_solvers",
     ]) + [":gpu_prim_hdrs",]
     + ARRAY_DEPS,
+=======
+               ":cuda_solvers",
+           ]) + [":gpu_prim_hdrs"] +
+           ARRAY_DEPS,
+>>>>>>> upstream/master
 )
 
 cc_library(
@@ -2335,6 +2347,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:single_threaded_executor",
     ],
 )
 
@@ -2644,8 +2657,13 @@ tf_kernel_library(
     deps = DYNAMIC_DEPS + [
         ":fill_functor",
         ":gather_functor",
+        ":gpu_prim_hdrs",
         "//tensorflow/core:framework_internal",
+<<<<<<< HEAD
         ":gpu_prim_hdrs"],
+=======
+    ],
+>>>>>>> upstream/master
 )
 
 tf_kernel_library(
@@ -3087,8 +3105,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "generate_box_proposals_op",
     gpu_srcs = ["generate_box_proposals_op.cu.cc"],
+<<<<<<< HEAD
     deps = [":gpu_prim_hdrs"]
     + if_cuda_or_rocm([
+=======
+    deps = [":gpu_prim_hdrs"] + if_cuda([
+>>>>>>> upstream/master
         ":non_max_suppression_op_gpu",
     ]),
 )
@@ -4174,9 +4196,16 @@ tf_kernel_library(
     name = "reduction_ops",
     gpu_srcs = ["reduction_gpu_kernels.cu.h"],
     prefix = "reduction_ops",
+<<<<<<< HEAD
     deps = MATH_DEPS + 
     [":gpu_prim_hdrs",
     ":transpose_functor"],
+=======
+    deps = MATH_DEPS + [
+        ":gpu_prim_hdrs",
+        ":transpose_functor",
+    ],
+>>>>>>> upstream/master
 )
 
 tf_kernel_library(
@@ -4879,20 +4908,34 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
+<<<<<<< HEAD
         ],
+=======
+    ],
+>>>>>>> upstream/master
 )
 
 tf_kernel_library(
     name = "l2loss_op",
     prefix = "l2loss_op",
     deps = [
+        ":gpu_prim_hdrs",
         ":reduction_ops",
+<<<<<<< HEAD
         ":gpu_prim_hdrs",
         "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_grad"],
+=======
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:nn_grad",
+        "//third_party/eigen3",
+    ],
+>>>>>>> upstream/master
 )
 
 tf_cuda_cc_test(
@@ -6672,6 +6715,7 @@ filegroup(
         "cwise_op_bitwise_and.cc",
         "cwise_op_bitwise_or.cc",
         "cwise_op_bitwise_xor.cc",
+        "cwise_op_conj.cc",
         "cwise_op_cos.cc",
         "cwise_op_cosh.cc",
         "cwise_op_div.cc",
@@ -7009,6 +7053,11 @@ filegroup(
         # rule above. Seems to have only have worked before because of
         # hdrs_check loose.
         "stateful_random_ops_cpu_gpu.h",
+        # Allows conv_3d ops for android but excluded from *_3d* rule above.
+        "conv_3d.h",
+        "conv_ops_3d.h",
+        "conv_ops_3d.cc",
+        "conv_ops_gpu.h",
     ],
     visibility = ["//visibility:public"],
 )
@@ -8371,6 +8420,13 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "data_service_ops",
+    deps = [
+        "//tensorflow/core/kernels/data/experimental:data_service_kernels",
+    ],
+)
+
+tf_kernel_library(
     name = "dataset_ops",
     deps = [
         "//tensorflow/core/kernels/data",
@@ -8538,6 +8594,62 @@ tf_cc_shared_object(
     deps = [
         ":kernel_platform_strings",
         "//tensorflow/core:all_kernels_impl",
+    ],
+)
+
+# Manually curated set of tests that are useful for building and testing against
+# platforms and architecures that don't support CUDA.
+# TODO(b/153737462): Automatically filter tests to create the appropriate
+# portable test list.
+test_suite(
+    name = "portable_kernel_tests",
+    tags = [
+        "manual",  # Avoid redundancy when using wildcard test patterns.
+    ],
+    tests = [
+        ":batch_matmul_op_test",
+        ":batch_norm_op_test",
+        ":broadcast_to_op_test",
+        ":cast_op_test",
+        ":concat_op_test",
+        ":control_flow_ops_test",
+        ":crop_and_resize_op_test",
+        ":cwise_ops_test",
+        ":deep_conv2d_test",
+        ":dequantize_op_test",
+        ":diag_op_test",
+        ":eigen_activations_test",
+        ":eigen_pooling_test",
+        ":eigen_spatial_convolutions_test",
+        ":gather_nd_op_test",
+        ":matmul_op_test",
+        ":mfcc_test",
+        ":multinomial_op_test",
+        ":nn_ops_test",
+        ":non_max_suppression_op_test",
+        ":quantization_utils_test",
+        ":quantize_and_dequantize_op_test",
+        ":quantize_op_test",
+        ":quantized_activation_ops_test",
+        ":quantized_batch_norm_op_test",
+        ":quantized_conv_ops_test",
+        ":quantized_matmul_op_test",
+        ":quantized_pooling_ops_test",
+        ":random_binomial_op_test",
+        ":random_op_test",
+        ":random_poisson_op_test",
+        ":reduction_ops_test",
+        ":requantization_range_op_test",
+        ":resize_bilinear_op_test",
+        ":scatter_op_test",
+        ":segment_reduction_ops_test",
+        ":slice_op_test",
+        ":spectrogram_test",
+        ":split_op_test",
+        ":split_v_op_test",
+        ":strided_slice_op_test",
+        ":unique_op_test",
+        ":variable_ops_test",
     ],
 )
 

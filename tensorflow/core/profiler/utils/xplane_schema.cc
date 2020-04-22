@@ -55,6 +55,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"SessionRun", kSessionRun},
       {"FunctionRun", kFunctionRun},
       {"RunGraph", kRunGraph},
+      {"TfOpRun", kTfOpRun},
       {"EagerKernelExecute", kEagerKernelExecute},
       {"ExecutorState::Process", kExecutorStateProcess},
       {"ExecutorDoneCallback", kExecutorDoneCallback},
@@ -148,6 +149,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"hlo_op", kHloOp},
       {"hlo_module", kHloModule},
       {"equation", kEquation},
+      {"is_eager", kIsEager},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},

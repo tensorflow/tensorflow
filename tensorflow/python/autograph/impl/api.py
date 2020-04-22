@@ -341,8 +341,7 @@ def _call_unconverted(f, args, kwargs, options, update_cache=True):
 
   if kwargs is not None:
     return f(*args, **kwargs)
-  else:
-    return f(*args)
+  return f(*args)
 
 
 def _is_known_loaded_type(f, module_name, entity_name):

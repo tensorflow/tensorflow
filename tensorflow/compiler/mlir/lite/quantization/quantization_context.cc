@@ -67,7 +67,7 @@ std::vector<quant::QuantizeRegionOp> QuantizeContext::GetAllOps() {
 LogicalResult QuantizeContext::Handle(
     quant::QuantizeRegionOp op, llvm::SmallVectorImpl<Operation *> *new_items,
     bool *changed) {
-  auto spec = target_spec_.Get(op);
+  auto spec = target_spec_.GetKernelSpec(op);
   if (!spec.hasValue()) {
     op.emitWarning(
         "Couldn't find kernel from the registeration for quantization.");

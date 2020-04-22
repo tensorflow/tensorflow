@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
@@ -26,7 +27,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-const char kMemoryCache[] = "MemoryCache";
+constexpr char kMemoryCache[] = "MemoryCache";
 
 }  // namespace
 
@@ -82,10 +83,11 @@ Status AnonymousMemoryCacheHandleOp::CreateResource(
 
 void DeleteMemoryCacheOp::Compute(OpKernelContext* ctx) {
   const ResourceHandle& handle = ctx->input(0).flat<ResourceHandle>()(0);
-  // The resource is guaranteed to exist because the variant tensor wrapping the
-  // deleter is provided as an unused input to this op, which guarantees that it
-  // has not run yet.
-  OP_REQUIRES_OK(ctx, ctx->resource_manager()->Delete(handle));
+  // The resource might have been already deleted by the dataset.
+  Status s = ctx->resource_manager()->Delete(handle);
+  if (!errors::IsNotFound(s)) {
+    OP_REQUIRES_OK(ctx, s);
+  }
 }
 
 namespace {
@@ -95,6 +97,9 @@ REGISTER_KERNEL_BUILDER(Name("AnonymousMemoryCache").Device(DEVICE_CPU),
 
 REGISTER_KERNEL_BUILDER(Name("DeleteMemoryCache").Device(DEVICE_CPU),
                         DeleteMemoryCacheOp);
+
+REGISTER_KERNEL_BUILDER(Name("DummyMemoryCache").Device(DEVICE_CPU),
+                        DummyResourceOp<MemoryCache>);
 
 }  // namespace
 }  // namespace data

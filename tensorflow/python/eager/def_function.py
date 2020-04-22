@@ -39,6 +39,7 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.profiler import traceme
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
@@ -463,6 +464,7 @@ class Function(object):
     self._name = name
     self._input_signature = input_signature
     self._key_for_call_stats = self._get_key_for_call_stats()
+    ops._tf_function_api_guage.get_cell().set(True)  # pylint: disable=protected-access
 
   def __getstate__(self):
     """Custom pickling, to omit unpickleable objects."""
@@ -669,25 +671,36 @@ class Function(object):
   def __call__(self, *args, **kwds):
     """Calls the graph function and warn too frequent tracings."""
     if RUN_FUNCTIONS_EAGERLY:
-      return self._python_function(*args, **kwds)
+      with traceme.TraceMe(self._name,
+                           tf_function_call="eager"):
+        return self._python_function(*args, **kwds)
 
     tracing_count = self._get_tracing_count()
-    if self._experimental_compile and (
-        not control_flow_util.GraphOrParentsInXlaContext(
-            ops.get_default_graph())):
-      # V2 control flow relies on XLAControlFlowContext to generate a
-      # XLA-compatible function graph. If the function is already called inside
-      # an XLA context, we don't create nested XLA context.
-      xla_context = control_flow_ops.XLAControlFlowContext()
-      try:
-        xla_context.Enter()
+    with traceme.TraceMe(self._name) as tm:
+      if self._experimental_compile and (
+          not control_flow_util.GraphOrParentsInXlaContext(
+              ops.get_default_graph())):
+        # V2 control flow relies on XLAControlFlowContext to generate a
+        # XLA-compatible function graph. If the function is already called
+        # inside an XLA context, we don't create nested XLA context.
+        compiler = "xla"
+        xla_context = control_flow_ops.XLAControlFlowContext()
+        try:
+          xla_context.Enter()
+          result = self._call(*args, **kwds)
+        finally:
+          xla_context.Exit()
+      else:
+        compiler = "nonXla"
         result = self._call(*args, **kwds)
-      finally:
-        xla_context.Exit()
-    else:
-      result = self._call(*args, **kwds)
 
-    if tracing_count == self._get_tracing_count():
+      new_tracing_count = self._get_tracing_count()
+      without_tracing = (tracing_count == new_tracing_count)
+      execution_mode = "notTraced" if without_tracing else "traced"
+      tm.set_metadata(tf_function_call=execution_mode + "-" + compiler,
+                      tracing_count=new_tracing_count)
+
+    if without_tracing:
       _frequent_tracing_detector.called_without_tracing(
           self._key_for_call_stats)
     else:
@@ -817,6 +830,13 @@ class Function(object):
   def function_spec(self):
     return self._function_spec
 
+  def pretty_printed_concrete_signatures(self, verbose=True):
+    joiner = "\n\n" if verbose else "\n"
+    return joiner.join([
+        c.pretty_printed_signature(verbose=verbose)
+        for c in self._list_all_concrete_functions()
+    ])
+
   def _initialize_uninitialized_variables(self, initializers):
     """Make and call a `ConcreteFunction` which initializes variables."""
 
@@ -900,12 +920,8 @@ class Function(object):
 
     return initialize_variables.get_concrete_function()
 
-  def _list_all_concrete_functions_for_serialization(self):
-    """Returns all concrete functions for serialization.
-
-    Returns:
-      A list of instances of `ConcreteFunction`.
-    """
+  def _list_all_concrete_functions(self):
+    """Returns all concrete functions."""
     if self.input_signature is not None:
       self.get_concrete_function()
     concrete_functions = []
@@ -917,6 +933,15 @@ class Function(object):
       concrete_functions.extend(
           self._stateless_fn._function_cache.all_values())
     # pylint: enable=protected-access
+    return concrete_functions
+
+  def _list_all_concrete_functions_for_serialization(self):
+    """Returns all concrete functions for serialization.
+
+    Returns:
+      A list of instances of `ConcreteFunction`.
+    """
+    concrete_functions = self._list_all_concrete_functions()
     seen_signatures = []
     for concrete_function in concrete_functions:
       signature = concrete_function.structured_input_signature
@@ -1247,7 +1272,7 @@ def function(func=None,
   ...     self.v = None
   ...
   ...   @tf.function
-  ...   def call(self, x):
+  ...   def __call__(self, x):
   ...     if self.v is None:
   ...       self.v = tf.Variable(tf.ones_like(x))
   ...     return self.v * x

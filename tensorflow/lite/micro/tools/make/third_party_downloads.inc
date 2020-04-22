@@ -20,8 +20,8 @@ LEON_BCC2_MD5 := "cdf78082be4882da2a92c9baa82fe765"
 TSIM_URL := "https://www.gaisler.com/anonftp/tsim/tsim-eval-2.0.63.tar.gz"
 TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
 
-CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/b2937134bd2047bd569c4408391ae20d7677d35c.zip"
-CMSIS_MD5 := "04cb3a2cb4834284767a01e8f1c6f834"
+CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/3d8235079ade1e4df06f91be65e0309cc45e1952.zip"
+CMSIS_MD5 := "f3e93203e875caf4ba6aff0bccd95d85"
 
 AM_SDK_URL := "http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.2.0.zip"
 AM_SDK_MD5 := "7605fa2d4d97e6bb7a1190c92b66b597"
@@ -48,8 +48,8 @@ SIFIVE_FE310_LIB_MD5 := "06ee24c4956f8e21670ab3395861fe64"
 KISSFFT_URL="https://github.com/mborgerding/kissfft/archive/v130.zip"
 KISSFFT_MD5="438ba1fef5783cc5f5f201395cc477ca"
 
-RUY_URL="https://github.com/google/ruy/archive/91d62808498cea7ccb48aa59181e218b4ad05701.zip"
-RUY_MD5="5e653ae8863408ede2a0ca104fea5b1e"
+RUY_URL="https://github.com/google/ruy/archive/9f53ba413e6fc879236dcaa3e008915973d67a4f.zip"
+RUY_MD5="ce2c2444cced9dcf6ca6bc908061faa8"
 
 PERSON_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale_2019_11_21.zip"
 PERSON_MODEL_MD5 := "fe2934bd0788f1dcc7af3f0a954542ab"

@@ -23,6 +23,7 @@ from __future__ import division
 from __future__ import print_function
 
 import atexit
+import errno
 import importlib
 import os
 import sys
@@ -31,6 +32,19 @@ import tempfile
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import compat_util
+
+
+def _remove_file(file_name):
+  """Remove a file, if it exists."""
+  try:
+    os.remove(file_name)
+  except OSError as e:
+    if e.errno == errno.ENOENT:
+      # The file disappeared. Ignore this. Temporary files might get
+      # cleaned up, especially if they reside in /tmp.
+      pass
+    else:
+      raise
 
 
 def load_source(source, delete_on_exit):
@@ -43,7 +57,7 @@ def load_source(source, delete_on_exit):
     f.write(source)
 
   if delete_on_exit:
-    atexit.register(lambda: os.remove(file_name))
+    atexit.register(lambda: _remove_file(file_name))
 
   spec = importlib.util.spec_from_file_location(module_name, file_name)
   module = importlib.util.module_from_spec(spec)

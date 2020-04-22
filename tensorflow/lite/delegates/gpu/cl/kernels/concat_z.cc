@@ -79,7 +79,7 @@ std::string GetConcatKernelCode(
     // generation.
     c += "  int Z = 0;\n";
     for (int i = 0; i < channels.size(); ++i) {
-      const int depth = IntegralDivideRoundUp(channels[i], 4);
+      const int depth = DivideRoundUp(channels[i], 4);
       if (depth % 2 == 0) {
         // We can read more at once inside of loop in case depth % 2 == 0
         // it should be better for reading latency hiding
@@ -112,7 +112,7 @@ std::string GetConcatKernelCode(
     int read_index = 0;
     int z = 0;
     for (int i = 0; i < channels.size(); ++i) {
-      const int depth = IntegralDivideRoundUp(channels[i], 4);
+      const int depth = DivideRoundUp(channels[i], 4);
       for (int d = 0; d < depth; ++d) {
         const int channels_in_group = std::min(4, channels[i] - d * 4);
         const std::string temp_name = "t" + std::to_string(read_index);

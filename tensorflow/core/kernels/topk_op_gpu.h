@@ -24,17 +24,33 @@ limitations under the License.
 #include <string>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+<<<<<<< HEAD
 #include "gpu_prim.h"
+=======
+>>>>>>> upstream/master
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/topk_op.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
+<<<<<<< HEAD
+=======
+#if GOOGLE_CUDA
+// Required for sorting Eigen::half
+namespace cub {
+template <>
+struct NumericTraits<Eigen::half>
+    : BaseTraits<FLOATING_POINT, true, false, unsigned short, Eigen::half> {};
+}  // namespace cub
+#endif  // GOOGLE_CUDA
+
+>>>>>>> upstream/master
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;

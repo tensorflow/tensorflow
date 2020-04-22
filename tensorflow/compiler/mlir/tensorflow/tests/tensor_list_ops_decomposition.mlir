@@ -141,6 +141,25 @@ func @main(%arg0: tensor<10x8x9xf32>, %arg1: tensor<3xi32>) -> tensor<3x8x9xf32>
 
 // -----
 
+// Test scatter into existing tensor list.
+
+// CHECK-LABEL: func @main
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<10x8x9xf32>, %[[ARG1:.*]]: tensor<5xi32>, %[[ARG2:.*]]: tensor<5x8x9xf32>) -> tensor<10x8x9xf32>
+func @main(%arg0: tensor<10x8x9xf32>, %arg1: tensor<5xi32>, %arg2: tensor<5x8x9xf32>) -> tensor<10x8x9xf32> {
+  %elem_shape = "tf.Const"() {value = dense<[8, 9]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK: %[[BUFFER:.*]] = "tf.Identity"(%[[ARG0]]) : (tensor<10x8x9xf32>) -> tensor<10x8x9xf32>
+  %tl = "tf.TensorListFromTensor"(%arg0, %elem_shape) : (tensor<10x8x9xf32>, tensor<2xi32>) -> tensor<!tf.variant<tensor<8x9xf32>>>
+  // CHECK: %[[IND_SHAPE:.*]] = "tf.Const"() {value = dense<[5, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  // CHECK: %[[IND_RESHPE:.*]] = "tf.Reshape"(%[[ARG1]], %[[IND_SHAPE]]) : (tensor<5xi32>, tensor<2xi32>) -> tensor<5x1xi32>
+  // CHECK: %[[SC:.*]] = "tf.TensorScatterUpdate"(%[[BUFFER]], %[[IND_RESHPE]], %[[ARG2]]) : (tensor<10x8x9xf32>, tensor<5x1xi32>, tensor<5x8x9xf32>) -> tensor<10x8x9xf32>
+  %scatter = "tf.TensorListScatterIntoExistingList"(%tl, %arg2, %arg1) : (tensor<!tf.variant<tensor<8x9xf32>>>, tensor<5x8x9xf32>, tensor<5xi32>) -> tensor<!tf.variant<tensor<8x9xf32>>>
+  %stack = "tf.TensorListStack"(%scatter, %elem_shape) : (tensor<!tf.variant<tensor<8x9xf32>>>, tensor<2xi32>) -> tensor<10x8x9xf32>
+  // CHECK: return %[[SC]] : tensor<10x8x9xf32>
+  return %stack : tensor<10x8x9xf32>
+}
+
+// -----
+
 // Tests while loop.
 
 // CHECK-LABEL: func @main
@@ -255,7 +274,7 @@ func @main(%arg0: tensor<i1>) -> () {
 }
 
 // CHECK: func @callee(%[[AARG0:.*]]: tensor<!tf.variant<tensor<f32>>>, %[[AARG1:.*]]: tensor<i1>) -> tensor<!tf.variant<tensor<f32>>>
-func @callee(%arg0: tensor<!tf.variant<tensor<f32>>>, %arg1: tensor<i1>) -> tensor<!tf.variant<tensor<f32>>> {
+func @callee(%arg0: tensor<!tf.variant<tensor<f32>>>, %arg1: tensor<i1>) -> tensor<!tf.variant<tensor<f32>>> attributes {sym_visibility = "public"} {
   %elem = "tf._SomeOp"(%arg1) : (tensor<i1>) -> tensor<f32>
   // CHECK: "tf.TensorListPushBack"
   %push = "tf.TensorListPushBack"(%arg0, %elem) : (tensor<!tf.variant<tensor<f32>>>, tensor<f32>) -> tensor<!tf.variant<tensor<f32>>>
@@ -269,6 +288,66 @@ func @callee(%arg0: tensor<!tf.variant<tensor<f32>>>, %arg1: tensor<i1>) -> tens
 // CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[ARG2]], %[[CONST1]])
 // CHECK-NOT: "tf.TensorListPushBack"
 // CHECK: return %[[UPDATE]], %[[ADD]]
+
+// -----
+
+// Tests PartitionedCall/StatefulPartitionedCall with private callee function.
+
+// CHECK-LABEL: func @main
+func @main(%arg0: tensor<i1>) -> () {
+  %elem_shape = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NOT: tf.EmptyTensorList
+  // CHECK: %[[INIT:.*]] = "tf.BroadcastTo"
+  %tl = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
+  // CHECK: "tf.StatefulPartitionedCall"(%[[INIT]],
+  // CHECK-SAME: f = @callee
+  %call = "tf.StatefulPartitionedCall"(%tl, %arg0) {f = @callee, config = "", config_proto = "", executor_type = ""}
+    : (tensor<!tf.variant<tensor<f32>>>, tensor<i1>) -> tensor<!tf.variant<tensor<f32>>>
+  // CHECK: %[[CALL2:.*]]:2 = "tf.PartitionedCall"(%[[INIT]],
+  // CHECK-SAME: f = @callee
+  %call2 = "tf.PartitionedCall"(%tl, %arg0) {f = @callee, config = "", config_proto = "", executor_type = ""}
+    : (tensor<!tf.variant<tensor<f32>>>, tensor<i1>) -> tensor<!tf.variant<tensor<f32>>>
+  // CHECK: %[[COPY:.*]] = "tf.Identity"(%[[CALL2]]#0)
+  // CHECK: "tf.Slice"(%[[COPY]],
+  %pop:2 = "tf.TensorListPopBack"(%call2, %elem_shape) : (tensor<!tf.variant<tensor<f32>>>, tensor<0xi32>) -> (tensor<!tf.variant<tensor<f32>>>, tensor<f32>)
+  // CHECK-NOT: tf.TensorListPopBack
+  // CHECK: return
+  return
+}
+
+// CHECK: func @callee(%[[ARG0:.*]]: tensor<10xf32>, %[[ARG1:.*]]: tensor<i1>, %[[ARG2:.*]]: tensor<1xi32>) -> (tensor<10xf32>, tensor<1xi32>)
+func @callee(%arg0: tensor<!tf.variant<tensor<f32>>>, %arg1: tensor<i1>) -> tensor<!tf.variant<tensor<f32>>> attributes {sym_visibility = "private"} {
+  %elem = "tf._SomeOp"(%arg1) : (tensor<i1>) -> tensor<f32>
+
+  // CHECK-NOT: "tf.TensorListPushBack"
+  // CHECK: %[[UPDATE:.*]] = "tf.XlaDynamicUpdateSlice"
+  // CHECK: %[[CONST1:.*]] = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: %[[ADD:.*]] = "tf.AddV2"(%[[ARG2]], %[[CONST1]])
+  // CHECK-NOT: "tf.TensorListPushBack"
+  %push = "tf.TensorListPushBack"(%arg0, %elem) : (tensor<!tf.variant<tensor<f32>>>, tensor<f32>) -> tensor<!tf.variant<tensor<f32>>>
+  // CHECK: return %[[UPDATE]], %[[ADD]]
+  return %push : tensor<!tf.variant<tensor<f32>>>
+}
+
+// -----
+
+// Tests PartitionedCall op with no signature change on callee.
+
+// CHECK-LABEL: func @main
+func @main() -> () {
+  "tf.PartitionedCall"() {f = @callee, config = "", config_proto = "", executor_type = ""} : () -> ()
+  return
+}
+// CHECK: func @callee()
+func @callee() -> () attributes {sym_visibility = "public"} {
+  %elem_shape = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NOT: tf.EmptyTensorList
+  // CHECK: "tf.BroadcastTo"
+  %tl = "tf.EmptyTensorList"(%elem_shape, %max_size) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
+  return
+}
 
 // -----
 

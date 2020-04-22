@@ -114,7 +114,7 @@ class TStringOutputStream : public protobuf::io::ZeroCopyOutputStream {
   int64_t ByteCount() const override;
 
  private:
-  static const int kMinimumSize = 16;
+  static constexpr int kMinimumSize = 16;
 
   tstring* target_;
 };

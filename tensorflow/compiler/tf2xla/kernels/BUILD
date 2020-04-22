@@ -39,6 +39,7 @@ tf_kernel_library(
         "elu_op.cc",
         "elu_op.h",
         "empty_op.cc",
+        "ensure_shape_op.cc",
         "extract_image_patches_op.cc",
         "fake_param_op.cc",
         "fake_quantize_ops.cc",

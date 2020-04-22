@@ -148,9 +148,9 @@ absl::Status ConvTexture::UploadDataForWinograd4x4To6x6(
 template <DataType T>
 absl::Status ConvTexture::UploadWeights(
     const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
-  int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
+  int dst_depth = DivideRoundUp(weights.shape.o, 4);
   dst_depth = AlignByN(dst_depth, block_size_.z);
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
 
@@ -206,9 +206,9 @@ template <DataType S, typename T>
 void ConvTexture::RearrangeWeightsData(
     const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst_0,
     absl::Span<T> dst_1, absl::Span<T> dst_2, absl::Span<T> dst_3) {
-  int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
+  int dst_depth = DivideRoundUp(weights.shape.o, 4);
   dst_depth = AlignByN(dst_depth, block_size_.z);
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
 

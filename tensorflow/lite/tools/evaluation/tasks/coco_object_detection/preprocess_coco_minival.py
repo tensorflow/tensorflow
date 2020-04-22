@@ -134,7 +134,7 @@ def _dump_data(ground_truth_detections, images_folder_path, output_folder_path):
 
   The following are created in output_folder_path:
     images/: sub-folder for whitelisted validation images.
-    ground_truth.pbtxt: A text proto file containing all ground-truth
+    ground_truth.pb: A binary proto file containing all ground-truth
     object-sets.
 
   Args:
@@ -149,7 +149,7 @@ def _dump_data(ground_truth_detections, images_folder_path, output_folder_path):
   output_images_folder = os.path.join(output_folder_path, 'images')
   if not os.path.exists(output_images_folder):
     os.makedirs(output_images_folder)
-  output_proto_file = os.path.join(output_folder_path, 'ground_truth.pbtxt')
+  output_proto_file = os.path.join(output_folder_path, 'ground_truth.pb')
 
   ground_truth_data = evaluation_stages_pb2.ObjectDetectionGroundTruth()
   for image_dict in ground_truth_detections.values():
@@ -170,8 +170,8 @@ def _dump_data(ground_truth_detections, images_folder_path, output_folder_path):
         output_images_folder)
 
   # Dump proto.
-  with open(output_proto_file, 'w') as proto_file:
-    proto_file.write(str(ground_truth_data))
+  with open(output_proto_file, 'wb') as proto_file:
+    proto_file.write(ground_truth_data.SerializeToString())
 
 
 def _parse_args():

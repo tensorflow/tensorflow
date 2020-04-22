@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import deprecation
@@ -551,7 +552,11 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
   in eager mode and inside of tf.functions.
   """
 
-  def __init__(self, dataset=None, components=None, element_spec=None):
+  def __init__(self,
+               dataset=None,
+               components=None,
+               element_spec=None,
+               job_token=None):
     """Creates a new iterator from the given dataset.
 
     If `dataset` is not specified, the iterator will be created from the given
@@ -564,6 +569,9 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
       components: Tensor components to construct the iterator from.
       element_spec: A nested structure of `TypeSpec` objects that
         represents the type specification of elements of the iterator.
+      job_token: A token to use for reading from a tf.data service job. Data
+        will be partitioned among all iterators using the same token. If `None`,
+        the iterator will not read from the tf.data service.
 
     Raises:
       ValueError: If `dataset` is not provided and either `components` or
@@ -575,6 +583,7 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
                      "`element_spec` need to be provided.")
 
     self._device = context.context().device_name
+    self._job_token = job_token
 
     if dataset is None:
       if (components is None or element_spec is None):
@@ -617,7 +626,11 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
           gen_dataset_ops.anonymous_iterator_v2(
               output_types=self._flat_output_types,
               output_shapes=self._flat_output_shapes))
-      gen_dataset_ops.make_iterator(ds_variant, self._iterator_resource)
+      if self._job_token is None:
+        gen_dataset_ops.make_iterator(ds_variant, self._iterator_resource)
+      else:
+        gen_experimental_dataset_ops.make_data_service_iterator(
+            ds_variant, self._job_token, self._iterator_resource)
       # Delete the resource when this object is deleted
       self._resource_deleter = IteratorResourceDeleter(
           handle=self._iterator_resource,

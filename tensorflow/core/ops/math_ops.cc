@@ -689,7 +689,7 @@ REGISTER_OP("Maximum")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {bfloat16, half, float, double, int32, int64}")
+    .Attr("T: {bfloat16, half, float, double, int16, int32, int64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 // Note: This op is not commutative w.r.t. to all its inputs.
@@ -713,7 +713,7 @@ REGISTER_OP("Minimum")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {bfloat16, half, float, double, int32, int64}")
+    .Attr("T: {bfloat16, half, float, double, int16, int32, int64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("Mod")
@@ -857,8 +857,8 @@ REGISTER_OP("GreaterEqual").COMPARISON();
       .SetIsCommutative()                                                  \
       .Attr(                                                               \
           "T: {bfloat16, half, float, double, uint8, int8, int16, int32, " \
-          "int64, complex64, quint8, qint8, qint32, string, bool, "        \
-          "complex128}")                                                   \
+          "int64, uint16, uint32, uint64, complex64, "                     \
+          "quint8, qint8, qint32, string, bool, complex128}")              \
       .Attr("incompatible_shape_error: bool = true")                       \
       .SetShapeFn([](InferenceContext* c) {                                \
         ShapeHandle x = c->input(0);                                       \
@@ -1236,7 +1236,7 @@ REGISTER_OP("ArgMax")
     .Input("input: T")
     .Input("dimension: Tidx")
     .Output("output: output_type")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("output_type: {int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape);
@@ -1245,7 +1245,7 @@ REGISTER_OP("ArgMin")
     .Input("input: T")
     .Input("dimension: Tidx")
     .Output("output: output_type")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("output_type: {int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape);

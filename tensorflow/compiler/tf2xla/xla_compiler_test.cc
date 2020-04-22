@@ -463,6 +463,27 @@ TEST_F(XlaCompilerTest, TransposeVariables) {
             xla::ShapeUtil::MakeTupleShape({transposed, transposed}));
 }
 
+// Unranked fake param returns a 0 shaped tensor.
+TEST_F(XlaCompilerTest, UnrankedFakeParam) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  PartialTensorShape shape;
+  auto a = ops::FakeParam(scope, DT_INT32, shape);
+  auto ret = ops::_Retval(scope.WithOpName("D"), a, 0);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Compiles the graph.
+  XlaCompiler compiler(DefaultOptions());
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "compile",
+                                     std::move(graph), {}, &result));
+  // Check that the return shapes are correctly tranposed.
+  EXPECT_EQ(result.xla_output_shape,
+            xla::ShapeUtil::MakeTupleShape(
+                {xla::ShapeUtil::MakeShape(xla::S32, {0})}));
+}
+
 // Tests that the compiler doesn't reorder the parameters.
 TEST_F(XlaCompilerTest, MixedOrderArguments) {
   for (bool swap_order : {false, true}) {

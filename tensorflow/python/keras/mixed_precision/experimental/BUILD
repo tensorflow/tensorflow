@@ -224,9 +224,16 @@ cuda_py_test(
     name = "keras_test",
     size = "medium",
     srcs = ["keras_test.py"],
+    data = [
+        "//tensorflow/python/keras/mixed_precision/experimental/testdata:lso_ckpt_tf2.2",
+        "//tensorflow/python/keras/mixed_precision/experimental/testdata:lso_savedmodel_tf2.2",
+    ],
     python_version = "PY3",
     shard_count = 10,
-    tags = ["no_windows"],  # b/139083295: bfloat16 tests fail on Windows
+    tags = [
+        "no_pip",
+        "no_windows",  # b/139083295: bfloat16 tests fail on Windows
+    ],
     deps = [
         ":test_util",
         "//tensorflow/python:client_testlib",

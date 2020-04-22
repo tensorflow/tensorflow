@@ -141,6 +141,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
     // bitcast. This leads to having to linearize and then delinearize the
     // index.
     options.set_replace_transpose_with_bitcast(false);
+    options.set_enable_conv_operand_swap(false);
     options.set_cudnn_batchnorm_forward_training_metadata(
         kCudnnBatchNormForwardTrainingCallTarget);
     pass.AddPass<AlgebraicSimplifier>(options);

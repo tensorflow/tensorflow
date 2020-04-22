@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/memory_space_assignment.h"
 
 #include "tensorflow/compiler/xla/debug_options_flags.h"
-
 namespace xla {
 
 namespace {
@@ -843,6 +842,9 @@ void AlternateMemoryBestFitHeap::AddAliasedRequiredAssignmentsForSequentialCall(
   // Add aliased required assignments.
   if (use.instruction->opcode() == HloOpcode::kWhile) {
     HloComputation* while_body = use.instruction->while_body();
+    HloComputation* while_condition = use.instruction->while_condition();
+    AddAliasedRequiredAssignment(while_condition->parameter_instruction(0),
+                                 use.operand_index, aliased_allocation);
     AddAliasedRequiredAssignment(while_body->parameter_instruction(0),
                                  use.operand_index, aliased_allocation);
     AddAliasedRequiredAssignment(while_body->root_instruction(),
@@ -1181,8 +1183,10 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
 
   // Register the additional async copy with the interval tree to keep track of
   // the limit at any given time.
-  pending_async_copies_.push_back({start_time, end_time, memory_space});
-  async_copy_interval_tree_.Add(start_time, end_time, kDummyChunk);
+  pending_async_copies_.push_back(
+      {start_time, copy_done_schedule_before_time, memory_space});
+  async_copy_interval_tree_.Add(start_time, copy_done_schedule_before_time,
+                                kDummyChunk);
   if (memory_space == MemorySpaceAssignment::MemorySpace::kAlternate) {
     async_copy_ordering_.AddCopy(pending_async_copies_.back());
   }
@@ -1444,12 +1448,12 @@ bool AlternateMemoryBestFitHeap::Prefetch(
     // If this additional asynchronous copy would violate the limit, try a
     // different interval.
     if (ViolatesMaximumOutstandingAsyncCopies(alternate_mem_interval.start,
-                                              request.end_time)) {
+                                              request.latest_prefetch_time)) {
       VLOG(4) << "This would violate the outstanding async copy limit.";
       continue;
     }
     if (ViolatesAsyncCopyOrdering(alternate_mem_interval.start,
-                                  request.end_time)) {
+                                  request.latest_prefetch_time)) {
       VLOG(4) << "This would violate asynchronous copy ordering.";
       continue;
     }
@@ -1702,24 +1706,9 @@ MemorySpaceAssignment::Run(HloModule* module,
   VLOG(4) << "Schedule: " << module->schedule().ToString();
   MemorySpaceAssignment memory_space_assignment(module, options,
                                                 hlo_live_range);
-  auto algorithm = absl::make_unique<AlternateMemoryBestFitHeap>(
-      &memory_space_assignment.allocations_, options, alias_analysis,
-      hlo_live_range);
 
-  if (options.enable_cross_program_prefetch) {
-    absl::optional<BufferInterval> prefetch_candiate =
-        FindCrossProgramPrefetchCandidate(alias_analysis, hlo_live_range,
-                                          options);
-    algorithm->AllocateCrossProgramPrefetchBuffer(module, prefetch_candiate);
-  }
-
-  HeapSimulator::Options heap_simulator_options;
-  heap_simulator_options.may_reuse_operand_buffers = false;
-  TF_RETURN_IF_ERROR(HeapSimulator::Run(std::move(algorithm), *module,
-                                        module->schedule(), alias_analysis,
-                                        options.size_fn, heap_simulator_options)
-                         .status());
-
+  TF_RETURN_IF_ERROR(memory_space_assignment.FindAllocationSequence(
+      hlo_live_range, alias_analysis));
   TF_RETURN_IF_ERROR(memory_space_assignment.Process());
   memory_space_assignment.ScheduleAsynchronousCopies();
   TF_RETURN_IF_ERROR(memory_space_assignment.SimplifyGraph());
@@ -1735,6 +1724,29 @@ MemorySpaceAssignment::Run(HloModule* module,
       memory_space_assignment.VerifyAndExportHeapSimulatorTrace());
 
   return std::move(memory_space_assignment.preset_assignments_);
+}
+
+Status MemorySpaceAssignment::FindAllocationSequence(
+    const HloLiveRange& hlo_live_range,
+    const HloAliasAnalysis& alias_analysis) {
+  auto algorithm = absl::make_unique<AlternateMemoryBestFitHeap>(
+      &allocations_, options_, alias_analysis, hlo_live_range);
+
+  if (options_.enable_cross_program_prefetch) {
+    absl::optional<AlternateMemoryBestFitHeap::BufferInterval>
+        prefetch_candiate = FindCrossProgramPrefetchCandidate(
+            alias_analysis, hlo_live_range, options_);
+    algorithm->AllocateCrossProgramPrefetchBuffer(module_, prefetch_candiate);
+  }
+
+  HeapSimulator::Options heap_simulator_options;
+  heap_simulator_options.may_reuse_operand_buffers = false;
+  TF_RETURN_IF_ERROR(HeapSimulator::Run(std::move(algorithm), *module_,
+                                        module_->schedule(), alias_analysis,
+                                        options_.size_fn,
+                                        heap_simulator_options)
+                         .status());
+  return Status::OK();
 }
 
 void MemorySpaceAssignment::Allocation::AddUse(HloUse use) {
@@ -2243,6 +2255,27 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
   std::map<std::pair<int64, int64>,
            std::tuple<const HloValue*, Chunk, HeapSimulatorTrace::Event::Kind>>
       events;
+
+  // Go through all instructions in the module to ensure CopyStart/CopyDone
+  // instructions copy between alternate memory and default memory.
+  for (const HloComputation* computation :
+       module_->MakeNonfusionComputations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kCopyStart) {
+        int64 from_memory_space =
+            ShapeUtil::GetSubshape(instruction->shape(), {1})
+                .layout()
+                .memory_space();
+        int64 to_memory_space =
+            ShapeUtil::GetSubshape(instruction->shape(), {0})
+                .layout()
+                .memory_space();
+        CHECK_NE(from_memory_space, to_memory_space)
+            << "Asynchronous copy to the same memory space: "
+            << instruction->ToString();
+      }
+    }
+  }
 
   for (const auto& position_and_chunk : preset_assignments_->chunks()) {
     const HloPosition& position = position_and_chunk.first;

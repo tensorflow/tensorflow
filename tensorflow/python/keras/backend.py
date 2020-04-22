@@ -933,8 +933,8 @@ def unique_object_name(name,
   Example:
 
 
-  _unique_layer_name('dense')  # dense_1
-  _unique_layer_name('dense')  # dense_2
+  unique_object_name('dense')  # dense_1
+  unique_object_name('dense')  # dense_2
 
   """
   if name_uid_map is None:
@@ -3874,7 +3874,8 @@ def function(inputs, outputs, updates=None, name=None, **kwargs):
         msg = ('Invalid argument "%s" passed to K.function with TensorFlow '
                'backend') % key
         raise ValueError(msg)
-  return GraphExecutionFunction(inputs, outputs, updates=updates, **kwargs)
+  return GraphExecutionFunction(
+      inputs, outputs, updates=updates, name=name, **kwargs)
 
 
 @keras_export('keras.backend.gradients')

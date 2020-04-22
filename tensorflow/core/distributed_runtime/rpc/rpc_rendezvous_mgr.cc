@@ -197,7 +197,7 @@ class RpcRecvTensorFreeList {
   }
 
  private:
-  static const int kMaxObjects = 1000;
+  static constexpr int kMaxObjects = 1000;
 
   mutex mu_;
   std::vector<RpcRecvTensorCall*> objects_ TF_GUARDED_BY(mu_);

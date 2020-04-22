@@ -596,6 +596,13 @@ class MemorySpaceAssignment {
   // export heap simulator trace to be used by buffer_assignment.
   Status VerifyAndExportHeapSimulatorTrace();
 
+ protected:
+  // Finds an AllocationSequence for placing buffers in alternate memory using
+  // the AlternateMemoryBestFitHeap algorithm. Must be set before Process() is
+  // called.
+  Status FindAllocationSequence(const HloLiveRange& hlo_live_range,
+                                const HloAliasAnalysis& alias_analysis);
+
  private:
   MemorySpaceAssignment(HloModule* module, Options options,
                         const HloLiveRange& hlo_live_range)

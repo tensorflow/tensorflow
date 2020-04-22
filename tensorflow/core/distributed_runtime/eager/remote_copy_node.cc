@@ -96,7 +96,7 @@ RemoteCopyNode::~RemoteCopyNode() {
 Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   TF_RETURN_IF_ERROR(executor_->status());
 
-  op->AddInput(src_);
+  TF_RETURN_IF_ERROR(op->AddInput(src_));
 
   core::RefCountPtr<KernelAndDevice> kernel;
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));

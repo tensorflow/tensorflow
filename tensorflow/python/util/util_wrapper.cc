@@ -27,7 +27,7 @@ PYBIND11_MODULE(_pywrap_utils, m) {
   )pbdoc";
   m.def("RegisterType",
         [](const py::handle& type_name, const py::handle& type) {
-          return tensorflow::pyo_or_throw(
+          return tensorflow::PyoOrThrow(
               tensorflow::swig::RegisterType(type_name.ptr(), type.ptr()));
         });
   m.def(
@@ -116,7 +116,7 @@ PYBIND11_MODULE(_pywrap_utils, m) {
   m.def(
       "IsNamedtuple",
       [](const py::handle& o, bool strict) {
-        return tensorflow::pyo_or_throw(
+        return tensorflow::PyoOrThrow(
             tensorflow::swig::IsNamedtuple(o.ptr(), strict));
       },
       R"pbdoc(
@@ -197,7 +197,7 @@ PYBIND11_MODULE(_pywrap_utils, m) {
   m.def(
       "SameNamedtuples",
       [](const py::handle& o1, const py::handle& o2) {
-        return tensorflow::pyo_or_throw(
+        return tensorflow::PyoOrThrow(
             tensorflow::swig::SameNamedtuples(o1.ptr(), o2.ptr()));
       },
       R"pbdoc(
@@ -220,7 +220,7 @@ PYBIND11_MODULE(_pywrap_utils, m) {
   m.def(
       "Flatten",
       [](const py::handle& o, bool expand_composites) {
-        return tensorflow::pyo_or_throw(
+        return tensorflow::PyoOrThrow(
             tensorflow::swig::Flatten(o.ptr(), expand_composites));
       },
       R"pbdoc(
@@ -280,7 +280,7 @@ PYBIND11_MODULE(_pywrap_utils, m) {
   m.def(
       "FlattenForData",
       [](const py::handle& o) {
-        return tensorflow::pyo_or_throw(
+        return tensorflow::PyoOrThrow(
             tensorflow::swig::FlattenForData(o.ptr()));
       },
       R"pbdoc(

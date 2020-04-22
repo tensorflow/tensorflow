@@ -861,6 +861,21 @@ func @main(%arg: tensor<3x4xi32>) -> tensor<1x2xi32> {
 // -----
 
 // CHECK:  HloModule
+func @main(%arg: tensor<3x4xi32>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<1x4xi32> {
+  %0 = "xla_hlo.dynamic-slice"(%arg, %start1, %start2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
+  return %0 : tensor<1x4xi32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  %[[ARG:.*]] = s32[3,4] parameter(0)
+// CHECK:  %[[ARG1:.*]] = s64[] parameter(1)
+// CHECK:  %[[ARG2:.*]] = s64[] parameter(2)
+// CHECK:  ROOT
+// CHECK-SAME:  s32[1,4] dynamic-slice(s32[3,4] %[[ARG]], s64[] %[[ARG1]], s64[] %[[ARG2]]), dynamic_slice_sizes={1,4}
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   "xla_hlo.trace"(%arg0) {tag = "This is a random test"} : (tensor<2xi32>) -> ()
   return %arg0: tensor<2xi32>

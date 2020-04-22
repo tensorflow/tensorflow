@@ -17,13 +17,15 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/l2loss_op.h"
-
 #include "tensorflow/core/framework/register_types.h"
-
+#include "tensorflow/core/kernels/gpu_prim.h"
+#include "tensorflow/core/kernels/l2loss_op.h"
 #include "tensorflow/core/kernels/reduction_gpu_kernels.cu.h"
 #include "tensorflow/core/kernels/reduction_ops_common.h"
+<<<<<<< HEAD
 #include "gpu_prim.h"
+=======
+>>>>>>> upstream/master
 
 namespace tensorflow {
 

@@ -1,3 +1,4 @@
+// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
 HloModule Iota
 
  ENTRY %Iota() -> s64[10, 5] {

@@ -98,6 +98,48 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
   }
 }
 
+AbstractTensorHandleInterface* EagerContext::CopyTensorHandleToDevice(
+    AbstractTensorHandleInterface* handle, const char* device_name,
+    Status* status) {
+  TensorHandle* input = TensorHandleFromInterface(handle);
+  TensorHandle* result = nullptr;
+  Device* device;
+  *status = this->FindDeviceFromName(device_name, &device);
+  if (!status->ok()) {
+    tensorflow::CustomDevice* dev;
+    *status = this->FindCustomDeviceFromName(device_name, &dev);
+    if (status->ok()) {
+      *status = dev->CopyTensorToDevice(input, &result);
+      if (status->ok()) {
+        return result;
+      }
+    }
+    return nullptr;
+  }
+  // Handle tensor handles currently in custom devices
+  const char* handle_device_name = input->DeviceName(status);
+  if (!status->ok()) {
+    return nullptr;
+  }
+  tensorflow::CustomDevice* dev;
+  *status = this->FindCustomDeviceFromName(handle_device_name, &dev);
+  if (status->ok()) {
+    *status = dev->CopyTensorFromDevice(input, device_name, &result);
+    if (status->ok()) {
+      return result;
+    }
+    return nullptr;
+  }
+
+  // Handle regular case.
+  *status =
+      EagerCopyToDevice(input, this, &this->Executor(), device, false, &result);
+  if (status->ok()) {
+    return result;
+  }
+  return nullptr;
+}
+
 // TODO(b/152902651): We unfortunately need to put this EagerContext function
 // here to a circular BUILD dep issue. If we move this to context.cc, then we
 // will have the circular dependency of:

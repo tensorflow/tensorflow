@@ -254,7 +254,8 @@ class ReachingDefinitionsAnalyzerTest(ReachingDefinitionsAnalyzerTestBase):
     self.assertHasDefs(fn_body[2].value, 2)
 
     inner_fn_body = fn_body[1].body[1].body
-    self.assertSameDef(inner_fn_body[0].value, def_of_a_in_if)
+    def_of_a_in_foo = inner_fn_body[0].value
+    self.assertHasDefs(def_of_a_in_foo, 0)
 
   def test_nested_functions_isolation(self):
 

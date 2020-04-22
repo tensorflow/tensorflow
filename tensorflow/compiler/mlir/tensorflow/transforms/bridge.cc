@@ -46,6 +46,7 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(TFDevice::CreateParallelExecuteToIslandsPass());
   pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
   pm.addNestedPass<FuncOp>(TFDevice::CreateLaunchToDeviceAttributePass());
+  pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
 }
 
 tensorflow::Status RunTPUBridge(

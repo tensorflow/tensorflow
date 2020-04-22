@@ -63,8 +63,8 @@ class Loss(object):
   types, and reduce losses explicitly in your training loop. Using 'AUTO' or
   'SUM_OVER_BATCH_SIZE' will raise an error.
 
-  Please see this custom training [tutorial]
-  (https://www.tensorflow.org/tutorials/distribute/custom_training) for more
+  Please see this custom training [tutorial](
+    https://www.tensorflow.org/tutorials/distribute/custom_training) for more
   details on this.
 
   You can implement 'SUM_OVER_BATCH_SIZE' using global batch size like:
@@ -88,8 +88,8 @@ class Loss(object):
         this defaults to `SUM_OVER_BATCH_SIZE`. When used with
         `tf.distribute.Strategy`, outside of built-in training loops such as
         `tf.keras` `compile` and `fit`, using `AUTO` or `SUM_OVER_BATCH_SIZE`
-        will raise an error. Please see this custom training [tutorial]
-        (https://www.tensorflow.org/tutorials/distribute/custom_training)
+        will raise an error. Please see this custom training [tutorial](
+          https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
       name: Optional name for the op.
     """
@@ -222,8 +222,8 @@ class LossFunctionWrapper(Loss):
         this defaults to `SUM_OVER_BATCH_SIZE`. When used with
         `tf.distribute.Strategy`, outside of built-in training loops such as
         `tf.keras` `compile` and `fit`, using `AUTO` or `SUM_OVER_BATCH_SIZE`
-        will raise an error. Please see this custom training [tutorial]
-        (https://www.tensorflow.org/tutorials/distribute/custom_training)
+        will raise an error. Please see this custom training [tutorial](
+          https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
       name: (Optional) name for the loss.
       **kwargs: The keyword arguments that are passed on to `fn`.
@@ -305,8 +305,8 @@ class MeanSquaredError(LossFunctionWrapper):
         this defaults to `SUM_OVER_BATCH_SIZE`. When used with
         `tf.distribute.Strategy`, outside of built-in training loops such as
         `tf.keras` `compile` and `fit`, using `AUTO` or `SUM_OVER_BATCH_SIZE`
-        will raise an error. Please see this custom training [tutorial]
-        (https://www.tensorflow.org/tutorials/distribute/custom_training)
+        will raise an error. Please see this custom training [tutorial](
+          https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
       name: Optional name for the op. Defaults to 'mean_squared_error'.
     """
@@ -364,8 +364,8 @@ class MeanAbsoluteError(LossFunctionWrapper):
         this defaults to `SUM_OVER_BATCH_SIZE`. When used with
         `tf.distribute.Strategy`, outside of built-in training loops such as
         `tf.keras` `compile` and `fit`, using `AUTO` or `SUM_OVER_BATCH_SIZE`
-        will raise an error. Please see this custom training [tutorial]
-        (https://www.tensorflow.org/tutorials/distribute/custom_training)
+        will raise an error. Please see this custom training [tutorial](
+          https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
       name: Optional name for the op. Defaults to 'mean_absolute_error'.
     """
@@ -424,8 +424,8 @@ class MeanAbsolutePercentageError(LossFunctionWrapper):
         this defaults to `SUM_OVER_BATCH_SIZE`. When used with
         `tf.distribute.Strategy`, outside of built-in training loops such as
         `tf.keras` `compile` and `fit`, using `AUTO` or `SUM_OVER_BATCH_SIZE`
-        will raise an error. Please see this custom training [tutorial]
-        (https://www.tensorflow.org/tutorials/distribute/custom_training)
+        will raise an error. Please see this custom training [tutorial](
+          https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
       name: Optional name for the op. Defaults to
         'mean_absolute_percentage_error'.
@@ -485,8 +485,8 @@ class MeanSquaredLogarithmicError(LossFunctionWrapper):
         this defaults to `SUM_OVER_BATCH_SIZE`. When used with
         `tf.distribute.Strategy`, outside of built-in training loops such as
         `tf.keras` `compile` and `fit`, using `AUTO` or `SUM_OVER_BATCH_SIZE`
-        will raise an error. Please see this custom training [tutorial]
-        (https://www.tensorflow.org/tutorials/distribute/custom_training)
+        will raise an error. Please see this custom training [tutorial](
+          https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
       name: Optional name for the op. Defaults to
         'mean_squared_logarithmic_error'.
@@ -561,8 +561,8 @@ class BinaryCrossentropy(LossFunctionWrapper):
         this defaults to `SUM_OVER_BATCH_SIZE`. When used with
         `tf.distribute.Strategy`, outside of built-in training loops such as
         `tf.keras` `compile` and `fit`, using `AUTO` or `SUM_OVER_BATCH_SIZE`
-        will raise an error. Please see this custom training [tutorial]
-        (https://www.tensorflow.org/tutorials/distribute/custom_training)
+        will raise an error. Please see this custom training [tutorial](
+          https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
       name: (Optional) Name for the op. Defaults to 'binary_crossentropy'.
     """
@@ -641,8 +641,8 @@ class CategoricalCrossentropy(LossFunctionWrapper):
         this defaults to `SUM_OVER_BATCH_SIZE`. When used with
         `tf.distribute.Strategy`, outside of built-in training loops such as
         `tf.keras` `compile` and `fit`, using `AUTO` or `SUM_OVER_BATCH_SIZE`
-        will raise an error. Please see this custom training [tutorial]
-        (https://www.tensorflow.org/tutorials/distribute/custom_training)
+        will raise an error. Please see this custom training [tutorial](
+          https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
       name: Optional name for the op. Defaults to 'categorical_crossentropy'.
     """
@@ -718,8 +718,8 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
         this defaults to `SUM_OVER_BATCH_SIZE`. When used with
         `tf.distribute.Strategy`, outside of built-in training loops such as
         `tf.keras` `compile` and `fit`, using `AUTO` or `SUM_OVER_BATCH_SIZE`
-        will raise an error. Please see this custom training [tutorial]
-        (https://www.tensorflow.org/tutorials/distribute/custom_training)
+        will raise an error. Please see this custom training [tutorial](
+          https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
       name: Optional name for the op. Defaults to
         'sparse_categorical_crossentropy'.
@@ -782,8 +782,8 @@ class Hinge(LossFunctionWrapper):
         this defaults to `SUM_OVER_BATCH_SIZE`. When used with
         `tf.distribute.Strategy`, outside of built-in training loops such as
         `tf.keras` `compile` and `fit`, using `AUTO` or `SUM_OVER_BATCH_SIZE`
-        will raise an error. Please see this custom training [tutorial]
-        (https://www.tensorflow.org/tutorials/distribute/custom_training)
+        will raise an error. Please see this custom training [tutorial](
+          https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
       name: Optional name for the op. Defaults to 'hinge'.
     """
@@ -843,8 +843,8 @@ class SquaredHinge(LossFunctionWrapper):
         this defaults to `SUM_OVER_BATCH_SIZE`. When used with
         `tf.distribute.Strategy`, outside of built-in training loops such as
         `tf.keras` `compile` and `fit`, using `AUTO` or `SUM_OVER_BATCH_SIZE`
-        will raise an error. Please see this custom training [tutorial]
-        (https://www.tensorflow.org/tutorials/distribute/custom_training)
+        will raise an error. Please see this custom training [tutorial](
+          https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
       name: Optional name for the op. Defaults to 'squared_hinge'.
     """
@@ -903,8 +903,8 @@ class CategoricalHinge(LossFunctionWrapper):
         this defaults to `SUM_OVER_BATCH_SIZE`. When used with
         `tf.distribute.Strategy`, outside of built-in training loops such as
         `tf.keras` `compile` and `fit`, using `AUTO` or `SUM_OVER_BATCH_SIZE`
-        will raise an error. Please see this custom training [tutorial]
-        (https://www.tensorflow.org/tutorials/distribute/custom_training)
+        will raise an error. Please see this custom training [tutorial](
+          https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
       name: Optional name for the op. Defaults to 'categorical_hinge'.
     """
@@ -960,8 +960,8 @@ class Poisson(LossFunctionWrapper):
         this defaults to `SUM_OVER_BATCH_SIZE`. When used with
         `tf.distribute.Strategy`, outside of built-in training loops such as
         `tf.keras` `compile` and `fit`, using `AUTO` or `SUM_OVER_BATCH_SIZE`
-        will raise an error. Please see this custom training [tutorial]
-        (https://www.tensorflow.org/tutorials/distribute/custom_training)
+        will raise an error. Please see this custom training [tutorial](
+          https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
       name: Optional name for the op. Defaults to 'poisson'.
     """
@@ -1017,8 +1017,8 @@ class LogCosh(LossFunctionWrapper):
         this defaults to `SUM_OVER_BATCH_SIZE`. When used with
         `tf.distribute.Strategy`, outside of built-in training loops such as
         `tf.keras` `compile` and `fit`, using `AUTO` or `SUM_OVER_BATCH_SIZE`
-        will raise an error. Please see this custom training [tutorial]
-        (https://www.tensorflow.org/tutorials/distribute/custom_training)
+        will raise an error. Please see this custom training [tutorial](
+          https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
       name: Optional name for the op. Defaults to 'log_cosh'.
     """
@@ -1077,8 +1077,8 @@ class KLDivergence(LossFunctionWrapper):
         this defaults to `SUM_OVER_BATCH_SIZE`. When used with
         `tf.distribute.Strategy`, outside of built-in training loops such as
         `tf.keras` `compile` and `fit`, using `AUTO` or `SUM_OVER_BATCH_SIZE`
-        will raise an error. Please see this custom training [tutorial]
-        (https://www.tensorflow.org/tutorials/distribute/custom_training)
+        will raise an error. Please see this custom training [tutorial](
+          https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
       name: Optional name for the op. Defaults to 'kl_divergence'.
     """
@@ -1145,8 +1145,8 @@ class Huber(LossFunctionWrapper):
         this defaults to `SUM_OVER_BATCH_SIZE`. When used with
         `tf.distribute.Strategy`, outside of built-in training loops such as
         `tf.keras` `compile` and `fit`, using `AUTO` or `SUM_OVER_BATCH_SIZE`
-        will raise an error. Please see this custom training [tutorial]
-        (https://www.tensorflow.org/tutorials/distribute/custom_training)
+        will raise an error. Please see this custom training [tutorial](
+          https://www.tensorflow.org/tutorials/distribute/custom_training)
         for more details.
       name: Optional name for the op. Defaults to 'huber_loss'.
     """
