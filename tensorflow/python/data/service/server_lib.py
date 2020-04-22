@@ -48,7 +48,11 @@ class MasterServer(object):
     The returned string will be in the form protocol://address:port, e.g.
     "grpc://localhost:1000".
     """
-    return _pywrap_server_lib.TF_DATA_ServerTarget(self._server)
+    return _pywrap_server_lib.TF_DATA_MasterServerTarget(self._server)
+
+  def num_tasks(self):
+    """Returns the number of tasks on the master."""
+    return _pywrap_server_lib.TF_DATA_MasterServerNumTasks(self._server)
 
   def stop(self):
     """Shuts down and deletes the server.
@@ -58,7 +62,7 @@ class MasterServer(object):
     """
     if self._running:
       self._running = False
-      _pywrap_server_lib.TF_DATA_DeleteServer(self._server)
+      _pywrap_server_lib.TF_DATA_DeleteMasterServer(self._server)
 
   def __del__(self):
     self.stop()
@@ -92,7 +96,7 @@ class WorkerServer(object):
     The returned string will be in the form protocol://address:port, e.g.
     "grpc://localhost:1000".
     """
-    return _pywrap_server_lib.TF_DATA_ServerTarget(self._server)
+    return _pywrap_server_lib.TF_DATA_WorkerServerTarget(self._server)
 
   def stop(self):
     """Shuts down and deletes the server.
@@ -102,7 +106,7 @@ class WorkerServer(object):
     """
     if self._running:
       self._running = False
-      _pywrap_server_lib.TF_DATA_DeleteServer(self._server)
+      _pywrap_server_lib.TF_DATA_DeleteWorkerServer(self._server)
 
   def __del__(self):
     self.stop()
