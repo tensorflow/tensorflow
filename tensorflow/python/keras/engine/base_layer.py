@@ -893,7 +893,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         input_spec.assert_input_compatibility(self.input_spec, inputs,
                                               self.name)
         if (any(isinstance(x, ragged_tensor.RaggedTensor) for x in input_list)
-            and self._supports_ragged_inputs is False):  # pylint: disable=g-bool-id-comparison
+            and not self._supports_ragged_inputs):
           raise ValueError('Layer %s does not support RaggedTensors as input. '
                            'Inputs received: %s. You can try converting your '
                            'input to an uniform tensor.' % (self.name, inputs))

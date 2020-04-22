@@ -192,7 +192,7 @@ class Network(base_layer.Layer):
   # checkpoints, but may cause "all Python objects matched" assertions to fail
   # (in which case less strict assertions may be substituted if necessary).
   @trackable.no_automatic_dependency_tracking
-  def _base_init(self, name=None, **kwargs):
+  def _base_init(self, **kwargs):
     # The following are implemented as property functions:
     # self.trainable_weights
     # self.non_trainable_weights
@@ -201,12 +201,12 @@ class Network(base_layer.Layer):
     # self.updates
 
     generic_utils.validate_kwargs(kwargs, {'trainable', 'dtype', 'dynamic',
-                                           'autocast'})
+                                           'name', 'autocast'})
 
-    super(Network, self).__init__(name=name, **kwargs)
+    super(Network, self).__init__(**kwargs)
 
-    self.output_names = None
     self.input_names = None
+    self.output_names = None
     self._saved_model_inputs_spec = None
 
     # This is True for Sequential networks and Functional networks.
@@ -219,18 +219,13 @@ class Network(base_layer.Layer):
     self._maybe_create_attribute('_is_compiled', False)
     self._maybe_create_attribute('optimizer', None)
 
-    if context.executing_eagerly():
-      self._graph = None
-    else:
-      self._graph = ops.get_default_graph()  # Used in symbolic mode only.
-
     self._trackable_saver = (
         trackable_utils.saver_with_op_caching(self))
 
   @trackable.no_automatic_dependency_tracking
-  def _init_graph_network(self, inputs, outputs, name=None, **kwargs):
+  def _init_graph_network(self, inputs, outputs, **kwargs):
     generic_utils.validate_kwargs(
-        kwargs, {'trainable'},
+        kwargs, {'name', 'trainable'},
         'Functional models may only specify `name` and `trainable` keyword '
         'arguments during initialization. Got an unexpected argument:')
     # Normalize and set self.inputs, self.outputs.
@@ -254,7 +249,7 @@ class Network(base_layer.Layer):
     if any(not hasattr(tensor, '_keras_history') for tensor in self.outputs):
       base_layer_utils.create_keras_history(self._nested_outputs)
 
-    self._base_init(name=name, **kwargs)
+    self._base_init(**kwargs)
     self._validate_graph_inputs_and_outputs()
 
     # A Network does not create weights of its own, thus it is already
@@ -275,8 +270,6 @@ class Network(base_layer.Layer):
     self._output_layers = []
     self._input_coordinates = []
     self._output_coordinates = []
-
-    self._supports_ragged_inputs = None
 
     # This is for performance optimization when calling the Network on new
     # inputs. Every time the Network is called on a set on input tensors,
@@ -364,17 +357,15 @@ class Network(base_layer.Layer):
     self.output_names = uniquified
 
   @trackable.no_automatic_dependency_tracking
-  def _init_subclassed_network(self, name=None, **kwargs):
-    self._base_init(name=name, **kwargs)
+  def _init_subclassed_network(self, **kwargs):
+    self._base_init(**kwargs)
     self._is_graph_network = False
-    self._init_call_fn_args()
-    self._autocast = kwargs.get('autocast',
-                                base_layer_utils.v2_dtype_behavior_enabled())
-    self._supports_ragged_inputs = None
-    self.outputs = None
     self.inputs = None
-    self.built = False
-    self._build_input_shape = None
+    self.outputs = None
+    # Since we don't know whether the subclass model support ragged inputs,
+    # we leave it as True, otherwise the layer will raise error when a ragged
+    # tensor is called as input.
+    self._supports_ragged_inputs = True
 
   @property
   @trackable_layer_utils.cache_recursive_attribute('dynamic')
