@@ -55,6 +55,14 @@ aar_with_jni(
     ],
 )
 
+aar_with_jni(
+    name = "tensorflow-lite-xnnpack",
+    android_library = ":tensorflowlite_xnnpack",
+    headers = [
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate.h",
+    ],
+)
+
 android_library(
     name = "tensorflowlite",
     srcs = JAVA_SRCS,
@@ -92,6 +100,18 @@ android_library(
     deps = [
         ":tensorflowlite_java",
         ":tensorflowlite_native_gpu",
+        "@org_checkerframework_qual",
+    ],
+)
+
+android_library(
+    name = "tensorflowlite_xnnpack",
+    srcs = ["//tensorflow/lite/delegates/xnnpack/java/src/main/java/org/tensorflow/lite/xnnpack:xnnpack_delegate"],
+    manifest = "AndroidManifest.xml",
+    proguard_specs = ["proguard.flags"],
+    deps = [
+        ":tensorflowlite_java",
+        ":tensorflowlite_native_xnnpack",
         "@org_checkerframework_qual",
     ],
 )
@@ -374,6 +394,12 @@ cc_library(
     visibility = ["//visibility:private"],
 )
 
+cc_library(
+    name = "tensorflowlite_native_xnnpack",
+    srcs = ["libtensorflowlite_xnnpack_jni.so"],
+    visibility = ["//visibility:private"],
+)
+
 tflite_jni_binary(
     name = "libtensorflowlite_jni.so",
     linkscript = ":tflite_version_script.lds",
@@ -383,7 +409,7 @@ tflite_jni_binary(
         "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/c:c_api_experimental",
         "//tensorflow/lite/delegates/nnapi/java/src/main/native",
-        "//tensorflow/lite/java/src/main/native",
+        "//tensorflow/lite/java/src/main/native"
     ],
 )
 
@@ -401,5 +427,13 @@ tflite_jni_binary(
     linkscript = ":gpu_version_script.lds",
     deps = [
         "//tensorflow/lite/delegates/gpu/java/src/main/native",
+    ],
+)
+
+tflite_jni_binary(
+    name = "libtensorflowlite_xnnpack_jni.so",
+    linkscript = ":xnn_version_script.lds",
+    deps = [
+        "//tensorflow/lite/delegates/xnnpack/java/src/main/native",
     ],
 )

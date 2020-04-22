@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/minimal_logging.h"
 
 namespace tflite {
 namespace xnnpack {
@@ -1358,13 +1359,20 @@ TfLiteXNNPackDelegateOptions TfLiteXNNPackDelegateOptionsDefault() {
 
 TfLiteDelegate* TfLiteXNNPackDelegateCreate(
     const TfLiteXNNPackDelegateOptions* options) {
+
   xnn_status status = xnn_initialize(/*allocator=*/nullptr);
   if (status != xnn_status_success) {
     return nullptr;
   }
 
   auto* xnnpack_delegate = new ::tflite::xnnpack::Delegate(options);
-  return xnnpack_delegate ? xnnpack_delegate->tflite_delegate() : nullptr;
+  if (xnnpack_delegate) {
+      TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
+              "Created TensorFlow Lite delegate for XNNPACK.");
+      return xnnpack_delegate->tflite_delegate();
+  } 
+
+  return nullptr;
 }
 
 void TfLiteXNNPackDelegateDelete(TfLiteDelegate* delegate) {

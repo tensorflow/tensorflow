@@ -24,6 +24,7 @@ cc_library(
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite:minimal_logging",
         "@XNNPACK",
     ],
 )
