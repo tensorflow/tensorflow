@@ -1421,11 +1421,26 @@ class ConvertFusedBatchNormV3Op
 
       // The mean, variance, and reserved space outputs of the batch norm op are
       // not used for inference. It doesn't matter what values we provide for
-      // the last 5 results.
-      rewriter.replaceOp(
-          op, {/*y=*/y_out, /*batch_mean=*/op.x(),
-               /*batch_variance=*/op.x(), /*reserve_space_1=*/op.x(),
-               /*reserve_space_2=*/op.x(), /*reserve_space_3=*/op.x()});
+      // the last 5 results as long as they are of the same type. Forward
+      // input mean and variance to output mean, variance, reserved_space_1 and
+      // reserver_space_2. Create a constant tensor to forward to last
+      // reserve_space_3 output.
+      auto reserve_space_3_type = op.getResult(5).getType().cast<TensorType>();
+      int num_elements = reserve_space_3_type.hasStaticShape()
+                             ? reserve_space_3_type.getNumElements()
+                             : 0;
+      auto const_attr_type = RankedTensorType::get(
+          {num_elements}, getElementTypeOrSelf(reserve_space_3_type));
+      auto dummy_const = rewriter.create<ConstOp>(
+          op.getLoc(), reserve_space_3_type,
+          DenseFPElementsAttr::get(const_attr_type,
+                                   std::vector<float>(num_elements, 0)));
+      rewriter.replaceOp(op, {/*y=*/y_out,
+                              /*batch_mean=*/op.mean(),
+                              /*batch_variance=*/op.variance(),
+                              /*reserve_space_1=*/op.mean(),
+                              /*reserve_space_2=*/op.variance(),
+                              /*reserve_space_3=*/dummy_const.getResult()});
     }
     return success();
   }
