@@ -100,7 +100,7 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
 
   void SetUp() override {
     FileSystem* fs = nullptr;
-    Status s = env_->GetFileSystemForFile(GetParam(), &fs);
+    Status s = env_->GetFileSystemForFile(root_dir_, &fs);
     if (fs == nullptr || !s.ok()) 
       GTEST_SKIP() << "No filesystem registered: " << s;
 
