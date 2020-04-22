@@ -41,6 +41,7 @@ class GpuDelegateProvider : public DelegateProvider {
 #if defined(__ANDROID__)
     default_params_.AddParam("gpu_experimental_enable_quant",
                              ToolParam::Create<bool>(true));
+    default_params_.AddParam("gpu_backend", ToolParam::Create<std::string>(""));
 #endif
 #if defined(REAL_IPHONE_DEVICE)
     default_params_.AddParam("gpu_wait_type",
@@ -70,6 +71,10 @@ std::vector<Flag> GpuDelegateProvider::CreateFlags(ToolParams* params) const {
     CreateFlag<bool>("gpu_experimental_enable_quant", params,
                      "Whether to enable the GPU delegate to run quantized "
                      "models or not. By default, it's disabled."),
+    CreateFlag<std::string>(
+        "gpu_backend", params,
+        "Force the GPU delegate to use a particular backend for execution, and "
+        "fail if unsuccessful. Should be one of: cl, gl"),
 #endif
 #if defined(REAL_IPHONE_DEVICE)
     CreateFlag<std::string>(
@@ -90,6 +95,8 @@ void GpuDelegateProvider::LogParams(const ToolParams& params) const {
 #if defined(__ANDROID__)
   TFLITE_LOG(INFO) << "Enable running quant models in gpu : ["
                    << params.Get<bool>("gpu_experimental_enable_quant") << "]";
+  TFLITE_LOG(INFO) << "GPU backend : ["
+                   << params.Get<std::string>("gpu_backend") << "]";
 #endif
 #if defined(REAL_IPHONE_DEVICE)
   TFLITE_LOG(INFO) << "GPU delegate wait type : ["
@@ -113,6 +120,14 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
     }
     if (params.Get<bool>("gpu_experimental_enable_quant")) {
       gpu_opts.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_ENABLE_QUANT;
+    }
+    std::string gpu_backend = params.Get<std::string>("gpu_backend");
+    if (!gpu_backend.empty()) {
+      if (gpu_backend == "cl") {
+        gpu_opts.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_CL_ONLY;
+      } else if (gpu_backend == "gl") {
+        gpu_opts.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_GL_ONLY;
+      }
     }
     delegate = evaluation::CreateGPUDelegate(&gpu_opts);
 #elif defined(REAL_IPHONE_DEVICE)

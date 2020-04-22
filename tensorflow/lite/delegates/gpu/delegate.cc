@@ -115,20 +115,29 @@ class DelegateKernel {
 
     std::unique_ptr<InferenceBuilder> builder;
     bool graph_is_destroyed;
-    absl::Status status =
-        InitializeOpenClApi(&graph, &builder, &graph_is_destroyed);
-    if (!status.ok()) {
-      TF_LITE_KERNEL_LOG(context, std::string(status.message()).c_str());
-      context->ReportError(context, "Falling back to OpenGL");
-
-      // Graph need to be re-created because it is moved above.
-      GraphFloat32 graph2;
-      if (graph_is_destroyed) {
-        RETURN_IF_ERROR(InitializeGraph(context, delegate_params, &graph2,
-                                        &input_refs, &output_refs));
-      }
+    if (options_.experimental_flags & TFLITE_GPU_EXPERIMENTAL_FLAGS_CL_ONLY) {
       RETURN_IF_ERROR(
-          InitializeOpenGlApi(graph_is_destroyed ? &graph2 : &graph, &builder));
+          InitializeOpenClApi(&graph, &builder, &graph_is_destroyed));
+    } else if (options_.experimental_flags &
+               TFLITE_GPU_EXPERIMENTAL_FLAGS_GL_ONLY) {
+      RETURN_IF_ERROR(InitializeOpenGlApi(&graph, &builder));
+    } else {
+      // By default, we try CL first & fall back to GL if that fails.
+      absl::Status status =
+          InitializeOpenClApi(&graph, &builder, &graph_is_destroyed);
+      if (!status.ok()) {
+        TF_LITE_KERNEL_LOG(context, std::string(status.message()).c_str());
+        TF_LITE_KERNEL_LOG(context, "Falling back to OpenGL");
+
+        // Graph needs to be re-created because it is moved above.
+        GraphFloat32 graph2;
+        if (graph_is_destroyed) {
+          RETURN_IF_ERROR(InitializeGraph(context, delegate_params, &graph2,
+                                          &input_refs, &output_refs));
+        }
+        RETURN_IF_ERROR(InitializeOpenGlApi(
+            graph_is_destroyed ? &graph2 : &graph, &builder));
+      }
     }
 
     // At this point tflite didn't allocate tensors yet, therefore, collect
