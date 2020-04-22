@@ -208,9 +208,6 @@ cc_library(
     name = "egl_sync",
     srcs = ["egl_sync.cc"],
     hdrs = ["egl_sync.h"],
-    defines = [
-        "EGL_EGLEXT_PROTOTYPES",
-    ],
     deps = [
         ":cl_device",
         "//tensorflow/lite/delegates/gpu/common:status",
