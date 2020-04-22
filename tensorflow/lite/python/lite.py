@@ -516,12 +516,10 @@ class TFLiteConverterV2(TFLiteConverterBase):
 
     Raises:
       ValueError:
-        - No concrete functions is specified. when no concrete function
-        is specified.
-        - Multiple concrete functions are specified. when more than one
-        concrete functions are specified.
-        - Input shape is not specified.
-        - Invalid quantization parameters.
+        No concrete functions is specified.
+        Multiple concrete functions are specified.
+        Input shape is not specified.
+        Invalid quantization parameters.
     """
     # TODO(b/130297984): Add support for converting multiple function.
 
