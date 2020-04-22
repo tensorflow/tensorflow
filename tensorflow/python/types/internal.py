@@ -1,4 +1,4 @@
-# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,17 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Base class for tensor-like objects."""
+"""Types internal to TensorFlow.
+
+These types should not be exported. External code should not rely on these.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 
-class TensorLike(object):
-  """TF-specific types TF operations are expected to natively support.
+# TODO(mdan): Is this strictly needed? Only ops.py really uses it.
+class NativeObject(object):
+  """Types natively supported by various TF operations.
 
-  Do not check this with isinstance directly; prefer instead using
-  `tf.is_tensor` to check whether converting to a tensor is necessary.
+  The most notable example of NativeObject is Tensor.
   """
-  pass

@@ -1550,7 +1550,6 @@ py_library(
         ":platform",
         ":registry",
         ":tensor_conversion_registry",
-        ":tensor_like",
         ":tensor_shape",
         ":tf2",
         ":traceable_stack",
@@ -1590,13 +1589,6 @@ cuda_py_test(
 )
 
 py_library(
-    name = "tensor_like",
-    srcs = ["framework/tensor_like.py"],
-    srcs_version = "PY2AND3",
-    deps = [],
-)
-
-py_library(
     name = "indexed_slices",
     srcs = ["framework/indexed_slices.py"],
     srcs_version = "PY2AND3",
@@ -1608,6 +1600,7 @@ py_library(
         ":type_spec",
         ":util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -1768,9 +1761,9 @@ py_library(
         ":composite_tensor",
         ":dtypes",
         ":framework_ops",
-        ":tensor_like",
         ":tensor_util",
         ":type_spec",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -1878,7 +1871,6 @@ py_library(
     srcs = ["framework/tensor_util.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":tensor_like",
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
