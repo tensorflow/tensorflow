@@ -615,6 +615,9 @@ def tf_cc_shared_object(
             linkshared = 1,
             data = data + data_extra,
             linkopts = linkopts + _rpath_linkopts(name_os_full) + select({
+                clean_dep("//tensorflow:ios"): [
+                    "-Wl,-install_name,@rpath/" + soname,
+                ],
                 clean_dep("//tensorflow:macos"): [
                     "-Wl,-install_name,@rpath/" + soname,
                 ],
@@ -632,6 +635,7 @@ def tf_cc_shared_object(
         native.filegroup(
             name = name,
             srcs = select({
+                "//tensorflow:ios": [":lib%s%s.dylib" % (name, longsuffix)],
                 "//tensorflow:windows": [":%s.dll" % (name)],
                 "//tensorflow:macos": [":lib%s%s.dylib" % (name, longsuffix)],
                 "//conditions:default": [":lib%s.so%s" % (name, longsuffix)],

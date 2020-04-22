@@ -22,12 +22,14 @@ package(
 tflite_cc_shared_object(
     name = "tensorflowlite_c",
     linkopts = select({
+        "//tensorflow:ios": [
+            "-Wl,-exported_symbols_list,$(location //tensorflow/lite/c:exported_symbols.lds)",
+        ],
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite/c:exported_symbols.lds)",
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
-            "-z defs",
             "-Wl,--version-script,$(location //tensorflow/lite/c:version_script.lds)",
         ],
     }),
