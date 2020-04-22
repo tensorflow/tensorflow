@@ -94,9 +94,32 @@ def is_xla_enabled():
 
 
 try:
-  from tensorflow.python.framework.is_xla_test_true import is_xla_enabled  # pylint: disable=g-import-not-at-top
-except:
+  from tensorflow.python.framework.is_xla_test_true import is_xla_enabled  # pylint: disable=g-import-not-at-top, unused-import
+except Exception:  # pylint: disable=broad-except
   pass
+
+
+# Uses the same mechanism as above to selectively enable MLIR compilation.
+def is_mlir_bridge_enabled():
+  return False
+
+
+try:
+  from tensorflow.python.framework.is_mlir_bridge_test_true import is_mlir_bridge_enabled  # pylint: disable=g-import-not-at-top, unused-import
+except Exception:  # pylint: disable=broad-except
+  pass
+
+
+# Uses the same mechanism as above to selectively enable TFRT.
+def is_tfrt_enabled():
+  return False
+
+
+try:
+  from tensorflow.python.framework.is_tfrt_test_true import is_tfrt_enabled  # pylint: disable=g-import-not-at-top, unused-import
+except Exception:  # pylint: disable=broad-except
+  pass
+
 
 def _get_object_count_by_type():
   return collections.Counter([type(obj).__name__ for obj in gc.get_objects()])
@@ -1726,16 +1749,51 @@ def enable_tf_xla_constant_folding(description):
   return enable_tf_xla_constant_folding_impl
 
 
-# The description is just for documentation purposes.
-def disable_xla(description):
+# Updates test function by selectively disabling it.
+def _disable_test(execute_func):
 
-  def disable_xla_impl(func):
-    """Execute the test method only if xla is not enabled."""
+  def disable_test_impl(func):
 
     def decorator(func):
 
       def decorated(self, *args, **kwargs):
-        if is_xla_enabled():
+        if execute_func:
+          return func(self, *args, **kwargs)
+
+      return decorated
+
+    if func is not None:
+      return decorator(func)
+
+    return decorator
+
+  return disable_test_impl
+
+
+# The description is just for documentation purposes.
+def disable_xla(description):  # pylint: disable=unused-argument
+  """Execute the test method only if xla is not enabled."""
+  execute_func = not is_xla_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_mlir_bridge(description):  # pylint: disable=unused-argument
+  """Execute the test method only if MLIR bridge is not enabled."""
+  execute_func = not is_mlir_bridge_enabled()
+  return _disable_test(execute_func)
+
+
+# The description is just for documentation purposes.
+def disable_tfrt(unused_description):
+
+  def disable_tfrt_impl(func):
+    """Execute the test method only if tfrt is not enabled."""
+
+    def decorator(func):
+
+      def decorated(self, *args, **kwargs):
+        if is_tfrt_enabled():
           return
         else:
           return func(self, *args, **kwargs)
@@ -1747,7 +1805,7 @@ def disable_xla(description):
 
     return decorator
 
-  return disable_xla_impl
+  return disable_tfrt_impl
 
 
 def for_all_test_methods(decorator, *args, **kwargs):
@@ -1779,27 +1837,9 @@ def for_all_test_methods(decorator, *args, **kwargs):
 
 # The description is just for documentation purposes.
 def no_xla_auto_jit(description):  # pylint: disable=unused-argument
-
-  def no_xla_auto_jit_impl(func):
-    """This test is not intended to be run with XLA auto jit enabled."""
-
-    def decorator(func):
-
-      def decorated(self, *args, **kwargs):
-        if is_xla_enabled():
-          # Skip test if using XLA is forced.
-          return
-        else:
-          return func(self, *args, **kwargs)
-
-      return decorated
-
-    if func is not None:
-      return decorator(func)
-
-    return decorator
-
-  return no_xla_auto_jit_impl
+  """This test is not intended to be run with XLA auto jit enabled."""
+  execute_func = not is_xla_enabled()
+  return _disable_test(execute_func)
 
 
 # The description is just for documentation purposes.

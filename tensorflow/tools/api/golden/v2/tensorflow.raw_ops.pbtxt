@@ -429,10 +429,6 @@ tf_module {
     argspec: "args=[\'input\', \'block_shape\', \'crops\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "BeginEpoch"
-    argspec: "args=[\'dataset_id\', \'address\', \'protocol\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "BesselI0e"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -845,6 +841,10 @@ tf_module {
     argspec: "args=[\'ref\', \'limit\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "CreateJob"
+    argspec: "args=[\'dataset_id\', \'address\', \'protocol\', \'processing_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "CreateSummaryDbWriter"
     argspec: "args=[\'writer\', \'db_uri\', \'experiment_name\', \'run_name\', \'user_name\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -938,7 +938,7 @@ tf_module {
   }
   member_method {
     name: "DataServiceDataset"
-    argspec: "args=[\'address\', \'protocol\', \'max_outstanding_requests\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'address\', \'protocol\', \'max_outstanding_requests\', \'output_types\', \'output_shapes\', \'task_refresh_interval_hint_ms\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
     name: "DatasetCardinality"
@@ -1175,6 +1175,10 @@ tf_module {
   member_method {
     name: "DrawBoundingBoxesV2"
     argspec: "args=[\'images\', \'boxes\', \'colors\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "DummyMemoryCache"
+    argspec: "args=[\'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "DynamicPartition"
@@ -2190,7 +2194,7 @@ tf_module {
   }
   member_method {
     name: "MakeDataServiceIterator"
-    argspec: "args=[\'dataset\', \'epoch_id\', \'iterator\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'dataset\', \'job_token\', \'iterator\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "MakeIterator"

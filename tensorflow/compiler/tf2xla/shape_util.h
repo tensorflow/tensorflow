@@ -44,6 +44,17 @@ Status TensorShapeToXLAShape(DataType dtype, const TensorShape& tensor_shape,
 xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
                                  const TensorShape& tensor_shape);
 
+// Convert a PartialTensorShape into the equivalent XLA Shape proto. An shape
+// with unknown rank is represented by an r1 with empty dimension.
+Status TensorShapeToXLAShape(DataType dtype,
+                             const PartialTensorShape& tensor_shape,
+                             xla::Shape* shape);
+
+// Convert a PartialTensorShape into the equivalent XLA Shape proto. An shape
+// with unknown rank is represented by an r1 with empty dimension.
+xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
+                                 const PartialTensorShape& tensor_shape);
+
 // Given an XLA shape with layouts, builds a layout vector in the form able to
 // be fed to ops like InfeedEnqueue/InfeedEnqueueTuple/XRTAllocateV2/....
 // THe returned vector is a linearized sequence of the minor-to-major values of

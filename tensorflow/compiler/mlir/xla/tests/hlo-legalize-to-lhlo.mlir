@@ -1,4 +1,4 @@
-// RUN: tf-opt -hlo-legalize-to-lhlo %s -o - | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt -hlo-legalize-to-lhlo %s -o - | FileCheck %s --dump-input-on-failure
 
 // CHECK-LABEL: func @attrs
 func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
@@ -146,14 +146,16 @@ func @broadcast(%operand: memref<5xf32>, %result: memref<10x5xf32>) {
 
 // -----
 
+func @external_func() -> tensor<3xi64>
+
 // CHECK-LABEL: func @dyn_broadcast
 func @dyn_broadcast(%operand: memref<?x?xf32>) {
   %tensor_operand = tensor_load %operand : memref<?x?xf32>
-  %shape = "compute.shape"() : () -> tensor<3xi64>
+  %shape = call @external_func() : () -> tensor<3xi64>
   %tensor_result = "xla_hlo.dynamic_broadcast_in_dim"(%tensor_operand, %shape)
       {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>}
         : (tensor<?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-  // CHECK: %[[SHAPE:.*]] = "compute.shape"()
+  // CHECK: %[[SHAPE:.*]] = call @external_func()
   // CHECK: %[[C0:.*]] = constant 0 : index
   // CHECK: %[[EL0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<3xi64>
   // CHECK: %[[IC0:.*]]  = index_cast %[[EL0]] : i64 to index

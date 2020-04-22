@@ -69,7 +69,7 @@ gentbl(
             "ir/tf_ops.cc.inc",
         ),
         (
-            "-gen-op-doc",
+            "-gen-dialect-doc",
             "g3doc/tf_ops.md",
         ),
         (
@@ -100,7 +100,7 @@ gentbl(
             "ir/tf_saved_model.cc.inc",
         ),
         (
-            "-gen-op-doc",
+            "-gen-dialect-doc",
             "g3doc/tf_saved_model.md",
         ),
     ],
@@ -124,7 +124,7 @@ gentbl(
             "ir/tf_executor.cc.inc",
         ),
         (
-            "-gen-op-doc",
+            "-gen-dialect-doc",
             "g3doc/tf_executor.md",
         ),
     ],
@@ -148,7 +148,7 @@ gentbl(
             "ir/tf_device.cc.inc",
         ),
         (
-            "-gen-op-doc",
+            "-gen-dialect-doc",
             "g3doc/tf_device.md",
         ),
     ],
@@ -1283,6 +1283,45 @@ tf_cc_test(
     srcs = ["utils/dump_mlir_util_test.cc"],
     deps = [
         ":dump_mlir_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "dump_graph",
+    srcs = ["utils/dump_graph.cc"],
+    hdrs = ["utils/dump_graph.h"],
+    deps = [
+        ":convert_graphdef",
+        ":error_util",
+        ":tensorflow",
+        ":tensorflow_dialect_registration",
+        ":tensorflow_passes",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+tf_cc_test(
+    name = "dump_graph_test",
+    size = "small",
+    srcs = ["utils/dump_graph_test.cc"],
+    deps = [
+        ":dump_graph",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

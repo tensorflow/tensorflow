@@ -42,6 +42,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
+#include "tensorflow/lite/kernels/internal/reference/l2normalization.h"
 #include "tensorflow/lite/kernels/internal/reference/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/maximum_minimum.h"
 #include "tensorflow/lite/kernels/internal/reference/mul.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/quantize.h"
 #include "tensorflow/lite/kernels/internal/reference/reduce.h"
 #include "tensorflow/lite/kernels/internal/reference/requantize.h"
+#include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
 #include "tensorflow/lite/kernels/internal/reference/round.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
@@ -290,62 +292,6 @@ inline void QuantizeLeakyRelu(const LeakyReluParams& params,
     const T clamped_output =
         std::min(quantized_max, std::max(quantized_min, unclamped_output));
     output_data[i] = static_cast<T>(clamped_output);
-  }
-}
-
-inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
-                            const RuntimeShape& input_shape,
-                            const float* input_data,
-                            const RuntimeShape& output_shape,
-                            float* output_data, float epsilon = 1e-6) {
-  const int trailing_dim = input_shape.DimensionsCount() - 1;
-  const int outer_size =
-      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-  const int depth =
-      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
-  for (int i = 0; i < outer_size; ++i) {
-    float squared_l2_norm = 0;
-    for (int c = 0; c < depth; ++c) {
-      const float val = input_data[depth * i + c];
-      squared_l2_norm += val * val;
-    }
-    float l2_norm = std::sqrt(squared_l2_norm);
-    l2_norm = std::max(l2_norm, epsilon);
-    for (int c = 0; c < depth; ++c) {
-      output_data[depth * i + c] = input_data[depth * i + c] / l2_norm;
-    }
-  }
-}
-
-inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
-                            const RuntimeShape& input_shape,
-                            const uint8* input_data,
-                            const RuntimeShape& output_shape,
-                            uint8* output_data) {
-  const int trailing_dim = input_shape.DimensionsCount() - 1;
-  const int depth =
-      MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
-  const int outer_size =
-      MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
-  const int32 input_zero_point = op_params.input_zero_point;
-  for (int i = 0; i < outer_size; ++i) {
-    int32 square_l2_norm = 0;
-    for (int c = 0; c < depth; c++) {
-      int32 diff = input_data[depth * i + c] - input_zero_point;
-      square_l2_norm += diff * diff;
-    }
-    int32 inv_l2norm_multiplier;
-    int inv_l2norm_shift;
-    GetInvSqrtQuantizedMultiplierExp(square_l2_norm, kReverseShift,
-                                     &inv_l2norm_multiplier, &inv_l2norm_shift);
-    for (int c = 0; c < depth; c++) {
-      int32 diff = input_data[depth * i + c] - input_zero_point;
-      int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
-          128 * diff, inv_l2norm_multiplier, inv_l2norm_shift);
-      int32 unclamped_output_val = 128 + rescaled_diff;
-      int32 output_val = std::min(255, std::max(0, unclamped_output_val));
-      output_data[depth * i + c] = static_cast<uint8>(output_val);
-    }
   }
 }
 
@@ -2456,60 +2402,6 @@ inline void BroadcastPow4DSlow(const RuntimeShape& unextended_input1_shape,
         }
       }
     }
-  }
-}
-
-template <typename T>
-inline void ResizeNearestNeighbor(
-    const tflite::ResizeNearestNeighborParams& op_params,
-    const RuntimeShape& unextended_input_shape, const T* input_data,
-    const RuntimeShape& output_size_shape, const int32* output_size_data,
-    const RuntimeShape& unextended_output_shape, T* output_data) {
-  // Align corners = true is not supported.
-  TFLITE_DCHECK(!op_params.align_corners);
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-
-  int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
-  int32 input_height = input_shape.Dims(1);
-  int32 input_width = input_shape.Dims(2);
-  int32 depth = MatchingDim(input_shape, 3, output_shape, 3);
-
-  // The Tensorflow version of this op allows resize on the width and height
-  // axis only.
-  TFLITE_DCHECK_EQ(output_size_shape.FlatSize(), 2);
-  int32 output_height = output_size_data[0];
-  int32 output_width = output_size_data[1];
-
-  // We use float to ensure agreement with the Tensorflow implementation.
-  const float height_scale = static_cast<float>(input_height) / output_height;
-  const float width_scale = static_cast<float>(input_width) / output_width;
-
-  const int col_offset = input_shape.Dims(3);
-  const int row_offset = input_shape.Dims(2) * col_offset;
-  const int batch_offset = input_shape.Dims(1) * row_offset;
-
-  const T* input_ptr = input_data;
-  T* output_ptr = output_data;
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < output_height; ++y) {
-      int32 in_y = std::min(static_cast<int32>(std::floor(y * height_scale)),
-                            input_height - 1);
-      const T* y_input_ptr = input_ptr + in_y * row_offset;
-      for (int x = 0; x < output_width; ++x) {
-        int32 in_x = std::min(static_cast<int32>(std::floor(x * width_scale)),
-                              input_width - 1);
-        const T* x_input_ptr = y_input_ptr + in_x * col_offset;
-        memcpy(output_ptr, x_input_ptr, depth * sizeof(T));
-        output_ptr += depth;
-      }
-    }
-    input_ptr += batch_offset;
   }
 }
 

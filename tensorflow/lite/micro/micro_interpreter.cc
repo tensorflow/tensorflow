@@ -223,6 +223,7 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
   tensors_allocated_ = true;
   return kTfLiteOk;
 }
+
 TfLiteStatus MicroInterpreter::Invoke() {
   if (initialization_status_ != kTfLiteOk) {
     TF_LITE_REPORT_ERROR(error_reporter_,

@@ -55,11 +55,10 @@ def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
-// Dynamic representation of a shape vector as a tensor. Ideally this would be
-// an index type (as it stores indices) but that is currently disallowed in
-// MLIR.
+// Dynamic representation of a shape vector as a tensor.
 def HLO_DimensionTensor : ShapedContainerType<
-    [AnySignlessInteger], And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
+    [Index, AnySignlessInteger],
+    And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
     "a 1D tensor of dimensions">;
 
 // In general, static shaped tensor constraints should be avoided unless

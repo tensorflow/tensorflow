@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -128,6 +129,7 @@ int main(int argc, char **argv) {
   // We need to disable duplicated ones to provide a cleaner command-line option
   // interface. That also means we need to relay the value set in one option to
   // all its aliases.
+  mlir::registerAsmPrinterCLOptions();
   llvm::cl::ParseCommandLineOptions(
       argc, argv, "TF GraphDef to TFLite FlatBuffer converter\n");
 

@@ -111,7 +111,7 @@ struct FillPhiloxRandomTask<Distribution, false> {
 template <class Distribution>
 struct FillPhiloxRandomTask<Distribution, true> {
   typedef typename Distribution::ResultElementType T;
-  static const int64 kReservedSamplesPerOutput = 256;
+  static constexpr int64 kReservedSamplesPerOutput = 256;
 
   static void Run(random::PhiloxRandom base_gen, T* data, int64 size,
                   int64 start_group, int64 limit_group, Distribution dist) {

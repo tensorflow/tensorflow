@@ -447,14 +447,8 @@ class WhileOp : public AsyncOpKernel {
         Device* device = down_cast<Device*>(ctx_->device());
         DeviceContext* device_ctx = ctx_->op_device_context();
         cond_t = Tensor(rets_[0].dtype(), rets_[0].shape());
-        Notification done_copy;
-        device_ctx->CopyDeviceTensorToCPU(
-            &rets_[0], /*tensor_name=*/"", device, &cond_t,
-            [&done_copy, &s](const Status& status) {
-              s = status;
-              done_copy.Notify();
-            });
-        done_copy.WaitForNotification();
+        s = device_ctx->CopyDeviceTensorToCPUSync(&rets_[0], /*tensor_name=*/"",
+                                                  device, &cond_t);
         if (!s.ok()) {
           return Finish(s);
         }

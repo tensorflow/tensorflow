@@ -118,7 +118,7 @@ void GpuOpFusionPass::runOnFunction() {
   FuncOp func = getFunction();
   OwningRewritePatternList patterns;
   patterns.insert<ReluToFusedBatchNorm>(&getContext());
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 
 }  // namespace

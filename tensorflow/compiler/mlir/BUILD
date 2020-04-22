@@ -40,11 +40,11 @@ cc_library(
     srcs = ["tf_mlir_opt_main.cc"],
     deps = [
         ":init_mlir",
-        ":passes",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
@@ -55,6 +55,7 @@ cc_library(
 cc_library(
     name = "passes",
     visibility = [
+        ":__subpackages__",
         "//tensorflow/python:__subpackages__",
     ],
     deps = [
@@ -76,24 +77,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
-        "//tensorflow/compiler/mlir/xla:buffer_assignment",
-        "//tensorflow/compiler/mlir/xla:hlo",
-        "//tensorflow/compiler/mlir/xla:hlo_legalize_to_lhlo",
-        "//tensorflow/compiler/mlir/xla:lhlo",
-        "//tensorflow/compiler/mlir/xla:lhlo_copy_removal",
-        "//tensorflow/compiler/mlir/xla:lhlo_fuse_linalg",
-        "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_affine",
-        "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_gpu",
-        "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_parallel_loops",
-        "//tensorflow/compiler/mlir/xla:xla_dialect_registration",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_control_flow",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf_with_tf2xla",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_to_linalg",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_to_standard",
-        "//tensorflow/compiler/mlir/xla:xla_lower",
-        "//tensorflow/compiler/mlir/xla:xla_materialize_broadcasts",
-        "//tensorflow/compiler/mlir/xla:xla_test_passes",
     ],
 )
 
@@ -141,11 +124,14 @@ cc_library(
 tf_cc_binary(
     name = "tf-opt",
     deps = [
+        ":passes",
         ":tf_mlir_opt_main",
         "//tensorflow/compiler/mlir/lite:tensorflow_lite_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
+        "//tensorflow/compiler/mlir/tfjs:tensorflow_js_dialect_registration",
+        "//tensorflow/compiler/mlir/xla:all_xla_passes_for_testing",
     ],
 )
 

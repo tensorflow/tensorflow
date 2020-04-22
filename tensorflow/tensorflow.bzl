@@ -338,6 +338,7 @@ def tf_copts(
         }) +
         select({
             clean_dep("//tensorflow:android"): android_copts,
+            clean_dep("//tensorflow:emscripten"): [],
             clean_dep("//tensorflow:macos"): [],
             clean_dep("//tensorflow:windows"): get_win_copts(is_external),
             clean_dep("//tensorflow:ios"): [],
@@ -1945,7 +1946,7 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-# In tf_py_wrap_cc generated libraries
+# In tf_py_wrap_cc_opensource generated libraries
 # module init functions are not exported unless
 # they contain one of the keywords in the version file
 # this prevents custom python modules.
@@ -1990,7 +1991,7 @@ _append_init_to_versionscript = rule(
 )
 
 # This macro should only be used for pywrap_tensorflow_internal.so.
-# It was copied and refined from the original tf_py_wrap_cc rule.
+# It was copied and refined from the original tf_py_wrap_cc_opensource rule.
 # buildozer: disable=function-docstring-args
 def pywrap_tensorflow_macro(
         name,
@@ -2128,150 +2129,6 @@ def pywrap_tensorflow_macro(
         }),
     )
 
-# DO NOT USE! We are in the process of deprecating this. If you use
-# this rule within third_party/tensorflow you will be rolled back. b/153452665
-# buildozer: enable=function-docstring-args
-def tf_py_wrap_cc(
-        name,
-        srcs = [],
-        swig_includes = [],
-        deps = [],
-        copts = [],
-        version_script = None,
-        **kwargs):
-    """Builds a Python extension module."""
-    module_name = name.split("/")[-1]
-
-    # Convert a rule name such as foo/bar/baz to foo/bar/_baz.so
-    # and use that as the name for the rule producing the .so file.
-    cc_library_base = "/".join(name.split("/")[:-1] + ["_" + module_name])
-
-    # TODO(b/137885063): tf_cc_shared_object needs to be cleaned up; we really
-    # shouldn't be passing a name qualified with .so here.
-    cc_library_name = cc_library_base + ".so"
-    cc_library_pyd_name = "/".join(
-        name.split("/")[:-1] + ["_" + module_name + ".pyd"],
-    )
-    extra_deps = []
-
-    # TODO(amitpatankar): Migrate from py_wrap_cc to cc_shared_library.
-    # TensorFlow python does not use any SWIG sources so we create
-    # an empty SWIG file. This rule cannot be cleaned up until bazel shared
-    # library support lands.
-    if srcs == []:
-        srcs = ["default.swig"]
-        native.genrule(
-            name = "default_swig_rule",
-            outs = srcs,
-            cmd = "touch $@",
-        )
-
-    _py_wrap_cc(
-        name = name + "_py_wrap",
-        srcs = srcs,
-        module_name = module_name,
-        py_module_name = name,
-        swig_includes = swig_includes,
-        toolchain_deps = ["@bazel_tools//tools/cpp:current_cc_toolchain"],
-        deps = deps + extra_deps,
-    )
-    if not version_script:
-        version_script = select({
-            "@local_config_cuda//cuda:darwin": clean_dep("//tensorflow:tf_exported_symbols.lds"),
-            "//conditions:default": clean_dep("//tensorflow:tf_version_script.lds"),
-        })
-    vscriptname = name + "_versionscript"
-    _append_init_to_versionscript(
-        name = vscriptname,
-        is_version_script = select({
-            "@local_config_cuda//cuda:darwin": False,
-            "//conditions:default": True,
-        }),
-        module_name = module_name,
-        template_file = version_script,
-    )
-    extra_linkopts = select({
-        "@local_config_cuda//cuda:darwin": [
-            "-Wl,-exported_symbols_list,$(location %s.lds)" % vscriptname,
-        ],
-        clean_dep("//tensorflow:windows"): [],
-        "//conditions:default": [
-            "-Wl,--version-script",
-            "$(location %s.lds)" % vscriptname,
-        ],
-    })
-    extra_deps += select({
-        "@local_config_cuda//cuda:darwin": [
-            "%s.lds" % vscriptname,
-        ],
-        clean_dep("//tensorflow:windows"): [],
-        "//conditions:default": [
-            "%s.lds" % vscriptname,
-        ],
-    })
-
-    # Due to b/149224972 we have to add libtensorflow_framework.so
-    # as a dependency so the linker doesn't try and optimize and
-    # remove it from pywrap_tensorflow_internal.so
-    # Issue: https://github.com/tensorflow/tensorflow/issues/34117
-    # Fix: https://github.com/tensorflow/tensorflow/commit/5caa9e83798cb510c9b49acee8a64efdb746207c
-    extra_deps += if_static(
-        extra_deps = [],
-        otherwise = [
-            clean_dep("//tensorflow:libtensorflow_framework_import_lib"),
-        ],
-    )
-
-    tf_cc_shared_object(
-        name = cc_library_name,
-        srcs = [module_name + ".cc"],
-        # framework_so is no longer needed as libtf.so is included via the extra_deps.
-        framework_so = [],
-        copts = copts + if_not_windows([
-            "-Wno-self-assign",
-            "-Wno-sign-compare",
-            "-Wno-write-strings",
-        ]),
-        linkopts = extra_linkopts,
-        linkstatic = 1,
-        deps = deps + extra_deps,
-        **kwargs
-    )
-
-    # When a non-versioned .so is added as a 'src' to a bazel target, it uses
-    # -l%(so_name) instead of -l:%(so_file) during linking.  When -l%(so_name)
-    # is passed to ld, it will look for an associated file with the schema
-    # lib%(so_name).so.  Since pywrap_tensorflow is not explicitly versioned
-    # and is not prefixed with lib_, we add a rule for the creation of an .so
-    # file with the canonical lib schema (e.g. libNAME.so), so that
-    # -l%(so_name) is resolved during linking.
-    #
-    # See: https://github.com/bazelbuild/bazel/blob/7a6808260a733d50983c1adf0cf5a7493472267f/src/main/java/com/google/devtools/build/lib/rules/cpp/LibrariesToLinkCollector.java#L319
-    for pattern in SHARED_LIBRARY_NAME_PATTERNS:
-        name_os = pattern % (cc_library_base, "")
-        native.genrule(
-            name = name_os + "_rule",
-            srcs = [":" + cc_library_name],
-            outs = [name_os],
-            cmd = "cp $< $@",
-        )
-
-    native.genrule(
-        name = "gen_" + cc_library_pyd_name,
-        srcs = [":" + cc_library_name],
-        outs = [cc_library_pyd_name],
-        cmd = "cp $< $@",
-    )
-    native.py_library(
-        name = name,
-        srcs = [":" + name + ".py"],
-        srcs_version = "PY2AND3",
-        data = select({
-            clean_dep("//tensorflow:windows"): [":" + cc_library_pyd_name],
-            "//conditions:default": [":" + cc_library_name],
-        }),
-    )
-
 # This macro is for running python tests against system installed pip package
 # on Windows.
 #
@@ -2366,8 +2223,6 @@ def tf_py_test(
         deps = deps + tf_additional_xla_deps_py()
     if grpc_enabled:
         deps = deps + tf_additional_grpc_deps_py()
-    if tfrt_enabled:
-        deps = deps + ["//tensorflow/python:is_tfrt_test_true"]
 
     # NOTE(ebrevdo): This is a workaround for depset() not being able to tell
     # the difference between 'dep' and 'clean_dep(dep)'.
@@ -2396,6 +2251,23 @@ def tf_py_test(
         deps = depset(deps + xla_test_true_list),
         **kwargs
     )
+    if tfrt_enabled:
+        py_test(
+            name = name + "_tfrt",
+            size = size,
+            srcs = srcs,
+            args = args,
+            data = data,
+            flaky = flaky,
+            kernels = kernels,
+            main = main,
+            shard_count = shard_count,
+            tags = tags,
+            visibility = [clean_dep("//tensorflow:internal")] +
+                         additional_visibility,
+            deps = depset(deps + xla_test_true_list + ["//tensorflow/python:is_tfrt_test_true"]),
+            **kwargs
+        )
 
 register_extension_info(
     extension_name = "tf_py_test",
@@ -2647,7 +2519,12 @@ def tf_genrule_cmd_append_to_srcs(to_append):
     return ("cat $(SRCS) > $(@) && " + "echo >> $(@) && " + "echo " + to_append +
             " >> $(@)")
 
+def tf_local_platform_constraint():
+    return ["@local_execution_config_platform//:platform_constraint"]
+
 def tf_version_info_genrule(name, out):
+    # TODO(gunan): Investigate making this action hermetic so we do not need
+    # to run it locally.
     native.genrule(
         name = name,
         srcs = [
@@ -2660,9 +2537,10 @@ def tf_version_info_genrule(name, out):
             "$(location //tensorflow/tools/git:gen_git_source) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
         local = 1,
         exec_tools = [clean_dep("//tensorflow/tools/git:gen_git_source")],
+        exec_compatible_with = tf_local_platform_constraint(),
     )
 
-def tf_py_build_info_genrule(name, out, **kwargs):
+def tf_py_build_info_genrule(name, out, exec_compatible_with, **kwargs):
     native.genrule(
         name = name,
         outs = [out],

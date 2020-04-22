@@ -91,4 +91,27 @@ INSTANTIATE_TEST_SUITE_P(
         {_tf_string_, tensor_strs,
          static_cast<int64>(sizeof(str) + str.size()) /*bytes*/}}));
 
+TEST(DatasetTest, JobServiceTokenIsEmpty) {
+  data::JobToken token;
+  EXPECT_TRUE(token.is_empty());
+}
+
+TEST(DatasetTest, JobTokenHoldsJobId) {
+  int64 job_id = 5;
+  data::JobToken token(job_id);
+  EXPECT_EQ(job_id, token.job_id());
+  EXPECT_FALSE(token.is_empty());
+}
+
+TEST(DatasetTest, JobTokenEncodeDecode) {
+  int64 job_id = 5;
+  data::JobToken token(job_id);
+  VariantTensorData data;
+  token.Encode(&data);
+  data::JobToken decoded;
+  decoded.Decode(data);
+  EXPECT_FALSE(token.is_empty());
+  EXPECT_EQ(job_id, token.job_id());
+}
+
 }  // namespace tensorflow

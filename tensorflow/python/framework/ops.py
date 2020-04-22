@@ -100,6 +100,10 @@ _control_flow_api_gauge = monitoring.BoolGauge(
     "/tensorflow/api/enable_control_flow_v2",
     "Whether enable_control_flow_v2() is called.")
 
+_tf_function_api_guage = monitoring.BoolGauge(
+    "/tensorflow/api/tf_function",
+    "Whether tf.function() is used.")
+
 # pylint: disable=protected-access
 _DTYPES_INTERN_TABLE = dtypes._INTERN_TABLE
 # pylint: enable=protected-access

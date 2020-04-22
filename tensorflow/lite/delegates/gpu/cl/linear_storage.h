@@ -101,7 +101,7 @@ absl::Status CreateLinearStorage(const LinearStorageCreateInfo& creation_info,
                                  CLContext* context, LinearStorage* result) {
   int size = creation_info.aligned_size != 0 ? creation_info.aligned_size
                                              : tensor.shape.v;
-  const int depth = IntegralDivideRoundUp(size, 4);
+  const int depth = DivideRoundUp(size, 4);
   if (creation_info.data_type == DataType::FLOAT32) {
     std::vector<float4> gpu_data(depth);
     CopyLinearFLT4(tensor, absl::MakeSpan(gpu_data));

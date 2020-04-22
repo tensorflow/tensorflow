@@ -198,7 +198,7 @@ void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
 void LegalizeToStandard::runOnFunction() {
   OwningRewritePatternList patterns;
   mlir::xla_hlo::PopulateXlaToStdPatterns(&patterns, &getContext());
-  applyPatternsGreedily(getFunction(), patterns);
+  applyPatternsAndFoldGreedily(getFunction(), patterns);
 }
 
 static PassRegistration<LegalizeToStandard> legalize_pass(

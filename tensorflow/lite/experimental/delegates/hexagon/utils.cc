@@ -35,12 +35,21 @@ bool TensorTypeMatch(int tensor_id, TfLiteContext* context,
   return tensor.type == tensor_type;
 }
 
-bool InputsWithCorrectTypes(const TfLiteNode* node, TfLiteContext* context,
-                            const std::vector<TfLiteType>& input_types) {
-  if (node->inputs->size != input_types.size()) return false;
-  for (int i = 0; i < input_types.size(); ++i) {
-    if (!TensorTypeMatch(node->inputs->data[i], context, input_types[i]))
-      return false;
+// For each input tensor i, checks if the type matches one of the possibilities
+// in per_input_possible_types[i].
+bool InputsWithCorrectTypes(
+    const TfLiteNode* node, TfLiteContext* context,
+    const std::vector<std::vector<TfLiteType>>& per_input_possible_types) {
+  if (node->inputs->size != per_input_possible_types.size()) return false;
+  for (int i = 0; i < per_input_possible_types.size(); ++i) {
+    bool type_found = false;
+    for (auto possible_type : per_input_possible_types[i]) {
+      if (TensorTypeMatch(node->inputs->data[i], context, possible_type)) {
+        type_found = true;
+        break;
+      }
+    }
+    if (!type_found) return false;
   }
   return true;
 }
@@ -63,14 +72,35 @@ TfLiteStatus Get4DShape(unsigned int* batch_size, unsigned int* height_size,
 // ops.
 bool CheckOpVersion(const TfLiteRegistration* registration) {
   switch (registration->builtin_code) {
+    case kTfLiteBuiltinAdd:
+    case kTfLiteBuiltinArgMax:
+    case kTfLiteBuiltinArgMin:
     case kTfLiteBuiltinAveragePool2d:
+    case kTfLiteBuiltinConcatenation:
+    case kTfLiteBuiltinL2Normalization:
+    case kTfLiteBuiltinLogistic:
+    case kTfLiteBuiltinMaxPool2d:
+    case kTfLiteBuiltinMul:
+    case kTfLiteBuiltinPad:
+    case kTfLiteBuiltinQuantize:
+    case kTfLiteBuiltinRelu6:
+    case kTfLiteBuiltinResizeBilinear:
+    case kTfLiteBuiltinResizeNearestNeighbor:
     case kTfLiteBuiltinSoftmax:
+    case kTfLiteBuiltinSpaceToDepth:
+    case kTfLiteBuiltinSplit:
+    case kTfLiteBuiltinSub:
+    case kTfLiteBuiltinTanh:
+    case kTfLiteBuiltinTranspose:
+    case kTfLiteBuiltinTransposeConv:
       return registration->version <= 2;
     case kTfLiteBuiltinRelu:
-      return registration->version >= 2;
+      return registration->version == 2;
     case kTfLiteBuiltinConv2d:
     case kTfLiteBuiltinDepthwiseConv2d:
       return registration->version <= 3;
+    case kTfLiteBuiltinFullyConnected:
+      return registration->version <= 4;
     default:
       return registration->version == 1;
   }
@@ -95,14 +125,18 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
 
   switch (registration->builtin_code) {
     case kTfLiteBuiltinAdd: {
-      if (!InputsWithCorrectTypes(node, context, {kTfLiteUInt8, kTfLiteUInt8}))
+      if (!InputsWithCorrectTypes(
+              node, context,
+              {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteUInt8, kTfLiteInt8}}))
         return false;
       const TfLiteAddParams* add_params =
           reinterpret_cast<const TfLiteAddParams*>(node->builtin_data);
       return IsActivationReluOrNone(add_params->activation);
     }
     case kTfLiteBuiltinMul: {
-      if (!InputsWithCorrectTypes(node, context, {kTfLiteUInt8, kTfLiteUInt8}))
+      if (!InputsWithCorrectTypes(
+              node, context,
+              {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteUInt8, kTfLiteInt8}}))
         return false;
       const TfLiteMulParams* mul_params =
           reinterpret_cast<const TfLiteMulParams*>(node->builtin_data);
@@ -110,7 +144,9 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       return mul_params->activation == kTfLiteActNone;
     }
     case kTfLiteBuiltinSub: {
-      if (!InputsWithCorrectTypes(node, context, {kTfLiteUInt8, kTfLiteUInt8}))
+      if (!InputsWithCorrectTypes(
+              node, context,
+              {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteUInt8, kTfLiteInt8}}))
         return false;
       const TfLiteSubParams* sub_params =
           reinterpret_cast<const TfLiteSubParams*>(node->builtin_data);
@@ -128,25 +164,37 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       // of 0. Add support for user-defined constant if required.
       return (
           node->inputs->size == 2 &&
-          InputsWithCorrectTypes(node, context, {kTfLiteUInt8, kTfLiteInt32}) &&
+          InputsWithCorrectTypes(
+              node, context, {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteInt32}}) &&
           IsConstantTensor(GetInput(context, node, 1)));
     }
     case kTfLiteBuiltinFullyConnected: {
       if (!InputsWithCorrectTypes(node, context,
-                                  {kTfLiteUInt8, kTfLiteUInt8, kTfLiteInt32}))
+                                  {{kTfLiteUInt8, kTfLiteInt8},
+                                   {kTfLiteUInt8, kTfLiteInt8},
+                                   {kTfLiteInt32}}))
         return false;
+
+      const auto& weights_tensor = context->tensors[node->inputs->data[1]];
+      const auto& bias_tensor = context->tensors[node->inputs->data[2]];
+      const bool weights_and_bias_const =
+          weights_tensor.allocation_type == kTfLiteMmapRo &&
+          bias_tensor.allocation_type == kTfLiteMmapRo;
+
       const TfLiteFullyConnectedParams* matmul_params =
           reinterpret_cast<const TfLiteFullyConnectedParams*>(
               node->builtin_data);
-      return (IsActivationReluOrNone(matmul_params->activation) &&
+      return (weights_and_bias_const &&
+              IsActivationReluOrNone(matmul_params->activation) &&
               matmul_params->keep_num_dims == false &&
               matmul_params->weights_format ==
                   kTfLiteFullyConnectedWeightsFormatDefault);
     }
     case kTfLiteBuiltinConcatenation: {
-      // All concatenated tensors must be Uint8 type.
+      // All concatenated tensors must be 8-bit.
       for (int i = 0; i < node->inputs->size; ++i) {
-        if (!TensorTypeMatch(node->inputs->data[i], context, kTfLiteUInt8))
+        if (!TensorTypeMatch(node->inputs->data[i], context, kTfLiteUInt8) &&
+            !TensorTypeMatch(node->inputs->data[i], context, kTfLiteInt8))
           return false;
       }
       // Hexagon only supports concatenation at axis 3.
@@ -156,15 +204,15 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       return (concat_params->axis == 3);
     }
     case kTfLiteBuiltinMaxPool2d: {
-      if (!InputsWithCorrectTypes(node, context, {kTfLiteUInt8})) return false;
+      if (!InputsWithCorrectTypes(node, context, {{kTfLiteUInt8, kTfLiteInt8}}))
+        return false;
       // TODO(b/129276536): Add support for activation here.
       const TfLitePoolParams* pool_params =
           reinterpret_cast<const TfLitePoolParams*>(node->builtin_data);
       return pool_params->activation == kTfLiteActNone;
     }
     case kTfLiteBuiltinAveragePool2d: {
-      if (!InputsWithCorrectTypes(node, context, {kTfLiteUInt8}) &&
-          !InputsWithCorrectTypes(node, context, {kTfLiteInt8}))
+      if (!InputsWithCorrectTypes(node, context, {{kTfLiteUInt8, kTfLiteInt8}}))
         return false;
       const TfLitePoolParams* pool_params =
           reinterpret_cast<const TfLitePoolParams*>(node->builtin_data);
@@ -173,7 +221,9 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
     }
     case kTfLiteBuiltinTransposeConv: {
       if (!InputsWithCorrectTypes(node, context,
-                                  {kTfLiteInt32, kTfLiteUInt8, kTfLiteUInt8}))
+                                  {{kTfLiteInt32},
+                                   {kTfLiteUInt8, kTfLiteInt8},
+                                   {kTfLiteUInt8, kTfLiteInt8}}))
         return false;
       const TfLiteTransposeConvParams* params =
           reinterpret_cast<const TfLiteTransposeConvParams*>(
@@ -184,9 +234,9 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
     }
     case kTfLiteBuiltinConv2d: {
       if (!InputsWithCorrectTypes(node, context,
-                                  {kTfLiteUInt8, kTfLiteUInt8, kTfLiteInt32}) &&
-          !InputsWithCorrectTypes(node, context,
-                                  {kTfLiteInt8, kTfLiteInt8, kTfLiteInt32}))
+                                  {{kTfLiteUInt8, kTfLiteInt8},
+                                   {kTfLiteUInt8, kTfLiteInt8},
+                                   {kTfLiteInt32}}))
         return false;
       const TfLiteConvParams* conv_params =
           reinterpret_cast<const TfLiteConvParams*>(node->builtin_data);
@@ -198,9 +248,9 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
     }
     case kTfLiteBuiltinDepthwiseConv2d: {
       if (!InputsWithCorrectTypes(node, context,
-                                  {kTfLiteUInt8, kTfLiteUInt8, kTfLiteInt32}) &&
-          !InputsWithCorrectTypes(node, context,
-                                  {kTfLiteInt8, kTfLiteInt8, kTfLiteInt32}))
+                                  {{kTfLiteUInt8, kTfLiteInt8},
+                                   {kTfLiteUInt8, kTfLiteInt8},
+                                   {kTfLiteInt32}}))
         return false;
 
       // Check dilation.
@@ -230,36 +280,42 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
     }
     case kTfLiteBuiltinReshape: {
       if (node->inputs->size > 2 ||
-          !TensorTypeMatch(node->inputs->data[0], context, kTfLiteUInt8))
+          (!TensorTypeMatch(node->inputs->data[0], context, kTfLiteUInt8) &&
+           !TensorTypeMatch(node->inputs->data[0], context, kTfLiteInt8)))
         return false;
       return true;
     }
     case kTfLiteBuiltinSoftmax: {
-      return (InputsWithCorrectTypes(node, context, {kTfLiteUInt8}) ||
-              InputsWithCorrectTypes(node, context, {kTfLiteInt8}));
+      return (
+          InputsWithCorrectTypes(node, context, {{kTfLiteUInt8, kTfLiteInt8}}));
     }
     case kTfLiteBuiltinRelu:
     case kTfLiteBuiltinRelu6:
     case kTfLiteBuiltinTanh:
     case kTfLiteBuiltinLogistic: {
-      return InputsWithCorrectTypes(node, context, {kTfLiteUInt8});
+      return InputsWithCorrectTypes(node, context,
+                                    {{kTfLiteUInt8, kTfLiteInt8}});
     }
     case kTfLiteBuiltinResizeNearestNeighbor: {
-      return InputsWithCorrectTypes(node, context,
-                                    {kTfLiteUInt8, kTfLiteInt32});
+      return InputsWithCorrectTypes(
+                 node, context,
+                 {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteInt32}}) &&
+             IsConstantTensor(GetInput(context, node, 1));
     }
     case kTfLiteBuiltinL2Normalization: {
-      if (!InputsWithCorrectTypes(node, context, {kTfLiteUInt8})) return false;
+      if (!InputsWithCorrectTypes(node, context, {{kTfLiteUInt8, kTfLiteInt8}}))
+        return false;
       const TfLiteL2NormParams* norm_params =
           reinterpret_cast<const TfLiteL2NormParams*>(node->builtin_data);
       return (norm_params->activation == kTfLiteActNone);
     }
     case kTfLiteBuiltinArgMax:
     case kTfLiteBuiltinArgMin:
-      return InputsWithCorrectTypes(node, context,
-                                    {kTfLiteUInt8, kTfLiteInt32});
+      return InputsWithCorrectTypes(
+          node, context, {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteInt32}});
     case kTfLiteBuiltinSplit: {
-      if (!InputsWithCorrectTypes(node, context, {kTfLiteInt32, kTfLiteUInt8}))
+      if (!InputsWithCorrectTypes(
+              node, context, {{kTfLiteInt32}, {kTfLiteUInt8, kTfLiteInt8}}))
         return false;
       const auto& input_tensor = context->tensors[node->inputs->data[1]];
       const bool is_four_dim_or_less = input_tensor.dims->size < 5;
@@ -268,8 +324,8 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
              IsConstantTensor(GetInput(context, node, 0));
     }
     case kTfLiteBuiltinResizeBilinear: {
-      if (!InputsWithCorrectTypes(node, context,
-                                  {kTfLiteUInt8, kTfLiteInt32}) ||
+      if (!InputsWithCorrectTypes(
+              node, context, {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteInt32}}) ||
           !IsConstantTensor(GetInput(context, node, 1))) {
         return false;
       }
@@ -280,17 +336,21 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
              size_tensor.data.i32[1] < 66;
     }
     case kTfLiteBuiltinNeg: {
-      return InputsWithCorrectTypes(node, context, {kTfLiteUInt8});
+      return InputsWithCorrectTypes(node, context,
+                                    {{kTfLiteUInt8, kTfLiteInt8}});
     }
     case kTfLiteBuiltinTranspose: {
-      return InputsWithCorrectTypes(node, context,
-                                    {kTfLiteUInt8, kTfLiteInt32});
+      return InputsWithCorrectTypes(
+          node, context, {{kTfLiteUInt8, kTfLiteInt8}, {kTfLiteInt32}});
     }
-    case kTfLiteBuiltinSpaceToDepth: {
-      return InputsWithCorrectTypes(node, context, {kTfLiteUInt8});
-    }
+    case kTfLiteBuiltinSpaceToDepth:
     case kTfLiteBuiltinDepthToSpace: {
-      return InputsWithCorrectTypes(node, context, {kTfLiteUInt8});
+      return InputsWithCorrectTypes(node, context,
+                                    {{kTfLiteUInt8, kTfLiteInt8}});
+    }
+    case kTfLiteBuiltinQuantize: {
+      return InputsWithCorrectTypes(node, context,
+                                    {{kTfLiteUInt8, kTfLiteInt8}});
     }
     default:
       return false;

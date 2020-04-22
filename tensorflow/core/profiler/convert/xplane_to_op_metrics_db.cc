@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/convert/op_stack.h"
@@ -47,6 +48,8 @@ struct TfActivity {
   TfActivityType activity_type;
   // Full TF op name and type of this activity (backed by XEvent::name).
   TfOp tf_op;
+  // Whether it is eagerly executed.
+  bool is_eager;
 };
 
 // TF Op metrics stored as element in OpStack.
@@ -82,8 +85,8 @@ void ProcessOneTfActivity(const TfActivity& activity,
       Timespan tf_op_span =
           PicoSpan(info->start_timestamp_ps, activity.timestamp_ps);
       tf_metrics_data->tf_metrics_db_builder.EnterOp(
-          activity.tf_op.name, activity.tf_op.type, tf_op_span.duration_ps(),
-          info->children_duration_ps);
+          activity.tf_op.name, activity.tf_op.type, activity.is_eager,
+          tf_op_span.duration_ps(), info->children_duration_ps);
       TfOpInfo* parent_info = tf_op_stack->Top();
       if (parent_info != nullptr) {
         parent_info->children_duration_ps += tf_op_span.duration_ps();
@@ -134,9 +137,17 @@ void CollectTfActivities(const XLineVisitor& line,
     const TfOp* tf_op = gtl::FindOrNull(tf_ops, event.Id());
     if (tf_op != nullptr) {
       ++tf_op_id;
+      bool is_eager = false;
+      event.ForEachStat([&](const XStatVisitor& stat) {
+        if (stat.Type() == StatType::kIsEager) {
+          is_eager = stat.IntValue();
+        }
+      });
       Timespan span(event.TimestampPs(), event.DurationPs());
-      tf_activities->push_back({span.begin_ps(), tf_op_id, kTfOpBegin, *tf_op});
-      tf_activities->push_back({span.end_ps(), tf_op_id, kTfOpEnd, *tf_op});
+      tf_activities->push_back(
+          {span.begin_ps(), tf_op_id, kTfOpBegin, *tf_op, is_eager});
+      tf_activities->push_back(
+          {span.end_ps(), tf_op_id, kTfOpEnd, *tf_op, is_eager});
     }
   });
 }
@@ -208,21 +219,26 @@ OpMetricsDb ConvertDeviceTraceXPlaneToOpMetricsDb(
       first_op_offset_ps = std::min(first_op_offset_ps, event.OffsetPs());
       last_op_offset_ps = std::max(last_op_offset_ps, event.EndOffsetPs());
 
+      absl::string_view tf_op_full_name;
+      bool is_eager;
       event.ForEachStat([&](const XStatVisitor& stat) {
         if (stat.Type() == StatType::kLevel0) {
-          auto tf_op_fullname = stat.StrOrRefValue();
-          if (tf_op_fullname.empty()) return;
-          TfOp tf_op = ParseTfOpFullname(tf_op_fullname);
-          TfOpRoofLineCostEstimator::OpRoofLineStats costs;
-          if (tf_op.category != Category::kUnknown) {
-            costs = op_level_cost_estimator.Predict(event);
-          }
-          device_op_metrics_db_builder.EnterOp(
-              /*program_id=*/0, tf_op.name, tf_op.type, tf_op_fullname,
-              /*occurrences=*/1, event.DurationPs(),
-              /*children_time_ps=*/0, costs.flops, costs.bytes_accessed);
+          tf_op_full_name = stat.StrOrRefValue();
+        } else if (stat.Type() == StatType::kIsEager) {
+          is_eager = stat.IntValue();
         }
       });
+      if (tf_op_full_name.empty()) return;
+      TfOp tf_op = ParseTfOpFullname(tf_op_full_name);
+      TfOpRoofLineCostEstimator::OpRoofLineStats costs;
+      if (tf_op.category != Category::kUnknown) {
+        costs = op_level_cost_estimator.Predict(event);
+      }
+      device_op_metrics_db_builder.EnterOp(
+          /*program_id=*/0, absl::StrCat(tf_op.name, "/", event.Name()),
+          tf_op.type, tf_op_full_name, is_eager,
+          /*occurrences=*/1, event.DurationPs(),
+          /*children_time_ps=*/0, costs.flops, costs.bytes_accessed);
     });
   });
   result.set_total_time_ps(last_op_offset_ps - first_op_offset_ps);

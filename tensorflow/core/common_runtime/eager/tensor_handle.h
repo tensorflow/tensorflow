@@ -184,6 +184,7 @@ class TensorHandle : public AbstractTensorHandleInterface,
   // tensor for a specific device.
   void Poison(Status status, const Device* d);
 
+  // TODO(b/154282629): Consider moving it to EagerContext.
   Status CopyToDevice(const EagerContext& ctx, tensorflow::Device* d,
                       tensorflow::Tensor* output);
 

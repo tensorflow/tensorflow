@@ -75,6 +75,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/utils:transitive_fanin",
     ],
 )
 

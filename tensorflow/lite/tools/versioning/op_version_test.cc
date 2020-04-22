@@ -86,10 +86,20 @@ void SimpleOutputVersioningTest(BuiltinOperator op) {
 
 TEST(OpVersionTest, VersioningEqualTest) {
   SimpleVersioningTest(BuiltinOperator_EQUAL);
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_EQUAL,
+      .input_types = std::vector<TensorType>{TensorType_STRING},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 
 TEST(OpVersionTest, VersioningNotEqualTest) {
   SimpleVersioningTest(BuiltinOperator_NOT_EQUAL);
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_NOT_EQUAL,
+      .input_types = std::vector<TensorType>{TensorType_STRING},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
 }
 
 TEST(OpVersionTest, VersioningLessTest) {

@@ -34,6 +34,7 @@ cc_library(
         "dequantize.cc",
         "elementwise.cc",
         "floor.cc",
+        "l2norm.cc",
         "logical.cc",
         "logistic.cc",
         "maximum_minimum.cc",
@@ -45,6 +46,7 @@ cc_library(
         "prelu.cc",
         "reduce.cc",
         "reshape.cc",
+        "resize_nearest_neighbor.cc",
         "round.cc",
         "split.cc",
         "strided_slice.cc",
@@ -91,7 +93,7 @@ cc_library(
     ] + select({
         "//conditions:default": [],
         ":xtensa_hifimini": [
-            #"//third_party/xtensa:hifi_mini_cstub64",
+            #"//third_party/xtensa/cstub64s:hifi_mini",
         ],
     }),
 )
@@ -131,6 +133,7 @@ cc_library(
         "elementwise.cc",
         "floor.cc",
         "fully_connected.cc",
+        "l2norm.cc",
         "logical.cc",
         "logistic.cc",
         "maximum_minimum.cc",
@@ -144,6 +147,7 @@ cc_library(
         "quantize.cc",
         "reduce.cc",
         "reshape.cc",
+        "resize_nearest_neighbor.cc",
         "round.cc",
         "softmax.cc",
         "split.cc",
@@ -646,6 +650,32 @@ tflite_micro_cc_test(
     name = "circular_buffer_test",
     srcs = [
         "circular_buffer_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        ":micro_ops",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "resize_nearest_neighbor_test",
+    srcs = [
+        "resize_nearest_neighbor_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        ":micro_ops",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "l2norm_test",
+    srcs = [
+        "l2norm_test.cc",
     ],
     deps = [
         ":all_ops_resolver",

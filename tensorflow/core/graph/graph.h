@@ -236,10 +236,6 @@ class Node {
   friend class Graph;
   Node();
 
-
-  void Initialize(int id, int cost_id, std::shared_ptr<NodeProperties> props,
-                  bool is_function_op);
-
   // Releases memory from props_, in addition to restoring *this to its
   // uninitialized state.
   void Clear();
@@ -291,7 +287,8 @@ class Node {
     NC_OTHER  // Not a special kind of node
   };
 
-  static const std::unordered_map<string, NodeClass>& kNodeClassTable;
+  void Initialize(int id, int cost_id, std::shared_ptr<NodeProperties> props,
+                  NodeClass node_class);
 
   static NodeClass GetNodeClassForOp(const string& ts);
 
@@ -692,7 +689,7 @@ class Graph {
   //
   // Ownership of the returned Node is not transferred to caller.
   Node* AllocateNode(std::shared_ptr<NodeProperties> props,
-                     const Node* cost_node, bool is_function_op);
+                     const Node* cost_node, Node::NodeClass node_class);
   void ReleaseNode(Node* node);
   // Insert edge in free_edges_ for possible reuse.
   void RecycleEdge(const Edge* edge);

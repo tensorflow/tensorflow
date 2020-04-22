@@ -52,9 +52,8 @@ TfLiteStatus ConcatOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     float data_min, data_max;
     const auto& data_tensor = context->tensors[tensor_id];
     AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
-    TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
-        data_tensor, &data_min, &data_max, std::numeric_limits<uint8_t>::min(),
-        std::numeric_limits<uint8_t>::max()));
+    TF_LITE_ENSURE_STATUS(
+        ComputeMinAndMaxQuantValues(data_tensor, &data_min, &data_max));
     input_minima_.push_back(data_min);
     input_maxima_.push_back(data_max);
     if (data_min < input_bound_minimum) input_bound_minimum = data_min;
@@ -94,9 +93,7 @@ TfLiteStatus ConcatOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
 
   // Output min/max for requantization.
   TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
-      context->tensors[outputs->data[0]], &output_min_, &output_max_,
-      std::numeric_limits<uint8_t>::min(),
-      std::numeric_limits<uint8_t>::max()));
+      context->tensors[outputs->data[0]], &output_min_, &output_max_));
   auto* output_min_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape, (char*)&output_min_, sizeof(output_min_));
   auto* output_max_const = graph_builder_->AddConstNodeWithData(

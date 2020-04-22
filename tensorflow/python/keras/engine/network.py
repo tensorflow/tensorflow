@@ -207,18 +207,18 @@ class Network(base_layer.Layer):
 
     self.output_names = None
     self.input_names = None
-    self._is_compiled = False
     self._saved_model_inputs_spec = None
 
     # This is True for Sequential networks and Functional networks.
     self._compute_output_and_mask_jointly = False
 
-    if not hasattr(self, 'optimizer'):
-      # Don't reset optimizer if already set.
-      self.optimizer = None
+    # Don't reset compilation if already done. This may occur if calling
+    # `__init__` (or `_init_graph_network`) on an already-compiled model
+    # such as a Sequential model. Sequential models may need to rebuild
+    # themselves after compilation.
+    self._maybe_create_attribute('_is_compiled', False)
+    self._maybe_create_attribute('optimizer', None)
 
-    self._scope = None  # Never used.
-    self._reuse = None  # Never used.
     if context.executing_eagerly():
       self._graph = None
     else:
@@ -584,16 +584,6 @@ class Network(base_layer.Layer):
             sub_layers=self._layers,
             extra_variables=self._non_trainable_weights +
             self._trainable_weights))
-
-  @property
-  def input_spec(self):
-    """Gets the network's input specs.
-
-    Returns:
-        A list of `InputSpec` instances (one per input to the model)
-            or a single instance if the model has only one input.
-    """
-    return
 
   @generic_utils.default
   def build(self, input_shape):

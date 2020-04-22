@@ -36,9 +36,9 @@ limitations under the License.
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
-#include "tensorflow/lite/tools/benchmark/delegate_provider.h"
-#include "tensorflow/lite/tools/benchmark/logging.h"
 #include "tensorflow/lite/tools/benchmark/profiling_listener.h"
+#include "tensorflow/lite/tools/delegates/delegate_provider.h"
+#include "tensorflow/lite/tools/logging.h"
 
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
 
@@ -64,7 +64,7 @@ constexpr int kOpProfilingEnabledDefault = false;
 class PlatformProfilingListener : public BenchmarkListener {
  public:
   explicit PlatformProfilingListener(Interpreter* interpreter) {
-    TFLITE_BENCHMARK_CHECK(interpreter);
+    TFLITE_TOOLS_CHECK(interpreter);
     platform_profiler_ = profiling::CreatePlatformProfiler();
     interpreter->SetProfiler(platform_profiler_.get());
   }
@@ -214,7 +214,7 @@ TfLiteStatus PopulateInputLayerInfo(
 
     input.name = names[i];
 
-    TFLITE_BENCHMARK_CHECK(util::SplitAndParse(shapes[i], ',', &input.shape))
+    TFLITE_TOOLS_CHECK(util::SplitAndParse(shapes[i], ',', &input.shape))
         << "Incorrect size string specified: " << shapes[i];
     for (int dim : input.shape) {
       if (dim == -1) {
@@ -272,8 +272,9 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("enable_platform_tracing",
                           BenchmarkParam::Create<bool>(false));
 
-  for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
-    default_params.Merge(delegate_util->DefaultParams());
+  for (const auto& delegate_provider :
+       tools::GetRegisteredDelegateProviders()) {
+    default_params.Merge(delegate_provider->DefaultParams());
   }
 
   return default_params;
@@ -332,8 +333,9 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
-  for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
-    auto delegate_flags = delegate_util->CreateFlags(&params_);
+  for (const auto& delegate_provider :
+       tools::GetRegisteredDelegateProviders()) {
+    auto delegate_flags = delegate_provider->CreateFlags(&params_);
     flags.insert(flags.end(), delegate_flags.begin(), delegate_flags.end());
   }
 
@@ -372,8 +374,9 @@ void BenchmarkTfLiteModel::LogParams() {
   TFLITE_LOG(INFO) << "Enable platform-wide tracing: ["
                    << params_.Get<bool>("enable_platform_tracing") << "]";
 
-  for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
-    delegate_util->LogParams(params_);
+  for (const auto& delegate_provider :
+       tools::GetRegisteredDelegateProviders()) {
+    delegate_provider->LogParams(params_);
   }
 }
 
@@ -392,7 +395,7 @@ TfLiteStatus BenchmarkTfLiteModel::ValidateParams() {
 }
 
 uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
-  TFLITE_BENCHMARK_CHECK(interpreter_);
+  TFLITE_TOOLS_CHECK(interpreter_);
   uint64_t total_input_bytes = 0;
   for (int input : interpreter_->inputs()) {
     auto* t = interpreter_->tensor(input);
@@ -615,7 +618,8 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
   owned_delegates_.clear();
-  for (const auto& delegate_provider : GetRegisteredDelegateProviders()) {
+  for (const auto& delegate_provider :
+       tools::GetRegisteredDelegateProviders()) {
     auto delegate = delegate_provider->CreateTfLiteDelegate(params_);
     // It's possible that a delegate of certain type won't be created as
     // user-specified benchmark params tells not to.
@@ -652,7 +656,7 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   auto interpreter_inputs = interpreter_->inputs();
 
   if (!inputs_.empty()) {
-    TFLITE_BENCHMARK_CHECK_EQ(inputs_.size(), interpreter_inputs.size())
+    TFLITE_TOOLS_CHECK_EQ(inputs_.size(), interpreter_inputs.size())
         << "Inputs mismatch: Model inputs #:" << inputs_.size()
         << " expected: " << interpreter_inputs.size();
   }

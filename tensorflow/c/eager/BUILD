@@ -41,12 +41,21 @@ tf_cuda_library(
             ":context_interface",
             ":operation_interface",
             ":tensor_handle_interface",
+            ":tfe_context_internal",
+            ":tfe_cancellation_manager_internal",
+            ":tfe_executor_internal",
+            ":tfe_monitoring_internal",
+            ":tfe_op_attrs_internal",
+            ":tfe_op_internal",
+            ":tfe_tensor_debug_info_internal",
+            ":tfe_tensorhandle_internal",
             "@com_google_absl//absl/algorithm:container",
             "@com_google_absl//absl/container:fixed_array",
             "@com_google_absl//absl/types:span",
             "@com_google_absl//absl/types:variant",
             "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
+            "//tensorflow/c:tf_status_internal",
             "//tensorflow/c:tf_tensor_internal",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core/common_runtime/eager:attr_builder",
@@ -100,6 +109,14 @@ filegroup(
         "dlpack.h",
         "operation_interface.h",
         "tensor_handle_interface.h",
+        "tfe_cancellation_manager_internal.h",
+        "tfe_context_internal.h",
+        "tfe_executor_internal.h",
+        "tfe_monitoring_internal.h",
+        "tfe_op_attrs_internal.h",
+        "tfe_op_internal.h",
+        "tfe_tensor_debug_info_internal.h",
+        "tfe_tensorhandle_internal.h",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -107,33 +124,27 @@ filegroup(
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "c_api_internal",
-    srcs = [
+    hdrs = [
         "c_api_experimental.h",
-        "c_api_unified_experimental.h",
+        "c_api_internal.h",
     ],
-    hdrs = ["c_api_internal.h"],
     visibility = [
         "//learning/deepmind/courier:__subpackages__",
         "//tensorflow:internal",
     ],
     deps = [
         ":c_api",
-        ":context_interface",
-        ":operation_interface",
-        ":tensor_handle_interface",
-        "//tensorflow/c:c_api",
+        ":tfe_cancellation_manager_internal",
+        ":tfe_context_internal",
+        ":tfe_executor_internal",
+        ":tfe_monitoring_internal",
+        ":tfe_op_attrs_internal",
+        ":tfe_op_internal",
+        ":tfe_tensor_debug_info_internal",
+        ":tfe_tensorhandle_internal",
         "//tensorflow/c:c_api_internal",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:framework_lite",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core/common_runtime/eager:attr_builder",
-        "//tensorflow/core/common_runtime/eager:eager_executor",
     ],
 )
 
@@ -181,6 +192,99 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "tfe_context_internal",
+    hdrs = ["tfe_context_internal.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":context_interface",
+    ],
+)
+
+cc_library(
+    name = "tfe_cancellation_manager_internal",
+    hdrs = ["tfe_cancellation_manager_internal.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_library(
+    name = "tfe_executor_internal",
+    hdrs = ["tfe_executor_internal.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/core/common_runtime/eager:eager_executor",
+    ],
+)
+
+cc_library(
+    name = "tfe_monitoring_internal",
+    hdrs = ["tfe_monitoring_internal.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "tfe_op_attrs_internal",
+    hdrs = ["tfe_op_attrs_internal.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":tfe_context_internal",
+        ":tfe_op_internal",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime/eager:attr_builder",
+    ],
+)
+
+cc_library(
+    name = "tfe_op_internal",
+    hdrs = ["tfe_op_internal.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":operation_interface",
+    ],
+)
+
+cc_library(
+    name = "tfe_tensor_debug_info_internal",
+    hdrs = ["tfe_tensor_debug_info_internal.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "tfe_tensorhandle_internal",
+    hdrs = ["tfe_tensorhandle_internal.h"],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+        ":tensor_handle_interface",
     ],
 )
 
@@ -240,11 +344,6 @@ tf_cuda_cc_test(
         "c_api_remote_test.cc",
     ],
     extra_copts = tfe_xla_copts(),
-    tags = [
-        "guitar",
-        "multi_gpu",
-        "no_oss",
-    ],
     deps = [
         ":c_api",
         ":c_api_experimental",

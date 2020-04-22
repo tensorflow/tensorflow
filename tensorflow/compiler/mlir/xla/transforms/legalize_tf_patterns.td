@@ -479,6 +479,9 @@ def : Pat<(TF_ReluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$featu
 // Slice op patterns.
 //===----------------------------------------------------------------------===//
 
+def CastToI64AndUnpackTensor: NativeCodeCall<
+  "UnpackTensorAlongZeroDim($0.getLoc(), CastValueToI64($0.getLoc(), $1, &$_builder), &$_builder).output()">;
+
 def CanBeTranslatedToDynamicSlice : Constraint<CPred<
   "CanBeTranslatedToDynamicSlice($0, $1, $2.cast<DenseIntElementsAttr>())">>;
 
@@ -488,7 +491,8 @@ def TFSliceSizes2HLOSliceSizes : NativeCodeCall<
 
 def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
            (TF_ConstOp $slice_sizes)),
-          (HLO_DynamicSliceOp $input, (CastValueToI64 $op, $starting_indices),
+          (HLO_DynamicSliceOp $input,
+           (CastToI64AndUnpackTensor $op, $starting_indices),
            (TFSliceSizes2HLOSliceSizes $input, $starting_indices, $slice_sizes)),
           [(CanBeTranslatedToDynamicSlice $input, $starting_indices,
             $slice_sizes)]>;
@@ -606,3 +610,14 @@ def : Pat<(srcDstOpPair[0]:$old $shape, $seed, $seed2),
             (CastValueToI64 $old, $shape)),
           [(IsShapedTensor $shape)]>;
 }
+
+//===----------------------------------------------------------------------===//
+// Sigmoid grad op.
+//===----------------------------------------------------------------------===//
+def : Pat<(TF_SigmoidGradOp AnyRankedTensor:$l, AnyRankedTensor:$r),
+          (HLO_MulOp
+           (HLO_MulOp $r, $l, (NullDenseIntElementsAttr)),
+           (HLO_SubOp (HLO_ConstOp (ConstantSplat<"1"> $l)), $l,
+            (NullDenseIntElementsAttr)),
+           (NullDenseIntElementsAttr)),
+          [(IEEEFloatTensor $l)]>;

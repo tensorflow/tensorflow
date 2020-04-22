@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-shape-inference -verify-diagnostics | FileCheck %s -dump-input=fail -color
+// RUN: tf-opt %s -tf-shape-inference -verify-diagnostics | FileCheck %s -dump-input=fail
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 130 : i32}} {
 // CHECK-LABEL: func @main(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32>
@@ -27,11 +27,11 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 // CHECK: %[[MUL:.*]] = "tf.Mul"{{.*}} (tensor<1xf32>, tensor<10xf32>) -> tensor<10xf32>
 // CHECK: %[[ADD:.*]] = "tf.Add"(%[[MUL]], %[[MUL]]) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
 // CHECK: %[[CAST:.*]] = "tf.Cast"(%[[ADD]]) {{.*}} : (tensor<10xf32>) -> tensor<*xf32>
-// CHECK: %[[UNKNOWN:.*]] = "unknown.A"(%[[CAST]]) : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK: %[[UNKNOWN:.*]] = addf %[[CAST]], %[[CAST]] : tensor<*xf32>
 // CHECK: return %[[UNKNOWN]] : tensor<*xf32>
     %0 = "tf.Mul"(%arg0, %arg1) : (tensor<1xf32>, tensor<10xf32>) -> tensor<*xf32>
     %1 = "tf.Add"(%0, %0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    %2 = "unknown.A"(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    %2 = addf %1, %1 : tensor<*xf32>
     return %2 : tensor<*xf32>
   }
 
@@ -69,6 +69,15 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
       padding = "VALID", strides = [1, 1, 1, 1]
     } : (tensor<4xi32>, tensor<1x1x1x1xf32>, tensor<1x1x1x1xf32>) -> tensor<?x?x?x?xf32>
     return %1 : tensor<?x?x?x?xf32>
+  }
+
+// Tests where tf.Const's value needs to be refined.
+
+  func @const_refine() -> tensor<*xi32> {
+    %0 = "tf.Const"() {value = dense<[3, 2]> : tensor<2xi32>} : () -> tensor<*xi32>
+    // CHECK: "tf.Const"
+    // CHECK-SAME: -> tensor<2xi32>
+    return %0 : tensor<*xi32>
   }
 
 // Tests the case where an op's shape function returns non-fully-defined shapes.
@@ -330,5 +339,22 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
   }
   func @stateful_partitioned_call_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
     return %arg0 : tensor<?xi32>
+  }
+
+  // Test propagation involving const values across caller and callee.
+  func @partitioned_call_const(%arg0 : tensor<6xf32>) -> tensor<*xf32> {
+    %0 = "tf.Const"() {value = dense<[3, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %1 = "tf.PartitionedCall"(%0) {config = "", config_proto = "", executor_type = "", f = @partitioned_call_func_const} : (tensor<2xi32>) -> (tensor<2xi32>)
+    // CHECK: "tf.Reshape"
+    // CHECK-SAME: tensor<3x2xf32>
+    %2 = "tf.Reshape"(%arg0, %1) : (tensor<6xf32>, tensor<2xi32>) -> tensor<*xf32>
+    return %2 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @partitioned_call_func_const
+  func @partitioned_call_func_const(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<[3, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+    // CHECK: return %[[CONST]]
+    return %arg0 : tensor<2xi32>
   }
 }

@@ -27,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
@@ -126,7 +127,6 @@ class TestSequential(keras_parameterized.TestCase):
     y = np.random.random((batch_size, num_classes))
     model.fit(x, y, epochs=1)
     self.assertTrue(model.built)
-    self.assertFalse(model._is_graph_network)
     self.assertEqual(len(model.weights), 2 * 2)
 
   @keras_parameterized.run_all_keras_modes
@@ -158,7 +158,6 @@ class TestSequential(keras_parameterized.TestCase):
     model.fit(dataset, epochs=1, steps_per_epoch=steps_per_epoch)
     self.assertTrue(model.built)
     self.assertEqual(len(model.weights), 2 * 2)
-    self.assertFalse(model._is_graph_network)
 
   # TODO(kaftan) This test fails w/ run_with_all_keras_modes. File ticket
   @parameterized.parameters((True,), (False,))
@@ -342,11 +341,16 @@ class TestSequential(keras_parameterized.TestCase):
     y = np.random.random((2, 5))
     model.fit(x, y, epochs=1)
 
-  @keras_parameterized.run_all_keras_modes
-  def test_variable_names(self):
+  @test_util.run_v1_only('Behavior changed in V2.')
+  def test_variable_names_deferred(self):
     model = keras.models.Sequential([keras.layers.Dense(3)])
     model.add(keras.layers.Dense(2))
     model(array_ops.ones([2, 4]))
+    # Note that for regular sequential models (wrapping graph network),
+    # the layers' weights are built
+    # without the model name as prefix (because the Functional API __call__
+    # reset the name scope). This is fixable, but it would be
+    # backwards incompatible.
     self.assertEqual(
         ['sequential/dense/kernel:0', 'sequential/dense/bias:0',
          'sequential/dense_1/kernel:0', 'sequential/dense_1/bias:0'],
@@ -404,7 +408,6 @@ class TestSequential(keras_parameterized.TestCase):
     self.assertTrue(model.built)
 
     model.add(keras.layers.Dense(3))
-    self.assertFalse(model.built)
 
     model.compile('adam', loss='mse')
     model.fit(np.random.random((1, 3)), np.random.random((1, 3)))

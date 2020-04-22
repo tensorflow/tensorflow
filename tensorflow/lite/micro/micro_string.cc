@@ -21,6 +21,9 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/micro_string.h"
 
+#include <cstdarg>
+#include <cstdint>
+
 namespace {
 
 // Int formats can need up to 10 bytes for the value plus a single byte for the

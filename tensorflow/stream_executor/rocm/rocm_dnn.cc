@@ -2393,7 +2393,8 @@ port::Status MIOpenSupport::DoPrepareForCtcLoss(
     absl::Span<const int> labels_data,
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data,
-    ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory) {
+    ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
+    int* ctc_loss_algo_id) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
   MIOpenCTCLossDescriptor miopen_ctc_loss_desc(ToMIOpenDataType(element_type));
@@ -2456,7 +2457,7 @@ port::Status MIOpenSupport::DoCtcLossImpl(
     absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
     const MIOpenRnnStateTensorDescriptor& grads_desc,
     DeviceMemoryBase grads_data, const MIOpenCTCLossDescriptor& ctc_loss_desc,
-    DeviceMemory<uint8> scratch_memory) {
+    DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
   int kNumTimestamps = probs_desc.num_layers();
@@ -2482,13 +2483,12 @@ port::Status MIOpenSupport::DoCtcLossImpl(
 port::Status MIOpenSupport::DoCtcLoss(
     Stream* stream, dnn::DataType element_type,
     const dnn::RnnStateTensorDescriptor& probs_desc,
-    const DeviceMemoryBase probs_data,
-
-    absl::Span<const int> labels_data,
+    const DeviceMemoryBase probs_data, absl::Span<const int> labels_data,
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
     const dnn::RnnStateTensorDescriptor& grads_desc,
-    DeviceMemoryBase grads_data, DeviceMemory<uint8> scratch_memory) {
+    DeviceMemoryBase grads_data, DeviceMemory<uint8> scratch_memory,
+    int ctc_loss_algo_id) {
   // Current MIOPen CTC Loss only supports the float datatype
   if (element_type != dnn::DataType::kFloat) {
     return port::Status(port::error::INVALID_ARGUMENT,
@@ -2507,7 +2507,7 @@ port::Status MIOpenSupport::DoCtcLoss(
   return DoCtcLossImpl(stream, miopen_probs_desc, probs_data, labels_data,
                        labels_lengths_data, input_lengths_data, costs_data,
                        miopen_grads_desc, grads_data, miopen_ctc_loss_desc,
-                       scratch_memory);
+                       scratch_memory, ctc_loss_algo_id);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>>

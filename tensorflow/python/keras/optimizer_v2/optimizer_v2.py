@@ -632,7 +632,7 @@ class OptimizerV2(trackable.Trackable):
         # context. (eager updates execute immediately)
         with ops._get_graph_from_inputs(update_ops).as_default():  # pylint: disable=protected-access
           with ops.control_dependencies(update_ops):
-            return self._iterations.assign_add(1).op
+            return self._iterations.assign_add(1, read_value=False)
 
       return self._iterations.assign_add(1)
 
@@ -1274,7 +1274,7 @@ def _var_key(var):
   # pylint: disable=protected-access
   # Get the distributed variable if it exists.
   if hasattr(var, "_distributed_container"):
-    var = var._distributed_container()
+    var = var._distributed_container
   if var._in_graph_mode:
     return var._shared_name
   return var._unique_id

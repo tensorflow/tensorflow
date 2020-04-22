@@ -134,6 +134,7 @@ class CommonTestUtilities : public OpsTestBase {
   static void VerifyFusedTensorsClose(int depth, int image_width,
                                       int image_height, int image_batch_count,
                                       int filter_size, int filter_count,
+                                      int bias_size,
                                       const std::vector<string>& fused_ops,
                                       const FusedGraphRunner& run_default,
                                       const FusedGraphRunner& run_fused) {
@@ -145,7 +146,6 @@ class CommonTestUtilities : public OpsTestBase {
     Tensor filter(dtype, {filter_size, filter_size, depth, filter_count});
     filter.flat<T>() = filter.flat<T>().template setRandom<random_gen_>();
 
-    const int bias_size = filter_count;
     Tensor bias(dtype, {bias_size});
     bias.flat<T>() = bias.flat<T>().template setRandom<random_gen_>();
 
@@ -321,9 +321,10 @@ class MklFusedConv2DOpTest : public OpsTestBase {
                               out);
         };
 
+    const int bias_size = filter_count;
     CommonTestUtilities<T>::VerifyFusedTensorsClose(
         depth, image_width, image_height, image_batch_count, filter_size,
-        filter_count, fused_ops, run_default, run_fused);
+        filter_count, bias_size, fused_ops, run_default, run_fused);
   }
 };
 
@@ -449,6 +450,223 @@ REGISTER_TYPED_TEST_CASE_P(
 using MklFusedBiasAddDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_CASE_P(Test, MklFusedConv2DWithBiasOpTest,
                               MklFusedBiasAddDataTypes);
+
+// Testing MKL's fused depthwise convolution ops
+template <typename T>
+class MklFusedDepthwiseConv2DOpTest : public OpsTestBase {
+ protected:
+  static constexpr int kDepth = 3;
+  static constexpr int kImageWidth = 32;
+  static constexpr int kImageHeight = 32;
+  static constexpr int kImageBatchCount = 8;
+
+  void RunDepthwiseConv2DUnfused(const Tensor& input_data,
+                                 const Tensor& filter_data,
+                                 const Tensor& bias_data,
+                                 const std::vector<string>& fused_ops,
+                                 Tensor* output, int stride = 1) {
+    auto root = tensorflow::Scope::NewRootScope();
+    auto input_data_op =
+        ops::Const(root.WithOpName("input"), Input::Initializer(input_data));
+    Output next_op = ops::DepthwiseConv2dNative(
+        root.WithOpName("depthwise_conv"), input_data_op,
+        ops::Const(root.WithOpName("filter"), Input::Initializer(filter_data)),
+        {1, stride, stride, 1}, "SAME");
+
+    string last_op = "";
+    if (std::find(fused_ops.begin(), fused_ops.end(), "BiasAdd") !=
+        fused_ops.end()) {
+      last_op = "with_bias";
+      next_op = ops::BiasAdd(
+          root.WithOpName(last_op), next_op,
+          ops::Const(root.WithOpName("bias"), Input::Initializer(bias_data)));
+    }
+
+    if (std::find(fused_ops.begin(), fused_ops.end(), "Relu") !=
+        fused_ops.end()) {
+      last_op = "with_relu";
+      next_op = ops::Relu(root.WithOpName(last_op), next_op);
+    }
+
+    if (std::find(fused_ops.begin(), fused_ops.end(), "Relu6") !=
+        fused_ops.end()) {
+      last_op = "with_relu6";
+      next_op = ops::Relu6(root.WithOpName(last_op), next_op);
+    }
+
+    if (std::find(fused_ops.begin(), fused_ops.end(), "Elu") !=
+        fused_ops.end()) {
+      last_op = "with_elu";
+      next_op = ops::Elu(root.WithOpName(last_op), next_op);
+    }
+
+    CommonTestUtilities<T>::RunAndFetch(root, last_op, output);
+  }
+
+  void RunMklFusedDepthwiseConv2DOp(const Tensor& image, const Tensor& filter,
+                                    const std::vector<Tensor>& args,
+                                    const std::vector<string>& fused_ops,
+                                    Tensor* output, int stride = 1) {
+    DataType dtype = DataTypeToEnum<T>::v();
+    int num_args = static_cast<int>(args.size());
+
+    TF_EXPECT_OK(NodeDefBuilder("fused_depthwise_conv_op",
+                                "_MklFusedDepthwiseConv2dNative")
+                     .Input(FakeInput(dtype))
+                     .Input(FakeInput(dtype))
+                     .Input(FakeInput(num_args, dtype))
+                     .Input(FakeInput(DT_UINT8))
+                     .Input(FakeInput(DT_UINT8))
+                     .Input(FakeInput(num_args, DT_UINT8))
+                     .Attr("T", dtype)
+                     .Attr("num_args", num_args)
+                     .Attr("strides", {1, stride, stride, 1})
+                     .Attr("padding", "SAME")
+                     .Attr("fused_ops", fused_ops)
+                     .Attr("_kernel", "MklLayoutDependentOp")
+                     .Finalize(node_def()));
+
+    TF_EXPECT_OK(InitOp());
+
+    AddInputFromArray<T>(image.shape(), image.flat<T>());
+    AddInputFromArray<T>(filter.shape(), filter.flat<T>());
+    for (const Tensor& arg : args)
+      AddInputFromArray<T>(arg.shape(), arg.flat<T>());
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    for (const Tensor& arg : args)
+      AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+    TF_ASSERT_OK(RunOpKernel());
+
+    // Compare output to expected results
+    const Tensor& output_tensor = *GetOutput(0);
+    // Index 2 will need to be changed if the number of outputs produced
+    // by MklDepthwiseConv2D change.
+    const Tensor& output_meta_tensor = *GetOutput(2);
+    CommonTestUtilities<T> test_util;
+    test_util.PerformConversion(dtype, output_tensor, output_meta_tensor,
+                                output);
+  }
+
+  // Verifies computing unfused ops in a graph is identical to
+  // FusedDepthwiseConv2D.
+  void VerifyFusedDepthwiseConv2D(int filter_size, int filter_count,
+                                  int bias_size,
+                                  const std::vector<string>& fused_ops,
+                                  int depth = kDepth,
+                                  int image_width = kImageWidth,
+                                  int image_height = kImageHeight,
+                                  int image_batch_count = kImageBatchCount) {
+    const FusedGraphRunner run_default =
+        [this](const Tensor& input_data, const Tensor& filter_data,
+               const Tensor& bias_data, const std::vector<string>& fused_ops,
+               Tensor* out) {
+          RunDepthwiseConv2DUnfused(input_data, filter_data, bias_data,
+                                    fused_ops, out);
+        };
+
+    const FusedGraphRunner run_fused =
+        [this](const Tensor& input_data, const Tensor& filter_data,
+               const Tensor& bias_data, const std::vector<string>& fused_ops,
+               Tensor* out) {
+          std::vector<Tensor> fused_input = {bias_data};
+          RunMklFusedDepthwiseConv2DOp(input_data, filter_data, fused_input,
+                                       fused_ops, out);
+        };
+
+    CommonTestUtilities<T>::VerifyFusedTensorsClose(
+        depth, image_width, image_height, image_batch_count, filter_size,
+        filter_count, bias_size, fused_ops, run_default, run_fused);
+  }
+};
+
+template <typename T>
+class MklFusedDepthwiseConv2DWithBiasOpTest
+    : public MklFusedDepthwiseConv2DOpTest<T> {};
+
+TYPED_TEST_SUITE_P(MklFusedDepthwiseConv2DWithBiasOpTest);
+
+// -------------------------------------------------------------------------- //
+// DepthwiseConv2D + BiasAdd + {Activation}                                   //
+// -------------------------------------------------------------------------- //
+
+TYPED_TEST_P(MklFusedDepthwiseConv2DWithBiasOpTest, OneByOneConvolution) {
+  const int kFilterSize = 1;
+  const int kFilterCount = 1;
+  const int kBiasSize = 3;
+  this->VerifyFusedDepthwiseConv2D(kFilterSize, kFilterCount, kBiasSize,
+                                   {"BiasAdd"});
+}
+
+TYPED_TEST_P(MklFusedDepthwiseConv2DWithBiasOpTest, SpatialConvolution) {
+  const int kFilterSize = 3;
+  const int kFilterCount = 1;
+  const int kBiasSize = 3;
+  this->VerifyFusedDepthwiseConv2D(kFilterSize, kFilterCount, kBiasSize,
+                                   {"BiasAdd"});
+}
+
+TYPED_TEST_P(MklFusedDepthwiseConv2DWithBiasOpTest,
+             OneByOneConvolutionAndRelu) {
+  const int kFilterSize = 1;
+  const int kFilterCount = 1;
+  const int kBiasSize = 3;
+  this->VerifyFusedDepthwiseConv2D(kFilterSize, kFilterCount, kBiasSize,
+                                   {"BiasAdd", "Relu"});
+}
+
+TYPED_TEST_P(MklFusedDepthwiseConv2DWithBiasOpTest, SpatialConvolutionAndRelu) {
+  const int kFilterSize = 3;
+  const int kFilterCount = 1;
+  const int kBiasSize = 3;
+  this->VerifyFusedDepthwiseConv2D(kFilterSize, kFilterCount, kBiasSize,
+                                   {"BiasAdd", "Relu"});
+}
+
+TYPED_TEST_P(MklFusedDepthwiseConv2DWithBiasOpTest,
+             OneByOneConvolutionAndRelu6) {
+  const int kFilterSize = 1;
+  const int kFilterCount = 1;
+  const int kBiasSize = 3;
+  this->VerifyFusedDepthwiseConv2D(kFilterSize, kFilterCount, kBiasSize,
+                                   {"BiasAdd", "Relu6"});
+}
+
+TYPED_TEST_P(MklFusedDepthwiseConv2DWithBiasOpTest,
+             SpatialConvolutionAndRelu6) {
+  const int kFilterSize = 3;
+  const int kFilterCount = 1;
+  const int kBiasSize = 3;
+  this->VerifyFusedDepthwiseConv2D(kFilterSize, kFilterCount, kBiasSize,
+                                   {"BiasAdd", "Relu6"});
+}
+
+TYPED_TEST_P(MklFusedDepthwiseConv2DWithBiasOpTest, OneByOneConvolutionAndElu) {
+  const int kFilterSize = 1;
+  const int kFilterCount = 1;
+  const int kBiasSize = 3;
+  this->VerifyFusedDepthwiseConv2D(kFilterSize, kFilterCount, kBiasSize,
+                                   {"BiasAdd", "Elu"});
+}
+
+TYPED_TEST_P(MklFusedDepthwiseConv2DWithBiasOpTest, SpatialConvolutionAndElu) {
+  const int kFilterSize = 3;
+  const int kFilterCount = 1;
+  const int kBiasSize = 3;
+  this->VerifyFusedDepthwiseConv2D(kFilterSize, kFilterCount, kBiasSize,
+                                   {"BiasAdd", "Elu"});
+}
+
+REGISTER_TYPED_TEST_SUITE_P(
+    MklFusedDepthwiseConv2DWithBiasOpTest, OneByOneConvolution,
+    SpatialConvolution, OneByOneConvolutionAndRelu, SpatialConvolutionAndRelu,
+    OneByOneConvolutionAndRelu6, SpatialConvolutionAndRelu6,
+    OneByOneConvolutionAndElu, SpatialConvolutionAndElu);
+
+using MklFusedBiasAddDataTypes = ::testing::Types<float>;
+INSTANTIATE_TYPED_TEST_SUITE_P(Test, MklFusedDepthwiseConv2DWithBiasOpTest,
+                               MklFusedBiasAddDataTypes);
+
 // Testing fusion of pad and convolution
 
 class FusedPadConvOpTest : public OpsTestBase {

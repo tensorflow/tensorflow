@@ -87,6 +87,7 @@ cc_test(
     name = "c_api_test",
     size = "small",
     srcs = ["c_api_test.cc"],
+    copts = tflite_copts(),
     data = [
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
@@ -103,6 +104,7 @@ cc_test(
     name = "c_api_experimental_test",
     size = "small",
     srcs = ["c_api_experimental_test.cc"],
+    copts = tflite_copts(),
     data = ["//tensorflow/lite:testdata/add.bin"],
     deps = [
         ":c_api",

@@ -638,44 +638,6 @@ TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR1Operand) {
   EXPECT_EQ(root, param0);
 }
 
-TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroWithDynamicSlice) {
-  auto m = CreateNewVerifiedModule();
-  Shape full_shape = ShapeUtil::MakeShape(F32, {1800, 12, 512});
-
-  Shape partial_shape = ShapeUtil::MakeShape(F32, {1, 12, 512});
-
-  HloComputation::Builder builder(TestName());
-  HloInstruction* full_param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, full_shape, "param0"));
-  HloInstruction* partial_param = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, partial_shape, "param1"));
-
-  HloInstruction* zero = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
-  HloInstruction* index = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
-
-  HloInstruction* bcast = builder.AddInstruction(
-      HloInstruction::CreateBroadcast(full_shape, zero, {}));
-
-  HloInstruction* dynamic_update_slice =
-      builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-          full_shape, bcast, partial_param, {index, index, index}));
-
-  builder.AddInstruction(HloInstruction::CreateBinary(
-      full_shape, HloOpcode::kAdd, full_param, dynamic_update_slice));
-
-  auto computation = m->AddEntryComputation(builder.Build());
-  HloInstruction* root = computation->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kAdd);
-  AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
-  root = computation->root_instruction();
-  EXPECT_THAT(root->opcode(), HloOpcode::kDynamicUpdateSlice);
-  EXPECT_THAT(root->operand(0), full_param);
-  EXPECT_THAT(root->operand(1), GmockMatch(m::Add(m::DynamicSlice(), m::Op())));
-}
-
 TEST_F(AlgebraicSimplifierTest, ConstantToBroadcast) {
   auto m = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
@@ -1049,13 +1011,8 @@ TEST_F(AlgebraicSimplifierTest, PowerOfPower) {
   builder.AddInstruction(HloInstruction::CreateBinary(r1f32, HloOpcode::kPower,
                                                       inner_power, exp2));
 
-  auto computation = m->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
-  EXPECT_THAT(
-      computation->root_instruction(),
-      GmockMatch(m::Power(m::Op().Is(base),
-                          m::Multiply(m::Op().Is(exp1), m::Op().Is(exp2)))));
+  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 }
 
 // Don't simplify pow(pow(A, X), Y) => pow(A, X*Y) if X and Y are complex
@@ -5068,6 +5025,32 @@ TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceZeroUpdate) {
   EXPECT_THAT(computation->root_instruction(), operand);
 }
 
+// Test that dynamic-update-slice with a scalar broadcast becomes a pad.
+TEST_F(AlgebraicSimplifierTest, DynamicUpdateSliceOfBroadcastToPad) {
+  const char* hlo_string = R"(
+HloModule AddBroadcastZeroWithDynamicSlice
+
+ENTRY AddBroadcastZeroWithDynamicSlice {
+  param0 = f32[1800,12,512]{2,1,0} parameter(0)
+  constant = f32[] constant(0)
+  broadcast = f32[1800,12,512]{2,1,0} broadcast(constant), dimensions={}
+  param1 = f32[1,12,512]{2,1,0} parameter(1)
+  constant.1 = s32[] constant(0)
+  dynamic-update-slice = f32[1800,12,512]{2,1,0} dynamic-update-slice(broadcast, param1, constant.1, constant.1, constant.1)
+  ROOT add = f32[1800,12,512]{2,1,0} add(param0, dynamic-update-slice)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  VLOG(2) << "Before rewrite dus->pad\n" << module->ToString();
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  VLOG(2) << "After rewrite dus->pad\n" << module->ToString();
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root->opcode(), HloOpcode::kAdd);
+  EXPECT_THAT(root->operand(1)->opcode(), HloOpcode::kPad);
+}
+
 INSTANTIATE_TEST_SUITE_P(DotOfConcatSimplificationTestInstantiation,
                          DotOfConcatSimplificationTest,
                          ::testing::ValuesIn(kDotOfConcatTestSpecs));
@@ -6426,5 +6409,33 @@ TEST_F(AlgebraicSimplifierTest, ScalarScatter) {
   // Combine Scatters
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
 }
+
+TEST_F(AlgebraicSimplifierTest, SwapConvOperands) {
+  const char* hlo_string = R"(
+  HloModule m
+  test {
+    a = f32[3,3,160,160] parameter(0)
+    b = f32[128,32,32,160] parameter(1)
+    ROOT c = f32[128,32,32,160] convolution(a,b),
+     window={size=32x32 pad=30_30x30_30 rhs_reversal=1x1},
+     dim_labels=01bf_o01i->f01b
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  // Combine Scatters
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  const HloInstruction* conv = m->entry_computation()->root_instruction();
+  EXPECT_THAT(conv,
+              GmockMatch(m::Convolution(m::Parameter(1), m::Parameter(0))));
+  EXPECT_EQ(conv->window().dimensions(0).size(), 3);
+  EXPECT_EQ(conv->window().dimensions(1).size(), 3);
+  EXPECT_EQ(conv->window().dimensions(0).window_reversal(), true);
+  EXPECT_EQ(conv->window().dimensions(1).window_reversal(), true);
+  EXPECT_EQ(conv->window().dimensions(0).padding_low(), 1);
+  EXPECT_EQ(conv->window().dimensions(1).padding_low(), 1);
+  EXPECT_EQ(conv->window().dimensions(0).padding_high(), 1);
+  EXPECT_EQ(conv->window().dimensions(1).padding_high(), 1);
+}
+
 }  // namespace
 }  // namespace xla

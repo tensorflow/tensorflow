@@ -32,7 +32,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -55,7 +54,7 @@ void BatchMatMulToEinsumPass::runOnFunction() {
   patterns.insert<ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulOp>,
                   ConvertTFBatchMatMulToEinsumOp<TF::BatchMatMulV2Op>>(
       &getContext());
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 
 }  // namespace

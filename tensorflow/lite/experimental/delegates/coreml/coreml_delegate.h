@@ -20,10 +20,24 @@ limitations under the License.
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
+typedef enum {
+  // Create Core ML delegate only on devices with Apple Neural Engine.
+  // Returns nullptr otherwise.
+  TfLiteCoreMlDelegateDevicesWithNeuralEngine,
+  // Always create Core ML delegate
+  TfLiteCoreMlDelegateAllDevices
+} TfLiteCoreMlDelegateEnabledDevices;
+
 typedef struct {
-  // TODO(karimnosseir): Remove when other fields are added.
-  // We have dummy for now as we can't have empty struct in C.
-  char dummy;
+  // Only create delegate when Neural Engine is available on the device.
+  TfLiteCoreMlDelegateEnabledDevices enabled_devices;
+  // This sets the maximum number of Core ML delegates created.
+  // Each graph corresponds to one delegated node subset in the
+  // TFLite model. Set this to 0 to delegate all possible partitions.
+  int max_delegated_partitions;
+  // This sets the minimum number of nodes per partition delegated with
+  // Core ML delegate. Defaults to 2.
+  int min_nodes_per_partition;
 } TfLiteCoreMlDelegateOptions;
 
 // Return a delegate that uses CoreML for ops execution.
@@ -33,6 +47,7 @@ TfLiteDelegate* TfLiteCoreMlDelegateCreate(
 
 // Do any needed cleanup and delete 'delegate'.
 void TfLiteCoreMlDelegateDelete(TfLiteDelegate* delegate);
+
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

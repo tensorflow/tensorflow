@@ -50,7 +50,7 @@ _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
 _TF_MIN_BAZEL_VERSION = '2.0.0'
-_TF_MAX_BAZEL_VERSION = '2.0.0'
+_TF_MAX_BAZEL_VERSION = '3.99.0'
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
@@ -58,8 +58,6 @@ NCCL_LIB_PATHS = [
 
 # List of files to configure when building Bazel on Apple platforms.
 APPLE_BAZEL_FILES = [
-    'tensorflow/lite/experimental/delegates/coreml/BUILD',
-    'tensorflow/lite/experimental/delegates/coreml/builders/BUILD',
     'tensorflow/lite/experimental/ios/BUILD',
     'tensorflow/lite/experimental/objc/BUILD',
     'tensorflow/lite/experimental/swift/BUILD',

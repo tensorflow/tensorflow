@@ -34,9 +34,7 @@ import gast
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
-from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
-from tensorflow.python.autograph.pyct.static_analysis import annos
 
 
 class Definition(object):
@@ -137,8 +135,12 @@ class Analyzer(cfg.GraphVisitor):
       # their ids are used in equality checks.
       if node not in self.gen_map:
         node_symbols = {}
-        # Every modification receives a definition.
-        for s in node_scope.modified:
+        # Every binding operation (assign, nonlocal, global, etc.) counts as a
+        # definition, with the exception of del, which only deletes without
+        # creating a new variable.
+        newly_defined = ((node_scope.bound | node_scope.globals) -
+                         node_scope.deleted)
+        for s in newly_defined:
           def_ = self._definition_factory()
           node_symbols[s] = def_
         # Every param receives a definition. Params are not necessarily
@@ -153,41 +155,16 @@ class Analyzer(cfg.GraphVisitor):
       kill = node_scope.modified | node_scope.deleted
       defs_out = gen | (defs_in - kill)
 
-    elif isinstance(node.ast_node, (gast.Global, gast.Nonlocal)):
-      # Special case for global and nonlocal: they generate a definition,
-      # but are not tracked by activity analysis.
-      if node not in self.gen_map:
-        node_symbols = {}
-        kill = set()
-        for s in node.ast_node.names:
-          qn = qual_names.QN(s)
-          # TODO(mdan): If definitions exist, should we preserve those instead?
-          # Incoming definitions may be present when this is a local function.
-          # In that case, the definitions of the nonlocal symbol from the
-          # enclosing function are available here. See self.extra_in.
-          kill.add(qn)
-          def_ = self._definition_factory()
-          node_symbols[qn] = def_
-        self.gen_map[node] = _NodeState(node_symbols)
-
       gen = self.gen_map[node]
       defs_out = gen | (defs_in - kill)
 
     else:
-      # Nodes that don't have a scope annotation are assumed not to touch any
-      # symbols.
-      # This Name node below is a literal name, e.g. False
-      # This can also happen if activity.py forgot to annotate the node with a
-      # scope object.
-      assert isinstance(node.ast_node,
-                        (gast.Name, gast.Break, gast.Continue, gast.Raise,
-                         gast.Pass)), (node.ast_node, node)
+      assert self.can_ignore(node), (node.ast_node, node)
       defs_out = defs_in
 
     self.in_[node] = defs_in
     self.out[node] = defs_out
 
-    # TODO(mdan): Move this to the superclass?
     return prev_defs_out != defs_out
 
 
@@ -205,6 +182,7 @@ class TreeAnnotator(transformer.Base):
 
   def __init__(self, source_info, graphs, definition_factory):
     super(TreeAnnotator, self).__init__(source_info)
+    self.allow_skips = False
     self.definition_factory = definition_factory
     self.graphs = graphs
     self.current_analyzer = None
@@ -214,28 +192,11 @@ class TreeAnnotator(transformer.Base):
     parent_analyzer = self.current_analyzer
     subgraph = self.graphs[node]
 
-    # Preorder tree processing:
-    #  1. if this is a child function, the parent was already analyzed and it
-    #     has the proper state value for the subgraph's entry
-    #  2. analyze the current function body
-    #  2. recursively walk the subtree; child functions will be processed
     analyzer = Analyzer(subgraph, self.definition_factory)
-    if parent_analyzer is not None:
-      # Wire the state between the two subgraphs' analyzers.
-      parent_out_state = parent_analyzer.out[parent_analyzer.graph.index[node]]
-      # Exception: symbols modified in the child function are local to it
-      body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
-      parent_out_state -= body_scope.modified
-      analyzer.extra_in[node.args] = parent_out_state
-
-    # Complete the analysis for the local function and annotate its body.
     analyzer.visit_forward()
 
     # Recursively process any remaining subfunctions.
     self.current_analyzer = analyzer
-    # Note: not visiting name, decorator_list and returns because they don't
-    # apply to this analysis.
-    # TODO(mdan): Should we still process the function name?
     node.args = self.visit(node.args)
     node.body = self.visit_block(node.body)
     self.current_analyzer = parent_analyzer

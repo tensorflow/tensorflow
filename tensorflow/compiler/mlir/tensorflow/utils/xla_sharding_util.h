@@ -29,13 +29,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-extern const char* const kXlaShardingAttrName;
 extern const char* const kInputShardingAttr;
 extern const char* const kOutputShardingAttr;
-
-// Parses "_XlaSharding" attribute from operation, if it exists.
-llvm::Optional<mlir::StringRef> ParseShardingAttribute(
-    mlir::Operation* operation);
 
 // Parses "input_sharding_configuration" attribute and returns a list where
 // i-th element is a list of mlir::Value's which represent inputs for the

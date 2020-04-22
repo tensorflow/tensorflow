@@ -45,7 +45,7 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
   const std::string barrier = device_info.IsWaveSizeEqualTo32()
                                   ? "SIMDGROUP_BARRIER"
                                   : "threadgroup_barrier";
-  const int src_depth = IntegralDivideRoundUp(src_channels, 4);
+  const int src_depth = DivideRoundUp(src_channels, 4);
   std::stringstream code;
   code << R"(
     #include <metal_stdlib>
@@ -116,9 +116,8 @@ std::string GetFullyConnectedCode(const DeviceInfo& device_info,
   }
 }
   )";
-  const int src_depth_sub_groups = shared_memory
-                                       ? IntegralDivideRoundUp(src_depth, 32)
-                                       : IntegralDivideRoundUp(src_depth, 4);
+  const int src_depth_sub_groups = shared_memory ? DivideRoundUp(src_depth, 32)
+                                                 : DivideRoundUp(src_depth, 4);
   return absl::Substitute(code.str(), src_depth_sub_groups, barrier);
 }
 }  // namespace
@@ -146,7 +145,7 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
   bool shared_memory =
       device_info.IsAppleGPU() &&
       device_info.apple_info.IsLocalMemoryPreferredOverGlobal();
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   const int src_depth_aligned = AlignByN(src_depth, shared_memory ? 32 : 4);
   const int dst_channels_aligned = AlignByN(attr.weights.shape.o, 8);
 
@@ -179,8 +178,7 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
       {"constant uniforms& params",
        [attr](const std::map<ValueId, BHWC>& buffers) {
          std::vector<uint32_t> uniform_params{
-             static_cast<uint32_t>(
-                 IntegralDivideRoundUp(attr.weights.shape.i, 4)),
+             static_cast<uint32_t>(DivideRoundUp(attr.weights.shape.i, 4)),
              static_cast<uint32_t>(AlignByN(attr.weights.shape.o, 8)),
              static_cast<uint32_t>(attr.weights.shape.o),
              static_cast<uint32_t>(0),
@@ -192,7 +190,7 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
   desc->resize_function = [attr](const std::map<ValueId, BHWC>& buffers) {
     const uint3 groups_size{8, 4, 1};
     const int dst_channels_aligned = AlignByN(attr.weights.shape.o, 8);
-    int groups_x = IntegralDivideRoundUp(dst_channels_aligned, groups_size.x);
+    int groups_x = DivideRoundUp(dst_channels_aligned, groups_size.x);
     return std::make_pair(groups_size, uint3{groups_x, 1, 1});
   };
 

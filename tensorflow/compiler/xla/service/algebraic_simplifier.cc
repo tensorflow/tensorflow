@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -493,6 +494,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // instruction's window.
   StatusOr<bool> FoldConvInputPad(HloInstruction* convolution);
   StatusOr<bool> FoldConvFilterPad(HloInstruction* convolution);
+
+  // Tries to swap convolution operands if they would result in a more efficient
+  // convolution.
+  StatusOr<bool> SwapConvOperands(HloInstruction* convolution);
 
   // Tries to use a kDot in place of the given convolution.
   StatusOr<bool> SimplifyConvToDot(HloInstruction* convolution);
@@ -2964,26 +2969,6 @@ Status AlgebraicSimplifierVisitor::HandlePower(HloInstruction* power) {
                                             MakeScalarLike(lhs, 1), lhs));
   }
 
-  VLOG(10) << "trying transform [pow(pow(A, X), Y) => pow(A, X*Y)]: "
-           << power->ToString();
-
-  // Don't perform this optimization if either of the exponents is complex; this
-  // identity is true only for real-valued exponents.  In addition, we cowardly
-  // refuse to do this transformation if the two exponents have different
-  // element types.
-  if (lhs->opcode() == HloOpcode::kPower &&
-      !ShapeUtil::ElementIsComplex(lhs->operand(1)->shape()) &&
-      !ShapeUtil::ElementIsComplex(rhs->shape()) &&
-      ShapeUtil::SameElementType(lhs->operand(1)->shape(), rhs->shape())) {
-    auto exponent_product =
-        computation_->AddInstruction(HloInstruction::CreateBinary(
-            rhs->shape(), HloOpcode::kMultiply, lhs->mutable_operand(1), rhs));
-    return ReplaceWithNewInstruction(
-        power, HloInstruction::CreateBinary(power->shape(), HloOpcode::kPower,
-                                            lhs->mutable_operand(0),
-                                            exponent_product));
-  }
-
   return Status::OK();
 }
 
@@ -3656,20 +3641,90 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
 
 Status AlgebraicSimplifierVisitor::HandleDynamicUpdateSlice(
     HloInstruction* dynamic_update_slice) {
-  auto update = dynamic_update_slice->mutable_operand(1);
-
-  // DynamicUpdateSlice where operand and update have the same size is simply
-  // equal to update.
-  if (SameShape(dynamic_update_slice, update)) {
-    return ReplaceInstruction(dynamic_update_slice, update);
+  // Rewriting DynamicUpdateSlice when it matches
+  // dynamic_update_slice(broadcast(constant),data,constant_index0,...)
+  // to a Pad(x, constant)
+  // Only Broadcast considered currently, other ops need to be considered
+  // in the future.
+  HloInstruction* updated = dynamic_update_slice->mutable_operand(0);
+  HloInstruction* dus_update = dynamic_update_slice->mutable_operand(1);
+  HloInstruction* pad_value;
+  if (Match(updated,
+            m::Broadcast(m::Op(&pad_value).WithShape(m::Shape().IsScalar())))) {
+    auto updated_shape = updated->shape();
+    auto update_shape = dus_update->shape();
+    auto update_start_indx = dynamic_update_slice->operand(2);
+    int64 offset = 0;
+    bool compatible = true;
+    // Whether the start indices to dynamic update slice is a list,
+    // output of a tuple/concatenate, we setup the update_start_indx
+    // appropriately.
+    if (ShapeUtil::IsScalar(update_start_indx->shape())) {
+      update_start_indx = dynamic_update_slice;
+      offset = 2;
+    } else {
+      if (update_start_indx->opcode() == HloOpcode::kTuple ||
+          update_start_indx->opcode() == HloOpcode::kConcatenate) {
+        offset = 0;
+      } else {
+        compatible = false;
+      }
+    }
+    if (compatible) {
+      PaddingConfig padding_config;
+      for (int64 dim = 0; dim < updated_shape.rank(); ++dim) {
+        auto padding_config_dim = padding_config.add_dimensions();
+        auto slice_dim_start = update_start_indx->operand(dim + offset);
+        if (!Match(slice_dim_start, m::ConstantScalar())) {
+          compatible = false;
+          break;
+        }
+        VLOG(2) << "slice :" << slice_dim_start->ToString();
+        int64 beg;
+        if (slice_dim_start->shape().element_type() == S32) {
+          beg = slice_dim_start->literal().Get<int32>({});
+        } else if (slice_dim_start->shape().element_type() == U32) {
+          beg = slice_dim_start->literal().Get<uint32>({});
+        } else {
+          compatible = false;
+          break;
+        }
+        VLOG(2) << "beg value:" << beg;
+        auto update_width = ShapeUtil::GetDimension(update_shape, dim);
+        auto bcast_width = ShapeUtil::GetDimension(updated_shape, dim);
+        padding_config_dim->set_edge_padding_low(beg);
+        padding_config_dim->set_edge_padding_high(
+            std::max(bcast_width - (beg + update_width), int64{0}));
+        // dynamic_update_slice does not specify a stride
+        padding_config_dim->set_interior_padding(0);
+      }
+      if (compatible) {
+        HloInstruction* pad =
+            computation_->AddInstruction(HloInstruction::CreatePad(
+                updated_shape, dus_update, pad_value, padding_config));
+        VLOG(2) << dynamic_update_slice->ToString();
+        VLOG(2) << " with pad:" << pad->ToString();
+        VLOG(2) << " Computation before rewrite is: "
+                << dynamic_update_slice->parent()->ToString();
+        auto res = ReplaceInstruction(dynamic_update_slice, pad);
+        VLOG(2) << " Computation after rewrite is: "
+                << pad->parent()->ToString();
+        return res;
+      }
+    }
   }
 
-  // If any dimension of update is 0, elide the DynamicUpdateSlice.  This
+  // DynamicUpdateSlice where operand and dus_update have the same size is
+  // equal to dus_update.
+  if (SameShape(dynamic_update_slice, dus_update)) {
+    return ReplaceInstruction(dynamic_update_slice, dus_update);
+  }
+
+  // If any dimension of dus_update is 0, elide the DynamicUpdateSlice.  This
   // optimization becomes invalid should we later prefer to warn about out of
   // bound indices.
-  if (ShapeUtil::IsZeroElementArray(update->shape())) {
-    return ReplaceInstruction(dynamic_update_slice,
-                              dynamic_update_slice->mutable_operand(0));
+  if (ShapeUtil::IsZeroElementArray(dus_update->shape())) {
+    return ReplaceInstruction(dynamic_update_slice, updated);
   }
   return Status::OK();
 }
@@ -4411,6 +4466,107 @@ StatusOr<bool> AlgebraicSimplifierVisitor::FoldConvFilterPad(
   return true;
 }
 
+StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
+    HloInstruction* convolution) {
+  if (!options_.enable_conv_operand_swap() || options_.is_layout_sensitive()) {
+    return false;
+  }
+  if (convolution->feature_group_count() > 1 ||
+      convolution->batch_group_count() > 1) {
+    return false;
+  }
+
+  const auto& dnums = convolution->convolution_dimension_numbers();
+  const auto& window_dims = convolution->window().dimensions();
+  Window swapped_window;
+
+  HloInstruction *input = convolution->mutable_operand(0),
+                 *kernel = convolution->mutable_operand(1);
+  int64 kernel_product = 1;
+  int64 swapped_kernel_product = 1;
+  DimensionVector reverse_dimensions;
+  for (int64 spatial_dim = 0;
+       spatial_dim < dnums.input_spatial_dimensions_size(); ++spatial_dim) {
+    const int64 kernel_size = window_dims[spatial_dim].size();
+    kernel_product *= kernel_size;
+    const int64 dilated_kernel_size =
+        1 + (kernel_size - 1) * window_dims[spatial_dim].window_dilation();
+
+    const int64 input_size =
+        input->shape().dimensions(dnums.input_spatial_dimensions(spatial_dim));
+    swapped_kernel_product *= input_size;
+    const int64 dilated_input_size =
+        1 + (input_size - 1) * window_dims[spatial_dim].base_dilation();
+
+    auto new_dim = swapped_window.add_dimensions();
+    new_dim->set_size(input_size);
+    // If the kernel is not reversed, the activations must be manually reversed.
+    if (!window_dims[spatial_dim].window_reversal()) {
+      reverse_dimensions.push_back(
+          dnums.kernel_spatial_dimensions(spatial_dim));
+    }
+    // The input is not originally reversed so it must be reversed to move the
+    // kernel.
+    new_dim->set_window_reversal(true);
+    // Base dilation and window dilation switch places.
+    new_dim->set_base_dilation(window_dims[spatial_dim].window_dilation());
+    new_dim->set_window_dilation(window_dims[spatial_dim].base_dilation());
+    new_dim->set_stride(window_dims[spatial_dim].stride());
+    new_dim->set_padding_low(dilated_input_size +
+                             window_dims[spatial_dim].padding_low() -
+                             dilated_kernel_size);
+    new_dim->set_padding_high(dilated_input_size +
+                              window_dims[spatial_dim].padding_high() -
+                              dilated_kernel_size);
+  }
+
+  // Don't transform if a naive convolution implementation would not have fewer
+  // flops.
+  if (kernel_product <= swapped_kernel_product) {
+    return false;
+  }
+  ConvolutionDimensionNumbers swapped_dnums;
+  *swapped_dnums.mutable_output_spatial_dimensions() =
+      dnums.output_spatial_dimensions();
+  // Swap batch and output feature of the output.
+  swapped_dnums.set_output_batch_dimension(dnums.output_feature_dimension());
+  swapped_dnums.set_output_feature_dimension(dnums.output_batch_dimension());
+
+  // Swap input dnums with kernel dnums
+  *swapped_dnums.mutable_input_spatial_dimensions() =
+      dnums.kernel_spatial_dimensions();
+  swapped_dnums.set_input_batch_dimension(
+      dnums.kernel_output_feature_dimension());
+  swapped_dnums.set_input_feature_dimension(
+      dnums.kernel_input_feature_dimension());
+
+  // Swap kernel dnums with input dnums
+  *swapped_dnums.mutable_kernel_spatial_dimensions() =
+      dnums.input_spatial_dimensions();
+  swapped_dnums.set_kernel_output_feature_dimension(
+      dnums.input_batch_dimension());
+  swapped_dnums.set_kernel_input_feature_dimension(
+      dnums.input_feature_dimension());
+
+  PrecisionConfig precision_config;
+  precision_config.add_operand_precision(
+      convolution->precision_config().operand_precision(1));
+  precision_config.add_operand_precision(
+      convolution->precision_config().operand_precision(0));
+  if (!reverse_dimensions.empty()) {
+    TF_ASSIGN_OR_RETURN(kernel, MakeReverseHlo(kernel, reverse_dimensions));
+  }
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * new_convolution,
+      MakeConvolveHlo(kernel, input, /*feature_group_count=*/1, swapped_window,
+                      swapped_dnums, precision_config));
+
+  convolution->SetupDerivedInstruction(new_convolution);
+  TF_RETURN_IF_ERROR(ReplaceInstruction(convolution, new_convolution));
+
+  return true;
+}
+
 StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToDot(
     HloInstruction* convolution) {
   auto* lhs = convolution->mutable_operand(0);
@@ -4549,6 +4705,11 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
     return Status::OK();
   }
 
+  // Try to swap convolution operands.
+  TF_ASSIGN_OR_RETURN(bool swapped, SwapConvOperands(convolution));
+  if (swapped) {
+    return Status::OK();
+  }
   // Try to replace the convolution with a kDot instruction.
   TF_ASSIGN_OR_RETURN(bool replaced_with_dot, SimplifyConvToDot(convolution));
   if (replaced_with_dot) {

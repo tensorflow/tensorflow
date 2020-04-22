@@ -20,7 +20,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
 #include "absl/memory/memory.h"
 #include "llvm/ADT/STLExtras.h"

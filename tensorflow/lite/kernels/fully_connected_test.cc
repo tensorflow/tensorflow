@@ -713,11 +713,13 @@ void SimpleTestQuantizedInt16OutputCase(
       /*activation_func=*/ActivationFunctionType_NONE, weights_format);
 
   std::mt19937 random_engine;
-  std::uniform_int_distribution<uint8_t> weights_dist;
+  // Some compilers don't support uint8_t for uniform_distribution.
+  std::uniform_int_distribution<uint32_t> weights_dist(
+      0, std::numeric_limits<uint8_t>::max());
 
   std::vector<float> weights_data(input_depth * output_depth);
   for (auto& w : weights_data) {
-    uint8_t q = weights_dist(random_engine);
+    uint8_t q = static_cast<uint8_t>(weights_dist(random_engine));
     w = (q - kWeightsZeroPoint) * kWeightsScale;
   }
 
@@ -739,10 +741,12 @@ void SimpleTestQuantizedInt16OutputCase(
       LOG(FATAL) << "Unhandled weights format";
   }
 
-  std::uniform_int_distribution<uint8_t> input_dist;
+  // Some compilers don't support uint8_t for uniform_distribution.
+  std::uniform_int_distribution<uint32_t> input_dist(
+      0, std::numeric_limits<uint8_t>::max());
   std::vector<float> input_data(input_depth * batches);
   for (auto& i : input_data) {
-    uint8_t q = input_dist(random_engine);
+    uint8_t q = static_cast<uint8_t>(input_dist(random_engine));
     i = (q - kInputZeroPoint) * kInputScale;
   }
 

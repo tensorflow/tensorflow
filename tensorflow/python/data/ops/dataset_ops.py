@@ -2485,8 +2485,8 @@ class DatasetV1(DatasetV2):
   @functools.wraps(DatasetV2.interleave)
   def interleave(self,
                  map_func,
-                 cycle_length=AUTOTUNE,
-                 block_length=1,
+                 cycle_length=None,
+                 block_length=None,
                  num_parallel_calls=None,
                  deterministic=None):
     return DatasetV1Adapter(
@@ -2818,7 +2818,7 @@ class Options(options_lib.OptionsBase):
       result.extend(
           optimization_options.OptimizationOptions()._graph_rewrites())  # pylint: disable=protected-access
 
-    if self.experimental_deterministic is False:
+    if self.experimental_deterministic is False:  # pylint: disable=g-bool-id-comparison
       result.append("make_sloppy")
     if self.experimental_stats and self.experimental_stats.latency_all_edges:
       result.append("latency_all_edges")
@@ -3050,7 +3050,7 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 
   @property
   def value_type(self):
-    return _VariantDataset
+    return Dataset
 
   def _serialize(self):
     return (self._element_spec, self._dataset_shape)
@@ -3108,7 +3108,6 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 class StructuredFunctionWrapper(object):
   """A function wrapper that supports structured arguments and return values."""
 
-  # pylint: disable=protected-access
   def __init__(self,
                func,
                transformation_name,
@@ -3151,6 +3150,7 @@ class StructuredFunctionWrapper(object):
       ValueError: If an invalid combination of `dataset`, `input_classes`,
         `input_shapes`, and `input_types` is passed.
     """
+    # pylint: disable=protected-access
     if input_structure is None:
       if dataset is None:
         if input_classes is None or input_shapes is None or input_types is None:
@@ -3271,6 +3271,7 @@ class StructuredFunctionWrapper(object):
 
     else:
       defun_kwargs.update({"func_name": func_name})
+      defun_kwargs.update({"_tf_data_function": True})
 
       # Note: _wrapper_helper will apply autograph based on context.
       @eager_function.defun_with_attributes(
@@ -3287,9 +3288,9 @@ class StructuredFunctionWrapper(object):
       with tracking.resource_tracker_scope(resource_tracker):
         # TODO(b/141462134): Switch to using garbage collection.
         self._function = wrapper_fn.get_concrete_function()
-
         if add_to_graph:
           self._function.add_to_graph(ops.get_default_graph())
+
       if resource_tracker.resources:
         _warn_if_collections(transformation_name)
 
@@ -3301,7 +3302,6 @@ class StructuredFunctionWrapper(object):
               "if the random op has not been provided any seed. Explicitly set "
               "the seed in the function if this is not the intended behavior."
               %(outer_graph_seed, func_name), stacklevel=4)
-  # pylint: enable=protected-access
 
   @property
   def output_structure(self):
@@ -3526,6 +3526,8 @@ class RangeDataset(DatasetSource):
     return self._structure
 
 
+# This can be deleted after the forward compatibility window for switching
+# to using dummy resource expires on 5/20.
 class _MemoryCacheDeleter(object):
   """An object which cleans up an anonymous memory cache resource.
 
@@ -3552,15 +3554,20 @@ class _MemoryCacheDeleter(object):
               handle=self._handle, deleter=self._deleter)
 
 
+# This can be deleted after the forward compatibility window for switching
+# to using dummy resource expires on 5/20.
 class _MemoryCache(object):
   """Represents a memory cache resource."""
 
   def __init__(self):
     super(_MemoryCache, self).__init__()
-    self._device = context.context().device_name
-    self._handle, self._deleter = (gen_dataset_ops.anonymous_memory_cache())
-    self._resource_deleter = _MemoryCacheDeleter(
-        handle=self._handle, device=self._device, deleter=self._deleter)
+    if compat.forward_compatible(2020, 5, 20):
+      self._handle = gen_dataset_ops.dummy_memory_cache()
+    else:
+      self._device = context.context().device_name
+      self._handle, self._deleter = gen_dataset_ops.anonymous_memory_cache()
+      self._resource_deleter = _MemoryCacheDeleter(
+          handle=self._handle, device=self._device, deleter=self._deleter)
 
   @property
   def handle(self):

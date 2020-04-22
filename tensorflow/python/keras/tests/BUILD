@@ -27,6 +27,28 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "convert_to_constants_test",
+    srcs = ["convert_to_constants_test.py"],
+    python_version = "PY3",
+    shard_count = 4,
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:convert_to_constants",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/training/tracking",
+    ],
+)
+
+tf_py_test(
     name = "custom_training_loop_test",
     srcs = ["custom_training_loop_test.py"],
     python_version = "PY3",
@@ -52,6 +74,22 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:profiler",
         "//tensorflow/python/eager:test",
+    ],
+)
+
+tf_py_test(
+    name = "graph_util_test",
+    srcs = ["graph_util_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:graph_util",
+        "//tensorflow/python:saver",
+        "//tensorflow/python:session",
+        "//tensorflow/python:tf_optimizer",
     ],
 )
 
@@ -165,6 +203,61 @@ cuda_py_test(
         "//tensorflow/python/eager/memory_tests:memory_test_util",
         "//tensorflow/python/keras",
         "@six_archive//:six",
+    ],
+)
+
+tf_py_test(
+    name = "memory_checker_test",
+    size = "medium",
+    srcs = ["memory_checker_test.py"],
+    python_version = "PY3",
+    shard_count = 8,
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+        "noasan",  # TODO(b/149948895): Re-enable.
+        "nomsan",  # TODO(b/149948895): Re-enable.
+        "notsan",  # TODO(b/149948895): Re-enable.
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:memory_checker",
+    ],
+)
+
+cuda_py_test(
+    name = "op_callbacks_test",
+    srcs = ["op_callbacks_test.py"],
+    python_version = "PY3",
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:op_callbacks",
+        "//tensorflow/python:script_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+cuda_py_test(
+    name = "summary_ops_test",
+    size = "small",
+    srcs = ["summary_ops_test.py"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary_ops_v2",
+        "//tensorflow/python/keras/engine",
+        "//tensorflow/python/keras/layers:core",
     ],
 )
 

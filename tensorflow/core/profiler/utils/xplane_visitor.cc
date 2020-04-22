@@ -27,7 +27,7 @@ XStatVisitor::XStatVisitor(const XPlaneVisitor* plane, const XStat* stat)
 
 absl::string_view XStatVisitor::RefValue() const {
   const XStatMetadata* metadata = plane_->GetStatMetadata(stat_->ref_value());
-  return metadata ? metadata->name() : "";
+  return metadata ? absl::string_view(metadata->name()) : absl::string_view();
 }
 
 std::string XStatVisitor::ToString() const {

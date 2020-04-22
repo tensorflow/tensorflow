@@ -97,7 +97,7 @@ class ObjectDetectionStage : public EvaluationStage {
 // preprocess_coco_minival.py script in evaluation/tasks/coco_object_detection.
 // Useful for wrappers/scripts that use ObjectDetectionStage.
 TfLiteStatus PopulateGroundTruth(
-    const std::string& grouth_truth_pbtxt_file,
+    const std::string& grouth_truth_proto_file,
     absl::flat_hash_map<std::string, ObjectDetectionResult>*
         ground_truth_mapping);
 

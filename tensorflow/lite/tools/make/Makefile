@@ -212,7 +212,7 @@ TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 
 # Benchmark sources
 BENCHMARK_SRCS_DIR := tensorflow/lite/tools/benchmark
-DELEGATE_PROVIDER_SRCS_DIR := tensorflow/lite/tools/benchmark
+DELEGATE_PROVIDER_SRCS_DIR := tensorflow/lite/tools/delegates
 EVALUATION_UTILS_SRCS := \
   tensorflow/lite/tools/evaluation/utils.cc
 BENCHMARK_ALL_SRCS := \
