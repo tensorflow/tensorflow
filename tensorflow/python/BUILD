@@ -6445,6 +6445,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "gpu_cupti",
+        "no_gpu",  # b/154742661
     ],
     xla_enable_strict_auto_jit = False,  # Graph structure is different with autojit
     deps = [
