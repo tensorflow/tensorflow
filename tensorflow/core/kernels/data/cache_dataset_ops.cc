@@ -684,9 +684,11 @@ Status RestoreCache(IteratorContext* ctx, IteratorStateReader* reader, T* cache,
 
 class CacheDatasetOp::MemoryDataset : public DatasetBase {
  public:
-  explicit MemoryDataset(OpKernelContext* ctx, const DatasetBase* input,
-                         MemoryCache* cache)
-      : DatasetBase(DatasetContext(ctx)), input_(input), cache_(cache) {
+  explicit MemoryDatasetBase(OpKernelContext* ctx, const DatasetBase* input,
+                             std::shared_ptr<MemoryCache> cache)
+      : DatasetBase(DatasetContext(ctx)),
+        input_(input),
+        cache_(std::move(cache)) {
     input_->Ref();
   }
 
@@ -704,7 +706,7 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
     return absl::make_unique<MemoryIterator>(
         MemoryIterator::Params{
             this, name_utils::IteratorPrefix(kDatasetType, prefix, params)},
-        cache_);
+        cache_.get());
   }
 
   const DataTypeVector& output_dtypes() const override {
@@ -973,19 +975,73 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
   };  // MemoryIterator
 
   const DatasetBase* const input_;
-  MemoryCache* cache_ = nullptr;
-};  // MemoryDataset
+  const std::shared_ptr<MemoryCache> cache_;
+};  // MemoryDatasetBase
 
-class CacheDatasetOp::MemoryDatasetV2 : public CacheDatasetOp::MemoryDataset {
+// This version of memory dataset has an exclusive ownership of the memory cache
+// resource. It supports sharing of the cache across different iterations of the
+// `repeat` transformation but not across different iterators.
+class CacheDatasetOp::MemoryDataset : public CacheDatasetOp::MemoryDatasetBase {
  public:
-  explicit MemoryDatasetV2(OpKernelContext* ctx, const DatasetBase* input,
-                           MemoryCache* cache,
-                           std::unique_ptr<OwnedResourceHandle> handle)
-      : MemoryDataset(ctx, input, cache), handle_(std::move(handle)) {}
+  MemoryDataset(OpKernelContext* ctx, const DatasetBase* input,
+                MemoryCacheManager* manager, ResourceHandle&& resource_handle)
+      : MemoryDatasetBase(ctx, input, manager->get()),
+        manager_(manager),
+        resource_handle_(std::move(resource_handle)),
+        resource_mgr_(ctx->resource_manager()) {}
 
-  Status CheckExternalState() const override {
-    return errors::FailedPrecondition(DebugString(),
-                                      " depends on memory cache resource.");
+  ~MemoryDataset() override {
+    manager_->Unref();
+    Status s = resource_mgr_->Delete<MemoryCacheManager>(
+        resource_handle_.container(), resource_handle_.name());
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed to delete cache resource: " << s.ToString();
+    }
+  }
+
+ protected:
+  Status AsGraphDefInternal(SerializationContext* ctx,
+                            DatasetGraphDefBuilder* b,
+                            Node** output) const override {
+    Node* input_node = nullptr;
+    TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_node));
+    Node* filename_node = nullptr;
+    TF_RETURN_IF_ERROR(b->AddScalar(tstring(""), &filename_node));
+    TF_RETURN_IF_ERROR(
+        b->AddDataset(this, {input_node, filename_node}, output));
+    return Status::OK();
+  }
+
+ private:
+  MemoryCacheManager* const manager_;  // Owned.
+  const ResourceHandle resource_handle_;
+  ResourceMgr* const resource_mgr_;  // Not owned.
+};
+
+// This version of memory dataset has a shared ownership of the memory cache
+// resource. It supports sharing of the cache across different iterations of
+// the `repeat` transformation and also across different iterators.
+class CacheDatasetOp::MemoryDatasetV2
+    : public CacheDatasetOp::MemoryDatasetBase {
+ public:
+  MemoryDatasetV2(OpKernelContext* ctx, const DatasetBase* input,
+                  MemoryCacheManager* manager, ResourceHandle&& resource_handle,
+                  bool owns_resource)
+      : MemoryDatasetBase(ctx, input, manager->get()),
+        manager_(manager),
+        owns_resource_(owns_resource),
+        resource_handle_(std::move(resource_handle)),
+        resource_mgr_(ctx->resource_manager()) {}
+
+  ~MemoryDatasetV2() override {
+    manager_->Unref();
+    if (owns_resource_) {
+      Status s = resource_mgr_->Delete<MemoryCacheManager>(
+          resource_handle_.container(), resource_handle_.name());
+      if (!s.ok()) {
+        LOG(WARNING) << "Failed to delete cache resource: " << s.ToString();
+      }
+    }
   }
 
  protected:
@@ -1006,7 +1062,10 @@ class CacheDatasetOp::MemoryDatasetV2 : public CacheDatasetOp::MemoryDataset {
   }
 
  private:
-  std::unique_ptr<OwnedResourceHandle> handle_;
+  MemoryCacheManager* const manager_;  // Owned.
+  const bool owns_resource_;
+  const ResourceHandle resource_handle_;
+  ResourceMgr* const resource_mgr_;  // Not owned.
 };
 
 CacheDatasetOp::CacheDatasetOp(OpKernelConstruction* ctx)
@@ -1021,19 +1080,39 @@ void CacheDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 
   if (filename.empty()) {
     if (op_version_ == 2) {
-      MemoryCache* cache = nullptr;
-      OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 2), &cache));
-
-      // Create a fresh handle for the resource because the input handle can
-      // become invalid after this op executes.
-      std::unique_ptr<OwnedResourceHandle> handle;
-      OP_REQUIRES_OK(
-          ctx, OwnedResourceHandle::Create(ctx, cache, kMemoryCache, &handle));
-
-      // Ownership of cache is transferred onto `MemoryDatasetV2`.
-      *output = new MemoryDatasetV2(ctx, input, cache, std::move(handle));
+      bool owns_resource = false;
+      MemoryCacheManager* manager = nullptr;
+      auto handle = HandleFromInput(ctx, 2);
+      Status s = ctx->resource_manager()->Lookup<MemoryCacheManager>(
+          handle.container(), handle.name(), &manager);
+      if (errors::IsNotFound(s)) {
+        owns_resource = true;
+        OP_REQUIRES_OK(
+            ctx,
+            ctx->resource_manager()->LookupOrCreate<MemoryCacheManager>(
+                container, name, &manager, [](MemoryCacheManager** manager) {
+                  *manager = new MemoryCacheManager();
+                  return Status::OK();
+                }));
+        handle = MakeResourceHandle<MemoryCacheManager>(ctx, container, name);
+      } else {
+        OP_REQUIRES_OK(ctx, s);
+      }
+      // Ownership of manager is transferred onto `MemoryDatasetV2`.
+      *output = new MemoryDatasetV2(ctx, input, manager, std::move(handle),
+                                    owns_resource);
     } else {
-      *output = new MemoryDataset(ctx, input, /*cache=*/nullptr);
+      MemoryCacheManager* manager;
+      OP_REQUIRES_OK(
+          ctx, ctx->resource_manager()->LookupOrCreate<MemoryCacheManager>(
+                   container, name, &manager, [](MemoryCacheManager** manager) {
+                     *manager = new MemoryCacheManager();
+                     return Status::OK();
+                   }));
+      auto handle =
+          MakeResourceHandle<MemoryCacheManager>(ctx, container, name);
+      // Ownership of manager is transferred onto `MemoryDataset`.
+      *output = new MemoryDataset(ctx, input, manager, std::move(handle));
     }
   } else {
     if (op_version_ == 2) {
