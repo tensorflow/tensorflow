@@ -2519,12 +2519,7 @@ def tf_genrule_cmd_append_to_srcs(to_append):
     return ("cat $(SRCS) > $(@) && " + "echo >> $(@) && " + "echo " + to_append +
             " >> $(@)")
 
-def tf_local_platform_constraint():
-    return ["@local_execution_config_platform//:platform_constraint"]
-
 def tf_version_info_genrule(name, out):
-    # TODO(gunan): Investigate making this action hermetic so we do not need
-    # to run it locally.
     native.genrule(
         name = name,
         srcs = [
@@ -2537,10 +2532,9 @@ def tf_version_info_genrule(name, out):
             "$(location //tensorflow/tools/git:gen_git_source) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
         local = 1,
         exec_tools = [clean_dep("//tensorflow/tools/git:gen_git_source")],
-        exec_compatible_with = tf_local_platform_constraint(),
     )
 
-def tf_py_build_info_genrule(name, out, exec_compatible_with, **kwargs):
+def tf_py_build_info_genrule(name, out, **kwargs):
     native.genrule(
         name = name,
         outs = [out],
