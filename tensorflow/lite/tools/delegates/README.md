@@ -1,8 +1,7 @@
 # TFLite Delegate Utilities for Tooling
 
 ## TFLite Delegate Registrar
-[A TFLite delegate registrar]
-(https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/delegates/delegate_provider.h)
+[A TFLite delegate registrar](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/delegates/delegate_provider.h)
 is provided here. The registrar keeps a list of TFLite delegate providers, each
 of which defines a list parameters that could be initialized from commandline
 argumenents and provides a TFLite delegate instance creation based on those
@@ -78,8 +77,7 @@ TFLite delegate.
 ### Hexagon delegate provider
 *   `use_hexagon`: `bool` (default=false) \
     Whether to use the Hexagon delegate. Not all devices may support the Hexagon
-    delegate, refer to the [TensorFlow Lite documentation]
-    (https://www.tensorflow.org/lite/performance/hexagon_delegate) for more
+    delegate, refer to the [TensorFlow Lite documentation](https://www.tensorflow.org/lite/performance/hexagon_delegate) for more
     information about which devices/chipsets are supported and about how to get
     the required libraries. To use the Hexagon delegate also build the
     hexagon_nn:libhexagon_interface.so target and copy the library to the

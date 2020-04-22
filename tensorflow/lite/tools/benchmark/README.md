@@ -51,8 +51,7 @@ and the following optional parameters:
 
 ### TFLite delegate parameters
 The tool supports all runtime/delegate parameters introduced by
-[the delegate registrar]
-(https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates).
+[the delegate registrar](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/delegates).
 The following simply lists the names of all of them w/ additional notes where
 applicable:
 #### Common parameters
