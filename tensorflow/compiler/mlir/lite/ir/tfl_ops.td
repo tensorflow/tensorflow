@@ -478,6 +478,7 @@ def TFL_TransposeConvOp:
     TFL_1DTensorOf<[I32]>:$output_shape,
     TFL_TensorOf<[F32, TFL_Uint8, QI8, QUI8]>:$weights,
     TFL_TensorOf<[F32, TFL_Uint8, QI8, QUI8]>:$input,
+    TFL_TensorOfOrNone<[F32, QI32, QUI32]>:$bias,
     TFL_PaddingAttr:$padding,
     I32Attr:$stride_h,
     I32Attr:$stride_w
