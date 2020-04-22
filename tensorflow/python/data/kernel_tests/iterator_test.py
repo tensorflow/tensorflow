@@ -25,7 +25,6 @@ import numpy as np
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
-from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import prefetching_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -1022,15 +1021,15 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
                                device_dataset, device_iterator, device_tensor):
 
     self.assertTrue(
-      "cpu:0" in host_dataset._variant_tensor.device.lower() or
-      host_dataset._variant_tensor.device == ""
+        "cpu:0" in host_dataset._variant_tensor.device.lower() or
+        host_dataset._variant_tensor.device == ""
     )
     self.assertTrue(
-      "cpu:0" in host_iterator._iterator_resource.device.lower() or
-      host_iterator._iterator_resource.device == ""
+        "cpu:0" in host_iterator._iterator_resource.device.lower() or
+        host_iterator._iterator_resource.device == ""
     )
     self.assertTrue(
-      "cpu:0" in host_tensor.device.lower() or host_tensor.device == ""
+        "cpu:0" in host_tensor.device.lower() or host_tensor.device == ""
     )
 
     self.assertIn("gpu:0", device_dataset._variant_tensor.device.lower())
@@ -1044,7 +1043,7 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
-      prefetching_ops.prefetch_to_device("/gpu:0"))
+        prefetching_ops.prefetch_to_device("/gpu:0"))
 
     host_iterator = iter(host_dataset)
     device_iterator = iter(device_dataset)
@@ -1053,8 +1052,8 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     device_tensor = next(device_iterator)
 
     self.assert_dataset_placement(
-      host_dataset, host_iterator, host_tensor,
-      device_dataset, device_iterator, device_tensor
+        host_dataset, host_iterator, host_tensor,
+        device_dataset, device_iterator, device_tensor
     )
 
   @combinations.generate(test_base.graph_only_combinations())
@@ -1064,7 +1063,7 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
-      prefetching_ops.prefetch_to_device("/gpu:0"))
+        prefetching_ops.prefetch_to_device("/gpu:0"))
 
     host_iterator = dataset_ops.make_one_shot_iterator(host_dataset)
     device_iterator = dataset_ops.make_one_shot_iterator(device_dataset)
@@ -1073,8 +1072,8 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     device_tensor = device_iterator.get_next()
 
     self.assert_dataset_placement(
-      host_dataset, host_iterator, host_tensor,
-      device_dataset, device_iterator, device_tensor
+        host_dataset, host_iterator, host_tensor,
+        device_dataset, device_iterator, device_tensor
     )
 
   @combinations.generate(test_base.graph_only_combinations())
@@ -1084,7 +1083,7 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
-      prefetching_ops.prefetch_to_device("/gpu:0"))
+        prefetching_ops.prefetch_to_device("/gpu:0"))
 
     host_iterator = dataset_ops.make_initializable_iterator(host_dataset)
     device_iterator = dataset_ops.make_initializable_iterator(device_dataset)
@@ -1093,8 +1092,8 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     device_tensor = device_iterator.get_next()
 
     self.assert_dataset_placement(
-      host_dataset, host_iterator, host_tensor,
-      device_dataset, device_iterator, device_tensor
+        host_dataset, host_iterator, host_tensor,
+        device_dataset, device_iterator, device_tensor
     )
 
 

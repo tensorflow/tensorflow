@@ -423,10 +423,10 @@ class Iterator(trackable.Trackable):
     with ops.device(self._iterator_resource.device):
       # pylint: disable=protected-access
       flat_ret = gen_dataset_ops.iterator_get_next(
-        self._iterator_resource,
-        output_types=self._flat_tensor_types,
-        output_shapes=self._flat_tensor_shapes,
-        name=name)
+          self._iterator_resource,
+          output_types=self._flat_tensor_types,
+          output_shapes=self._flat_tensor_shapes,
+          name=name)
       return structure.from_tensor_list(self._element_spec, flat_ret)
 
   def string_handle(self, name=None):

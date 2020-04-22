@@ -161,8 +161,8 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
         prefetching_ops.prefetch_to_device("/gpu:0"))
 
     self.assertTrue((
-      "" == host_dataset._variant_tensor.device or
-      "cpu:0" in host_dataset._variant_tensor.device.lower()
+        "" == host_dataset._variant_tensor.device or
+        "cpu:0" in host_dataset._variant_tensor.device.lower()
     ))
 
     self.assertTrue("gpu:0" in device_dataset._variant_tensor.device.lower())
