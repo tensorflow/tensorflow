@@ -31,7 +31,7 @@ constexpr char kMemoryCache[] = "MemoryCache";
 
 }  // namespace
 
-string MemoryCache::DebugString() const { return kMemoryCache; }
+string MemoryCacheManager::DebugString() const { return kMemoryCache; }
 
 void MemoryCache::Complete(std::vector<std::vector<Tensor>>&& cache) {
   mutex_lock l(mu_);
@@ -65,19 +65,15 @@ size_t MemoryCache::size() {
 
 AnonymousMemoryCacheHandleOp::AnonymousMemoryCacheHandleOp(
     OpKernelConstruction* ctx)
-    : AnonymousResourceOp<MemoryCache>(ctx) {}
-
-void AnonymousMemoryCacheHandleOp::Compute(OpKernelContext* ctx) {
-  AnonymousResourceOp<MemoryCache>::Compute(ctx);
-}
+    : AnonymousResourceOp<MemoryCacheManager>(ctx) {}
 
 string AnonymousMemoryCacheHandleOp::name() { return kMemoryCache; }
 
 Status AnonymousMemoryCacheHandleOp::CreateResource(
     OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
-    FunctionLibraryRuntime* lib, MemoryCache** resource) {
-  *resource = new MemoryCache();
+    FunctionLibraryRuntime* lib, MemoryCacheManager** manager) {
+  *manager = new MemoryCacheManager();
   return Status::OK();
 }
 
