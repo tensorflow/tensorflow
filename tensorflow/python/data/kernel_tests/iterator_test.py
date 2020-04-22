@@ -1026,17 +1026,16 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       host_dataset._variant_tensor.device == ""
     )
     self.assertTrue(
+      "cpu:0" in host_iterator._iterator_resource.device.lower() or
+      host_iterator._iterator_resource.device == ""
+    )
+    self.assertTrue(
       "cpu:0" in host_tensor.device.lower() or host_tensor.device == ""
     )
 
     self.assertIn("gpu:0", device_dataset._variant_tensor.device.lower())
+    self.assertIn("gpu:0", device_iterator._iterator_resource.device.lower())
     self.assertIn("gpu:0", device_tensor.device.lower())
-
-    if not tf2.enabled() or context.executing_eagerly():
-      self.assertTrue(
-        "cpu:0" in host_iterator._device.lower() or host_iterator._device == ""
-      )
-      self.assertIn("gpu:0", device_iterator._device.lower())
 
   @combinations.generate(test_base.eager_only_combinations())
   def testIteratorOnDeviceEagerMode(self):
