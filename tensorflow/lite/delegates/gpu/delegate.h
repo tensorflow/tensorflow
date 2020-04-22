@@ -109,6 +109,11 @@ typedef struct {
 
   // Bitmask flags. See the comments in TfLiteGpuExperimentalFlags.
   int64_t experimental_flags;
+
+  // A graph could have multiple partitions that can be delegated to the GPU.
+  // This limits the maximum number of partitions to be delegated. By default,
+  // it's set to 1 in TfLiteGpuDelegateOptionsV2Default().
+  int32_t max_delegated_partitions;
 } TfLiteGpuDelegateOptionsV2;
 
 // Populates TfLiteGpuDelegateOptionsV2 as follows:

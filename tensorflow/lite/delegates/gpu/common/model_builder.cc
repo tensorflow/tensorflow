@@ -2602,7 +2602,8 @@ bool IsAllAllowedTensors(TfLiteContext* context, const TfLiteIntArray* array,
 
 // TODO(impjdi): Check number of input/output tensors and their dimensions.
 // TODO(impjdi): Check ops' parameters.
-TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops) {
+TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops,
+                                int max_delegated_partitions) {
   delegates::IsNodeSupportedFn node_supported_fn =
       [=](TfLiteContext* context, TfLiteNode* node,
           TfLiteRegistration* registration,
@@ -2633,11 +2634,11 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops) {
     return TfLiteIntArrayCreate(0);
   }
 
-  // We simply get 1st largest partition, but we could later explore whether
-  // getting more partitions could lead to better performance, i.e. by
-  // parameterizing '1' here.
+  // By default, we simply get 1st largest partition as 'max_delegate_partions'
+  // is set to 1 by default.
   std::vector<int> ops_to_replace =
-      partition_helper.GetNodesOfFirstNLargestPartitions(1);
+      partition_helper.GetNodesOfFirstNLargestPartitions(
+          max_delegated_partitions);
 
   if (!unsupported_nodes_info.empty()) {
     std::string unsupported = absl::StrJoin(unsupported_nodes_info, "\n");
@@ -2647,9 +2648,7 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context, bool allow_quant_ops) {
     if (!ops_to_replace.empty()) {
       absl::StrAppend(
           &error_message, ops_to_replace.size(),
-          " operations will run on the GPU (first node: ",
-          ops_to_replace.front(), ", last node: ", ops_to_replace.back(),
-          "), and the remaining ",
+          " operations will run on the GPU, and the remaining ",
           partition_helper.num_total_nodes() - ops_to_replace.size());
     } else {
       absl::StrAppend(&error_message,

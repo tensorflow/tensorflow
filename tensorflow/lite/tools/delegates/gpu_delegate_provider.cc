@@ -129,6 +129,8 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
         gpu_opts.experimental_flags |= TFLITE_GPU_EXPERIMENTAL_FLAGS_GL_ONLY;
       }
     }
+    gpu_opts.max_delegated_partitions =
+        params.Get<int>("max_delegated_partitions");
     delegate = evaluation::CreateGPUDelegate(&gpu_opts);
 #elif defined(REAL_IPHONE_DEVICE)
     TFLGpuDelegateOptions gpu_opts = {0};
