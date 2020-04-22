@@ -219,8 +219,6 @@ class Network(base_layer.Layer):
     self._maybe_create_attribute('_is_compiled', False)
     self._maybe_create_attribute('optimizer', None)
 
-    self._scope = None  # Never used.
-    self._reuse = None  # Never used.
     if context.executing_eagerly():
       self._graph = None
     else:
