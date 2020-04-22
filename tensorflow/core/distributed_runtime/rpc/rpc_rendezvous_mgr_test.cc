@@ -193,24 +193,6 @@ TEST_F(RpcRendezvousMgrTest, CancelAfterReceived) {
   delete cm;
 }
 
-TEST_F(RpcRendezvousMgrTest, CleanupAll) {
-  const Rendezvous::ParsedKey key = MakeKey(Rendezvous::CreateKey(
-      "/job:mnist/replica:1/task:2/cpu:0", 7890,
-      "/job:mnist/replica:1/task:2/cpu:1", "foo", FrameAndIter(0, 0)));
-  {
-    const int64 step_id = 123;
-    RemoteRendezvous* rendez = rmgr_.Find(step_id);
-    TF_ASSERT_OK(rendez->Initialize(&worker_session_));
-    core::ScopedUnref unref(rendez);
-    Rendezvous::Args args;
-    TF_ASSERT_OK(rendez->Send(key, args, V("peach"), false));
-    rmgr_.CleanupAll();
-    Tensor val(DT_STRING);
-    bool val_dead = false;
-    EXPECT_TRUE(errors::IsAborted(rendez->Recv(key, args, &val, &val_dead)));
-  }
-}
-
 class DummyDeviceContext : public DeviceContext {
  public:
   explicit DummyDeviceContext(int stream_id) : stream_id_(stream_id) {}

@@ -156,7 +156,8 @@ def set_intersection(a, b, validate_indices=True):
         ((1, 1, 0), 5),
         ((1, 1, 1), 6),
     ])
-    a = tf.SparseTensor(list(a.keys()), list(a.values()), dense_shape=[2,2,2])
+    a = tf.sparse.SparseTensor(list(a.keys()), list(a.values()),
+                               dense_shape=[2,2,2])
 
     # b = np.array([[{1}, {}], [{4}, {5, 6, 7, 8}]])
     b = collections.OrderedDict([
@@ -167,7 +168,8 @@ def set_intersection(a, b, validate_indices=True):
         ((1, 1, 2), 7),
         ((1, 1, 3), 8),
     ])
-    b = tf.SparseTensor(list(b.keys()), list(b.values()), dense_shape=[2, 2, 4])
+    b = tf.sparse.SparseTensor(list(b.keys()), list(b.values()),
+                               dense_shape=[2, 2, 4])
 
     # `tf.sets.intersection` is applied to each aligned pair of sets.
     tf.sets.intersection(a, b)
@@ -224,7 +226,8 @@ def set_difference(a, b, aminusb=True, validate_indices=True):
         ((1, 1, 0), 5),
         ((1, 1, 1), 6),
     ])
-    a = tf.SparseTensor(list(a.keys()), list(a.values()), dense_shape=[2, 2, 2])
+    a = tf.sparse.SparseTensor(list(a.keys()), list(a.values()),
+                               dense_shape=[2, 2, 2])
 
     # np.array([[{1, 3}, {2}], [{4, 5}, {5, 6, 7, 8}]])
     b = collections.OrderedDict([
@@ -238,7 +241,8 @@ def set_difference(a, b, aminusb=True, validate_indices=True):
         ((1, 1, 2), 7),
         ((1, 1, 3), 8),
     ])
-    b = tf.SparseTensor(list(b.keys()), list(b.values()), dense_shape=[2, 2, 4])
+    b = tf.sparse.SparseTensor(list(b.keys()), list(b.values()),
+                               dense_shape=[2, 2, 4])
 
     # `set_difference` is applied to each aligned pair of sets.
     tf.sets.difference(a, b)
@@ -302,7 +306,8 @@ def set_union(a, b, validate_indices=True):
         ((1, 1, 0), 5),
         ((1, 1, 1), 6),
     ])
-    a = tf.SparseTensor(list(a.keys()), list(a.values()), dense_shape=[2, 2, 2])
+    a = tf.sparse.SparseTensor(list(a.keys()), list(a.values()),
+                               dense_shape=[2, 2, 2])
 
     # [[{1, 3}, {2}], [{4, 5}, {5, 6, 7, 8}]]
     b = collections.OrderedDict([
@@ -316,7 +321,8 @@ def set_union(a, b, validate_indices=True):
         ((1, 1, 2), 7),
         ((1, 1, 3), 8),
     ])
-    b = tf.SparseTensor(list(b.keys()), list(b.values()), dense_shape=[2, 2, 4])
+    b = tf.sparse.SparseTensor(list(b.keys()), list(b.values()),
+                               dense_shape=[2, 2, 4])
 
     # `set_union` is applied to each aligned pair of sets.
     tf.sets.union(a, b)

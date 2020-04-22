@@ -29,6 +29,7 @@ import multiprocessing
 import os
 import subprocess
 import sys
+import sysconfig
 
 from distutils.command.build_ext import build_ext
 import numpy
@@ -142,6 +143,7 @@ def get_pybind_include():
     include_dirs = glob.glob('/usr/local/include/python3*')
   else:
     include_dirs = glob.glob('/usr/local/include/python2*')
+  include_dirs.append(sysconfig.get_path('include'))
   tmp_include_dirs = []
   pip_dir = os.path.join(TENSORFLOW_DIR, 'tensorflow', 'lite', 'tools',
                          'pip_package', 'gen')
@@ -160,7 +162,7 @@ LIB_TFLITE = 'tensorflow-lite'
 LIB_TFLITE_DIR = make_output('libdir')
 
 ext = Extension(
-    name='%s._interpreter_wrapper' % PACKAGE_NAME,
+    name='%s._pywrap_tensorflow_interpreter_wrapper' % PACKAGE_NAME,
     language='c++',
     sources=[
         'interpreter_wrapper/interpreter_wrapper.cc',

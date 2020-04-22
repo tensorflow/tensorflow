@@ -94,25 +94,14 @@ class GPUDeviceTest : public ::testing::Test {
 
   void CopyCPUToGPU(Tensor* cpu_tensor, Tensor* gpu_tensor, Device* device,
                     DeviceContext* device_context) {
-    Notification note;
-    device_context->CopyCPUTensorToDevice(cpu_tensor, device, gpu_tensor,
-                                          [&note](const Status& s) {
-                                            TF_ASSERT_OK(s);
-                                            note.Notify();
-                                          });
-    note.WaitForNotification();
+    TF_ASSERT_OK(device_context->CopyCPUTensorToDeviceSync(cpu_tensor, device,
+                                                           gpu_tensor));
   }
 
   void CopyGPUToCPU(Tensor* gpu_tensor, Tensor* cpu_tensor, Device* device,
                     DeviceContext* device_context) {
-    Notification note;
-    device_context->CopyDeviceTensorToCPU(gpu_tensor, /*tensor_name=*/"",
-                                          device, cpu_tensor,
-                                          [&note](const Status& s) {
-                                            TF_ASSERT_OK(s);
-                                            note.Notify();
-                                          });
-    note.WaitForNotification();
+    TF_ASSERT_OK(device_context->CopyDeviceTensorToCPUSync(
+        gpu_tensor, /*tensor_name=*/"", device, cpu_tensor));
   }
 };
 

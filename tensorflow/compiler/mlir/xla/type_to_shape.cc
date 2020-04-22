@@ -45,6 +45,17 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
   switch (type.getKind()) {
     case mlir::StandardTypes::BF16:
       return PrimitiveType::BF16;
+    case mlir::StandardTypes::Complex: {
+      mlir::Type element_ty = type.cast<mlir::ComplexType>().getElementType();
+      switch (element_ty.getKind()) {
+        case mlir::StandardTypes::F32:
+          return PrimitiveType::C64;
+        case mlir::StandardTypes::F64:
+          return PrimitiveType::C128;
+        default:
+          return PrimitiveType::PRIMITIVE_TYPE_INVALID;
+      }
+    }
     case mlir::StandardTypes::F16:
       return PrimitiveType::F16;
     case mlir::StandardTypes::F32:

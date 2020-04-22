@@ -87,6 +87,7 @@ class TpuBackend(xla_client.Backend):
     return _tpu_client.PyTpuBuffer.from_python(pyval, self.client, device)
 
   def compile(self, c_computation, compile_options):
+    compile_options = compile_options or xla_client.CompileOptions()
     options = _xla.ExecutableBuildOptions()
     options.num_replicas = compile_options.num_replicas
     options.num_partitions = compile_options.num_partitions
@@ -100,7 +101,8 @@ class TpuBackend(xla_client.Backend):
     return _tpu_client.TpuExecutable.Compile(c_computation,
                                              compile_options.argument_layouts,
                                              options, self.client,
-                                             compile_options.device_assignment)
+                                             compile_options.device_assignment,
+                                             compile_options.tuple_arguments)
 
   def get_default_device_assignment(self, num_replicas, num_partitions=None):
     if num_partitions is not None:

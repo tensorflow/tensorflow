@@ -23,8 +23,6 @@ message Operation {
   // future.
   int64 id = 1;
   string name = 2;
-  // TODO(b/150963957): Deprecate this.
-  repeated RemoteTensorHandle inputs = 3;
 
   message Input {
     oneof item {
@@ -52,6 +50,8 @@ message Operation {
   int64 func_step_id = 8;
   // Indicates whether the op is a function.
   bool is_function = 9;
+
+  reserved 3;
 }
 
 message QueueItem {
@@ -73,7 +73,12 @@ message QueueItem {
 }
 
 message QueueResponse {
+  // `shape` and `tensor` cannot be set in the same response.
+  // Shapes of output tensors for creating remote TensorHandles.
   repeated TensorShapeProto shape = 1;
+
+  // Output tensors of a remote function. Set when Operation.id is invalid.
+  repeated TensorProto tensor = 2;
 }
 
 message CreateContextRequest {

@@ -120,15 +120,11 @@ void EagerClusterFunctionLibraryRuntime::Run(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::LocalHandle handle, gtl::ArraySlice<Tensor> args,
     std::vector<Tensor>* rets, FunctionLibraryRuntime::DoneCallback done) {
-    FunctionLibraryRuntime::Options opts_copy = opts;
-    if (!opts_copy.op_id.has_value()) {
-      opts_copy.op_id = ctx_->RemoteMgr()->NextOpId();
-    }
-    std::vector<FunctionArg> function_args;
-    for (const auto& tensor : args) {
-      function_args.push_back(tensor);
-    }
-    Run(opts_copy, handle, function_args, rets, std::move(done));
+  std::vector<FunctionArg> function_args;
+  for (const auto& tensor : args) {
+    function_args.push_back(tensor);
+  }
+  Run(opts, handle, function_args, rets, std::move(done));
 }
 
 void EagerClusterFunctionLibraryRuntime::Run(
@@ -136,13 +132,6 @@ void EagerClusterFunctionLibraryRuntime::Run(
     FunctionLibraryRuntime::LocalHandle handle,
     gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done) {
-  if (!rets->empty()) {
-    // TODO(b/150963957): Support remote outputs which are passed as Tensors.
-    done(errors::Unimplemented(
-        "Not implemented. Users could set the output devices in "
-        "FunctionLibraryRuntime::Options to the default multi-device "
-        "function device as a workaround."));
-  }
   FunctionData* function_data = nullptr;
   {
     mutex_lock l(mu_);
@@ -165,9 +154,9 @@ void EagerClusterFunctionLibraryRuntime::Run(
 
   EagerOperation* op = function_data->op.get();
 
-  if (!opts.op_id.has_value()) {
-    done(
-        errors::Internal("op_id is not set for remote function: ", op->Name()));
+  if (!op->Inputs().empty()) {
+    done(errors::Internal("Inputs should not be set during instantiation."));
+    return;
   }
 
   eager::EnqueueRequest* request = new eager::EnqueueRequest;
@@ -187,7 +176,11 @@ void EagerClusterFunctionLibraryRuntime::Run(
   // The remote component function should use the same op_id as its parent
   // multi-device function's in order to get the global unique op_id generated
   // by the master context.
-  remote_op->set_id(opts.op_id.value());
+  if (opts.op_id.has_value()) {
+    remote_op->set_id(opts.op_id.value());
+  } else {
+    remote_op->set_id(kInvalidRemoteOpId);
+  }
   remote_op->set_is_function(true);
   remote_op->set_is_component_function(true);
   remote_op->set_func_step_id(opts.step_id);
@@ -195,23 +188,40 @@ void EagerClusterFunctionLibraryRuntime::Run(
   op->Attrs().FillAttrValueMap(remote_op->mutable_attrs());
   remote_op->set_device(function_data->target);
 
-  for (auto handle : op->Inputs()) {
-    handle->Ref();
-  }
-
   // StreamingEnqueueAsync may introduce a deadlock. When streaming RPC is
   // disabled, Run() returns when the remote function execution completes, which
   // might be blocked by a non-enqueued function execution.
   EnqueueResponse* response = new EnqueueResponse;
-  eager_client->EnqueueAsync(request, response,
-                             [op, request, response, done](const Status& s) {
-                               for (auto handle : op->Inputs()) {
-                                 handle->Unref();
-                               }
-                               done(s);
-                               delete request;
-                               delete response;
-                             });
+  eager_client->EnqueueAsync(
+      request, response,
+      [request, response, rets, done = std::move(done)](const Status& s) {
+        Status status = s;
+        auto cleanup = gtl::MakeCleanup([request, response, &status, &done] {
+          done(status);
+          delete request;
+          delete response;
+        });
+
+        if (!status.ok()) {
+          return;
+        }
+        if (response->queue_response_size() != 1) {
+          status.Update(errors::Internal(
+              "Expect that the size of response queue equals 1, but got: ",
+              response->queue_response_size()));
+          return;
+        }
+        for (const auto& tensor_proto : response->queue_response(0).tensor()) {
+          Tensor t;
+          if (t.FromProto(tensor_proto)) {
+            rets->push_back(std::move(t));
+          } else {
+            status.Update(errors::Internal("Could not convert tensor proto: ",
+                                           tensor_proto.DebugString()));
+            return;
+          }
+        }
+      });
 }
 
 void EagerClusterFunctionLibraryRuntime::CleanUp(

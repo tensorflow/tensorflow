@@ -391,13 +391,14 @@ class TestNode : public model::Node {
   }
 
   double OutputTimeLocked(std::vector<double>* input_times,
-                          std::map<string, double>* gradient) const override
-      TF_SHARED_LOCKS_REQUIRED(mu_) {
+                          absl::flat_hash_map<string, double>* gradient)
+      const override TF_SHARED_LOCKS_REQUIRED(mu_) {
     return 0;
   }
 
-  double TotalProcessingTimeLocked(std::map<string, double>* processing_times)
-      override TF_SHARED_LOCKS_REQUIRED(mu_) {
+  double TotalProcessingTimeLocked(
+      absl::flat_hash_map<string, double>* processing_times) override
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     return 0;
   }
 };
@@ -518,7 +519,7 @@ TEST(AsyncInterleaveManyGradientTest, Model) {
     async_interleave_many->remove_input(source2);
   });
   std::vector<double> input_times(1, input_time);
-  std::map<string, std::shared_ptr<Parameter>> parameters;
+  absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
   async_interleave_many->CollectTunableParameters(&parameters);
   async_interleave_many->record_element();
   async_interleave_many->add_processing_time(100);
@@ -530,7 +531,7 @@ TEST(AsyncInterleaveManyGradientTest, Model) {
   parameters[source1->long_name()]->value = 1;
 
   // Test gradient of own parameters.
-  std::map<string, double> gradient;
+  absl::flat_hash_map<string, double> gradient;
   double output_time =
       async_interleave_many->OutputTime(&input_times, &gradient);
   parameters[async_interleave_many->long_name()]->value += kParameterStep;
@@ -581,8 +582,8 @@ TEST_P(AsyncKnownRatioGradientTest, Model) {
   async_known_many->add_processing_time(300);
 
   // Test gradient of own parameters.
-  std::map<string, std::shared_ptr<Parameter>> parameters;
-  std::map<string, double> gradient;
+  absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
+  absl::flat_hash_map<string, double> gradient;
   async_known_many->CollectTunableParameters(&parameters);
   parameters[async_known_many->long_name()]->value = 1;
   parameters[source1->long_name()]->value = 1;
@@ -626,8 +627,8 @@ TEST(InterleaveManyGradientTest, Model) {
   async_known_many->record_element();
   async_known_many->add_processing_time(300);
   std::vector<double> input_times(1, input_time);
-  std::map<string, std::shared_ptr<Parameter>> parameters;
-  std::map<string, double> gradient;
+  absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
+  absl::flat_hash_map<string, double> gradient;
   interleave_many->CollectTunableParameters(&parameters);
   parameters[async_known_many->long_name()]->value = 1;
   double output_time = interleave_many->OutputTime(&input_times, &gradient);
@@ -656,8 +657,8 @@ TEST(KnownRatioGradientTest, Model) {
   async_known_many->record_element();
   async_known_many->add_processing_time(300);
   std::vector<double> input_times(1, input_time);
-  std::map<string, std::shared_ptr<Parameter>> parameters;
-  std::map<string, double> gradient;
+  absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
+  absl::flat_hash_map<string, double> gradient;
   known_many->CollectTunableParameters(&parameters);
   parameters[async_known_many->long_name()]->value = 1;
   double output_time = known_many->OutputTime(&input_times, &gradient);
@@ -686,8 +687,8 @@ TEST(UnknownRatioGradientTest, Model) {
   async_known_many->record_element();
   async_known_many->add_processing_time(300);
   std::vector<double> input_times(1, input_time);
-  std::map<string, std::shared_ptr<Parameter>> parameters;
-  std::map<string, double> gradient;
+  absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
+  absl::flat_hash_map<string, double> gradient;
   unknown_many->CollectTunableParameters(&parameters);
   parameters[async_known_many->long_name()]->value = 1;
   double output_time = unknown_many->OutputTime(&input_times, &gradient);
@@ -716,8 +717,8 @@ TEST(UnknownGradientTest, Model) {
   async_known_many->record_element();
   async_known_many->add_processing_time(300);
   std::vector<double> input_times(1, input_time);
-  std::map<string, std::shared_ptr<Parameter>> parameters;
-  std::map<string, double> gradient;
+  absl::flat_hash_map<string, std::shared_ptr<Parameter>> parameters;
+  absl::flat_hash_map<string, double> gradient;
   unknown->CollectTunableParameters(&parameters);
   parameters[async_known_many->long_name()]->value = 1;
   double output_time = unknown->OutputTime(&input_times, &gradient);
@@ -726,6 +727,34 @@ TEST(UnknownGradientTest, Model) {
   EXPECT_NEAR(gradient[async_known_many->long_name()],
               (new_output_time - output_time) / kParameterStep,
               kComparisonPrecision);
+}
+
+TEST(SnapshotTest, Model) {
+  std::shared_ptr<Node> root =
+      model::MakeUnknownNode({0, std::to_string(0), nullptr});
+  std::shared_ptr<Node> cur_node = root;
+
+  int64 num_nodes = 100;
+  for (int64 i = 1; i < num_nodes; i++) {
+    cur_node->add_input(
+        model::MakeUnknownNode({i, std::to_string(i), cur_node}));
+    cur_node = cur_node->inputs().front();
+  }
+
+  std::shared_ptr<Node> root_copy = root->Snapshot(nullptr);
+  cur_node = root;
+  std::shared_ptr<Node> cur_node_copy = root_copy;
+
+  for (int64 i = 0; i < num_nodes; i++) {
+    EXPECT_EQ(cur_node->id(), cur_node_copy->id());
+    EXPECT_EQ(cur_node->name(), cur_node_copy->name());
+    EXPECT_NE(cur_node.get(), cur_node_copy.get());
+
+    if (i < num_nodes - 1) {
+      cur_node = cur_node->inputs().front();
+      cur_node_copy = cur_node_copy->inputs().front();
+    }
+  }
 }
 }  // namespace
 }  // namespace model

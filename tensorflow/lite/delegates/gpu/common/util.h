@@ -24,24 +24,23 @@ namespace gpu {
 // @param n must be non negative
 // @param divisor must be greater than zero
 template <typename T, typename N>
-T IntegralDivideRoundUp(T n, N divisor) {
+T DivideRoundUp(T n, N divisor) {
   const T div = static_cast<T>(divisor);
   const T q = n / div;
   return n % div == 0 ? q : q + 1;
 }
 
 template <>
-inline uint3 IntegralDivideRoundUp(uint3 n, uint3 divisor) {
-  return uint3(IntegralDivideRoundUp(n.x, divisor.x),
-               IntegralDivideRoundUp(n.y, divisor.y),
-               IntegralDivideRoundUp(n.z, divisor.z));
+inline uint3 DivideRoundUp(uint3 n, uint3 divisor) {
+  return uint3(DivideRoundUp(n.x, divisor.x), DivideRoundUp(n.y, divisor.y),
+               DivideRoundUp(n.z, divisor.z));
 }
 
 // @param number or its components must be greater than zero
 // @param n must be greater than zero
 template <typename T, typename N>
 T AlignByN(T number, N n) {
-  return IntegralDivideRoundUp(number, n) * n;
+  return DivideRoundUp(number, n) * n;
 }
 
 }  // namespace gpu

@@ -43,17 +43,18 @@ constexpr llvm::StringRef kNestedModule = "_tpu_v1_compat_outlined";
 // Inlining the islands calling into the nested module that was outlined.
 // This is the end of the TPU bridge in V1 compatibility mode.
 struct TPUBridgeExecutorIslandInlining
-    : public ModulePass<TPUBridgeExecutorIslandInlining> {
-  void runOnModule() override;
+    : public PassWrapper<TPUBridgeExecutorIslandInlining,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
-void TPUBridgeExecutorIslandInlining::runOnModule() {
-  SymbolTable symbol_table(getModule());
+void TPUBridgeExecutorIslandInlining::runOnOperation() {
+  SymbolTable symbol_table(getOperation());
   Operation *nested_module = symbol_table.lookup(kNestedModule);
   if (!nested_module) return;
 
   InlinerInterface inliner(&getContext());
-  auto walk_result = getModule().walk([&](TF::PartitionedCallOp call_op) {
+  auto walk_result = getOperation().walk([&](TF::PartitionedCallOp call_op) {
     if (!call_op.f().getRootReference().startswith(kNestedModule))
       return WalkResult::advance();
     // This is a call we need to inline!
@@ -61,7 +62,7 @@ void TPUBridgeExecutorIslandInlining::runOnModule() {
                << "Found call to inline: " << *call_op.getOperation() << "\n");
 
     FuncOp called_func = dyn_cast_or_null<FuncOp>(
-        symbol_table.lookupSymbolIn(getModule(), call_op.f()));
+        symbol_table.lookupSymbolIn(getOperation(), call_op.f()));
 
     if (failed(inlineCall(inliner,
                           cast<CallOpInterface>(call_op.getOperation()),
@@ -80,7 +81,7 @@ void TPUBridgeExecutorIslandInlining::runOnModule() {
   Block &nested_block = nested_module->getRegion(0).front();
   for (FuncOp func_op :
        llvm::make_early_inc_range(nested_block.getOps<FuncOp>())) {
-    if (!symbol_table.lookupSymbolIn(getModule(), func_op.getName())) {
+    if (!symbol_table.lookupSymbolIn(getOperation(), func_op.getName())) {
       nested_block.getOperations().remove(func_op.getOperation());
       symbol_table.insert(func_op.getOperation());
     }
@@ -95,7 +96,7 @@ PassRegistration<TPUBridgeExecutorIslandInlining> tpu_pass(
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorTPUV1IslandInliningPass() {
   return std::make_unique<TPUBridgeExecutorIslandInlining>();
 }

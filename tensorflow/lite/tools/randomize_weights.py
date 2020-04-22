@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Randomize all weights in a tflite file.
+r"""Randomize all weights in a tflite file.
 
 Example usage:
-python randomize_weights.py foo.tflite foo_randomized.tflite
+python randomize_weights.py \
+  --input_tflite_file=foo.tflite \
+  --output_tflite_file=foo_randomized.tflite
 """
 
 from __future__ import absolute_import
@@ -51,12 +53,11 @@ def main(_):
   args = parser.parse_args()
 
   # Read the model
-  input_model = flatbuffer_utils.read_model(args.input_tflite_file)
+  model = flatbuffer_utils.read_model(args.input_tflite_file)
   # Invoke the randomize weights function
-  output_model = flatbuffer_utils.randomize_weights(input_model,
-                                                    args.random_seed)
+  flatbuffer_utils.randomize_weights(model, args.random_seed)
   # Write the model
-  flatbuffer_utils.write_model(output_model, args.output_tflite_file)
+  flatbuffer_utils.write_model(model, args.output_tflite_file)
 
 
 if __name__ == '__main__':

@@ -205,6 +205,48 @@ class EnqueueData(
         aggregation_weights=weights.values if weights is not None else None)
 
 
+class RaggedEnqueueData(
+    collections.namedtuple(
+        'RaggedEnqueueData',
+        ['embedding_indices', 'sample_splits', 'aggregation_weights'])):
+  """RaggedTensor Data to be enqueued through generate_enqueue_ops()."""
+
+  def __new__(cls,
+              embedding_indices,
+              sample_splits=None,
+              aggregation_weights=None):
+    """Data to be enqueued through generate_enqueue_ops().
+
+    Args:
+      embedding_indices: A rank 1 Tensor, indices into the embedding tables. It
+        corresponds to ids.values in embedding_lookup(), when ids is a
+        RaggedTensor. Both int32 and int64 are allowed and will be converted to
+        int32 internally.
+      sample_splits: A rank 1 Tensor specifying the break points for splitting
+        embedding_indices and aggregation_weights into rows. It corresponds to
+        ids.row_splits in embedding_lookup(), when ids is a RaggedTensor. Both
+        int32 and int64 are allowed and will be converted to int32 internally.
+      aggregation_weights: A rank 1 Tensor containing per training example
+        aggregation weights. It corresponds to the values field of a
+        RaggedTensor with the same row_splits as ids in embedding_lookup(), when
+        ids is a RaggedTensor.
+
+    Returns:
+      An RaggedEnqueueData tuple.
+
+    """
+    return super(RaggedEnqueueData,
+                 cls).__new__(cls, embedding_indices, sample_splits,
+                              aggregation_weights)
+
+  @staticmethod
+  def from_ragged_tensor(rg_tensor, weights=None):
+    return RaggedEnqueueData(
+        rg_tensor.values,
+        rg_tensor.row_splits,
+        aggregation_weights=weights.values if weights is not None else None)
+
+
 def get_enqueue_datas_list_from_sparse_tensors_list(sp_tensors_list):
   """Convenient function for generate_enqueue_ops().
 
@@ -225,6 +267,30 @@ def get_enqueue_datas_list_from_sparse_tensors_list(sp_tensors_list):
     enqueue_datas = collections.OrderedDict(
         (k, EnqueueData.from_sparse_tensor(v))
         for k, v in six.iteritems(sp_tensors))
+    enqueue_datas_list.append(enqueue_datas)
+  return enqueue_datas_list
+
+
+def get_enqueue_datas_list_from_ragged_tensors_list(rg_tensors_list):
+  """Convenient function for generate_enqueue_ops().
+
+  Args:
+    rg_tensors_list: a list of dictionary mapping from string of feature names
+      to RaggedTensor. Each dictionary is for one TPU core. Dictionaries for the
+      same host should be contiguous on the list.
+
+  Returns:
+    enqueue_datas_list: a list of dictionary mapping from string
+      of feature names to RaggedEnqueueData. Each dictionary is for one
+      TPU core. Dictionaries for the same host should be contiguous
+      on the list.
+
+  """
+  enqueue_datas_list = []
+  for rg_tensors in rg_tensors_list:
+    enqueue_datas = collections.OrderedDict(
+        (k, RaggedEnqueueData.from_ragged_tensor(v))
+        for k, v in six.iteritems(rg_tensors))
     enqueue_datas_list.append(enqueue_datas)
   return enqueue_datas_list
 
@@ -1159,7 +1225,12 @@ class TPUEmbedding(object):
                            slot_variables_by_table,
                            load_ops, retrieve_ops)
 
-  def generate_enqueue_ops(self, enqueue_datas_list, mode_override=None):
+  def generate_enqueue_ops(
+      self,
+      enqueue_datas_list,
+      mode_override=None,
+      ragged=False,
+  ):
     """Generate enqueue ops.
 
     Args:
@@ -1172,6 +1243,8 @@ class TPUEmbedding(object):
         'inference', 'training', 'backward_pass_only'}. When set to
         'unspecified', the mode set in TPUEmbeddingConfiguration is used,
         otherwise mode_override is used (optional).
+      ragged: If True, creates RaggedTensor enqueue ops rather than
+        SparseTensor.
 
     Returns:
       Ops to enqueue to TPU for embedding.
@@ -1182,12 +1255,22 @@ class TPUEmbedding(object):
             enqueue_datas,
             device_ordinal=i % self._num_cores_per_host,
             mode_override=mode_override,
+            ragged=ragged,
         ) for i, enqueue_datas in enumerate(enqueue_datas_list)
     ]
 
   def _validate_generate_enqueue_ops_enqueue_datas_list(self,
                                                         enqueue_datas_list):
     """Validate `enqueue_datas_list`."""
+
+    def _check_agreement(data, name, feature, enqueue_data):
+      """Helper function to check device agreement."""
+      if (data is not None and
+          data.device != enqueue_data.embedding_indices.device):
+        raise ValueError('Device of {0} does not agree with that of'
+                         'embedding_indices for feature {1}.'.format(
+                             name, feature))
+
     feature_set = set(self._feature_to_config_dict.keys())
     contiguous_device = None
     for i, enqueue_datas in enumerate(enqueue_datas_list):
@@ -1211,28 +1294,33 @@ class TPUEmbedding(object):
       for feature, enqueue_data in six.iteritems(enqueue_datas):
         combiner = self._table_to_config_dict[
             self._feature_to_config_dict[feature].table_id].combiner
-        if not isinstance(enqueue_data, EnqueueData):
-          raise ValueError('`enqueue_datas_list[{}]` has a feature that is '
-                           'not mapped to `EnqueueData`. `feature`: {}'.format(
-                               i, feature))
 
-        if enqueue_data.sample_indices is None and combiner:
-          logging.warn('No sample indices set for features %f table %f but '
-                       'combiner is set to %s.', feature,
-                       self._feature_to_config_dict[feature].table_id, combiner)
+        if isinstance(enqueue_data, EnqueueData):
+          if enqueue_data.sample_indices is None and combiner:
+            logging.warn(
+                'No sample indices set for features %f table %f but '
+                'combiner is set to %s.', feature,
+                self._feature_to_config_dict[feature].table_id, combiner)
+          _check_agreement(enqueue_data.sample_indices, 'sample_indices',
+                           feature, enqueue_data)
+          _check_agreement(enqueue_data.aggregation_weights,
+                           'aggregation_weights', feature, enqueue_data)
 
-        if (enqueue_data.sample_indices is not None and
-            enqueue_data.sample_indices.device !=
-            enqueue_data.embedding_indices.device):
+        elif isinstance(enqueue_data, RaggedEnqueueData):
+          if enqueue_data.sample_splits is None and combiner:
+            logging.warn(
+                'No sample splits set for features %f table %f but '
+                'combiner is set to %s.', feature,
+                self._feature_to_config_dict[feature].table_id, combiner)
+          _check_agreement(enqueue_data.sample_splits, 'sample_splits', feature,
+                           enqueue_data)
+          _check_agreement(enqueue_data.aggregation_weights,
+                           'aggregation_weights', feature, enqueue_data)
+        else:
           raise ValueError(
-              'Device of sample_indices does not agree with '
-              'that of embedding_indices for feature {}.'.format(feature))
-        if (enqueue_data.aggregation_weights is not None and
-            enqueue_data.aggregation_weights.device !=
-            enqueue_data.embedding_indices.device):
-          raise ValueError(
-              'Device of aggregation_weights does not agree with '
-              'that of embedding_indices for feature {}.'.format(feature))
+              '`enqueue_datas_list[{}]` has a feature that is not mapped to '
+              '`EnqueueData` or `RaggedEnqueueData`. `feature`: {}'.format(
+                  i, feature))
         # Check all features are on the same device.
         if device is None:
           device = enqueue_data.embedding_indices.device
@@ -1257,23 +1345,73 @@ class TPUEmbedding(object):
       else:
         contiguous_device = device
 
-  def _generate_enqueue_op(
-      self, enqueue_datas, device_ordinal, mode_override=None):
+  def _generate_enqueue_op(self,
+                           enqueue_datas,
+                           device_ordinal,
+                           mode_override=None,
+                           ragged=False):
+    """Creates op for enqueuing batch to TPU."""
     enqueue_data0 = list(enqueue_datas.values())[0]
     with ops.colocate_with(enqueue_data0.embedding_indices):
-      return tpu_ops.enqueue_tpu_embedding_sparse_tensor_batch(
-          device_ordinal=device_ordinal,
-          combiners=self._combiners,
-          mode_override=mode_override,
-          **self._format_for_tpu_embedding_sparse_tensor_batch(enqueue_datas)
-      )
+      if ragged:
+        # note that this is currently identical in behavior
+        return tpu_ops.enqueue_tpu_embedding_ragged_tensor_batch(
+            device_ordinal=device_ordinal,
+            combiners=self._combiners,
+            mode_override=mode_override,
+            **self._format_for_tpu_embedding_ragged_tensor_batch(enqueue_datas))
+      else:
+        return tpu_ops.enqueue_tpu_embedding_sparse_tensor_batch(
+            device_ordinal=device_ordinal,
+            combiners=self._combiners,
+            mode_override=mode_override,
+            **self._format_for_tpu_embedding_sparse_tensor_batch(enqueue_datas))
+
+  def _format_for_tpu_embedding_ragged_tensor_batch(self, enqueue_datas):
+    """Format sparse features for `enqueue_tpu_embedding_ragged_tensor_batch()`.
+
+    Args:
+      enqueue_datas: a `Dict` of `RaggedEnqueueData` objects for embedding.
+
+    Returns:
+      Dict of arguments for `enqueue_tpu_embedding_ragged_tensor_batch()`.
+    """
+
+    kwargs = {
+        'sample_splits': [],
+        'embedding_indices': [],
+        'aggregation_weights': [],
+        'table_ids': [],
+        'max_sequence_lengths': [],
+    }
+    int_zeros = array_ops.zeros((0,), dtype=dtypes.int64)
+    float_zeros = array_ops.zeros((0,), dtype=dtypes.float32)
+    for table_id, table in enumerate(self._table_to_features_dict):
+      features = self._table_to_features_dict[table]
+      for feature in features:
+        enqueue_data = enqueue_datas[feature]
+
+        kwargs['sample_splits'].append(
+            enqueue_data.sample_splits
+            if enqueue_data.sample_splits is not None else int_zeros)
+
+        kwargs['aggregation_weights'].append(
+            enqueue_data.aggregation_weights
+            if enqueue_data.aggregation_weights is not None else float_zeros)
+
+        kwargs['embedding_indices'].append(enqueue_data.embedding_indices)
+
+        kwargs['table_ids'].append(table_id)
+        kwargs['max_sequence_lengths'].append(
+            self._feature_to_config_dict[feature].max_sequence_length)
+
+    return kwargs
 
   def _format_for_tpu_embedding_sparse_tensor_batch(self, enqueue_datas):
     """Format sparse features for `enqueue_tpu_embedding_sparse_tensor_batch()`.
 
     Args:
-      enqueue_datas: a `Dict` of tensors for embedding. Can be sparse or
-      dense.
+      enqueue_datas: a `Dict` of `EnqueueData` objects for embedding.
 
     Returns:
       Dict of arguments for `enqueue_tpu_embedding_sparse_tensor_batch()`.
@@ -1962,8 +2100,7 @@ def _get_optimization_handler(optimization_parameters):
     return _ProximalYogiHandler(optimization_parameters)
   elif isinstance(optimization_parameters, StochasticGradientDescentParameters):
     return _StochasticGradientDescentHandler(optimization_parameters)
-  else:
-    return NotImplementedError()
+  return NotImplementedError()
 
 
 def _create_ordered_dict(d):

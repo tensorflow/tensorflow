@@ -79,8 +79,7 @@ void RemoveFakeSinks(FunctionDef* function_def) {
 
 Status ApplyRewrites(OpKernelContext* ctx,
                      const std::function<RewriterConfig(void)> config_factory,
-                     bool optimize_function_library, GraphDef* graph_def,
-                     string* output_node) {
+                     GraphDef* graph_def, string* output_node) {
   // Add an identity node as the fetch node, otherwise we might get 'placeholder
   // is both fed and fetched' errors in some cases when using input list with
   // placeholder dataset nodes.
@@ -117,8 +116,6 @@ Status ApplyRewrites(OpKernelContext* ctx,
   std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
       tensorflow::grappler::GrapplerItemFromMetaGraphDef(
           "graph", meta_graph_def, item_config);
-  grappler_item->optimization_options().optimize_function_library =
-      optimize_function_library;
   std::unordered_map<string, tensorflow::DeviceProperties> device_map;
   tensorflow::grappler::VirtualCluster cluster(device_map);
 
@@ -143,8 +140,7 @@ Status ApplyRewrites(OpKernelContext* ctx,
 
 Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
                       std::function<RewriterConfig(void)> config_factory,
-                      bool optimize_function_library, bool record_fingerprint,
-                      DatasetBase** rewritten_input) {
+                      bool record_fingerprint, DatasetBase** rewritten_input) {
   SerializationContext::Params params;
   std::vector<std::pair<string, Tensor>> input_list;
   params.input_list = &input_list;
@@ -166,9 +162,8 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
   }
 
   VLOG(3) << "Before graph rewrites: " << graph_def.DebugString();
-  TF_RETURN_IF_ERROR(ApplyRewrites(ctx, config_factory,
-                                   optimize_function_library, &graph_def,
-                                   &output_node));
+  TF_RETURN_IF_ERROR(
+      ApplyRewrites(ctx, config_factory, &graph_def, &output_node));
   VLOG(3) << "After graph rewrites: " << graph_def.DebugString();
 
   // Instantiate the optimized input pipeline by running the optimized graph

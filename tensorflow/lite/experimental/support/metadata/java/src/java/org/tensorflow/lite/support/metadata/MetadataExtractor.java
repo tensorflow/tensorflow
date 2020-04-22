@@ -25,6 +25,7 @@ import org.checkerframework.checker.nullness.qual.Nullable;
 import org.tensorflow.lite.DataType;
 import org.tensorflow.lite.Tensor.QuantizationParams;
 import org.tensorflow.lite.schema.Tensor;
+import org.tensorflow.lite.support.metadata.schema.ModelMetadata;
 import org.tensorflow.lite.support.metadata.schema.TensorMetadata;
 
 /**
@@ -96,6 +97,11 @@ public class MetadataExtractor {
     zipFile = createZipFile(buffer);
   }
 
+  /** Returns {@code true} if the model has metadata. Otherwise, returns {@code false}. */
+  public Boolean hasMetadata() {
+    return metadataInfo != null;
+  }
+
   /**
    * Gets the packed associated file with the specified {@code fileName}.
    *
@@ -152,6 +158,16 @@ public class MetadataExtractor {
    */
   public DataType getInputTensorType(int inputIndex) {
     return modelInfo.getInputTensorType(inputIndex);
+  }
+
+  /**
+   * Gets the root handler for the model metadata.
+   *
+   * @throws IllegalStateException if this model does not contain model metadata
+   */
+  public ModelMetadata getModelMetadata() {
+    assertMetadataInfo();
+    return metadataInfo.getModelMetadata();
   }
 
   /** Gets the count of output tensors in the model. */

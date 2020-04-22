@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/master.grpc.pb.h"
 #include "tensorflow/core/data/service/master.pb.h"
 #include "tensorflow/core/data/service/server_lib.h"
+#include "tensorflow/core/data/service/test_cluster.h"
 #include "tensorflow/core/data/service/test_util.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"
@@ -33,58 +34,6 @@ namespace tensorflow {
 namespace data {
 
 namespace {
-const char kProtocol[] = "grpc+local";
-
-// Parse the address from a string in the form "<protocol>://<address>".
-Status AddressFromTarget(const std::string& target, std::string* address) {
-  std::vector<std::string> parts = absl::StrSplit(target, "://");
-  if (parts.size() != 2) {
-    return errors::InvalidArgument("target ", target, " split into ",
-                                   parts.size(), " parts, not 2");
-  }
-  *address = parts[1];
-  return Status::OK();
-}
-
-class TestCluster {
- public:
-  explicit TestCluster(int num_workers) : num_workers_(num_workers) {}
-
-  Status Initialize() {
-    TF_RETURN_IF_ERROR(NewMasterServer(/*port=*/0, kProtocol, &master_));
-    TF_RETURN_IF_ERROR(master_->Start());
-    TF_RETURN_IF_ERROR(AddressFromTarget(master_->Target(), &master_address_));
-    workers_.reserve(num_workers_);
-    worker_addresses_.reserve(num_workers_);
-    for (int i = 0; i < num_workers_; ++i) {
-      TF_RETURN_IF_ERROR(AddWorker());
-    }
-    return Status::OK();
-  }
-
-  Status AddWorker() {
-    workers_.emplace_back();
-    TF_RETURN_IF_ERROR(NewWorkerServer(/*port=*/0, kProtocol, master_address_,
-                                       &workers_.back()));
-    TF_RETURN_IF_ERROR(workers_.back()->Start());
-    worker_addresses_.emplace_back();
-    TF_RETURN_IF_ERROR(AddressFromTarget(workers_.back()->Target(),
-                                         &worker_addresses_.back()));
-    return Status::OK();
-  }
-
-  std::string MasterAddress() { return master_address_; }
-
-  std::string WorkerAddress(int index) { return worker_addresses_[index]; }
-
- private:
-  int num_workers_;
-  std::unique_ptr<GrpcDataServer> master_;
-  std::string master_address_;
-  std::vector<std::unique_ptr<GrpcDataServer>> workers_;
-  std::vector<std::string> worker_addresses_;
-};
-
 Status RegisterDataset(MasterService::Stub* master_stub,
                        const GraphDef& dataset_graph, int64* dataset_id) {
   grpc_impl::ClientContext ctx;
@@ -99,25 +48,25 @@ Status RegisterDataset(MasterService::Stub* master_stub,
   return Status::OK();
 }
 
-Status BeginEpoch(MasterService::Stub* master_stub, int64 dataset_id,
-                  int64* epoch_id) {
+Status CreateJob(MasterService::Stub* master_stub, int64 dataset_id,
+                 int64* job_id) {
   grpc_impl::ClientContext ctx;
-  BeginEpochRequest req;
+  CreateJobRequest req;
   req.set_dataset_id(dataset_id);
-  BeginEpochResponse resp;
-  grpc::Status s = master_stub->BeginEpoch(&ctx, req, &resp);
+  CreateJobResponse resp;
+  grpc::Status s = master_stub->CreateJob(&ctx, req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to begin epoch", s);
   }
-  *epoch_id = resp.epoch_id();
+  *job_id = resp.job_id();
   return Status::OK();
 }
 
-Status GetTasks(MasterService::Stub* master_stub, int64 epoch_id,
+Status GetTasks(MasterService::Stub* master_stub, int64 job_id,
                 std::vector<TaskInfo>* tasks) {
   grpc_impl::ClientContext ctx;
   GetTasksRequest req;
-  req.set_epoch_id(epoch_id);
+  req.set_job_id(job_id);
   GetTasksResponse resp;
   grpc::Status s = master_stub->GetTasks(&ctx, req, &resp);
   if (!s.ok()) {
@@ -197,10 +146,10 @@ TEST(DataService, IterateDatasetOneWorker) {
   int64 dataset_id;
   TF_ASSERT_OK(
       RegisterDataset(master_stub.get(), test_case.graph_def, &dataset_id));
-  int64 epoch_id;
-  TF_ASSERT_OK(BeginEpoch(master_stub.get(), dataset_id, &epoch_id));
+  int64 job_id;
+  TF_ASSERT_OK(CreateJob(master_stub.get(), dataset_id, &job_id));
   std::vector<TaskInfo> tasks;
-  TF_ASSERT_OK(GetTasks(master_stub.get(), epoch_id, &tasks));
+  TF_ASSERT_OK(GetTasks(master_stub.get(), job_id, &tasks));
   ASSERT_EQ(tasks.size(), 1);
   ASSERT_EQ(tasks[0].worker_address(), cluster.WorkerAddress(0));
 
@@ -221,10 +170,10 @@ TEST(DataService, IterateDatasetTwoWorkers) {
   int64 dataset_id;
   TF_ASSERT_OK(
       RegisterDataset(master_stub.get(), test_case.graph_def, &dataset_id));
-  int64 epoch_id;
-  TF_ASSERT_OK(BeginEpoch(master_stub.get(), dataset_id, &epoch_id));
+  int64 job_id;
+  TF_ASSERT_OK(CreateJob(master_stub.get(), dataset_id, &job_id));
   std::vector<TaskInfo> tasks;
-  TF_ASSERT_OK(GetTasks(master_stub.get(), epoch_id, &tasks));
+  TF_ASSERT_OK(GetTasks(master_stub.get(), job_id, &tasks));
   ASSERT_EQ(tasks.size(), 2);
 
   // Each worker produces the full dataset.
@@ -247,13 +196,13 @@ TEST(DataService, AddWorkerMidEpoch) {
   int64 dataset_id;
   TF_ASSERT_OK(
       RegisterDataset(master_stub.get(), test_case.graph_def, &dataset_id));
-  int64 epoch_id;
-  TF_ASSERT_OK(BeginEpoch(master_stub.get(), dataset_id, &epoch_id));
+  int64 job_id;
+  TF_ASSERT_OK(CreateJob(master_stub.get(), dataset_id, &job_id));
   std::vector<TaskInfo> tasks;
-  TF_ASSERT_OK(GetTasks(master_stub.get(), epoch_id, &tasks));
+  TF_ASSERT_OK(GetTasks(master_stub.get(), job_id, &tasks));
   ASSERT_EQ(tasks.size(), 1);
   TF_ASSERT_OK(cluster.AddWorker());
-  TF_ASSERT_OK(GetTasks(master_stub.get(), epoch_id, &tasks));
+  TF_ASSERT_OK(GetTasks(master_stub.get(), job_id, &tasks));
   ASSERT_EQ(tasks.size(), 2);
 
   // Each worker produces the full dataset.

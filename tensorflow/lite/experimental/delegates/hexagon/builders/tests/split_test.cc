@@ -51,6 +51,7 @@ class SplitOpModel : public SingleOpModelWithHexagon {
   std::vector<int> outputs_;
 };
 
+template <typename integer_type, TensorType tensor_dtype>
 void CheckSplitBehavior(
     int axis, int num_splits, std::initializer_list<int> input_shape,
     std::initializer_list<int> output_shape,
@@ -65,44 +66,45 @@ void CheckSplitBehavior(
 
   const float kMin = std::min({0.0f, std::min(input_data)});
   const float kMax = std::max(input_data);
-  SplitOpModel const_m({TensorType_UINT8, input_shape, kMin, kMax},
-                       {TensorType_UINT8, output_shape, kMin, kMax}, num_splits,
+  SplitOpModel const_m({tensor_dtype, input_shape, kMin, kMax},
+                       {tensor_dtype, output_shape, kMin, kMax}, num_splits,
                        axis);
-  const_m.SetInput<uint8_t>(input_data);
+  const_m.SetInput<integer_type>(input_data);
   const_m.ApplyDelegateAndInvoke();
   for (int i = 0; i < num_splits; ++i) {
     EXPECT_THAT(
-        const_m.GetDequantizedOutput<uint8_t>(i),
-        ElementsAreArray(ArrayFloatNear(output_data[i], /*tolerance=*/0.1)))
+        const_m.GetDequantizedOutput<integer_type>(i),
+        ElementsAreArray(ArrayFloatNear(output_data[i], /*max_abs_error=*/0.1)))
         << debug(i);
     EXPECT_THAT(const_m.GetOutputShape(i), ElementsAreArray(output_shape))
         << debug(i);
   }
 }
 
-TEST(SplitOpModel, CheckFourDimSplits) {
-  CheckSplitBehavior(
+template <typename integer_type, TensorType tensor_dtype>
+void CheckFourDimSplitImpl() {
+  CheckSplitBehavior<integer_type, tensor_dtype>(
       /*axis=*/0, /*num_splits=*/2, {2, 2, 2, 2}, {1, 2, 2, 2},
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
       {
           {1, 2, 3, 4, 5, 6, 7, 8},
           {9, 10, 11, 12, 13, 14, 15, 16},
       });
-  CheckSplitBehavior(
+  CheckSplitBehavior<integer_type, tensor_dtype>(
       /*axis=*/1, /*num_splits=*/2, {2, 2, 2, 2}, {2, 1, 2, 2},
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
       {
           {1, 2, 3, 4, 9, 10, 11, 12},
           {5, 6, 7, 8, 13, 14, 15, 16},
       });
-  CheckSplitBehavior(
+  CheckSplitBehavior<integer_type, tensor_dtype>(
       /*axis=*/2, /*num_splits=*/2, {2, 2, 2, 2}, {2, 2, 1, 2},
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
       {
           {1, 2, 5, 6, 9, 10, 13, 14},
           {3, 4, 7, 8, 11, 12, 15, 16},
       });
-  CheckSplitBehavior(
+  CheckSplitBehavior<integer_type, tensor_dtype>(
       /*axis=*/3, /*num_splits=*/2, {2, 2, 2, 2}, {2, 2, 2, 1},
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
       {
@@ -111,14 +113,42 @@ TEST(SplitOpModel, CheckFourDimSplits) {
       });
 }
 
-TEST(SplitOpModel, CheckOneDimensionalSplit) {
-  CheckSplitBehavior(/*axis=*/0, /*num_splits=*/8, {8}, {1},
-                     {1, 2, 3, 4, 5, 6, 7, 8},
-                     {{1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}});
+TEST(SplitOpModel, CheckFourDimSplitImpl_UInt8) {
+  CheckSplitBehavior<uint8_t, TensorType_UINT8>(
+      /*axis=*/0, /*num_splits=*/8, {8}, {1}, {1, 2, 3, 4, 5, 6, 7, 8},
+      {{1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}});
 }
 
-TEST(SplitOpModel, CheckNegativeAxisSplit) {
-  CheckSplitBehavior(
+TEST(SplitOpModel, CheckFourDimSplitImpl_Int8) {
+  CheckSplitBehavior<int8_t, TensorType_INT8>(
+      /*axis=*/0, /*num_splits=*/8, {8}, {1}, {1, 2, 3, 4, 5, 6, 7, 8},
+      {{1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}});
+}
+
+TEST(SplitOpModel, CheckOneDimensionalSplit_UInt8) {
+  CheckSplitBehavior<uint8_t, TensorType_UINT8>(
+      /*axis=*/0, /*num_splits=*/8, {8}, {1}, {1, 2, 3, 4, 5, 6, 7, 8},
+      {{1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}});
+}
+
+TEST(SplitOpModel, CheckOneDimensionalSplit_Int8) {
+  CheckSplitBehavior<int8_t, TensorType_INT8>(
+      /*axis=*/0, /*num_splits=*/8, {8}, {1}, {1, 2, 3, 4, 5, 6, 7, 8},
+      {{1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}});
+}
+
+TEST(SplitOpModel, CheckNegativeAxisSplit_UInt8) {
+  CheckSplitBehavior<uint8_t, TensorType_UINT8>(
+      /*axis=*/-4, /*num_splits=*/2, {2, 2, 2, 2}, {1, 2, 2, 2},
+      {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+      {
+          {1, 2, 3, 4, 5, 6, 7, 8},
+          {9, 10, 11, 12, 13, 14, 15, 16},
+      });
+}
+
+TEST(SplitOpModel, CheckNegativeAxisSplit_Int8) {
+  CheckSplitBehavior<int8_t, TensorType_INT8>(
       /*axis=*/-4, /*num_splits=*/2, {2, 2, 2, 2}, {1, 2, 2, 2},
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
       {

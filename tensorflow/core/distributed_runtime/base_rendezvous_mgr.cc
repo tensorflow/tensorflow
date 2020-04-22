@@ -115,20 +115,6 @@ void BaseRendezvousMgr::Cleanup(int64 step_id) {
   }
 }
 
-void BaseRendezvousMgr::CleanupAll() {
-  std::vector<Rendezvous*> rendezs;
-  {
-    mutex_lock l(mu_);
-    for (const auto& entry : table_) {
-      rendezs.push_back(entry.second);
-    }
-    table_.clear();
-  }
-  for (auto rendez : rendezs) {
-    StartAbortRendevous(rendez, errors::Aborted("Shutdown"));
-  }
-}
-
 BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env, int64 step_id)
     : env_(env),
       step_id_(step_id),
@@ -272,9 +258,8 @@ void BaseRemoteRendezvous::SameWorkerRecvDone(
     return;
   }
 
-  // Note that it would be nice to cache the step_id here, but it's not
-  // available.
-  auto op_annotation = ScopedMemoryDebugAnnotation("SameWorkerRecvDone", 0);
+  ScopedMemoryDebugAnnotation op_annotation("SameWorkerRecvDone", step_id_,
+                                            "dynamic", in.dtype(), &in.shape());
   AllocatorAttributes attr = recv_args.alloc_attrs;
   attr.set_gpu_compatible(send_args.alloc_attrs.gpu_compatible() ||
                           recv_args.alloc_attrs.gpu_compatible());
@@ -323,7 +308,7 @@ void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
   DCHECK(is_initialized()) << "RecvAsync called when uninitialized (key: "
                            << parsed.FullKey() << ").";
 
-  auto op_annotation = ScopedMemoryDebugAnnotation("RecvAsync", 0);
+  ScopedMemoryDebugAnnotation op_annotation("RecvAsync", step_id_);
   // Are src and dst in the same worker?
   if (IsSameWorker(parsed.src, parsed.dst)) {
     // Recv the tensor from local_.

@@ -27,21 +27,26 @@ limitations under the License.
 
 namespace tensorflow {
 
-thread_local const char* pending_op_name = nullptr;
-thread_local int64 pending_step_id = 0;
+thread_local MemoryDebugAnnotation ScopedMemoryDebugAnnotation::annotation_;
 
 string AllocatorStats::DebugString() const {
   return strings::Printf(
-      "Limit:        %20lld\n"
-      "InUse:        %20lld\n"
-      "MaxInUse:     %20lld\n"
-      "NumAllocs:    %20lld\n"
-      "MaxAllocSize: %20lld\n",
+      "Limit:            %20lld\n"
+      "InUse:            %20lld\n"
+      "MaxInUse:         %20lld\n"
+      "NumAllocs:        %20lld\n"
+      "MaxAllocSize:     %20lld\n"
+      "Reserved:         %20lld\n"
+      "PeakReserved:     %20lld\n"
+      "LargestFreeBlock: %20lld\n",
       static_cast<long long>(this->bytes_limit ? *this->bytes_limit : 0),
       static_cast<long long>(this->bytes_in_use),
       static_cast<long long>(this->peak_bytes_in_use),
       static_cast<long long>(this->num_allocs),
-      static_cast<long long>(this->largest_alloc_size));
+      static_cast<long long>(this->largest_alloc_size),
+      static_cast<long long>(this->bytes_reserved),
+      static_cast<long long>(this->peak_bytes_reserved),
+      static_cast<long long>(this->largest_free_block_bytes));
 }
 
 constexpr size_t Allocator::kAllocatorAlignment;

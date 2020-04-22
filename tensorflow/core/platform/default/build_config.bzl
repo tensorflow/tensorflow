@@ -589,7 +589,10 @@ def tf_protos_all():
     )
 
 def tf_protos_profiler_impl():
-    return [clean_dep("//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl")]
+    return [
+        clean_dep("//tensorflow/core/profiler/protobuf:xplane_proto_cc_impl"),
+        clean_dep("//tensorflow/core/profiler:profiler_options_proto_cc_impl"),
+    ]
 
 def tf_protos_grappler_impl():
     return [clean_dep("//tensorflow/core/grappler/costs:op_performance_data_cc_impl")]
@@ -747,8 +750,8 @@ def tf_windows_aware_platform_deps(name):
 def tf_platform_deps(name, platform_dir = "//tensorflow/core/platform/"):
     return [platform_dir + "default:" + name]
 
-def tf_platform_alias(name):
-    return ["//tensorflow/core/platform/default:" + name]
+def tf_platform_alias(name, platform_dir = "//tensorflow/core/platform/"):
+    return [platform_dir + "default:" + name]
 
 def tf_logging_deps():
     return ["//tensorflow/core/platform/default:logging"]

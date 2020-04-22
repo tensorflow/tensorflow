@@ -1,6 +1,6 @@
 ifneq ($(filter xtensa_hifi, $(ALL_TAGS)),)
 
-    XTENSA_PATH = $(MAKEFILE_DIR)/../../kernels/xtensa_hifi
+    XTENSA_PATH = $(MAKEFILE_DIR)/downloads
 
     ifneq (,$(filter hifi4%, $(TARGET_ARCH)))
 

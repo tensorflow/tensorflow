@@ -76,6 +76,7 @@ tf_cc_test_gpu(
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/internal:profiler_interface",
+        "//tensorflow/core/profiler/lib:profiler_session",
         "//tensorflow/core/profiler/utils:tf_xplane_visitor",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
@@ -90,8 +91,9 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:platform_base",
+    ] + if_cuda_is_configured_compat([
         "//tensorflow/stream_executor/cuda:cupti_stub",
-    ],
+    ]),
 )
 
 tf_cuda_library(
@@ -102,8 +104,9 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cupti_interface",
+    ] + if_cuda_is_configured_compat([
         "//tensorflow/stream_executor/cuda:cupti_stub",
-    ],
+    ]),
 )
 
 tf_cuda_library(

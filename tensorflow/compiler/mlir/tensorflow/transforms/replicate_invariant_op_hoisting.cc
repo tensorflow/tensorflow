@@ -33,8 +33,11 @@ namespace mlir {
 namespace TFDevice {
 
 namespace {
+
+constexpr char kDeviceAttr[] = "device";
+
 struct ReplicateInvariantOpHoistingPass
-    : public FunctionPass<ReplicateInvariantOpHoistingPass> {
+    : public PassWrapper<ReplicateInvariantOpHoistingPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -109,6 +112,22 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
   }
 }
 
+// Check if op uses a device from a list of virtual devices.
+bool UsesVirtualDevice(const Optional<DictionaryAttr>& virtual_devices,
+                       Operation* operation) {
+  if (!virtual_devices.hasValue()) return false;
+
+  auto result = operation->walk([&](Operation* op) {
+    StringAttr op_device = op->getAttrOfType<StringAttr>(kDeviceAttr);
+    if (!op_device) return WalkResult::advance();
+
+    if (virtual_devices.getValue().get(op_device.getValue()))
+      return WalkResult::interrupt();
+    return WalkResult::advance();
+  });
+  return result.wasInterrupted();
+}
+
 // Checks if op and inner op operands are all replicate invariant.
 bool IsOpReplicateInvariant(Region* replicate_region, Operation* op) {
   auto ancestor_of_replicate = [&](Region* region) {
@@ -140,9 +159,13 @@ void HoistReplicateInvariantOps(tf_device::ReplicateOp replicate_op) {
   });
 
   Region* replicate_region = &replicate_op.body();
+  Optional<DictionaryAttr> virtual_device_list = replicate_op.devices();
   for (Operation& inner_op :
        llvm::make_early_inc_range(replicate_op.GetBody())) {
     if (llvm::isa<tf_device::ReturnOp>(inner_op)) continue;
+    // Skip hoisting if the inner op device attribute is a virtual device
+    // defined by tf_device.replicate.
+    if (UsesVirtualDevice(virtual_device_list, &inner_op)) continue;
 
     if (IsOpReplicateInvariant(replicate_region, &inner_op))
       inner_op.moveBefore(replicate_op);
@@ -155,7 +178,8 @@ void ReplicateInvariantOpHoistingPass::runOnFunction() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateInvariantOpHoistingPass() {
+std::unique_ptr<OperationPass<FuncOp>>
+CreateReplicateInvariantOpHoistingPass() {
   return std::make_unique<ReplicateInvariantOpHoistingPass>();
 }
 

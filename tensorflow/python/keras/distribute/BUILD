@@ -187,9 +187,12 @@ distribute_py_test(
     # shards more evenly.
     shard_count = 19,
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "no_oss",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
+        "notap",  # TODO(b/153671866)
         "notsan",
     ],
     deps = [
@@ -243,9 +246,11 @@ distribute_py_test(
     # shards more evenly.
     shard_count = 31,
     tags = [
+        "manual",
         "multi_and_single_gpu",
         "no_oss",  # b/136660639
         "no_windows_gpu",
+        "notap",  # TODO(b/153672562)
         "notsan",
     ],
     deps = [
@@ -261,9 +266,12 @@ distribute_py_test(
     main = "keras_stateful_lstm_model_correctness_test.py",
     shard_count = 4,
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "no_oss",
         "no_pip",
         "no_windows_gpu",
+        "notap",  # TODO(b/153392670)
         "notsan",
     ],
     deps = [
@@ -279,6 +287,7 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
         "no_windows_gpu",
         "notsan",
     ],

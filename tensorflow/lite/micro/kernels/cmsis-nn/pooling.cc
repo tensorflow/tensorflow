@@ -214,8 +214,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   return raw;
 }
 
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 #if defined(__ARM_FEATURE_DSP)
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
@@ -237,7 +235,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   node->user_data = buffer_idx;
   if (buffer_size > 0) {
-    context->RequestScratchBufferInArena(context, buffer_size, buffer_idx);
+    TF_LITE_ENSURE_STATUS(
+        context->RequestScratchBufferInArena(context, buffer_size, buffer_idx));
   } else {
     *buffer_idx = -1;
   }
@@ -302,18 +301,26 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace pooling
 
 TfLiteRegistration* Register_AVERAGE_POOL_2D() {
-  static TfLiteRegistration r = {
-      pooling::Init,
-      pooling::Free,
-      pooling::Prepare,
-      pooling::AverageEval,
-  };
+  static TfLiteRegistration r = {/*init=*/pooling::Init,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/pooling::Prepare,
+                                 /*invoke=*/pooling::AverageEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_MAX_POOL_2D() {
-  static TfLiteRegistration r = {pooling::Init, pooling::Free, pooling::Prepare,
-                                 pooling::MaxEval};
+  static TfLiteRegistration r = {/*init=*/pooling::Init,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/pooling::Prepare,
+                                 /*invoke=*/pooling::MaxEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

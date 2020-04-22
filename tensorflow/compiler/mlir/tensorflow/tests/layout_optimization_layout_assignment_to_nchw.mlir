@@ -146,3 +146,82 @@ func @transposeConv2DBackpropInput(
 
   return %0 : tensor<1x32x32x3xf32>
 }
+
+// CHECK-LABEL: func @transposeFusedBatchNormV3
+func @transposeFusedBatchNormV3(
+  %arg0: tensor<1x28x28x64xf32>,
+  %arg1: tensor<64xf32>
+) -> tensor<1x28x28x64xf32> {
+
+  // CHECK: %[[ARG_PERM:[0-9]*]] = "tf.Const"()
+  // CHECK-SAME: {value = dense<[0, 3, 1, 2]> : tensor<4xi32>}
+  // CHECK: %[[ARG_TRANSPOSE:[0-9]*]] = "tf.Transpose"(%arg0, %[[ARG_PERM]])
+
+  // CHECK: "tf.FusedBatchNormV3"
+  // CHECK-SAME: (%[[ARG_TRANSPOSE]], %arg1, %arg1, %arg1, %arg1)
+  // CHECK-SAME: data_format = "NCHW"
+  // CHECK-SAME: (tensor<1x64x28x28xf32>, tensor<64xf32>,
+  // CHECK-SAME: -> (tensor<1x64x28x28xf32>, tensor<64xf32>,
+
+  // CHECK: %[[RES_PERM:[0-9]*]] = "tf.Const"()
+  // CHECK-SAME: {value = dense<[0, 2, 3, 1]> : tensor<4xi32>}
+  // CHECK: %[[RES_TRANSPOSE:[0-9]*]] = "tf.Transpose"(%y, %[[RES_PERM]])
+  // CHECK: return %[[RES_TRANSPOSE]]
+
+  %y, %batch_mean, %batch_var, %reserve_1, %reserve_2, %reserve_3
+    = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg1, %arg1, %arg1)
+       {
+         data_format = "NHWC",
+         epsilon = 1.001 : f32,
+         exponential_avg_factor = 1.0 : f32,
+         is_training = true
+       }
+        : (tensor<1x28x28x64xf32>, tensor<64xf32>, tensor<64xf32>,
+           tensor<64xf32>, tensor<64xf32>)
+       -> (tensor<1x28x28x64xf32>, tensor<64xf32>, tensor<64xf32>,
+           tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
+
+  return %y : tensor<1x28x28x64xf32>
+}
+
+// CHECK-LABEL: func @transposeFusedBatchNormGradV3
+func @transposeFusedBatchNormGradV3(
+  %arg0: tensor<1x28x28x64xf32>,
+  %arg1: tensor<1x28x28x64xf32>,
+  %arg2: tensor<64xf32>
+) -> tensor<1x28x28x64xf32> {
+
+  // CHECK: %[[ARG_PERM:[0-9]*]] = "tf.Const"()
+  // CHECK-SAME: {value = dense<[0, 3, 1, 2]> : tensor<4xi32>}
+
+  // CHECK: %[[ARG0_TPOSE:[0-9]*]] = "tf.Transpose"(%arg0, %[[ARG_PERM]])
+  // CHECK: %[[ARG1_TPOSE:[0-9]*]] = "tf.Transpose"(%arg1, %[[ARG_PERM]])
+
+  // CHECK: "tf.FusedBatchNormGradV3"
+  // CHECK-SAME: (%[[ARG0_TPOSE]], %[[ARG1_TPOSE]], %arg2, %arg2, %arg2, %arg2)
+  // CHECK-SAME: data_format = "NCHW"
+  // CHECK-SAME: (tensor<1x64x28x28xf32>, tensor<1x64x28x28xf32>,
+  // CHECK-SAME: -> (tensor<1x64x28x28xf32>,
+
+  // CHECK: %[[RES_PERM:[0-9]*]] = "tf.Const"()
+  // CHECK-SAME: {value = dense<[0, 2, 3, 1]> : tensor<4xi32>}
+
+  // CHECK: %[[RES_TPOSE:[0-9]*]] = "tf.Transpose"
+  // CHECK-SAME: (%x_backprop, %[[RES_PERM]])
+  // CHECK: return %[[RES_TPOSE]]
+
+  %x_backprop, %scale_backprop, %offset_backprop, %reserve_1, %reserve_2
+    = "tf.FusedBatchNormGradV3"(%arg0, %arg1, %arg2, %arg2, %arg2, %arg2)
+       {
+         data_format = "NHWC",
+         epsilon = 1.001 : f32,
+         exponential_avg_factor = 1.0 : f32,
+         is_training = true
+       }
+        : (tensor<1x28x28x64xf32>, tensor<1x28x28x64xf32>,
+           tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
+       -> (tensor<1x28x28x64xf32>,
+           tensor<64xf32>, tensor<64xf32>, tensor<64xf32>, tensor<64xf32>)
+
+  return %x_backprop : tensor<1x28x28x64xf32>
+}

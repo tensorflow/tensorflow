@@ -30,7 +30,7 @@ attributes  {tf._input_shapes = ["tfshape$", "tfshape$"]} {
 
 func @cond_false(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32>
 attributes  {tf._input_shapes = ["tfshape$", "tfshape$"]} {
-  %0 = "xla_hlo.exp"(%arg1) : (tensor<f32>) -> tensor<f32>
+  %0 = "xla_hlo.exponential"(%arg1) : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }
 

@@ -10,6 +10,7 @@ tensorflow {
     *nsync_*;
     *stream_executor*;
     *xla*;
+    *PyInit_*;
   local:
     *;
 };

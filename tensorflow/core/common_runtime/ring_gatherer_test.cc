@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
-#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/test_collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
@@ -310,16 +309,13 @@ class RingGathererTest : public ::testing::Test {
           CHECK(actual.CopyFrom(*inst, inst->shape()));
           VLOG(1) << "actual " << actual.SummarizeValue(100);
         } else if (device_type_ == DEVICE_GPU) {
-          Notification note;
           Device* dev = instances_[di]->device_;
           auto* dev_info = dev->tensorflow_gpu_device_info();
           CHECK(dev_info);
-          dev_info->default_context->CopyDeviceTensorToCPU(
-              inst, "" /*tensor_name*/, dev, &actual, [&note](const Status& s) {
-                CHECK(s.ok());
-                note.Notify();
-              });
-          note.WaitForNotification();
+          CHECK(dev_info->default_context
+                    ->CopyDeviceTensorToCPUSync(inst, "" /*tensor_name*/, dev,
+                                                &actual)
+                    .ok());
         }
 
         auto alias = actual.template unaligned_flat<T>();
@@ -433,13 +429,10 @@ class RingGathererTest : public ::testing::Test {
         init_f(&cpu_tensor);
         auto* dev_info = device_->tensorflow_gpu_device_info();
         CHECK(dev_info);
-        Notification note;
-        dev_info->default_context->CopyCPUTensorToDevice(
-            &cpu_tensor, device_, &input_tensor_, [&note](const Status& s) {
-              CHECK(s.ok());
-              note.Notify();
-            });
-        note.WaitForNotification();
+        CHECK(dev_info->default_context
+                  ->CopyCPUTensorToDeviceSync(&cpu_tensor, device_,
+                                              &input_tensor_)
+                  .ok());
       } else {
         LOG(FATAL) << "Unsupported device_type " << device_type_;
       }

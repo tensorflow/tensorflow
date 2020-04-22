@@ -159,10 +159,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace circular_buffer
 
 TfLiteRegistration* Register_CIRCULAR_BUFFER() {
-  static TfLiteRegistration r = {};
-  r.free = circular_buffer::Free;
-  r.prepare = circular_buffer::Prepare;
-  r.invoke = circular_buffer::Eval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/circular_buffer::Free,
+                                 /*prepare=*/circular_buffer::Prepare,
+                                 /*invoke=*/circular_buffer::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

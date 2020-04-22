@@ -1,6 +1,6 @@
 // RUN: tf-opt -xla-legalize-tf-with-tf2xla=device-type=XLA_CPU_JIT %s | FileCheck %s --dump-input-on-failure
 
-// INVALID_DEVICE: tf-opt -xla-legalize-tf-with-tf2xla=device-type=INVALID_DEVICE %s | FileCheck %s --dump-input-on-failure
+// INVALID_DEVICE: xla-opt -xla-legalize-tf-with-tf2xla=device-type=INVALID_DEVICE %s | FileCheck %s --dump-input-on-failure
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
@@ -23,6 +23,24 @@ func @unknown_op(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: not_whitelisted_op
+func @not_whitelisted_op(%arg0: tensor<3xi32>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<?x?x?xf32> {
+  // CHECK: tf.TensorListReserve
+  %0 = "tf.TensorListReserve"(%arg0, %arg1) : (tensor<3xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<?x?x?xf32>>>
+  // CHECK: tf.TensorListGetItem
+  %1 = "tf.TensorListGetItem"(%0, %arg2, %arg0) : (tensor<!tf.variant<tensor<?x?x?xf32>>>, tensor<i32>, tensor<3xi32>) -> tensor<?x?x?xf32>
+  return %1 : tensor<?x?x?xf32>
+}
+
+// CHECK-LABEL: unranked_operand
+func @unranked_operand(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: tf.Abs
+  // expected-remark@+1 {{lowering requires static shaped operands}}
+  %0 = "tf.Abs"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+
+  return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: dynamic_operand
 func @dynamic_operand(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   // CHECK: tf.Abs
@@ -34,8 +52,8 @@ func @dynamic_operand(%arg0: tensor<?xf32>) -> tensor<?xf32> {
 
 // CHECK-LABEL: multiple_dialect_ops
 func @multiple_dialect_ops(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK: xla_hlo.neg
-  %0 = "xla_hlo.neg"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: xla_hlo.negate
+  %0 = "xla_hlo.negate"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   // CHECK: xla_hlo.abs
   %1 = "tf.Abs"(%0) : (tensor<2xf32>) -> tensor<2xf32>
 
@@ -88,6 +106,13 @@ func @constant(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 
   %0 = "tf.Inv"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
   return %0 : tensor<2xf32>
+}
+
+// CHECK-LABEL: func @greater
+func @greater(%arg0: tensor<2xi32>) -> tensor<2xi1> {
+  // CHECK-NEXT:  "xla_hlo.compare"(%arg0, %arg0) {comparison_direction = "GT"}
+  %0 = "tf.Greater"(%arg0, %arg0) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2xi1>
+  return %0: tensor<2xi1>
 }
 
 // TODO(hinsu): Add a test with variant type once one of the ops supporting

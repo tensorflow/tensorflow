@@ -363,7 +363,7 @@ class MemorySpaceAssignment {
   class Allocation {
    public:
     Allocation(HloPosition defining_position, MemorySpace memory_space,
-               Chunk chunk, int64 start_time, int64 end_time)
+               absl::optional<Chunk> chunk, int64 start_time, int64 end_time)
         : defining_position_(defining_position),
           memory_space_(memory_space),
           chunk_(chunk),
@@ -393,7 +393,7 @@ class MemorySpaceAssignment {
 
     const std::vector<HloUse>& uses() const { return uses_; }
     MemorySpace memory_space() const { return memory_space_; }
-    Chunk chunk() const { return chunk_; }
+    Chunk chunk() const { return *chunk_; }
     void set_start_time(int64 start_time) { start_time_ = start_time; }
     int64 start_time() const { return start_time_; }
     int64 end_time() const { return end_time_; }
@@ -405,10 +405,14 @@ class MemorySpaceAssignment {
                                                HloInstruction* tuple,
                                                ShapeIndex shape_index);
 
+    // Recursively create kGetTupleElement instructions if the defining position
+    // shape is not an array. Returns the new instruction that has array shape.
+    HloInstruction* AddGetTupleElements();
+
     HloPosition defining_position_;
     std::vector<HloUse> uses_;
     MemorySpace memory_space_;
-    Chunk chunk_;
+    absl::optional<Chunk> chunk_;
     int64 start_time_;
     int64 end_time_;
   };
@@ -417,8 +421,8 @@ class MemorySpaceAssignment {
   class CopyAllocation : public Allocation {
    public:
     CopyAllocation(const Allocation& prev_allocation, MemorySpace memory_space,
-                   Chunk chunk, int64 start_time, int64 end_time,
-                   int64 copy_done_schedule_before_time)
+                   absl::optional<Chunk> chunk, int64 start_time,
+                   int64 end_time, int64 copy_done_schedule_before_time)
         : Allocation(/*defining_position=*/{nullptr, {}}, memory_space, chunk,
                      start_time, end_time),
           prev_allocation_(prev_allocation),
@@ -476,11 +480,105 @@ class MemorySpaceAssignment {
   };
 
   using AllocationSequence = std::vector<std::unique_ptr<Allocation>>;
-  struct ValueAndAllocationSequence {
-    const HloValue* value;
-    AllocationSequence sequence;
+  // AllocationValue is used to break up HloValues for each non-trivial position
+  // (trivial positions are considered Tuple, GetTupleElement, and Bitcast). An
+  // HloValue may include positions and uses that alias with each other across
+  // multiple computations. We use this class to break these HloValues such that
+  // every AllocationValue has one defining position (that may alias with other
+  // AllocationValues). The uses field of the AllocationValue contains only the
+  // direct uses of the AllocationValue's defining position.
+  //
+  // For example, consider the following HLO snippet:
+  //
+  // Body {
+  //   body_param = (f32[4,3]{1,0}, f32[]) parameter(0)
+  //   get-tuple-element.3 = f32[4,3]{1,0} get-tuple-element(body_param),
+  //   index=0
+  //   ...
+  //   ROOT tuple = (f32[4,3]{1,0}, f32[]) tuple(get-tuple-element.3, ...)
+  // }
+  //
+  // Cond {
+  //   cond_param = (f32[4,3]{1,0}, f32[]) parameter(0)
+  //   ...
+  // }
+  //
+  // add.4 = f32[4,3]{1,0} add(...)
+  // tuple.1 = (f32[4,3]{1,0}, f32[]) tuple(add.4, ...)
+  // while = (f32[4,3]{1,0}, f32[]) while(tuple.1), body=Body, condition=Cond
+  // get-tuple-element.5 = f32[4,3]{1,0} get-tuple-element(while), index=0
+  // add.5 = f32[4,3]{1,0} add(get-tuple-element.5, ...)
+  //
+  // This contains an HloValue that looks like the following:
+  // positions:
+  //  add.4
+  //  body_param {0}
+  //  get-tuple-element.3
+  //  tuple {0}
+  //  cond_param {0}
+  //  tuple.1 {0}
+  //  while {0}
+  //  get-tuple-element.5
+  // uses:
+  //  add.1, operand 0
+  //  tuple, operand 0
+  //  while, operand 0 {0}
+  //  add.5, operand 0
+  //
+  // We break this HloValue up into the following AllocationValues for each
+  // non-trivial position:
+  // AllocationValue1: computation = Entry
+  //  position:
+  //   add.4
+  //  uses:
+  //   while, operand 0 {0}
+  // AllocationValue2: computation = Cond
+  //  position:
+  //   cond_param {0}
+  //  uses:
+  // AllocationValue3: computation = Body
+  //  position:
+  //   body_param {0}
+  //  uses:
+  //   add.1, operand 0
+  //   tuple, operand 0
+  // AllocationValue4: computation = Entry
+  //  position:
+  //   while {0}
+  //  uses:
+  //   add.5, operand 0
+  class AllocationValue {
+   public:
+    AllocationValue(const HloValue* value, const HloPosition& position)
+        : value_(value), defining_position_(position) {}
+
+    const HloPosition& defining_position() const { return defining_position_; }
+    const HloInstruction* defining_instruction() const {
+      return defining_position().instruction;
+    }
+    const std::vector<HloUse>& uses() const { return uses_; }
+    const std::vector<int64>& use_times() const { return use_times_; }
+    const HloValue* value() const { return value_; }
+    const HloComputation* computation() const {
+      return defining_instruction()->parent();
+    }
+    AllocationSequence* allocation_sequence() { return &allocation_sequence_; }
+
+    void AddUse(const HloUse& use, int64 use_time) {
+      uses_.push_back(use);
+      use_times_.push_back(use_time);
+    }
+
+    std::string ToString() const;
+    std::string ToShortString() const;
+
+   private:
+    const HloValue* value_;
+    HloPosition defining_position_;
+    std::vector<HloUse> uses_;
+    std::vector<int64> use_times_;
+    AllocationSequence allocation_sequence_;
   };
-  using AllocationSequenceList = std::vector<ValueAndAllocationSequence>;
 
   // Runs the MemorySpaceAssignment pass.
   static StatusOr<std::unique_ptr<PresetAssignments>> Run(
@@ -497,6 +595,13 @@ class MemorySpaceAssignment {
   // Verify that the memory space assignment is free of overlapping buffers and
   // export heap simulator trace to be used by buffer_assignment.
   Status VerifyAndExportHeapSimulatorTrace();
+
+ protected:
+  // Finds an AllocationSequence for placing buffers in alternate memory using
+  // the AlternateMemoryBestFitHeap algorithm. Must be set before Process() is
+  // called.
+  Status FindAllocationSequence(const HloLiveRange& hlo_live_range,
+                                const HloAliasAnalysis& alias_analysis);
 
  private:
   MemorySpaceAssignment(HloModule* module, Options options,
@@ -545,7 +650,7 @@ class MemorySpaceAssignment {
   Options options_;
   std::vector<HloInstruction*> flattened_instructions_;
   absl::flat_hash_set<const HloComputation*> computations_in_schedule_;
-  AllocationSequenceList allocation_sequence_list_;
+  AllocationSequence allocations_;
   std::unique_ptr<PresetAssignments> preset_assignments_;
 
   // These maps hold vectors of new instructions that need to be scheduled after
@@ -562,6 +667,7 @@ class MemorySpaceAssignment {
 struct RequiredMemoryAssignment {
   MemorySpaceAssignment::MemorySpace memory_space;
   int64 time;
+  absl::optional<HeapSimulator::Chunk> chunk;
 };
 
 // A struct representing an asynchronous copy with its logical start and end
@@ -614,14 +720,15 @@ class AsynchronousCopyOrdering {
 class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
  public:
   using MemorySpace = MemorySpaceAssignment::MemorySpace;
+  using AllocationValue = MemorySpaceAssignment::AllocationValue;
 
   AlternateMemoryBestFitHeap(
-      MemorySpaceAssignment::AllocationSequenceList* allocation_sequence_list,
+      MemorySpaceAssignment::AllocationSequence* allocations,
       const MemorySpaceAssignment::Options& options,
       const HloAliasAnalysis& alias_analysis,
       const HloLiveRange& hlo_live_range)
       : GlobalDecreasingSizeBestFitHeap(options.alignment_in_bytes),
-        allocation_sequence_list_(allocation_sequence_list),
+        allocations_(allocations),
         options_(options),
         alias_analysis_(alias_analysis),
         hlo_live_range_(hlo_live_range) {
@@ -632,7 +739,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   }
 
   // Allocates a buffer in preferred memory with whole program lifetime and
-  // enables prefetching prefech_candidate from default memory across program
+  // enables prefetching prefetch_candidate from default memory across program
   // boundaries.
   void AllocateCrossProgramPrefetchBuffer(
       HloModule* module, absl::optional<BufferInterval> prefetch_candidate);
@@ -660,12 +767,11 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   struct AllocationRequest {
     int64 start_time;
     int64 end_time;
-    const std::vector<int64>* use_times;
     int64 latest_prefetch_time;
     int64 size;
+    absl::optional<int64> preferred_offset;
     HloUse use;
-    const HloValue* buffer;
-    MemorySpaceAssignment::AllocationSequence* allocations;
+    MemorySpaceAssignment::AllocationValue* allocation_value;
   };
 
   // Given an allocation sequence, returns the live allocation at time with a
@@ -674,14 +780,21 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   static MemorySpaceAssignment::Allocation* GetLiveAllocationAt(
       const MemorySpaceAssignment::AllocationSequence& allocations, int64 time);
 
-  // Returns true if a buffer is required to be in default memory at a
-  // particular time. A buffer may be required to be in default memory because
-  // it is a parameter in default memory or an ouput in default memory.
-  bool RequiredInDefaultMemory(const HloValue* buffer, int64 time) const;
+  // Returns the required assignment at a particular time, if available.
+  absl::optional<RequiredMemoryAssignment> RequiredMemoryAssignmentAt(
+      const HloValue* buffer, int64 time) const;
 
   // Returns true if this buffer is allowed to be placed in the alternate
   // memory.
   bool IsIntervalAllowedInAlternateMemory(const BufferInterval& interval) const;
+
+  // Returns true if the use is allowed in the alternate memory.
+  bool IsUseAllowedInAlternateMemory(const HloUse& use) const;
+
+  // Given an HloValue, creates AllocationValue objects and corresponding
+  // AllocationSequences and appends them into allocation_sequence_list_.
+  void CreateAllocationValues(const HloValue* value,
+                              std::vector<AllocationValue>* allocation_values);
 
   // Finds an allocation for the given interval.
   //
@@ -715,9 +828,20 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // availability if no preferred offset is given, or at the preferred_offset if
   // it is given.
   absl::optional<ChunkCandidate> FindBestChunkCandidate(
-      int64 end_time, const std::vector<int64>& use_times,
-      absl::optional<int64> preferred_offset,
+      const AllocationRequest& request, absl::optional<int64> preferred_offset,
       BufferInterval* alternate_mem_interval) const;
+
+  // At the end of an allocation with a sequential call (while, conditional, and
+  // call), this function adds the necessary aliased assignments within the
+  // called computations.
+  void AddAliasedRequiredAssignmentsForSequentialCall(
+      const HloUse& use,
+      const MemorySpaceAssignment::Allocation* aliased_allocation);
+
+  // Propagates aliased required assignment for a given position.
+  void AddAliasedRequiredAssignment(
+      const HloInstruction* instruction, ShapeIndex index,
+      const MemorySpaceAssignment::Allocation* aliased_allocation);
 
   // Adds input and outputs as required assignments.
   void AddInputAndOutputRequiredAssignments();
@@ -734,7 +858,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   std::vector<const BufferInterval*> GetSortedColocatedIntervals(
       const BufferInterval& interval) const;
 
-  // Since the allocations are recorded to the AllocationSequenceList, we don't
+  // Since the allocations are recorded to the AllocationSequence, we don't
   // maintain result_ in GlobalDecreasingSizeBestFitHeap. Override AddToChunkMap
   // to avoid unnecessarily adding the chunk to the chunk map.
   void AddToChunkMap(const HloValue* buffer, Chunk chunk) override {}
@@ -749,8 +873,9 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
 
   // Adds an asynchronous copy to the allocations.
   void AddAsyncCopy(const MemorySpaceAssignment::Allocation& prev_allocation,
-                    MemorySpace memory_space, Chunk chunk, int64 start_time,
-                    int64 end_time, int64 copy_done_schedule_before_time,
+                    MemorySpace memory_space, absl::optional<Chunk> chunk,
+                    int64 start_time, int64 end_time,
+                    int64 copy_done_schedule_before_time,
                     MemorySpaceAssignment::AllocationSequence* allocations);
 
   // This method is used for committing the chunk candidate but adding it to
@@ -768,7 +893,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
     return options_.max_size_in_bytes - reserved_in_bytes_;
   }
 
-  MemorySpaceAssignment::AllocationSequenceList* allocation_sequence_list_;
+  MemorySpaceAssignment::AllocationSequence* allocations_;
   const MemorySpaceAssignment::Options& options_;
   const HloAliasAnalysis& alias_analysis_;
   const HloLiveRange& hlo_live_range_;
@@ -784,6 +909,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       required_assignments_;
   // Number of bytes reserved in alternate memory space.
   int64 reserved_in_bytes_ = 0;
+  int64 global_max_time_;
 };
 
 }  // namespace xla

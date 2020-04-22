@@ -172,7 +172,22 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_MAX_POOL_2D:
+    case BuiltinOperator_AVERAGE_POOL_2D:
+      if (op_sig.input_types.at(0) == TensorType_INT16 &&
+          op_sig.output_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
+
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_TRANSPOSE:
+      if (op_sig.options.single_input_op.num_dims > 4) {
+        return 4;
+      }
       // If the op takes bool input, it is version 3.
       if (op_sig.input_types.at(0) == TensorType_BOOL) {
         return 3;
@@ -293,7 +308,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_STRIDED_SLICE:
-      if (op_sig.options.strided_slice.num_dims > 4) {
+      if (op_sig.options.single_input_op.num_dims > 4) {
         return 4;
       }
       // If the op takes bool input, it is version 3.
@@ -352,7 +367,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_BATCH_TO_SPACE_ND:
-      if (op_sig.options.space_batch.num_dims != 4) {
+      if (op_sig.options.single_input_op.num_dims != 4) {
         return 3;
       }
       if (op_sig.input_types.at(0) == TensorType_INT8) {
@@ -370,10 +385,42 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
-    case BuiltinOperator_AVERAGE_POOL_2D:
+    case BuiltinOperator_GATHER_ND:
+      if (!op_sig.input_types.empty() &&
+          op_sig.input_types.at(0) == TensorType_STRING) {
+        return 2;
+      }
+      return 1;
+
+    case BuiltinOperator_DIV:
+      if (op_sig.options.broadcast.need_broadcast &&
+          op_sig.options.broadcast.num_dims > 4) {
+        return 2;
+      }
+      return 1;
+
+    case BuiltinOperator_FILL:
+      if (op_sig.input_types.size() >= 2 &&
+          (op_sig.input_types.at(1) == TensorType_BOOL ||
+           op_sig.input_types.at(1) == TensorType_STRING)) {
+        return 2;
+      }
+      return 1;
+
+    case BuiltinOperator_EQUAL:
+    case BuiltinOperator_NOT_EQUAL:
+      if (!op_sig.input_types.empty()) {
+        if (op_sig.input_types.at(0) == TensorType_STRING) {
+          return 3;
+        }
+        if (op_sig.input_types.at(0) == TensorType_INT8) {
+          return 2;
+        }
+      }
+      return 1;
+
     case BuiltinOperator_ADD:
     case BuiltinOperator_CONCATENATION:
-    case BuiltinOperator_MAX_POOL_2D:
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
     case BuiltinOperator_SOFTMAX:
@@ -391,8 +438,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_ARG_MAX:
     case BuiltinOperator_ARG_MIN:
-    case BuiltinOperator_EQUAL:
-    case BuiltinOperator_NOT_EQUAL:
     case BuiltinOperator_GREATER:
     case BuiltinOperator_GREATER_EQUAL:
     case BuiltinOperator_LESS:
@@ -402,7 +447,11 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
         return 2;
       }
       return 1;
-
+    case BuiltinOperator_MIRROR_PAD:
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
     default:
       return 1;
   }
@@ -504,16 +553,15 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       }
     } break;
     // TODO(b/150176627): Add tests for GetOpSignature.
-    case BuiltinOperator_STRIDED_SLICE: {
-      op_sig.options.strided_slice.num_dims = GetNumDims(subgraph, op, 0);
-    } break;
-
+    case BuiltinOperator_STRIDED_SLICE:
     case BuiltinOperator_SPACE_TO_BATCH_ND:
-    case BuiltinOperator_BATCH_TO_SPACE_ND: {
-      op_sig.options.space_batch.num_dims = GetNumDims(subgraph, op, 0);
+    case BuiltinOperator_BATCH_TO_SPACE_ND:
+    case BuiltinOperator_TRANSPOSE: {
+      op_sig.options.single_input_op.num_dims = GetNumDims(subgraph, op, 0);
     } break;
 
     case BuiltinOperator_SUB:
+    case BuiltinOperator_DIV:
     case BuiltinOperator_MAXIMUM:
     case BuiltinOperator_MINIMUM: {
       op_sig.options.broadcast.need_broadcast =

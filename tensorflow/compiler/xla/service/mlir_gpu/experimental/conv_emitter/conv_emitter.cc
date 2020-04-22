@@ -93,7 +93,8 @@ ShapeInfo GetShapeInfo(
   }
 
   shape_info.affine_map = mlir::AffineMap::get(
-      /*dimCount=*/2 + spatial_dims.size(), /*symbolCount=*/0, affine_exprs);
+      /*dimCount=*/2 + spatial_dims.size(), /*symbolCount=*/0, affine_exprs,
+      builder.getContext());
 
   shape_info.element_type = [&] {
     switch (shape.element_type()) {
@@ -315,9 +316,9 @@ StatusOr<InitialMlirConvAnchors> CreateNaiveMlirConv(
         builder.createOrFold<mlir::AffineLoadOp>(
             location, input,
             mlir::AffineMap(input_shape_info.affine_map)
-                .compose(
-                    mlir::AffineMap::get(/*dimCount=*/2 + num_spatial_dims * 2,
-                                         /*symbolCount=*/0, input_indices)),
+                .compose(mlir::AffineMap::get(
+                    /*dimCount=*/2 + num_spatial_dims * 2,
+                    /*symbolCount=*/0, input_indices, builder.getContext())),
             input_vars),
         builder.getF32Type());
   }();

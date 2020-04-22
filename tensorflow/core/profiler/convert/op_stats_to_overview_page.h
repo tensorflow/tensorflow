@@ -31,6 +31,7 @@ namespace profiler {
 
 void SetCommonRecommendation(const string& input_classification,
                              const string& input_statement,
+                             const string& output_statement,
                              HardwareType hardware_type,
                              OverviewPageRecommendation* re);
 

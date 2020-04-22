@@ -1,12 +1,12 @@
-// RUN: tf-opt -hlo-legalize-to-lhlo %s -o - | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt -hlo-legalize-to-lhlo %s -o - | FileCheck %s --dump-input-on-failure
 
 // CHECK-LABEL: func @attrs
 func @attrs_copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
-  %tensor_result = "xla_hlo.exp"(%tensor_operand)
+  %tensor_result = "xla_hlo.exponential"(%tensor_operand)
       {some_attr_1 = "exp.1", some_attr_2 = dense<1> : tensor<1xi64>}
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
-  // CHECK: "xla_lhlo.exp"(%{{.*}}, %{{.*}}) {some_attr_1 = "exp.1", some_attr_2 = dense<1> : tensor<1xi64>}
+  // CHECK: "xla_lhlo.exponential"(%{{.*}}, %{{.*}}) {some_attr_1 = "exp.1", some_attr_2 = dense<1> : tensor<1xi64>}
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }
@@ -83,9 +83,9 @@ func @copy(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 // CHECK-LABEL: func @exp
 func @exp(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
-  %tensor_result = "xla_hlo.exp"(%tensor_operand)
+  %tensor_result = "xla_hlo.exponential"(%tensor_operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
-  // CHECK: "xla_lhlo.exp"(%{{.*}}, %{{.*}})
+  // CHECK: "xla_lhlo.exponential"(%{{.*}}, %{{.*}})
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }
@@ -146,14 +146,16 @@ func @broadcast(%operand: memref<5xf32>, %result: memref<10x5xf32>) {
 
 // -----
 
+func @external_func() -> tensor<3xi64>
+
 // CHECK-LABEL: func @dyn_broadcast
 func @dyn_broadcast(%operand: memref<?x?xf32>) {
   %tensor_operand = tensor_load %operand : memref<?x?xf32>
-  %shape = "compute.shape"() : () -> tensor<3xi64>
+  %shape = call @external_func() : () -> tensor<3xi64>
   %tensor_result = "xla_hlo.dynamic_broadcast_in_dim"(%tensor_operand, %shape)
       {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>}
         : (tensor<?x?xf32>, tensor<3xi64>) -> tensor<?x?x?xf32>
-  // CHECK: %[[SHAPE:.*]] = "compute.shape"()
+  // CHECK: %[[SHAPE:.*]] = call @external_func()
   // CHECK: %[[C0:.*]] = constant 0 : index
   // CHECK: %[[EL0:.*]] = extract_element %[[SHAPE]][%[[C0]]] : tensor<3xi64>
   // CHECK: %[[IC0:.*]]  = index_cast %[[EL0]] : i64 to index
@@ -222,9 +224,9 @@ func @convert(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 // CHECK-LABEL: func @cos
 func @cos(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
-  %tensor_result = "xla_hlo.cos"(%tensor_operand)
+  %tensor_result = "xla_hlo.cosine"(%tensor_operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
-  // CHECK: "xla_lhlo.cos"(%{{.*}}, %{{.*}})
+  // CHECK: "xla_lhlo.cosine"(%{{.*}}, %{{.*}})
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }
@@ -234,9 +236,9 @@ func @cos(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 // CHECK-LABEL: func @neg
 func @neg(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>
-  %tensor_result = "xla_hlo.neg"(%tensor_operand)
+  %tensor_result = "xla_hlo.negate"(%tensor_operand)
       : (tensor<2x2xf32>) -> tensor<2x2xf32>
-  // CHECK: "xla_lhlo.neg"(%{{.*}}, %{{.*}})
+  // CHECK: "xla_lhlo.negate"(%{{.*}}, %{{.*}})
   tensor_store %tensor_result, %result : memref<2x2xf32>
   return
 }

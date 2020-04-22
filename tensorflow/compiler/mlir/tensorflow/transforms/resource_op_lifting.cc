@@ -131,8 +131,9 @@ namespace {
 //   return %arg0
 // }
 //
-struct ResourceOpLiftingPass : public ModulePass<ResourceOpLiftingPass> {
-  void runOnModule() override;
+struct ResourceOpLiftingPass
+    : public PassWrapper<ResourceOpLiftingPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Removes identity nodes in the block. The device computation does not need
@@ -877,6 +878,7 @@ LogicalResult HandlePartitionedCallOpCallee(
   name_base += "_resource_lifted";
   auto name = name_base;
   callee = callee.clone();
+  callee.setVisibility(SymbolTable::Visibility::Private);
   callee.setName(name);
   SymbolTable(module).insert(callee);
   result->lifted_callee = callee;
@@ -1050,13 +1052,13 @@ LogicalResult HoistForFunctionalControlFlow(
 // Lifts resource operation from tf_device.launch_func ops nested in `op`
 // outside. Returns failure if there are remaining resource-type values that can
 // not be lifted.
-void ResourceOpLiftingPass::runOnModule() {
+void ResourceOpLiftingPass::runOnOperation() {
   llvm::SmallDenseMap<FuncOp, PartitionedCallLiftingInfo>
       lifted_partitioned_call_callees;
-  auto result = getModule().walk([&](FuncOp func_op) {
+  auto result = getOperation().walk([&](FuncOp func_op) {
     return func_op.walk([&](tf_device::LaunchOp launch_op) {
       if (failed(HoistForFunctionalControlFlow(
-              &launch_op.GetBody(), getModule(),
+              &launch_op.GetBody(), getOperation(),
               &lifted_partitioned_call_callees)) ||
           failed(HoistResourceOpsFromLaunchOp(launch_op))) {
         return WalkResult::interrupt();
@@ -1070,12 +1072,13 @@ void ResourceOpLiftingPass::runOnModule() {
 }
 
 struct ResourceOpLiftingForMainFunctionPass
-    : public ModulePass<ResourceOpLiftingForMainFunctionPass> {
-  void runOnModule() override;
+    : public PassWrapper<ResourceOpLiftingForMainFunctionPass,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
-void ResourceOpLiftingForMainFunctionPass::runOnModule() {
-  ModuleOp module = getModule();
+void ResourceOpLiftingForMainFunctionPass::runOnOperation() {
+  ModuleOp module = getOperation();
   FuncOp main_func = module.lookupSymbol<FuncOp>("main");
   if (!main_func) {
     return;
@@ -1099,7 +1102,7 @@ static PassRegistration<ResourceOpLiftingPass> pass(
 }  // namespace
 
 namespace TFDevice {
-std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceOpLiftingPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateResourceOpLiftingPass() {
   return std::make_unique<ResourceOpLiftingPass>();
 }
 }  // namespace TFDevice
@@ -1109,7 +1112,7 @@ LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function) {
   // This routine should only be called when control flow operations are still
   // represented with TF IfOp and WhileOp operations. In this case, there should
   // be only one basic blocks in the MLIR representation.
-  if (!has_single_element(function.getBlocks())) {
+  if (!hasSingleElement(function.getBlocks())) {
     return function.emitError()
            << "expect the function to have 1 block while it has "
            << function.getBlocks().size();

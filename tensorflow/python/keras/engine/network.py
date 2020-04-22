@@ -51,6 +51,7 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
+from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -206,18 +207,18 @@ class Network(base_layer.Layer):
 
     self.output_names = None
     self.input_names = None
-    self._is_compiled = False
     self._saved_model_inputs_spec = None
 
     # This is True for Sequential networks and Functional networks.
     self._compute_output_and_mask_jointly = False
 
-    if not hasattr(self, 'optimizer'):
-      # Don't reset optimizer if already set.
-      self.optimizer = None
+    # Don't reset compilation if already done. This may occur if calling
+    # `__init__` (or `_init_graph_network`) on an already-compiled model
+    # such as a Sequential model. Sequential models may need to rebuild
+    # themselves after compilation.
+    self._maybe_create_attribute('_is_compiled', False)
+    self._maybe_create_attribute('optimizer', None)
 
-    self._scope = None  # Never used.
-    self._reuse = None  # Never used.
     if context.executing_eagerly():
       self._graph = None
     else:
@@ -547,6 +548,9 @@ class Network(base_layer.Layer):
     """
     # TODO(fchollet): We could build a dictionary based on layer names
     # since they are constant, but we have not done that yet.
+    if index is not None and name is not None:
+      raise ValueError('Provide only a layer name or a layer index.')
+
     if index is not None:
       if len(self.layers) <= index:
         raise ValueError('Was asked to retrieve layer at index ' + str(index) +
@@ -554,13 +558,13 @@ class Network(base_layer.Layer):
                          ' layers.')
       else:
         return self.layers[index]
-    else:
-      if not name:
-        raise ValueError('Provide either a layer name or layer index.')
-    for layer in self.layers:
-      if layer.name == name:
-        return layer
-    raise ValueError('No such layer: ' + name)
+
+    if name is not None:
+      for layer in self.layers:
+        if layer.name == name:
+          return layer
+      raise ValueError('No such layer: ' + name + '.')
+    raise ValueError('Provide either a layer name or layer index.')
 
   @property
   def trainable_weights(self):
@@ -580,16 +584,6 @@ class Network(base_layer.Layer):
             sub_layers=self._layers,
             extra_variables=self._non_trainable_weights +
             self._trainable_weights))
-
-  @property
-  def input_spec(self):
-    """Gets the network's input specs.
-
-    Returns:
-        A list of `InputSpec` instances (one per input to the model)
-            or a single instance if the model has only one input.
-    """
-    return
 
   @generic_utils.default
   def build(self, input_shape):
@@ -1004,10 +998,11 @@ class Network(base_layer.Layer):
     """Saves the model to Tensorflow SavedModel or a single HDF5 file.
 
     The savefile includes:
-        - The model architecture, allowing to re-instantiate the model.
-        - The model weights.
-        - The state of the optimizer, allowing to resume training
-            exactly where you left off.
+
+    - The model architecture, allowing to re-instantiate the model.
+    - The model weights.
+    - The state of the optimizer, allowing to resume training
+        exactly where you left off.
 
     This allows you to save the entirety of the state of a model
     in a single file.
@@ -1022,17 +1017,18 @@ class Network(base_layer.Layer):
 
     Note that the model weights may have different scoped names after being
     loaded. Scoped names include the model/layer names, such as
-    "dense_1/kernel:0"`. It is recommended that you use the layer properties to
+    `"dense_1/kernel:0"`. It is recommended that you use the layer properties to
      access specific variables, e.g. `model.get_layer("dense_1").kernel`.
 
     Arguments:
-        filepath: String, path to SavedModel or H5 file to save the model.
+        filepath: String, PathLike, path to SavedModel or H5 file to save the
+            model.
         overwrite: Whether to silently overwrite any existing file at the
             target location, or provide the user with a manual prompt.
         include_optimizer: If True, save optimizer's state together.
-        save_format: Either 'tf' or 'h5', indicating whether to save the model
-            to Tensorflow SavedModel or HDF5. Defaults to 'tf' in TF 2.X, and
-            'h5' in TF 1.X.
+        save_format: Either `'tf'` or `'h5'`, indicating whether to save the
+            model to Tensorflow SavedModel or HDF5. Defaults to 'tf' in TF 2.X,
+            and 'h5' in TF 1.X.
         signatures: Signatures to save with the SavedModel. Applicable to the
             'tf' format only. Please see the `signatures` argument in
             `tf.saved_model.save` for details.
@@ -1099,10 +1095,10 @@ class Network(base_layer.Layer):
     on the TensorFlow format.
 
     Arguments:
-        filepath: String, path to the file to save the weights to. When saving
-            in TensorFlow format, this is the prefix used for checkpoint files
-            (multiple files are generated). Note that the '.h5' suffix causes
-            weights to be saved in HDF5 format.
+        filepath: String or PathLike, path to the file to save the weights to.
+            When saving in TensorFlow format, this is the prefix used for
+            checkpoint files (multiple files are generated). Note that the '.h5'
+            suffix causes weights to be saved in HDF5 format.
         overwrite: Whether to silently overwrite any existing file at the
             target location, or provide the user with a manual prompt.
         save_format: Either 'tf' or 'h5'. A `filepath` ending in '.h5' or
@@ -1115,6 +1111,7 @@ class Network(base_layer.Layer):
         ValueError: For invalid/unknown format arguments.
     """
     self._assert_weights_created()
+    filepath = path_to_string(filepath)
     filepath_is_h5 = _is_hdf5_filepath(filepath)
     if save_format is None:
       if filepath_is_h5:
@@ -1197,9 +1194,9 @@ class Network(base_layer.Layer):
     which layers are assigned in the `Model`'s constructor.
 
     Arguments:
-        filepath: String, path to the weights file to load. For weight files in
-            TensorFlow format, this is the file prefix (the same as was passed
-            to `save_weights`).
+        filepath: String or PathLike, path to the weights file to load. For
+            weight files in TensorFlow format, this is the file prefix (the
+            same as was passed to `save_weights`).
         by_name: Boolean, whether to load weights by name or by topological
             order. Only topological loading is supported for weight files in
             TensorFlow format.
@@ -1228,6 +1225,7 @@ class Network(base_layer.Layer):
           'When calling model.load_weights, skip_mismatch can only be set to '
           'True when by_name is True.')
 
+    filepath = path_to_string(filepath)
     if _is_hdf5_filepath(filepath):
       save_format = 'h5'
     else:

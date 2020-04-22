@@ -307,7 +307,7 @@ absl::Status ConvBuffer1x1::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  const int src_width_elements = IntegralDivideRoundUp(
+  const int src_width_elements = DivideRoundUp(
       src_[0]->Width() * src_[0]->Batch(), (conv_params_.element_size / 4));
   int4 src_size = int4(src_width_elements, src_[0]->Height(), src_[0]->Slices(),
                        src_width_elements * src_[0]->Height());
@@ -317,14 +317,14 @@ absl::Status ConvBuffer1x1::BindArguments() {
 }
 
 int3 ConvBuffer1x1::GetGridSize() const {
-  const int dst_width_elements = IntegralDivideRoundUp(
+  const int dst_width_elements = DivideRoundUp(
       dst_[0]->Width() * dst_[0]->Batch(), (conv_params_.element_size / 4));
   const int grid_x =
-      IntegralDivideRoundUp(dst_width_elements, conv_params_.block_size.x);
+      DivideRoundUp(dst_width_elements, conv_params_.block_size.x);
   const int grid_y =
-      IntegralDivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
+      DivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
   const int grid_z =
-      IntegralDivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.z);
+      DivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.z);
   return int3(grid_x, grid_y, grid_z);
 }
 
@@ -358,8 +358,8 @@ absl::Status CreateConvBuffer1x1(const CreationContext& creation_context,
   if (!IsConvBuffer1x1Supported(definition, attr)) {
     return absl::InvalidArgumentError("ConvBuffer1x1 doesn't supported");
   }
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   ConvBuffer1x1::ConvParams conv_params;
   if (shape) {
     conv_params = GetBestParams(*creation_context.device, definition, *shape,
@@ -376,8 +376,8 @@ absl::Status CreateConvBuffer1x1(const CreationContext& creation_context,
                                  const OperationDef& definition,
                                  const FullyConnectedAttributes& attr,
                                  ConvBuffer1x1* result, const BHWC* shape) {
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   ConvBuffer1x1::ConvParams conv_params;
   if (shape) {
     conv_params = GetBestParams(*creation_context.device, definition, *shape,
@@ -396,8 +396,8 @@ absl::Status CreateConvBuffer1x1Wino4x4To6x6(
     const CreationContext& creation_context, const OperationDef& definition,
     const Convolution2DAttributes& attr, ConvBuffer1x1* result,
     const BHWC* shape) {
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   ConvBuffer1x1::ConvParams conv_params;
   if (shape) {
     conv_params = GetBestParams(*creation_context.device, definition, *shape,

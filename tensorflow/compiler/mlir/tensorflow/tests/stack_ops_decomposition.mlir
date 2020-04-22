@@ -185,7 +185,7 @@ func @main(%arg0: tensor<i1>) -> () {
 }
 
 // CHECK: func @callee(%[[AARG0:.*]]: tensor<!tf.resource>, %[[AARG1:.*]]: tensor<i1>) -> tensor<!tf.resource>
-func @callee(%arg0: tensor<!tf.resource>, %arg1: tensor<i1>) -> tensor<!tf.resource> {
+func @callee(%arg0: tensor<!tf.resource>, %arg1: tensor<i1>) -> tensor<!tf.resource> attributes {sym_visibility = "public"} {
   %elem = "tf._SomeOp"(%arg1) : (tensor<i1>) -> tensor<f32>
   // CHECK: tf.StackPushV2"
   %push = "tf.StackPushV2"(%arg0, %elem) {swap_memory = false} : (tensor<!tf.resource>, tensor<f32>) -> tensor<f32>
@@ -198,6 +198,62 @@ func @callee(%arg0: tensor<!tf.resource>, %arg1: tensor<i1>) -> tensor<!tf.resou
 // CHECK: "tf.AssignVariableOp"(%[[TARG0:.*]], %[[UPDATE]])
 // CHECK: "tf.AssignVariableOp"(%[[EARG1:.*]],
 // CHECK-NOT: "tf.StackPushV2"
+
+// -----
+
+// Tests PartitionedCall/StatefulPartitionedCall with private callee function.
+
+// CHECK-LABEL: func @main
+func @main(%arg0: tensor<i1>) -> () {
+  %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NOT: tf.Stack
+  %stack = "tf.StackV2"(%max_size) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf.resource>
+  // CHECK: "tf.StatefulPartitionedCall"
+  // CHECK-SAME: f = @callee
+  %call = "tf.StatefulPartitionedCall"(%stack, %arg0) {f = @callee, config = "", config_proto = "", executor_type = ""}
+    : (tensor<!tf.resource>, tensor<i1>) -> tensor<!tf.resource>
+  // CHECK: "tf.PartitionedCall"
+  // CHECK-SAME: f = @callee
+  %call2 = "tf.PartitionedCall"(%stack, %arg0) {f = @callee, config = "", config_proto = "", executor_type = ""}
+    : (tensor<!tf.resource>, tensor<i1>) -> tensor<!tf.resource>
+  // CHECK: "tf.Slice"
+  %pop = "tf.StackPopV2"(%call) : (tensor<!tf.resource>) -> tensor<f32>
+  // CHECK-NOT: tf.Stack
+  "tf.StackCloseV2"(%stack) : (tensor<!tf.resource>) -> ()
+  // CHECK: return
+  return
+}
+
+// CHECK: func @callee(%[[ARG0:.*]]: tensor<!tf.resource<tensor<10xf32>>>, %[[ARG1:.*]]: tensor<i1>, %[[ARG2:.*]]: tensor<!tf.resource<tensor<1xi32>>>)
+func @callee(%arg0: tensor<!tf.resource>, %arg1: tensor<i1>) -> tensor<!tf.resource> attributes {sym_visibility = "private"} {
+  %elem = "tf._SomeOp"(%arg1) : (tensor<i1>) -> tensor<f32>
+  // CHECK-NOT: "tf.StackPushV2"
+  // CHECK: %[[UPDATE:.*]] = "tf.XlaDynamicUpdateSlice"
+  // CHECK: "tf.AssignVariableOp"(%[[TARG0:.*]], %[[UPDATE]])
+  // CHECK: "tf.AssignVariableOp"(%[[EARG1:.*]],
+  // CHECK-NOT: "tf.StackPushV2"
+  %push = "tf.StackPushV2"(%arg0, %elem) {swap_memory = false} : (tensor<!tf.resource>, tensor<f32>) -> tensor<f32>
+  return %arg0 : tensor<!tf.resource>
+}
+
+// -----
+
+// Tests PartitionedCall op with no signature change on callee.
+
+// CHECK-LABEL: func @main
+func @main() -> () {
+  "tf.PartitionedCall"() {f = @callee, config = "", config_proto = "", executor_type = ""} : () -> ()
+  return
+}
+// CHECK: func @callee()
+func @callee() -> () attributes {sym_visibility = "public"} {
+  %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-NOT: tf.Stack
+  %stack = "tf.StackV2"(%max_size) {elem_type = f32, stack_name = "s"} : (tensor<i32>) -> tensor<!tf.resource>
+  %elem = "tf._SomeOp"() : () -> tensor<f32>
+  %push = "tf.StackPushV2"(%stack, %elem) {swap_memory = false} : (tensor<!tf.resource>, tensor<f32>) -> tensor<f32>
+  return
+}
 
 // -----
 

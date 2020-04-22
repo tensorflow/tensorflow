@@ -22,7 +22,11 @@ from __future__ import print_function
 import functools
 import threading
 import weakref
+import six
 
+from google.protobuf import text_format as _text_format
+from google.protobuf.message import DecodeError
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
@@ -35,9 +39,8 @@ from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.profiler import traceme
 from tensorflow.python.training.tracking import base as trackable
-
-
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
@@ -75,6 +78,48 @@ class _CallCounter(object):
 
   def get_tracing_count(self):
     return len(self._calls_per_tracings)
+
+
+class _FrequentTracingDetector(object):
+  """Class for frequent retracing detection and warning."""
+
+  def __init__(self):
+    self._counters = weakref.WeakKeyDictionary()  # GUARDED_BY(self._lock)
+    self._lock = threading.Lock()
+
+  def _get_counter(self, key):
+    if key not in self._counters:
+      self._counters[key] = _CallCounter(
+          FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY)
+    return self._counters[key]
+
+  def called_without_tracing(self, key):
+    with self._lock:
+      counter = self._get_counter(key)
+      counter.called_without_tracing()
+
+  def called_with_tracing(self, key, function_name):
+    with self._lock:
+      counter = self._get_counter(key)
+      counter.called_with_tracing()
+      if counter.get_tracing_count() >= FREQUENT_TRACING_WARNING_THRESHOLD:
+        logging.warning(
+            "{} out of the last {} calls to {} triggered tf.function "
+            "retracing. Tracing is expensive and the excessive number of "
+            "tracings could be due to (1) creating @tf.function repeatedly in "
+            "a loop, (2) passing tensors with different shapes, (3) passing "
+            "Python objects instead of tensors. For (1), please  define your "
+            "@tf.function outside of the loop. For (2), @tf.function has "
+            "experimental_relax_shapes=True option that relaxes argument "
+            "shapes that can avoid unnecessary retracing. For (3), please "
+            "refer to "
+            "https://www.tensorflow.org/tutorials/customization/performance#python_or_tensor_args"
+            " and https://www.tensorflow.org/api_docs/python/tf/function for "
+            " more details.".format(counter.get_tracing_count(),
+                                    counter.call_count, function_name))
+
+
+_frequent_tracing_detector = _FrequentTracingDetector()
 
 
 class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
@@ -376,7 +421,10 @@ class Function(object):
         def embedding_matmul(a, b):
            # custom implementation here
         ```
-
+        This can either be specified as just the string name of the function or
+        a NameAttrList corresponding to a list of key-value attributes
+        with the function name. The name of the function will be in the 'name'
+        field of the NameAttrList.
       experimental_autograph_options: optional tuple of
         tensorflow.autograph.Feature values. Allows enabling additional
         conversion options when autograph is set to True.
@@ -415,7 +463,46 @@ class Function(object):
     self._descriptor_cache = weakref.WeakKeyDictionary()
     self._name = name
     self._input_signature = input_signature
-    self._call_counter = _CallCounter(FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY)
+    self._key_for_call_stats = self._get_key_for_call_stats()
+    ops._tf_function_api_guage.get_cell().set(True)  # pylint: disable=protected-access
+
+  def __getstate__(self):
+    """Custom pickling, to omit unpickleable objects."""
+    result = self.__dict__.copy()
+    del result["_lock"]
+    del result["_descriptor_cache"]
+    del result["_key_for_call_stats"]
+    return result
+
+  def __setstate__(self, state):
+    """Restore from pickled state."""
+    self.__dict__ = state
+    self._lock = threading.Lock()
+    self._descriptor_cache = weakref.WeakKeyDictionary()
+    self._key_for_call_stats = self._get_key_for_call_stats()
+
+  def _get_key_for_call_stats(self):
+    """Returns key instance to track call stats and retracings.
+
+    The key instance a best-effort to preserve global consistency.
+    """
+    target_function = self._python_function
+    # `__wrapped__` is a conventional Python attribute that a higher-order
+    # function keeps its original function's instance.  We also directly use
+    # this attribute for dealing with a class method.  See
+    # `bound_method_wrapper` in `function.py`.  If we don't use `__wrapped__`,
+    # all class methods will return the same `bound_method_wrapper` instance
+    # from this function.
+    while hasattr(target_function, "__wrapped__"):
+      target_function = target_function.__wrapped__
+
+    if hasattr(target_function, "__func__"):
+      target_function = target_function.__func__
+
+    if hasattr(target_function, "__code__"):
+      return target_function.__code__
+
+    return self._python_function
 
   def _defun_with_scope(self, scope):
     """Creates a defun wrapped inside a variable creator scope."""
@@ -445,11 +532,35 @@ class Function(object):
         self._python_function,
         wrapped_fn))
 
+  def _create_implements_attribute(self):
+    """Creates the attribute value corresponding to IMPLEMENTS_ATTRIBUTE_NAME."""
+    attributes = {}
+    if isinstance(self._implements, str):
+      # First check if the IMPLEMENTS_ATTRIBUTE_NAME is specified as a
+      # NameAttrList. This is used when apart from the function name being
+      # implemented, a list of attributes is also being specified.
+      # The attributes are specified as key-value pairs in the NameAttrList
+      # of the corresponding AttrValue. The function name will be in the
+      # 'name' field of the NameAttrList. Else, it is just a string
+      # corresponding to the function name.
+      try:
+        implements_attr = six.ensure_text(self._implements, "utf-8")
+        attr_value = attr_value_pb2.AttrValue()
+        nameattrlist = attr_value_pb2.NameAttrList()
+        _text_format.Merge(implements_attr, nameattrlist)
+        attr_value.func.CopyFrom(nameattrlist)
+        attributes[function_lib.IMPLEMENTS_ATTRIBUTE_NAME] = attr_value
+      except (_text_format.ParseError, DecodeError):
+        attributes[function_lib.IMPLEMENTS_ATTRIBUTE_NAME] = self._implements
+    return attributes
+
   def _defun(self, fn):
     """Returns a defun generated from the input function."""
     attributes = {}
+
     if self._implements is not None:
-      attributes[function_lib.IMPLEMENTS_ATTRIBUTE_NAME] = self._implements
+      attributes = self._create_implements_attribute()
+
     if self._experimental_compile is not None:
       attributes.update(_XlaMustCompile=bool(self._experimental_compile))
       if self._experimental_compile:
@@ -560,41 +671,41 @@ class Function(object):
   def __call__(self, *args, **kwds):
     """Calls the graph function and warn too frequent tracings."""
     if RUN_FUNCTIONS_EAGERLY:
-      return self._python_function(*args, **kwds)
+      with traceme.TraceMe(self._name,
+                           tf_function_call="eager"):
+        return self._python_function(*args, **kwds)
 
     tracing_count = self._get_tracing_count()
-    if self._experimental_compile and (
-        not control_flow_util.GraphOrParentsInXlaContext(
-            ops.get_default_graph())):
-      # V2 control flow relies on XLAControlFlowContext to generate a
-      # XLA-compatible function graph. If the function is already called inside
-      # an XLA context, we don't create nested XLA context.
-      xla_context = control_flow_ops.XLAControlFlowContext()
-      try:
-        xla_context.Enter()
+    with traceme.TraceMe(self._name) as tm:
+      if self._experimental_compile and (
+          not control_flow_util.GraphOrParentsInXlaContext(
+              ops.get_default_graph())):
+        # V2 control flow relies on XLAControlFlowContext to generate a
+        # XLA-compatible function graph. If the function is already called
+        # inside an XLA context, we don't create nested XLA context.
+        compiler = "xla"
+        xla_context = control_flow_ops.XLAControlFlowContext()
+        try:
+          xla_context.Enter()
+          result = self._call(*args, **kwds)
+        finally:
+          xla_context.Exit()
+      else:
+        compiler = "nonXla"
         result = self._call(*args, **kwds)
-      finally:
-        xla_context.Exit()
+
+      new_tracing_count = self._get_tracing_count()
+      without_tracing = (tracing_count == new_tracing_count)
+      execution_mode = "notTraced" if without_tracing else "traced"
+      tm.set_metadata(tf_function_call=execution_mode + "-" + compiler,
+                      tracing_count=new_tracing_count)
+
+    if without_tracing:
+      _frequent_tracing_detector.called_without_tracing(
+          self._key_for_call_stats)
     else:
-      result = self._call(*args, **kwds)
-
-    if tracing_count == self._get_tracing_count():
-      self._call_counter.called_without_tracing()
-      return result
-
-    self._call_counter.called_with_tracing()
-    recent_tracing_count = self._call_counter.get_tracing_count()
-    if recent_tracing_count >= FREQUENT_TRACING_WARNING_THRESHOLD:
-      logging.warning(
-          "{} out of the last {} calls to {} triggered tf.function retracing. "
-          "Tracing is expensive and the excessive number of tracings is likely "
-          "due to passing python objects instead of tensors. Also, tf.function "
-          "has experimental_relax_shapes=True option that relaxes argument "
-          "shapes that can avoid unnecessary retracing. Please refer to "
-          "https://www.tensorflow.org/tutorials/customization/performance#python_or_tensor_args"
-          " and https://www.tensorflow.org/api_docs/python/tf/function for more "
-          "details.".format(recent_tracing_count, self._call_counter.call_count,
-                            self._python_function))
+      _frequent_tracing_detector.called_with_tracing(self._key_for_call_stats,
+                                                     self._python_function)
 
     return result
 
@@ -719,6 +830,13 @@ class Function(object):
   def function_spec(self):
     return self._function_spec
 
+  def pretty_printed_concrete_signatures(self, verbose=True):
+    joiner = "\n\n" if verbose else "\n"
+    return joiner.join([
+        c.pretty_printed_signature(verbose=verbose)
+        for c in self._list_all_concrete_functions()
+    ])
+
   def _initialize_uninitialized_variables(self, initializers):
     """Make and call a `ConcreteFunction` which initializes variables."""
 
@@ -802,12 +920,8 @@ class Function(object):
 
     return initialize_variables.get_concrete_function()
 
-  def _list_all_concrete_functions_for_serialization(self):
-    """Returns all concrete functions for serialization.
-
-    Returns:
-      A list of instances of `ConcreteFunction`.
-    """
+  def _list_all_concrete_functions(self):
+    """Returns all concrete functions."""
     if self.input_signature is not None:
       self.get_concrete_function()
     concrete_functions = []
@@ -819,6 +933,15 @@ class Function(object):
       concrete_functions.extend(
           self._stateless_fn._function_cache.all_values())
     # pylint: enable=protected-access
+    return concrete_functions
+
+  def _list_all_concrete_functions_for_serialization(self):
+    """Returns all concrete functions for serialization.
+
+    Returns:
+      A list of instances of `ConcreteFunction`.
+    """
+    concrete_functions = self._list_all_concrete_functions()
     seen_signatures = []
     for concrete_function in concrete_functions:
       signature = concrete_function.structured_input_signature
@@ -1149,7 +1272,7 @@ def function(func=None,
   ...     self.v = None
   ...
   ...   @tf.function
-  ...   def call(self, x):
+  ...   def __call__(self, x):
   ...     if self.v is None:
   ...       self.v = tf.Variable(tf.ones_like(x))
   ...     return self.v * x
@@ -1186,6 +1309,10 @@ def function(func=None,
       `embedded_matmul` (perhaps more efficiently!)
       by specifying it using this parameter:
       `@tf.function(experimental_implements="embedded_matmul")`
+      This can either be specified as just the string name of the function or
+      a NameAttrList corresponding to a list of key-value attributes associated
+      with the function name. The name of the function will be in the 'name'
+      field of the NameAttrList.
     experimental_autograph_options: Optional tuple of
       `tf.autograph.experimental.Feature` values.
     experimental_relax_shapes: When True, `tf.function` may generate fewer,

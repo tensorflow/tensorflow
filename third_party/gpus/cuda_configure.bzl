@@ -603,7 +603,7 @@ def _exec_find_cuda_config(repository_ctx, script_path, cuda_libraries):
         "f = open('script.py', 'wb');" +
         "f.write(script);" +
         "f.close();" +
-        "system('%s script.py %s');" % (python_bin, " ".join(cuda_libraries))
+        "system('\"%s\" script.py %s');" % (python_bin, " ".join(cuda_libraries))
     )
 
     return execute(repository_ctx, [python_bin, "-c", decompress_and_execute_cmd])

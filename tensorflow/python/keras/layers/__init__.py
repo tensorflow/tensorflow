@@ -70,6 +70,7 @@ from tensorflow.python.keras.layers.advanced_activations import Softmax
 from tensorflow.python.keras.layers.convolutional import Conv1D
 from tensorflow.python.keras.layers.convolutional import Conv2D
 from tensorflow.python.keras.layers.convolutional import Conv3D
+from tensorflow.python.keras.layers.convolutional import Conv1DTranspose
 from tensorflow.python.keras.layers.convolutional import Conv2DTranspose
 from tensorflow.python.keras.layers.convolutional import Conv3DTranspose
 from tensorflow.python.keras.layers.convolutional import SeparableConv1D
@@ -242,8 +243,27 @@ from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import DropoutWrapper
 from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import ResidualWrapper
 
 # Serialization functions
+from tensorflow.python.keras.layers import serialization
 from tensorflow.python.keras.layers.serialization import deserialize
 from tensorflow.python.keras.layers.serialization import serialize
+
+
+class VersionAwareLayers(object):
+  """Utility to be used internally to access layers in a V1/V2-aware fashion.
+
+  When using layers within the Keras codebase, under the constraint that
+  e.g. `layers.BatchNormalization` should be the `BatchNormalization` version
+  corresponding to the current runtime (TF1 or TF2), do not simply access
+  `layers.BatchNormalization` since it would ignore e.g. an early
+  `compat.v2.disable_v2_behavior()` call. Instead, use an instance
+  of `VersionAwareLayers` (which you can use just like the `layers` module).
+  """
+
+  def __getattr__(self, name):
+    serialization.populate_deserializable_objects()
+    if name in serialization.LOCAL.ALL_OBJECTS:
+      return serialization.LOCAL.ALL_OBJECTS[name]
+    return super(VersionAwareLayers, self).__getattr__(name)
 
 del absolute_import
 del division

@@ -504,6 +504,13 @@ REGISTER_OP("DeleteMemoryCache")
     .Input("deleter: variant")
     .SetShapeFn(shape_inference::NoOutputs);
 
+REGISTER_OP("DummyMemoryCache")
+    .Output("handle: resource")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
+
 REGISTER_OP("CacheDataset")
     .Input("input_dataset: variant")
     .Input("filename: string")

@@ -208,7 +208,7 @@ kernel void ComputeFunction(
 // DepthWiseConv3x3Stride1x1
 std::vector<float> ReorderWeightsDepthWiseConv3x3Stride1x1(
     const DepthwiseConvolution2DAttributes& attr) {
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   const int kernel_x = 3;
   const int kernel_y = 3;
   std::vector<float> weights_reordered((kernel_x * kernel_y + 1) * src_depth *
@@ -250,11 +250,11 @@ static std::vector<uint8_t> GetUniformBufferDepthWiseConv3x3Stride1x1(
       src_size.w,
       src_size.h,
       src_size.w * src_size.h,
-      IntegralDivideRoundUp(src_size.c, 4),
+      DivideRoundUp(src_size.c, 4),
       dst_size.w,
       dst_size.h,
       dst_size.w * dst_size.h,
-      IntegralDivideRoundUp(dst_size.c, 4),
+      DivideRoundUp(dst_size.c, 4),
       -params.padding.prepended.w,
       -params.padding.prepended.h,
       0,  // dummy, for alignment
@@ -403,7 +403,7 @@ kernel void ComputeFunction(
 // DepthWiseConv3x3Stride2
 std::vector<float> ReorderWeightsDepthWiseConv3x3Stride2(
     const DepthwiseConvolution2DAttributes& attr) {
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   const int kernel_x = 3;
   const int kernel_y = 3;
   std::vector<float> weights_reordered((kernel_x * kernel_y + 1) * src_depth *
@@ -445,11 +445,11 @@ static std::vector<uint8_t> GetUniformBufferDepthWiseConv3x3Stride2(
       src_size.w,
       src_size.h,
       src_size.w * src_size.h,
-      IntegralDivideRoundUp(src_size.c, 4),
+      DivideRoundUp(src_size.c, 4),
       dst_size.w,
       dst_size.h,
       dst_size.w * dst_size.h,
-      IntegralDivideRoundUp(dst_size.c, 4),
+      DivideRoundUp(dst_size.c, 4),
       -attr.padding.prepended.w,
       -attr.padding.prepended.h,
       attr.strides.w,
@@ -502,7 +502,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
       int src_y = dst_y * U.stride.y + U.padding.y;
 
       for(int ky = 0; ky < U.kernel_size.y; ++ky) {
-        int yc = ky * U.dilation.y + src_x;
+        int yc = ky * U.dilation.y + src_y;
         if (yc < 0 || yc >= U.src_size.y) continue;
         for(int kx = 0; kx < U.kernel_size.x; ++kx) {
           int xc = kx * U.dilation.x + src_x;
@@ -586,11 +586,11 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
          std::vector<int> uniform_params{
              dimension.w,
              dimension.h,
-             IntegralDivideRoundUp(dimension.c, 4),
+             DivideRoundUp(dimension.c, 4),
              0,
              output_dimension.w,
              output_dimension.h,
-             IntegralDivideRoundUp(output_dimension.c, 4),
+             DivideRoundUp(output_dimension.c, 4),
              0,
              attr.strides.w,
              attr.strides.h,
@@ -612,9 +612,9 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
   desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     const auto& dimension = buffers.find(output_id)->second;
     uint3 groups_size{8, 4, 1};
-    uint3 groups_count{IntegralDivideRoundUp(dimension.w, groups_size.x),
-                       IntegralDivideRoundUp(dimension.h, groups_size.y),
-                       IntegralDivideRoundUp(dimension.c, 4)};
+    uint3 groups_count{DivideRoundUp(dimension.w, groups_size.x),
+                       DivideRoundUp(dimension.h, groups_size.y),
+                       DivideRoundUp(dimension.c, 4)};
     return std::make_pair(groups_size, groups_count);
   };
 
@@ -661,17 +661,17 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride1x1(
 
   desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     const auto& dimension = buffers.find(output_id)->second;
-    const int grid_x = IntegralDivideRoundUp(dimension.w, 2);
-    const int grid_y = IntegralDivideRoundUp(dimension.h, 2);
-    const int grid_z = IntegralDivideRoundUp(dimension.c, 4);
+    const int grid_x = DivideRoundUp(dimension.w, 2);
+    const int grid_y = DivideRoundUp(dimension.h, 2);
+    const int grid_z = DivideRoundUp(dimension.c, 4);
     uint3 group_size{8, 4, 1};
     if (grid_x <= 4) {
       group_size.x = 4;
       group_size.z = grid_z % 2 == 0 ? 2 : 1;
     }
-    const int groups_x = IntegralDivideRoundUp(grid_x, group_size.x);
-    const int groups_y = IntegralDivideRoundUp(grid_y, group_size.y);
-    const int groups_z = IntegralDivideRoundUp(grid_z, group_size.z);
+    const int groups_x = DivideRoundUp(grid_x, group_size.x);
+    const int groups_y = DivideRoundUp(grid_y, group_size.y);
+    const int groups_z = DivideRoundUp(grid_z, group_size.z);
     return std::make_pair(group_size, uint3(groups_x, groups_y, groups_z));
   };
 
@@ -726,12 +726,12 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride2(
   desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     const auto& dimension = buffers.find(output_id)->second;
     const int grid_x = dimension.w;
-    const int grid_y = IntegralDivideRoundUp(dimension.h, 2);
-    const int grid_z = IntegralDivideRoundUp(dimension.c, 4);
+    const int grid_y = DivideRoundUp(dimension.h, 2);
+    const int grid_z = DivideRoundUp(dimension.c, 4);
     const uint3 group_size{8, 4, 1};
-    const int groups_x = IntegralDivideRoundUp(grid_x, group_size.x);
-    const int groups_y = IntegralDivideRoundUp(grid_y, group_size.y);
-    const int groups_z = IntegralDivideRoundUp(grid_z, group_size.z);
+    const int groups_x = DivideRoundUp(grid_x, group_size.x);
+    const int groups_y = DivideRoundUp(grid_y, group_size.y);
+    const int groups_z = DivideRoundUp(grid_z, group_size.z);
     return std::make_pair(group_size, uint3(groups_x, groups_y, groups_z));
   };
 

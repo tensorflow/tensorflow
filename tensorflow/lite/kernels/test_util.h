@@ -790,6 +790,7 @@ template <typename T>
 TensorType GetTensorType() {
   if (std::is_same<T, float>::value) return TensorType_FLOAT32;
   if (std::is_same<T, TfLiteFloat16>::value) return TensorType_FLOAT16;
+  if (std::is_same<T, double>::value) return TensorType_FLOAT64;
   if (std::is_same<T, int8_t>::value) return TensorType_INT8;
   if (std::is_same<T, int16_t>::value) return TensorType_INT16;
   if (std::is_same<T, int32_t>::value) return TensorType_INT32;
@@ -815,40 +816,40 @@ struct TypeUnion;
 template <>
 struct TypeUnion<float> {
  public:
-  static const TensorType tensor_type = TensorType::TensorType_FLOAT32;
-  static const TfLiteType tflite_type = TfLiteType::kTfLiteFloat32;
+  static constexpr TensorType tensor_type = TensorType::TensorType_FLOAT32;
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteFloat32;
   typedef float ScalarType;
 };
 
 template <>
 struct TypeUnion<int32_t> {
  public:
-  static const TensorType tensor_type = TensorType::TensorType_INT32;
-  static const TfLiteType tflite_type = TfLiteType::kTfLiteInt32;
+  static constexpr TensorType tensor_type = TensorType::TensorType_INT32;
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteInt32;
   typedef int32_t ScalarType;
 };
 
 template <>
 struct TypeUnion<int16_t> {
  public:
-  static const TensorType tensor_type = TensorType::TensorType_INT16;
-  static const TfLiteType tflite_type = TfLiteType::kTfLiteInt16;
+  static constexpr TensorType tensor_type = TensorType::TensorType_INT16;
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteInt16;
   typedef int16_t ScalarType;
 };
 
 template <>
 struct TypeUnion<int8_t> {
  public:
-  static const TensorType tensor_type = TensorType::TensorType_INT8;
-  static const TfLiteType tflite_type = TfLiteType::kTfLiteInt8;
+  static constexpr TensorType tensor_type = TensorType::TensorType_INT8;
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteInt8;
   typedef int8_t ScalarType;
 };
 
 template <>
 struct TypeUnion<uint8_t> {
  public:
-  static const TensorType tensor_type = TensorType::TensorType_UINT8;
-  static const TfLiteType tflite_type = TfLiteType::kTfLiteUInt8;
+  static constexpr TensorType tensor_type = TensorType::TensorType_UINT8;
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteUInt8;
   typedef uint8_t ScalarType;
 };
 

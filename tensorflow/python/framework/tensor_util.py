@@ -236,9 +236,9 @@ def _FlattenToStrings(nested_strings):
 
 
 _TENSOR_CONTENT_TYPES = frozenset([
-    dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8, dtypes.int16,
-    dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8, dtypes.qint16,
-    dtypes.quint16, dtypes.qint32, dtypes.uint32, dtypes.uint64
+    dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8,
+    dtypes.int16, dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8,
+    dtypes.qint16, dtypes.quint16, dtypes.qint32, dtypes.uint32, dtypes.uint64
 ])
 
 
@@ -791,7 +791,7 @@ def _ConstantValue(tensor, partial):
     return np.not_equal(value1, value2)
   elif tensor.op.type == "StopGradient":
     return constant_value(tensor.op.inputs[0], partial)
-  elif tensor.op.type == "Identity":
+  elif tensor.op.type in ("CheckNumericsV2", "DebugIdentityV2", "Identity"):
     return constant_value(tensor.op.inputs[0], partial)
   else:
     return None

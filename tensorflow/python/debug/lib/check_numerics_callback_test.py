@@ -31,13 +31,11 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras import layers
-from tensorflow.python.keras import models
-from tensorflow.python.keras import optimizer_v2
-from tensorflow.python.keras.applications import mobilenet_v2
+from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker_v2
+from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -85,57 +83,6 @@ class CheckNumericsCallbackTest(test_util.TensorFlowTestCase):
     self.assertAllClose((x + y) * (x - y), [3.0, 9.0])
 
   @test_util.run_in_graph_and_eager_modes
-  def testKerasModelHealthyPredictAndFitCalls(self):
-    """Test a simple healthy keras model runs fine under the callback."""
-    check_numerics_callback.enable_check_numerics()
-
-    model = models.Sequential()
-    model.add(layers.Dense(
-        units=100,
-        input_shape=(5,),
-        use_bias=False,
-        activation="relu",
-        kernel_initializer="ones"))
-    model.add(layers.BatchNormalization())
-    model.add(layers.Dropout(0.5))
-    model.add(layers.Dense(
-        units=1,
-        activation="linear",
-        kernel_initializer="ones"))
-
-    model.compile(
-        loss="mse", optimizer=optimizer_v2.gradient_descent.SGD(1e-3))
-
-    batch_size = 16
-    xs = np.zeros([batch_size, 5])
-    ys = np.ones([batch_size, 1])
-
-    outputs = model.predict(xs)
-    self.assertEqual(outputs.shape, (batch_size, 1))
-
-    epochs = 100
-    history = model.fit(xs, ys, epochs=epochs, verbose=0)
-    self.assertEqual(len(history.history["loss"]), epochs)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testKerasModelWithRNNHealthyPredictAndFitCalls(self):
-    """Test a simple healthy keras recurrent model works under the callback."""
-    check_numerics_callback.enable_check_numerics()
-
-    model = models.Sequential()
-    model.add(layers.LSTM(1, input_shape=(2, 4)))
-    model.compile(loss="mse", optimizer="rmsprop")
-
-    xs = np.zeros([8, 2, 4], dtype=np.float32)
-    ys = np.zeros([8, 1], dtype=np.float32)
-
-    model.predict(xs)
-
-    epochs = 3
-    history = model.fit(xs, ys, epochs=epochs, verbose=0)
-    self.assertEqual(len(history.history["loss"]), epochs)
-
-  @test_util.run_in_graph_and_eager_modes
   def testDatasetMapHealthyResults(self):
     check_numerics_callback.enable_check_numerics()
 
@@ -147,23 +94,16 @@ class CheckNumericsCallbackTest(test_util.TensorFlowTestCase):
 
     dataset = dataset_ops.Dataset.from_tensor_slices(tensor).batch(2).map(
         map_fn)
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
-    self.assertAllClose(self.evaluate(iterator.get_next()), np.log([1.25, 2]))
-    self.assertAllClose(self.evaluate(iterator.get_next()), np.log([3.25, 5]))
+    @def_function.function
+    def get_batches():
+      iterator = iter(dataset)
+      return [next(iterator), next(iterator)]
 
-  @test_util.run_in_graph_and_eager_modes
-  def testMobileNetV2Fit(self):
-    """Test training Keras MobileNetV2 application works w/ check numerics."""
-    check_numerics_callback.enable_check_numerics()
-    model = mobilenet_v2.MobileNetV2(alpha=0.1, weights=None)
-
-    xs = np.zeros([2] + list(model.input_shape[1:]))
-    ys = np.zeros([2] + list(model.output_shape[1:]))
-    model.compile(optimizer="sgd", loss="categorical_crossentropy")
-    epochs = 1
-    history = model.fit(xs, ys, epochs=epochs, verbose=0)
-    self.assertEqual(len(history.history["loss"]), epochs)
+    batches = self.evaluate(get_batches())
+    self.assertLen(batches, 2)
+    self.assertAllClose(batches[0], np.log([1.25, 2]))
+    self.assertAllClose(batches[1], np.log([3.25, 5]))
 
 
 class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
@@ -233,54 +173,6 @@ class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
     self.assertIn("shape: (1, 1)\n", message)
     self.assertIn("# of -Inf elements: 1\n", message)
     self.assertTrue(re.search(r"Input tensor.*0\.", message))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testKerasModelUnhealthyPredictAndFitCallsWithLargeLearningRate(self):
-    """Test keras model training crashes with Infinity is caught by callback."""
-    check_numerics_callback.enable_check_numerics()
-
-    model = models.Sequential()
-    # Use weight initializers for deterministic behavior during test.
-    model.add(layers.Dense(
-        units=100,
-        input_shape=(5,),
-        activation="relu",
-        kernel_initializer="ones"))
-    model.add(layers.Dense(
-        units=1,
-        activation="linear",
-        kernel_initializer="ones"))
-
-    lr = 1e3    # Intentionally huge learning rate.
-    model.compile(loss="mse", optimizer=optimizer_v2.gradient_descent.SGD(lr))
-
-    batch_size = 16
-    xs = np.zeros([batch_size, 5])
-    ys = np.ones([batch_size, 1])
-
-    outputs = model.predict(xs)
-    self.assertEqual(outputs.shape, (batch_size, 1))
-
-    epochs = 100
-    message = self._assertRaisesInvalidArgumentErrorAndGetMessage(
-        lambda: model.fit(xs, ys, epochs=epochs, verbose=0))
-
-    # Check the content of the error message.
-    # Let's not hardcode the op name for future-proof.
-    self.assertTrue(re.search(r"graph op.*\".*\"", message))
-    self.assertTrue(re.search(r"dtype:.*float32", message))
-    self.assertTrue(re.search(r"shape:.*\(.*\)", message))
-    # Check that the correct input op is printed.
-    self.assertTrue(re.search(r"Input tensor.*", message))
-    # Check that the correct line for op creation is printed.
-    self.assertTrue(re.search(r"Stack trace of op's creation", message))
-    # The stacks are different between when eager execution is enabled and
-    # when it's not (i.e., v1 graph). TODO(cais): Investigate if we can improve
-    # this.
-    if context.executing_eagerly():
-      self.assertIn("lambda: model.fit(xs, ys,", message)
-    else:
-      self.assertIn("model.compile(", message)
 
   @test_util.run_in_graph_and_eager_modes
   def testCatchFunctionOpInfFloat64(self):
@@ -382,100 +274,21 @@ class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
     self.assertIn("accum.assign(accum * 2.0)", message)
 
   @test_util.run_in_graph_and_eager_modes
-  def testInfInCustomKerasLayerWithTfFunctionPredictCall(self):
-    """Test catching Infinity in a custom layer, w/ tf.function."""
+  def testNanInConstIsCaptured(self):
     check_numerics_callback.enable_check_numerics()
-
-    class DivByXLayer(layers.Layer):
-
-      @def_function.function
-      def call(self, x):
-        """The computation performed by the for-test custom layer.
-
-        Generates Infinity by intention.
-
-        Args:
-          x: Input tensor of scalar shape.
-
-        Returns:
-          A scalar tensor.
-        """
-        one_over_x = 1.0 / x
-        return one_over_x
-
-    model = models.Sequential()
-    model.add(DivByXLayer(input_shape=[5]))
-
-    # TODO(b/140245224): Currently the model must be compiled prior to
-    # predict() being called(). Or keras will fall back to V1 behavior.
-    # Remove this after the bug is fixed.
-    model.compile(loss="mse", optimizer="sgd")
-
-    xs = np.ones([1, 5])
-    # Calling the model with non-zero inputs should be fine.
-    self.assertAllClose(model.predict(xs), [[1.0, 1.0, 1.0, 1.0, 1.0]])
-
-    xs = np.zeros([1, 5])
+    v = variables.Variable(3.0, dtype=dtypes.float32)
+    @def_function.function
+    def add_a_bad_constant(x):
+      c = constant_op.constant(np.nan)
+      return x + c
+    if not context.executing_eagerly():
+      self.evaluate(v.initializer)
     message = self._assertRaisesInvalidArgumentErrorAndGetMessage(
-        lambda: model.predict(xs))
-
-    # Check the content of the error message.
-    self.assertTrue(re.search(r"graph op.*\"RealDiv\"", message))
-    self.assertTrue(re.search(r"dtype.*float32", message))
-    self.assertTrue(re.search(r"shape: \(.*, 5\)", message))
-    # # Check that the correct input op is printed.
-    self.assertIn("Input tensors (2):", message)
-    # # # Check that the correct line for op creation is printed.
-    self.assertTrue(re.search(r"Stack trace of op's creation", message))
-    self.assertIn("one_over_x = 1.0 / x", message)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testInfInCustomKerasLayerWithoutTfFunctionPredictCall(self):
-    """Test catching Infinity in a custom layer, w/o tf.function."""
-    check_numerics_callback.enable_check_numerics()
-
-    class DivByXLayer(layers.Layer):
-
-      # Not using the tf.function decorator here.
-      def call(self, x):
-        """The computation performed by the for-test custom layer.
-
-        Generates Infinity by intention.
-
-        Args:
-          x: Input tensor of scalar shape.
-
-        Returns:
-          A scalar tensor.
-        """
-        one_over_x = 1.0 / x
-        return one_over_x
-
-    model = models.Sequential()
-    model.add(DivByXLayer(input_shape=[5]))
-
-    # TODO(b/140245224): Currently the model must be compiled prior to
-    # predict() being called(). Or keras will fall back to V1 behavior.
-    # Remove this after the bug is fixed.
-    model.compile(loss="mse", optimizer="sgd")
-
-    xs = np.ones([1, 5])
-    # Calling the model with non-zero inputs should be fine.
-    self.assertAllClose(model.predict(xs), [[1.0, 1.0, 1.0, 1.0, 1.0]])
-
-    xs = np.zeros([1, 5])
-    message = self._assertRaisesInvalidArgumentErrorAndGetMessage(
-        lambda: model.predict(xs))
-
-    # Check the content of the error message.
-    self.assertTrue(re.search(r"graph op.*\"RealDiv\"", message))
-    self.assertTrue(re.search(r"dtype.*float32", message))
-    self.assertTrue(re.search(r"shape: \(.*, 5\)", message))
-    # Check that the correct input op is printed.
-    self.assertIn("Input tensors (2):", message)
-    # Check that the correct line for op creation is printed.
-    self.assertTrue(re.search(r"Stack trace of op's creation", message))
-    self.assertIn("one_over_x = 1.0 / x", message)
+        lambda: self.evaluate(add_a_bad_constant(v)))
+    self.assertTrue(re.search(r"graph op.*\"Const\"", message))
+    self.assertTrue(re.search(r"dtype:.*float32", message))
+    self.assertTrue(re.search(r"shape:.*\(\)", message))
+    self.assertTrue(re.search(r"Graph name:.*add_a_bad_constant", message))
 
   @test_util.run_in_graph_and_eager_modes
   def testCatchInfinityInDatasetMapFunction(self):

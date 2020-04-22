@@ -93,7 +93,7 @@ library {
 # CHECK:    return
 # CHECK:  func @test_func_name0
 # CHECK-SAME:   tf.resource_arg_unique_id = 0
-# CHECK-SAME    tf.resource_arg_unique_id = 0
+# CHECK-SAME:   tf.resource_arg_unique_id = 0
 # CHECK:    tf_executor.graph
 # CHECK:      tf_executor.fetch
 # CHECK:    return

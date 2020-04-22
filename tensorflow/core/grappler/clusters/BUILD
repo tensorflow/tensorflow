@@ -28,7 +28,7 @@ tf_cuda_library(
     deps = [
         "//third_party/eigen3",
         "//tensorflow/core:framework",
-        "//tensorflow/core:gpu_id",
+        "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ] + select({
@@ -44,11 +44,11 @@ tf_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":utils",
-        "//tensorflow/core:gpu_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/gpu:gpu_id",
     ],
 )
 
@@ -128,12 +128,12 @@ cc_library(
         ":utils",
         "//tensorflow/cc:coordinator",
         "//tensorflow/cc:queue_runner",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_lib",
-        "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
-        "//tensorflow/core:gpu_id",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime:core_cpu",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
+        "//tensorflow/core/common_runtime:direct_session_internal",
+        "//tensorflow/core/common_runtime/gpu:gpu_id",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/kernels:ops_util",
     ],

@@ -315,6 +315,32 @@ public final class Interpreter implements AutoCloseable {
   }
 
   /**
+   * Expicitly updates allocations for all tensors, if necessary.
+   *
+   * <p>This will propagate shapes and memory allocations for all dependent tensors using the input
+   * tensor shape(s) as given.
+   *
+   * <p>Note: This call is *purely optional*. Tensor allocation will occur automatically during
+   * execution if any input tensors have been resized. This call is most useful in determining the
+   * shapes for any output tensors before executing the graph, e.g.,
+   * <pre>{@code
+   * interpreter.resizeInput(0, new int[]{1, 4, 4, 3}));
+   * interpreter.allocateTensors();
+   * FloatBuffer input = FloatBuffer.allocate(interpreter.getInputTensor(0),numElements());
+   * // Populate inputs...
+   * FloatBuffer output = FloatBuffer.allocate(interpreter.getOutputTensor(0).numElements());
+   * interpreter.run(input, output)
+   * // Process outputs...
+   * }</pre>
+   *
+   * @throws IllegalStateException if the graph's tensors could not be successfully allocated.
+   */
+  public void allocateTensors() {
+    checkNotClosed();
+    wrapper.allocateTensors();
+  }
+
+  /**
    * Resizes idx-th input of the native model to the given dims.
    *
    * @throws IllegalArgumentException if {@code idx} is negtive or is not smaller than the number of
@@ -372,6 +398,13 @@ public final class Interpreter implements AutoCloseable {
 
   /**
    * Gets the Tensor associated with the provdied output index.
+   *
+   * <p>Note: Output tensor details (e.g., shape) may not be fully populated until after inference
+   * is executed. If you need updated details *before* running inference (e.g., after resizing an
+   * input tensor, which may invalidate output tensor shapes), use {@link #allocateTensors()} to
+   * explicitly trigger allocation and shape propagation. Note that, for graphs with output shapes
+   * that are dependent on input *values*, the output shape may not be fully determined until
+   * running inference.
    *
    * @throws IllegalArgumentException if {@code outputIndex} is negtive or is not smaller than the
    *     number of model outputs.
