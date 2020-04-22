@@ -172,10 +172,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             });
       }
 
-      // tasks_.empty() indicates that we haven't yet received tasks from the
-      // master, so we should wait.
       while (results_.empty() &&
-             (tasks_.empty() || num_unfinished_tasks_ > 0) && !cancelled_) {
+             (!tasks_initialized_ || num_unfinished_tasks_ > 0) &&
+             !cancelled_) {
         cv_.wait(l);
       }
       if (cancelled_) {
@@ -268,19 +267,33 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       absl::flat_hash_set<int64> task_ids;
       mutex_lock l(mu_);
+      if (resp.task_info_size() > 0 || resp.job_finished()) {
+        tasks_initialized_ = true;
+      }
       for (auto& task : resp.task_info()) {
         task_ids.insert(task.id());
         if (task_threads_.contains(task.id())) {
           continue;
         }
-        tasks_[task.id()] = task;
         task_threads_[task.id()] = absl::make_unique<TaskThread>();
         TaskThread* task_handler = task_threads_[task.id()].get();
         task_handler->task_id = task.id();
+        task_handler->address = task.worker_address();
         num_unfinished_tasks_++;
-        task_handler->thread = ctx->StartThread(
-            "tf-data-service-task_handler",
-            [this, task_handler]() { RunTaskThread(task_handler); });
+        outstanding_requests_++;
+        auto done = [this, task_handler]() {
+          mutex_lock l(mu_);
+          num_unfinished_tasks_--;
+          outstanding_requests_--;
+          cv_.notify_all();
+          task_handler->finished = true;
+          VLOG(3) << "Task thread " << task_handler->task_id << " finished";
+        };
+        task_handler->thread =
+            ctx->StartThread("tf-data-service-task_handler",
+                             [this, task_handler, done = std::move(done)]() {
+                               RunTaskThread(task_handler, std::move(done));
+                             });
       }
       // Mark deleted tasks and clean up finished task threads.
       for (auto it = task_threads_.begin(); it != task_threads_.end();) {
@@ -300,20 +313,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void RunTaskThread(TaskThread* task_handler) {
-      auto cleanup = gtl::MakeCleanup([this, task_handler]() {
-        mutex_lock l(mu_);
-        outstanding_requests_--;
-        num_unfinished_tasks_--;
-        cv_.notify_all();
-        VLOG(3) << "Task thread " << task_handler->task_id << " finished";
-        task_handler->finished = true;
-      });
-      {
-        mutex_lock l(mu_);
-        outstanding_requests_++;
-        task_handler->address = tasks_[task_handler->task_id].worker_address();
-      }
+    void RunTaskThread(TaskThread* task_handler, std::function<void()> done) {
+      auto cleanup = gtl::MakeCleanup([done = std::move(done)]() { done(); });
       VLOG(3) << "Starting task handler thread for task "
               << task_handler->task_id << " with worker address "
               << task_handler->address;
@@ -455,9 +456,9 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     int64 job_id_;
     std::shared_ptr<::grpc::ChannelCredentials> credentials_;
     int64 num_unfinished_tasks_ TF_GUARDED_BY(mu_) = 0;
-    // Map from task id to task info.
-    absl::flat_hash_map<int64, TaskInfo> tasks_ TF_GUARDED_BY(mu_);
 
+    // Whether we've initialized the first task_threads yet.
+    bool tasks_initialized_ = false;
     // Must come second to last so that task threads are joined before
     // destroying other fields.
     absl::flat_hash_map<int64, std::unique_ptr<TaskThread>> task_threads_
