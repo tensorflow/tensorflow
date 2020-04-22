@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/ir/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/client/padding.h"
+#include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
@@ -3376,9 +3377,17 @@ class ConvertInfeedDequeueTupleOp
       // _XlaSharding attribute in TF is a serialized string of the OpSharding
       // proto, so convert to a text form here.
       ::xla::OpSharding sharding_proto;
+      if (!sharding_proto.ParseFromString(op._XlaSharding().getValue().str()))
+        return failure();
+
+      // Token is a control signal and not a real data, so arbitrarily assign
+      // the token to device 0.
+      if (sharding_proto.type() == ::xla::OpSharding::TUPLE)
+        *sharding_proto.add_tuple_shardings() =
+            ::xla::sharding_builder::AssignDevice(0);
+
       std::string sharding_str;
-      if (!sharding_proto.ParseFromString(op._XlaSharding().getValue().str()) ||
-          !::tensorflow::protobuf::TextFormat::PrintToString(sharding_proto,
+      if (!::tensorflow::protobuf::TextFormat::PrintToString(sharding_proto,
                                                              &sharding_str))
         return failure();
 

@@ -1171,17 +1171,21 @@ func @infeed_dequeue_tuple() -> (tensor<3xi32>, tensor<4xf32>) {
 
 // The following op sharding is used:
 // Proto debug string:
-//   type: MAXIMAL
-//   tile_assignment_dimensions: 1
-//   tile_assignment_devices: 0
+//   type: TUPLE
+//   tuple_shardings {
+//     type: MAXIMAL
+//     tile_assignment_dimensions: 1
+//     tile_assignment_devices: 0
+//   }
 // Serialized string:
-//   "\08\01\1A\01\01\22\01\00"
+//   "\08\02*\08\08\01\1A\01\01\22\01\00"
 
 // CHECK-LABEL: infeed_dequeue_tuple_sharding
 func @infeed_dequeue_tuple_sharding() -> tensor<8xi32> {
   // CHECK: "xla_hlo.infeed"
-  // CHECK-SAME: xla_hlo.sharding = "type: MAXIMAL\0Atile_assignment_dimensions: 1\0Atile_assignment_devices: 0\0A"
-  %0 = "tf.InfeedDequeueTuple"() {_XlaSharding = "\08\01\1A\01\01\22\01\00"} : () -> tensor<8xi32>
+  // An additional sharding is added at the end to account for token result.
+  // CHECK-SAME: xla_hlo.sharding = "type: TUPLE\0Atuple_shardings {\0A type: MAXIMAL\0A tile_assignment_dimensions: 1\0A tile_assignment_devices: 0\0A}\0Atuple_shardings {\0A type: MAXIMAL\0A tile_assignment_dimensions: 1\0A tile_assignment_devices: 0\0A}\0A"
+  %0 = "tf.InfeedDequeueTuple"() {_XlaSharding = "\08\02*\08\08\01\1A\01\01\22\01\00"} : () -> tensor<8xi32>
   return %0 : tensor<8xi32>
 }
 
