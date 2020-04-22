@@ -2232,7 +2232,6 @@ def tf_py_test(
     # the difference between 'dep' and 'clean_dep(dep)'.
     for to_add in [
         "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:gradient_checker",
     ]:
         if to_add not in deps and clean_dep(to_add) not in deps:
             deps.append(clean_dep(to_add))
