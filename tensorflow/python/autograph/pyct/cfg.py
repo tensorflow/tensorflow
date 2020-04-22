@@ -689,6 +689,7 @@ class AstToCfg(gast.NodeVisitor):
 
   def _process_exit_statement(
       self, node, exits_nodes_of_type, may_exit_via_except=False):
+    self.generic_visit(node)
     # Note: this is safe because we process functions separately.
     try_node, guards = self._get_enclosing_finally_scopes(exits_nodes_of_type)
     assert try_node is not None, '{} that is not enclosed by any of {}'.format(
@@ -737,11 +738,9 @@ class AstToCfg(gast.NodeVisitor):
     # TODO(mdan): Track the CFG local to the class definition as well?
     self.builder = self.builder_stack.pop()
 
-  def visit_FunctionDef(self, node):
-    # We also keep the FunctionDef node in the CFG. This allows us to determine
-    # things like reaching definitions via closure. Note that the function body
-    # will be stored in a separate graph, because function definitions are not
-    # the same as function calls.
+  def _process_function_def(self, node, is_lambda):
+    # The function body is stored in a separate graph, because function
+    # definitions have effects very different from function calls.
     if self.builder is not None:
       self.builder.add_ordinary_node(node)
 
@@ -752,14 +751,23 @@ class AstToCfg(gast.NodeVisitor):
     self.builder.enter_section(node)
 
     self._process_basic_statement(node.args)
-    for stmt in node.body:
-      self.visit(stmt)
+    if is_lambda:
+      self._process_exit_statement(node.body, (gast.Lambda,))
+    else:
+      for stmt in node.body:
+        self.visit(stmt)
 
     self.builder.exit_section(node)
     self._exit_lexical_scope(node)
 
     self.cfgs[node] = self.builder.build()
     self.builder = self.builder_stack.pop()
+
+  def visit_FunctionDef(self, node):
+    self._process_function_def(node, is_lambda=False)
+
+  def visit_Lambda(self, node):
+    self._process_function_def(node, is_lambda=True)
 
   def visit_Return(self, node):
     self._process_exit_statement(node, (gast.FunctionDef,))
