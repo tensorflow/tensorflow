@@ -210,18 +210,19 @@ static void Close(const TF_WritableFile* file, TF_Status* status) {
 namespace tf_read_only_memory_region {
 
 typedef struct S3MemoryRegion {
-  std::unique_ptr<char[]> address;
+  const void* const address;
   const uint64_t length;
 } S3MemoryRegion;
 
 static void Cleanup(TF_ReadOnlyMemoryRegion* region) {
   auto r = static_cast<S3MemoryRegion*>(region->plugin_memory_region);
+  plugin_memory_free(const_cast<void*>(r->address));
   delete r;
 }
 
 static const void* Data(const TF_ReadOnlyMemoryRegion* region) {
   auto r = static_cast<S3MemoryRegion*>(region->plugin_memory_region);
-  return reinterpret_cast<const void*>(r->address.get());
+  return r->address;
 }
 
 static uint64_t Length(const TF_ReadOnlyMemoryRegion* region) {
@@ -423,19 +424,23 @@ static void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
                                             const char* path,
                                             TF_ReadOnlyMemoryRegion* region,
                                             TF_Status* status) {
-	auto size = GetFileSize(filesystem, path, status);
+  int64_t size = GetFileSize(filesystem, path, status);
+  if(size == 0) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT, "File is empty");
+    return;
+  }
+	if(TF_GetCode(status) != TF_OK) return;
+  char* buffer = (char*) malloc(size);
+
+	TF_RandomAccessFile reader;
+	NewRandomAccessFile(filesystem, path, &reader, status);
 	if(TF_GetCode(status) != TF_OK) return;
 
-	std::unique_ptr<char[]> data(new char[size]);
-	TF_RandomAccessFile* file;
-	NewRandomAccessFile(filesystem, path, file, status);
-	if(TF_GetCode(status) != TF_OK) return;
+	int64_t read = tf_random_access_file::Read(&reader, 0, size, buffer, status);
+	if(read == -1) return;
 
-	tf_random_access_file::Read(file, 0, size, data.get(), status);
-	if(TF_GetCode(status) != TF_OK) return;
-
-	region->plugin_memory_region = new tf_read_only_memory_region::S3MemoryRegion({std::move(data), static_cast<uint64_t>(size)});
-	delete file->plugin_file;
+	region->plugin_memory_region = new tf_read_only_memory_region::S3MemoryRegion({buffer, static_cast<uint64_t>(read)});
+  tf_random_access_file::Cleanup(&reader);
 	TF_SetStatus(status, TF_OK, "");
 }
 
