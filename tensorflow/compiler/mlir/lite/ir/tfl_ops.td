@@ -103,8 +103,8 @@ def TensorTypeAttr : TypeAttrBase<"TensorType", "Tensor type attribute">;
 // Derived shape attribute class.
 //===----------------------------------------------------------------------===//
 class DerivedShapeAttr<code body> : DerivedAttr<"ArrayRef<int64_t>", body>;
-class DerivedTFLiteTypeAttr<code body> :
-  DerivedAttr<"tflite::TensorType", body>;
+class DerivedTFLiteTypeAttr<code body, code convert> :
+  DerivedAttr<"tflite::TensorType", body, convert>;
 
 // TFL Runtime op trait predicate.
 class TFL_RuntimePredOpTrait<string desc, Pred pred> :
@@ -572,6 +572,8 @@ def TFL_ArgMaxOp : TFL_Op<"arg_max", [NoSideEffect]> {
     return getResult().getType().cast<TensorType>().getElementType().
         cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
+    }], [{
+      TypeAttr::get(getResult().getType().cast<TensorType>().getElementType())
     }]>;
 }
 
@@ -600,6 +602,8 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [NoSideEffect]> {
     return getResult().getType().cast<TensorType>().getElementType().
         cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
+    }], [{
+      TypeAttr::get(getResult().getType().cast<TensorType>().getElementType())
     }]>;
 }
 
@@ -3111,6 +3115,8 @@ in the unique output `y`. In other words:
     return getResult(1).getType().cast<TensorType>().getElementType().
         cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
+    }], [{
+      TypeAttr::get(getResult(1).getType().cast<TensorType>().getElementType())
     }]>;
 
   let hasOptions = 1;
