@@ -3621,7 +3621,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                   r'      <1>: int32 Tensor, shape=\(\)\n'
                   r'      <2>: RaggedTensorSpec\(.*\)\n'
                   r'      <3>: RaggedTensorSpec\(.*\)')
-    self.assertRegexpMatches(c3.pretty_printed_signature(),
+    if sys.version_info[1]>=6: # python 3.5 does not guarantee dict order
+      self.assertRegexpMatches(c3.pretty_printed_signature(),
                              c3_summary + '\n' + c3_details)
 
     # pylint: disable=keyword-arg-before-vararg
