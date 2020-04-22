@@ -1240,6 +1240,7 @@ cuda_py_test(
 cuda_py_test(
     name = "remote_mirrored_strategy_eager_test",
     srcs = ["remote_mirrored_strategy_eager_test.py"],
+    tags = ["no_oss"],  # b/154743849
     deps = [
         ":combinations",
         ":distribute_lib",
