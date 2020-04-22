@@ -91,8 +91,9 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:platform_base",
+    ] + if_cuda_is_configured_compat([
         "//tensorflow/stream_executor/cuda:cupti_stub",
-    ],
+    ]),
 )
 
 tf_cuda_library(
@@ -103,8 +104,9 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cupti_interface",
+    ] + if_cuda_is_configured_compat([
         "//tensorflow/stream_executor/cuda:cupti_stub",
-    ],
+    ]),
 )
 
 tf_cuda_library(
