@@ -9567,6 +9567,30 @@ shape(t) ==> [2, 2, 3]
   let hasFolder = 1;
 }
 
+def TF_VariableV2Op : TF_Op<"VariableV2", []> {
+  let summary = [{
+Holds state in the form of a tensor that persists across steps.
+  }];
+
+  let description = [{
+Outputs a ref to the tensor state so it may be read or modified.
+TODO(zhifengc/mrry): Adds a pointer to a more detail document
+about sharing states in tensorflow.
+  }];
+
+  let arguments = (ins
+    StrAttr:$shape,
+    StrAttr:$container,
+    StrAttr:$shared_name
+  );
+
+  let results = (outs
+    TF_Tensor:$ref
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_WhereOp : TF_Op<"Where", [NoSideEffect]> {
   let summary = "Returns locations of nonzero / true values in a tensor.";
 
