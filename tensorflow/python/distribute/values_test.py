@@ -365,7 +365,7 @@ def _make_mirrored():
   return mirrored
 
 
-class RegroupAndSelectDeviceTest(test.TestCase):
+class RegroupAndSelectDeviceTest(test.TestCase, parameterized.TestCase):
 
   def _is_per_replica(self, result, expected, klass=values.PerReplica):
     self.assertIsInstance(result, klass)
@@ -448,12 +448,20 @@ class RegroupAndSelectDeviceTest(test.TestCase):
     self._is_per_replica(result[0], ("1", "3"), values.PerReplica)
     self._is_per_replica(result[1], ("2", "4"), values.PerReplica)
 
-  def testMirroredContainer(self):
-    if context.num_gpus() < 1 and context.executing_eagerly():
-      self.skipTest("A GPU is not available for this test in eager mode.")
-    mirrored = _make_mirrored()
-    result = values.regroup(mirrored.values)
-    self.assertIs(mirrored, result)
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+          ],
+          mode=["graph", "eager"],
+      ))
+  def testMirroredContainer(self, distribution):
+    with distribution.scope():
+      v = variable_scope.variable(
+          1., aggregation=variable_scope.VariableAggregation.SUM)
+    self.assertTrue(values.is_distributed_variable(v))
+    self.assertTrue(values.is_distributed_variable(values.regroup(v.values)))
 
   def testSameId(self):
     foo = object()
@@ -479,18 +487,7 @@ class RegroupAndSelectDeviceTest(test.TestCase):
     result = values.regroup((_nested_value("1"),))
     # On one device regroup() and select_replica() are basically identity.
     self.assertEqual(_nested_value("1"), result)
-    self.assertEqual(_nested_value("1"),
-                     values.select_replica(0, result))
-
-    # The one exception has to do with MirroredVariables.
-    d = "/device:CPU:0"
-    with ops.device(d):
-      v = variable_scope.get_variable(
-          name="v", initializer=1., use_resource=True)
-    mirrored = values.MirroredVariable(None, (v,),
-                                       variable_scope.VariableAggregation.SUM)
-    result = values.regroup((v,))
-    self.assertIs(mirrored, result)
+    self.assertEqual(_nested_value("1"), values.select_replica(0, result))
 
   def testNamedTuple(self):
 

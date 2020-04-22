@@ -433,10 +433,6 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
     self._aggregation = aggregation
     super(DistributedVariable, self).__init__(values)
     self._common_name = self._primary.name.split(":")[0]
-    # Use a weakref to make it easy to map from the contained values
-    # to the container without introducing a reference cycle.
-    for v in values:
-      v._distributed_container = weakref.ref(self)  # pylint: disable=protected-access
     # tf.keras keeps track of variables initialized using this attribute. When
     # tf.keras gets the default session, it initializes all uninitialized vars.
     # We need to make _keras_initialized a member of DistributedVariable because
@@ -774,6 +770,13 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
     value_list = real_mirrored_creator(**kwargs)
     var_cls = sync_on_read_cls if is_sync_on_read else mirrored_cls
     result = var_cls(strategy, value_list, aggregation)
+    # Install the created DistributedVariable as _distributed_container property
+    # of the underlying variables, to make it easy to map back to the container.
+    for v in result.values:
+      # Hold a strong reference to avoid the container from being GC-ed. After
+      # v = v.assign(), the user code may no longer holds references to the
+      # original container, since v.assign() returns a new DistributedVariable.
+      v._distributed_container = result  # pylint: disable=protected-access
 
   # Add the wrapped variable to the requested collections.
   # The handling of eager mode and the global step matches
@@ -1240,10 +1243,10 @@ def regroup(values, wrap_class=PerReplica, always_wrap=False):
     # pylint: disable=protected-access
     assert not isinstance(v0, MirroredVariable), (
         "ids = %s, values = %s" % ([id(v) for v in values], values))
-    distributed_container = v0._distributed_container()
+    distributed_container = v0._distributed_container
     assert distributed_container is not None
     for v in values[1:]:
-      assert distributed_container is v._distributed_container()
+      assert distributed_container is v._distributed_container
     return distributed_container
   # pylint: enable=protected-access
 
@@ -1331,7 +1334,7 @@ def value_container(val):
       # DistributedVariable has _distributed_container defined
       # but we don't want to return it.
       not isinstance(val, DistributedVariable)):
-    container = val._distributed_container()  # pylint: disable=protected-access
+    container = val._distributed_container  # pylint: disable=protected-access
     if container is not None:
       return container
   return val
