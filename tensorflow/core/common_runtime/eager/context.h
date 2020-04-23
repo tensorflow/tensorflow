@@ -385,11 +385,10 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   // can still be accessed, and will automatically register existing functions
   // if there are newly added hosts.
   Status UpdateRemoteMaster(
-      WorkerEnv* worker_env,
+      uint64 context_id,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       const std::vector<string>& add_remote_contexts,
-      const std::vector<string>& remove_remote_contexts, uint64 context_id,
-      Rendezvous* r);
+      const std::vector<string>& remove_remote_contexts);
 
   // Similar with InitializeRemoteMaster but this context will not kill remote
   // contexts in shutdown.
@@ -407,11 +406,8 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   // Similar with InitializeRemoteWorker but will reuse existing context and
   // increment context_view_id.
   Status UpdateRemoteWorker(
-      const DeviceMgr* worker_session_device_mgr,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
-      DynamicDeviceMgr* remote_device_mgr,
-      const std::vector<string>& remote_contexts, uint64 context_id,
-      DistributedFunctionLibraryRuntime* cluster_flr);
+      const std::vector<string>& remote_contexts, uint64 context_id);
 
   Status StoreCollectiveOpsServer(
       std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,
