@@ -1934,6 +1934,7 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
+        ":binary_format",
         ":config",
         ":debug_info_code_view",
         ":debug_info_msf",

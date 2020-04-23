@@ -2692,6 +2692,10 @@ cc_binary(
     srcs = glob([
         "tools/mlir-linalg-ods-gen/mlir-linalg-ods-gen.cpp",
     ]),
+    linkopts = [
+        "-lm",
+        "-lpthread",
+    ],
     deps = [
         ":IR",
         ":Support",
