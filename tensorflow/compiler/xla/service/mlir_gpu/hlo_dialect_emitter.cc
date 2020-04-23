@@ -58,6 +58,8 @@ StatusOr<Value> InsertMlirOp(HloOpcode opcode, OpBuilder func_builder,
       return {func_builder.create<hlo::AndOp>(loc, rets, args, attrs)};
     case HloOpcode::kCeil:
       return {func_builder.create<hlo::CeilOp>(loc, rets, args, attrs)};
+    case HloOpcode::kComplex:
+      return {func_builder.create<hlo::ComplexOp>(loc, rets, args, attrs)};
     case HloOpcode::kCopy:
       return {func_builder.create<hlo::CopyOp>(loc, rets, args, attrs)};
     case HloOpcode::kCos:
@@ -66,6 +68,8 @@ StatusOr<Value> InsertMlirOp(HloOpcode opcode, OpBuilder func_builder,
       return {func_builder.create<hlo::DivOp>(loc, rets, args, attrs)};
     case HloOpcode::kExp:
       return {func_builder.create<hlo::ExpOp>(loc, rets, args, attrs)};
+    case HloOpcode::kImag:
+      return {func_builder.create<hlo::ImagOp>(loc, rets, args, attrs)};
     case HloOpcode::kLog:
       return {func_builder.create<hlo::LogOp>(loc, rets, args, attrs)};
     case HloOpcode::kMaximum:
@@ -76,6 +80,8 @@ StatusOr<Value> InsertMlirOp(HloOpcode opcode, OpBuilder func_builder,
       return {func_builder.create<hlo::MulOp>(loc, rets, args, attrs)};
     case HloOpcode::kNegate:
       return {func_builder.create<hlo::NegOp>(loc, rets, args, attrs)};
+    case HloOpcode::kReal:
+      return {func_builder.create<hlo::RealOp>(loc, rets, args, attrs)};
     case HloOpcode::kRemainder:
       return {func_builder.create<hlo::RemOp>(loc, rets, args, attrs)};
     case HloOpcode::kRsqrt:

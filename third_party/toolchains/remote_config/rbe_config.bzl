@@ -170,6 +170,7 @@ def _tensorflow_rbe_win_config(name, python_bin_path, container_name = "windows-
 def _tensorflow_local_config(name):
     remote_platform_configure(
         name = "%s_config_platform" % name,
+        platform = "local",
         platform_exec_properties = {},
     )
     local_python_configure(

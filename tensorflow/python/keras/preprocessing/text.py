@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from keras_preprocessing import text
 
+from tensorflow.python.keras.preprocessing.text_dataset import text_dataset_from_directory  # pylint: disable=unused-import
 from tensorflow.python.util.tf_export import keras_export
 
 hashing_trick = text.hashing_trick

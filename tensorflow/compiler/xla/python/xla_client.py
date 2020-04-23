@@ -1553,7 +1553,7 @@ class ComputationBuilder(object):
         batch_group_count,
         precision_config=precision_config)
 
-  def Sort(self, operands, dimension=-1, comparator=None):
+  def Sort(self, operands, dimension=-1, comparator=None, is_stable=False):
     """Enqueues a sort operation onto the computation.
 
     Args:
@@ -1570,15 +1570,16 @@ class ComputationBuilder(object):
     operands = (
         list(operands)
         if isinstance(operands, collections.abc.Sequence) else [operands])
-    return ops.Sort(self._builder, operands, dimension,
-                    comparator.computation if comparator else None)
+    return ops.Sort(self._builder, operands,
+                    comparator.computation if comparator else None, dimension,
+                    is_stable)
 
-  def SortKeyVal(self, keys, values, dimension=-1):
+  def SortKeyVal(self, keys, values, dimension=-1, is_stable=False):
     """Enqueues a key-value sort operation onto the computation.
 
     Deprecated. Use `Sort` instead.
     """
-    return ops.Sort(self._builder, [keys, values], dimension)
+    return ops.Sort(self._builder, [keys, values], None, dimension, is_stable)
 
   def QR(self, a, full_matrices=True):
     """Enqueues a QR decomposition onto the computation."""

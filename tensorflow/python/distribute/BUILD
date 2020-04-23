@@ -848,9 +848,7 @@ distribute_py_test(
     main = "input_lib_test.py",
     shard_count = 10,
     tags = [
-        "manual",
         "multi_and_single_gpu",
-        "notap",  # TODO(b/151467526)
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1242,6 +1240,7 @@ cuda_py_test(
 cuda_py_test(
     name = "remote_mirrored_strategy_eager_test",
     srcs = ["remote_mirrored_strategy_eager_test.py"],
+    tags = ["no_oss"],  # b/154743849
     deps = [
         ":combinations",
         ":distribute_lib",

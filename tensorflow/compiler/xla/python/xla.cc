@@ -505,8 +505,9 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("limit_index"), py::arg("stride"), py::arg("dimno"));
   ops.def(
       "Sort",
-      [](XlaBuilder* builder, absl::Span<const XlaOp> operands, int64 dimension,
-         absl::optional<const XlaComputation*> comparator) -> XlaOp {
+      [](XlaBuilder* builder, absl::Span<const XlaOp> operands,
+         absl::optional<const XlaComputation*> comparator, int64 dimension,
+         bool is_stable) -> XlaOp {
         return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
           std::vector<PrimitiveType> operand_types;
           for (const auto& operand : operands) {
@@ -515,16 +516,17 @@ void BuildOpsSubmodule(py::module* m) {
           }
 
           if (comparator) {
-            return Sort(operands, **comparator, dimension);
+            return Sort(operands, **comparator, dimension, is_stable);
           } else {
             return Sort(operands,
                         CreateScalarLtComputation(operand_types, builder),
-                        dimension);
+                        dimension, is_stable);
           }
         });
       },
-      py::arg("builder"), py::arg("operands"), py::arg("dimension") = -1,
-      py::arg("comparator") = absl::nullopt);
+      py::arg("builder"), py::arg("operands"),
+      py::arg("comparator") = absl::nullopt, py::arg("dimension") = -1,
+      py::arg("is_stable") = false);
   ops.def("TopK", &TopK, py::arg("input"), py::arg("k"));
   ops.def("Transpose", &Transpose, py::arg("operand"), py::arg("permutation"));
   ops.def("TriangularSolve", &TriangularSolve, py::arg("a"), py::arg("b"),

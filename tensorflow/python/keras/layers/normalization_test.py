@@ -403,8 +403,6 @@ class NormalizationLayersGraphModeOnlyTest(
       model.train_on_batch(x, x)
 
       self.assertLen(bn.updates, 4)
-      self.assertLen(bn.get_updates_for(x1), 2)
-      self.assertLen(model.get_updates_for(x2), 2)
 
       # Test model-level reuse
       x3 = keras.layers.Input(shape=(10,))
@@ -413,7 +411,6 @@ class NormalizationLayersGraphModeOnlyTest(
 
       self.assertLen(new_model.updates, 6)
       self.assertLen(model.updates, 6)
-      self.assertLen(new_model.get_updates_for(x3), 2)
       new_model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
       new_model.train_on_batch(x, x)
 

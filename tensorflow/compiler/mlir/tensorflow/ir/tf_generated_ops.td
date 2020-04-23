@@ -2185,8 +2185,8 @@ tf.math.equal(x, y) ==> array([True,  True])
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint8]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint8]>:$y,
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$y,
 
     DefaultValuedAttr<BoolAttr, "true">:$incompatible_shape_error
   );
@@ -3277,22 +3277,6 @@ tf.imag(input) ==> [4.75, 5.75]
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
-}
-
-def TF_InfeedDequeueTupleOp : TF_Op<"InfeedDequeueTuple", []> {
-  let summary = "Fetches multiple values from infeed as an XLA tuple.";
-
-  let description = [{
-  }];
-
-  let arguments = (ins);
-
-  let results = (outs
-    Variadic<TF_Tensor>:$outputs
-  );
-
-  TF_DerivedResultShapeListAttr shapes = TF_DerivedResultShapeListAttr<0>;
-  TF_DerivedResultTypeListAttr dtypes = TF_DerivedResultTypeListAttr<0>;
 }
 
 def TF_InvOp : TF_Op<"Inv", [NoSideEffect, SameOperandsAndResultType]> {
@@ -4730,12 +4714,12 @@ def TF_MaximumOp : TF_Op<"Maximum", [NoSideEffect, ResultsBroadcastableShape]>,
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -4778,12 +4762,12 @@ def TF_MinimumOp : TF_Op<"Minimum", [NoSideEffect, ResultsBroadcastableShape]>,
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -5144,8 +5128,8 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint8]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint8]>:$y,
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Str, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$y,
 
     DefaultValuedAttr<BoolAttr, "true">:$incompatible_shape_error
   );
@@ -5537,6 +5521,40 @@ retained with length 1.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_QrOp : TF_Op<"Qr", [NoSideEffect]> {
+  let summary = "Computes the QR decompositions of one or more matrices.";
+
+  let description = [{
+Computes the QR decomposition of each inner matrix in `tensor` such that
+`tensor[..., :, :] = q[..., :, :] * r[..., :,:])`
+
+```python
+# a is a tensor.
+# q is a tensor of orthonormal matrices.
+# r is a tensor of upper triangular matrices.
+q, r = qr(a)
+q_full, r_full = qr(a, full_matrices=True)
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$input,
+
+    DefaultValuedAttr<BoolAttr, "false">:$full_matrices
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$q,
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$r
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_QuantizeAndDequantizeOp : TF_Op<"QuantizeAndDequantize", [NoSideEffect, SameOperandsAndResultType]> {
@@ -9549,6 +9567,30 @@ shape(t) ==> [2, 2, 3]
   let hasFolder = 1;
 }
 
+def TF_VariableV2Op : TF_Op<"VariableV2", []> {
+  let summary = [{
+Holds state in the form of a tensor that persists across steps.
+  }];
+
+  let description = [{
+Outputs a ref to the tensor state so it may be read or modified.
+TODO(zhifengc/mrry): Adds a pointer to a more detail document
+about sharing states in tensorflow.
+  }];
+
+  let arguments = (ins
+    StrAttr:$shape,
+    StrAttr:$container,
+    StrAttr:$shared_name
+  );
+
+  let results = (outs
+    TF_Tensor:$ref
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_WhereOp : TF_Op<"Where", [NoSideEffect]> {
   let summary = "Returns locations of nonzero / true values in a tensor.";
 
@@ -9910,25 +9952,6 @@ i=0...N-1.
   let results = (outs
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$w,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$v
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect]> {
-  let summary = [{
-An op which shards the input based on the given sharding attribute.
-  }];
-
-  let description = [{
-  }];
-
-  let arguments = (ins
-    TF_Tensor:$input
-  );
-
-  let results = (outs
-    TF_Tensor:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;

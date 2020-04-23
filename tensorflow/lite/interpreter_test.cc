@@ -960,8 +960,7 @@ TEST(BasicInterpreter, TestUseNNAPI) {
 TEST(BasicInterpreter, TestUnsupportedDelegateFunctions) {
   Interpreter interpreter;
   ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
-  TfLiteRegistration registration = {
-      .init = nullptr, .free = nullptr, .prepare = nullptr, .invoke = nullptr};
+  TfLiteRegistration registration = {nullptr, nullptr, nullptr, nullptr};
   // These functions are only supported inside Delegate's Prepare function.
   // The test verifies that these functions returns `kTfLiteError`, but not
   // `kTfLiteOk` or just crashes.
@@ -1094,7 +1093,7 @@ TEST(InterpreterTensorsCapacityTest, TestExceedHeadroom) {
 }
 
 struct TestExternalContext : public TfLiteExternalContext {
-  static const TfLiteExternalContextType kType = kTfLiteGemmLowpContext;
+  static constexpr TfLiteExternalContextType kType = kTfLiteGemmLowpContext;
 
   static TestExternalContext* Get(TfLiteContext* context) {
     return reinterpret_cast<TestExternalContext*>(

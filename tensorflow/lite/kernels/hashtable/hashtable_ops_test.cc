@@ -15,7 +15,6 @@ limitations under the License.
 #include <initializer_list>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers

@@ -91,6 +91,21 @@ cc_library(
 )
 
 cc_library(
+    name = "softmax_tester",
+    testonly = 1,
+    srcs = ["softmax_tester.cc"],
+    hdrs = ["softmax_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "unary_elementwise_tester",
     testonly = 1,
     srcs = ["unary_elementwise_tester.cc"],
@@ -284,6 +299,21 @@ cc_test(
     deps = [
         ":test_main",
         ":unary_elementwise_tester",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "softmax_test",
+    srcs = ["softmax_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":softmax_tester",
+        ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",
     ],

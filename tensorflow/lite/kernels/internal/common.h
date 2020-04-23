@@ -160,6 +160,27 @@ inline int32 MultiplyByQuantizedMultiplier(int32 x, int32 quantized_multiplier,
                              right_shift);
 }
 
+inline int32 MultiplyByQuantizedMultiplier(int64_t x,
+                                           int32 quantized_multiplier,
+                                           int shift) {
+  // Inputs:
+  // - quantized_multiplier has fixed point at bit 31
+  // - shift is -31 to +7 (negative for right shift)
+  //
+  // Assumptions: The following input ranges are assumed
+  // - quantize_scale>=0  (the usual range is (1<<30) to (1>>31)-1)
+  // - scaling is chosen so final scaled result fits in int32
+  // - input x is in the range -(1<<47) <= x < (1<<47)
+  assert(quantized_multiplier >= 0);
+  assert(shift >= -31 && shift < 8);
+
+  int32_t reduced_multiplier = (quantized_multiplier + (1 << 15)) >> 16;
+  int total_shift = 15 - shift;
+  x = (x * (int64_t)reduced_multiplier) + ((int64_t)1 << (total_shift - 1));
+  int32_t result = x >> total_shift;
+  return result;
+}
+
 template <typename T>
 int CountLeadingZeros(T integer_input) {
   static_assert(std::is_unsigned<T>::value,
@@ -197,6 +218,20 @@ inline int CountLeadingSignBits(T integer_input) {
                    ? CountLeadingZeros(2 * static_cast<U>(-integer_input) - 1)
                    : 0;
 #endif
+}
+
+// Use "count leading zeros" helper functions to do a fast Floor(log_2(x)).
+template <typename Integer>
+inline Integer FloorLog2(Integer n) {
+  static_assert(std::is_integral<Integer>::value, "");
+  static_assert(std::is_signed<Integer>::value, "");
+  static_assert(sizeof(Integer) == 4 || sizeof(Integer) == 8, "");
+  TFLITE_CHECK_GT(n, 0);
+  if (sizeof(Integer) == 4) {
+    return 30 - CountLeadingSignBits(n);
+  } else {
+    return 62 - CountLeadingSignBits(n);
+  }
 }
 
 // generate INT16 LUT for function(), e.g., table exp(x) and 1/(1+x) used in

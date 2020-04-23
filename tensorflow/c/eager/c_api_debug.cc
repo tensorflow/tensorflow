@@ -17,8 +17,11 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
-#include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/eager/tfe_tensor_debug_info_internal.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/platform/status.h"
 #ifdef TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/compiler/jit/xla_device.h"
 #endif  // TENSORFLOW_EAGER_USE_XLA

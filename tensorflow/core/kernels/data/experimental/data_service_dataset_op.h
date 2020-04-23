@@ -28,6 +28,8 @@ class DataServiceDatasetOp : public DatasetOpKernel {
   static constexpr const char* const kProtocol = "protocol";
   static constexpr const char* const kMaxOutstandingRequests =
       "max_outstanding_requests";
+  static constexpr const char* const kTaskRefreshIntervalHintMs =
+      "task_refresh_interval_hint_ms";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
 
@@ -39,6 +41,7 @@ class DataServiceDatasetOp : public DatasetOpKernel {
  private:
   class Dataset;
 
+  int64 task_refresh_interval_hint_ms_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
 };

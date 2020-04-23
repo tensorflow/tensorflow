@@ -110,6 +110,7 @@ EagerContext::EagerContext(
 
 #if !defined(IS_MOBILE_PLATFORM)
   context_id_ = kInvalidContextId;
+  context_view_id_ = 0;
 #endif  // IS_MOBILE_PLATFORM
 
   std::unique_ptr<DeviceResolverInterface> drl(

@@ -1768,7 +1768,7 @@ func @testOneHot(%indices: tensor<3xi32>, %depth: tensor<i32>, %on_value: tensor
 // -----
 
 func @testOneHot(%indices: tensor<3xi32>, %on_value: tensor<f32>, %off_value: tensor<f32>) -> tensor<3x5xf32> {
-  %depth = "tf.Const"() { value = dense<-5> : tensor<i64> } : () -> tensor<i32>
+  %depth = "tf.Const"() { value = dense<-5> : tensor<i32> } : () -> tensor<i32>
   // expected-error @+1 {{depth must be non-negative}}
   %result = "tf.OneHot"(%indices, %depth, %on_value, %off_value) {axis = -1 : i64} : (tensor<3xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<3x5xf32>
   return %result : tensor<3x5xf32>

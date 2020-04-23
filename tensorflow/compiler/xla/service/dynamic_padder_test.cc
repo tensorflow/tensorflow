@@ -903,6 +903,90 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
+XLA_TEST_F(ExecutionTest, WhileLoopStack) {
+  // Push into a dynamic sized stack with iteration number:
+  // init:
+  // [[P, P],
+  //  [P, P],
+  //  [P, P],
+  //  [P, P]]
+  // First iteration i = 0:
+  // [[0, 0],
+  //  [P, P],
+  //  [P, P],
+  //  [P, P]]
+  // Second iteration i = 1:
+  // [[0, 0],
+  //  [1, 1],
+  //  [P, P],
+  //  [P, P]]
+  // Third iteration i = 2:
+  // [[0, 0],
+  //  [1, 1],
+  //  [2, 2],
+  //  [P, P]]
+
+  const string hlo_text = R"(
+HloModule module
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+body {
+  stack = (s32[<=4,2]) parameter(0)
+  stack_buffer = s32[<=4, 2] get-tuple-element(stack), index=0
+  stack_size = s32[] get-dimension-size(stack_buffer), dimensions={0}
+  zero = s32[] constant(0)
+  one = s32[] constant(1)
+  // content of the stack is the stack index broadcasted.
+  new_data = s32[1, 2] broadcast(s32[] stack_size), dimensions={}
+  new_stack_buffer = s32[<=4, 2] dynamic-update-slice(stack_buffer, new_data, stack_size, zero)
+  new_stack_size = s32[] add(stack_size, one)
+  new_stack_buffer_dynamic = s32[<=4, 2]set-dimension-size(new_stack_buffer, new_stack_size), dimensions={0}
+  ROOT new_stack = (s32[<=4,2]) tuple(new_stack_buffer_dynamic)
+}
+
+condition {
+  stack = (s32[<=4,2]) parameter(0)
+  stack_buffer = s32[<=4, 2] get-tuple-element(stack), index=0
+  stack_size = s32[] get-dimension-size(stack_buffer), dimensions={0}
+  three = s32[] constant(3)
+  ROOT less-than = pred[] compare(s32[] stack_size, s32[] three), direction=LT
+}
+
+ENTRY entry {
+  zero = s32[] constant(0)
+  pad = s32[] constant(-1)
+  stack_buffer_input = s32[4, 2] broadcast(s32[] pad), dimensions={}
+  stack_buffer_input_dynamic = s32[<=4, 2] set-dimension-size(stack_buffer_input, zero), dimensions={0}
+  input_tuple = (s32[<=4 ,2]) tuple(stack_buffer_input_dynamic)
+  while = (s32[<=4, 2]) while(input_tuple), body=body, condition=condition
+  stack_buffer = s32[<=4, 2] get-tuple-element(while), index=0
+  ROOT reduce = s32[2] reduce(stack_buffer, zero),
+    dimensions={0},
+    to_apply=update_s32
+}
+)";
+
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {});
+
+  // Stack has three valid items in it:
+  // [[0, 0],
+  //  [1, 1],
+  //  [2, 2],
+  //  [P, P]]
+  //
+  // Reducing along major dimension gives us [3, 3]
+  Literal expected = LiteralUtil::CreateR1<int32>({{3, 3}});
+
+  EXPECT_EQ(result, expected);
+}
+
 XLA_TEST_F(ExecutionTest, DoubleDynamicDimension) {
   const string hlo_text = R"(
 HloModule TensorFlowScatterV1

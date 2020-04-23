@@ -59,11 +59,26 @@ cc_library(
 
 cc_library(
     name = "mlir_compiler",
-    srcs = if_cuda_is_configured(["mlir_compiler.cc"]),
-    hdrs = if_cuda_is_configured(["mlir_compiler.h"]),
-    deps = if_cuda_is_configured([
+    srcs = ["mlir_compiler.cc"],
+    hdrs = ["mlir_compiler.h"],
+    deps = [
         ":emission_context",
+        "//tensorflow/compiler/xla/service:compiler",
+        "//tensorflow/compiler/xla/service/gpu:target_constants",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "@llvm-project//llvm:core",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+    ],
+)
+
+cc_library(
+    name = "mlir_compiler_impl",
+    srcs = if_cuda_is_configured(["mlir_compiler_impl.cc"]),
+    deps = if_cuda_is_configured([
+        ":mlir_compiler",
         ":failover_compiler",
+        ":emission_context",
         ":kernel_lowering",
         ":lhlo_dialect_emitter",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -77,7 +92,6 @@ cc_library(
         "@llvm-project//mlir:TargetNVVMIR",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/gpu:gpu_constants",
@@ -93,7 +107,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/core:lib",
-        "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor/gpu:asm_compiler",
     ]),
     alwayslink = True,  # Contains compiler registration
@@ -186,8 +199,8 @@ cc_library(
 cc_library(
     name = "xla_gpu_opt_lib",
     testonly = True,
-    srcs = if_cuda_is_configured(["xla_gpu_opt.cc"]),
-    hdrs = if_cuda_is_configured(["xla_gpu_opt.h"]),
+    srcs = ["xla_gpu_opt.cc"],
+    hdrs = ["xla_gpu_opt.h"],
     tags = ["no_pip"],
     deps = [
         ":failover_compiler",
@@ -212,7 +225,7 @@ cc_library(
 tf_cc_binary(
     name = "xla-gpu-opt",
     testonly = True,
-    srcs = if_cuda_is_configured(["xla_gpu_opt_main.cc"]),
+    srcs = ["xla_gpu_opt_main.cc"],
     tags = ["no_pip"],
     deps = [
         ":mlir_compiler",

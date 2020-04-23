@@ -1,5 +1,9 @@
 """Build rules for tf.distribute testing."""
 
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "register_extension_info",
+)
 load("//tensorflow/python/tpu:tpu.bzl", _tpu_py_test = "tpu_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
@@ -69,3 +73,8 @@ def distribute_py_test(
             disable_v2 = disable_v2,
             disable_v3 = disable_v3,
         )
+
+register_extension_info(
+    extension_name = "distribute_py_test",
+    label_regex_for_dep = "{extension_name}",
+)

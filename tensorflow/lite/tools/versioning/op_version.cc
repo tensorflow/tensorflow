@@ -198,6 +198,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_TRANSPOSE_CONV:
+      // If the op has 4 inputs, it is version 3.
+      if (op_sig.input_types.size() == 4) {
+        return 3;
+      }
       // If the op takes int8 input, it is version 2.
       if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;
@@ -407,6 +411,18 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_EQUAL:
+    case BuiltinOperator_NOT_EQUAL:
+      if (!op_sig.input_types.empty()) {
+        if (op_sig.input_types.at(0) == TensorType_STRING) {
+          return 3;
+        }
+        if (op_sig.input_types.at(0) == TensorType_INT8) {
+          return 2;
+        }
+      }
+      return 1;
+
     case BuiltinOperator_ADD:
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_PAD:
@@ -426,8 +442,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_TOPK_V2:
     case BuiltinOperator_ARG_MAX:
     case BuiltinOperator_ARG_MIN:
-    case BuiltinOperator_EQUAL:
-    case BuiltinOperator_NOT_EQUAL:
     case BuiltinOperator_GREATER:
     case BuiltinOperator_GREATER_EQUAL:
     case BuiltinOperator_LESS:

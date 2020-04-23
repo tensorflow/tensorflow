@@ -11,6 +11,7 @@ package_group(
     includes = ["//third_party/mlir:subpackages"],
     packages = [
         "//babelfish/device/...",
+        "//learning/brain/experimental/dtensor/...",
         "//learning/brain/experimental/mlir/...",
         "//learning/brain/google/xla/kernels/...",
         "//learning/brain/swift/swift_mlir/...",
@@ -137,6 +138,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:padding",
+        "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
         "@llvm-project//llvm:support",
@@ -387,6 +389,29 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xla_hlo_to_lhlo_with_xla",
+    srcs = [
+        "transforms/xla_hlo_to_lhlo_with_xla.cc",
+    ],
+    deps = [
+        ":hlo",
+        ":hlo_utils",
+        ":lhlo",
+        ":mlir_hlo_to_hlo",
+        ":xla_dialect_registration",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:hlo",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
     ],
     alwayslink = 1,
 )
@@ -829,6 +854,7 @@ cc_library(
         ":lhlo_legalize_to_gpu",
         ":lhlo_legalize_to_parallel_loops",
         ":xla_dialect_registration",
+        ":xla_hlo_to_lhlo_with_xla",
         ":xla_legalize_control_flow",
         ":xla_legalize_tf",
         ":xla_legalize_tf_with_tf2xla",
@@ -844,6 +870,8 @@ tf_cc_binary(
     name = "xla-opt",
     deps = [
         ":all_xla_passes_for_testing",
+        "//tensorflow/compiler/jit:xla_cpu_jit",
+        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/compiler/mlir:tf_mlir_opt_main",
     ],
 )

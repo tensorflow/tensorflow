@@ -60,6 +60,10 @@ message TaskInfo {
 message GetTasksResponse {
   // A list of all tasks for a job.
   repeated TaskInfo task_info = 1;
+  // Whether the job has finished. An empty `task_info` list could either mean
+  // that no tasks have been started yet, or that all tasks have finished. This
+  // field gives us a way to tell the difference.
+  bool job_finished = 2;
 }
 
 service MasterService {

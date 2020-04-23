@@ -103,8 +103,8 @@ def TensorTypeAttr : TypeAttrBase<"TensorType", "Tensor type attribute">;
 // Derived shape attribute class.
 //===----------------------------------------------------------------------===//
 class DerivedShapeAttr<code body> : DerivedAttr<"ArrayRef<int64_t>", body>;
-class DerivedTFLiteTypeAttr<code body> :
-  DerivedAttr<"tflite::TensorType", body>;
+class DerivedTFLiteTypeAttr<code body, code convert> :
+  DerivedAttr<"tflite::TensorType", body, convert>;
 
 // TFL Runtime op trait predicate.
 class TFL_RuntimePredOpTrait<string desc, Pred pred> :
@@ -478,6 +478,7 @@ def TFL_TransposeConvOp:
     TFL_1DTensorOf<[I32]>:$output_shape,
     TFL_TensorOf<[F32, TFL_Uint8, QI8, QUI8]>:$weights,
     TFL_TensorOf<[F32, TFL_Uint8, QI8, QUI8]>:$input,
+    TFL_TensorOfOrNone<[F32, QI32, QUI32]>:$bias,
     TFL_PaddingAttr:$padding,
     I32Attr:$stride_h,
     I32Attr:$stride_w
@@ -571,6 +572,8 @@ def TFL_ArgMaxOp : TFL_Op<"arg_max", [NoSideEffect]> {
     return getResult().getType().cast<TensorType>().getElementType().
         cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
+    }], [{
+      TypeAttr::get(getResult().getType().cast<TensorType>().getElementType())
     }]>;
 }
 
@@ -599,6 +602,8 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [NoSideEffect]> {
     return getResult().getType().cast<TensorType>().getElementType().
         cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
+    }], [{
+      TypeAttr::get(getResult().getType().cast<TensorType>().getElementType())
     }]>;
 }
 
@@ -1228,8 +1233,8 @@ def TFL_EqualOp: TFL_Op<"equal", [Commutative, ResultsBroadcastableShape,
 
   let arguments = (
     ins
-    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, TFL_Uint8]>:$x,
-    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, TFL_Uint8]>:$y
+    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, TFL_Uint8, TFL_Str]>:$x,
+    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, TFL_Uint8, TFL_Str]>:$y
   );
 
   let results = (outs TFL_BoolTensor:$output);
@@ -1834,6 +1839,8 @@ equivalent to setting:
   );
 
   let verifier = [{ return Verify(*this); }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TFL_SumOp: TFL_Op<"sum", [NoSideEffect]> {
@@ -3110,6 +3117,8 @@ in the unique output `y`. In other words:
     return getResult(1).getType().cast<TensorType>().getElementType().
         cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
+    }], [{
+      TypeAttr::get(getResult(1).getType().cast<TensorType>().getElementType())
     }]>;
 
   let hasOptions = 1;

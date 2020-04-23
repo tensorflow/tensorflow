@@ -40,6 +40,7 @@ InputPipelineAnalysisRecommendation GenerateRecommendation();
 
 // Returns the performance bottleneck of the program executed.
 BottleneckAnalysis ComputeBottleneckAnalysis(
+    const InputTimeBreakdown& input_time_breakdown,
     const ::tensorflow::protobuf::RepeatedPtrField<::google::protobuf::Any>&
         any_step_details);
 

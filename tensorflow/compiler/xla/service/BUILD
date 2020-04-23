@@ -977,7 +977,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
         "//tensorflow/core:stream_executor_no_cuda",
     ] + if_cuda_is_configured([
-        "//tensorflow/compiler/xla/service/mlir_gpu:mlir_compiler",
+        "//tensorflow/compiler/xla/service/mlir_gpu:mlir_compiler_impl",
     ]),
 )
 
@@ -1078,6 +1078,7 @@ cc_library(
     srcs = ["compiler.cc"],
     hdrs = ["compiler.h"],
     deps = [
+        ":buffer_assignment",
         ":buffer_value",
         ":computation_placer",
         ":executable",
@@ -4114,6 +4115,28 @@ tf_cc_test(
         "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "root_instruction_sinker",
+    srcs = ["root_instruction_sinker.cc"],
+    hdrs = ["root_instruction_sinker.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        ":tuple_util",
+    ],
+)
+
+tf_cc_test(
+    name = "root_instruction_sinker_test",
+    srcs = ["root_instruction_sinker_test.cc"],
+    deps = [
+        ":hlo_matchers",
+        ":root_instruction_sinker",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 

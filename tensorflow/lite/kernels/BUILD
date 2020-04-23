@@ -600,7 +600,7 @@ cc_library(
         ":op_macros",
         "//tensorflow/lite:context",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/experimental/kernels:hashtable_op_kernels",
+        "//tensorflow/lite/kernels/hashtable:hashtable_op_kernels",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor",
         "//third_party/fft2d:fft2d_headers",

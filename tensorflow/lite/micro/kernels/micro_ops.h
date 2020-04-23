@@ -80,6 +80,7 @@ TfLiteRegistration* Register_STRIDED_SLICE();
 TfLiteRegistration* Register_SUB();
 TfLiteRegistration* Register_SVDF();
 TfLiteRegistration* Register_UNPACK();
+TfLiteRegistration* Register_L2_NORMALIZATION();
 
 }  // namespace micro
 }  // namespace ops

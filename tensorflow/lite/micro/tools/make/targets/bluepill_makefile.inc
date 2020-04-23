@@ -37,6 +37,7 @@ ifeq ($(TARGET), bluepill)
     -Wmissing-field-initializers \
     -Wno-unused-parameter \
     -Wno-write-strings \
+    -Wunused-function \
     -fno-delete-null-pointer-checks \
     -fomit-frame-pointer \
     -fpermissive \

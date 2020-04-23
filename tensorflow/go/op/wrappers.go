@@ -9878,12 +9878,26 @@ func RegisterDataset(scope *Scope, dataset tf.Output, address tf.Output, protoco
 	return op.Output(0)
 }
 
+// DataServiceDatasetAttr is an optional argument to DataServiceDataset.
+type DataServiceDatasetAttr func(optionalAttr)
+
+// DataServiceDatasetTaskRefreshIntervalHintMs sets the optional task_refresh_interval_hint_ms attribute to value.
+// If not specified, defaults to -1
+func DataServiceDatasetTaskRefreshIntervalHintMs(value int64) DataServiceDatasetAttr {
+	return func(m optionalAttr) {
+		m["task_refresh_interval_hint_ms"] = value
+	}
+}
+
 // Creates a dataset that reads data from the tf.data service.
-func DataServiceDataset(scope *Scope, address tf.Output, protocol tf.Output, max_outstanding_requests tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func DataServiceDataset(scope *Scope, address tf.Output, protocol tf.Output, max_outstanding_requests tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...DataServiceDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "DataServiceDataset",
 		Input: []tf.Input{
@@ -11879,75 +11893,6 @@ func ExtractGlimpse(scope *Scope, input tf.Output, size tf.Output, offsets tf.Ou
 	return op.Output(0)
 }
 
-// Converts one or more images from RGB to HSV.
-//
-// Outputs a tensor of the same shape as the `images` tensor, containing the HSV
-// value of the pixels. The output is only well defined if the value in `images`
-// are in `[0,1]`.
-//
-// `output[..., 0]` contains hue, `output[..., 1]` contains saturation, and
-// `output[..., 2]` contains value. All HSV values are in `[0,1]`. A hue of 0
-// corresponds to pure red, hue 1/3 is pure green, and 2/3 is pure blue.
-//
-// Usage Example:
-//
-// >>> blue_image = tf.stack([
-// ...    tf.zeros([5,5]),
-// ...    tf.zeros([5,5]),
-// ...    tf.ones([5,5])],
-// ...    axis=-1)
-// >>> blue_hsv_image = tf.image.rgb_to_hsv(blue_image)
-// >>> blue_hsv_image[0,0].numpy()
-// array([0.6666667, 1. , 1. ], dtype=float32)
-//
-//
-// Arguments:
-//	images: 1-D or higher rank. RGB data to convert. Last dimension must be size 3.
-//
-// Returns `images` converted to HSV.
-func RGBToHSV(scope *Scope, images tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "RGBToHSV",
-		Input: []tf.Input{
-			images,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Decode the frame(s) of a GIF-encoded image to a uint8 tensor.
-//
-// GIF images with frame or transparency compression are not supported.
-// On Linux and MacOS systems, convert animated GIFs from compressed to
-// uncompressed by running:
-//
-//     convert $src.gif -coalesce $dst.gif
-//
-// This op also supports decoding JPEGs and PNGs, though it is cleaner to use
-// `tf.io.decode_image`.
-//
-// Arguments:
-//	contents: 0-D.  The GIF-encoded image.
-//
-// Returns 4-D with shape `[num_frames, height, width, 3]`. RGB channel order.
-func DecodeGif(scope *Scope, contents tf.Output) (image tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "DecodeGif",
-		Input: []tf.Input{
-			contents,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // SampleDistortedBoundingBoxAttr is an optional argument to SampleDistortedBoundingBox.
 type SampleDistortedBoundingBoxAttr func(optionalAttr)
 
@@ -12102,6 +12047,75 @@ func SampleDistortedBoundingBox(scope *Scope, image_size tf.Output, bounding_box
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Converts one or more images from RGB to HSV.
+//
+// Outputs a tensor of the same shape as the `images` tensor, containing the HSV
+// value of the pixels. The output is only well defined if the value in `images`
+// are in `[0,1]`.
+//
+// `output[..., 0]` contains hue, `output[..., 1]` contains saturation, and
+// `output[..., 2]` contains value. All HSV values are in `[0,1]`. A hue of 0
+// corresponds to pure red, hue 1/3 is pure green, and 2/3 is pure blue.
+//
+// Usage Example:
+//
+// >>> blue_image = tf.stack([
+// ...    tf.zeros([5,5]),
+// ...    tf.zeros([5,5]),
+// ...    tf.ones([5,5])],
+// ...    axis=-1)
+// >>> blue_hsv_image = tf.image.rgb_to_hsv(blue_image)
+// >>> blue_hsv_image[0,0].numpy()
+// array([0.6666667, 1. , 1. ], dtype=float32)
+//
+//
+// Arguments:
+//	images: 1-D or higher rank. RGB data to convert. Last dimension must be size 3.
+//
+// Returns `images` converted to HSV.
+func RGBToHSV(scope *Scope, images tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RGBToHSV",
+		Input: []tf.Input{
+			images,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Decode the frame(s) of a GIF-encoded image to a uint8 tensor.
+//
+// GIF images with frame or transparency compression are not supported.
+// On Linux and MacOS systems, convert animated GIFs from compressed to
+// uncompressed by running:
+//
+//     convert $src.gif -coalesce $dst.gif
+//
+// This op also supports decoding JPEGs and PNGs, though it is cleaner to use
+// `tf.io.decode_image`.
+//
+// Arguments:
+//	contents: 0-D.  The GIF-encoded image.
+//
+// Returns 4-D with shape `[num_frames, height, width, 3]`. RGB channel order.
+func DecodeGif(scope *Scope, contents tf.Output) (image tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodeGif",
+		Input: []tf.Input{
+			contents,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // DecodeBmpAttr is an optional argument to DecodeBmp.

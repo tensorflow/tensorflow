@@ -111,6 +111,12 @@ class AttrBuilder {
     return *this;
   }
 
+  AttrBuilder& Set(StringPiece attr_name, const AttrValue& value) {
+    AddAttrIfNotPresent(attr_name, value);
+    cached_cache_key_ = absl::nullopt;
+    return *this;
+  }
+
   // Retrieves the attribute value.
   // Note that Get() can involve a linear scan of all attributes with the same
   // value type in this Node. This is not an issue, because Get is used rarely

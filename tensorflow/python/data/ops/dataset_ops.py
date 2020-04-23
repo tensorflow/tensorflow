@@ -3050,7 +3050,7 @@ class DatasetSpec(type_spec.BatchableTypeSpec):
 
   @property
   def value_type(self):
-    return _VariantDataset
+    return Dataset
 
   def _serialize(self):
     return (self._element_spec, self._dataset_shape)

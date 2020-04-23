@@ -35,7 +35,7 @@ except ImportError:
   PIL = None
 
 
-class DatasetFromDirectoryTest(keras_parameterized.TestCase):
+class ImageDatasetFromDirectoryTest(keras_parameterized.TestCase):
 
   def _get_images(self, count=16, color_mode='rgb'):
     width = height = 24
@@ -262,7 +262,7 @@ class DatasetFromDirectoryTest(keras_parameterized.TestCase):
 
     with self.assertRaisesRegex(
         ValueError,
-        'Expected the lengths of `labels` to match the number of images'):
+        'Expected the lengths of `labels` to match the number of files'):
       _ = image_dataset.image_dataset_from_directory(
           directory, labels=[0, 0, 1, 1])
 
