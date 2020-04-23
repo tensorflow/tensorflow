@@ -27,7 +27,6 @@ from tensorflow.python import tf2
 from tensorflow.python.compat import compat
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
@@ -356,22 +355,6 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertCountEqual(shuffle_1, shuffle_2)
     self.assertNotEqual(shuffle_1, shuffle_2)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testCoordinateShuffling(self):
-    if not compat.forward_compatible(
-        2020, 5, 22) and tf2.enabled() and context.executing_eagerly():
-      self.skipTest("Functionality currently not supported.")
-
-    num_elements = 100
-    ds = dataset_ops.Dataset.range(num_elements)
-    ds = ds.shuffle(num_elements, seed=42)
-    ds = dataset_ops.Dataset.zip((ds, ds))
-    get_next = self.getNext(ds)
-
-    for _ in range(100):
-      x, y = self.evaluate(get_next())
-      self.assertEqual(x, y)
 
 
 if __name__ == "__main__":
