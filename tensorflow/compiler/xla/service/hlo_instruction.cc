@@ -2160,6 +2160,13 @@ Status HloInstruction::ReplaceAllUsesWithDifferentShape(
   return Status::OK();
 }
 
+bool HloInstruction::IsEffectiveBitcast() const {
+  return opcode_ == HloOpcode::kBitcast ||
+         (opcode_ == HloOpcode::kTranspose &&
+          ShapeUtil::TransposeIsBitcast(operand(0)->shape(), shape(),
+                                        dimensions()));
+}
+
 HloComputation* HloInstruction::to_apply() const {
   switch (opcode_) {
     case HloOpcode::kCall:
@@ -3637,6 +3644,10 @@ const std::vector<int64>& HloInstruction::slice_starts() const {
   return Cast<HloSliceInstruction>(this)->slice_starts();
 }
 
+std::vector<int64>* HloInstruction::mutable_slice_starts() {
+  return Cast<HloSliceInstruction>(this)->mutable_slice_starts();
+}
+
 int64 HloInstruction::slice_limits(int64 dimension) const {
   return Cast<HloSliceInstruction>(this)->slice_limits(dimension);
 }
@@ -3645,12 +3656,20 @@ const std::vector<int64>& HloInstruction::slice_limits() const {
   return Cast<HloSliceInstruction>(this)->slice_limits();
 }
 
+std::vector<int64>* HloInstruction::mutable_slice_limits() {
+  return Cast<HloSliceInstruction>(this)->mutable_slice_limits();
+}
+
 int64 HloInstruction::slice_strides(int64 dimension) const {
   return Cast<HloSliceInstruction>(this)->slice_strides(dimension);
 }
 
 const std::vector<int64>& HloInstruction::slice_strides() const {
   return Cast<HloSliceInstruction>(this)->slice_strides();
+}
+
+std::vector<int64>* HloInstruction::mutable_slice_strides() {
+  return Cast<HloSliceInstruction>(this)->mutable_slice_strides();
 }
 
 const Literal& HloInstruction::literal() const {

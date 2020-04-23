@@ -36,11 +36,16 @@ class SpaceToDepthOpModel : public SingleOpModelWithHexagon {
     BuildInterpreter({GetShape(input_)});
   }
 
-  void SetInput(const std::vector<uint8_t>& data) {
-    PopulateTensor<uint8_t>(input_, data);
+  template <typename integer_type>
+  void SetInput(const std::vector<integer_type>& data) {
+    PopulateTensor<integer_type>(input_, data);
   }
 
-  std::vector<uint8_t> GetOutput() { return ExtractVector<uint8_t>(output_); }
+  template <typename integer_type>
+  std::vector<integer_type> GetOutput() {
+    return ExtractVector<integer_type>(output_);
+  }
+
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
  private:
@@ -48,21 +53,41 @@ class SpaceToDepthOpModel : public SingleOpModelWithHexagon {
   int output_;
 };
 
-TEST(SpaceToDepthOpModel, SpaceToDepth) {
+TEST(SpaceToDepthOpModel, SpaceToDepth_UInt8) {
   SpaceToDepthOpModel m({TensorType_UINT8, {1, 2, 2, 1}, -5, 5}, 2,
                         BuiltinOperator_SPACE_TO_DEPTH);
-  m.SetInput({1, 2, 3, 4});
+  m.SetInput<uint8_t>({1, 2, 3, 4});
   m.ApplyDelegateAndInvoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4}));
+  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({1, 2, 3, 4}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
 }
 
-TEST(SpaceToDepthOpModel, DepthToSpace) {
+TEST(SpaceToDepthOpModel, SpaceToDepth_Int8) {
+  SpaceToDepthOpModel m({TensorType_INT8, {1, 2, 2, 1}, -5, 5}, 2,
+                        BuiltinOperator_SPACE_TO_DEPTH);
+  m.SetInput<int8_t>({1, 2, 3, 4});
+  m.ApplyDelegateAndInvoke();
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({1, 2, 3, 4}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
+}
+
+TEST(SpaceToDepthOpModel, DepthToSpace_UInt8) {
   SpaceToDepthOpModel m({TensorType_UINT8, {1, 1, 2, 4}, -8, 8}, 2,
                         BuiltinOperator_DEPTH_TO_SPACE);
-  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8});
+  m.SetInput<uint8_t>({1, 2, 3, 4, 5, 6, 7, 8});
   m.ApplyDelegateAndInvoke();
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 5, 6, 3, 4, 7, 8}));
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              ElementsAreArray({1, 2, 5, 6, 3, 4, 7, 8}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 4, 1}));
+}
+
+TEST(SpaceToDepthOpModel, DepthToSpace_Int8) {
+  SpaceToDepthOpModel m({TensorType_INT8, {1, 1, 2, 4}, -8, 8}, 2,
+                        BuiltinOperator_DEPTH_TO_SPACE);
+  m.SetInput<int8_t>({1, 2, 3, 4, 5, 6, 7, 8});
+  m.ApplyDelegateAndInvoke();
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({1, 2, 5, 6, 3, 4, 7, 8}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 4, 1}));
 }
 

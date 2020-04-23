@@ -46,7 +46,6 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/Functional.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
@@ -71,7 +70,7 @@ namespace TFL {
 namespace {
 
 // Prepare TF operations in functions for subsequent legalization.
-class PrepareTFPass : public FunctionPass<PrepareTFPass> {
+class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
  public:
   explicit PrepareTFPass() : unfold_batch_matmul_(true) {}
   explicit PrepareTFPass(bool unfold_batch_matmul)
@@ -322,9 +321,10 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
 
     // Create tensor type for the transpose result.
     auto filter_type = filter.getType().cast<RankedTensorType>();
-    auto result_shape = functional::map(
-        [filter_type](int64_t dim) { return filter_type.getDimSize(dim); },
-        perm);
+    auto result_shape =
+        llvm::to_vector<4>(llvm::map_range(perm, [filter_type](int64_t dim) {
+          return filter_type.getDimSize(dim);
+        }));
     auto elem_type = filter_type.getElementType();
     auto result_type = RankedTensorType::get(result_shape, elem_type);
 
@@ -619,8 +619,8 @@ void PrepareTFPass::runOnFunction() {
 
   // This pattern was intented to uses TFL QDQs to preserve the quantization
   // parameters from the TF Quant ops, thus this pattern should run with the
-  // first `applyPatternsGreedily` method, which would otherwise removes the
-  // TF FakeQuant ops by the constant folding.
+  // first `applyPatternsAndFoldGreedily` method, which would otherwise removes
+  // the TF FakeQuant ops by the constant folding.
   patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
 
   // This pattern will try to identify and optimize for dilated convolution.
@@ -634,7 +634,7 @@ void PrepareTFPass::runOnFunction() {
   // This will allow optimizing any TF_Mul->TF_Conv in the graph
   // and any expanded from FusedBatchNorm. We need to do this
   // before converting TF_Conv to TFL_Conv
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 
   // Load the generated pattern again, so new quantization pass-through
   // will be applied.
@@ -646,13 +646,13 @@ void PrepareTFPass::runOnFunction() {
   }
   patterns.insert<TF::ConvertTFEinsumOp, ConvertTFConv2D,
                   ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice>(ctx);
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect PrepareTF pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareTFPass(
+std::unique_ptr<OperationPass<FuncOp>> CreatePrepareTFPass(
     bool unfold_batch_matmul) {
   return std::make_unique<PrepareTFPass>(unfold_batch_matmul);
 }

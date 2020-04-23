@@ -40,8 +40,6 @@ constexpr int kMaxChannels = 256;
 // https://www.tensorflow.org/lite/performance/quantization_spec
 constexpr int kConvQuantizedDimension = 0;
 
-const int kTensorNotAllocated = -1;
-
 struct OpData {
   TfLitePaddingValues padding;
   // The scaling factor from input to output (aka the 'real multiplier') can
@@ -115,8 +113,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   return raw;
 }
 
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 #if defined(__ARM_FEATURE_DSP)
   OpData data;
@@ -129,6 +125,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   RuntimeShape input_shape = GetTensorShape(input);
+  RuntimeShape output_shape = GetTensorShape(output);
 
   const int input_depth = input_shape.Dims(3);
   const int input_width = input->dims->data[2];
@@ -137,6 +134,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int filter_height = filter->dims->data[1];
   const int output_width = output->dims->data[2];
   const int output_height = output->dims->data[1];
+  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
 
   int* buffer_idx = reinterpret_cast<int*>(node->user_data);
 
@@ -148,6 +146,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       (input_depth % 4 == 0) && params->stride_width == 1 &&
       params->stride_height == 1 && filter_width == 1 && filter_height == 1) {
     buf_size = arm_convolve_1x1_s8_fast_get_buffer_size(input_depth);
+  } else if (output_height == 1 && input_height == 1 && filter_height == 1 &&
+             (output_width % 4 == 0) && batches == 1) {
+    buf_size = arm_convolve_1_x_n_s8_get_buffer_size(input_depth, filter_width,
+                                                     filter_height);
   } else {
     buf_size = arm_convolve_s8_get_buffer_size(input_depth, filter_width,
                                                filter_height);
@@ -155,7 +157,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   node->user_data = buffer_idx;
   if (buf_size > 0) {
-    context->RequestScratchBufferInArena(context, buf_size, buffer_idx);
+    TF_LITE_ENSURE_STATUS(
+        context->RequestScratchBufferInArena(context, buf_size, buffer_idx));
   } else {
     *buffer_idx = -1;
   }
@@ -268,11 +271,6 @@ TfLiteStatus EvalQuantizedPerChannel(
 
   } else if (output_height == 1 && input_height == 1 && filter_height == 1 &&
              (output_width % 4 == 0) && batches == 1) {
-    const int32_t buf_size = arm_convolve_1_x_n_s8_get_buffer_size(
-        input_depth, filter_width, filter_height);
-    if (get_cmsis_scratch_buffer(context, &buf, buf_size) != kTfLiteOk) {
-      return kTfLiteError;
-    }
     if (arm_convolve_1_x_n_s8(
             GetTensorData<int8_t>(input), input_width, input_depth, batches,
             GetTensorData<int8_t>(filter), output_depth, filter_width,
@@ -408,8 +406,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace conv
 
 TfLiteRegistration* Register_CONV_2D() {
-  static TfLiteRegistration r = {conv::Init, conv::Free, conv::Prepare,
-                                 conv::Eval};
+  static TfLiteRegistration r = {/*init=*/conv::Init,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/conv::Prepare,
+                                 /*invoke=*/conv::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

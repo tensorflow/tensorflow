@@ -132,13 +132,6 @@ void EagerClusterFunctionLibraryRuntime::Run(
     FunctionLibraryRuntime::LocalHandle handle,
     gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done) {
-  if (!rets->empty()) {
-    // TODO(b/150963957): Support remote outputs which are passed as Tensors.
-    done(errors::Unimplemented(
-        "Not implemented. Users could set the output devices in "
-        "FunctionLibraryRuntime::Options to the default multi-device "
-        "function device as a workaround."));
-  }
   FunctionData* function_data = nullptr;
   {
     mutex_lock l(mu_);
@@ -160,6 +153,11 @@ void EagerClusterFunctionLibraryRuntime::Run(
   }
 
   EagerOperation* op = function_data->op.get();
+
+  if (!op->Inputs().empty()) {
+    done(errors::Internal("Inputs should not be set during instantiation."));
+    return;
+  }
 
   eager::EnqueueRequest* request = new eager::EnqueueRequest;
   request->set_context_id(context_id_);
@@ -190,17 +188,13 @@ void EagerClusterFunctionLibraryRuntime::Run(
   op->Attrs().FillAttrValueMap(remote_op->mutable_attrs());
   remote_op->set_device(function_data->target);
 
-  for (auto handle : op->Inputs()) {
-    handle->Ref();
-  }
-
   // StreamingEnqueueAsync may introduce a deadlock. When streaming RPC is
   // disabled, Run() returns when the remote function execution completes, which
   // might be blocked by a non-enqueued function execution.
   EnqueueResponse* response = new EnqueueResponse;
   eager_client->EnqueueAsync(
       request, response,
-      [op, request, response, rets, done = std::move(done)](const Status& s) {
+      [request, response, rets, done = std::move(done)](const Status& s) {
         Status status = s;
         auto cleanup = gtl::MakeCleanup([request, response, &status, &done] {
           done(status);
@@ -208,9 +202,6 @@ void EagerClusterFunctionLibraryRuntime::Run(
           delete response;
         });
 
-        for (auto handle : op->Inputs()) {
-          handle->Unref();
-        }
         if (!status.ok()) {
           return;
         }

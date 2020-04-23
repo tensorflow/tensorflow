@@ -174,7 +174,8 @@ Status ConvertGraphDefToXlaViaMlir(
   // Convert the MLIR module to XLA computation. If the input graph can't be
   // lowered down to a single graph node with a single island by the previous
   // step, this step will return an error.
-  return ConvertMLIRToXlaComputation(*module, computation,
+  return ConvertMLIRToXlaComputation(*module, /*device_type=*/"XLA_CPU_JIT",
+                                     computation,
                                      /*use_tuple_args=*/false,
                                      /*always_return_tuple=*/true);
 }

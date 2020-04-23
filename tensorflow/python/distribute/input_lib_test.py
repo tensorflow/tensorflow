@@ -231,6 +231,8 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu
           ]))
   def testMultiDeviceIterInitialize(self, distribution):
+    if tf2.enabled():
+      self.skipTest("Only V1 is supported.")
     worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
     dataset_fn = lambda _: dataset_ops.DatasetV1.range(10)
 
@@ -510,6 +512,27 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
         distribution,
         sess=None,
         split_batch_by=split_batch_by)
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+      ))
+  def testCache(self, distribution):
+    self.skipTest("Disable due to breakage.")
+    dataset = dataset_ops.Dataset.range(10).shuffle(10).cache().batch(1)
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+
+    first_epoch = list(x.numpy() for x in dist_dataset)
+    second_epoch = list(x.numpy() for x in dist_dataset)
+
+    self.assertEqual(first_epoch, second_epoch)
 
 
 class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
@@ -1077,7 +1100,6 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
 
     for x in dist_dataset:
       process_inputs(x)
-
 
 if __name__ == "__main__":
   test.main()

@@ -73,7 +73,7 @@ class ProcessFunctionLibraryRuntime {
       const SessionMetadata* session_metadata = nullptr,
       Rendezvous::Factory rendezvous_factory = Rendezvous::Factory());
 
-  virtual ~ProcessFunctionLibraryRuntime() {
+  ~ProcessFunctionLibraryRuntime() {
     // Deleting the FunctionLibraryRuntime map will delete the function handles
     // registered in it, which may call ReleaseHandle in this class again to
     // release their sub-function. These circular calls may casue segfault
@@ -137,8 +137,13 @@ class ProcessFunctionLibraryRuntime {
   // index of instantiation of that function. If the function was not
   // instantiated on `device_name` or the function is multi-device,
   // returns kInvalidLocalHandle.
+  //
+  // If `include_multi_device` is true and `handle` is a multi-device function
+  // with a single component that is placed on `device_name`, then this method
+  // will return the local handle for that component.
   FunctionLibraryRuntime::LocalHandle GetHandleOnDevice(
-      const string& device_name, FunctionLibraryRuntime::Handle handle) const;
+      const string& device_name, FunctionLibraryRuntime::Handle handle,
+      bool include_multi_device = false) const;
 
   // Fills `output_devices` with the devices on which the results will
   // be produced. If some output is produced on CPU, the corresponding Device*
@@ -184,10 +189,10 @@ class ProcessFunctionLibraryRuntime {
            FunctionLibraryRuntime::Handle handle, CallFrameInterface* frame,
            FunctionLibraryRuntime::DoneCallback done) const;
 
-  virtual void Run(const FunctionLibraryRuntime::Options& opts,
-                   FunctionLibraryRuntime::Handle handle,
-                   const FunctionArgsInterface& args, std::vector<Tensor>* rets,
-                   FunctionLibraryRuntime::DoneCallback done) const;
+  void Run(const FunctionLibraryRuntime::Options& opts,
+           FunctionLibraryRuntime::Handle handle,
+           const FunctionArgsInterface& args, std::vector<Tensor>* rets,
+           FunctionLibraryRuntime::DoneCallback done) const;
 
   const DeviceMgr* device_mgr() { return device_mgr_; }
 
@@ -274,12 +279,6 @@ class ProcessFunctionLibraryRuntime {
     uint64 step_id;
     FunctionLibraryRuntime::Handle local_handle;
   };
-
-  virtual void RunRemoteDevice(const FunctionLibraryRuntime::Options& opts,
-                               FunctionLibraryRuntime::Handle local_handle,
-                               gtl::ArraySlice<FunctionArg> args,
-                               std::vector<Tensor>* rets,
-                               FunctionLibraryRuntime::DoneCallback done) const;
 
   // If `handle` represents a multi-device function, returns the multi-device
   // data associated with `handle`. Else, nullptr.

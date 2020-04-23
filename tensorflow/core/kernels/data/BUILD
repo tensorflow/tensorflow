@@ -170,6 +170,7 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/common_runtime:local_executor_params",
     ],
     alwayslink = 1,
 )

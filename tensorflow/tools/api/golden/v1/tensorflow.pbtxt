@@ -1554,11 +1554,11 @@ tf_module {
   }
   member_method {
     name: "lin_space"
-    argspec: "args=[\'start\', \'stop\', \'num\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'start\', \'stop\', \'num\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'0\'], "
   }
   member_method {
     name: "linspace"
-    argspec: "args=[\'start\', \'stop\', \'num\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'start\', \'stop\', \'num\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'0\'], "
   }
   member_method {
     name: "load_file_system_library"
@@ -2490,7 +2490,7 @@ tf_module {
   }
   member_method {
     name: "vectorized_map"
-    argspec: "args=[\'fn\', \'elems\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'fn\', \'elems\', \'fallback_to_while_loop\'], varargs=None, keywords=None, defaults=[\'True\'], "
   }
   member_method {
     name: "verify_tensor_all_finite"

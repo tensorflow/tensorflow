@@ -15,19 +15,20 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/accuracy/ilsvrc/imagenet_accuracy_eval.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 
 namespace {
-constexpr char kNumThreadsFlag[] = "num_threads";
+constexpr char kNumEvalThreadsFlag[] = "num_eval_threads";
 constexpr char kOutputFilePathFlag[] = "output_file_path";
 constexpr char kProtoOutputFilePathFlag[] = "proto_output_file_path";
 }  // namespace
 
 int main(int argc, char* argv[]) {
   std::string output_file_path, proto_output_file_path;
-  int num_threads = 4;
+  int num_eval_threads = 4;
   std::vector<tflite::Flag> flag_list = {
-      tflite::Flag::CreateFlag(kNumThreadsFlag, &num_threads,
-                               "Number of threads."),
+      tflite::Flag::CreateFlag(kNumEvalThreadsFlag, &num_eval_threads,
+                               "Number of threads used for evaluation."),
       tflite::Flag::CreateFlag(kOutputFilePathFlag, &output_file_path,
                                "Path to output file."),
       tflite::Flag::CreateFlag(kProtoOutputFilePathFlag,
@@ -36,14 +37,17 @@ int main(int argc, char* argv[]) {
   };
   tflite::Flags::Parse(&argc, const_cast<const char**>(argv), flag_list);
 
-  if (num_threads <= 0) {
+  if (num_eval_threads <= 0) {
     LOG(ERROR) << "Invalid number of threads.";
     return EXIT_FAILURE;
   }
 
+  tflite::evaluation::DelegateProviders delegate_providers;
+  delegate_providers.InitFromCmdlineArgs(&argc, const_cast<const char**>(argv));
+
   std::unique_ptr<tensorflow::metrics::ImagenetModelEvaluator> evaluator =
       tensorflow::metrics::CreateImagenetModelEvaluator(&argc, argv,
-                                                        num_threads);
+                                                        num_eval_threads);
 
   if (!evaluator) {
     LOG(ERROR) << "Fail to create the ImagenetModelEvaluator.";
@@ -59,8 +63,8 @@ int main(int argc, char* argv[]) {
   }
 
   evaluator->AddObserver(writer.get());
-  LOG(ERROR) << "Starting evaluation with: " << num_threads << " threads.";
-  if (evaluator->EvaluateModel() != kTfLiteOk) {
+  LOG(ERROR) << "Starting evaluation with: " << num_eval_threads << " threads.";
+  if (evaluator->EvaluateModel(&delegate_providers) != kTfLiteOk) {
     LOG(ERROR) << "Failed to evaluate the model!";
     return EXIT_FAILURE;
   }

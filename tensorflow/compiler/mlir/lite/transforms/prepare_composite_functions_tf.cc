@@ -94,14 +94,15 @@ class ConvertEmbeddedLookupFunc {
 // body with the corresponding fused TFLite op. The replacement need not always
 // be a fused op, though that is the primary use case.
 class PrepareCompositeFunctionsPass
-    : public ModulePass<PrepareCompositeFunctionsPass> {
+    : public PassWrapper<PrepareCompositeFunctionsPass,
+                         OperationPass<ModuleOp>> {
  public:
   explicit PrepareCompositeFunctionsPass() {}
 
  private:
   void ConvertTFImplements(FuncOp func, StringAttr attr);
   void ConvertTFAPIImplements(FuncOp func, StringAttr attr, ModuleOp module);
-  void runOnModule() override;
+  void runOnOperation() override;
 };
 
 void PrepareCompositeFunctionsPass::ConvertTFImplements(FuncOp func,
@@ -189,8 +190,8 @@ void PrepareCompositeFunctionsPass::ConvertTFAPIImplements(FuncOp func,
   }
 }
 
-void PrepareCompositeFunctionsPass::runOnModule() {
-  auto module = getModule();
+void PrepareCompositeFunctionsPass::runOnOperation() {
+  auto module = getOperation();
   for (auto func : module.getOps<FuncOp>()) {
     // We have two kinds of implements:
     // 1) tf._implements.
@@ -211,7 +212,7 @@ void PrepareCompositeFunctionsPass::runOnModule() {
 }
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreatePrepareCompositeFunctionsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareCompositeFunctionsPass() {
   return std::make_unique<PrepareCompositeFunctionsPass>();
 }
 

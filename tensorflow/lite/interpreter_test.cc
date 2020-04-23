@@ -551,6 +551,65 @@ TEST(BasicInterpreter, NoopResizingTensors) {
   ASSERT_EQ(tensor->data.f[5], 0.123f);
 }
 
+TEST(BasicInterpreter, ResizingTensorsStrictInvalid) {
+  // Tests ResizeInputTensorStrict where `dims_signature` is not specified.
+  Interpreter interpreter;
+  ASSERT_EQ(interpreter.AddTensors(1), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetOutputs({0}), kTfLiteOk);
+
+  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(
+                0, kTfLiteFloat32, "", {1, 1, 3}, TfLiteQuantizationParams()),
+            kTfLiteOk);
+
+  int t = interpreter.inputs()[0];
+  TfLiteTensor* tensor = interpreter.tensor(t);
+
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1, 1, 3}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 3 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Invalid becuase `dims_signature` is not specified.
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1, 2, 3}), kTfLiteError);
+  EXPECT_EQ(tensor->bytes, 3 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Assert that ResizeInputTensor works for this value.
+  ASSERT_EQ(interpreter.ResizeInputTensor(t, {1, 2, 3}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 6 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+}
+
+TEST(BasicInterpreter, ResizingTensorsStrict) {
+  // Tests ResizeInputTensorStrict where `dims_signature` is specified.
+  Interpreter interpreter;
+  ASSERT_EQ(interpreter.AddTensors(1), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetOutputs({0}), kTfLiteOk);
+
+  std::vector<int> dims_signature = {-1, -1, 3};
+  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(
+                0, kTfLiteFloat32, "", {1, 1, 3}, TfLiteQuantizationParams(),
+                false, &dims_signature),
+            kTfLiteOk);
+
+  int t = interpreter.inputs()[0];
+  TfLiteTensor* tensor = interpreter.tensor(t);
+
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1, 2, 3}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 6 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1, 2, 4}), kTfLiteError);
+  EXPECT_EQ(tensor->bytes, 6 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Assert that ResizeInputTensor works for this value.
+  ASSERT_EQ(interpreter.ResizeInputTensor(t, {1, 2, 4}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 8 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+}
+
 // Simple op that does input = output.
 TfLiteRegistration GetPassthroughOpRegistration() {
   TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
@@ -901,8 +960,7 @@ TEST(BasicInterpreter, TestUseNNAPI) {
 TEST(BasicInterpreter, TestUnsupportedDelegateFunctions) {
   Interpreter interpreter;
   ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
-  TfLiteRegistration registration = {
-      .init = nullptr, .free = nullptr, .prepare = nullptr, .invoke = nullptr};
+  TfLiteRegistration registration = {nullptr, nullptr, nullptr, nullptr};
   // These functions are only supported inside Delegate's Prepare function.
   // The test verifies that these functions returns `kTfLiteError`, but not
   // `kTfLiteOk` or just crashes.
@@ -1020,8 +1078,11 @@ TEST(InterpreterTensorsCapacityTest, TestExceedHeadroom) {
     TfLiteTensor* first_tensor = context->tensors;
 
     int new_tensor_index;
-    context->AddTensors(context, Interpreter::kTensorsCapacityHeadroom + 1,
-                        &new_tensor_index);
+    // Add enough tensors to trigger buffer re-allocation.
+    context->AddTensors(
+        context,
+        (context->tensors_size + Interpreter::kTensorsCapacityHeadroom + 1) * 2,
+        &new_tensor_index);
     EXPECT_NE(first_tensor, context->tensors);
     return kTfLiteOk;
   };
@@ -1032,7 +1093,7 @@ TEST(InterpreterTensorsCapacityTest, TestExceedHeadroom) {
 }
 
 struct TestExternalContext : public TfLiteExternalContext {
-  static const TfLiteExternalContextType kType = kTfLiteGemmLowpContext;
+  static constexpr TfLiteExternalContextType kType = kTfLiteGemmLowpContext;
 
   static TestExternalContext* Get(TfLiteContext* context) {
     return reinterpret_cast<TestExternalContext*>(
@@ -1259,8 +1320,14 @@ TfLiteRegistration AddOpRegistration() {
   reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
     // Copy input data to output data.
     const TfLiteTensor* a0 = GetInput(context, node, 0);
+    TF_LITE_ENSURE(context, a0);
+    TF_LITE_ENSURE(context, a0->data.f);
     const TfLiteTensor* a1 = GetInput(context, node, 1);
+    TF_LITE_ENSURE(context, a1);
+    TF_LITE_ENSURE(context, a1->data.f);
     TfLiteTensor* out = GetOutput(context, node, 0);
+    TF_LITE_ENSURE(context, out);
+    TF_LITE_ENSURE(context, out->data.f);
     int num = a0->dims->data[0];
     for (int i = 0; i < num; i++) {
       out->data.f[i] = a0->data.f[i] + a1->data.f[i];
@@ -1270,6 +1337,9 @@ TfLiteRegistration AddOpRegistration() {
   return reg;
 }
 
+}  // namespace
+
+// TestDelegate is a friend of Interpreter to access RemoveAllDelegates().
 class TestDelegate : public ::testing::Test {
  protected:
   void SetUp() override {
@@ -1305,6 +1375,10 @@ class TestDelegate : public ::testing::Test {
 
   TfLiteBufferHandle AllocateBufferHandle() { return ++last_allocated_handle_; }
 
+  TfLiteStatus RemoveAllDelegates() {
+    return interpreter_->RemoveAllDelegates();
+  }
+
  protected:
   class SimpleDelegate {
    public:
@@ -1314,13 +1388,16 @@ class TestDelegate : public ::testing::Test {
     // fail_node_prepare: To simulate failure of Delegate node's Prepare().
     // min_ops_per_subset: If >0, partitioning preview is used to choose only
     // those subsets with min_ops_per_subset number of nodes.
+    // fail_node_invoke: To simulate failure of Delegate node's Invoke().
     explicit SimpleDelegate(
         const std::vector<int>& nodes,
         TfLiteDelegateFlags delegate_flags = kTfLiteDelegateFlagsNone,
-        bool fail_node_prepare = false, int min_ops_per_subset = 0)
+        bool fail_node_prepare = false, int min_ops_per_subset = 0,
+        bool fail_node_invoke = false)
         : nodes_(nodes),
           fail_delegate_node_prepare_(fail_node_prepare),
-          min_ops_per_subset_(min_ops_per_subset) {
+          min_ops_per_subset_(min_ops_per_subset),
+          fail_delegate_node_invoke_(fail_node_invoke) {
       delegate_.Prepare = [](TfLiteContext* context,
                              TfLiteDelegate* delegate) -> TfLiteStatus {
         auto* simple = static_cast<SimpleDelegate*>(delegate->data_);
@@ -1451,6 +1528,12 @@ class TestDelegate : public ::testing::Test {
         out->data_is_stale = true;
         return kTfLiteOk;
       };
+      if (fail_delegate_node_invoke_) {
+        reg.invoke = [](TfLiteContext* context,
+                        TfLiteNode* node) -> TfLiteStatus {
+          return kTfLiteError;
+        };
+      }
 
       reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
         // Set output size to input size
@@ -1487,11 +1570,13 @@ class TestDelegate : public ::testing::Test {
     TfLiteDelegate delegate_;
     bool fail_delegate_node_prepare_ = false;
     int min_ops_per_subset_ = 0;
+    bool fail_delegate_node_invoke_ = false;
   };
 
   std::unique_ptr<Interpreter> interpreter_;
   std::unique_ptr<SimpleDelegate> delegate_, delegate2_;
 };
+namespace {
 
 TEST_F(TestDelegate, BasicDelegate) {
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
@@ -1526,7 +1611,7 @@ TEST_F(TestDelegate, DelegateNodePrepareFailure) {
   // TfLiteRegistration returns an error status.
   ASSERT_EQ(
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
-      kTfLiteError);
+      kTfLiteDelegateError);
   // Execution plan should remain unchanged.
   ASSERT_EQ(interpreter_->execution_plan().size(), 3);
 
@@ -1539,6 +1624,37 @@ TEST_F(TestDelegate, DelegateNodePrepareFailure) {
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
   interpreter_->Invoke();
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
+  }
+}
+
+TEST_F(TestDelegate, DelegateNodeInvokeFailure) {
+  delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
+      {0, 1, 2}, kTfLiteDelegateFlagsNone, false /**fail_node_prepare**/,
+      0 /**min_ops_per_subset**/, true /**fail_node_invoke**/));
+  ASSERT_EQ(
+      interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
+      kTfLiteOk);
+  // Delegation modified execution plan.
+  ASSERT_EQ(interpreter_->execution_plan().size(), 1);
+
+  std::vector<float> input = {1.0f, 2.0f, 3.0f};
+  std::vector<float> expected_output = {2.0f, 4.0f, 6.0f};
+  constexpr int kOutputTensorIndex = 3;
+
+  // Verify Invoke() behavior: fails first, succeeds after RemoveAllDelegates().
+  memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
+  memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
+  EXPECT_EQ(interpreter_->Invoke(), kTfLiteError);
+  ASSERT_EQ(RemoveAllDelegates(), kTfLiteOk);
+  // Delegation removed, returning to original execution plan.
+  ASSERT_EQ(interpreter_->execution_plan().size(), 3);
+
+  memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
+  memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
+  TfLiteTensor* tensor = interpreter_->tensor(kOutputTensorIndex);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 3; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -1563,24 +1679,55 @@ TEST_F(TestDelegate, SecondDelegationPrepareFailure) {
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
       kTfLiteOk);
   ASSERT_EQ(interpreter_->execution_plan().size(), 2);
-  // Second delegate won't get applied. However, we should be back to the
-  // previous 2-node plan.
+  // Second delegate won't get applied.
+  // As a result, previous delegate should also get undone, restoring the
+  // execution plan to its original state.
   ASSERT_EQ(
       interpreter_->ModifyGraphWithDelegate(delegate2_->get_tf_lite_delegate()),
-      kTfLiteError);
+      kTfLiteDelegateError);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 3);
+
+  std::vector<float> input = {1.0f, 2.0f, 3.0f};
+  std::vector<float> expected_output = {2.0f, 4.0f, 6.0f};
+  constexpr int kOutputTensorIndex = 3;
+  TfLiteTensor* tensor = interpreter_->tensor(kOutputTensorIndex);
+
+  // Verify Invoke() behavior.
+  memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
+  memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
+  interpreter_->Invoke();
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
+  }
+}
+
+TEST_F(TestDelegate, SecondDelegationInvokeFailure) {
+  delegate_ = std::unique_ptr<SimpleDelegate>(
+      new SimpleDelegate({1, 2}, kTfLiteDelegateFlagsAllowDynamicTensors));
+  delegate2_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate(
+      {0}, kTfLiteDelegateFlagsNone, false /**fail_node_prepare**/,
+      0 /**min_ops_per_subset**/, true /**fail_node_invoke**/));
+  ASSERT_EQ(
+      interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
+      kTfLiteOk);
+  ASSERT_EQ(
+      interpreter_->ModifyGraphWithDelegate(delegate2_->get_tf_lite_delegate()),
+      kTfLiteOk);
   ASSERT_EQ(interpreter_->execution_plan().size(), 2);
 
   std::vector<float> input = {1.0f, 2.0f, 3.0f};
-  // Node 0: tensor_2 = tensor0 + tensor0
-  // Delegated node: tensor_2 + tensor_1
-  std::vector<float> expected_output = {3.0f, 6.0f, 9.0f};
+  // Outputs match the AddOp path, rather than delegate path.
+  std::vector<float> expected_output = {2.0f, 4.0f, 6.0f};
   constexpr int kOutputTensorIndex = 3;
-  TfLiteTensor* tensor = interpreter_->tensor(kOutputTensorIndex);
 
   // Verify Invoke() behavior to ensure Interpreter isn't broken.
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
-  interpreter_->Invoke();
+  EXPECT_EQ(interpreter_->Invoke(), kTfLiteError);
+  EXPECT_EQ(RemoveAllDelegates(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->execution_plan().size(), 3);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* tensor = interpreter_->tensor(kOutputTensorIndex);
   for (int i = 0; i < 3; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }

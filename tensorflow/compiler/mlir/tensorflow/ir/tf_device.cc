@@ -40,7 +40,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Support/STLExtras.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/logging.h"
@@ -90,7 +89,7 @@ struct TFInlinerInterface : public DialectInlinerInterface {
 // are perfectly forwarded to the block's terminator.
 bool BlockWrapsSingleOp(Block* block) {
   auto body = block->without_terminator();
-  if (!has_single_element(body)) return false;
+  if (!hasSingleElement(body)) return false;
 
   Operation& wrapped_op = *body.begin();
   Operation* terminator = block->getTerminator();
@@ -107,8 +106,6 @@ TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.cc.inc"
       >();
-
-  addOperations<ParallelExecuteOp>();
 
   addInterfaces<TFInlinerInterface>();
 }
@@ -161,22 +158,8 @@ LogicalResult Verify(ParallelExecuteOp op) {
   int output_index = 0;
   for (auto& region_and_index : llvm::enumerate(regions)) {
     auto& region = region_and_index.value();
-    auto region_index = region_and_index.index();
-
-    // Each region must include a single block of ops and must not be empty.
-    if (region.empty()) {
-      return op.emitOpError()
-             << "regions must not be empty. "
-             << "Found an empty region (" << region_index << ").";
-    }
-
-    if (!has_single_element(region)) {
-      return op.emitOpError()
-             << "regions must be composed of a single block of operations."
-             << "Expected region (" << region_index << ") with 1 block.";
-    }
-
     auto* region_terminator = region.front().getTerminator();
+
     // Check that output types of regions match return operand types.
     for (auto result_type : region_terminator->getOperandTypes()) {
       if (result_type !=
@@ -213,8 +196,6 @@ void ParallelExecuteOp::build(Builder* builder, OperationState& state,
   }
   state.addTypes(output_types);
 }
-
-LogicalResult ParallelExecuteOp::verify() { return Verify(*this); }
 
 Block& ParallelExecuteOp::GetRegionBlockWithIndex(unsigned index) {
   return getOperation()->getRegion(index).front();

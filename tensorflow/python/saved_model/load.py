@@ -173,12 +173,12 @@ class Loader(object):
       # The original_outputs here had Tensors converted to TensorSpecs, so
       # the restored function's structured_outputs field will not be
       # exactly the same. Fortunately the repacking logic cares only about
-      # the structure.
-      # TODO(vbardiovsky): Should we just replicate the structures, with
-      # Nones instead of real objects?
+      # the structure; and the unpacking logic cares only about structure
+      # and types.
       concrete_function._func_graph.structured_outputs = original_outputs  # pylint: disable=protected-access
       concrete_function._func_graph.structured_input_signature = (  # pylint: disable=protected-access
           coder.decode_proto(proto.canonicalized_input_signature))
+      concrete_function._initialize_function_spec()  # pylint: disable=protected-access
 
   def _setup_functions_captures(self):
     """Setup captures and variables in restored functions."""

@@ -674,7 +674,7 @@ REGISTER_OP("XlaGather")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
     .Output("output: T")
-    .SetShapeFn(UnchangedRank)
+    .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Wraps the XLA Gather operator documented at
   https://www.tensorflow.org/xla/operation_semantics#gather

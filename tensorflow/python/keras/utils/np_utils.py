@@ -27,7 +27,18 @@ def to_categorical(y, num_classes=None, dtype='float32'):
 
   E.g. for use with categorical_crossentropy.
 
-  Usage Example:
+  Arguments:
+      y: class vector to be converted into a matrix
+          (integers from 0 to num_classes).
+      num_classes: total number of classes. If `None`, this would be inferred
+        as the (largest number in `y`) + 1.
+      dtype: The data type expected by the input. Default: `'float32'`.
+
+  Returns:
+      A binary matrix representation of the input. The classes axis is placed
+      last.
+
+  Example:
 
   >>> a = tf.keras.utils.to_categorical([0, 1, 2, 3], num_classes=4)
   >>> a = tf.constant(a, shape=[4, 4])
@@ -51,16 +62,9 @@ def to_categorical(y, num_classes=None, dtype='float32'):
   >>> print(np.around(loss, 5))
   [0. 0. 0. 0.]
 
-  Arguments:
-      y: class vector to be converted into a matrix
-          (integers from 0 to num_classes).
-      num_classes: total number of classes. If `None`, this would be inferred
-        as the (largest number in `y`) + 1.
-      dtype: The data type expected by the input. Default: `'float32'`.
+  Raises:
+      Value Error: If input contains string value
 
-  Returns:
-      A binary matrix representation of the input. The classes axis is placed
-      last.
   """
   y = np.array(y, dtype='int')
   input_shape = y.shape
@@ -84,7 +88,7 @@ def normalize(x, axis=-1, order=2):
   Arguments:
       x: Numpy array to normalize.
       axis: axis along which to normalize.
-      order: Normalization order (e.g. 2 for L2 norm).
+      order: Normalization order (e.g. `order=2` for L2 norm).
 
   Returns:
       A normalized copy of the array.

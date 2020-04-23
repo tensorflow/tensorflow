@@ -324,8 +324,9 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 //   "xla_lhlo.terminator"() : () -> ()
 // }
 
-struct HloLegalizeToLhlo : public ModulePass<HloLegalizeToLhlo> {
-  void runOnModule() override {
+struct HloLegalizeToLhlo
+    : public PassWrapper<HloLegalizeToLhlo, OperationPass<ModuleOp>> {
+  void runOnOperation() override {
     OwningRewritePatternList patterns;
     auto& context = getContext();
     ConversionTarget target(context);
@@ -344,7 +345,7 @@ struct HloLegalizeToLhlo : public ModulePass<HloLegalizeToLhlo> {
                          [](Type input) { return input.isa<MemRefType>(); });
     });
 
-    auto module = getModule();
+    auto module = getOperation();
     populateHLOToLHLOConversionPattern(module.getContext(), &patterns);
 
     // Do partial conversion so we can have unknown ops in tests.
@@ -446,18 +447,21 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloOpConverter<xla_hlo::BroadcastInDimOp>,
       HloToLhloOpConverter<xla_hlo::CeilOp>,
       HloToLhloOpConverter<xla_hlo::CompareOp>,
+      HloToLhloOpConverter<xla_hlo::ComplexOp>,
       HloToLhloOpConverter<xla_hlo::ConstOp>,
       HloToLhloOpConverter<xla_hlo::ConvertOp>,
       HloToLhloOpConverter<xla_hlo::CopyOp>,
       HloToLhloOpConverter<xla_hlo::CosOp>,
       HloToLhloOpConverter<xla_hlo::DivOp>,
       HloToLhloOpConverter<xla_hlo::ExpOp>,
+      HloToLhloOpConverter<xla_hlo::ImagOp>,
       HloToLhloOpConverter<xla_hlo::IotaOp>,
       HloToLhloOpConverter<xla_hlo::LogOp>,
       HloToLhloOpConverter<xla_hlo::MaxOp>,
       HloToLhloOpConverter<xla_hlo::MinOp>,
       HloToLhloOpConverter<xla_hlo::MulOp>,
       HloToLhloOpConverter<xla_hlo::NegOp>,
+      HloToLhloOpConverter<xla_hlo::RealOp>,
       HloToLhloOpConverter<xla_hlo::RemOp>,
       HloToLhloOpConverter<xla_hlo::RsqrtOp>,
       HloToLhloOpConverter<xla_hlo::SelectOp>,
@@ -473,7 +477,7 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
   // clang-format on
 }
 
-std::unique_ptr<OpPassBase<ModuleOp>> createLegalizeToLhloPass() {
+std::unique_ptr<OperationPass<ModuleOp>> createLegalizeToLhloPass() {
   return absl::make_unique<HloLegalizeToLhlo>();
 }
 

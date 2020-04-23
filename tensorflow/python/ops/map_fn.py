@@ -53,6 +53,8 @@ def map_fn(fn,
            fn_output_signature=None):
   """Transforms `elems` by applying `fn` to each element unstacked on axis 0.
 
+  See also `tf.scan`.
+
   `map_fn` unstacks `elems` on axis 0 to obtain a sequence of elements;
   calls `fn` to transform each element; and then stacks the transformed
   values back together.
@@ -106,7 +108,7 @@ def map_fn(fn,
 
     * A `tf.DType` or `tf.TensorSpec` (to describe a `tf.Tensor`)
     * A `tf.RaggedTensorSpec` (to describe a `tf.RaggedTensor`)
-    * A `tf.SparseTensorSpec` (to describe a `tf.SparseTensor`)
+    * A `tf.SparseTensorSpec` (to describe a `tf.sparse.SparseTensor`)
     * A (possibly nested) tuple, list, or dict containing the above types.
 
   #### RaggedTensors
@@ -159,11 +161,11 @@ def map_fn(fn,
 
   #### SparseTensors
 
-  `map_fn` supports `tf.SparseTensor` inputs and outputs.  In particular:
+  `map_fn` supports `tf.sparse.SparseTensor` inputs and outputs.  In particular:
 
     * If `elems` is a `SparseTensor`, then `fn` will be called with each row
       of that sparse tensor. In particular, the value passed to `fn` will be a
-      `tf.SparseTensor` with one fewer dimension than `elems`.
+      `tf.sparse.SparseTensor` with one fewer dimension than `elems`.
 
     * If the result of `map_fn` should be a `SparseTensor`, then use a
       `tf.SparseTensorSpec` to specify `fn_output_signature`.  The individual
@@ -171,7 +173,7 @@ def map_fn(fn,
       `SparseTensor` with one more dimension.
 
   >>> # Example: SparseTensor input
-  >>> st = tf.SparseTensor([[0, 0], [2, 0], [2, 1]], [2, 3, 4], [4, 4])
+  >>> st = tf.sparse.SparseTensor([[0, 0], [2, 0], [2, 1]], [2, 3, 4], [4, 4])
   >>> tf.map_fn(tf.sparse.reduce_sum, st, fn_output_signature=tf.int32)
   <tf.Tensor: shape=(4,), dtype=int32, numpy=array([2, 0, 7, 0], dtype=int32)>
 
@@ -191,10 +193,15 @@ def map_fn(fn,
   *rows* of a `SparseTensor`.  If you wish to map a function over the nonzero
   values, then you should use:
 
-    * `tf.SparseTensor(st.indices, fn(st.values), st.dense_shape)`
-      (if the function is expressible as TensorFlow ops)
-    * `tf.SparseTensor(st.indices, tf.map_fn(fn, st.values), st.dense_shape)`
-      (otherwise).
+    * If the function is expressible as TensorFlow ops, use:
+      ```python
+      tf.sparse.SparseTensor(st.indices, fn(st.values), st.dense_shape)
+      ```
+    * Otherwise, use:
+      ```python
+      tf.sparse.SparseTensor(st.indices, tf.map_fn(fn, st.values),
+                             st.dense_shape)
+      ```
 
   #### `map_fn` vs. vectorized operations
 
@@ -276,7 +283,7 @@ def map_fn(fn,
 
       * A `tf.DType` or `tf.TensorSpec` (to describe a `tf.Tensor`)
       * A `tf.RaggedTensorSpec` (to describe a `tf.RaggedTensor`)
-      * A `tf.SparseTensorSpec` (to describe a `tf.SparseTensor`)
+      * A `tf.SparseTensorSpec` (to describe a `tf.sparse.SparseTensor`)
       * A (possibly nested) tuple, list, or dict containing the above types.
 
   Returns:

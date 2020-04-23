@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_allocator.h"
 
 #include <cstddef>
+#include <cstdint>
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
@@ -43,29 +44,13 @@ struct AllocationInfo {
 // requirement for SIMD extensions.
 constexpr int kBufferAlignment = 16;
 
-// If building with GNU clib from GCC 4.8.x or lower, `max_align_t` is not a
-// member of `std`. If using a newer version of clib, we import `max_align_t`
-// into the local anonymous namespace to be able to use it like the global
-// `max_align_t` from the older clib.
-#if defined(__GNUC__) && defined(__GNUC_PREREQ)
-#if __GNUC_PREREQ(4, 9)
-using std::max_align_t;
-#endif
-#else
-// We assume other compiler/clib configurations don't have this issue.
-using std::max_align_t;
-#endif
-
 class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
  public:
   explicit MicroBuiltinDataAllocator(SimpleMemoryAllocator* memory_allocator)
       : memory_allocator_(memory_allocator) {}
 
-  void* Allocate(size_t size) override {
-    // Align to an address that is proper for all primitive types, but no more
-    // than the size.
-    return memory_allocator_->AllocateFromTail(
-        size, std::min(size, alignof(max_align_t)));
+  void* Allocate(size_t size, size_t alignment_hint) override {
+    return memory_allocator_->AllocateFromTail(size, alignment_hint);
   }
   void Deallocate(void* data) override {
     // Do not deallocate, builtin data needs to be available for the life time
@@ -83,10 +68,10 @@ TfLiteStatus AllocateVariables(
     TfLiteTensor* runtime_tensors, SimpleMemoryAllocator* allocator) {
   for (size_t i = 0; i < flatbuffer_tensors->size(); ++i) {
     if (flatbuffer_tensors->Get(i)->is_variable()) {
-      runtime_tensors[i].data.uint8 = allocator->AllocateFromTail(
+      runtime_tensors[i].data.data = allocator->AllocateFromTail(
           runtime_tensors[i].bytes, kBufferAlignment);
       // Allocation failure.
-      if (runtime_tensors[i].data.uint8 == nullptr) {
+      if (runtime_tensors[i].data.data == nullptr) {
         return kTfLiteError;
       }
     }
@@ -157,7 +142,7 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
     current->bytes = runtime_tensors[i].bytes;
     current->first_created = -1;
     current->last_used = -1;
-    current->needs_allocating = (runtime_tensors[i].data.raw == nullptr) &&
+    current->needs_allocating = (runtime_tensors[i].data.data == nullptr) &&
                                 (!subgraph->tensors()->Get(i)->is_variable());
   }
 
@@ -296,8 +281,8 @@ TfLiteStatus InitializeRuntimeTensor(
       if (array->size()) {
         // We've found a buffer with valid data, so update the runtime tensor
         // data structure to point to it.
-        result->data.raw =
-            const_cast<char*>(reinterpret_cast<const char*>(array->data()));
+        result->data.data =
+            const_cast<void*>(static_cast<const void*>(array->data()));
         // We set the data from a serialized buffer, so record tha.
         result->allocation_type = kTfLiteMmapRo;
       }
@@ -311,7 +296,7 @@ TfLiteStatus InitializeRuntimeTensor(
 
   // TODO(petewarden): Some of these paths aren't getting enough testing
   // coverage, so we should figure out some tests that exercise them.
-  if (!result->data.raw) {
+  if (result->data.data == nullptr) {
     // The tensor contents haven't been set from a serialized buffer, so
     // make a note that they will be allocated from memory. The actual
     // allocation won't happen until later.
@@ -351,12 +336,29 @@ TfLiteStatus InitializeRuntimeTensor(
         reinterpret_cast<TfLiteAffineQuantization*>(
             allocator->AllocateFromTail(sizeof(TfLiteAffineQuantization),
                                         alignof(TfLiteAffineQuantization)));
+    if (quantization == nullptr) {
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Unable to allocate TfLiteAffineQuantization.\n");
+      return kTfLiteError;
+    }
     quantization->zero_point =
         reinterpret_cast<TfLiteIntArray*>(allocator->AllocateFromTail(
             TfLiteIntArrayGetSizeInBytes(channels), alignof(TfLiteIntArray)));
+    if (quantization->zero_point == nullptr) {
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Unable to allocate quantization->zero_point.\n");
+      return kTfLiteError;
+    }
+
     quantization->scale = reinterpret_cast<TfLiteFloatArray*>(
         allocator->AllocateFromTail(TfLiteFloatArrayGetSizeInBytes(channels),
                                     alignof(TfLiteFloatArray)));
+    if (quantization->scale == nullptr) {
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Unable to allocate quantization->scale.\n");
+      return kTfLiteError;
+    }
+
     quantization->zero_point->size = channels;
     quantization->scale->size = channels;
     int* zero_point_data = quantization->zero_point->data;
@@ -407,7 +409,7 @@ TfLiteStatus MicroAllocator::Init() {
     TfLiteStatus status = internal::InitializeRuntimeTensor(
         memory_allocator_, *tensors_->Get(i), model_->buffers(),
         error_reporter_, &context_->tensors[i]);
-    if (status == kTfLiteError) {
+    if (status != kTfLiteOk) {
       TF_LITE_REPORT_ERROR(error_reporter_, "Failed to initialize tensor %d",
                            i);
       return kTfLiteError;
@@ -422,13 +424,19 @@ MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
                                ErrorReporter* error_reporter)
     : model_(model), error_reporter_(error_reporter), context_(context) {
   uint8_t* aligned_arena = AlignPointerUp(tensor_arena, kBufferAlignment);
+  if (aligned_arena != tensor_arena) {
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
+        "%d bytes lost due to alignment. To avoid this loss, please make sure "
+        "the tensor_arena is 16 bytes aligned.",
+        aligned_arena - tensor_arena);
+  }
   size_t aligned_arena_size = tensor_arena + arena_size - aligned_arena;
   // Creates a root memory allocator managing the arena. The allocator itself
   // also locates in the arena buffer. This allocator doesn't need to be
   // destructed as it's the root allocator.
-  SimpleMemoryAllocator* aligned_allocator =
-      CreateInPlaceSimpleMemoryAllocator(aligned_arena, aligned_arena_size);
-  memory_allocator_ = aligned_allocator;
+  memory_allocator_ = CreateInPlaceSimpleMemoryAllocator(
+      error_reporter, aligned_arena, aligned_arena_size);
   TfLiteStatus status = Init();
   // TODO(b/147871299): Consider improving this code. A better way of handling
   // failures in the constructor is to have a static function that returns a
@@ -540,8 +548,9 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
   // Note that AllocationInfo is only needed for creating the plan. It will be
   // thrown away when the child allocator (tmp_allocator) goes out of scope.
   {
-    SimpleMemoryAllocator tmp_allocator =
-        memory_allocator_->CreateChildAllocator();
+    SimpleMemoryAllocator tmp_allocator(error_reporter_,
+                                        memory_allocator_->GetHead(),
+                                        memory_allocator_->GetTail());
 
     AllocationInfoBuilder builder(error_reporter_, &tmp_allocator);
     TF_LITE_ENSURE_STATUS(
@@ -550,31 +559,36 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
     TF_LITE_ENSURE_STATUS(builder.AddScratchBuffers(scratch_buffer_handles_));
     const AllocationInfo* allocation_info = builder.Finish();
 
-    uint8_t* aligned_arena = memory_allocator_->GetBuffer();
-    size_t arena_size = memory_allocator_->GetMaxBufferSize();
     // Remaining arena size that memory planner can use for calculating offsets.
-    // The remaining size should always be a positive number since the parent
-    // allocator is always bigger than the child allocator.
-    size_t remaining_arena_size = arena_size - tmp_allocator.GetDataSize();
-    GreedyMemoryPlanner planner(aligned_arena, remaining_arena_size);
+    size_t remaining_arena_size = tmp_allocator.GetAvailableMemory();
+    uint8_t* planner_arena =
+        tmp_allocator.AllocateFromHead(remaining_arena_size, /*alignment=*/1);
+    TF_LITE_ENSURE(error_reporter_, planner_arena != nullptr);
+    GreedyMemoryPlanner planner(planner_arena, remaining_arena_size);
     TF_LITE_ENSURE_STATUS(
         CreatePlan(error_reporter_, &planner, allocation_info, builder.Size()));
-    // Actual size available for placing tensors. This includes memory held by
-    // the tensor info array, which will be released.
+
     size_t actual_available_arena_size =
-        arena_size - memory_allocator_->GetDataSize();
+        memory_allocator_->GetAvailableMemory();
     // Make sure we have enough arena size.
     if (planner.GetMaximumMemorySize() > actual_available_arena_size) {
       TF_LITE_REPORT_ERROR(
           error_reporter_,
           "Arena size is too small for activation buffers. Needed %d but only "
           "%d was available.",
-          planner.GetMaximumMemorySize(), remaining_arena_size);
+          planner.GetMaximumMemorySize(), actual_available_arena_size);
       return kTfLiteError;
     }
 
-    TF_LITE_ENSURE_STATUS(CommitPlan(error_reporter_, &planner, aligned_arena,
+    // Commit the plan.
+    TF_LITE_ENSURE_STATUS(CommitPlan(error_reporter_, &planner,
+                                     memory_allocator_->GetHead(),
                                      allocation_info, builder.Size()));
+    // Allocate the planned area, so the allocator knows it's used.
+    uint8_t* allocated_tensor_memory =
+        memory_allocator_->AllocateFromHead(planner.GetMaximumMemorySize(),
+                                            /*alignment=*/1);
+    TF_LITE_ENSURE(error_reporter_, allocated_tensor_memory != nullptr);
   }
 
   // Data in variables need to be kept for the next invocation so allocating
@@ -612,9 +626,7 @@ TfLiteStatus MicroAllocator::RequestScratchBufferInArena(int node_id,
   // allocator.
   if (scratch_buffer_handles_ != nullptr &&
       reinterpret_cast<uint8_t*>(scratch_buffer_handles_) !=
-          memory_allocator_->GetBuffer() +
-              memory_allocator_->GetMaxBufferSize() -
-              memory_allocator_->GetDataSize()) {
+          memory_allocator_->GetTail()) {
     TF_LITE_REPORT_ERROR(error_reporter_,
                          "Internal error: AllocateFromTail can not be called "
                          "between two RequestScratchBufferInArena calls.");

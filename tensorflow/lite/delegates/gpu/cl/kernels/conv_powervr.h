@@ -188,8 +188,8 @@ absl::Status ConvPowerVR::UploadDataForWinograd4x4To6x6(
 template <DataType T>
 absl::Status ConvPowerVR::UploadWeights(
     const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
 
   const bool f32_weights = conv_params_.weights_data_type == DataType::FLOAT32;
   const int float4_size = f32_weights ? sizeof(float4) : sizeof(half4);

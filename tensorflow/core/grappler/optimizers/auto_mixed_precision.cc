@@ -58,7 +58,7 @@ const char kCastToFp32[] = "CastToFp32";
 // node. It handles regular type attributes, list type attributes (where
 // type_index is set to the index in the type list), and fixed types.
 struct TypeAttrId {
-  static const int kSingleType = -1;
+  static constexpr int kSingleType = -1;
 
   explicit TypeAttrId(const string& _attr_name, int _type_index = kSingleType)
       : attr_name(_attr_name),
@@ -863,11 +863,11 @@ Status ValidateLists(const gtl::FlatSet<string>& white_list,
   std::vector<gtl::FlatSet<string>> lists{white_list, black_list, gray_list,
                                           clear_list};
   std::multiset<string> counts;
-  for (auto list : lists) {
+  for (const auto& list : lists) {
     counts.insert(list.begin(), list.end());
   }
   bool duplicates = false;
-  for (auto s : counts) {
+  for (const auto& s : counts) {
     if (counts.count(s) > 1) {
       duplicates = true;
       LOG(ERROR) << "Op present in multiple lists: " << s;
@@ -1054,20 +1054,20 @@ Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
                          strings::StrCat("paintbuckets", suffix, ".txt"));
     f.open(fname.c_str(), std::fstream::out);
     f << "WhiteList:\n";
-    for (auto x :
+    for (const auto& x :
          AutoMixedPrecisionLists::WhiteList(cuda_version_, cudnn_version_)) {
       f << x << "\n";
     }
     f << "\nBlackList:\n";
-    for (auto x : AutoMixedPrecisionLists::BlackList()) {
+    for (const auto& x : AutoMixedPrecisionLists::BlackList()) {
       f << x << "\n";
     }
     f << "\nGrayList:\n";
-    for (auto x : AutoMixedPrecisionLists::GrayList()) {
+    for (const auto& x : AutoMixedPrecisionLists::GrayList()) {
       f << x << "\n";
     }
     f << "\nClearList:\n";
-    for (auto x : AutoMixedPrecisionLists::ClearList()) {
+    for (const auto& x : AutoMixedPrecisionLists::ClearList()) {
       f << x << "\n";
     }
     f.close();

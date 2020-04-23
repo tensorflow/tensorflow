@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -171,6 +172,21 @@ class Compiler {
   virtual StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
       se::DeviceMemoryAllocator* device_allocator) = 0;
+
+  // Runs HLO passes to optimize the given HloModule, perform scheduling and
+  // buffer assignment, returns the optimized module and the buffer assignments.
+  // This interface is intentionally narrow.
+  //
+  // If device_allocator is not null, the compiler may use it to allocate temp
+  // space on the device for use during compilation. For example, the compiler
+  // may allocate buffers on the device and then run variants of a given
+  // algorithm over those buffers, to see which variant is fastest. Any space
+  // allocated should be deallocated before this function returns.
+  virtual StatusOr<
+      std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
+  RunHloPassesAndBufferAssignement(std::unique_ptr<HloModule> module,
+                                   se::StreamExecutor* executor,
+                                   se::DeviceMemoryAllocator* device_allocator);
 
   // Compiles the HLO module for execution on a device given by the executor,
   // and returns an executable object or an error status. No HLO passes are

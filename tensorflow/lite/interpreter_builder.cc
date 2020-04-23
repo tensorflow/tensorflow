@@ -34,6 +34,15 @@ limitations under the License.
 #include "tensorflow/lite/profiling/platform_profiler.h"
 #endif
 
+// aligned_alloc is available (via cstdlib/stdlib.h) with C++17/C11.
+#if __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
+#if !defined(__ANDROID__) || __ANDROID_API__ >= 28
+#if !defined(__APPLE__)  // Apple does not provide aligned_alloc.
+#define TFLITE_USE_STD_ALIGNED_ALLOC
+#endif
+#endif
+#endif
+
 namespace tflite {
 
 namespace {
@@ -108,7 +117,7 @@ TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
 }
 
 // For XNNPACK delegate, see also the strong override in
-// lite/enable_xnnpack_delegate.cc.
+// lite/tflite_with_xnnpack.cc.
 TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireXNNPACKDelegate(
     int num_threads) {
   return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
@@ -197,7 +206,13 @@ std::vector<int> FlatBufferIntArrayToVector(T* flat_array) {
 // Used to determine how the op data parsing function creates its working space.
 class MallocDataAllocator : public BuiltinDataAllocator {
  public:
-  void* Allocate(size_t size) override { return malloc(size); }
+  void* Allocate(size_t size, size_t alignment_hint) override {
+#ifdef TFLITE_USE_STD_ALIGNED_ALLOC
+    return aligned_alloc(alignment_hint, size);
+#else
+    return malloc(size);
+#endif
+  }
   void Deallocate(void* data) override { free(data); }
 };
 

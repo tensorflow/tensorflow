@@ -12,6 +12,12 @@ def micro_copts():
 
 def cc_library(**kwargs):
     kwargs.pop("build_for_embedded", False)
+    if "select_deps" in kwargs.keys():
+        select_deps = kwargs.pop("select_deps", {})
+        if "deps" in kwargs.keys():
+            kwargs["deps"] += select(select_deps)
+        else:
+            kwargs["deps"] = select(select_deps)
     _cc_library(**kwargs)
 
 def flatbuffer_cc_library(**kwargs):

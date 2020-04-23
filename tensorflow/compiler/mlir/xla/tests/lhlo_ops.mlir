@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -verify-diagnostics -split-input-file | tf-opt | FileCheck %s
+// RUN: xla-opt %s -verify-diagnostics -split-input-file | xla-opt | FileCheck %s
 
 func @enforce_same_shape(%arg0: memref<1xf32>, %arg1: memref<2xf32>) -> () {
   // expected-error@+1{{'xla_lhlo.tanh' op requires all operands to have the same type}}
@@ -34,7 +34,7 @@ func @convert_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
 
 // CHECK-LABEL: func @exp_memref
 func @exp_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
-  "xla_lhlo.exp"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
+  "xla_lhlo.exponential"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
   return
 }
 
@@ -50,7 +50,7 @@ func @log_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
 
 // CHECK-LABEL: func @neg_memref
 func @neg_memref(%in: memref<10xf32>, %out: memref<10xf32>) -> () {
-  "xla_lhlo.neg"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
+  "xla_lhlo.negate"(%in, %out) : (memref<10xf32>, memref<10xf32>) -> ()
   return
 }
 

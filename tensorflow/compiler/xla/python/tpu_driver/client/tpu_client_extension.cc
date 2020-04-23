@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/client/tpu_client.h"
 #include "tensorflow/compiler/xla/python/types.h"
@@ -188,11 +188,9 @@ PYBIND11_MODULE(tpu_client_extension, m) {
            &PyTpuExecutable::SizeOfGeneratedCodeInBytes)
       .def("Delete", &PyTpuExecutable::Delete)
       .def("Execute", &PyTpuExecutable::Execute,
-           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"),
-           py::arg("tuple_arguments") = false)
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("ExecuteOnLocalDevices", &PyTpuExecutable::ExecuteOnLocalDevices,
-           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"),
-           py::arg("tuple_arguments") = false);
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"));
 
   py::class_<TpuDevice, Device, std::shared_ptr<TpuDevice>>(m, "TpuDevice")
       .def_property_readonly("coords", &TpuDevice::coords)

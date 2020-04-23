@@ -101,7 +101,7 @@ bool HasCombinableReplicaGroup(HloInstruction* hlo, int64 num_replicas,
     if (replica_groups.size() != num_replicas) {
       return false;
     }
-    for (auto group : replica_groups) {
+    for (const auto& group : replica_groups) {
       if (group.replica_ids_size() != num_partitions) {
         return false;
       }
@@ -534,7 +534,7 @@ StatusOr<bool> ArCrsCombiner::RewriteGraph() {
   if (all_reduce_map_.empty()) {
     return false;
   }
-  for (auto it : all_reduce_map_) {
+  for (const auto& it : all_reduce_map_) {
     auto pairs_vec = it.second;
     for (auto pair : pairs_vec) {
       auto all_reduce = pair.ar;

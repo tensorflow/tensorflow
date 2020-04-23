@@ -1,4 +1,5 @@
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_unit_test")
+load("@build_bazel_rules_apple//apple:macos.bzl", "macos_unit_test")
 load(
     "//tensorflow/lite:special_rules.bzl",
     "tflite_ios_lab_runner",
@@ -155,6 +156,15 @@ ios_unit_test(
     tags = tf_gpu_tests_tags() + [
         "notap",
         "tflite_not_portable_android",
+    ],
+    deps = [":conv_test_lib"],
+)
+
+macos_unit_test(
+    name = "macos_conv_test",
+    minimum_os_version = "10.13",
+    tags = [
+        "local",
     ],
     deps = [":conv_test_lib"],
 )
@@ -697,6 +707,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:environment",
         "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],

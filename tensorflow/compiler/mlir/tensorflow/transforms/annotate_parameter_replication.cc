@@ -39,8 +39,9 @@ constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
 // Analyzes the inputs to LaunchFuncOps in the module, and annotates their
 // invoked functions whether each input has the same data across replicas.
 struct AnnotateParameterReplication
-    : public ModulePass<AnnotateParameterReplication> {
-  void runOnModule() override;
+    : public PassWrapper<AnnotateParameterReplication,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Returns the first value in the chain of operands, which is not defined by a
@@ -53,8 +54,8 @@ Value SkipIdentityAndReadVariable(Value v) {
   return v;
 }
 
-void AnnotateParameterReplication::runOnModule() {
-  ModuleOp m = getModule();
+void AnnotateParameterReplication::runOnOperation() {
+  ModuleOp m = getOperation();
   OpBuilder builder(m.getContext());
   m.walk([&](tf_device::LaunchFuncOp launch_func) {
     auto replicate = launch_func.getParentOfType<tf_device::ReplicateOp>();
@@ -90,7 +91,8 @@ void AnnotateParameterReplication::runOnModule() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateAnnotateParameterReplicationPass() {
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateAnnotateParameterReplicationPass() {
   return std::make_unique<AnnotateParameterReplication>();
 }
 

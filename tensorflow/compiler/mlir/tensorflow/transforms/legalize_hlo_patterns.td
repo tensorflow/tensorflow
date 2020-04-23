@@ -64,6 +64,7 @@ def : Pat<(HLO_ShiftRightLogicalOp $l, $r, $_), (TF_RightShiftOp $l, $r),
 def : Pat<(HLO_FloorOp (HLO_DivOp $l, $r, $_)), (TF_FloorDivOp $l, $r),
           [(AreBroadcastCompatible $l, $r)]>;
 
+def : Pat<(HLO_ComplexOp $r, $i), (TF_ComplexOp $r, $i)>;
 //===----------------------------------------------------------------------===//
 // Unary op patterns.
 //===----------------------------------------------------------------------===//

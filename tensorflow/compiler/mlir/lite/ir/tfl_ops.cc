@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -44,6 +45,30 @@ limitations under the License.
 namespace mlir {
 #include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 namespace TFL {
+
+// Returns true when the given two types have the same shape or broadcastable
+// shape within the given rank. If any given shapes are non-static, this method
+// returns true.
+bool IsBinaryOperandsHaveSameShapesOrBroadcastableShape(Type lhs, Type rhs,
+                                                        int max_bcast_rank) {
+  // Ignore shape checking on the non-static shapes for model compatibility.
+  auto lhs_shaped_type = lhs.dyn_cast<ShapedType>();
+  if (!lhs_shaped_type || !lhs_shaped_type.hasStaticShape()) return true;
+  auto rhs_shaped_type = rhs.dyn_cast<ShapedType>();
+  if (!rhs_shaped_type || !rhs_shaped_type.hasStaticShape()) return true;
+
+  if (lhs_shaped_type.getShape().equals(rhs_shaped_type.getShape()))
+    return true;
+
+  SmallVector<int64_t, 4> result_shape;
+  if (!OpTrait::util::getBroadcastedShape(lhs_shaped_type.getShape(),
+                                          rhs_shaped_type.getShape(),
+                                          result_shape)) {
+    return false;
+  }
+  return lhs_shaped_type.getRank() <= max_bcast_rank &&
+         rhs_shaped_type.getRank() <= max_bcast_rank;
+}
 
 //===----------------------------------------------------------------------===//
 // TensorFlowLiteDialect
@@ -315,7 +340,7 @@ Attribute ConstFoldUnaryOp(Type result_type, Attribute operand,
     const int num_elements = result_shape_type.getNumElements();
     new_values.reserve(num_elements);
 
-    for (APFloat old_value : dense_elements.getValues<APFloat>()) {
+    for (const APFloat &old_value : dense_elements.getValues<APFloat>()) {
       new_values.push_back(calculate(old_value));
     }
 
@@ -843,7 +868,7 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
       if (!shape_elements) return nullptr;
 
       SmallVector<int64_t, 4> shape_data;
-      for (auto it : shape_elements.getValues<APInt>()) {
+      for (const auto &it : shape_elements.getValues<APInt>()) {
         shape_data.push_back(it.getSExtValue());
       }
       result_type =
@@ -987,6 +1012,75 @@ static LogicalResult Verify(SliceOp op) {
   }
 
   return success();
+}
+
+TFL::ConstOp NarrowDownInt64InputValuesForOp(Operation *input_op,
+                                             RankedTensorType value_type,
+                                             Location loc, OpBuilder *builder) {
+  if (input_op == nullptr) return nullptr;
+
+  mlir::DenseIntElementsAttr attr;
+  if (!matchPattern(input_op, m_Constant(&attr))) {
+    return nullptr;
+  }
+
+  auto value_shape_type = mlir::RankedTensorType::get(
+      value_type.getShape(), builder->getIntegerType(32));
+
+  SmallVector<int32_t, 4> value_i32;
+  value_i32.reserve(value_type.getRank());
+  for (const auto &size : attr) {
+    value_i32.push_back(static_cast<int32_t>(size.getSExtValue()));
+  }
+  auto new_value_i32_attr =
+      mlir::DenseIntElementsAttr::get(value_shape_type, value_i32);
+
+  return builder->create<TFL::ConstOp>(loc, new_value_i32_attr);
+}
+
+// This will cast donw int64 values for TFL slice op.
+// This will require the begin & size are constants.
+struct CastDonwInt64BeginEndToInt32 : public OpRewritePattern<TFL::SliceOp> {
+  using OpRewritePattern<TFL::SliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::SliceOp slice_op,
+                                PatternRewriter &rewriter) const override {
+    auto begin = slice_op.begin();
+    auto size = slice_op.size();
+    auto begin_type = begin.getType().dyn_cast_or_null<RankedTensorType>();
+    auto size_type = size.getType().dyn_cast_or_null<RankedTensorType>();
+    auto begin_op = begin.getDefiningOp();
+    auto size_op = size.getDefiningOp();
+
+    if (begin_op == nullptr && size_op == nullptr) return failure();
+
+    if (begin_type == nullptr && size_type == nullptr) return failure();
+
+    // Handle begin.
+    if (begin_op && begin_type && begin_type.getElementType().isInteger(64)) {
+      auto new_begin = NarrowDownInt64InputValuesForOp(
+          begin_op, begin_type, slice_op.getLoc(), &rewriter);
+      if (new_begin != nullptr) {
+        slice_op.setOperand(1, new_begin);
+      }
+    }
+
+    // Handle size.
+    if (size_op && size_type && size_type.getElementType().isInteger(64)) {
+      auto new_size = NarrowDownInt64InputValuesForOp(
+          size_op, size_type, slice_op.getLoc(), &rewriter);
+      if (new_size != nullptr) {
+        slice_op.setOperand(2, new_size);
+      }
+    }
+
+    return success();
+  }
+};
+
+void SliceOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert<CastDonwInt64BeginEndToInt32>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1266,10 +1360,65 @@ static LogicalResult Verify(SplitVOp op) {
 
 static LogicalResult Verify(LSTMOp op) {
   auto operands = op.GetStatefulOperands();
-  if (operands.size() == 2 && operands[0] == 18 && operands[1] == 19) {
-    return success();
+  if (operands.size() != 2 || operands[0] != 18 || operands[1] != 19) {
+    return op.emitOpError("LSTMOp expected to have two stateful operands");
   }
-  return op.emitError("LSTMOp expected to have two stateful operands");
+
+  const auto input_type = op.input().getType().cast<ShapedType>();
+  // Since TFLite runtime generally supports dynamic shape/rank, if `input_type`
+  // doesn't have static shape, we skip the shape check below.
+  if (!input_type.hasStaticShape()) return success();
+  // The input should be at least 2D tensor since it will go through fully
+  // connected layer.
+  if (!input_type.hasRank() || input_type.getRank() < 2)
+    return op.emitOpError(
+        "the first input operand should have more than 2 dimensions.");
+
+  const auto activation_state =
+      op.input_activation_state().getType().cast<ShapedType>();
+  const auto cell_state = op.input_cell_state().getType().cast<ShapedType>();
+  const auto input_to_output_weights =
+      op.input_to_output_weights().getType().cast<ShapedType>();
+  const auto recurrent_to_output_weights =
+      op.recurrent_to_output_weights().getType().cast<ShapedType>();
+  if (activation_state.hasStaticShape() && cell_state.hasStaticShape() &&
+      input_to_output_weights.hasStaticShape() &&
+      recurrent_to_output_weights.hasStaticShape()) {
+    const int n_input = input_type.getDimSize(input_type.getRank() - 1);
+    const int n_cell = input_to_output_weights.getDimSize(0);
+    const int n_output = recurrent_to_output_weights.getDimSize(1);
+    const int output_state_size = activation_state.getNumElements();
+    const int n_batch = input_type.getRank() == 2 ? input_type.getDimSize(0)
+                                                  : input_type.getDimSize(1);
+    const int state_size = cell_state.getNumElements();
+
+    // Check if the dimension of the inputs matches.
+    if ((output_state_size != n_batch * n_output) ||
+        (state_size != n_batch * n_cell) ||
+        (input_to_output_weights.getDimSize(1) != n_input) ||
+        (recurrent_to_output_weights.getRank() != 2) ||
+        (recurrent_to_output_weights.getDimSize(0) != n_cell) ||
+        (input_to_output_weights.getRank() != 2)) {
+      return op.emitOpError("inputs don't match with the dimensions.");
+    }
+
+    const bool is_layer_norm_lstm =
+        !op.forget_layer_norm_coefficients().getType().isa<NoneType>();
+    if (is_layer_norm_lstm) {
+      const auto forget_layer_norm_coefficients =
+          op.forget_layer_norm_coefficients().getType().cast<ShapedType>();
+      // If this lstm has layer normalization, this input value,
+      // "forget_layer_norm_coefficients" should be a 1D tensor.
+      if (forget_layer_norm_coefficients.getRank() != 1 ||
+          forget_layer_norm_coefficients.getDimSize(0) != n_cell)
+        return op.emitOpError(
+            "coefficient inputs have more than 2 dimensions or "
+            "don't match the dimension with input operand "
+            "`input_to_output_weights`.");
+    }
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1742,7 +1891,7 @@ static LogicalResult Verify(TransposeOp op) {
 
   int index = 0;
   llvm::SmallVector<int64_t, 4> axes;
-  for (auto axis_int : perm.getValues<APInt>()) {
+  for (const auto &axis_int : perm.getValues<APInt>()) {
     const int64_t axis = axis_int.getSExtValue();
     if (axis < 0 || (input_type.hasRank() && axis >= input_type.getRank())) {
       return op.emitOpError(

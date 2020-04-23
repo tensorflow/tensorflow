@@ -58,7 +58,7 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
       } else if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
       } else if (stat.Type() == StatType::kStepName) {
-        step_name = stat.StrValue();
+        step_name = stat.StrOrRefValue();
       }
     });
     if (group_id < 0) return;
@@ -128,7 +128,7 @@ StepEvents ConvertDeviceTraceXLineToStepEvents(const XLineVisitor& line) {
       } else if (stat.Type() == StatType::kGroupId) {
         group_id = stat.IntValue();
       } else if (stat.Type() == StatType::kTensorShapes) {
-        tensor_shapes = stat.StrValue();
+        tensor_shapes = stat.StrOrRefValue();
       }
     });
 

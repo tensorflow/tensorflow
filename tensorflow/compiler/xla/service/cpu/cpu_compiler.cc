@@ -277,8 +277,8 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   {
     auto& pass =
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-    pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                          /*allow_mixed_precision=*/false);
+    pass.AddInvariantCheckerDebug<HloVerifier>(/*layout_sensitive=*/false,
+                                               /*allow_mixed_precision=*/false);
 
     pass.AddPass<TreeReductionRewriter>();
     pass.AddPass<ScatterExpander>();
@@ -339,18 +339,18 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     LLVMTargetMachineFeatures* target_machine_features) {
   HloPassPipeline pipeline("HLO passes after layout assignment");
   // After layout assignment, use a layout-sensitive verifier.
-  auto& after_layout_assn =
-      pipeline.AddPass<HloPassPipeline>("after layout assignment");
-  after_layout_assn.AddInvariantChecker<HloVerifier>(
-      /*layout_sensitive=*/true,
-      /*allow_mixed_precision=*/false);
+
+  pipeline.AddPass<HloPassPipeline>("after layout assignment")
+      .AddInvariantCheckerDebug<HloVerifier>(
+          /*layout_sensitive=*/true,
+          /*allow_mixed_precision=*/false);
 
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
         "simplification after layout assignment");
-    pass.AddInvariantChecker<HloVerifier>(
+    pass.AddInvariantCheckerDebug<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false,
         LayoutAssignment::InstructionCanChangeLayout);
@@ -519,6 +519,33 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
   TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false,
                                   jit_target_machine.get()));
   return std::move(module);
+}
+
+StatusOr<
+    std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
+CpuCompiler::RunHloPassesAndBufferAssignement(
+    std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
+    se::DeviceMemoryAllocator* device_allocator) {
+  TF_ASSIGN_OR_RETURN(
+      module, RunHloPasses(std::move(module), executor, device_allocator));
+
+  // Select an order for emitting the HLO instructions for each computation.
+  // Using this sequence enables tighter buffer liveness analysis and reduced
+  // memory usage (as compared to using DependencyHloOrdering).
+  TF_ASSIGN_OR_RETURN(HloSchedule schedule,
+                      ScheduleModule(module.get(), BufferSizeBytesFunction(),
+                                     ComputationSchedulerToModuleScheduler(
+                                         DFSMemoryScheduler)));
+
+  // Run buffer allocation on the HLO graph.
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<BufferAssignment> assignment,
+      BufferAssigner::Run(module.get(),
+                          absl::make_unique<SequentialHloOrdering>(schedule),
+                          BufferSizeBytesFunction(), memory_alignment,
+                          /*allocate_buffers_for_constants=*/true));
+
+  return std::make_tuple(std::move(module), std::move(assignment));
 }
 
 namespace {

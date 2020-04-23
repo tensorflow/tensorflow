@@ -17,34 +17,59 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_BENCHMARK_BENCHMARK_PERFORMANCE_OPTIONS_H_
 
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 
 namespace tflite {
 namespace benchmark {
 
 class MultiRunStatsRecorder : public BenchmarkListener {
  public:
-  void OnBenchmarkStart(const BenchmarkParams& params) override;
-  void OnBenchmarkEnd(const BenchmarkResults& results) override;
+  // BenchmarkListener::OnBenchmarkStart is invoked after each run's
+  // BenchmarkModel::Init. However, some run could fail during Init, e.g.
+  // delegate fails to be created etc. To still record such run, we will call
+  // the following function right before a run starts.
+  void MarkBenchmarkStart(const BenchmarkParams& params) {
+    results_.emplace_back(EachRunResult());
+    auto& current = results_.back();
+    current.completed = false;
+    current.params = absl::make_unique<BenchmarkParams>();
+    current.params->Merge(params, true /* overwrite*/);
+  }
+
+  void OnBenchmarkEnd(const BenchmarkResults& results) final {
+    auto& current = results_.back();
+    current.completed = true;
+    current.metrics = results;
+  }
 
   virtual void OutputStats();
 
  protected:
-  using EachRunStatsEntry = std::pair<std::string, BenchmarkResults>;
+  struct EachRunResult {
+    bool completed = false;
+    std::unique_ptr<BenchmarkParams> params;
+    BenchmarkResults metrics;
+  };
+  std::vector<EachRunResult> results_;
 
   // Use this to order the runs by the average inference time in increasing
-  // order (i.e. the fastest run ranks first.)
+  // order (i.e. the fastest run ranks first.). If the run didn't complete,
+  // we consider it to be slowest.
   struct EachRunStatsEntryComparator {
-    bool operator()(const EachRunStatsEntry& i, const EachRunStatsEntry& j) {
-      return (i.second.inference_time_us().avg() <
-              j.second.inference_time_us().avg());
+    bool operator()(const EachRunResult& i, const EachRunResult& j) {
+      if (!i.completed) return false;
+      if (!j.completed) return true;
+      return i.metrics.inference_time_us().avg() <
+             j.metrics.inference_time_us().avg();
     }
   };
 
-  std::string current_run_name_;
-  std::vector<EachRunStatsEntry> each_run_stats_;
+  virtual std::string PerfOptionName(const BenchmarkParams& params) const;
 };
 
 // Benchmarks all performance options on a model by repeatedly invoking the
@@ -52,7 +77,10 @@ class MultiRunStatsRecorder : public BenchmarkListener {
 class BenchmarkPerformanceOptions {
  public:
   // Doesn't own the memory of 'single_option_run'.
-  explicit BenchmarkPerformanceOptions(BenchmarkModel* single_option_run);
+  explicit BenchmarkPerformanceOptions(
+      BenchmarkModel* single_option_run,
+      std::unique_ptr<MultiRunStatsRecorder> all_run_stats =
+          absl::make_unique<MultiRunStatsRecorder>());
 
   virtual ~BenchmarkPerformanceOptions() {}
 
@@ -62,7 +90,6 @@ class BenchmarkPerformanceOptions {
 
  protected:
   static BenchmarkParams DefaultParams();
-  static std::unique_ptr<MultiRunStatsRecorder> DefaultRunStatsRecorder();
 
   BenchmarkPerformanceOptions(
       BenchmarkParams params, BenchmarkModel* single_option_run,

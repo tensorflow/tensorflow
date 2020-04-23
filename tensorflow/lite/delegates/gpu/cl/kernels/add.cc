@@ -70,10 +70,10 @@ std::string Add::GetElementWiseCode(
 Add::Add(const OperationDef& definition, const std::vector<int>& channels,
          int dst_channels)
     : ElementwiseOperation(definition),
-      dst_depth_(IntegralDivideRoundUp(dst_channels, 4)) {
+      dst_depth_(DivideRoundUp(dst_channels, 4)) {
   src_depthes_.resize(channels.size());
   for (int i = 0; i < channels.size(); ++i) {
-    src_depthes_[i] = IntegralDivideRoundUp(channels[i], 4);
+    src_depthes_[i] = DivideRoundUp(channels[i], 4);
   }
 }
 

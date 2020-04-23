@@ -157,17 +157,11 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     DeviceContext* device_context =
         gpu_device_->tensorflow_gpu_device_info()->default_context;
 
-    Notification n;
-    Status status;
     Tensor cpu_tensor(device_tensor.dtype(), device_tensor.shape());
-    device_context->CopyDeviceTensorToCPU(&device_tensor, "", gpu_device_,
-                                          &cpu_tensor,
-                                          [&n, &status](const Status& s) {
-                                            status = s;
-                                            n.Notify();
-                                          });
-    n.WaitForNotification();
-    CHECK(status.ok());
+    CHECK(device_context
+              ->CopyDeviceTensorToCPUSync(&device_tensor, "", gpu_device_,
+                                          &cpu_tensor)
+              .ok());
     return cpu_tensor;
 #else
     CHECK(false);
@@ -181,18 +175,12 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     DeviceContext* device_context =
         gpu_device_->tensorflow_gpu_device_info()->default_context;
 
-    Notification n;
-    Status status;
     Tensor device_tensor(gpu_device_->GetAllocator({}), cpu_tensor.dtype(),
                          cpu_tensor.shape(), {});
-    device_context->CopyCPUTensorToDevice(&cpu_tensor, gpu_device_,
-                                          &device_tensor,
-                                          [&n, &status](const Status& s) {
-                                            status = s;
-                                            n.Notify();
-                                          });
-    n.WaitForNotification();
-    CHECK(status.ok());
+    CHECK(device_context
+              ->CopyCPUTensorToDeviceSync(&cpu_tensor, gpu_device_,
+                                          &device_tensor)
+              .ok());
     return device_tensor;
 #else
     CHECK(false);

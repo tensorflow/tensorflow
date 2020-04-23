@@ -1,4 +1,5 @@
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library_cc")
+load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 licenses(["notice"])
@@ -24,11 +25,11 @@ cc_library(
     srcs = ["key_value_store.cc"],
     hdrs = ["key_value_store.h"],
     deps = [
-        "//tensorflow:grpc++",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        tf_grpc_cc_dependency(),
     ],
 )
 
@@ -73,11 +74,11 @@ cc_library(
         ":protocol",
         ":protocol_proto_cc",
         ":util",
-        "//tensorflow:grpc++",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        tf_grpc_cc_dependency(),
     ],
 )
 
@@ -85,8 +86,8 @@ cc_library(
     name = "util",
     hdrs = ["util.h"],
     deps = [
-        "//tensorflow:grpc++",
         "//tensorflow/compiler/xla:status",
+        tf_grpc_cc_dependency(),
     ],
 )
 
@@ -97,8 +98,8 @@ cc_library(
     deps = [
         ":client",
         ":service",
-        "//tensorflow:grpc++",
         "//tensorflow/compiler/xla:statusor",
+        tf_grpc_cc_dependency(),
     ],
 )
 
@@ -109,7 +110,6 @@ tf_cc_test(
         ":client",
         ":protocol_proto_cc",
         ":service",
-        "//tensorflow:grpc++",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/service:cpu_plugin",
@@ -118,5 +118,6 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/time",
+        tf_grpc_cc_dependency(),
     ],
 )

@@ -24,6 +24,23 @@ from tensorflow.python.profiler.internal import _pywrap_traceme
 from tensorflow.python.util.tf_export import tf_export
 
 
+def encode_metadata(metadata):
+  """Encodes the given metadata to a string.
+
+  Args:
+    metadata: in key-value pairs.
+
+  Returns:
+    The encoded string.
+  """
+  if not metadata:
+    return ''
+  content = []
+  for key, value in six.iteritems(metadata):
+    content.append('%s=%s'%(key, value))
+  return '#' + ','.join(content) + '#'
+
+
 @tf_export('profiler.experimental.Trace', v1=[])
 class Trace(object):
   """Context manager that generates a trace event in the profiler.
@@ -53,11 +70,29 @@ class Trace(object):
     Args:
       name: The name of the trace event.
       **kwargs: Keyword arguments added to the trace event.
+                Both the key and value are of types that
+                can be converted to strings, which will be
+                interpreted by the profiler according to the
+                traceme name.
+
+      Example usage:
+
+      ```python
+
+        tf.profiler.experimental.start('logdir')
+        for step in range(num_steps):
+          # Creates a trace event for each training step with the
+          # step number.
+          with tf.profiler.experimental.Trace("Train", step_num=step):
+            train_fn()
+        tf.profiler.experimental.stop()
+
+      ```
+      The example above uses the keyword argument "step_num" to specify the
+      training step being traced.
     """
     if _pywrap_traceme.TraceMe.IsEnabled():
-      if kwargs:
-        name += '#' + ','.join(key + '=' + str(value)
-                               for key, value in six.iteritems(kwargs)) + '#'
+      name += encode_metadata(kwargs)
       self._traceme = _pywrap_traceme.TraceMe(name)
     else:
       self._traceme = None
@@ -65,6 +100,42 @@ class Trace(object):
   def __enter__(self):
     if self._traceme:
       self._traceme.Enter()
+    return self
+
+  def set_metadata(self, **kwargs):
+    """Sets metadata in this trace event.
+
+    Args:
+      **kwargs: metadata in key-value pairs.
+
+    This method enables setting metadata in a trace event after it is
+    created.
+
+    Example usage:
+
+    ```python
+
+      def call(function):
+        with tf.profiler.experimental.Trace("call",
+             function_name=function.name) as tm:
+          binary, in_cache = jit_compile(function)
+          tm.set_metadata(in_cache=in_cache)
+          execute(binary)
+
+    ```
+    In this example, we want to trace how much time spent on
+    calling a function, which includes compilation and execution.
+    The compilation can be either getting a cached copy of the
+    binary or actually generating the binary, which is indicated
+    by the boolean "in_cache" returned by jit_compile(). We need
+    to use set_metadata() to pass in_cache because we did not know
+    the in_cache value when the trace was created (and we cannot
+    create the trace after jit_compile(), because we want
+    to measure the entire duration of call()).
+    """
+    if self._traceme and kwargs:
+      additional_metadata = encode_metadata(kwargs)
+      self._traceme.SetMetadata(additional_metadata)
 
   def __exit__(self, exc_type, exc_val, exc_tb):
     if self._traceme:

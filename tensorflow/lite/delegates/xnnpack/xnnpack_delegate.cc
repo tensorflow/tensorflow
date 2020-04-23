@@ -1278,6 +1278,20 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
 
     nodes_to_replace->data[nodes_to_replace->size++] = node_index;
   }
+
+#ifdef XNNPACK_DELEGATE_TEST_MODE
+  // In the test mode build (used by unit tests), XNNPACK delegate claims to
+  // support all operators in the execution plan to disable fallback to the
+  // default TensorFlow Lite kernels. Thus, if any of the ops in the model are
+  // not supported by the delegate, they will cause a failure in
+  // ::tflite::Interpreter::ModifyGraphWithDelegate, to be caught in the unit
+  // tests.
+  nodes_to_replace->size = execution_plan->size;
+  std::copy(&execution_plan->data[0],
+            &execution_plan->data[execution_plan->size],
+            &nodes_to_replace->data[0]);
+#endif
+
   return nodes_to_replace;
 }
 
@@ -1293,10 +1307,18 @@ void* SubgraphInit(TfLiteContext* context, const char* buffer, size_t length) {
 }
 
 TfLiteStatus SubgraphPrepare(TfLiteContext* context, TfLiteNode* node) {
+  if (node->user_data == nullptr) {
+    return kTfLiteError;
+  }
+
   return static_cast<Subgraph*>(node->user_data)->Prepare(context);
 }
 
 TfLiteStatus SubgraphInvoke(TfLiteContext* context, TfLiteNode* node) {
+  if (node->user_data == nullptr) {
+    return kTfLiteError;
+  }
+
   return static_cast<Subgraph*>(node->user_data)->Invoke(context);
 }
 

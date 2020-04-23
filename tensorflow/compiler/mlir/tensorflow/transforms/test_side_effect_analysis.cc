@@ -39,7 +39,7 @@ namespace {
 // A pass that adds "Predecessors" and "Successors" remarks for each op based on
 // SideEffectAnalysis result. For testing purpose only.
 struct TestSideEffectAnalysis
-    : public mlir::FunctionPass<TestSideEffectAnalysis> {
+    : public mlir::PassWrapper<TestSideEffectAnalysis, FunctionPass> {
   void runOnFunction() override {
     int64_t next_id = 0;
     llvm::SmallDenseMap<Operation*, int64_t, 8> ids;

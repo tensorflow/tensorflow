@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_HEXAGON_BUILDERS_OP_FACTORY_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_HEXAGON_BUILDERS_OP_FACTORY_H_
 
+#include "tensorflow/lite/c/common.h"
+
 namespace tflite {
 namespace delegates {
 namespace hexagon {
@@ -44,6 +46,11 @@ OpBuilder* CreateResizeBilinearOpBuilder(GraphBuilder* graph_builder,
 OpBuilder* CreateNegOpBuilder(GraphBuilder* graph_builder, int op_type);
 OpBuilder* CreateTransposeBuilder(GraphBuilder* graph_builder, int op_type);
 OpBuilder* CreateSpaceToDepthBuilder(GraphBuilder* graph_builder, int op_type);
+OpBuilder* CreateBatchSeqBuilder(GraphBuilder* graph_builder, int op_type,
+                                 int max_size_for_batch,
+                                 TfLiteIntArray* input_batch_dimensions,
+                                 TfLiteIntArray* output_batch_dimensions);
+OpBuilder* CreateQuantizeBuilder(GraphBuilder* graph_builder, int op_type);
 
 }  // namespace hexagon
 }  // namespace delegates

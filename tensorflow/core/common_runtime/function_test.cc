@@ -394,6 +394,19 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesTwo) {
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
 }
 
+TEST_F(FunctionLibraryRuntimeTest, XTimesTwo_MultiDeviceBacked) {
+  Init({test::function::XTimesTwo()});
+  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  Tensor y;
+
+  FunctionLibraryRuntime::InstantiateOptions options;
+  options.is_multi_device_function = true;
+
+  TF_CHECK_OK(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, options,
+                                {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+}
+
 TEST_F(FunctionLibraryRuntimeTest, XTimesN) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});

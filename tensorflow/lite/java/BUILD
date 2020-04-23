@@ -91,15 +91,30 @@ android_library(
     proguard_specs = ["proguard.flags"],
     deps = [
         ":tensorflowlite_java",
-        ":tensorflowlite_native_gpu",
         "@org_checkerframework_qual",
-    ],
+    ] + select({
+        # For non-Android builds (e.g., Robolectric), it can be useful to build
+        # the Java library but not actually use/link the full native impl.
+        "//tensorflow:android": [
+            ":tensorflowlite_native_gpu",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 android_library(
     name = "tensorflowlite_java",
     srcs = JAVA_SRCS,
     proguard_specs = ["proguard.flags"],
+    deps = [
+        "@org_checkerframework_qual",
+    ],
+)
+
+java_library(
+    name = "tensorflowlite_javalib",
+    srcs = JAVA_SRCS,
+    javacopts = JAVACOPTS,
     deps = [
         "@org_checkerframework_qual",
     ],

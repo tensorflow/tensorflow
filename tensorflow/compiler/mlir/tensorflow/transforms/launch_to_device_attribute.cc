@@ -57,7 +57,7 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 
 struct LaunchToDeviceAttributePass
-    : public FunctionPass<LaunchToDeviceAttributePass> {
+    : public PassWrapper<LaunchToDeviceAttributePass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -122,7 +122,7 @@ void LaunchToDeviceAttributePass::runOnFunction() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateLaunchToDeviceAttributePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateLaunchToDeviceAttributePass() {
   return std::make_unique<LaunchToDeviceAttributePass>();
 }
 

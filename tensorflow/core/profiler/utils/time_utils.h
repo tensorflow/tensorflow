@@ -16,24 +16,23 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_TIME_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_TIME_UTILS_H_
 
-#include <cmath>
-
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace profiler {
 
 // Converts among different time units.
-inline double PicosToMillis(uint64 ps) { return ps / 1E9; }
-inline double PicosToSecond(uint64 ps) { return ps / 1E12; }
-inline double PicosToMicros(uint64 ps) { return ps / 1E6; }
 inline double PicosToNanos(uint64 ps) { return ps / 1E3; }
-inline uint64 NanosToPicos(double ns) { return std::llround(ns * 1E3); }
+inline double PicosToMicros(uint64 ps) { return ps / 1E6; }
+inline double PicosToMillis(uint64 ps) { return ps / 1E9; }
+inline double PicosToSeconds(uint64 ps) { return ps / 1E12; }
+inline uint64 NanosToPicos(uint64 ns) { return ns * 1000; }
+inline double NanosToMicros(uint64 ns) { return ns / 1E3; }
 inline double MicrosToMillis(double us) { return us / 1E3; }
-inline uint64 MillisToPicos(double ms) { return std::llround(ms * 1E9); }
-inline double MilliToSecond(double ms) { return ms / 1E3; }
-inline uint64 MilliToNanos(uint64 ms) { return ms * 1E6; }
-inline uint64 SecondsToNanos(uint64 s) { return s * 1E9; }
+inline uint64 MillisToPicos(uint64 ms) { return ms * 1000000000; }
+inline uint64 MillisToNanos(uint64 ms) { return ms * 1000000; }
+inline double MillisToSeconds(uint64 ms) { return ms / 1E3; }
+inline uint64 SecondsToNanos(double s) { return s * 1E9; }
 
 }  // namespace profiler
 }  // namespace tensorflow

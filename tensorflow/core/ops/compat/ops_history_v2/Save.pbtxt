@@ -1,0 +1,43 @@
+op {
+  name: "Save"
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_names"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "data"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
+  name: "Save"
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_names"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "data"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}

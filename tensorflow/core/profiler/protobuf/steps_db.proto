@@ -96,6 +96,15 @@ message PerCoreStepInfo {
 
 // Result proto for a StepDatabase.
 message StepDatabaseResult {
+  // Whether the step db uses incomplete step information.
+  // This flag is set to true when:
+  // 1) no step marker or annotation present.
+  // 2) profiling duration is too short to cover a full step.
+  // If this flag is false, we will group and breakdown the
+  // profile by complete steps only and ignore incomplete steps.
+  // If this flag is true, we will simply aggregate and breakdown over the total
+  // profile as a single step.
+  bool use_incomplete_step = 2;
   // A sequence of PerCoreStepInfo.
   repeated PerCoreStepInfo step_sequence = 1;
 }

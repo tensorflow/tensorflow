@@ -57,8 +57,9 @@ QuantizeContext::QuantizeContext(FuncOp func, const DeviceTarget &spec)
   });
 }
 
-llvm::ArrayRef<quant::QuantizeRegionOp> QuantizeContext::GetAllOps() {
-  llvm::SmallVector<quant::QuantizeRegionOp, 64> all_ops;
+std::vector<quant::QuantizeRegionOp> QuantizeContext::GetAllOps() {
+  std::vector<quant::QuantizeRegionOp> all_ops;
+  all_ops.reserve(128);
   func_.walk([&](quant::QuantizeRegionOp op) { all_ops.push_back(op); });
   return all_ops;
 }
@@ -66,7 +67,7 @@ llvm::ArrayRef<quant::QuantizeRegionOp> QuantizeContext::GetAllOps() {
 LogicalResult QuantizeContext::Handle(
     quant::QuantizeRegionOp op, llvm::SmallVectorImpl<Operation *> *new_items,
     bool *changed) {
-  auto spec = target_spec_.Get(op);
+  auto spec = target_spec_.GetKernelSpec(op);
   if (!spec.hasValue()) {
     op.emitWarning(
         "Couldn't find kernel from the registeration for quantization.");
@@ -75,7 +76,7 @@ LogicalResult QuantizeContext::Handle(
   switch (spec->type) {
     case ScaleConstraintType::OutputInputFreeScale: {
       // no propagation.
-      *changed = false;
+      *changed |= false;
       break;
     }
     case ScaleConstraintType::CustomScale: {
@@ -84,7 +85,20 @@ LogicalResult QuantizeContext::Handle(
       }
       break;
     }
+    case ScaleConstraintType::OutputInputSameScale: {
+      auto params = GetQuantParamsForSameScaleConstraint(op);
+      if (EmptyParams(params)) {
+        *changed |= false;
+        break;
+      }
+      // propagate this params to all the quantizable ports.
+      if (failed(PropagateQuantParams(op, params, new_items, changed))) {
+        return failure();
+      }
+      break;
+    }
     default: {
+      // TODO(fengliuai): implement the other types.
       llvm_unreachable("no implementation.");
       return failure();
     }
@@ -152,6 +166,102 @@ void QuantizeContext::DumpStates(QuantizeRegionOp current_op) {
     }
     llvm::errs() << ")\n";
   });
+}
+
+// A heuristic to get quantization parameters satisfies the same scale
+// constraints:
+// - If there are immutable states,
+//   - use the single input, or,
+//   - use the single output, or,
+//   - use the first one in the collection,
+// - use the single input if it is ready, or,
+// - use the single output if it is ready, or,
+// - use use the first ready one in the collection.
+QuantParams QuantizeContext::GetQuantParamsForSameScaleConstraint(
+    Operation *op) {
+  // Two vector to collect Non-empty operands and results states.
+  std::vector<quant::QuantState *> mutable_states, immutable_states;
+  for (int i = 0, e = op->getNumOperands(); i != e; ++i) {
+    auto &state = states_manager_.GetOperandQuantState(op, i);
+    if (state.immutable) {
+      immutable_states.push_back(&state);
+    } else if (!state.IsEmpty()) {
+      mutable_states.push_back(&state);
+    }
+  }
+
+  int immutable_operands_num = immutable_states.size();
+  int mutable_operands_num = mutable_states.size();
+  // Use the operand's state if it is immutable and it is the only one
+  // operand.
+  if (op->getNumOperands() == 1 && immutable_operands_num == 1) {
+    return immutable_states.front()->params;
+  }
+
+  for (int i = 0, e = op->getNumResults(); i != e; ++i) {
+    auto &state = states_manager_.GetResultQuantState(op, i);
+    if (state.immutable) {
+      immutable_states.push_back(&state);
+    } else if (!state.IsEmpty()) {
+      mutable_states.push_back(&state);
+    }
+  }
+
+  int immutable_results_num = immutable_states.size() - immutable_operands_num;
+  int mutable_results_num = mutable_states.size() - mutable_operands_num;
+  // Use the result's state if it is immutable and it is the only one result.
+  if (op->getNumResults() == 1 && immutable_results_num == 1) {
+    return immutable_states.back()->params;
+  }
+
+  LLVM_DEBUG(llvm::dbgs()
+             << "Quantization parameters are not collected in an ideal place. "
+                "Has to fallback values which might introduce errors.\n");
+
+  // Use the first immutable state to quantize the rest operands and results.
+  if (!immutable_states.empty()) return immutable_states.front()->params;
+
+  // If there are no immutable states, use the operand's state if it is the
+  // only one operand and has parameters propagated.
+  if (op->getNumOperands() == 1 && mutable_operands_num == 1) {
+    return mutable_states.front()->params;
+  }
+
+  // If there are no immutable states, use the result's state if it is the
+  // only one result and has parameters propagated.
+  if (op->getNumResults() == 1 && mutable_results_num == 1) {
+    return mutable_states.back()->params;
+  }
+
+  // Use the first propagated state to quantize the rest operands and results.
+  if (!mutable_states.empty()) return mutable_states.front()->params;
+
+  // None operands/results have parameters propagated, skip this node for now.
+  return {};
+}
+
+LogicalResult QuantizeContext::PropagateQuantParams(
+    Operation *op, const QuantParams params,
+    quant::AdjacentOperations *new_items, bool *changed) {
+  // Use the final state to set all the operands' parameters.
+  for (int i = 0, e = op->getNumOperands(); i != e; ++i) {
+    auto ele = op->getOperand(i).getType().cast<ShapedType>().getElementType();
+    if (ele.isa<FloatType>() && SetOperandParams(op, i, params)) {
+      *changed |= true;
+      new_items->push_back(op->getOperand(i).getDefiningOp());
+    }
+  }
+
+  // Use the final state to set all the results' parameters.
+  for (int res = 0, e = op->getNumResults(); res != e; ++res) {
+    auto ele = op->getResult(res).getType().cast<ShapedType>().getElementType();
+    if (ele.isa<FloatType>() && SetResultParams(op, res, params)) {
+      auto users = op->getResult(res).getUsers();
+      *changed |= !users.empty();
+      new_items->append(users.begin(), users.end());
+    }
+  }
+  return success();
 }
 
 int QuantizeContext::StatesManager::InitializeState(quant::QuantizeRegionOp op,

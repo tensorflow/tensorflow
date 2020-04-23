@@ -25,9 +25,8 @@ from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.types import core
+from tensorflow.python.types import internal
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -236,9 +235,9 @@ def _FlattenToStrings(nested_strings):
 
 
 _TENSOR_CONTENT_TYPES = frozenset([
-    dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8, dtypes.int16,
-    dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8, dtypes.qint16,
-    dtypes.quint16, dtypes.qint32, dtypes.uint32, dtypes.uint64
+    dtypes.float16, dtypes.float32, dtypes.float64, dtypes.int32, dtypes.uint8,
+    dtypes.int16, dtypes.int8, dtypes.int64, dtypes.qint8, dtypes.quint8,
+    dtypes.qint16, dtypes.quint16, dtypes.qint32, dtypes.uint32, dtypes.uint64
 ])
 
 
@@ -791,6 +790,10 @@ def _ConstantValue(tensor, partial):
     return np.not_equal(value1, value2)
   elif tensor.op.type == "StopGradient":
     return constant_value(tensor.op.inputs[0], partial)
+  elif tensor.op.type == "Identity":
+    return constant_value(tensor.op.inputs[0], partial)
+  elif tensor.op.type in ("CheckNumericsV2", "DebugIdentityV2"):
+    return constant_value(tensor.op.inputs[0], partial)
   else:
     return None
 
@@ -976,6 +979,7 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   return ret
 
 
+# TODO(mdan): Deprecate in favor of more static-friendly types.
 @tf_export("is_tensor")
 def is_tensor(x):  # pylint: disable=invalid-name
   """Checks whether `x` is a TF-native type that can be passed to many TF ops.
@@ -1002,7 +1006,7 @@ def is_tensor(x):  # pylint: disable=invalid-name
   Returns:
     `True` if `x` is a tensor or "tensor-like", `False` if not.
   """
-  return (isinstance(x, (tensor_like.TensorLike, core.Tensor)) or
+  return (isinstance(x, internal.NativeObject) or
           ops.is_dense_tensor_like(x) or
           getattr(x, "is_tensor_like", False))
 

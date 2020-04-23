@@ -205,8 +205,8 @@ absl::Status ConvPowerVR::BindArguments() {
              kernel_dilation_.z * src_[0]->Batch(), kernel_dilation_.w)));
   }
   if (conv_params_.linear_hw) {
-    const int grid_x = IntegralDivideRoundUp(
-        dst_[0]->Width() * dst_[0]->Batch(), conv_params_.block_size.x);
+    const int grid_x = DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(),
+                                     conv_params_.block_size.x);
     RETURN_IF_ERROR(kernel_.SetBytesAuto(grid_x));
   }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
@@ -215,27 +215,26 @@ absl::Status ConvPowerVR::BindArguments() {
 }
 
 int3 ConvPowerVR::GetGridSize() const {
-  const int grid_x = IntegralDivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(),
-                                           conv_params_.block_size.x);
+  const int grid_x = DivideRoundUp(dst_[0]->Width() * dst_[0]->Batch(),
+                                   conv_params_.block_size.x);
   const int grid_y =
-      IntegralDivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
+      DivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
   const int grid_z =
-      IntegralDivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.z);
+      DivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.z);
   int3 wg;
 
   if (conv_params_.linear_hw) {
-    wg.x =
-        IntegralDivideRoundUp(grid_x * grid_y, conv_params_.work_group_size.x);
-    wg.y = IntegralDivideRoundUp(grid_z, conv_params_.work_group_size.y);
+    wg.x = DivideRoundUp(grid_x * grid_y, conv_params_.work_group_size.x);
+    wg.y = DivideRoundUp(grid_z, conv_params_.work_group_size.y);
     return int3(wg[conv_params_.work_group_launch_order[0]] *
                     conv_params_.work_group_size.x,
                 wg[conv_params_.work_group_launch_order[1]] *
                     conv_params_.work_group_size.y,
                 1);
   } else {
-    wg.x = IntegralDivideRoundUp(grid_x, conv_params_.work_group_size.x);
-    wg.y = IntegralDivideRoundUp(grid_y, conv_params_.work_group_size.y);
-    wg.z = IntegralDivideRoundUp(grid_z, conv_params_.work_group_size.z);
+    wg.x = DivideRoundUp(grid_x, conv_params_.work_group_size.x);
+    wg.y = DivideRoundUp(grid_y, conv_params_.work_group_size.y);
+    wg.z = DivideRoundUp(grid_z, conv_params_.work_group_size.z);
     return int3(wg[conv_params_.work_group_launch_order[0]] *
                     conv_params_.work_group_size.x,
                 wg[conv_params_.work_group_launch_order[1]] *
@@ -808,8 +807,8 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
 ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     const CLDevice& device, const OperationDef& definition,
     const Convolution2DAttributes& attr, const BHWC* dst_shape) const {
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   const bool x_kernel_is_1 = attr.weights.shape.w == 1 && attr.strides.w == 1 &&
                              attr.dilations.w == 1 &&
                              attr.padding.prepended.w == 0 &&
@@ -825,8 +824,8 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
 ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     const CLDevice& device, const OperationDef& definition,
     const FullyConnectedAttributes& attr, const BHWC* dst_shape) const {
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   ConvPowerVR::ConvParams params = GuessBestParams(
       device, definition, src_depth, dst_depth, true, true, false, dst_shape);
   params.work_group_size.x *= params.work_group_size.y;
@@ -839,8 +838,8 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
 ConvPowerVR::ConvParams ConvPowerVR::GuessBestParamsWinograd(
     const CLDevice& device, const OperationDef& definition,
     const Convolution2DAttributes& attr, const BHWC* dst_shape) const {
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   ConvPowerVR::ConvParams params = GuessBestParams(
       device, definition, src_depth, dst_depth, true, true, true, dst_shape);
   params.block_size.x *= params.block_size.y;

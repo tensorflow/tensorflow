@@ -1452,7 +1452,8 @@ mlir::Operation* ImporterBase::createOperation(
       result.location, types, control_operands,
       mlir::ArrayRef<mlir::NamedAttribute>{});
   island.body().push_back(new mlir::Block);
-  mlir::OpBuilder island_builder(&island.GetBody());
+  mlir::OpBuilder island_builder =
+      mlir::OpBuilder::atBlockEnd(&island.GetBody());
 
   // Create the operation inside the island now.
   mlir::Operation* inner_op;
@@ -1475,30 +1476,48 @@ mlir::Operation* ImporterBase::createOperation(
     inner_op = island_builder.createOperation(result);
   }
 
-  if (inner_op->hasTrait<mlir::OpTrait::AttrSizedResultSegments>()) {
-    // The op has multiple variadic outputs.
-    // Calculate result segment sizes using the OpDef.
-    NameRangeMap output_ranges;
+  // Sets operand_segment_sizes or result_segment_sizes attribute to the op.
+  const auto set_segment_sizes_attr =
+      [&](const NameRangeMap& arg_ranges,
+          const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
+          llvm::StringRef attr_name) {
+        std::vector<mlir::Attribute> values;
+        values.reserve(args.size());
+        for (const auto& arg : args) {
+          auto range = arg_ranges.at(arg.name());
+          values.push_back(
+              island_builder.getI32IntegerAttr(range.second - range.first));
+        }
+        auto attr_type =
+            mlir::VectorType::get(args.size(), builder_.getIntegerType(32));
+        auto attr_value = mlir::DenseElementsAttr::get(attr_type, values);
+        inner_op->setAttr(attr_name, attr_value);
+      };
+
+  if (inner_op->hasTrait<mlir::OpTrait::AttrSizedOperandSegments>() ||
+      inner_op->hasTrait<mlir::OpTrait::AttrSizedResultSegments>()) {
+    // The op has multiple variadic operands or results.
+    // Calculate operand and result segment sizes using the OpDef.
+    NameRangeMap input_ranges, output_ranges;
     // This will fail only if the OpDef is syntactically invalid.
     // TODO(jpienaar): Convert this CHECK into a properly propagated error.
     TF_CHECK_OK(
-        NameRangesForNode(node, node.op_def(), nullptr, &output_ranges));
-    std::vector<mlir::Attribute> values;
-    values.reserve(node.op_def().output_arg_size());
-    for (const auto& output_arg : node.op_def().output_arg()) {
-      auto range = output_ranges[output_arg.name()];
-      values.push_back(
-          island_builder.getI32IntegerAttr(range.second - range.first));
+        NameRangesForNode(node, node.op_def(), &input_ranges, &output_ranges));
+    if (inner_op->hasTrait<mlir::OpTrait::AttrSizedOperandSegments>()) {
+      // Add derived "operand_segment_sizes" attr to the created operation.
+      // TODO(b/146937733): Don't use <void> here.
+      set_segment_sizes_attr(input_ranges, node.op_def().input_arg(),
+                             mlir::OpTrait::AttrSizedOperandSegments<
+                                 void>::getOperandSegmentSizeAttr());
     }
 
-    // Add derived "result_segment_sizes" attr to the created operation.
-    // TODO(b/146937733): Don't use <void> here.
-    llvm::StringRef attr_name = mlir::OpTrait::AttrSizedResultSegments<
-        void>::getResultSegmentSizeAttr();
-    auto attr_type = mlir::VectorType::get(node.op_def().output_arg_size(),
-                                           builder_.getIntegerType(32));
-    auto attr_value = mlir::DenseElementsAttr::get(attr_type, values);
-    inner_op->setAttr(attr_name, attr_value);
+    if (inner_op->hasTrait<mlir::OpTrait::AttrSizedResultSegments>()) {
+      // Add derived "result_segment_sizes" attr to the created operation.
+      // TODO(b/146937733): Don't use <void> here.
+      set_segment_sizes_attr(output_ranges, node.op_def().output_arg(),
+                             mlir::OpTrait::AttrSizedResultSegments<
+                                 void>::getResultSegmentSizeAttr());
+    }
   }
 
   // Add the terminator for the island
@@ -1866,13 +1885,13 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
       auto node_name = [&](const OutputTensor& tensor) {
         ss << tensor.node->name();
       };
-      mlir::interleave(arg_nodes, ss, node_name, ",");
+      llvm::interleave(arg_nodes, ss, node_name, ",");
       auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(ret_nodes, ss, node_name, ",");
+      llvm::interleave(ret_nodes, ss, node_name, ",");
       auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(specs.control_outputs, ss, ",");
+      llvm::interleave(specs.control_outputs, ss, ",");
       auto control_outputs =
           b.getNamedAttr("control_outputs", b.getStringAttr(ss.str()));
 
@@ -1897,16 +1916,16 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
       mlir::Builder b(context);
       std::string s;
       llvm::raw_string_ostream ss(s);
-      mlir::interleave(
+      llvm::interleave(
           specs.inputs, ss,
           [&](const std::pair<std::string, ArrayInfo>& v) { ss << v.first; },
           ",");
       auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(specs.outputs, ss, ",");
+      llvm::interleave(specs.outputs, ss, ",");
       auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(specs.control_outputs, ss, ",");
+      llvm::interleave(specs.control_outputs, ss, ",");
       auto control_outputs =
           b.getNamedAttr("control_outputs", b.getStringAttr(ss.str()));
 
@@ -1985,7 +2004,7 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
   llvm::SmallVector<mlir::Type, 4> arg_types;
   arg_types.reserve(specs.inputs.size());
   int i = 0;
-  for (auto it : specs.inputs) {
+  for (const auto& it : specs.inputs) {
     Node* arg_node = arg_nodes->at(i).node;
     if (arg_node == nullptr) {
       return errors::InvalidArgument("Input ", it.first,
@@ -2844,6 +2863,7 @@ StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphImporter::Convert(
       saved_model->debug_info() ? *saved_model->debug_info() : dummy_debug_info;
 
   GraphImportConfig specs;
+  specs.prune_unused_nodes = true;
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
@@ -2868,6 +2888,8 @@ StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphImporter::Convert(
   SavedModelObjectGraphImporter importer(graph.flib_def(), debug_info, specs,
                                          module.get(), &tf_name_to_mlir_name,
                                          &function_name_uniquifier);
+
+  TF_RETURN_IF_ERROR(importer.PrepareConvert(graph));
 
   auto fn_names = graph.flib_def().ListFunctionNames();
   for (const auto& fn_name : fn_names) {
@@ -2928,12 +2950,11 @@ class SavedModelSignatureDefImporter {
   // Converts the SavedModel to the SavedModel dialect. Creates an MLIR function
   // for each signature.
   StatusOr<mlir::OwningModuleRef> ConvertSignatures();
-  Status ConvertSignature(
-      const GraphDef& graphdef, const std::string& sig_def_key,
-      const std::map<std::string, TensorInfo>& inputs_sorted,
-      const std::map<std::string, TensorInfo>& outputs_sorted,
-      const GraphDebugInfo& debug_info,
-      const FunctionLibraryDefinition& flib_def);
+  Status ConvertSignature(const GraphDef& graphdef,
+                          const std::string& sig_def_key,
+                          const SignatureDef& signature_def,
+                          const GraphDebugInfo& debug_info,
+                          const FunctionLibraryDefinition& flib_def);
 
   // Creates GlobalTensorOp for each variable and moves each VarHandle op to
   // the enclosing function's arguments.
@@ -2948,10 +2969,7 @@ class SavedModelSignatureDefImporter {
       const llvm::SmallVectorImpl<mlir::TF::VarHandleOp>& ops);
 
   GraphImportConfig::InputArrays ParseInputArrays(
-      const std::map<std::string, TensorInfo>& inputs);
-
-  std::vector<std::string> ParseOutputArrays(
-      const std::map<std::string, TensorInfo>& outputs);
+      const std::vector<std::pair<std::string, TensorInfo>>& inputs);
 
   const SavedModelBundle& bundle_;
   mlir::OwningModuleRef module_;
@@ -2979,14 +2997,8 @@ SavedModelSignatureDefImporter::ConvertSignatures() {
       continue;
     }
 
-    // protobuf::Map doesn't provide stable iteration order so use std::map
-    std::map<std::string, TensorInfo> inputs_sorted(
-        signature_def.inputs().begin(), signature_def.inputs().end());
-    std::map<std::string, TensorInfo> outputs_sorted(
-        signature_def.outputs().begin(), signature_def.outputs().end());
-
-    TF_RETURN_IF_ERROR(ConvertSignature(graphdef, sig_def_key, inputs_sorted,
-                                        outputs_sorted, debug_info, flib_def));
+    TF_RETURN_IF_ERROR(ConvertSignature(graphdef, sig_def_key, signature_def,
+                                        debug_info, flib_def));
   }
   TF_RETURN_IF_ERROR(LiftVariables());
 
@@ -2999,13 +3011,27 @@ SavedModelSignatureDefImporter::ConvertSignatures() {
 
 Status SavedModelSignatureDefImporter::ConvertSignature(
     const GraphDef& graphdef, const std::string& sig_def_key,
-    const std::map<std::string, TensorInfo>& inputs_sorted,
-    const std::map<std::string, TensorInfo>& outputs_sorted,
-    const GraphDebugInfo& debug_info,
+    const SignatureDef& signature_def, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def) {
+  // Create local vectors for the input and output and sort them to be
+  // deterministic. We don't want anyone to really depend on the order, client
+  // should lookup argument/result mapping by attribute name.
+  // To avoid accidentally depending on the order we use an unintuitive sorting.
+  std::vector<std::pair<std::string, TensorInfo>> inputs(
+      signature_def.inputs().begin(), signature_def.inputs().end());
+  llvm::sort(inputs, [](const auto& lhs, const auto& rhs) {
+    return lhs.first.size() < rhs.first.size() || lhs.first > rhs.first;
+  });
+  std::vector<std::pair<std::string, TensorInfo>> outputs(
+      signature_def.outputs().begin(), signature_def.outputs().end());
+  llvm::sort(outputs, [](const auto& lhs, const auto& rhs) {
+    return lhs.first.size() < rhs.first.size() || lhs.first > rhs.first;
+  });
+
   GraphImportConfig specs;
-  specs.inputs = ParseInputArrays(inputs_sorted);
-  specs.outputs = ParseOutputArrays(outputs_sorted);
+  specs.prune_unused_nodes = true;
+  specs.inputs = ParseInputArrays(inputs);
+  for (auto& output : outputs) specs.outputs.push_back(output.second.name());
 
   // Remove unused nodes and create sub-graphdef.
   GraphDef sub_graph_def;
@@ -3041,11 +3067,11 @@ Status SavedModelSignatureDefImporter::ConvertSignature(
                   builder.getStrArrayAttr({sig_def_key}));
 
   // Transfer input and output parameter names to index_path attributes.
-  for (auto input_and_idx : llvm::enumerate(inputs_sorted)) {
+  for (auto input_and_idx : llvm::enumerate(inputs)) {
     func_op.setArgAttr(input_and_idx.index(), "tf_saved_model.index_path",
                        builder.getStrArrayAttr({input_and_idx.value().first}));
   }
-  for (auto output_and_idx : llvm::enumerate(outputs_sorted)) {
+  for (auto output_and_idx : llvm::enumerate(outputs)) {
     func_op.setResultAttr(
         output_and_idx.index(), "tf_saved_model.index_path",
         builder.getStrArrayAttr({output_and_idx.value().first}));
@@ -3180,7 +3206,7 @@ Status SavedModelSignatureDefImporter::ReadVariablesFromSession(
 }
 
 GraphImportConfig::InputArrays SavedModelSignatureDefImporter::ParseInputArrays(
-    const std::map<std::string, TensorInfo>& inputs) {
+    const std::vector<std::pair<std::string, TensorInfo>>& inputs) {
   GraphImportConfig::InputArrays results;
   for (const auto& iter : inputs) {
     const auto& tensor_info = iter.second;
@@ -3192,24 +3218,8 @@ GraphImportConfig::InputArrays SavedModelSignatureDefImporter::ParseInputArrays(
     array_info.imported_dtype = tensor_info.dtype();
     array_info.shape = tensor_info.tensor_shape();
 
-    std::vector<std::string> node_names =
-        absl::StrSplit(tensor_info.name(), ':');
-
-    results.insert(std::pair<std::string, ArrayInfo>(node_names.at(0),
+    results.insert(std::pair<std::string, ArrayInfo>(tensor_info.name(),
                                                      std::move(array_info)));
-  }
-  return results;
-}
-
-std::vector<std::string> SavedModelSignatureDefImporter::ParseOutputArrays(
-    const std::map<std::string, TensorInfo>& outputs) {
-  std::vector<std::string> results;
-  for (const auto& iter : outputs) {
-    const auto& tensor_info = iter.second;
-
-    std::vector<std::string> node_names =
-        absl::StrSplit(tensor_info.name(), ':');
-    results.push_back(node_names.at(0));
   }
   return results;
 }

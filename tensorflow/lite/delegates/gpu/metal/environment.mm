@@ -21,6 +21,21 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace metal {
+namespace {
+Vendor GetVendorFromString(const std::string& device_name) {
+  const std::map<std::string, Vendor> kMapping = {
+    {"Apple", Vendor::kApple},
+    {"Intel", Vendor::kIntel},
+    {"AMD", Vendor::kAMD},
+  };
+  for (auto v : kMapping) {
+    if (device_name.find(v.first) != std::string::npos) {
+      return v.second;
+    }
+  }
+  return Vendor::kUnknown;
+}
+}  // namespace
 
 AppleGPUInfo::AppleGPUInfo(const std::string& device_name) {
   const std::map<std::string, AppleGPU> kMapping = {
@@ -63,6 +78,10 @@ bool AppleGPUInfo::IsRoundToNearestSupported() const {
   return IsBionic();
 }
 
+bool AppleGPUInfo::IsWaveSizeEqualTo32() const {
+  return true;
+}
+
 int AppleGPUInfo::GetComputeUnitsCount() const {
   switch (gpu_type) {
     case AppleGPU::kA7:
@@ -94,14 +113,46 @@ int AppleGPUInfo::GetComputeUnitsCount() const {
   }
 }
 
-DeviceInfo::DeviceInfo(const std::string& device_name) : apple_info(device_name) {}
+DeviceInfo::DeviceInfo(const std::string& device_name) : vendor(GetVendorFromString(device_name)) {
+  if (vendor == Vendor::kApple) {
+    apple_info = AppleGPUInfo(device_name);
+  }
+}
+
+bool DeviceInfo::IsIntelGPU() const {
+  return vendor == Vendor::kIntel;
+}
+
+bool DeviceInfo::IsAppleGPU() const {
+  return vendor == Vendor::kApple;
+}
+
+bool DeviceInfo::IsAMDGPU() const {
+  return vendor == Vendor::kAMD;
+}
 
 bool DeviceInfo::IsRoundToNearestSupported() const {
-  return apple_info.IsRoundToNearestSupported();
+  if (vendor == Vendor::kApple) {
+    return apple_info.IsRoundToNearestSupported();
+  } else {
+    return true;
+  }
+}
+
+bool DeviceInfo::IsWaveSizeEqualTo32() const {
+  if (vendor == Vendor::kApple) {
+    return apple_info.IsWaveSizeEqualTo32();
+  } else {
+    return false;
+  }
 }
 
 int DeviceInfo::GetComputeUnitsCount() const {
-  return apple_info.GetComputeUnitsCount();
+  if (vendor == Vendor::kApple) {
+    return apple_info.GetComputeUnitsCount();
+  } else {
+    return 1;
+  }
 }
 
 }  // namespace metal

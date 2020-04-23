@@ -1,0 +1,31 @@
+op {
+  name: "Prelinearize"
+  input_arg {
+    name: "input"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    default_value {
+      shape {
+      }
+    }
+  }
+  attr {
+    name: "layout"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+}

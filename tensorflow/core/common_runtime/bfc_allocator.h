@@ -115,21 +115,30 @@ class BFCAllocator : public Allocator {
   bool MergeTimestampedChunks(size_t required_bytes)
       TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
+  // Return the largest free chunk bytes from the largest bin in constant time.
+  // The free chunks are sorted by size (and then address) in a bin.
+  int64 LargestFreeChunk() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
   // Add TraceMe (in memory allocation and deallocation) for memory stats
   // profiling. The chunk_ptr is passed to get information such as address,
   // chunk size and requested_size.
-  void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr)
+  void AddTraceMe(absl::string_view traceme_name, const void* ptr)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Overloaded AddTraceMe function with chunk information.
+  void AddTraceMe(absl::string_view traceme_name, const void* chunk_ptr,
+                  int64 req_bytes, int64 alloc_bytes)
       TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
   // kInvalidChunkHandle means an invalid chunk
   typedef size_t ChunkHandle;
-  static const int kInvalidChunkHandle = -1;
+  static constexpr int kInvalidChunkHandle = -1;
 
   typedef int BinNum;
-  static const int kInvalidBinNum = -1;
+  static constexpr int kInvalidBinNum = -1;
   // The following means that the largest bin'd chunk size is 256 << 21 = 512MB.
-  static const int kNumBins = 21;
+  static constexpr int kNumBins = 21;
 
   // A Chunk points to a piece of memory that's either entirely free or entirely
   // in use by one user memory allocation.
@@ -243,8 +252,8 @@ class BFCAllocator : public Allocator {
         : bin_size(bs), free_chunks(ChunkComparator(allocator)) {}
   };
 
-  static const size_t kMinAllocationBits = 8;
-  static const size_t kMinAllocationSize = 1 << kMinAllocationBits;
+  static constexpr size_t kMinAllocationBits = 8;
+  static constexpr size_t kMinAllocationSize = 1 << kMinAllocationBits;
 
   // BFCAllocator allocates memory into a collection of disjoint
   // AllocationRegions.  Each AllocationRegion corresponds to one call to

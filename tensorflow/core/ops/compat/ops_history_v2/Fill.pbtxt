@@ -1,0 +1,51 @@
+op {
+  name: "Fill"
+  input_arg {
+    name: "dims"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "Fill"
+  input_arg {
+    name: "dims"
+    type_attr: "index_type"
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "index_type"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}

@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Ftrl-proximal for TensorFlow."""
+"""Ftrl-proximal optimizer implementation."""
+# pylint: disable=g-classes-have-attributes
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -35,26 +36,32 @@ class Ftrl(optimizer_v2.OptimizerV2):
   above) and shrinkage-type L2 (which is the addition of an L2 penalty to the
   loss function).
 
-  Initialization:
-  $$t = 0$$
-  $$n_{0} = 0$$
-  $$\sigma_{0} = 0$$
-  $$z_{0} = 0$$
+  Args:
+    learning_rate: A `Tensor`, floating point value, or a schedule that is a
+      `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
+    learning_rate_power: A float value, must be less or equal to zero.
+      Controls how the learning rate decreases during training. Use zero for
+      a fixed learning rate.
+    initial_accumulator_value: The starting value for accumulators.
+      Only zero or positive values are allowed.
+    l1_regularization_strength: A float value, must be greater than or
+      equal to zero.
+    l2_regularization_strength: A float value, must be greater than or
+      equal to zero.
+    name: Optional name prefix for the operations created when applying
+      gradients.  Defaults to `"Ftrl"`.
+    l2_shrinkage_regularization_strength: A float value, must be greater than
+      or equal to zero. This differs from L2 above in that the L2 above is a
+      stabilization penalty, whereas this L2 shrinkage is a magnitude penalty.
+      When input is sparse shrinkage will only happen on the active weights.
+    **kwargs: Keyword arguments. Allowed to be one of
+      `"clipnorm"` or `"clipvalue"`.
+      `"clipnorm"` (float) clips gradients by norm; `"clipvalue"` (float) clips
+      gradients by value.
 
-  Update ($$i$$ is variable index):
-  $$t = t + 1$$
-  $$n_{t,i} = n_{t-1,i} + g_{t,i}^{2}$$
-  $$\sigma_{t,i} = (\sqrt{n_{t,i}} - \sqrt{n_{t-1,i}}) / \alpha$$
-  $$z_{t,i} = z_{t-1,i} + g_{t,i} - \sigma_{t,i} * w_{t,i}$$
-  $$w_{t,i} = - ((\beta+\sqrt{n+{t}}) / \alpha + \lambda_{2})^{-1} * (z_{i} -
-               sgn(z_{i}) * \lambda_{1}) if \abs{z_{i}} > \lambda_{i} else 0$$
-
-  Check the documentation for the l2_shrinkage_regularization_strength
-  parameter for more details when shrinkage is enabled, where gradient is
-  replaced with gradient_with_shrinkage.
-
-  References: See
-  [paper](https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf)
+  Reference:
+    - [paper](
+      https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf)
   """
 
   def __init__(self,
@@ -66,44 +73,6 @@ class Ftrl(optimizer_v2.OptimizerV2):
                name='Ftrl',
                l2_shrinkage_regularization_strength=0.0,
                **kwargs):
-    r"""Construct a new FTRL optimizer.
-
-    Args:
-      learning_rate: A `Tensor`, floating point value, or a schedule that is a
-        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
-      learning_rate_power: A float value, must be less or equal to zero.
-        Controls how the learning rate decreases during training. Use zero for
-        a fixed learning rate.
-      initial_accumulator_value: The starting value for accumulators.
-        Only zero or positive values are allowed.
-      l1_regularization_strength: A float value, must be greater than or
-        equal to zero.
-      l2_regularization_strength: A float value, must be greater than or
-        equal to zero.
-      name: Optional name prefix for the operations created when applying
-        gradients.  Defaults to "Ftrl".
-      l2_shrinkage_regularization_strength: A float value, must be greater than
-        or equal to zero. This differs from L2 above in that the L2 above is a
-        stabilization penalty, whereas this L2 shrinkage is a magnitude penalty.
-        The FTRL formulation can be written as:
-        w_{t+1} = argmin_w(\hat{g}_{1:t}w + L1*||w||_1 + L2*||w||_2^2), where
-        \hat{g} = g + (2*L2_shrinkage*w), and g is the gradient of the loss
-        function w.r.t. the weights w.
-        Specifically, in the absence of L1 regularization, it is equivalent to
-        the following update rule:
-        w_{t+1} = w_t - lr_t / (1 + 2*L2*lr_t) * g_t -
-                  2*L2_shrinkage*lr_t / (1 + 2*L2*lr_t) * w_t
-        where lr_t is the learning rate at t.
-        When input is sparse shrinkage will only happen on the active weights.\
-      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
-        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
-        gradients by value, `decay` is included for backward compatibility to
-        allow time inverse decay of learning rate. `lr` is included for backward
-        compatibility, recommended to use `learning_rate` instead.
-
-    Raises:
-      ValueError: If one of the arguments is invalid.
-    """
     super(Ftrl, self).__init__(name, **kwargs)
 
     if initial_accumulator_value < 0.0:

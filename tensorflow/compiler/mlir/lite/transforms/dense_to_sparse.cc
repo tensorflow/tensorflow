@@ -29,7 +29,7 @@ namespace TFL {
 
 namespace {
 
-struct DenseToSparse : public FunctionPass<DenseToSparse> {
+struct DenseToSparse : public PassWrapper<DenseToSparse, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -63,7 +63,7 @@ void DenseToSparse::runOnFunction() {
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect DenseToSparse pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateDenseToSparsePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateDenseToSparsePass() {
   return absl::make_unique<DenseToSparse>();
 }
 

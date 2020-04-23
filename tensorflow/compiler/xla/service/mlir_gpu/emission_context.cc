@@ -28,7 +28,7 @@ EmissionContext::EmissionContext(std::unique_ptr<HloModule> module)
   error_handler_ = [](const ErrorMap& instructions_with_error,
                       HloModule* module) {
     std::set<const HloComputation*> computations_with_error;
-    for (auto err : instructions_with_error) {
+    for (const auto& err : instructions_with_error) {
       computations_with_error.insert(err.first->parent());
     }
 
