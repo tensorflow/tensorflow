@@ -27,9 +27,6 @@ glob_lit_tests(
     exclude = [
         # TODO(b/137624192): Reenable once we can fuse reductions.
         "fused_reduce.hlo",
-        # TODO(b/154702853): Reenable once we are sure that GenericAtomicRMWOp
-        # has no side effects in its body.
-        "select_and_scatter.hlo",
     ],
     exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
     test_file_exts = ["hlo"],
