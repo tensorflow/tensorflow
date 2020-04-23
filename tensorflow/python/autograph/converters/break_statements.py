@@ -53,7 +53,7 @@ class BreakTransformer(converter.Base):
       return block
 
     template = """
-        if ag__.not_(var_name):
+        if not var_name:
           block
       """
     node = templates.replace(
@@ -100,7 +100,7 @@ class BreakTransformer(converter.Base):
 
     template = """
       var_name = False
-      while ag__.and_(lambda: test, lambda: ag__.not_(var_name)):
+      while not var_name and test:
         body
       orelse
     """
@@ -150,7 +150,7 @@ class BreakTransformer(converter.Base):
     # break did not trigger).
     guarded_orelse = self._guard_if_present(node.orelse, break_var)
     extra_test = templates.replace_as_expression(
-        'ag__.not_(var_name)', var_name=break_var)
+        'not var_name', var_name=break_var)
 
     # The extra test is hidden in the AST, which will confuse the static
     # analysis. To mitigate that, we insert a no-op statement that ensures

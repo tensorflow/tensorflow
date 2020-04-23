@@ -83,7 +83,7 @@ class ContinueCanonicalizationTransformer(converter.Base):
       block.create_guard_next = False
       if should_wrap_current:
         template = """
-          if ag__.not_(var_name):
+          if not var_name:
             original_node
         """
         cond, = templates.replace(
