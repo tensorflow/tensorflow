@@ -50,7 +50,7 @@ class VariableOpTest(test.TestCase):
       return self.evaluate(p)
 
   def _testTypes(self, vals):
-    for dtype in [np.float32, np.float64, np.int32, np.int64]:
+    for dtype in [np.float16, np.float32, np.float64, np.complex64, np.complex128, np.int32, np.int64]:
       self.setUp()
       x = vals.astype(dtype)
       tftype = _NP_TO_TF[dtype]
