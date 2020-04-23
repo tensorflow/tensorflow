@@ -2174,6 +2174,14 @@ class FromKerasFile(TestModels, parameterized.TestCase):
       converter.convert()
       self.assertValidDebugInfo(converter._debug_info)
 
+  def testExperimentalSparsifyModel(self):
+    self._getSequentialModel()
+
+    converter = lite.TocoConverter.from_keras_model_file(self._keras_file)
+    converter._experimental_sparsify_model = True
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
 
 class GrapplerTest(TestModels, parameterized.TestCase):
 
