@@ -532,7 +532,7 @@ class StrategyBase(object):
     should distribute its computation. See
     [guide](https://www.tensorflow.org/guide/distributed_training#using_tfdistributestrategy_with_estimator_limited_support).
   * Otherwise, use `tf.distribute.Strategy.scope` to specify that a
-    strategy should be used when building an executing your model.
+    strategy should be used when building and executing your model.
     (This puts you in the "cross-replica context" for this strategy, which
     means the strategy is put in control of things like variable placement.)
   * If you are writing a custom training loop, you will need to call a few more
