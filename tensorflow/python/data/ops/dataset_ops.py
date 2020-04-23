@@ -2261,7 +2261,7 @@ class DatasetV1(DatasetV2):
 
     with ops.device(self._variant_tensor.device):
       iterator_resource = gen_dataset_ops.iterator_v2(
-        container="", shared_name=shared_name, **self._flat_structure)
+          container="", shared_name=shared_name, **self._flat_structure)
 
       initializer = gen_dataset_ops.make_iterator(
           dataset._variant_tensor,  # pylint: disable=protected-access
@@ -2269,8 +2269,8 @@ class DatasetV1(DatasetV2):
 
       # pylint: disable=protected-access
       return iterator_ops.Iterator(
-        iterator_resource, initializer, get_legacy_output_types(dataset),
-        get_legacy_output_shapes(dataset), get_legacy_output_classes(dataset))
+          iterator_resource, initializer, get_legacy_output_types(dataset),
+          get_legacy_output_shapes(dataset), get_legacy_output_classes(dataset))
 
   @property
   @deprecation.deprecated(
@@ -4380,7 +4380,7 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
           buffer_size=self._buffer_size,
           slack_period=slack_period,
           **self._flat_structure)
-    
+
     super(PrefetchDataset, self).__init__(input_dataset, variant_tensor)
 
 
