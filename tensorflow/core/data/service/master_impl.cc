@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -79,6 +80,26 @@ Status DataServiceMasterImpl::RegisterWorker(
   }
 
   VLOG(1) << "Registered worker " << workers_.back().DebugString();
+  return Status::OK();
+}
+
+Status DataServiceMasterImpl::WorkerUpdate(const WorkerUpdateRequest* request,
+                                           WorkerUpdateResponse* response) {
+  mutex_lock l(mu_);
+  int64 worker_id = request->worker_id();
+  for (auto& update : request->updates()) {
+    int64 task_id = update.task_id();
+    if (!tasks_.contains(task_id)) {
+      return errors::NotFound("WorkerUpdate called for worker ", worker_id,
+                              " with unknown task id ", task_id);
+    }
+    if (update.completed()) {
+      int64 job_id = tasks_.at(task_id).job_id();
+      DCHECK(jobs_.contains(job_id));
+      jobs_.at(job_id).task_finished(task_id);
+      VLOG(3) << "Task " << task_id << " from job " << job_id << " completed";
+    }
+  }
   return Status::OK();
 }
 
@@ -221,7 +242,7 @@ Status DataServiceMasterImpl::GetTasks(const GetTasksRequest* request,
     task_info->set_worker_address(task.worker_address());
     task_info->set_id(task.task_id());
   }
-  response->set_job_finished(false);
+  response->set_job_finished(job.finished());
   VLOG(3) << "Found " << response->task_info_size() << " tasks for job id "
           << request->job_id();
   return Status::OK();

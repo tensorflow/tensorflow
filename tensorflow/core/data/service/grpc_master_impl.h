@@ -43,6 +43,7 @@ class GrpcMasterImpl : public MasterService::Service {
                       const method##Request* request, \
                       method##Response* response) override;
   HANDLER(RegisterWorker);
+  HANDLER(WorkerUpdate);
   HANDLER(GetOrRegisterDataset);
   HANDLER(CreateJob);
   HANDLER(GetTasks);
