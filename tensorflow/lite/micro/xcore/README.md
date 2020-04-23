@@ -8,7 +8,7 @@ IMPORTANT: to set up environment variables correctly run the following from the 
 
 To ensure synchronization between your repo, tools, and third party libraries:
 
-    $ rm -rf tensorflow/lite/micro/tools/make/downloads/* tensorflow/lite/micro/tools/make/gen/*
+    $ make clean clean_downloads
     $ make -f tensorflow/lite/micro/tools/make/Makefile TARGET="xcore" test
     $ pushd ./tensorflow/lite/micro/tools/make/downloads/xtimecomposer/ && source SetEnv && popd
     $ make -f tensorflow/lite/micro/tools/make/Makefile TARGET="xcore" test 
