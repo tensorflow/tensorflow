@@ -512,7 +512,7 @@ cc_library(
     hdrs = ["lib/core/ndarray_tensor_bridge.h"],
     visibility = tf_external_workspace_visible(
         visibility + [
-            "//learning/deepmind/courier:__subpackages__",
+            "//tensorflow:ndarray_tensor_allow_list",
         ],
     ),
     deps = [
@@ -986,7 +986,7 @@ cc_library(
     srcs = ["lib/core/ndarray_tensor.cc"],
     hdrs = ["lib/core/ndarray_tensor.h"],
     visibility = tf_external_workspace_visible(visibility + [
-        "//learning/deepmind/courier:__subpackages__",
+        "//tensorflow:ndarray_tensor_allow_list",
     ]),
     deps = [
         ":bfloat16_lib",
