@@ -93,9 +93,10 @@ tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 tensorflow::SessionState::kTensorHandleResourceTypeName
 
 [server_lib] # server_lib
-tensorflow::data::GrpcDataServer::Start
-tensorflow::data::GrpcDataServer::Stop
-tensorflow::data::GrpcDataServer::Target
+tensorflow::data::GrpcDataServerBase::Start
+tensorflow::data::GrpcDataServerBase::Stop
+tensorflow::data::GrpcDataServerBase::Target
+tensorflow::data::MasterGrpcDataServer::NumTasks
 tensorflow::data::NewMasterServer
 tensorflow::data::NewWorkerServer
 
