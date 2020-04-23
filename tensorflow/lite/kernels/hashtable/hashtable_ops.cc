@@ -13,24 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_HASHTABLE_OPS_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_HASHTABLE_OPS_H_
-
-#include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/kernels/hashtable/hashtable_ops.h"
 
 namespace tflite {
 namespace ops {
 namespace custom {
 
-TfLiteRegistration* Register_HASHTABLE();
-TfLiteRegistration* Register_HASHTABLE_FIND();
-TfLiteRegistration* Register_HASHTABLE_IMPORT();
-TfLiteRegistration* Register_HASHTABLE_SIZE();
-
-extern "C" void AddHashtableOps(::tflite::MutableOpResolver* resolver);
+extern "C" void AddHashtableOps(::tflite::MutableOpResolver* resolver) {
+  // Add hashtable op handlers.
+  resolver->AddCustom("HashTableV2", tflite::ops::custom::Register_HASHTABLE());
+  resolver->AddCustom("LookupTableFindV2",
+                      tflite::ops::custom::Register_HASHTABLE_FIND());
+  resolver->AddCustom("LookupTableImportV2",
+                      tflite::ops::custom::Register_HASHTABLE_IMPORT());
+  resolver->AddCustom("LookupTableSizeV2",
+                      tflite::ops::custom::Register_HASHTABLE_SIZE());
+}
 
 }  // namespace custom
 }  // namespace ops
 }  // namespace tflite
-
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_KERNELS_HASHTABLE_OPS_H_
