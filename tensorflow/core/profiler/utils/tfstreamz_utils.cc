@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/collected_metrics.h"
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/profiler/protobuf/tfstreamz.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -44,7 +45,24 @@ string ConstructXStatName(const string& name, const monitoring::Point& point) {
 }
 
 string SerializePercentile(const monitoring::Percentiles& percentiles) {
-  return "";
+  tfstreamz::Percentiles output;
+  output.set_unit_of_measure(
+      static_cast<tfstreamz::UnitOfMeasure>(percentiles.unit_of_measure));
+  output.set_start_nstime(percentiles.start_nstime);
+  output.set_end_nstime(percentiles.end_nstime);
+  output.set_min_value(percentiles.min_value);
+  output.set_max_value(percentiles.max_value);
+  output.set_mean(percentiles.mean);
+  output.set_stddev(percentiles.stddev);
+  output.set_num_samples(percentiles.num_samples);
+  output.set_total_samples(percentiles.total_samples);
+  output.set_accumulator(percentiles.accumulator);
+  for (const auto& pp : percentiles.points) {
+    auto* percentile_point = output.add_points();
+    percentile_point->set_percentile(pp.percentile);
+    percentile_point->set_value(pp.value);
+  }
+  return output.SerializeAsString();
 }
 
 }  // namespace
@@ -90,7 +108,6 @@ Status SerializeToXPlane(const std::vector<TfStreamzSnapshot>& snapshots,
                                 /*is_bytes=*/true);
             break;
           case monitoring::ValueType::kPercentiles:
-            // TODO(jiesun): define a proto to hold monitoring::Percentiles.
             xevent.AddStatValue(*metadata,
                                 SerializePercentile(point->percentiles_value),
                                 /*is_bytes=*/true);

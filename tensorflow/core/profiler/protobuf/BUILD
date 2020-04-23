@@ -112,3 +112,10 @@ tf_proto_library(
     cc_api_version = 2,
     visibility = [":friends"],
 )
+
+tf_proto_library(
+    name = "tfstreamz_proto",
+    srcs = ["tfstreamz.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
