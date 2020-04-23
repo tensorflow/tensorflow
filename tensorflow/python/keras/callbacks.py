@@ -1345,7 +1345,7 @@ class ModelCheckpoint(Callback):
       raise KeyError('Failed to format this callback filepath: "{}". '
                      'Reason: {}'.format(self.filepath, e))
     self._write_filepath = distributed_file_utils.write_filepath(
-      file_path, self.model.distribute_strategy)
+        file_path, self.model.distribute_strategy)
     return self._write_filepath
 
   def _maybe_remove_file(self):
