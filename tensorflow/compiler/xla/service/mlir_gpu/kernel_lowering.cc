@@ -312,11 +312,8 @@ struct FixKernelFunctionSignatures
     mlir::FuncOp func = getFunction();
     mlir::ModuleOp module = func.getParentOfType<mlir::ModuleOp>();
     getFunction().walk([&](mlir::gpu::LaunchFuncOp launchOp) {
-      mlir::gpu::GPUModuleOp gpu_module =
-          module.lookupSymbol<mlir::gpu::GPUModuleOp>(
-              launchOp.getKernelModuleName());
       mlir::gpu::GPUFuncOp kernel =
-          gpu_module.lookupSymbol<mlir::gpu::GPUFuncOp>(launchOp.kernel());
+          module.lookupSymbol<mlir::gpu::GPUFuncOp>(launchOp.kernel());
       // Compute a map from function arguments to kernel function operands.
       mlir::BlockAndValueMapping func_to_kernel;
       for (mlir::BlockArgument arg : func.getArguments()) {
@@ -331,6 +328,7 @@ struct FixKernelFunctionSignatures
       // Create a new kernel function with modified signature. We know that it
       // will have the same signature as the original function, so just reuse it
       // here.
+      auto gpu_module = kernel.getParentOfType<mlir::gpu::GPUModuleOp>();
       mlir::OpBuilder kernel_builder(gpu_module.body());
       auto new_kernel = kernel_builder.create<mlir::gpu::GPUFuncOp>(
           kernel.getLoc(), kernel.getName(), func.getType());
