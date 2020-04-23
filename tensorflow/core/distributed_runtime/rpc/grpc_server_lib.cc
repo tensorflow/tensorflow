@@ -238,7 +238,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   auto server_build_option = reuse_port ?
       std::unique_ptr<::grpc::ServerBuilderOption>(new ReusePortOption) :
       std::unique_ptr<::grpc::ServerBuilderOption>(new NoReusePortOption);
-  builder.SetOption(server_build_option);
+  builder.SetOption(std::move(server_build_option));
 
   // Allow subclasses to specify more args to pass to the gRPC server.
   MaybeMutateBuilder(&builder);
