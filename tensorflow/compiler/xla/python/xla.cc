@@ -324,12 +324,13 @@ void BuildOpsSubmodule(py::module* m) {
           XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
           const absl::optional<ChannelHandle>&, const absl::optional<Shape>&)>(
           &AllReduce),
-      py::arg("operand"), py::arg("computation"), py::arg("replica_groups"),
+      py::arg("operand"), py::arg("computation"),
+      py::arg("replica_groups") = py::list(),
       py::arg("channel_id") = absl::nullopt,
       py::arg("shape_with_layout") = absl::nullopt);
   ops.def("AllToAll", &AllToAll, py::arg("operand"), py::arg("split_dimension"),
           py::arg("concat_dimension"), py::arg("split_count"),
-          py::arg("replica_groups"));
+          py::arg("replica_groups") = py::list());
   ops.def("CollectivePermute", &CollectivePermute, py::arg("operand"),
           py::arg("source_target_pairs"));
   ops.def("CreateToken", &CreateToken, py::arg("builder"));
