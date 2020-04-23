@@ -59,6 +59,12 @@ KISSFFT_MD5="438ba1fef5783cc5f5f201395cc477ca"
 RUY_URL="https://github.com/google/ruy/archive/9f53ba413e6fc879236dcaa3e008915973d67a4f.zip"
 RUY_MD5="ce2c2444cced9dcf6ca6bc908061faa8"
 
+CIFAR10_DATASET_URL="https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz"
+CIFAR10_DATASET_MD5="c32a1d4ab5d03f1284b67883e8d87530"
+
+IMAGE_RECOGNITION_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/models/tflite/cifar_image_recognition_model_2020_4_14.zip"
+IMAGE_RECOGNITION_MODEL_MD5 := "2b886156e7ef4d6e53d0f1a4bc800e56"
+
 PERSON_MODEL_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_grayscale_2019_11_21.zip"
 PERSON_MODEL_MD5 := "fe2934bd0788f1dcc7af3f0a954542ab"
 
