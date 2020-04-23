@@ -1038,7 +1038,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-    ],
+    ] + if_mkl([":mkl_cpu_allocator"]),
 )
 
 cc_library(
