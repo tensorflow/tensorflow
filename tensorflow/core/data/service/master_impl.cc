@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/master_impl.h"
 
+#include <memory>
+#include <tuple>
+#include <utility>
+
 #include "grpcpp/create_channel.h"
 #include "grpcpp/impl/codegen/server_context.h"
 #include "grpcpp/security/credentials.h"
@@ -55,32 +59,23 @@ Status DataServiceMasterImpl::RegisterWorker(
   VLOG(3) << "Received register worker request";
   mutex_lock l(mu_);
   int64 worker_id = next_worker_id_++;
-  workers_.emplace_back();
-  workers_.back().address = request->worker_address();
-  workers_.back().id = worker_id;
+  workers_.emplace_back(worker_id, request->worker_address());
   response->set_worker_id(worker_id);
 
   // Allocate tasks to the worker.
   for (auto& entry : jobs_) {
     Job& job = entry.second;
-    if (job.finished) {
+    if (job.finished()) {
       continue;
     }
-    int64 task_id = next_task_id_++;
-    DCHECK(!tasks_.contains(task_id));
-    Task& task = tasks_[task_id];
-    task.id = task_id;
-    task.dataset_id = job.dataset_id;
-    task.worker_address = request->worker_address();
-    job.task_ids.push_back(task_id);
-    job.total_tasks++;
+    int64 task_id = CreateTask(&job, request->worker_address());
 
     TaskDef* task_def = response->add_tasks();
     *task_def->mutable_dataset() =
-        datasets_by_id_[task.dataset_id]->dataset_def;
-    task_def->set_dataset_id(task.dataset_id);
-    task_def->set_job_id(job.id);
-    task_def->set_task_id(task.id);
+        datasets_by_id_[job.dataset_id()]->dataset_def();
+    task_def->set_dataset_id(job.dataset_id());
+    task_def->set_job_id(job.job_id());
+    task_def->set_task_id(task_id);
   }
 
   VLOG(1) << "Registered worker " << workers_.back().DebugString();
@@ -96,7 +91,7 @@ Status DataServiceMasterImpl::GetOrRegisterDataset(
   VLOG(3) << "Registering dataset graph: "
           << request->dataset().graph().DebugString();
   if (datasets_by_fingerprint_.contains(fingerprint)) {
-    int64 id = datasets_by_fingerprint_[fingerprint]->id;
+    int64 id = datasets_by_fingerprint_[fingerprint]->dataset_id();
     VLOG(3) << "Received duplicate RegisterDataset request with fingerprint "
             << fingerprint << ". Returning id " << id;
     response->set_dataset_id(id);
@@ -112,11 +107,9 @@ Status DataServiceMasterImpl::GetOrRegisterDataset(
 int64 DataServiceMasterImpl::RegisterDataset(uint64 fingerprint,
                                              const DatasetDef& dataset)
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  auto new_dataset = std::make_shared<Dataset>();
   int64 dataset_id = next_dataset_id_++;
-  new_dataset->id = dataset_id;
-  new_dataset->fingerprint = fingerprint;
-  new_dataset->dataset_def = dataset;
+  auto new_dataset =
+      std::make_shared<Dataset>(dataset_id, fingerprint, dataset);
 
   DCHECK(!datasets_by_id_.contains(dataset_id));
   datasets_by_id_[dataset_id] = new_dataset;
@@ -148,25 +141,18 @@ Status DataServiceMasterImpl::CreateJob(const CreateJobRequest* request,
 
   int64 job_id = next_job_id_++;
   DCHECK(!jobs_.contains(job_id));
-  Job& job = jobs_[job_id];
-  job.id = job_id;
-  job.dataset_id = request->dataset_id();
+  auto result =
+      jobs_.emplace(std::piecewise_construct, std::forward_as_tuple(job_id),
+                    std::forward_as_tuple(job_id, request->dataset_id()));
+  DCHECK(result.second);
+  Job& job = result.first->second;
   response->set_job_id(job_id);
 
   for (auto& worker : workers_) {
-    int64 task_id = next_task_id_++;
-    DCHECK(!tasks_.contains(task_id));
-    Task& task = tasks_[task_id];
-    task.id = task_id;
-    task.dataset_id = request->dataset_id();
-    task.worker_address = worker.address;
-    job.task_ids.push_back(task_id);
+    int64 task_id = CreateTask(&job, worker.address());
 
-    std::unique_ptr<WorkerService::Stub> stub;
-    TF_RETURN_IF_ERROR(CreateWorkerStub(worker.address, protocol_, &stub));
     // TODO(aaudibert): perform these calls asynchronously.
-    TF_RETURN_IF_ERROR(AllocateTaskToWorker(task, &worker));
-    job.total_tasks++;
+    TF_RETURN_IF_ERROR(AllocateTaskToWorker(tasks_.at(task_id), &worker));
   }
 
   VLOG(3) << "Beginning job " << job_id << " for dataset "
@@ -174,25 +160,45 @@ Status DataServiceMasterImpl::CreateJob(const CreateJobRequest* request,
   return Status::OK();
 }
 
-Status DataServiceMasterImpl::AllocateTaskToWorker(const Task& task,
-                                                   WorkerInfo* worker)
+int64 DataServiceMasterImpl::CreateTask(Job* job,
+                                        const std::string& worker_address)
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  if (!worker->stub) {
-    TF_RETURN_IF_ERROR(
-        CreateWorkerStub(worker->address, protocol_, &worker->stub));
+  int64 task_id = next_task_id_++;
+  DCHECK(!tasks_.contains(task_id));
+  auto result =
+      tasks_.emplace(std::piecewise_construct, std::forward_as_tuple(task_id),
+                     std::forward_as_tuple(task_id, job->job_id(),
+                                           job->dataset_id(), worker_address));
+  job->add_task_id(task_id);
+  DCHECK(result.second);
+  return task_id;
+}
+
+Status DataServiceMasterImpl::EnsureWorkerStubInitialized(Worker* worker) {
+  if (!worker->stub()) {
+    std::unique_ptr<WorkerService::Stub> stub;
+    TF_RETURN_IF_ERROR(CreateWorkerStub(worker->address(), protocol_, &stub));
+    worker->set_stub(std::move(stub));
   }
+  return Status::OK();
+}
+
+Status DataServiceMasterImpl::AllocateTaskToWorker(const Task& task,
+                                                   Worker* worker)
+    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  TF_RETURN_IF_ERROR(EnsureWorkerStubInitialized(worker));
   grpc::ClientContext client_ctx;
   ProcessTaskRequest req;
-  req.mutable_task()->set_dataset_id(task.dataset_id);
-  DCHECK(datasets_by_id_.contains(task.dataset_id));
+  req.mutable_task()->set_dataset_id(task.dataset_id());
+  DCHECK(datasets_by_id_.contains(task.dataset_id()));
   *req.mutable_task()->mutable_dataset() =
-      datasets_by_id_[task.dataset_id]->dataset_def;
-  req.mutable_task()->set_task_id(task.id);
+      datasets_by_id_.at(task.dataset_id())->dataset_def();
+  req.mutable_task()->set_task_id(task.task_id());
   ProcessTaskResponse resp;
-  grpc::Status s = worker->stub->ProcessTask(&client_ctx, req, &resp);
+  grpc::Status s = worker->stub()->ProcessTask(&client_ctx, req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError(
-        absl::StrCat("Failed to submit task to worker ", worker->address), s);
+        absl::StrCat("Failed to submit task to worker ", worker->address()), s);
   }
   return Status::OK();
 }
@@ -207,16 +213,15 @@ Status DataServiceMasterImpl::GetTasks(const GetTasksRequest* request,
                             "> not found.");
   }
   Job& job = it->second;
-  for (const auto& task_id : job.task_ids) {
+  for (const auto& task_id : job.task_ids()) {
     auto task_iter = tasks_.find(task_id);
     DCHECK(task_iter != tasks_.end());
     Task& task = task_iter->second;
     TaskInfo* task_info = response->mutable_task_info()->Add();
-    task_info->set_worker_address(task.worker_address);
-    task_info->set_id(task.id);
+    task_info->set_worker_address(task.worker_address());
+    task_info->set_id(task.task_id());
   }
-  job.finished = job.total_tasks > 0 && job.task_ids.empty();
-  response->set_job_finished(job.finished);
+  response->set_job_finished(false);
   VLOG(3) << "Found " << response->task_info_size() << " tasks for job id "
           << request->job_id();
   return Status::OK();
