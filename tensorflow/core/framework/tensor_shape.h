@@ -345,16 +345,16 @@ template <class Shape>
 class TensorShapeIter {
  public:
   TensorShapeIter(const Shape* shape, int d) : shape_(shape), d_(d) {}
-  bool operator==(const TensorShapeIter& rhs) {
+  bool operator==(const TensorShapeIter& rhs) const {
     DCHECK(shape_ == rhs.shape_);
     return d_ == rhs.d_;
   }
-  bool operator!=(const TensorShapeIter& rhs) {
+  bool operator!=(const TensorShapeIter& rhs) const {
     DCHECK(shape_ == rhs.shape_);
     return d_ != rhs.d_;
   }
   void operator++() { ++d_; }
-  TensorShapeDim operator*() { return TensorShapeDim(shape_->dim_size(d_)); }
+  TensorShapeDim operator*() const { return TensorShapeDim(shape_->dim_size(d_)); }
 
  private:
   const Shape* shape_;
