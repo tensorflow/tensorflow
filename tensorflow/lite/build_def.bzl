@@ -132,7 +132,6 @@ def tflite_jni_binary(
         "//conditions:default": [
             "-Wl,--version-script,$(location {})".format(linkscript),
             "-Wl,-soname," + name,
-            "-z defs",  # Prevent unresolved symbols.
         ],
     })
     native.cc_binary(
@@ -157,14 +156,6 @@ def tflite_cc_shared_object(
         per_os_targets = False,
         tags = None):
     """Builds a shared object for TFLite."""
-    linkopts = linkopts + select({
-        clean_dep("//tensorflow:ios"): [],
-        clean_dep("//tensorflow:macos"): [],
-        clean_dep("//tensorflow:windows"): [],
-        "//conditions:default": [
-            "-z defs",  # Prevent unresolved symbols.
-        ],
-    })
     tf_cc_shared_object(
         name = name,
         copts = copts,
