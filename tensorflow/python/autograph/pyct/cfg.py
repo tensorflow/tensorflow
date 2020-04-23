@@ -842,6 +842,7 @@ class AstToCfg(gast.NodeVisitor):
 
     self.builder.enter_section(node)
 
+    self.generic_visit(node.test)
     self.builder.enter_loop_section(node, node.test)
     for stmt in node.body:
       self.visit(stmt)
@@ -867,6 +868,7 @@ class AstToCfg(gast.NodeVisitor):
     # Note: Strictly speaking, this should be node.target + node.iter.
     # However, the activity analysis accounts for this inconsistency,
     # so dataflow analysis produces the correct values.
+    self.generic_visit(node.iter)
     self.builder.enter_loop_section(node, node.iter)
     # Also include the "extra loop test" annotation, to capture things like the
     # control variable for return and break in for loops.
