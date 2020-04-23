@@ -141,6 +141,13 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 
 }  // namespace deep
 
+//**************************************
+//**************************************
+//**************************************
+// 1x1
+//**************************************
+//**************************************
+//**************************************
 namespace n1x1 {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
@@ -157,7 +164,7 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   ::xcore::conv::Conv2D_1x1 *op =
       new (data)::xcore::conv::Conv2D_1x1(conv2d_legacy_params, par_regions);
 
-  return op;
+  return data;
 }
 
 TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
@@ -174,10 +181,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
            input->dims->data[3],   // C_in
            output->dims->data[1],  // Y_h
            output->dims->data[2],  // Y_w
-           output->dims->data[3],  // C_out
-           0, 0,
-           output->dims->data[1] * output->dims->data[2]  // out_pixels
-  );
+           output->dims->data[3]);
 
   return kTfLiteOk;
 }
