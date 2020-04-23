@@ -636,6 +636,8 @@ class Unknown : public Node {
 
 }  // namespace
 
+thread_local int64 Node::work_start_;
+
 std::shared_ptr<Parameter> MakeParameter(const string& name,
                                          std::shared_ptr<SharedState> state,
                                          double min, double max) {

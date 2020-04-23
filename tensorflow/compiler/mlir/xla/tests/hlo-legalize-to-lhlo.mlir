@@ -174,6 +174,45 @@ func @dyn_broadcast(%operand: memref<?x?xf32>) {
 
 // -----
 
+// CHECK-LABEL: func @complex
+func @complex(%real: memref<2x2xf32>,
+              %imag: memref<2x2xf32>,
+              %result: memref<2x2xcomplex<f32>>) {
+  %tensor_real = tensor_load %real : memref<2x2xf32>
+  %tensor_imag = tensor_load %imag : memref<2x2xf32>
+  %tensor_result = "xla_hlo.complex"(%tensor_real, %tensor_imag)
+      : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xcomplex<f32>>
+  // CHECK: "xla_lhlo.complex"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xcomplex<f32>>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @real
+func @real(%operand: memref<2x2xcomplex<f32>>, %result: memref<2x2xf32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xcomplex<f32>>
+  %tensor_result = "xla_hlo.real"(%tensor_operand)
+      : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32>
+  // CHECK: "xla_lhlo.real"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xf32>
+  return
+}
+
+// -----
+
+// CHECK-LABEL: func @imag
+func @imag(%operand: memref<2x2xcomplex<f32>>, %result: memref<2x2xf32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xcomplex<f32>>
+  %tensor_result = "xla_hlo.imag"(%tensor_operand)
+      : (tensor<2x2xcomplex<f32>>) -> tensor<2x2xf32>
+  // CHECK: "xla_lhlo.imag"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xf32>
+  return
+}
+
+// -----
+
 // CHECK-LABEL: func @iota
 func @iota(%result: memref<10xi32>) {
   %tensor_result = "xla_hlo.iota"()

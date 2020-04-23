@@ -55,7 +55,7 @@ class Convolution : public NodeShader {
           {"dilation_h", attr.dilations.h},
           {"kernel_w", weights.w},
           {"kernel_h", weights.h},
-          {"src_depth", IntegralDivideRoundUp(weights.i, 4)},
+          {"src_depth", DivideRoundUp(weights.i, 4)},
           {"stride", int2(attr.strides.w, attr.strides.h)},
       };
     } else {
@@ -71,7 +71,7 @@ class Convolution : public NodeShader {
           {"input_data_0_w", static_cast<int>(ctx.input_shapes[0][2])},
           {"offsets_count", offsets_count},
           {"offsets", offsets},
-          {"src_depth", IntegralDivideRoundUp(weights.i, 4)},
+          {"src_depth", DivideRoundUp(weights.i, 4)},
           {"stride", int2(attr.strides.w, attr.strides.h)},
       };
     }
@@ -181,14 +181,14 @@ class Convolution1x1 : public NodeShader {
 
     std::vector<Variable> parameters = {
         {"src_depth",
-         IntegralDivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)},
+         DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)},
     };
 
     std::vector<std::pair<std::string, Object>> objects = {
-        {"weights", MakeReadonlyObject(
-                        uint3(4, IntegralDivideRoundUp(attr.weights.shape.i, 4),
-                              IntegralDivideRoundUp(attr.weights.shape.o, 4)),
-                        ConvertToPHWO4I4(attr.weights))}};
+        {"weights",
+         MakeReadonlyObject(uint3(4, DivideRoundUp(attr.weights.shape.i, 4),
+                                  DivideRoundUp(attr.weights.shape.o, 4)),
+                            ConvertToPHWO4I4(attr.weights))}};
     std::string source;
     for (int i = 0; i < multiplier; i++) {
       absl::StrAppend(&source, "highp vec4 result", i, " = vec4(0);\n");
@@ -224,7 +224,7 @@ class Convolution1x1 : public NodeShader {
       absl::StrAppend(&source, "value_0 = result0;\n");
     }
 
-    auto dst_depth = IntegralDivideRoundUp(ctx.output_shapes[0][3], 4);
+    auto dst_depth = DivideRoundUp(ctx.output_shapes[0][3], 4);
     uint3 workgroup = uint3(16, 16, 1);
     if (ctx.gpu_info->type == GpuType::ADRENO) {
       if (dst_depth >= 2) {
@@ -265,7 +265,7 @@ class Convolution1x1 : public NodeShader {
         /*shared_variables=*/{},
         /*workload=*/
         uint3(ctx.output_shapes[0][2] / multiplier, ctx.output_shapes[0][1],
-              IntegralDivideRoundUp(ctx.output_shapes[0][3], 4)),
+              DivideRoundUp(ctx.output_shapes[0][3], 4)),
         /*workgroup=*/
         GetIdealWorkgroupIfPossible(
             ctx.gpu_info->gpu_model, OperationType::CONVOLUTION_2D,

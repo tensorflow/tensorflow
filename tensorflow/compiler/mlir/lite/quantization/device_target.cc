@@ -113,7 +113,7 @@ LogicalResult DeviceTarget::DecomposeMultiplyAccumulateScale(
   if (!in_spec || !w_spec || !b_spec || !o_spec) return failure();
 
   double scale_product = in_spec.getScale() * w_spec.getScale();
-  if (fabs(scale_product - b_spec.getScale()) < 1e-6) return failure();
+  if (fabs(scale_product - b_spec.getScale()) >= 1e-6) return failure();
 
   // input multipliers
   input_multipliers->append(3, kUnitQuantizedMultiplier);

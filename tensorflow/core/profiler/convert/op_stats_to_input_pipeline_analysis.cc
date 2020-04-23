@@ -84,6 +84,10 @@ constexpr int kHostAnalysisSectionNumber = 3;
 const char* kAllOthersPythonExplanation =
     " % of the total step time sampled is spent on 'All Others' time. "
     "This could be due to Python execution overhead.";
+// Explanation for "Kernel Launch" time due to CPU contention with tf.data.
+const char* kKernelLaunchTfDataContention =
+    " It could be due to CPU contention with tf.data. In this case, you may "
+    "try to set the environment variable TF_GPU_THREAD_MODE=gpu_private.";
 
 template <class Collection>
 double GetTimeInMs(const Collection& type_ps, EventType event_type) {
@@ -357,7 +361,7 @@ double RatioOfHostToDeviceTimeToStepTime(
   return 0.0;
 }
 
-void KernelLaunchAnalysis(double kernel_launch_percent,
+void KernelLaunchAnalysis(bool tfdata_used, double kernel_launch_percent,
                           string* kernel_launch_classification,
                           string* kernel_launch_statement) {
   string percent_str = absl::StrFormat("%.1lf", kernel_launch_percent);
@@ -366,12 +370,18 @@ void KernelLaunchAnalysis(double kernel_launch_percent,
     *kernel_launch_statement = absl::StrCat(
         percent_str,
         " % of the total step time sampled is spent on 'Kernel Launch'.");
+    if (tfdata_used) {
+      absl::StrAppend(kernel_launch_statement, kKernelLaunchTfDataContention);
+    }
   } else if (kernel_launch_percent >=
              kModeratelyKernelLaunchBoundThresholdInPercent) {
     *kernel_launch_classification = "moderate";
     *kernel_launch_statement = absl::StrCat(
         percent_str,
         " % of the total step time sampled is spent on 'Kernel Launch'.");
+    if (tfdata_used) {
+      absl::StrAppend(kernel_launch_statement, kKernelLaunchTfDataContention);
+    }
   } else {
     *kernel_launch_classification = "no";
     *kernel_launch_statement = "";
@@ -566,8 +576,8 @@ InputPipelineAnalysisResult ConvertOpStatsToInputPipelineAnalysis(
   GenerateHostResult(op_stats.host_op_metrics_db(), &result);
 
   InputPipelineAnalysisRecommendation recommendation = GenerateRecommendation();
-  BottleneckAnalysis bottleneck_analysis =
-      ComputeBottleneckAnalysis(result.step_details());
+  BottleneckAnalysis bottleneck_analysis = ComputeBottleneckAnalysis(
+      result.input_time_breakdown(), result.step_details());
   recommendation.mutable_bottleneck_analysis()->PackFrom(bottleneck_analysis);
   *recommendation.mutable_summary_next_step() =
       GetSummaryNextStep(bottleneck_analysis.input_classification(),
@@ -602,7 +612,7 @@ bool InputAnalysis(double input_percent, double all_other_percent,
     *input_classification = "both";
     string all_other_percent_str = absl::StrFormat("%.1lf", all_other_percent);
     *input_statement = absl::StrCat(
-        "Your program in POTENTIALLY input-bound because ",
+        "Your program is POTENTIALLY input-bound because ",
         all_other_percent_str,
         "% of the total step time sampled is spent on 'All Others' time (which "
         "could be due to I/O or Python execution or both).");
@@ -646,6 +656,7 @@ void OutputAnalysis(double output_percent, string* output_classification,
 }
 
 BottleneckAnalysis ComputeBottleneckAnalysis(
+    const InputTimeBreakdown& input_time_breakdown,
     const ::tensorflow::protobuf::RepeatedPtrField<::google::protobuf::Any>&
         any_step_details) {
   double total_step_time_ms = 0;
@@ -700,8 +711,8 @@ BottleneckAnalysis ComputeBottleneckAnalysis(
 
   string kernel_launch_classification;
   string kernel_launch_statement;
-  KernelLaunchAnalysis(kernel_launch_percent, &kernel_launch_classification,
-                       &kernel_launch_statement);
+  KernelLaunchAnalysis(TfDataInUse(input_time_breakdown), kernel_launch_percent,
+                       &kernel_launch_classification, &kernel_launch_statement);
 
   string all_other_classification;
   string all_other_statement;

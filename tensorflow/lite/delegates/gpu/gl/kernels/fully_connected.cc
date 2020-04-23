@@ -39,8 +39,8 @@ class FullyConnectedBuffers : public NodeShader {
     const auto& attr =
         absl::any_cast<const FullyConnectedAttributes&>(ctx.op_attr);
 
-    const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
-    const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+    const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
+    const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
 
     // This shader can work with any workgroup size, the values below work well
     // for OpenGL.

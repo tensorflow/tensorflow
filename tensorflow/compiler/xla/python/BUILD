@@ -25,9 +25,25 @@ pyx_library(
     srcs = ["custom_call_for_test.pyx"],
 )
 
-py_test(
+py_library(
     name = "xla_client_test",
+    testonly = 1,
     srcs = ["xla_client_test.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":custom_call_for_test",
+        ":xla_client",
+        ":xla_extension",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "xla_client_test_cpu",
+    srcs = ["xla_client_test.py"],
+    args = ["--backend=cpu"],
     main = "xla_client_test.py",
     python_version = "PY3",
     srcs_version = "PY3",
@@ -36,6 +52,27 @@ py_test(
         ":custom_call_for_test",
         ":xla_client",
         ":xla_extension",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
+    ] + xla_py_test_deps(),
+)
+
+py_test(
+    name = "xla_client_test_gpu",
+    srcs = ["xla_client_test.py"],
+    args = ["--backend=gpu"],
+    main = "xla_client_test.py",
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "no_oss",
+        "requires-gpu-nvidia",
+    ],  # TODO(phawkins): This test passes, but requires --config=monolithic.
+    deps = [
+        ":xla_client",
+        ":xla_extension",
+        "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
         "@absl_py//absl/testing:parameterized",
     ] + xla_py_test_deps(),

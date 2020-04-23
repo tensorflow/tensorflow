@@ -77,17 +77,19 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinArgMin:
     case kTfLiteBuiltinAveragePool2d:
     case kTfLiteBuiltinConcatenation:
+    case kTfLiteBuiltinL2Normalization:
     case kTfLiteBuiltinLogistic:
     case kTfLiteBuiltinMaxPool2d:
     case kTfLiteBuiltinMul:
     case kTfLiteBuiltinPad:
-    case kTfLiteBuiltinSub:
+    case kTfLiteBuiltinQuantize:
     case kTfLiteBuiltinRelu6:
     case kTfLiteBuiltinResizeBilinear:
     case kTfLiteBuiltinResizeNearestNeighbor:
     case kTfLiteBuiltinSoftmax:
     case kTfLiteBuiltinSpaceToDepth:
     case kTfLiteBuiltinSplit:
+    case kTfLiteBuiltinSub:
     case kTfLiteBuiltinTanh:
     case kTfLiteBuiltinTranspose:
     case kTfLiteBuiltinTransposeConv:
@@ -301,8 +303,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
              IsConstantTensor(GetInput(context, node, 1));
     }
     case kTfLiteBuiltinL2Normalization: {
-      // TODO(b/142009955): Support int8.
-      if (!InputsWithCorrectTypes(node, context, {{kTfLiteUInt8}}))
+      if (!InputsWithCorrectTypes(node, context, {{kTfLiteUInt8, kTfLiteInt8}}))
         return false;
       const TfLiteL2NormParams* norm_params =
           reinterpret_cast<const TfLiteL2NormParams*>(node->builtin_data);
@@ -344,6 +345,10 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
     }
     case kTfLiteBuiltinSpaceToDepth:
     case kTfLiteBuiltinDepthToSpace: {
+      return InputsWithCorrectTypes(node, context,
+                                    {{kTfLiteUInt8, kTfLiteInt8}});
+    }
+    case kTfLiteBuiltinQuantize: {
       return InputsWithCorrectTypes(node, context,
                                     {{kTfLiteUInt8, kTfLiteInt8}});
     }

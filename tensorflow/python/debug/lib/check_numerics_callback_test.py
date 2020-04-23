@@ -94,10 +94,16 @@ class CheckNumericsCallbackTest(test_util.TensorFlowTestCase):
 
     dataset = dataset_ops.Dataset.from_tensor_slices(tensor).batch(2).map(
         map_fn)
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
 
-    self.assertAllClose(self.evaluate(iterator.get_next()), np.log([1.25, 2]))
-    self.assertAllClose(self.evaluate(iterator.get_next()), np.log([3.25, 5]))
+    @def_function.function
+    def get_batches():
+      iterator = iter(dataset)
+      return [next(iterator), next(iterator)]
+
+    batches = self.evaluate(get_batches())
+    self.assertLen(batches, 2)
+    self.assertAllClose(batches[0], np.log([1.25, 2]))
+    self.assertAllClose(batches[1], np.log([3.25, 5]))
 
 
 class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
@@ -266,6 +272,23 @@ class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
     # Check that the correct line for op creation is printed.
     self.assertTrue(re.search(r"Stack trace of op's creation", message))
     self.assertIn("accum.assign(accum * 2.0)", message)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNanInConstIsCaptured(self):
+    check_numerics_callback.enable_check_numerics()
+    v = variables.Variable(3.0, dtype=dtypes.float32)
+    @def_function.function
+    def add_a_bad_constant(x):
+      c = constant_op.constant(np.nan)
+      return x + c
+    if not context.executing_eagerly():
+      self.evaluate(v.initializer)
+    message = self._assertRaisesInvalidArgumentErrorAndGetMessage(
+        lambda: self.evaluate(add_a_bad_constant(v)))
+    self.assertTrue(re.search(r"graph op.*\"Const\"", message))
+    self.assertTrue(re.search(r"dtype:.*float32", message))
+    self.assertTrue(re.search(r"shape:.*\(\)", message))
+    self.assertTrue(re.search(r"Graph name:.*add_a_bad_constant", message))
 
   @test_util.run_in_graph_and_eager_modes
   def testCatchInfinityInDatasetMapFunction(self):

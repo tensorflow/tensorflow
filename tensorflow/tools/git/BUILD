@@ -11,6 +11,7 @@ package(
 py_binary(
     name = "gen_git_source",
     srcs = ["gen_git_source.py"],
+    exec_compatible_with = ["@local_execution_config_platform//:platform_constraint"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
 )

@@ -129,8 +129,7 @@ absl::Status Softmax1x1::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
   const int depth = src_[0]->Slices();
-  RETURN_IF_ERROR(
-      kernel_.SetBytesAuto(int2(depth, IntegralDivideRoundUp(depth, 32))));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(int2(depth, DivideRoundUp(depth, 32))));
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(GetMaskForLastPlane(src_[0]->Channels())));
 

@@ -286,6 +286,28 @@ Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
 std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
     std::function<void(std::function<void()>)> runner, int max_parallelism);
 
+// Op for creating a typed dummy resource.
+//
+// This op is used to provide a resource "placeholder" for ops such as
+// `CacheDatasetV2` or `ShuffleDatasetV2` that expects a resource input.
+// Originally, the lifetime of the resources passed into these ops was managed
+// externally. After the implementation changed to manage the lifetime of the
+// resources (including creation) by the ops themselves, the resource input is
+// only needed to pass a resource handle through graph rewrites. When they are
+// invoked from user code, the implementation passes in a dummy resource.
+template <typename ResourceType>
+class DummyResourceOp : public OpKernel {
+ public:
+  explicit DummyResourceOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* tensor;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &tensor));
+    tensor->scalar<ResourceHandle>()() = MakeResourceHandle<ResourceType>(
+        ctx, /*container=*/"", /*name=*/"dummy_resource");
+  }
+};
+
 }  // namespace data
 }  // namespace tensorflow
 

@@ -25,8 +25,6 @@ glob_lit_tests(
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
     exclude = [
-        # TODO(b/149302060) Reenable once fusion is fixed.
-        "iota_add_multiply.hlo",
         # TODO(b/137624192): Reenable once we can fuse reductions.
         "fused_reduce.hlo",
     ],

@@ -39,19 +39,19 @@ struct DeviceOptions {
   // this flag prevents it from ever being deallocated. Potentially saves
   // thrashing the thread stack memory allocation, but at the potential cost of
   // some memory space.
-  static const unsigned kDoNotReclaimStackAllocation = 0x1;
+  static constexpr unsigned kDoNotReclaimStackAllocation = 0x1;
 
   // The following options refer to synchronization options when
   // using SynchronizeStream or SynchronizeContext.
 
   // Synchronize with spinlocks.
-  static const unsigned kScheduleSpin = 0x02;
+  static constexpr unsigned kScheduleSpin = 0x02;
   // Synchronize with spinlocks that also call CPU yield instructions.
-  static const unsigned kScheduleYield = 0x04;
+  static constexpr unsigned kScheduleYield = 0x04;
   // Synchronize with a "synchronization primitive" (e.g. mutex).
-  static const unsigned kScheduleBlockingSync = 0x08;
+  static constexpr unsigned kScheduleBlockingSync = 0x08;
 
-  static const unsigned kMask = 0xf;  // Mask of all available flags.
+  static constexpr unsigned kMask = 0xf;  // Mask of all available flags.
 
   // Constructs an or-d together set of device options.
   explicit DeviceOptions(unsigned flags) : flags_(flags) {

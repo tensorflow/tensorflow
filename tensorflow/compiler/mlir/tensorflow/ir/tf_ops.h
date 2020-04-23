@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // from @llvm-project
+#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffects.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
@@ -85,6 +86,9 @@ class TensorFlowDialect : public Dialect {
 // undefine here to avoid expanding the getter symbol as macro when including
 // both mutex.h and this header file.
 #undef mutex_lock
+
+// Returns whether two arrays of Type are broadcast compatible.
+bool BroadcastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs);
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h.inc"
 #define GET_OP_CLASSES

@@ -25,11 +25,10 @@ namespace {
 
 TfLiteRegistration* GetDummyRegistration() {
   static TfLiteRegistration registration = {
-      .init = nullptr,
-      .free = nullptr,
-      .prepare = nullptr,
-      .invoke = [](TfLiteContext*, TfLiteNode*) { return kTfLiteOk; },
-  };
+      /*init=*/nullptr,
+      /*free=*/nullptr,
+      /*prepare=*/nullptr,
+      /*invoke=*/[](TfLiteContext*, TfLiteNode*) { return kTfLiteOk; }};
   return &registration;
 }
 

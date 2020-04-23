@@ -190,8 +190,7 @@ class CompilerImpl : public Compiler {
                 "Workload uint3() requires all output sizes to match");
           }
         }
-        attr.code.workload =
-            uint3(shape.w, shape.h, IntegralDivideRoundUp(shape.c, 4));
+        attr.code.workload = uint3(shape.w, shape.h, DivideRoundUp(shape.c, 4));
       }
 
       int num_textures = 0;

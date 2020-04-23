@@ -615,6 +615,9 @@ def tf_cc_shared_object(
             linkshared = 1,
             data = data + data_extra,
             linkopts = linkopts + _rpath_linkopts(name_os_full) + select({
+                clean_dep("//tensorflow:ios"): [
+                    "-Wl,-install_name,@rpath/" + soname,
+                ],
                 clean_dep("//tensorflow:macos"): [
                     "-Wl,-install_name,@rpath/" + soname,
                 ],
@@ -632,6 +635,7 @@ def tf_cc_shared_object(
         native.filegroup(
             name = name,
             srcs = select({
+                "//tensorflow:ios": [":lib%s%s.dylib" % (name, longsuffix)],
                 "//tensorflow:windows": [":%s.dll" % (name)],
                 "//tensorflow:macos": [":lib%s%s.dylib" % (name, longsuffix)],
                 "//conditions:default": [":lib%s.so%s" % (name, longsuffix)],
@@ -2223,14 +2227,11 @@ def tf_py_test(
         deps = deps + tf_additional_xla_deps_py()
     if grpc_enabled:
         deps = deps + tf_additional_grpc_deps_py()
-    if tfrt_enabled:
-        deps = deps + ["//tensorflow/python:is_tfrt_test_true"]
 
     # NOTE(ebrevdo): This is a workaround for depset() not being able to tell
     # the difference between 'dep' and 'clean_dep(dep)'.
     for to_add in [
         "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:gradient_checker",
     ]:
         if to_add not in deps and clean_dep(to_add) not in deps:
             deps.append(clean_dep(to_add))
@@ -2253,6 +2254,23 @@ def tf_py_test(
         deps = depset(deps + xla_test_true_list),
         **kwargs
     )
+    if tfrt_enabled:
+        py_test(
+            name = name + "_tfrt",
+            size = size,
+            srcs = srcs,
+            args = args,
+            data = data,
+            flaky = flaky,
+            kernels = kernels,
+            main = main,
+            shard_count = shard_count,
+            tags = tags,
+            visibility = [clean_dep("//tensorflow:internal")] +
+                         additional_visibility,
+            deps = depset(deps + xla_test_true_list + ["//tensorflow/python:is_tfrt_test_true"]),
+            **kwargs
+        )
 
 register_extension_info(
     extension_name = "tf_py_test",
@@ -2504,7 +2522,12 @@ def tf_genrule_cmd_append_to_srcs(to_append):
     return ("cat $(SRCS) > $(@) && " + "echo >> $(@) && " + "echo " + to_append +
             " >> $(@)")
 
+def tf_local_platform_constraint():
+    return ["@local_execution_config_platform//:platform_constraint"]
+
 def tf_version_info_genrule(name, out):
+    # TODO(gunan): Investigate making this action hermetic so we do not need
+    # to run it locally.
     native.genrule(
         name = name,
         srcs = [
@@ -2517,9 +2540,10 @@ def tf_version_info_genrule(name, out):
             "$(location //tensorflow/tools/git:gen_git_source) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
         local = 1,
         exec_tools = [clean_dep("//tensorflow/tools/git:gen_git_source")],
+        exec_compatible_with = tf_local_platform_constraint(),
     )
 
-def tf_py_build_info_genrule(name, out, **kwargs):
+def tf_py_build_info_genrule(name, out, exec_compatible_with, **kwargs):
     native.genrule(
         name = name,
         outs = [out],

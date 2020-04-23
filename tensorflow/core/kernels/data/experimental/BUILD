@@ -526,6 +526,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels/data:name_utils",
         "//tensorflow/core/platform:coding",
         "//tensorflow/core/platform:random",
         "//tensorflow/core/profiler/lib:traceme",

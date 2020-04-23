@@ -59,7 +59,7 @@ node {
     key: "value"
     value {
       tensor {
-        dtype: DT_INT32
+        dtype: DT_FLOAT
         tensor_shape {
           dim {
             size: 2
@@ -68,10 +68,10 @@ node {
             size: 2
           }
         }
-        int_val: 1
-        int_val: 2
-        int_val: 3
-        int_val: 4
+        float_val: 1
+        float_val: 2
+        float_val: 3
+        float_val: 4
       }
     }
   }

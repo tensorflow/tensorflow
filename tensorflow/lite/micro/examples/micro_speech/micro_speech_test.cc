@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/micro/examples/micro_speech/micro_features/model.h"
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/no_micro_features_data.h"
-#include "tensorflow/lite/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h"
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/yes_micro_features_data.h"
 #include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
@@ -33,8 +33,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
-  const tflite::Model* model =
-      ::tflite::GetModel(g_tiny_conv_micro_features_model_data);
+  const tflite::Model* model = ::tflite::GetModel(g_model);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     TF_LITE_REPORT_ERROR(error_reporter,
                          "Model provided is schema version %d not equal "

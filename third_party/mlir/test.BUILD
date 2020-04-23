@@ -121,6 +121,7 @@ cc_library(
         ":TestOpsIncGen",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",

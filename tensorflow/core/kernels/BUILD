@@ -1371,7 +1371,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "unique_op",
     prefix = "unique_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 tf_kernel_library(
@@ -2335,6 +2337,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:single_threaded_executor",
     ],
 )
 
@@ -6991,6 +6994,11 @@ filegroup(
         # rule above. Seems to have only have worked before because of
         # hdrs_check loose.
         "stateful_random_ops_cpu_gpu.h",
+        # Allows conv_3d ops for android but excluded from *_3d* rule above.
+        "conv_3d.h",
+        "conv_ops_3d.h",
+        "conv_ops_3d.cc",
+        "conv_ops_gpu.h",
     ],
     visibility = ["//visibility:public"],
 )

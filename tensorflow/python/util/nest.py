@@ -231,7 +231,7 @@ def _yield_sorted_items(iterable):
       yield field, getattr(iterable, field)
   elif _is_composite_tensor(iterable):
     type_spec = iterable._type_spec  # pylint: disable=protected-access
-    yield type(iterable).__name__, type_spec._to_components(iterable)  # pylint: disable=protected-access
+    yield type_spec.value_type.__name__, type_spec._to_components(iterable)  # pylint: disable=protected-access
   elif _is_type_spec(iterable):
     # Note: to allow CompositeTensors and their TypeSpecs to have matching
     # structures, we need to use the same key string here.

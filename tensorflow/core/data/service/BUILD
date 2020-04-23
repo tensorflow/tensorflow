@@ -278,6 +278,7 @@ cc_library(
     deps = [
         ":credentials_factory",
         ":grpc_master_impl",
+        ":grpc_util",
         ":grpc_worker_impl",
         ":local_credentials_factory",
         "//tensorflow/core:lib",

@@ -71,7 +71,7 @@ std::string GetConcatZCode(const std::vector<int> channels) {
     // Also it is easy to write a loop in this case, to prevent long kernel
     // generation.
     for (int i = 0; i < channels.size(); ++i) {
-      const int depth = IntegralDivideRoundUp(channels[i], 4);
+      const int depth = DivideRoundUp(channels[i], 4);
       const std::string src_buffer = "src_buffer" + std::to_string(i);
       c += "  for (int i = 0; i < " + std::to_string(depth) + "; ++i) {\n";
       c += "    int src_index = i * U.src_size.w + xy_offset;\n";
@@ -88,7 +88,7 @@ std::string GetConcatZCode(const std::vector<int> channels) {
     int read_index = 0;
     int z = 0;
     for (int i = 0; i < channels.size(); ++i) {
-      const int depth = IntegralDivideRoundUp(channels[i], 4);
+      const int depth = DivideRoundUp(channels[i], 4);
       const std::string src_buffer = "src_buffer" + std::to_string(i);
       for (int d = 0; d < depth; ++d) {
         const int channels_in_group = std::min(4, channels[i] - d * 4);
@@ -168,11 +168,11 @@ std::vector<ComputeTaskDescriptorPtr> ConcatZ(
          std::vector<int> uniform_params{
              src_shape.w,
              src_shape.h,
-             IntegralDivideRoundUp(src_shape.c, 4),
+             DivideRoundUp(src_shape.c, 4),
              src_shape.w * src_shape.h,
              dst_shape.w,
              dst_shape.h,
-             IntegralDivideRoundUp(dst_shape.c, 4),
+             DivideRoundUp(dst_shape.c, 4),
              dst_shape.w * dst_shape.h,
          };
          return GetByteBuffer(uniform_params);
@@ -184,9 +184,9 @@ std::vector<ComputeTaskDescriptorPtr> ConcatZ(
     uint3 grid(dst_shape.w, dst_shape.h, 1);
     uint3 group_size{8u, 4u, 1u};
     uint3 groups;
-    groups.x = IntegralDivideRoundUp(grid.x, group_size.x);
-    groups.y = IntegralDivideRoundUp(grid.y, group_size.y);
-    groups.z = IntegralDivideRoundUp(grid.z, group_size.z);
+    groups.x = DivideRoundUp(grid.x, group_size.x);
+    groups.y = DivideRoundUp(grid.y, group_size.y);
+    groups.z = DivideRoundUp(grid.z, group_size.z);
     return std::make_pair(group_size, groups);
   };
 
@@ -265,7 +265,7 @@ std::vector<ComputeTaskDescriptorPtr> ConcatX(
        [output_id](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(output_id)->second;
          std::vector<int> uniform_params{dimension.w, dimension.h,
-                                         IntegralDivideRoundUp(dimension.c, 4),
+                                         DivideRoundUp(dimension.c, 4),
                                          /*padding=*/0};
          return GetByteBuffer(uniform_params);
        }},
@@ -274,9 +274,9 @@ std::vector<ComputeTaskDescriptorPtr> ConcatX(
   desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     const auto& output_dims = buffers.find(output_id)->second;
     const uint3 groups_size{8, 4, 1};
-    int groups_x = IntegralDivideRoundUp(output_dims.w, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(output_dims.h, groups_size.y);
-    int groups_z = IntegralDivideRoundUp(output_dims.c, 4);
+    int groups_x = DivideRoundUp(output_dims.w, groups_size.x);
+    int groups_y = DivideRoundUp(output_dims.h, groups_size.y);
+    int groups_z = DivideRoundUp(output_dims.c, 4);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 
@@ -356,7 +356,7 @@ std::vector<ComputeTaskDescriptorPtr> ConcatY(
        [output_id](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(output_id)->second;
          std::vector<int> uniform_params{dimension.w, dimension.h,
-                                         IntegralDivideRoundUp(dimension.c, 4),
+                                         DivideRoundUp(dimension.c, 4),
                                          /*padding=*/0};
          return GetByteBuffer(uniform_params);
        }},
@@ -365,9 +365,9 @@ std::vector<ComputeTaskDescriptorPtr> ConcatY(
   desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     const auto& output_dims = buffers.find(output_id)->second;
     const uint3 groups_size{8, 4, 1};
-    int groups_x = IntegralDivideRoundUp(output_dims.w, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(output_dims.h, groups_size.y);
-    int groups_z = IntegralDivideRoundUp(output_dims.c, 4);
+    int groups_x = DivideRoundUp(output_dims.w, groups_size.x);
+    int groups_y = DivideRoundUp(output_dims.h, groups_size.y);
+    int groups_z = DivideRoundUp(output_dims.c, 4);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
 

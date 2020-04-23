@@ -101,6 +101,11 @@ LogicalResult MarkFunctionVisibilityUsingEntryFunctionSpecification(
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateMarkFunctionVisibilityUsingEntryFunctionSpecificationPass();
 
+// Creates a pass that marks the main function with public visibility, while
+// other functions are marked with private visibility.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateMarkOnlyMainFunctionWithPublicVisibilityPass();
+
 // Creates a simple device assignment pass on TF dialect for CoreRT use case.
 std::unique_ptr<OperationPass<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
     llvm::StringRef default_device);

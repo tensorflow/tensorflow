@@ -2065,7 +2065,13 @@ cc_library(
         "//tensorflow/core/platform/default:logging.h",
     ],
     copts = tf_copts(),
-    linkopts = ["-ldl"],
+    linkopts = select({
+        "//tensorflow:freebsd": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "-ldl",
+        ],
+    }),
     visibility = ["//visibility:public"],
     deps = [
         ":platform_base",

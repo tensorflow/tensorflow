@@ -87,7 +87,7 @@ class EagerServiceImpl {
   Status CreateMasterContext(const tensorflow::uint64 context_id,
                              EagerContext* context);
 
-  static const uint64 kInvalidStreamId = 0;
+  static constexpr uint64 kInvalidStreamId = 0;
 
   // Used by both Enqueue and StreamingEnqueue RPCs.
   Status Enqueue(const EnqueueRequest* request, EnqueueResponse* response,

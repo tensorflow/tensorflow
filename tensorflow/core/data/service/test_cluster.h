@@ -42,9 +42,9 @@ class TestCluster {
  private:
   bool initialized_ = false;
   int num_workers_;
-  std::unique_ptr<GrpcDataServer> master_;
+  std::unique_ptr<MasterGrpcDataServer> master_;
   std::string master_address_;
-  std::vector<std::unique_ptr<GrpcDataServer>> workers_;
+  std::vector<std::unique_ptr<WorkerGrpcDataServer>> workers_;
   std::vector<std::string> worker_addresses_;
 };
 

@@ -787,8 +787,6 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       layer = keras.layers.Bidirectional(keras.layers.SimpleRNN(3))
       _ = layer(x)
       assert not layer.updates
-      assert not layer.get_updates_for(None)
-      assert not layer.get_updates_for(x)
       # TODO(b/128684069): Remove when Wrapper sublayers are __call__'d.
       with base_layer_utils.call_context().enter(layer, x, True, None):
         layer.forward_layer.add_update(x_reachable_update, inputs=x)
@@ -796,8 +794,6 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
         layer.backward_layer.add_update(x_reachable_update, inputs=x)
         layer.backward_layer.add_update(1, inputs=None)
       assert len(layer.updates) == 4
-      assert len(layer.get_updates_for(None)) == 2
-      assert len(layer.get_updates_for(x)) == 2
 
   def test_Bidirectional_losses(self):
     x = keras.layers.Input(shape=(3, 2))

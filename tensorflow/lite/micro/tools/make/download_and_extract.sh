@@ -102,14 +102,15 @@ download_and_extract() {
   command -v curl >/dev/null 2>&1 || {
     echo >&2 "The required 'curl' tool isn't installed. Try 'apt-get install curl'."; exit 1;
   }
-  
+
   echo "downloading ${url}" >&2
   mkdir -p "${dir}"
   # We've been seeing occasional 56 errors from valid URLs, so set up a retry
   # loop to attempt to recover from them.
   for (( i=1; i<=$curl_retries; ++i ))
-  do  
-    CURL_RESULT=$(curl -Ls --retry 5 "${url}" > ${tempfile} || true)
+  do
+    curl -Ls --fail --retry 5 "${url}" > ${tempfile}
+    CURL_RESULT=$?
     if [[ $CURL_RESULT -eq 0 ]]
     then
       break
@@ -128,7 +129,7 @@ download_and_extract() {
     echo "Checksum error for '${url}'. Expected ${expected_md5} but found ${DOWNLOADED_MD5}"
     exit 1
   fi
-  
+
   if [[ "${url}" == *gz ]]; then
     tar -C "${dir}" --strip-components=1 -xzf ${tempfile}
   elif [[ "${url}" == *tar.xz ]]; then
@@ -140,7 +141,7 @@ download_and_extract() {
     unzip ${tempfile} -d ${tempdir2} 2>&1 1>/dev/null
     # If the zip file contains nested directories, extract the files from the
     # inner directory.
-    if ls ${tempdir2}/*/* 1> /dev/null 2>&1; then
+    if [ $(find $tempdir2/* -maxdepth 0 | wc -l) = 1 ] && [ -d $tempdir2/* ]; then
       # unzip has no strip components, so unzip to a temp dir, and move the
       # files we want from the tempdir to destination.
       cp -R ${tempdir2}/*/* ${dir}/

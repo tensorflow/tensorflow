@@ -31,6 +31,8 @@ class SimpleMemoryAllocator {
   SimpleMemoryAllocator(ErrorReporter* error_reporter, uint8_t* buffer_head,
                         uint8_t* buffer_tail)
       : error_reporter_(error_reporter),
+        buffer_head_(buffer_head),
+        buffer_tail_(buffer_tail),
         head_(buffer_head),
         tail_(buffer_tail) {}
   SimpleMemoryAllocator(ErrorReporter* error_reporter, uint8_t* buffer,
@@ -47,9 +49,14 @@ class SimpleMemoryAllocator {
   uint8_t* GetHead() const { return head_; }
   uint8_t* GetTail() const { return tail_; }
   size_t GetAvailableMemory() const { return tail_ - head_; }
+  size_t GetUsedBytes() const { return GetBufferSize() - GetAvailableMemory(); }
 
  private:
+  size_t GetBufferSize() const { return buffer_tail_ - buffer_head_; }
+
   ErrorReporter* error_reporter_;
+  uint8_t* buffer_head_;
+  uint8_t* buffer_tail_;
   uint8_t* head_;
   uint8_t* tail_;
 };

@@ -57,7 +57,7 @@ Status TestCluster::Initialize() {
 }
 
 Status TestCluster::AddWorker() {
-  std::unique_ptr<GrpcDataServer> worker;
+  std::unique_ptr<WorkerGrpcDataServer> worker;
   TF_RETURN_IF_ERROR(
       NewWorkerServer(/*port=*/0, kProtocol, master_address_, &worker));
   TF_RETURN_IF_ERROR(worker->Start());

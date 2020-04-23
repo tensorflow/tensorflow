@@ -76,12 +76,20 @@ tensorflow::Status::code
 tensorflow::Status::error_message
 tensorflow::Status::ok()
 
-[core_cpu_impl]  # device_lib, tfe, tf_session
+[device]  # device_lib, tfe, tf_session
 tensorflow::Device::attributes
+
+[device_factory]  # device_lib, tfe, tf_session
 tensorflow::DeviceFactory::AddDevices
-tensorflow::SessionOptions::SessionOptions
-tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 tensorflow::DeviceFactory::ListAllPhysicalDevices
+
+[session_options]  # device_lib, tfe, tf_session
+tensorflow::SessionOptions::SessionOptions
+
+[core_cpu_rump_impl]  # quantize_training
+tensorflow::DoQuantizeTrainingOnSerializedGraphDef
+
+[session_state]  # tf_session
 tensorflow::SessionState::kTensorHandleResourceTypeName
 
 [server_lib] # server_lib

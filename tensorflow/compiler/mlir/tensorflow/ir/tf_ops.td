@@ -28,7 +28,9 @@ limitations under the License.
 #define TF_OPS
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/OpBase.td"
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
@@ -64,7 +66,8 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
 
 // In MLIR, the TensorFlow tensor value is represented as an ElementsAttr, with
 // its type encoding the tensor's shape and data type.
-def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect]> {
+def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Constant tensor op";
 
   let arguments = (ins
@@ -85,6 +88,12 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect]> {
   ];
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+      return BroadcastCompatible(l, r);
+    }
+  }];
 }
 
 def TF_DataFormatVecPermuteOp : TF_Op<"DataFormatVecPermute", [NoSideEffect, SameOperandsAndResultType]> {
@@ -665,6 +674,45 @@ config: Serialized TPUEmbeddingConfiguration proto.
 
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
   TF_DerivedOperandSizeAttr NN = TF_DerivedOperandSizeAttr<1>;
+}
+
+def TF_XlaShardingOp : TF_Op<"XlaSharding", [NoSideEffect]> {
+  let summary = [{
+An op which shards the input based on the given sharding attribute.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_InfeedDequeueTupleOp : TF_Op<"InfeedDequeueTuple", []> {
+  let summary = "Fetches multiple values from infeed as an XLA tuple.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    OptionalAttr<StrAttr>:$_XlaSharding
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$outputs
+  );
+
+  TF_DerivedResultShapeListAttr shapes = TF_DerivedResultShapeListAttr<0>;
+  TF_DerivedResultTypeListAttr dtypes = TF_DerivedResultTypeListAttr<0>;
 }
 
 #endif // TF_OPS

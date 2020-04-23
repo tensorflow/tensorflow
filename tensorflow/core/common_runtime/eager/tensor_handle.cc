@@ -626,10 +626,14 @@ Status TensorHandle::SetRemoteShape(const TensorShape& shape, const Device* d,
   DCHECK(IsRemote()) << "SetRemoteShape is only called on remote handles.";
 
   auto& data = absl::get<RemoteTensorHandleData>(data_);
-  if (data.context_view_id() != context_view_id) {
-    return errors::Internal("Attempted to set remote shape for an old handle.");
-  }
-
+  // context_view_id is currently used to validate mirrors. The shape of
+  // RemoteTensorHandleData should be set without checking context_view_id.
+  // The reason behind it is that for the primary copy of data, if the remote
+  // worker / device is removed, the consumer should report a connection error
+  // indicating the remote tensor is no longer available.
+  // For mirrors, this is not the case because they colocate with the data
+  // consuming op/function device, and we (for now) have to aggressively
+  // invalidate those copies to avoid any false positives during cluster update.
   return data.SetShape(shape);
 }
 

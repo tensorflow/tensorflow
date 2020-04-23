@@ -58,7 +58,7 @@ const char kCastToFp32[] = "CastToFp32";
 // node. It handles regular type attributes, list type attributes (where
 // type_index is set to the index in the type list), and fixed types.
 struct TypeAttrId {
-  static const int kSingleType = -1;
+  static constexpr int kSingleType = -1;
 
   explicit TypeAttrId(const string& _attr_name, int _type_index = kSingleType)
       : attr_name(_attr_name),

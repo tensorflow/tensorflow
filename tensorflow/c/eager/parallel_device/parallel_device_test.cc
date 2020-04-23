@@ -288,6 +288,19 @@ void AssertScalarFloatEq(TFE_TensorHandle* handle, float expected_value) {
             *static_cast<float*>(TF_TensorData(value_zero.get())));
 }
 
+template <std::size_t num_devices>
+void RegisterParallelDevice(
+    TFE_Context* context, const char* device_name,
+    const std::array<const char*, num_devices>& underlying_devices,
+    TF_Status* status) {
+  TFE_CustomDevice device;
+  void* device_info;
+  tensorflow::eager::AllocateParallelDevice(
+      device_name, underlying_devices.data(), underlying_devices.size(),
+      &device, &device_info);
+  TFE_RegisterCustomDevice(context, device, device_name, device_info, status);
+}
+
 // Create and modify a variable placed on a parallel device which composes
 // `first_device` and `second_device`.
 void BasicTestsForTwoDevices(TFE_Context* context, const char* first_device,
@@ -297,9 +310,8 @@ void BasicTestsForTwoDevices(TFE_Context* context, const char* first_device,
       TF_NewStatus(), TF_DeleteStatus);
   const char* device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
   std::array<const char*, 2> underlying_devices{first_device, second_device};
-  tensorflow::eager::RegisterParallelDevice(
-      context, device_name, underlying_devices.data(),
-      underlying_devices.size(), status.get());
+  RegisterParallelDevice(context, device_name, underlying_devices,
+                         status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   // Create a variable handle (uninitialized to start) placed on the parallel
@@ -456,16 +468,14 @@ TEST(PARALLEL_DEVICE, TestExplicitCopies) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   const char* device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  std::vector<const char*> underlying_devices;
   const char* first_device_name =
       "/job:localhost/replica:0/task:0/device:CPU:0";
-  underlying_devices.push_back(first_device_name);
   const char* second_device_name =
       "/job:localhost/replica:0/task:0/device:CPU:1";
-  underlying_devices.push_back(second_device_name);
-  tensorflow::eager::RegisterParallelDevice(
-      context.get(), device_name, underlying_devices.data(),
-      underlying_devices.size(), status.get());
+  std::array<const char*, 2> underlying_devices{first_device_name,
+                                                second_device_name};
+  RegisterParallelDevice(context.get(), device_name, underlying_devices,
+                         status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   TensorHandlePtr cpu_value(FloatTensorHandle(3., status.get()));
@@ -524,12 +534,11 @@ TEST(PARALLEL_DEVICE, TestDifferentShapes) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   const char* device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  std::vector<const char*> underlying_devices;
-  underlying_devices.push_back("/job:localhost/replica:0/task:0/device:CPU:0");
-  underlying_devices.push_back("/job:localhost/replica:0/task:0/device:CPU:1");
-  tensorflow::eager::RegisterParallelDevice(
-      context.get(), device_name, underlying_devices.data(),
-      underlying_devices.size(), status.get());
+  std::array<const char*, 2> underlying_devices{
+      "/job:localhost/replica:0/task:0/device:CPU:0",
+      "/job:localhost/replica:0/task:0/device:CPU:1"};
+  RegisterParallelDevice(context.get(), device_name, underlying_devices,
+                         status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   // Create two vectors with different lengths
@@ -570,24 +579,22 @@ TEST(PARALLEL_DEVICE, TestNestedParallelDevices) {
   // Create a parallel device with two CPUs
   const char* first_device_name =
       "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  std::vector<const char*> first_underlying_devices{
+  std::array<const char*, 2> first_underlying_devices{
       "/job:localhost/replica:0/task:0/device:CPU:0",
       "/job:localhost/replica:0/task:0/device:CPU:1"};
-  tensorflow::eager::RegisterParallelDevice(
-      context.get(), first_device_name, first_underlying_devices.data(),
-      first_underlying_devices.size(), status.get());
+  RegisterParallelDevice(context.get(), first_device_name,
+                         first_underlying_devices, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   // Create a second parallel device with the first parallel device and one
   // additional CPU.
   const char* second_device_name =
       "/job:localhost/replica:0/task:0/device:CUSTOM:1";
-  std::vector<const char*> second_underlying_devices{
+  std::array<const char*, 2> second_underlying_devices{
       "/job:localhost/replica:0/task:0/device:CUSTOM:0",
       "/job:localhost/replica:0/task:0/device:CPU:2"};
-  tensorflow::eager::RegisterParallelDevice(
-      context.get(), second_device_name, second_underlying_devices.data(),
-      second_underlying_devices.size(), status.get());
+  RegisterParallelDevice(context.get(), second_device_name,
+                         second_underlying_devices, status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   // Create a tensor on the first parallel device
@@ -656,11 +663,10 @@ TEST(PARALLEL_DEVICE, TestInvalidPacking) {
   std::unique_ptr<TFE_Context, decltype(&TFE_DeleteContext)> context(
       TFE_NewContext(opts.get(), status.get()), TFE_DeleteContext);
   const char* device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  std::vector<const char*> underlying_devices;
-  underlying_devices.push_back("/job:localhost/replica:0/task:0/device:CPU:0");
-  tensorflow::eager::RegisterParallelDevice(
-      context.get(), device_name, underlying_devices.data(),
-      underlying_devices.size(), status.get());
+  std::array<const char*, 1> underlying_devices{
+      "/job:localhost/replica:0/task:0/device:CPU:0"};
+  RegisterParallelDevice(context.get(), device_name, underlying_devices,
+                         status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   TensorHandlePtr value_one(FloatTensorHandle(1., status.get()));
@@ -775,12 +781,11 @@ TEST(PARALLEL_DEVICE, TestCollective) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   const char* device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  std::vector<const char*> underlying_devices;
-  underlying_devices.push_back("/job:localhost/replica:0/task:0/device:CPU:0");
-  underlying_devices.push_back("/job:localhost/replica:0/task:0/device:CPU:1");
-  tensorflow::eager::RegisterParallelDevice(
-      context.get(), device_name, underlying_devices.data(),
-      underlying_devices.size(), status.get());
+  std::array<const char*, 2> underlying_devices{
+      "/job:localhost/replica:0/task:0/device:CPU:0",
+      "/job:localhost/replica:0/task:0/device:CPU:1"};
+  RegisterParallelDevice(context.get(), device_name, underlying_devices,
+                         status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   // Create a tensor on the parallel device
@@ -867,12 +872,11 @@ TEST(PARALLEL_DEVICE, TestFunction) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   const char* device_name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
-  std::vector<const char*> underlying_devices;
-  underlying_devices.push_back("/job:localhost/replica:0/task:0/device:CPU:0");
-  underlying_devices.push_back("/job:localhost/replica:0/task:0/device:CPU:1");
-  tensorflow::eager::RegisterParallelDevice(
-      context.get(), device_name, underlying_devices.data(),
-      underlying_devices.size(), status.get());
+  std::array<const char*, 2> underlying_devices{
+      "/job:localhost/replica:0/task:0/device:CPU:0",
+      "/job:localhost/replica:0/task:0/device:CPU:1"};
+  RegisterParallelDevice(context.get(), device_name, underlying_devices,
+                         status.get());
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
   const char* function_name = "test_reduce_mul";

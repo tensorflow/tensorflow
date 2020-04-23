@@ -60,6 +60,10 @@ class AbstractContextInterface {
   // Create a handle to wrap and manage a Tensor
   virtual AbstractTensorHandleInterface* CreateLocalHandle(
       AbstractTensorInterface* t) = 0;
+  // Copy the handle to another device.
+  virtual AbstractTensorHandleInterface* CopyTensorHandleToDevice(
+      AbstractTensorHandleInterface* handle, const char* device_name,
+      Status* status) = 0;
 
   // Create an operation to perform op execution
   virtual AbstractOperationInterface* CreateOperation() = 0;

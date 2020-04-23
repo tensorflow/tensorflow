@@ -24,8 +24,8 @@ limitations under the License.
 #if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #endif
-#include "tensorflow/lite/experimental/kernels/hashtable_ops.h"
 #include "tensorflow/lite/kernels/custom_ops_register.h"
+#include "tensorflow/lite/kernels/hashtable/hashtable_ops.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/string_util.h"

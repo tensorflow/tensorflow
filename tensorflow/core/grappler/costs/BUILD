@@ -270,6 +270,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:utils",
+        "//tensorflow/core/grappler/utils:transitive_fanin",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
     ],

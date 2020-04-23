@@ -259,13 +259,10 @@ Status ConvertMLIRToXlaComputation(
     xla::XlaComputation* xla_computation, bool use_tuple_args,
     bool return_tuple,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn) {
-  // Mark main function as public.
-  mlir::FuncOp main_func = module_op.lookupSymbol<mlir::FuncOp>("main");
-  if (main_func) {
-    main_func.setVisibility(mlir::FuncOp::Visibility::Public);
-  }
-
   mlir::PassManager tf2xla(module_op.getContext());
+  // Mark main function as public, and other functions as private.
+  tf2xla.addPass(
+      mlir::TF::CreateMarkOnlyMainFunctionWithPublicVisibilityPass());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   tf2xla.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
   tf2xla.addPass(mlir::TF::CreateStackOpsDecompositionPass());

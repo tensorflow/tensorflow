@@ -274,6 +274,15 @@ bool InferShapeForCall(Operation* op) {
   return changed;
 }
 
+bool RefineTfConst(TF::ConstOp const_op) {
+  Type old_type = const_op.getType();
+  if (const_op.valueAttr().getType() == old_type) return false;
+  const_op.getResult().setType(const_op.valueAttr().getType());
+  AddCastBackForUnsupportedNonTFUses(const_op, const_op.getResult(),
+                                     const_op.getDialect(), old_type);
+  return true;
+}
+
 }  // namespace
 
 bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
@@ -620,6 +629,13 @@ LogicalResult InferShapeUntilFixPoint(Region* region, int64_t graph_version,
       if (op->getDialect() != tf_dialect) {
         changed |= InferShapeForNonTFDialectOperation(op, tf_dialect);
         return;
+      }
+
+      if (auto tf_const = dyn_cast<TF::ConstOp>(op)) {
+        changed |= RefineTfConst(tf_const);
+        // TODO(jpienaar): Debug why we can't just return here. We end up with
+        // additional constant due to the propagation of constant into attached
+        // function if we return already.
       }
 
       // Before attempting inference, just try to fold the operation.

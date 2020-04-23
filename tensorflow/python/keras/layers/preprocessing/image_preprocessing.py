@@ -205,7 +205,7 @@ class RandomCrop(Layer):
     self.input_spec = InputSpec(ndim=4)
     super(RandomCrop, self).__init__(name=name, **kwargs)
 
-  def call(self, inputs, training=None):
+  def call(self, inputs, training=True):
     if training is None:
       training = K.learning_phase()
 
@@ -370,7 +370,7 @@ class RandomFlip(Layer):
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
 
-  def call(self, inputs, training=None):
+  def call(self, inputs, training=True):
     if training is None:
       training = K.learning_phase()
 
@@ -493,7 +493,7 @@ class RandomTranslation(Layer):
     self.input_spec = InputSpec(ndim=4)
     super(RandomTranslation, self).__init__(name=name, **kwargs)
 
-  def call(self, inputs, training=None):
+  def call(self, inputs, training=True):
     if training is None:
       training = K.learning_phase()
 
@@ -771,7 +771,7 @@ class RandomRotation(Layer):
     self.input_spec = InputSpec(ndim=4)
     super(RandomRotation, self).__init__(name=name, **kwargs)
 
-  def call(self, inputs, training=None):
+  def call(self, inputs, training=True):
     if training is None:
       training = K.learning_phase()
 
@@ -899,7 +899,7 @@ class RandomZoom(Layer):
     self.input_spec = InputSpec(ndim=4)
     super(RandomZoom, self).__init__(name=name, **kwargs)
 
-  def call(self, inputs, training=None):
+  def call(self, inputs, training=True):
     if training is None:
       training = K.learning_phase()
 
@@ -1035,7 +1035,7 @@ class RandomContrast(Layer):
     self.input_spec = InputSpec(ndim=4)
     super(RandomContrast, self).__init__(name=name, **kwargs)
 
-  def call(self, inputs, training=None):
+  def call(self, inputs, training=True):
     if training is None:
       training = K.learning_phase()
 
@@ -1113,7 +1113,7 @@ class RandomHeight(Layer):
     self._rng = make_generator(self.seed)
     super(RandomHeight, self).__init__(name=name, **kwargs)
 
-  def call(self, inputs, training=None):
+  def call(self, inputs, training=True):
     if training is None:
       training = K.learning_phase()
 
@@ -1208,7 +1208,7 @@ class RandomWidth(Layer):
     self._rng = make_generator(self.seed)
     super(RandomWidth, self).__init__(name=name, **kwargs)
 
-  def call(self, inputs, training=None):
+  def call(self, inputs, training=True):
     if training is None:
       training = K.learning_phase()
 

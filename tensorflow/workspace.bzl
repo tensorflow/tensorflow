@@ -77,9 +77,17 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_repositories(path_prefix, tf_repo_name)
     tf_bind()
 
+# Toolchains & platforms required by Tensorflow to build.
+def tf_toolchains():
+    native.register_execution_platforms("@local_execution_config_platform//:platform")
+    native.register_toolchains("@local_execution_config_python//:py_toolchain")
+
 # Define all external repositories required by TensorFlow
 def tf_repositories(path_prefix = "", tf_repo_name = ""):
     """All external dependencies for TF builds."""
+
+    # Initialize toolchains and platforms.
+    tf_toolchains()
 
     # Loads all external repos to configure RBE builds.
     initialize_rbe_configs()
@@ -156,31 +164,31 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "583e408c9ab9a6ec241a54e0775bc170ed2ea3d1073668c9379dbfe282fa8acc",
-        strip_prefix = "XNNPACK-24d9a03a9ee036949f8c56878ecec17ab400fc23",
+        sha256 = "c002c961fd73b87b68074f9fda49d0dcbd0627c783e487a445da16bcd8dfdee6",
+        strip_prefix = "XNNPACK-10a38087936d84ab2879a2e39fc7e204757ff3e8",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/24d9a03a9ee036949f8c56878ecec17ab400fc23.zip",
-            "https://github.com/google/XNNPACK/archive/24d9a03a9ee036949f8c56878ecec17ab400fc23.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/10a38087936d84ab2879a2e39fc7e204757ff3e8.zip",
+            "https://github.com/google/XNNPACK/archive/10a38087936d84ab2879a2e39fc7e204757ff3e8.zip",
         ],
     )
 
     tf_http_archive(
         name = "FXdiv",
-        sha256 = "8224ff187cdfa178b8c54d36eea70520391781eda16d13a418ab5ae53289e1ab",
-        strip_prefix = "FXdiv-561254d968e5679460e6a0a743206410284d9f46",
+        sha256 = "ab7dfb08829bee33dca38405d647868fb214ac685e379ec7ef2bebcd234cd44d",
+        strip_prefix = "FXdiv-b408327ac2a15ec3e43352421954f5b1967701d1",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/Maratyszcza/FXdiv/archive/561254d968e5679460e6a0a743206410284d9f46.zip",
-            "https://github.com/Maratyszcza/FXdiv/archive/561254d968e5679460e6a0a743206410284d9f46.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/Maratyszcza/FXdiv/archive/b408327ac2a15ec3e43352421954f5b1967701d1.zip",
+            "https://github.com/Maratyszcza/FXdiv/archive/b408327ac2a15ec3e43352421954f5b1967701d1.zip",
         ],
     )
 
     tf_http_archive(
         name = "pthreadpool",
-        sha256 = "27c039e73846d0bdfe393833e91afafe45e61ba792cc60e1c62808090554ce4d",
-        strip_prefix = "pthreadpool-a61ed1ab70389c62f6f699ca1a30a2421d3ea594",
+        sha256 = "c4b148fba41fc937fdf96bc195caadf0cf0be83f1c3e335ef5355934d4501f83",
+        strip_prefix = "pthreadpool-e918b206d26b1f3b2100b0edabf445c18708d2b7",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/Maratyszcza/pthreadpool/archive/a61ed1ab70389c62f6f699ca1a30a2421d3ea594.zip",
-            "https://github.com/Maratyszcza/pthreadpool/archive/a61ed1ab70389c62f6f699ca1a30a2421d3ea594.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/Maratyszcza/pthreadpool/archive/e918b206d26b1f3b2100b0edabf445c18708d2b7.zip",
+            "https://github.com/Maratyszcza/pthreadpool/archive/e918b206d26b1f3b2100b0edabf445c18708d2b7.zip",
         ],
     )
 
@@ -203,11 +211,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = clean_dep("//third_party/mkl_dnn:mkldnn_v1.BUILD"),
-        sha256 = "a71ec1f27c30b8a176605e8a78444f1f12301a3c313b70ff93290926c140509c",
-        strip_prefix = "mkl-dnn-1.2.2",
+        sha256 = "54737bcb4dc1961d32ee75da3ecc529fa48198f8b2ca863a079e19a9c4adb70f",
+        strip_prefix = "oneDNN-1.4",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/intel/mkl-dnn/archive/v1.2.2.tar.gz",
-            "https://github.com/intel/mkl-dnn/archive/v1.2.2.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v1.4.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v1.4.tar.gz",
         ],
     )
 
@@ -658,8 +666,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "b6d77e792c3339425a733756b970dbac0da119fb"
-    LLVM_SHA256 = "9d299e918ee5850afd834ed62f93101b4777f6e0d72c37e672f5a8b3558f8dd4"
+    LLVM_COMMIT = "35cf2f42dda4d708741e06570b2dbe91cec4dc41"
+    LLVM_SHA256 = "c522ae8860a3cc5807d195d521cc1fc5ef3d27c4598762ea7e38185cef71fe05"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),

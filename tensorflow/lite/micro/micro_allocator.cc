@@ -44,29 +44,13 @@ struct AllocationInfo {
 // requirement for SIMD extensions.
 constexpr int kBufferAlignment = 16;
 
-// If building with GNU clib from GCC 4.8.x or lower, `max_align_t` is not a
-// member of `std`. If using a newer version of clib, we import `max_align_t`
-// into the local anonymous namespace to be able to use it like the global
-// `max_align_t` from the older clib.
-#if defined(__GNUC__) && defined(__GNUC_PREREQ)
-#if __GNUC_PREREQ(4, 9)
-using std::max_align_t;
-#endif
-#else
-// We assume other compiler/clib configurations don't have this issue.
-using std::max_align_t;
-#endif
-
 class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
  public:
   explicit MicroBuiltinDataAllocator(SimpleMemoryAllocator* memory_allocator)
       : memory_allocator_(memory_allocator) {}
 
-  void* Allocate(size_t size) override {
-    // Align to an address that is proper for all primitive types, but no more
-    // than the size.
-    return memory_allocator_->AllocateFromTail(
-        size, std::min(size, alignof(max_align_t)));
+  void* Allocate(size_t size, size_t alignment_hint) override {
+    return memory_allocator_->AllocateFromTail(size, alignment_hint);
   }
   void Deallocate(void* data) override {
     // Do not deallocate, builtin data needs to be available for the life time
@@ -440,6 +424,13 @@ MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
                                ErrorReporter* error_reporter)
     : model_(model), error_reporter_(error_reporter), context_(context) {
   uint8_t* aligned_arena = AlignPointerUp(tensor_arena, kBufferAlignment);
+  if (aligned_arena != tensor_arena) {
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
+        "%d bytes lost due to alignment. To avoid this loss, please make sure "
+        "the tensor_arena is 16 bytes aligned.",
+        aligned_arena - tensor_arena);
+  }
   size_t aligned_arena_size = tensor_arena + arena_size - aligned_arena;
   // Creates a root memory allocator managing the arena. The allocator itself
   // also locates in the arena buffer. This allocator doesn't need to be

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MICRO_TESTING_MICRO_BENCHMARK_H_
 #define TENSORFLOW_LITE_MICRO_TESTING_MICRO_BENCHMARK_H_
 
+#include <climits>
+
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_time.h"
 
@@ -35,7 +37,9 @@ extern tflite::ErrorReporter* reporter;
     int32_t duration_ticks;                      \
     int32_t duration_ms;
 
-#define TF_LITE_MICRO_BENCHMARKS_END }
+#define TF_LITE_MICRO_BENCHMARKS_END \
+  return 0;                          \
+  }
 
 #define TF_LITE_MICRO_BENCHMARK(func)                                         \
   if (tflite::ticks_per_second() == 0) {                                      \
@@ -44,7 +48,11 @@ extern tflite::ErrorReporter* reporter;
   start_ticks = tflite::GetCurrentTimeTicks();                                \
   func();                                                                     \
   duration_ticks = tflite::GetCurrentTimeTicks() - start_ticks;               \
-  duration_ms = (duration_ticks * 1000) / tflite::ticks_per_second();         \
+  if (duration_ticks > INT_MAX / 1000) {                                      \
+    duration_ms = duration_ticks / (tflite::ticks_per_second() / 1000);       \
+  } else {                                                                    \
+    duration_ms = (duration_ticks * 1000) / tflite::ticks_per_second();       \
+  }                                                                           \
   TF_LITE_REPORT_ERROR(micro_benchmark::reporter, "%s took %d ticks (%d ms)", \
                        #func, duration_ticks, duration_ms);
 

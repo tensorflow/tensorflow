@@ -312,11 +312,8 @@ struct FixKernelFunctionSignatures
     mlir::FuncOp func = getFunction();
     mlir::ModuleOp module = func.getParentOfType<mlir::ModuleOp>();
     getFunction().walk([&](mlir::gpu::LaunchFuncOp launchOp) {
-      mlir::gpu::GPUModuleOp gpu_module =
-          module.lookupSymbol<mlir::gpu::GPUModuleOp>(
-              launchOp.getKernelModuleName());
       mlir::gpu::GPUFuncOp kernel =
-          gpu_module.lookupSymbol<mlir::gpu::GPUFuncOp>(launchOp.kernel());
+          module.lookupSymbol<mlir::gpu::GPUFuncOp>(launchOp.kernel());
       // Compute a map from function arguments to kernel function operands.
       mlir::BlockAndValueMapping func_to_kernel;
       for (mlir::BlockArgument arg : func.getArguments()) {
@@ -331,6 +328,7 @@ struct FixKernelFunctionSignatures
       // Create a new kernel function with modified signature. We know that it
       // will have the same signature as the original function, so just reuse it
       // here.
+      auto gpu_module = kernel.getParentOfType<mlir::gpu::GPUModuleOp>();
       mlir::OpBuilder kernel_builder(gpu_module.body());
       auto new_kernel = kernel_builder.create<mlir::gpu::GPUFuncOp>(
           kernel.getLoc(), kernel.getName(), func.getType());
@@ -371,17 +369,6 @@ struct FixKernelFunctionSignatures
     });
   }
 };
-
-void EnableIRPrinting(mlir::PassManager* passManager) {
-  auto enable_if_vlog_is_on = [](mlir::Pass* pass, mlir::Operation* op) {
-    return VLOG_IS_ON(1);
-  };
-  passManager->enableIRPrinting(/*shouldPrintBeforePass=*/enable_if_vlog_is_on,
-                                /*shouldPrintAfterPass=*/{},
-                                /*printModuleScope=*/false,
-                                /*printAfterOnlyOnChange=*/true, llvm::dbgs());
-  passManager->disableMultithreading();
-}
 
 // Extract_element(xla_hlo_scalars_to_dimension_tensor(v_i), i) -> v_i
 //
@@ -432,7 +419,7 @@ Status LowerLHLOToGPU(mlir::ModuleOp module,
                       llvm::ArrayRef<unsigned> unroll_factors,
                       bool collapseParallelLoops) {
   mlir::PassManager pm(module.getContext());
-  EnableIRPrinting(&pm);
+  applyPassManagerCLOptions(pm);
 
   // We have to anticipate later unrolling in tiling to make sure that we get
   // the requested tiling after unrolling. Compute the new tiling here if
@@ -547,7 +534,7 @@ class LowerToNVVMPass
 Status LowerKernelBodiesToNVVM(mlir::ModuleOp module) {
   // We cannot verify as the signature of the kernel is rewritten.
   ::mlir::PassManager pm(module.getContext(), /*verifyPasses=*/false);
-  EnableIRPrinting(&pm);
+  applyPassManagerCLOptions(pm);
 
   // Rewrite kernel functions to LLVM IR.
   auto& kernelPm = pm.nest<::mlir::gpu::GPUModuleOp>();

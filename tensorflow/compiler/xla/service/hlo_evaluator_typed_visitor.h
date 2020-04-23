@@ -1680,6 +1680,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                             MapImpl<Eigen::half>(map));
         break;
       }
+      case BF16: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<bfloat16>(map));
+        break;
+      }
       case F32: {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<float>(map));
         break;

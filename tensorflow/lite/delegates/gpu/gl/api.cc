@@ -201,7 +201,7 @@ class CompiledModelImpl
                    ShaderCode code) {
     // Calculate workgroup size.
     uint3 workgroup_size = workgroup_calculator.Calculate(code);
-    uint3 num_workgroups = IntegralDivideRoundUp(code.workload, workgroup_size);
+    uint3 num_workgroups = DivideRoundUp(code.workload, workgroup_size);
 
     for (const auto& object : code.objects) {
       if (IsRef(object)) {

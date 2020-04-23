@@ -60,13 +60,13 @@ class Softmax : public NodeShader {
  private:
   absl::Status GenerateCodeFor1x1(const GenerationContext& ctx,
                                   GeneratedCode* generated_code) const {
-    const int depth = IntegralDivideRoundUp(ctx.output_shapes[0][3], 4);
+    const int depth = DivideRoundUp(ctx.output_shapes[0][3], 4);
     std::vector<Variable> shared_variables = {
         {"partial_sum", std::vector<float4>(8)},
     };
     std::vector<Variable> uniform_parameters = {
         {"depth", depth},
-        {"depth_div_32", IntegralDivideRoundUp(depth, 32)},
+        {"depth_div_32", DivideRoundUp(depth, 32)},
         {"mask", GetMask(ctx.output_shapes[0][3])},
     };
     std::string source_code = R"(
@@ -138,7 +138,7 @@ class Softmax : public NodeShader {
                                    GeneratedCode* generated_code) const {
     std::vector<Variable> parameters = {
         {"src_depth",
-         IntegralDivideRoundUp(static_cast<int>(ctx.output_shapes[0][3]), 4)},
+         DivideRoundUp(static_cast<int>(ctx.output_shapes[0][3]), 4)},
         {"mask", GetMask(ctx.output_shapes[0][3])},
     };
 
