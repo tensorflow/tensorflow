@@ -23,6 +23,9 @@ ifeq ($(TARGET), arc_emsdp)
   UBOOT_FILE := $(PWD)/$(MAKEFILE_DIR)/targets/arc/emsdp/uboot.env
   UBOOT_FILE_NAME := $(notdir $(UBOOT_FILE))
 
+  BUILD_ARC_MLI := false
+  ARC_MLI_PRE_COMPILED_TARGET := emsdp_em11d_em9d_dfss
+
 include $(MAKEFILE_DIR)/targets/arc/arc_common.inc
   
    ARC_EXTRA_APP_SETTINGS = \

@@ -21,19 +21,9 @@ ifeq ($(TARGET_ARCH), arc)
 # by passing 'no_arc_mli' tag (make -f <tflm_main_makefile> TAGS=no_arc_mli ...)
 ifeq ($(filter no_arc_mli,$(ALL_TAGS)),)
 
-
 ALL_TAGS += arc_mli
 
-ifeq ($(PRE_COMPILED_MLI),true)
-  # TODO: Replace with proper arc_mli pre-builts.
-  $(eval $(call add_third_party_download,$(EMBARC_OSP_URL),$(EMBARC_OSP_MD5),embarc_osp,))
-
-  MLI_INCLUDE_FOLDER = embarc_osp/library/embarc_mli/include
-  MLI_LIB = third_party/embarc_osp/library/embarc_mli/lib/arcem9d/libmli_iotdk.a
-
-  THIRD_PARTY_CC_HDRS += \
-    third_party/embarc_osp/LICENSE
-else
+ifeq ($(BUILD_ARC_MLI),true)
   MLI_LIB_DIR = arc_mli_$(basename $(TCF_FILE_NAME))
 
   $(eval $(call add_third_party_download,$(EMBARC_MLI_URL),$(EMBARC_MLI_MD5),$(MLI_LIB_DIR),build_embarc_mli,$(TCF_FILE)))
@@ -44,6 +34,20 @@ else
 
   THIRD_PARTY_CC_HDRS += \
     third_party/$(MLI_LIB_DIR)/LICENSE
+else
+ifneq ($(ARC_MLI_PRE_COMPILED_TARGET),)
+  MLI_LIB_DIR = arc_mli_package
+  $(eval $(call add_third_party_download,$(EMBARC_MLI_PRE_COMPILED_URL),$(EMBARC_MLI_PRE_COMPILED_MD5),$(MLI_LIB_DIR),))
+
+  MLI_INCLUDE_FOLDER = $(MLI_LIB_DIR)/include
+  MLI_LIB = third_party/$(MLI_LIB_DIR)/bin/$(ARC_MLI_PRE_COMPILED_TARGET)/release/libmli.a
+  MICROLITE_LIBS += $(MAKEFILE_DIR)/downloads/$(MLI_LIB_DIR)/bin/$(ARC_MLI_PRE_COMPILED_TARGET)/release/libmli.a
+
+  THIRD_PARTY_CC_HDRS += \
+    third_party/$(MLI_LIB_DIR)/LICENSE
+else 
+$(error Target for pre compiled ARC MLI library is not defined)
+endif
 endif
 
   THIRD_PARTY_CC_HDRS += $(MLI_LIB)

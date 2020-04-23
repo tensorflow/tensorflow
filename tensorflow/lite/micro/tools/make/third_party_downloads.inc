@@ -71,11 +71,11 @@ PERSON_MODEL_MD5 := "fe2934bd0788f1dcc7af3f0a954542ab"
 PERSON_MODEL_INT8_URL := "https://storage.googleapis.com/download.tensorflow.org/data/tf_lite_micro_person_data_int8_grayscale_2020_01_13.zip"
 PERSON_MODEL_INT8_MD5 := "8a7d2c70325f53136faea6dde517b8cc"
 
-EMBARC_OSP_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_osp/archive/embarc_mli.zip"
-EMBARC_OSP_MD5 := "9eaf7b3a1ed05872a03da9796672a776"
+EMBARC_MLI_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/7026ad09bb7f967324eb29e069f776bc44a08886.zip"
+EMBARC_MLI_MD5 := "7eebd730db79c6834399f87e509115fb"
 
-EMBARC_MLI_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/4b6c6eed65395dced1564006be8188781af16035.zip"
-EMBARC_MLI_MD5 := "47167553c17ff8c7cd59fb1afb90c304"
+EMBARC_MLI_PRE_COMPILED_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/releases/download/Release_1.1_RC1/embARC_MLI_package.zip"
+EMBARC_MLI_PRE_COMPILED_MD5 := "b85b8b89446757735342795367e37d22"
 
 XTENSA_HIFI4_URL :="https://github.com/foss-xtensa/nnlib-hifi4/raw/master/archive/xa_nnlib_04_07.zip"
 XTENSA_HIFI4_MD5 :="f234764928f9a42901df33a27e118c8b"

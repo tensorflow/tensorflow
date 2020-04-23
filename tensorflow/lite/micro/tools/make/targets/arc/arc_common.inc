@@ -89,6 +89,8 @@ ifeq ($(ARC_TOOLCHAIN), mwdt)
 
   LCF_FILE ?= 
 
+  BUILD_ARC_MLI ?= true
+
 # The variable TCF_FILE_NAME stores the TCF file name (including .tcf extension), 
 # this variable is used later to add the option to the linker/compiler flags.
 # This condition also handles the case when the user/makefile specifies 
