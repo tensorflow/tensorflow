@@ -1330,35 +1330,23 @@ class ModelCheckpoint(Callback):
   def _get_file_path(self, epoch, batch, logs):
     """Returns the file path for checkpoint."""
     # pylint: disable=protected-access
-    if not self.model._in_multi_worker_mode(
-    ) or multi_worker_util.should_save_checkpoint():
-      try:
-        # `filepath` may contain placeholders such as `{epoch:02d}` and
-        # `{batch:02d}`. A mismatch between logged metrics and the path's
-        # placeholders can cause formatting to fail.
-        if not batch:
-          file_path = self.filepath.format(epoch=epoch + 1, **logs)
-        else:
-          file_path = self.filepath.format(
-            epoch=epoch + 1,
-            batch=batch + 1,
-            **logs)
-      except KeyError as e:
-        raise KeyError('Failed to format this callback filepath: "{}". '
-                       'Reason: {}'.format(self.filepath, e))
-      self._write_filepath = distributed_file_utils.write_filepath(
-        file_path, self.model.distribute_strategy)
-      return self._write_filepath
-    else:
-      # If this is multi-worker training, and this worker should not
-      # save checkpoint, we use a temp filepath to store a dummy checkpoint, so
-      # it writes to a file that will be removed at the end of `_save_model()`
-      # call. This is because the SyncOnReadVariable needs to be synced across
-      # all the workers in order to be read, and all workers need to initiate
-      # that.
-      self._temp_file_dir = tempfile.mkdtemp()
-      extension = os.path.splitext(self.filepath)[1]
-      return os.path.join(self._temp_file_dir, 'temp' + extension)
+    try:
+      # `filepath` may contain placeholders such as `{epoch:02d}` and
+      # `{batch:02d}`. A mismatch between logged metrics and the path's
+      # placeholders can cause formatting to fail.
+      if not batch:
+        file_path = self.filepath.format(epoch=epoch + 1, **logs)
+      else:
+        file_path = self.filepath.format(
+          epoch=epoch + 1,
+          batch=batch + 1,
+          **logs)
+    except KeyError as e:
+      raise KeyError('Failed to format this callback filepath: "{}". '
+                     'Reason: {}'.format(self.filepath, e))
+    self._write_filepath = distributed_file_utils.write_filepath(
+      file_path, self.model.distribute_strategy)
+    return self._write_filepath
 
   def _maybe_remove_file(self):
     # Remove the checkpoint directory in multi-worker training where this worker
