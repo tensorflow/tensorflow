@@ -1078,6 +1078,7 @@ cc_library(
     srcs = ["compiler.cc"],
     hdrs = ["compiler.h"],
     deps = [
+        ":buffer_assignment",
         ":buffer_value",
         ":computation_placer",
         ":executable",
