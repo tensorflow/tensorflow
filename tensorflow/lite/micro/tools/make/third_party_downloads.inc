@@ -3,12 +3,20 @@
 GEMMLOWP_URL := "https://github.com/google/gemmlowp/archive/719139ce755a0f31cbf1c37f7f98adcc7fc9f425.zip"
 GEMMLOWP_MD5 := "7e8191b24853d75de2af87622ad293ba"
 
-FLATBUFFERS_URL := "https://github.com/google/flatbuffers/archive/v1.12.0.tar.gz"
-FLATBUFFERS_MD5 := "c62ffefb3d4548b127cca14ce047f16c"
+ifeq ($(HOST_OS),windows)
+  FLATBUFFERS_URL := "https://github.com/google/flatbuffers/archive/v1.12.0.zip"
+  FLATBUFFERS_MD5 := "a1afdbf114dec01a861c1b8c917d0fc7"
+else
+  FLATBUFFERS_URL := "https://github.com/google/flatbuffers/archive/v1.12.0.tar.gz"
+  FLATBUFFERS_MD5 := "c62ffefb3d4548b127cca14ce047f16c"
+endif
 
 ifeq ($(HOST_OS),osx)
   GCC_EMBEDDED_URL := "https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-mac.tar.bz2"
   GCC_EMBEDDED_MD5 := "a66be9828cf3c57d7d21178e07cd8904"
+else ifeq ($(HOST_OS),windows)
+  GCC_EMBEDDED_URL := "https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-win32.zip"
+  GCC_EMBEDDED_MD5 := "bc8ae26d7c429f30d583a605a4bcf9bc"
 else
   GCC_EMBEDDED_URL := "https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-linux.tar.bz2"
   GCC_EMBEDDED_MD5 := "299ebd3f1c2c90930d28ab82e5d8d6c0"

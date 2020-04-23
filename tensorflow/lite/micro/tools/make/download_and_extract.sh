@@ -141,7 +141,7 @@ download_and_extract() {
     unzip ${tempfile} -d ${tempdir2} 2>&1 1>/dev/null
     # If the zip file contains nested directories, extract the files from the
     # inner directory.
-    if ls ${tempdir2}/*/* 1> /dev/null 2>&1; then
+    if [ $(find $tempdir2/* -maxdepth 0 | wc -l) = 1 ] && [ -d $tempdir2/* ]; then
       # unzip has no strip components, so unzip to a temp dir, and move the
       # files we want from the tempdir to destination.
       cp -R ${tempdir2}/*/* ${dir}/
