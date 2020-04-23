@@ -1839,6 +1839,8 @@ equivalent to setting:
   );
 
   let verifier = [{ return Verify(*this); }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TFL_SumOp: TFL_Op<"sum", [NoSideEffect]> {

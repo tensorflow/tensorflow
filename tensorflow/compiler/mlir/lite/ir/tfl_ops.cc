@@ -1014,6 +1014,75 @@ static LogicalResult Verify(SliceOp op) {
   return success();
 }
 
+TFL::ConstOp NarrowDownInt64InputValuesForOp(Operation *input_op,
+                                             RankedTensorType value_type,
+                                             Location loc, OpBuilder *builder) {
+  if (input_op == nullptr) return nullptr;
+
+  mlir::DenseIntElementsAttr attr;
+  if (!matchPattern(input_op, m_Constant(&attr))) {
+    return nullptr;
+  }
+
+  auto value_shape_type = mlir::RankedTensorType::get(
+      value_type.getShape(), builder->getIntegerType(32));
+
+  SmallVector<int32_t, 4> value_i32;
+  value_i32.reserve(value_type.getRank());
+  for (const auto &size : attr) {
+    value_i32.push_back(static_cast<int32_t>(size.getSExtValue()));
+  }
+  auto new_value_i32_attr =
+      mlir::DenseIntElementsAttr::get(value_shape_type, value_i32);
+
+  return builder->create<TFL::ConstOp>(loc, new_value_i32_attr);
+}
+
+// This will cast donw int64 values for TFL slice op.
+// This will require the begin & size are constants.
+struct CastDonwInt64BeginEndToInt32 : public OpRewritePattern<TFL::SliceOp> {
+  using OpRewritePattern<TFL::SliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::SliceOp slice_op,
+                                PatternRewriter &rewriter) const override {
+    auto begin = slice_op.begin();
+    auto size = slice_op.size();
+    auto begin_type = begin.getType().dyn_cast_or_null<RankedTensorType>();
+    auto size_type = size.getType().dyn_cast_or_null<RankedTensorType>();
+    auto begin_op = begin.getDefiningOp();
+    auto size_op = size.getDefiningOp();
+
+    if (begin_op == nullptr && size_op == nullptr) return failure();
+
+    if (begin_type == nullptr && size_type == nullptr) return failure();
+
+    // Handle begin.
+    if (begin_op && begin_type && begin_type.getElementType().isInteger(64)) {
+      auto new_begin = NarrowDownInt64InputValuesForOp(
+          begin_op, begin_type, slice_op.getLoc(), &rewriter);
+      if (new_begin != nullptr) {
+        slice_op.setOperand(1, new_begin);
+      }
+    }
+
+    // Handle size.
+    if (size_op && size_type && size_type.getElementType().isInteger(64)) {
+      auto new_size = NarrowDownInt64InputValuesForOp(
+          size_op, size_type, slice_op.getLoc(), &rewriter);
+      if (new_size != nullptr) {
+        slice_op.setOperand(2, new_size);
+      }
+    }
+
+    return success();
+  }
+};
+
+void SliceOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert<CastDonwInt64BeginEndToInt32>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // SubOp
 //===----------------------------------------------------------------------===//
