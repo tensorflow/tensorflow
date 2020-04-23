@@ -2954,6 +2954,12 @@ void SumOp::build(Builder *builder, OperationState &result, Value input,
 // StridedSliceOp
 //===----------------------------------------------------------------------===//
 
+// TODO(b/154160827): Add a canonicalization pattern from tf.StridedSliceOp to
+// tf.SliceOp if both of the following are true:
+// - All strides have a known value equal to 1
+// - No masks are set (or masks can be applied by transforming the inputs to
+//   Slice)
+
 // Verifies that,
 //
 // - begin, end and strides operands are 1D and they have the same number of

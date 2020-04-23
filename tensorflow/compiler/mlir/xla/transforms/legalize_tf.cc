@@ -2148,11 +2148,16 @@ class ConvertSplitVOp : public OpRewritePattern<TF::SplitVOp> {
 // negative strides and Reshape op to update the output shape. Indices and
 // strides operands are converted to attributes with non-negative indexing.
 //
+// If the begin input is not a compile time constant, the begin input needs to
+// be sliced and the slice needs to be lowered to xla_hlo.DynamicSlice. In this
+// case, strides must have a known value of 1 (otherwise we have insufficient
+// information to conform to XLA's op semantics).
+//
 // For example with an op like following,
 //   tf.StridedSlice(%input, %begin, %end, %strides) {shrink_axis_mask = 1}
 //     : tensor<AxBxf32> -> tensor<Pxf32>
 //
-// Output would be:
+// If the %begin input is constant, output would be:
 //   %reversed = "xla_hlo.Reverse" (%input) {dimensions = ...}
 //   %sliced = "xla_hlo.Slice" (%input)
 //             {start_indices = ..., limit_indices = ..., strides = ...}
@@ -2162,31 +2167,16 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TF::StridedSliceOp op,
-                                PatternRewriter &rewriter) const override {
-    // Input shape needs to be static to convert negative indices in TensorFlow
-    // to absolute indices required by HLO.
-    //
-    // TODO(hinsu): Relax this constraint for ops without negative indices and
-    // strides.
-    auto input_ty = op.input().getType().dyn_cast<RankedTensorType>();
-    if (!input_ty || !input_ty.hasStaticShape()) return failure();
-    ArrayRef<int64_t> input_shape = input_ty.getShape();
-
-    // Output shape needs to be static to apply 'new_axis_mask' or
-    // 'shrink_axis_mask' by reshaping tensor after slice.
-    //
-    // TODO(hinsu): Relax this constraint for ops without the above masks.
-    auto result_ty = op.getType().dyn_cast<RankedTensorType>();
-    if (!result_ty || !result_ty.hasStaticShape()) return failure();
-
-    SmallVector<int64_t, 4> begin_indices, end_indices, strides;
-    if (!op.GetSlicedBoundRanges(&begin_indices, &end_indices, &strides))
-      return failure();
-
+  LogicalResult rewriteWithConstantBegin(TF::StridedSliceOp op,
+                                         ArrayRef<int64_t> begin_indices,
+                                         ArrayRef<int64_t> end_indices,
+                                         ArrayRef<int64_t> strides,
+                                         RankedTensorType input_ty,
+                                         PatternRewriter &rewriter) const {
     SmallVector<int64_t, 4> hlo_begin_indices, hlo_end_indices, hlo_strides,
         dims_to_reverse;
     int64_t input_rank = input_ty.getRank();
+    ArrayRef<int64_t> input_shape = input_ty.getShape();
     hlo_begin_indices.reserve(input_rank);
     hlo_end_indices.reserve(input_rank);
     hlo_strides.reserve(input_rank);
@@ -2237,6 +2227,170 @@ class ConvertStridedSliceOp : public OpRewritePattern<TF::StridedSliceOp> {
     // 'new_axis_mask' or 'shrink_axis_mask' attributes.
     rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), sliced);
     return success();
+  }
+
+  LogicalResult rewriteWithUnknownBegin(TF::StridedSliceOp op,
+                                        RankedTensorType input_ty,
+                                        RankedTensorType result_ty,
+                                        PatternRewriter &rewriter) const {
+    // If begin and end values are dynamic, we can only support this lowering
+    // if strides are a known value of 1.
+    DenseIntElementsAttr sparse_strides_attr;
+    if (!matchPattern(op.strides(), m_Constant(&sparse_strides_attr))) {
+      return rewriter.notifyMatchFailure(
+          op,
+          "requires that strides are known when begin/end values are dynamic");
+    }
+    SmallVector<int64_t, 4> strides;
+    int64_t stride_value;
+    for (const APInt &stride : sparse_strides_attr) {
+      if ((stride_value = stride.getSExtValue()) != 1) {
+        return rewriter.notifyMatchFailure(op,
+                                           "requires that strides are all 1 "
+                                           "when begin/end values are dynamic");
+      }
+      strides.push_back(stride_value);
+    }
+
+    ArrayRef<int64_t> input_shape = input_ty.getShape();
+    int last_dim = std::max(static_cast<int>(input_shape.size()) - 1, 0);
+
+    // When begin/end values are dynamic, we can only support shrinking a major
+    // axis. For instance, if there are 4 dims, we can support a
+    // shrink_axis_mask of 0001 (1), 0011 (3), 0111 (7), or 1111 (15), but no
+    // other.
+    bool shrink_axis_mask_ok = op.shrink_axis_mask().isMask();
+    if (!shrink_axis_mask_ok)
+      return rewriter.notifyMatchFailure(
+          op,
+          "requires that shrink_axis_mask, if set, refer to a major axis "
+          "dimension (when begin/end values are dynamic)");
+
+    // When begin/end values are dynamic, the ellipsis mask, if set, must refer
+    // to the last dimension.
+    int ellipsis_mask = op.ellipsis_mask().getZExtValue();
+    if (!(ellipsis_mask == 0 || ellipsis_mask == (1 << last_dim)))
+      return rewriter.notifyMatchFailure(
+          op,
+          "requires that ellipsis_mask, if set, refer to the last dimension of "
+          "input (when begin/end values are dynamic)");
+
+    APInt begin_mask = op.begin_mask();
+    if (!begin_mask.isNullValue())
+      return rewriter.notifyMatchFailure(
+          op,
+          "requires that begin_mask is either set to 0 or not set when "
+          "begin/end values are dynamic");
+    APInt end_mask = op.end_mask();
+    if (!end_mask.isNullValue())
+      return rewriter.notifyMatchFailure(
+          op,
+          "requires that end_mask is either set to 0 or not set when begin/end "
+          "values are dynamic");
+    APInt new_axis_mask = op.new_axis_mask();
+    if (!new_axis_mask.isNullValue())
+      return rewriter.notifyMatchFailure(
+          op,
+          "requires that new_axis_mask is either set to 0 or not set when "
+          "begin/end values are dynamic");
+
+    // In this case where the begin and end values are dynamic, the number of
+    // output elements has to be equal to the number of input elements that
+    // are sliced.
+    int output_elements = result_ty.getNumElements();
+    int input_elements_sliced = 1;
+
+    // Begin must be a ranked, 1-dimensional tensor: This is checked by the
+    // verifier.
+    int64_t slicing_dim_size =
+        op.begin().getType().cast<RankedTensorType>().getShape()[0];
+    auto input_rank = input_shape.size();
+    for (int d = slicing_dim_size; d < input_rank; ++d) {
+      // We only support slicing major dimensions, so minor dimensions after
+      // slicing dimensions are all sliced with their full sizes.
+      input_elements_sliced *= input_shape[d];
+    }
+    if (input_elements_sliced != output_elements) {
+      return rewriter.notifyMatchFailure(
+          op,
+          "requires the number of output elements to be equal to the number of "
+          "input elements sliced (when begin/end values are dynamic)");
+    }
+
+    SmallVector<Value, 4> slice_begin_indices;
+    // For the dimensions that are to be sliced, all have slice sizes of 1.
+    SmallVector<int64_t, 4> slice_sizes(slicing_dim_size, 1);
+    auto input_element_ty = input_ty.getElementType();
+    // Scalar tensor type.
+    TensorType type = RankedTensorType::get(/*shape=*/{}, input_element_ty);
+    Location loc = op.getLoc();
+    auto zero = GetScalarConstOfType(input_element_ty, loc, 0, &rewriter);
+    for (int d = 0; d < slicing_dim_size; ++d) {
+      auto index = rewriter.create<SliceOp>(
+          loc, op.begin(), GetI64ElementsAttr({d}, &rewriter),
+          GetI64ElementsAttr({d + 1}, &rewriter),
+          GetI64ElementsAttr({1}, &rewriter));
+      // Convert index to scalar.
+      auto reshaped_index = rewriter.create<ReshapeOp>(loc, type, index);
+      // If the index is negative, wrap it around with dimension size.
+      auto index_negative =
+          rewriter.create<TF::LessOp>(loc, reshaped_index, zero);
+      auto input_val = GetScalarConstOfType(input_element_ty, loc,
+                                            input_shape[d], &rewriter);
+      auto wrapped_index =
+          rewriter.create<TF::AddOp>(loc, input_val, reshaped_index);
+      auto final_index = rewriter.create<SelectOp>(
+          loc, type, index_negative, wrapped_index, reshaped_index);
+      slice_begin_indices.push_back(final_index);
+    }
+
+    // For non-slice dims, get the full slice of that dimension.
+    for (int d = slicing_dim_size; d < input_shape.size(); ++d) {
+      slice_sizes.push_back(input_shape[d]);
+      slice_begin_indices.push_back(zero);
+    }
+
+    auto slice_sizes_attr = GetI64ElementsAttr(slice_sizes, &rewriter);
+    // This must be an xla DynamicSlice op due to the inputs that aren't
+    // constant.
+    auto sliced = rewriter.create<DynamicSliceOp>(
+        loc, op.getType(), op.input(), slice_begin_indices, slice_sizes_attr);
+
+    // Reshape slice result so that the shape is updated depending on
+    // 'new_axis_mask' or 'shrink_axis_mask' attributes.
+    rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), sliced);
+    return success();
+  }
+
+  LogicalResult matchAndRewrite(TF::StridedSliceOp op,
+                                PatternRewriter &rewriter) const override {
+    // Input shape needs to be static to convert negative indices in TensorFlow
+    // to absolute indices required by HLO.
+    //
+    // TODO(hinsu): Relax this constraint for ops without negative indices and
+    // strides.
+    auto input_ty = op.input().getType().dyn_cast<RankedTensorType>();
+    if (!input_ty || !input_ty.hasStaticShape()) return failure();
+
+    // Output shape needs to be static to apply 'new_axis_mask' or
+    // 'shrink_axis_mask' by reshaping tensor after slice.
+    //
+    // TODO(hinsu): Relax this constraint for ops without the above masks.
+    auto result_ty = op.getType().dyn_cast<RankedTensorType>();
+    if (!result_ty || !result_ty.hasStaticShape()) return failure();
+
+    DenseIntElementsAttr sparse_begin_attr, sparse_end_attr;
+    if (!matchPattern(op.begin(), m_Constant(&sparse_begin_attr)) ||
+        !matchPattern(op.end(), m_Constant(&sparse_end_attr))) {
+      return rewriteWithUnknownBegin(op, input_ty, result_ty, rewriter);
+    }
+
+    SmallVector<int64_t, 4> begin_indices, end_indices, strides;
+    if (!op.GetSlicedBoundRanges(&begin_indices, &end_indices, &strides)) {
+      return failure();
+    }
+    return rewriteWithConstantBegin(op, begin_indices, end_indices, strides,
+                                    input_ty, rewriter);
   }
 };
 
