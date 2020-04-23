@@ -977,7 +977,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
         "//tensorflow/core:stream_executor_no_cuda",
     ] + if_cuda_is_configured([
-        "//tensorflow/compiler/xla/service/mlir_gpu:mlir_compiler",
+        "//tensorflow/compiler/xla/service/mlir_gpu:mlir_compiler_impl",
     ]),
 )
 
