@@ -18,8 +18,8 @@ limitations under the License.
 #include <iostream>
 #include <sstream>
 
-#define ROCTRACER_FLUSH_BUG_HACK 0
-#if ROCTRACER_FLUSH_BUG_HACK
+#define ROCTRACER_FLUSH_BUG_WORKAROUND 1
+#if ROCTRACER_FLUSH_BUG_WORKAROUND
 #include <chrono>
 #include <thread>
 #endif
@@ -287,9 +287,9 @@ void DumpRocmTracerEvent(const RocmTracerEvent& event, uint64 start_walltime_ns,
 
 class RocmApiCallbackImpl {
  public:
-  RocmApiCallbackImpl(const RocmTracerOptions& options,
+  RocmApiCallbackImpl(const RocmTracerOptions& options, RocmTracer* tracer,
                       RocmTraceCollector* collector)
-      : options_(options), collector_(collector) {}
+      : options_(options), tracer_(tracer), collector_(collector) {}
 
   Status operator()(uint32_t domain, uint32_t cbid, const void* cbdata) {
     // DumpApiCallbackData(domain, cbid, cbdata);
@@ -314,6 +314,12 @@ class RocmApiCallbackImpl {
         case HIP_API_ID_hipModuleLaunchKernel:
         case HIP_API_ID_hipExtModuleLaunchKernel:
           AddKernelEventUponApiExit(cbid, data);
+#if ROCTRACER_FLUSH_BUG_WORKAROUND
+          // Add the correlation_ids for these events to the pending set
+          // so that we can explicitly wait for their corresponding
+          // HCC runtime activity records, before exporting the trace data
+          tracer_->AddToPendingActivityRecords(data->correlation_id);
+#endif
           break;
         case HIP_API_ID_hipMemcpyDtoH:
         case HIP_API_ID_hipMemcpyDtoHAsync:
@@ -479,14 +485,15 @@ class RocmApiCallbackImpl {
   }
 
   RocmTracerOptions options_;
+  RocmTracer* tracer_ = nullptr;
   RocmTraceCollector* collector_ = nullptr;
 };
 
 class RocmActivityCallbackImpl {
  public:
-  RocmActivityCallbackImpl(const RocmTracerOptions& options,
+  RocmActivityCallbackImpl(const RocmTracerOptions& options, RocmTracer* tracer,
                            RocmTraceCollector* collector)
-      : options_(options), collector_(collector) {}
+      : options_(options), tracer_(tracer), collector_(collector) {}
 
   Status operator()(const char* begin, const char* end) {
     const roctracer_record_t* record =
@@ -540,6 +547,9 @@ class RocmActivityCallbackImpl {
             case HIP_OP_ID_DISPATCH:
               DumpActivityRecord(record);
               AddHccKernelActivityEvent(record);
+#if ROCTRACER_FLUSH_BUG_WORKAROUND
+              tracer_->RemoveFromPendingActivityRecords(record->correlation_id);
+#endif
               break;
             case HIP_OP_ID_COPY:
               DumpActivityRecord(record);
@@ -555,6 +565,7 @@ class RocmActivityCallbackImpl {
       RETURN_IF_ROCTRACER_ERROR(static_cast<roctracer_status_t>(
           roctracer_next_record(record, &record)));
     }
+
     return Status::OK();
   }
 
@@ -700,6 +711,7 @@ class RocmActivityCallbackImpl {
   }
 
   RocmTracerOptions options_;
+  RocmTracer* tracer_ = nullptr;
   RocmTraceCollector* collector_ = nullptr;
 };
 
@@ -750,8 +762,8 @@ void RocmTracer::Enable(const RocmTracerOptions& options,
                         RocmTraceCollector* collector) {
   options_ = options;
   collector_ = collector;
-  api_cb_impl_ = new RocmApiCallbackImpl(options, collector);
-  activity_cb_impl_ = new RocmActivityCallbackImpl(options, collector);
+  api_cb_impl_ = new RocmApiCallbackImpl(options, this, collector);
+  activity_cb_impl_ = new RocmActivityCallbackImpl(options, this, collector);
   EnableApiTracing().IgnoreError();
   EnableActivityTracing().IgnoreError();
   LOG(INFO) << "GpuTracer started";
@@ -916,21 +928,39 @@ Status RocmTracer::DisableActivityTracing() {
     }
   }
 
+#if ROCTRACER_FLUSH_BUG_WORKAROUND
+  // FWIW, having this workaround BEFORE the call to flush (instead of
+  // immediately after it) seems to workout better. In this case, we
+  // rarely see any events getting dropped (as result of HCC activiy
+  // records not showing up), where as if this workaround is done after
+  // the flush call, a few (10s out of 1000s) do get dropped
+
+  // The choice of all of the following is based what seemed to work
+  // best when enabling tracing on a large testcase (BERT)
+  // * 100 ms as the initial sleep duration AND
+  // * 1 as the initial threshold value
+  // * 6 as the maximum number of iterations
+  int duration_ms = 100;
+  size_t threshold = 1;
+  for (int i = 0; i < 6; i++, duration_ms *= 2, threshold *= 2) {
+    VLOG(kRocmTracerVlog1) << "ROCTRACER_FLUSH_BUG_WORKAROUND :"
+                           << " Pending count = "
+                           << GetPendingActivityRecordsCount()
+                           << ", Threshold = " << threshold;
+    if (GetPendingActivityRecordsCount() < threshold) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(duration_ms));
+    VLOG(kRocmTracerVlog1) << "ROCTRACER_FLUSH_BUG_WORKAROUND : slept for "
+                           << duration_ms << " ms";
+  }
+  ClearPendingActivityRecordsCount();
+#endif
+
   // Flush the activity buffer BEFORE setting the activity_tracing_enable_
   // flag to FALSE. This is because the activity record callback routine is
   // gated by the same flag
   VLOG(kRocmTracerVlog1) << "Flushing roctracer activity buffer";
   RETURN_IF_ROCTRACER_ERROR(roctracer_flush_activity());
 
-#if ROCTRACER_FLUSH_BUG_HACK
-  std::this_thread::sleep_for(std::chrono::milliseconds(4000));
-#endif
-
-  // Also it seems that the above call to flush the activity buffer is not
-  // guranteed to be blocking, i.e. it can return before the activity callback
-  // handler has been called (tends to happen, when you run a bunch of tests
-  // concurrently on a node with multiple GPUs, and tracing is enabled for all
-  // of them). do not know how to fix that for now.
   activity_tracing_enabled_ = false;
 
   return Status::OK();
