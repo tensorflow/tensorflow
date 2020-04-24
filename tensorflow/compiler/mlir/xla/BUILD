@@ -500,7 +500,6 @@ cc_library(
     ],
     deps = [
         ":hlo",
-        "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:Transforms",
@@ -531,6 +530,7 @@ cc_library(
 cc_library(
     name = "hlo",
     srcs = [
+        "ir/broadcast_utils.cc",
         "ir/chlo_ops.cc",
         "ir/hlo_ops.cc",
         "ir/hlo_ops.cc.inc",
@@ -538,6 +538,7 @@ cc_library(
         "ir/hlo_utils.cc",
     ],
     hdrs = [
+        "ir/broadcast_utils.h",
         "ir/chlo_ops.h",
         "ir/hlo_ops.h",
         "ir/hlo_utils.h",
@@ -557,6 +558,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",

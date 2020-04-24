@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/xla/ir/broadcast_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/chlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
@@ -64,27 +65,6 @@ struct ConvertTrivialNonBroadcastBinaryOp
   }
 };
 
-// Checks whether the given operand types and broadcast_dims attr represent a
-// legal combination for "numpy" style broadcasting (where 1-dims are prepended
-// to the smaller ranked operand until it is of the same rank as the larger).
-bool IsLegalNumpyRankedBroadcast(RankedTensorType lhs_type,
-                                 RankedTensorType rhs_type,
-                                 DenseIntElementsAttr broadcast_dims) {
-  if (lhs_type.getRank() == rhs_type.getRank()) return true;
-
-  // Otherwise, verify that broadcast_dims strictly performs left-padding.
-  auto smaller_rank = std::min(lhs_type.getRank(), rhs_type.getRank());
-  auto larger_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
-
-  auto expected_extents = llvm::to_vector<4>(
-      llvm::seq<int64_t>(larger_rank - smaller_rank, larger_rank));
-  if (expected_extents.size() != broadcast_dims.getNumElements()) {
-    return false;
-  }
-  return std::equal(expected_extents.begin(), expected_extents.end(),
-                    broadcast_dims.getIntValues().begin());
-}
-
 // Converts a binary op with ranked broadcasting operands to explicitly
 // broadcast and invoke the corresponding xla_hlo non-broadcasting op.
 // Note that dynamic broadcasting supported by this pattern is only valid for
@@ -119,8 +99,7 @@ struct ConvertRankedDynamicBroadcastBinaryOp
     // Check for "numpy"-style rank broadcast.
     auto broadcast_dimensions = op.broadcast_dimensions();
     if (broadcast_dimensions &&
-        !IsLegalNumpyRankedBroadcast(lhs_type, rhs_type,
-                                     *op.broadcast_dimensions())) {
+        !xla::IsLegalNumpyRankedBroadcast(lhs, rhs, *broadcast_dimensions)) {
       // Note: It is unclear whether the general specification of explicit
       // broadcast_dimensions on binary ops is a feature we want to carry
       // forward. While it can technically be implemented for ranked-dynamic,
@@ -136,16 +115,9 @@ struct ConvertRankedDynamicBroadcastBinaryOp
     // Compute result shape.
     auto loc = op.getLoc();
     int64_t result_rank = std::max(lhs_type.getRank(), rhs_type.getRank());
-    auto shape_type = shape::ShapeType::get(rewriter.getContext());
-    Value lhs_shape_v =
-        rewriter.createOrFold<shape::ShapeOfOp>(loc, shape_type, lhs);
-    Value rhs_shape_v =
-        rewriter.createOrFold<shape::ShapeOfOp>(loc, shape_type, rhs);
-    Value result_shape_v = rewriter.createOrFold<shape::BroadcastOp>(
-        loc, shape_type, lhs_shape_v, rhs_shape_v, nullptr /* error */);
-    Value result_extents = rewriter.createOrFold<shape::ToExtentTensorOp>(
-        loc, RankedTensorType::get({result_rank}, rewriter.getIndexType()),
-        result_shape_v);
+    Value result_extents =
+        xla::ComputeBinaryElementwiseBroadcastingResultExtents(loc, lhs, rhs,
+                                                               rewriter);
 
     // Note that we unconditionally emit DynamicBroadcastInDim ops and let
     // downstream canonicalizations fold them away if possible. This is
