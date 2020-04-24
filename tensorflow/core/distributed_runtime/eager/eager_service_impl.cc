@@ -44,8 +44,10 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
@@ -87,6 +89,94 @@ Status GetNumRetvals(tensorflow::EagerContext* context, const string& op_name,
     }
   }
 
+  return Status::OK();
+}
+
+Status GetEagerOperation(const Operation& operation,
+                         EagerContext* eager_context,
+                         EagerExecutor* eager_executor,
+                         EagerOperation* eager_op) {
+  const char* name = operation.name().c_str();  // Shorthand
+  absl::optional<tensorflow::EagerRemoteFunctionParams> remote_func_params =
+      absl::nullopt;
+  if (operation.is_function()) {
+    if (operation.is_component_function()) {
+      remote_func_params = {operation.id(), operation.func_step_id()};
+    } else {
+      remote_func_params = {operation.id(), absl::nullopt};
+    }
+  }
+  TF_RETURN_IF_ERROR(eager_op->Reset(name, operation.device().c_str(), false,
+                                     eager_executor, remote_func_params));
+
+  {
+    profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",
+                               profiler::TraceMeLevel::kVerbose);
+    for (const auto& input : operation.op_inputs()) {
+      tensorflow::TensorHandle* handle;
+      if (input.has_remote_handle()) {
+        TF_RETURN_IF_ERROR(
+            eager_context->RemoteMgr()->DeserializeRemoteTensorHandle(
+                input.remote_handle(), &handle));
+        TF_RETURN_IF_ERROR(eager_op->AddInput(handle));
+      } else {
+        Tensor tensor;
+        if (!ParseTensorProtoToTensor(input.tensor(), &tensor)) {
+          return errors::InvalidArgument("Invalid TensorProto: ",
+                                         input.tensor().DebugString());
+        } else {
+          handle = TensorHandle::CreateLocalHandle(std::move(tensor), nullptr,
+                                                   nullptr, eager_context);
+          TF_RETURN_IF_ERROR(eager_op->AddInput(handle));
+        }
+      }
+      // Unref handle since it has a ref as an input now.
+      handle->Unref();
+    }
+  }
+
+  for (const auto& attr : operation.attrs()) {
+    eager_op->MutableAttrs()->Set(attr.first, attr.second);
+  }
+  return Status::OK();
+}
+
+Status TensorHandleProto(TensorHandle* handle, TensorProto* proto) {
+  const tensorflow::Tensor* t = nullptr;
+  TF_RETURN_IF_ERROR(handle->Tensor(&t));
+  t->AsProtoTensorContent(proto);
+  return Status::OK();
+}
+
+Status TensorHandleShape(TensorHandle* handle, TensorShapeProto* proto) {
+  const tensorflow::Tensor* t = nullptr;
+
+  // TODO(nareshmodi): This call makes async calls sync calls. Fix this.
+  TF_RETURN_IF_ERROR(handle->Tensor(&t));
+
+  t->shape().AsProto(proto);
+
+  return Status::OK();
+}
+
+Status AddOpRetvalsToResponse(
+    EagerContext* eager_context, int op_id, int num_retvals,
+    TensorHandle** retvals, std::function<TensorProto*()> add_tensor_proto_fn,
+    std::function<TensorShapeProto*()> add_shape_proto_fn) {
+  if (op_id == kInvalidRemoteOpId) {
+    // Copy the output tensors back along with the response, since the op id
+    // is invalid which cannot be added to RemoteMgr.
+    for (int i = 0; i < num_retvals; i++) {
+      TF_RETURN_IF_ERROR(TensorHandleProto(retvals[i], add_tensor_proto_fn()));
+      retvals[i]->Unref();
+    }
+  } else {
+    eager_context->RemoteMgr()->AddOperationOutputs(
+        absl::MakeSpan(retvals, num_retvals), op_id);
+    for (int i = 0; i < num_retvals; i++) {
+      TF_RETURN_IF_ERROR(TensorHandleShape(retvals[i], add_shape_proto_fn()));
+    }
+  }
   return Status::OK();
 }
 }  // namespace
@@ -316,72 +406,13 @@ Status EagerServiceImpl::CreateMasterContext(
   return Status::OK();
 }
 
-Status TensorHandleProto(TensorHandle* handle, TensorProto* proto) {
-  const tensorflow::Tensor* t = nullptr;
-  TF_RETURN_IF_ERROR(handle->Tensor(&t));
-  t->AsProtoTensorContent(proto);
-  return Status::OK();
-}
-
-Status TensorHandleShape(TensorHandle* handle, TensorShapeProto* proto) {
-  const tensorflow::Tensor* t = nullptr;
-
-  // TODO(nareshmodi): This call makes async calls sync calls. Fix this.
-  TF_RETURN_IF_ERROR(handle->Tensor(&t));
-
-  t->shape().AsProto(proto);
-
-  return Status::OK();
-}
-
 Status EagerServiceImpl::ExecuteOp(const Operation& operation,
                                    EagerContext* eager_context,
                                    EagerExecutor* eager_executor,
                                    QueueResponse* queue_response) {
-  std::unique_ptr<tensorflow::EagerOperation> op;
-  const char* name = operation.name().c_str();  // Shorthand
-  absl::optional<tensorflow::EagerRemoteFunctionParams> remote_func_params =
-      absl::nullopt;
-  if (operation.is_function()) {
-    if (operation.is_component_function()) {
-      remote_func_params = {operation.id(), operation.func_step_id()};
-    } else {
-      remote_func_params = {operation.id(), absl::nullopt};
-    }
-  }
-  op.reset(new tensorflow::EagerOperation(eager_context));
-  TF_RETURN_IF_ERROR(op->Reset(name, operation.device().c_str(), false,
-                               eager_executor, remote_func_params));
-
-  {
-    profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",
-                               profiler::TraceMeLevel::kVerbose);
-    for (const auto& input : operation.op_inputs()) {
-      tensorflow::TensorHandle* handle;
-      if (input.has_remote_handle()) {
-        TF_RETURN_IF_ERROR(
-            eager_context->RemoteMgr()->DeserializeRemoteTensorHandle(
-                input.remote_handle(), &handle));
-        TF_RETURN_IF_ERROR(op->AddInput(handle));
-      } else {
-        Tensor tensor;
-        if (!ParseTensorProtoToTensor(input.tensor(), &tensor)) {
-          return errors::InvalidArgument("Invalid TensorProto: ",
-                                         input.tensor().DebugString());
-        } else {
-          handle = TensorHandle::CreateLocalHandle(std::move(tensor), nullptr,
-                                                   nullptr, eager_context);
-          TF_RETURN_IF_ERROR(op->AddInput(handle));
-        }
-      }
-      // Unref handle since it has a ref as an input now.
-      handle->Unref();
-    }
-  }
-
-  for (const auto& attr : operation.attrs()) {
-    op->MutableAttrs()->Set(attr.first, attr.second);
-  }
+  tensorflow::EagerOperation op(eager_context);
+  TF_RETURN_IF_ERROR(
+      GetEagerOperation(operation, eager_context, eager_executor, &op));
 
   int num_retvals = 0;
   // TODO(nareshmodi): Consider caching this.
@@ -390,26 +421,12 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
 
   absl::FixedArray<tensorflow::TensorHandle*> retvals(num_retvals);
   VLOG(3) << "ServerContext: Calling EagerExecute for op " << operation.id();
-  TF_RETURN_IF_ERROR(EagerExecute(op.get(), retvals.data(), &num_retvals));
+  TF_RETURN_IF_ERROR(EagerExecute(&op, retvals.data(), &num_retvals));
 
-  if (operation.id() == kInvalidRemoteOpId) {
-    // Copy the output tensors back along with the response, since the op id
-    // is invalid which cannot be added to RemoteMgr.
-    for (int i = 0; i < num_retvals; i++) {
-      TF_RETURN_IF_ERROR(
-          TensorHandleProto(retvals[i], queue_response->add_tensor()));
-      retvals[i]->Unref();
-    }
-  } else {
-    eager_context->RemoteMgr()->AddOperationOutputs(
-        absl::MakeSpan(retvals.data(), num_retvals), operation.id());
-    for (int i = 0; i < num_retvals; i++) {
-      TF_RETURN_IF_ERROR(
-          TensorHandleShape(retvals[i], queue_response->add_shape()));
-    }
-  }
-
-  return Status::OK();
+  return AddOpRetvalsToResponse(
+      eager_context, operation.id(), num_retvals, retvals.data(),
+      [queue_response] { return queue_response->add_tensor(); },
+      [queue_response] { return queue_response->add_shape(); });
 }
 
 Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
