@@ -237,6 +237,14 @@ class TFL_TFTypesWithSameBits<int i, int j, int num> :
     Or<[CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isa<mlir::TF::Quint" # num # "Type>()">,
         CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isUnsignedInteger(" # num # ")">]>]>;
 
+class TFL_OperandIsNoneOrHasRankLessThanOrEqualTo<int n, int m> :
+  PredOpTrait<"operand " # n # " is at most " # m # "-D",
+    Or<[
+      CPred<"$_op.getOperand(" # n # ").getType().isa<NoneType>()">,
+      TFL_OperandIsUnrankedPred<n>,
+      CPred<"$_op.getOperand(" # n #
+      ").getType().cast<ShapedType>().getRank() <= " # m>]>>;
+
 class TFL_OperandHasRankLessThanOrEqualTo<int n, int m> :
   PredOpTrait<"operand " # n # " is at most " # m # "-D",
     Or<[TFL_OperandIsUnrankedPred<n>,
@@ -496,7 +504,7 @@ def TFL_Convolution2DTransposeBiasOp :
     NoSideEffect,
     TFL_OperandHasRank<0, 4>,
     TFL_OperandHasRank<1, 4>,
-    TFL_OperandHasRankLessThanOrEqualTo<2, 1>
+    TFL_OperandIsNoneOrHasRankLessThanOrEqualTo<2, 1>
   ]> {
   let summary = " Transpose convolution with bias operator";
 
