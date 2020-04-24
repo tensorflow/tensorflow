@@ -22,6 +22,8 @@ limitations under the License.
 #include <cinttypes>
 
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/micro/memory_helpers.h"
+
 namespace tflite {
 namespace {
 
@@ -99,6 +101,35 @@ const char* AllocTypeName(TfLiteAllocationType type) {
   return "(invalid)";
 }
 }  // namespace
+
+// Helper function to print model flatbuffer data. This function is not called
+// by default. Hence it's not linked in to the final binary code.
+void PrintModelData(const Model* model, ErrorReporter* error_reporter) {
+  auto* subgraphs = model->subgraphs();
+  const SubGraph* subgraph = (*subgraphs)[0];
+  const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors =
+    subgraph->tensors();
+  const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
+    model->buffers();
+  TF_LITE_REPORT_ERROR(error_reporter, "==== Model info: =====");
+  for (int i = 0; i < tensors->size(); ++i) {
+    const tflite::Tensor& flatbuffer_tensor = *tensors->Get(i);
+    auto* quantization = flatbuffer_tensor.quantization();
+    size_t type_size, tensor_size;
+    auto* buffer = (*buffers)[flatbuffer_tensor.buffer()];
+    auto* array = buffer->data();
+    int array_size = 0;
+    if (array) {
+      array_size = array->size();
+    }
+    BytesRequiredForTensor(flatbuffer_tensor, &tensor_size, &type_size,
+                           error_reporter);
+    TF_LITE_REPORT_ERROR(
+      error_reporter,
+      "Tensor index: %d arena tensor %d size %d ",
+      i, !array_size && !flatbuffer_tensor.is_variable(), tensor_size);
+  }
+}
 
 // Prints a dump of what tensors and what nodes are in the interpreter.
 void PrintInterpreterState(MicroInterpreter* interpreter) {

@@ -144,8 +144,10 @@ class GreedyMemoryPlanner : public MemoryPlanner {
   int* buffer_sizes_sorted_;
   int* buffer_ids_sorted_;
   ListEntry* buffers_sorted_by_offset_;
-  int next_free_entry_;
-  int first_entry_index_;
+  int next_free_entry_; // Index of the next free entry of
+                        // buffers_sorted_by_offset_
+  int first_entry_index_; // Index of the first entry (smallest offset) of
+                          // buffers_sorted_by_offset_
 
   // Stores the outcome of the plan, the location of each buffer in the arena.
   int* buffer_offsets_;

@@ -45,6 +45,8 @@ struct AllocationInfo {
 // requirement for SIMD extensions.
 constexpr int kBufferAlignment = 16;
 
+constexpr char kOfflineMemAllocMetadata[] = "OfflineMemoryAllocation";
+
 class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
  public:
   explicit MicroBuiltinDataAllocator(SimpleMemoryAllocator* memory_allocator)
@@ -81,33 +83,6 @@ TfLiteStatus AllocateVariables(
   return kTfLiteOk;
 }
 
-// Helper function to print model flatbuffer data. This function is not called
-// by default. Hence it's not linked in to the final binary code.
-void PrintModelData(const Model* model, ErrorReporter* error_reporter) {
-  auto* subgraphs = model->subgraphs();
-  const SubGraph* subgraph = (*subgraphs)[0];
-  const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors =
-      subgraph->tensors();
-  const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
-      model->buffers();
-  TF_LITE_REPORT_ERROR(error_reporter, "==== Model info: =====");
-  for (int i = 0; i < tensors->size(); ++i) {
-    const tflite::Tensor& flatbuffer_tensor = *tensors->Get(i);
-    auto* quantization = flatbuffer_tensor.quantization();
-    size_t type_size, tensor_size;
-    auto* buffer = (*buffers)[flatbuffer_tensor.buffer()];
-    auto* array = buffer->data();
-    int array_size = 0;
-    if (array) {
-      array_size = array->size();
-    }
-    BytesRequiredForTensor(flatbuffer_tensor, &tensor_size, &type_size,
-                           error_reporter);
-    TF_LITE_REPORT_ERROR(
-        error_reporter, "Tensor index: %d arena tensor %d size %d", i,
-        !array_size && !flatbuffer_tensor.is_variable(), tensor_size);
-  }
-}
 
 // Helper function to check flatbuffer metadata correctness. This function is
 // not called by default. Hence it's not linked in to the final binary code.
@@ -116,8 +91,8 @@ TfLiteStatus CheckOfflinePlannedOffsets(const Model* model,
   if (model->metadata()) {
     for (int i = 0; i < model->metadata()->size(); ++i) {
       auto metadata = model->metadata()->Get(i);
-      if (strncmp(metadata->name()->c_str(), "OfflineMemoryAllocation",
-                  strlen("OfflineMemoryAllocation")) == 0) {
+      if (strncmp(metadata->name()->c_str(), kOfflineMemAllocMetadata,
+                  strlen(kOfflineMemAllocMetadata)) == 0) {
         auto* subgraphs = model->subgraphs();
         const SubGraph* subgraph = (*subgraphs)[0];
         const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors =
@@ -311,8 +286,9 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
 // |    name:string     | “OfflineMemoryAllocation”                            |
 // |    buffer:unit     | Index of buffer containing memory allocation data    |
 //
-// The buffer contents for the memory allocation is a list of 32-bit integers of
-// the following format:
+// The buffer contents for the memory allocation is a list of 32-bit integers.
+// The number of tensors, n, must be equal to the number of tensors defined in
+// the model. The following encoding applies:
 //
 // |  Offset |                            Value                                |
 // |    0    | Offline allocation format version – set to 0                    |
@@ -326,8 +302,8 @@ TfLiteStatus AllocationInfoBuilder::GetOfflinePlannedOffsets(
   if (model->metadata()) {
     for (int i = 0; i < model->metadata()->size(); ++i) {
       auto metadata = model->metadata()->Get(i);
-      if (strncmp(metadata->name()->c_str(), "OfflineMemoryAllocation",
-                  strlen("OfflineMemoryAllocation")) == 0) {
+      if (strncmp(metadata->name()->c_str(), kOfflineMemAllocMetadata,
+                  strlen(kOfflineMemAllocMetadata)) == 0) {
         const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
             model->buffers();
         auto* buffer = (*buffers)[metadata->buffer()];
@@ -365,7 +341,8 @@ TfLiteStatus AllocationInfoBuilder::AddScratchBuffers(
   return kTfLiteOk;
 }
 
-TfLiteStatus CreatePlan(ErrorReporter* error_reporter, MemoryPlanner* planner,
+TfLiteStatus CreatePlan(ErrorReporter* error_reporter,
+                        GreedyMemoryPlanner* planner,
                         const AllocationInfo* allocation_info,
                         size_t allocation_info_size) {
   // Add the tensors to our allocation plan.
@@ -380,10 +357,9 @@ TfLiteStatus CreatePlan(ErrorReporter* error_reporter, MemoryPlanner* planner,
                                current->first_created, current->last_used));
       } else {
         TF_LITE_ENSURE_STATUS(
-            (static_cast<GreedyMemoryPlanner*>(planner))
-                ->AddBuffer(error_reporter, aligned_bytes_required,
-                            current->first_created, current->last_used,
-                            current->offline_offset));
+            planner->AddBuffer(error_reporter, aligned_bytes_required,
+                               current->first_created, current->last_used,
+                               current->offline_offset));
       }
     }
   }
