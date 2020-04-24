@@ -292,8 +292,15 @@ class TF_DerivedOperandShapeListAttr<int idx> : DerivedAttr<
   "auto values = getODSOperands(" # idx # ");\n"
   "return {mlir::TF::OperandShapeIterator(values.begin()), "
           "mlir::TF::OperandShapeIterator(values.end())};",
-  // TODO(jpienaar): Update post TensorShapeAttr landing.
-  [{ nullptr }]
+  [{
+    ArrayAttr::get(
+      [&](){
+        llvm::SmallVector<Attribute, 4> ret;
+        for (auto shape : $_self)
+          ret.push_back(mlir::TF::ShapeAttr::get($_ctx, shape));
+        return ret;
+      }(), $_ctx)
+  }]
 >;
 
 // A derived attribute that returns the size of `idx`-th ODS-declared variadic
@@ -341,8 +348,15 @@ class TF_DerivedResultShapeListAttr<int idx> : DerivedAttr<
   "auto values = getODSResults(" # idx # ");\n"
   "return {mlir::TF::ResultShapeIterator(values.begin()), "
           "mlir::TF::ResultShapeIterator(values.end())};",
-  // TODO(jpienaar): Update post TensorShapeAttr landing.
-  [{ nullptr }]
+  [{
+    ArrayAttr::get(
+      [&](){
+        llvm::SmallVector<Attribute, 4> ret;
+        for (auto shape : $_self)
+          ret.push_back(mlir::TF::ShapeAttr::get($_ctx, shape));
+        return ret;
+      }(), $_ctx)
+  }]
 >;
 
 // A derived attribute that returns the shape of the first result type.
