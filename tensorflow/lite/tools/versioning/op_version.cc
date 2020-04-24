@@ -28,6 +28,8 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+static const auto kTensorTypeNone = static_cast<::tflite::TensorType>(-1);
+
 // Get the number of dimensions of a tensor with idx of an operator op.
 inline int GetNumDims(const SubGraph* subgraph, const Operator* op, int idx) {
   return subgraph->tensors()->Get(op->inputs()->Get(idx))->shape()->size();
@@ -197,16 +199,17 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
-    case BuiltinOperator_TRANSPOSE_CONV:
-      // If the op has 4 inputs, it is version 3.
-      if (op_sig.input_types.size() == 4) {
+    case BuiltinOperator_TRANSPOSE_CONV: {
+      if (op_sig.input_types.size() == 4 &&
+          op_sig.input_types.at(3) != kTensorTypeNone) {
         return 3;
       }
       // If the op takes int8 input, it is version 2.
-      if (op_sig.input_types.at(0) == TensorType_INT8) {
+      if (op_sig.input_types.at(1) == TensorType_INT8) {
         return 2;
       }
       return 1;
+    }
 
     case BuiltinOperator_LSTM:
       // If the input tensor is float and a weight is int8, this is a version
@@ -462,10 +465,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 }
 
 TensorType GetTensorType(int32_t idx, const SubGraph* subgraph) {
-  const auto& none_type = static_cast<::tflite::TensorType>(-1);
   if (idx == -1)
     // For optional input/output, return none type directly.
-    return none_type;
+    return kTensorTypeNone;
 
   // Some tests have a graph with invalid tensor index.
   TFLITE_DCHECK_GE(idx, 0);
@@ -473,7 +475,7 @@ TensorType GetTensorType(int32_t idx, const SubGraph* subgraph) {
     return subgraph->tensors()->Get(idx)->type();
   }
   LOG(ERROR) << "Can't access tenor " << idx;
-  return none_type;
+  return kTensorTypeNone;
 }
 
 // Generate OpSignature with the given OperatorCode, Operator and Tensors (from
