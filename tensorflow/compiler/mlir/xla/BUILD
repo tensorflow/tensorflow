@@ -511,6 +511,7 @@ cc_library(
     srcs = [
         "transforms/chlo_legalize_to_hlo_pass.cc",
         "transforms/materialize_broadcasts_pass.cc",
+        "transforms/test_infer_shaped_type_pass.cc",
         "transforms/unfuse_batch_norm_pass.cc",
     ],
     deps = [
@@ -519,6 +520,7 @@ cc_library(
         ":xla_materialize_broadcasts",  # build-cleaner: keep
         ":xla_unfuse_batch_norm",  # build-cleaner: keep
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
