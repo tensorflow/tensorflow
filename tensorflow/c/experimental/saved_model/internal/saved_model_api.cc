@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/c/experimental/saved_model/public/saved_model_api.h"
 
+#include <memory>
+#include <string>
+#include <unordered_set>
+
+#include "absl/types/optional.h"
+#include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
 #include "tensorflow/c/experimental/saved_model/internal/concrete_function_list_type.h"
 #include "tensorflow/c/experimental/saved_model/internal/concrete_function_type.h"
@@ -26,11 +32,26 @@ limitations under the License.
 extern "C" {
 
 TF_SavedModel* TF_LoadSavedModel(const char* dirname, TFE_Context* ctx,
-                                 const char* const* tags, int tags_len,
+                                 const char* const* const* tags, int tags_len,
                                  TF_Status* status) {
-  // TODO(bmzhao): Add a virtual "LoadSavedModel" method to
-  // AbstractContextInterface, and call it here.
-  return nullptr;
+  std::string saved_model_dir(dirname);
+
+  absl::optional<std::unordered_set<std::string>> optional_tag_set;
+  if (tags != nullptr) {
+    std::unordered_set<std::string> tagset;
+    for (int i = 0; i < tags_len; ++i) {
+      tagset.insert(std::string((*tags)[i]));
+    }
+    optional_tag_set = std::move(tagset);
+  }
+
+  std::unique_ptr<tensorflow::SavedModelAPI> result =
+      ctx->context->LoadSavedModelAPI(dirname, optional_tag_set,
+                                      &status->status);
+  if (!status->status.ok()) {
+    return nullptr;
+  }
+  return new TF_SavedModel{std::move(result)};
 }
 
 void TF_DeleteSavedModel(TF_SavedModel* model) { delete model; }
@@ -61,7 +82,7 @@ TF_CAPI_EXPORT extern TF_ConcreteFunction* TF_GetSavedModelSignatureDefFunction(
 }
 
 TF_ConcreteFunctionList* TF_ListSavedModelFunctions(TF_SavedModel* model) {
-  return tensorflow::wrap(&model->saved_model->ListFunctions());
+  return new TF_ConcreteFunctionList{model->saved_model->ListFunctions()};
 }
 
 }  // end extern "C"

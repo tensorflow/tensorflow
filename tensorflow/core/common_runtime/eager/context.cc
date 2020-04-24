@@ -31,6 +31,8 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/c/eager/operation_interface.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
+#include "tensorflow/c/experimental/saved_model/core/tf_saved_model_impl.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
@@ -164,6 +166,19 @@ AbstractTensorInterface* EagerContext::CreateBoolScalar(bool value) {
 AbstractTensorInterface* EagerContext::CreateTensor(
     DataType dtype, absl::Span<const int64> dim_sizes) {
   return new TensorInterface(Tensor(dtype, TensorShape(dim_sizes)));
+}
+
+std::unique_ptr<SavedModelAPI> EagerContext::LoadSavedModelAPI(
+    const std::string& directory,
+    const absl::optional<std::unordered_set<std::string>>& tags,
+    tensorflow::Status* status) {
+  auto result = std::make_unique<TFSavedModelAPIImpl>();
+  auto load_status = TFSavedModelAPIImpl::Load(directory, tags, result.get());
+  if (!load_status.ok()) {
+    status->Update(load_status);
+    result.reset();
+  }
+  return result;
 }
 
 void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
