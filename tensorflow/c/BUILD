@@ -121,6 +121,7 @@ cc_library(
 cc_library(
     name = "c_api_macros",
     hdrs = ["c_api_macros.h"],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
 )
 

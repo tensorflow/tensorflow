@@ -12,7 +12,11 @@
 # Note(bmzhao): All *type.h files in this directory are the internal definitions of
 # the opaque C types. These headers should only be visible to internal tensorflow
 # implementors.
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+    "tf_copts",
+)
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -33,6 +37,7 @@ cc_library(
     hdrs = [
         "//tensorflow/c/experimental/saved_model/public:concrete_function.h",
     ],
+    copts = tf_copts(),
     # TODO(bmzhao): Remove this as we refactor C API to granular targets,
     # so that we can depend on c/eager/c_api_unified_experimental.h.
     features = ["-layering_check"],
@@ -59,6 +64,7 @@ cc_library(
     hdrs = [
         "//tensorflow/c/experimental/saved_model/public:concrete_function_list.h",
     ],
+    copts = tf_copts(),
     visibility = [
         "//tensorflow/c/experimental/saved_model/public:__pkg__",
     ],
@@ -100,6 +106,7 @@ cc_library(
     hdrs = [
         "//tensorflow/c/experimental/saved_model/public:function_metadata.h",
     ],
+    copts = tf_copts(),
     visibility = [
         "//tensorflow/c/experimental/saved_model/public:__pkg__",
     ],
@@ -129,6 +136,7 @@ cc_library(
     hdrs = [
         "//tensorflow/c/experimental/saved_model/public:saved_model_api.h",
     ],
+    copts = tf_copts(),
     visibility = [
         "//tensorflow/c/experimental/saved_model/public:__pkg__",
     ],
