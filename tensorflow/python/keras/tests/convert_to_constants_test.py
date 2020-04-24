@@ -127,8 +127,6 @@ class VariablesToConstantsTest(test.TestCase):
   @test_util.run_v2_only
   def testKerasLSTM(self):
     """Test a Keras LSTM containing dynamic_rnn ops."""
-    if test.is_built_with_rocm():
-      return #this test fails randomly on ROCm
     input_data = {
         "x":
             constant_op.constant(
