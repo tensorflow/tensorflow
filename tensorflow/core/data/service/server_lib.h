@@ -28,10 +28,10 @@ namespace data {
 class GrpcMasterImpl;
 class GrpcWorkerImpl;
 
-// A grpc server for the dataset service.
+// A grpc server for the tf.data service.
 class GrpcDataServerBase {
  public:
-  // Constructs a dataset server with the specified port. If the port is 0, the
+  // Constructs a tf.data server with the specified port. If the port is 0, the
   // server will find an available port in `Start()`. The chosen port can be
   // found in the output of `Target()`.
   //
@@ -48,8 +48,8 @@ class GrpcDataServerBase {
   // Blocks until the server stops.
   void Join();
 
-  // Returns the target string for the server. Only valid after calling Start().
-  std::string Target();
+  // Returns the port bound by the server. Only valid after calling Start().
+  int BoundPort();
 
  protected:
   virtual void AddServiceToBuilder(::grpc::ServerBuilder* builder) = 0;
@@ -88,7 +88,8 @@ class MasterGrpcDataServer : public GrpcDataServerBase {
 class WorkerGrpcDataServer : public GrpcDataServerBase {
  public:
   WorkerGrpcDataServer(int requested_port, const std::string& protocol,
-                       const std::string& master_address);
+                       const std::string& master_address,
+                       const std::string& worker_address);
   ~WorkerGrpcDataServer() override;
 
  protected:
@@ -97,15 +98,31 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
 
  private:
   const std::string master_address_;
+  const std::string worker_address_;
   // Owned. We use a raw pointer because GrpcWorkerImpl is forward-declared.
   GrpcWorkerImpl* service_;
 };
 
-// Creates a master dataset server and stores it in `*out_server`.
+// Creates a master tf.data server and stores it in `*out_server`.
 Status NewMasterServer(int port, const std::string& protocol,
                        std::unique_ptr<MasterGrpcDataServer>* out_server);
 
-// Creates a worker dataset server and stores it in `*out_server`.
+// Creates a worker tf.data server and stores it in `*out_server`.
+//
+// The port can be a specific port or 0. If the port is 0, an available port
+// will be chosen in Start(). This value can be queried with BoundPort().
+//
+// The worker_address argument is optional. If left empty, it will default to
+// "localhost:%port%". When the worker registers with the master, the worker
+// will report the worker address, so that the master can tell clients where to
+// read from. The address may contain the placeholder "%port%", which will be
+// replaced with the value of BoundPort().
+Status NewWorkerServer(int port, const std::string& protocol,
+                       const std::string& master_address,
+                       const std::string& worker_address,
+                       std::unique_ptr<WorkerGrpcDataServer>* out_server);
+
+// Creates a worker using the default worker_address.
 Status NewWorkerServer(int port, const std::string& protocol,
                        const std::string& master_address,
                        std::unique_ptr<WorkerGrpcDataServer>* out_server);
