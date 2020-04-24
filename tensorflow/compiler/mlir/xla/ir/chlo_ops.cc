@@ -162,6 +162,20 @@ LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
 
 }  // namespace
 
+#define BROADCAST_INFER_SHAPE_TYPE_OP_DEFS(Op)                                \
+  LogicalResult Op::inferReturnTypeComponents(                                \
+      MLIRContext* context, Optional<Location> location, ValueRange operands, \
+      ArrayRef<NamedAttribute> attributes, RegionRange regions,               \
+      SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {           \
+    return InferBroadcastBinaryOpReturnTypeComponents(                        \
+        context, location, operands, attributes, inferedReturnShapes);        \
+  }                                                                           \
+  LogicalResult Op::reifyReturnTypeShapes(                                    \
+      OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {      \
+    return ReifyBroadcastBinaryOpReturnTypeShapes(builder, getOperation(),    \
+                                                  reifiedReturnShapes);       \
+  }
+
 #define BROADCAST_BINARY_OP_DEFS(Op)                                           \
   void Op::build(Builder* builder, OperationState& result, Value left,         \
                  Value right, DenseIntElementsAttr broadcast_dimensions) {     \
@@ -171,18 +185,7 @@ LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
     return Op::build(builder, result, type, left, right,                       \
                      broadcast_dimensions);                                    \
   }                                                                            \
-  LogicalResult Op::inferReturnTypeComponents(                                 \
-      MLIRContext* context, Optional<Location> location, ValueRange operands,  \
-      ArrayRef<NamedAttribute> attributes, RegionRange regions,                \
-      SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {            \
-    return InferBroadcastBinaryOpReturnTypeComponents(                         \
-        context, location, operands, attributes, inferedReturnShapes);         \
-  }                                                                            \
-  LogicalResult Op::reifyReturnTypeShapes(                                     \
-      OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {       \
-    return ReifyBroadcastBinaryOpReturnTypeShapes(builder, getOperation(),     \
-                                                  reifiedReturnShapes);        \
-  }
+  BROADCAST_INFER_SHAPE_TYPE_OP_DEFS(Op)
 
 BROADCAST_BINARY_OP_DEFS(BroadcastAddOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastAndOp);
@@ -200,6 +203,11 @@ BROADCAST_BINARY_OP_DEFS(BroadcastShiftRightLogicalOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastSubOp);
 BROADCAST_BINARY_OP_DEFS(BroadcastXorOp);
 
+// These only have the common shape inference defs but non-standard builders.
+BROADCAST_INFER_SHAPE_TYPE_OP_DEFS(BroadcastCompareOp);
+BROADCAST_INFER_SHAPE_TYPE_OP_DEFS(BroadcastComplexOp);
+
+#undef BROADCAST_INFER_SHAPE_TYPE_OP_DEFS
 #undef BROADCAST_BINARY_OP_DEFS
 
 #define GET_OP_CLASSES

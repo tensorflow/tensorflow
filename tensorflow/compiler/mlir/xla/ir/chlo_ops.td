@@ -315,4 +315,51 @@ def HLOClient_BroadcastXorOp : HLOClient_BroadcastBinaryLogicalElementwiseOp<
   }];
 }
 
+//===----------------------------------------------------------------------===//
+// Broadcasting complex op
+//===----------------------------------------------------------------------===//
+
+def HLOClient_BroadcastComplexOp : HLOClient_BroadcastBinaryElementwiseOp<
+    "broadcast_complex", [NoSideEffect]> {
+  string summary = "Complex operator (with optional broadcasting)";
+
+  string description = [{
+    Performs element-wise conversion of a pair of real and imaginary values to
+    a complex value.
+  }];
+
+  let arguments = (ins
+    HLO_FpTensor:$lhs,
+    HLO_FpTensor:$rhs,
+    // Explicit rank-broadcast dimension mappings. Defaults to "numpy" prefix
+    // padded rank-broadcast semantics if omitted.
+    OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
+  );
+  let results = (outs HLO_ComplexTensor);
+}
+
+//===----------------------------------------------------------------------===//
+// Broadcasting compare op
+//===----------------------------------------------------------------------===//
+
+def HLOClient_BroadcastCompareOp : HLOClient_BroadcastBinaryElementwiseOp<
+    "broadcast_compare", [NoSideEffect]> {
+  string summary = "Compare operator (with optional broadcasting)";
+
+  string description = [{
+    Compares `lhs` and `rhs` elementwise according to `comparison_direction`.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_comparison_operations.
+  }];
+
+  let arguments = (ins
+    HLO_Tensor:$lhs,
+    HLO_Tensor:$rhs,
+    OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions,
+    HLO_ComparisonDirectionAttr:$comparison_direction
+  );
+  let results = (outs HLO_PredTensor);
+}
+
 #endif  // CHLO_OPS
