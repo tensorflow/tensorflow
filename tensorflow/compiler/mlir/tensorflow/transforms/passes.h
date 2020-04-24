@@ -256,6 +256,10 @@ std::unique_ptr<OperationPass<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
 // run-time according to compilation result.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();
 
+// Creates a pass that extract outside compilation (CPU ops inside TPU cluster)
+// ops to a separate parallel_execute region to run on CPU.
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUExtractOutsideCompilationPass();
+
 // Populates the supplied passmanager with the passes required to run the
 void CreateTPUBridgePipeline(OpPassManager& pm);
 
