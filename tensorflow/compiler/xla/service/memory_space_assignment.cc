@@ -2278,7 +2278,10 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
 
   BufferIntervalTree interval_tree;
   absl::flat_hash_set<int64> seen_buffers;
-  std::map<std::pair<int64, int64>,
+  // The key for events is: time, is_free, value_id. This is so that the events
+  // are sorted first by time, then within the same time, allocations are sorted
+  // earlier than frees, and finally the value id as a tie breaker.
+  std::map<std::tuple<int64, bool, int64>,
            std::tuple<const HloValue*, Chunk, HeapSimulatorTrace::Event::Kind>>
       events;
 
@@ -2317,9 +2320,10 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
     for (const HloValue* value : buffer.values()) {
       const HloLiveRange::TimeBound& time_bound =
           hlo_live_range->buffer_live_ranges().at(value);
-      events[std::make_pair(time_bound.start, value->id())] =
+      events[std::make_tuple(time_bound.start, /*is_free=*/false,
+                             value->id())] =
           std::make_tuple(value, chunk, HeapSimulatorTrace::Event::ALLOC);
-      events[std::make_pair(time_bound.end, value->id())] =
+      events[std::make_tuple(time_bound.end, /*is_free=*/true, value->id())] =
           std::make_tuple(value, chunk, HeapSimulatorTrace::Event::FREE);
 
       VLOG(3) << " buffer: " << buffer.ToString()
@@ -2354,8 +2358,10 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
   int64 memory_usage = 0;
   int64 max_memory_usage = 0;
   for (const auto& event : events) {
-    int64 time = event.first.first;
-    int64 buffer_id = event.first.second;
+    int64 time;
+    bool is_free;
+    int64 buffer_id;
+    std::tie(time, is_free, buffer_id) = event.first;
     const HloValue* value;
     Chunk chunk;
     HeapSimulatorTrace::Event::Kind kind;
