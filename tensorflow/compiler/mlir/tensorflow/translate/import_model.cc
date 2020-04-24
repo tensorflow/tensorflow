@@ -3065,6 +3065,7 @@ StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphImporter::Convert(
 
   GraphImportConfig specs;
   specs.prune_unused_nodes = true;
+  specs.enable_shape_inference = false;
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
