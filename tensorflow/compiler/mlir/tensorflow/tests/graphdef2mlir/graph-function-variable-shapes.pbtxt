@@ -1,4 +1,7 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=true %s -o - | FileCheck %s --dump-input-on-failure
+
+# TODO(jpienaar): No op's shape gets inferred without shape inference
+# enabled, so will remove this test when the import options gets removed.
 
 # Verify that the _output_shapes attribute of ReadVariableOp's are used to get
 # variable types.
