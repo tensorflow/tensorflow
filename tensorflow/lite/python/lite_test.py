@@ -462,7 +462,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                       3] == input_details[0]['shape_signature']).all())
 
     output_details = interpreter.get_output_details()
-    self.assertTrue(([1, 16, 16,
+    self.assertTrue(([1, -1, 16,
                       3] == output_details[0]['shape_signature']).all())
 
   def testBatchSizeValid(self):

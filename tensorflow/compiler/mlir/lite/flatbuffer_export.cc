@@ -599,23 +599,22 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
 
   std::vector<int32_t> shape;
   std::vector<int32_t> shape_signature;
+  auto* inst = value.getDefiningOp();
   if (type.hasStaticShape()) {
     llvm::ArrayRef<int64_t> shape_ref = type.getShape();
     if (mlir::failed(check_shape(shape_ref))) return llvm::None;
 
     shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
-  } else if (auto* inst = value.getDefiningOp()) {
-    if (IsConst(inst)) {
-      // Const op can have a result of dynamic shaped type (e.g. due to constant
-      // folding), but we can still derive the shape of a constant tensor for
-      // its attribute type.
-      mlir::Attribute tensor_attr = inst->getAttr("value");
-      llvm::ArrayRef<int64_t> shape_ref =
-          tensor_attr.getType().cast<TensorType>().getShape();
-      if (mlir::failed(check_shape(shape_ref))) return llvm::None;
+  } else if (inst && IsConst(inst)) {
+    // Const op can have a result of dynamic shaped type (e.g. due to constant
+    // folding), but we can still derive the shape of a constant tensor for
+    // its attribute type.
+    mlir::Attribute tensor_attr = inst->getAttr("value");
+    llvm::ArrayRef<int64_t> shape_ref =
+        tensor_attr.getType().cast<TensorType>().getShape();
+    if (mlir::failed(check_shape(shape_ref))) return llvm::None;
 
-      shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
-    }
+    shape = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
   } else if (type.hasRank()) {
     llvm::ArrayRef<int64_t> shape_ref = type.getShape();
     if (mlir::failed(check_shape(shape_ref))) return llvm::None;
@@ -627,7 +626,7 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     shape_signature = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
   }
 
-  if (auto* inst = value.getDefiningOp()) {
+  if (inst) {
     if (auto cst = dyn_cast<tfl::SparseConstOp>(inst)) {
       // CreateSparsityParameters(cst.s_param());
     } else if (auto cst = dyn_cast<tfl::SparseQConstOp>(inst)) {
