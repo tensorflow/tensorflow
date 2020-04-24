@@ -405,12 +405,12 @@ class OpArgIterator {
 
   OpArgIterator(const ListType* list, int i) : list_(list), i_(i) {}
 
-  bool operator==(const OpArgIterator& rhs) {
+  bool operator==(const OpArgIterator& rhs) const {
     DCHECK(list_ == rhs.list_);
     return i_ == rhs.i_;
   }
 
-  bool operator!=(const OpArgIterator& rhs) {
+  bool operator!=(const OpArgIterator& rhs) const {
     DCHECK(list_ == rhs.list_);
     return i_ != rhs.i_;
   }
