@@ -1724,6 +1724,20 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               'strategy scope.' % (metric, strategy)
           )
 
+    # Model metrics must be created in the same distribution strategy scope
+    # as the model.
+    for opt in nest.flatten(optimizer):
+      for v in getattr(opt, '_weights', []):
+        if not strategy.extended.variable_created_in_scope(v):
+          raise ValueError(
+              'Optimizer (%s) passed to model.compile was created inside of a '
+              'different distribution strategy scope than the model. All '
+              'optimizers must be created in the same distribution strategy '
+              'scope as the model (in this case %s). If you pass in a string '
+              'identifier for an optimizer to compile the optimizer will '
+              'automatically be created in the correct distribution '
+              'strategy scope.' % (opt, strategy))
+
   def _maybe_load_initial_epoch_from_ckpt(self, initial_epoch):
     """Maybe load initial epoch from ckpt considering possible worker recovery.
 
