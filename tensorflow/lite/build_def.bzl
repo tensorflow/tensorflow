@@ -336,6 +336,7 @@ def generated_test_models():
         "rfft2d",
         "round",
         "rsqrt",
+        "scatter_nd",
         "shape",
         "sigmoid",
         "sin",
