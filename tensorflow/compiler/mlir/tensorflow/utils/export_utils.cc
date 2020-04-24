@@ -385,7 +385,7 @@ Status ConvertAttributes(
         TF_RETURN_IF_ERROR(
             ConvertAttribute(attr.cast<mlir::ArrayAttr>(), &value));
         break;
-      case mlir::StandardAttributes::DenseElements:
+      case mlir::StandardAttributes::DenseIntOrFPElements:
       case mlir::StandardAttributes::OpaqueElements:
         TF_RETURN_IF_ERROR(
             ConvertAttribute(attr.cast<mlir::ElementsAttr>(), &value));
