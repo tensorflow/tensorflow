@@ -77,17 +77,9 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_repositories(path_prefix, tf_repo_name)
     tf_bind()
 
-# Toolchains & platforms required by Tensorflow to build.
-def tf_toolchains():
-    native.register_execution_platforms("@local_execution_config_platform//:platform")
-    native.register_toolchains("@local_execution_config_python//:py_toolchain")
-
 # Define all external repositories required by TensorFlow
 def tf_repositories(path_prefix = "", tf_repo_name = ""):
     """All external dependencies for TF builds."""
-
-    # Initialize toolchains and platforms.
-    tf_toolchains()
 
     # Loads all external repos to configure RBE builds.
     initialize_rbe_configs()
