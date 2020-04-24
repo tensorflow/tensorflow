@@ -202,7 +202,9 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   // Specify a executor for this thread.
   void SetExecutorForThread(EagerExecutor* executor);
 
-  const std::vector<DeviceType>& prioritized_device_type_list() const {
+  const std::shared_ptr<std::vector<DeviceType>> prioritized_device_type_list()
+      const {
+    mutex_lock l(device_type_list_mu_);
     return prioritized_device_type_list_;
   }
 
@@ -560,7 +562,9 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   OwnedOrUnownedHelper<DynamicDeviceMgr> remote_device_manager_;
 
   Device* host_cpu_device_;  // Owned by device_manager
-  std::vector<DeviceType> prioritized_device_type_list_;
+  mutable mutex device_type_list_mu_;
+  std::shared_ptr<std::vector<DeviceType>> prioritized_device_type_list_
+      TF_GUARDED_BY(device_type_list_mu_);
   Rendezvous* rendezvous_;
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
   std::unordered_map<string, std::unique_ptr<CustomDevice>> custom_devices_;
@@ -621,6 +625,8 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   OwnedOrUnownedHelper<CollectiveExecutorMgrInterface> collective_executor_mgr_;
 
 #if !defined(IS_MOBILE_PLATFORM)
+  std::vector<string> GetRemoteContexts() TF_LOCKS_EXCLUDED(remote_state_mu_);
+  bool IsRemoteContextsEmpty() TF_LOCKS_EXCLUDED(remote_state_mu_);
   void CloseAndClearAllRemoteContexts();
   void CloseRemoteContexts(const std::vector<string>& remote_contexts,
                            uint64 context_id, uint64 context_view_id);
@@ -642,7 +648,6 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   std::unique_ptr<ServerInterface> server_;
   WorkerEnv* worker_env_ = nullptr;
   std::shared_ptr<WorkerSession> worker_session_;
-  std::unique_ptr<eager::EagerClientCache> remote_eager_workers_;
 
   mutable mutex remote_state_mu_;
 
@@ -651,7 +656,9 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   // and continuously incremented when context with the same context_id gets
   // updated. The view id should be consistent between master and workers.
   uint64 context_view_id_ TF_GUARDED_BY(remote_state_mu_);
-  std::vector<string> remote_contexts_;
+  std::vector<string> remote_contexts_ TF_GUARDED_BY(remote_state_mu_);
+  std::unique_ptr<eager::EagerClientCache> remote_eager_workers_
+      TF_GUARDED_BY(remote_state_mu_);
 
   int keep_alive_secs_ TF_GUARDED_BY(remote_state_mu_);
   std::atomic<int> sleep_for_secs_;

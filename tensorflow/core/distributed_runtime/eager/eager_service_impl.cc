@@ -253,12 +253,6 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
   auto session_name =
       tensorflow::strings::StrCat("eager_", request->context_id());
 
-  // Hold `context_update_mu_` exclusively update the context state. This lock
-  // prevents other threads from processing an enqueued request at the same
-  // time. Each enqueue request will be processed either with context state
-  // before or after the update, but the exact ordering needs to be enforced
-  // by the client if desired.
-  mutex_lock l(context_update_mu_);
   TF_RETURN_IF_ERROR(env_->session_mgr->UpdateSession(
       session_name, request->server_def(), request->cluster_device_attributes(),
       true));
@@ -438,9 +432,6 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
   Status s;
   for (const auto& item : request->queue()) {
     auto* queue_response = response->add_queue_response();
-    // Acquire shared lock to prevent handling enqueue requests while updating
-    // context (see UpdateContext).
-    tf_shared_lock l(context_update_mu_);
     if (item.has_operation()) {
       s = ExecuteOp(item.operation(), context->Context(), &executor,
                     queue_response);

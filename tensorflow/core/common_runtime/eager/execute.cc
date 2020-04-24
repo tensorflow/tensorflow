@@ -480,9 +480,10 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
     if (device == nullptr) {
       PrioritizedDeviceTypeVector supported_devs;
-      TF_RETURN_IF_ERROR(SupportedDeviceTypesForNode(
-          ctx.prioritized_device_type_list(), ndef, &supported_devs,
-          &ctx.HostCPU()->parsed_name()));
+      auto device_type_list = ctx.prioritized_device_type_list();
+      TF_RETURN_IF_ERROR(
+          SupportedDeviceTypesForNode(*device_type_list, ndef, &supported_devs,
+                                      &ctx.HostCPU()->parsed_name()));
       if (supported_devs.empty()) {
         return errors::NotFound("Could not find valid device for node.\nNode:",
                                 FormatNodeDefForError(ndef),
