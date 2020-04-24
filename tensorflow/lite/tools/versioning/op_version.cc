@@ -51,7 +51,7 @@ inline bool HaveSameShapes(const SubGraph* subgraph, const Operator* op,
 int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
   switch (op_sig.op) {
     case BuiltinOperator_CONV_2D:
-      // If the op has signed int8 op_sig.inputs and op_sig.outputs, its
+      // If the op has signed int16 op_sig.inputs and op_sig.outputs, its
       // version 4.
       if (op_sig.input_types.at(0) == TensorType_INT16 &&
           op_sig.input_types.at(1) == TensorType_INT16 &&
@@ -76,7 +76,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_DEPTHWISE_CONV_2D:
-
       // If the op accepts int16, we return version 5.
       if (op_sig.input_types.at(0) == TensorType_INT16 &&
           op_sig.input_types.at(1) == TensorType_INT16 &&
@@ -455,10 +454,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
-    case BuiltinOperator_ADD:
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_SOFTMAX:
-
+      // In case of int16 inputs, the version is 3.
       if (op_sig.input_types.at(0) == TensorType_INT16) {
         return 3;
       }
@@ -467,6 +465,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_ADD:
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
     case BuiltinOperator_SPACE_TO_DEPTH:
