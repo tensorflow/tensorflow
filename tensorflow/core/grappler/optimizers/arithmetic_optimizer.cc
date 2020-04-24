@@ -1308,7 +1308,9 @@ class RemoveRedundantCastStage : public ArithmeticOptimizerStage {
       : ArithmeticOptimizerStage("RemoveRedundantCast", ctx, ctx_ext) {}
   ~RemoveRedundantCastStage() override = default;
 
-  bool IsSupported(const NodeDef* node) const override { return IsCast(*node); }
+  bool IsSupported(const NodeDef* node) const override {
+    return IsCast(*node) && !IsInPreserveSet(*node);
+  }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
@@ -1334,7 +1336,7 @@ class RemoveNegationStage : public ArithmeticOptimizerStage {
   ~RemoveNegationStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAdd(*node) || IsSub(*node);
+    return (IsAdd(*node) || IsSub(*node)) && !IsInPreserveSet(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -1921,7 +1923,7 @@ class RemoveRedundantReshape : public ArithmeticOptimizerStage {
   ~RemoveRedundantReshape() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsReshape(*node);
+    return IsReshape(*node) && !IsInPreserveSet(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -3118,7 +3120,7 @@ class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
   ~RemoveStackSliceSameAxis() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsStridedSlice(*node) || IsSlice(*node);
+    return (IsStridedSlice(*node) || IsSlice(*node)) && !IsInPreserveSet(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
