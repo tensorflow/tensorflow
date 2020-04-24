@@ -85,6 +85,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool convert_expm1 = true;
     bool unary_ops_composition = true;
     bool remove_stack_slice_same_axis = true;
+    bool simplify_embedding_lookup = true;
 
     // Choose which arithmetic optimizer stages will be enabled for a given
     // optimization level by default.
