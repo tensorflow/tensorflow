@@ -34,6 +34,7 @@ limitations under the License.
 #define PLATFORM_POSIX_IOS
 #define IS_MOBILE_PLATFORM
 #else
+#define PLATFORM_PORTABLE_GOOGLE
 #define PLATFORM_POSIX
 #endif
 

@@ -530,6 +530,9 @@ cc_library(
         "//tensorflow:ios": [
             "minimal_logging_ios.cc",
         ],
+        "//tensorflow:macos": [
+            "minimal_logging_default.cc",
+        ],
         "//conditions:default": [
             "minimal_logging_default.cc",
         ],
