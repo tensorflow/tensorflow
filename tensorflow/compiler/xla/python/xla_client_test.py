@@ -1988,7 +1988,7 @@ def TestFactory(xla_backend, cloud_tpu=False):
       np.testing.assert_array_equal(x, y)
       # If the input was sufficiently aligned, the input and output should
       # alias.
-      self.assertTrue((x_ptr & 63) != 0 or x_ptr == y_ptr)
+      self.assertTrue((x_ptr & 15) != 0 or x_ptr == y_ptr)
       self.assertEqual(y_ptr, buffer.unsafe_buffer_pointer())
 
       buffer2 = xla_client.Buffer.from_pyval(

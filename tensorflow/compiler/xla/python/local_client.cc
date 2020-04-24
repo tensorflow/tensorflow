@@ -79,6 +79,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -100,6 +101,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/event.h"
+#include "tensorflow/stream_executor/host/host_platform_id.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/stream.h"
 
@@ -494,14 +496,12 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostBuffer(
 
   // If we are on the host platform and the input buffer is sufficiently
   // aligned, we can simply point to the input array's data without any further
-  // copies. We require a 64-byte alignment because XLA may generate AVX512
-  // code which requires it. If the client allocator doesn't align quite as
-  // aggressively, (e.g., NumPy doesn't) there's a high chance this test will
-  // fail.
-  static constexpr int kMinimumAlignment = 64;
+  // copies. At the time of writing we require a 16-byte alignment because XLA
+  // may generate code which requires it.
   if (!force_copy &&
-      ((absl::bit_cast<std::uintptr_t>(data) & (kMinimumAlignment - 1)) == 0) &&
-      local_device->executor()->platform_kind() == se::PlatformKind::kHost) {
+      ((absl::bit_cast<std::uintptr_t>(data) &
+        (cpu_function_runtime::kMinAlign - 1)) == 0) &&
+      local_device->executor()->platform()->id() == se::host::kHostPlatformId) {
     std::function<void()> on_delete_callback =
         [buffer_reference{std::move(buffer_reference)}]() {
           // Frees buffer_reference.
