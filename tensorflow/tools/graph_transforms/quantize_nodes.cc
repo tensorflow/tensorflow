@@ -218,8 +218,8 @@ Status MergeDuplicateNodes(const GraphDef& input_graph_def,
     // duplicates and can be removed, unless they're stateful.
     std::map<string, string> inputs_to_rename;
     GraphDef merged_graph_def;
-    for (const std::pair<uint64, std::vector<const NodeDef*>> hashed_node_info :
-         hashed_nodes) {
+    for (const std::pair<const uint64, std::vector<const NodeDef*>>&
+             hashed_node_info : hashed_nodes) {
       const std::vector<const NodeDef*>& hash_node_list =
           hashed_node_info.second;
       for (int i = 0; i < hash_node_list.size(); ++i) {

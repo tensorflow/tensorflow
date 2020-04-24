@@ -1,4 +1,7 @@
 # RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
+# TODO(jpienaar): This one still has shape inference enabled on import as this
+# is testing that. This test could be switch to use both import and shape
+# inference pass post switch.
 
 node {
   name: "TensorListReserve/num_elements"
@@ -59,7 +62,7 @@ node {
     key: "value"
     value {
       tensor {
-        dtype: DT_INT32
+        dtype: DT_FLOAT
         tensor_shape {
           dim {
             size: 2
@@ -68,10 +71,10 @@ node {
             size: 2
           }
         }
-        int_val: 1
-        int_val: 2
-        int_val: 3
-        int_val: 4
+        float_val: 1
+        float_val: 2
+        float_val: 3
+        float_val: 4
       }
     }
   }

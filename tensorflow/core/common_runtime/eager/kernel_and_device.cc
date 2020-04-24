@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/fingerprint.h"
@@ -210,26 +211,6 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
   return pflr_->GetOutputDevices(handle_, &output_devices_);
 }
 
-Status KernelAndDeviceOp::Run(
-    const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
-    CancellationManager* cancellation_manager,
-    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
-  Status s = this->Run(&step_container_, inputs, outputs, cancellation_manager,
-                       remote_func_params);
-  step_container_.CleanUp();
-  return s;
-}
-
-Status KernelAndDeviceFunc::Run(
-    const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
-    CancellationManager* cancellation_manager,
-    const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
-  Status s = this->Run(&step_container_, inputs, outputs, cancellation_manager,
-                       remote_func_params);
-  step_container_.CleanUp();
-  return s;
-}
-
 namespace {
 // In certain contexts (e.g. TPU async executions), the CancellationManager is
 // used to shut down the device in error scenarios (as opposed to using the
@@ -279,7 +260,14 @@ Status KernelAndDeviceOp::Run(
 
   params.runner = get_runner();
 
-  params.step_container = step_container;
+  params.step_container =
+      step_container == nullptr ? &step_container_ : step_container;
+  auto step_container_cleanup = gtl::MakeCleanup([step_container, this] {
+    if (step_container == nullptr) {
+      this->step_container_.CleanUp();
+    }
+  });
+
   params.collective_executor =
       collective_executor_ ? collective_executor_->get() : nullptr;
 
@@ -350,7 +338,15 @@ Status KernelAndDeviceFunc::Run(
     opts->cancellation_manager = &cm;
   }
   opts->allow_dead_tensors = true;
-  opts->step_container = step_container;
+
+  opts->step_container =
+      step_container == nullptr ? &step_container_ : step_container;
+  auto step_container_cleanup = gtl::MakeCleanup([step_container, this] {
+    if (step_container == nullptr) {
+      this->step_container_.CleanUp();
+    }
+  });
+
   opts->collective_executor =
       collective_executor_ ? collective_executor_->get() : nullptr;
 

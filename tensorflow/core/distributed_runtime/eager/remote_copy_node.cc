@@ -96,7 +96,7 @@ RemoteCopyNode::~RemoteCopyNode() {
 Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   TF_RETURN_IF_ERROR(executor_->status());
 
-  op->AddInput(src_);
+  TF_RETURN_IF_ERROR(op->AddInput(src_));
 
   core::RefCountPtr<KernelAndDevice> kernel;
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
@@ -105,7 +105,7 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   Device* d = ctx_->CanonicalDevice(absl::get<Device*>(op->Device()));
   TF_RETURN_IF_ERROR(src_->TensorValue(d, args.MutableInput(0)));
 
-  return kernel->Run(args, /*outputs=*/nullptr,
+  return kernel->Run(/*step_container=*/nullptr, args, /*outputs=*/nullptr,
                      /*cancellation_manager=*/nullptr,
                      /*remote_func_params=*/absl::nullopt);
 }
@@ -188,8 +188,9 @@ Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
 
   EagerKernelArgs args;
-  return kernel->Run(args, outputs, captured_state_->recv_cancellation(),
-                     absl::nullopt);
+  return kernel->Run(/*step_container*/ nullptr, args, outputs,
+                     captured_state_->recv_cancellation(),
+                     /*remote_func_params=*/absl::nullopt);
 }
 
 void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {

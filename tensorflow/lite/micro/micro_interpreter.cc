@@ -223,6 +223,7 @@ TfLiteStatus MicroInterpreter::AllocateTensors() {
   tensors_allocated_ = true;
   return kTfLiteOk;
 }
+
 TfLiteStatus MicroInterpreter::Invoke() {
   if (initialization_status_ != kTfLiteOk) {
     TF_LITE_REPORT_ERROR(error_reporter_,
@@ -257,32 +258,30 @@ TfLiteStatus MicroInterpreter::Invoke() {
 }
 
 TfLiteTensor* MicroInterpreter::input(size_t index) {
-  const flatbuffers::Vector<int32_t>* inputs = subgraph_->inputs();
-  const size_t length = inputs->size();
+  const size_t length = inputs_size();
   if ((index < 0) || (index >= length)) {
     TF_LITE_REPORT_ERROR(error_reporter_,
                          "Input index %d out of range (length is %d)", index,
                          length);
     return nullptr;
   }
-  return &(context_.tensors[inputs->Get(index)]);
+  return &(context_.tensors[inputs().Get(index)]);
 }
 
 TfLiteTensor* MicroInterpreter::output(size_t index) {
-  const flatbuffers::Vector<int32_t>* outputs = subgraph_->outputs();
-  const size_t length = outputs->size();
-  if ((index < 0) || (index >= outputs->size())) {
+  const size_t length = outputs_size();
+  if ((index < 0) || (index >= length)) {
     TF_LITE_REPORT_ERROR(error_reporter_,
                          "Output index %d out of range (length is %d)", index,
                          length);
     return nullptr;
   }
-  return &(context_.tensors[outputs->Get(index)]);
+  return &(context_.tensors[outputs().Get(index)]);
 }
 
 TfLiteTensor* MicroInterpreter::tensor(size_t index) {
   const size_t length = tensors_size();
-  if ((index < 0) || (index >= tensors_size())) {
+  if ((index < 0) || (index >= length)) {
     TF_LITE_REPORT_ERROR(error_reporter_,
                          "Tensor index %d out of range (length is %d)", index,
                          length);

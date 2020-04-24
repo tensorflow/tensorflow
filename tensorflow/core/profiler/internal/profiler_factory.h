@@ -24,11 +24,11 @@ namespace tensorflow {
 namespace profiler {
 
 using ProfilerFactory =
-    std::unique_ptr<ProfilerInterface> (*)(const ProfilerOptions&);
+    std::unique_ptr<ProfilerInterface> (*)(const ProfileOptions&);
 
 void RegisterProfilerFactory(ProfilerFactory factory);
 
-void CreateProfilers(const ProfilerOptions& options,
+void CreateProfilers(const ProfileOptions& options,
                      std::vector<std::unique_ptr<ProfilerInterface>>* result);
 
 }  // namespace profiler

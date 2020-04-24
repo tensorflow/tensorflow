@@ -68,7 +68,8 @@ TF_LITE_MICRO_TEST(TestInitializeRuntimeTensor) {
   TfLiteContext context;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator simple_allocator(arena, arena_size);
+  tflite::SimpleMemoryAllocator simple_allocator(micro_test::reporter, arena,
+                                                 arena_size);
 
   const tflite::Tensor* tensor = tflite::testing::Create1dFlatbufferTensor(100);
   const flatbuffers::Vector<flatbuffers::Offset<tflite::Buffer>>* buffers =
@@ -92,7 +93,8 @@ TF_LITE_MICRO_TEST(TestInitializeQuantizedTensor) {
   TfLiteContext context;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator simple_allocator(arena, arena_size);
+  tflite::SimpleMemoryAllocator simple_allocator(micro_test::reporter, arena,
+                                                 arena_size);
 
   const tflite::Tensor* tensor =
       tflite::testing::CreateQuantizedFlatbufferTensor(100);
@@ -117,7 +119,8 @@ TF_LITE_MICRO_TEST(TestMissingQuantization) {
   TfLiteContext context;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
-  tflite::SimpleMemoryAllocator simple_allocator(arena, arena_size);
+  tflite::SimpleMemoryAllocator simple_allocator(micro_test::reporter, arena,
+                                                 arena_size);
 
   const tflite::Tensor* tensor =
       tflite::testing::CreateMissingQuantizationFlatbufferTensor(100);
@@ -139,11 +142,15 @@ TF_LITE_MICRO_TEST(TestMissingQuantization) {
 TF_LITE_MICRO_TEST(TestFinishTensorAllocation) {
   const tflite::Model* model = tflite::testing::GetSimpleMockModel();
   TfLiteContext context;
-  constexpr size_t arena_size = 1024;
+  constexpr size_t arena_size =
+      760 /* minimal arena size at the time of writting */ +
+      16 /* alignment */ + 100 /* leave some headroom for future proof */;
   uint8_t arena[arena_size];
   tflite::MicroAllocator allocator(&context, model, arena, arena_size,
                                    micro_test::reporter);
   TF_LITE_MICRO_EXPECT_EQ(4, context.tensors_size);
+  // Memory planning hasn't been finalized, so the used bytes is unknown.
+  TF_LITE_MICRO_EXPECT_EQ(0, allocator.used_bytes());
 
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocator.FinishTensorAllocation());
   // No allocation to be done afterwards.
@@ -167,6 +174,7 @@ TF_LITE_MICRO_TEST(TestFinishTensorAllocation) {
                           context.tensors[1].data.raw);
   TF_LITE_MICRO_EXPECT_NE(context.tensors[3].data.raw,
                           context.tensors[2].data.raw);
+  TF_LITE_MICRO_EXPECT_LE(allocator.used_bytes(), 760 + 100);
 }
 
 TF_LITE_MICRO_TEST(TestAllocationForModelsWithBranches) {

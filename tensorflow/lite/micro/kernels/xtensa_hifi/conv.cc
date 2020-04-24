@@ -131,16 +131,6 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
   return kTfLiteOk;
 }
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
-
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  return kTfLiteOk;
-}
-
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                            TfLiteConvParams* params, OpData* data,
                            const TfLiteTensor* input,
@@ -538,9 +528,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace conv
 
 TfLiteRegistration* Register_CONV_2D() {
-  static TfLiteRegistration r = {};
-  r.prepare = conv::Prepare;
-  r.invoke = conv::Eval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/conv::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

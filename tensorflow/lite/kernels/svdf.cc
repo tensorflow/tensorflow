@@ -43,6 +43,7 @@ struct OpData {
   int effective_scale_1_b;
   int32 effective_scale_2_a;
   int effective_scale_2_b;
+  bool compute_row_sums = false;
 };
 
 }  // namespace
@@ -61,8 +62,8 @@ constexpr int kOutputTensor = 0;
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   auto* op_data = new OpData();
   op_data->float_weights_time_initialized = false;
-  // Note: only needs 4 scratch tensors when is_hybrid_op, only 1 otherwise.
-  context->AddTensors(context, /*tensors_to_add=*/4,
+  // Note: only needs 6 scratch tensors when is_hybrid_op, only 1 otherwise.
+  context->AddTensors(context, /*tensors_to_add=*/6,
                       &op_data->scratch_tensor_index);
   return op_data;
 }
@@ -130,7 +131,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // Resize scratch.
   TfLiteIntArrayFree(node->temporaries);
   if (is_hybrid_op) {
-    node->temporaries = TfLiteIntArrayCreate(4);
+    node->temporaries = TfLiteIntArrayCreate(6);
   } else if (is_full_integer) {
     node->temporaries = TfLiteIntArrayCreate(2);
   } else {
@@ -156,6 +157,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                                    scratch_size_array));
 
   if (is_hybrid_op) {
+    op_data->compute_row_sums = true;
     // Tell interpreter to allocate temporary tensors to store quantized values
     // of input tensors.
     node->temporaries->data[1] = scratch_tensor_index + 1;
@@ -194,6 +196,30 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE_OK(context,
                         context->ResizeTensor(context, float_weights_time,
                                               float_weights_time_size));
+    }
+
+    node->temporaries->data[4] = scratch_tensor_index + 4;
+    TfLiteTensor* zero_points = GetTemporary(context, node, /*index=*/4);
+    zero_points->type = kTfLiteFloat32;
+    zero_points->allocation_type = kTfLiteArenaRw;
+    int zero_points_dims[1] = {batch_size};
+    if (!TfLiteIntArrayEqualsArray(zero_points->dims, 1, zero_points_dims)) {
+      TfLiteIntArray* zero_points_size = TfLiteIntArrayCreate(1);
+      zero_points_size->data[0] = zero_points_dims[0];
+      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, zero_points,
+                                                       zero_points_size));
+    }
+
+    node->temporaries->data[5] = scratch_tensor_index + 5;
+    TfLiteTensor* row_sums = GetTemporary(context, node, /*index=*/5);
+    row_sums->type = kTfLiteFloat32;
+    row_sums->allocation_type = kTfLiteArenaRwPersistent;
+    int row_sums_dims[1] = {num_filters};
+    if (!TfLiteIntArrayEqualsArray(row_sums->dims, 1, row_sums_dims)) {
+      TfLiteIntArray* row_sums_size = TfLiteIntArrayCreate(1);
+      row_sums_size->data[0] = row_sums_dims[0];
+      TF_LITE_ENSURE_OK(
+          context, context->ResizeTensor(context, row_sums, row_sums_size));
     }
   }
   if (is_full_integer) {
@@ -267,7 +293,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             GetTemporary(context, node, /*index=*/2);
         TfLiteTensor* float_weights_time =
             GetTemporary(context, node, /*index=*/3);
-
+        TfLiteTensor* zero_points = GetTemporary(context, node, /*index=*/4);
+        TfLiteTensor* row_sums = GetTemporary(context, node, /*index=*/5);
         // Dequantize weights time.
         // TODO(alanchiao): this dequantization initialization only needs to
         // happen once per model and should theoretically be placed in either
@@ -285,10 +312,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           }
           op_data->float_weights_time_initialized = true;
         }
-        reference_ops::EvalHybridSVDF(context, node, input, weights_feature,
-                                      float_weights_time, bias, params, scratch,
-                                      scaling_factors, input_quantized,
-                                      activation_state, output);
+
+        reference_ops::EvalHybridSVDF(
+            context, node, input, weights_feature, float_weights_time, bias,
+            params, scratch, scaling_factors, input_quantized, activation_state,
+            output, zero_points, row_sums, &op_data->compute_row_sums);
         return kTfLiteOk;
       } else {
         auto* input_params = reinterpret_cast<TfLiteAffineQuantization*>(

@@ -265,7 +265,14 @@ message DebugOptions {
   // Guarantee run-to-run determinism from reductions on XLA:GPU.
   bool xla_gpu_deterministic_reductions = 130;
 
-  // Next id: 135
+  // Debug options that trigger execution errors when NaN or Inf are detected.
+  bool xla_tpu_detect_nan = 135;
+  bool xla_tpu_detect_inf = 136;
+
+  // True if TraceMe annotations are enabled for XLA:CPU.
+  bool xla_cpu_enable_xprof_traceme = 137;
+
+  // Next id: 138
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -315,6 +322,9 @@ message ExecutionOptions {
   // Number of partitions of the computation to run (model parallelism).
   // If zero, uses the default number of partitions for the XLA service.
   int32 num_partitions = 9;
+
+  // Used to identify a set of programs that should be launch together.
+  int32 launch_id = 10;
 }
 
 message GetDeviceHandlesRequest {

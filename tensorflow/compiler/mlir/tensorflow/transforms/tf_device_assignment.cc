@@ -24,7 +24,7 @@ namespace TF {
 namespace {
 
 class SimpleTFDeviceAssignmentPass
-    : public FunctionPass<SimpleTFDeviceAssignmentPass> {
+    : public PassWrapper<SimpleTFDeviceAssignmentPass, FunctionPass> {
  public:
   SimpleTFDeviceAssignmentPass() = default;
   SimpleTFDeviceAssignmentPass(const SimpleTFDeviceAssignmentPass&) {}
@@ -57,7 +57,7 @@ class SimpleTFDeviceAssignmentPass
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
+std::unique_ptr<OperationPass<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
     llvm::StringRef default_device) {
   return std::make_unique<SimpleTFDeviceAssignmentPass>(default_device);
 }

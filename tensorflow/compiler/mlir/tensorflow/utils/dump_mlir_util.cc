@@ -63,14 +63,14 @@ std::string MakeUniqueFilename(string name) {
   return filename;
 }
 
-// Simple raw_ostream that prints to LOG(INFO).
+// Simple raw_ostream that prints to stderr.
 struct LogInfoRawStream : public llvm::raw_ostream {
   LogInfoRawStream() { SetUnbuffered(); }
   ~LogInfoRawStream() override = default;
   uint64_t current_pos() const override { return 0; }
 
   void write_impl(const char* ptr, size_t size) override {
-    LOG(INFO) << absl::string_view(ptr, size);
+    fprintf(stderr, "%.*s", static_cast<int>(size), ptr);
   }
 };
 
@@ -112,7 +112,7 @@ Status CreateFileForDumping(llvm::StringRef name,
 
   if (dir == "-") {
     *os = std::make_unique<LogInfoRawStream>();
-    *filepath = "LOG(INFO)";
+    *filepath = "(stderr)";
     return Status();
   }
 
@@ -144,7 +144,7 @@ std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
   if (!result.ok()) return result.error_message();
 
-  op->print(*os, mlir::OpPrintingFlags().useLocalScope());
+  op->print(*os, mlir::OpPrintingFlags().useLocalScope().printGenericOpForm());
   LOG(INFO) << "Dumped MLIR operation '" << op->getName().getStringRef().str()
             << "' to '" << filepath << "'";
   return filepath;

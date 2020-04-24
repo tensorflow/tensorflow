@@ -21,9 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/common_runtime/hierarchical_tree_broadcaster.h"
 #include "tensorflow/core/common_runtime/process_util.h"
-#include "tensorflow/core/common_runtime/ring_reducer.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -142,8 +140,8 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
 
   Tensor TempChunk(int i) const override {
     AllocationAttributes empty;
-    auto op_annotation =
-        ScopedMemoryDebugAnnotation("CollectiveAdapterImpl::TempChunk", 0);
+    ScopedMemoryDebugAnnotation op_annotation(
+        "CollectiveAdapterImpl::TempChunk");
     return Tensor(allocator_, dt_, {ChunkElts(i)}, empty);
   }
 

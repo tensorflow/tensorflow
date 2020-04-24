@@ -36,6 +36,7 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/eigen \
 -I$(MAKEFILE_DIR)/downloads/absl \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
+-I$(MAKEFILE_DIR)/downloads/ruy \
 -I$(MAKEFILE_DIR)/downloads/neon_2_sse \
 -I$(MAKEFILE_DIR)/downloads/farmhash/src \
 -I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
@@ -110,7 +111,8 @@ PROFILE_SUMMARIZER_SRCS := \
 	tensorflow/core/util/stats_calculator.cc
 
 CMD_LINE_TOOLS_SRCS := \
-	tensorflow/lite/tools/command_line_flags.cc
+	tensorflow/lite/tools/command_line_flags.cc \
+	tensorflow/lite/tools/tool_params.cc
 
 CORE_CC_ALL_SRCS := \
 $(wildcard tensorflow/lite/*.cc) \
@@ -119,7 +121,7 @@ $(wildcard tensorflow/lite/c/*.c) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
 $(wildcard tensorflow/lite/experimental/resource/*.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/ruy/*.cc)
+$(wildcard tensorflow/lite/tools/make/downloads/ruy/ruy/*.cc)
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
 $(wildcard tensorflow/lite/kernels/*.cc) \
@@ -151,6 +153,11 @@ $(wildcard tensorflow/lite/*/*/*/example*.cc) \
 $(wildcard tensorflow/lite/*/*/*/test*.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*/*tool.cc) \
+$(wildcard tensorflow/lite/*/*/*/*/*/benchmark.cc) \
+$(wildcard tensorflow/lite/*/*/*/*/*/example*.cc) \
+$(wildcard tensorflow/lite/*/*/*/*/*/test*.cc) \
+$(wildcard tensorflow/lite/*/*/*/*/*/*test.cc) \
+$(wildcard tensorflow/lite/*/*/*/*/*/*tool.cc) \
 $(wildcard tensorflow/lite/kernels/*test_main.cc) \
 $(wildcard tensorflow/lite/kernels/*test_util*.cc) \
 tensorflow/lite/tflite_with_xnnpack.cc \
@@ -175,6 +182,14 @@ ifeq ($(TARGET_ARCH),aarch64)
 endif
 ifeq ($(BUILD_WITH_RUY),true)
   CXXFLAGS += -DTFLITE_WITH_RUY
+endif
+
+BUILD_WITH_RUY_PROFILER ?= false
+ifeq ($(BUILD_WITH_RUY_PROFILER),true)
+  CORE_CC_ALL_SRCS += tensorflow/lite/tools/make/downloads/ruy/ruy/profiler/instrumentation.cc
+  CORE_CC_ALL_SRCS += tensorflow/lite/tools/make/downloads/ruy/ruy/profiler/profiler.cc
+  CORE_CC_ALL_SRCS += tensorflow/lite/tools/make/downloads/ruy/ruy/profiler/treeview.cc
+  CXXFLAGS += -DRUY_PROFILER
 endif
 
 # Not to include XNNPACK.
@@ -205,6 +220,7 @@ TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 
 # Benchmark sources
 BENCHMARK_SRCS_DIR := tensorflow/lite/tools/benchmark
+DELEGATE_PROVIDER_SRCS_DIR := tensorflow/lite/tools/delegates
 EVALUATION_UTILS_SRCS := \
   tensorflow/lite/tools/evaluation/utils.cc
 BENCHMARK_ALL_SRCS := \
@@ -221,11 +237,12 @@ BENCHMARK_LIB_SRCS := $(filter-out \
 	$(BENCHMARK_MAIN_SRC) \
 	$(BENCHMARK_PERF_OPTIONS_SRC) \
 	$(BENCHMARK_SRCS_DIR)/benchmark_plus_flex_main.cc \
-	$(BENCHMARK_SRCS_DIR)/external_delegate_provider.cc \
-	$(BENCHMARK_SRCS_DIR)/gpu_delegate_provider.cc \
-	$(BENCHMARK_SRCS_DIR)/hexagon_delegate_provider.cc \
-	$(BENCHMARK_SRCS_DIR)/nnapi_delegate_provider.cc \
-	$(BENCHMARK_SRCS_DIR)/xnnpack_delegate_provider.cc, \
+	$(DELEGATE_PROVIDER_SRCS_DIR)/default_execution_provider.cc \
+	$(DELEGATE_PROVIDER_SRCS_DIR)/external_delegate_provider.cc \
+	$(DELEGATE_PROVIDER_SRCS_DIR)/gpu_delegate_provider.cc \
+	$(DELEGATE_PROVIDER_SRCS_DIR)/hexagon_delegate_provider.cc \
+	$(DELEGATE_PROVIDER_SRCS_DIR)/nnapi_delegate_provider.cc \
+	$(DELEGATE_PROVIDER_SRCS_DIR)/xnnpack_delegate_provider.cc, \
 	$(BENCHMARK_ALL_SRCS))
 
 # These target-specific makefiles should modify or replace options like

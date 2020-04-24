@@ -48,20 +48,23 @@ INCLUDES := \
 -I. \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
--I$(MAKEFILE_DIR)/downloads/flatbuffers/include
+-I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
+-I$(MAKEFILE_DIR)/downloads/ruy
 
 # Same list of paths, but now relative to the generated project files.
 GENERATED_PROJECT_INCLUDES := \
 -I. \
 -I./third_party/gemmlowp \
--I./third_party/flatbuffers/include
+-I./third_party/flatbuffers/include \
+-I./third_party/ruy
 
 # Same list of paths, but now in the format the generate_keil_project.py
 # script expects them.
 PROJECT_INCLUDES := \
 . \
 third_party/gemmlowp \
-third_party/flatbuffers/include
+third_party/flatbuffers/include \
+third_party/ruy
 
 TEST_SCRIPT := tensorflow/lite/micro/testing/test_linux_binary.sh
 
@@ -91,15 +94,18 @@ endif
 # runtime that can be linked in to other programs.
 MICROLITE_LIB_NAME := libtensorflow-microlite.a
 
-MICRO_LITE_EXAMPLE_TESTS := $(wildcard tensorflow/lite/micro/examples/*/Makefile.inc)
+MICRO_LITE_EXAMPLE_TESTS := $(shell find tensorflow/lite/micro/examples/ -name Makefile.inc)
+
+MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.inc)
 
 MICROLITE_TEST_SRCS := \
 $(wildcard tensorflow/lite/micro/*test.cc) \
 $(wildcard tensorflow/lite/micro/kernels/*test.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*test.cc)
 
+# TODO(b/152645559): move all benchmarks to benchmarks directory.
 MICROLITE_BENCHMARK_SRCS := \
-$(wildcard tensorflow/lite/micro/kernels/xtensa-hifimini/*benchmark.cc)
+$(wildcard tensorflow/lite/micro/benchmarks/*.cc)
 
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
@@ -132,7 +138,6 @@ tensorflow/lite/core/api/error_reporter.h \
 tensorflow/lite/core/api/flatbuffer_conversions.h \
 tensorflow/lite/core/api/op_resolver.h \
 tensorflow/lite/core/api/tensor_utils.h \
-tensorflow/lite/experimental/ruy/ruy/profiler/instrumentation.h \
 tensorflow/lite/kernels/internal/common.h \
 tensorflow/lite/kernels/internal/compatibility.h \
 tensorflow/lite/kernels/internal/optimized/neon_check.h \
@@ -153,7 +158,10 @@ tensorflow/lite/kernels/internal/reference/integer_ops/add.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/l2normalization.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/mul.h \
+tensorflow/lite/kernels/internal/reference/l2normalization.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/mul.h \
 tensorflow/lite/kernels/internal/reference/neg.h \
@@ -164,6 +172,7 @@ tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h \
 tensorflow/lite/kernels/internal/reference/quantize.h \
 tensorflow/lite/kernels/internal/reference/reduce.h \
 tensorflow/lite/kernels/internal/reference/requantize.h \
+tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h \
 tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
 tensorflow/lite/kernels/internal/reference/sub.h \
@@ -192,7 +201,9 @@ third_party/gemmlowp/LICENSE \
 third_party/flatbuffers/include/flatbuffers/base.h \
 third_party/flatbuffers/include/flatbuffers/stl_emulation.h \
 third_party/flatbuffers/include/flatbuffers/flatbuffers.h \
-third_party/flatbuffers/LICENSE.txt
+third_party/flatbuffers/LICENSE.txt \
+third_party/ruy/ruy/profiler/instrumentation.h
+
 
 MAKE_PROJECT_FILES := \
   Makefile \
@@ -260,6 +271,9 @@ AR := $(TARGET_TOOLCHAIN_ROOT)${TARGET_TOOLCHAIN_PREFIX}${AR_TOOL}
 
 # Load the examples.
 include $(MICRO_LITE_EXAMPLE_TESTS)
+
+# Load the benchmarks.
+include $(MICRO_LITE_BENCHMARKS)
 
 # Create rules for downloading third-party dependencies.
 THIRD_PARTY_TARGETS :=

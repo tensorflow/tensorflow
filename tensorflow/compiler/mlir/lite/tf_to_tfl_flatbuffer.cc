@@ -40,7 +40,7 @@ limitations under the License.
 
 namespace mlir {
 /// Create a pass to convert from the TFExecutor to the TF control dialect.
-std::unique_ptr<OpPassBase<FuncOp>>
+std::unique_ptr<OperationPass<FuncOp>>
 CreateTFExecutorToControlDialectConversion();
 }  // namespace mlir
 
@@ -92,13 +92,15 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
         file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
         input_shapes, output_arrays, /*control_output_arrays=*/"",
         prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
-        /*graph_as_function=*/false, /*upgrade_legacy=*/true, context);
+        /*graph_as_function=*/false, /*upgrade_legacy=*/true,
+        /*enable_shape_inference=*/true, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
       file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
       input_shapes, output_arrays, /*control_output_arrays=*/"",
       prune_unused_nodes, /*convert_legacy_fed_inputs=*/true,
-      /*graph_as_function=*/false, /*upgrade_legacy=*/true, context);
+      /*graph_as_function=*/false, /*upgrade_legacy=*/true,
+      /*enable_shape_inference=*/true, context);
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(
@@ -160,25 +162,17 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
 }
 
 StatusOr<mlir::OwningModuleRef> ImportSavedModel(
-    bool import_saved_model, bool import_saved_model_v1,
-    const std::string& input_filename, const std::string& saved_model_tags,
-    const std::string& saved_model_exported_names, mlir::MLIRContext* context) {
-  if (import_saved_model) {
-    std::unordered_set<std::string> tags =
-        absl::StrSplit(saved_model_tags, ',');
-    std::vector<std::string> exported_names =
-        absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
-
+    const std::string& input_filename, const int saved_model_version,
+    const std::unordered_set<std::string>& tags,
+    absl::Span<std::string> exported_names, mlir::MLIRContext* context) {
+  if (saved_model_version == 2) {
     auto module = tensorflow::SavedModelObjectGraphToMlirImport(
-        input_filename, tags, absl::Span<std::string>(exported_names), context);
+        input_filename, tags, exported_names, context);
     if (!module)
       return tensorflow::errors::InvalidArgument("fail to open input file");
 
     return module;
-  } else if (import_saved_model_v1) {
-    std::unordered_set<std::string> tags =
-        absl::StrSplit(saved_model_tags, ',');
-
+  } else if (saved_model_version == 1) {
     auto module = tensorflow::SavedModelSignatureDefsToMlirImport(
         input_filename, tags, context);
 

@@ -549,7 +549,7 @@ REGISTER_OP("Maximum")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {bfloat16, half, float, double, int32, int64}")
+    .Attr("T: {bfloat16, half, float, double, uint8, int16, int32, int64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 // Note: This op is not commutative w.r.t. to all its inputs.
@@ -573,7 +573,7 @@ REGISTER_OP("Minimum")
     .Input("x: T")
     .Input("y: T")
     .Output("z: T")
-    .Attr("T: {bfloat16, half, float, double, int32, int64}")
+    .Attr("T: {bfloat16, half, float, double, uint8, int16, int32, int64}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("Mod")
@@ -717,8 +717,8 @@ REGISTER_OP("GreaterEqual").COMPARISON();
       .SetIsCommutative()                                                  \
       .Attr(                                                               \
           "T: {bfloat16, half, float, double, uint8, int8, int16, int32, " \
-          "int64, complex64, quint8, qint8, qint32, string, bool, "        \
-          "complex128}")                                                   \
+          "int64, uint16, uint32, uint64, complex64, "                     \
+          "quint8, qint8, qint32, string, bool, complex128}")              \
       .Attr("incompatible_shape_error: bool = true")                       \
       .SetShapeFn([](InferenceContext* c) {                                \
         ShapeHandle x = c->input(0);                                       \
@@ -959,7 +959,11 @@ REGISTER_OP("_FusedMatMul")
     .Output("product: T")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
+#if defined(INTEL_MKL) && defined(ENABLE_INTEL_MKL_BFLOAT16)
+    .Attr("T: {bfloat16, float}")
+#else
     .Attr("T: {float}")
+#endif
     .Attr("num_args: int >= 0")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ----------- //
@@ -1092,7 +1096,7 @@ REGISTER_OP("ArgMax")
     .Input("input: T")
     .Input("dimension: Tidx")
     .Output("output: output_type")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("output_type: {int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape);
@@ -1101,7 +1105,7 @@ REGISTER_OP("ArgMin")
     .Input("input: T")
     .Input("dimension: Tidx")
     .Output("output: output_type")
-    .Attr("T: numbertype")
+    .Attr("T: {numbertype, bool}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("output_type: {int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape);
@@ -1309,81 +1313,89 @@ REGISTER_OP("UnsortedSegmentProd")
 REGISTER_OP("SparseSegmentSum")
     .Input("data: T")
     .Input("indices: Tidx")
-    .Input("segment_ids: int32")
+    .Input("segment_ids: Tsegmentids")
     .Output("output: T")
     .Attr("T: realnumbertype")
     .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionShapeFn);
 
 REGISTER_OP("SparseSegmentSumWithNumSegments")
     .Input("data: T")
     .Input("indices: Tidx")
-    .Input("segment_ids: int32")
+    .Input("segment_ids: Tsegmentids")
     .Input("num_segments: Tnumsegments")
     .Output("output: T")
     .Attr("T: realnumbertype")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("SparseSegmentMean")
     .Input("data: T")
     .Input("indices: Tidx")
-    .Input("segment_ids: int32")
+    .Input("segment_ids: Tsegmentids")
     .Output("output: T")
     .Attr("T: {float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionShapeFn);
 
 REGISTER_OP("SparseSegmentMeanWithNumSegments")
     .Input("data: T")
     .Input("indices: Tidx")
-    .Input("segment_ids: int32")
+    .Input("segment_ids: Tsegmentids")
     .Input("num_segments: Tnumsegments")
     .Output("output: T")
     .Attr("T: {float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("SparseSegmentMeanGrad")
     .Input("grad: T")
     .Input("indices: Tidx")
-    .Input("segment_ids: int32")
+    .Input("segment_ids: Tsegmentids")
     .Input("output_dim0: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionGradShapeFn);
 
 REGISTER_OP("SparseSegmentSqrtN")
     .Input("data: T")
     .Input("indices: Tidx")
-    .Input("segment_ids: int32")
+    .Input("segment_ids: Tsegmentids")
     .Output("output: T")
     .Attr("T: {float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionShapeFn);
 
 REGISTER_OP("SparseSegmentSqrtNWithNumSegments")
     .Input("data: T")
     .Input("indices: Tidx")
-    .Input("segment_ids: int32")
+    .Input("segment_ids: Tsegmentids")
     .Input("num_segments: Tnumsegments")
     .Output("output: T")
     .Attr("T: {float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tnumsegments: {int32,int64} = DT_INT32")
+    .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionWithNumSegmentsShapeFn);
 
 REGISTER_OP("SparseSegmentSqrtNGrad")
     .Input("grad: T")
     .Input("indices: Tidx")
-    .Input("segment_ids: int32")
+    .Input("segment_ids: Tsegmentids")
     .Input("output_dim0: int32")
     .Output("output: T")
     .Attr("T: {float, double}")
     .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionGradShapeFn);
 
 REGISTER_OP("All")

@@ -1,4 +1,4 @@
-// RUN: tf-opt -xla-legalize-control-flow %s -o - | FileCheck %s
+// RUN: xla-opt -xla-legalize-control-flow %s -o - | FileCheck %s
 
 // CHECK-LABEL: func @while(%arg0: tensor<i64>) -> tensor<i64> {
 func @while(%arg0: tensor<i64>) -> tensor<i64> {
@@ -47,9 +47,9 @@ func @conditional(%arg0: tensor<f32>) -> tensor<f32> {
 
   ^bb0(%arg1: tensor<f32>):
     // CHECK: ^bb2([[VAL4:%.+]]: tensor<f32>):
-    // CHECK:   [[VAL5:%.+]] = "xla_hlo.exp"([[VAL4]]) : (tensor<f32>) -> tensor<f32>
+    // CHECK:   [[VAL5:%.+]] = "xla_hlo.exponential"([[VAL4]]) : (tensor<f32>) -> tensor<f32>
     // CHECK:   br ^bb3([[VAL5]] : tensor<f32>)
-    %2 = "xla_hlo.exp"(%arg1) : (tensor<f32>) -> tensor<f32>
+    %2 = "xla_hlo.exponential"(%arg1) : (tensor<f32>) -> tensor<f32>
     "xla_hlo.return"(%2) : (tensor<f32>) -> ()
   }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
 
@@ -126,7 +126,7 @@ func @conditional_with_multiple_blocks(%arg0: tensor<f32>, %arg1: tensor<f32>, %
   // CHECK:   %3 = "xla_hlo.log"(%2) : (tensor<f32>) -> tensor<f32>
   // CHECK:   br ^[[EXIT:.+]](%3 : tensor<f32>)
   // CHECK: ^[[ELSE_ENTRY]](%4: tensor<f32>):
-  // CHECK:   %5 = "xla_hlo.exp"(%4) : (tensor<f32>) -> tensor<f32>
+  // CHECK:   %5 = "xla_hlo.exponential"(%4) : (tensor<f32>) -> tensor<f32>
   // CHECK:   br ^[[EXIT]](%5 : tensor<f32>)
   // CHECK: ^[[EXIT]](%6: tensor<f32>):
   // CHECK:   return %6 : tensor<f32>
@@ -139,7 +139,7 @@ func @conditional_with_multiple_blocks(%arg0: tensor<f32>, %arg1: tensor<f32>, %
     "xla_hlo.return"(%2) : (tensor<f32>) -> ()
   },  {
   ^else_entry(%arg2: tensor<f32>):
-    %2 = "xla_hlo.exp"(%arg2) : (tensor<f32>) -> tensor<f32>
+    %2 = "xla_hlo.exponential"(%arg2) : (tensor<f32>) -> tensor<f32>
     "xla_hlo.return"(%2) : (tensor<f32>) -> ()
   }) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
   return %1 : tensor<f32>

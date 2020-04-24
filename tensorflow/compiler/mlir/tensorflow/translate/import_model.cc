@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -224,13 +225,13 @@ class ImporterBase {
 
   // Returns the inferred input type at index `idx` of the `node` in the
   // context.
-  StatusOr<mlir::TensorType> InferInputType(const Node& node, int idx,
-                                            mlir::Builder builder);
+  StatusOr<mlir::Type> InferInputType(const Node& node, int idx,
+                                      mlir::Builder builder);
 
   // Returns the inferred output type at index `idx` of the `node` in the
   // context.
-  StatusOr<mlir::TensorType> InferOutputType(const Node& node, int idx,
-                                             mlir::Builder builder);
+  StatusOr<mlir::Type> InferOutputType(const Node& node, int idx,
+                                       mlir::Builder builder);
 
  private:
   // Most types with subtypes have only one subtype.
@@ -238,7 +239,17 @@ class ImporterBase {
 
   // Adds all the ordered_nodes to the shape refiner shape_refiner_. Then all
   // data type and shape information is maintained by the shape_refiner_.
-  Status AddNodesToShapeRefiner();
+  // TODO(jpienaar): Remove once shape inference on import is removed.
+  Status AddNodesToShapeRefiner(
+      std::unordered_map<string, Node*>* node_name_map);
+
+  // Prune nodes that do not feed into fetch nodes.
+  Status PruneUnreachableNodes(
+      std::unordered_map<string, Node*>* node_name_map);
+
+  // Converts feeds to Placeholder nodes.
+  Status ConvertFeedsToPlaceholders(
+      std::unordered_map<string, Node*>* node_name_map);
 
   // Converts the inferred shape referred to by 'handle' in 'context', with
   // given element type, and returns an MLIR tensor type.
@@ -381,7 +392,10 @@ class ImporterBase {
   const GraphDebugInfo& debug_info_;
   llvm::StringRef function_name_for_debug_info_;
   NodeValueMap node_values_;
-  std::unique_ptr<ShapeRefiner> shape_refiner_;
+  // TODO(jpienaar): Remove once shape inference on import is removed.
+  // The shape_refinner_ will be nullptr if shape inference on import is
+  // not enabled.
+  std::unique_ptr<ShapeRefiner> shape_refiner_ = nullptr;
   NameUniquifier* function_name_uniquifier_;
   mlir::StatusScopedDiagnosticHandler error_handler_;
 
@@ -639,8 +653,9 @@ Status ImporterBase::GetInputOutputNodes(
   return Status::OK();
 }
 
-// TODO(fengliuai): Replace the iterative algorithm by an one pass propagation
-Status ImporterBase::AddNodesToShapeRefiner() {
+// TODO(jpienaar): Remove this post shape inference on import flag is removed.
+Status ImporterBase::AddNodesToShapeRefiner(
+    std::unordered_map<string, Node*>* node_name_map) {
   shape_refiner_ = absl::make_unique<ShapeRefiner>(graph_->versions(),
                                                    graph_->op_registry());
   // Some operations (for example "TPUExecute") don't have shape inference
@@ -650,7 +665,6 @@ Status ImporterBase::AddNodesToShapeRefiner() {
   shape_refiner_->set_function_library_for_shape_inference(&graph_flib_);
 
   TF_ASSIGN_OR_RETURN(auto feeds_by_node, GetFeedsByNode(specs_.inputs));
-  auto node_name_map = graph_->BuildNodeNameIndex();
 
   // First add all nodes to the refiner.
   for (Node* node : ordered_nodes_) {
@@ -684,7 +698,7 @@ Status ImporterBase::AddNodesToShapeRefiner() {
           TF_ASSIGN_OR_RETURN(
               auto placeholder_node_and_removed,
               CreatePlaceholderNodeForFeed(array_info.shape, dtype, node, index,
-                                           node_name_map));
+                                           *node_name_map));
 
           Node* placeholder_node = placeholder_node_and_removed.first;
           if (placeholder_node_and_removed.second) {
@@ -693,7 +707,7 @@ Status ImporterBase::AddNodesToShapeRefiner() {
             node_added_to_shape_refiner = true;
           }
           remapped_feeds_[{it->first, index}] = placeholder_node->name();
-          node_name_map[placeholder_node->name()] = placeholder_node;
+          (*node_name_map)[placeholder_node->name()] = placeholder_node;
           // Add the new placeholder node to the shape refiner.
           Status status = shape_refiner_->AddNode(placeholder_node);
           if (!status.ok()) {
@@ -787,7 +801,7 @@ Status ImporterBase::AddNodesToShapeRefiner() {
   // Prune nodes in the graph that are not reachable from the output.
   if (specs_.prune_unused_nodes) {
     std::unordered_set<const Node*> prune_start;
-    TF_RETURN_IF_ERROR(GetInputOutputNodes(node_name_map, &prune_start));
+    TF_RETURN_IF_ERROR(GetInputOutputNodes(*node_name_map, &prune_start));
     if (!prune_start.empty()) {
       if (PruneForReverseReachability(graph_.get(), prune_start)) {
         VLOG(1) << "Pruned unused nodes in graphdef";
@@ -872,27 +886,48 @@ Status ImporterBase::AddNodesToShapeRefiner() {
   return Status::OK();
 }
 
-StatusOr<mlir::TensorType> ImporterBase::InferInputType(const Node& node,
-                                                        int idx,
-                                                        mlir::Builder builder) {
-  ExtendedInferenceContext* shape_context =
-      shape_refiner_->GetExtendedContext(&node);
-  DataType dtype = shape_context->input_type(idx);
-  auto* context = shape_context->get_context();
-  return ConvertDataTypeAndShape(dtype, context->input(idx),
-                                 context->input_handle_shapes_and_types(idx),
-                                 context, builder);
+StatusOr<mlir::Type> ImporterBase::InferInputType(const Node& node, int idx,
+                                                  mlir::Builder builder) {
+  if (specs_.enable_shape_inference) {
+    // TODO(jpienaar): Remove this if shape inference on import flag is removed.
+    ExtendedInferenceContext* shape_context =
+        shape_refiner_->GetExtendedContext(&node);
+    DataType dtype = shape_context->input_type(idx);
+    auto* context = shape_context->get_context();
+    return ConvertDataTypeAndShape(dtype, context->input(idx),
+                                   context->input_handle_shapes_and_types(idx),
+                                   context, builder);
+  }
+  DataType dtype = node.properties()->input_types[idx];
+  mlir::Type element_type;
+  TF_RETURN_IF_ERROR(ConvertDataType(dtype, builder, &element_type));
+  return mlir::UnrankedTensorType::get(element_type);
 }
 
-StatusOr<mlir::TensorType> ImporterBase::InferOutputType(
-    const Node& node, int idx, mlir::Builder builder) {
-  ExtendedInferenceContext* shape_context =
-      shape_refiner_->GetExtendedContext(&node);
-  DataType dtype = shape_context->output_type(idx);
-  auto* context = shape_context->get_context();
-  return ConvertDataTypeAndShape(dtype, context->output(idx),
-                                 context->output_handle_shapes_and_types(idx),
-                                 context, builder);
+StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
+                                                   mlir::Builder builder) {
+  if (specs_.enable_shape_inference) {
+    // TODO(jpienaar): Remove this if shape inference on import flag is removed.
+    ExtendedInferenceContext* shape_context =
+        shape_refiner_->GetExtendedContext(&node);
+    DataType dtype = shape_context->output_type(idx);
+    auto* context = shape_context->get_context();
+    return ConvertDataTypeAndShape(dtype, context->output(idx),
+                                   context->output_handle_shapes_and_types(idx),
+                                   context, builder);
+  }
+  DataType dtype = node.properties()->output_types[idx];
+  if (node.IsArg()) {
+    if (auto shape = node.attrs().Find("_output_shapes")) {
+      if (shape->has_list() && shape->list().shape_size() == 1) {
+        return ConvertToMlirTensorType(shape->list().shape().at(0), dtype,
+                                       &builder);
+      }
+    }
+  }
+  mlir::Type element_type;
+  TF_RETURN_IF_ERROR(ConvertDataType(dtype, builder, &element_type));
+  return mlir::UnrankedTensorType::get(element_type);
 }
 
 StatusOr<mlir::TensorType> ImporterBase::ConvertDataTypeAndShape(
@@ -1090,7 +1125,7 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   TF_RETURN_IF_ERROR(
       FunctionDefToBodyHelper(*func_def, AttrSlice(), &func_lib, &fbody));
 
-  // Converts the argument and return types to mlir types.
+  // Converts the argument and return types to MLIR types.
   absl::InlinedVector<mlir::NamedAttribute, 8> attributes;
   attributes.reserve(func_def->attr_size());
   for (const auto& name_and_value : func_def->attr()) {
@@ -1167,9 +1202,96 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   return Status::OK();
 }
 
+Status ImporterBase::PruneUnreachableNodes(
+    std::unordered_map<string, Node*>* node_name_map) {
+  std::unordered_set<const Node*> prune_start;
+  TF_RETURN_IF_ERROR(GetInputOutputNodes(*node_name_map, &prune_start));
+
+  if (!prune_start.empty()) {
+    if (PruneForReverseReachability(graph_.get(), prune_start)) {
+      VLOG(1) << "Pruned unused nodes in graphdef";
+    } else {
+      VLOG(1) << "No unused nodes in graphdef to prune";
+    }
+  } else {
+    VLOG(1) << "No output nodes specified, skipping pruning";
+  }
+  return Status::OK();
+}
+
+Status ImporterBase::ConvertFeedsToPlaceholders(
+    std::unordered_map<string, Node*>* node_name_map) {
+  // Feeds (edges) are converted into single-output placeholder nodes to
+  // simplify the conversion process.
+  TF_ASSIGN_OR_RETURN(auto feeds_by_node, GetFeedsByNode(specs_.inputs));
+  for (const auto& it : feeds_by_node) {
+    TensorId tensor = ParseTensorName(it.first);
+    auto jt = node_name_map->find(std::string(tensor.node()));
+    if (jt == node_name_map->end()) {
+      return errors::FailedPrecondition(
+          absl::StrCat("Graph does not contain node: ", tensor.node()));
+    }
+
+    Node* node = jt->second;
+    auto op_name = node->op_def().name();
+    if (op_name != "Placeholder" && op_name != "LegacyFedInput" &&
+        op_name != FunctionLibraryDefinition::kArgOp) {
+      for (const auto& output_tensor : it.second) {
+        const int index = output_tensor.first;
+        const ArrayInfo& array_info = output_tensor.second->second;
+
+        DataType dtype = array_info.imported_dtype;
+        // Uses the existing output type if it isn't specified by the user.
+        if (dtype == DT_INVALID) {
+          dtype = node->output_type(index);
+        }
+
+        TF_ASSIGN_OR_RETURN(
+            auto placeholder_node_and_removed,
+            CreatePlaceholderNodeForFeed(array_info.shape, dtype, node, index,
+                                         *node_name_map));
+
+        Node* placeholder_node = placeholder_node_and_removed.first;
+        if (placeholder_node->in_edges().empty()) {
+          graph_->AddControlEdge(graph_->source_node(), placeholder_node,
+                                 true /* skip test for duplicates */);
+        }
+        if (placeholder_node->out_edges().empty()) {
+          graph_->AddControlEdge(placeholder_node, graph_->sink_node(),
+                                 true /* skip test for duplicates */);
+        }
+        remapped_feeds_[{it.first, index}] = placeholder_node->name();
+        (*node_name_map)[placeholder_node->name()] = placeholder_node;
+      }
+    }
+  }
+  return Status::OK();
+}
+
 Status ImporterBase::PrepareConvert(const Graph& graph) {
   TF_RETURN_IF_ERROR(RemoveBackedges(graph));
-  TF_RETURN_IF_ERROR(AddNodesToShapeRefiner());
+
+  auto node_name_map = graph_->BuildNodeNameIndex();
+
+  if (specs_.enable_shape_inference) {
+    // TODO(jpienaar): Remove once infer shapes on import flag is removed.
+    TF_RETURN_IF_ERROR(AddNodesToShapeRefiner(&node_name_map));
+  } else {
+    TF_RETURN_IF_ERROR(ConvertFeedsToPlaceholders(&node_name_map));
+  }
+
+  // Prune nodes in the graph that are not reachable from the output.
+  if (specs_.prune_unused_nodes) {
+    TF_RETURN_IF_ERROR(PruneUnreachableNodes(&node_name_map));
+  }
+
+  if (!specs_.enable_shape_inference) {
+    // Re-initialize ordered_nodes_ since we might have modified the graph.
+    GetReversePostOrder(
+        *graph_, &ordered_nodes_,
+        [](const Node* n1, const Node* n2) { return n1->name() < n2->name(); });
+  }
+
   return Status::OK();
 }
 
@@ -1210,6 +1332,34 @@ Status ImporterBase::Convert(
     function.setArgAttr(entry.first, "tf.resource_arg_unique_id",
                         builder_.getI64IntegerAttr(entry.second));
   }
+
+  // TODO(jpienaar): Update post removing shape_refinier_.
+  if (!specs_.enable_shape_inference) {
+    // Refine graph's type given more precise fetch.
+    auto fetch_op = graph.GetFetch();
+    bool all_equal = true;
+    for (auto it :
+         llvm::zip(fetch_op.getOperandTypes(), graph.getResultTypes())) {
+      if (std::get<0>(it) != std::get<1>(it)) {
+        all_equal = false;
+        break;
+      }
+    }
+    if (all_equal) return Status::OK();
+
+    llvm::SmallVector<mlir::Type, 4> return_types;
+    return_types.reserve(fetch_op.getNumOperands());
+    for (mlir::Type t : fetch_op.getOperandTypes()) return_types.push_back(t);
+    builder_.setInsertionPointToStart(&function.getBody().front());
+    auto new_graph = builder_.create<mlir::tf_executor::GraphOp>(
+        function.getLoc(), return_types, mlir::ValueRange{}, graph.getAttrs());
+    new_graph.body().takeBody(graph.body());
+    graph.replaceAllUsesWith(new_graph);
+    graph.erase();
+    function.setType(mlir::FunctionType::get(
+        func_type.getInputs(), return_types, function.getContext()));
+  }
+
   return Status::OK();
 }
 
@@ -1315,7 +1465,7 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
     std::string name_for_name_loc =
         function_name.empty() ? name.str() : (name + "@" + function_name).str();
     auto name_loc_id = mlir::Identifier::get(name_for_name_loc, context_);
-    const auto& location_it = debug_info.find(debug_info_key);
+    const auto location_it = debug_info.find(debug_info_key);
     if (location_it == debug_info.end()) {
       return mlir::NameLoc::get(name_loc_id, context_);
     }
@@ -1452,7 +1602,8 @@ mlir::Operation* ImporterBase::createOperation(
       result.location, types, control_operands,
       mlir::ArrayRef<mlir::NamedAttribute>{});
   island.body().push_back(new mlir::Block);
-  mlir::OpBuilder island_builder(&island.GetBody());
+  mlir::OpBuilder island_builder =
+      mlir::OpBuilder::atBlockEnd(&island.GetBody());
 
   // Create the operation inside the island now.
   mlir::Operation* inner_op;
@@ -1475,30 +1626,48 @@ mlir::Operation* ImporterBase::createOperation(
     inner_op = island_builder.createOperation(result);
   }
 
-  if (inner_op->hasTrait<mlir::OpTrait::AttrSizedResultSegments>()) {
-    // The op has multiple variadic outputs.
-    // Calculate result segment sizes using the OpDef.
-    NameRangeMap output_ranges;
+  // Sets operand_segment_sizes or result_segment_sizes attribute to the op.
+  const auto set_segment_sizes_attr =
+      [&](const NameRangeMap& arg_ranges,
+          const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
+          llvm::StringRef attr_name) {
+        std::vector<mlir::Attribute> values;
+        values.reserve(args.size());
+        for (const auto& arg : args) {
+          auto range = arg_ranges.at(arg.name());
+          values.push_back(
+              island_builder.getI32IntegerAttr(range.second - range.first));
+        }
+        auto attr_type =
+            mlir::VectorType::get(args.size(), builder_.getIntegerType(32));
+        auto attr_value = mlir::DenseElementsAttr::get(attr_type, values);
+        inner_op->setAttr(attr_name, attr_value);
+      };
+
+  if (inner_op->hasTrait<mlir::OpTrait::AttrSizedOperandSegments>() ||
+      inner_op->hasTrait<mlir::OpTrait::AttrSizedResultSegments>()) {
+    // The op has multiple variadic operands or results.
+    // Calculate operand and result segment sizes using the OpDef.
+    NameRangeMap input_ranges, output_ranges;
     // This will fail only if the OpDef is syntactically invalid.
     // TODO(jpienaar): Convert this CHECK into a properly propagated error.
     TF_CHECK_OK(
-        NameRangesForNode(node, node.op_def(), nullptr, &output_ranges));
-    std::vector<mlir::Attribute> values;
-    values.reserve(node.op_def().output_arg_size());
-    for (const auto& output_arg : node.op_def().output_arg()) {
-      auto range = output_ranges[output_arg.name()];
-      values.push_back(
-          island_builder.getI32IntegerAttr(range.second - range.first));
+        NameRangesForNode(node, node.op_def(), &input_ranges, &output_ranges));
+    if (inner_op->hasTrait<mlir::OpTrait::AttrSizedOperandSegments>()) {
+      // Add derived "operand_segment_sizes" attr to the created operation.
+      // TODO(b/146937733): Don't use <void> here.
+      set_segment_sizes_attr(input_ranges, node.op_def().input_arg(),
+                             mlir::OpTrait::AttrSizedOperandSegments<
+                                 void>::getOperandSegmentSizeAttr());
     }
 
-    // Add derived "result_segment_sizes" attr to the created operation.
-    // TODO(b/146937733): Don't use <void> here.
-    llvm::StringRef attr_name = mlir::OpTrait::AttrSizedResultSegments<
-        void>::getResultSegmentSizeAttr();
-    auto attr_type = mlir::VectorType::get(node.op_def().output_arg_size(),
-                                           builder_.getIntegerType(32));
-    auto attr_value = mlir::DenseElementsAttr::get(attr_type, values);
-    inner_op->setAttr(attr_name, attr_value);
+    if (inner_op->hasTrait<mlir::OpTrait::AttrSizedResultSegments>()) {
+      // Add derived "result_segment_sizes" attr to the created operation.
+      // TODO(b/146937733): Don't use <void> here.
+      set_segment_sizes_attr(output_ranges, node.op_def().output_arg(),
+                             mlir::OpTrait::AttrSizedResultSegments<
+                                 void>::getResultSegmentSizeAttr());
+    }
   }
 
   // Add the terminator for the island
@@ -1866,13 +2035,13 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
       auto node_name = [&](const OutputTensor& tensor) {
         ss << tensor.node->name();
       };
-      mlir::interleave(arg_nodes, ss, node_name, ",");
+      llvm::interleave(arg_nodes, ss, node_name, ",");
       auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(ret_nodes, ss, node_name, ",");
+      llvm::interleave(ret_nodes, ss, node_name, ",");
       auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(specs.control_outputs, ss, ",");
+      llvm::interleave(specs.control_outputs, ss, ",");
       auto control_outputs =
           b.getNamedAttr("control_outputs", b.getStringAttr(ss.str()));
 
@@ -1897,16 +2066,16 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
       mlir::Builder b(context);
       std::string s;
       llvm::raw_string_ostream ss(s);
-      mlir::interleave(
+      llvm::interleave(
           specs.inputs, ss,
           [&](const std::pair<std::string, ArrayInfo>& v) { ss << v.first; },
           ",");
       auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(specs.outputs, ss, ",");
+      llvm::interleave(specs.outputs, ss, ",");
       auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(specs.control_outputs, ss, ",");
+      llvm::interleave(specs.control_outputs, ss, ",");
       auto control_outputs =
           b.getNamedAttr("control_outputs", b.getStringAttr(ss.str()));
 
@@ -1985,7 +2154,7 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
   llvm::SmallVector<mlir::Type, 4> arg_types;
   arg_types.reserve(specs.inputs.size());
   int i = 0;
-  for (auto it : specs.inputs) {
+  for (const auto& it : specs.inputs) {
     Node* arg_node = arg_nodes->at(i).node;
     if (arg_node == nullptr) {
       return errors::InvalidArgument("Input ", it.first,
@@ -2844,6 +3013,7 @@ StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphImporter::Convert(
       saved_model->debug_info() ? *saved_model->debug_info() : dummy_debug_info;
 
   GraphImportConfig specs;
+  specs.prune_unused_nodes = true;
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
@@ -2868,6 +3038,8 @@ StatusOr<mlir::OwningModuleRef> SavedModelObjectGraphImporter::Convert(
   SavedModelObjectGraphImporter importer(graph.flib_def(), debug_info, specs,
                                          module.get(), &tf_name_to_mlir_name,
                                          &function_name_uniquifier);
+
+  TF_RETURN_IF_ERROR(importer.PrepareConvert(graph));
 
   auto fn_names = graph.flib_def().ListFunctionNames();
   for (const auto& fn_name : fn_names) {
@@ -2928,12 +3100,11 @@ class SavedModelSignatureDefImporter {
   // Converts the SavedModel to the SavedModel dialect. Creates an MLIR function
   // for each signature.
   StatusOr<mlir::OwningModuleRef> ConvertSignatures();
-  Status ConvertSignature(
-      const GraphDef& graphdef, const std::string& sig_def_key,
-      const std::map<std::string, TensorInfo>& inputs_sorted,
-      const std::map<std::string, TensorInfo>& outputs_sorted,
-      const GraphDebugInfo& debug_info,
-      const FunctionLibraryDefinition& flib_def);
+  Status ConvertSignature(const GraphDef& graphdef,
+                          const std::string& sig_def_key,
+                          const SignatureDef& signature_def,
+                          const GraphDebugInfo& debug_info,
+                          const FunctionLibraryDefinition& flib_def);
 
   // Creates GlobalTensorOp for each variable and moves each VarHandle op to
   // the enclosing function's arguments.
@@ -2948,10 +3119,7 @@ class SavedModelSignatureDefImporter {
       const llvm::SmallVectorImpl<mlir::TF::VarHandleOp>& ops);
 
   GraphImportConfig::InputArrays ParseInputArrays(
-      const std::map<std::string, TensorInfo>& inputs);
-
-  std::vector<std::string> ParseOutputArrays(
-      const std::map<std::string, TensorInfo>& outputs);
+      const std::vector<std::pair<std::string, TensorInfo>>& inputs);
 
   const SavedModelBundle& bundle_;
   mlir::OwningModuleRef module_;
@@ -2979,14 +3147,8 @@ SavedModelSignatureDefImporter::ConvertSignatures() {
       continue;
     }
 
-    // protobuf::Map doesn't provide stable iteration order so use std::map
-    std::map<std::string, TensorInfo> inputs_sorted(
-        signature_def.inputs().begin(), signature_def.inputs().end());
-    std::map<std::string, TensorInfo> outputs_sorted(
-        signature_def.outputs().begin(), signature_def.outputs().end());
-
-    TF_RETURN_IF_ERROR(ConvertSignature(graphdef, sig_def_key, inputs_sorted,
-                                        outputs_sorted, debug_info, flib_def));
+    TF_RETURN_IF_ERROR(ConvertSignature(graphdef, sig_def_key, signature_def,
+                                        debug_info, flib_def));
   }
   TF_RETURN_IF_ERROR(LiftVariables());
 
@@ -2999,13 +3161,27 @@ SavedModelSignatureDefImporter::ConvertSignatures() {
 
 Status SavedModelSignatureDefImporter::ConvertSignature(
     const GraphDef& graphdef, const std::string& sig_def_key,
-    const std::map<std::string, TensorInfo>& inputs_sorted,
-    const std::map<std::string, TensorInfo>& outputs_sorted,
-    const GraphDebugInfo& debug_info,
+    const SignatureDef& signature_def, const GraphDebugInfo& debug_info,
     const FunctionLibraryDefinition& flib_def) {
+  // Create local vectors for the input and output and sort them to be
+  // deterministic. We don't want anyone to really depend on the order, client
+  // should lookup argument/result mapping by attribute name.
+  // To avoid accidentally depending on the order we use an unintuitive sorting.
+  std::vector<std::pair<std::string, TensorInfo>> inputs(
+      signature_def.inputs().begin(), signature_def.inputs().end());
+  llvm::sort(inputs, [](const auto& lhs, const auto& rhs) {
+    return lhs.first.size() < rhs.first.size() || lhs.first > rhs.first;
+  });
+  std::vector<std::pair<std::string, TensorInfo>> outputs(
+      signature_def.outputs().begin(), signature_def.outputs().end());
+  llvm::sort(outputs, [](const auto& lhs, const auto& rhs) {
+    return lhs.first.size() < rhs.first.size() || lhs.first > rhs.first;
+  });
+
   GraphImportConfig specs;
-  specs.inputs = ParseInputArrays(inputs_sorted);
-  specs.outputs = ParseOutputArrays(outputs_sorted);
+  specs.prune_unused_nodes = true;
+  specs.inputs = ParseInputArrays(inputs);
+  for (auto& output : outputs) specs.outputs.push_back(output.second.name());
 
   // Remove unused nodes and create sub-graphdef.
   GraphDef sub_graph_def;
@@ -3041,11 +3217,11 @@ Status SavedModelSignatureDefImporter::ConvertSignature(
                   builder.getStrArrayAttr({sig_def_key}));
 
   // Transfer input and output parameter names to index_path attributes.
-  for (auto input_and_idx : llvm::enumerate(inputs_sorted)) {
+  for (auto input_and_idx : llvm::enumerate(inputs)) {
     func_op.setArgAttr(input_and_idx.index(), "tf_saved_model.index_path",
                        builder.getStrArrayAttr({input_and_idx.value().first}));
   }
-  for (auto output_and_idx : llvm::enumerate(outputs_sorted)) {
+  for (auto output_and_idx : llvm::enumerate(outputs)) {
     func_op.setResultAttr(
         output_and_idx.index(), "tf_saved_model.index_path",
         builder.getStrArrayAttr({output_and_idx.value().first}));
@@ -3163,7 +3339,7 @@ Status SavedModelSignatureDefImporter::ReadVariablesFromSession(
     tensors.push_back(*var->tensor());
   }
 
-  for (const auto& iter : llvm::zip(variable_names_and_ops, tensors)) {
+  for (const auto iter : llvm::zip(variable_names_and_ops, tensors)) {
     const auto& name = std::get<0>(iter).first;
     auto location = std::get<0>(iter).second.getLoc();
     const auto& tensor = std::get<1>(iter);
@@ -3180,7 +3356,7 @@ Status SavedModelSignatureDefImporter::ReadVariablesFromSession(
 }
 
 GraphImportConfig::InputArrays SavedModelSignatureDefImporter::ParseInputArrays(
-    const std::map<std::string, TensorInfo>& inputs) {
+    const std::vector<std::pair<std::string, TensorInfo>>& inputs) {
   GraphImportConfig::InputArrays results;
   for (const auto& iter : inputs) {
     const auto& tensor_info = iter.second;
@@ -3192,24 +3368,8 @@ GraphImportConfig::InputArrays SavedModelSignatureDefImporter::ParseInputArrays(
     array_info.imported_dtype = tensor_info.dtype();
     array_info.shape = tensor_info.tensor_shape();
 
-    std::vector<std::string> node_names =
-        absl::StrSplit(tensor_info.name(), ':');
-
-    results.insert(std::pair<std::string, ArrayInfo>(node_names.at(0),
+    results.insert(std::pair<std::string, ArrayInfo>(tensor_info.name(),
                                                      std::move(array_info)));
-  }
-  return results;
-}
-
-std::vector<std::string> SavedModelSignatureDefImporter::ParseOutputArrays(
-    const std::map<std::string, TensorInfo>& outputs) {
-  std::vector<std::string> results;
-  for (const auto& iter : outputs) {
-    const auto& tensor_info = iter.second;
-
-    std::vector<std::string> node_names =
-        absl::StrSplit(tensor_info.name(), ':');
-    results.push_back(node_names.at(0));
   }
   return results;
 }

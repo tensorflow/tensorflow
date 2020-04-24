@@ -216,7 +216,7 @@ string SummarizeTensor(const TensorProto& tensor_proto) {
 
 string SummarizeFunc(const NameAttrList& func) {
   std::vector<string> entries;
-  for (auto p : func.attr()) {
+  for (const auto& p : func.attr()) {
     entries.push_back(
         strings::StrCat(p.first, "=", SummarizeAttrValue(p.second)));
   }

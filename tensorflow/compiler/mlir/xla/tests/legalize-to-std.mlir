@@ -1,4 +1,4 @@
-// RUN: tf-opt -xla-legalize-to-std %s -o - | FileCheck %s
+// RUN: xla-opt -xla-legalize-to-std %s -o - | FileCheck %s
 
 // CHECK-LABEL: func @binary_ops_float(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
 func @binary_ops_float(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {

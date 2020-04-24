@@ -28,12 +28,16 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/c/eager/operation_interface.h"
+#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
+#include "tensorflow/c/experimental/saved_model/core/tf_saved_model_impl.h"
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/common_runtime/eager/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/function.h"
@@ -108,6 +112,7 @@ EagerContext::EagerContext(
 
 #if !defined(IS_MOBILE_PLATFORM)
   context_id_ = kInvalidContextId;
+  context_view_id_ = 0;
 #endif  // IS_MOBILE_PLATFORM
 
   std::unique_ptr<DeviceResolverInterface> drl(
@@ -119,6 +124,61 @@ EagerContext::EagerContext(
       new CollectiveExecutorMgr(opts.config, local_device_mgr(), std::move(drl),
                                 std::move(cprl)),
       /*owned=*/true);
+}
+
+AbstractTensorInterface* EagerContext::CreateInt64Scalar(int64 value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateUint64Scalar(uint64 value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateInt32Scalar(int32 value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateFloatScalar(float value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateDoubleScalar(double value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateHalfScalar(Eigen::half value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateStringScalar(tstring value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateComplex128Scalar(
+    complex128 value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateBoolScalar(bool value) {
+  return new TensorInterface(Tensor(value));
+}
+
+AbstractTensorInterface* EagerContext::CreateTensor(
+    DataType dtype, absl::Span<const int64> dim_sizes) {
+  return new TensorInterface(Tensor(dtype, TensorShape(dim_sizes)));
+}
+
+std::unique_ptr<SavedModelAPI> EagerContext::LoadSavedModelAPI(
+    const std::string& directory,
+    const absl::optional<std::unordered_set<std::string>>& tags,
+    tensorflow::Status* status) {
+  auto result = std::make_unique<TFSavedModelAPIImpl>();
+  auto load_status = TFSavedModelAPIImpl::Load(directory, tags, result.get());
+  if (!load_status.ok()) {
+    status->Update(load_status);
+    result.reset();
+  }
+  return result;
 }
 
 void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
@@ -133,17 +193,10 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
         *r = CreateRendezvous(step_id);
         return Status::OK();
       }};
-  if (lazy_copy_function_remote_inputs_) {
-    pflr_.reset(new eager::EagerProcessFunctionLibraryRuntime(
-        device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-        thread_pool, cluster_flr, custom_kernel_creator,
-        /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
-  } else {
-    pflr_.reset(new ProcessFunctionLibraryRuntime(
-        device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-        thread_pool, cluster_flr, custom_kernel_creator,
-        /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
-  }
+  pflr_.reset(new ProcessFunctionLibraryRuntime(
+      device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
+      thread_pool, cluster_flr, custom_kernel_creator,
+      /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
 }
 
 void EagerContext::InitPrioritizedDeviceTypeList() {
@@ -1058,11 +1111,10 @@ Status EagerContext::InitializeRemoteMaster(
 }
 
 Status EagerContext::UpdateRemoteMaster(
-    WorkerEnv* worker_env,
+    uint64 context_id,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     const std::vector<string>& add_remote_contexts,
-    const std::vector<string>& remove_remote_contexts, uint64 context_id,
-    Rendezvous* r) {
+    const std::vector<string>& remove_remote_contexts) {
   {
     tf_shared_lock l(remote_state_mu_);
     if (context_id != context_id_) {
@@ -1098,9 +1150,6 @@ Status EagerContext::UpdateRemoteMaster(
     mutex_lock l(remote_state_mu_);
     context_view_id_++;
 
-    worker_env_ = worker_env;
-    if (rendezvous_ != nullptr) rendezvous_->Unref();
-    rendezvous_ = r;
     remote_eager_workers_ = std::move(remote_eager_workers);
     pflr_->InitializeDeviceSet();
     InitPrioritizedDeviceTypeList();
@@ -1300,11 +1349,8 @@ Status EagerContext::InitializeRemoteWorker(
 }
 
 Status EagerContext::UpdateRemoteWorker(
-    const DeviceMgr* worker_session_device_mgr,
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
-    DynamicDeviceMgr* remote_device_mgr,
-    const std::vector<string>& remote_contexts, uint64 context_id,
-    DistributedFunctionLibraryRuntime* cluster_flr) {
+    const std::vector<string>& remote_contexts, uint64 context_id) {
   {
     mutex_lock l(remote_state_mu_);
     if (context_id != context_id_) {
@@ -1314,15 +1360,20 @@ Status EagerContext::UpdateRemoteWorker(
           " but current id = ", context_id_);
     }
     context_view_id_++;
+
+    remote_contexts_ = remote_contexts;
+    remote_eager_workers_ = std::move(remote_eager_workers);
+    InitPrioritizedDeviceTypeList();
+    pflr_->InitializeDeviceSet();
   }
 
-  remote_contexts_ = remote_contexts;
-
-  remote_eager_workers_ = std::move(remote_eager_workers);
-  ResetClusterFLR(cluster_flr);
-
-  remote_device_manager_.Reset(remote_device_mgr);
-  InitPrioritizedDeviceTypeList();
+  // No need to update remote_device_manager_ since it's not owned for remote
+  // worker context (owned by the corresponding worker session).
+  if (remote_device_manager_.Owned()) {
+    return errors::FailedPrecondition(
+        "EagerContext::UpdateRemoteWorker failed because the context was "
+        "initialized as a master context.");
+  }
 
   ClearCachesAndThreadExecutors();
   default_executor_.ClearError();
@@ -1332,13 +1383,6 @@ Status EagerContext::UpdateRemoteWorker(
       entry.second->ClearError();
     }
   }
-
-  SessionOptions options = SessionOptions();
-  const auto* config = pflr_->config();
-  ResetPFLR(worker_session_device_mgr, options.env, config,
-            TF_GRAPH_DEF_VERSION, FuncLibDef(),
-            config->graph_options().optimizer_options(), thread_pool_.get(),
-            cluster_flr_.Get(), custom_kernel_creator_);
   return Status::OK();
 }
 #endif  // !IS_MOBILE_PLATFORM

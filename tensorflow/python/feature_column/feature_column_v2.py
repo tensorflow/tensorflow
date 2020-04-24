@@ -152,7 +152,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
-from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -543,7 +542,7 @@ class _LinearModelLayer(Layer):
               name='weights',
               dtype=dtypes.float32,
               shape=(first_dim, self._units),
-              initializer=init_ops.zeros_initializer(),
+              initializer=initializers.zeros(),
               trainable=self.trainable)
 
       # Create a bias variable.
@@ -551,7 +550,7 @@ class _LinearModelLayer(Layer):
           name='bias_weights',
           dtype=dtypes.float32,
           shape=[self._units],
-          initializer=init_ops.zeros_initializer(),
+          initializer=initializers.zeros(),
           trainable=self.trainable,
           use_resource=True,
           # TODO(rohanj): Get rid of this hack once we have a mechanism for
@@ -962,7 +961,7 @@ def embedding_column(categorical_column,
                      'Embedding of column_name: {}'.format(
                          categorical_column.name))
   if initializer is None:
-    initializer = init_ops.truncated_normal_initializer(
+    initializer = initializers.truncated_normal(
         mean=0.0, stddev=1 / math.sqrt(dimension))
 
   return EmbeddingColumn(
@@ -1104,7 +1103,7 @@ def shared_embedding_columns(categorical_columns,
   if (initializer is not None) and (not callable(initializer)):
     raise ValueError('initializer must be callable if specified.')
   if initializer is None:
-    initializer = init_ops.truncated_normal_initializer(
+    initializer = initializers.truncated_normal(
         mean=0.0, stddev=1. / math.sqrt(dimension))
 
   # Sort the columns so the default collection name is deterministic even if the
@@ -1287,7 +1286,7 @@ def shared_embedding_columns_v2(categorical_columns,
   if (initializer is not None) and (not callable(initializer)):
     raise ValueError('initializer must be callable if specified.')
   if initializer is None:
-    initializer = init_ops.truncated_normal_initializer(
+    initializer = initializers.truncated_normal(
         mean=0.0, stddev=1. / math.sqrt(dimension))
 
   # Sort the columns so the default collection name is deterministic even if the
@@ -1969,7 +1968,7 @@ def indicator_column(categorical_column):
 
   ```python
   name = indicator_column(categorical_column_with_vocabulary_list(
-      'name', ['bob', 'george', 'wanda'])
+      'name', ['bob', 'george', 'wanda']))
   columns = [name, ...]
   features = tf.io.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = input_layer(features, columns)
@@ -2255,7 +2254,25 @@ class FeatureColumn(object):
 
     `__gt__` is called when the "other" object being compared during the sort
     does not have `__lt__` defined.
-    Example: http://gpaste/4803354716798976
+    Example:
+    ```
+    # __lt__ only class
+    class A():
+      def __lt__(self, other): return str(self) < str(other)
+
+    a = A()
+    a < "b" # True
+    "0" < a # Error
+
+    # __lt__ and __gt__ class
+    class B():
+      def __lt__(self, other): return str(self) < str(other)
+      def __gt__(self, other): return str(self) > str(other)
+
+    b = B()
+    b < "c" # True
+    "0" < b # True
+    ```
 
     Args:
       other: The other object to compare to.
@@ -2515,7 +2532,8 @@ def _create_dense_column_weighted_sum(column, transformation_cache,
 class CategoricalColumn(FeatureColumn):
   """Represents a categorical feature.
 
-  A categorical feature typically handled with a `tf.SparseTensor` of IDs.
+  A categorical feature typically handled with a `tf.sparse.SparseTensor` of
+  IDs.
   """
 
   IdWeightPair = collections.namedtuple(  # pylint: disable=invalid-name

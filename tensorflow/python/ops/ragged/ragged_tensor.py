@@ -30,7 +30,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -44,6 +43,7 @@ from tensorflow.python.ops.ragged import ragged_config
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged.row_partition import RowPartition
+from tensorflow.python.types import internal as internal_types
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
@@ -56,7 +56,8 @@ _convert_row_partition = RowPartition._convert_row_partition
 
 
 @tf_export("RaggedTensor")
-class RaggedTensor(composite_tensor.CompositeTensor, tensor_like.TensorLike):
+class RaggedTensor(composite_tensor.CompositeTensor,
+                   internal_types.NativeObject):
   """Represents a ragged tensor.
 
   A `RaggedTensor` is a tensor with one or more *ragged dimensions*, which are
@@ -1707,17 +1708,17 @@ class RaggedTensor(composite_tensor.CompositeTensor, tensor_like.TensorLike):
 
   @classmethod
   def from_sparse(cls, st_input, name=None, row_splits_dtype=dtypes.int64):
-    """Converts a 2D `tf.SparseTensor` to a `RaggedTensor`.
+    """Converts a 2D `tf.sparse.SparseTensor` to a `RaggedTensor`.
 
     Each row of the `output` `RaggedTensor` will contain the explicit values
     from the same row in `st_input`.  `st_input` must be ragged-right.  If not
     it is not ragged-right, then an error will be generated.
 
     Example:
-
-    >>> st = tf.SparseTensor(indices=[[0, 0], [0, 1], [0, 2], [1, 0], [3, 0]],
-    ...                      values=[1, 2, 3, 4, 5],
-    ...                      dense_shape=[4, 3])
+    >>> indices = [[0, 0], [0, 1], [0, 2], [1, 0], [3, 0]]
+    >>> st = tf.sparse.SparseTensor(indices=indices,
+    ...                             values=[1, 2, 3, 4, 5],
+    ...                             dense_shape=[4, 3])
     >>> tf.RaggedTensor.from_sparse(st).to_list()
     [[1, 2, 3], [4], [], [5]]
 
@@ -1768,7 +1769,7 @@ class RaggedTensor(composite_tensor.CompositeTensor, tensor_like.TensorLike):
             st_input.values, segment_ids, num_segments, validate=False)
 
   def to_sparse(self, name=None):
-    """Converts this `RaggedTensor` into a `tf.SparseTensor`.
+    """Converts this `RaggedTensor` into a `tf.sparse.SparseTensor`.
 
     Example:
 

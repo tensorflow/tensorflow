@@ -123,7 +123,7 @@ class Registry : public NodeShader {
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
     std::vector<std::string> errors;
-    auto it = shaders_.find(ctx.node->operation.type);
+    auto it = shaders_.find(ctx.op_type);
     if (it != shaders_.end()) {
       for (auto& shader : it->second) {
         const auto status = shader->GenerateCode(ctx, generated_code);

@@ -284,14 +284,11 @@ class SingleThreadedExecutorImpl : public Executor {
     for (size_t i = 0; i < arg_output_locations_.size(); ++i) {
       const size_t num_destinations = arg_output_locations_[i].size();
       if (num_destinations > 0) {
-        Tensor arg;
+        const Tensor* arg;
         TF_CHECK_OK(args.call_frame->GetArg(i, &arg));
-        for (size_t j = 0; j < num_destinations - 1; ++j) {
-          inputs[arg_output_locations_[i][j]].Init(arg);
+        for (size_t j = 0; j < num_destinations; ++j) {
+          inputs[arg_output_locations_[i][j]].Init(*arg);
         }
-        // Move `arg` to the last consumer to avoid the cost of copying it.
-        inputs[arg_output_locations_[i][num_destinations - 1]].Init(
-            std::move(arg));
       }
     }
 

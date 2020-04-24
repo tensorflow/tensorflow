@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_engine_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
@@ -109,8 +110,8 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Executes the tensorrt engine. Returns whether we need to retry by running
   // the native segment.
-  bool ExecuteTrtEngine(OpKernelContext* ctx, EngineContext* engine_context,
-                        int trt_context_idx);
+  Status ExecuteTrtEngine(OpKernelContext* ctx, EngineContext* engine_context,
+                          int trt_context_idx);
 
   // Allocates necessary resources for calibration.
   Status AllocateCalibrationResources(OpKernelContext* ctx,
@@ -568,7 +569,15 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     input_concrete_shapes.push_back(ctx->input(i).shape());
   }
 
-  OP_REQUIRES_OK_ASYNC(ctx, VerifyInputShapes(input_concrete_shapes), *helper);
+  Status verify_input_shape_status = VerifyInputShapes(input_concrete_shapes);
+  // TODO(bixia): Fix the segmentation.
+  if (!verify_input_shape_status.ok()) {
+    LOG_FIRST_N(WARNING, 5) << "Running native segment for" << name()
+                            << " due to failure in verifying input shapes: "
+                            << verify_input_shape_status.error_message();
+    ExecuteNativeSegment(ctx, helper);
+    return;
+  }
 
   if (!use_implicit_batch_) {
     if (profile_generation_mode_) {
@@ -602,11 +611,10 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
     ExecuteNativeSegment(ctx, helper);
     return;
   }
-
-  const bool retry = ExecuteTrtEngine(ctx, engine_context, trt_context_idx);
-  if (retry) {
-    LOG(WARNING) << "Failed to execute engine, "
-                 << "retrying with native segment for " << name();
+  Status stat = ExecuteTrtEngine(ctx, engine_context, trt_context_idx);
+  if (!stat.ok()) {
+    LOG(WARNING) << "Failed to execute engine: " << stat
+                 << " Retrying with native segment for " << name();
     // Release any outputs that are allocated, ExecuteNativeSegment will
     // re-allocate them and fail if they are currently allocated.
     for (int i = 0; i < ctx->num_outputs(); i++) {
@@ -617,42 +625,9 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   }
 }
 
-// Gets the binding index of a tensor in an engine.
-//
-// The binding index is looked up using the tensor's name and the profile index.
-// Profile index should be set to zero, if we do not have optimization profiles.
-Status GetTrtBindingIndex(const char* tensor_name, int profile_index,
-                          const nvinfer1::ICudaEngine* cuda_engine,
-                          int* binding_index) {
-  // If the engine has been built for K profiles, the first getNbBindings() / K
-  // bindings are used by profile number 0, the following getNbBindings() / K
-  // bindings are used by profile number 1 etc.
-  //
-  // GetBindingIndex(tensor_name) returns the binding index for the progile 0.
-  // We can also consider it as a "binding_index_within_profile".
-  *binding_index = cuda_engine->getBindingIndex(tensor_name);
-  if (*binding_index == -1) {
-    const string msg = StrCat("Input node ", tensor_name, " not found");
-    LOG(ERROR) << msg;
-    return errors::NotFound(msg);
-  }
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  int n_profiles = cuda_engine->getNbOptimizationProfiles();
-#else
-  int n_profiles = 1;
-#endif
-  // If we have more then one optimization profile, then we need to shift the
-  // binding index according to the following formula:
-  // binding_index_within_engine = binding_index_within_profile +
-  //                               profile_index * bindings_per_profile
-  const int bindings_per_profile = cuda_engine->getNbBindings() / n_profiles;
-  *binding_index = *binding_index + profile_index * bindings_per_profile;
-  return Status::OK();
-}
-
-bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
-                                   EngineContext* engine_context,
-                                   int trt_context_idx) {
+Status TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
+                                     EngineContext* engine_context,
+                                     int trt_context_idx) {
   VLOG(1) << "Executing TRT engine: " << name();
   auto& cuda_engine = engine_context->cuda_engine;
 
@@ -677,163 +652,24 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
   const int num_binding = cuda_engine->getNbBindings();
   std::vector<void*> buffers(num_binding);
 
+  // nvinfer1::IExecutionContext::enqueue is not thread safe and we need a mutex
+  // for it.
   mutex_lock lock(engine_context->mu);
   nvinfer1::IExecutionContext* execution_context;
-  Status status =
-      engine_context->GetExecutionContext(trt_context_idx, &execution_context);
-  const bool kRetry = true;
-  if (!status.ok()) {
-    // TODO(Tamas) let ExecuteTrtEngine return a status, and do the logging at
-    // the call site
-    LOG(ERROR) << status;
-    return kRetry;
-  }
+  TF_RETURN_IF_ERROR(
+      engine_context->GetExecutionContext(trt_context_idx, &execution_context));
 
-  // Setup engine inputs.
-  for (int i = 0; i < ctx->num_inputs(); i++) {
-    const string input_name = StrCat(IONamePrefixes::kInputPHName, i);
-    int binding_index;
-    auto status = GetTrtBindingIndex(input_name.c_str(), trt_context_idx,
-                                     cuda_engine.get(), &binding_index);
-    if (!status.ok()) {
-      ctx->SetStatus(status);
-      return !kRetry;
-    }
+  const int num_batch =
+      use_implicit_batch_ ? ctx->input(0).shape().dim_size(0) : 0;
 
-    const Tensor& input_tensor = ctx->input(i);
-    const TensorShape& input_shape = input_tensor.shape();
+  TF_RETURN_IF_ERROR(SetTrtEngineInputs(cuda_engine.get(), execution_context,
+                                        trt_context_idx, buffers,
+                                        use_implicit_batch_, num_batch, ctx));
 
-    if (use_implicit_batch_) {
-      // Ensure all inputs have the same batch size
-      const int num_batch = ctx->input(0).shape().dim_size(0);
-      if (num_batch != input_shape.dim_size(0)) {
-        LOG(ERROR) << "Input data has inconsistent batch size: " << num_batch
-                   << " vs " << input_shape.dim_size(0);
-        return kRetry;
-      }
-    }
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-    // Set known input dimensions. This is necessary because TRT network
-    // could be made with dynamic dimensions.
-    if (!use_implicit_batch_) {
-      nvinfer1::Dims trt_dims;
-      trt_dims.nbDims = input_shape.dims();
-      for (int k = 0; k < input_shape.dims(); k++) {
-        trt_dims.d[k] = input_shape.dim_size(k);
-      }
-      execution_context->setBindingDimensions(binding_index, trt_dims);
-    }
-#endif
-    // Setup input bindings.
-    auto dtype = cuda_engine->getBindingDataType(binding_index);
-    switch (dtype) {
-      case nvinfer1::DataType::kFLOAT:
-        buffers[binding_index] =
-            const_cast<float*>(input_tensor.flat<float>().data());
-        break;
-      case nvinfer1::DataType::kHALF:
-        buffers[binding_index] =
-            const_cast<Eigen::half*>(input_tensor.flat<Eigen::half>().data());
-        break;
-      case nvinfer1::DataType::kINT8:
-        LOG(ERROR) << "INT8 inputs are not supported yet!";
-        return kRetry;
-      case nvinfer1::DataType::kINT32:
-        buffers[binding_index] =
-            const_cast<int32*>(input_tensor.flat<int32>().data());
-        break;
-      default:
-        LOG(ERROR) << "Unknown TRT data type: " << static_cast<int>(dtype);
-        return kRetry;
-    }
-  }
+  TF_RETURN_IF_ERROR(SetTrtEngineOutputs(cuda_engine.get(), execution_context,
+                                         trt_context_idx, buffers,
+                                         use_implicit_batch_, num_batch, ctx));
 
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-  // Ensure all network dynamic dimensions (if any) are set in execution
-  // context.
-  if (!execution_context->allInputDimensionsSpecified()) {
-    LOG(WARNING) << "Failed to set dimensions for all dynamic input tensors.";
-    return kRetry;
-  }
-  if (!execution_context->allInputShapesSpecified()) {
-    LOG(WARNING) << "Failed to set dimensions for all shape input tensors.";
-    return kRetry;
-  }
-#endif
-
-  // Setup engine outputs.
-  for (int i = 0; i < ctx->num_outputs(); i++) {
-    const string output_name = StrCat(IONamePrefixes::kOutputPHName, i);
-    int binding_index;
-    auto status = GetTrtBindingIndex(output_name.c_str(), trt_context_idx,
-                                     cuda_engine.get(), &binding_index);
-    if (!status.ok()) {
-      ctx->SetStatus(status);
-      return !kRetry;
-    }
-    // Get TRT output shapes for allocating output memory.
-    std::vector<int> trt_shape;
-    if (!use_implicit_batch_) {
-      // Explicit batch mode just copy output dims to trt_shape
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-      // Get dims from context instead of engine in explicit batch mode
-      // because engine might have dynamic shapes.
-      auto dims = execution_context->getBindingDimensions(binding_index);
-      for (int j = 0; j < dims.nbDims; j++) {
-        trt_shape.push_back(dims.d[j]);
-      }
-#else
-      LOG(ERROR)
-          << "Explicit batch mode is only supported with TensorRT 6 and above.";
-      return kRetry;
-#endif
-    } else {
-      // Implicit batch mode, it's assumed that first dimension of all inputs
-      // and outputs is batch size. We prepend the batch dim to trt_shape.
-      auto dims = cuda_engine->getBindingDimensions(binding_index);
-      trt_shape.push_back(ctx->input(0).shape().dim_size(0));
-      for (int j = 0; j < dims.nbDims; j++) {
-        trt_shape.push_back(dims.d[j]);
-      }
-    }
-    // Allocate output tensor of TRTEngineOp.
-    Tensor* output_tensor = nullptr;
-    TensorShape output_shape;
-    status = TensorShapeUtils::MakeShape(trt_shape.data(), trt_shape.size(),
-                                         &output_shape);
-    if (!status.ok()) {
-      LOG(ERROR) << "Failed to get output shape: " << status;
-      return kRetry;
-    }
-    status = ctx->allocate_output(i, output_shape, &output_tensor);
-    if (!status.ok()) {
-      LOG(ERROR) << "Allocating output failed with " << status;
-      ctx->SetStatus(status);
-      return kRetry;
-    }
-    // Setup output bindings.
-    auto dtype = cuda_engine->getBindingDataType(binding_index);
-    switch (dtype) {
-      case nvinfer1::DataType::kFLOAT:
-        buffers[binding_index] =
-            const_cast<float*>(output_tensor->flat<float>().data());
-        break;
-      case nvinfer1::DataType::kHALF:
-        buffers[binding_index] =
-            const_cast<Eigen::half*>(output_tensor->flat<Eigen::half>().data());
-        break;
-      case nvinfer1::DataType::kINT8:
-        LOG(WARNING) << "int8 is not supported yet!";
-        return kRetry;
-      case nvinfer1::DataType::kINT32:
-        buffers[binding_index] =
-            const_cast<int32*>(output_tensor->flat<int32>().data());
-        break;
-      default:
-        LOG(WARNING) << "Unknown TRT data type: " << static_cast<int>(dtype);
-        return kRetry;
-    }
-  }
   // Copied from cuda_kernel_helper since it seems only valid in *.cu.cc files
   const cudaStream_t* stream = CHECK_NOTNULL(
       reinterpret_cast<const cudaStream_t*>(ctx->op_device_context()
@@ -841,29 +677,9 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
                                                 ->implementation()
                                                 ->GpuStreamMemberHack()));
 
-  // nvinfer1::IExecutionContext::enqueue is not thread safe and we need a mutex
-  // for it.
-  bool ret = false;
-  if (use_implicit_batch_) {
-    const int num_batch = ctx->input(0).shape().dim_size(0);
-    ret = execution_context->enqueue(num_batch, &buffers[0], *stream, nullptr);
-    VLOG(1) << "Called IExecutionContext::enqueue";
-  } else {
-#if IS_TRT_VERSION_GE(6, 0, 0, 0)
-    ret = execution_context->enqueueV2(&buffers[0], *stream, nullptr);
-    VLOG(1) << "Called IExecutionContext::enqueueV2";
-#else
-    LOG(ERROR)
-        << "Explicit batch mode is only supported with TensorRT 6 and above.";
-    return kRetry;
-#endif
-  }
-  if (!ret) {
-    LOG(WARNING) << "Failed to enqueue batch for TRT engine: " << name();
-    return kRetry;
-  }
-  // Synchronization will be done by TF.
-  return !kRetry;
+  TF_RETURN_IF_ERROR(TrtEnqueue(execution_context, buffers, *stream,
+                                use_implicit_batch_, num_batch));
+  return Status::OK();
 }
 
 Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,

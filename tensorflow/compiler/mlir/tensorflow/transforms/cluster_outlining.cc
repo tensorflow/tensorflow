@@ -38,8 +38,9 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 constexpr char kFuncAttr[] = "func";
 
-struct ClusterOutliningPass : public ModulePass<ClusterOutliningPass> {
-  void runOnModule() override;
+struct ClusterOutliningPass
+    : public PassWrapper<ClusterOutliningPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 void ReplaceLaunchReturnWithReturn(tf_device::ReturnOp launch_return_op,
@@ -64,6 +65,10 @@ FuncOp BuildFunction(StringRef device, llvm::ArrayRef<Value> live_ins,
   std::string func_name_prefix = Twine(device, "_func").str();
   FuncOp outlined_func =
       FuncOp::create(launch_op.getLoc(), func_name_prefix, func_type);
+
+  // This function is not externally visible and marking it private would allow
+  // symbol-dce pass to remove it when it is not referenced anymore.
+  outlined_func.setVisibility(FuncOp::Visibility::Private);
 
   // Create function body.
   Block* outlined_func_block = outlined_func.addEntryBlock();
@@ -120,8 +125,8 @@ void OutlineLaunch(tf_device::LaunchOp launch_op, SymbolTable* symbol_table,
   launch_op.erase();
 }
 
-void ClusterOutliningPass::runOnModule() {
-  ModuleOp m = getModule();
+void ClusterOutliningPass::runOnOperation() {
+  ModuleOp m = getOperation();
   SymbolTable symbol_table(m);
   OpBuilder builder(m.getContext());
   m.walk([&](tf_device::LaunchOp launch) {
@@ -131,7 +136,7 @@ void ClusterOutliningPass::runOnModule() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateClusterOutliningPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass() {
   return std::make_unique<ClusterOutliningPass>();
 }
 

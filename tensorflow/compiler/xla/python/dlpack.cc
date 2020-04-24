@@ -39,7 +39,7 @@ namespace {
 const char* const kDlTensorCapsuleName = "dltensor";
 
 struct DLPackTensor {
-  std::shared_ptr<SharedDeviceBuffer> buffer;
+  std::shared_ptr<TrackedDeviceBuffer> buffer;
   std::vector<int64> shape;
   std::vector<int64> strides;
   DLManagedTensor tensor;
@@ -241,7 +241,16 @@ StatusOr<Device*> DeviceForDLContext(const PyLocalClient& client,
 
 StatusOr<py::capsule> BufferToDLPackManagedTensor(PyLocalBuffer* buffer) {
   auto pack = absl::make_unique<DLPackTensor>();
-  pack->buffer = buffer->DeviceBuffer();
+  // Block on outstanding operations, so that it is safe to read or mutate the
+  // returned buffer.
+  StatusOr<std::shared_ptr<TrackedDeviceBuffer>> buffer_or =
+      buffer->Release(/*wait_for_operations_to_complete=*/true);
+  if (!buffer_or.ok()) {
+    return InvalidArgument(
+        "Buffer synchronization failed converting to DLPack tensor: %s",
+        buffer_or.status().ToString());
+  }
+  pack->buffer = buffer_or.ConsumeValueOrDie();
   if (!pack->buffer) {
     return InvalidArgument(
         "Cannot convert deleted/invalid buffer to DLPack tensor.");
@@ -281,8 +290,6 @@ StatusOr<py::capsule> BufferToDLPackManagedTensor(PyLocalBuffer* buffer) {
                           PyErr_Clear();
                         }
                       });
-
-  TF_RETURN_IF_ERROR(buffer->BlockHostUntilReady());
   return capsule;
 }
 
@@ -327,12 +334,11 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> DLPackManagedTensorToBuffer(
   if (dlmt->deleter) {
     on_delete_callback = [dlmt]() { dlmt->deleter(dlmt); };
   }
-  absl::Span<const std::shared_ptr<BufferDefinitionEvent>> definition_events;
-  auto device_buffer = std::make_shared<SharedDeviceBuffer>(
+  absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events;
+  auto device_buffer = std::make_shared<TrackedDeviceBuffer>(
       /*allocator=*/nullptr, dlmt->dl_tensor.ctx.device_id,
-      std::initializer_list<se::DeviceMemoryBase>{buffer},
-      /*children=*/std::vector<std::shared_ptr<SharedDeviceBuffer>>{},
-      definition_events, std::move(on_delete_callback));
+      std::initializer_list<se::DeviceMemoryBase>{buffer}, definition_events,
+      std::move(on_delete_callback));
 
   // We have taken ownership of the array inside the capsule; make sure the
   // capsule it cannot be used again.

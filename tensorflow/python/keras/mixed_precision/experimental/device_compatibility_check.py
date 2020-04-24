@@ -154,8 +154,8 @@ def log_device_compatibility_check(policy_name, skip_local):
   if not context.executing_eagerly() or _logged_compatibility_check:
     return
   _logged_compatibility_check = True
-  device_attr_list = device_lib.list_local_devices()
   if not skip_local:
+    device_attr_list = device_lib.list_local_devices()
     _log_device_compatibility_check(policy_name, device_attr_list)
     return
 

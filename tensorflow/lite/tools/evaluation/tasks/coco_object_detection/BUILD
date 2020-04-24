@@ -1,4 +1,5 @@
-load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
+load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite/tools/evaluation/tasks:build_def.bzl", "task_linkopts")
 
 package(
     default_visibility = [
@@ -16,28 +17,33 @@ py_binary(
     deps = ["//tensorflow/lite/tools/evaluation/proto:evaluation_stages_py"],
 )
 
-cc_binary(
-    name = "run_eval",
+cc_library(
+    name = "run_eval_lib",
     srcs = ["run_eval.cc"],
     copts = tflite_copts(),
-    linkopts = tflite_linkopts() + select({
-        "//tensorflow:android": [
-            "-pie",  # Android 5.0 and later supports only PIE
-            "-lm",  # some builtin ops, e.g., tanh, need -lm
-            "-Wl,--rpath=/data/local/tmp/",  # Hexagon delegate libraries should be in /data/local/tmp
-        ],
-        "//conditions:default": [],
-    }),
+    linkopts = task_linkopts(),
     deps = [
-        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
         "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
         "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "//tensorflow/lite/tools/evaluation/stages:object_detection_stage",
+        "//tensorflow/lite/tools/evaluation/tasks:task_executor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_binary(
+    name = "run_eval",
+    copts = tflite_copts(),
+    linkopts = task_linkopts(),
+    deps = [
+        ":run_eval_lib",
+        "//tensorflow/lite/tools/evaluation/tasks:task_executor_main",
     ],
 )

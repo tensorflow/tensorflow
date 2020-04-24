@@ -1797,7 +1797,26 @@ class _FeatureColumn(object):
 
     `__gt__` is called when the "other" object being compared during the sort
     does not have `__lt__` defined.
-    Example: http://gpaste/4803354716798976
+    Example:
+    ```
+    # __lt__ only class
+    class A():
+      def __lt__(self, other): return str(self) < str(other)
+
+    a = A()
+    a < "b" # True
+    "0" < a # Error
+
+    # __lt__ and __gt__ class
+    class B():
+      def __lt__(self, other): return str(self) < str(other)
+      def __gt__(self, other): return str(self) > str(other)
+
+    b = B()
+    b < "c" # True
+    "0" < b # True
+    ```
+
 
     Args:
       other: The other object to compare to.
@@ -1969,7 +1988,8 @@ class _CategoricalColumn(_FeatureColumn):
   WARNING: Do not subclass this layer unless you know what you are doing:
   the API is subject to future changes.
 
-  A categorical feature typically handled with a `tf.SparseTensor` of IDs.
+  A categorical feature typically handled with a `tf.sparse.SparseTensor` of
+  IDs.
   """
 
   IdWeightPair = collections.namedtuple(  # pylint: disable=invalid-name

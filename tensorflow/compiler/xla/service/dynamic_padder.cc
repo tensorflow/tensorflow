@@ -112,6 +112,7 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kTranspose:
     case HloOpcode::kSort:
     case HloOpcode::kSlice:
+    case HloOpcode::kDomain:
       return nullptr;
     // Assume that custom calls created by the client are valid with padded
     // dynamic dimensions.
@@ -208,79 +209,86 @@ HloInstruction* PadWithScalar(HloInstruction* inst, int64 dim,
 // [[a,b,P]
 //  [c,d,P]]
 //
-// The way we do this is by a 6-steps double-sorting algorithm:
+// The way we do this is by a 5-steps cumsum-gather algorithm:
 //
 // 1.First we use the output shape to generate a binary 0-1 masking, which masks
 // out the padded area of the output:
-// [[0,0,1]
-//  [0,0,1]]
+// [[1,1,0]
+//  [1,1,0]]
 //
 // 2.Then we do an inverse reshape to reshape it from output shape back to input
 // shape [2,3]->[6]:
-//  [0,0,1,0,0,1]
+//  [1,1,0,1,1,0]
 //
-// 3.We then generate an iota mask using the input shape:
-//  [0,1,2,3,4,5]
+// 3.We then do a cumsum with the mask:
+//  [1,2,2,3,4,4] and subtract it with 1:
+//  [0,1,1,2,3,3]
 //
-// 4.Stable sort the iota mask using the binary mask as key:
-//  key  [0,0,1,0,0,1]
-//  value[0,1,2,3,4,5]
-//     | Sort by key
+// 4.Use the the result of cumsum as gather indicies to rearrange the original
+// data. Feed the original input [a,b,c,d,P,P] and indices into gather.
+//
+//  operand [a,b,c,d,P,P], indices [0,1,1,2,3,3]
+//     |                    |
+//   Gather-----------------+
+//     |
 //     v
-//  key  [0,0,0,0,1,1]
-//  value[0,1,3,4,2,5]
+//  value[a,b,b,c,d,d], which is equivalent to [a,b,P,c,d,P] as padding value
+//  doesn't matter.
 //
-// 5.Sort the original input [a,b,c,d,P,P] using the sorted iota mask:
-//  key  [0,1,3,4,2,5]
-//  value[a,b,c,d,P,P]
-//     | Sort by key
-//     v
-//  key  [0,1,2,3,4,5]
-//  value[a,b,P,c,d,P]
 //
-// 6.Feed the sorted input to original reshape[6]->[2,3], we can get the correct
-// reshape:
+// 5.Feed the sorted input to original reshape[6]->[2,3], we can now get the
+// correct result:
 //  [[a,b,P]
 //   [c,d,P]]
 //
 Status RewriteDynamicReshapeSplitInput(
     HloInstruction* reshape, int64 input_dim,
     absl::Span<const int64> output_dims,
+    absl::Span<HloInstruction*> output_dynamic_dims,
     DynamicDimensionInference* dynamic_dimension_inference) {
+  VLOG(2) << "Reshaping input dim " << input_dim << "to "
+          << VectorString(output_dims);
   const Shape operand_shape = reshape->operand(0)->shape();
   TF_RET_CHECK(output_dims.size() > 1);
 
   HloComputation* comp = reshape->parent();
   const Shape mask_input_shape =
-      ShapeUtil::ChangeElementType(operand_shape, xla::S32);
+      ShapeUtil::MakeShape(xla::S32, {operand_shape.dimensions(input_dim)});
+
+  std::vector<int64> reshaped_dims;
+  for (int64 output_dim : output_dims) {
+    reshaped_dims.push_back(reshape->shape().dimensions(output_dim));
+  }
+
   const Shape mask_reshaped_shape =
-      ShapeUtil::ChangeElementType(reshape->shape(), xla::S32);
+      ShapeUtil::MakeShape(xla::S32, reshaped_dims);
 
   HloInstruction* zero = comp->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
   HloInstruction* one = comp->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::One(S32)));
   // Step 1 -- generate binary mask.
-  // Mask starts with all zero, each dynamic dimension sets one dimension of the
-  // mask to partially one.
+  // Mask starts with all one, each dynamic dimension sets that dimension of the
+  // mask to partially zero in the end.
   HloInstruction* binary_mask = comp->AddInstruction(
-      HloInstruction::CreateBroadcast(mask_reshaped_shape, zero, {}));
+      HloInstruction::CreateBroadcast(mask_reshaped_shape, one, {}));
 
   bool need_rewrite = false;
 
+  // Pad the effective dimension with 1.
+  //
   // Index starts from 1 since there is no need to rewrite a major output
   // dimension.
   for (int64 i = 1; i < output_dims.size(); ++i) {
     const int64 output_dim = output_dims[i];
-    HloInstruction* dynamic_size =
-        dynamic_dimension_inference->GetDynamicSize(reshape, {}, output_dim);
+    HloInstruction* dynamic_size = output_dynamic_dims[output_dim];
     if (dynamic_size == nullptr) {
       continue;
     }
-    // If there is dynamic dimension in the output, need rewrite the input.
+    // If there is dynamic dimension in the output, need to rewrite the input.
     need_rewrite = true;
 
-    binary_mask = PadWithScalar(binary_mask, output_dim, dynamic_size, one);
+    binary_mask = PadWithScalar(binary_mask, i, dynamic_size, zero);
   }
   if (!need_rewrite) {
     return Status::OK();
@@ -291,90 +299,74 @@ Status RewriteDynamicReshapeSplitInput(
   HloInstruction* input_shape_binary_mask = comp->AddInstruction(
       HloInstruction::CreateReshape(mask_input_shape, binary_mask));
 
-  // Step 3. Generate iota mask.
-  HloInstruction* iota_mask = comp->AddInstruction(
-      HloInstruction::CreateIota(mask_input_shape, input_dim));
-
-  // Step 4. Sort iota.
-  // Use binary mark to sort iota mask, then use iota mask to reshape input.
-  HloComputation::Builder comp_builder("compare_binary_iota");
+  // Step 3. Do a cumsum on the binary mask.
+  auto embedded_builder = HloComputation::Builder("add");
   {
-    HloInstruction* lhs_key =
-        comp_builder.AddInstruction(HloInstruction::CreateParameter(
-            0, ShapeUtil::MakeShape(S32, {}), "lhs_key_binary"));
-    HloInstruction* rhs_key =
-        comp_builder.AddInstruction(HloInstruction::CreateParameter(
-            1, ShapeUtil::MakeShape(S32, {}), "rhs_key_binary"));
-
-    // Values for lhs and rhs
-    comp_builder.AddInstruction(HloInstruction::CreateParameter(
-        2, ShapeUtil::MakeShape(S32, {}), "lhs_iota"));
-    comp_builder.AddInstruction(HloInstruction::CreateParameter(
-        3, ShapeUtil::MakeShape(S32, {}), "rhs_iota"));
-    comp_builder.AddInstruction(
-        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), lhs_key,
-                                      rhs_key, ComparisonDirection::kLt));
+    auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
+        0, ShapeUtil::MakeShape(S32, {}), "lhs"));
+    auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
+        1, ShapeUtil::MakeShape(S32, {}), "rhs"));
+    embedded_builder.AddInstruction(
+        HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kAdd, lhs, rhs));
   }
 
-  HloComputation* compare_binary_iota =
-      comp->parent()->AddEmbeddedComputation(comp_builder.Build());
+  HloComputation* add =
+      reshape->GetModule()->AddEmbeddedComputation(embedded_builder.Build());
+  Window cumsum_window;
+  // First dimension is unchanged.
+  WindowDimension* dim = cumsum_window.add_dimensions();
+  dim->set_size(operand_shape.dimensions(input_dim));
+  dim->set_stride(1);
+  dim->set_padding_low(operand_shape.dimensions(input_dim) - 1);
+  dim->set_padding_high(0);
+  dim->set_window_dilation(1);
+  dim->set_base_dilation(1);
+  HloInstruction* cumsum =
+      comp->AddInstruction(HloInstruction::CreateReduceWindow(
+          mask_input_shape, input_shape_binary_mask, zero, cumsum_window, add));
 
-  HloInstruction* sorted_binary_iota =
-      comp->AddInstruction(HloInstruction::CreateSort(
-          ShapeUtil::MakeTupleShape({mask_input_shape, mask_input_shape}),
-          input_dim, {input_shape_binary_mask, iota_mask}, compare_binary_iota,
-          /*is_stable=*/true));
-  HloInstruction* sorted_iota_mask =
-      comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-          mask_input_shape, sorted_binary_iota, 1));
+  HloInstruction* broadcast_ones = comp->AddInstruction(
+      HloInstruction::CreateBroadcast(mask_input_shape, one, {}));
+  cumsum = comp->AddInstruction(HloInstruction::CreateBinary(
+      mask_input_shape, HloOpcode::kSubtract, cumsum, broadcast_ones));
 
-  // Step 5. Sort original input using iota mask as key.
-  HloComputation::Builder comp_builder_iota("compare_binary_iota");
-  {
-    HloInstruction* lhs_key =
-        comp_builder_iota.AddInstruction(HloInstruction::CreateParameter(
-            0, ShapeUtil::MakeShape(S32, {}), "lhs_key_iota"));
-    HloInstruction* rhs_key =
-        comp_builder_iota.AddInstruction(HloInstruction::CreateParameter(
-            1, ShapeUtil::MakeShape(S32, {}), "rhs_key_iota"));
-
-    // Values for lhs and rhs
-    comp_builder_iota.AddInstruction(HloInstruction::CreateParameter(
-        2, ShapeUtil::MakeShape(operand_shape.element_type(), {}),
-        "lhs_value"));
-    comp_builder_iota.AddInstruction(HloInstruction::CreateParameter(
-        3, ShapeUtil::MakeShape(operand_shape.element_type(), {}),
-        "rhs_value"));
-    comp_builder_iota.AddInstruction(
-        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), lhs_key,
-                                      rhs_key, ComparisonDirection::kLt));
+  GatherDimensionNumbers gather_dim_numbers;
+  // Use gather to rearrange the input dim dimension.
+  for (int64 i = 0; i < operand_shape.dimensions_size(); ++i) {
+    // Offset dim is every dimension including newly added size 1 dim, except
+    // for input_dim, which acts as a batch_dim.
+    if (i != input_dim) {
+      gather_dim_numbers.add_offset_dims(i);
+    }
   }
+  // The dimension to rewrite is the index dim.
+  gather_dim_numbers.add_start_index_map(input_dim);
+  gather_dim_numbers.set_index_vector_dim(1);
+  gather_dim_numbers.add_collapsed_slice_dims(input_dim);
 
-  HloComputation* compare_iota_value =
-      comp->parent()->AddEmbeddedComputation(comp_builder_iota.Build());
+  // Step 4. Gather.
 
-  // Temporarily removes dynamic dimension before entering sort -- we want the
-  // sort to ignore dynamic dimension.
+  // Temporarily removes dynamic dimension before entering gather -- we want the
+  // gather to ignore dynamic dimension.
   HloInstruction* operand_static_dim_size =
       comp->AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateR0<int32>(operand_shape.dimensions(input_dim))));
-
   HloInstruction* operand_static =
       comp->AddInstruction(HloInstruction::CreateSetDimensionSize(
           operand_shape, reshape->mutable_operand(0), operand_static_dim_size,
           input_dim));
 
-  HloInstruction* sorted_iota_value =
-      comp->AddInstruction(HloInstruction::CreateSort(
-          ShapeUtil::MakeTupleShape({mask_input_shape, operand_shape}),
-          input_dim, {sorted_iota_mask, operand_static}, compare_iota_value,
-          /*is_stable=*/true));
-  // Step 6: Feed sorted input to original reshape.
-  HloInstruction* sorted_operand =
-      comp->AddInstruction(HloInstruction::CreateGetTupleElement(
-          operand_shape, sorted_iota_value, 1));
+  std::vector<int64> slice_sizes(operand_shape.dimensions().begin(),
+                                 operand_shape.dimensions().end());
+  slice_sizes[input_dim] = 1;
+  HloInstruction* gather = comp->AddInstruction(HloInstruction::CreateGather(
+      ShapeUtil::MakeShape(operand_shape.element_type(),
+                           operand_shape.dimensions()),
+      operand_static, cumsum, gather_dim_numbers, slice_sizes, true));
 
-  TF_RETURN_IF_ERROR(reshape->ReplaceOperandWith(0, sorted_operand));
+  // Step 6: Feed gather input to original reshape.
+
+  TF_RETURN_IF_ERROR(reshape->ReplaceOperandWith(0, gather));
 
   HloInstruction* reshape_dynamic = reshape;
 
@@ -401,177 +393,255 @@ Status RewriteDynamicReshapeSplitInput(
   return Status::OK();
 }
 
+// RewriteDynamicReshapeCombineInput is similar to
+// RewriteDynamicReshapeSplitInput, in a reshape if multiple dimensions are
+// combined into one dimension, we need to rewrite the output.
+//
+// The reason for this is that a continuous input may not be evenly reshaped
+// into output.  Image we have [2, <=3] where second dimension has size 2 and
+// padding(P) data has size 1:
+// [[a,b,P]
+//  [c,d,P]]
+//
+// And we have a reshape that combines this two input dimensions.
+//
+// [2, <=3]
+//  |
+// Reshape
+//  |
+// [6]
+//
+// This should produce the same result as if the data has no padding:
+//
+// [2, 2]     // [[a, b], [c, d]]
+//  |
+// Reshape
+//  |
+// [4]  // [a,b,c,d]
+//
+// Without rewriting, the result would be:
+//
+// [a,b,P,c,d,P], which is incorrect.
+//
+// We need to rewrite the reshape such that it produces:
+// [a,b,c,d,P,P]
+//
+// The way we do this is by a 5-steps sort-gather algorithm:
+//
+// 1.First we use the input shape to generate a binary 0-1 masking, which masks
+// out the padded area of the output:
+// [[0,0,1]
+//  [0,0,1]]
+//
+// 2.Then we do an reshape to reshape the mask from input shape to output
+// shape [2,3]->[6]:
+//  [0,0,1,0,0,1]
+//
+// 3.We then generate an iota mask using the output shape:
+//  [0,1,2,3,4,5]
+//
+// 4.Stable sort the iota mask using the binary mask as key:
+//  key  [0,0,1,0,0,1]
+//  value[0,1,2,3,4,5]
+//     | Sort by key
+//     v
+//  key  [0,0,0,0,1,1]
+//  value[0,1,3,4,2,5]
+//
+// 5.Gather the original output [a,b,P,c,d,P] using the sorted iota mask:
+//      original output       gather indices
+//       [a,b,P,c,d,P]         [0,1,3,4,2,5]
+//            |                    |
+//          Gather ----------------+
+//            |
+//       [a,b,c,d,P,P]
+//
 Status RewriteDynamicReshapeCombineInput(
-    HloInstruction* reshape, int64 input_dim, int64 output_dim,
-    HloInstruction* dynamic_size,
+    HloInstruction* reshape, absl::Span<const int64> input_dims,
+    int64 output_dim, absl::Span<HloInstruction*> input_dynamic_dims,
     DynamicDimensionInference* dynamic_dimension_inference) {
   // Rewrite dynamic reshape into reshape followed by a sort, all padded
   // data will be moved to the end.
-  const HloInstruction* operand = reshape->operand(0);
   HloComputation* comp = reshape->parent();
   HloInstruction* zero = comp->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(S32)));
   HloInstruction* one = comp->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::One(S32)));
-  const Shape mask_shape =
-      ShapeUtil::ChangeElementType(operand->shape(), xla::S32);
-  const Shape mask_reshaped_shape =
-      ShapeUtil::ChangeElementType(reshape->shape(), xla::S32);
-  HloInstruction* broadcasted_zero = comp->AddInstruction(
-      HloInstruction::CreateBroadcast(mask_shape, zero, {}));
-  // Pad masking area with 1s, rest with 0s.
-  HloInstruction* padding_mask =
-      PadWithScalar(broadcasted_zero, input_dim, dynamic_size, one);
-  HloInstruction* mask_reshaped = comp->AddInstruction(
-      HloInstruction::CreateReshape(mask_reshaped_shape, padding_mask));
+  const Shape output_shape = reshape->shape();
+  const Shape input_shape = reshape->operand(0)->shape();
+  const Shape mask_output_shape =
+      ShapeUtil::MakeShape(xla::S32, {output_shape.dimensions(output_dim)});
+  std::vector<int64> input_dim_sizes;
+  for (int64 input_dim : input_dims) {
+    input_dim_sizes.push_back(input_shape.dimensions(input_dim));
+  }
 
-  // Build computation for reshape, key is the mask shape, value is reshape's
-  // original data.
+  const Shape mask_input_shape =
+      ShapeUtil::MakeShape(xla::S32, input_dim_sizes);
+
+  // Step 1 -- generate binary mask.
+  // Mask starts with all zero, each dynamic dimension sets that dimension of
+  // the mask to partially ones in the end.
+  HloInstruction* binary_mask = comp->AddInstruction(
+      HloInstruction::CreateBroadcast(mask_input_shape, zero, {}));
+
+  bool need_rewrite = false;
+
+  // Pad the effective dimension with 1.
+  //
+  // Index starts from 1 since there is no need to rewrite a major output
+  // dimension.
+  for (int64 i = 1; i < input_dims.size(); ++i) {
+    const int64 input_dim = input_dims[i];
+    HloInstruction* dynamic_size = input_dynamic_dims[input_dim];
+    if (dynamic_size == nullptr) {
+      continue;
+    }
+    // If there is a dynamic dimension in the input, need to rewrite the output.
+    need_rewrite = true;
+
+    binary_mask = PadWithScalar(binary_mask, i, dynamic_size, one);
+  }
+  if (!need_rewrite) {
+    VLOG(2) << "No need to rewrite";
+    return Status::OK();
+  }
+
+  // Step 2.
+  // Do a reshape to flatten the binary mask into output_shape
+  HloInstruction* output_shape_binary_mask = comp->AddInstruction(
+      HloInstruction::CreateReshape(mask_output_shape, binary_mask));
+
+  // Step 3.
+  // Generate an iota with output shape.
+  HloInstruction* iota =
+      comp->AddInstruction(HloInstruction::CreateIota(mask_output_shape, 0));
+
+  // Step 4.
+  // Stable sort the iota mask using the binary mask as key and iota as value:
+
+  // Build computation for sort, key is the mask, value is the iota.
   HloComputation::Builder comp_builder("compare");
   HloInstruction* lhs_key =
       comp_builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(S32, {}), "lhs_key"));
+          0, ShapeUtil::MakeScalarShape(S32), "lhs_key"));
   HloInstruction* rhs_key =
       comp_builder.AddInstruction(HloInstruction::CreateParameter(
-          1, ShapeUtil::MakeShape(S32, {}), "rhs_key"));
+          1, ShapeUtil::MakeScalarShape(S32), "rhs_key"));
 
   // Values for lhs and rhs
   comp_builder.AddInstruction(HloInstruction::CreateParameter(
-      2, ShapeUtil::MakeShape(operand->shape().element_type(), {}),
-      "lhs_value"));
+      2, ShapeUtil::MakeScalarShape(S32), "lhs_value"));
   comp_builder.AddInstruction(HloInstruction::CreateParameter(
-      3, ShapeUtil::MakeShape(operand->shape().element_type(), {}),
-      "rhs_value"));
+      3, ShapeUtil::MakeScalarShape(S32), "rhs_value"));
   comp_builder.AddInstruction(
       HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), lhs_key,
                                     rhs_key, ComparisonDirection::kLt));
   HloComputation* compare =
       comp->parent()->AddEmbeddedComputation(comp_builder.Build());
 
+  // Use mask_reshaped as key, sort reshaped data as value.
+  HloInstruction* sort = comp->AddInstruction(HloInstruction::CreateSort(
+      ShapeUtil::MakeTupleShape({mask_output_shape, mask_output_shape}), 0,
+      {output_shape_binary_mask, iota}, compare,
+      /*is_stable=*/true));
+
+  HloInstruction* gather_indices = comp->AddInstruction(
+      HloInstruction::CreateGetTupleElement(mask_output_shape, sort, 1));
+
+  // Step 5.Gather the original output using the sorted iota mask:
+
+  GatherDimensionNumbers gather_dim_numbers;
+  // Use gather to rearrange the output dim dimension.
+  for (int64 i = 0; i < output_shape.dimensions_size(); ++i) {
+    // Offset dim is every dimension including newly added size 1 dim, except
+    // for input_dim, which acts as a batch_dim.
+    if (i != output_dim) {
+      gather_dim_numbers.add_offset_dims(i);
+    }
+  }
+  // The dimension to rewrite is the index dim.
+  gather_dim_numbers.add_start_index_map(output_dim);
+  gather_dim_numbers.set_index_vector_dim(1);
+  gather_dim_numbers.add_collapsed_slice_dims(output_dim);
+
   HloInstruction* static_dim_size = comp->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(
           reshape->shape().dimensions(output_dim))));
 
   // Temporarily removes dynamic dimension of the reshape before we send it to
-  // the sort -- we want padded area to also participate in the sort.
+  // the sort -- we want padded area to also participate in the gather.
   HloInstruction* reshape_static =
       comp->AddInstruction(HloInstruction::CreateSetDimensionSize(
           reshape->shape(), reshape, static_dim_size, output_dim));
+  std::vector<int64> gather_slice_sizes(output_shape.dimensions().begin(),
+                                        output_shape.dimensions().end());
+  gather_slice_sizes[output_dim] = 1;
+  HloInstruction* gather = comp->AddInstruction(HloInstruction::CreateGather(
+      output_shape, reshape_static, gather_indices, gather_dim_numbers,
+      gather_slice_sizes, true));
 
-  // Use mask_reshaped as key, sort reshaped data as value.
-  HloInstruction* sort = comp->AddInstruction(HloInstruction::CreateSort(
-      ShapeUtil::MakeTupleShape({mask_reshaped_shape, reshape->shape()}),
-      output_dim, {mask_reshaped, reshape_static}, compare,
-      /*is_stable=*/true));
-  HloInstruction* dynamic_reshape = comp->AddInstruction(
-      HloInstruction::CreateGetTupleElement(reshape->shape(), sort, 1));
-  // Forward dynamic size to the newly created reshape.
+  // Forward dynamic size to the newly created gather.
   HloInstruction* output_dynamic_size =
       dynamic_dimension_inference->GetDynamicSize(reshape, {}, output_dim);
   TF_RET_CHECK(output_dynamic_size != nullptr);
-  dynamic_reshape = comp->AddInstruction(HloInstruction::CreateSetDimensionSize(
-      dynamic_reshape->shape(), dynamic_reshape, output_dynamic_size,
-      output_dim));
+  gather = comp->AddInstruction(HloInstruction::CreateSetDimensionSize(
+      gather->shape(), gather, output_dynamic_size, output_dim));
   auto users = reshape->users();
   for (auto* user : users) {
     // Avoid cycles by not replacing the staic reshape and get_dimension_size.
     if (user != reshape_static && user != output_dynamic_size) {
-      TF_RETURN_IF_ERROR(reshape->ReplaceUseWith(user, dynamic_reshape));
+      TF_RETURN_IF_ERROR(reshape->ReplaceUseWith(user, gather));
     }
   }
 
   if (reshape == comp->root_instruction()) {
-    comp->set_root_instruction(dynamic_reshape);
+    comp->set_root_instruction(gather);
   }
 
-  TF_RETURN_IF_ERROR(dynamic_dimension_inference->ForwardDynamicSize(
-      reshape, dynamic_reshape, {}));
+  TF_RETURN_IF_ERROR(
+      dynamic_dimension_inference->ForwardDynamicSize(reshape, gather, {}));
 
   return Status::OK();
 }
 
-Status RewriteDynamicReshapeSingleDim(
-    HloInstruction* reshape, int64 input_dim, HloInstruction* dynamic_size,
+Status RewriteDynamicReshapeSingleGroup(
+    HloInstruction* reshape, absl::Span<const int64> input_dims,
+    absl::Span<const int64> output_dims,
+    absl::Span<HloInstruction*> input_dynamic_dims,
+    absl::Span<HloInstruction*> output_dynamic_dims,
     DynamicDimensionInference* dynamic_dimension_inference) {
   VLOG(2) << "Rewriting dynamic reshape " << reshape->ToString()
-          << " input dim: " << input_dim;
+          << " input dims: " << VectorString(input_dims)
+          << " output dims: " << VectorString(output_dims);
+
   const Shape operand_shape = reshape->operand(0)->shape();
   const Shape output_shape = reshape->shape();
 
-  const int64 static_input_dim_size = operand_shape.dimensions()[input_dim];
-
-  // Don't need to rewrite size 1 input dims.
-  if (static_input_dim_size == 1) {
-    return Status::OK();
-  }
-
-  auto common_factors =
-      CommonFactors(operand_shape.dimensions(), output_shape.dimensions());
-  // If there are multiple input dims combining into one output dim,
-  // input_dim_start and input_dim_end represent the input dimension range.
-  int64 input_dim_start = -1;
-  int64 input_dim_end = -1;
-  // Similarly when one input dim is splitted into multiple outputs, we use
-  // output_dim_start and output_dim_start to represent the output dimension
-  // range.
-  int64 output_dim_start = -1;
-  int64 output_dim_end = -1;
-  // Find common_factors that the input belong to.
-  for (int64 i = 0; i < common_factors.size() - 1; ++i) {
-    auto start = common_factors[i];
-    auto end = common_factors[i + 1];
-    if (input_dim >= start.first && input_dim < end.first) {
-      // Found the common_factor group that the input_dim belongs to.
-      input_dim_start = start.first;
-      input_dim_end = end.first;
-      output_dim_start = start.second;
-      output_dim_end = end.second;
+  if (input_dims.size() == 1) {
+    int64 input_dim = input_dims[0];
+    // Size 1 dimension doesn't need a rewrite.
+    if (operand_shape.dimensions()[input_dim] == 1) {
+      return Status::OK();
     }
-  }
-
-  TF_RET_CHECK(output_dim_end - output_dim_start > 0);
-
-  std::vector<int64> output_dims;
-  for (int64 i = output_dim_start; i < output_dim_end; ++i) {
-    output_dims.push_back(i);
-  }
-
-  const int64 first_output_dim = output_dims[0];
-
-  if (reshape->shape().dimensions(first_output_dim) < static_input_dim_size) {
     // One input dimension is splitted into multiple output dimensions.
     return RewriteDynamicReshapeSplitInput(reshape, input_dim, output_dims,
+                                           output_dynamic_dims,
                                            dynamic_dimension_inference);
   }
 
-  if (reshape->shape().dimensions(first_output_dim) == static_input_dim_size) {
-    // Unchanged dynamic dimension doesn't need a rewrite.
-    return Status::OK();
-  }
-
-  // Multiple dimensions got combined into one output.
-  if (input_dim != input_dim_start) {
-    // If 'input_dim' is not the first dimension that got combined into the
-    // output. A reshape rewrite on the output is needed:
-    //
-    //  Need a write (d is dynamic):
-    //  1, 2, d
-    //   |
-    //  Reshape
-    //   |
-    //   2d
-    //
-    //  Don't need rewrite:
-    //  d, 2
-    //   |
-    //  Reshape
-    //   |
-    //   2d
-    //
-    return RewriteDynamicReshapeCombineInput(reshape, input_dim,
-                                             first_output_dim, dynamic_size,
+  if (output_dims.size() == 1) {
+    int64 output_dim = output_dims[0];
+    if (output_shape.dimensions()[output_dim] == 1) {
+      return Status::OK();
+    }
+    // One input dimension is splitted into multiple output dimensions.
+    return RewriteDynamicReshapeCombineInput(reshape, input_dims, output_dim,
+                                             input_dynamic_dims,
                                              dynamic_dimension_inference);
   }
+  // Shouldn't get here;
+  TF_RET_CHECK(false);
   return Status::OK();
 }
 
@@ -723,23 +793,85 @@ StatusOr<bool> RewriteDynamicReshape(
     DynamicDimensionInference* dynamic_dimension_inference) {
   bool changed = false;
   HloInstruction* operand = reshape->mutable_operand(0);
+  std::vector<HloInstruction*> input_dynamic_dims;
+  for (int64 dim = 0; dim < operand->shape().dimensions_size(); ++dim) {
+    input_dynamic_dims.push_back(
+        dynamic_dimension_inference->GetDynamicSize(operand, {}, dim));
+  }
 
-  // We append sort instructions after reshape if there is a dynamic input, and
-  // the order of sort matters. Rewrite minor dimensions first in case multiple
-  // inputs have dynamic dimensions to ensure correct order of sort.
-  for (int64 input_dim = operand->shape().rank() - 1; input_dim >= 0;
-       --input_dim) {
-    HloInstruction* operand_dynamic_size =
-        dynamic_dimension_inference->GetDynamicSize(operand, {}, input_dim);
+  std::vector<HloInstruction*> output_dynamic_dims;
+  for (int64 dim = 0; dim < reshape->shape().dimensions_size(); ++dim) {
+    output_dynamic_dims.push_back(
+        dynamic_dimension_inference->GetDynamicSize(reshape, {}, dim));
+  }
 
-    if (operand_dynamic_size == nullptr) {
+  auto common_factors = CommonFactors(operand->shape().dimensions(),
+                                      reshape->shape().dimensions());
+  // Find common_factors that the input belongs to.
+  for (int64 i = 0; i < common_factors.size() - 1; ++i) {
+    auto start = common_factors[i];
+    auto end = common_factors[i + 1];
+    std::vector<int64> input_dims;
+    std::vector<int64> output_dims;
+    for (int64 dim = start.first; dim < end.first; ++dim) {
+      input_dims.push_back(dim);
+    }
+    for (int64 dim = start.second; dim < end.second; ++dim) {
+      output_dims.push_back(dim);
+    }
+
+    VLOG(2) << "input_dims: " << VectorString(input_dims);
+    VLOG(2) << "output_dims: " << VectorString(output_dims);
+
+    if (input_dims.empty() || output_dims.empty()) {
       continue;
     }
-    TF_RETURN_IF_ERROR(RewriteDynamicReshapeSingleDim(
-        reshape, input_dim, operand_dynamic_size, dynamic_dimension_inference));
+    bool has_dynamic_dimension = absl::c_any_of(output_dims, [&](int64 dim) {
+      HloInstruction* operand_dynamic_size =
+          dynamic_dimension_inference->GetDynamicSize(reshape, {}, dim);
 
-    changed = true;
+      return operand_dynamic_size != nullptr ||
+             reshape->shape().is_dynamic_dimension(dim);
+    });
+
+    if (!has_dynamic_dimension) {
+      // Don't need to rewrite any group without dynamic dimensions.
+      VLOG(2) << "All dimensions are static in this common factor group";
+      continue;
+    }
+
+    if (input_dims.size() == 1 && output_dims.size() == 1) {
+      // The dimension is unchanged. No rewrite needed.
+      continue;
+    }
+    if (input_dims.size() > 1 && output_dims.size() > 1) {
+      // We don't support the case when a dynamic dimension is both combined
+      // with and splitted into other dimensions:
+      //
+      //  [x, yz]
+      //     | Reshape
+      //  [xy, z]
+      //
+      // TODO(yunxing): This can be supported by canonicalizing
+      // the offending reshape into two reshapes:
+      //
+      //  [x,yz]
+      //     | Reshape
+      //  [x, y, z]
+      //     | Reshape
+      //  [xy, z]
+      //
+      return Unimplemented(
+          "Dynamic input dimension to reshape that is both splitted and "
+          "combined is not supported %s",
+          reshape->ToString());
+    }
+
+    TF_RETURN_IF_ERROR(RewriteDynamicReshapeSingleGroup(
+        reshape, input_dims, output_dims, absl::MakeSpan(input_dynamic_dims),
+        absl::MakeSpan(output_dynamic_dims), dynamic_dimension_inference));
   }
+
   return changed;
 }
 
@@ -972,7 +1104,7 @@ Status DynamicShapeRemovingVisitor::HandleParameter(HloInstruction* hlo) {
 StatusOr<bool> DynamicPadder::Run(HloModule* module) {
   bool changed = false;
   VLOG(2) << "Pre DynamicPadder HLO:";
-
+  XLA_VLOG_LINES(2, module->ToString());
   // Removes dynamic dimensions on parameters if there is already a binding for
   // it. We do this because we have two different APIs to express a dynamic
   // dimension:

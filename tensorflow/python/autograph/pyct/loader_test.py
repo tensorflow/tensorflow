@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import textwrap
 
 import gast
@@ -105,6 +106,12 @@ class LoaderTest(test.TestCase):
     self.assertEqual(
         module.f.__doc__, '日本語 Δθₜ ← Δθₜ₋₁ + ∇Q(sₜ, aₜ)(rₜ + γₜ₊₁ max Q(⋅))')
 
+  def test_cleanup(self):
+    test_source = textwrap.dedent('')
+    _, filename = loader.load_source(test_source, delete_on_exit=True)
+    # Clean up the file before loader.py tries to remove it, to check that the
+    # latter can deal with that situation.
+    os.unlink(filename)
 
 if __name__ == '__main__':
   test.main()

@@ -47,7 +47,7 @@ Status PopulateQuantizationSpecs(const toco::ModelFlags& model_flags,
 // This will also run relevant passes as well.
 Status ConvertMLIRToTFLiteFlatBuffer(const toco::TocoFlags& toco_flags,
                                      mlir::OwningModuleRef module,
-                                     mlir::TFL::QuantizationSpecs quant_specs,
+                                     const mlir::TFL::PassConfig& pass_config,
                                      string* result);
 
 // Give a warning for any unused flags that have been specified.

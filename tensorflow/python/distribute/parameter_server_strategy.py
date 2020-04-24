@@ -25,7 +25,7 @@ from tensorflow.python.distribute import cross_device_ops as cross_device_ops_li
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
-from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import mirrored_run
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import values
@@ -456,9 +456,8 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         return var_creator(**kwargs)
 
   def _call_for_each_replica(self, fn, args, kwargs):
-    # pylint: disable=protected-access
-    return mirrored_strategy._call_for_each_replica(
-        self._container_strategy(), self._compute_devices, fn, args, kwargs)
+    return mirrored_run.call_for_each_replica(self._container_strategy(), fn,
+                                              args, kwargs)
 
   def _verify_destinations_not_different_worker(self, destinations):
     if not self._cluster_spec:

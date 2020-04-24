@@ -28,6 +28,8 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -92,10 +94,9 @@ Status MakeArgTuple(const PyCall* call, EagerContext* ctx, PyObject** tuple) {
     PyObject* arg = nullptr;
     if (call->eager) {
       Tensor t = call->ins[i];
-      TensorHandle* handle = TensorHandle::CreateLocalHandle(
-          std::move(t), ctx->CanonicalDevice(device), nullptr, ctx);
-      arg = EagerTensorFromHandle(new TFE_TensorHandle{
-          std::make_unique<tensorflow::TensorHandleInterface>(handle)});
+      arg = EagerTensorFromHandle(
+          new TFE_TensorHandle{TensorHandle::CreateLocalHandle(
+              std::move(t), ctx->CanonicalDevice(device), nullptr, ctx)});
       if (arg == nullptr) {
         Py_DECREF(lst);
         return errors::Internal("Unable to procure EagerTensor from Tensor.");

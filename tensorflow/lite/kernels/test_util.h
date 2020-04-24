@@ -251,32 +251,44 @@ class SingleOpModel {
                    quantized_output.data() + quantized_output.size());
   }
 
+  template <typename T>
+  void PerChannelQuantizeBiasPopulateTensor(
+      const std::vector<float>& input_data, int index,
+      TfLiteAffineQuantization* params) {
+    const int32_t num_inputs = input_data.size();
+    std::vector<T> quantized_output(num_inputs);
+    for (int i = 0; i < num_inputs; ++i) {
+      const float scale = params->scale->size == 1 ? params->scale->data[0]
+                                                   : params->scale->data[i];
+      quantized_output[i] = input_data[i] / scale;
+    }
+  }
+
+  template <typename T>
+  void PerChannelQuantizeBiasPopulateTensor(
+      int index, const std::vector<float>& input_data,
+      const TfLiteAffineQuantization* params) {
+    const int32_t num_inputs = input_data.size();
+    std::vector<T> quantized_output(num_inputs);
+    for (int i = 0; i < num_inputs; ++i) {
+      const float scale = params->scale->size == 1 ? params->scale->data[0]
+                                                   : params->scale->data[i];
+      quantized_output[i] = input_data[i] / scale;
+    }
+    PopulateTensor(index, /*offset=*/0, quantized_output.data(),
+                   quantized_output.data() + quantized_output.size());
+  }
+
   // Quantize and populate data for bias with per channel quantization.
   void PerChannelQuantizeBias(int index, const std::vector<float>& input_data) {
-    const int32_t num_inputs = input_data.size();
-    std::vector<int32_t> quantized_output(num_inputs);
     TfLiteTensor* t = interpreter_->tensor(index);
     auto* params =
         reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
     CHECK(t->type == kTfLiteInt32 || t->type == kTfLiteInt64);
     if (t->type == kTfLiteInt32) {
-      std::vector<int32_t> quantized_output(num_inputs);
-      for (int i = 0; i < num_inputs; ++i) {
-        const float scale = params->scale->size == 1 ? params->scale->data[0]
-                                                     : params->scale->data[i];
-        quantized_output[i] = input_data[i] / scale;
-      }
-      PopulateTensor(index, /*offset=*/0, quantized_output.data(),
-                     quantized_output.data() + quantized_output.size());
+      PerChannelQuantizeBiasPopulateTensor<int32_t>(index, input_data, params);
     } else {
-      std::vector<int64_t> quantized_output(num_inputs);
-      for (int i = 0; i < num_inputs; ++i) {
-        const float scale = params->scale->size == 1 ? params->scale->data[0]
-                                                     : params->scale->data[i];
-        quantized_output[i] = input_data[i] / scale;
-      }
-      PopulateTensor(index, /*offset=*/0, quantized_output.data(),
-                     quantized_output.data() + quantized_output.size());
+      PerChannelQuantizeBiasPopulateTensor<int64_t>(index, input_data, params);
     }
   }
 
@@ -368,6 +380,14 @@ class SingleOpModel {
   template <typename T>
   void PopulateTensor(int index, int offset, T* begin, T* end) {
     T* v = interpreter_->typed_tensor<T>(index);
+    if (!v) {
+      auto* t = interpreter_->tensor(index);
+      CHECK(t) << "No tensor with index " << index << ".";
+      CHECK(t->data.raw) << "Empty data for tensor with index " << index << ".";
+      CHECK(v) << "Type mismatch for tensor with index " << index
+               << ". Requested " << typeToTfLiteType<T>() << ", got "
+               << t->type;
+    }
     memcpy(v + offset, begin, (end - begin) * sizeof(T));
   }
 
@@ -790,6 +810,7 @@ template <typename T>
 TensorType GetTensorType() {
   if (std::is_same<T, float>::value) return TensorType_FLOAT32;
   if (std::is_same<T, TfLiteFloat16>::value) return TensorType_FLOAT16;
+  if (std::is_same<T, double>::value) return TensorType_FLOAT64;
   if (std::is_same<T, int8_t>::value) return TensorType_INT8;
   if (std::is_same<T, int16_t>::value) return TensorType_INT16;
   if (std::is_same<T, int32_t>::value) return TensorType_INT32;
@@ -815,40 +836,40 @@ struct TypeUnion;
 template <>
 struct TypeUnion<float> {
  public:
-  static const TensorType tensor_type = TensorType::TensorType_FLOAT32;
-  static const TfLiteType tflite_type = TfLiteType::kTfLiteFloat32;
+  static constexpr TensorType tensor_type = TensorType::TensorType_FLOAT32;
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteFloat32;
   typedef float ScalarType;
 };
 
 template <>
 struct TypeUnion<int32_t> {
  public:
-  static const TensorType tensor_type = TensorType::TensorType_INT32;
-  static const TfLiteType tflite_type = TfLiteType::kTfLiteInt32;
+  static constexpr TensorType tensor_type = TensorType::TensorType_INT32;
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteInt32;
   typedef int32_t ScalarType;
 };
 
 template <>
 struct TypeUnion<int16_t> {
  public:
-  static const TensorType tensor_type = TensorType::TensorType_INT16;
-  static const TfLiteType tflite_type = TfLiteType::kTfLiteInt16;
+  static constexpr TensorType tensor_type = TensorType::TensorType_INT16;
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteInt16;
   typedef int16_t ScalarType;
 };
 
 template <>
 struct TypeUnion<int8_t> {
  public:
-  static const TensorType tensor_type = TensorType::TensorType_INT8;
-  static const TfLiteType tflite_type = TfLiteType::kTfLiteInt8;
+  static constexpr TensorType tensor_type = TensorType::TensorType_INT8;
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteInt8;
   typedef int8_t ScalarType;
 };
 
 template <>
 struct TypeUnion<uint8_t> {
  public:
-  static const TensorType tensor_type = TensorType::TensorType_UINT8;
-  static const TfLiteType tflite_type = TfLiteType::kTfLiteUInt8;
+  static constexpr TensorType tensor_type = TensorType::TensorType_UINT8;
+  static constexpr TfLiteType tflite_type = TfLiteType::kTfLiteUInt8;
   typedef uint8_t ScalarType;
 };
 

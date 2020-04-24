@@ -134,6 +134,10 @@ class OpBuilder {
       return ComputeMinAndMaxQuantValues(tensor, min, max,
                                          std::numeric_limits<int8_t>::min(),
                                          std::numeric_limits<int8_t>::max());
+    } else if (tensor.type == kTfLiteInt32) {
+      return ComputeMinAndMaxQuantValues(tensor, min, max,
+                                         std::numeric_limits<int32_t>::min(),
+                                         std::numeric_limits<int32_t>::max());
     }
     return kTfLiteError;
   }
@@ -151,10 +155,6 @@ class OpBuilder {
     }
     const TfLiteAffineQuantization* params =
         static_cast<const TfLiteAffineQuantization*>(quant.params);
-    if (params->quantized_dimension != 0) {
-      printf("Quantized dimensions not 0 for tensor: %s\n", tensor.name);
-      return kTfLiteError;
-    }
     float scale = params->scale->data[0];
     float zero_point = static_cast<float>(params->zero_point->data[0]);
     *min = scale * (static_cast<float>(min_value) - zero_point);
@@ -206,6 +206,13 @@ class GraphBuilder {
   // Construct Output node with 'output_tensors' as input.
   void AddOutputTensors(const TfLiteIntArray* output_tensors,
                         TfLiteContext* context);
+
+  // Adds BatchSeqConfig node to the graph. This is configuration
+  // for a dynamic batch size for the graph.
+  // A graph can have only one node of this type.
+  void AddBatchSeqConfig(int max_size_for_batch,
+                         TfLiteIntArray* input_batch_dimensions,
+                         TfLiteIntArray* output_batch_dimensions);
 
   // Returns tensor id inside Hexagon graph.
   OpBuilder::TensorID GetHexagonTensorId(int tflite_tensor_index) {
@@ -283,6 +290,13 @@ class GraphBuilder {
     return builders_[node_id - 1]->GetTFLiteNodeID();
   }
 
+  // Returns true if the graph supports dynamic batch. False otherwise.
+  bool GraphHasDynamicBatch() const { return max_size_for_batch_ != -1; }
+
+  // Returns the maximum value for batch dimension the graph supports.
+  // -1 if the graph doesn't support dynamic batch.
+  int GetMaxBatchSize() const { return max_size_for_batch_; }
+
  private:
   // Helper method to fetch dimensions.
   // TODO(karimnosseir): Move this method to shared place.
@@ -302,6 +316,10 @@ class GraphBuilder {
   // Index in the vector is the tflite_tensor_index, the value
   // is the ID in the hexgon graph.
   std::vector<OpBuilder::TensorID> tensors_;
+
+  // If the graph being built supports dynamic batch, this represents
+  // the maximum value for batch.
+  int max_size_for_batch_ = -1;
 };
 
 }  // namespace hexagon

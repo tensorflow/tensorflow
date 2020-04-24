@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 
+#include <numeric>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -35,17 +37,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-const char* const kXlaShardingAttrName = "_XlaSharding";
 const char* const kInputShardingAttr = "input_sharding_configuration";
 const char* const kOutputShardingAttr = "output_sharding_configuration";
-
-llvm::Optional<mlir::StringRef> ParseShardingAttribute(
-    mlir::Operation* operation) {
-  const auto& sharding_attr =
-      operation->getAttrOfType<mlir::StringAttr>(kXlaShardingAttrName);
-  if (!sharding_attr) return llvm::Optional<mlir::StringRef>();
-  return sharding_attr.getValue();
-}
 
 namespace {
 
@@ -242,8 +235,8 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
     sharding.ParseFromString(
         sharding_attr.cast<mlir::StringAttr>().getValue().str());
 
-    const auto input_sharing_type = sharding.type();
-    if (input_sharing_type == xla::OpSharding::OTHER) {
+    const auto input_sharding_type = sharding.type();
+    if (input_sharding_type == xla::OpSharding::OTHER) {
       llvm::SmallVector<mlir::Value, 4> tiled_inputs;
       auto result = HandleTileShardedInputs(
           launch_func.getLoc(), sharding, input_value, builder, &tiled_inputs);
@@ -260,10 +253,10 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
         const int assigned_logical_device = sharding.tile_assignment_devices(i);
         (*input_list)[assigned_logical_device].emplace_back(tiled_inputs[i]);
       }
-    } else if (input_sharing_type == xla::OpSharding::REPLICATED) {
+    } else if (input_sharding_type == xla::OpSharding::REPLICATED) {
       for (auto& inputs : *input_list) inputs.emplace_back(input_value);
     } else {
-      assert(input_sharing_type == xla::OpSharding::MAXIMAL);
+      assert(input_sharding_type == xla::OpSharding::MAXIMAL);
       const int logical_device_id = sharding.tile_assignment_devices(0);
       (*input_list)[logical_device_id].emplace_back(input_value);
     }
@@ -512,6 +505,36 @@ void RemapOutputsFromLogicalDevices(
         logical_device_id)[region_output_index];
     launch_func_output.replaceAllUsesWith(output_from_logical_device);
   }
+}
+
+llvm::SmallVector<llvm::SmallVector<int64_t, 4>, 4> GetMetadataArgumentMapping(
+    const tpu::TPUCompileMetadataProto& metadata) {
+  llvm::SmallVector<llvm::SmallVector<int64_t, 4>, 4> input_mappings(
+      metadata.num_cores_per_replica(), llvm::SmallVector<int64_t, 4>());
+
+  if (metadata.num_cores_per_replica() == 1) {
+    input_mappings.front().resize(metadata.args_size());
+    std::iota(input_mappings.front().begin(), input_mappings.front().end(), 0);
+    return input_mappings;
+  }
+
+  for (const auto& arg_and_idx : llvm::enumerate(metadata.args())) {
+    const auto& sharding = arg_and_idx.value().sharding();
+    const int64_t idx = arg_and_idx.index();
+
+    const auto& sharding_type = sharding.type();
+    if (sharding_type == xla::OpSharding::OTHER) {
+      for (const auto& device : sharding.tile_assignment_devices())
+        input_mappings[device].push_back(idx);
+    } else if (sharding_type == xla::OpSharding::REPLICATED) {
+      for (auto& input : input_mappings) input.push_back(idx);
+    } else {
+      assert(sharding_type == xla::OpSharding::MAXIMAL);
+      input_mappings[sharding.tile_assignment_devices(0)].push_back(idx);
+    }
+  }
+
+  return input_mappings;
 }
 
 }  // namespace tensorflow

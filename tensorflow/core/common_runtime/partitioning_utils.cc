@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
 
+#include <algorithm>
+
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
@@ -82,19 +84,31 @@ Status UpdateArgAndRetvalMetadata(
   // Find the Arg and Retval nodes, along with their corresponding indices
   // in the original function.
   for (Node* node : subgraph->op_nodes()) {
-    string node_type = node->type_string();
     if (node->IsArg()) {
       TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
       int index = static_cast<int>(attr_value->i());
-      arg_indices->push_back(index);
-      arg_nodes.push_back(std::make_pair(node, index));
+      arg_nodes.emplace_back(node, index);
     } else if (node->IsRetval()) {
       TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
       int index = static_cast<int>(attr_value->i());
-      ret_indices->push_back(index);
-      ret_nodes.push_back(std::make_pair(node, index));
+      ret_nodes.emplace_back(node, index);
     }
   }
+
+  // Sort the nodes by index so that the order is stable.
+  //
+  // In particular, this enables calling a single-partition function with
+  // the same signature as the original unpartitioned function.
+  auto comparator = [](std::pair<Node*, int> a, std::pair<Node*, int> b) {
+    return a.second < b.second;
+  };
+  std::sort(arg_nodes.begin(), arg_nodes.end(), comparator);
+  std::sort(ret_nodes.begin(), ret_nodes.end(), comparator);
+
+  arg_indices->reserve(arg_nodes.size());
+  for (const auto& pair : arg_nodes) arg_indices->push_back(pair.second);
+  ret_indices->reserve(ret_nodes.size());
+  for (const auto& pair : ret_nodes) ret_indices->push_back(pair.second);
 
   for (int i = 0; i < arg_nodes.size(); ++i) {
     Node* arg = arg_nodes[i].first;

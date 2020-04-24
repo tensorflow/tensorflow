@@ -261,7 +261,7 @@ class PendingCounts {
   // Each frame in this subgraph has its own PendingCounts.
 
   // We use 3 bits each for dead_count and pending.
-  static const int kMaxCountForPackedCounts = 7;
+  static constexpr int kMaxCountForPackedCounts = 7;
 
   // Most counts are small, so we pack a pending count and a dead
   // count into 3 bits each, use 1 bit to indicate that the node has

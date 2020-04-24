@@ -37,6 +37,11 @@ def HLO_Token : Type<CPred<"$_self.isa<TokenType>()">, "token">;
 // Any integer tensor types
 def HLO_IntTensor : TensorOf<[HLO_Int]>;
 
+// Any integer tensor type with rank 0 (i.e. representing a single integer).
+def HLO_ScalarIntTensor : ShapedContainerType<
+  [HLO_Int], And<[IsTensorTypePred, HasAnyRankOfPred<[0]>]>,
+  "a 0-dim integer tensor">;
+
 // Any floating-point tensor types
 def HLO_FpTensor : TensorOf<[AnyFloat]>;
 
@@ -50,11 +55,10 @@ def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
-// Dynamic representation of a shape vector as a tensor. Ideally this would be
-// an index type (as it stores indices) but that is currently disallowed in
-// MLIR.
+// Dynamic representation of a shape vector as a tensor.
 def HLO_DimensionTensor : ShapedContainerType<
-    [AnySignlessInteger], And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
+    [Index, AnySignlessInteger],
+    And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
     "a 1D tensor of dimensions">;
 
 // In general, static shaped tensor constraints should be avoided unless
@@ -513,7 +517,7 @@ class BASE_HLO_AndOp {
   string summary = "Logical and";
 
   string description = [{
-    Returns `lhs /\ rhs` element-wise.
+    Returns `logical_and(lhs, rhs)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
@@ -524,7 +528,7 @@ class BASE_HLO_OrOp {
   string summary = "Logical or";
 
   string description = [{
-    Returns `lhs \/ rhs` element-wise.
+    Returns `logical_or(lhs, rhs)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
@@ -535,7 +539,7 @@ class BASE_HLO_XorOp {
   string summary = "Logical xor";
 
   string description = [{
-    Returns `lhs xor rhs` element-wise.
+    Returns `logical_xor(lhs, rhs)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.

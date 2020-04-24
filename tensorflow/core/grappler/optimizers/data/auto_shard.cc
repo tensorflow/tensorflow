@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -38,10 +39,14 @@ namespace {
 constexpr char kShardDatasetOpName[] = "ShardDataset";
 constexpr char kShuffleDatasetOpName[] = "ShuffleDataset";
 constexpr char kShuffleDatasetV2OpName[] = "ShuffleDatasetV2";
+constexpr char kShuffleDatasetV3OpName[] = "ShuffleDatasetV3";
 
 constexpr char kNumWorkersAttrName[] = "num_workers";
 constexpr char kIndexAttrName[] = "index";
 constexpr char kAutoShardPolicyAttrName[] = "auto_shard_policy";
+constexpr char kReshuffleEachIteration[] = "reshuffle_each_iteration";
+constexpr char kOutputShapes[] = "output_shapes";
+constexpr char kOutputTypes[] = "output_types";
 
 constexpr std::array<const char*, 6> kReaderDatasetOps = {
     "FixedLengthRecordDataset",
@@ -57,8 +62,9 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 29> kPassThroughOps = {
+constexpr std::array<const char*, 31> kPassThroughOps = {
     "_Retval",
+    "AssertCardinalityDataset",
     "AssertNextDataset",
     "BatchDataset",
     "BatchDatasetV2",
@@ -84,6 +90,7 @@ constexpr std::array<const char*, 29> kPassThroughOps = {
     "ShuffleAndRepeatDataset",
     "ShuffleDataset",
     "ShuffleDatasetV2",
+    "ShuffleDatasetV3",
     "SkipDataset",
     "TakeDataset",
     "WindowDataset",
@@ -145,28 +152,27 @@ Status AddShardNode(MutableGraphView* graph, const NodeDef& add_before,
   // Add shapes and other attributes
   NodeDef* add_after = graph->GetNode(add_before.input(0));
 
-  if (absl::EndsWith(add_after->op(), "Dataset") ||
-      absl::EndsWith(add_after->op(), "DatasetV2")) {
+  if (absl::StrContains(add_after->op(), "Dataset")) {
     // We still may or may not have the right attributes because Datasets like
     // TFRecordDataset doesn't have a output type or shape, and by default we
     // set them to DT_STRING and an unknown shape.
-    if (add_after->attr().count("output_shapes") > 0) {
-      graph_utils::CopyAttribute("output_shapes", *add_after, &new_node);
+    if (add_after->attr().count(kOutputShapes) > 0) {
+      graph_utils::CopyAttribute(kOutputShapes, *add_after, &new_node);
     } else {
       tensorflow::TensorShapeProto* shape =
-          (*(new_node.mutable_attr()))["output_shapes"]
+          (*(new_node.mutable_attr()))[kOutputShapes]
               .mutable_list()
               ->add_shape();
       shape->set_unknown_rank(true);
     }
 
-    if (add_after->attr().count("output_types") > 0) {
-      graph_utils::CopyAttribute("output_types", *add_after, &new_node);
+    if (add_after->attr().count(kOutputTypes) > 0) {
+      graph_utils::CopyAttribute(kOutputTypes, *add_after, &new_node);
     } else if (add_after->attr().count("Toutput_types") > 0) {
-      (*(new_node.mutable_attr()))["output_types"] =
+      (*(new_node.mutable_attr()))[kOutputTypes] =
           add_after->attr().at("Toutput_types");
     } else {
-      (*(new_node.mutable_attr()))["output_types"].mutable_list()->add_type(
+      (*(new_node.mutable_attr()))[kOutputTypes].mutable_list()->add_type(
           tensorflow::DataType::DT_STRING);
     }
   } else {
@@ -188,9 +194,10 @@ Status AddShardNode(MutableGraphView* graph, const NodeDef& add_before,
   return Status::OK();
 }
 
-Status AddShuffleNode(MutableGraphView* graph, const NodeDef& add_before,
-                      const string& buffer_size_node, const string& seed_node,
-                      const string& seed2_node, bool reshuffle_each_iteration) {
+Status AddShuffleDataset(MutableGraphView* graph, const NodeDef& add_before,
+                         const string& buffer_size_node,
+                         const string& seed_node, const string& seed2_node,
+                         bool reshuffle_each_iteration) {
   NodeDef* add_after = graph->GetNode(add_before.input(0));
   NodeDef new_node;
   new_node.set_op(kShuffleDatasetOpName);
@@ -202,12 +209,12 @@ Status AddShuffleNode(MutableGraphView* graph, const NodeDef& add_before,
   new_node.add_input(seed_node);
   new_node.add_input(seed2_node);
 
-  graph_utils::CopyAttribute("output_shapes", *add_after, &new_node);
-  graph_utils::CopyAttribute("output_types", *add_after, &new_node);
+  graph_utils::CopyAttribute(kOutputShapes, *add_after, &new_node);
+  graph_utils::CopyAttribute(kOutputTypes, *add_after, &new_node);
 
   AttrValue reshuffle_attr;
   reshuffle_attr.set_b(reshuffle_each_iteration);
-  (*new_node.mutable_attr())["reshuffle_each_iteration"] = reshuffle_attr;
+  (*new_node.mutable_attr())[kReshuffleEachIteration] = reshuffle_attr;
 
   NodeDef* new_node_graph = graph->AddNode(std::move(new_node));
 
@@ -216,9 +223,9 @@ Status AddShuffleNode(MutableGraphView* graph, const NodeDef& add_before,
   return Status::OK();
 }
 
-Status AddShuffleV2Node(MutableGraphView* graph, const NodeDef& add_before,
-                        const string& buffer_size_node,
-                        const string& seed_generator_node) {
+Status AddShuffleDatasetV2(MutableGraphView* graph, const NodeDef& add_before,
+                           const string& buffer_size_node,
+                           const string& seed_generator_node) {
   NodeDef* add_after = graph->GetNode(add_before.input(0));
   NodeDef new_node;
   new_node.set_op(kShuffleDatasetV2OpName);
@@ -229,8 +236,39 @@ Status AddShuffleV2Node(MutableGraphView* graph, const NodeDef& add_before,
   new_node.add_input(buffer_size_node);
   new_node.add_input(seed_generator_node);
 
-  graph_utils::CopyAttribute("output_shapes", *add_after, &new_node);
-  graph_utils::CopyAttribute("output_types", *add_after, &new_node);
+  graph_utils::CopyAttribute(kOutputShapes, *add_after, &new_node);
+  graph_utils::CopyAttribute(kOutputTypes, *add_after, &new_node);
+
+  NodeDef* new_node_graph = graph->AddNode(std::move(new_node));
+
+  TF_RETURN_IF_ERROR(
+      graph->UpdateFanouts(add_after->name(), new_node_graph->name()));
+  return Status::OK();
+}
+
+Status AddShuffleDatasetV3(MutableGraphView* graph, const NodeDef& add_before,
+                           const string& buffer_size_node,
+                           const string& seed_node, const string& seed2_node,
+                           const string& seed_generator_node,
+                           bool reshuffle_each_iteration) {
+  NodeDef* add_after = graph->GetNode(add_before.input(0));
+  NodeDef new_node;
+  new_node.set_op(kShuffleDatasetV3OpName);
+  graph_utils::SetUniqueGraphNodeName(kShuffleDatasetV3OpName, graph->graph(),
+                                      &new_node);
+
+  new_node.add_input(add_before.input(0));
+  new_node.add_input(buffer_size_node);
+  new_node.add_input(seed_node);
+  new_node.add_input(seed2_node);
+  new_node.add_input(seed_generator_node);
+
+  graph_utils::CopyAttribute(kOutputShapes, *add_after, &new_node);
+  graph_utils::CopyAttribute(kOutputTypes, *add_after, &new_node);
+
+  AttrValue reshuffle_attr;
+  reshuffle_attr.set_b(reshuffle_each_iteration);
+  (*new_node.mutable_attr())[kReshuffleEachIteration] = reshuffle_attr;
 
   NodeDef* new_node_graph = graph->AddNode(std::move(new_node));
 
@@ -267,7 +305,7 @@ Status RemoveShuffleDataset(MutableGraphView* graph, const NodeDef& node,
     *buffer_size_node = node.input(1);
     *seed_node = node.input(2);
     *seed2_node = node.input(3);
-    *reshuffle_each_iteration = node.attr().at("reshuffle_each_iteration").b();
+    *reshuffle_each_iteration = node.attr().at(kReshuffleEachIteration).b();
     TF_RETURN_IF_ERROR(graph->UpdateFanouts(node.name(), node.input(0)));
     nodes_to_delete->insert(node.name());
   }
@@ -304,6 +342,33 @@ Status RemoveShuffleDatasetV2(MutableGraphView* graph, const NodeDef& node,
   return Status::OK();
 }
 
+Status RemoveShuffleDatasetV3(MutableGraphView* graph, const NodeDef& node,
+                              absl::flat_hash_set<string>* nodes_to_delete,
+                              string* op_name, string* buffer_size_node,
+                              string* seed_node, string* seed2_node,
+                              string* seed_generator_node,
+                              bool* reshuffle_each_iteration) {
+  if (node.op() == kShuffleDatasetV3OpName) {
+    *op_name = node.op();
+    *buffer_size_node = node.input(1);
+    *seed_node = node.input(2);
+    *seed2_node = node.input(3);
+    *seed_generator_node = node.input(4);
+    *reshuffle_each_iteration = node.attr().at(kReshuffleEachIteration).b();
+    TF_RETURN_IF_ERROR(graph->UpdateFanouts(node.name(), node.input(0)));
+    nodes_to_delete->insert(node.name());
+  }
+
+  for (const auto& fanin : graph->GetFanins(node, true)) {
+    TF_RETURN_IF_ERROR(RemoveShuffleDatasetV3(
+        graph, *fanin.node, nodes_to_delete, op_name, buffer_size_node,
+        seed_node, seed2_node, seed_generator_node, reshuffle_each_iteration));
+  }
+
+  // TODO(frankchn): Traverse functions too.
+  return Status::OK();
+}
+
 Status ProcessDatasetSourceNode(MutableGraphView* graph, const NodeDef& node,
                                 absl::flat_hash_set<string>* nodes_to_delete,
                                 int64 num_workers, int64 index) {
@@ -323,13 +388,24 @@ Status ProcessDatasetSourceNode(MutableGraphView* graph, const NodeDef& node,
         RemoveShuffleDatasetV2(graph, node, nodes_to_delete, &shuffle_op_name,
                                &buffer_size_node, &seed_generator_node));
   }
+  if (shuffle_op_name.empty()) {
+    TF_RETURN_IF_ERROR(RemoveShuffleDatasetV3(
+        graph, node, nodes_to_delete, &shuffle_op_name, &buffer_size_node,
+        &seed_node, &seed2_node, &seed_generator_node,
+        &reshuffle_each_iteration));
+  }
 
   if (shuffle_op_name == kShuffleDatasetOpName) {
-    TF_RETURN_IF_ERROR(AddShuffleNode(graph, node, buffer_size_node, seed_node,
-                                      seed2_node, reshuffle_each_iteration));
+    TF_RETURN_IF_ERROR(AddShuffleDataset(graph, node, buffer_size_node,
+                                         seed_node, seed2_node,
+                                         reshuffle_each_iteration));
   } else if (shuffle_op_name == kShuffleDatasetV2OpName) {
-    TF_RETURN_IF_ERROR(
-        AddShuffleV2Node(graph, node, buffer_size_node, seed_generator_node));
+    TF_RETURN_IF_ERROR(AddShuffleDatasetV2(graph, node, buffer_size_node,
+                                           seed_generator_node));
+  } else if (shuffle_op_name == kShuffleDatasetV3OpName) {
+    TF_RETURN_IF_ERROR(AddShuffleDatasetV3(
+        graph, node, buffer_size_node, seed_node, seed2_node,
+        seed_generator_node, reshuffle_each_iteration));
   }
 
   return Status::OK();

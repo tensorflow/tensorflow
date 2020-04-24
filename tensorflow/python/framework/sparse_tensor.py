@@ -29,12 +29,12 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.types import internal
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
@@ -44,7 +44,7 @@ _override_helper = ops._override_helper
 
 
 @tf_export("sparse.SparseTensor", "SparseTensor")
-class SparseTensor(tensor_like.TensorLike, composite_tensor.CompositeTensor):
+class SparseTensor(internal.NativeObject, composite_tensor.CompositeTensor):
   """Represents a sparse tensor.
 
   TensorFlow represents a sparse tensor as three separate dense tensors:
@@ -132,38 +132,9 @@ class SparseTensor(tensor_like.TensorLike, composite_tensor.CompositeTensor):
       # is a VariableOp and updating users of SparseTensor.
       values = ops.convert_to_tensor(values, name="values")
 
-      # Can't check `if context.executing_eagerly()` here because sparse
-      # placeholders can still be used in eager context, when building a
-      # functional model.
-      if isinstance(indices, ops.EagerTensor):
-        try:
-          dense_shape = ops.convert_to_tensor(
-              dense_shape, name="dense_shape", dtype=dtypes.int64)
-          dense_shape_default = tensor_shape.TensorShape(dense_shape)
-        except ValueError:
-          raise ValueError("Unable to create eager SparseTensor. Check that "
-                           "your shape is correctly defined. Eager "
-                           "SparseTensors don't support unknown dimesions.\n"
-                           "got shape:\n    {}".format(dense_shape))
-      else:
-        if isinstance(dense_shape, ops.Tensor):
-          dense_shape_default = tensor_util.constant_value_as_shape(dense_shape)
-        else:
-          dense_shape_default = []
-          for dim in dense_shape:
-            if isinstance(dim, ops.Tensor):
-              # There is code passing lists of constant tensors.
-              dim = tensor_util.constant_value(dim)
-            if dim == -1:
-              # -1 may be passed for unknown shapes.
-              dim = None
-
-            dense_shape_default.append(dim)
-
-        dense_shape_default = tensor_shape.TensorShape(dense_shape_default)
-
-        dense_shape = ops.convert_to_tensor(
-            dense_shape, name="dense_shape", dtype=dtypes.int64)
+      dense_shape = ops.convert_to_tensor(
+          dense_shape, name="dense_shape", dtype=dtypes.int64)
+      dense_shape_default = tensor_util.constant_value_as_shape(dense_shape)
 
     self._indices = indices
     self._values = values
@@ -297,18 +268,18 @@ _pywrap_utils.RegisterType("SparseTensorValue", SparseTensorValue)
 
 @tf_export("SparseTensorSpec")
 class SparseTensorSpec(type_spec.BatchableTypeSpec):
-  """Type specification for a `tf.SparseTensor`."""
+  """Type specification for a `tf.sparse.SparseTensor`."""
 
   __slots__ = ["_shape", "_dtype"]
 
   value_type = property(lambda self: SparseTensor)
 
   def __init__(self, shape=None, dtype=dtypes.float32):
-    """Constructs a type specification for a `tf.SparseTensor`.
+    """Constructs a type specification for a `tf.sparse.SparseTensor`.
 
     Args:
-      shape: The dense shape of the `SparseTensor`, or `None` to allow
-        any dense shape.
+      shape: The dense shape of the `SparseTensor`, or `None` to allow any dense
+        shape.
       dtype: `tf.DType` of values in the `SparseTensor`.
     """
     self._shape = tensor_shape.as_shape(shape)
@@ -472,13 +443,14 @@ def convert_to_tensor_or_sparse_tensor(value, dtype=None, name=None):
 def is_sparse(x):
   """Check whether `x` is sparse.
 
-  Check whether an object is a `tf.SparseTensor` or
+  Check whether an object is a `tf.sparse.SparseTensor` or
   `tf.compat.v1.SparseTensorValue`.
 
   Args:
     x: A python object to check.
 
   Returns:
-    `True` iff `x` is a `tf.SparseTensor` or `tf.compat.v1.SparseTensorValue`.
+    `True` iff `x` is a `tf.sparse.SparseTensor` or
+    `tf.compat.v1.SparseTensorValue`.
   """
   return isinstance(x, (SparseTensor, SparseTensorValue))

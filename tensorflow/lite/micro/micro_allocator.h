@@ -64,9 +64,10 @@ typedef struct {
 // This information could change in the future version.
 // ************** .memory_allocator->GetBuffer()
 // Tensors/Scratch buffers (head)
-// **************
+// ************** .head_watermark
 // unused memory
-// ************** .memory_allocator->GetBuffer() + ->GetDataSize()
+// ************** .memory_allocator->GetBuffer() + ->GetMaxBufferSize()
+//                                               - ->GetDataSize()
 // persistent area (tail)
 // ************** .memory_allocator->GetBuffer() + ->GetMaxBufferSize()
 class MicroAllocator {
@@ -87,6 +88,15 @@ class MicroAllocator {
   // corrupting tensor data so this method should be the last non-const method
   // called in this class.
   TfLiteStatus FinishTensorAllocation();
+
+  // Returns the arena usage in bytes, only available after
+  // `FinishTensorAllocation`. Otherwise, it will return 0.
+  size_t used_bytes() const {
+    if (active_) {
+      return 0;
+    }
+    return memory_allocator_->GetUsedBytes();
+  }
 
   // Run through the model to allocate nodes and registrations. We need to keep
   // them for the entire life time of the model to allow persistent tensors.
@@ -115,6 +125,7 @@ class MicroAllocator {
   TfLiteStatus Init();
 
   const Model* model_;
+  // A simple memory allocator that always allocate from the arena tail.
   SimpleMemoryAllocator* memory_allocator_;
   ErrorReporter* error_reporter_;
   TfLiteContext* context_;

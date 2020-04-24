@@ -1203,7 +1203,8 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
     };
   }
 
-  LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, handle);
+  LocalHandle local_handle = parent_->GetHandleOnDevice(
+      device_name_, handle, /*include_multi_device=*/true);
   if (local_handle == kInvalidLocalHandle) {
     parent_->Run(run_opts, handle, frame, done);
     return;

@@ -18,6 +18,24 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+# TODO(b/152902651): Remove this file once all circular dependencies are resolved.
+tf_cuda_library(
+    name = "core",
+    srcs = [
+        "core.cc",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":context",
+        ":eager_operation",
+        ":execute",
+        ":tensor_handle",
+        "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:tf_tensor_internal",
+    ],
+    alwayslink = 1,
+)
+
 tf_cuda_library(
     name = "eager_executor",
     srcs = [
@@ -54,8 +72,12 @@ tf_cuda_library(
     deps = [
         ":eager_executor",
         ":kernel_and_device",
-        ":process_function_library_runtime",
-        "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c/eager:context_interface",
+        "//tensorflow/c/eager:tensor_handle_interface",
+        "//tensorflow/c/eager:operation_interface",
+        "//tensorflow/c/experimental/saved_model/core:saved_model_api",
+        "//tensorflow/c/experimental/saved_model/core:tf_saved_model_impl",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
     ] + select({
@@ -63,6 +85,7 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "@com_google_absl//absl/types:optional",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -86,6 +109,9 @@ tf_cc_test(
     srcs = ["context_test.cc"],
     deps = [
         ":context",
+        ":core",
+        ":eager_operation",
+        ":execute",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -109,9 +135,14 @@ tf_cuda_library(
         ":tensor_handle",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c/eager:operation_interface",
+        "//tensorflow/c/eager:tensor_handle_interface",
         "//tensorflow/core:framework",
-        "//tensorflow/core/platform:errors",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform:platform_port",
     ] + select({
         "//tensorflow:android": [
@@ -121,6 +152,18 @@ tf_cuda_library(
             "//tensorflow/core:core_cpu_lib",
         ],
     }),
+)
+
+tf_cc_test(
+    name = "eager_operation_test",
+    srcs = ["eager_operation_test.cc"],
+    deps = [
+        ":core",
+        ":eager_operation",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 tf_cuda_library(
@@ -158,7 +201,6 @@ tf_cuda_library(
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":context",
         ":eager_executor",
         ":kernel_and_device",
         ":tensor_handle_data",
@@ -169,6 +211,8 @@ tf_cuda_library(
         "//conditions:default": [
             "@com_google_absl//absl/strings",
             "@com_google_absl//absl/types:variant",
+            "//tensorflow/c:tf_tensor_internal",
+            "//tensorflow/c/eager:tensor_handle_interface",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -176,7 +220,6 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:session_options",
-            "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle_data",
             "//tensorflow/core/profiler/lib:traceme",
         ],
@@ -187,6 +230,9 @@ tf_cc_test(
     name = "tensor_handle_test",
     srcs = ["tensor_handle_test.cc"],
     deps = [
+        ":core",
+        ":eager_operation",
+        ":execute",
         ":tensor_handle",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
@@ -258,7 +304,6 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":attr_builder",
-        ":process_function_library_runtime",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:optional",
@@ -270,31 +315,6 @@ tf_cuda_library(
         "//tensorflow:windows": KERNEL_AND_DEVICE_DEPS,
         "//conditions:default": KERNEL_AND_DEVICE_DEPS + [
             "//tensorflow/compiler/jit:xla_kernel_creator_util",
-        ],
-    }),
-)
-
-tf_cuda_library(
-    name = "process_function_library_runtime",
-    srcs = [
-        "process_function_library_runtime.cc",
-    ],
-    hdrs = [
-        "process_function_library_runtime.h",
-    ],
-    visibility = ["//tensorflow:internal"],
-    deps = select({
-        "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
-        ],
-        "//conditions:default": [
-            "@com_google_absl//absl/types:optional",
-            "@com_google_absl//absl/types:variant",
-            "//tensorflow/core:core_cpu_lib",
-            "//tensorflow/core:framework",
-            "//tensorflow/core:lib",
-            "//tensorflow/core:lib_internal",
-            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )
@@ -348,12 +368,12 @@ cc_library(
         ":eager_operation",
         ":kernel_and_device",
         ":tensor_handle",
-        ":process_function_library_runtime",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/memory",
+        "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/compiler/jit:common",
         "//tensorflow/core/profiler/lib:traceme",
     ] + select({
@@ -396,7 +416,7 @@ tf_cc_test_mkl(
         "nomac",
     ],
     deps = [
-        ":execute",
+        ":core",
         ":mkl_eager_op_rewrite",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -416,11 +436,61 @@ tf_cc_test(
     srcs = ["eager_op_rewrite_registry_test.cc"],
     deps = [
         ":eager_op_rewrite_registry",
+        ":mkl_core",
         "//tensorflow/core:lib",
         "//tensorflow/core:no_op_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
+)
+
+# Temporary rule until the circular dependencies issue is resolved.
+# TODO(mabuzain): remove this once original "core" package is fixed.
+cc_library(
+    name = "mkl_core",
+    srcs = [
+        "core.cc",
+        "execute.cc",
+        "execute_node.cc",
+    ],
+    hdrs = [
+        "execute.h",
+        "execute_node.h",
+    ],
+    deps = [
+        ":context",
+        ":copy_to_device_node",
+        ":eager_executor",
+        ":eager_op_rewrite_registry",
+        ":eager_operation",
+        ":kernel_and_device",
+        ":tensor_handle",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/memory",
+        "//tensorflow/c:c_api_internal",
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/compiler/jit:common",
+        "//tensorflow/core/profiler/lib:traceme",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core/distributed_runtime/eager:remote_mgr",
+            "//tensorflow/core:core_cpu_lib",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core/distributed_runtime/eager:eager_client",
+            "//tensorflow/core/distributed_runtime/eager:remote_execute_node",
+            "//tensorflow/core/distributed_runtime/eager:remote_copy_node",
+        ],
+    }),
 )
 
 tf_cuda_library(

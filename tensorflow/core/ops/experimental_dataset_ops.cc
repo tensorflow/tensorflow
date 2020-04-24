@@ -1042,6 +1042,7 @@ REGISTER_OP("DataServiceDataset")
     .Input("protocol: string")
     .Input("max_outstanding_requests: int64")
     .Output("handle: variant")
+    .Attr("task_refresh_interval_hint_ms: int = -1")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetIsStateful()
@@ -1055,16 +1056,17 @@ REGISTER_OP("RegisterDataset")
     .Attr("external_state_policy: int")
     .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("BeginEpoch")
+REGISTER_OP("CreateJob")
     .Input("dataset_id: int64")
     .Input("address: string")
     .Input("protocol: string")
-    .Output("epoch_id: int64")
+    .Input("processing_mode: string")
+    .Output("job_token: variant")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("MakeDataServiceIterator")
     .Input("dataset: variant")
-    .Input("epoch_id: int64")
+    .Input("job_token: variant")
     .Input("iterator: resource")
     .SetShapeFn(shape_inference::NoOutputs);
 

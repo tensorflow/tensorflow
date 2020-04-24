@@ -338,6 +338,7 @@ def tf_copts(
         }) +
         select({
             clean_dep("//tensorflow:android"): android_copts,
+            clean_dep("//tensorflow:emscripten"): [],
             clean_dep("//tensorflow:macos"): [],
             clean_dep("//tensorflow:windows"): get_win_copts(is_external),
             clean_dep("//tensorflow:ios"): [],
@@ -1945,7 +1946,7 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-# In tf_py_wrap_cc generated libraries
+# In tf_py_wrap_cc_opensource generated libraries
 # module init functions are not exported unless
 # they contain one of the keywords in the version file
 # this prevents custom python modules.
@@ -1989,15 +1990,17 @@ _append_init_to_versionscript = rule(
     implementation = _append_init_to_versionscript_impl,
 )
 
-def tf_py_wrap_cc(
+# This macro should only be used for pywrap_tensorflow_internal.so.
+# It was copied and refined from the original tf_py_wrap_cc_opensource rule.
+# buildozer: disable=function-docstring-args
+def pywrap_tensorflow_macro(
         name,
         srcs = [],
-        swig_includes = [],
         deps = [],
         copts = [],
         version_script = None,
         **kwargs):
-    """Builds a Python extension module."""
+    """Builds the pywrap_tensorflow_internal shared object."""
     module_name = name.split("/")[-1]
 
     # Convert a rule name such as foo/bar/baz to foo/bar/_baz.so
@@ -2010,29 +2013,10 @@ def tf_py_wrap_cc(
     cc_library_pyd_name = "/".join(
         name.split("/")[:-1] + ["_" + module_name + ".pyd"],
     )
-    extra_deps = []
 
-    # TODO(amitpatankar): Migrate from py_wrap_cc to cc_shared_library.
-    # TensorFlow python does not use any SWIG sources so we create
-    # an empty SWIG file. This rule cannot be cleaned up until bazel shared
-    # library support lands.
-    if srcs == []:
-        srcs = ["default.swig"]
-        native.genrule(
-            name = "default_swig_rule",
-            outs = srcs,
-            cmd = "touch $@",
-        )
+    # We need pybind11 to export the shared object PyInit symbol only in OSS.
+    extra_deps = ["@pybind11"]
 
-    _py_wrap_cc(
-        name = name + "_py_wrap",
-        srcs = srcs,
-        module_name = module_name,
-        py_module_name = name,
-        swig_includes = swig_includes,
-        toolchain_deps = ["@bazel_tools//tools/cpp:current_cc_toolchain"],
-        deps = deps + extra_deps,
-    )
     if not version_script:
         version_script = select({
             "@local_config_cuda//cuda:darwin": clean_dep("//tensorflow:tf_exported_symbols.lds"),
@@ -2082,7 +2066,7 @@ def tf_py_wrap_cc(
 
     tf_cc_shared_object(
         name = cc_library_name,
-        srcs = [module_name + ".cc"],
+        srcs = srcs,
         # framework_so is no longer needed as libtf.so is included via the extra_deps.
         framework_so = [],
         copts = copts + if_not_windows([
@@ -2120,6 +2104,21 @@ def tf_py_wrap_cc(
         outs = [cc_library_pyd_name],
         cmd = "cp $< $@",
     )
+
+    # TODO(amitpatankar): Remove this py_library reference and
+    # move the dependencies to pywrap_tensorflow. This can
+    # eliminate one layer of Python import redundancy. We would
+    # have to change all pywrap_tensorflow imports to
+    # pywrap_tensorflow_internal.
+
+    # Bazel requires an empty .py file for pywrap_tensorflow_internal.py.
+    empty_py_file = [name + ".py"]
+    native.genrule(
+        name = "empty_py_file_rule",
+        outs = empty_py_file,
+        cmd = "touch $@",
+    )
+
     native.py_library(
         name = name,
         srcs = [":" + name + ".py"],
@@ -2207,6 +2206,7 @@ def tf_py_test(
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False,
+        tfrt_enabled = False,
         **kwargs):
     """Create one or more python tests with extra tensorflow dependencies."""
     xla_test_true_list = []
@@ -2228,7 +2228,6 @@ def tf_py_test(
     # the difference between 'dep' and 'clean_dep(dep)'.
     for to_add in [
         "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:gradient_checker",
     ]:
         if to_add not in deps and clean_dep(to_add) not in deps:
             deps.append(clean_dep(to_add))
@@ -2251,6 +2250,23 @@ def tf_py_test(
         deps = depset(deps + xla_test_true_list),
         **kwargs
     )
+    if tfrt_enabled:
+        py_test(
+            name = name + "_tfrt",
+            size = size,
+            srcs = srcs,
+            args = args,
+            data = data,
+            flaky = flaky,
+            kernels = kernels,
+            main = main,
+            shard_count = shard_count,
+            tags = tags,
+            visibility = [clean_dep("//tensorflow:internal")] +
+                         additional_visibility,
+            deps = depset(deps + xla_test_true_list + ["//tensorflow/python:is_tfrt_test_true"]),
+            **kwargs
+        )
 
 register_extension_info(
     extension_name = "tf_py_test",
@@ -2381,6 +2397,7 @@ def py_tests(
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False,
+        tfrt_enabled = False,
         **kwargs):
     if "additional_deps" in kwargs:
         fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
@@ -2400,6 +2417,7 @@ def py_tests(
             tags = tags,
             xla_enabled = xla_enabled,
             xla_enable_strict_auto_jit = xla_enable_strict_auto_jit,
+            tfrt_enabled = tfrt_enabled,
             **kwargs
         )
 
@@ -2500,7 +2518,12 @@ def tf_genrule_cmd_append_to_srcs(to_append):
     return ("cat $(SRCS) > $(@) && " + "echo >> $(@) && " + "echo " + to_append +
             " >> $(@)")
 
+def tf_local_platform_constraint():
+    return ["@local_execution_config_platform//:platform_constraint"]
+
 def tf_version_info_genrule(name, out):
+    # TODO(gunan): Investigate making this action hermetic so we do not need
+    # to run it locally.
     native.genrule(
         name = name,
         srcs = [
@@ -2513,9 +2536,10 @@ def tf_version_info_genrule(name, out):
             "$(location //tensorflow/tools/git:gen_git_source) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
         local = 1,
         exec_tools = [clean_dep("//tensorflow/tools/git:gen_git_source")],
+        exec_compatible_with = tf_local_platform_constraint(),
     )
 
-def tf_py_build_info_genrule(name, out, **kwargs):
+def tf_py_build_info_genrule(name, out, exec_compatible_with, **kwargs):
     native.genrule(
         name = name,
         outs = [out],
@@ -2667,6 +2691,7 @@ def pybind_extension(
         deprecation = deprecation,
         restricted_to = restricted_to,
         compatible_with = compatible_with,
+        testonly = testonly,
     )
     native.py_library(
         name = name,
@@ -2694,7 +2719,8 @@ def tf_python_pybind_extension(
         hdrs = [],
         deps = [],
         defines = [],
-        visibility = None):
+        visibility = None,
+        testonly = None):
     """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
 
     Please do not use it anywhere else as it may behave unexpectedly. b/146445820
@@ -2713,6 +2739,7 @@ def tf_python_pybind_extension(
         defines = defines,
         visibility = visibility,
         link_in_framework = True,
+        testonly = testonly,
     )
 
 def tf_pybind_cc_library_wrapper(name, deps, visibility = None):
@@ -2797,3 +2824,9 @@ def filegroup_as_file(name, dep, visibility = []):
         srcs = [name],
         visibility = visibility,
     )
+
+def tf_grpc_dependency():
+    return "//tensorflow:grpc"
+
+def tf_grpc_cc_dependency():
+    return "//tensorflow:grpc++"

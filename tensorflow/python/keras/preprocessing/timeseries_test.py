@@ -31,7 +31,7 @@ class TimeseriesDatasetTest(test.TestCase):
     # Test ordering, targets, sequence length, batch size
     data = np.arange(100)
     targets = data * 2
-    dataset = timeseries.dataset_from_array(
+    dataset = timeseries.timeseries_dataset_from_array(
         data, targets, sequence_length=9, batch_size=5)
     # Expect 19 batches
     for i, batch in enumerate(dataset):
@@ -50,7 +50,7 @@ class TimeseriesDatasetTest(test.TestCase):
 
   def test_no_targets(self):
     data = np.arange(50)
-    dataset = timeseries.dataset_from_array(
+    dataset = timeseries.timeseries_dataset_from_array(
         data, None, sequence_length=10, batch_size=5)
     # Expect 9 batches
     i = None
@@ -68,7 +68,7 @@ class TimeseriesDatasetTest(test.TestCase):
     # Test cross-epoch random order and seed determinism
     data = np.arange(10)
     targets = data * 2
-    dataset = timeseries.dataset_from_array(
+    dataset = timeseries.timeseries_dataset_from_array(
         data, targets, sequence_length=5, batch_size=1, shuffle=True, seed=123)
     first_seq = None
     for x, y in dataset.take(1):
@@ -79,7 +79,7 @@ class TimeseriesDatasetTest(test.TestCase):
     for x, _ in dataset.take(1):
       self.assertNotAllClose(x, first_seq)
     # Check determism with same seed
-    dataset = timeseries.dataset_from_array(
+    dataset = timeseries.timeseries_dataset_from_array(
         data, targets, sequence_length=5, batch_size=1, shuffle=True, seed=123)
     for x, _ in dataset.take(1):
       self.assertAllClose(x, first_seq)
@@ -87,7 +87,7 @@ class TimeseriesDatasetTest(test.TestCase):
   def test_sampling_rate(self):
     data = np.arange(100)
     targets = data * 2
-    dataset = timeseries.dataset_from_array(
+    dataset = timeseries.timeseries_dataset_from_array(
         data, targets, sequence_length=9, batch_size=5, sampling_rate=2)
     for i, batch in enumerate(dataset):
       self.assertLen(batch, 2)
@@ -108,7 +108,7 @@ class TimeseriesDatasetTest(test.TestCase):
   def test_sequence_stride(self):
     data = np.arange(100)
     targets = data * 2
-    dataset = timeseries.dataset_from_array(
+    dataset = timeseries.timeseries_dataset_from_array(
         data, targets, sequence_length=9, batch_size=5, sequence_stride=3)
     for i, batch in enumerate(dataset):
       self.assertLen(batch, 2)
@@ -129,7 +129,7 @@ class TimeseriesDatasetTest(test.TestCase):
 
   def test_start_and_end_index(self):
     data = np.arange(100)
-    dataset = timeseries.dataset_from_array(
+    dataset = timeseries.timeseries_dataset_from_array(
         data, None,
         sequence_length=9, batch_size=5, sequence_stride=3, sampling_rate=2,
         start_index=10, end_index=90)
@@ -141,23 +141,29 @@ class TimeseriesDatasetTest(test.TestCase):
     # bad targets
     with self.assertRaisesRegex(ValueError,
                                 'data and targets to have the same number'):
-      _ = timeseries.dataset_from_array(np.arange(10), np.arange(9), 3)
+      _ = timeseries.timeseries_dataset_from_array(
+          np.arange(10), np.arange(9), 3)
     # bad start index
     with self.assertRaisesRegex(ValueError, 'start_index must be '):
-      _ = timeseries.dataset_from_array(np.arange(10), None, 3, start_index=-1)
+      _ = timeseries.timeseries_dataset_from_array(
+          np.arange(10), None, 3, start_index=-1)
     with self.assertRaisesRegex(ValueError, 'start_index must be '):
-      _ = timeseries.dataset_from_array(np.arange(10), None, 3, start_index=11)
+      _ = timeseries.timeseries_dataset_from_array(
+          np.arange(10), None, 3, start_index=11)
     # bad end index
     with self.assertRaisesRegex(ValueError, 'end_index must be '):
-      _ = timeseries.dataset_from_array(np.arange(10), None, 3, end_index=-1)
+      _ = timeseries.timeseries_dataset_from_array(
+          np.arange(10), None, 3, end_index=-1)
     with self.assertRaisesRegex(ValueError, 'end_index must be '):
-      _ = timeseries.dataset_from_array(np.arange(10), None, 3, end_index=11)
+      _ = timeseries.timeseries_dataset_from_array(
+          np.arange(10), None, 3, end_index=11)
     # bad sampling_rate
     with self.assertRaisesRegex(ValueError, 'sampling_rate must be '):
-      _ = timeseries.dataset_from_array(np.arange(10), None, 3, sampling_rate=0)
+      _ = timeseries.timeseries_dataset_from_array(
+          np.arange(10), None, 3, sampling_rate=0)
     # bad sequence stride
     with self.assertRaisesRegex(ValueError, 'sequence_stride must be '):
-      _ = timeseries.dataset_from_array(
+      _ = timeseries.timeseries_dataset_from_array(
           np.arange(10), None, 3, sequence_stride=0)
 
 

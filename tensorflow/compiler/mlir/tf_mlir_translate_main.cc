@@ -21,11 +21,12 @@ limitations under the License.
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/IR/AsmState.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/ToolUtilities.h"  // from @llvm-project
-#include "mlir/Support/TranslateClParser.h"  // from @llvm-project
+#include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
@@ -82,7 +83,7 @@ int main(int argc, char** argv) {
   // Add flags for all the registered translations.
   llvm::cl::opt<const mlir::TranslateFunction*, false, mlir::TranslationParser>
       requested_translation("", llvm::cl::desc("Translation to perform"));
-
+  mlir::registerAsmPrinterCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF MLIR translation driver\n");
 
   if (!import_saved_model_object_graph && !import_saved_model_signature_defs &&

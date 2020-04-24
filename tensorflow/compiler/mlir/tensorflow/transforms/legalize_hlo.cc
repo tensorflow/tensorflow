@@ -31,7 +31,7 @@ namespace mlir {
 namespace TF {
 namespace {
 
-class LegalizeHloToTf : public FunctionPass<LegalizeHloToTf> {
+class LegalizeHloToTf : public PassWrapper<LegalizeHloToTf, FunctionPass> {
  public:
   LegalizeHloToTf() = default;
   LegalizeHloToTf(const LegalizeHloToTf &) {}
@@ -76,7 +76,7 @@ static PassRegistration<LegalizeHloToTf> pass(
 
 }  // end namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeHloToTfPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateLegalizeHloToTfPass() {
   return std::make_unique<LegalizeHloToTf>();
 }
 

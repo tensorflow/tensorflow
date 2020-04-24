@@ -194,22 +194,22 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       return dataset_->captured_func_->CheckExternalState();
     }
 
-    void MapFunc(IteratorContext* ctx, const string& prefix,
+    void MapFunc(IteratorContext* ctx, const std::shared_ptr<model::Node>& node,
                  std::vector<Tensor> input_element, std::vector<Tensor>* result,
                  StatusCallback done) override {
-      auto map_func = [this](IteratorContext* ctx, const string& prefix,
+      auto map_func = [this](IteratorContext* ctx,
+                             const std::shared_ptr<model::Node>& node,
                              std::vector<Tensor> input_element,
                              std::vector<Tensor>* result, StatusCallback done) {
         instantiated_captured_func_->RunAsync(ctx, std::move(input_element),
-                                              result, std::move(done), prefix);
+                                              result, std::move(done), node);
       };
       if (!dataset_->captured_func_->use_inter_op_parallelism()) {
-        (*ctx->runner())(std::bind(map_func, ctx, prefix,
+        (*ctx->runner())(std::bind(map_func, ctx, node,
                                    std::move(input_element), result,
                                    std::move(done)));
       } else {
-        map_func(ctx, prefix, std::move(input_element), result,
-                 std::move(done));
+        map_func(ctx, node, std::move(input_element), result, std::move(done));
       }
     }
 
@@ -540,7 +540,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
 
     // Apply the map function on `input_element`, storing the result in
     // `result->return_values`, and invoking `done` when finished.
-    parallel_map_functor_->MapFunc(ctx.get(), prefix(),
+    parallel_map_functor_->MapFunc(ctx.get(), model_node(),
                                    std::move(input_element),
                                    &result->return_values, std::move(done));
   }

@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - | FileCheck %s
 
 # Verify that the return type of the functions is properly inferred
 #CHECK: func @get_zeros0(%arg0: tensor<*xi32>) -> tensor<2xi32>

@@ -295,7 +295,7 @@ func @main() -> tensor<2x2x1x1xf32> {
 
 // CHECK:  HloModule
 func @main(%arg0 : tensor<100x26x26x32xf32>, %arg1 : tensor<3x3x1x32xf32>) -> tensor<100x28x28x1xf32> {
-  %result = "xla_hlo.conv"(%arg0, %arg1) {
+  %result = "xla_hlo.convolution"(%arg0, %arg1) {
     batch_group_count = 1 : i64,
     dimension_numbers = {
       input_batch_dimension = 0 : i64,
@@ -460,14 +460,18 @@ func @main(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tensor<10
 // -----
 
 // CHECK:  HloModule
-func @main(%arg: tensor<4x2xf32>) -> tensor<i32> {
-  %0 = "xla_hlo.get_dimension_size"(%arg) {dimension = 1 : i32} : (tensor<4x2xf32>) -> tensor<i32>
-  return %0 : tensor<i32>
+func @main(%arg: tensor<4x2xf32>, %size: tensor<i32>) -> tensor<i32> {
+  %0 = "xla_hlo.set_dimension_size"(%arg, %size) {dimension = 1 : i32} : (tensor<4x2xf32>, tensor<i32>) -> tensor<4x2xf32>
+  %1 = "xla_hlo.get_dimension_size"(%0) {dimension = 1 : i32} : (tensor<4x2xf32>) -> tensor<i32>
+  return %1 : tensor<i32>
 }
 
 // CHECK:  ENTRY
 // CHECK:  [[ARG:%.*]] = f32[4,2] parameter(0)
-// CHECK:  s32[] get-dimension-size(f32[4,2] [[ARG]]), dimensions={1}
+// CHECK:  [[SIZE:%.*]] = s32[] parameter(1)
+// CHECK:  [[DYNAMIC:%.*]] = f32[4,<=2] set-dimension-size(f32[4,2] [[ARG]], s32[] [[SIZE]]), dimensions={1}
+// CHECK:  ROOT %[[RESULT:.*]] = s32[] get-dimension-size(f32[4,<=2] [[DYNAMIC]]), dimensions={1}
+
 
 // -----
 
@@ -861,6 +865,21 @@ func @main(%arg: tensor<3x4xi32>) -> tensor<1x2xi32> {
 // -----
 
 // CHECK:  HloModule
+func @main(%arg: tensor<3x4xi32>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<1x4xi32> {
+  %0 = "xla_hlo.dynamic-slice"(%arg, %start1, %start2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
+  return %0 : tensor<1x4xi32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  %[[ARG:.*]] = s32[3,4] parameter(0)
+// CHECK:  %[[ARG1:.*]] = s64[] parameter(1)
+// CHECK:  %[[ARG2:.*]] = s64[] parameter(2)
+// CHECK:  ROOT
+// CHECK-SAME:  s32[1,4] dynamic-slice(s32[3,4] %[[ARG]], s64[] %[[ARG1]], s64[] %[[ARG2]]), dynamic_slice_sizes={1,4}
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
   "xla_hlo.trace"(%arg0) {tag = "This is a random test"} : (tensor<2xi32>) -> ()
   return %arg0: tensor<2xi32>
@@ -985,3 +1004,19 @@ func @main(%arg0: tensor<16x16xf32>, %arg1: tensor<16x16xf32> {tf_device.is_same
 // CHECK-NOT: parameter_replication={true}
 // CHECK:  %[[ARG1:.*]] = f32[16,16] parameter(1), parameter_replication={true}
 // CHECK:  ROOT %[[RESULT:.*]] = f32[16,16] add(f32[16,16] %[[ARG0]], f32[16,16] %[[ARG1]])
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<2xcomplex<f32>>, %arg1: tensor<2xcomplex<f64>>) -> (tensor<2xf32>, tensor<2xf64>) {
+  %0 = "xla_hlo.abs"(%arg0) : (tensor<2xcomplex<f32>>) -> (tensor<2xf32>)
+  %1 = "xla_hlo.abs"(%arg1) : (tensor<2xcomplex<f64>>) -> (tensor<2xf64>)
+  return %0, %1 : tensor<2xf32>, tensor<2xf64>
+}
+
+// CHECK:  ENTRY
+// CHECK:  %[[ARG0:.*]] = c64[2] parameter(0)
+// CHECK:  %[[ABS0:.*]] = f32[2] abs(c64[2] %[[ARG0]])
+// CHECK:  %[[ARG1:.*]] = c128[2] parameter(1)
+// CHECK:  %[[ABS1:.*]] = f64[2] abs(c128[2] %[[ARG1]])
+// CHECK:  ROOT %[[RESULT:.*]] = (f32[2], f64[2]) tuple(f32[2] %[[ABS0]], f64[2] %[[ABS1]])

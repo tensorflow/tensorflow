@@ -134,9 +134,6 @@ Status WorkerSession::UpdateWorkerCacheAndDevices(
   TF_RETURN_IF_ERROR(remote_device_mgr_->RemoveDevices(removed_remote_devices));
   TF_RETURN_IF_ERROR(
       remote_device_mgr_->AddDevices(std::move(added_remote_devices)));
-  cluster_flr_ = std::unique_ptr<ClusterFunctionLibraryRuntime>(
-      new ClusterFunctionLibraryRuntime(this, !session_name_.empty(),
-                                        remote_device_mgr()));
   return Status::OK();
 }
 

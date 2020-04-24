@@ -50,8 +50,8 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
  private:
   class Dataset;
   class DatasetV2;
-  class FixedSeedDataset;
-  int op_version_;
+  class DatasetV3;
+  int op_version_ = 0;
   bool reshuffle_each_iteration_;
 };
 

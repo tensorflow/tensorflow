@@ -25,16 +25,12 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 
 namespace tensorflow {
 
-extern const char* const kXlaShardingAttrName;
 extern const char* const kInputShardingAttr;
 extern const char* const kOutputShardingAttr;
-
-// Parses "_XlaSharding" attribute from operation, if it exists.
-llvm::Optional<mlir::StringRef> ParseShardingAttribute(
-    mlir::Operation* operation);
 
 // Parses "input_sharding_configuration" attribute and returns a list where
 // i-th element is a list of mlir::Value's which represent inputs for the
@@ -67,6 +63,12 @@ void RemapOutputsFromLogicalDevices(
     mlir::tf_device::LaunchFuncOp launch_func,
     mlir::tf_device::ParallelExecuteOp parallel_execute,
     mlir::OpBuilder* builder);
+
+// Determines each logical core argument to metadata argument index mapping,
+// based on sharding. The return value is indexed first by logical core then by
+// argument index.
+llvm::SmallVector<llvm::SmallVector<int64_t, 4>, 4> GetMetadataArgumentMapping(
+    const tpu::TPUCompileMetadataProto& metadata);
 
 }  // namespace tensorflow
 

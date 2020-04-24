@@ -92,8 +92,8 @@ class Masking(Layer):
   # The time step 3 and 5 will be skipped from LSTM calculation.
   ```
 
-  See [the masking and padding
-  guide](https://www.tensorflow.org/guide/keras/masking_and_padding)
+  See [the masking and padding guide](
+    https://www.tensorflow.org/guide/keras/masking_and_padding)
   for more details.
   """
 
@@ -598,8 +598,8 @@ class Permute(Layer):
 class Flatten(Layer):
   """Flattens the input. Does not affect the batch size.
 
-  If inputs are shaped `(batch,)` without a channel dimension, then flattening
-  adds an extra channel dimension and output shapes are `(batch, 1)`.
+  Note: If inputs are shaped `(batch,)` without a feature axis, then
+  flattening adds an extra channel dimension and output shape is `(batch, 1)`.
 
   Arguments:
     data_format: A string,
@@ -614,16 +614,15 @@ class Flatten(Layer):
 
   Example:
 
-  ```python
-  model = Sequential()
-  model.add(Convolution2D(64, 3, 3,
-                          border_mode='same',
-                          input_shape=(3, 32, 32)))
-  # now: model.output_shape == (None, 64, 32, 32)
+  >>> model = tf.keras.Sequential()
+  >>> model.add(tf.keras.layers.Conv2D(64, 3, 3, input_shape=(3, 32, 32)))
+  >>> model.output_shape
+  (None, 1, 10, 64)
 
-  model.add(Flatten())
-  # now: model.output_shape == (None, 65536)
-  ```
+  >>> model.add(Flatten())
+  >>> model.output_shape
+  (None, 640)
+
   """
 
   def __init__(self, data_format=None, **kwargs):
@@ -735,15 +734,15 @@ class Lambda(Layer):
   The `Lambda` layer exists so that arbitrary TensorFlow functions
   can be used when constructing `Sequential` and Functional API
   models. `Lambda` layers are best suited for simple operations or
-  quick experimentation. For more advanced usecases, follow 
+  quick experimentation. For more advanced usecases, follow
   [this guide](https://www.tensorflow.org/guide/keras/custom_layers_and_models)
-  for subclassing `tf.keras.layers.Layer`. 
-  
-  The main reason to subclass `tf.keras.layers.Layer` instead of using a 
-  `Lambda` layer is saving and inspecting a Model. `Lambda` layers 
-  are saved by serializing the Python bytecode, whereas subclassed 
-  Layers can be saved via overriding their `get_config` method. Overriding 
-  `get_config` improves the portability of Models. Models that rely on 
+  for subclassing `tf.keras.layers.Layer`.
+
+  The main reason to subclass `tf.keras.layers.Layer` instead of using a
+  `Lambda` layer is saving and inspecting a Model. `Lambda` layers
+  are saved by serializing the Python bytecode, whereas subclassed
+  Layers can be saved via overriding their `get_config` method. Overriding
+  `get_config` improves the portability of Models. Models that rely on
   subclassed Layers are also often easier to visualize and reason about.
 
   Examples:

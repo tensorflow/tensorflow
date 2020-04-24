@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -37,40 +38,47 @@ namespace tensorflow {
 
 namespace {
 
-void RecordPaddingSize(int32 padding_size, const string& model_name) {
-  static tensorflow::monitoring::PercentileSamplerCell* cell =
-      tensorflow::monitoring::PercentileSampler<1>::New(
-          {"/tensorflow/serving/batching/padding_size", "model_name",
-           "Tracks the padding size distribution on batches by model_name (if "
-           "available)."},
-          /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
-          /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber)
-          ->GetCell(model_name);
-  cell->Add(static_cast<double>(padding_size));
+void RecordPaddingSize(int32 padding_size, const string& model_name,
+                       int32 execution_batch_size) {
+  static auto* cell = tensorflow::monitoring::PercentileSampler<2>::New(
+      {"/tensorflow/serving/batching/padding_size", "model_name",
+       "execution_batch_size",
+       "Tracks the padding size distribution on batches by model_name (if "
+       "available)."},
+      /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+      /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber);
+  cell->GetCell(model_name, absl::StrCat(execution_batch_size))
+      ->Add(static_cast<double>(padding_size));
 }
 
 void RecordInputBatchSize(int32 batch_size, const string& model_name) {
-  static tensorflow::monitoring::PercentileSamplerCell* cell =
-      tensorflow::monitoring::PercentileSampler<1>::New(
-          {"/tensorflow/serving/batching/input_batch_size", "model_name",
-           "Tracks the batch size distribution on the inputs by model_name (if "
-           "available)."},
-          /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
-          /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber)
-          ->GetCell(model_name);
-  cell->Add(static_cast<double>(batch_size));
+  static auto* cell = tensorflow::monitoring::PercentileSampler<1>::New(
+      {"/tensorflow/serving/batching/input_batch_size", "model_name",
+       "Tracks the batch size distribution on the inputs by model_name (if "
+       "available)."},
+      /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+      /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber);
+  cell->GetCell(model_name)->Add(static_cast<double>(batch_size));
+}
+
+void RecordProcessedBatchSize(int32 batch_size, const string& model_name) {
+  static auto* cell = tensorflow::monitoring::PercentileSampler<1>::New(
+      {"/tensorflow/serving/batching/processed_batch_size", "model_name",
+       "Tracks the batch size distribution on processing by model_name (if "
+       "available)."},
+      /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+      /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber);
+  cell->GetCell(model_name)->Add(static_cast<double>(batch_size));
 }
 
 void RecordBatchDelayMs(int64 batch_delay_ms, const string& model_name) {
-  static monitoring::PercentileSamplerCell* cell =
-      monitoring::PercentileSampler<1>::New(
-          {"/tensorflow/serving/batching/batch_delay_ms", "model_name",
-           "Tracks the batching delay for inputs by model_name (if "
-           "available)."},
-          /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
-          /*max_samples=*/1024, monitoring::UnitOfMeasure::kTime)
-          ->GetCell(model_name);
-  cell->Add(static_cast<double>(batch_delay_ms));
+  static auto* cell = monitoring::PercentileSampler<1>::New(
+      {"/tensorflow/serving/batching/batch_delay_ms", "model_name",
+       "Tracks the batching delay for inputs by model_name (if "
+       "available)."},
+      /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+      /*max_samples=*/1024, monitoring::UnitOfMeasure::kTime);
+  cell->GetCell(model_name)->Add(static_cast<double>(batch_delay_ms));
 }
 
 const string& GetModelName(OpKernelContext* ctx) {
@@ -396,7 +404,8 @@ class BatchResource : public ResourceBase {
 
     const int padded_batch_size = RoundToLowestAllowedBatchSize(batch.size());
     const int padding_amount = padded_batch_size - batch.size();
-    RecordPaddingSize(padding_amount, GetModelName(context));
+    RecordPaddingSize(padding_amount, GetModelName(context), padded_batch_size);
+    RecordProcessedBatchSize(padded_batch_size, GetModelName(context));
 
     // All tasks should have the same number of input edges.
     const int num_inputs = batch.task(0).inputs.size();

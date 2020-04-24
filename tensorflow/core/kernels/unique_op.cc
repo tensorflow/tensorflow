@@ -17,18 +17,62 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 
 namespace tensorflow {
+namespace {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
+// `UniqueOpHashMap` defines the map type that is used when elements of type
+// `T` are to be uniquified. By default, we use `absl::flat_hash_map<T, TIndex>`
+// as the map type. Subsequent specializations are provided for
+// performance and/or correctness.
+template <typename T, typename TIndex>
+struct UniqueOpHashMap {
+  using map_type = absl::flat_hash_map<T, TIndex>;
+};
+
+// NOTE(mrry): For `tstring` elements, we use an `absl::string_view` key to
+// avoid copying the input strings into the map.
+template <typename TIndex>
+struct UniqueOpHashMap<tstring, TIndex> {
+  using map_type = absl::flat_hash_map<absl::string_view, TIndex>;
+};
+
+// NOTE(mrry): `absl::flat_hash_map<float, ...>` does not allow `NaN` as a key,
+// because `NaN != NaN`, so we fall back to `std::unordered_map<>` for
+// floating-point types.
+template <typename TIndex>
+struct UniqueOpHashMap<float, TIndex> {
+  using map_type = std::unordered_map<float, TIndex>;
+};
+template <typename TIndex>
+struct UniqueOpHashMap<double, TIndex> {
+  using map_type = std::unordered_map<double, TIndex>;
+};
+template <typename TIndex>
+struct UniqueOpHashMap<Eigen::half, TIndex> {
+  using map_type = std::unordered_map<Eigen::half, TIndex>;
+};
+template <typename TIndex>
+struct UniqueOpHashMap<bfloat16, TIndex> {
+  using map_type = std::unordered_map<bfloat16, TIndex>;
+};
+
+// `UniqueOp` computes the unique elements in the input tensor.
+//
+// * `T` is the element type.
+// * `TIndex` is the type used to represent indices in the output, either
+//   `int32` or `int64`.
 template <typename T, typename TIndex>
 class UniqueOp : public OpKernel {
  public:
@@ -106,10 +150,10 @@ class UniqueOp : public OpKernel {
       auto Tin = input.flat<T>();
       const int64 N = static_cast<int64>(Tin.size());
 
-      std::unordered_map<T, TIndex> uniq;
+      typename UniqueOpHashMap<T, TIndex>::map_type uniq;
       uniq.reserve(2 * N);
       for (Eigen::Index i = 0, j = 0; i < N; ++i) {
-        auto it = uniq.insert(std::make_pair(Tin(i), j));
+        auto it = uniq.emplace(Tin(i), j);
         idx_vec(i) = it.first->second;
         if (it.second) {
           ++j;
@@ -124,7 +168,7 @@ class UniqueOp : public OpKernel {
                      context->allocate_output(0, output_shape, &output));
       auto Tout = output->flat<T>();
 
-      for (auto it : uniq) {
+      for (const auto& it : uniq) {
         Tout(it.second) = it.first;
       }
     } else {
@@ -153,13 +197,14 @@ class UniqueOp : public OpKernel {
         return true;
       };
 
-      std::unordered_map<int64, int64, decltype(hash_fn), decltype(equal_to_fn)>
+      absl::flat_hash_map<int64, int64, decltype(hash_fn),
+                          decltype(equal_to_fn)>
           uniq(0, hash_fn, equal_to_fn);
 
       uniq.reserve(2 * Tin.dimension(1));
 
       for (int64 i = 0, j = 0; i < Tin.dimension(1); ++i) {
-        auto it = uniq.insert(std::make_pair(i, j));
+        auto it = uniq.emplace(i, j);
         idx_vec(i) = it.first->second;
         if (it.second) {
           ++j;
@@ -311,4 +356,6 @@ REGISTER_KERNEL_BUILDER(Name("Unique")
                             .HostMemory("idx"),
                         UniqueOp<int64, int64>);
 #endif  // TENSORFLOW_USE_SYCL
+
+}  // namespace
 }  // namespace tensorflow

@@ -1970,7 +1970,7 @@ Status LayoutAssignment::ConstrainChannelLayouts(
 
 Status LayoutAssignment::PropagateMemorySpace(HloModule* module) {
   TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(module));
-  for (auto buffer : alias_analysis->buffers()) {
+  for (const auto& buffer : alias_analysis->buffers()) {
     // First go through values to collect the memory spaces.
     int64 buffer_memory_space = Layout::kDefaultMemorySpace;
     for (auto value : buffer.values()) {
@@ -2315,6 +2315,7 @@ Status LayoutAssignment::ClearPreviousPassSideEffects(HloModule* module) {
     HloDCE dce;
     TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
     TF_RETURN_IF_ERROR(dce.Run(module).status());
+    call_graph_ = CallGraph::Build(module);
   }
   return Status::OK();
 }

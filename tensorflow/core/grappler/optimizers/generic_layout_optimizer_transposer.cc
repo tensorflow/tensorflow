@@ -266,7 +266,7 @@ Status Transposer::CreateTransposeNode(
   *transpose_node_name = node_name;
 
   NodeDef node;
-  node.set_name(string(node_name));
+  node.set_name(node_name);
   node.set_op(kOpTranspose);
   node.set_device(string(device));
 
@@ -725,12 +725,42 @@ Status Conv2DBackpropInputTransposer::TransposeNode(
   if (!ShouldProcess(*context, *node) || !IsFanoutPortRankN(*node, 0, 4)) {
     return Status::OK();
   }
+
+  const auto& fanin = node->GetRegularFanin(0);
+  auto* fanin_node = fanin.node_view();
+  const auto* output_shape_attr = fanin_node->GetAttr(kAttrOutputShape);
+  if (output_shape_attr == nullptr) {
+    VLOG(3) << "Cannot compute the shape of " << fanin_node->GetName()
+            << " because it is missing attribute " << kAttrOutputShape;
+    return Status::OK();
+  }
+  TensorShapeProto fanin_shape = output_shape_attr->list().shape(fanin.index());
+  if (fanin_shape.dim_size() != 1) {
+    VLOG(3) << fanin_node->GetName() << " is not a vector.";
+    return Status::OK();
+  }
+  int vector_size = fanin_shape.dim(0).size();
+  if (vector_size == -1) {
+    VLOG(3) << "The number of elements in " << fanin_node->GetName()
+            << " is unknown.";
+    return Status::OK();
+  }
+  if (vector_size != 2 && vector_size != 4) {
+    return errors::InvalidArgument(
+        fanin_node->GetName(), " must be a vector of size 2 or 4, but found ",
+        vector_size);
+  }
+
   VLOG(3) << "GenericLayoutOptimizer: transforming node '" << node->GetName()
           << "' with op '" << node->GetOp() << "' from data format '"
           << context->src_format << "' to '" << context->dst_format << "'";
   TF_RETURN_IF_ERROR(UpdateNode(context, node));
-  TF_RETURN_IF_ERROR(
-      UpdateFaninEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));
+  // Do not permute a input_sizes of size 2 because it represents HW regardless
+  // of whether NCHW or NHWC.
+  if (vector_size != 2) {
+    TF_RETURN_IF_ERROR(
+        UpdateFaninEdgesWithOp(context, {0}, node, kOpDataFormatVecPermute));
+  }
   TF_RETURN_IF_ERROR(UpdateFaninEdgesWithOp(context, {2}, node, kOpTranspose));
   TF_RETURN_IF_ERROR(UpdateFanoutEdgesWithOp(context, {0}, node, kOpTranspose));
   return context->graph_view->GetMutationBuilder()->Apply();

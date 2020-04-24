@@ -617,6 +617,13 @@ TEST_F(OperatorTest, BuiltinSquaredDifference) {
   ASSERT_NE(nullptr, output_toco_op.get());
 }
 
+TEST_F(OperatorTest, BuiltinScatterNd) {
+  ScatterNdOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("SCATTER_ND", OperatorType::kScatterNd), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
+}
+
 TEST_F(OperatorTest, CustomCTCBeamSearchDecoder) {
   CTCBeamSearchDecoderOperator op;
   op.beam_width = 3;
@@ -1040,9 +1047,10 @@ TEST_F(OperatorTest, VersioningMulTest) {
   SimpleMulVersioningTest(ArrayDataType::kInt8, 2.0f, 3);
 }
 
-void SimpleSubVersioningTest(ArrayDataType data_type, Shape shape1,
-                             Shape shape2, int version) {
-  SubOperator op;
+template <typename OpType>
+void SimpleTwoInputsVersioningTest(ArrayDataType data_type, Shape shape1,
+                                   Shape shape2, int version) {
+  OpType op;
   op.inputs = {"input1", "input2"};
   op.outputs = {"output"};
   auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
@@ -1064,16 +1072,33 @@ void SimpleSubVersioningTest(ArrayDataType data_type, Shape shape1,
 }
 
 TEST_F(OperatorTest, VersioningSubTest) {
-  SimpleSubVersioningTest(ArrayDataType::kUint8, {1, 2, 2, 2}, {1, 2, 2, 2}, 1);
-  SimpleSubVersioningTest(ArrayDataType::kInt8, {1, 2, 2, 2}, {1, 2, 2, 2}, 2);
-  SimpleSubVersioningTest(ArrayDataType::kUint8, {1, 2, 2}, {1, 2, 2}, 1);
-  SimpleSubVersioningTest(ArrayDataType::kInt8, {1, 2, 2}, {1, 2, 2}, 2);
-  SimpleSubVersioningTest(ArrayDataType::kUint8, {1, 2, 2, 2}, {1, 2, 2, 1}, 1);
-  SimpleSubVersioningTest(ArrayDataType::kInt8, {1, 2, 2, 2}, {1, 2, 2, 1}, 2);
-  SimpleSubVersioningTest(ArrayDataType::kUint8, {1, 2, 2, 2, 2},
-                          {1, 2, 2, 2, 1}, 3);
-  SimpleSubVersioningTest(ArrayDataType::kInt8, {1, 2, 2, 2, 2},
-                          {1, 2, 2, 2, 1}, 3);
+  SimpleTwoInputsVersioningTest<SubOperator>(ArrayDataType::kUint8,
+                                             {1, 2, 2, 2}, {1, 2, 2, 2}, 1);
+  SimpleTwoInputsVersioningTest<SubOperator>(ArrayDataType::kInt8, {1, 2, 2, 2},
+                                             {1, 2, 2, 2}, 2);
+  SimpleTwoInputsVersioningTest<SubOperator>(ArrayDataType::kUint8, {1, 2, 2},
+                                             {1, 2, 2}, 1);
+  SimpleTwoInputsVersioningTest<SubOperator>(ArrayDataType::kInt8, {1, 2, 2},
+                                             {1, 2, 2}, 2);
+  SimpleTwoInputsVersioningTest<SubOperator>(ArrayDataType::kUint8,
+                                             {1, 2, 2, 2}, {1, 2, 2, 1}, 1);
+  SimpleTwoInputsVersioningTest<SubOperator>(ArrayDataType::kInt8, {1, 2, 2, 2},
+                                             {1, 2, 2, 1}, 2);
+  SimpleTwoInputsVersioningTest<SubOperator>(
+      ArrayDataType::kUint8, {1, 2, 2, 2, 2}, {1, 2, 2, 2, 1}, 3);
+  SimpleTwoInputsVersioningTest<SubOperator>(
+      ArrayDataType::kInt8, {1, 2, 2, 2, 2}, {1, 2, 2, 2, 1}, 3);
+}
+
+TEST_F(OperatorTest, VersioningDivTest) {
+  SimpleTwoInputsVersioningTest<DivOperator>(ArrayDataType::kUint8,
+                                             {1, 2, 2, 2}, {1, 2, 2, 2}, 1);
+  SimpleTwoInputsVersioningTest<DivOperator>(ArrayDataType::kInt8, {1, 2, 2},
+                                             {1, 2, 2}, 1);
+  SimpleTwoInputsVersioningTest<DivOperator>(ArrayDataType::kUint8,
+                                             {1, 2, 2, 2}, {1, 2, 2, 1}, 1);
+  SimpleTwoInputsVersioningTest<DivOperator>(
+      ArrayDataType::kInt8, {1, 2, 2, 2, 2}, {1, 2, 2, 2, 1}, 2);
 }
 
 TEST_F(OperatorTest, VersioningPadTest) { SimpleVersioningTest<PadOperator>(); }

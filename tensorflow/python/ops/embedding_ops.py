@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -481,8 +482,6 @@ def embedding_lookup_sparse(params,
   with ops.name_scope(name, "embedding_lookup_sparse",
                       params + [sp_ids]) as name:
     segment_ids = sp_ids.indices[:, 0]
-    if segment_ids.dtype != dtypes.int32:
-      segment_ids = math_ops.cast(segment_ids, dtypes.int32)
 
     ids = sp_ids.values
     ids, idx = array_ops.unique(ids)
@@ -492,6 +491,9 @@ def embedding_lookup_sparse(params,
     if embeddings.dtype in (dtypes.float16, dtypes.bfloat16):
       embeddings = math_ops.cast(embeddings, dtypes.float32)
     if not ignore_weights:
+      if segment_ids.dtype != dtypes.int32:
+        segment_ids = math_ops.cast(segment_ids, dtypes.int32)
+
       weights = sp_weights.values
       if weights.dtype != embeddings.dtype:
         weights = math_ops.cast(weights, embeddings.dtype)
@@ -531,6 +533,12 @@ def embedding_lookup_sparse(params,
       else:
         assert False, "Unrecognized combiner"
     else:
+      if compat.forward_compatible(2020, 5, 14):
+        if segment_ids.dtype not in (dtypes.int32, dtypes.int64):
+          segment_ids = math_ops.cast(segment_ids, dtypes.int32)
+      else:
+        if segment_ids.dtype != dtypes.int32:
+          segment_ids = math_ops.cast(segment_ids, dtypes.int32)
       assert idx is not None
       if combiner == "sum":
         embeddings = math_ops.sparse_segment_sum(
