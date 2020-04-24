@@ -762,6 +762,7 @@ def HLO_BroadcastInDimOp : HLO_Op<"broadcast_in_dim",
 
   let results = (outs HLO_StaticShapeTensor);
 
+  let hasFolder = 1;
   // Only handles a static subset of the legacy format.
   let hasCustomHLOConverter = 1;
 }
