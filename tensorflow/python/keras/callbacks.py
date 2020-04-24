@@ -1338,9 +1338,9 @@ class ModelCheckpoint(Callback):
         file_path = self.filepath.format(epoch=epoch + 1, **logs)
       else:
         file_path = self.filepath.format(
-          epoch=epoch + 1,
-          batch=batch + 1,
-          **logs)
+            epoch=epoch + 1,
+            batch=batch + 1,
+            **logs)
     except KeyError as e:
       raise KeyError('Failed to format this callback filepath: "{}". '
                      'Reason: {}'.format(self.filepath, e))
