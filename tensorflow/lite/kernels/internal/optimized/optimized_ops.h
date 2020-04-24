@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
-#include "tensorflow/lite/kernels/internal/reference/resize_nearest_neighbor.h"
 
 #if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
 #include <Accelerate/Accelerate.h>
@@ -5916,21 +5915,13 @@ inline void TransposeConvV2(
 // Integer-only version of ResizeNearestNeighbor. Since scales are represented
 // in fixed-point and thus approximated, |in_x| or |in_y| may differ from the
 // reference version. Debug checks are in place to test if this occurs.
-// NOTE: If align_corners or half_pixel_centers is true, we use the reference
-// version.
 inline void ResizeNearestNeighbor(
     const tflite::ResizeNearestNeighborParams& op_params,
     const RuntimeShape& unextended_input_shape, const uint8* input_data,
     const RuntimeShape& output_size_shape, const int32* output_size_data,
     const RuntimeShape& unextended_output_shape, uint8* output_data) {
-  if (op_params.align_corners || op_params.half_pixel_centers) {
-    // TODO(b/149823713): Add support for align_corners & half_pixel_centers in
-    // this kernel.
-    reference_ops::ResizeNearestNeighbor(
-        op_params, unextended_input_shape, input_data, output_size_shape,
-        output_size_data, unextended_output_shape, output_data);
-    return;
-  }
+  // Align corners = true is not supported.
+  TFLITE_DCHECK(!op_params.align_corners);
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
 

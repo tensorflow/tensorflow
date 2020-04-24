@@ -1007,7 +1007,6 @@ struct ResizeBilinearParams {
 
 struct ResizeNearestNeighborParams {
   bool align_corners;
-  bool half_pixel_centers;
 };
 
 struct SliceParams {
