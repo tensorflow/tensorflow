@@ -71,6 +71,25 @@ class TF_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<TF_Dialect, mnemonic, traits>;
 
 //===----------------------------------------------------------------------===//
+// TensorFlow attribute definitions
+//===----------------------------------------------------------------------===//
+
+class TF_TensorFlowAttr <string name, string description> :
+    Attr<CPred<"$_self.isa<mlir::TF::" # name # "Attr>()">,
+         "TensorFlow " # description # " attribute">;
+
+def TF_ShapeAttr : TF_TensorFlowAttr<"Shape", "shape"> {
+  let returnType = "llvm::Optional<llvm::ArrayRef<int64_t>>";
+  let convertFromStorage = "$_self.cast<mlir::TF::ShapeAttr>().getValue()";
+
+  // Create a ranked shape attr by default.
+  let constBuilderCall = "mlir::TF::ShapeAttr::get($_builder.getContext(), $0)";
+}
+
+def TF_ShapeAttrArray :
+    TypedArrayAttrBase<TF_ShapeAttr, "tensorflow shape attribute array">;
+
+//===----------------------------------------------------------------------===//
 // TensorFlow type definitions
 //===----------------------------------------------------------------------===//
 

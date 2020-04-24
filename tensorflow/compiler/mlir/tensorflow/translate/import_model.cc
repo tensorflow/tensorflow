@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -273,6 +274,21 @@ class ImporterBase {
   // Converts the tensor proto into an MLIR elements attribute.
   StatusOr<mlir::ElementsAttr> ConvertTensorProto(const TensorProto& value) {
     return ::tensorflow::ConvertTensorProto(value, &builder_);
+  }
+
+  // Converts the tensor shape proto into an MLIR shape attribute.
+  StatusOr<mlir::TF::ShapeAttr> ConvertTensorShapeProto(
+      const TensorShapeProto& shape) {
+    if (shape.unknown_rank())
+      return mlir::TF::ShapeAttr::get(builder_.getContext(), llvm::None);
+
+    llvm::SmallVector<int64_t, 4> dims;
+    dims.reserve(shape.dim().size());
+    for (const auto& dim : shape.dim()) {
+      dims.push_back(dim.size());
+    }
+    return mlir::TF::ShapeAttr::get(builder_.getContext(),
+                                    llvm::makeArrayRef(dims));
   }
 
   // Converts func name in graphdef to mlir::SymbolRefAttribute.
@@ -1035,7 +1051,7 @@ StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
       return mlir::TypeAttr::get(type);
     }
     case AttrValue::kShape:
-      return builder_.getStringAttr(mangling_util::MangleShape(value.shape()));
+      return ConvertTensorShapeProto(value.shape());
     case AttrValue::kTensor:
       return ConvertTensorProto(value.tensor());
     case AttrValue::kList: {
@@ -1053,8 +1069,8 @@ StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
             mangling_util::MangleDataType(static_cast<DataType>(item))));
       }
       for (const auto& item : value.list().shape()) {
-        attrs.push_back(
-            builder_.getStringAttr(mangling_util::MangleShape(item)));
+        TF_ASSIGN_OR_RETURN(auto attr, ConvertTensorShapeProto(item));
+        attrs.push_back(attr);
       }
       for (const auto& item : value.list().tensor()) {
         TF_ASSIGN_OR_RETURN(auto attr, ConvertTensorProto(item));

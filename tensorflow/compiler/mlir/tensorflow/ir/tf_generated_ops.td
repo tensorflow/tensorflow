@@ -8452,7 +8452,7 @@ All elements must have the same shape (excepting the first dimension).
     TF_ResourceTensor:$handle,
     F32Tensor:$flow_in,
 
-    DefaultValuedAttr<StrAttr, "tfshape$unknown_rank: true">:$element_shape_except0
+    DefaultValuedAttr<TF_ShapeAttr, "llvm::None">:$element_shape_except0
   );
 
   let results = (outs
@@ -8477,7 +8477,7 @@ All elements selected by `indices` must have the same shape.
     I32Tensor:$indices,
     F32Tensor:$flow_in,
 
-    DefaultValuedAttr<StrAttr, "tfshape$unknown_rank: true">:$element_shape
+    DefaultValuedAttr<TF_ShapeAttr, "llvm::None">:$element_shape
   );
 
   let results = (outs
@@ -8652,7 +8652,7 @@ Write data via Write and read via Read or Pack.
     I32Tensor:$size,
 
     TypeAttr:$dtype,
-    DefaultValuedAttr<StrAttr, "tfshape$unknown_rank: true">:$element_shape,
+    DefaultValuedAttr<TF_ShapeAttr, "llvm::None">:$element_shape,
     DefaultValuedAttr<BoolAttr, "false">:$dynamic_size,
     DefaultValuedAttr<BoolAttr, "true">:$clear_after_read,
     DefaultValuedAttr<BoolAttr, "false">:$identical_element_shapes,
@@ -9599,7 +9599,7 @@ about sharing states in tensorflow.
   }];
 
   let arguments = (ins
-    StrAttr:$shape,
+    TF_ShapeAttr:$shape,
     StrAttr:$container,
     StrAttr:$shared_name
   );

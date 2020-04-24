@@ -3802,10 +3802,82 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
       >();
   addInterfaces<TFInlinerInterface>();
+  addAttributes<ShapeAttr>();
 
   // Support unknown operations because not all TensorFlow operations are
   // registered.
   allowUnknownOperations();
+}
+
+namespace {
+
+ShapeAttr ParseShapeAttr(MLIRContext *context, StringRef spec, Location loc) {
+  auto emit_error = [&, spec]() {
+    emitError(loc, "invalid TensorFlow shape attribute: ") << spec;
+    return nullptr;
+  };
+
+  if (!spec.consume_front("shape<")) return emit_error();
+
+  if (spec.consume_front("*>"))
+    return mlir::TF::ShapeAttr::get(context, llvm::None);
+
+  SmallVector<int64_t, 4> shape;
+  while (!spec.consume_front(">")) {
+    int64_t dim;
+
+    if (spec.consume_front("?"))
+      dim = -1;
+    else if (spec.consumeInteger(10, dim) || dim < 0)
+      return emit_error();
+
+    spec.consume_front("x");
+
+    shape.push_back(dim);
+  }
+
+  return mlir::TF::ShapeAttr::get(context, llvm::makeArrayRef(shape));
+}
+
+void PrintShapeAttr(ShapeAttr attr, DialectAsmPrinter &os) {  // NOLINT
+  os << "shape";
+
+  os << "<";
+  if (attr.hasRank()) {
+    auto print_dim = [&](int64_t dim) {
+      if (dim > -1)
+        os << dim;
+      else
+        os << "?";
+    };
+    llvm::interleave(attr.getShape(), os, print_dim, "x");
+  } else {
+    os << "*";
+  }
+  os << ">";
+}
+
+}  // namespace
+
+Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
+                                            Type type) const {
+  auto spec = parser.getFullSymbolSpec();
+  Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
+
+  if (spec.startswith("shape")) return ParseShapeAttr(getContext(), spec, loc);
+
+  return (emitError(loc, "unknown TensorFlow attribute: " + spec), nullptr);
+}
+
+void TensorFlowDialect::printAttribute(Attribute attr,
+                                       DialectAsmPrinter &os) const {
+  switch (attr.getKind()) {
+    case AttrKind::SHAPE:
+      PrintShapeAttr(attr.cast<ShapeAttr>(), os);
+      break;
+    default:
+      llvm_unreachable("unexpected tensorflow attribute kind");
+  }
 }
 
 // Parses a type registered to this dialect.

@@ -186,7 +186,7 @@ else_branch: A function that takes 'inputs' and returns a list of
 
     FlatSymbolRefAttr:$then_branch,
     FlatSymbolRefAttr:$else_branch,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
 
     // Used to map StatelessIf and If op defined in TensorFlow to a common op.
     BoolAttr:$is_stateless
@@ -289,6 +289,7 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
     Variadic<TensorOf<[F32, I64, TF_Str]>>:$dense_defaults,
 
     Confined<I64Attr, [IntMinValue<0>]>:$num_sparse,
+    TF_ShapeAttrArray:$dense_shapes,
     I32ElementsAttr:$result_segment_sizes
   );
 
@@ -489,7 +490,7 @@ body: A function that takes a list of tensors and returns another
 
     FlatSymbolRefAttr:$cond,
     FlatSymbolRefAttr:$body,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
