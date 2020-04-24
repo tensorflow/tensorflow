@@ -24,8 +24,7 @@ tensor of rank `k` with dimensions `[D1,..., Dk]` where:
 
 For example:
 
-"""
->>> input = [[1, 0, 0, 0], [0, 2, 0, 0], [0, 0, 3, 0], [0, 0, 0, 4]]
+""">>> input = [[1, 0, 0, 0], [0, 2, 0, 0], [0, 0, 3, 0], [0, 0, 0, 4]]
 >>> tf.linarg.tensor_diag_part(input)
 <tf.Tensor: shape=(4,), dtype=int32, numpy=array([1, 2, 3, 4], dtype=int32)>
 """
