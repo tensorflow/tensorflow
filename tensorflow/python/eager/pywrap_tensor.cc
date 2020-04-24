@@ -800,8 +800,19 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
   if (handle == nullptr) {
     return nullptr;
   }
+  PyObject* empty_args = PyTuple_New(0);
+  if (empty_args == nullptr) {
+    return nullptr;
+  }
+  PyObject* empty_kwargs = PyDict_New();
+  if (empty_kwargs == nullptr) {
+    Py_DECREF(empty_args);
+    return nullptr;
+  }
   EagerTensor* t = reinterpret_cast<EagerTensor*>(
-      EagerTensorType->tp_new(EagerTensorType, Py_None, Py_None));
+      EagerTensorType->tp_new(EagerTensorType, empty_args, empty_kwargs));
+  Py_DECREF(empty_kwargs);
+  Py_DECREF(empty_args);
   if (t != nullptr) {
     t->id = get_uid();
     Py_INCREF(Py_None);
