@@ -28,6 +28,13 @@ const absl::string_view kCuptiDriverApiPlaneName = "/host:CUPTI";
 const absl::string_view kMetadataPlane = "/host:metadata";
 const absl::string_view kTFStreamzPlane = "/host:tfstreamz";
 
+const absl::string_view kStepLineName = "Steps";
+const absl::string_view kTensorFlowNameScopeLineName = "TensorFlow Name Scope";
+const absl::string_view kTensorFlowOpLineName = "TensorFlow Ops";
+const absl::string_view kXlaModuleLineName = "XLA Modules";
+const absl::string_view kXlaOpLineName = "XLA Ops";
+const absl::string_view kKernelLaunchLineName = "Launch Stats";
+
 const int32 kHostPlaneId = 49;
 const int32 kGpuPlaneBaseId = 0;
 const int32 kCuptiDriverApiPlaneId = 50;

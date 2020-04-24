@@ -40,12 +40,8 @@ class DerivedXLineBuilder {
     ExpandOrAddLevelEvent(event, /*level=*/0);
   }
 
-  // Reset last events lower than the given level.
-  void ResetLastEvents(int level = -1) {
-    for (int i = level + 1; i < last_event_by_level_.size(); ++i) {
-      last_event_by_level_[i] = absl::nullopt;
-    }
-  }
+  // Reset the last events lower than or equal to the given level.
+  void ResetLastEvents(int level = 0);
 
  private:
   // If the last event of the given level has the same metadata, expands it to
@@ -69,6 +65,13 @@ class DerivedXLineBuilder {
 
 using SymbolResolver = std::function<absl::string_view(
     absl::string_view hlo_module_name, absl::string_view hlo_op)>;
+
+// Derives TF name scope and op events from the TF op's fully qualified name.
+void ProcessTfOpEvent(absl::string_view tf_op_full_name, int64 offset_ps,
+                      int64 duration_ps, absl::optional<int64> group_id,
+                      XPlaneBuilder* plane_builder,
+                      DerivedXLineBuilder* tf_name_scope_line_builder,
+                      DerivedXLineBuilder* tf_op_line_builder);
 
 // Derives "Step Info", "Tensorflow Ops", "XLA Ops" and "XLA Module" lines in
 // an NVIDIA_GPU device trace from data passed as ScopedAnnotations and stored
