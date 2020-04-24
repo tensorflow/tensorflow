@@ -33,6 +33,8 @@ endif
 
 include $(MAKEFILE_DIR)/targets/arc/arc_common.inc
 
+MAKE_PROJECT_FILES := $(filter-out README_MAKE.md, $(MAKE_PROJECT_FILES)) README_ARC.md
+
 endif  # $(TARGET)
 endif  # $(TARGET_ARCH)...
 

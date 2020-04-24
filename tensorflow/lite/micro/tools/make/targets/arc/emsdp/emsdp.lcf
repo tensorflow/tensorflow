@@ -28,11 +28,11 @@ SECTIONS {
         .text? : { *('.text$crt*') }
         * (TEXT): {}
         * (LIT): {}
-    } > ICCM0
+    } > SRAM
 
     GROUP BLOCK(4): {
        .Zdata? : {}
-       .stack ALIGN(4) SIZE(DEFINED _STACKSIZE?_STACKSIZE:8K): {}
+       .stack ALIGN(4) SIZE(DEFINED _STACKSIZE?_STACKSIZE:32K): {}
        .heap? ALIGN(4) SIZE(DEFINED _HEAPSIZE?_HEAPSIZE:8K): {}
     } > DCCM
         

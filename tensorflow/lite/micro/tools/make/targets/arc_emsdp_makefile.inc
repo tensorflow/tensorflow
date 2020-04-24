@@ -54,8 +54,11 @@ ifeq ($(filter $(ARC_TARGET_FILES_DIRS), $(dir $(UBOOT_FILE))),)
   ARC_TARGET_FILES_DIRS += $(dir $(UBOOT_FILE))
 endif
 
-  # for default EMSD configuration we can use default em9d rt libs
+  MAKE_PROJECT_FILES := $(filter-out README_MAKE.md, $(MAKE_PROJECT_FILES)) README_ARC_EMSDP.md
+
+  # for default EMSDP configuration we can use em9d_va rt libs
   # for better performance runtime should be built for emsdp configuration
-  PLATFORM_LDFLAGS += -Hlib=em9d_voice_audio
+  # No hostlink library for smaller codesize purpose
+  PLATFORM_LDFLAGS += -Hlib=em9d_voice_audio -Hhostlib=
 
 endif
