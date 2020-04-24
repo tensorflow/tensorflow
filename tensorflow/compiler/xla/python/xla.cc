@@ -166,10 +166,10 @@ struct ExtraBufferInfo {
 
   std::string format;
   std::vector<Py_ssize_t> strides;
-  // We keep a reference to the SharedDeviceBuffer that backs the PyLocalBuffer.
-  // This prevents a use-after-free in the event that Delete() is called on
-  // a buffer with an live buffer protocol view. It does however mean that
-  // Delete() sometimes won't actually delete immediately.
+  // We keep a reference to the TrackedDeviceBuffer that backs the
+  // PyLocalBuffer. This prevents a use-after-free in the event that Delete() is
+  // called on a buffer with an live buffer protocol view. It does however mean
+  // that Delete() sometimes won't actually delete immediately.
   PyLocalBuffer::ScopedHold device_buffer;
 };
 

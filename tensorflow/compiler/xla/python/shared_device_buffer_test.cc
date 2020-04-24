@@ -27,8 +27,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-StatusOr<std::shared_ptr<SharedDeviceBuffer>> MakeArray(const Shape& shape,
-                                                        LocalClient* client) {
+StatusOr<std::shared_ptr<TrackedDeviceBuffer>> MakeArray(const Shape& shape,
+                                                         LocalClient* client) {
   std::vector<stream_executor::DeviceMemoryBase> device_buffers;
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       client->backend().transfer_manager()->HostShapeToDeviceShape(shape),
@@ -42,13 +42,13 @@ StatusOr<std::shared_ptr<SharedDeviceBuffer>> MakeArray(const Shape& shape,
         device_buffers.push_back(device_memory.Release());
         return Status::OK();
       }));
-  return std::make_shared<SharedDeviceBuffer>(
+  return std::make_shared<TrackedDeviceBuffer>(
       client->backend().memory_allocator(), /*device_ordinal=*/0,
       device_buffers,
-      absl::Span<const std::shared_ptr<BufferDefinitionEvent>>(), nullptr);
+      absl::Span<const std::shared_ptr<BufferSequencingEvent>>(), nullptr);
 }
 
-TEST(SharedDeviceBufferTest, AsShapedBuffer) {
+TEST(TrackedDeviceBufferTest, AsShapedBuffer) {
   LocalClient* client = ClientLibrary::LocalClientOrDie();
 
   Shape a_shape = ShapeUtil::MakeShape(F32, {3, 101, 4});
@@ -98,7 +98,7 @@ TEST(SharedDeviceBufferTest, AsShapedBuffer) {
   EXPECT_TRUE(expected_it == expected_buffer_sequence.end());
 }
 
-TEST(SharedDeviceBufferTest, FromScopedShapedBuffer) {
+TEST(TrackedDeviceBufferTest, FromScopedShapedBuffer) {
   LocalClient* client = ClientLibrary::LocalClientOrDie();
 
   Literal literal = LiteralUtil::MakeTupleOwned(
@@ -108,8 +108,8 @@ TEST(SharedDeviceBufferTest, FromScopedShapedBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer shaped_buffer,
       client->LiteralToShapedBuffer(literal, /*device_ordinal=*/0));
-  std::shared_ptr<SharedDeviceBuffer> device_buffer =
-      SharedDeviceBuffer::FromScopedShapedBuffer(&shaped_buffer, {});
+  std::shared_ptr<TrackedDeviceBuffer> device_buffer =
+      TrackedDeviceBuffer::FromScopedShapedBuffer(&shaped_buffer, {});
 
   EXPECT_EQ(device_buffer->device_memory().size(),
             ShapeUtil::SubshapeCount(
