@@ -114,4 +114,4 @@ opt<bool> upgrade_legacy("tf-upgrade-legacy",
 opt<bool> enable_shape_inference(
     "tf-enable-shape-inference-on-import",
     llvm::cl::desc("Enable shape inference on import (temporary)"),
-    llvm::cl::init(true));
+    llvm::cl::init(false));
