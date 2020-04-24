@@ -5259,8 +5259,8 @@ def extract_image_patches_v2(images, sizes, strides, rates, padding, name=None):
     # We generate two outputs as follows:
     # 1. 3x3 patches with stride length 5
     # 2. Same as above, but the rate is increased to 2
-    tf.extract_image_patches(images=images,
-                             ksizes=[1, 3, 3, 1],
+    tf.image.extract_patches(images=images,
+                             sizes=[1, 3, 3, 1],
                              strides=[1, 5, 5, 1],
                              rates=[1, 1, 1, 1],
                              padding='VALID')
@@ -5289,7 +5289,7 @@ def extract_image_patches_v2(images, sizes, strides, rates, padding, name=None):
   ```
 
   ```
-    tf.extract_image_patches(images=images,
+    tf.image.extract_patches(images=images,
                              sizes=[1, 3, 3, 1],
                              strides=[1, 5, 5, 1],
                              rates=[1, 2, 2, 1],
