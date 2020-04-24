@@ -11,9 +11,9 @@ func @addWithoutBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<
 
 // -----
 // CHECK-LABEL: @dynamicBroadcast
-// CHECK-SAME: %[[ARG0:.+]]: tensor<4xf32>
-// CHECK-SAME: %[[ARG1:.+]]: tensor<1x4xf32>
-func @dynamicBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<1x4xf32>) -> tensor<1x4xf32> {
+// CHECK-SAME: %[[ARG0:.+]]: tensor<?xf32>
+// CHECK-SAME: %[[ARG1:.+]]: tensor<?x?xf32>
+func @dynamicBroadcast(%arg0: tensor<?xf32>, %arg1: tensor<?x?xf32>) -> tensor<?x?xf32> {
   // CHECK-DAG: %[[ARG0_S:.+]] = "shape.shape_of"(%[[ARG0]])
   // CHECK-DAG: %[[ARG1_S:.+]] = "shape.shape_of"(%[[ARG1]])
   // CHECK-DAG: %[[RESULT_S:.+]] = "shape.broadcast"(%[[ARG0_S]], %[[ARG1_S]])
@@ -21,9 +21,9 @@ func @dynamicBroadcast(%arg0: tensor<4xf32>, %arg1: tensor<1x4xf32>) -> tensor<1
   // CHECK-DAG: %[[ARG0_B:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[ARG0]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK-DAG: %[[ARG1_B:.+]] = "xla_hlo.dynamic_broadcast_in_dim"(%[[ARG1]], %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
   // CHECK-DAG: %[[RESULT:.+]] = xla_hlo.add %[[ARG0_B]], %[[ARG1_B]]
-  // CHECK: return %[[RESULT]] : tensor<1x4xf32>
-  %0 = xla_chlo.broadcast_add %arg0, %arg1 : (tensor<4xf32>, tensor<1x4xf32>) -> tensor<1x4xf32>
-  return %0 : tensor<1x4xf32>
+  // CHECK: return %[[RESULT]] : tensor<?x?xf32>
+  %0 = xla_chlo.broadcast_add %arg0, %arg1 : (tensor<?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
 }
 
 // -----
