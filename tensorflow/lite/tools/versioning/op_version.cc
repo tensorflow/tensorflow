@@ -52,6 +52,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
   switch (op_sig.op) {
     case BuiltinOperator_CONV_2D:
       // If the op has signed int8 op_sig.inputs and op_sig.outputs, its
+      // version 4.
+      if (op_sig.input_types.at(0) == TensorType_INT16 &&
+          op_sig.input_types.at(1) == TensorType_INT16 &&
+          op_sig.output_types.at(1) == TensorType_INT16) {
+        return 4;
+      }
+
+      // If the op has signed int8 op_sig.inputs and op_sig.outputs, its
       // version 3.
       if (op_sig.input_types.at(0) == TensorType_INT8 &&
           op_sig.input_types.at(1) == TensorType_INT8 &&
@@ -68,6 +76,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_DEPTHWISE_CONV_2D:
+
+      // If the op accepts int16, we return version 5.
+      if (op_sig.input_types.at(0) == TensorType_INT16 &&
+          op_sig.input_types.at(1) == TensorType_INT16 &&
+          op_sig.output_types.at(1) == TensorType_INT16) {
+        return 5;
+      }
+
       // If the op is a signed int8 hybrid operation, we need to return
       // version 4.
       if (op_sig.input_types.at(0) == TensorType_FLOAT32 &&
@@ -103,6 +119,14 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       // | Hybrid          |                  3 |                        3 |
       // | Quantized Int8  |                  4 |                        4 |
       // +-----------------+--------------------+--------------------------+
+
+      // Int16 fully fixed point kernel is at version 7.
+      if (op_sig.input_types.at(0) == TensorType_INT16 &&
+          op_sig.input_types.at(1) == TensorType_INT16 &&
+          op_sig.output_types.at(0) == TensorType_INT16) {
+        return 7;
+      }
+
       // 2 op_sig.inputs (no bias) use case is supported starting from
       // version 6.
       if (op_sig.input_types.size() == 2) {
@@ -159,6 +183,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_MUL:
+      // Version 4 supports int16 inputs
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 4;
+      }
       // Version 3 supports have a rescale value greater than or equal to 1.
       if (op_sig.options.mul.input1_scale != 0 &&
           op_sig.options.mul.input2_scale != 0 &&
@@ -234,6 +262,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SPLIT:
+      // If the op take in16 input, it is version 4.
+      if (op_sig.input_types.at(1) == TensorType_INT16) {
+        return 4;
+      }
       // If the op take int8 input, it is version 2, for int32 it's version 3.
       // The input tensor is at index 1 not 0, 0 is the axis.
       if (op_sig.input_types.at(1) == TensorType_INT32) {
@@ -425,9 +457,18 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_ADD:
     case BuiltinOperator_CONCATENATION:
+    case BuiltinOperator_SOFTMAX:
+
+      if (op_sig.input_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
-    case BuiltinOperator_SOFTMAX:
     case BuiltinOperator_SPACE_TO_DEPTH:
     case BuiltinOperator_SPLIT_V:
     case BuiltinOperator_MEAN:

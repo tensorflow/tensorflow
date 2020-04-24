@@ -52,10 +52,10 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_L2_POOL_2D, Register_L2_POOL_2D());
   AddBuiltin(BuiltinOperator_CONV_2D, Register_CONV_2D(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D, Register_DEPTHWISE_CONV_2D(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_SVDF, Register_SVDF(),
              /* min_version = */ 1,
              /* max_version = */ 3);
@@ -77,15 +77,15 @@ BuiltinOpResolver::BuiltinOpResolver() {
              Register_EMBEDDING_LOOKUP_SPARSE());
   AddBuiltin(BuiltinOperator_FULLY_CONNECTED, Register_FULLY_CONNECTED(),
              /* min_version = */ 1,
-             /* max_version = */ 6);
+             /* max_version = */ 7);
   AddBuiltin(BuiltinOperator_LSH_PROJECTION, Register_LSH_PROJECTION());
   AddBuiltin(BuiltinOperator_HASHTABLE_LOOKUP, Register_HASHTABLE_LOOKUP());
   AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_CONCATENATION, Register_CONCATENATION(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_ADD, Register_ADD(),
              /* min_version = */ 1,
              /* max_version = */ 2);
@@ -96,7 +96,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_MUL, Register_MUL(), /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2_NORMALIZATION(),
              /* min_version = */ 1,
              /* max_version = */ 2);
@@ -141,9 +141,10 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SUB, Register_SUB(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
-  AddBuiltin(BuiltinOperator_SPLIT, Register_SPLIT(), /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 5);
+  AddBuiltin(BuiltinOperator_SPLIT, Register_SPLIT(),
+             /* min_version = */ 1,
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_SPLIT_V, Register_SPLIT_V(),
              /* min_version = */ 1,
              /* max_version = */ 2);
