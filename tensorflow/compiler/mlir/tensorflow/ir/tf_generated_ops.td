@@ -3979,8 +3979,7 @@ cublas.
 
 def TF_MatrixBandPartOp : TF_Op<"MatrixBandPart", [AllTypesMatch<["input", "band"]>, NoSideEffect]> {
   let summary = [{
-Copy a tensor setting everything outside a central band in each innermost matrix
-to zero.
+Copy a tensor setting everything outside a central band in each innermost matrix to zero.
   }];
 
   let description = [{
