@@ -133,6 +133,14 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
       all_session_args['fetches'] = flatten_per_replica_values(
           distribution_strategy, grouped_fetches)
 
+    grouped_run_metadata = grouped_session_args.get("run_metadata")
+    if grouped_run_metadata:
+      all_session_args['run_metadata'] = grouped_run_metadata
+
+    grouped_run_options = grouped_session_args.get("options")
+    if grouped_run_options:
+      all_session_args['options'] = grouped_run_options
+
   # TODO(priyag): Return only non empty/None values
   return all_inputs, all_outputs, all_updates, all_session_args
 
@@ -769,7 +777,8 @@ def _build_network_on_replica(model, mode, inputs=None, targets=None):
         sample_weight_mode=model.sample_weight_mode,
         weighted_metrics=metrics_module.clone_metrics(
             model._compile_weighted_metrics),
-        target_tensors=targets)
+        target_tensors=targets,
+        **model._function_kwargs)
   return updated_model
 
 

@@ -3538,13 +3538,13 @@ class GraphExecutionFunction(object):
       self.updates_op = control_flow_ops.group(*updates_ops)
     self.name = name
     # additional tensor substitutions
-    self.feed_dict = session_kwargs.pop('feed_dict', None)
+    self.feed_dict = session_kwargs.get('feed_dict', None)
     # additional operations
-    self.fetches = session_kwargs.pop('fetches', [])
+    self.fetches = session_kwargs.get('fetches', [])
     if not isinstance(self.fetches, list):
       self.fetches = [self.fetches]
-    self.run_options = session_kwargs.pop('options', None)
-    self.run_metadata = session_kwargs.pop('run_metadata', None)
+    self.run_options = session_kwargs.get('options', None)
+    self.run_metadata = session_kwargs.get('run_metadata', None)
     # The main use case of `fetches` being passed to a model is the ability
     # to run custom updates
     # This requires us to wrap fetches in `identity` ops.
@@ -3556,9 +3556,11 @@ class GraphExecutionFunction(object):
     # output values for a fetch it added.
     self.fetch_callbacks = {}
 
-    if session_kwargs:
+    allowed_kwargs = {'feed_dict', 'fetches', 'options', 'run_metadata'}
+    unknown_kwargs = set(session_kwargs.keys()) - allowed_kwargs
+    if unknown_kwargs:
       raise ValueError('Some keys in session_kwargs are not supported at this '
-                       'time: %s' % (session_kwargs.keys(),))
+                       'time: %s' % (unknown_kwargs,))
 
     self._callable_fn = None
     self._feed_arrays = None
