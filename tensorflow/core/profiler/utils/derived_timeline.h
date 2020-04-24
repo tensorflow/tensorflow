@@ -18,13 +18,57 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
+#include "tensorflow/core/profiler/utils/xplane_builder.h"
 
 namespace tensorflow {
 namespace profiler {
 
-typedef std::function<absl::string_view(absl::string_view hlo_module_name,
-                                        absl::string_view hlo_op)>
-    SymbolResolver;
+// Helper for deriving an XLine from events in another XLine.
+class DerivedXLineBuilder {
+ public:
+  DerivedXLineBuilder(XPlaneBuilder* plane, int64 line_id,
+                      absl::string_view name, int64 timestamp_ns,
+                      std::vector<DerivedXLineBuilder*> dependent_lines);
+
+  void ExpandOrAddEvents(const std::vector<XEvent>& event_per_level) {
+    for (int level = 0; level < event_per_level.size(); ++level) {
+      ExpandOrAddLevelEvent(event_per_level[level], level);
+    }
+  }
+
+  void ExpandOrAddEvent(const XEvent& event) {
+    ExpandOrAddLevelEvent(event, /*level=*/0);
+  }
+
+  // Reset last events lower than the given level.
+  void ResetLastEvents(int level = -1) {
+    for (int i = level + 1; i < last_event_by_level_.size(); ++i) {
+      last_event_by_level_[i] = absl::nullopt;
+    }
+  }
+
+ private:
+  // If the last event of the given level has the same metadata, expands it to
+  // include the time until the given event's (offset_ps + duration_ps).
+  // Otherwise, adds a new event and clears last_event_by_level_ for the levels
+  // below the given level and all levels of the dependent lines. Clearing
+  // last_event_by_level_ prevents a nested event from growing larger than the
+  // parent event(s).
+  void ExpandOrAddLevelEvent(const XEvent& event, int level);
+
+  void ResetDependentLines() {
+    for (DerivedXLineBuilder* line : dependent_lines_) {
+      line->ResetLastEvents();
+    }
+  }
+
+  XLineBuilder line_;
+  absl::flat_hash_map<int, absl::optional<XEventBuilder>> last_event_by_level_;
+  std::vector<DerivedXLineBuilder*> dependent_lines_;
+};
+
+using SymbolResolver = std::function<absl::string_view(
+    absl::string_view hlo_module_name, absl::string_view hlo_op)>;
 
 // Derives "Step Info", "Tensorflow Ops", "XLA Ops" and "XLA Module" lines in
 // an NVIDIA_GPU device trace from data passed as ScopedAnnotations and stored

@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 #include "tensorflow/core/profiler/utils/trace_utils.h"
-#include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_visitor.h"
@@ -38,74 +37,6 @@ absl::string_view DummySymbolResolver(absl::string_view hlo_module,
                                       absl::string_view hlo_op) {
   return absl::string_view();
 }
-
-// Helper for deriving an XLine from events in another XLine.
-class DerivedXLineBuilder {
- public:
-  DerivedXLineBuilder(XPlaneBuilder* plane, int64 line_id,
-                      absl::string_view name, int64 timestamp_ns,
-                      std::vector<DerivedXLineBuilder*> dependent_lines)
-      : line_(plane->GetOrCreateLine(line_id)) {
-    line_.SetName(name);
-    line_.SetTimestampNs(timestamp_ns);
-    dependent_lines_ = std::move(dependent_lines);
-  }
-
-  void ExpandOrAddEvents(const std::vector<XEvent>& event_per_level) {
-    for (int level = 0; level < event_per_level.size(); ++level) {
-      ExpandOrAddLevelEvent(event_per_level[level], level);
-    }
-  }
-
-  void ExpandOrAddEvent(const XEvent& event) {
-    ExpandOrAddLevelEvent(event, /*level=*/0);
-  }
-
-  // Reset last events lower than the given level.
-  void ResetLastEvents(int level = -1) {
-    for (int i = level + 1; i < last_event_by_level_.size(); ++i) {
-      last_event_by_level_[i] = absl::nullopt;
-    }
-  }
-
- private:
-  // If the last event of the given level has the same metadata, expands it to
-  // include the time until the given event's (offset_ps + duration_ps).
-  // Otherwise, adds a new event and clears last_event_by_level_ for the levels
-  // below the given level and all levels of the dependent lines. Clearing
-  // last_event_by_level_ prevents a nested event from growing larger than the
-  // parent event(s).
-  void ExpandOrAddLevelEvent(const XEvent& event, int level) {
-    int64 offset_ps = event.offset_ps();
-    int64 duration_ps = event.duration_ps();
-    auto& last_event = last_event_by_level_[level];
-    // If last_event is not nullptr, its offset must be less than or equal to
-    // the given event's offset.
-    DCHECK(!last_event || last_event->OffsetPs() <= offset_ps);
-    if (last_event && last_event->MetadataId() == event.metadata_id()) {
-      // If last_event is not nullptr and metadata is same, merge the given
-      // event into last_event.
-      last_event->SetDurationPs((offset_ps + duration_ps) -
-                                last_event->OffsetPs());
-    } else {
-      // Otherwise, create a new event for the given level.
-      last_event = line_.AddEvent(event);
-      // Reset last events lower than the given level.
-      ResetLastEvents(level);
-      if (level == 0) ResetDependentLines();
-    }
-  }
-
-  void ResetDependentLines() {
-    for (DerivedXLineBuilder* line : dependent_lines_) {
-      line->ResetLastEvents();
-    }
-  }
-
-  XLineBuilder line_;
-  absl::flat_hash_map<int, absl::optional<XEventBuilder>> last_event_by_level_;
-  std::vector<DerivedXLineBuilder*> dependent_lines_;
-};
 
 const absl::string_view kDerivedLineSteps = "Steps";
 const absl::string_view kDerivedLineTensorFlowNameScope =
@@ -163,6 +94,37 @@ void ProcessTfOpEvent(const XEventVisitor& event,
 }
 
 }  // namespace
+
+DerivedXLineBuilder::DerivedXLineBuilder(
+    XPlaneBuilder* plane, int64 line_id, absl::string_view name,
+    int64 timestamp_ns, std::vector<DerivedXLineBuilder*> dependent_lines)
+    : line_(plane->GetOrCreateLine(line_id)) {
+  line_.SetName(name);
+  line_.SetTimestampNs(timestamp_ns);
+  dependent_lines_ = std::move(dependent_lines);
+}
+
+void DerivedXLineBuilder::ExpandOrAddLevelEvent(const XEvent& event,
+                                                int level) {
+  int64 offset_ps = event.offset_ps();
+  int64 duration_ps = event.duration_ps();
+  auto& last_event = last_event_by_level_[level];
+  // If last_event is not nullptr, its offset must be less than or equal to
+  // the given event's offset.
+  DCHECK(!last_event || last_event->OffsetPs() <= offset_ps);
+  if (last_event && last_event->MetadataId() == event.metadata_id()) {
+    // If last_event is not nullptr and metadata is same, merge the given
+    // event into last_event.
+    last_event->SetDurationPs((offset_ps + duration_ps) -
+                              last_event->OffsetPs());
+  } else {
+    // Otherwise, create a new event for the given level.
+    last_event = line_.AddEvent(event);
+    // Reset last events lower than the given level.
+    ResetLastEvents(level);
+    if (level == 0) ResetDependentLines();
+  }
+}
 
 void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
                                  const EventGroupNameMap& event_group_name_map,
