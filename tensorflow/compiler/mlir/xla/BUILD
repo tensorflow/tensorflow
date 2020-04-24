@@ -632,6 +632,7 @@ cc_library(
         ":hlo",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:lib",
         "@llvm-project//mlir:IR",
     ],
     alwayslink = 1,

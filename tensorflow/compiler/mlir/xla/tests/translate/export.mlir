@@ -260,7 +260,7 @@ func @main(%arg0 : tensor<5x2xf32>,
 // -----
 
 // CHECK:  HloModule
-func @main() -> tensor<2x2x1x1xf32> {
+func @main() {
   // CHECK:  constant.{{.*}} = s64[] constant(1)
   %cst = constant dense<1> : tensor<i64>
   // CHECK:  constant.{{.*}} = f32[2,2,1,1]
@@ -288,7 +288,10 @@ func @main() -> tensor<2x2x1x1xf32> {
   // CHECK: bf16[4] constant({1, 2, 3, 4})
   %cst_6 = constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
 
-  return %cst_0 : tensor<2x2x1x1xf32>
+  // CHECK: f16[4] constant({1, -4, -65504, 0.015625}
+  %cst_7 = constant dense<[1.0e+00, -4.0e+00, -65504.0e+00, 1.5625e-02]> : tensor<4xf16>
+
+  return
 }
 
 // -----

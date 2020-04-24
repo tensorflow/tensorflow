@@ -22,6 +22,8 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -39,6 +41,31 @@ template <typename CppType>
   auto data_span = literal.data<CppType>();
   return ::mlir::DenseElementsAttr::get(
       type, llvm::makeArrayRef(data_span.data(), data_span.size()));
+}
+
+mlir::APFloat ConvertToAPFloat(bfloat16 val) {
+  // bfloat16 values are stored as double in MLIR.
+  return llvm::APFloat(static_cast<double>(val));
+}
+
+mlir::APFloat ConvertToAPFloat(half val) {
+  llvm::APFloat single_val = llvm::APFloat(static_cast<float>(val));
+  bool loses_info = false;
+  CHECK_EQ(single_val.convert(llvm::APFloat::IEEEhalf(),
+                              llvm::APFloat::rmTowardZero, &loses_info),
+           llvm::APFloat::opOK);
+  CHECK(!loses_info);
+  return single_val;
+}
+
+template <typename CppType>
+::mlir::DenseElementsAttr CreateDenseAttrFrom16BitFloat(
+    const ShapedType& type, const LiteralBase& literal) {
+  auto data_span = literal.data<CppType>();
+  llvm::SmallVector<mlir::APFloat, 4> vals;
+  vals.reserve(data_span.size());
+  for (CppType val : data_span) vals.push_back(ConvertToAPFloat(val));
+  return ::mlir::DenseElementsAttr::get(type, vals);
 }
 
 StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
@@ -88,6 +115,10 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
   switch (element_type) {
     case PrimitiveType::PRED:
       return CreateDenseAttrFromLiteral<bool>(type, literal);
+    case PrimitiveType::F16:
+      return CreateDenseAttrFrom16BitFloat<half>(type, literal);
+    case PrimitiveType::BF16:
+      return CreateDenseAttrFrom16BitFloat<bfloat16>(type, literal);
     case PrimitiveType::F32:
       return CreateDenseAttrFromLiteral<float>(type, literal);
     case PrimitiveType::F64:

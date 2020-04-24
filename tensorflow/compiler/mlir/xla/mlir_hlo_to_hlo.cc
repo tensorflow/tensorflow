@@ -906,8 +906,8 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
 namespace mlir {
 namespace {
 
-StatusOr<xla::Literal> CreateLiteralFromAttr(Type type, ElementsAttr attr) {
-  xla::Shape shape = xla::TypeToShape(type);
+StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
+  xla::Shape shape = xla::TypeToShape(attr.getType());
 
 #define ELEMENTS_ATTR_TO_LITERAL(xla_type, cpp_type)       \
   case xla_type: {                                         \
@@ -929,6 +929,21 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(Type type, ElementsAttr attr) {
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U16, uint16)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U32, uint32)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U64, uint64)
+    case xla::PrimitiveType::F16: {
+      llvm::SmallVector<xla::half, 16> values;
+      values.reserve(attr.getNumElements());
+      for (APFloat val : attr.getValues<APFloat>()) {
+        bool loses_info = false;
+        CHECK_EQ(val.convert(llvm::APFloat::IEEEsingle(),
+                             llvm::APFloat::rmTowardZero, &loses_info),
+                 llvm::APFloat::opOK);
+        CHECK(!loses_info);
+        values.push_back(xla::half(val.convertToFloat()));
+      }
+      xla::Array<xla::half> source_data(shape.dimensions());
+      source_data.SetValues(values);
+      return xla::LiteralUtil::CreateFromArray(source_data);
+    }
     case xla::PrimitiveType::BF16: {
       xla::Array<double> source_data(shape.dimensions());
       auto attr_values = attr.getValues<APFloat>();
@@ -967,8 +982,7 @@ LogicalResult ConvertToHloModule::Lower(
 
   // TODO(jpienaar): This doesn't support layouts yet.
   if (matchPattern(inst, m_Constant(&const_attr))) {
-    auto literal_or =
-        CreateLiteralFromAttr(*inst->result_type_begin(), const_attr);
+    auto literal_or = CreateLiteralFromAttr(const_attr);
     if (!literal_or.ok()) return inst->emitError("unsupported elemental type");
     value_map[inst->getResult(0)] =
         xla::ConstantLiteral(builder, literal_or.ValueOrDie());
