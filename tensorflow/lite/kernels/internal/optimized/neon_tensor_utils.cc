@@ -39,7 +39,8 @@ limitations under the License.
 // aligned_alloc is available (via cstdlib/stdlib.h) with C++17/C11.
 #if __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
 #if !defined(__ANDROID__) || __ANDROID_API__ >= 28
-#if !defined(__APPLE__)  // Apple does not provide aligned_alloc.
+// Neither Apple nor Windows provide aligned_alloc.
+#if !defined(__APPLE__) && !defined(_WIN32)
 #define TFLITE_USE_STD_ALIGNED_ALLOC
 #endif
 #endif

@@ -404,7 +404,8 @@ StatusOr<std::unique_ptr<gpu::KernelThunk>> TransformKernelToXlaThunk(
     return Unimplemented("No kernel was generated.");
   }
 
-  auto kernel = kernel_module.lookupSymbol<LLVMFuncOp>(launchOp.kernel());
+  auto kernel =
+      kernel_module.lookupSymbol<LLVMFuncOp>(launchOp.getKernelName());
 
   // Store the assignment of operands to block arguments. Note that an operand
   // might be used in multiple argument positions, hence the vector.

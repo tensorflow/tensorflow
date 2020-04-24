@@ -23,6 +23,8 @@ import functools
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python import tf2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import function
@@ -334,9 +336,12 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.graph_only_combinations() +
-          combinations.combine(mode=["eager"], tf_api_version=1),
+          combinations.combine(mode=["eager"]),
           combinations.combine(reshuffle=[True, False])))
   def testRerandomizeOnReplicate(self, reshuffle):
+    if tf2.enabled() and not compat.forward_compatible(2020, 5, 22):
+      self.skipTest("Functionality currently not supported.")
+
     random_seed.set_random_seed(None)
     # When no seeds are fixed, each instantiation of the shuffle dataset should
     # produce elements in a different order.

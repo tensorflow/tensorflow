@@ -354,3 +354,6 @@ def : Pat<
 def : Pat<
   (TF_MatrixSetDiagOp $input, $diagonal),
   (TFL_MatrixSetDiagOp $input, $diagonal)>;
+
+def : Pat<(TF_ScatterNdOp I32Tensor:$indices, $updates, $shape),
+          (TFL_ScatterNdOp I32Tensor:$indices, $updates, $shape)>;

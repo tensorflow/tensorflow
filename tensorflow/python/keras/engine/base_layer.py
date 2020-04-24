@@ -413,7 +413,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     Note here that `call()` method in `tf.keras` is little bit different
     from `keras` API. In `keras` API, you can pass support masking for
-    layers as additional arguements. Whereas `tf.keras` has `compute_mask()`
+    layers as additional arguments. Whereas `tf.keras` has `compute_mask()`
     method to support masking.
 
     Arguments:

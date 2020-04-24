@@ -440,3 +440,15 @@ py_library(
         "//tensorflow/python/keras/optimizer_v2",
     ],
 )
+
+py_library(
+    name = "tpu_strategy_test_utils",
+    srcs = ["tpu_strategy_test_utils.py"],
+    deps = [
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/tpu:tpu_strategy_util",
+    ],
+)

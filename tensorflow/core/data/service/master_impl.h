@@ -48,6 +48,8 @@ class DataServiceMasterImpl {
   /// Worker-facing API.
   Status RegisterWorker(const RegisterWorkerRequest* request,
                         RegisterWorkerResponse* response);
+  Status WorkerUpdate(const WorkerUpdateRequest* request,
+                      WorkerUpdateResponse* response);
 
   /// Client-facing API.
   Status GetOrRegisterDataset(const GetOrRegisterDatasetRequest* request,
@@ -105,12 +107,19 @@ class DataServiceMasterImpl {
     int64 dataset_id() const { return dataset_id_; }
     const std::vector<int64>& task_ids() const { return task_ids_; }
     void add_task_id(int64 task_id) { task_ids_.push_back(task_id); }
+    void task_finished(int64 task_id) {
+      finished_tasks_.push_back(task_id);
+      if (finished_tasks_.size() == task_ids_.size()) {
+        finished_ = true;
+      }
+    }
     bool finished() const { return finished_; }
 
    private:
     const int64 job_id_;
     const int64 dataset_id_;
     std::vector<int64> task_ids_;
+    std::vector<int64> finished_tasks_;
     bool finished_ = false;
   };
 

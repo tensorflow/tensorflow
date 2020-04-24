@@ -517,7 +517,7 @@ class BASE_HLO_AndOp {
   string summary = "Logical and";
 
   string description = [{
-    Returns `lhs /\ rhs` element-wise.
+    Returns `logical_and(lhs, rhs)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
@@ -528,7 +528,7 @@ class BASE_HLO_OrOp {
   string summary = "Logical or";
 
   string description = [{
-    Returns `lhs \/ rhs` element-wise.
+    Returns `logical_or(lhs, rhs)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
@@ -539,7 +539,7 @@ class BASE_HLO_XorOp {
   string summary = "Logical xor";
 
   string description = [{
-    Returns `lhs xor rhs` element-wise.
+    Returns `logical_xor(lhs, rhs)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.

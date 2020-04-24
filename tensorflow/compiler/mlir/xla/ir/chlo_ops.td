@@ -37,7 +37,7 @@ def HLOClient_Dialect : Dialect {
   let name = "xla_chlo";
   let cppNamespace = "xla_chlo";
   let summary = [{
-    XLA HLO Client Ops
+    XLA Client HLO Ops
   }];
 
   let description = [{
@@ -79,6 +79,8 @@ class HLOClient_BroadcastBinaryElementwiseOp<
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
+    // Explicit rank-broadcast dimension mappings. Defaults to "numpy" prefix
+    // padded rank-broadcast semantics if omitted.
     OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
   );
 
@@ -90,7 +92,7 @@ class HLOClient_BroadcastBinaryElementwiseOp<
   let results = (outs HLO_Tensor);
 
   let assemblyFormat = [{
-    `(` $lhs `,` $rhs `)` attr-dict `:`
+    $lhs `,` $rhs attr-dict `:`
     `(` type($lhs) `,` type($rhs) `)` `->` type(results)
   }];
 }
@@ -261,11 +263,13 @@ class HLOClient_BroadcastBinaryLogicalElementwiseOp<string mnemonic> :
   let arguments = (ins
     HLO_PredOrIntTensor:$lhs,
     HLO_PredOrIntTensor:$rhs,
+    // Explicit rank-broadcast dimension mappings. Defaults to "numpy" prefix
+    // padded rank-broadcast semantics if omitted.
     OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
   );
 
   let assemblyFormat = [{
-    `(` $lhs `,` $rhs `)` attr-dict `:`
+    $lhs `,` $rhs attr-dict `:`
     `(` type($lhs) `,` type($rhs) `)` `->` type(results)
   }];
 }
@@ -275,7 +279,7 @@ def HLOClient_BroadcastAndOp: HLOClient_BroadcastBinaryLogicalElementwiseOp<
   string summary = "Logical and operator (with optional broadcasting)";
 
   string description = [{
-    Returns `lhs /\ rhs` element-wise.
+    Returns `logical_and(lhs, rhs)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
@@ -287,7 +291,7 @@ def HLOClient_BroadcastOrOp: HLOClient_BroadcastBinaryLogicalElementwiseOp<
   string summary = "Logical or operator (with optional broadcasting)";
 
   string description = [{
-    Returns `lhs \/ rhs` element-wise.
+    Returns `logical_or(lhs, rhs)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
@@ -299,7 +303,7 @@ def HLOClient_BroadcastXorOp : HLOClient_BroadcastBinaryLogicalElementwiseOp<
   string summary = "Logical xor operator (with optional broadcasting)";
 
   string description = [{
-    Returns `lhs xor rhs` element-wise.
+    Returns `logical_xor(lhs, rhs)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.

@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 // clang-format off
@@ -30,7 +31,9 @@ limitations under the License.
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
+#include "absl/types/optional.h"
 #include "tensorflow/c/eager/context_interface.h"
+#include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
@@ -61,6 +64,7 @@ limitations under the License.
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -174,6 +178,15 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
       AbstractTensorHandleInterface* handle, const char* device_name,
       Status* status) override;
   AbstractOperationInterface* CreateOperation() override;
+
+  // Loads a SavedModelAPI from `directory`, with a metagraphdef fitting
+  // the optional "tags". On success status->ok() will be true, and the
+  // returned pointer is non-null. On failure, `status` will be set to
+  // an appropriate error, and nullptr is returned.
+  std::unique_ptr<SavedModelAPI> LoadSavedModelAPI(
+      const std::string& directory,
+      const absl::optional<std::unordered_set<std::string>>& tags,
+      tensorflow::Status* status) override;
 
   void ListDevices(std::vector<DeviceAttributes>* devices) override;
 
@@ -385,11 +398,10 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   // can still be accessed, and will automatically register existing functions
   // if there are newly added hosts.
   Status UpdateRemoteMaster(
-      WorkerEnv* worker_env,
+      uint64 context_id,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       const std::vector<string>& add_remote_contexts,
-      const std::vector<string>& remove_remote_contexts, uint64 context_id,
-      Rendezvous* r);
+      const std::vector<string>& remove_remote_contexts);
 
   // Similar with InitializeRemoteMaster but this context will not kill remote
   // contexts in shutdown.
@@ -407,11 +419,8 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   // Similar with InitializeRemoteWorker but will reuse existing context and
   // increment context_view_id.
   Status UpdateRemoteWorker(
-      const DeviceMgr* worker_session_device_mgr,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
-      DynamicDeviceMgr* remote_device_mgr,
-      const std::vector<string>& remote_contexts, uint64 context_id,
-      DistributedFunctionLibraryRuntime* cluster_flr);
+      const std::vector<string>& remote_contexts, uint64 context_id);
 
   Status StoreCollectiveOpsServer(
       std::unique_ptr<ServerInterface> new_server, DeviceMgr* device_mgr,

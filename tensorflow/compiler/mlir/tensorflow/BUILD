@@ -396,6 +396,7 @@ cc_library(
         "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_dynamic_layout_pass.cc",
         "transforms/tpu_dynamic_padding_mapper.cc",
+        "transforms/tpu_extract_outside_compilation.cc",
         "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_rewrite_pass.cc",
         "transforms/tpu_sharding_identification_pass.cc",

@@ -716,6 +716,98 @@ static void BuildGatherOp(Builder *builder, OperationState &result,
 }
 
 //===----------------------------------------------------------------------===//
+// ScatterNdOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(ScatterNdOp op) {
+  auto indices = op.indices();
+  auto updates = op.updates();
+  auto shape = op.shape();
+  auto output = op.output();
+
+  auto updates_type = updates.getType().cast<ShapedType>();
+  auto indices_type = indices.getType().cast<ShapedType>();
+
+  if (!indices_type.hasStaticShape() || !updates_type.hasStaticShape()) {
+    return success();
+  }
+
+  // Checks if the shape of `updates` is a tensor of shape
+  // `indices.shape[:-1] + shape[indices.shape[-1]:]`, as described in
+  // ScatterNd op description.
+
+  auto outer_dims = indices_type.getRank() - 1;
+  auto outermost_dim = indices_type.getDimSize(outer_dims);
+  // Checks whether the first `outer_dims` dimensions of `indices` and
+  // `updates` are equal.
+  for (auto i = 0; i < outer_dims; i++) {
+    if (indices_type.getDimSize(i) != updates_type.getDimSize(i)) {
+      return op.emitOpError()
+             << "indices.Dims(" << i << ") == " << indices_type.getDimSize(i)
+             << ", but updates.Dims(" << i
+             << ") == " << updates_type.getDimSize(i);
+    }
+  }
+
+  auto output_type = output.getType().cast<ShapedType>();
+  auto shape_type = shape.getType().cast<ShapedType>();
+  if (shape_type.hasStaticShape()) {
+    // Check the rank of `shape`.
+    auto output_rank = outermost_dim + updates_type.getRank() - outer_dims;
+    if (shape_type.getDimSize(0) != output_rank) {
+      return op.emitOpError()
+             << "shape must be a vector of length " << output_rank;
+    }
+    if (output_type.hasRank()) {
+      if (output_type.getRank() != output_rank) {
+        return op.emitOpError()
+               << "output must have the same rank with the length of shape = "
+               << output_rank;
+      }
+    }
+  }
+
+  DenseIntElementsAttr shape_value;
+  if (matchPattern(shape, m_Constant(&shape_value))) {
+    for (const auto shape_elem : shape_value) {
+      if (shape_elem.getSExtValue() <= 0) {
+        return op.emitOpError("all elements of shape must be > 0");
+      }
+    }
+
+    // Checks whether the last `(shape_type.getDimSize(0) - outermost_dim)`
+    // dimensions of `updates` and `shape` are equal.
+    for (auto shape_it : llvm::enumerate(shape_value)) {
+      auto i = shape_it.index();
+      auto value = shape_it.value().getSExtValue();
+      if (i >= outermost_dim) {
+        auto corresponding_dim = i - outermost_dim + outer_dims;
+        if (value != updates_type.getDimSize(corresponding_dim)) {
+          return op.emitOpError()
+                 << "updates.Dims(" << i
+                 << ") == " << updates_type.getDimSize(corresponding_dim)
+                 << ", but shape[" << i << "] == " << value;
+        }
+      }
+    }
+
+    // Checks if the output has the shape specified by `shape`.
+    if (output_type.hasStaticShape()) {
+      for (auto shape_it : llvm::enumerate(shape_value)) {
+        int i = shape_it.index();
+        auto value = shape_it.value().getSExtValue();
+        if (output_type.getDimSize(i) != value) {
+          return op.emitOpError()
+                 << "output shape [" << output_type.getShape()
+                 << "] must be equal to the value of shape " << shape_value;
+        }
+      }
+    }
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MulOp
 //===----------------------------------------------------------------------===//
 

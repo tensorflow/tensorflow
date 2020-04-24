@@ -44,6 +44,10 @@ PyObject* TocoGetPotentiallySupportedOps();
 // is specified by the calibration data are not sufficient to quantize the
 // model.
 PyObject* MlirQuantizeModel(PyObject* data, bool fully_quantize);
+
+// Sparsifies model to encode sparse tensors with proper format. Throws error if
+// sparsification fails.
+PyObject* MlirSparsifyModel(PyObject* data);
 }  // namespace toco
 
 #endif  // TENSORFLOW_LITE_TOCO_PYTHON_TOCO_PYTHON_API_H_

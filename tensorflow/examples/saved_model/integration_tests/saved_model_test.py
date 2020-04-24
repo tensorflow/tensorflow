@@ -120,6 +120,7 @@ class SavedModelTest(scripts.TestCase, parameterized.TestCase):
     if regularization_loss_multiplier is not None:
       use_kwargs[
           "regularization_loss_multiplier"] = regularization_loss_multiplier
+    self.skipTest("b/154863403")
     self.assertCommandSucceeded("use_mnist_cnn", **use_kwargs)
 
     self.assertCommandSucceeded(

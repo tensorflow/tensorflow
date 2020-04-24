@@ -76,6 +76,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_test_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_legalize_hlo",
+        "//tensorflow/compiler/mlir/tfjs:tensorflow_js_passes",
     ],
 )
 

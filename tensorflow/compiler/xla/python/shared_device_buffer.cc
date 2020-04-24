@@ -29,7 +29,7 @@ limitations under the License.
 
 namespace xla {
 
-void BufferDefinitionEvent::SetDefinitionEvent(EventPool::Handle event,
+void BufferSequencingEvent::SetSequencingEvent(EventPool::Handle event,
                                                se::Stream* stream) {
   absl::MutexLock lock(&mu_);
   CHECK(!event_.event());
@@ -38,23 +38,23 @@ void BufferDefinitionEvent::SetDefinitionEvent(EventPool::Handle event,
   streams_defined_on_.push_back(stream);
 }
 
-bool BufferDefinitionEvent::EventHasBeenRecorded() const {
+bool BufferSequencingEvent::EventHasBeenRecorded() const {
   return event_.event() != nullptr;
 }
 
-uint64 BufferDefinitionEvent::sequence_number() const {
+uint64 BufferSequencingEvent::sequence_number() const {
   absl::MutexLock lock(&mu_);
   CHECK(EventHasBeenRecorded());
   return event_.sequence_number();
 }
 
-void BufferDefinitionEvent::WaitForEventOnStream(se::Stream* stream) {
+void BufferSequencingEvent::WaitForEventOnStream(se::Stream* stream) {
   absl::MutexLock lock(&mu_);
 
   // We cannot wait for an event until ThenRecordEvent has been called; on GPU
   // newly created events are deemed to have already happened past.
   mu_.Await(
-      absl::Condition(this, &BufferDefinitionEvent::EventHasBeenRecorded));
+      absl::Condition(this, &BufferSequencingEvent::EventHasBeenRecorded));
 
   // The set of defined streams is expected to be very small indeed (usually
   // 1-2), so a simple linear scan should be fast enough.
@@ -68,13 +68,13 @@ void BufferDefinitionEvent::WaitForEventOnStream(se::Stream* stream) {
   streams_defined_on_.push_back(stream);
 }
 
-bool BufferDefinitionEvent::DefinedOn(se::Stream* stream) {
+bool BufferSequencingEvent::DefinedOn(se::Stream* stream) {
   absl::MutexLock lock(&mu_);
 
   // We cannot wait for an event until ThenRecordEvent has been called; on GPU
   // newly created events are deemed to have already happened past.
   mu_.Await(
-      absl::Condition(this, &BufferDefinitionEvent::EventHasBeenRecorded));
+      absl::Condition(this, &BufferSequencingEvent::EventHasBeenRecorded));
 
   // The set of defined streams is expected to be very small indeed (usually
   // 1-2), so a simple linear scan should be fast enough.
@@ -82,21 +82,21 @@ bool BufferDefinitionEvent::DefinedOn(se::Stream* stream) {
                    stream) != streams_defined_on_.end();
 }
 
-bool BufferDefinitionEvent::IsComplete() {
+bool BufferSequencingEvent::IsComplete() {
   absl::MutexLock lock(&mu_);
 
   // We cannot wait for an event until ThenRecordEvent has been called; on
   // GPU newly created events are deemed to have already happened past.
   mu_.Await(
-      absl::Condition(this, &BufferDefinitionEvent::EventHasBeenRecorded));
+      absl::Condition(this, &BufferSequencingEvent::EventHasBeenRecorded));
 
   return event_.event()->PollForStatus() == se::Event::Status::kComplete;
 }
 
-/* static */ std::shared_ptr<SharedDeviceBuffer>
-SharedDeviceBuffer::FromScopedShapedBuffer(
+/* static */ std::shared_ptr<TrackedDeviceBuffer>
+TrackedDeviceBuffer::FromScopedShapedBuffer(
     ScopedShapedBuffer* shaped_buffer,
-    absl::Span<const std::shared_ptr<BufferDefinitionEvent>>
+    absl::Span<const std::shared_ptr<BufferSequencingEvent>>
         definition_events) {
   ShapeTree<se::DeviceMemoryBase>::iterator iterator =
       shaped_buffer->buffers().begin();
@@ -111,15 +111,15 @@ SharedDeviceBuffer::FromScopedShapedBuffer(
         ++iterator;
       });
   CHECK(iterator == shaped_buffer->buffers().end());
-  return std::make_shared<SharedDeviceBuffer>(
+  return std::make_shared<TrackedDeviceBuffer>(
       shaped_buffer->memory_allocator(), shaped_buffer->device_ordinal(),
       absl::Span<se::DeviceMemoryBase>(buffers), definition_events,
       /*on_delete_callback=*/nullptr);
 }
 
-ShapedBuffer SharedDeviceBuffer::AsShapedBuffer(const Shape& on_host_shape,
-                                                const Shape& on_device_shape,
-                                                se::Platform* platform) const {
+ShapedBuffer TrackedDeviceBuffer::AsShapedBuffer(const Shape& on_host_shape,
+                                                 const Shape& on_device_shape,
+                                                 se::Platform* platform) const {
   ShapedBuffer shaped_buffer(on_host_shape, on_device_shape, platform,
                              device_ordinal_);
   ShapeTree<se::DeviceMemoryBase>::iterator iterator =
@@ -136,7 +136,7 @@ ShapedBuffer SharedDeviceBuffer::AsShapedBuffer(const Shape& on_host_shape,
 // See comment on ExecutionInput in xla/service/executable.h to understand
 // the meaning of owned/unowned in that class.
 
-void SharedDeviceBuffer::AddToInputAsImmutable(
+void TrackedDeviceBuffer::AddToInputAsImmutable(
     ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
     const ShapeTree<MaybeOwningDeviceMemory>::iterator& end) const {
   for (const se::DeviceMemoryBase& buf : device_memory_) {
@@ -147,7 +147,7 @@ void SharedDeviceBuffer::AddToInputAsImmutable(
   }
 }
 
-void SharedDeviceBuffer::AddToInputAsDonated(
+void TrackedDeviceBuffer::AddToInputAsDonated(
     ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
     const ShapeTree<MaybeOwningDeviceMemory>::iterator& end,
     ExecutionInput* execution_input,
@@ -165,14 +165,14 @@ void SharedDeviceBuffer::AddToInputAsDonated(
 namespace {
 
 using MoveIterator =
-    absl::Span<const std::shared_ptr<BufferDefinitionEvent>>::iterator;
+    absl::Span<const std::shared_ptr<BufferSequencingEvent>>::iterator;
 
 }  // namespace
 
-SharedDeviceBuffer::SharedDeviceBuffer(
+TrackedDeviceBuffer::TrackedDeviceBuffer(
     se::DeviceMemoryAllocator* allocator, int device_ordinal,
     absl::Span<se::DeviceMemoryBase const> device_memory,
-    absl::Span<const std::shared_ptr<BufferDefinitionEvent>> definition_events,
+    absl::Span<const std::shared_ptr<BufferSequencingEvent>> definition_events,
     std::function<void()> on_delete_callback)
     : allocator_(allocator),
       device_ordinal_(device_ordinal),
@@ -183,7 +183,7 @@ SharedDeviceBuffer::SharedDeviceBuffer(
       in_use_(true),
       on_delete_callback_(std::move(on_delete_callback)) {}
 
-SharedDeviceBuffer::~SharedDeviceBuffer() {
+TrackedDeviceBuffer::~TrackedDeviceBuffer() {
   if (allocator_) {
     for (const se::DeviceMemoryBase& buffer : device_memory_) {
       Status status = allocator_->Deallocate(device_ordinal_, buffer);
@@ -197,8 +197,8 @@ SharedDeviceBuffer::~SharedDeviceBuffer() {
   }
 }
 
-void SharedDeviceBuffer::AddUsageEvent(
-    se::Stream* usage_stream, std::shared_ptr<BufferDefinitionEvent> event,
+void TrackedDeviceBuffer::AddUsageEvent(
+    se::Stream* usage_stream, std::shared_ptr<BufferSequencingEvent> event,
     bool reference_held) {
   CHECK(in_use_);
 
@@ -214,16 +214,16 @@ void SharedDeviceBuffer::AddUsageEvent(
   usage_events_.push_back({usage_stream, event, reference_held});
 }
 
-SharedDeviceBuffer::StreamAndEventContainer
-SharedDeviceBuffer::LockUseAndTransferUsageEvents() {
+TrackedDeviceBuffer::StreamAndEventContainer
+TrackedDeviceBuffer::LockUseAndTransferUsageEvents() {
   CHECK(in_use_);
   in_use_ = false;
   return std::move(usage_events_);
 }
 
 void GetDeviceBufferEvents(
-    const SharedDeviceBuffer& buffer, bool get_usage_events,
-    absl::flat_hash_set<BufferDefinitionEvent*>* events) {
+    const TrackedDeviceBuffer& buffer, bool get_usage_events,
+    absl::flat_hash_set<BufferSequencingEvent*>* events) {
   if (get_usage_events) {
     for (const auto& e : buffer.usage_events()) {
       events->insert(e.event.get());
@@ -235,11 +235,11 @@ void GetDeviceBufferEvents(
   }
 }
 
-void WaitForBufferDefinitionEventsOnStream(const SharedDeviceBuffer& buffer,
+void WaitForBufferDefinitionEventsOnStream(const TrackedDeviceBuffer& buffer,
                                            se::Stream* stream) {
-  absl::flat_hash_set<BufferDefinitionEvent*> events;
+  absl::flat_hash_set<BufferSequencingEvent*> events;
   GetDeviceBufferEvents(buffer, /*get_usage_events=*/false, &events);
-  for (BufferDefinitionEvent* event : events) {
+  for (BufferSequencingEvent* event : events) {
     event->WaitForEventOnStream(stream);
   }
 }

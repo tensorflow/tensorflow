@@ -37,6 +37,12 @@ from tensorflow.python.platform import test
 PROTOCOL = "grpc"
 
 
+def _make_distributed_dataset(dataset, service):
+  """Creates a distributed dataset with a short task refresh interval."""
+  return dataset.apply(
+      data_service_ops._distribute(service, task_refresh_interval_hint_ms=20))
+
+
 class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def create_cluster(self, num_workers):
@@ -63,7 +69,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testMultipleEpochs(self):
     service = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(3)
-    ds = ds.apply(data_service_ops.distribute(service))
+    ds = _make_distributed_dataset(ds, service)
     for _ in range(10):
       token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
       it = data_service_ops.create_iterator(ds, token)
@@ -74,7 +80,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     num_elements = 10
     service = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = ds.apply(data_service_ops.distribute(service))
+    ds = _make_distributed_dataset(ds, service)
     token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
     it = data_service_ops.create_iterator(ds, token)
     results = [t.numpy() for t in it]
@@ -89,7 +95,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     results = []
     for _ in range(num_datasets):
       ds = dataset_ops.Dataset.range(num_elements)
-      ds = ds.apply(data_service_ops.distribute(service))
+      ds = _make_distributed_dataset(ds, service)
       token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
       it = data_service_ops.create_iterator(ds, token)
       iterators.append(it)
@@ -108,7 +114,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     num_iterators = 3
     service = self.create_cluster(1)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = ds.apply(data_service_ops.distribute(service))
+    ds = _make_distributed_dataset(ds, service)
     result = []
     iterators = []
     token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
@@ -133,7 +139,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     num_elements = 10
     service = self.create_cluster(num_workers)
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = ds.apply(data_service_ops.distribute(service))
+    ds = _make_distributed_dataset(ds, service)
     token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
     iterator = data_service_ops.create_iterator(ds, token)
     results = [elem.numpy() for elem in iterator]
@@ -147,9 +153,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
         PROTOCOL, master_address=master_address)
     num_elements = 100
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = ds.apply(
-        data_service_ops._distribute(
-            self._master.target, task_refresh_interval_hint_ms=20))
+    ds = _make_distributed_dataset(ds, self._master.target)
     token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
     iterator = data_service_ops.create_iterator(ds, token)
     results = []
@@ -160,18 +164,14 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self._new_worker = server_lib.WorkerServer(
         PROTOCOL, master_address=master_address)
 
-    # Give the client time to notice the new task.
-    time.sleep(50 / 1000)  # 50ms
+    # Wait for the new worker to register with the master.
+    while self._master.num_tasks() < 2:
+      time.sleep(10 / 1000)  # 10ms
 
     for elem in iterator:
       results.append(elem.numpy())
 
-    # It is possible that reading from the first worker completes before the
-    # client notices the second worker. We allow this to avoid flaky failures.
-    if len(results) == num_elements:
-      self.assertEqual(list(range(num_elements)), results)
-    else:
-      self.assertCountEqual(2 * list(range(num_elements)), results)
+    self.assertCountEqual(2 * list(range(num_elements)), results)
 
   @combinations.generate(
       combinations.times(test_base.eager_only_combinations(),
@@ -183,13 +183,12 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
         PROTOCOL, master_address=master_address)
     num_elements = 100
     ds = dataset_ops.Dataset.range(num_elements)
-    ds = ds.apply(
-        data_service_ops._distribute(
-            self._master.target, task_refresh_interval_hint_ms=20))
+    ds = _make_distributed_dataset(ds, self._master.target)
     token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
     iterator = data_service_ops.create_iterator(ds, token)
     # Read halfway through the dataset.
-    for i in range(num_elements // 2):
+    midpoint = num_elements // 2
+    for i in range(midpoint):
       self.assertEqual(i, next(iterator).numpy())
 
     # Stop the original worker and start a new one.
@@ -201,15 +200,14 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self._new_worker = server_lib.WorkerServer(
         PROTOCOL, master_address=master_address, port=port)
 
-    # There may be one last element prefetched from the first worker before it
-    # was stopped.
-    val = next(iterator).numpy()
-    self.assertTrue(val == 0 or val == num_elements // 2)
-    start_val = 1 if val == 0 else 0
-
     # The dataset starts over now that we read from the new worker.
-    for i in range(start_val, num_elements):
-      self.assertEqual(i, next(iterator).numpy())
+    for i in range(num_elements):
+      val = next(iterator).numpy()
+      if val == midpoint and i != midpoint:
+        # There may have been one last element prefetched from the first worker
+        # before it was stopped.
+        val = next(iterator).numpy()
+      self.assertEqual(i, val)
 
   @combinations.generate(test_base.eager_only_combinations())
   def testInsideFunction(self):
@@ -220,7 +218,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     @def_function.function
     def f():
       ds = dataset_ops.Dataset.range(num_elements)
-      ds = ds.apply(data_service_ops.distribute(service))
+      ds = _make_distributed_dataset(ds, service)
       token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
       it = data_service_ops.create_iterator(ds, token)
       result = tensor_array_ops.TensorArray(
@@ -244,7 +242,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = ds.with_options(options)
 
     service = self.create_cluster(3)
-    ds = ds.apply(data_service_ops.distribute(service))
+    ds = _make_distributed_dataset(ds, service)
     token = data_service_ops.create_job(ds, processing_mode="parallel_epochs")
     iterator = data_service_ops.create_iterator(ds, token)
     next(iterator)
@@ -276,9 +274,9 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testMultipleDistributeCalls(self):
     service = self.create_cluster(1)
     ds1 = dataset_ops.Dataset.range(1)
-    ds1 = ds1.apply(data_service_ops.distribute(service))
+    ds1 = _make_distributed_dataset(ds1, service)
     ds2 = dataset_ops.Dataset.range(1)
-    ds2 = ds2.apply(data_service_ops.distribute(service))
+    ds2 = _make_distributed_dataset(ds2, service)
     ds = dataset_ops.Dataset.zip((ds1, ds2))
     with self.assertRaisesWithLiteralMatch(
         ValueError, "Datasets containing multiple calls to .distribute(...) "
@@ -292,7 +290,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     def interleave_fn(_):
       ds = dataset_ops.Dataset.range(2)
-      ds = ds.apply(data_service_ops.distribute(service))
+      _make_distributed_dataset(ds, service)
       return ds
 
     with self.assertRaisesRegex(

@@ -26,6 +26,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import tf2
+from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
@@ -524,15 +525,51 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
               strategy_combinations.central_storage_strategy_with_two_gpus,
           ],
       ))
-  def testCache(self, distribution):
-    self.skipTest("Disable due to breakage.")
-    dataset = dataset_ops.Dataset.range(10).shuffle(10).cache().batch(1)
+  def testCacheAcrossIteration(self, distribution):
+    if not tf2.enabled():
+      self.skipTest("Only V2 is supported.")
+
+    dataset = dataset_ops.Dataset.range(10).shuffle(10).cache().batch(2)
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
 
-    first_epoch = list(x.numpy() for x in dist_dataset)
-    second_epoch = list(x.numpy() for x in dist_dataset)
+    first_epoch = list(
+        distribution.experimental_local_results(x) for x in dist_dataset)
+    second_epoch = list(
+        distribution.experimental_local_results(x) for x in dist_dataset)
 
-    self.assertEqual(first_epoch, second_epoch)
+    self.assertAllEqual(first_epoch, second_epoch)
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          reshuffle=[True, False]))
+  def testShuffleAcrossIterations(self, distribution, reshuffle):
+    if not tf2.enabled():
+      self.skipTest("Only V2 is supported.")
+
+    if not reshuffle and not compat.forward_compatible(2020, 5, 22):
+      self.skipTest("Functionality currently not supported.")
+
+    dataset = dataset_ops.Dataset.range(10).shuffle(
+        10, reshuffle_each_iteration=reshuffle).batch(2)
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+
+    first_epoch = list(
+        distribution.experimental_local_results(x) for x in dist_dataset)
+    second_epoch = list(
+        distribution.experimental_local_results(x) for x in dist_dataset)
+
+    if reshuffle:
+      self.assertNotAllEqual(first_epoch, second_epoch)
+    else:
+      self.assertAllEqual(first_epoch, second_epoch)
 
 
 class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,

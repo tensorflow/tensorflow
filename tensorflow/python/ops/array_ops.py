@@ -50,7 +50,7 @@ from tensorflow.python.util.tf_export import tf_export
 newaxis = None
 tf_export("newaxis").export_constant(__name__, "newaxis")
 
-# We override the 'slice' for the "slice" op, so we keep python's
+# We override the 'slice' for the "slice" op, so we keep Python's
 # existing 'slice' for later use in this module.
 _BaseSlice = slice
 
@@ -296,7 +296,7 @@ def expand_dims(input, axis=None, name=None, dim=None):
   """Returns a tensor with a length 1 axis inserted at index `axis`.
 
   Given a tensor `input`, this operation inserts a dimension of length 1 at the
-  dimension index `axis` of `input`'s shape. The dimension index follows python
+  dimension index `axis` of `input`'s shape. The dimension index follows Python
   indexing rules: It's zero-based, a negative index it is counted backward
   from the end.
 
@@ -322,14 +322,14 @@ def expand_dims(input, axis=None, name=None, dim=None):
   >>> tf.expand_dims(image, axis=1).shape.as_list()
   [10, 1, 10, 3]
 
-  Following standard python indexing rules, a negative `axis` counts from the
+  Following standard Python indexing rules, a negative `axis` counts from the
   end so `axis=-1` adds an inner most dimension:
 
   >>> tf.expand_dims(image, -1).shape.as_list()
   [10, 10, 3, 1]
 
   This operation requires that `axis` is a valid index for `input.shape`,
-  following python indexing rules:
+  following Python indexing rules:
 
   ```
   -1-tf.rank(input) <= axis <= tf.rank(input)
@@ -368,7 +368,7 @@ def expand_dims_v2(input, axis, name=None):
   """Returns a tensor with a length 1 axis inserted at index `axis`.
 
   Given a tensor `input`, this operation inserts a dimension of length 1 at the
-  dimension index `axis` of `input`'s shape. The dimension index follows python
+  dimension index `axis` of `input`'s shape. The dimension index follows Python
   indexing rules: It's zero-based, a negative index it is counted backward
   from the end.
 
@@ -394,14 +394,14 @@ def expand_dims_v2(input, axis, name=None):
   >>> tf.expand_dims(image, axis=1).shape.as_list()
   [10, 1, 10, 3]
 
-  Following standard python indexing rules, a negative `axis` counts from the
+  Following standard Python indexing rules, a negative `axis` counts from the
   end so `axis=-1` adds an inner most dimension:
 
   >>> tf.expand_dims(image, -1).shape.as_list()
   [10, 10, 3, 1]
 
   This operation requires that `axis` is a valid index for `input.shape`,
-  following python indexing rules:
+  following Python indexing rules:
 
   ```
   -1-tf.rank(input) <= axis <= tf.rank(input)
@@ -1072,7 +1072,7 @@ def strided_slice(input_,
                   shrink_axis_mask=0,
                   var=None,
                   name=None):
-  """Extracts a strided slice of a tensor (generalized python array indexing).
+  """Extracts a strided slice of a tensor (generalized Python array indexing).
 
   See also `tf.slice`.
 
@@ -2220,7 +2220,7 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
 
     # If we know the number of dimensions (statically), we can do two things:
     # 1. Check that `a` is a (batch) matrix.
-    # 2. Use a python list for perm.  This preserves static shape information
+    # 2. Use a Python list for perm.  This preserves static shape information
     #    and avoids extra computations.
     a_shape = a.get_shape()
     ndims = a_shape.ndims

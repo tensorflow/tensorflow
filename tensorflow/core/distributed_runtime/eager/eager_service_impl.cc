@@ -286,14 +286,9 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
   TF_RETURN_IF_ERROR(worker_session->worker_cache()->GetEagerClientCache(
       &remote_eager_workers));
 
-  DistributedFunctionLibraryRuntime* cluster_flr =
-      eager::CreateClusterFLR(request->context_id(), ctx, worker_session.get());
-
   ctx->ClearCachesAndThreadExecutors();
-  Status s = ctx->UpdateRemoteWorker(
-      device_mgr, std::move(remote_eager_workers),
-      worker_session->remote_device_mgr(), remote_workers,
-      request->context_id(), cluster_flr);
+  Status s = ctx->UpdateRemoteWorker(std::move(remote_eager_workers),
+                                     remote_workers, request->context_id());
   if (!s.ok()) {
     VLOG(1) << "EagerContext::UpdateRemoteWorker failed with " << s.ToString();
     return s;

@@ -884,6 +884,34 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [NoSideEffect]> {
   );
 }
 
+def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
+    NoSideEffect,
+    TFL_OperandHasAtleastRank<0, 1>,
+    TFL_OperandHasAtleastRank<1, 1>,
+    PredOpTrait<"updates and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 1>>
+  ]> {
+  let summary = "Scatter_nd operator";
+
+  let description = [{
+    Scatter `updates` into a new tensor according to `indices`
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[I32]>:$indices,
+    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$updates,
+    TFL_1DTensorOf<[I32]>:$shape
+  );
+
+  let results = (outs
+    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$output
+  );
+
+  let verifier = [{ return Verify(*this); }];
+
+  let hasOptions = 1;
+}
+
 // Same type check of lhs and rhs is handled by the ResultsBroadcastableShape trait.
 def TFL_LessEqualOp : TFL_Op<"less_equal", [
     ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {

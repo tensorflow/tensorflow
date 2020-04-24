@@ -1434,8 +1434,7 @@ class ConvertFusedBatchNormV3Op
           {num_elements}, getElementTypeOrSelf(reserve_space_3_type));
       auto dummy_const = rewriter.create<ConstOp>(
           op.getLoc(), reserve_space_3_type,
-          DenseFPElementsAttr::get(const_attr_type,
-                                   std::vector<float>(num_elements, 0)));
+          DenseElementsAttr::get<float>(const_attr_type, 0.0));
       rewriter.replaceOp(op, {/*y=*/y_out,
                               /*batch_mean=*/op.mean(),
                               /*batch_variance=*/op.variance(),

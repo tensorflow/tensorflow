@@ -502,7 +502,7 @@ cc_library(
         ":hlo",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:Transforms",
     ],
 )
@@ -515,12 +515,13 @@ cc_library(
         "transforms/unfuse_batch_norm_pass.cc",
     ],
     deps = [
-        ":chlo_legalize_to_hlo",
+        ":chlo_legalize_to_hlo",  # build-cleaner: keep
         ":hlo",
-        ":xla_materialize_broadcasts",
-        ":xla_unfuse_batch_norm",
+        ":xla_materialize_broadcasts",  # build-cleaner: keep
+        ":xla_unfuse_batch_norm",  # build-cleaner: keep
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Shape",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Transforms",
     ],

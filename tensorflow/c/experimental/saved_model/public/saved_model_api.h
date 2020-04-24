@@ -36,19 +36,23 @@ typedef struct TF_SavedModel TF_SavedModel;
 //  dirname - A directory filepath that the SavedModel is at.
 //  ctx - A TFE_Context containing optional load/TF runtime options.
 //        `ctx` must outlive the returned TF_SavedModel pointer.
-//  tags - Pointer to char* array of SavedModel tags. Optional if the SavedModel
-//         contains a single Metagraph, as for those exported from
-//        `tf.saved_model.save`.
+//  tags - Pointer to char* array of SavedModel tags. Conceptually,
+//         this is a std::optional<std::array<std::string>>>. The first pointer
+//         represents the "optional" part. If tags = nullptr, we expect the
+//         SavedModel to contain a single Metagraph (as for those exported from
+//         `tf.saved_model.save`). If tags != nullptr, we expect
+//         *tags = char*[tags_len], and load the metagraph matching the tags.
 //  tags_len - number of elements in the `tags` array.
 //  status - Set to OK on success and an appropriate error on failure.
 // Returns:
 //  If status is not OK, returns nullptr. Otherwise, returns a newly created
 //  TF_SavedModel instance. It must be deleted by calling TF_DeleteSavedModel.
-TF_CAPI_EXPORT extern TF_SavedModel* TF_LoadSavedModel(const char* dirname,
-                                                       TFE_Context* ctx,
-                                                       const char* const* tags,
-                                                       int tags_len,
-                                                       TF_Status* status);
+// TODO(bmzhao): Before this API leaves experimental, consider introducing a
+// new C API Symbol TF_LoadSavedModel that doesn't take `tags`, so that this
+// function can take a `tags` double pointer instead.
+TF_CAPI_EXPORT extern TF_SavedModel* TF_LoadSavedModel(
+    const char* dirname, TFE_Context* ctx, const char* const* const* tags,
+    int tags_len, TF_Status* status);
 
 // Deletes a TF_SavedModel, and frees any resources owned by it.
 TF_CAPI_EXPORT extern void TF_DeleteSavedModel(TF_SavedModel* model);

@@ -25,51 +25,102 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+// Represents a pair of random seeds. By TensorFlow convention, if both seeds
+// are 0, then pseudo-random values are used instead.
+class RandomSeeds {
+ public:
+  RandomSeeds(int64 seed, int64 seed2)
+      : input_seed_(seed),
+        input_seed2_(seed2),
+        seed_((seed | seed2) == 0 ? random::New64() : seed),
+        seed2_((seed | seed2) == 0 ? random::New64() : seed2) {}
+
+  int64 input_seed() const { return input_seed_; }
+  int64 input_seed2() const { return input_seed2_; }
+  int64 seed() const { return seed_; }
+  int64 seed2() const { return seed2_; }
+
+ private:
+  const int64 input_seed_;
+  const int64 input_seed2_;
+  const int64 seed_;
+  const int64 seed2_;
+};
+
 // Base class for seed generator resources. Subclasses customize how seeds are
 // generated.
-class SeedGenerator : public ResourceBase {
+class SeedGenerator {
  public:
+  virtual ~SeedGenerator() {}
+
+  virtual int64 seed() const = 0;
+  virtual int64 seed2() const = 0;
+  virtual bool reshuffle_each_iteration() const = 0;
+
   virtual void GenerateSeeds(int64* seed1, int64* seed2) = 0;
   virtual void Reset() = 0;
 
-  virtual int64 num_random_samples();
-  virtual void set_num_random_samples(int64 num_random_samples);
+  virtual int64 num_random_samples() const {
+    tf_shared_lock l(mu_);
+    return num_random_samples_;
+  }
+  virtual void set_num_random_samples(int64 num_random_samples) {
+    mutex_lock l(mu_);
+    num_random_samples_ = num_random_samples;
+  }
 
  protected:
-  mutex mu_;
+  mutable mutex mu_;
   int64 num_random_samples_ TF_GUARDED_BY(mu_) = 0;
+};
+
+// A resource wrapping a shared instance of a seed generator.
+class SeedGeneratorManager : public ResourceBase {
+ public:
+  explicit SeedGeneratorManager(SeedGenerator* seed_generator)
+      : seed_generator_(seed_generator) {}
+
+  std::string DebugString() const override;
+
+  std::shared_ptr<SeedGenerator> get() { return seed_generator_; }
+
+ private:
+  std::shared_ptr<SeedGenerator> seed_generator_;
 };
 
 // Always generates the specified seed values.
 class FixedSeedGenerator : public SeedGenerator {
  public:
-  FixedSeedGenerator(int64 seed, int64 seed2) : seed_(seed), seed2_(seed2) {}
+  explicit FixedSeedGenerator(RandomSeeds seeds) : seeds_(std::move(seeds)) {}
 
-  std::string DebugString() const override;
+  int64 seed() const override { return seeds_.seed(); }
+  int64 seed2() const override { return seeds_.seed(); }
+  bool reshuffle_each_iteration() const override { return false; }
+
   void GenerateSeeds(int64* seed1, int64* seed2) override;
   void Reset() override {}
 
  private:
-  const int64 seed_;
-  const int64 seed2_;
+  const RandomSeeds seeds_;
 };
 
 // Generates different (but deterministically chosen) seed values.
 class RandomSeedGenerator : public SeedGenerator {
  public:
-  RandomSeedGenerator(int64 seed, int64 seed2)
-      : seed_(seed),
-        seed2_(seed2),
-        parent_generator_(seed, seed2),
+  explicit RandomSeedGenerator(RandomSeeds seeds)
+      : seeds_(std::move(seeds)),
+        parent_generator_(seeds_.seed(), seeds_.seed2()),
         generator_(&parent_generator_) {}
 
-  std::string DebugString() const override;
+  int64 seed() const override { return seeds_.seed(); }
+  int64 seed2() const override { return seeds_.seed2(); }
+  bool reshuffle_each_iteration() const override { return true; }
+
   void GenerateSeeds(int64* seed1, int64* seed2) override;
   void Reset() override;
 
  private:
-  const int64 seed_;
-  const int64 seed2_;
+  const RandomSeeds seeds_;
   random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
   random::SingleSampleAdapter<random::PhiloxRandom> generator_
       TF_GUARDED_BY(mu_);
@@ -78,7 +129,7 @@ class RandomSeedGenerator : public SeedGenerator {
 // Creates an instance of seed generator resource and transfers ownership
 // to the caller.
 class AnonymousSeedGeneratorHandleOp
-    : public AnonymousResourceOp<SeedGenerator> {
+    : public AnonymousResourceOp<SeedGeneratorManager> {
  public:
   explicit AnonymousSeedGeneratorHandleOp(OpKernelConstruction* ctx);
   void Compute(OpKernelContext* ctx) override;
@@ -89,10 +140,9 @@ class AnonymousSeedGeneratorHandleOp
                         std::unique_ptr<FunctionLibraryDefinition> flib_def,
                         std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
                         FunctionLibraryRuntime* lib,
-                        SeedGenerator** resource) override;
+                        SeedGeneratorManager** manager) override;
 
-  int64 seed_;
-  int64 seed2_;
+  std::unique_ptr<RandomSeeds> seeds_ = nullptr;
   bool reshuffle_;
 };
 

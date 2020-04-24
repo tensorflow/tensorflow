@@ -12514,6 +12514,14 @@ op {
   is_stateful: true
 }
 op {
+  name: "DummySeedGenerator"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
+}
+op {
   name: "DynamicPartition"
   input_arg {
     name: "data"
@@ -42343,6 +42351,53 @@ op {
   is_stateful: true
 }
 op {
+  name: "ShuffleDatasetV3"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "buffer_size"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed2"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed_generator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "reshuffle_each_iteration"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "ShutdownDistributedTPU"
   is_stateful: true
 }
@@ -45418,7 +45473,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   output_arg {
     name: "output"
@@ -45436,6 +45491,19 @@ op {
   }
   attr {
     name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tsegmentids"
     type: "type"
     default_value {
       type: DT_INT32
@@ -45460,7 +45528,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   input_arg {
     name: "output_dim0"
@@ -45482,6 +45550,19 @@ op {
   }
   attr {
     name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tsegmentids"
     type: "type"
     default_value {
       type: DT_INT32
@@ -45506,7 +45587,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   input_arg {
     name: "num_segments"
@@ -45552,6 +45633,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
 }
 op {
   name: "SparseSegmentSqrtN"
@@ -45565,7 +45659,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   output_arg {
     name: "output"
@@ -45594,6 +45688,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
 }
 op {
   name: "SparseSegmentSqrtNGrad"
@@ -45607,7 +45714,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   input_arg {
     name: "output_dim0"
@@ -45640,6 +45747,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
 }
 op {
   name: "SparseSegmentSqrtNWithNumSegments"
@@ -45653,7 +45773,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   input_arg {
     name: "num_segments"
@@ -45688,6 +45808,19 @@ op {
   }
   attr {
     name: "Tnumsegments"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tsegmentids"
     type: "type"
     default_value {
       type: DT_INT32
@@ -45712,7 +45845,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   output_arg {
     name: "output"
@@ -45751,6 +45884,19 @@ op {
       }
     }
   }
+  attr {
+    name: "Tsegmentids"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
 }
 op {
   name: "SparseSegmentSumWithNumSegments"
@@ -45764,7 +45910,7 @@ op {
   }
   input_arg {
     name: "segment_ids"
-    type: DT_INT32
+    type_attr: "Tsegmentids"
   }
   input_arg {
     name: "num_segments"
@@ -45809,6 +45955,19 @@ op {
   }
   attr {
     name: "Tnumsegments"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "Tsegmentids"
     type: "type"
     default_value {
       type: DT_INT32

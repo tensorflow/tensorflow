@@ -512,7 +512,7 @@ cc_library(
     hdrs = ["lib/core/ndarray_tensor_bridge.h"],
     visibility = tf_external_workspace_visible(
         visibility + [
-            "//learning/deepmind/courier:__subpackages__",
+            "//tensorflow:ndarray_tensor_allow_list",
         ],
     ),
     deps = [
@@ -651,6 +651,7 @@ tf_python_pybind_extension(
         "@pybind11",
         "//third_party/python_runtime:headers",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/c/experimental/saved_model/core:pywrap_required_hdrs",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -986,7 +987,7 @@ cc_library(
     srcs = ["lib/core/ndarray_tensor.cc"],
     hdrs = ["lib/core/ndarray_tensor.h"],
     visibility = tf_external_workspace_visible(visibility + [
-        "//learning/deepmind/courier:__subpackages__",
+        "//tensorflow:ndarray_tensor_allow_list",
     ]),
     deps = [
         ":bfloat16_lib",
@@ -3213,6 +3214,27 @@ tf_py_test(
     srcs = ["ops/collective_ops_test.py"],
     python_version = "PY3",
     tags = ["no_rocm"],
+    deps = [
+        ":client_testlib",
+        ":collective_ops",
+        ":framework_for_generated_wrappers",
+        ":kernels",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "collective_ops_xla_test",
+    size = "small",
+    srcs = ["ops/collective_ops_xla_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",
+        "no_rocm",
+        "no_windows",
+        "nomac",
+    ],
+    xla_enable_strict_auto_jit = True,
     deps = [
         ":client_testlib",
         ":collective_ops",
@@ -7982,6 +8004,7 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/types:optional",
         "@pybind11",
         "//third_party/python_runtime:headers",
+        "//tensorflow/c/experimental/saved_model/core:pywrap_required_hdrs",
         "//tensorflow/compiler/jit:flags_headers_only",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core:framework_headers_lib",

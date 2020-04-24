@@ -12,6 +12,7 @@
 # Note(bmzhao): All *type.h files in this directory are the internal definitions of
 # the opaque C types. These headers should only be visible to internal tensorflow
 # implementors.
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -76,7 +77,6 @@ cc_library(
         "concrete_function_list_type.h",
     ],
     deps = [
-        ":conversion_macros",
         "//tensorflow/c/experimental/saved_model/core:concrete_function",
     ],
 )
@@ -141,8 +141,10 @@ cc_library(
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c:tf_status",
         "//tensorflow/c:tf_status_internal",
+        "//tensorflow/c/eager:tfe_context_internal",
         "//tensorflow/c/experimental/saved_model/core:saved_model_api",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -153,5 +155,25 @@ cc_library(
     ],
     deps = [
         "//tensorflow/c/experimental/saved_model/core:saved_model_api",
+    ],
+)
+
+tf_cc_test(
+    name = "saved_model_api_test",
+    size = "small",
+    srcs = [
+        "saved_model_api_test.cc",
+    ],
+    data = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    ],
+    deps = [
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/c/experimental/saved_model/public:saved_model_api",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
