@@ -79,6 +79,10 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
             pass_config.quant_specs.serialized_quant_stats));
   }
 
+  if (pass_config.shape_inference) {
+    pass_manager->addPass(mlir::TF::CreateTFShapeInferencePass());
+  }
+
   // The conversion pipeline has to follow the following orders:
   // 1) Saved model related optimization like decompose resource ops
   // 2) Convert composite functions like lstm/rnns, along with proper function

@@ -57,6 +57,9 @@ struct GraphImportConfig {
   // If true, upgrade legacy features of the graph (for instance, functionalize
   // control-flow).
   bool upgrade_legacy = false;
+  // If true, enables shape inference on input.
+  // TODO(jpienaar): This will be removed shortly.
+  bool enable_shape_inference = true;
 };
 
 struct GraphExportConfig {
