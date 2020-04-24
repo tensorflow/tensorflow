@@ -253,6 +253,26 @@ retained with length 1.
   let verifier = [{ return Verify(*this); }];
 }
 
+def TF_ApproximateEqualOp : TF_Op<"ApproximateEqual", [Commutative, NoSideEffect]> {
+  let summary = "Returns the truth value of abs(x-y) < tolerance element-wise.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$y,
+
+    DefaultValuedAttr<F32Attr, "1e-05f">:$tolerance
+  );
+
+  let results = (outs
+    I1Tensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ArgMaxOp : TF_Op<"ArgMax", [NoSideEffect]> {
   let summary = [{
 Returns the index with the largest value across dimensions of a tensor.
