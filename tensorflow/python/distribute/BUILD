@@ -849,38 +849,6 @@ distribute_py_test(
     shard_count = 10,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu_presubmit",  # TODO(b/154660040)
-    ],
-    deps = [
-        ":collective_all_reduce_strategy",
-        ":combinations",
-        ":input_lib",
-        ":mirrored_strategy",
-        ":multi_worker_test_base",
-        ":reduce_util",
-        ":strategy_combinations",
-        ":values",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:sparse_ops",
-        "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-distribute_py_test(
-    name = "input_lib_type_spec_test",
-    srcs = ["input_lib_type_spec_test.py"],
-    main = "input_lib_type_spec_test.py",
-    shard_count = 10,
-    tags = [
-        "multi_and_single_gpu",
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -1485,10 +1453,9 @@ distribute_py_test(
     name = "ctl_correctness_test",
     srcs = ["ctl_correctness_test.py"],
     main = "ctl_correctness_test.py",
-    shard_count = 20,
+    shard_count = 10,
     tags = [
         "multi_and_single_gpu",
-        "no_gpu_presubmit",  # TODO(b/154660040)
         "noguitar",  # b/140755528
     ],
     deps = [
