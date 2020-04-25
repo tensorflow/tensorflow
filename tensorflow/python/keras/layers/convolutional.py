@@ -77,16 +77,11 @@ class Conv(Layer):
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `strides` value != 1.
-    groups: Integer, the number of channel groups controlling the connections
-      between inputs and outputs. Input channels and `filters` must both be
-      divisible by `groups`. For example,
-        - At `groups=1`, all inputs are convolved to all outputs.
-        - At `groups=2`, the operation becomes equivalent to having two
-          convolutional layers side by side, each seeing half the input
-          channels, and producing half the output channels, and both
-          subsequently concatenated.
-        - At `groups=input_channels`, each input channel is convolved with its
-          own set of filters, of size `filters / input_channels`
+    groups: A positive integer specifying the number of groups in which the
+      input is split along the channel axis. Each group is convolved
+      separately with `filters / groups` filters. The output is the
+      concatenation of all the `groups` results along the channel axis.
+      Input channels and `filters` must both be divisible by `groups`.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied.
     use_bias: Boolean, whether the layer uses a bias.
@@ -398,20 +393,15 @@ class Conv1D(Conv):
         2.1](https://arxiv.org/abs/1609.03499).
     data_format: A string,
       one of `channels_last` (default) or `channels_first`.
-    groups: Integer, the number of channel groups controlling the connections
-      between inputs and outputs. Input channels and `filters` must both be
-      divisible by `groups`. For example,
-        - At `groups=1`, all inputs are convolved to all outputs.
-        - At `groups=2`, the operation becomes equivalent to having two
-          convolutional layers side by side, each seeing half the input
-          channels, and producing half the output channels, and both
-          subsequently concatenated.
-        - At `groups=input_channels`, each input channel is convolved with its
-          own set of filters, of size `filters / input_channels`
     dilation_rate: an integer or tuple/list of a single integer, specifying
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any `strides` value != 1.
+    groups: A positive integer specifying the number of groups in which the
+      input is split along the channel axis. Each group is convolved
+      separately with `filters / groups` filters. The output is the
+      concatenation of all the `groups` results along the channel axis.
+      Input channels and `filters` must both be divisible by `groups`.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
@@ -560,16 +550,11 @@ class Conv2D(Conv):
       all spatial dimensions.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any stride value != 1.
-    groups: Integer, the number of channel groups controlling the connections
-      between inputs and outputs. Input channels and `filters` must both be
-      divisible by `groups`. For example,
-        - At `groups=1`, all inputs are convolved to all outputs.
-        - At `groups=2`, the operation becomes equivalent to having two
-          convolutional layers side by side, each seeing half the input
-          channels, and producing half the output channels, and both
-          subsequently concatenated.
-        - At `groups=input_channels`, each input channel is convolved with its
-          own set of filters, of size `filters / input_channels`
+    groups: A positive integer specifying the number of groups in which the
+      input is split along the channel axis. Each group is convolved
+      separately with `filters / groups` filters. The output is the
+      concatenation of all the `groups` results along the channel axis.
+      Input channels and `filters` must both be divisible by `groups`.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
@@ -710,16 +695,11 @@ class Conv3D(Conv):
       all spatial dimensions.
       Currently, specifying any `dilation_rate` value != 1 is
       incompatible with specifying any stride value != 1.
-    groups: Integer, the number of channel groups controlling the connections
-      between inputs and outputs. Input channels and `filters` must both be
-      divisible by `groups`. For example,
-        - At `groups=1`, all inputs are convolved to all outputs.
-        - At `groups=2`, the operation becomes equivalent to having two
-          convolutional layers side by side, each seeing half the input
-          channels, and producing half the output channels, and both
-          subsequently concatenated.
-        - At `groups=input_channels`, each input channel is convolved with its
-          own set of filters, of size `filters / input_channels`
+    groups: A positive integer specifying the number of groups in which the
+      input is split along the channel axis. Each group is convolved
+      separately with `filters / groups` filters. The output is the
+      concatenation of all the `groups` results along the channel axis.
+      Input channels and `filters` must both be divisible by `groups`.
     activation: Activation function to use.
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
