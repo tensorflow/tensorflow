@@ -3571,6 +3571,65 @@ class SimplifyEmbeddingLookupStage : public ArithmeticOptimizerStage {
   }
 };
 
+// Eliminates unnecessary casts before sparse segment reduction operations.
+//
+// Existing graphs and library code would often insert a cast from DT_INT64 to
+// DT_INT32 on the indices and/or segment_ids inputs to "SparseSegment*" ops.
+// Support for for DT_INT64 indices and/or segment_ids now exists, so we can
+// pass the input directly without a cast.
+class RemoveCastIntoSegmentReductionStage : public ArithmeticOptimizerStage {
+ public:
+  explicit RemoveCastIntoSegmentReductionStage(
+      const GraphOptimizerContext& ctx,
+      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("RemoveCastIntoSegmentReductionStage", ctx,
+                                 ctx_ext) {}
+  ~RemoveCastIntoSegmentReductionStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsAnySparseSegmentReduction(*node);
+  }
+
+  Status TrySimplify(NodeDef* reduction_node,
+                     string* simplified_node_name) override {
+    if (IsInPreserveSet(*reduction_node)) return Status::OK();
+
+    bool optimized = false;
+
+    // Inputs 1 (indices) and 2 (segment_ids) can be either DT_INT32 or
+    // DT_INT64.
+    std::array<std::pair<int, string>, 2> input_details = {
+        std::make_pair(1, "Tidx"), std::make_pair(2, "Tsegmentids")};
+
+    for (const auto& input : input_details) {
+      int input_index = input.first;
+      const string& type_attr_name = input.second;
+      NodeDef* cast_node = nullptr;
+      TF_RETURN_IF_ERROR(
+          GetInputNode(reduction_node->input(input_index), &cast_node));
+      DataType original_index_type;
+      if (IsCastFromSupportedType(*cast_node, &original_index_type)) {
+        reduction_node->set_input(input_index, cast_node->input(0));
+        ctx().node_map->UpdateInput(reduction_node->name(),
+                                    reduction_node->input(1),
+                                    cast_node->input(0));
+        SetDataTypeToAttr(original_index_type, type_attr_name, reduction_node);
+        optimized = true;
+      }
+    }
+
+    if (optimized) *simplified_node_name = reduction_node->name();
+    return Status::OK();
+  }
+
+ private:
+  bool IsCastFromSupportedType(const NodeDef& node, DataType* out_input_type) {
+    if (!IsCast(node)) return false;
+    if (!GetNodeAttr(node, "SrcT", out_input_type).ok()) return false;
+    return *out_input_type == DT_INT32 || *out_input_type == DT_INT64;
+  }
+};
+
 }  // namespace
 
 Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
@@ -3645,6 +3704,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<FuseSquaredDiffStage>(ctx, ctx_ext);
   if (options_.simplify_embedding_lookup)
     pipeline.AddStage<SimplifyEmbeddingLookupStage>(ctx, ctx_ext);
+  if (options_.remove_cast_into_segment_reduction)
+    pipeline.AddStage<RemoveCastIntoSegmentReductionStage>(ctx, ctx_ext);
 
   VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
           << absl::StrJoin(pipeline.StageNames(), ", ");
