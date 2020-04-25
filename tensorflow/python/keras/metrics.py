@@ -1416,8 +1416,8 @@ class Recall(Metric):
 class SensitivitySpecificityBase(Metric):
   """Abstract base class for computing sensitivity and specificity.
 
-  For additional information about specificity and sensitivity, see the
-  following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+  For additional information about specificity and sensitivity, see
+  [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
   """
 
   def __init__(self, value, num_thresholds=200, name=None, dtype=None):
@@ -1523,8 +1523,8 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
-  For additional information about specificity and sensitivity, see the
-  following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+  For additional information about specificity and sensitivity, see
+  [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
 
   Args:
     specificity: A scalar value in range `[0, 1]`.
@@ -1598,8 +1598,8 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
   If `sample_weight` is `None`, weights default to 1.
   Use `sample_weight` of 0 to mask values.
 
-  For additional information about specificity and sensitivity, see the
-  following: https://en.wikipedia.org/wiki/Sensitivity_and_specificity
+  For additional information about specificity and sensitivity, see
+  [the following](https://en.wikipedia.org/wiki/Sensitivity_and_specificity).
 
   Args:
     sensitivity: A scalar value in range `[0, 1]`.
@@ -1828,13 +1828,14 @@ class AUC(Metric):
       use when discretizing the roc curve. Values must be > 1.
     curve: (Optional) Specifies the name of the curve to be computed, 'ROC'
       [default] or 'PR' for the Precision-Recall-curve.
-    summation_method: (Optional) Specifies the Riemann summation method used
-      (https://en.wikipedia.org/wiki/Riemann_sum): 'interpolation' [default],
-        applies mid-point summation scheme for `ROC`. For PR-AUC, interpolates
-        (true/false) positives but not the ratio that is precision (see Davis
-        & Goadrich 2006 for details); 'minoring' that applies left summation
+    summation_method: (Optional) Specifies the [Riemann summation method](
+        https://en.wikipedia.org/wiki/Riemann_sum) used.
+        'interpolation' (default) applies mid-point summation scheme for `ROC`.
+        For PR-AUC, interpolates (true/false) positives but not the ratio that
+        is precision (see Davis & Goadrich 2006 for details);
+        'minoring' applies left summation
         for increasing intervals and right summation for decreasing intervals;
-        'majoring' that does the opposite.
+        'majoring' does the opposite.
     name: (Optional) string name of the metric instance.
     dtype: (Optional) data type of the metric result.
     thresholds: (Optional) A list of floating point values to use as the
@@ -1924,7 +1925,8 @@ class AUC(Metric):
 
     # Add an endpoint "threshold" below zero and above one for either
     # threshold method to account for floating point imprecisions.
-    self.thresholds = [0.0 - K.epsilon()] + thresholds + [1.0 + K.epsilon()]
+    self._thresholds = np.array([0.0 - K.epsilon()] + thresholds +
+                                [1.0 + K.epsilon()])
 
     if isinstance(curve, metrics_utils.AUCCurve):
       self.curve = curve
@@ -1957,6 +1959,11 @@ class AUC(Metric):
       self._num_labels = None
     else:
       self._build(None)
+
+  @property
+  def thresholds(self):
+    """The thresholds used for evaluating AUC."""
+    return list(self._thresholds)
 
   def _build(self, shape):
     """Initialize TP, FP, TN, and FN tensors, given the shape of the data."""
@@ -2055,7 +2062,7 @@ class AUC(Metric):
           },
           y_true,
           y_pred,
-          self.thresholds,
+          self._thresholds,
           sample_weight=sample_weight,
           multi_label=self.multi_label,
           label_weights=label_weights)
@@ -2226,8 +2233,9 @@ class AUC(Metric):
 class CosineSimilarity(MeanMetricWrapper):
   """Computes the cosine similarity between the labels and predictions.
 
-  cosine similarity = (a . b) / ||a|| ||b||
-  [Cosine Similarity](https://en.wikipedia.org/wiki/Cosine_similarity)
+  `cosine similarity = (a . b) / ||a|| ||b||`
+
+  See: [Cosine Similarity](https://en.wikipedia.org/wiki/Cosine_similarity).
 
   This metric keeps the average cosine similarity between `predictions` and
   `labels` over a stream of data.
@@ -3460,4 +3468,3 @@ def get(identifier):
 
 def is_built_in(cls):
   return cls.__module__ == Metric.__module__
-

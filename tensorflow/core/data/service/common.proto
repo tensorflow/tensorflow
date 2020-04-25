@@ -36,5 +36,5 @@ message TaskDef {
   DatasetDef dataset = 1;
   int64 dataset_id = 2;
   int64 task_id = 3;
-  int64 epoch_id = 4;
+  int64 job_id = 4;
 }

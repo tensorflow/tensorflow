@@ -147,6 +147,21 @@ void SharedDeviceBuffer::AddToInputAsImmutable(
   }
 }
 
+void SharedDeviceBuffer::AddToInputAsDonated(
+    ShapeTree<MaybeOwningDeviceMemory>::iterator* iterator,
+    const ShapeTree<MaybeOwningDeviceMemory>::iterator& end,
+    ExecutionInput* execution_input,
+    se::DeviceMemoryAllocator* allocator) const {
+  for (const se::DeviceMemoryBase& buf : device_memory_) {
+    CHECK(*iterator != end);
+    // Set buffers to be case (2) in the comment on ExecutionInput.
+    (*iterator)->second = MaybeOwningDeviceMemory(
+        se::OwningDeviceMemory(buf, device_ordinal_, allocator));
+    execution_input->SetUnownedIndex((*iterator)->first);
+    ++(*iterator);
+  }
+}
+
 namespace {
 
 using MoveIterator =
@@ -206,18 +221,24 @@ SharedDeviceBuffer::LockUseAndTransferUsageEvents() {
   return std::move(usage_events_);
 }
 
-void GetDeviceBufferDefinitionEvents(
-    const SharedDeviceBuffer& buffer,
+void GetDeviceBufferEvents(
+    const SharedDeviceBuffer& buffer, bool get_usage_events,
     absl::flat_hash_set<BufferDefinitionEvent*>* events) {
-  for (const auto& e : buffer.definition_events()) {
-    events->insert(e.get());
+  if (get_usage_events) {
+    for (const auto& e : buffer.usage_events()) {
+      events->insert(e.event.get());
+    }
+  } else {
+    for (const auto& e : buffer.definition_events()) {
+      events->insert(e.get());
+    }
   }
 }
 
 void WaitForBufferDefinitionEventsOnStream(const SharedDeviceBuffer& buffer,
                                            se::Stream* stream) {
   absl::flat_hash_set<BufferDefinitionEvent*> events;
-  GetDeviceBufferDefinitionEvents(buffer, &events);
+  GetDeviceBufferEvents(buffer, /*get_usage_events=*/false, &events);
   for (BufferDefinitionEvent* event : events) {
     event->WaitForEventOnStream(stream);
   }

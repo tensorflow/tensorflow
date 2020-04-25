@@ -734,6 +734,7 @@ tf_py_test(
 tf_py_test(
     name = "snapshot_test",
     size = "medium",
+    timeout = "long",
     srcs = ["snapshot_test.py"],
     shard_count = 10,
     deps = [

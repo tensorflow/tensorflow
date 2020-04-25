@@ -16,11 +16,13 @@ limitations under the License.
 
 #include <string.h>
 #include <sys/utsname.h>
+#include <limits>
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/experimental/delegates/coreml/builders/op_validator.h"
 #include "tensorflow/lite/experimental/delegates/coreml/builders/util.h"
 #include "tensorflow/lite/experimental/delegates/coreml/coreml_delegate_kernel.h"
@@ -29,6 +31,8 @@ limitations under the License.
 
 namespace tflite {
 namespace {
+constexpr int kMinNodesPerCoreMlDelegate = 2;
+
 using delegates::coreml::CoreMlDelegateKernel;
 
 bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfLiteNode* node,
@@ -183,36 +187,55 @@ TfLiteRegistration GetCoreMlKernelRegistration() {
 }
 
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
-  // Reserve 1 element, since we need first element to be size, will be updated
-  // later.
-  std::vector<int> supported_nodes(1);
-  TfLiteIntArray* plan;
-  TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan));
-  TfLiteNode* node;
-  TfLiteRegistration* registration;
+  const auto* params =
+      reinterpret_cast<TfLiteCoreMlDelegateOptions*>(delegate->data_);
 
-  for (int node_index : TfLiteIntArrayView(plan)) {
-    TF_LITE_ENSURE_STATUS(
-        context->GetNodeAndRegistration(context, node_index, &node, &registration));
-    if (IsNodeSupportedByDelegate(registration, node, context)) {
-      supported_nodes.push_back(node_index);
-    }
+  delegates::IsNodeSupportedFn node_supported_fn =
+      [=](TfLiteContext* context, TfLiteNode* node,
+          TfLiteRegistration* registration,
+          std::string* unsupported_details) -> bool {
+    return IsNodeSupportedByDelegate(registration, node, context);
+  };
+
+  delegates::GraphPartitionHelper helper(context, node_supported_fn);
+  TF_LITE_ENSURE_STATUS(helper.Partition(nullptr));
+
+  const auto delegate_partitions = helper.GetFirstNLargestPartitions(
+      params->max_delegated_partitions, params->min_nodes_per_partition);
+
+  // To avoid creating a new TfLiteIntArray and free it later, we reserve one
+  // element to represent TfLiteIntArray.size which is the 1st element of
+  // TfLiteIntArray C struct.
+  std::vector<int> supported_nodes(1);
+  for (const auto partition : delegate_partitions) {
+    auto nodes = TfLiteIntArrayView(partition->nodes_to_replace);
+    supported_nodes.insert(supported_nodes.end(), nodes.begin(), nodes.end());
   }
+
   // Set first element to the number of nodes to replace.
   supported_nodes[0] = supported_nodes.size() - 1;
-  TfLiteRegistration coreml_kernel_registration = GetCoreMlKernelRegistration();
-  TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO, "CoreML delegate: %d nodes delegated out of %d nodes.\n",
-                  supported_nodes[0], plan->size);
+  TFLITE_LOG_PROD(tflite::TFLITE_LOG_INFO, "CoreML delegate: %d nodes delegated out of %d nodes, "
+                  "with %d partitions.\n",
+                  supported_nodes[0], helper.num_total_nodes(), delegate_partitions.size());
 
   return context->ReplaceNodeSubsetsWithDelegateKernels(
-      context, coreml_kernel_registration,
+      context, GetCoreMlKernelRegistration(),
       reinterpret_cast<TfLiteIntArray*>(supported_nodes.data()), delegate);
 }
 
 class CoreMlDelegate : public TfLiteDelegate {
  public:
   explicit CoreMlDelegate(const TfLiteCoreMlDelegateOptions* params)
-      : params_(params != nullptr ? *params : TfLiteCoreMlDelegateOptions()) {}
+      : params_(params != nullptr ? *params : TfLiteCoreMlDelegateOptions()) {
+    {
+      if (params_.max_delegated_partitions <= 0) {
+        params_.max_delegated_partitions = std::numeric_limits<int>::max();
+      }
+      if (params_.min_nodes_per_partition <= 0) {
+        params_.min_nodes_per_partition = kMinNodesPerCoreMlDelegate;
+      }
+    }
+  }
 
   TfLiteCoreMlDelegateOptions* params() { return &params_; }
 

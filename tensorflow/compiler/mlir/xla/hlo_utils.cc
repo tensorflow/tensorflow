@@ -83,12 +83,11 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
                       ConvertTensorShapeToType<mlir::RankedTensorType>(
                           literal.shape(), builder));
 
+  // TODO(hinsu): Support remaining XLA primitive types.
   auto element_type = literal.shape().element_type();
   switch (element_type) {
     case PrimitiveType::PRED:
       return CreateDenseAttrFromLiteral<bool>(type, literal);
-    case PrimitiveType::F16:
-      return CreateDenseAttrFromLiteral<float>(type, literal);
     case PrimitiveType::F32:
       return CreateDenseAttrFromLiteral<float>(type, literal);
     case PrimitiveType::F64:

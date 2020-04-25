@@ -57,6 +57,7 @@ enum HostEventType {
   kSessionRun,
   kFunctionRun,
   kRunGraph,
+  kTfOpRun,
   kEagerKernelExecute,
   kExecutorStateProcess,
   kExecutorDoneCallback,
@@ -144,6 +145,7 @@ enum StatType {
   kHloOp,
   kHloModule,
   kEquation,
+  kIsEager,
   // Performance counter related.
   kRawValue,
   kScaledValue,

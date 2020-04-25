@@ -48,9 +48,9 @@ class ErrorReporter {
 // reduce binary size, define TF_LITE_STRIP_ERROR_STRINGS when compiling and
 // every call will be stubbed out, taking no memory.
 #ifndef TF_LITE_STRIP_ERROR_STRINGS
-#define TF_LITE_REPORT_ERROR(reporter, ...) \
-  do {                                      \
-    reporter->Report(__VA_ARGS__);          \
+#define TF_LITE_REPORT_ERROR(reporter, ...)                             \
+  do {                                                                  \
+    static_cast<tflite::ErrorReporter*>(reporter)->Report(__VA_ARGS__); \
   } while (false)
 #else  // TF_LITE_STRIP_ERROR_STRINGS
 #define TF_LITE_REPORT_ERROR(reporter, ...)

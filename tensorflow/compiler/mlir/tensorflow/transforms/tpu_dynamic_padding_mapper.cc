@@ -124,10 +124,12 @@ LogicalResult GetRemappedPaddings(
     if (arg_index_it == remapped_indices.end()) continue;
 
     auto padding_arg_index_it = remapped_indices.find(padding_arg_index);
-    if (padding_arg_index_it == remapped_indices.end())
-      return launch_func.emitOpError(llvm::formatv(
+    if (padding_arg_index_it == remapped_indices.end()) {
+      launch_func.emitWarning(llvm::formatv(
           "bad '{0}' attribute at index {1}, unused padding_arg_index {2}",
           kPaddingMapAttr, idx, padding_arg_index));
+      continue;
+    }
 
     padding_proto.set_arg_index(arg_index_it->second);
     padding_proto.set_padding_arg_index(padding_arg_index_it->getSecond());

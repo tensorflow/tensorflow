@@ -2560,9 +2560,10 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
   return DoBlasInternal(wrap::rocblas_cgemm_strided_batched, stream,
                         false, /* pointer_mode_host */
                         ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m,
-                        n, k, complex_cast(alpha), complex_cast(a), lda, stride_a, complex_cast(b),
-                        ldb, stride_b, complex_cast(beta), complex_cast(c), ldc,
-                        stride_c, batch_count);
+                        n, k, complex_cast(alpha), complex_cast(a), lda,
+                        stride_a, complex_cast(b), ldb, stride_b,
+                        complex_cast(beta), complex_cast(c), ldc, stride_c,
+                        batch_count);
 }
 bool ROCMBlas::DoBlasGemmStridedBatched(
     Stream *stream, blas::Transpose transa, blas::Transpose transb, uint64 m,
@@ -2574,9 +2575,10 @@ bool ROCMBlas::DoBlasGemmStridedBatched(
   return DoBlasInternal(wrap::rocblas_zgemm_strided_batched, stream,
                         false, /* pointer_mode_host */
                         ROCMBlasTranspose(transa), ROCMBlasTranspose(transb), m,
-                        n, k, complex_cast(alpha), complex_cast(a), lda, stride_a, complex_cast(b),
-                        ldb, stride_b, complex_cast(beta), complex_cast(c), ldc,
-                        stride_c, batch_count);
+                        n, k, complex_cast(alpha), complex_cast(a), lda,
+                        stride_a, complex_cast(b), ldb, stride_b,
+                        complex_cast(beta), complex_cast(c), ldc, stride_c,
+                        batch_count);
 }
 
 port::Status ROCMBlas::GetVersion(string *version) {

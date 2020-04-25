@@ -77,7 +77,8 @@ class ParallelMapFunctor {
   // 2. A `std::vector<Tensor>` containing the input element.
   // 3. A `std::vector<Tensor>*` to which the function will write the result.
   // 4. A `StatusCallback` that should be invoked when the function is complete.
-  virtual void MapFunc(IteratorContext* ctx, const string& prefix,
+  virtual void MapFunc(IteratorContext* ctx,
+                       const std::shared_ptr<model::Node>& node,
                        std::vector<Tensor> input, std::vector<Tensor>* output,
                        StatusCallback callback) = 0;
 };

@@ -723,7 +723,7 @@ class StreamExecutor {
 
   // Only one worker thread is needed; little work will be done by the
   // executor.
-  static const int kNumBackgroundThreads = 1;
+  static constexpr int kNumBackgroundThreads = 1;
 
   // Indicates if StreamExecutor operation tracing should be performed.
   bool tracing_enabled_;

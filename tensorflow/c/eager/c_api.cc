@@ -1389,45 +1389,10 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     return nullptr;
   }
 
-  tensorflow::TensorHandle* handle = nullptr;
-  tensorflow::Device* device;
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(ctx->context);
-  status->status = context->FindDeviceFromName(device_name, &device);
-  if (!status->status.ok()) {
-    tensorflow::CustomDevice* dev;
-    status->status = context->FindCustomDeviceFromName(device_name, &dev);
-    if (status->status.ok()) {
-      status->status = dev->CopyTensorToDevice(
-          tensorflow::TensorHandleFromInterface(h->handle), &handle);
-      if (status->status.ok()) {
-        return new TFE_TensorHandle{handle};
-      }
-    }
-    return nullptr;
-  }
-  // Handle tensor handles currently in custom devices
-  const char* handle_device_name = h->handle->DeviceName(&status->status);
-  if (!status->status.ok()) {
-    return nullptr;
-  }
-  tensorflow::CustomDevice* dev;
-  status->status = context->FindCustomDeviceFromName(handle_device_name, &dev);
+  auto* result = ctx->context->CopyTensorHandleToDevice(h->handle, device_name,
+                                                        &status->status);
   if (status->status.ok()) {
-    status->status = dev->CopyTensorFromDevice(
-        tensorflow::TensorHandleFromInterface(h->handle), device_name, &handle);
-    if (status->status.ok()) {
-      return new TFE_TensorHandle{handle};
-    }
-    return nullptr;
-  }
-
-  // Handle regular case.
-  status->status = tensorflow::EagerCopyToDevice(
-      tensorflow::TensorHandleFromInterface(h->handle), context,
-      &context->Executor(), device, false, &handle);
-  if (status->status.ok()) {
-    return new TFE_TensorHandle{handle};
+    return new TFE_TensorHandle{result};
   }
   return nullptr;
 }
@@ -1587,6 +1552,7 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
       // require TFE_Op* and just convert it internally a NameAttrValue, so
       // consider adding an overload to the C API to make this case easier.
       TFE_OpSetAttrFunction(op, attr_name, func_op);
+      TFE_DeleteOp(func_op);
     } break;
     case tensorflow::AttrValue::kList:
       TF_FALLTHROUGH_INTENDED;

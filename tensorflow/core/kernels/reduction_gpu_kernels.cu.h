@@ -23,7 +23,7 @@ limitations under the License.
 #include <sstream>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "gpu_prim.h"
+#include "tensorflow/core/kernels/gpu_prim.h"
 #include "tensorflow/core/kernels/reduction_ops.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/util/gpu_device_functions.h"

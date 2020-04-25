@@ -40,7 +40,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Support/STLExtras.h"  // from @llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/logging.h"
@@ -90,7 +89,7 @@ struct TFInlinerInterface : public DialectInlinerInterface {
 // are perfectly forwarded to the block's terminator.
 bool BlockWrapsSingleOp(Block* block) {
   auto body = block->without_terminator();
-  if (!has_single_element(body)) return false;
+  if (!hasSingleElement(body)) return false;
 
   Operation& wrapped_op = *body.begin();
   Operation* terminator = block->getTerminator();

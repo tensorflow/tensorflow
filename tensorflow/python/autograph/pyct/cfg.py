@@ -43,10 +43,8 @@ import collections
 import weakref
 from enum import Enum
 
-# pylint:disable=g-bad-import-order
-
 import gast
-# pylint:enable=g-bad-import-order
+import six
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
@@ -206,6 +204,18 @@ class GraphVisitor(object):
     self.out = {
         node: self.init_state(node) for node in self.graph.index.values()
     }
+
+  def can_ignore(self, node):
+    """Returns True if the node can safely be assumed not to touch variables."""
+    ast_node = node.ast_node
+    if anno.hasanno(ast_node, anno.Basic.SKIP_PROCESSING):
+      return True
+    if six.PY2:
+      if (isinstance(ast_node, gast.Name) and
+          ast_node.id in ('None', 'True', 'False')):
+        return True
+    return isinstance(ast_node,
+                      (gast.Break, gast.Continue, gast.Raise, gast.Pass))
 
   def _visit_internal(self, mode):
     """Visits the CFG, depth-first."""

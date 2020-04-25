@@ -37,8 +37,8 @@ namespace {
 using ::testing::ElementsAreArray;
 
 enum class TestType {
-  CONST = 0,
-  DYNAMIC = 1,
+  kConst = 0,
+  kDynamic = 1,
 };
 
 template <typename InputType>
@@ -54,7 +54,7 @@ class BaseTransposeConvOpModel : public SingleOpModel {
     // Just to be confusing, transpose_conv has an _input_ named "output_shape"
     // that sets the shape of the output tensor of the op :). It must always be
     // an int32 1D four element tensor.
-    if (test_type == TestType::DYNAMIC) {
+    if (test_type == TestType::kDynamic) {
       output_shape_ = AddInput({TensorType_INT32, {4}});
       filter_ = AddInput(filter);
     } else {
@@ -74,7 +74,7 @@ class BaseTransposeConvOpModel : public SingleOpModel {
     BuildInterpreter(
         {GetShape(output_shape_), GetShape(filter_), GetShape(input_)});
 
-    if (test_type == TestType::DYNAMIC) {
+    if (test_type == TestType::kDynamic) {
       PopulateTensor<int32_t>(output_shape_, output_shape_data);
       PopulateTensor<InputType>(filter_, filter_data);
     }
@@ -445,7 +445,7 @@ INSTANTIATE_TEST_SUITE_P(
     TransposeConvOpTest, TransposeConvOpTest,
     ::testing::Combine(
         ::testing::ValuesIn(SingleOpTest::GetKernelTags(*kKernelMap)),
-        ::testing::Values(TestType::CONST, TestType::DYNAMIC)));
+        ::testing::Values(TestType::kConst, TestType::kDynamic)));
 
 }  // namespace
 }  // namespace tflite

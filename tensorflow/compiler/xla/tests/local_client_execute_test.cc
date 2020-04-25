@@ -860,8 +860,8 @@ XLA_TEST_F(LocalClientExecuteTest, ShapeBufferToLiteralConversion64bit) {
     EXPECT_EQ(literal, transferred_literal);
   };
 
-  test_to_device_and_back(
-      LiteralUtil::CreateR2<double>({{1.0, 2.0, 3.0}, {44.0, 0.1, -3}}));
+  test_to_device_and_back(LiteralUtil::CreateR2<double>(
+      {{1.0, 2.0, 3.0}, {44.0, 0.099999999999999978, -3}}));
   test_to_device_and_back(LiteralUtil::CreateR2<int64>({{2, 1}, {4444, 56}}));
   test_to_device_and_back(
       LiteralUtil::CreateR2<uint64>({{20000000000ULL, 1}, {4444, 56}}));

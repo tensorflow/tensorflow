@@ -747,9 +747,7 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
 DECLARE_GPU_SPEC(complex64);
 DECLARE_GPU_SPEC(complex128);
 #endif
@@ -759,9 +757,7 @@ DECLARE_GPU_SPEC(complex128);
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
-#if !defined(TENSORFLOW_USE_NVCC) && \
-    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
 REGISTER_KERNELS(GPU, complex64);
 REGISTER_KERNELS(GPU, complex128);
 #endif
@@ -924,8 +920,7 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
-#if !defined(TENSORFLOW_USE_NVCC)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
 DECLARE_GPU_SPEC(complex64);
 DECLARE_GPU_SPEC(complex128);
 #endif
@@ -935,8 +930,7 @@ DECLARE_GPU_SPEC(complex128);
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
-#if !defined(TENSORFLOW_USE_NVCC)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
 REGISTER_KERNELS(GPU, complex64);
 REGISTER_KERNELS(GPU, complex128);
 #endif
@@ -1409,8 +1403,7 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
-#if !defined(TENSORFLOW_USE_NVCC)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
 DECLARE_GPU_SPEC(complex64);
 DECLARE_GPU_SPEC(complex128);
 #endif
@@ -1420,8 +1413,7 @@ DECLARE_GPU_SPEC(complex128);
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
-#if !defined(TENSORFLOW_USE_NVCC)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
 REGISTER_KERNELS(GPU, complex64);
 REGISTER_KERNELS(GPU, complex128);
 #endif
@@ -1521,8 +1513,7 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
-#if !defined(TENSORFLOW_USE_NVCC)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
 DECLARE_GPU_SPEC(complex64);
 DECLARE_GPU_SPEC(complex128);
 #endif
@@ -1532,8 +1523,7 @@ DECLARE_GPU_SPEC(complex128);
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
-#if !defined(TENSORFLOW_USE_NVCC)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
 REGISTER_KERNELS(GPU, complex64);
 REGISTER_KERNELS(GPU, complex128);
 #endif
@@ -4269,8 +4259,7 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
-#if !defined(TENSORFLOW_USE_NVCC)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
 DECLARE_GPU_SPEC(complex64);
 DECLARE_GPU_SPEC(complex128);
 #endif
@@ -4280,8 +4269,7 @@ DECLARE_GPU_SPEC(complex128);
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
-#if !defined(TENSORFLOW_USE_NVCC)  // TODO(b/143684500): Eigen to support
-                                   // complex sqrt
+#ifndef TENSORFLOW_USE_NVCC  // TODO(b/143684500): Eigen to support complex sqrt
 REGISTER_KERNELS(GPU, complex64);
 REGISTER_KERNELS(GPU, complex128);
 #endif

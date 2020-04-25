@@ -41,12 +41,13 @@ final class ModelMetadataInfo {
   /**
    * Creates a {@link ModelMetadataInfo} with the metadata FlatBuffer, {@code buffer}.
    *
-   * @param buffer The TFLite metadata FlatBuffer.
-   * @throws NullPointerException if {@code buffer} is null.
-   * @throws IllegalArgumentException if the metadata does not contain any subgraph metadata.
+   * @param buffer the TFLite metadata FlatBuffer
+   * @throws NullPointerException if {@code buffer} is null
+   * @throws IllegalArgumentException if {@code buffer} does not contain any subgraph metadata, or
+   *     it does not contain the expected identifier
    */
   ModelMetadataInfo(ByteBuffer buffer) {
-    checkNotNull(buffer, "Metadata flatbuffer cannot be null.");
+    assertTFLiteMetadata(buffer);
 
     modelMetadata = ModelMetadata.getRootAsModelMetadata(buffer);
     checkArgument(
@@ -98,6 +99,21 @@ final class ModelMetadataInfo {
         outputIndex >= 0 && outputIndex < outputsMetadata.size(),
         "The outputIndex specified is invalid.");
     return outputsMetadata.get(outputIndex);
+  }
+
+  /**
+   * Verifies if the buffer is a valid TFLite metadata flatbuffer.
+   *
+   * @param buffer the TFLite metadata flatbuffer
+   * @throws NullPointerException if {@code buffer} is null.
+   * @throws IllegalArgumentException if {@code buffer} does not contain the expected identifier
+   */
+  private static void assertTFLiteMetadata(ByteBuffer buffer) {
+    checkNotNull(buffer, "Metadata flatbuffer cannot be null.");
+    checkArgument(
+        ModelMetadata.ModelMetadataBufferHasIdentifier(buffer),
+        "The identifier of the metadata is invalid. The buffer may not be a valid TFLite metadata"
+            + " flatbuffer.");
   }
 
   /** Gets metadata for all input tensors. */

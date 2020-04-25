@@ -38,7 +38,6 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Support/STLExtras.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
@@ -570,7 +569,11 @@ void TPUVariableRuntimeReformattingPass::runOnOperation() {
       replicate = nullptr;
       return WalkResult::interrupt();
     });
-    if (replicate) HandleReplicateOp(while_op, replicate, &getContext());
+    // Model parallelism is not supported, and can be detected when a
+    // `tf_device.parallel_execute` op in the `tf_device.replicate` is present.
+    if (replicate &&
+        replicate.GetBody().getOps<tf_device::ParallelExecuteOp>().empty())
+      HandleReplicateOp(while_op, replicate, &getContext());
   });
 }
 

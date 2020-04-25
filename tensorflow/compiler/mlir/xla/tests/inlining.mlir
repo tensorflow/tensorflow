@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -inline | FileCheck %s --dump-input=fail
+// RUN: xla-opt %s -inline | FileCheck %s --dump-input=fail
 
 // Test case: Basic test of inlining into xla_hlo.while.
 

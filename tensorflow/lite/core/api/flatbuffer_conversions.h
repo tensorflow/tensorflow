@@ -38,8 +38,11 @@ class BuiltinDataAllocator {
   // deallocation.
   template <typename T>
   T* AllocatePOD() {
+    // TODO(b/154346074): Change this to is_trivially_destructible when all
+    // platform targets support that properly.
     static_assert(std::is_pod<T>::value, "Builtin data structure must be POD.");
-    return static_cast<T*>(this->Allocate(sizeof(T)));
+    void* allocated_memory = this->Allocate(sizeof(T));
+    return new (allocated_memory) T;
   }
 
   virtual ~BuiltinDataAllocator() {}

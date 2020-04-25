@@ -111,6 +111,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute:distribute_test_lib_pip",
     "//tensorflow/python:loss_scale",
     "//tensorflow/python:loss_scale_optimizer",
+    "//tensorflow/python:memory_checker",
     "//tensorflow/python:meta_graph_testdata",
     "//tensorflow/python:util_example_parser_configuration",
     "//tensorflow/python/data/benchmarks:benchmark_base",

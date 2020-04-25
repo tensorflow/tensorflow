@@ -58,7 +58,7 @@ TEST_F(GpuNoAliasTest, Concat) {
 ; CHECK: load float, float* %[[y_gep]], {{.*}}, !noalias ![[param_noalias]]
 ; CHECK: %[[result_ptr:.*]] = bitcast [2 x [6 x float]]* %fusion{{.*}} to float*
 ; CHECK: %[[result_gep:.*]] = getelementptr inbounds float, float* %[[result_ptr]]
-; CHECK: store float {{.*}}, float* %[[result_gep]], !alias.scope ![[param_noalias]]
+; CHECK: store float {{.*}}, float* %[[result_gep]], align 4, !alias.scope ![[param_noalias]]
 ; CHECK: ![[param_noalias]] = !{![[retval_buffer:.*]]}
       )",
                      /*match_optimized_ir=*/false);

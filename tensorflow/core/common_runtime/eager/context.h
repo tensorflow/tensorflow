@@ -132,7 +132,7 @@ using VariantDevice = absl::variant<Device*, CustomDevice*>;
 
 class EagerContext : public AbstractContextInterface, public core::RefCounted {
  public:
-  static const uint64 kInvalidContextId = 0;
+  static constexpr uint64 kInvalidContextId = 0;
 
   static uint64 NewContextId() {
     uint64 context_id = random::New64();
@@ -170,6 +170,9 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
 
   AbstractTensorHandleInterface* CreateLocalHandle(
       AbstractTensorInterface* t) override;
+  AbstractTensorHandleInterface* CopyTensorHandleToDevice(
+      AbstractTensorHandleInterface* handle, const char* device_name,
+      Status* status) override;
   AbstractOperationInterface* CreateOperation() override;
 
   void ListDevices(std::vector<DeviceAttributes>* devices) override;

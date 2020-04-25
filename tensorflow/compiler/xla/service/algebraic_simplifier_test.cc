@@ -1011,13 +1011,8 @@ TEST_F(AlgebraicSimplifierTest, PowerOfPower) {
   builder.AddInstruction(HloInstruction::CreateBinary(r1f32, HloOpcode::kPower,
                                                       inner_power, exp2));
 
-  auto computation = m->AddEntryComputation(builder.Build());
   AlgebraicSimplifier simplifier(default_options_);
-  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
-  EXPECT_THAT(
-      computation->root_instruction(),
-      GmockMatch(m::Power(m::Op().Is(base),
-                          m::Multiply(m::Op().Is(exp1), m::Op().Is(exp2)))));
+  ASSERT_FALSE(simplifier.Run(m.get()).ValueOrDie());
 }
 
 // Don't simplify pow(pow(A, X), Y) => pow(A, X*Y) if X and Y are complex
@@ -6414,5 +6409,33 @@ TEST_F(AlgebraicSimplifierTest, ScalarScatter) {
   // Combine Scatters
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
 }
+
+TEST_F(AlgebraicSimplifierTest, SwapConvOperands) {
+  const char* hlo_string = R"(
+  HloModule m
+  test {
+    a = f32[3,3,160,160] parameter(0)
+    b = f32[128,32,32,160] parameter(1)
+    ROOT c = f32[128,32,32,160] convolution(a,b),
+     window={size=32x32 pad=30_30x30_30 rhs_reversal=1x1},
+     dim_labels=01bf_o01i->f01b
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  // Combine Scatters
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  const HloInstruction* conv = m->entry_computation()->root_instruction();
+  EXPECT_THAT(conv,
+              GmockMatch(m::Convolution(m::Parameter(1), m::Parameter(0))));
+  EXPECT_EQ(conv->window().dimensions(0).size(), 3);
+  EXPECT_EQ(conv->window().dimensions(1).size(), 3);
+  EXPECT_EQ(conv->window().dimensions(0).window_reversal(), true);
+  EXPECT_EQ(conv->window().dimensions(1).window_reversal(), true);
+  EXPECT_EQ(conv->window().dimensions(0).padding_low(), 1);
+  EXPECT_EQ(conv->window().dimensions(1).padding_low(), 1);
+  EXPECT_EQ(conv->window().dimensions(0).padding_high(), 1);
+  EXPECT_EQ(conv->window().dimensions(1).padding_high(), 1);
+}
+
 }  // namespace
 }  // namespace xla

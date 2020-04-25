@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cassert>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -21,8 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/strip.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/gen_op_registration.h"
 
 const char kInputModelFlag[] = "input_model";
@@ -31,27 +29,26 @@ const char kOutputRegistrationFlag[] = "output_registration";
 const char kTfLitePathFlag[] = "tflite_path";
 const char kForMicro[] = "for_micro";
 
-using tensorflow::Flag;
-using tensorflow::Flags;
-using tensorflow::string;
-
 void ParseFlagAndInit(int* argc, char** argv, string* input_model,
                       string* output_registration, string* tflite_path,
                       string* namespace_flag, bool* for_micro) {
-  std::vector<tensorflow::Flag> flag_list = {
-      Flag(kInputModelFlag, input_model, "path to the tflite model"),
-      Flag(kOutputRegistrationFlag, output_registration,
-           "filename for generated registration code"),
-      Flag(kTfLitePathFlag, tflite_path, "Path to tensorflow lite dir"),
-      Flag(kNamespace, namespace_flag,
-           "Namespace in which to put RegisterSelectedOps."),
-      Flag(kForMicro, for_micro,
-           "By default this script generate TFL registration file, but can "
-           "also generate TFLM files when this flag is set to true"),
+  std::vector<tflite::Flag> flag_list = {
+      tflite::Flag::CreateFlag(kInputModelFlag, input_model,
+                               "path to the tflite model"),
+      tflite::Flag::CreateFlag(kOutputRegistrationFlag, output_registration,
+                               "filename for generated registration code"),
+      tflite::Flag::CreateFlag(kTfLitePathFlag, tflite_path,
+                               "Path to tensorflow lite dir"),
+      tflite::Flag::CreateFlag(
+          kNamespace, namespace_flag,
+          "Namespace in which to put RegisterSelectedOps."),
+      tflite::Flag::CreateFlag(
+          kForMicro, for_micro,
+          "By default this script generate TFL registration file, but can "
+          "also generate TFLM files when this flag is set to true"),
   };
 
-  Flags::Parse(argc, argv, flag_list);
-  tensorflow::port::InitMain(argv[0], argc, &argv);
+  tflite::Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
 }
 
 namespace {
@@ -66,11 +63,10 @@ void GenerateFileContent(const std::string& tflite_path,
 
   if (for_micro) {
     if (!builtin_ops.empty()) {
-      fout << "#include \"" << tflite_path
-           << "/experimental/micro/kernels/micro_ops.h\"\n";
+      fout << "#include \"" << tflite_path << "/micro/kernels/micro_ops.h\"\n";
     }
     fout << "#include \"" << tflite_path
-         << "/experimental/micro/micro_mutable_op_resolver.h\"\n";
+         << "/micro/micro_mutable_op_resolver.h\"\n";
   } else {
     if (!builtin_ops.empty()) {
       fout << "#include \"" << tflite_path
@@ -151,7 +147,7 @@ int main(int argc, char** argv) {
   string output_registration;
   string tflite_path;
   string namespace_flag;
-  bool for_micro;
+  bool for_micro = false;
   ParseFlagAndInit(&argc, argv, &input_model, &output_registration,
                    &tflite_path, &namespace_flag, &for_micro);
 

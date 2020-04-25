@@ -332,9 +332,8 @@ absl::Status ConvolutionTransposed4x4::BindArguments() {
 }
 
 int3 ConvolutionTransposed4x4::GetGridSize() const {
-  const int grid_x =
-      IntegralDivideRoundUp(dst_[0]->Width() + 2, 2) * dst_[0]->Batch();
-  const int grid_y = IntegralDivideRoundUp(dst_[0]->Height() + 2, 2);
+  const int grid_x = DivideRoundUp(dst_[0]->Width() + 2, 2) * dst_[0]->Batch();
+  const int grid_y = DivideRoundUp(dst_[0]->Height() + 2, 2);
   const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }

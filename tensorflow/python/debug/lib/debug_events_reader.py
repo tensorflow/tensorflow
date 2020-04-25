@@ -1030,48 +1030,61 @@ class DebugDataReader(object):
     else:
       return self._graph_op_digests
 
-  def graph_execution_traces(self, digest=False):
+  def graph_execution_traces(self, digest=False, begin=None, end=None):
     """Get all the intra-graph execution tensor traces read so far.
-
-    TODO(cais): Support begin and end to enable partial loading.
 
     Args:
       digest: Whether the results will be returned in the more light-weight
         digest form.
+      begin: Optional beginning index for the requested traces or their digests.
+        Python-style negative indices are supported.
+      end: Optional ending index for the requested traces or their digests.
+        Python-style negative indices are supported.
 
     Returns:
       If `digest`: a `list` of `GraphExecutionTraceDigest` objects.
       Else: a `list` of `GraphExecutionTrace` objects.
     """
+    digests = self._graph_execution_trace_digests
+    if begin is not None or end is not None:
+      begin = begin or 0
+      end = end or len(digests)
+      digests = digests[begin:end]
     if digest:
-      return self._graph_execution_trace_digests
+      return digests
     else:
-      return [self.read_graph_execution_trace(digest)
-              for digest in self._graph_execution_trace_digests]
+      return [self.read_graph_execution_trace(digest) for digest in digests]
 
   def num_graph_execution_traces(self):
     """Get the number of graph execution traces read so far."""
     return len(self._graph_execution_trace_digests)
 
-  def executions(self, digest=False):
+  def executions(self, digest=False, begin=None, end=None):
     """Get `Execution`s or `ExecutionDigest`s this reader has read so far.
-
-    # TODO(cais): Support begin index and end index to support partial loading.
 
     Args:
       digest: Whether the results are returned in a digest form, i.e.,
         `ExecutionDigest` format, instead of the more detailed `Execution`
         format.
+      begin: Optional beginning index for the requested execution data objects
+        or their digests. Python-style negative indices are supported.
+      end: Optional ending index for the requested execution data objects or
+        their digests. Python-style negative indices are supported.
 
     Returns:
       If `digest`: a `list` of `ExecutionDigest` objects.
       Else: a `list` of `Execution` objects.
     """
+    digests = self._execution_digests
+    if begin is not None or end is not None:
+      begin = begin or 0
+      end = end or len(digests)
+      digests = digests[begin:end]
     if digest:
-      return self._execution_digests
+      return digests
     else:
       # TODO(cais): Optimizer performance removing repeated file open/close.
-      return [self.read_execution(digest) for digest in self._execution_digests]
+      return [self.read_execution(digest) for digest in digests]
 
   def num_executions(self):
     """Get the number of execution events read so far."""
