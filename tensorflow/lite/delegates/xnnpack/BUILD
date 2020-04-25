@@ -267,6 +267,7 @@ cc_test(
         "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
         "//conditions:default": [],
     }),
+    tags = ["notsan"],  # b/154966885
     deps = [
         ":test_main",
         ":unary_elementwise_tester",
