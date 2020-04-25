@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 
 using tensorflow::string;
+using tensorflow::internal::AbstractOp;
 using tensorflow::internal::AbstractTensor;
 using tensorflow::internal::dynamic_cast_helper;
 using tensorflow::internal::ExecutionContext;
@@ -56,31 +57,15 @@ struct GraphTensor : public AbstractTensor {
   static constexpr AbstractTensorKind kKind = kGraphTensor;
 };
 
-struct TF_AbstractOp {
-  // Needed to implement our own version of RTTI since dynamic_cast is not
-  // supported in mobile builds.
-  enum AbstractOpKind { GraphOp, EagerOp };
-  explicit TF_AbstractOp(AbstractOpKind kind) : k(kind) {}
-  AbstractOpKind getKind() const { return k; }
-  virtual void SetOpType(const char* const op_type, TF_Status* s) = 0;
-  virtual void SetOpName(const char* const op_name, TF_Status* s) = 0;
-  virtual void SetAttrType(const char* const attr_name, TF_DataType value,
-                           TF_Status* s) = 0;
-  virtual ~TF_AbstractOp() {}
-
- private:
-  const AbstractOpKind k;
-};
-
 TF_AbstractOp* TF_NewAbstractOp(TF_ExecutionContext* c) {
-  return unwrap(c)->CreateOperation();
+  return wrap(unwrap(c)->CreateOperation());
 }
 
-void TF_DeleteAbstractOp(TF_AbstractOp* op) { delete op; }
+void TF_DeleteAbstractOp(TF_AbstractOp* op) { delete unwrap(op); }
 
-class TF_GraphOp : public TF_AbstractOp {
+class TF_GraphOp : public AbstractOp {
  public:
-  explicit TF_GraphOp(TF_Graph* g) : TF_AbstractOp(kKind), g_(g) {}
+  explicit TF_GraphOp(TF_Graph* g) : AbstractOp(kKind), g_(g) {}
   void SetOpType(const char* const op_type, TF_Status* s) override {
     if (op_) {
       TF_SetStatus(
@@ -121,7 +106,7 @@ class TF_GraphOp : public TF_AbstractOp {
   }
   ~TF_GraphOp() override {}
 
-  static constexpr AbstractOpKind kKind = GraphOp;
+  static constexpr AbstractOpKind kKind = kGraphOp;
 
  private:
   friend class TF_GraphContext;  // For access to op_.
@@ -133,9 +118,9 @@ class TF_GraphOp : public TF_AbstractOp {
   const char* op_name_ = nullptr;
 };
 
-class TF_EagerOp : public TF_AbstractOp {
+class TF_EagerOp : public AbstractOp {
  public:
-  explicit TF_EagerOp(TFE_Context* ctx) : TF_AbstractOp(kKind), ctx_(ctx) {}
+  explicit TF_EagerOp(TFE_Context* ctx) : AbstractOp(kKind), ctx_(ctx) {}
   void SetOpType(const char* const op_type, TF_Status* s) override {
     op_ = TFE_NewOp(ctx_, op_type, s);
   }
@@ -153,7 +138,7 @@ class TF_EagerOp : public TF_AbstractOp {
   }
 
   ~TF_EagerOp() override { TFE_DeleteOp(op_); }
-  static constexpr AbstractOpKind kKind = EagerOp;
+  static constexpr AbstractOpKind kKind = kEagerOp;
 
  private:
   friend class TF_EagerContext;  // For access to op_.
@@ -180,18 +165,18 @@ class TF_EagerContext : public ExecutionContext {
     eager_ctx_ = TFE_NewContext(options, status);
   }
 
-  TF_AbstractOp* CreateOperation() override {
+  AbstractOp* CreateOperation() override {
     // TODO(srbs): Should the lifetime of this op be tied to the context.
     return new TF_EagerOp(eager_ctx_);
   }
 
-  void ExecuteOperation(TF_AbstractOp* op, int num_inputs,
+  void ExecuteOperation(AbstractOp* op, int num_inputs,
                         AbstractTensor* const* inputs, TF_OutputList* o,
                         TF_Status* s) override {
     auto* eager_op = dynamic_cast_helper<TF_EagerOp>(op);
     if (eager_op == nullptr) {
       TF_SetStatus(s, TF_INVALID_ARGUMENT,
-                   "Unable to cast TF_AbstractOp to TF_EagerOp.");
+                   "Unable to cast AbstractOp to TF_EagerOp.");
       return;
     }
     auto* tfe_op = eager_op->op_;
@@ -247,18 +232,18 @@ class TF_GraphContext : public ExecutionContext {
   TF_GraphContext()
       : ExecutionContext(kKind), graph_(new TF_Graph(), TF_DeleteGraph) {}
 
-  TF_AbstractOp* CreateOperation() override {
+  AbstractOp* CreateOperation() override {
     // TODO(srbs): Should the lifetime of this op be tied to the context.
     return new TF_GraphOp(graph_.get());
   }
 
-  void ExecuteOperation(TF_AbstractOp* op, int num_inputs,
+  void ExecuteOperation(AbstractOp* op, int num_inputs,
                         AbstractTensor* const* inputs, TF_OutputList* o,
                         TF_Status* s) override {
     auto* graph_op = dynamic_cast_helper<TF_GraphOp>(op);
     if (graph_op == nullptr) {
       TF_SetStatus(s, TF_INVALID_ARGUMENT,
-                   "Unable to cast TF_AbstractOp to TF_GraphOp.");
+                   "Unable to cast AbstractOp to TF_GraphOp.");
       return;
     }
     auto* tf_opdesc = graph_op->op_.release();
@@ -383,23 +368,23 @@ TF_AbstractTensor* TF_OutputListGet(TF_OutputList* o, int i) {
 
 void TF_AbstractOpSetOpType(TF_AbstractOp* op, const char* const op_type,
                             TF_Status* s) {
-  op->SetOpType(op_type, s);
+  unwrap(op)->SetOpType(op_type, s);
 }
 
 void TF_AbstractOpSetOpName(TF_AbstractOp* op, const char* const op_name,
                             TF_Status* s) {
-  op->SetOpName(op_name, s);
+  unwrap(op)->SetOpName(op_name, s);
 }
 
 void TF_AbstractOpSetAttrType(TF_AbstractOp* op, const char* const attr_name,
                               TF_DataType value, TF_Status* s) {
-  op->SetAttrType(attr_name, value, s);
+  unwrap(op)->SetAttrType(attr_name, value, s);
 }
 
 void TF_ExecuteOperation(TF_AbstractOp* op, int num_inputs,
                          TF_AbstractTensor* const* inputs, TF_OutputList* o,
                          TF_ExecutionContext* ctx, TF_Status* s) {
-  unwrap(ctx)->ExecuteOperation(op, num_inputs, &unwrap(*inputs), o, s);
+  unwrap(ctx)->ExecuteOperation(unwrap(op), num_inputs, &unwrap(*inputs), o, s);
 }
 
 TF_AbstractFunction* TF_ExecutionContextToFunction(
