@@ -367,6 +367,7 @@ tf_cuda_library(
     srcs = [
         "c_api_experimental.cc",
         "c_api_unified_experimental.cc",
+        "c_api_unified_experimental_private.h",
     ],
     hdrs = [
         "c_api_experimental.h",

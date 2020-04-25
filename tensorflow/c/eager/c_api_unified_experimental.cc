@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/c/eager/c_api_unified_experimental.h"
-
 #include "absl/types/variant.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/eager/c_api_unified_experimental_private.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
@@ -29,43 +28,12 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 
 using tensorflow::string;
+using tensorflow::internal::dynamic_cast_helper;
+using tensorflow::internal::ExecutionContext;
+using tensorflow::internal::unwrap;
+using tensorflow::internal::wrap;
 
-// =============================================================================
-// Unified Execution APIs for Eager and tracing backends.
-// =============================================================================
-
-typedef void (*ExecuteOperation)(TF_AbstractOp* op, int num_inputs,
-                                 TF_AbstractTensor* const* inputs,
-                                 TF_OutputList* o, TF_ExecutionContext* ctx,
-                                 TF_Status* s);
-
-struct TF_ExecutionContext {
-  // Needed to implement our own version of RTTI since dynamic_cast is not
-  // supported in mobile builds.
-  enum ExecutionContextKind { GraphContext, EagerContext };
-  explicit TF_ExecutionContext(ExecutionContextKind kind) : k(kind) {}
-  ExecutionContextKind getKind() const { return k; }
-
-  virtual void ExecuteOperation(TF_AbstractOp* op, int num_inputs,
-                                TF_AbstractTensor* const* inputs,
-                                TF_OutputList* o, TF_Status* s) = 0;
-  virtual TF_AbstractOp* CreateOperation() = 0;
-  virtual void RegisterFunction(TF_AbstractFunction* func, TF_Status* s) = 0;
-  virtual ~TF_ExecutionContext() {}
-
- private:
-  const ExecutionContextKind k;
-};
-
-void TF_DeleteExecutionContext(TF_ExecutionContext* c) { delete c; }
-
-template <typename T, typename S>
-T* dynamic_cast_helper(S source) {
-  if (source->getKind() != T::kKind) {
-    return nullptr;
-  }
-  return tensorflow::down_cast<T*>(source);
-}
+void TF_DeleteExecutionContext(TF_ExecutionContext* c) { delete unwrap(c); }
 
 class TF_GraphContext;
 class TF_EagerContext;
@@ -104,7 +72,7 @@ struct TF_AbstractOp {
 };
 
 TF_AbstractOp* TF_NewAbstractOp(TF_ExecutionContext* c) {
-  return c->CreateOperation();
+  return unwrap(c)->CreateOperation();
 }
 
 void TF_DeleteAbstractOp(TF_AbstractOp* op) { delete op; }
@@ -207,9 +175,9 @@ struct TF_AbstractFunction {
   ~TF_AbstractFunction() { TF_DeleteFunction(func); }
 };
 
-class TF_EagerContext : public TF_ExecutionContext {
+class TF_EagerContext : public ExecutionContext {
  public:
-  TF_EagerContext() : TF_ExecutionContext(kKind) {}
+  TF_EagerContext() : ExecutionContext(kKind) {}
 
   void Build(TFE_ContextOptions* options, TF_Status* status) {
     eager_ctx_ = TFE_NewContext(options, status);
@@ -268,7 +236,7 @@ class TF_EagerContext : public TF_ExecutionContext {
 
   ~TF_EagerContext() override { TFE_DeleteContext(eager_ctx_); }
 
-  static constexpr ExecutionContextKind kKind = EagerContext;
+  static constexpr ExecutionContextKind kKind = kEagerContext;
 
  private:
   friend TFE_Context* TF_ExecutionContextGetTFEContext(
@@ -282,10 +250,10 @@ TF_GraphContext* GetGraphContext(TF_AbstractTensor const* t) {
   return absl::get<TF_GraphTensor*>(t->t)->ctx;
 }
 
-class TF_GraphContext : public TF_ExecutionContext {
+class TF_GraphContext : public ExecutionContext {
  public:
   TF_GraphContext()
-      : TF_ExecutionContext(kKind), graph_(new TF_Graph(), TF_DeleteGraph) {}
+      : ExecutionContext(kKind), graph_(new TF_Graph(), TF_DeleteGraph) {}
 
   TF_AbstractOp* CreateOperation() override {
     // TODO(srbs): Should the lifetime of this op be tied to the context.
@@ -363,7 +331,7 @@ class TF_GraphContext : public TF_ExecutionContext {
 
   ~TF_GraphContext() override {}
 
-  static constexpr ExecutionContextKind kKind = GraphContext;
+  static constexpr ExecutionContextKind kKind = kGraphContext;
 
  private:
   std::unique_ptr<TF_Graph, decltype(&TF_DeleteGraph)> graph_;
@@ -410,9 +378,9 @@ TF_ExecutionContext* TF_NewExecutionContext(TF_ExecutionContextOptions* options,
     auto* ctx = new TF_EagerContext();
     ctx->Build(absl::get<TF_EagerContextOptions*>(options->options)->options,
                s);
-    return ctx;
+    return wrap(ctx);
   } else {
-    return new TF_GraphContext();
+    return wrap(new TF_GraphContext());
   }
 }
 
@@ -445,14 +413,14 @@ void TF_AbstractOpSetAttrType(TF_AbstractOp* op, const char* const attr_name,
 void TF_ExecuteOperation(TF_AbstractOp* op, int num_inputs,
                          TF_AbstractTensor* const* inputs, TF_OutputList* o,
                          TF_ExecutionContext* ctx, TF_Status* s) {
-  ctx->ExecuteOperation(op, num_inputs, inputs, o, s);
+  unwrap(ctx)->ExecuteOperation(op, num_inputs, inputs, o, s);
 }
 
 TF_AbstractFunction* TF_ExecutionContextToFunction(
     const TF_ExecutionContext* fn_body, const char* fn_name, int num_inputs,
     const TF_AbstractTensor* inputs, int num_outputs,
     const TF_AbstractTensor* outputs, TF_Status* status) {
-  auto* graph_ctx = dynamic_cast_helper<const TF_GraphContext>(fn_body);
+  auto* graph_ctx = dynamic_cast_helper<const TF_GraphContext>(unwrap(fn_body));
   if (graph_ctx == nullptr) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  "fn_body is not a TF_GraphContext.");
@@ -469,7 +437,7 @@ void TF_DeleteAbstractFunction(TF_AbstractFunction* func) { delete func; }
 void TF_ExecutionContextRegisterFunction(TF_ExecutionContext* ctx,
                                          TF_AbstractFunction* func,
                                          TF_Status* s) {
-  ctx->RegisterFunction(func, s);
+  unwrap(ctx)->RegisterFunction(func, s);
 }
 
 // Temporary APIs till we figure out how to create scalar valued Eager
@@ -496,5 +464,5 @@ TFE_TensorHandle* TF_AbstractTensorGetEagerTensor(TF_AbstractTensor* at,
 }
 
 TFE_Context* TF_ExecutionContextGetTFEContext(TF_ExecutionContext* ctx) {
-  return dynamic_cast_helper<TF_EagerContext>(ctx)->eager_ctx_;
+  return dynamic_cast_helper<TF_EagerContext>(unwrap(ctx))->eager_ctx_;
 }
