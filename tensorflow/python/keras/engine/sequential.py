@@ -215,7 +215,7 @@ class Sequential(training.Model):
           set_inputs = True
 
       if set_inputs:
-        outputs = nest.flatten(layer._inbound_nodes[-1].output_tensors)
+        outputs = nest.flatten(layer._inbound_nodes[-1].outputs)
         if len(outputs) != 1:
           raise ValueError(SINGLE_LAYER_OUTPUT_ERROR_MSG)
         self.outputs = outputs
