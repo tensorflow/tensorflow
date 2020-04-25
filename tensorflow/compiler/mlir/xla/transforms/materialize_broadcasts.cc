@@ -48,7 +48,7 @@ static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
 // Returns true and sets out_lhs and out_rhs to BroadcastInDimOps if successful,
 // returns false otherwise.
 template <typename SrcOp>
-bool CreateBroadcastsForBinaryOp(SrcOp op, PatternRewriter *rewriter,
+bool CreateStaticBroadcastsForBinaryOp(SrcOp op, PatternRewriter *rewriter,
                                  Value *out_lhs, Value *out_rhs) {
   if (!op.broadcast_dimensions().hasValue()) {
     // Note: the op may still have an implicit broadcast on it, such as
@@ -256,14 +256,14 @@ bool CreateDynamicBroadcastsForBinaryOp(SrcOp op, PatternRewriter *rewriter,
 }
 
 template <typename SrcOp>
-bool GenerateBroadcastForBinaryOp(SrcOp op, PatternRewriter *rewriter,
+bool CreateBroadcastForBinaryOp(SrcOp op, PatternRewriter *rewriter,
                                  Value *out_lhs, Value *out_rhs) {
 
   auto op_ranked_type = op.getType().template dyn_cast<RankedTensorType>();
   if (!op_ranked_type) return false;
 
   if (op_ranked_type.hasStaticShape()) {
-    if (!CreateBroadcastsForBinaryOp(op, rewriter, out_lhs, out_rhs)) {
+    if (!CreateStaticBroadcastsForBinaryOp(op, rewriter, out_lhs, out_rhs)) {
       return false;
     }
   } else {
@@ -285,7 +285,7 @@ struct BinaryOpWithBroadcastConvert : public OpRewritePattern<SrcOp> {
     Value new_lhs;
     Value new_rhs;
 
-    if (!GenerateBroadcastForBinaryOp(op, &rewriter, &new_lhs, &new_rhs))
+    if (!CreateBroadcastForBinaryOp(op, &rewriter, &new_lhs, &new_rhs))
       return failure();
 
     // Replace the original op with a new one that uses the new args.
@@ -306,7 +306,7 @@ struct CompareWithBroadcastConvert : public OpRewritePattern<CompareOp> {
     Value new_lhs;
     Value new_rhs;
 
-    if (!GenerateBroadcastForBinaryOp(op, &rewriter, &new_lhs, &new_rhs))
+    if (!CreateBroadcastForBinaryOp(op, &rewriter, &new_lhs, &new_rhs))
       return failure();
 
     rewriter.replaceOpWithNewOp<CompareOp>(op, op.getType(), new_lhs, new_rhs,
