@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_C_API_UNIFIED_EXPERIMENTAL_PRIVATE_H_
 #define TENSORFLOW_C_EAGER_C_API_UNIFIED_EXPERIMENTAL_PRIVATE_H_
 
+#include <vector>
+
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/core/platform/casts.h"
 
@@ -34,6 +36,11 @@ struct AbstractTensor {
 
  private:
   const AbstractTensorKind k;
+};
+
+struct OutputList {
+  std::vector<AbstractTensor*> outputs;
+  int expected_num_outputs = -1;
 };
 
 struct AbstractOp {
@@ -60,7 +67,7 @@ struct ExecutionContext {
   ExecutionContextKind getKind() const { return k; }
 
   virtual void ExecuteOperation(AbstractOp* op, int num_inputs,
-                                AbstractTensor* const* inputs, TF_OutputList* o,
+                                AbstractTensor* const* inputs, OutputList* o,
                                 TF_Status* s) = 0;
   virtual AbstractOp* CreateOperation() = 0;
   virtual void RegisterFunction(TF_AbstractFunction* func, TF_Status* s) = 0;
@@ -89,6 +96,7 @@ struct ExecutionContext {
 MAKE_WRAP_UNWRAP(TF_ExecutionContext, ExecutionContext)
 MAKE_WRAP_UNWRAP(TF_AbstractTensor, AbstractTensor)
 MAKE_WRAP_UNWRAP(TF_AbstractOp, AbstractOp)
+MAKE_WRAP_UNWRAP(TF_OutputList, OutputList)
 
 template <typename T, typename S>
 T* dynamic_cast_helper(S source) {
