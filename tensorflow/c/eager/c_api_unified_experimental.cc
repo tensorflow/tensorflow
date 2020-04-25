@@ -308,51 +308,14 @@ class TF_GraphContext : public ExecutionContext {
   std::unique_ptr<TF_Graph, decltype(&TF_DeleteGraph)> graph_;
 };
 
-struct TF_GraphContextOptions {};
-struct TF_EagerContextOptions {
-  explicit TF_EagerContextOptions(TFE_ContextOptions* options)
-      : options(options) {}
-  TFE_ContextOptions* options;  // Not owned.
-};
-
-struct TF_ExecutionContextOptions {
-  absl::variant<TF_GraphContextOptions*, TF_EagerContextOptions*> options;
-  ~TF_ExecutionContextOptions() {
-    if (absl::holds_alternative<TF_GraphContextOptions*>(options)) {
-      delete absl::get<TF_GraphContextOptions*>(options);
-    } else if (absl::holds_alternative<TF_EagerContextOptions*>(options)) {
-      delete absl::get<TF_EagerContextOptions*>(options);
-    }
-  }
-};
-
-TF_ExecutionContextOptions* TF_NewGraphContextOptions() {
-  auto* options = new TF_ExecutionContextOptions();
-  options->options = new TF_GraphContextOptions();
-  return options;
+TF_ExecutionContext* TF_NewGraphExecutionContext(TF_Status* s) {
+  return wrap(new TF_GraphContext());
 }
-
-void TF_DeleteExecutionContextOptions(TF_ExecutionContextOptions* options) {
-  delete options;
-}
-
-TF_ExecutionContextOptions* TF_NewEagerContextOptions(
-    TFE_ContextOptions* tfe_options) {
-  auto* options = new TF_ExecutionContextOptions();
-  options->options = new TF_EagerContextOptions(tfe_options);
-  return options;
-}
-
-TF_ExecutionContext* TF_NewExecutionContext(TF_ExecutionContextOptions* options,
-                                            TF_Status* s) {
-  if (absl::holds_alternative<TF_EagerContextOptions*>(options->options)) {
-    auto* ctx = new TF_EagerContext();
-    ctx->Build(absl::get<TF_EagerContextOptions*>(options->options)->options,
-               s);
-    return wrap(ctx);
-  } else {
-    return wrap(new TF_GraphContext());
-  }
+TF_ExecutionContext* TF_NewEagerExecutionContext(TFE_ContextOptions* options,
+                                                 TF_Status* s) {
+  auto* ctx = new TF_EagerContext();
+  ctx->Build(options, s);
+  return wrap(ctx);
 }
 
 TF_OutputList* TF_NewOutputList() { return new TF_OutputList; }
