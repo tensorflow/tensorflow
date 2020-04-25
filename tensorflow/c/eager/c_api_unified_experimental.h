@@ -103,10 +103,8 @@ TF_ExecutionContextOptions* TF_NewEagerContextOptions(TFE_ContextOptions*);
 
 // Temporary APIs till we figure out how to create scalar valued Eager
 // tensors and how to get value out of eager abstract tensors.
-TF_AbstractTensor* TF_NewAbstractTensor();
-void TF_AbstractTensorSetEagerTensor(
-    TF_AbstractTensor* at, TFE_TensorHandle* t,
-    TF_Status* s);  // `at` takes ownership of `t`.
+TF_AbstractTensor* TF_CreateAbstractTensorFromEagerTensor(TFE_TensorHandle* t,
+                                                          TF_Status* s);
 TFE_TensorHandle* TF_AbstractTensorGetEagerTensor(TF_AbstractTensor* at,
                                                   TF_Status* s);
 TFE_Context* TF_ExecutionContextGetTFEContext(TF_ExecutionContext*);

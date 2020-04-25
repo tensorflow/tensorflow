@@ -46,8 +46,8 @@ TEST(UnifedCAPI, TestBasicEager) {
   // Build an abstract input tensor.
   TFE_Context* eager_ctx = TF_ExecutionContextGetTFEContext(ctx);
   TFE_TensorHandle* t = TestScalarTensorHandle(eager_ctx, 2.0f);
-  TF_AbstractTensor* at = TF_NewAbstractTensor();
-  TF_AbstractTensorSetEagerTensor(at, t, status.get());
+  TF_AbstractTensor* at =
+      TF_CreateAbstractTensorFromEagerTensor(t, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Build an abstract operation.
@@ -158,11 +158,11 @@ TEST(UnifedCAPI, TestBasicGraph) {
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Build an abstract input tensor.
-  TF_AbstractTensor* input_t = TF_NewAbstractTensor();
   TFE_Context* eager_ctx =
       TF_ExecutionContextGetTFEContext(eager_execution_ctx);
   TFE_TensorHandle* input_eager = TestScalarTensorHandle(eager_ctx, 2.0f);
-  TF_AbstractTensorSetEagerTensor(input_t, input_eager, status.get());
+  TF_AbstractTensor* input_t =
+      TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   TF_OutputListSetNumOutputs(add_outputs, 1, status.get());
@@ -281,8 +281,8 @@ TEST(UnifedCAPI, TestExecutingEagerOpInGraphModeRaises) {
   // Build an abstract input tensor.
   TFE_Context* eager_ctx = TF_ExecutionContextGetTFEContext(ctx);
   TFE_TensorHandle* t = TestScalarTensorHandle(eager_ctx, 2.0f);
-  TF_AbstractTensor* at = TF_NewAbstractTensor();
-  TF_AbstractTensorSetEagerTensor(at, t, status.get());
+  TF_AbstractTensor* at =
+      TF_CreateAbstractTensorFromEagerTensor(t, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
   // Build inputs and outputs.

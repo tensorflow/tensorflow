@@ -26,6 +26,16 @@ namespace internal {
 // Unified Execution APIs for Eager and tracing backends.
 // =============================================================================
 
+struct AbstractTensor {
+  enum AbstractTensorKind { kGraphTensor, kEagerTensor, kMLIRTensor };
+  explicit AbstractTensor(AbstractTensorKind kind) : k(kind) {}
+  AbstractTensorKind getKind() const { return k; }
+  virtual ~AbstractTensor() = default;
+
+ private:
+  const AbstractTensorKind k;
+};
+
 struct ExecutionContext {
   // Needed to implement our own version of RTTI since dynamic_cast is not
   // supported in mobile builds.
@@ -34,8 +44,8 @@ struct ExecutionContext {
   ExecutionContextKind getKind() const { return k; }
 
   virtual void ExecuteOperation(TF_AbstractOp* op, int num_inputs,
-                                TF_AbstractTensor* const* inputs,
-                                TF_OutputList* o, TF_Status* s) = 0;
+                                AbstractTensor* const* inputs, TF_OutputList* o,
+                                TF_Status* s) = 0;
   virtual TF_AbstractOp* CreateOperation() = 0;
   virtual void RegisterFunction(TF_AbstractFunction* func, TF_Status* s) = 0;
   virtual ~ExecutionContext() = default;
@@ -44,18 +54,24 @@ struct ExecutionContext {
   const ExecutionContextKind k;
 };
 
-static inline ExecutionContext* unwrap(TF_ExecutionContext* ctx) {
-  return reinterpret_cast<ExecutionContext*>(ctx);
-}
-static inline const ExecutionContext* unwrap(const TF_ExecutionContext* ctx) {
-  return reinterpret_cast<const ExecutionContext*>(ctx);
-}
-static inline TF_ExecutionContext* wrap(ExecutionContext* ctx) {
-  return reinterpret_cast<TF_ExecutionContext*>(ctx);
-}
-static inline const TF_ExecutionContext* wrap(const ExecutionContext* ctx) {
-  return reinterpret_cast<const TF_ExecutionContext*>(ctx);
-}
+// Create utilities to wrap/unwrap: this convert from the C opaque types to the
+// C++ implementation, and back.
+#define MAKE_WRAP_UNWRAP(C_TYPEDEF, CPP_CLASS)                              \
+  static inline CPP_CLASS* const& unwrap(C_TYPEDEF* const& o) {             \
+    return reinterpret_cast<CPP_CLASS* const&>(o);                          \
+  }                                                                         \
+  static inline const CPP_CLASS* const& unwrap(const C_TYPEDEF* const& o) { \
+    return reinterpret_cast<const CPP_CLASS* const&>(o);                    \
+  }                                                                         \
+  static inline C_TYPEDEF* const& wrap(CPP_CLASS* const& o) {               \
+    return reinterpret_cast<C_TYPEDEF* const&>(o);                          \
+  }                                                                         \
+  static inline const C_TYPEDEF* const& wrap(const CPP_CLASS* const& o) {   \
+    return reinterpret_cast<const C_TYPEDEF* const&>(o);                    \
+  }
+
+MAKE_WRAP_UNWRAP(TF_ExecutionContext, ExecutionContext)
+MAKE_WRAP_UNWRAP(TF_AbstractTensor, AbstractTensor)
 
 template <typename T, typename S>
 T* dynamic_cast_helper(S source) {

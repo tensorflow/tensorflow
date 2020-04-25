@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 
 using tensorflow::string;
+using tensorflow::internal::AbstractTensor;
 using tensorflow::internal::dynamic_cast_helper;
 using tensorflow::internal::ExecutionContext;
 using tensorflow::internal::unwrap;
@@ -38,21 +39,21 @@ void TF_DeleteExecutionContext(TF_ExecutionContext* c) { delete unwrap(c); }
 class TF_GraphContext;
 class TF_EagerContext;
 
-struct TF_GraphTensor {
-  TF_Output output;
-  TF_GraphContext* ctx;
+struct EagerTensor : public AbstractTensor {
+  TFE_TensorHandle* t = nullptr;
+  EagerTensor() : AbstractTensor(kKind) {}
+  explicit EagerTensor(TFE_TensorHandle* t) : AbstractTensor(kKind), t(t) {}
+  ~EagerTensor() override { TFE_DeleteTensorHandle(t); }
+  static constexpr AbstractTensorKind kKind = kEagerTensor;
 };
 
-struct TF_AbstractTensor {
-  absl::variant<TFE_TensorHandle*, TF_GraphTensor*> t;
-
-  ~TF_AbstractTensor() {
-    if (absl::holds_alternative<TFE_TensorHandle*>(t)) {
-      TFE_DeleteTensorHandle(absl::get<TFE_TensorHandle*>(t));
-    } else if (absl::holds_alternative<TF_GraphTensor*>(t)) {
-      delete absl::get<TF_GraphTensor*>(t);
-    }
-  }
+struct GraphTensor : public AbstractTensor {
+  TF_Output output{};
+  TF_GraphContext* ctx = nullptr;
+  GraphTensor() : AbstractTensor(kKind) {}
+  GraphTensor(TF_Output output, TF_GraphContext* ctx)
+      : AbstractTensor(kKind), output(output), ctx(ctx) {}
+  static constexpr AbstractTensorKind kKind = kGraphTensor;
 };
 
 struct TF_AbstractOp {
@@ -160,10 +161,6 @@ class TF_EagerOp : public TF_AbstractOp {
   TFE_Context* ctx_;
 };
 
-bool IsEagerTensor(const TF_AbstractTensor* const t) {
-  return absl::holds_alternative<TFE_TensorHandle*>(t->t);
-}
-
 struct TF_OutputList {
   std::vector<TF_AbstractTensor*> outputs;
   int expected_num_outputs = -1;
@@ -189,7 +186,7 @@ class TF_EagerContext : public ExecutionContext {
   }
 
   void ExecuteOperation(TF_AbstractOp* op, int num_inputs,
-                        TF_AbstractTensor* const* inputs, TF_OutputList* o,
+                        AbstractTensor* const* inputs, TF_OutputList* o,
                         TF_Status* s) override {
     auto* eager_op = dynamic_cast_helper<TF_EagerOp>(op);
     if (eager_op == nullptr) {
@@ -200,11 +197,12 @@ class TF_EagerContext : public ExecutionContext {
     auto* tfe_op = eager_op->op_;
     if (TF_GetCode(s) != TF_OK) return;
     for (int i = 0; i < num_inputs; ++i) {
-      if (!IsEagerTensor(inputs[i])) {
+      auto* eager_tensor = dynamic_cast_helper<const EagerTensor>(inputs[i]);
+      if (!eager_tensor) {
         TF_SetStatus(s, TF_INVALID_ARGUMENT, "Not an eager tensor.");
         return;
       }
-      TFE_OpAddInput(tfe_op, absl::get<TFE_TensorHandle*>(inputs[i]->t), s);
+      TFE_OpAddInput(tfe_op, eager_tensor->t, s);
       if (TF_GetCode(s) != TF_OK) return;
     }
     if (o->expected_num_outputs == -1) {
@@ -224,9 +222,7 @@ class TF_EagerContext : public ExecutionContext {
     o->outputs.clear();
     o->outputs.reserve(num_retvals);
     for (int i = 0; i < num_retvals; ++i) {
-      auto* t = new TF_AbstractTensor();
-      t->t = retvals[i];
-      o->outputs.push_back(t);
+      o->outputs.push_back(wrap(new EagerTensor(retvals[i])));
     }
   }
 
@@ -244,11 +240,7 @@ class TF_EagerContext : public ExecutionContext {
   TFE_Context* eager_ctx_;
 };
 
-void TF_DeleteAbstractTensor(TF_AbstractTensor* t) { delete t; }
-
-TF_GraphContext* GetGraphContext(TF_AbstractTensor const* t) {
-  return absl::get<TF_GraphTensor*>(t->t)->ctx;
-}
+void TF_DeleteAbstractTensor(TF_AbstractTensor* t) { delete unwrap(t); }
 
 class TF_GraphContext : public ExecutionContext {
  public:
@@ -261,7 +253,7 @@ class TF_GraphContext : public ExecutionContext {
   }
 
   void ExecuteOperation(TF_AbstractOp* op, int num_inputs,
-                        TF_AbstractTensor* const* inputs, TF_OutputList* o,
+                        AbstractTensor* const* inputs, TF_OutputList* o,
                         TF_Status* s) override {
     auto* graph_op = dynamic_cast_helper<TF_GraphOp>(op);
     if (graph_op == nullptr) {
@@ -271,19 +263,19 @@ class TF_GraphContext : public ExecutionContext {
     }
     auto* tf_opdesc = graph_op->op_.release();
     for (int i = 0; i < num_inputs; ++i) {
-      auto* input = inputs[i];
-      if (IsEagerTensor(input)) {
+      auto* graph_tensor = dynamic_cast_helper<GraphTensor>(inputs[i]);
+      if (!graph_tensor) {
         TF_SetStatus(s, TF_INVALID_ARGUMENT,
                      "Capturing eager tensors is not supported yet.");
         return;
       } else {
-        if (GetGraphContext(input) != this) {
+        if (graph_tensor->ctx != this) {
           TF_SetStatus(
               s, TF_INVALID_ARGUMENT,
               "Capturing tensors from other graphs is not supported yet.");
           return;
         }
-        TF_AddInput(tf_opdesc, absl::get<TF_GraphTensor*>(input->t)->output);
+        TF_AddInput(tf_opdesc, graph_tensor->output);
       }
     }
     auto* operation = TF_FinishOperation(tf_opdesc, s);
@@ -294,28 +286,22 @@ class TF_GraphContext : public ExecutionContext {
     o->outputs.clear();
     o->outputs.reserve(num_outputs);
     for (int i = 0; i < num_outputs; ++i) {
-      auto* t = new TF_AbstractTensor;
-      TF_GraphTensor* graph_t = new TF_GraphTensor;
-      graph_t->ctx = this;
-      graph_t->output = {operation, i};
-      t->t = graph_t;
-      o->outputs.push_back(t);
+      o->outputs.push_back(wrap(new GraphTensor({operation, i}, this)));
     }
   }
 
   TF_Function* ToFunction(const char* fn_name, int num_inputs,
-                          const TF_AbstractTensor* inputs, int num_outputs,
-                          const TF_AbstractTensor* outputs,
-                          TF_Status* status) const {
+                          const GraphTensor* inputs, int num_outputs,
+                          const GraphTensor* outputs, TF_Status* status) const {
     std::vector<TF_Output> graph_inputs;
     graph_inputs.resize(num_inputs);
     std::vector<TF_Output> graph_outputs;
     graph_outputs.resize(num_outputs);
     for (int i = 0; i < num_inputs; i++) {
-      graph_inputs[i] = absl::get<TF_GraphTensor*>(inputs[i].t)->output;
+      graph_inputs[i] = inputs[i].output;
     }
     for (int i = 0; i < num_outputs; i++) {
-      graph_outputs[i] = absl::get<TF_GraphTensor*>(outputs[i].t)->output;
+      graph_outputs[i] = outputs[i].output;
     }
 
     return TF_GraphToFunction(graph_.get(), fn_name, 0, -1, nullptr,
@@ -413,7 +399,7 @@ void TF_AbstractOpSetAttrType(TF_AbstractOp* op, const char* const attr_name,
 void TF_ExecuteOperation(TF_AbstractOp* op, int num_inputs,
                          TF_AbstractTensor* const* inputs, TF_OutputList* o,
                          TF_ExecutionContext* ctx, TF_Status* s) {
-  unwrap(ctx)->ExecuteOperation(op, num_inputs, inputs, o, s);
+  unwrap(ctx)->ExecuteOperation(op, num_inputs, &unwrap(*inputs), o, s);
 }
 
 TF_AbstractFunction* TF_ExecutionContextToFunction(
@@ -426,9 +412,19 @@ TF_AbstractFunction* TF_ExecutionContextToFunction(
                  "fn_body is not a TF_GraphContext.");
     return nullptr;
   }
+  auto* graph_inputs = dynamic_cast_helper<const GraphTensor>(unwrap(inputs));
+  if (!graph_inputs) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT, "inputs aren't GraphTensors.");
+    return nullptr;
+  }
+  auto* graph_outputs = dynamic_cast_helper<const GraphTensor>(unwrap(outputs));
+  if (!graph_outputs) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT, "outputs aren't GraphTensors.");
+    return nullptr;
+  }
   TF_AbstractFunction* func = new TF_AbstractFunction;
-  func->func = graph_ctx->ToFunction(fn_name, num_inputs, inputs, num_outputs,
-                                     outputs, status);
+  func->func = graph_ctx->ToFunction(fn_name, num_inputs, graph_inputs,
+                                     num_outputs, graph_outputs, status);
   return func;
 }
 
@@ -440,27 +436,21 @@ void TF_ExecutionContextRegisterFunction(TF_ExecutionContext* ctx,
   unwrap(ctx)->RegisterFunction(func, s);
 }
 
-// Temporary APIs till we figure out how to create scalar valued Eager
-// tensors and how to get value out of eager abstract tensors.
-TF_AbstractTensor* TF_NewAbstractTensor() {
-  TF_AbstractTensor* t = new TF_AbstractTensor;
-  return t;
-}
-
-void TF_AbstractTensorSetEagerTensor(TF_AbstractTensor* at, TFE_TensorHandle* t,
-                                     TF_Status* s) {
-  at->t = t;
+TF_AbstractTensor* TF_CreateAbstractTensorFromEagerTensor(TFE_TensorHandle* t,
+                                                          TF_Status* s) {
+  return wrap(new EagerTensor(t));
 }
 
 TFE_TensorHandle* TF_AbstractTensorGetEagerTensor(TF_AbstractTensor* at,
                                                   TF_Status* s) {
-  if (!absl::holds_alternative<TFE_TensorHandle*>(at->t)) {
+  auto* eager_tensor = dynamic_cast_helper<EagerTensor>(unwrap(at));
+  if (!eager_tensor) {
     string msg = absl::StrCat("Not an eager tensor handle.",
                               reinterpret_cast<uintptr_t>(at));
     TF_SetStatus(s, TF_INVALID_ARGUMENT, msg.c_str());
     return nullptr;
   }
-  return absl::get<TFE_TensorHandle*>(at->t);
+  return eager_tensor->t;
 }
 
 TFE_Context* TF_ExecutionContextGetTFEContext(TF_ExecutionContext* ctx) {
