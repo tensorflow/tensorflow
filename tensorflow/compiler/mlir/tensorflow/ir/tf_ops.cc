@@ -2349,6 +2349,17 @@ void RankOp::build(Builder *builder, OperationState &result, Value input) {
                        input);
 }
 
+// This will create a constant value for RankOp of a ranked tensor.
+OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
+  auto type = input().getType();
+  auto ranked_type = type.dyn_cast<RankedTensorType>();
+  if (!ranked_type) return {};
+
+  auto output_type = getType().cast<ShapedType>();
+  int32_t rank = ranked_type.getRank();
+  return DenseIntElementsAttr::get(output_type, rank);
+}
+
 //===----------------------------------------------------------------------===//
 // RealDivOp
 //===----------------------------------------------------------------------===//

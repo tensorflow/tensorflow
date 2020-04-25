@@ -5898,6 +5898,8 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   let builders = [
     OpBuilder<"Builder* builder, OperationState& result, Value  input">
   ];
+
+  let hasFolder = 1;
 }
 
 def TF_ReadVariableOp : TF_Op<"ReadVariableOp", []> {
