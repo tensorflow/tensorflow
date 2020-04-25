@@ -43,6 +43,19 @@ struct OutputList {
   int expected_num_outputs = -1;
 };
 
+struct AbstractFunction {
+  enum AbstractFunctionKind { kGraphFunc };
+  explicit AbstractFunction(AbstractFunctionKind kind) : k(kind) {}
+  AbstractFunctionKind getKind() const { return k; }
+  virtual ~AbstractFunction() = default;
+
+  // Temporary API till we figure the right abstraction for AbstractFunction
+  virtual TF_Function* GetTfFunction(TF_Status* s) = 0;
+
+ private:
+  const AbstractFunctionKind k;
+};
+
 struct AbstractOp {
   // Needed to implement our own version of RTTI since dynamic_cast is not
   // supported in mobile builds.
@@ -70,7 +83,7 @@ struct ExecutionContext {
                                 AbstractTensor* const* inputs, OutputList* o,
                                 TF_Status* s) = 0;
   virtual AbstractOp* CreateOperation() = 0;
-  virtual void RegisterFunction(TF_AbstractFunction* func, TF_Status* s) = 0;
+  virtual void RegisterFunction(AbstractFunction* func, TF_Status* s) = 0;
   virtual ~ExecutionContext() = default;
 
  private:
@@ -94,6 +107,7 @@ struct ExecutionContext {
   }
 
 MAKE_WRAP_UNWRAP(TF_ExecutionContext, ExecutionContext)
+MAKE_WRAP_UNWRAP(TF_AbstractFunction, AbstractFunction)
 MAKE_WRAP_UNWRAP(TF_AbstractTensor, AbstractTensor)
 MAKE_WRAP_UNWRAP(TF_AbstractOp, AbstractOp)
 MAKE_WRAP_UNWRAP(TF_OutputList, OutputList)

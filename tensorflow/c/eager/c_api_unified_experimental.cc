@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 
 using tensorflow::string;
+using tensorflow::internal::AbstractFunction;
 using tensorflow::internal::AbstractOp;
 using tensorflow::internal::AbstractTensor;
 using tensorflow::internal::dynamic_cast_helper;
@@ -147,10 +148,18 @@ class TF_EagerOp : public AbstractOp {
   TFE_Context* ctx_;
 };
 
-struct TF_AbstractFunction {
+struct GraphFunction : public AbstractFunction {
   TF_Function* func = nullptr;
+  GraphFunction() : AbstractFunction(kKind) {}
+  explicit GraphFunction(TF_Function* func)
+      : AbstractFunction(kKind), func(func) {}
+  ~GraphFunction() override {
+    if (func) TF_DeleteFunction(func);
+  }
 
-  ~TF_AbstractFunction() { TF_DeleteFunction(func); }
+  TF_Function* GetTfFunction(TF_Status* s) override { return func; }
+
+  static constexpr AbstractFunctionKind kKind = kGraphFunc;
 };
 
 class TF_EagerContext : public ExecutionContext {
@@ -207,8 +216,12 @@ class TF_EagerContext : public ExecutionContext {
     }
   }
 
-  void RegisterFunction(TF_AbstractFunction* func, TF_Status* s) override {
-    TFE_ContextAddFunction(eager_ctx_, func->func, s);
+  void RegisterFunction(AbstractFunction* afunc, TF_Status* s) override {
+    auto* func = afunc->GetTfFunction(s);
+    if (!func) {
+      return;
+    }
+    TFE_ContextAddFunction(eager_ctx_, func, s);
   }
 
   ~TF_EagerContext() override { TFE_DeleteContext(eager_ctx_); }
@@ -291,7 +304,7 @@ class TF_GraphContext : public ExecutionContext {
                               nullptr, nullptr, fn_name, status);
   }
 
-  void RegisterFunction(TF_AbstractFunction* func, TF_Status* s) override {
+  void RegisterFunction(AbstractFunction* func, TF_Status* s) override {
     TF_SetStatus(s, TF_UNIMPLEMENTED,
                  "Registering graph functions has not been implemented yet.");
   }
@@ -369,18 +382,20 @@ TF_AbstractFunction* TF_ExecutionContextToFunction(
     TF_SetStatus(status, TF_INVALID_ARGUMENT, "outputs aren't GraphTensors.");
     return nullptr;
   }
-  TF_AbstractFunction* func = new TF_AbstractFunction;
+  GraphFunction* func = new GraphFunction;
   func->func = graph_ctx->ToFunction(fn_name, num_inputs, graph_inputs,
                                      num_outputs, graph_outputs, status);
-  return func;
+  return wrap(func);
 }
 
-void TF_DeleteAbstractFunction(TF_AbstractFunction* func) { delete func; }
+void TF_DeleteAbstractFunction(TF_AbstractFunction* func) {
+  delete unwrap(func);
+}
 
 void TF_ExecutionContextRegisterFunction(TF_ExecutionContext* ctx,
                                          TF_AbstractFunction* func,
                                          TF_Status* s) {
-  unwrap(ctx)->RegisterFunction(func, s);
+  unwrap(ctx)->RegisterFunction(unwrap(func), s);
 }
 
 TF_AbstractTensor* TF_CreateAbstractTensorFromEagerTensor(TFE_TensorHandle* t,
