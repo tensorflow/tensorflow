@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import contextlib
 import functools
 
 import six
@@ -337,13 +336,6 @@ class OptimizerV2(trackable.Trackable):
                        "unsupported when using a distribution strategy.")
 
     self._hypers_created = False
-
-    # Store the distribution strategy object if the optimizer is created inside
-    # strategy scope, so it could be used to create variables later.
-    if distribute_ctx.has_strategy():
-      self._distribution_strategy = distribute_ctx.get_strategy()
-    else:
-      self._distribution_strategy = None
 
   def minimize(self, loss, var_list, grad_loss=None, name=None):
     """Minimize `loss` by updating `var_list`.
@@ -808,32 +800,30 @@ class OptimizerV2(trackable.Trackable):
   def _create_hypers(self):
     if self._hypers_created:
       return
-    with self._distribution_strategy_scope():
-      # Iterate hyper values deterministically.
-      for name, value in sorted(self._hyper.items()):
-        if isinstance(value,
-                      (ops.Tensor, tf_variables.Variable)) or callable(value):
-          continue
-        else:
-          self._hyper[name] = self.add_weight(
-              name,
-              shape=[],
-              trainable=False,
-              initializer=value,
-              aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
+    # Iterate hyper values deterministically.
+    for name, value in sorted(self._hyper.items()):
+      if isinstance(
+          value, (ops.Tensor, tf_variables.Variable)) or callable(value):
+        continue
+      else:
+        self._hyper[name] = self.add_weight(
+            name,
+            shape=[],
+            trainable=False,
+            initializer=value,
+            aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
     self._hypers_created = True
 
   @property
   def iterations(self):
     """Variable. The number of training steps this Optimizer has run."""
     if self._iterations is None:
-      with self._distribution_strategy_scope():
-        self._iterations = self.add_weight(
-            "iter",
-            shape=[],
-            dtype=dtypes.int64,
-            trainable=False,
-            aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
+      self._iterations = self.add_weight(
+          "iter",
+          shape=[],
+          dtype=dtypes.int64,
+          trainable=False,
+          aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
       self._weights.append(self._iterations)
     return self._iterations
 
@@ -1242,15 +1232,6 @@ class OptimizerV2(trackable.Trackable):
       self._deferred_slot_restorations.setdefault(
           slot_name, {}).setdefault(variable_key, []).append(
               slot_variable_position)
-
-  @contextlib.contextmanager
-  def _distribution_strategy_scope(self):
-    """Returns the `tf.distribute.Strategy` this optimizer was created under."""
-    if self._distribution_strategy and not distribute_ctx.has_strategy():
-      with self._distribution_strategy.scope():
-        yield self._distribution_strategy.scope()
-    else:
-      yield
 
 
 def _filter_grads(grads_and_vars):

@@ -2394,16 +2394,12 @@ class TestModelCapturesStrategy(test.TestCase, parameterized.TestCase):
     # Make model with distribution strategy
     with distribution.scope():
       model = DeterministicModel(distribution)
-      optimizer = keras.optimizers.adam_v2.Adam(1e-4)
 
     # Compile & evaluate the model outside of the distribution strategy scope
     model.compile(
-        optimizer=optimizer,
+        optimizer=keras.optimizers.adam_v2.Adam(1e-4),
         loss=keras.losses.MeanSquaredError(),
         metrics=['binary_accuracy'])
-
-    # Call `optimizer.iterations` out of strategy scope.
-    self.assertEqual(model.optimizer.iterations.numpy(), 0)
 
     # Non-eager training doesn't support steps_per_epoch=None.
     for unused_epoch in range(2):
@@ -2433,7 +2429,7 @@ class TestModelCapturesStrategy(test.TestCase, parameterized.TestCase):
     with distribution.scope():
       metric = keras.metrics.BinaryAccuracy()
     model.compile(
-        optimizer=optimizer,
+        optimizer=keras.optimizers.adam_v2.Adam(1e-4),
         loss=keras.losses.MeanSquaredError(),
         metrics=[metric])
 
