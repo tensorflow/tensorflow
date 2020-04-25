@@ -86,7 +86,7 @@ class Conv(Layer):
           channels, and producing half the output channels, and both
           subsequently concatenated.
         - At `groups=input_channels`, each input channel is convolved with its
-          own set of filters, of size `input_channels / filters`
+          own set of filters, of size `filters / input_channels`
     activation: Activation function to use.
       If you don't specify anything, no activation is applied.
     use_bias: Boolean, whether the layer uses a bias.
@@ -407,7 +407,7 @@ class Conv1D(Conv):
           channels, and producing half the output channels, and both
           subsequently concatenated.
         - At `groups=input_channels`, each input channel is convolved with its
-          own set of filters, of size `input_channels / filters`
+          own set of filters, of size `filters / input_channels`
     dilation_rate: an integer or tuple/list of a single integer, specifying
       the dilation rate to use for dilated convolution.
       Currently, specifying any `dilation_rate` value != 1 is
@@ -569,7 +569,7 @@ class Conv2D(Conv):
           channels, and producing half the output channels, and both
           subsequently concatenated.
         - At `groups=input_channels`, each input channel is convolved with its
-          own set of filters, of size `input_channels / filters`
+          own set of filters, of size `filters / input_channels`
     activation: Activation function to use.
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
@@ -719,7 +719,7 @@ class Conv3D(Conv):
           channels, and producing half the output channels, and both
           subsequently concatenated.
         - At `groups=input_channels`, each input channel is convolved with its
-          own set of filters, of size `input_channels / filters`
+          own set of filters, of size `filters / input_channels`
     activation: Activation function to use.
       If you don't specify anything, no activation is applied (
       see `keras.activations`).
