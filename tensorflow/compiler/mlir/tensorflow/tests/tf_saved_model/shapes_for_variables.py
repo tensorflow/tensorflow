@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-# RUN: %p/shapes_for_arguments | FileCheck %s
+# RUN: %p/shapes_for_variables | FileCheck %s
 
 # pylint: disable=missing-docstring,line-too-long
 from __future__ import absolute_import
@@ -26,20 +26,24 @@ from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common
 
 class TestModule(tf.Module):
 
-  # Check that we get shapes annotated on function arguments.
+  # Check that we get shapes for variables used in the graph.
+  # In this case, what we are testing is that the return type of the function is
+  # correctly inferred, which requires understanding the shape of the variable
+  # (in particular, the ReadVariableOp that reads it and returns a tensor).
   #
-  # Besides checking the shape on the function input argument, this test also
-  # checks that the shape on the input argument is propagated to the return
-  # value.
   # We eventually want to move the shape inference to a pass separate from
-  # the initial import, in which case that aspect of this test doesn't make much
-  # sense and will be superceded by MLIR->MLIR shape inference tests.
+  # the initial import, in which case this test doesn't make much sense and
+  # will be superceded by MLIR->MLIR shape inference tests.
   #
-  # CHECK:      func {{@[a-zA-Z_0-9]+}}(%arg0: tensor<f32> {{.*}}) -> (tensor<f32> {{.*}})
-  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["some_function"]
-  @tf.function(input_signature=[tf.TensorSpec([], tf.float32)])
-  def some_function(self, x):
-    return x
+  # CHECK:      func {{@[a-zA-Z_0-9]+}}({{.*}}) -> (tensor<f32> {{.*}})
+  # CHECK:      tf_saved_model.exported_names = ["some_function"]
+  def __init__(self):
+    super(TestModule, self).__init__()
+    self.my_variable = tf.Variable(42.)
+
+  @tf.function(input_signature=[])
+  def some_function(self):
+    return self.my_variable
 
 
 if __name__ == '__main__':
