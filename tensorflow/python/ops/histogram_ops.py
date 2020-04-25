@@ -24,7 +24,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -81,6 +83,14 @@ def histogram_fixed_width_bins(values,
 
     values = array_ops.reshape(values, [-1])
     value_range = ops.convert_to_tensor(value_range, name='value_range')
+    msg = gen_string_ops.string_join([
+        "value_range should satisfy value_range[0] < value_range[1], but got '[",
+        gen_string_ops.as_string(value_range[0]),
+        ", ",
+        gen_string_ops.as_string(value_range[1]), "]'"])
+    with ops.control_dependencies([control_flow_ops.Assert(math_ops.less(value_range[0], value_range[1]), [msg])]):
+        value_range = array_ops.identity(value_range)
+
     nbins = ops.convert_to_tensor(nbins, dtype=dtypes.int32, name='nbins')
     nbins_float = math_ops.cast(nbins, values.dtype)
 
