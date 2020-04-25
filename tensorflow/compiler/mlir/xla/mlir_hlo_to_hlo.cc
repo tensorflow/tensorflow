@@ -924,7 +924,6 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(ElementsAttr attr) {
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S16, int16)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S32, int32)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::S64, int64)
-    // TODO(b/130356985): Update once MLIR supports unsigned integers.
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U8, uint8)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U16, uint16)
     ELEMENTS_ATTR_TO_LITERAL(xla::PrimitiveType::U32, uint32)

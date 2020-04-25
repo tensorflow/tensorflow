@@ -117,7 +117,8 @@ class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
 
 // Abs supports complex to real, so element type is not guaranteed to match.
 def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs",
-    [NoSideEffect, SameOperandsAndResultShape], HLO_Tensor>, BASE_HLO_AbsOp {
+    [NoSideEffect, SameOperandsAndResultShape],
+     TensorOf<[HLO_SInt, AnyFloat, HLO_Complex]>>, BASE_HLO_AbsOp {
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Value operand"
   >];
@@ -194,7 +195,8 @@ def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
     BASE_HLO_RsqrtOp;
 
 def HLO_SignOp: HLO_UnaryElementwiseOp<"sign",
-    [NoSideEffect, SameOperandsAndResultType], HLO_IntFpOrComplexTensor>,
+    [NoSideEffect, SameOperandsAndResultType],
+    TensorOf<[HLO_SInt, AnyFloat, HLO_Complex]>>,
     BASE_HLO_SignOp;
 
 def HLO_SinOp: HLO_UnaryElementwiseOp<"sine",

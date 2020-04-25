@@ -131,6 +131,14 @@ StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
       return CreateDenseAttrFromLiteral<int32>(type, literal);
     case PrimitiveType::S64:
       return CreateDenseAttrFromLiteral<int64>(type, literal);
+    case PrimitiveType::U8:
+      return CreateDenseAttrFromLiteral<uint8>(type, literal);
+    case PrimitiveType::U16:
+      return CreateDenseAttrFromLiteral<uint16>(type, literal);
+    case PrimitiveType::U32:
+      return CreateDenseAttrFromLiteral<uint32>(type, literal);
+    case PrimitiveType::U64:
+      return CreateDenseAttrFromLiteral<uint64>(type, literal);
     default:
       return tensorflow::errors::Internal(
           absl::StrCat("Unsupported type: ", PrimitiveType_Name(element_type)));
@@ -167,6 +175,14 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
       return builder.getIntegerType(32);
     case PrimitiveType::S64:
       return builder.getIntegerType(64);
+    case PrimitiveType::U8:
+      return builder.getIntegerType(8, /*isSigned=*/false);
+    case PrimitiveType::U16:
+      return builder.getIntegerType(16, /*isSigned=*/false);
+    case PrimitiveType::U32:
+      return builder.getIntegerType(32, /*isSigned=*/false);
+    case PrimitiveType::U64:
+      return builder.getIntegerType(64, /*isSigned=*/false);
     case PrimitiveType::C64:
       return mlir::ComplexType::get(builder.getF32Type());
     case PrimitiveType::C128:

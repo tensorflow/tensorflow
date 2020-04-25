@@ -285,11 +285,14 @@ func @main() {
   // CHECK:  s32[2,2] constant({ { 3, 2 }, { 1, 4 } })
   %cst_5 = constant dense<[[3, 2], [1, 4]]> : tensor<2x2xi32>
 
+  // CHECK:  u32[2,2] constant({ { 1, 2 }, { 4, 8 } })
+  %cst_6 = constant dense<[[1, 2], [4, 8]]> : tensor<2x2xui32>
+
   // CHECK: bf16[4] constant({1, 2, 3, 4})
-  %cst_6 = constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
+  %cst_7 = constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xbf16>
 
   // CHECK: f16[4] constant({1, -4, -65504, 0.015625}
-  %cst_7 = constant dense<[1.0e+00, -4.0e+00, -65504.0e+00, 1.5625e-02]> : tensor<4xf16>
+  %cst_8 = constant dense<[1.0e+00, -4.0e+00, -65504.0e+00, 1.5625e-02]> : tensor<4xf16>
 
   return
 }
@@ -1023,3 +1026,15 @@ func @main(%arg0: tensor<2xcomplex<f32>>, %arg1: tensor<2xcomplex<f64>>) -> (ten
 // CHECK:  %[[ARG1:.*]] = c128[2] parameter(1)
 // CHECK:  %[[ABS1:.*]] = f64[2] abs(c128[2] %[[ARG1]])
 // CHECK:  ROOT %[[RESULT:.*]] = (f32[2], f64[2]) tuple(f32[2] %[[ABS0]], f64[2] %[[ABS1]])
+
+// -----
+
+// CHECK:  HloModule
+func @main(%arg0: tensor<4xui8>) -> (tensor<4xui8>) {
+  %0 = "xla_hlo.not"(%arg0) : (tensor<4xui8>) -> tensor<4xui8>
+  return %0 : tensor<4xui8>
+}
+
+// CHECK: ENTRY
+// CHECK: %[[ARG0:.*]] = u8[4] parameter(0)
+//  ROOT %[[RESULT:.*]] = u8[4] not(u8[4] %[[ARG0]])
