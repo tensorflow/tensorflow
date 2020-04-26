@@ -2915,7 +2915,10 @@ std::ostream& operator<<(std::ostream& os, const SqueezeTestParams& p) {
   return os;
 }
 
-TEST_F(OpConverterTest, ConvertSqueeze) {
+class ConvertSqueezeTest : public OpConverterTest,
+                           public ::testing::WithParamInterface<bool> {};
+
+TEST_P(ConvertSqueezeTest, ConvertSqueeze) {
   // Get the NodeDef for Squeeze.
   auto get_squeeze_nodedef = [](std::vector<int> axis) -> NodeDef {
     Scope s = Scope::NewRootScope();
@@ -2932,130 +2935,129 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     }
   };
 
-  // Loop trough conversion parameters.
-  for (bool use_implicit_batch : {true, false}) {
-    // The success or failiure of some conversion depends on the conversion
-    // params.
-    std::vector<SqueezeTestParams> test_params = {
-        SqueezeTestParams{
-            {1, 2, 1, 3},  // input dims
-            {},            // input partial dims
-            {},            // axis
-            {2, 1, 3},     // expected output dims
-            error::UNIMPLEMENTED,
-            "Squeeze is only implemented for explicit dims, at my_squeeze"},
-        SqueezeTestParams{
-            {1, 2, 1, 3},
-            {},
-            {0},
-            {2, 1, 3},
-            use_implicit_batch ? error::UNIMPLEMENTED : error::OK,
-            use_implicit_batch
-                ? "TensorRT does not allow manipulation of the batch dimension"
-                  ", at my_squeeze"
-                : nullptr},
-        SqueezeTestParams{
-            {1, 2, 1, 3},
-            {},
-            {-4},
-            {2, 1, 3},
-            use_implicit_batch ? error::UNIMPLEMENTED : error::OK,
-            use_implicit_batch
-                ? "TensorRT does not allow manipulation of the batch dimension"
-                  ", at my_squeeze"
-                : nullptr},
-        SqueezeTestParams{
-            {1, 1, 2, 3},
-            {},
-            {4},
-            {},
-            error::INVALID_ARGUMENT,
-            "Axis value of 4 is out of bounds, must be in range [-4, 4), "
-            "at my_squeeze"},
-        SqueezeTestParams{
-            {1, 1, 2, 3},
-            {},
-            {-5},
-            {},
-            error::INVALID_ARGUMENT,
-            "Axis value of -5 is out of bounds, must be in range [-4, 4), "
-            "at my_squeeze"},
-        SqueezeTestParams{
-            {1, 1, 2, 3},
-            {},
-            {2},
-            {},
-            error::INVALID_ARGUMENT,
-            "Dimension 2 with size 2 cannot be squeezed because it must be "
-            "size 1, at my_squeeze"},
-        SqueezeTestParams{{1, 1, 2, 3}, {}, {1}, {1, 2, 3}, error::OK, nullptr},
-        SqueezeTestParams{{1, 1, 2, 3}, {}, {-3}, {1, 2, 3}},
-        SqueezeTestParams{{1, 2, 3, 1}, {}, {3}, {1, 2, 3}},
-        SqueezeTestParams{{1, 2, 3, 1}, {}, {-1}, {1, 2, 3}},
-        SqueezeTestParams{{1, 1, 2, 1, 3, 1}, {}, {1, 3, 5}, {1, 2, 3}},
-        SqueezeTestParams{{1, 1, 2, 1, 3, 1}, {}, {3, 1, 5}, {1, 2, 3}},
-        SqueezeTestParams{{1, 1, 2, 1, 3, 1}, {}, {-1, -3, -5}, {1, 2, 3}},
-        SqueezeTestParams{{1, 1, 2, 1, 3, 1}, {}, {1, -3, 5}, {1, 2, 3}},
-        SqueezeTestParams{{1, 1, 6}, {}, {1}, {1, 6}},
-        SqueezeTestParams{{1, 6, 1}, {}, {2}, {1, 6}},
-        // Dynamic shape tests
-        SqueezeTestParams{{2, 1, 3}, {2, -1, 3}, {1}, {2, 3}},
-        SqueezeTestParams{{2, 1, 3}, {2, 1, -1}, {1}, {2, 3}},
-        SqueezeTestParams{{1, 2, 3}, {-1, -1, -1}, {0}, {2, 3}},
-        SqueezeTestParams{
-            {1, 1, 2, 1, 3, 1}, {-1, -1, -1, -1, -1, -1}, {1, 3, 5}, {1, 2, 3}},
-        // TODO(tfeher): check for runtime error if dynamic squeezed dim has
-        // actual size larger than 1
-    };
-    for (SqueezeTestParams p : test_params) {
-      SCOPED_TRACE(p);
-      if (use_implicit_batch && !HasStaticShape(p.input_partial_shapes)) {
-        VLOG(2) << "Skipping implicit batch test for dynamic input";
-        continue;
-      }
-      Reset(use_implicit_batch);
-      NodeDef node_def = get_squeeze_nodedef(p.axis);
-      if (use_implicit_batch || p.input_partial_shapes.empty()) {
-        AddTestTensorWithExplicitBatchDim("input", p.input_dims);
-      } else {
-        AddTestTensorWithExplicitBatchDim("input", p.input_partial_shapes);
-      }
-      RunValidationAndConversion(node_def, p.error_code, p.error_message);
+  bool use_implicit_batch = GetParam();
+  // The success or failiure of some conversion depends on the conversion
+  // params.
+  std::vector<SqueezeTestParams> test_params = {
+      SqueezeTestParams{
+          {1, 2, 1, 3},  // input dims
+          {},            // input partial dims
+          {},            // axis
+          {2, 1, 3},     // expected output dims
+          error::UNIMPLEMENTED,
+          "Squeeze is only implemented for explicit dims, at my_squeeze"},
+      SqueezeTestParams{
+          {1, 2, 1, 3},
+          {},
+          {0},
+          {2, 1, 3},
+          use_implicit_batch ? error::UNIMPLEMENTED : error::OK,
+          use_implicit_batch
+              ? "TensorRT does not allow manipulation of the batch dimension"
+                ", at my_squeeze"
+              : nullptr},
+      SqueezeTestParams{
+          {1, 2, 1, 3},
+          {},
+          {-4},
+          {2, 1, 3},
+          use_implicit_batch ? error::UNIMPLEMENTED : error::OK,
+          use_implicit_batch
+              ? "TensorRT does not allow manipulation of the batch dimension"
+                ", at my_squeeze"
+              : nullptr},
+      SqueezeTestParams{
+          {1, 1, 2, 3},
+          {},
+          {4},
+          {},
+          error::INVALID_ARGUMENT,
+          "Axis value of 4 is out of bounds, must be in range [-4, 4), "
+          "at my_squeeze"},
+      SqueezeTestParams{
+          {1, 1, 2, 3},
+          {},
+          {-5},
+          {},
+          error::INVALID_ARGUMENT,
+          "Axis value of -5 is out of bounds, must be in range [-4, 4), "
+          "at my_squeeze"},
+      SqueezeTestParams{
+          {1, 1, 2, 3},
+          {},
+          {2},
+          {},
+          error::INVALID_ARGUMENT,
+          "Dimension 2 with size 2 cannot be squeezed because it must be "
+          "size 1, at my_squeeze"},
+      SqueezeTestParams{{1, 1, 2, 3}, {}, {1}, {1, 2, 3}, error::OK, nullptr},
+      SqueezeTestParams{{1, 1, 2, 3}, {}, {-3}, {1, 2, 3}},
+      SqueezeTestParams{{1, 2, 3, 1}, {}, {3}, {1, 2, 3}},
+      SqueezeTestParams{{1, 2, 3, 1}, {}, {-1}, {1, 2, 3}},
+      SqueezeTestParams{{1, 1, 2, 1, 3, 1}, {}, {1, 3, 5}, {1, 2, 3}},
+      SqueezeTestParams{{1, 1, 2, 1, 3, 1}, {}, {3, 1, 5}, {1, 2, 3}},
+      SqueezeTestParams{{1, 1, 2, 1, 3, 1}, {}, {-1, -3, -5}, {1, 2, 3}},
+      SqueezeTestParams{{1, 1, 2, 1, 3, 1}, {}, {1, -3, 5}, {1, 2, 3}},
+      SqueezeTestParams{{1, 1, 6}, {}, {1}, {1, 6}},
+      SqueezeTestParams{{1, 6, 1}, {}, {2}, {1, 6}},
+      // Dynamic shape tests
+      SqueezeTestParams{{2, 1, 3}, {2, -1, 3}, {1}, {2, 3}},
+      SqueezeTestParams{{2, 1, 3}, {2, 1, -1}, {1}, {2, 3}},
+      SqueezeTestParams{{1, 2, 3}, {-1, -1, -1}, {0}, {2, 3}},
+      SqueezeTestParams{
+          {1, 1, 2, 1, 3, 1}, {-1, -1, -1, -1, -1, -1}, {1, 3, 5}, {1, 2, 3}},
+      // TODO(tfeher): check for runtime error if dynamic squeezed dim has
+      // actual size larger than 1
+  };
+  for (SqueezeTestParams p : test_params) {
+    SCOPED_TRACE(p);
+    if (use_implicit_batch && !HasStaticShape(p.input_partial_shapes)) {
+      VLOG(2) << "Skipping implicit batch test for dynamic input";
+      continue;
+    }
+    Reset(use_implicit_batch);
+    NodeDef node_def = get_squeeze_nodedef(p.axis);
+    if (use_implicit_batch || p.input_partial_shapes.empty()) {
+      AddTestTensorWithExplicitBatchDim("input", p.input_dims);
+    } else {
+      AddTestTensorWithExplicitBatchDim("input", p.input_partial_shapes);
+    }
+    RunValidationAndConversion(node_def, p.error_code, p.error_message);
 
-      // Run the converted network if the conversion was successful
-      if (p.error_code == error::OK) {
-        TRT_TensorOrWeights output;
-        TF_EXPECT_OK(GetTensorOrWeights("my_squeeze", &output));
-        ASSERT_TRUE(output.is_tensor());
-        if (use_implicit_batch) {
-          // We only check in implicit batch mode. In explicit batch mode we
-          // need to wait for the concrate input shapes to be defined (by
-          // setBindingDimensions before enqueue) before we can check whether
-          // the output dims are equal.
+    // Run the converted network if the conversion was successful
+    if (p.error_code == error::OK) {
+      TRT_TensorOrWeights output;
+      TF_EXPECT_OK(GetTensorOrWeights("my_squeeze", &output));
+      ASSERT_TRUE(output.is_tensor());
+      if (use_implicit_batch) {
+        // We only check in implicit batch mode. In explicit batch mode we
+        // need to wait for the concrate input shapes to be defined (by
+        // setBindingDimensions before enqueue) before we can check whether
+        // the output dims are equal.
 
-          // Removing batch dim
-          auto out_dims = std::vector<int>(p.expected_output_dims.begin() + 1,
-                                           p.expected_output_dims.end());
-          ExpectTrtDimsEqualsArray(out_dims, output.tensor()->getDimensions());
-        }
-        TensorShape shape =
-            TrtDimsToTensorShape(p.input_dims, use_implicit_batch, 1);
-
-        const DataVec input_data{
-            {"input", AsTensor<float>({1, 2, 3, 4, 5, 6}, shape)}};
-        DataVec output_data{{"my_squeeze", ConstructTensor<float>(6)}};
-        BuildAndRun(input_data, &output_data);
-        // Check tha actual output tensor
-        TensorShapeUtils::MakeShape(p.expected_output_dims, &shape);
-        EXPECT_TRUE(output_data[0].tensor.shape() == shape)
-            << "Expected shape: " << shape.DebugString() << ", actual shape"
-            << output_data[0].tensor.shape().DebugString();
-        EXPECT_THAT(GetSpanForData<float>(output_data[0]),
-                    ElementsAre(1, 2, 3, 4, 5, 6));
+        // Removing batch dim
+        auto out_dims = std::vector<int>(p.expected_output_dims.begin() + 1,
+                                         p.expected_output_dims.end());
+        ExpectTrtDimsEqualsArray(out_dims, output.tensor()->getDimensions());
       }
-    }  // loop over test parameters
-  }    // loop over conversion parameters
+      TensorShape shape;
+      TF_EXPECT_OK(TensorShapeUtils::MakeShape(p.input_dims, &shape));
+      const DataVec input_data{
+          {"input", AsTensor<float>({1, 2, 3, 4, 5, 6}, shape)}};
+      DataVec output_data{{"my_squeeze", ConstructTensor<float>(6)}};
+      BuildAndRun(input_data, &output_data);
+      // Check tha actual output tensor
+      TF_EXPECT_OK(TensorShapeUtils::MakeShape(p.expected_output_dims, &shape));
+      EXPECT_TRUE(output_data[0].tensor.shape() == shape)
+          << "Expected shape: " << shape.DebugString() << ", actual shape"
+          << output_data[0].tensor.shape().DebugString();
+      EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                  ElementsAre(1, 2, 3, 4, 5, 6));
+    }
+  }  // loop over test parameters
 }
+INSTANTIATE_TEST_CASE_P(ConvertSqueezeInstantiation, ConvertSqueezeTest,
+                        ::testing::Values(false, true));
 
 TEST_F(OpConverterTest, ConvertStridedSlice) {
   // Get nodedef for StridedSlice layer.
