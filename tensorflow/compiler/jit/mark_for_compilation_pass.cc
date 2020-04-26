@@ -1176,6 +1176,31 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       break;
     }
 
+    // skip nodes that have cross device edges.
+    bool cross_device = false;
+    for (const Edge* e : node->out_edges()) {
+      auto dst = e->dst();
+      if (!node->assigned_device_name().empty() &&
+          !dst->assigned_device_name().empty() &&
+          node->assigned_device_name() != dst->assigned_device_name()) {
+        cross_device = true;
+        break;
+      }
+    }
+    if (!cross_device) {
+      for (const Edge* e : node->in_edges()) {
+        auto src = e->src();
+        if (!node->assigned_device_name().empty() &&
+            !src->assigned_device_name().empty() &&
+            node->assigned_device_name() != src->assigned_device_name()) {
+          cross_device = true;
+          break;
+        }
+      }
+    }
+    if (cross_device)
+      continue;
+
     TF_ASSIGN_OR_RETURN(
         const DeviceType& device_type,
         device_info_cache_.GetDeviceTypeFor(node->assigned_device_name()));
