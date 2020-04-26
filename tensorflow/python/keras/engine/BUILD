@@ -501,6 +501,9 @@ tf_py_test(
     srcs = ["node_test.py"],
     python_version = "PY3",
     shard_count = 3,
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
     deps = [
         ":base_layer",
         ":engine",
