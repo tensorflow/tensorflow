@@ -88,7 +88,7 @@ nvinfer1::Dims GetTestDims(const std::vector<int>& d) {
   return dims;
 }
 
-// To print test parameter vectors in case of error
+// Prints the vector to the output stream.
 template <typename T>
 std::ostream& operator<<(std::ostream& os, const std::vector<T>& v) {
   if (!v.empty()) {
@@ -1233,10 +1233,10 @@ TEST_F(ConvertGraphDefToEngineTest, IdentityGraph) {
 // Returns a vector of shapes from a vector of input tensors. This can be used
 // to create optimization profiles.
 Status GetShapeFromDataVec(DataVec input_data,
-                           std::vector<TensorShape>& shape_vec) {
-  shape_vec.reserve(input_data.size());
+                           std::vector<TensorShape>* shape_vec) {
+  shape_vec->reserve(input_data.size());
   std::transform(input_data.begin(), input_data.end(),
-                 std::back_inserter(shape_vec),
+                 std::back_inserter(*shape_vec),
                  [](InputOutputData x) { return x.tensor.shape(); });
   return Status::OK();
 }
@@ -1336,7 +1336,7 @@ class OpConverterTest : public ::testing::Test {
     if (!converter_->use_implicit_batch()) {
       // Create a single optimization profile for explicit batch mode
       std::vector<TensorShape> input_shapes;
-      TF_ASSERT_OK(GetShapeFromDataVec(input_data, input_shapes));
+      TF_ASSERT_OK(GetShapeFromDataVec(input_data, &input_shapes));
       profiles.AddShape(input_shapes);
       profiles.InitProfiles();
     }
@@ -1386,12 +1386,12 @@ class OpConverterTest : public ::testing::Test {
   }
 
   bool HasStaticShape(std::vector<int> dims) const {
-    return !absl::c_any_of(dims, [](int i) { return i == -1; });
+    return !absl::c_any_of(dims, [](int i) { return i < 0; });
   }
 
-  // Add ITensor for both validation and conversion. Assume explicit batch
-  // dim included in dims.
-  void AddTestTensorExplicit(
+  // Adds ITensor for both validation and conversion, assuming explicit batch
+  // dimension is included in dims.
+  void AddTestTensorWithExplicitBatchDim(
       const string& name, const std::vector<int32>& dims,
       nvinfer1::DataType trt_dtype = nvinfer1::DataType::kFLOAT) {
     DataType tf_dtype = TrtDataTypeToTf(trt_dtype);
@@ -1411,13 +1411,13 @@ class OpConverterTest : public ::testing::Test {
     }
   }
 
-  // Add ITensor for both validation and conversion.
+  // Adds ITensor for both validation and conversion.
   void AddTestTensor(
       const string& name, const std::vector<int32>& dims, int batch_size = 1,
       nvinfer1::DataType trt_dtype = nvinfer1::DataType::kFLOAT) {
     std::vector<int32> dims_with_batch(dims.size() + 1, batch_size);
     std::copy(dims.begin(), dims.end(), dims_with_batch.begin() + 1);
-    AddTestTensorExplicit(name, dims_with_batch, trt_dtype);
+    AddTestTensorWithExplicitBatchDim(name, dims_with_batch, trt_dtype);
     if (HasStaticShape(dims)) {
       ASSERT_EQ(batch_size, converter_->batch_size_);
     }
@@ -3016,9 +3016,9 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
       Reset(use_implicit_batch);
       NodeDef node_def = get_squeeze_nodedef(p.axis);
       if (use_implicit_batch || p.input_partial_shapes.empty()) {
-        AddTestTensorExplicit("input", p.input_dims);
+        AddTestTensorWithExplicitBatchDim("input", p.input_dims);
       } else {
-        AddTestTensorExplicit("input", p.input_partial_shapes);
+        AddTestTensorWithExplicitBatchDim("input", p.input_partial_shapes);
       }
       RunValidationAndConversion(node_def, p.error_code, p.error_message);
 
