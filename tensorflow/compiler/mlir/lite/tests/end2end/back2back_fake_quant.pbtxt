@@ -1174,7 +1174,8 @@ versions {
 # RESULT1-NEXT: scale: [ 0.007523 ],
 # RESULT1-NEXT: zero_point: [ 116 ]
 
-# TODO  Actually RESULT1 represents in incomplete implementation answer.  Currently all but the first fake_quant in 
+# TODO  Actually RESULT1 represents in incomplete implementation
+# Currently TF2.2.0-rc3 all but the first fake_quant in 
 # sequence are dropped.  A correct transalation would retain the second as a requantization
 # op.
 
