@@ -1866,7 +1866,7 @@ namespace {
 bool MayPreventVectorization(const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kFusion) {
     return absl::c_any_of(hlo.fused_instructions_computation()->instructions(),
-                          [&](const HloInstruction* instr) {
+                          [](const HloInstruction* instr) {
                             switch (instr->opcode()) {
                               case HloOpcode::kReduceWindow:
                               case HloOpcode::kSort:
@@ -1963,7 +1963,7 @@ static void UnrollInnerTileLoop(
   IrArray::Index source_idx_x_base = source_idx.AddOffsetToDim(y_loc, kDimY, b);
   for (int64 j = 0; j < x_num_steps / vector_size; j++) {
     for (int64 i = 0; i < vector_size; i++) {
-      int linear_index = j * vector_size + i;
+      int64 linear_index = j * vector_size + i;
       llvm::Value* x_loc = b->CreateAdd(constant(j * step_x * vector_size + i),
                                         start_offset_x, "x_loc");
       IrArray::Index source_idx_x = source_idx_x_base.AddOffsetToDim(
