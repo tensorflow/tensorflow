@@ -28,6 +28,7 @@ import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -94,6 +95,28 @@ class TrainingTest(keras_parameterized.TestCase):
     run_eagerly = testing_utils.should_run_eagerly()
     model.compile('sgd', 'mse', run_eagerly=run_eagerly)
     self.assertEqual(model.run_eagerly, run_eagerly)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  @parameterized.named_parameters(
+      ('train_on_batch', 'train_on_batch'),
+      ('test_on_batch', 'test_on_batch'),
+      ('predict_on_batch', 'predict_on_batch'),
+      ('fit', 'fit'),
+      ('evaluate', 'evaluate'),
+      ('predict', 'predict'),
+  )
+  def test_disallow_methods_inside_tf_function(self, method_name):
+    model = sequential.Sequential([layers_module.Dense(1)])
+    run_eagerly = testing_utils.should_run_eagerly()
+    model.compile('sgd', 'mse', run_eagerly=run_eagerly)
+
+    @def_function.function
+    def my_fn():
+      getattr(model, method_name)(1)
+
+    error_msg = 'inside a `tf.function`'
+    with self.assertRaisesRegexp(RuntimeError, error_msg):
+      my_fn()
 
   @keras_parameterized.run_all_keras_modes
   def test_fit_and_validate_learning_phase(self):

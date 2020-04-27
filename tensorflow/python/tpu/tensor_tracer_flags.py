@@ -73,6 +73,7 @@ FLAG_NAME_OP_RANGE = 'op_range'
 FLAG_NAME_DUMP_BEFORE_AFTER_GRAPHS = 'dump_graphs'
 FLAG_NAME_SUMMARY_SIGNATURES = 'signatures'
 FLAG_NAME_SUMMARY_PER_CORE = 'collect_summary_per_core'
+FLAG_NAME_TEMP_CACHE_VAR = 'use_temp_cache'
 
 _OP_RANGE_PAT = re.compile(r'(\d+):(\d+)')
 _TEST_UNDECLARED_OUTPUTS_DIR_ENV_VAR = 'TEST_UNDECLARED_OUTPUTS_DIR'
@@ -125,6 +126,7 @@ class TTParameters(object):
     self.is_conditional_trace = self._is_conditional_trace_mode()
     self.trace_scalar_ops = self.is_flag_on(FLAG_NAME_TRACE_SCALAR_OPS)
     self.use_compact_trace = self.is_flag_on(FLAG_NAME_USE_COMPACT_TRACE)
+    self.use_temp_cache_var = self.is_flag_on(FLAG_NAME_TEMP_CACHE_VAR)
 
     # _trace_ops_before_included and _trace_ops_after_included denotes to depth
     # of tracing relative to the ops given in --included_opnames or
@@ -271,7 +273,8 @@ class TTParameters(object):
         FLAG_NAME_USE_TEST_UNDECLARED_OUTPUTS_DIR,
         FLAG_NAME_INCLUDE_LESS_INTERESTING_OPS, FLAG_NAME_OP_RANGE,
         FLAG_NAME_DUMP_BEFORE_AFTER_GRAPHS, FLAG_NAME_TRACE_LEVEL,
-        FLAG_NAME_SUMMARY_SIGNATURES, FLAG_NAME_SUMMARY_PER_CORE
+        FLAG_NAME_SUMMARY_SIGNATURES, FLAG_NAME_SUMMARY_PER_CORE,
+        FLAG_NAME_TEMP_CACHE_VAR
     ]
     tensor_tracer_flags = self._env.get(FLAGS_ENV_VAR)
     if not tensor_tracer_flags:

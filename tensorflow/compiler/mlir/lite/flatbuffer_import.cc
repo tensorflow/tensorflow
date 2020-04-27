@@ -183,6 +183,12 @@ StatusOr<mlir::TensorType> GetTensorType(const TensorT& tensor, Builder builder,
     return RankedTensorType::get({}, elem_type);
   }
 
+  if (!tensor.shape_signature.empty()) {
+    llvm::SmallVector<int64_t, 4> shape(tensor.shape_signature.begin(),
+                                        tensor.shape_signature.end());
+    return RankedTensorType::get(shape, elem_type);
+  }
+
   if (!tensor.shape.empty()) {
     llvm::SmallVector<int64_t, 4> shape(tensor.shape.begin(),
                                         tensor.shape.end());

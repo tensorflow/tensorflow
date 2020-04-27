@@ -611,13 +611,12 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     }
   }
 
-  tensorflow::RemoteRendezvous* r =
-      grpc_server->worker_env()->rendezvous_mgr->Find(context_id);
   auto session_name = tensorflow::strings::StrCat("eager_", context_id);
-  auto* device_mgr = grpc_server->worker_env()->device_mgr;
-  std::shared_ptr<tensorflow::WorkerSession> worker_session;
-
   if (reset_context) {
+    tensorflow::RemoteRendezvous* r =
+        grpc_server->worker_env()->rendezvous_mgr->Find(context_id);
+    auto* device_mgr = grpc_server->worker_env()->device_mgr;
+    std::shared_ptr<tensorflow::WorkerSession> worker_session;
     TF_RETURN_IF_ERROR(grpc_server->worker_env()->session_mgr->CreateSession(
         session_name, server_def, base_request.cluster_device_attributes(),
         true));
@@ -647,10 +646,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     LOG_AND_RETURN_IF_ERROR(
         grpc_server->worker_env()->session_mgr->UpdateSession(
             session_name, server_def, base_request.cluster_device_attributes(),
-            true));
-    LOG_AND_RETURN_IF_ERROR(context->UpdateRemoteMaster(
-        grpc_server->worker_env(), std::move(remote_eager_workers),
-        added_workers, removed_workers, context_id, r));
+            /*isolate_session_state=*/true));
+    LOG_AND_RETURN_IF_ERROR(
+        context->UpdateRemoteMaster(context_id, std::move(remote_eager_workers),
+                                    added_workers, removed_workers));
   }
 #undef LOG_AND_RETURN_IF_ERROR
 

@@ -462,7 +462,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
                       3] == input_details[0]['shape_signature']).all())
 
     output_details = interpreter.get_output_details()
-    self.assertTrue(([1, 16, 16,
+    self.assertTrue(([1, -1, 16,
                       3] == output_details[0]['shape_signature']).all())
 
   def testBatchSizeValid(self):
@@ -2173,6 +2173,14 @@ class FromKerasFile(TestModels, parameterized.TestCase):
       converter = lite.TFLiteConverter.from_keras_model_file(self._keras_file)
       converter.convert()
       self.assertValidDebugInfo(converter._debug_info)
+
+  def testExperimentalSparsifyModel(self):
+    self._getSequentialModel()
+
+    converter = lite.TocoConverter.from_keras_model_file(self._keras_file)
+    converter._experimental_sparsify_model = True
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
 
 
 class GrapplerTest(TestModels, parameterized.TestCase):

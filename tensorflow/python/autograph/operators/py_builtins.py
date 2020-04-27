@@ -29,6 +29,7 @@ import six
 
 from tensorflow.python.autograph.utils import py_func
 from tensorflow.python.autograph.utils import tensors
+from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
@@ -234,6 +235,8 @@ def len_(s):
     return _tf_tensor_list_len(s)
   elif tensor_util.is_tensor(s):
     return _tf_tensor_len(s)
+  if isinstance(s, dataset_ops.DatasetV2):
+    return _tf_dataset_len(s)
   return _py_len(s)
 
 
@@ -276,6 +279,26 @@ def _tf_tensor_len(s):
 
   return control_flow_ops.cond(rank > 0, lambda: array_ops.shape(s)[0],
                                raise_zero_rank_error)
+
+
+def _tf_dataset_len(s):
+  l = cardinality.cardinality(s)
+  msg = gen_string_ops.string_join([
+      'len requires dataset with definitive cardinality, got ',
+      gen_string_ops.as_string(l)
+  ])
+  # TODO (yongtang): UNKNOWN is treated as an error.
+  # In case there are more UNKNOWN cases for dataset, we could
+  # use dataset.reduce() to find out the length (in an expensive way).
+  with ops.control_dependencies([
+      control_flow_ops.Assert(
+          math_ops.logical_and(
+              math_ops.not_equal(l, cardinality.INFINITE),
+              math_ops.not_equal(l, cardinality.UNKNOWN)), [msg])
+  ]):
+    l = array_ops.identity(l)
+
+  return l
 
 
 def _py_len(s):

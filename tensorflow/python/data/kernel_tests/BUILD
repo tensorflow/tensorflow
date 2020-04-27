@@ -81,7 +81,7 @@ tf_py_test(
 
 tf_py_test(
     name = "data_service_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["data_service_ops_test.py"],
     deps = [
         "//tensorflow:tensorflow_py",
@@ -112,6 +112,21 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/data/util:nest",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "dataset_spec_test",
+    size = "small",
+    srcs = ["dataset_spec_test.py"],
+    deps = [
+        ":test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

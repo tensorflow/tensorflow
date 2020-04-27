@@ -2870,6 +2870,23 @@ def group(*inputs, **kwargs):
   When this op finishes, all ops in `inputs` have finished. This op has no
   output.
 
+  Note: *In TensorFlow 2 with eager and/or Autograph, you should not require
+  this method, as code executes in your expected order.* Only use tf.group when
+  working with v1-style code or in a graph context such as inside `Dataset.map`.
+
+  When operating in a v1-style graph context, ops are not executed in the same
+  order as specified in the code; TensorFlow will attempt to execute ops in
+  parallel or in an order convienient to the result it is computing.  `tf.group`
+  allows you to request that one or more results finish before execution
+  continues.
+
+  `tf.group` creates a single op (of type `NoOp`), and then adds appropriate
+  control dependencies.  Thus, `c = tf.group(a, b)` will compute the same graph
+  as this:
+
+      with tf.control_dependencies([a, b]):
+          c = tf.no_op()
+
   See also `tf.tuple` and
   `tf.control_dependencies`.
 

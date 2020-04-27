@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EAGER_PARALLEL_DEVICE_PARALLEL_DEVICE_H_
 #define TENSORFLOW_C_EAGER_PARALLEL_DEVICE_PARALLEL_DEVICE_H_
 
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/eager/c_api_experimental.h"
 
 namespace tensorflow {
 namespace eager {
 
-// Register a parallel device named `device_name` which forwards operations to
+// Allocate a parallel device named `device_name` which forwards operations to
 // `underlying_devices`, maintaining "parallel tensors" with components placed
 // on each underlying device.
 //
@@ -50,11 +52,12 @@ namespace eager {
 // TPUReplicatedOutput(input=x, num_replicas=2)` un-packs the parallel tensor
 // into its components.
 //
-// `context` owns the parallel device. `underlying_devices` must stay valid
-// while the parallel device is in use.
-void RegisterParallelDevice(TFE_Context* context, const char* device_name,
-                            const char** underlying_devices,
-                            int num_underlying_devices, TF_Status* status);
+// The filled `device` struct and the allocated `device_info` struct may be
+// passed to TFE_RegisterCustomDevice. The `device_name` arguments must match.
+void AllocateParallelDevice(const char* device_name,
+                            const char* const* underlying_devices,
+                            int num_underlying_devices,
+                            TFE_CustomDevice* device, void** device_info);
 
 }  // namespace eager
 }  // namespace tensorflow

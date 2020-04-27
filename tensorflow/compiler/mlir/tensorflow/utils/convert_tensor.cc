@@ -164,6 +164,20 @@ PartialTensorShape ConvertTypeToTensorShape(const mlir::Type& type) {
   return TensorShape();
 }
 
+mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type) {
+  if (type.isa<mlir::UnrankedTensorType>()) {
+    return mlir::TF::ShapeAttr::get(type.getContext(), llvm::None);
+  }
+
+  if (auto tensor_type = type.dyn_cast<mlir::RankedTensorType>()) {
+    return mlir::TF::ShapeAttr::get(type.getContext(), tensor_type.getShape());
+  }
+
+  // If type is not a RankedTensor or UnrankedTensor, it must be a scalar.
+  // Empty TensorShape indicates a scalar.
+  return mlir::TF::ShapeAttr::get(type.getContext(), ArrayRef<int64_t>());
+}
+
 // Converts an MLIR opaque elements attribute to a TensorFlow tensor proto.
 Status ConvertOpaqueElementsAttr(const ElementsAttr attr,
                                  TensorProto* output_tensor) {

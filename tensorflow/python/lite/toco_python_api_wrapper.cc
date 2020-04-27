@@ -64,4 +64,14 @@ PYBIND11_MODULE(_pywrap_toco_api, m) {
       R"pbdoc(
       Returns a quantized model.
     )pbdoc");
+  m.def(
+      "ExperimentalMlirSparsifyModel",
+      [](py::object input_contents_txt_raw) {
+        return tensorflow::PyoOrThrow(
+            toco::MlirSparsifyModel(input_contents_txt_raw.ptr()));
+      },
+      py::arg("input_contents_txt_raw"),
+      R"pbdoc(
+      Returns a sparsified model.
+    )pbdoc");
 }

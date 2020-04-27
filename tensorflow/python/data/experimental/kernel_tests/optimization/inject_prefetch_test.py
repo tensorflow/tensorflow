@@ -19,7 +19,6 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -37,11 +36,8 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testParallelMap(self):
     dataset = dataset_ops.Dataset.range(100)
-    parallel_map = "ParallelMap"
-    if compat.forward_compatible(2020, 3, 6):
-      parallel_map = "ParallelMapV2"
     dataset = dataset.apply(
-        testing.assert_next([parallel_map, "Prefetch", "FiniteTake"]))
+        testing.assert_next(["ParallelMapV2", "Prefetch", "FiniteTake"]))
     dataset = dataset.map(
         lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
     dataset = dataset.take(50)
@@ -64,11 +60,8 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testParallelInterleave(self):
     dataset = dataset_ops.Dataset.range(100)
-    parallel_interleave = "ParallelInterleaveV3"
-    if compat.forward_compatible(2020, 3, 6):
-      parallel_interleave = "ParallelInterleaveV4"
     dataset = dataset.apply(
-        testing.assert_next([parallel_interleave, "Prefetch", "FiniteTake"]))
+        testing.assert_next(["ParallelInterleaveV4", "Prefetch", "FiniteTake"]))
     dataset = dataset.interleave(
         lambda x: dataset_ops.Dataset.from_tensors(x + 1),
         num_parallel_calls=dataset_ops.AUTOTUNE)
@@ -79,15 +72,9 @@ class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(test_base.default_test_combinations())
   def testChainedParallelDatasets(self):
     dataset = dataset_ops.Dataset.range(100)
-    parallel_interleave = "ParallelInterleaveV3"
-    if compat.forward_compatible(2020, 3, 6):
-      parallel_interleave = "ParallelInterleaveV4"
-    parallel_map = "ParallelMap"
-    if compat.forward_compatible(2020, 3, 6):
-      parallel_map = "ParallelMapV2"
     dataset = dataset.apply(
         testing.assert_next([
-            parallel_map, "Prefetch", parallel_interleave, "Prefetch",
+            "ParallelMapV2", "Prefetch", "ParallelInterleaveV4", "Prefetch",
             "MapAndBatch", "Prefetch", "FiniteTake"
         ]))
     dataset = dataset.map(

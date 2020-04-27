@@ -3,6 +3,7 @@
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
     default_visibility = [
@@ -231,22 +232,6 @@ py_library(
     ],
 )
 
-tf_py_test(
-    name = "discretization_test",
-    size = "small",
-    srcs = ["discretization_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_rocm",
-    ],
-    deps = [
-        ":discretization",
-        ":preprocessing_test_utils",
-        "//tensorflow/python:client_testlib",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
 cuda_py_test(
     name = "categorical_crossing_test",
     size = "medium",
@@ -264,6 +249,66 @@ cuda_py_test(
     ],
 )
 
+tf_py_test(
+    name = "categorical_encoding_test",
+    size = "medium",
+    srcs = ["categorical_encoding_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":categorical_encoding",
+        ":preprocessing_test_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/utils:generic_utils",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tpu_py_test(
+    name = "categorical_encoding_tpu_test",
+    srcs = ["categorical_encoding_tpu_test.py"],
+    disable_experimental = True,
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":categorical_encoding",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
+    ],
+)
+
+tf_py_test(
+    name = "discretization_test",
+    size = "small",
+    srcs = ["discretization_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_rocm",
+    ],
+    deps = [
+        ":discretization",
+        ":preprocessing_test_utils",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tpu_py_test(
+    name = "discretization_tpu_test",
+    srcs = ["discretization_tpu_test.py"],
+    disable_experimental = True,
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":discretization",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
+    ],
+)
+
 cuda_py_test(
     name = "hashing_test",
     size = "medium",
@@ -275,6 +320,20 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tpu_py_test(
+    name = "hashing_tpu_test",
+    srcs = ["hashing_tpu_test.py"],
+    disable_experimental = True,
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":hashing",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
     ],
 )
 
@@ -291,6 +350,20 @@ tf_py_test(
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/ops/ragged:ragged_string_ops",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tpu_py_test(
+    name = "index_lookup_tpu_test",
+    srcs = ["index_lookup_tpu_test.py"],
+    disable_experimental = True,
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":index_lookup",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
     ],
 )
 
@@ -321,6 +394,20 @@ tf_py_test(
     ],
 )
 
+tpu_py_test(
+    name = "normalization_tpu_test",
+    srcs = ["normalization_tpu_test.py"],
+    disable_experimental = True,
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":normalization",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
+    ],
+)
+
 tf_py_test(
     name = "text_vectorization_test",
     size = "medium",
@@ -337,6 +424,20 @@ tf_py_test(
     ],
 )
 
+tpu_py_test(
+    name = "text_vectorization_tpu_test",
+    srcs = ["text_vectorization_tpu_test.py"],
+    disable_experimental = True,
+    python_version = "PY3",
+    tags = ["no_oss"],
+    deps = [
+        ":text_vectorization",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
+    ],
+)
+
 tf_py_test(
     name = "reduction_test",
     srcs = ["reduction_test.py"],
@@ -344,22 +445,6 @@ tf_py_test(
     deps = [
         ":reduction",
         "//tensorflow/python:client_testlib",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "categorical_encoding_test",
-    size = "medium",
-    srcs = ["categorical_encoding_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":categorical_encoding",
-        ":preprocessing_test_utils",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/keras/utils:generic_utils",
-        "//tensorflow/python/ops/ragged:ragged_string_ops",
         "@absl_py//absl/testing:parameterized",
     ],
 )

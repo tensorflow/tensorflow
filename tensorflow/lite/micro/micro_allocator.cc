@@ -44,29 +44,13 @@ struct AllocationInfo {
 // requirement for SIMD extensions.
 constexpr int kBufferAlignment = 16;
 
-// If building with GNU clib from GCC 4.8.x or lower, `max_align_t` is not a
-// member of `std`. If using a newer version of clib, we import `max_align_t`
-// into the local anonymous namespace to be able to use it like the global
-// `max_align_t` from the older clib.
-#if defined(__GNUC__) && defined(__GNUC_PREREQ)
-#if __GNUC_PREREQ(4, 9)
-using std::max_align_t;
-#endif
-#else
-// We assume other compiler/clib configurations don't have this issue.
-using std::max_align_t;
-#endif
-
 class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
  public:
   explicit MicroBuiltinDataAllocator(SimpleMemoryAllocator* memory_allocator)
       : memory_allocator_(memory_allocator) {}
 
-  void* Allocate(size_t size) override {
-    // Align to an address that is proper for all primitive types, but no more
-    // than the size.
-    return memory_allocator_->AllocateFromTail(
-        size, std::min(size, alignof(max_align_t)));
+  void* Allocate(size_t size, size_t alignment_hint) override {
+    return memory_allocator_->AllocateFromTail(size, alignment_hint);
   }
   void Deallocate(void* data) override {
     // Do not deallocate, builtin data needs to be available for the life time

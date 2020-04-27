@@ -62,6 +62,7 @@ tf_cc_test_gpu(
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "nomac",
+        "notap",  # b/154510273
         "gpu_cupti",
     ],
     deps = [
@@ -98,8 +99,9 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:platform_base",
+    ] + if_cuda_is_configured_compat([
         "//tensorflow/stream_executor/cuda:cupti_stub",
-    ],
+    ]),
 )
 
 tf_cuda_library(
@@ -110,8 +112,9 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cupti_interface",
+    ] + if_cuda_is_configured_compat([
         "//tensorflow/stream_executor/cuda:cupti_stub",
-    ],
+    ]),
 )
 
 tf_cuda_library(

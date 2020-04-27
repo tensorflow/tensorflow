@@ -547,7 +547,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
         else:
           return inputs
 
-    t = array_ops.sequence_mask(1)
+    t = self.evaluate(array_ops.sequence_mask(1))
     inputs = keras.layers.Input(shape=(3))
     model = keras.models.Model(inputs, LayerWithTensorKwarg()(inputs, t))
 

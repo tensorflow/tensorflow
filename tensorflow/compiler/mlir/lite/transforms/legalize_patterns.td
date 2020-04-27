@@ -58,6 +58,9 @@ def HasSameStaticShapesPred : CPred<"HasSameStaticShapes($0.getDefiningOp())">;
 def HasSameStaticShapes : Constraint<HasSameStaticShapesPred, "op must have static same input shapes">;
 def HasNotSameStaticShapes : Constraint<Neg<HasSameStaticShapesPred>, "op must have not static same input shapes">;
 
+def CreateNoneValue : NativeCodeCall<
+  "$_builder.create<mlir::ConstantOp>($0.getLoc(), $_builder.getNoneType(), $_builder.getUnitAttr())">;
+
 // Checks if the value has only one user.
 // TODO(karimnosseir): Move to a common place?
 def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
@@ -343,6 +346,7 @@ def : Pat<
      (TF_TransposeOp $filter,
        (ConstantOp ConstantAttr<I32VectorElementsAttr<4>, "{2, 0, 1, 3}">)),
      $out_backprop,
+     /*bias=*/ (CreateNoneValue $input_sizes),
      /*padding=*/ $padding,
      /*stride_h=*/ ExtractI32At<1>:$strides,
      /*stride_w=*/ ExtractI32At<2>:$strides)>;
@@ -350,3 +354,6 @@ def : Pat<
 def : Pat<
   (TF_MatrixSetDiagOp $input, $diagonal),
   (TFL_MatrixSetDiagOp $input, $diagonal)>;
+
+def : Pat<(TF_ScatterNdOp I32Tensor:$indices, $updates, $shape),
+          (TFL_ScatterNdOp I32Tensor:$indices, $updates, $shape)>;

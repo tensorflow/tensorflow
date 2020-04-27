@@ -555,6 +555,19 @@ static LogicalResult Verify(BroadcastInDimOp op) {
   return success();
 }
 
+OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute>) {
+  auto type = getType().cast<RankedTensorType>();
+  if (type != getOperand().getType()) {
+    return nullptr;
+  }
+  auto broadcast_values = broadcast_dimensions().getValues<int64_t>();
+  if (!std::equal(broadcast_values.begin(), broadcast_values.end(),
+                  llvm::seq<int64_t>(0, type.getRank()).begin())) {
+    return nullptr;
+  }
+  return getOperand();
+}
+
 //===----------------------------------------------------------------------===//
 // ScalarsToDimensionTensorOp
 //===----------------------------------------------------------------------===//

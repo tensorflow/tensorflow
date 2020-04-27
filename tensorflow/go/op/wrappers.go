@@ -6915,9 +6915,7 @@ func GetSessionHandle(scope *Scope, value tf.Output) (handle tf.Output) {
 	return op.Output(0)
 }
 
-// Copy a tensor setting everything outside a central band in each innermost matrix
-//
-// to zero.
+// Copy a tensor setting everything outside a central band in each innermost matrix to zero.
 //
 // The `band` part is computed as follows:
 // Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
@@ -40144,9 +40142,9 @@ func ResourceApplyMomentumUseNesterov(value bool) ResourceApplyMomentumAttr {
 	}
 }
 
-// Update '*var' according to the momentum scheme. Set use_nesterov = True if you
+// Update '*var' according to the momentum scheme.
 //
-// want to use Nesterov momentum.
+// Set use_nesterov = True if you want to use Nesterov momentum.
 //
 // accum = accum * momentum + grad
 // var -= lr * accum
@@ -47099,7 +47097,7 @@ func ResourceApplyAdagradV2UpdateSlots(value bool) ResourceApplyAdagradV2Attr {
 // Update '*var' according to the adagrad scheme.
 //
 // accum += grad * grad
-// var -= lr * grad * (1 / sqrt(accum))
+// var -= lr * grad * (1 / (sqrt(accum) + epsilon))
 //
 // Arguments:
 //	var_: Should be from a Variable().

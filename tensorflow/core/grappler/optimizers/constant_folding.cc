@@ -3754,20 +3754,6 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   return Status::OK();
 }
 
-namespace {
-Status CompressConstants(GraphDef* graph) {
-  for (int i = 0; i < graph->node_size(); ++i) {
-    NodeDef* node = graph->mutable_node(i);
-    if ((IsConstant(*node) || IsHostConstant(*node)) &&
-        HasNodeAttr(*node, "value")) {
-      AttrValue& attr_val = (*node->mutable_attr())["value"];
-      tensor::CompressTensorProtoInPlace(attr_val.mutable_tensor());
-    }
-  }
-  return Status::OK();
-}
-}  // namespace
-
 Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
   // TensorFlow flushes denormals to zero and rounds to nearest, so we do

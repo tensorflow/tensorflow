@@ -38,6 +38,7 @@ from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import mlir_quantize as _mlir_quantize
+from tensorflow.lite.python.convert import mlir_sparsify as _mlir_sparsify
 from tensorflow.lite.python.convert import OpsSet
 from tensorflow.lite.python.convert import toco_convert  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import toco_convert_graph_def as _toco_convert_graph_def
@@ -292,6 +293,7 @@ class TFLiteConverterBase(object):
     self._saved_model_tags = None
     self._saved_model_version = None
     self._saved_model_exported_names = []
+    self._experimental_sparsify_model = False
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -584,12 +586,17 @@ class TFLiteConverterV2(TFLiteConverterBase):
 
     Raises:
       ValueError:
+        No concrete functions is specified.
         Multiple concrete functions are specified.
         Input shape is not specified.
         Invalid quantization parameters.
     """
     # TODO(b/130297984): Add support for converting multiple function.
-    if len(self._funcs) != 1:
+
+    if len(self._funcs) == 0:
+      raise ValueError("No ConcreteFunction is specified.")
+
+    if len(self._funcs) > 1:
       raise ValueError("This converter can only convert a single "
                        "ConcreteFunction. Converting multiple functions is "
                        "under development.")
@@ -709,6 +716,9 @@ class TFLiteConverterV2(TFLiteConverterBase):
     elif quant_mode.post_training_int8_allow_float():
       result = self._calibrate_quantize_model(result, constants.FLOAT,
                                               constants.FLOAT, True)
+
+    if self._experimental_sparsify_model:
+      result = _mlir_sparsify(result)
 
     return result
 
@@ -1337,6 +1347,9 @@ class TFLiteConverter(TFLiteConverterBase):
     elif quant_mode.post_training_int8_allow_float():
       result = self._calibrate_quantize_model(result, inference_input_type,
                                               inference_output_type, True)
+
+    if self._experimental_sparsify_model:
+      result = _mlir_sparsify(result)
 
     return result
 

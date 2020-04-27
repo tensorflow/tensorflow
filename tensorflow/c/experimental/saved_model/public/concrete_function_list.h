@@ -32,4 +32,7 @@ TF_ConcreteFunctionListSize(TF_ConcreteFunctionList* list);
 TF_CAPI_EXPORT TF_ConcreteFunction* TF_ConcreteFunctionListGet(
     TF_ConcreteFunctionList* list, int i);
 
+// Deletes `list`.
+TF_CAPI_EXPORT void TF_DeleteConcreteFunction(TF_ConcreteFunctionList* list);
+
 #endif  // TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_PUBLIC_CONCRETE_FUNCTION_LIST_H_

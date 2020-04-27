@@ -36,6 +36,12 @@ void EagerOperation::Clear() {
   ClearInferenceState();
 }
 
+Status EagerOperation::SetAttrValue(const char* attr_name,
+                                    const AttrValue& value) {
+  MutableAttrs()->Set(attr_name, value);
+  return Status::OK();
+}
+
 Status EagerOperation::SetAttrString(const char* attr_name, const char* data,
                                      size_t length) {
   MutableAttrs()->Set(attr_name, StringPiece(data, length));

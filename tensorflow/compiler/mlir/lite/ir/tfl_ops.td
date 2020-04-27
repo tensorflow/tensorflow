@@ -103,8 +103,8 @@ def TensorTypeAttr : TypeAttrBase<"TensorType", "Tensor type attribute">;
 // Derived shape attribute class.
 //===----------------------------------------------------------------------===//
 class DerivedShapeAttr<code body> : DerivedAttr<"ArrayRef<int64_t>", body>;
-class DerivedTFLiteTypeAttr<code body> :
-  DerivedAttr<"tflite::TensorType", body>;
+class DerivedTFLiteTypeAttr<code body, code convert> :
+  DerivedAttr<"tflite::TensorType", body, convert>;
 
 // TFL Runtime op trait predicate.
 class TFL_RuntimePredOpTrait<string desc, Pred pred> :
@@ -236,6 +236,14 @@ class TFL_TFTypesWithSameBits<int i, int j, int num> :
         CPred<"getElementTypeOrSelf($_op.getResult(" # i # ")).isUnsignedInteger(" # num # ")">]>,
     Or<[CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isa<mlir::TF::Quint" # num # "Type>()">,
         CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isUnsignedInteger(" # num # ")">]>]>;
+
+class TFL_OperandIsNoneOrHasRankLessThanOrEqualTo<int n, int m> :
+  PredOpTrait<"operand " # n # " is at most " # m # "-D",
+    Or<[
+      CPred<"$_op.getOperand(" # n # ").getType().isa<NoneType>()">,
+      TFL_OperandIsUnrankedPred<n>,
+      CPred<"$_op.getOperand(" # n #
+      ").getType().cast<ShapedType>().getRank() <= " # m>]>>;
 
 class TFL_OperandHasRankLessThanOrEqualTo<int n, int m> :
   PredOpTrait<"operand " # n # " is at most " # m # "-D",
@@ -478,6 +486,7 @@ def TFL_TransposeConvOp:
     TFL_1DTensorOf<[I32]>:$output_shape,
     TFL_TensorOf<[F32, TFL_Uint8, QI8, QUI8]>:$weights,
     TFL_TensorOf<[F32, TFL_Uint8, QI8, QUI8]>:$input,
+    TFL_TensorOfOrNone<[F32, QI32, QUI32]>:$bias,
     TFL_PaddingAttr:$padding,
     I32Attr:$stride_h,
     I32Attr:$stride_w
@@ -495,7 +504,7 @@ def TFL_Convolution2DTransposeBiasOp :
     NoSideEffect,
     TFL_OperandHasRank<0, 4>,
     TFL_OperandHasRank<1, 4>,
-    TFL_OperandHasRankLessThanOrEqualTo<2, 1>
+    TFL_OperandIsNoneOrHasRankLessThanOrEqualTo<2, 1>
   ]> {
   let summary = " Transpose convolution with bias operator";
 
@@ -571,6 +580,8 @@ def TFL_ArgMaxOp : TFL_Op<"arg_max", [NoSideEffect]> {
     return getResult().getType().cast<TensorType>().getElementType().
         cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
+    }], [{
+      TypeAttr::get(getResult().getType().cast<TensorType>().getElementType())
     }]>;
 }
 
@@ -599,6 +610,8 @@ def TFL_ArgMinOp : TFL_Op<"arg_min", [NoSideEffect]> {
     return getResult().getType().cast<TensorType>().getElementType().
         cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
+    }], [{
+      TypeAttr::get(getResult().getType().cast<TensorType>().getElementType())
     }]>;
 }
 
@@ -877,6 +890,34 @@ def TFL_GatherNdOp : TFL_Op<"gather_nd", [NoSideEffect]> {
   let results = (outs
     TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8, TFL_Str]>:$output
   );
+}
+
+def TFL_ScatterNdOp : TFL_Op<"scatter_nd", [
+    NoSideEffect,
+    TFL_OperandHasAtleastRank<0, 1>,
+    TFL_OperandHasAtleastRank<1, 1>,
+    PredOpTrait<"updates and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 1>>
+  ]> {
+  let summary = "Scatter_nd operator";
+
+  let description = [{
+    Scatter `updates` into a new tensor according to `indices`
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[I32]>:$indices,
+    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$updates,
+    TFL_1DTensorOf<[I32]>:$shape
+  );
+
+  let results = (outs
+    TFL_TensorOf<[F32, I8, I64, I32, TFL_Uint8]>:$output
+  );
+
+  let verifier = [{ return Verify(*this); }];
+
+  let hasOptions = 1;
 }
 
 // Same type check of lhs and rhs is handled by the ResultsBroadcastableShape trait.
@@ -1228,8 +1269,8 @@ def TFL_EqualOp: TFL_Op<"equal", [Commutative, ResultsBroadcastableShape,
 
   let arguments = (
     ins
-    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, TFL_Uint8]>:$x,
-    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, TFL_Uint8]>:$y
+    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, TFL_Uint8, TFL_Str]>:$x,
+    TFL_TensorOf<[I1, F32, I32, I64, QI8, QUI8, TFL_Uint8, TFL_Str]>:$y
   );
 
   let results = (outs TFL_BoolTensor:$output);
@@ -1834,6 +1875,8 @@ equivalent to setting:
   );
 
   let verifier = [{ return Verify(*this); }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TFL_SumOp: TFL_Op<"sum", [NoSideEffect]> {
@@ -3110,6 +3153,8 @@ in the unique output `y`. In other words:
     return getResult(1).getType().cast<TensorType>().getElementType().
         cast<IntegerType>().getWidth() > 32 ? tflite::TensorType_INT64 :
             tflite::TensorType_INT32;
+    }], [{
+      TypeAttr::get(getResult(1).getType().cast<TensorType>().getElementType())
     }]>;
 
   let hasOptions = 1;

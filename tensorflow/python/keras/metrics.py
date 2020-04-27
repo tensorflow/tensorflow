@@ -279,15 +279,16 @@ class Metric(base_layer.Layer):
     if distributed_training_utils.is_tpu_strategy(strategy):
       synchronization = tf_variables.VariableSynchronization.ON_WRITE
 
-    return super(Metric, self).add_weight(
-        name=name,
-        shape=shape,
-        dtype=self._dtype if dtype is None else dtype,
-        trainable=False,
-        initializer=initializer,
-        collections=[],
-        synchronization=synchronization,
-        aggregation=aggregation)
+    with ops.init_scope():
+      return super(Metric, self).add_weight(
+          name=name,
+          shape=shape,
+          dtype=self._dtype if dtype is None else dtype,
+          trainable=False,
+          initializer=initializer,
+          collections=[],
+          synchronization=synchronization,
+          aggregation=aggregation)
 
   ### End: For use by subclasses ###
 
@@ -308,13 +309,12 @@ class Reduce(Metric):
   def __init__(self, reduction, name, dtype=None):
     super(Reduce, self).__init__(name=name, dtype=dtype)
     self.reduction = reduction
-    with ops.init_scope():
-      self.total = self.add_weight(
-          'total', initializer=init_ops.zeros_initializer)
-      if reduction in [metrics_utils.Reduction.SUM_OVER_BATCH_SIZE,
-                       metrics_utils.Reduction.WEIGHTED_MEAN]:
-        self.count = self.add_weight(
-            'count', initializer=init_ops.zeros_initializer)
+    self.total = self.add_weight(
+        'total', initializer=init_ops.zeros_initializer)
+    if reduction in [metrics_utils.Reduction.SUM_OVER_BATCH_SIZE,
+                     metrics_utils.Reduction.WEIGHTED_MEAN]:
+      self.count = self.add_weight(
+          'count', initializer=init_ops.zeros_initializer)
 
   def update_state(self, values, sample_weight=None):
     """Accumulates statistics for computing the metric.

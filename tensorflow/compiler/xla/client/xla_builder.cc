@@ -2646,6 +2646,11 @@ XlaOp XlaBuilder::GetDimensionSize(XlaOp operand, int64 dimension) {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferGetDimensionSizeShape(
                                          *operand_shape, dimension));
+    // Calling GetDimensionSize on a static dimension returns a constant
+    // instruction.
+    if (!operand_shape->is_dynamic_dimension(dimension)) {
+      return ConstantR0<int32>(this, operand_shape->dimensions(dimension));
+    }
     *instr.mutable_shape() = shape.ToProto();
     instr.add_dimensions(dimension);
     return AddInstruction(std::move(instr), HloOpcode::kGetDimensionSize,
@@ -2657,8 +2662,20 @@ XlaOp XlaBuilder::SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferSetDimensionSizeShape(
                                          *operand_shape, dimension));
+    // Setting an op's dynamic dimension to the static size is a noop.
+    TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
+                        LookUpInstruction(val));
+    if (StringToHloOpcode(val_proto->opcode()).ValueOrDie() ==
+        HloOpcode::kConstant) {
+      TF_ASSIGN_OR_RETURN(auto literal,
+                          Literal::CreateFromProto(val_proto->literal(), true));
+      if (literal.Get<int32>({}) == shape.dimensions(dimension)) {
+        return operand;
+      }
+    }
     *instr.mutable_shape() = shape.ToProto();
     instr.add_dimensions(dimension);
     return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
