@@ -58,6 +58,7 @@ tf_cuda_library(
         "device_factory.h",
         "function.h",
         "function_optimization_registry.h",
+        "graph_constructor.h",
         "optimization_registry.h",
         "shape_refiner.h",
         "//tensorflow/core/graph:core_cpu_headers",
@@ -153,7 +154,12 @@ filegroup(
         "device_set.h",
         "eval_const_tensor.h",
         "function.h",
+        "function_body.h",
+        "function_utils.h",
+        "graph_constructor.h",
+        "graph_optimizer.h",
         "graph_runner.h",
+        "inline_function_utils.h",
         "metrics.h",
         "process_function_library_runtime.h",
         "scoped_allocator.h",
@@ -167,9 +173,6 @@ filegroup(
 tf_cuda_library(
     name = "core_cpu_base_no_ops",
     srcs = [
-        "eval_const_tensor.cc",
-        "graph_optimizer.h",
-        "shape_refiner.cc",
         "//tensorflow/core/graph:core_cpu_base_no_ops_srcs",
         "//tensorflow/core/public:session_options.h",
         "//tensorflow/core/public:version.h",
@@ -190,6 +193,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "//third_party/eigen3",
     ] + if_static([
+        ":graph_constructor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ]),
@@ -221,7 +225,6 @@ filegroup(
         "executor.h",
         "executor_factory.h",
         "function_optimization_registry.h",
-        "graph_optimizer.h",
         "input_colocation_exemption_registry.h",
         "isolate_placer_inspection_required_ops_pass.h",
         "local_device.h",
@@ -391,6 +394,27 @@ cc_library(
 )
 
 cc_library(
+    name = "constant_folding",
+    srcs = ["constant_folding.cc"],
+    hdrs = ["constant_folding.h"],
+    copts = tf_copts(),
+    deps = [
+        ":device",
+        ":device_factory",
+        ":executor",
+        ":function_utils",
+        ":graph_constructor",
+        ":memory_types",
+        ":rendezvous_mgr",
+        ":session_options",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
     name = "costmodel_manager",
     srcs = ["costmodel_manager.cc"],
     hdrs = ["costmodel_manager.h"],
@@ -525,19 +549,6 @@ cc_library(
 )
 
 cc_library(
-    name = "graph_view",
-    srcs = ["graph_view.cc"],
-    hdrs = ["graph_view.h"],
-    copts = tf_copts(),
-    deps = [
-        ":device",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
     name = "device_set",
     srcs = ["device_set.cc"],
     hdrs = ["device_set.h"],
@@ -555,6 +566,112 @@ cc_library(
     hdrs = ["dma_helper.h"],
     copts = tf_copts(),
     deps = ["//tensorflow/core:framework"],
+)
+
+cc_library(
+    name = "function_body",
+    srcs = ["function_body.cc"],
+    hdrs = ["function_body.h"],
+    copts = tf_copts(),
+    deps = [
+        ":device",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "function_optimization_registry",
+    srcs = ["function_optimization_registry.cc"],
+    hdrs = ["function_optimization_registry.h"],
+    deps = [
+        ":device_set",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "function_utils",
+    srcs = ["function_utils.cc"],
+    hdrs = ["function_utils.h"],
+    deps = [
+        ":function_body",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+# This library also includes "eval_const_tensor", "graph_runner", and
+# "shape_refiner", because there are circular dependencies between these
+# modules.
+cc_library(
+    name = "graph_constructor",
+    srcs = [
+        "eval_const_tensor.cc",
+        "graph_constructor.cc",
+        "graph_runner.cc",
+        "shape_refiner.cc",
+        "//tensorflow/core/framework:versions.h",
+    ],
+    hdrs = [
+        "eval_const_tensor.h",
+        "graph_constructor.h",
+        "graph_runner.h",
+        "shape_refiner.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        ":device",
+        ":device_factory",
+        ":executor",
+        ":function_utils",
+        ":memory_types",
+        ":rendezvous_mgr",
+        ":session_options",
+        ":single_threaded_cpu_device",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "graph_optimizer",
+    srcs = ["graph_optimizer.cc"],
+    hdrs = ["graph_optimizer.h"],
+    copts = tf_copts(),
+    deps = [
+        ":constant_folding",
+        ":function_utils",
+        ":graph_constructor",
+        ":inline_function_utils",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "graph_view",
+    srcs = ["graph_view.cc"],
+    hdrs = ["graph_view.h"],
+    copts = tf_copts(),
+    deps = [
+        ":device",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+    ],
 )
 
 cc_library(
@@ -589,6 +706,29 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "inline_function_utils",
+    srcs = ["inline_function_utils.cc"],
+    hdrs = ["inline_function_utils.h"],
+    copts = tf_copts(),
+    deps = [
+        ":device",
+        ":function_body",
+        ":function_utils",
+        ":graph_constructor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -685,6 +825,7 @@ cc_library(
     copts = tf_copts(),
     deps = [
         ":device_set",
+        ":graph_constructor",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -1062,11 +1203,7 @@ tf_cuda_library(
     srcs = [
         "colocation_graph.cc",
         "composite_device.cc",
-        "constant_folding.cc",
         "function.cc",
-        "function_optimization_registry.cc",
-        "graph_optimizer.cc",
-        "graph_runner.cc",
         "inspecting_placer.cc",
         "isolate_placer_inspection_required_ops_pass.cc",
         "lower_case_op.cc",
@@ -1087,9 +1224,14 @@ tf_cuda_library(
         ":entry",
         ":executor",
         ":executor_factory",
+        ":function_body",
+        ":function_optimization_registry",
+        ":graph_constructor",
+        ":graph_optimizer",
         ":graph_view",
         ":local_executor_params",
         ":immutable_executor_state",
+        ":inline_function_utils",
         ":input_colocation_exemption_registry",
         ":pending_counts",
         ":propagator_debug_utils",

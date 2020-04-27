@@ -5951,6 +5951,7 @@ filegroup(
         "//tensorflow/core/common_runtime:core_cpu_rump_impl",  # quantize_training
         "//tensorflow/core/common_runtime:device",  # device_lib, tfe, tf_session
         "//tensorflow/core/common_runtime:device_factory",  # device_lib, tfe, tf_session
+        "//tensorflow/core/common_runtime:graph_constructor",  # tf_session
         "//tensorflow/core/common_runtime:session_options",  # device_lib, tfe, tf_session
         "//tensorflow/core/common_runtime:session_state",  # tf_session
         "//tensorflow/core/data/service:server_lib",  # server_lib

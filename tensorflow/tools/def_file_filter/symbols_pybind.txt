@@ -220,7 +220,7 @@ tensorflow::ImportGraphDef
 [op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
 
-[core_cpu_base_no_ops] # tf_session
+[graph_constructor] # tf_session
 tensorflow::ShapeRefiner::~ShapeRefiner
 
 [python_api] # tf_session
