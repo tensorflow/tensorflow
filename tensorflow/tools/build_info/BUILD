@@ -15,5 +15,6 @@ py_binary(
     tags = ["no-remote-exec"],
     deps = [
         "@six_archive//:six",
+        "//third_party/gpus:find_cuda_config",
     ],
 )
