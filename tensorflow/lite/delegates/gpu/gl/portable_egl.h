@@ -19,12 +19,4 @@ limitations under the License.
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
-// Workaround for the awful decisions made in X11
-#ifdef Status
-#undef Status
-#endif //Status
-#ifdef Success
-#undef Success
-#endif //Success
-
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_GL_PORTABLE_EGL_H_
