@@ -1691,6 +1691,9 @@ class SpectralTest(PForTestCase, parameterized.TestCase):
       (fft_ops.rfft3d,),
   )
   def test_rfft(self, op_func):
+    if test.is_built_with_rocm():
+      self.skipTest('Disable subtest on ROCm due to rocfft issues')
+
     for dtype in (dtypes.float32, dtypes.float64):
       x = random_ops.random_uniform([2, 3, 4, 3, 4], dtype=dtype)
 
@@ -1709,6 +1712,8 @@ class SpectralTest(PForTestCase, parameterized.TestCase):
       (fft_ops.irfft3d,),
   )
   def test_irfft(self, op_func):
+    if test.is_built_with_rocm():
+      self.skipTest('Disable subtest on ROCm due to rocfft issues')
     if config.list_physical_devices("GPU"):
       # TODO(b/149957923): The test is flaky
       self.skipTest("b/149957923: irfft vectorization flaky")

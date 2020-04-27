@@ -346,7 +346,6 @@ xla_test(
         "conv_depthwise_test.cc",
     ],
     shard_count = 50,
-    tags = ["no_rocm"],
     deps = [
         ":conv_depthwise_common",
         ":test_macros_header",
@@ -648,7 +647,6 @@ xla_test(
     name = "scalar_computations_test",
     srcs = ["scalar_computations_test.cc"],
     shard_count = 32,
-    tags = ["no_rocm"],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:literal",
@@ -1561,9 +1559,6 @@ xla_test(
 xla_test(
     name = "token_hlo_test",
     srcs = ["token_hlo_test.cc"],
-    tags = [
-        "no_rocm",
-    ],
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla/service:hlo_verifier",
