@@ -25,74 +25,6 @@ namespace tflite {
 namespace testing {
 namespace {
 
-void TestFullyConnectedFloat(
-    const int* input_dims_data, const float* input_data,
-    const int* weights_dims_data, const float* weights_data,
-    const int* bias_dims_data, const float* bias_data,
-    const float* expected_output_data, const int* output_dims_data,
-    TfLiteFusedActivation activation, float* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
-  TfLiteIntArray* weights_dims = IntArrayFromInts(weights_dims_data);
-  TfLiteIntArray* bias_dims = IntArrayFromInts(bias_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
-  const int output_dims_count = ElementCount(*output_dims);
-
-  constexpr int inputs_size = 3;
-  constexpr int outputs_size = 1;
-  constexpr int tensors_size = inputs_size + outputs_size;
-  TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(weights_data, weights_dims, "weights_tensor"),
-      CreateFloatTensor(bias_data, bias_dims, "bias_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
-  };
-
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_FULLY_CONNECTED, 1);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  TfLiteFullyConnectedParams builtin_data = {
-      activation,
-      kTfLiteFullyConnectedWeightsFormatDefault,
-  };
-  const char* init_data = reinterpret_cast<const char*>(&builtin_data);
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
-  int inputs_array_data[] = {3, 0, 1, 2};
-  TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
-  int outputs_array_data[] = {1, 3};
-  TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
-
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
-  for (int i = 0; i < output_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data[i], output_data[i], 1e-5f);
-  }
-}
-
 template <typename T>
 void TestFullyConnectedQuantized(
     const int* input_dims_data, const T* input_data, const float input_min,
@@ -120,6 +52,10 @@ void TestFullyConnectedQuantized(
       CreateQuantizedTensor(output_data, output_dims, "output_tensor",
                             output_min, output_max),
   };
+
+  tensors[0].params.zero_point = 0;
+  tensors[1].params.zero_point = 0;
+  tensors[3].params.zero_point = 0;
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
@@ -176,466 +112,23 @@ void TestFullyConnectedQuantized(
 
 TF_LITE_MICRO_TESTS_BEGIN
 
-TF_LITE_MICRO_TEST(SimpleTest) {
-  const int input_dims_data[] = {2, 2, 10};
-  const float input_data[] = {
-      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
-      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
-  };
-  const int weights_dims_data[] = {2, 3, 10};
-  const float weights_data[] = {
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
-  };
-  const int bias_dims_data[] = {1, 3};
-  const float bias_data[] = {1, 2, 3};
-  const float expected_output_data[] = {
-      24, 25, 26, 58, 59, 60,
-  };
-  const int output_dims_data[] = {2, 2, 3};
-
-  const int output_dims_count = 6;
-  float output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedFloat(
-      input_dims_data, input_data, weights_dims_data, weights_data,
-      bias_dims_data, bias_data, expected_output_data, output_dims_data,
-      kTfLiteActNone, output_data);
-}
-
-TF_LITE_MICRO_TEST(SimpleTest2) {
-  const int input_dims_data[] = {2, 2, 2};
-  const float input_data[] = {
-      1, 2,  // b = 0
-      2, 1,  // b = 1
-  };
-  const int weights_dims_data[] = {2, 1, 2};
-  const float weights_data[] = {
-      2, 4,  // u = 0
-  };
-  const int bias_dims_data[] = {1, 1};
-  const float bias_data[] = {1};
-  const float expected_output_data[] = {
-      11,
-      9,
-  };
-  const int output_dims_data[] = {2, 2, 1};
-
-  const int output_dims_count = 6;
-  float output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedFloat(
-      input_dims_data, input_data, weights_dims_data, weights_data,
-      bias_dims_data, bias_data, expected_output_data, output_dims_data,
-      kTfLiteActNone, output_data);
-}
-
-TF_LITE_MICRO_TEST(SimpleTestRelu) {
-  const int input_dims_data[] = {2, 2, 10};
-  const float input_data[] = {
-      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
-      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
-  };
-  const int weights_dims_data[] = {2, 3, 10};
-  const float weights_data[] = {
-      1,  2,  3,  4,  5,  6,  7,  8,  9,  10,   // u = 0
-      -1, -2, -3, -4, -5, -6, -7, -8, -9, -10,  // u = 1
-      1,  2,  3,  4,  5,  6,  7,  8,  9,  10,   // u = 2
-  };
-  const int bias_dims_data[] = {1, 3};
-  const float bias_data[] = {1, -2, 3};
-  const float expected_output_data[] = {
-      24, 0, 26, 58, 0, 60,
-  };
-  const int output_dims_data[] = {2, 2, 3};
-
-  const int output_dims_count = 6;
-  float output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedFloat(
-      input_dims_data, input_data, weights_dims_data, weights_data,
-      bias_dims_data, bias_data, expected_output_data, output_dims_data,
-      kTfLiteActRelu, output_data);
-}
-
-TF_LITE_MICRO_TEST(SimpleTestQuantizedUInt8) {
-  using tflite::testing::F2Q;
-  using tflite::testing::F2Q32;
-
-  const float input_min = -63.5f;
-  const float input_max = 64.0f;
-  const float weights_min = -63.5f;
-  const float weights_max = 64.0f;
-  const float bias_scale = 0.25f;
-  const float output_min = -127.0f;
-  const float output_max = 128.0f;
-
-  const int input_dims_data[] = {2, 2, 10};
-  const uint8_t input_data[] = {
-      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-      F2Q(7, input_min, input_max),  F2Q(8, input_min, input_max),
-      F2Q(-9, input_min, input_max), F2Q(-10, input_min, input_max),
-      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-      F2Q(7, input_min, input_max),  F2Q(-8, input_min, input_max),
-      F2Q(9, input_min, input_max),  F2Q(-10, input_min, input_max),
-  };
-  const int weights_dims_data[] = {2, 3, 10};
-  const uint8_t weights_data[] = {
-      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-  };
-  const int bias_dims_data[] = {1, 3};
-  const int32_t bias_data[] = {
-      F2Q32(1, bias_scale),
-      F2Q32(2, bias_scale),
-      F2Q32(3, bias_scale),
-  };
-  const uint8_t expected_output_data[] = {
-      F2Q(24, output_min, output_max), F2Q(25, output_min, output_max),
-      F2Q(26, output_min, output_max), F2Q(58, output_min, output_max),
-      F2Q(59, output_min, output_max), F2Q(60, output_min, output_max),
-  };
-  const int output_dims_data[] = {2, 2, 3};
-
-  const int output_dims_count = 6;
-  uint8_t output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedQuantized<uint8_t>(
-      input_dims_data, input_data, input_min, input_max, weights_dims_data,
-      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
-      bias_scale, expected_output_data, output_dims_data, output_min,
-      output_max, kTfLiteActNone, output_data);
-}
-
-// TODO(b/138811455): Fix code duplication in micro tests
-TF_LITE_MICRO_TEST(SimpleTestQuantizedInt8) {
-  using tflite::testing::F2Q32;
-  using tflite::testing::F2QS;
-
-  const float input_min = -63.5f;
-  const float input_max = 64.0f;
-  const float weights_min = -64.0f;
-  const float weights_max = 63.5f;
-  const float bias_scale = 0.25f;
-  const float output_min = -127.0f;
-  const float output_max = 128.0f;
-
-  const int input_dims_data[] = {2, 2, 10};
-  const int8_t input_data[] = {
-      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-      F2QS(7, input_min, input_max),  F2QS(8, input_min, input_max),
-      F2QS(-9, input_min, input_max), F2QS(-10, input_min, input_max),
-      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-      F2QS(7, input_min, input_max),  F2QS(-8, input_min, input_max),
-      F2QS(9, input_min, input_max),  F2QS(-10, input_min, input_max),
-  };
-  const int weights_dims_data[] = {2, 3, 10};
-  const int8_t weights_data[] = {
-      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-  };
-  const int bias_dims_data[] = {1, 3};
-  const int32_t bias_data[] = {
-      F2Q32(1, bias_scale),
-      F2Q32(2, bias_scale),
-      F2Q32(3, bias_scale),
-  };
-  const int8_t expected_output_data[] = {
-      F2QS(24, output_min, output_max), F2QS(25, output_min, output_max),
-      F2QS(26, output_min, output_max), F2QS(58, output_min, output_max),
-      F2QS(59, output_min, output_max), F2QS(60, output_min, output_max),
-  };
-  const int output_dims_data[] = {2, 2, 3};
-
-  const int output_dims_count = 6;
-  int8_t output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedQuantized<int8_t>(
-      input_dims_data, input_data, input_min, input_max, weights_dims_data,
-      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
-      bias_scale, expected_output_data, output_dims_data, output_min,
-      output_max, kTfLiteActNone, output_data);
-}
-
-TF_LITE_MICRO_TEST(SimpleTestQuantizedUInt8Relu) {
-  using tflite::testing::F2Q;
-  using tflite::testing::F2Q32;
-
-  const float input_min = -63.5f;
-  const float input_max = 64.0f;
-  const float weights_min = -63.5f;
-  const float weights_max = 64.0f;
-  const float bias_scale = 0.25f;
-  const float output_min = -127.0f;
-  const float output_max = 128.0f;
-
-  const int input_dims_data[] = {2, 2, 10};
-  const uint8_t input_data[] = {
-      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-      F2Q(7, input_min, input_max),  F2Q(8, input_min, input_max),
-      F2Q(-9, input_min, input_max), F2Q(-10, input_min, input_max),
-      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-      F2Q(7, input_min, input_max),  F2Q(-8, input_min, input_max),
-      F2Q(9, input_min, input_max),  F2Q(-10, input_min, input_max),
-  };
-  const int weights_dims_data[] = {2, 3, 10};
-  const uint8_t weights_data[] = {
-      F2Q(1, weights_min, weights_max),  F2Q(2, weights_min, weights_max),
-      F2Q(3, weights_min, weights_max),  F2Q(4, weights_min, weights_max),
-      F2Q(5, weights_min, weights_max),  F2Q(6, weights_min, weights_max),
-      F2Q(7, weights_min, weights_max),  F2Q(8, weights_min, weights_max),
-      F2Q(9, weights_min, weights_max),  F2Q(10, weights_min, weights_max),
-      F2Q(-1, weights_min, weights_max), F2Q(-2, weights_min, weights_max),
-      F2Q(-3, weights_min, weights_max), F2Q(-4, weights_min, weights_max),
-      F2Q(-5, weights_min, weights_max), F2Q(-6, weights_min, weights_max),
-      F2Q(-7, weights_min, weights_max), F2Q(-8, weights_min, weights_max),
-      F2Q(-9, weights_min, weights_max), F2Q(-10, weights_min, weights_max),
-      F2Q(1, weights_min, weights_max),  F2Q(2, weights_min, weights_max),
-      F2Q(3, weights_min, weights_max),  F2Q(4, weights_min, weights_max),
-      F2Q(5, weights_min, weights_max),  F2Q(6, weights_min, weights_max),
-      F2Q(7, weights_min, weights_max),  F2Q(8, weights_min, weights_max),
-      F2Q(9, weights_min, weights_max),  F2Q(10, weights_min, weights_max),
-  };
-  const int bias_dims_data[] = {1, 3};
-  const int32_t bias_data[] = {
-      F2Q32(1, bias_scale),
-      F2Q32(0, bias_scale),
-      F2Q32(3, bias_scale),
-  };
-  const uint8_t expected_output_data[] = {
-      F2Q(24, output_min, output_max), F2Q(0, output_min, output_max),
-      F2Q(26, output_min, output_max), F2Q(58, output_min, output_max),
-      F2Q(0, output_min, output_max),  F2Q(60, output_min, output_max),
-  };
-  const int output_dims_data[] = {2, 2, 3};
-
-  const int output_dims_count = 6;
-  uint8_t output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedQuantized<uint8_t>(
-      input_dims_data, input_data, input_min, input_max, weights_dims_data,
-      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
-      bias_scale, expected_output_data, output_dims_data, output_min,
-      output_max, kTfLiteActRelu, output_data);
-}
-
-TF_LITE_MICRO_TEST(SimpleTestQuantizedInt8Relu) {
-  using tflite::testing::F2Q32;
-  using tflite::testing::F2QS;
-
-  const float input_min = -63.5f;
-  const float input_max = 64.0f;
-  const float weights_min = -64.0f;
-  const float weights_max = 63.5f;
-  const float bias_scale = 0.25f;
-  const float output_min = -127.0f;
-  const float output_max = 128.0f;
-
-  const int input_dims_data[] = {2, 2, 10};
-  const int8_t input_data[] = {
-      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-      F2QS(7, input_min, input_max),  F2QS(8, input_min, input_max),
-      F2QS(-9, input_min, input_max), F2QS(-10, input_min, input_max),
-      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-      F2QS(7, input_min, input_max),  F2QS(-8, input_min, input_max),
-      F2QS(9, input_min, input_max),  F2QS(-10, input_min, input_max),
-  };
-  const int weights_dims_data[] = {2, 3, 10};
-  const int8_t weights_data[] = {
-      F2QS(1, weights_min, weights_max),  F2QS(2, weights_min, weights_max),
-      F2QS(3, weights_min, weights_max),  F2QS(4, weights_min, weights_max),
-      F2QS(5, weights_min, weights_max),  F2QS(6, weights_min, weights_max),
-      F2QS(7, weights_min, weights_max),  F2QS(8, weights_min, weights_max),
-      F2QS(9, weights_min, weights_max),  F2QS(10, weights_min, weights_max),
-      F2QS(-1, weights_min, weights_max), F2QS(-2, weights_min, weights_max),
-      F2QS(-3, weights_min, weights_max), F2QS(-4, weights_min, weights_max),
-      F2QS(-5, weights_min, weights_max), F2QS(-6, weights_min, weights_max),
-      F2QS(-7, weights_min, weights_max), F2QS(-8, weights_min, weights_max),
-      F2QS(-9, weights_min, weights_max), F2QS(-10, weights_min, weights_max),
-      F2QS(1, weights_min, weights_max),  F2QS(2, weights_min, weights_max),
-      F2QS(3, weights_min, weights_max),  F2QS(4, weights_min, weights_max),
-      F2QS(5, weights_min, weights_max),  F2QS(6, weights_min, weights_max),
-      F2QS(7, weights_min, weights_max),  F2QS(8, weights_min, weights_max),
-      F2QS(9, weights_min, weights_max),  F2QS(10, weights_min, weights_max),
-  };
-  const int bias_dims_data[] = {1, 3};
-  const int32_t bias_data[] = {
-      F2Q32(1, bias_scale),
-      F2Q32(0, bias_scale),
-      F2Q32(3, bias_scale),
-  };
-  const int8_t expected_output_data[] = {
-      F2QS(24, output_min, output_max), F2QS(0, output_min, output_max),
-      F2QS(26, output_min, output_max), F2QS(58, output_min, output_max),
-      F2QS(0, output_min, output_max),  F2QS(60, output_min, output_max),
-  };
-  const int output_dims_data[] = {2, 2, 3};
-
-  const int output_dims_count = 6;
-  int8_t output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedQuantized<int8_t>(
-      input_dims_data, input_data, input_min, input_max, weights_dims_data,
-      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
-      bias_scale, expected_output_data, output_dims_data, output_min,
-      output_max, kTfLiteActRelu, output_data);
-}
-
-TF_LITE_MICRO_TEST(SimpleTestQuantizedUInt8OutputMultiplierGreaterThan1) {
-  using tflite::testing::F2Q;
-  using tflite::testing::F2Q32;
-
-  const float input_min = -127.0f;
-  const float input_max = 128.0f;
-  const float weights_min = -127.0f;
-  const float weights_max = 128.0f;
-  const float bias_scale = 1.0f;
-  const float output_min = -63.5f;
-  const float output_max = 64.0f;
-
-  const int input_dims_data[] = {2, 2, 10};
-  const uint8_t input_data[] = {
-      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-      F2Q(7, input_min, input_max),  F2Q(8, input_min, input_max),
-      F2Q(-9, input_min, input_max), F2Q(-10, input_min, input_max),
-      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-      F2Q(7, input_min, input_max),  F2Q(-8, input_min, input_max),
-      F2Q(9, input_min, input_max),  F2Q(-10, input_min, input_max),
-  };
-  const int weights_dims_data[] = {2, 3, 10};
-  const uint8_t weights_data[] = {
-      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-  };
-  const int bias_dims_data[] = {1, 3};
-  const int32_t bias_data[] = {
-      F2Q32(1, bias_scale),
-      F2Q32(2, bias_scale),
-      F2Q32(3, bias_scale),
-  };
-  const uint8_t expected_output_data[] = {
-      F2Q(24, output_min, output_max), F2Q(25, output_min, output_max),
-      F2Q(26, output_min, output_max), F2Q(58, output_min, output_max),
-      F2Q(59, output_min, output_max), F2Q(60, output_min, output_max),
-  };
-  const int output_dims_data[] = {2, 2, 3};
-
-  const int output_dims_count = 6;
-  uint8_t output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedQuantized<uint8_t>(
-      input_dims_data, input_data, input_min, input_max, weights_dims_data,
-      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
-      bias_scale, expected_output_data, output_dims_data, output_min,
-      output_max, kTfLiteActNone, output_data);
-}
-
-TF_LITE_MICRO_TEST(SimpleTestQuantizedInt8OutputMultiplierGreaterThan1) {
-  using tflite::testing::F2Q32;
-  using tflite::testing::F2QS;
-
-  const float input_min = -127.0f;
-  const float input_max = 128.0f;
+// Test group 1
+TF_LITE_MICRO_TEST(SystemSimpleTestQuantized1) {
+  const float input_min = -128.0f;
+  const float input_max = 127.0f;
   const float weights_min = -128.0f;
   const float weights_max = 127.0f;
   const float bias_scale = 1.0f;
-  const float output_min = -63.5f;
-  const float output_max = 64.0f;
+  const float output_min = -128.0f;
+  const float output_max = 127.0f;
 
   const int input_dims_data[] = {2, 2, 10};
-  const int8_t input_data[] = {
-      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-      F2QS(7, input_min, input_max),  F2QS(8, input_min, input_max),
-      F2QS(-9, input_min, input_max), F2QS(-10, input_min, input_max),
-      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-      F2QS(7, input_min, input_max),  F2QS(-8, input_min, input_max),
-      F2QS(9, input_min, input_max),  F2QS(-10, input_min, input_max),
-  };
+  const int8_t input_data[] = {2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2};
   const int weights_dims_data[] = {2, 3, 10};
-  const int8_t weights_data[] = {
-      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-  };
+  const int8_t weights_data[] = {2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2};
   const int bias_dims_data[] = {1, 3};
-  const int32_t bias_data[] = {
-      F2Q32(1, bias_scale),
-      F2Q32(2, bias_scale),
-      F2Q32(3, bias_scale),
-  };
-  const int8_t expected_output_data[] = {
-      F2QS(24, output_min, output_max), F2QS(25, output_min, output_max),
-      F2QS(26, output_min, output_max), F2QS(58, output_min, output_max),
-      F2QS(59, output_min, output_max), F2QS(60, output_min, output_max),
-  };
+  const int32_t bias_data[] = {1,1,1};
+  const int8_t expected_output_data[] = {41,41,41,41,41,41};
   const int output_dims_data[] = {2, 2, 3};
 
   const int output_dims_count = 6;
@@ -647,292 +140,273 @@ TF_LITE_MICRO_TEST(SimpleTestQuantizedInt8OutputMultiplierGreaterThan1) {
       output_max, kTfLiteActNone, output_data);
 }
 
-TF_LITE_MICRO_TEST(SimpleTest4DInput) {
-  const int input_dims_data[] = {4, 1, 1, 5, 1};
-  const float input_data[] = {
-      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
-      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
-  };
-  const int weights_dims_data[] = {2, 3, 10};
-  const float weights_data[] = {
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
-  };
-  const int bias_dims_data[] = {1, 3};
-  const float bias_data[] = {1, 2, 3};
-  const float expected_output_data[] = {
-      24, 25, 26, 58, 59, 60,  // Expected results.
-  };
-  const int output_dims_data[] = {2, 2, 3};
-
-  const int output_dims_count = 6;
-  float output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedFloat(
-      input_dims_data, input_data, weights_dims_data, weights_data,
-      bias_dims_data, bias_data, expected_output_data, output_dims_data,
-      kTfLiteActNone, output_data);
-}
-
-TF_LITE_MICRO_TEST(SimpleTest4DInputQuantizedUInt8) {
-  using tflite::testing::F2Q;
-  using tflite::testing::F2Q32;
-
-  const float input_min = -63.5f;
-  const float input_max = 64.0f;
-  const float weights_min = -63.5f;
-  const float weights_max = 64.0f;
-  const float bias_scale = 0.25f;
-  const float output_min = -127.0f;
-  const float output_max = 128.0f;
-
-  const int input_dims_data[] = {4, 1, 1, 5, 1};
-  const uint8_t input_data[] = {
-      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-      F2Q(7, input_min, input_max),  F2Q(8, input_min, input_max),
-      F2Q(-9, input_min, input_max), F2Q(-10, input_min, input_max),
-      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-      F2Q(7, input_min, input_max),  F2Q(-8, input_min, input_max),
-      F2Q(9, input_min, input_max),  F2Q(-10, input_min, input_max),
-  };
-  const int weights_dims_data[] = {2, 3, 10};
-  const uint8_t weights_data[] = {
-      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-  };
-  const int bias_dims_data[] = {1, 3};
-  const int32_t bias_data[] = {
-      F2Q32(1, bias_scale),
-      F2Q32(2, bias_scale),
-      F2Q32(3, bias_scale),
-  };
-  const uint8_t expected_output_data[] = {
-      F2Q(24, output_min, output_max), F2Q(25, output_min, output_max),
-      F2Q(26, output_min, output_max), F2Q(58, output_min, output_max),
-      F2Q(59, output_min, output_max), F2Q(60, output_min, output_max),
-  };
-  const int output_dims_data[] = {2, 2, 3};
-
-  const int output_dims_count = 6;
-  uint8_t output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedQuantized<uint8_t>(
-      input_dims_data, input_data, input_min, input_max, weights_dims_data,
-      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
-      bias_scale, expected_output_data, output_dims_data, output_min,
-      output_max, kTfLiteActNone, output_data);
-}
-
-TF_LITE_MICRO_TEST(SimpleTest4DInputQuantizedInt8) {
-  using tflite::testing::F2Q32;
-  using tflite::testing::F2QS;
-
-  const float input_min = -63.5f;
-  const float input_max = 64.0f;
-  const float weights_min = -64.0f;
-  const float weights_max = 63.5f;
-  const float bias_scale = 0.25f;
-  const float output_min = -127.0f;
-  const float output_max = 128.0f;
-
-  const int input_dims_data[] = {4, 1, 1, 5, 1};
-  const int8_t input_data[] = {
-      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-      F2QS(7, input_min, input_max),  F2QS(8, input_min, input_max),
-      F2QS(-9, input_min, input_max), F2QS(-10, input_min, input_max),
-      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-      F2QS(7, input_min, input_max),  F2QS(-8, input_min, input_max),
-      F2QS(9, input_min, input_max),  F2QS(-10, input_min, input_max),
-  };
-  const int weights_dims_data[] = {2, 3, 10};
-  const int8_t weights_data[] = {
-      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-  };
-  const int bias_dims_data[] = {1, 3};
-  const int32_t bias_data[] = {
-      F2Q32(1, bias_scale),
-      F2Q32(2, bias_scale),
-      F2Q32(3, bias_scale),
-  };
-  const int8_t expected_output_data[] = {
-      F2QS(24, output_min, output_max), F2QS(25, output_min, output_max),
-      F2QS(26, output_min, output_max), F2QS(58, output_min, output_max),
-      F2QS(59, output_min, output_max), F2QS(60, output_min, output_max),
-  };
-  const int output_dims_data[] = {2, 2, 3};
-
-  const int output_dims_count = 6;
-  int8_t output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedQuantized<int8_t>(
-      input_dims_data, input_data, input_min, input_max, weights_dims_data,
-      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
-      bias_scale, expected_output_data, output_dims_data, output_min,
-      output_max, kTfLiteActNone, output_data);
-}
-
-TF_LITE_MICRO_TEST(
-    SimpleTest4DInputQuantizedUInt8OutputMultiplierGreaterThan1) {
-  using tflite::testing::F2Q;
-  using tflite::testing::F2Q32;
-
-  const float input_min = -127.0f;
-  const float input_max = 128.0f;
-  const float weights_min = -127.0f;
-  const float weights_max = 128.0f;
-  const float bias_scale = 1.0f;
-  const float output_min = -63.5f;
-  const float output_max = 64.0f;
-
-  const int input_dims_data[] = {4, 1, 1, 5, 1};
-  const uint8_t input_data[] = {
-      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-      F2Q(7, input_min, input_max),  F2Q(8, input_min, input_max),
-      F2Q(-9, input_min, input_max), F2Q(-10, input_min, input_max),
-      F2Q(1, input_min, input_max),  F2Q(2, input_min, input_max),
-      F2Q(3, input_min, input_max),  F2Q(4, input_min, input_max),
-      F2Q(5, input_min, input_max),  F2Q(6, input_min, input_max),
-      F2Q(7, input_min, input_max),  F2Q(-8, input_min, input_max),
-      F2Q(9, input_min, input_max),  F2Q(-10, input_min, input_max),
-  };
-  const int weights_dims_data[] = {2, 3, 10};
-  const uint8_t weights_data[] = {
-      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-      F2Q(1, weights_min, weights_max), F2Q(2, weights_min, weights_max),
-      F2Q(3, weights_min, weights_max), F2Q(4, weights_min, weights_max),
-      F2Q(5, weights_min, weights_max), F2Q(6, weights_min, weights_max),
-      F2Q(7, weights_min, weights_max), F2Q(8, weights_min, weights_max),
-      F2Q(9, weights_min, weights_max), F2Q(10, weights_min, weights_max),
-  };
-  const int bias_dims_data[] = {1, 3};
-  const int32_t bias_data[] = {
-      F2Q32(1, bias_scale),
-      F2Q32(2, bias_scale),
-      F2Q32(3, bias_scale),
-  };
-  const uint8_t expected_output_data[] = {
-      F2Q(24, output_min, output_max), F2Q(25, output_min, output_max),
-      F2Q(26, output_min, output_max), F2Q(58, output_min, output_max),
-      F2Q(59, output_min, output_max), F2Q(60, output_min, output_max),
-  };
-  const int output_dims_data[] = {2, 2, 3};
-
-  const int output_dims_count = 6;
-  uint8_t output_data[output_dims_count];
-  tflite::testing::TestFullyConnectedQuantized<uint8_t>(
-      input_dims_data, input_data, input_min, input_max, weights_dims_data,
-      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
-      bias_scale, expected_output_data, output_dims_data, output_min,
-      output_max, kTfLiteActNone, output_data);
-}
-
-TF_LITE_MICRO_TEST(SimpleTest4DInputQuantizedInt8OutputMultiplierGreaterThan1) {
-  using tflite::testing::F2Q32;
-  using tflite::testing::F2QS;
-
-  const float input_min = -127.0f;
-  const float input_max = 128.0f;
+TF_LITE_MICRO_TEST(LocalSimpleTestQuantized1) {
+  const float input_min = -128.0f;
+  const float input_max = 127.0f;
   const float weights_min = -128.0f;
   const float weights_max = 127.0f;
   const float bias_scale = 1.0f;
-  const float output_min = -63.5f;
-  const float output_max = 64.0f;
+  const float output_min = -128.0f;
+  const float output_max = 127.0f;
 
-  const int input_dims_data[] = {4, 1, 1, 5, 1};
-  const int8_t input_data[] = {
-      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-      F2QS(7, input_min, input_max),  F2QS(8, input_min, input_max),
-      F2QS(-9, input_min, input_max), F2QS(-10, input_min, input_max),
-      F2QS(1, input_min, input_max),  F2QS(2, input_min, input_max),
-      F2QS(3, input_min, input_max),  F2QS(4, input_min, input_max),
-      F2QS(5, input_min, input_max),  F2QS(6, input_min, input_max),
-      F2QS(7, input_min, input_max),  F2QS(-8, input_min, input_max),
-      F2QS(9, input_min, input_max),  F2QS(-10, input_min, input_max),
-  };
-  const int weights_dims_data[] = {2, 3, 10};
-  const int8_t weights_data[] = {
-      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-      F2QS(1, weights_min, weights_max), F2QS(2, weights_min, weights_max),
-      F2QS(3, weights_min, weights_max), F2QS(4, weights_min, weights_max),
-      F2QS(5, weights_min, weights_max), F2QS(6, weights_min, weights_max),
-      F2QS(7, weights_min, weights_max), F2QS(8, weights_min, weights_max),
-      F2QS(9, weights_min, weights_max), F2QS(10, weights_min, weights_max),
-  };
-  const int bias_dims_data[] = {1, 3};
-  const int32_t bias_data[] = {
-      F2Q32(1, bias_scale),
-      F2Q32(2, bias_scale),
-      F2Q32(3, bias_scale),
-  };
-  const int8_t expected_output_data[] = {
-      F2QS(24, output_min, output_max), F2QS(25, output_min, output_max),
-      F2QS(26, output_min, output_max), F2QS(58, output_min, output_max),
-      F2QS(59, output_min, output_max), F2QS(60, output_min, output_max),
-  };
-  const int output_dims_data[] = {2, 2, 3};
+  const int input_dims_data_local[] = {2, 2, 10};
+  const int weights_dims_data_local[] = {2, 3, 10};
+  const int bias_dims_data_local[] = {1, 3};
+  const int output_dims_data_local[] = {2, 2, 3};
 
   const int output_dims_count = 6;
-  int8_t output_data[output_dims_count];
+
+#pragma Bss(".Zdata")  
+  const int8_t input_data_local[] = {2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2};
+  const int8_t weights_data_local[] = {2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2};
+  const int32_t bias_data_local[] = {1,1,1};
+  int8_t output_data_local[output_dims_count];
+#pragma Bss()
+
+  const int8_t expected_output_data[] = {41,41,41,41,41,41};
+
   tflite::testing::TestFullyConnectedQuantized<int8_t>(
-      input_dims_data, input_data, input_min, input_max, weights_dims_data,
-      weights_data, weights_min, weights_max, bias_dims_data, bias_data,
-      bias_scale, expected_output_data, output_dims_data, output_min,
-      output_max, kTfLiteActNone, output_data);
+      input_dims_data_local, input_data_local, input_min, input_max, weights_dims_data_local,
+      weights_data_local, weights_min, weights_max, bias_dims_data_local, bias_data_local,
+      bias_scale, expected_output_data, output_dims_data_local, output_min,
+      output_max, kTfLiteActNone, output_data_local);
+}
+
+// Test group 2
+TF_LITE_MICRO_TEST(SystemSimpleTestQuantized2) {
+  const float input_min = -128.0f;
+  const float input_max = 127.0f;
+  const float weights_min = -128.0f;
+  const float weights_max = 127.0f;
+  const float bias_scale = 1.0f;
+  const float output_min = -128.0f;
+  const float output_max = 127.0f;
+
+  const int input_dims_data_2[] = {2, 10, 4};
+  const int8_t input_data_2[] = {2,2,2,2,2,2,2,2,2,2,
+                               2,2,2,2,2,2,2,2,2,2,
+                               2,2,2,2,2,2,2,2,2,2,
+                               2,2,2,2,2,2,2,2,2,2};
+  const int weights_dims_data_2[] = {2, 6, 4};
+  const int8_t weights_data_2[] = {2,2,2,2,2,2,2,2,2,2,
+                                 2,2,2,2,2,2,2,2,2,2,
+                                 2,2,2,2};
+  const int bias_dims_data_2[] = {1, 6};
+  const int32_t bias_data_2[] = {1,1,1,1,1,1};
+  const int8_t expected_output_data_2[] = {17,17,17,17,17,17,17,17,17,17,
+                                         17,17,17,17,17,17,17,17,17,17,
+                                         17,17,17,17,17,17,17,17,17,17,
+                                         17,17,17,17,17,17,17,17,17,17,
+                                         17,17,17,17,17,17,17,17,17,17,
+                                         17,17,17,17,17,17,17,17,17,17};
+  const int output_dims_data_2[] = {2, 10, 6};
+
+  const int output_dims_count_2 = 60;
+  int8_t output_data_2[output_dims_count_2];
+  tflite::testing::TestFullyConnectedQuantized<int8_t>(
+      input_dims_data_2, input_data_2, input_min, input_max, weights_dims_data_2,
+      weights_data_2, weights_min, weights_max, bias_dims_data_2, bias_data_2,
+      bias_scale, expected_output_data_2, output_dims_data_2, output_min,
+      output_max, kTfLiteActNone, output_data_2);
+}
+
+TF_LITE_MICRO_TEST(LocalSimpleTestQuantized2) {
+  const float input_min = -128.0f;
+  const float input_max = 127.0f;
+  const float weights_min = -128.0f;
+  const float weights_max = 127.0f;
+  const float bias_scale = 1.0f;
+  const float output_min = -128.0f;
+  const float output_max = 127.0f;
+
+  const int input_dims_data_local_2[] = {2, 10, 4};
+  const int weights_dims_data_local_2[] = {2, 6, 4};
+  const int bias_dims_data_local_2[] = {1, 6};
+  const int output_dims_data_local_2[] = {2, 10, 6};
+
+  const int output_dims_count_local_2 = 60;
+
+#pragma Bss(".Zdata")  
+  const int8_t input_data_local_2[] = {2,2,2,2,2,2,2,2,2,2,
+                               2,2,2,2,2,2,2,2,2,2,
+                               2,2,2,2,2,2,2,2,2,2,
+                               2,2,2,2,2,2,2,2,2,2};
+  const int8_t weights_data_local_2[] = {2,2,2,2,2,2,2,2,2,2,
+                                 2,2,2,2,2,2,2,2,2,2,
+                                 2,2,2,2};
+  const int32_t bias_data_local_2[] = {1,1,1,1,1,1};
+  int8_t output_data_local_2[output_dims_count_local_2];
+#pragma Bss()
+
+  const int8_t expected_output_data_local_2[] = {41,41,41,41,41,41};
+
+  tflite::testing::TestFullyConnectedQuantized<int8_t>(
+      input_dims_data_local_2, input_data_local_2, input_min, input_max, weights_dims_data_local_2,
+      weights_data_local_2, weights_min, weights_max, bias_dims_data_local_2, bias_data_local_2,
+      bias_scale, expected_output_data_local_2, output_dims_data_local_2, output_min,
+      output_max, kTfLiteActNone, output_data_local_2);
+}
+
+// Test group 3
+TF_LITE_MICRO_TEST(SystemSimpleTestQuantized3) {
+  const float input_min = -128.0f;
+  const float input_max = 127.0f;
+  const float weights_min = -128.0f;
+  const float weights_max = 127.0f;
+  const float bias_scale = 1.0f;
+  const float output_min = -128.0f;
+  const float output_max = 127.0f;
+
+  const int input_dims_data_3[] = {2, 2, 5};
+  const int8_t input_data_3[] = {2,2,2,2,2,2,2,2,2,2};
+  const int weights_dims_data_3[] = {2, 10, 5};
+  const int8_t weights_data_3[] = {2,2,2,2,2,2,2,2,2,2,
+                                   2,2,2,2,2,2,2,2,2,2,
+                                   2,2,2,2,2,2,2,2,2,2,
+                                   2,2,2,2,2,2,2,2,2,2,
+                                   2,2,2,2,2,2,2,2,2,2};
+  const int bias_dims_data_3[] = {1, 10};
+  const int32_t bias_data_3[] = {1,1,1,1,1,1,1,1,1,1};
+  const int8_t expected_output_data_3[] = {21,21,21,21,21,21,21,21,21,21,
+                                           21,21,21,21,21,21,21,21,21,21};
+  const int output_dims_data_3[] = {2, 2, 10};
+
+  const int output_dims_count_3 = 20;
+  int8_t output_data_3[output_dims_count_3];
+  tflite::testing::TestFullyConnectedQuantized<int8_t>(
+      input_dims_data_3, input_data_3, input_min, input_max, weights_dims_data_3,
+      weights_data_3, weights_min, weights_max, bias_dims_data_3, bias_data_3,
+      bias_scale, expected_output_data_3, output_dims_data_3, output_min,
+      output_max, kTfLiteActNone, output_data_3);
+}
+
+TF_LITE_MICRO_TEST(LocalSimpleTestQuantized3) {
+  const float input_min = -128.0f;
+  const float input_max = 127.0f;
+  const float weights_min = -128.0f;
+  const float weights_max = 127.0f;
+  const float bias_scale = 1.0f;
+  const float output_min = -128.0f;
+  const float output_max = 127.0f;
+
+  const int input_dims_data_local_3[] = {2, 2, 5};
+  const int weights_dims_data_local_3[] = {2, 10, 5};
+  const int bias_dims_data_local_3[] = {1, 10};
+  const int output_dims_data_local_3[] = {2, 2, 10};
+
+  const int output_dims_count_local_3 = 20;
+
+#pragma Bss(".Zdata")  
+  static int8_t input_data_local_3[10];
+  static int8_t weights_data_local_3[50];
+  static int32_t bias_data_local_3[10];
+  static int8_t output_data_local_3[output_dims_count_local_3];
+#pragma Bss()
+
+  for(int i = 0; i < 10; ++i) {
+    input_data_local_3[i] = 2;  
+  }
+
+  for(int i = 0; i < 50; ++i) {
+    weights_data_local_3[i] = 2;  
+  }
+
+  for(int i = 0; i < 10; ++i) {
+    bias_data_local_3[i] = 1;  
+  }
+
+  for(int i = 0; i < 20; ++i) {
+    output_data_local_3[i] = 0;  
+  }
+
+  const int8_t expected_output_data_local_3[] = {21,21,21,21,21,21,21,21,21,21,
+                                                 21,21,21,21,21,21,21,21,21,21};
+
+  tflite::testing::TestFullyConnectedQuantized<int8_t>(
+      input_dims_data_local_3, input_data_local_3, input_min, input_max, weights_dims_data_local_3,
+      weights_data_local_3, weights_min, weights_max, bias_dims_data_local_3, bias_data_local_3,
+      bias_scale, expected_output_data_local_3, output_dims_data_local_3, output_min,
+      output_max, kTfLiteActNone, output_data_local_3);
+}
+
+// Test group 4
+TF_LITE_MICRO_TEST(SystemSimpleTestQuantized4) {
+  const float input_min = -128.0f;
+  const float input_max = 127.0f;
+  const float weights_min = -128.0f;
+  const float weights_max = 127.0f;
+  const float bias_scale = 1.0f;
+  const float output_min = -128.0f;
+  const float output_max = 127.0f;
+
+  const int input_dims_data_4[] = {2, 5, 10};
+  const int8_t input_data_4[] = {2,2,2,2,2,2,2,2,2,2,
+                                 2,2,2,2,2,2,2,2,2,2,
+                                 2,2,2,2,2,2,2,2,2,2,
+                                 2,2,2,2,2,2,2,2,2,2,
+                                 2,2,2,2,2,2,2,2,2,2};
+  const int weights_dims_data_4[] = {2, 5, 10};
+  const int8_t weights_data_4[] = {2,2,2,2,2,2,2,2,2,2,
+                                   2,2,2,2,2,2,2,2,2,2,
+                                   2,2,2,2,2,2,2,2,2,2,
+                                   2,2,2,2,2,2,2,2,2,2,
+                                   2,2,2,2,2,2,2,2,2,2};
+  const int bias_dims_data_4[] = {1, 5};
+  const int32_t bias_data_4[] = {1,1,1,1,1};
+  const int8_t expected_output_data_4[] = {41,41,41,41,41,41,41,41,41,41,
+                                           41,41,41,41,41,41,41,41,41,41,
+                                           41,41,41,41,41};
+  const int output_dims_data_4[] = {2, 5, 5};
+
+  const int output_dims_count_4 = 25;
+  int8_t output_data_4[output_dims_count_4];
+  tflite::testing::TestFullyConnectedQuantized<int8_t>(
+      input_dims_data_4, input_data_4, input_min, input_max, weights_dims_data_4,
+      weights_data_4, weights_min, weights_max, bias_dims_data_4, bias_data_4,
+      bias_scale, expected_output_data_4, output_dims_data_4, output_min,
+      output_max, kTfLiteActNone, output_data_4);
+}
+
+TF_LITE_MICRO_TEST(LocalSimpleTestQuantized4) {
+  const float input_min = -128.0f;
+  const float input_max = 127.0f;
+  const float weights_min = -128.0f;
+  const float weights_max = 127.0f;
+  const float bias_scale = 1.0f;
+  const float output_min = -128.0f;
+  const float output_max = 127.0f;
+
+  const int input_dims_data_local_4[] = {2, 5, 10};
+  const int weights_dims_data_local_4[] = {2, 5, 10};
+  const int bias_dims_data_local_4[] = {1, 5};
+  const int output_dims_data_local_4[] = {2, 5, 5};
+
+  const int output_dims_count_local_4 = 25;
+
+#pragma Bss(".Zdata")  
+  const int8_t input_data_local_4[] = {2,2,2,2,2,2,2,2,2,2,
+                                       2,2,2,2,2,2,2,2,2,2,
+                                       2,2,2,2,2,2,2,2,2,2,
+                                       2,2,2,2,2,2,2,2,2,2,
+                                       2,2,2,2,2,2,2,2,2,2};
+  const int8_t weights_data_local_4[] = {2,2,2,2,2,2,2,2,2,2,
+                                         2,2,2,2,2,2,2,2,2,2,
+                                         2,2,2,2,2,2,2,2,2,2,
+                                         2,2,2,2,2,2,2,2,2,2,
+                                         2,2,2,2,2,2,2,2,2,2};
+  const int32_t bias_data_local_4[] = {1,1,1,1,1};
+  int8_t output_data_local_4[output_dims_count_local_4];
+#pragma Bss()
+
+  const int8_t expected_output_data_local_4[] = {41,41,41,41,41,41,41,41,41,41,
+                                                 41,41,41,41,41,41,41,41,41,41,
+                                                 41,41,41,41,41};
+
+  tflite::testing::TestFullyConnectedQuantized<int8_t>(
+      input_dims_data_local_4, input_data_local_4, input_min, input_max, weights_dims_data_local_4,
+      weights_data_local_4, weights_min, weights_max, bias_dims_data_local_4, bias_data_local_4,
+      bias_scale, expected_output_data_local_4, output_dims_data_local_4, output_min,
+      output_max, kTfLiteActNone, output_data_local_4);
 }
 
 TF_LITE_MICRO_TESTS_END
