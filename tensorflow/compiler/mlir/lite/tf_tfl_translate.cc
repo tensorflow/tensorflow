@@ -126,6 +126,7 @@ int main(int argc, char **argv) {
   // We need to disable duplicated ones to provide a cleaner command-line option
   // interface. That also means we need to relay the value set in one option to
   // all its aliases.
+  mlir::registerPassManagerCLOptions();
   llvm::cl::ParseCommandLineOptions(
       argc, argv, "TF GraphDef to TFLite FlatBuffer converter\n");
 
@@ -157,6 +158,8 @@ int main(int argc, char **argv) {
   if (!module.ok()) return kTrFailure;
 
   mlir::PassManager pm(&context);
+
+  mlir::applyPassManagerCLOptions(pm);
 
   // Set the quantization specifications from the command line flags.
   mlir::TFL::QuantizationSpecs quant_specs;
