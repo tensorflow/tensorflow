@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -1869,29 +1870,63 @@ class ConvertSizeOp : public OpRewritePattern<TF::SizeOp> {
 static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
                                            Value *out_lhs, Value *out_rhs,
                                            PatternRewriter *rewriter) {
+  // The dimension structure of the relevant operands to a tf.BatchMatMulV2 is:
+  // - lhs: [LHSBATCHDIMS..., LHSROWS, LHSCOLS]
+  // - rhs: [RHSBATCHDIMS..., RHSROWS, RHSCOLS]
+  // - result: [broadcast(LHSBATCHDIMS, RHSBATCHDIMS)..., LHSROWS, RHSCOLS]
+  // To perform the matmul, we need to first broadcast lhs and rhs to a common
+  // set of leading dimensions before doing the actual matmul.
+  // That's what the code below does.
+  // In particular, we populate out_lhs and out_rhs to have dimension structure:
+  // - out_lhs: [broadcast(LHSBATCHDIMS, RHSBATCHDIMS)..., LHSROWS, LHSCOLS]
+  // - out_rhs: [broadcast(LHSBATCHDIMS, RHSBATCHDIMS)..., RHSROWS, RHSCOLS]
+  // To do this, we need to calculate those output shapes, which involves
+  // slicing off the leading batch dims of each operand, broadcasting them,
+  // then concatenating the broadcasted leading dims back to the row/col dims.
+  // Finally, we create a TF::BroadcastTo op that does the actual broadcast.
+
+  // TODO(silvasean): Reduce duplication across reified shape calculations and
+  // the static computation of output types needed to create ops.
+  Value lhs_shape = rewriter->create<shape::ShapeOfOp>(loc, lhs);
+  Value rhs_shape = rewriter->create<shape::ShapeOfOp>(loc, rhs);
+  Value const_neg2 =
+      rewriter->create<ConstantOp>(loc, rewriter->getI32IntegerAttr(-2));
+  auto lhs_splitted =
+      rewriter->create<shape::SplitAtOp>(loc, lhs_shape, const_neg2);
+  auto rhs_splitted =
+      rewriter->create<shape::SplitAtOp>(loc, rhs_shape, const_neg2);
   auto lhs_type = lhs.getType().cast<RankedTensorType>();
   auto rhs_type = rhs.getType().cast<RankedTensorType>();
-  // The last two dimensions are the matrix row/col dimensions. Don't
-  // broadcast them.
-  SmallVector<int64_t, 6> result_batch_shape;
+  // The last two dimensions are the matrix row/col dimensions. Don't broadcast
+  // them.
+  SmallVector<int64_t, 6> result_batch_shape_compile_time_extents;
   OpTrait::util::getBroadcastedShape(lhs_type.getShape().drop_back(2),
                                      rhs_type.getShape().drop_back(2),
-                                     result_batch_shape);
-  auto handle_one_side = [rewriter, &result_batch_shape, loc](
-                             Value side, RankedTensorType type,
-                             Value *out_side) {
+                                     result_batch_shape_compile_time_extents);
+  auto result_batch_shape = rewriter->create<shape::BroadcastOp>(
+      loc, lhs_splitted.head(), rhs_splitted.head(),
+      /*error=*/nullptr);
+  // Lambda which handles the broadcasting of one side to the common
+  // leading-batch dimensions.
+  auto broadcast_one_side = [&](Value side, RankedTensorType type,
+                                Value tail_shape, Value *out_side) {
     ArrayRef<int64_t> matrix_dims = type.getShape().take_back(2);
-    auto result_shape = result_batch_shape;
+    auto result_shape = result_batch_shape_compile_time_extents;
     result_shape.append(matrix_dims.begin(), matrix_dims.end());
     auto result_type =
         RankedTensorType::get(result_shape, type.getElementType());
-    auto shape = rewriter->create<TF::ConstOp>(
-        loc, GetI64ElementsAttr(result_shape, rewriter));
-    *out_side =
-        rewriter->create<TF::BroadcastToOp>(loc, result_type, side, shape);
+    auto shape =
+        rewriter->create<shape::ConcatOp>(loc, result_batch_shape, tail_shape);
+    auto shape_tensor = rewriter->create<shape::ToExtentTensorOp>(
+        loc,
+        RankedTensorType::get({static_cast<int64_t>(result_shape.size())},
+                              rewriter->getIndexType()),
+        shape);
+    *out_side = rewriter->create<TF::BroadcastToOp>(loc, result_type, side,
+                                                    shape_tensor);
   };
-  handle_one_side(lhs, lhs_type, out_lhs);
-  handle_one_side(rhs, rhs_type, out_rhs);
+  broadcast_one_side(lhs, lhs_type, lhs_splitted.tail(), out_lhs);
+  broadcast_one_side(rhs, rhs_type, rhs_splitted.tail(), out_rhs);
 }
 
 class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
@@ -1910,10 +1945,6 @@ class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
     }
     if (rhs_type.getElementType().isa<ComplexType>() && op.adj_y()) {
       rhs = rewriter.create<TF::ConjOp>(op.getLoc(), rhs_type, rhs);
-    }
-    // TODO(silvasean): Support dynamic shapes.
-    if (!lhs_type.hasStaticShape() || !rhs_type.hasStaticShape()) {
-      return failure();
     }
 
     // Broadcast both operands.
@@ -1935,6 +1966,8 @@ class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
         /*lhs_contracting_dimensions=*/lhs_contracting_dimensions,
         /*rhs_contracting_dimensions=*/rhs_contracting_dimensions,
         rewriter.getContext());
+    // TODO(silvasean): Emit shape checks for contracting dimensions.
+    // (The batch dimensions are checked by the broadcasting logic)
     rewriter.replaceOpWithNewOp<DotGeneralOp>(op, op.getType(), lhs, rhs,
                                               dimension_numbers,
                                               /*precision_config=*/nullptr);
@@ -4753,6 +4786,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();
+  target.addLegalDialect<StandardOpsDialect>();
+  target.addLegalDialect<shape::ShapeDialect>();
   target.addLegalOp<CallOp>();
   target.addLegalOp<TensorCastOp>();
 
