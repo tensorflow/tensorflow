@@ -25,7 +25,6 @@ import numpy as np
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
-from tensorflow.python.data.experimental.ops import prefetching_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
@@ -1016,78 +1015,6 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.evaluate(counter_var.initializer)
     self.assertEqual(self.evaluate(fn()), 10)
-
-  def assert_dataset_placement(self, host_dataset, host_iterator, host_tensor,
-                               device_dataset, device_iterator, device_tensor):
-
-    self.assertTrue("cpu:0" in host_dataset._variant_tensor.device.lower() or
-                    host_dataset._variant_tensor.device == "")
-    self.assertTrue(
-        "cpu:0" in host_iterator._iterator_resource.device.lower() or
-        host_iterator._iterator_resource.device == "")
-    self.assertTrue("cpu:0" in host_tensor.device.lower() or
-                    host_tensor.device == "")
-
-    self.assertIn("gpu:0", device_dataset._variant_tensor.device.lower())
-    self.assertIn("gpu:0", device_iterator._iterator_resource.device.lower())
-    self.assertIn("gpu:0", device_tensor.device.lower())
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testIteratorOnDeviceEagerMode(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
-    host_dataset = dataset_ops.Dataset.range(10)
-    device_dataset = host_dataset.apply(
-        prefetching_ops.prefetch_to_device("/gpu:0"))
-
-    host_iterator = iter(host_dataset)
-    device_iterator = iter(device_dataset)
-
-    host_tensor = next(host_iterator)
-    device_tensor = next(device_iterator)
-
-    self.assert_dataset_placement(host_dataset, host_iterator, host_tensor,
-                                  device_dataset, device_iterator,
-                                  device_tensor)
-
-  @combinations.generate(test_base.graph_only_combinations())
-  def testIteratorOnDeviceGraphModeOneShotIterator(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
-    host_dataset = dataset_ops.Dataset.range(10)
-    device_dataset = host_dataset.apply(
-        prefetching_ops.prefetch_to_device("/gpu:0"))
-
-    host_iterator = dataset_ops.make_one_shot_iterator(host_dataset)
-    device_iterator = dataset_ops.make_one_shot_iterator(device_dataset)
-
-    host_tensor = host_iterator.get_next()
-    device_tensor = device_iterator.get_next()
-
-    self.assert_dataset_placement(host_dataset, host_iterator, host_tensor,
-                                  device_dataset, device_iterator,
-                                  device_tensor)
-
-  @combinations.generate(test_base.graph_only_combinations())
-  def testIteratorOnDeviceGraphModeInitializableIterator(self):
-    if not test_util.is_gpu_available():
-      self.skipTest("No GPU available")
-
-    host_dataset = dataset_ops.Dataset.range(10)
-    device_dataset = host_dataset.apply(
-        prefetching_ops.prefetch_to_device("/gpu:0"))
-
-    host_iterator = dataset_ops.make_initializable_iterator(host_dataset)
-    device_iterator = dataset_ops.make_initializable_iterator(device_dataset)
-
-    host_tensor = host_iterator.get_next()
-    device_tensor = device_iterator.get_next()
-
-    self.assert_dataset_placement(host_dataset, host_iterator, host_tensor,
-                                  device_dataset, device_iterator,
-                                  device_tensor)
 
 
 if __name__ == "__main__":
