@@ -457,6 +457,15 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
              elem_type.isa<QuantizedType>()) {
     TF_ASSIGN_OR_RETURN(value,
                         ConvertIntBuffer(shaped_type, elem_type, buffer));
+  } else if (elem_type.isa<mlir::TF::StringType>()) {
+    tensorflow::TensorProto repr = ConvertTfliteConstTensor(tensor, buffer);
+    std::vector<llvm::StringRef> refs;
+    refs.reserve(repr.string_val_size());
+
+    for (const auto& ref : repr.string_val())
+      refs.push_back({ref.data(), ref.size()});
+
+    value = mlir::DenseStringElementsAttr::get(shaped_type, refs);
   } else if (elem_type.isa<mlir::ComplexType>() ||
              elem_type.isa<mlir::TF::TensorFlowType>()) {
     auto dialect = elem_type.getContext()->getRegisteredDialect("tf");
