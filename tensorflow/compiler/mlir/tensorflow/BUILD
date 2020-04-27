@@ -133,8 +133,9 @@ gentbl(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_executor_ops.td",
     td_srcs = [
-        "@llvm-project//mlir:include/mlir/IR/OpBase.td",
+        ":tensorflow_ops_td_files",
         "@llvm-project//mlir:include/mlir/Dialect/StandardOps/IR/Ops.td",
+        "@llvm-project//mlir:include/mlir/IR/OpBase.td",
     ],
 )
 
@@ -237,6 +238,7 @@ cc_library(
     ],
     deps = [
         "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
     ],
 )

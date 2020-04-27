@@ -109,6 +109,9 @@ static inline absl::string_view StringRefToView(llvm::StringRef ref) {
 }
 
 namespace tensorflow {
+using mlir::TensorType;
+using mlir::TF::VarHandleOp;
+using mlir::tf_saved_model::GlobalTensorOp;
 using stream_executor::port::StatusOr;
 
 namespace {
@@ -236,7 +239,7 @@ class ImporterBase {
 
  private:
   // Most types with subtypes have only one subtype.
-  using ElementSubtypes = llvm::SmallVector<mlir::TensorType, 1>;
+  using ElementSubtypes = llvm::SmallVector<TensorType, 1>;
 
   // Adds all the ordered_nodes to the shape refiner shape_refiner_. Then all
   // data type and shape information is maintained by the shape_refiner_.
@@ -254,14 +257,14 @@ class ImporterBase {
 
   // Converts the inferred shape referred to by 'handle' in 'context', with
   // given element type, and returns an MLIR tensor type.
-  StatusOr<mlir::TensorType> ConvertDataTypeAndShape(
+  StatusOr<TensorType> ConvertDataTypeAndShape(
       DataType dtype, const shape_inference::ShapeHandle& handle,
       const std::vector<shape_inference::ShapeAndType>* handle_subtypes,
       shape_inference::InferenceContext* context, mlir::Builder builder);
 
   // Converts the inferred shape referred to by 'handle' in 'context', with
   // given element type, and returns an MLIR tensor type.
-  StatusOr<mlir::TensorType> ConvertElementTypeAndShape(
+  StatusOr<TensorType> ConvertElementTypeAndShape(
       mlir::Type element_type, const shape_inference::ShapeHandle& handle,
       shape_inference::InferenceContext* context, mlir::Builder builder);
 
@@ -311,7 +314,7 @@ class ImporterBase {
   // in an island. When convert_to_legacy_call is true, converts the operation
   // representing a call to a library function with a name represented in
   // node_type_name to LegacyCallOp.
-  mlir::Operation* createOperation(
+  mlir::Operation* CreateOperation(
       const Node& node, llvm::StringRef node_type_name,
       const mlir::OperationState& result,
       const llvm::SmallVectorImpl<mlir::Value>& control_operands,
@@ -922,31 +925,106 @@ StatusOr<mlir::Type> ImporterBase::InferInputType(const Node& node, int idx,
 
 StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
                                                    mlir::Builder builder) {
+  DataType dtype = node.properties()->output_types[idx];
+
+  // Returns output type given inference context.
+  auto shape_ic = [&](shape_inference::InferenceContext* c) {
+    return ConvertDataTypeAndShape(dtype, c->output(idx),
+                                   c->output_handle_shapes_and_types(idx), c,
+                                   builder);
+  };
+
   if (specs_.enable_shape_inference) {
     // TODO(jpienaar): Remove this if shape inference on import flag is removed.
     ExtendedInferenceContext* shape_context =
         shape_refiner_->GetExtendedContext(&node);
-    DataType dtype = shape_context->output_type(idx);
-    auto* context = shape_context->get_context();
-    return ConvertDataTypeAndShape(dtype, context->output(idx),
-                                   context->output_handle_shapes_and_types(idx),
-                                   context, builder);
+    return shape_ic(shape_context->get_context());
   }
-  DataType dtype = node.properties()->output_types[idx];
+
+  // Treat TensorList init ops specially here as the op requires knowing its
+  // element dtype.
+  // TODO(jpienaar): Reconsider post refactoring shape functions.
+  if (node.type_string() == "TensorListReserve" ||
+      node.type_string() == "EmptyTensorList") {
+    mlir::Type etype;
+    if (auto element_dtype = node.attrs().Find("element_dtype")) {
+      TF_RETURN_IF_ERROR(
+          ConvertDataType(element_dtype->type(), builder, &etype));
+    }
+    return mlir::RankedTensorType::get(
+        {}, mlir::TF::VariantType::get({mlir::UnrankedTensorType::get(etype)},
+                                       etype.getContext()));
+  }
+
+  // Returns a simple, more conservative unranked tensor type.
+  auto default_type = [&]() -> StatusOr<mlir::Type> {
+    mlir::Type element_type;
+    TF_RETURN_IF_ERROR(ConvertDataType(dtype, builder, &element_type));
+    return mlir::UnrankedTensorType::get(element_type);
+  };
+
+  // Below we only try and do some shape inference for "source" ops which have
+  // no inputs.
+  if (node.num_inputs() > 0) return default_type();
+
+  // Do some simply inference here to get the function arguments correct for
+  // this common case.
+  // TODO(jpienaar): Reconsider post refactoring shape functions.
   if (node.IsArg()) {
-    if (auto shape = node.attrs().Find("_output_shapes")) {
+    if (dtype == DT_RESOURCE) {
+      const AttrValue* dtype_attr = node.attrs().Find("_handle_dtypes");
+      const AttrValue* shape_attr = node.attrs().Find("_handle_shapes");
+      LOG(INFO) << dtype_attr << " " << shape_attr;
+      if (dtype_attr && shape_attr) {
+        if (dtype_attr->list().type().empty()) {
+          return errors::InvalidArgument(
+              "Invalid \"_handle_dtypes\" attribute value for _Arg node: ",
+              shape_attr->DebugString());
+        }
+        if (shape_attr->list().shape().empty()) {
+          return errors::InvalidArgument(
+              "Invalid \"_handle_shapes\" attribute value for _Arg node: ",
+              shape_attr->DebugString());
+        }
+        DataType dtype = dtype_attr->list().type(0);
+        const TensorShapeProto& shape_proto = shape_attr->list().shape(0);
+        TF_ASSIGN_OR_RETURN(
+            auto etype, ConvertToMlirTensorType(shape_proto, dtype, &builder));
+        return mlir::UnrankedTensorType::get(mlir::TF::ResourceType::get(
+            {etype.cast<TensorType>()}, builder.getContext()));
+      } else {
+        return mlir::UnrankedTensorType::get(
+            mlir::TF::ResourceType::get(builder.getContext()));
+      }
+    } else if (auto shape = node.attrs().Find("_output_shapes")) {
       if (shape->has_list() && shape->list().shape_size() == 1) {
         return ConvertToMlirTensorType(shape->list().shape().at(0), dtype,
                                        &builder);
       }
     }
   }
-  mlir::Type element_type;
-  TF_RETURN_IF_ERROR(ConvertDataType(dtype, builder, &element_type));
-  return mlir::UnrankedTensorType::get(element_type);
+
+  const tensorflow::OpRegistrationData* op_reg_data;
+  TF_RETURN_IF_ERROR(
+      graph_->op_registry()->LookUp(node.type_string(), &op_reg_data));
+  if (!op_reg_data) {
+    DVLOG(1) << "Skipping inference for unregistered op " << node.type_string();
+    return default_type();
+  }
+  if (op_reg_data->shape_inference_fn == nullptr) {
+    DVLOG(1) << "Skipping inference for op without shape function "
+             << node.type_string();
+    return default_type();
+  }
+  shape_inference::InferenceContext c(graph_->versions().producer(),
+                                      node.attrs(), op_reg_data->op_def,
+                                      std::vector<PartialTensorShape>{}, {},
+                                      /*input_tensors_as_shapes=*/{}, {});
+  TF_RETURN_IF_ERROR(c.Run(op_reg_data->shape_inference_fn));
+  return shape_ic(&c);
 }
 
-StatusOr<mlir::TensorType> ImporterBase::ConvertDataTypeAndShape(
+StatusOr<TensorType> ImporterBase::ConvertDataTypeAndShape(
     DataType dtype, const shape_inference::ShapeHandle& handle,
     const std::vector<shape_inference::ShapeAndType>* handle_subtypes,
     shape_inference::InferenceContext* context, mlir::Builder builder) {
@@ -965,7 +1043,7 @@ StatusOr<mlir::TensorType> ImporterBase::ConvertDataTypeAndShape(
   return ConvertElementTypeAndShape(element_type, handle, context, builder);
 }
 
-StatusOr<mlir::TensorType> ImporterBase::ConvertElementTypeAndShape(
+StatusOr<TensorType> ImporterBase::ConvertElementTypeAndShape(
     mlir::Type element_type, const shape_inference::ShapeHandle& handle,
     shape_inference::InferenceContext* context, mlir::Builder builder) {
   if (!context->RankKnown(handle)) {
@@ -1003,7 +1081,7 @@ StatusOr<ImporterBase::ElementSubtypes> ImporterBase::ConvertSubtypes(
     mlir::Type element_type;
     TF_RETURN_IF_ERROR(
         ::tensorflow::ConvertDataType(subtype.dtype, builder, &element_type));
-    TF_ASSIGN_OR_RETURN(mlir::TensorType type,
+    TF_ASSIGN_OR_RETURN(TensorType type,
                         ConvertElementTypeAndShape(element_type, subtype.shape,
                                                    context, builder));
     subtypes.push_back(type);
@@ -1354,28 +1432,20 @@ Status ImporterBase::Convert(
   // TODO(jpienaar): Update post removing shape_refinier_.
   if (!specs_.enable_shape_inference) {
     // Refine graph's type given more precise fetch.
-    auto fetch_op = graph.GetFetch();
+    auto fetch = graph.GetFetch();
     bool all_equal = true;
     for (auto it :
-         llvm::zip(fetch_op.getOperandTypes(), graph.getResultTypes())) {
-      if (std::get<0>(it) != std::get<1>(it)) {
-        all_equal = false;
-        break;
-      }
+         llvm::zip_first(graph.getResults(), fetch.getOperandTypes())) {
+      auto rt = std::get<1>(it);
+      if (rt == std::get<0>(it).getType()) continue;
+      std::get<0>(it).setType(rt);
+      all_equal = false;
     }
-    if (all_equal) return Status::OK();
-
-    llvm::SmallVector<mlir::Type, 4> return_types;
-    return_types.reserve(fetch_op.getNumOperands());
-    for (mlir::Type t : fetch_op.getOperandTypes()) return_types.push_back(t);
-    builder_.setInsertionPointToStart(&function.getBody().front());
-    auto new_graph = builder_.create<mlir::tf_executor::GraphOp>(
-        function.getLoc(), return_types, mlir::ValueRange{}, graph.getAttrs());
-    new_graph.body().takeBody(graph.body());
-    graph.replaceAllUsesWith(new_graph);
-    graph.erase();
-    function.setType(mlir::FunctionType::get(
-        func_type.getInputs(), return_types, function.getContext()));
+    if (!all_equal) {
+      function.setType(mlir::FunctionType::get(func_type.getInputs(),
+                                               graph.getResultTypes(),
+                                               function.getContext()));
+    }
   }
 
   return Status::OK();
@@ -1557,7 +1627,7 @@ Status ImporterBase::EmitErrorWithLocationStr(const Node& node,
   return error_handler_.Combine(error_status);
 }
 
-mlir::Operation* ImporterBase::createOperation(
+mlir::Operation* ImporterBase::CreateOperation(
     const Node& node, llvm::StringRef node_type_name,
     const mlir::OperationState& result,
     const llvm::SmallVectorImpl<mlir::Value>& control_operands,
@@ -1853,7 +1923,7 @@ Status ImporterBase::ConvertNode(const Node& node) {
   }
 
   // Register the mapping between the TF node and the newly created operation.
-  node_values_[node.id()] = createOperation(
+  node_values_[node.id()] = CreateOperation(
       node, node_type_name, result, control_operands, convert_to_legacy_call);
   return Status::OK();
 }
@@ -2825,11 +2895,10 @@ void AdjustBoundInputArgTypes(mlir::ModuleOp module) {
 void SortSavedModelModule(mlir::ModuleOp module) {
   struct NamedGlobalTensor {
     llvm::StringRef name;
-    mlir::tf_saved_model::GlobalTensorOp global_tensor;
+    GlobalTensorOp global_tensor;
   };
   llvm::SmallVector<NamedGlobalTensor, 8> named_global_tensors;
-  for (auto global_tensor :
-       module.getOps<mlir::tf_saved_model::GlobalTensorOp>()) {
+  for (auto global_tensor : module.getOps<GlobalTensorOp>()) {
     auto exported_names = mlir::tf_saved_model::GetExportedNames(global_tensor);
     // We use stable_sort, so duplicate empty names are fine here.
     named_global_tensors.push_back(
@@ -3020,7 +3089,7 @@ Status CreateSavedModelIR(
       TF_ASSIGN_OR_RETURN(
           auto type, ConvertToMlirTensorType(variable.shape(), variable.dtype(),
                                              &builder));
-      auto op = builder.create<mlir::tf_saved_model::GlobalTensorOp>(
+      auto op = builder.create<GlobalTensorOp>(
           builder.getUnknownLoc(),
           builder.getStringAttr(object_names.GetSymbolTableName(node_id)),
           value_attr,
@@ -3040,7 +3109,7 @@ Status CreateSavedModelIR(
       }
       TF_ASSIGN_OR_RETURN(auto value_attr,
                           ConvertTensorProto(*value, &builder));
-      auto op = builder.create<mlir::tf_saved_model::GlobalTensorOp>(
+      auto op = builder.create<GlobalTensorOp>(
           builder.getUnknownLoc(),
           builder.getStringAttr(object_names.GetSymbolTableName(node_id)),
           value_attr,
@@ -3161,14 +3230,19 @@ class SavedModelSignatureDefImporter {
   // Creates GlobalTensorOp for each variable and moves each VarHandle op to
   // the enclosing function's arguments.
   Status LiftVariables();
-  // Moves the result of the VarHandleOp to the enclosing function's argument
-  // list and erases this VarHandleOp.
-  void LiftVariable(mlir::TF::VarHandleOp op);
+
+  // Moves the result of the VarHandleOp with corresponding global tensor to the
+  // enclosing function's argument list and erases this VarHandleOp. The global
+  // tensor's shape is used to provide the most accurate nested shape.
+  void LiftVariable(VarHandleOp op, GlobalTensorOp global_tensor);
+
+  using VarGlobalMap = llvm::MapVector<
+      llvm::StringRef,
+      std::pair<GlobalTensorOp, llvm::SmallVector<VarHandleOp, 2>>>;
 
   // Reads all variables from the SavedModel through session and creates
   // GlobalTensorOp for these variables.
-  Status ReadVariablesFromSession(
-      const llvm::SmallVectorImpl<mlir::TF::VarHandleOp>& ops);
+  Status ReadVariablesFromSession(VarGlobalMap* var_globals);
 
   GraphImportConfig::InputArrays ParseInputArrays(
       const std::vector<std::pair<std::string, TensorInfo>>& inputs);
@@ -3290,31 +3364,34 @@ Status SavedModelSignatureDefImporter::ConvertSignature(
 }
 
 Status SavedModelSignatureDefImporter::LiftVariables() {
-  llvm::SmallVector<mlir::TF::VarHandleOp, 4> ops;
+  VarGlobalMap var_globals;
 
-  bool contains_ref_variable = false;
-
-  module_->walk([&ops, &contains_ref_variable](mlir::Operation* op) {
-    if (auto var_handle_op = llvm::dyn_cast<mlir::TF::VarHandleOp>(op))
-      ops.push_back(var_handle_op);
+  auto walker = [&var_globals](mlir::Operation* op) {
+    if (auto var_handle_op = llvm::dyn_cast<VarHandleOp>(op))
+      var_globals[var_handle_op.shared_name()].second.push_back(var_handle_op);
     else if (op->getName().getStringRef() == "tf.VariableV2")
-      contains_ref_variable = true;
-  });
+      return mlir::WalkResult::interrupt();
+    return mlir::WalkResult::advance();
+  };
+  bool contains_ref_variable = module_->walk(walker).wasInterrupted();
 
   if (contains_ref_variable)
     return errors::InvalidArgument(
         "Ref variable created by VariableV2 is not supported.");
 
-  if (ops.empty()) return Status::OK();
+  if (var_globals.empty()) return Status::OK();
 
-  TF_RETURN_IF_ERROR(ReadVariablesFromSession(ops));
+  TF_RETURN_IF_ERROR(ReadVariablesFromSession(&var_globals));
 
-  for (auto op : ops) LiftVariable(op);
+  for (const auto& it : var_globals)
+    for (VarHandleOp var_handle : it.second.second)
+      LiftVariable(var_handle, it.second.first);
 
   return Status::OK();
 }
 
-void SavedModelSignatureDefImporter::LiftVariable(mlir::TF::VarHandleOp op) {
+void SavedModelSignatureDefImporter::LiftVariable(
+    VarHandleOp op, GlobalTensorOp global_tensor) {
   mlir::OpBuilder builder(&module_->getBodyRegion());
 
   auto func_op = op.getParentOfType<mlir::FuncOp>();
@@ -3325,7 +3402,13 @@ void SavedModelSignatureDefImporter::LiftVariable(mlir::TF::VarHandleOp op) {
   // Create the new function type by adding variable type to the arguments.
   llvm::SmallVector<mlir::Type, 4> new_input_types(
       func_type.getInputs().begin(), func_type.getInputs().end());
-  new_input_types.push_back(op.resource().getType());
+  mlir::Type resource_type = op.resource().getType();
+  // Use the corresponding global tensor's type.
+  auto type = global_tensor.type().cast<TensorType>();
+  resource_type = mlir::RankedTensorType::get(
+      {}, mlir::TF::ResourceType::get({type}, type.getContext()));
+
+  new_input_types.push_back(resource_type);
   auto new_func_type =
       builder.getFunctionType(new_input_types, func_type.getResults());
 
@@ -3337,29 +3420,26 @@ void SavedModelSignatureDefImporter::LiftVariable(mlir::TF::VarHandleOp op) {
                      builder.getSymbolRefAttr(op.shared_name()));
 
   // Add the newly added function param to entry block's arguments.
-  auto new_value = func_op.front().addArgument(op.resource().getType());
+  auto new_value = func_op.front().addArgument(resource_type);
 
-  // Remove the VarHandleOp.
+  // Remove the VarHandleOp also updating the containing island's return type.
+  DCHECK(llvm::isa<mlir::tf_executor::IslandOp>(op.getParentOp()));
+  DCHECK(llvm::cast<mlir::tf_executor::IslandOp>(op.getParentOp())
+             .WrapsSingleOp());
   op.getOperation()->replaceAllUsesWith(llvm::ArrayRef<mlir::Value>(new_value));
+  op.getParentOp()->getResult(0).setType(resource_type);
   op.getOperation()->erase();
 }
 
 Status SavedModelSignatureDefImporter::ReadVariablesFromSession(
-    const llvm::SmallVectorImpl<mlir::TF::VarHandleOp>& ops) {
+    VarGlobalMap* var_globals) {
   mlir::OpBuilder builder(&module_->getBodyRegion());
-
-  // Find all variables and their corresponding read ops.
-  llvm::MapVector<llvm::StringRef, mlir::TF::VarHandleOp>
-      variable_names_and_ops;
-  for (auto op : ops) {
-    variable_names_and_ops[op.shared_name()] = op;
-  }
 
   // Read all resource variables from the session.
   std::vector<std::string> variable_names;
-  variable_names.reserve(variable_names_and_ops.size());
-  for (const auto& name_and_location : variable_names_and_ops)
-    variable_names.push_back(std::string(name_and_location.first));
+  variable_names.reserve(var_globals->size());
+  for (const auto& name_and_location : *var_globals)
+    variable_names.push_back(name_and_location.first.str());
 
   std::vector<Tensor> resource_tensors;
   TF_RETURN_IF_ERROR(bundle_.GetSession()->Run(
@@ -3391,17 +3471,22 @@ Status SavedModelSignatureDefImporter::ReadVariablesFromSession(
     tensors.push_back(*var->tensor());
   }
 
-  for (const auto iter : llvm::zip(variable_names_and_ops, tensors)) {
+  for (const auto iter : llvm::zip(*var_globals, tensors)) {
+    // Create global tensor op corresponding to the variable. Use the location
+    // of the first use encountered.
+    VarHandleOp op = std::get<0>(iter).second.second.front();
     const auto& name = std::get<0>(iter).first;
-    auto location = std::get<0>(iter).second.getLoc();
     const auto& tensor = std::get<1>(iter);
 
     // Create tensor attribute for this variable.
     TF_ASSIGN_OR_RETURN(auto tensor_attr, ConvertTensor(tensor, &builder));
 
-    builder.create<mlir::tf_saved_model::GlobalTensorOp>(
-        location, builder.getStringAttr(name), tensor_attr,
-        mlir::TypeAttr::get(tensor_attr.getType()), builder.getUnitAttr());
+    // Create the global tensor op with the tensor attribute.
+    auto type = tensor_attr.getType().cast<TensorType>();
+    auto global_tensor = builder.create<GlobalTensorOp>(
+        op.getLoc(), builder.getStringAttr(name), tensor_attr,
+        mlir::TypeAttr::get(type), builder.getUnitAttr());
+    std::get<0>(iter).second.first = global_tensor;
   }
 
   return Status::OK();

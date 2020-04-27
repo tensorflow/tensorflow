@@ -154,53 +154,6 @@ static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
   return dim_or_rank == -1;
 }
 
-bool BroadcastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
-  if (lhs.size() != rhs.size()) return false;
-  for (auto types : llvm::zip(lhs, rhs)) {
-    auto lhs_type = std::get<0>(types);
-    auto rhs_type = std::get<1>(types);
-
-    // This should be true for all TF ops:
-    auto lhs_tt = lhs_type.dyn_cast<TensorType>();
-    auto rhs_tt = rhs_type.dyn_cast<TensorType>();
-    if (!lhs_tt || !rhs_tt) {
-      if (lhs_type != rhs_type) return false;
-      continue;
-    }
-
-    // Verify matching element types. These should be identical, except for
-    // variant type where unknown subtype is considered compatible with all
-    // subtypes.
-    auto lhs_et = lhs_tt.getElementType();
-    auto rhs_et = rhs_tt.getElementType();
-    if (lhs_et != rhs_et) {
-      // If either is not a variant type, then the element types don't match.
-      auto lhs_vt = lhs_et.dyn_cast<TF::VariantType>();
-      auto rhs_vt = rhs_et.dyn_cast<TF::VariantType>();
-      if (!lhs_vt || !rhs_vt) return false;
-
-      // Consider the subtype of variant types.
-      auto lhs_vt_st = lhs_vt.getSubtypes();
-      auto rhs_vt_st = rhs_vt.getSubtypes();
-      if (!lhs_vt_st.empty() && !rhs_vt_st.empty()) {
-        for (auto subtypes : llvm::zip(lhs_vt_st, rhs_vt_st)) {
-          if (!BroadcastCompatible(std::get<0>(subtypes),
-                                   std::get<1>(subtypes)))
-            return false;
-        }
-      }
-    }
-
-    auto lhs_rt = lhs_type.dyn_cast<RankedTensorType>();
-    auto rhs_rt = rhs_type.dyn_cast<RankedTensorType>();
-    if (!lhs_rt || !rhs_rt) return true;
-    SmallVector<int64_t, 4> shape;
-    return OpTrait::util::getBroadcastedShape(lhs_rt.getShape(),
-                                              rhs_rt.getShape(), shape);
-  }
-  return true;
-}
-
 // Returns the tf.Equal/tf.NotEqual result type given `x` and `y` and inputs. If
 // `incompatible_shape_error` is true, reports error if `x` and `y` has
 // incompatible shapes. Otherwise, returns a tensor type with unknown rank.

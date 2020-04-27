@@ -63,6 +63,13 @@ def TF_OperandsSameAsResultsTypeOrRef : NativeOpTrait<
 // format), as an example all element wise operations are layout agnostic.
 def TF_LayoutAgnostic : NativeOpTrait<"TF::LayoutAgnostic">;
 
+// Variant of broadcastable trait that considers TF's subtype behavior.
+class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
+    TCOpResIsShapedTypePred<opId, resId>,
+    CPred<"mlir::TF::BroadcastCompatible("
+              "$_op.getOperand(" # opId # ").getType(), "
+              "$_op.getResult(" # resId # ").getType())">]>;
+
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions
 //===----------------------------------------------------------------------===//

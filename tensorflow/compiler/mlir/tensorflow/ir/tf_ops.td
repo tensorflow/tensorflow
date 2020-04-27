@@ -41,8 +41,10 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
   TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<0>;
 
   let verifier = [{
-    if (!handle_dtype().getSubtypes().empty() &&
-        handle_dtype().getSubtypes().size() != 1) {
+    // This is required to populate derived attributes during export in a
+    // meaningful way. Else during export to GraphDef element_type() query
+    // will result in out of bounds access/assert.
+    if (handle_dtype().getSubtypes().size() != 1) {
       return emitOpError(
           "must have exactly one subtype in the result variant type");
     }
