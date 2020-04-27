@@ -877,6 +877,7 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
         expected_value.numpy(), actual_value[0], decimal=6)
 
   def testBatchMatMul(self):
+    self.skipTest('BatchMatMulV2 does not support unknown batch size.')
     input_data_1 = tf.constant(
         np.array(np.random.random_sample((1, 256, 256)), dtype=np.float32))
     input_data_2 = tf.constant(
@@ -900,8 +901,7 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
     actual_value = self._evaluateTFLiteModel(
         tflite_model, [input_data_1, input_data_2],
         input_shapes=[([-1, 256, 256], [1, 256, 256])])
-    np.testing.assert_almost_equal(
-        expected_value.numpy(), actual_value[0], decimal=4)
+    np.testing.assert_almost_equal(expected_value.numpy(), actual_value[0])
 
 
 if __name__ == '__main__':
