@@ -1025,10 +1025,10 @@ void* TFE_TensorHandleDevicePointer(TFE_TensorHandle* h, TF_Status* status) {
     return t->data();
   }
 
-  if (handle->IsRemote()) {
+  if (handle->Type() != tensorflow::TensorHandle::LOCAL) {
     status->status = tensorflow::errors::InvalidArgument(
-        "TFE_TensorHandleDevicePointer may not be called on a remote tensor "
-        "handle.");
+        "TFE_TensorHandleDevicePointer may not be called on a ",
+        handle->TypeString(), " tensor handle.");
     return nullptr;
   }
   tensorflow::Device* device(absl::get<tensorflow::Device*>(handle->device()));
@@ -1099,10 +1099,10 @@ size_t TFE_TensorHandleDeviceMemorySize(TFE_TensorHandle* h,
   }
   tensorflow::TensorHandle* handle =
       tensorflow::TensorHandleFromInterface(h->handle);
-  if (handle->IsRemote()) {
+  if (handle->Type() != tensorflow::TensorHandle::LOCAL) {
     status->status = tensorflow::errors::InvalidArgument(
-        "TFE_TensorHandleDeviceMemorySize may not be called on a remote tensor "
-        "handle.");
+        "TFE_TensorHandleDeviceMemorySize may not be called on a ",
+        handle->TypeString(), " tensor handle.");
     return 0;
   }
   const tensorflow::Tensor* tensor;

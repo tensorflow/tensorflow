@@ -47,9 +47,9 @@ const Tensor* GetTensorFromHandle(TFE_TensorHandle* h, TF_Status* status) {
   }
   tensorflow::TensorHandle* handle =
       tensorflow::TensorHandleFromInterface(h->handle);
-  if (handle->IsRemote()) {
+  if (handle->Type() != TensorHandle::LOCAL) {
     status->status = tensorflow::errors::InvalidArgument(
-        "DLPack doesn't support remote tensor");
+        "DLPack doesn't support ", handle->TypeString(), " tensor");
     return nullptr;
   }
   const tensorflow::Tensor* tensor;

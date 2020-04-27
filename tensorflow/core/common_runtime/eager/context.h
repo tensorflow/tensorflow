@@ -32,8 +32,10 @@ limitations under the License.
 // clang-format on
 
 #include "absl/types/optional.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/c/eager/context_interface.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_api.h"
+#include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
@@ -487,6 +489,11 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   Status RegisterCustomDevice(const string& name,
                               std::unique_ptr<CustomDevice> device);
 
+  // Find or create a composite device with the given `underlying_devices`.
+  Status FindOrCreateCompositeDevice(
+      const std::vector<string>& underlying_devices,
+      CompositeDevice** composite_device);
+
   bool OnSameTask(const Device* first, const Device* second) const;
   // Gets the CPU device on the task of device.
   Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
@@ -568,6 +575,13 @@ class EagerContext : public AbstractContextInterface, public core::RefCounted {
   Rendezvous* rendezvous_;
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
   std::unordered_map<string, std::unique_ptr<CustomDevice>> custom_devices_;
+
+  mutable mutex composite_devices_mu_;
+  // Maps from the fingerprint of a set of device names to a virtual
+  // CompositeDevice.
+  // TODO(b/145922293): Consider taking device names as keys.
+  absl::flat_hash_map<uint64, std::unique_ptr<CompositeDevice>>
+      composite_devices_ GUARDED_BY(composite_devices_mu_);
 
   FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
 

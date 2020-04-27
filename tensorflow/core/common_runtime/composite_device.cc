@@ -30,6 +30,14 @@ std::unique_ptr<CompositeDevice> CompositeDevice::MakeDevice(
         errors::InvalidArgument("underlying_devices should not be empty."));
     return nullptr;
   }
+  std::set<string> unique_devices;
+  for (const string& device : underlying_devices) {
+    if (!unique_devices.insert(device).second) {
+      status->Update(errors::InvalidArgument(
+          "Got a duplicated device in underlying_devices: ", device));
+      return nullptr;
+    }
+  }
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(underlying_devices.at(0), &parsed_name)) {
     status->Update(tensorflow::errors::InvalidArgument(

@@ -72,6 +72,7 @@ tf_cuda_library(
     deps = [
         ":eager_executor",
         ":kernel_and_device",
+        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/c/eager:context_interface",
         "//tensorflow/c/eager:tensor_handle_interface",

@@ -200,7 +200,8 @@ Status ValidateInputTypeAndPlacement(
             "together.");
       }
       Device* handle_device = absl::get<Device*>(handle_device_variant);
-      const bool maybe_copy = !skip_remote_copy || !handle->IsRemote();
+      const bool maybe_copy =
+          !skip_remote_copy || handle->Type() != TensorHandle::REMOTE;
       // If the input is already on the right device, then nothing to do.
       if (expected_device != handle_device && maybe_copy) {
         TF_RETURN_IF_ERROR(CopyInputToExpectedDevice(ctx, op, kernel->device(),
@@ -258,7 +259,7 @@ Status GetDeviceForInput(const EagerContext& ctx, TensorHandle* tensor_handle,
   }
   Device* cpu_device = ctx.HostCPU();
   string device_name;
-  if (tensor_handle->IsRemote()) {
+  if (tensor_handle->Type() != TensorHandle::LOCAL) {
     Device* device = absl::get<Device*>(tensor_handle->device());
     device_name = device != nullptr ? device->name() : cpu_device->name();
     *result = (device == nullptr ? cpu_device : device);
@@ -392,7 +393,8 @@ Status GetOrCreateKernelAndDevice(
     // which doesn't accept remote inputs.
     for (int i = 0; i < op->Inputs().size(); i++) {
       TensorHandle* input = op->Inputs()[i];
-      if (!ctx.LazyCopyFunctionRemoteInputs() && input->IsRemote()) {
+      if (!ctx.LazyCopyFunctionRemoteInputs() &&
+          input->Type() == TensorHandle::REMOTE) {
         TensorHandle* handle = nullptr;
         TF_RETURN_IF_ERROR(
             EagerCopyToDevice(input, &ctx, &op->Executor(),
