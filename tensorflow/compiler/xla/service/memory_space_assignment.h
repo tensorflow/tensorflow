@@ -63,9 +63,6 @@ class PresetAssignments {
     return assignment_info_;
   }
 
-  // Remove the chunks_ entry that corresponds to instruction.
-  void RemoveAssignmentForInstruction(const HloInstruction* instruction);
-
  private:
   std::vector<std::pair<HloPosition, HeapSimulator::Chunk>> chunks_;
   std::vector<std::pair<int64, AssignmentInformation>> assignment_info_;
@@ -398,6 +395,8 @@ class MemorySpaceAssignment {
     int64 start_time() const { return start_time_; }
     int64 end_time() const { return end_time_; }
 
+    virtual std::string ToString() const;
+
    protected:
     // Descend to the shape_index element of the tuple and replace that with
     // new_instruction.
@@ -466,6 +465,8 @@ class MemorySpaceAssignment {
     void set_copy_start_schedule_after(int64 copy_start_schedule_after) {
       copy_start_schedule_after_ = copy_start_schedule_after;
     }
+
+    std::string ToString() const override;
 
    private:
     const Allocation& prev_allocation_;
@@ -635,6 +636,10 @@ class MemorySpaceAssignment {
   // FixSchedule inserts asynchronous copies in the schedule.
   Status FixSchedule();
 
+  // Export the alternate memory assignments to the PresetAssignments and color
+  // the HLO graph with the determined memory spaces.
+  Status ExportAndColorBuffers();
+
   // Insert an instruction to the schedule, and make sure its dependencies
   // (operands) are already in the schedule. If not, insert these operands
   // before the instruction.
@@ -646,12 +651,18 @@ class MemorySpaceAssignment {
   // corresponding CopyDones follow the same order.
   void ScheduleAsynchronousCopies();
 
+  // Remove the positions and chunks associated with the instruction from
+  // alternate_memory_assignments_.
+  void RemoveAssignmentForInstruction(const HloInstruction* instruction);
+
   HloModule* module_;
   Options options_;
   std::vector<HloInstruction*> flattened_instructions_;
   absl::flat_hash_set<const HloComputation*> computations_in_schedule_;
   AllocationSequence allocations_;
   std::unique_ptr<PresetAssignments> preset_assignments_;
+  std::vector<std::pair<HloPosition, Chunk>> alternate_memory_assignments_;
+  int64 alternate_memory_size_ = 0;
 
   // These maps hold vectors of new instructions that need to be scheduled after
   // (or before) the instruction index in the key. FixSchedule uses these maps

@@ -84,6 +84,10 @@ RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> ${ROCM_PATH}/bin/target.lst'
 # is not explicitly set, and thus avoids the eventual bazel dependency error.
 # The bazel bug needs to be root-caused and addressed, but that is out of our control and may take a long time
 # to come to fruition, so implementing the workaround to make do till then
+<<<<<<< HEAD
+=======
+# Filed https://github.com/bazelbuild/bazel/issues/11163 for tracking this
+>>>>>>> google_upstream/master
 RUN touch ${ROCM_PATH}/.info/version
 
 # Copy and run the install scripts.

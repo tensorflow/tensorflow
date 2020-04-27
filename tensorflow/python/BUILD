@@ -506,7 +506,7 @@ cc_library(
     hdrs = ["lib/core/ndarray_tensor_bridge.h"],
     visibility = tf_external_workspace_visible(
         visibility + [
-            "//learning/deepmind/courier:__subpackages__",
+            "//tensorflow:ndarray_tensor_allow_list",
         ],
     ),
     deps = [
@@ -645,6 +645,7 @@ tf_python_pybind_extension(
         "@pybind11",
         "//third_party/python_runtime:headers",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/c/experimental/saved_model/core:pywrap_required_hdrs",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
@@ -980,7 +981,7 @@ cc_library(
     srcs = ["lib/core/ndarray_tensor.cc"],
     hdrs = ["lib/core/ndarray_tensor.h"],
     visibility = tf_external_workspace_visible(visibility + [
-        "//learning/deepmind/courier:__subpackages__",
+        "//tensorflow:ndarray_tensor_allow_list",
     ]),
     deps = [
         ":bfloat16_lib",
@@ -1550,7 +1551,6 @@ py_library(
         ":platform",
         ":registry",
         ":tensor_conversion_registry",
-        ":tensor_like",
         ":tensor_shape",
         ":tf2",
         ":traceable_stack",
@@ -1590,13 +1590,6 @@ cuda_py_test(
 )
 
 py_library(
-    name = "tensor_like",
-    srcs = ["framework/tensor_like.py"],
-    srcs_version = "PY2AND3",
-    deps = [],
-)
-
-py_library(
     name = "indexed_slices",
     srcs = ["framework/indexed_slices.py"],
     srcs_version = "PY2AND3",
@@ -1608,6 +1601,7 @@ py_library(
         ":type_spec",
         ":util",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -1768,9 +1762,9 @@ py_library(
         ":composite_tensor",
         ":dtypes",
         ":framework_ops",
-        ":tensor_like",
         ":tensor_util",
         ":type_spec",
+        "//tensorflow/python/types",
     ],
 )
 
@@ -1878,7 +1872,6 @@ py_library(
     srcs = ["framework/tensor_util.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":tensor_like",
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
@@ -2472,9 +2465,11 @@ tf_py_test(
     main = "framework/sparse_tensor_test.py",
     python_version = "PY3",
     deps = [
+        ":array_ops",
         ":framework",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
+        ":math_ops",
         ":platform_test",
         "//tensorflow/core:protos_all_py",
     ],
@@ -3214,6 +3209,27 @@ tf_py_test(
     srcs = ["ops/collective_ops_test.py"],
     python_version = "PY3",
     tags = ["no_rocm"],
+    deps = [
+        ":client_testlib",
+        ":collective_ops",
+        ":framework_for_generated_wrappers",
+        ":kernels",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "collective_ops_xla_test",
+    size = "small",
+    srcs = ["ops/collective_ops_xla_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",
+        "no_rocm",
+        "no_windows",
+        "nomac",
+    ],
+    xla_enable_strict_auto_jit = True,
     deps = [
         ":client_testlib",
         ":collective_ops",
@@ -5934,7 +5950,11 @@ filegroup(
         "//tensorflow/compiler/jit:flags",  #tfe
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
         "//tensorflow/core/common_runtime:core_cpu_base_no_ops",  # tf_session
-        "//tensorflow/core:core_cpu_impl",  # device_lib
+        "//tensorflow/core/common_runtime:core_cpu_rump_impl",  # quantize_training
+        "//tensorflow/core/common_runtime:device",  # device_lib, tfe, tf_session
+        "//tensorflow/core/common_runtime:device_factory",  # device_lib, tfe, tf_session
+        "//tensorflow/core/common_runtime:session_options",  # device_lib, tfe, tf_session
+        "//tensorflow/core/common_runtime:session_state",  # tf_session
         "//tensorflow/core/data/service:server_lib",  # server_lib
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
         "//tensorflow/core:lib_internal_impl",  # device_lib
@@ -6447,6 +6467,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = [
         "gpu_cupti",
+        "no_gpu",  # b/154742661
     ],
     xla_enable_strict_auto_jit = False,  # Graph structure is different with autojit
     deps = [
@@ -7977,6 +7998,7 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/types:optional",
         "@pybind11",
         "//third_party/python_runtime:headers",
+        "//tensorflow/c/experimental/saved_model/core:pywrap_required_hdrs",
         "//tensorflow/compiler/jit:flags_headers_only",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
         "//tensorflow/core:framework_headers_lib",
@@ -8017,6 +8039,29 @@ py_binary(
     deps = [
         ":_pywrap_graph_analyzer",
         ":framework_for_generated_wrappers",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_parallel_device",
+    srcs = [
+        "lib/core/safe_ptr.h",
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:headers",
+        "//tensorflow/c/eager/parallel_device:headers",
+        "//tensorflow/c/eager/parallel_device:sources",
+        "//tensorflow/python/distribute/parallel_device:pywrap_parallel_device.cc",
+    ],
+    module_name = "_pywrap_parallel_device",
+    visibility = ["//tensorflow/python/distribute/parallel_device:__pkg__"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib_headers_for_pybind",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python:pybind11_status",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 

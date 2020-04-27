@@ -188,7 +188,7 @@ class ConfusionMatrixTest(test.TestCase):
   def testLabelsTooLarge(self):
     labels = np.asarray([1, 1, 0, 3, 5], dtype=np.int32)
     predictions = np.asarray([2, 1, 0, 2, 2], dtype=np.int32)
-    with self.assertRaisesOpError("`labels`.*x < y"):
+    with self.assertRaisesOpError("`labels`.*out of bound"):
       self._testConfMatrix(
           labels=labels, predictions=predictions, num_classes=3, truth=None)
 
@@ -203,7 +203,7 @@ class ConfusionMatrixTest(test.TestCase):
   def testPredictionsTooLarge(self):
     labels = np.asarray([1, 1, 0, 2, 2], dtype=np.int32)
     predictions = np.asarray([2, 1, 0, 3, 5], dtype=np.int32)
-    with self.assertRaisesOpError("`predictions`.*x < y"):
+    with self.assertRaisesOpError("`predictions`.*out of bound"):
       self._testConfMatrix(
           labels=labels, predictions=predictions, num_classes=3, truth=None)
 

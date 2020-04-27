@@ -609,7 +609,12 @@ def match_dtype_and_rank(y_t, y_p, sw):
       sw = array_ops.expand_dims_v2(sw, axis=-1)
 
   # Dtype.
-  y_t = math_ops.cast(y_t, y_p.dtype)
+  # This is required mainly for custom loss functions which do not take care
+  # casting dtypes.
+  if ((y_t.dtype.is_floating and y_p.dtype.is_floating) or
+      (y_t.dtype.is_integer and y_p.dtype.is_integer)):
+    y_t = math_ops.cast(y_t, y_p.dtype)
+
   if sw is not None:
     sw = math_ops.cast(sw, y_p.dtype)
   return y_t, y_p, sw

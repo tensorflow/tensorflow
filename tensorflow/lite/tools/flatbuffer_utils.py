@@ -31,6 +31,8 @@ import random
 from flatbuffers.python import flatbuffers
 from tensorflow.lite.python import schema_py_generated as schema_fb
 
+TFLITE_FILE_IDENTIFIER = b'TFL3'
+
 
 def read_model(input_tflite_file):
   """Reads and parses a tflite model.
@@ -66,7 +68,7 @@ def write_model(model, output_tflite_file):
   # Initial size of the buffer, which will grow automatically if needed
   builder = flatbuffers.Builder(1024)
   model_offset = model.Pack(builder)
-  builder.Finish(model_offset)
+  builder.Finish(model_offset, file_identifier=TFLITE_FILE_IDENTIFIER)
   model_data = builder.Output()
   with open(output_tflite_file, 'wb') as out_file:
     out_file.write(model_data)

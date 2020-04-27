@@ -479,12 +479,9 @@ Status XlaComputationLaunchContext::PopulateOutputs(
               input_output_alias, output_num, ctx, i, shape, &output,
               definition_event, stream, use_multiple_streams_));
         } else {
-          auto program_shape =
-              kernel->computation->GetProgramShape().ValueOrDie();
-          if (program_shape.result().IsTuple() &&
-              program_shape.result().tuple_shapes(output_num).IsTuple()) {
+          if (type == DT_VARIANT) {
             return errors::Unimplemented(
-                "Support for TensorList or Stack crossing the XLA/TF boundary "
+                "Support for TensorList crossing the XLA/TF boundary "
                 "is not implemented");
           }
 

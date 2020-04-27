@@ -1132,7 +1132,7 @@ def tf_gpu_cc_test(
         kernels = kernels,
         linkopts = linkopts,
         linkstatic = linkstatic,
-        tags = tags + ["manual"],
+        tags = tags,
         deps = deps,
     )
     tf_cc_test(
@@ -2229,14 +2229,11 @@ def tf_py_test(
         deps = deps + tf_additional_xla_deps_py()
     if grpc_enabled:
         deps = deps + tf_additional_grpc_deps_py()
-    if tfrt_enabled:
-        deps = deps + ["//tensorflow/python:is_tfrt_test_true"]
 
     # NOTE(ebrevdo): This is a workaround for depset() not being able to tell
     # the difference between 'dep' and 'clean_dep(dep)'.
     for to_add in [
         "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:gradient_checker",
     ]:
         if to_add not in deps and clean_dep(to_add) not in deps:
             deps.append(clean_dep(to_add))
@@ -2259,6 +2256,23 @@ def tf_py_test(
         deps = depset(deps + xla_test_true_list),
         **kwargs
     )
+    if tfrt_enabled:
+        py_test(
+            name = name + "_tfrt",
+            size = size,
+            srcs = srcs,
+            args = args,
+            data = data,
+            flaky = flaky,
+            kernels = kernels,
+            main = main,
+            shard_count = shard_count,
+            tags = tags,
+            visibility = [clean_dep("//tensorflow:internal")] +
+                         additional_visibility,
+            deps = depset(deps + xla_test_true_list + ["//tensorflow/python:is_tfrt_test_true"]),
+            **kwargs
+        )
 
 register_extension_info(
     extension_name = "tf_py_test",

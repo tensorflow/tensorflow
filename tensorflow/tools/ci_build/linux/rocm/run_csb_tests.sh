@@ -45,7 +45,11 @@ bazel test \
       --test_timeout 600,900,2400,7200 \
       --test_output=errors \
       --test_sharding_strategy=disabled \
+<<<<<<< HEAD
       --test_size_filters=small,medium,large \
+=======
+      --test_size_filters=small,medium \
+>>>>>>> google_upstream/master
       --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
       -- \
       //tensorflow/... \

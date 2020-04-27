@@ -523,6 +523,8 @@ package_group(
     ],
 )
 
+package_group(name = "ndarray_tensor_allow_list")
+
 filegroup(
     name = "intel_binary_blob",
     data = if_mkl_ml(

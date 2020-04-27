@@ -122,6 +122,10 @@ class Sequential(training.Model):
     self._input_dtype = None
     self._layer_call_argspecs = {}
     self._created_nodes = set()
+    # Flag that indicate whether the sequential network topology has been
+    # created. It is false when there isn't any layer, or the layers doesn't
+    # have input shape.
+    self._graph_initialized = False
 
     # Unfortunately some Sequential models using custom layers or FeatureColumn
     # layers have multiple inputs. This is fundamentally incompatible with
@@ -211,7 +215,7 @@ class Sequential(training.Model):
           set_inputs = True
 
       if set_inputs:
-        outputs = nest.flatten(layer._inbound_nodes[-1].output_tensors)
+        outputs = nest.flatten(layer._inbound_nodes[-1].outputs)
         if len(outputs) != 1:
           raise ValueError(SINGLE_LAYER_OUTPUT_ERROR_MSG)
         self.outputs = outputs
@@ -228,8 +232,9 @@ class Sequential(training.Model):
       self.outputs = [output_tensor]
       self.built = True
 
-    if set_inputs or self._is_graph_network:
+    if set_inputs or self._graph_initialized:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
+      self._graph_initialized = True
     else:
       self._layers.append(layer)
       self._handle_deferred_layer_dependencies([layer])
@@ -258,7 +263,8 @@ class Sequential(training.Model):
       self.built = False
       self._inferred_input_shape = None
       self._has_explicit_input_shape = False
-    elif self._is_graph_network:
+      self._graph_initialized = False
+    elif self._graph_initialized:
       self.layers[-1]._outbound_nodes = []
       self.outputs = [self.layers[-1].output]
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
@@ -336,13 +342,14 @@ class Sequential(training.Model):
             # TODO(fchollet): consider raising here, as we should not be
             # supporting such layers.
             self._init_graph_network(inputs, outputs, name=self.name)
+            self._graph_initialized = True
           except:  # pylint:disable=bare-except
             self._use_legacy_deferred_behavior = True
         self._inferred_input_shape = new_shape
 
   @generic_utils.default
   def build(self, input_shape=None):
-    if self._is_graph_network:
+    if self._graph_initialized:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
     else:
       if input_shape is None:
@@ -371,7 +378,7 @@ class Sequential(training.Model):
       else:
         self._build_graph_network_for_inferred_shape(inputs.shape, inputs.dtype)
 
-    if self._is_graph_network:
+    if self._graph_initialized:
       if not self.built:
         self._init_graph_network(self.inputs, self.outputs, name=self.name)
       return super(Sequential, self).call(inputs, training=training, mask=mask)

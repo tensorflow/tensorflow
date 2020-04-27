@@ -27,13 +27,19 @@ func @fusedBatchNormV3_noTraining(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf3
 }
 
 // CHECK-LABEL: fusedBatchNormV3_noTraining_mixedPrecision
-func @fusedBatchNormV3_noTraining_mixedPrecision(%arg0: tensor<8x8x8x8xbf16>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>) -> (tensor<8x8x8x8xbf16>) {
-  // CHECK: %[[RESULT0:.*]] = "xla_hlo.convert"(%arg0) : (tensor<8x8x8x8xbf16>) -> tensor<8x8x8x8xf32>
-  // CHECK: %[[RESULT1:.*]] = "xla_hlo.batch_norm_inference"(%[[RESULT0]], %arg1, %arg2, %arg3, %arg4) {epsilon = 1.000000e-03 : f32, feature_index = 3 : i64} : (tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> tensor<8x8x8x8xf32>
-  %0:6 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xbf16>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xbf16>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>)
-  // CHECK-NEXT: "xla_hlo.convert"(%[[RESULT1]]) : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xbf16>
-  return %0#0 : tensor<8x8x8x8xbf16>
+// CHECK-SAME:  ([[X:%.*]]: tensor<8x8x8x8xbf16>, [[SCALE:%.*]]: tensor<8xf32>, [[OFFSET:%.*]]: tensor<8xf32>, [[MEAN:%.*]]: tensor<8xf32>, [[VARIANCE:%.*]]: tensor<8xf32>)
+func @fusedBatchNormV3_noTraining_mixedPrecision(%arg0: tensor<8x8x8x8xbf16>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>) -> (tensor<8x8x8x8xbf16>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<*xf32>) {
+  // CHECK: [[CONVERT_X:%.*]] = "xla_hlo.convert"([[X]]) : (tensor<8x8x8x8xbf16>) -> tensor<8x8x8x8xf32>
+  // CHECK: [[Y:%.*]] = "xla_hlo.batch_norm_inference"([[CONVERT_X]], [[SCALE]], [[OFFSET]], [[MEAN]], [[VARIANCE]]) {epsilon = 1.000000e-03 : f32, feature_index = 3 : i64}
+  %0:6 = "tf.FusedBatchNormV3"(%arg0, %arg1, %arg2, %arg3, %arg4) {T = "tfdtype$DT_FLOAT", data_format = "NHWC", epsilon = 0.001 : f32, is_training = false} : (tensor<8x8x8x8xbf16>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> (tensor<8x8x8x8xbf16>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<*xf32>)
+  // CHECK: [[Y_CONVERT:%.*]] = "xla_hlo.convert"([[Y]]) : (tensor<8x8x8x8xf32>) -> tensor<8x8x8x8xbf16>
+  // CHECK: [[DUMMY:%.*]] = xla_hlo.constant {value = dense<0.000000e+00> : tensor<0xf32>} : tensor<*xf32>
+  // CHECK: return [[Y_CONVERT]], [[MEAN]], [[VARIANCE]], [[MEAN]], [[VARIANCE]], [[DUMMY]]
+  return %0#0, %0#1, %0#2, %0#3, %0#4, %0#5 : tensor<8x8x8x8xbf16>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<*xf32>
 }
+
+
+
 
 // CHECK-LABEL: fusedBatchNormV3_training
 func @fusedBatchNormV3_training(%arg0: tensor<8x8x8x8xf32>, %arg1: tensor<8xf32>, %arg2: tensor<8xf32>, %arg3: tensor<8xf32>, %arg4: tensor<8xf32>) -> (tensor<8x8x8x8xf32>) {
@@ -1165,17 +1171,21 @@ func @infeed_dequeue_tuple() -> (tensor<3xi32>, tensor<4xf32>) {
 
 // The following op sharding is used:
 // Proto debug string:
-//   type: MAXIMAL
-//   tile_assignment_dimensions: 1
-//   tile_assignment_devices: 0
+//   type: TUPLE
+//   tuple_shardings {
+//     type: MAXIMAL
+//     tile_assignment_dimensions: 1
+//     tile_assignment_devices: 0
+//   }
 // Serialized string:
-//   "\08\01\1A\01\01\22\01\00"
+//   "\08\02*\08\08\01\1A\01\01\22\01\00"
 
 // CHECK-LABEL: infeed_dequeue_tuple_sharding
 func @infeed_dequeue_tuple_sharding() -> tensor<8xi32> {
   // CHECK: "xla_hlo.infeed"
-  // CHECK-SAME: xla_hlo.sharding = "type: MAXIMAL\0Atile_assignment_dimensions: 1\0Atile_assignment_devices: 0\0A"
-  %0 = "tf.InfeedDequeueTuple"() {_XlaSharding = "\08\01\1A\01\01\22\01\00"} : () -> tensor<8xi32>
+  // An additional sharding is added at the end to account for token result.
+  // CHECK-SAME: xla_hlo.sharding = "type: TUPLE\0Atuple_shardings {\0A type: MAXIMAL\0A tile_assignment_dimensions: 1\0A tile_assignment_devices: 0\0A}\0Atuple_shardings {\0A type: MAXIMAL\0A tile_assignment_dimensions: 1\0A tile_assignment_devices: 0\0A}\0A"
+  %0 = "tf.InfeedDequeueTuple"() {_XlaSharding = "\08\02*\08\08\01\1A\01\01\22\01\00"} : () -> tensor<8xi32>
   return %0 : tensor<8xi32>
 }
 
@@ -1464,7 +1474,7 @@ func @one_hot(%indices: tensor<3xi32>, %on_value: tensor<f32>, %off_value: tenso
   // CHECK: %[[OFF_VALUE:.*]] = "xla_hlo.broadcast"(%arg2) {broadcast_sizes = dense<[3, 5]> : tensor<2xi64>} : (tensor<f32>) -> tensor<3x5xf32>
   // CHECK: %[[RESULT:.*]] = "xla_hlo.select"(%[[COMPARE]], %[[ON_VALUE]], %[[OFF_VALUE]]) : (tensor<3x5xi1>, tensor<3x5xf32>, tensor<3x5xf32>) -> tensor<3x5xf32>
   // CHECK: return %[[RESULT]] : tensor<3x5xf32>
-  %depth = "tf.Const"() { value = dense<5> : tensor<i64> } : () -> tensor<i32>
+  %depth = "tf.Const"() { value = dense<5> : tensor<i32> } : () -> tensor<i32>
   %result = "tf.OneHot"(%indices, %depth, %on_value, %off_value) {axis = -1 : i64} : (tensor<3xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<3x5xf32>
   return %result : tensor<3x5xf32>
 }
@@ -2160,6 +2170,12 @@ func @sin_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
+// CHECK-LABEL: func @round
+func @round(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK:  "xla_hlo.round_nearest_afz"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  %0 = "tf.Round"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
 
 // CHECK-LABEL: func @rsqrt
 func @rsqrt(%arg0: tensor<2xf32>) -> tensor<2xf32> {
@@ -2498,8 +2514,8 @@ func @strided_slice_begin_end_mask(%input: tensor<4x128x1024xf32>) {
   // Begin:        1,   4,   -3
   // End:          8,  65,   42
   // Stride:       1,   4,   -1
-  // Begin mask:   1,   0,    0  (= 1)
-  // End mask:     0,   0,    1  (= 4)
+  // Begin mask:   0,   0,    1  (= 1)
+  // End mask:     1,   0,    0  (= 4)
 
   // So result shape:
   // Dim #0: begin mask (1) -> begin = 0; end 8 canonicalized to 4: so 4
@@ -2644,6 +2660,142 @@ func @strided_slice_implicit_ellipsis_mask(%input: tensor<10x16x2xf32>) -> tenso
   %0 = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = f32} : (tensor<10x16x2xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<2x16x2xf32>
   // CHECK: return [[RESHAPE]] : tensor<2x16x2xf32>
   return %0 : tensor<2x16x2xf32>
+}
+
+// CHECK-LABEL: strided_slice_nonconstant_begin_end
+func @strided_slice_nonconstant_begin_end(%arg0: tensor<i32>, %arg1: tensor<32x1x97xi32>) -> (tensor<1x97xi32>) {
+  // In this case, the `begin` and `end` inputs are unknown at compile time --
+  // so the StridedSlice needs to slice these vectors and use that as input to
+  // an HLO dynamic slice.
+  %begin = "tf.Pack"(%arg0) {N = 1 : i64, T = i32, axis = 0 : i64, device = ""} : (tensor<i32>) -> tensor<1xi32>
+  %0 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %2 = "tf.AddV2"(%arg0, %0) {T = i32, device = ""} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  %end = "tf.Pack"(%2) {N = 1 : i64, T = i32, axis = 0 : i64, device = ""} : (tensor<i32>) -> tensor<1xi32>
+  // CHECK: %[[A:.*]] = "xla_hlo.reshape"(%arg0) : (tensor<i32>) -> tensor<1xi32>
+  // CHECK-NEXT: %[[BEGIN:.*]] = "xla_hlo.concatenate"(%[[A]])
+  // CHECK-DAG-SAME: {dimension = 0 : i64} : (tensor<1xi32>) -> tensor<1xi32>
+  // CHECK: %[[ZERO:.*]] = xla_hlo.constant dense<0> : tensor<i32>
+  // CHECK-NEXT: %[[INDEX:.*]] = "xla_hlo.slice"(%[[BEGIN]])
+  // CHECK-DAG-SAME: {limit_indices = dense<1> : tensor<1xi64>,
+  // CHECK-DAG-SAME: start_indices = dense<0> : tensor<1xi64>,
+  // CHECK-DAG-SAME: strides = dense<1> : tensor<1xi64>} : (tensor<1xi32>) -> tensor<1xi32>
+  // CHECK-NEXT: %[[INDEX2:.*]] = "xla_hlo.reshape"(%[[INDEX]]) : (tensor<1xi32>) -> tensor<i32>
+  // CHECK-NEXT: %[[CMP:.*]] = "xla_hlo.compare"(%[[INDEX2]], %[[ZERO]])
+  // CHECK-DAG-SAME: {comparison_direction = "LT"} : (tensor<i32>, tensor<i32>) -> tensor<i1>
+  // CHECK-NEXT: %[[DIM:.*]] = xla_hlo.constant dense<32> : tensor<i32>
+  // CHECK-NEXT: %[[WRAP:.*]] = xla_hlo.add %[[DIM]], %[[INDEX2]] : tensor<i32>
+  // CHECK-NEXT: %[[INDEX3:.*]] = "xla_hlo.select"(%[[CMP]], %[[WRAP]], %[[INDEX2]]) :
+  // CHECK-DAG-SAME: (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
+  // CHECK-NEXT: %[[SLICED:.*]] = "xla_hlo.dynamic-slice"
+  // CHECK-DAG-SAME: (%arg1, %[[INDEX3]], %[[ZERO]], %[[ZERO]])
+  // CHECK-DAG-SAME: {slice_sizes = dense<[1, 1, 97]> : tensor<3xi64>} :
+  // CHECK-DAG-SAME: (tensor<32x1x97xi32>, tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<1x97xi32>
+  // CHECK-NEXT: %[[FINAL:.*]] = "xla_hlo.reshape"(%[[SLICED]]) : (tensor<1x97xi32>) -> tensor<1x97xi32>
+  %result = "tf.StridedSlice"(%arg1, %begin, %end, %1) {Index = i32, T = i32, begin_mask = 0 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<32x1x97xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x97xi32>
+  // CHECK-NEXT: return %[[FINAL]] : tensor<1x97xi32>
+  return %result : tensor<1x97xi32>
+}
+
+// CHECK-LABEL: strided_slice_nonconstant_begin_end_stride_1
+func @strided_slice_nonconstant_begin_end_stride_1(%input: tensor<32x1x97xi32>, %begin: tensor<1xi32>, %end: tensor<1xi32>, %strides: tensor<1xi32>) -> (tensor<1x97xi32>) {
+  // Dynamic stride: when `begin` and `end` inputs are unknown at compile time,
+  // `strides` must be known.
+  // CHECK: tf.StridedSlice
+  %result = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = i32, begin_mask = 4 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<32x1x97xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x97xi32>
+  return %result : tensor<1x97xi32>
+}
+
+// CHECK-LABEL: strided_slice_nonconstant_begin_end_stride_2
+func @strided_slice_nonconstant_begin_end_stride_2(%input: tensor<32x1x97xi32>, %begin: tensor<1xi32>, %end: tensor<1xi32>) -> (tensor<1x97xi32>) {
+  // Invalid stride (not equal to 1): when `begin` and `end` inputs are unknown
+  // at compile time, `strides` must be known to have all 1 values.
+  %strides = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: tf.StridedSlice
+  %result = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = i32, begin_mask = 4 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<32x1x97xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x97xi32>
+  return %result : tensor<1x97xi32>
+}
+
+// CHECK-LABEL: strided_slice_nonconstant_begin_end_invalid_elem_count
+func @strided_slice_nonconstant_begin_end_invalid_elem_count(%input: tensor<4x8xf32>, %begin: tensor<2xi64>, %end: tensor<2xi64>) -> tensor<6x10xf32> {
+  %strides = "tf.Const"() { value = dense<[1, 1]> : tensor<2xi64> } : () -> tensor<2xi64>
+  // When begin/end are dynamic, the number of output elements must be equal to
+  // the number of input elements sliced.
+  // CHECK: tf.StridedSlice
+  %0 = "tf.StridedSlice"(%input, %begin, %end, %strides) : (tensor<4x8xf32>, tensor<2xi64>, tensor<2xi64>, tensor<2xi64>) -> tensor<6x10xf32>
+  return %0 : tensor<6x10xf32>
+}
+
+// CHECK-LABEL: strided_slice_nonconstant_begin_end_and_begin_mask
+func @strided_slice_nonconstant_begin_end_and_begin_mask(%input: tensor<32x1x97xi32>, %begin: tensor<1xi32>, %end: tensor<1xi32>) -> (tensor<1x97xi32>) {
+  // Begin mask: When `begin` and `end` inputs are unknown at compile time, we
+  // can't support a begin mask.
+  %strides = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: tf.StridedSlice
+  %result = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = i32, begin_mask = 4 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<32x1x97xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x97xi32>
+  return %result : tensor<1x97xi32>
+}
+
+// CHECK-LABEL: strided_slice_nonconstant_begin_end_and_end_mask
+func @strided_slice_nonconstant_begin_end_and_end_mask(%input: tensor<32x1x97xi32>, %begin: tensor<1xi32>, %end: tensor<1xi32>) -> (tensor<1x97xi32>) {
+  // End mask: When `begin` and `end` inputs are unknown at compile time, we
+  // can't support an end mask.
+  %strides = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: tf.StridedSlice
+  %result = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = i32, begin_mask = 0 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 1 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<32x1x97xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x97xi32>
+  return %result : tensor<1x97xi32>
+}
+
+// CHECK-LABEL: strided_slice_nonconstant_begin_end_and_new_axis_mask
+func @strided_slice_nonconstant_begin_end_and_new_axis_mask(%input: tensor<32x1x97xi32>, %begin: tensor<1xi32>, %end: tensor<1xi32>) -> (tensor<1x97xi32>) {
+  // New axis mask: When `begin` and `end` inputs are unknown at compile time,
+  // we can't support a new_axis mask.
+  %strides = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: tf.StridedSlice
+  %result = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = i32, begin_mask = 0 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 15 : i64, shrink_axis_mask = 1 : i64} : (tensor<32x1x97xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x97xi32>
+  return %result : tensor<1x97xi32>
+}
+
+// CHECK-LABEL: strided_slice_nonconstant_begin_end_and_ellipsis_mask
+func @strided_slice_nonconstant_begin_end_and_ellipsis_mask(%input: tensor<32x1x97xi32>, %begin: tensor<1xi32>, %end: tensor<1xi32>) -> (tensor<1x97xi32>) {
+  // This ellipsis mask is not supported because it does not refer to the last
+  // dimension.
+  // [0, 1, 0] = 2
+  %strides = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: tf.StridedSlice
+  %result = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = i32, begin_mask = 0 : i64, device = "", ellipsis_mask = 2 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<32x1x97xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x97xi32>
+  return %result : tensor<1x97xi32>
+}
+
+// CHECK-LABEL: strided_slice_nonconstant_begin_end_and_valid_ellipsis_mask
+func @strided_slice_nonconstant_begin_end_and_valid_ellipsis_mask(%input: tensor<32x1x97xi32>, %begin: tensor<1xi32>, %end: tensor<1xi32>) -> (tensor<1x97xi32>) {
+  // This ellipsis mask is supported because it refers to the last dimension.
+  // [1, 0, 0] = 4
+  %strides = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: xla_hlo.dynamic-slice
+  %result = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = i32, begin_mask = 0 : i64, device = "", ellipsis_mask = 4 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<32x1x97xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x97xi32>
+  return %result : tensor<1x97xi32>
+}
+
+// CHECK-LABEL: strided_slice_nonconstant_begin_end_and_valid_shrink_axis_mask
+func @strided_slice_nonconstant_begin_end_and_valid_shrink_axis_mask(%input: tensor<32x1x97xi32>, %begin: tensor<1xi32>, %end: tensor<1xi32>) -> (tensor<1x97xi32>) {
+  // This shrink_axis mask is supported because it refers to a major dimension.
+  // [1, 1, 1] = 7
+  %strides = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: xla_hlo.dynamic-slice
+  %result = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = i32, begin_mask = 0 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 7 : i64} : (tensor<32x1x97xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x97xi32>
+  return %result : tensor<1x97xi32>
+}
+
+// CHECK-LABEL: strided_slice_nonconstant_begin_end_and_invalid_shrink_axis_mask
+func @strided_slice_nonconstant_begin_end_and_invalid_shrink_axis_mask(%input: tensor<32x1x97xi32>, %begin: tensor<1xi32>, %end: tensor<1xi32>) -> (tensor<1x97xi32>) {
+  // This shrink_axis mask is unsupported because it does not refer to a major
+  // dimension.
+  // [0, 1, 0] = 2
+  %strides = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK: tf.StridedSlice
+  %result = "tf.StridedSlice"(%input, %begin, %end, %strides) {Index = i32, T = i32, begin_mask = 0 : i64, device = "", ellipsis_mask = 0 : i64, end_mask = 0 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 2 : i64} : (tensor<32x1x97xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<1x97xi32>
+  return %result : tensor<1x97xi32>
 }
 
 

@@ -169,6 +169,11 @@ def model_to_estimator_v2(keras_model=None,
   estimator.train(input_fn, steps=1)
   ```
 
+  Note: We do not support creating weighted metrics in Keras and converting them
+  to weighted metrics in the Estimator API using `model_to_estimator`.
+  You will have to create these metrics directly on the estimator spec using the
+  `add_metrics` function.
+
   To customize the estimator `eval_metric_ops` names, you can pass in the
   `metric_names_map` dictionary mapping the keras model output metric names
   to the custom names as follows:

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 
@@ -31,15 +32,48 @@ namespace {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
+// `UniqueOpHashMap` defines the map type that is used when elements of type
+// `T` are to be uniquified. By default, we use `absl::flat_hash_map<T, TIndex>`
+// as the map type. Subsequent specializations are provided for
+// performance and/or correctness.
+template <typename T, typename TIndex>
+struct UniqueOpHashMap {
+  using map_type = absl::flat_hash_map<T, TIndex>;
+};
+
+// NOTE(mrry): For `tstring` elements, we use an `absl::string_view` key to
+// avoid copying the input strings into the map.
+template <typename TIndex>
+struct UniqueOpHashMap<tstring, TIndex> {
+  using map_type = absl::flat_hash_map<absl::string_view, TIndex>;
+};
+
+// NOTE(mrry): `absl::flat_hash_map<float, ...>` does not allow `NaN` as a key,
+// because `NaN != NaN`, so we fall back to `std::unordered_map<>` for
+// floating-point types.
+template <typename TIndex>
+struct UniqueOpHashMap<float, TIndex> {
+  using map_type = std::unordered_map<float, TIndex>;
+};
+template <typename TIndex>
+struct UniqueOpHashMap<double, TIndex> {
+  using map_type = std::unordered_map<double, TIndex>;
+};
+template <typename TIndex>
+struct UniqueOpHashMap<Eigen::half, TIndex> {
+  using map_type = std::unordered_map<Eigen::half, TIndex>;
+};
+template <typename TIndex>
+struct UniqueOpHashMap<bfloat16, TIndex> {
+  using map_type = std::unordered_map<bfloat16, TIndex>;
+};
+
 // `UniqueOp` computes the unique elements in the input tensor.
 //
 // * `T` is the element type.
-// * `TKey` is the key type used in a local hash map. It must be explicitly
-//   convertible from `T`. For POD inputs, `TKey = T`. For `tstring` inputs,
-//   `TKey = absl::string_view` avoids copying the input strings into the map.
 // * `TIndex` is the type used to represent indices in the output, either
 //   `int32` or `int64`.
-template <typename T, typename TKey, typename TIndex>
+template <typename T, typename TIndex>
 class UniqueOp : public OpKernel {
  public:
   explicit UniqueOp(OpKernelConstruction* context) : OpKernel(context) {}
@@ -116,10 +150,10 @@ class UniqueOp : public OpKernel {
       auto Tin = input.flat<T>();
       const int64 N = static_cast<int64>(Tin.size());
 
-      absl::flat_hash_map<TKey, TIndex> uniq;
+      typename UniqueOpHashMap<T, TIndex>::map_type uniq;
       uniq.reserve(2 * N);
       for (Eigen::Index i = 0, j = 0; i < N; ++i) {
-        auto it = uniq.emplace(TKey(Tin(i)), j);
+        auto it = uniq.emplace(Tin(i), j);
         idx_vec(i) = it.first->second;
         if (it.second) {
           ++j;
@@ -205,56 +239,51 @@ class UniqueOp : public OpKernel {
   }
 };
 
-#define REGISTER_UNIQUE_WITH_KEY_TYPE(type, key_type)            \
+#define REGISTER_UNIQUE(type)                                    \
   REGISTER_KERNEL_BUILDER(Name("Unique")                         \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int32>("out_idx"), \
-                          UniqueOp<type, key_type, int32>);      \
+                          UniqueOp<type, int32>);                \
   REGISTER_KERNEL_BUILDER(Name("Unique")                         \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int64>("out_idx"), \
-                          UniqueOp<type, key_type, int64>);      \
+                          UniqueOp<type, int64>);                \
   REGISTER_KERNEL_BUILDER(Name("UniqueV2")                       \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int32>("out_idx"), \
-                          UniqueOp<type, key_type, int32>);      \
+                          UniqueOp<type, int32>);                \
   REGISTER_KERNEL_BUILDER(Name("UniqueV2")                       \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int64>("out_idx"), \
-                          UniqueOp<type, key_type, int64>);      \
+                          UniqueOp<type, int64>);                \
   REGISTER_KERNEL_BUILDER(Name("UniqueWithCounts")               \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int32>("out_idx"), \
-                          UniqueOp<type, key_type, int32>)       \
+                          UniqueOp<type, int32>)                 \
   REGISTER_KERNEL_BUILDER(Name("UniqueWithCounts")               \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int64>("out_idx"), \
-                          UniqueOp<type, key_type, int64>);      \
+                          UniqueOp<type, int64>);                \
   REGISTER_KERNEL_BUILDER(Name("UniqueWithCountsV2")             \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int32>("out_idx"), \
-                          UniqueOp<type, key_type, int32>)       \
+                          UniqueOp<type, int32>)                 \
   REGISTER_KERNEL_BUILDER(Name("UniqueWithCountsV2")             \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int64>("out_idx"), \
-                          UniqueOp<type, key_type, int64>)
-#define REGISTER_UNIQUE_WITH_SAME_KEY_TYPE(type) \
-  REGISTER_UNIQUE_WITH_KEY_TYPE(type, type)
-
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_UNIQUE_WITH_SAME_KEY_TYPE);
-REGISTER_UNIQUE_WITH_SAME_KEY_TYPE(bool)
-#undef REGISTER_UNIQUE_WITH_SAME_KEY_TYPE
-
-REGISTER_UNIQUE_WITH_KEY_TYPE(tstring, absl::string_view)
-#undef REGISTER_UNIQUE_WITH_KEY_TYPE
+                          UniqueOp<type, int64>)
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_UNIQUE);
+REGISTER_UNIQUE(tstring)
+REGISTER_UNIQUE(bool)
+#undef REGISTER_UNIQUE
 
 // Fake integer GPU kernels so that the use of Unique in optimizers (to
 // de-duplicate sparse gradient indices) does not conflict with gradients being
@@ -267,7 +296,7 @@ REGISTER_KERNEL_BUILDER(Name("Unique")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("idx"),
-                        UniqueOp<int32, int32, int32>);
+                        UniqueOp<int32, int32>);
 REGISTER_KERNEL_BUILDER(Name("Unique")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int32>("T")
@@ -275,7 +304,7 @@ REGISTER_KERNEL_BUILDER(Name("Unique")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("idx"),
-                        UniqueOp<int32, int32, int64>);
+                        UniqueOp<int32, int64>);
 REGISTER_KERNEL_BUILDER(Name("Unique")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int64>("T")
@@ -283,7 +312,7 @@ REGISTER_KERNEL_BUILDER(Name("Unique")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("idx"),
-                        UniqueOp<int64, int64, int32>);
+                        UniqueOp<int64, int32>);
 REGISTER_KERNEL_BUILDER(Name("Unique")
                             .Device(DEVICE_GPU)
                             .TypeConstraint<int64>("T")
@@ -291,7 +320,7 @@ REGISTER_KERNEL_BUILDER(Name("Unique")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("idx"),
-                        UniqueOp<int64, int64, int64>);
+                        UniqueOp<int64, int64>);
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("Unique")
@@ -301,7 +330,7 @@ REGISTER_KERNEL_BUILDER(Name("Unique")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("idx"),
-                        UniqueOp<int32, int32, int32>);
+                        UniqueOp<int32, int32>);
 REGISTER_KERNEL_BUILDER(Name("Unique")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int64>("T")
@@ -309,7 +338,7 @@ REGISTER_KERNEL_BUILDER(Name("Unique")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("idx"),
-                        UniqueOp<int64, int64, int32>);
+                        UniqueOp<int64, int32>);
 REGISTER_KERNEL_BUILDER(Name("Unique")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")
@@ -317,7 +346,7 @@ REGISTER_KERNEL_BUILDER(Name("Unique")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("idx"),
-                        UniqueOp<int32, int32, int64>);
+                        UniqueOp<int32, int64>);
 REGISTER_KERNEL_BUILDER(Name("Unique")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int64>("T")
@@ -325,7 +354,7 @@ REGISTER_KERNEL_BUILDER(Name("Unique")
                             .HostMemory("x")
                             .HostMemory("y")
                             .HostMemory("idx"),
-                        UniqueOp<int64, int64, int64>);
+                        UniqueOp<int64, int64>);
 #endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace

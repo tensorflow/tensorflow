@@ -20,8 +20,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/graph_view.h"
+#include "tensorflow/core/common_runtime/local_executor_params.h"
 #include "tensorflow/core/common_runtime/pending_counts.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"

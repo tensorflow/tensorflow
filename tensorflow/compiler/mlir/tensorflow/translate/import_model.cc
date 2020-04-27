@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -59,6 +60,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -224,13 +226,13 @@ class ImporterBase {
 
   // Returns the inferred input type at index `idx` of the `node` in the
   // context.
-  StatusOr<mlir::TensorType> InferInputType(const Node& node, int idx,
-                                            mlir::Builder builder);
+  StatusOr<mlir::Type> InferInputType(const Node& node, int idx,
+                                      mlir::Builder builder);
 
   // Returns the inferred output type at index `idx` of the `node` in the
   // context.
-  StatusOr<mlir::TensorType> InferOutputType(const Node& node, int idx,
-                                             mlir::Builder builder);
+  StatusOr<mlir::Type> InferOutputType(const Node& node, int idx,
+                                       mlir::Builder builder);
 
  private:
   // Most types with subtypes have only one subtype.
@@ -238,7 +240,17 @@ class ImporterBase {
 
   // Adds all the ordered_nodes to the shape refiner shape_refiner_. Then all
   // data type and shape information is maintained by the shape_refiner_.
-  Status AddNodesToShapeRefiner();
+  // TODO(jpienaar): Remove once shape inference on import is removed.
+  Status AddNodesToShapeRefiner(
+      std::unordered_map<string, Node*>* node_name_map);
+
+  // Prune nodes that do not feed into fetch nodes.
+  Status PruneUnreachableNodes(
+      std::unordered_map<string, Node*>* node_name_map);
+
+  // Converts feeds to Placeholder nodes.
+  Status ConvertFeedsToPlaceholders(
+      std::unordered_map<string, Node*>* node_name_map);
 
   // Converts the inferred shape referred to by 'handle' in 'context', with
   // given element type, and returns an MLIR tensor type.
@@ -262,6 +274,21 @@ class ImporterBase {
   // Converts the tensor proto into an MLIR elements attribute.
   StatusOr<mlir::ElementsAttr> ConvertTensorProto(const TensorProto& value) {
     return ::tensorflow::ConvertTensorProto(value, &builder_);
+  }
+
+  // Converts the tensor shape proto into an MLIR shape attribute.
+  StatusOr<mlir::TF::ShapeAttr> ConvertTensorShapeProto(
+      const TensorShapeProto& shape) {
+    if (shape.unknown_rank())
+      return mlir::TF::ShapeAttr::get(builder_.getContext(), llvm::None);
+
+    llvm::SmallVector<int64_t, 4> dims;
+    dims.reserve(shape.dim().size());
+    for (const auto& dim : shape.dim()) {
+      dims.push_back(dim.size());
+    }
+    return mlir::TF::ShapeAttr::get(builder_.getContext(),
+                                    llvm::makeArrayRef(dims));
   }
 
   // Converts func name in graphdef to mlir::SymbolRefAttribute.
@@ -381,7 +408,10 @@ class ImporterBase {
   const GraphDebugInfo& debug_info_;
   llvm::StringRef function_name_for_debug_info_;
   NodeValueMap node_values_;
-  std::unique_ptr<ShapeRefiner> shape_refiner_;
+  // TODO(jpienaar): Remove once shape inference on import is removed.
+  // The shape_refinner_ will be nullptr if shape inference on import is
+  // not enabled.
+  std::unique_ptr<ShapeRefiner> shape_refiner_ = nullptr;
   NameUniquifier* function_name_uniquifier_;
   mlir::StatusScopedDiagnosticHandler error_handler_;
 
@@ -639,8 +669,9 @@ Status ImporterBase::GetInputOutputNodes(
   return Status::OK();
 }
 
-// TODO(fengliuai): Replace the iterative algorithm by an one pass propagation
-Status ImporterBase::AddNodesToShapeRefiner() {
+// TODO(jpienaar): Remove this post shape inference on import flag is removed.
+Status ImporterBase::AddNodesToShapeRefiner(
+    std::unordered_map<string, Node*>* node_name_map) {
   shape_refiner_ = absl::make_unique<ShapeRefiner>(graph_->versions(),
                                                    graph_->op_registry());
   // Some operations (for example "TPUExecute") don't have shape inference
@@ -650,7 +681,6 @@ Status ImporterBase::AddNodesToShapeRefiner() {
   shape_refiner_->set_function_library_for_shape_inference(&graph_flib_);
 
   TF_ASSIGN_OR_RETURN(auto feeds_by_node, GetFeedsByNode(specs_.inputs));
-  auto node_name_map = graph_->BuildNodeNameIndex();
 
   // First add all nodes to the refiner.
   for (Node* node : ordered_nodes_) {
@@ -684,7 +714,7 @@ Status ImporterBase::AddNodesToShapeRefiner() {
           TF_ASSIGN_OR_RETURN(
               auto placeholder_node_and_removed,
               CreatePlaceholderNodeForFeed(array_info.shape, dtype, node, index,
-                                           node_name_map));
+                                           *node_name_map));
 
           Node* placeholder_node = placeholder_node_and_removed.first;
           if (placeholder_node_and_removed.second) {
@@ -693,7 +723,7 @@ Status ImporterBase::AddNodesToShapeRefiner() {
             node_added_to_shape_refiner = true;
           }
           remapped_feeds_[{it->first, index}] = placeholder_node->name();
-          node_name_map[placeholder_node->name()] = placeholder_node;
+          (*node_name_map)[placeholder_node->name()] = placeholder_node;
           // Add the new placeholder node to the shape refiner.
           Status status = shape_refiner_->AddNode(placeholder_node);
           if (!status.ok()) {
@@ -787,7 +817,7 @@ Status ImporterBase::AddNodesToShapeRefiner() {
   // Prune nodes in the graph that are not reachable from the output.
   if (specs_.prune_unused_nodes) {
     std::unordered_set<const Node*> prune_start;
-    TF_RETURN_IF_ERROR(GetInputOutputNodes(node_name_map, &prune_start));
+    TF_RETURN_IF_ERROR(GetInputOutputNodes(*node_name_map, &prune_start));
     if (!prune_start.empty()) {
       if (PruneForReverseReachability(graph_.get(), prune_start)) {
         VLOG(1) << "Pruned unused nodes in graphdef";
@@ -872,27 +902,48 @@ Status ImporterBase::AddNodesToShapeRefiner() {
   return Status::OK();
 }
 
-StatusOr<mlir::TensorType> ImporterBase::InferInputType(const Node& node,
-                                                        int idx,
-                                                        mlir::Builder builder) {
-  ExtendedInferenceContext* shape_context =
-      shape_refiner_->GetExtendedContext(&node);
-  DataType dtype = shape_context->input_type(idx);
-  auto* context = shape_context->get_context();
-  return ConvertDataTypeAndShape(dtype, context->input(idx),
-                                 context->input_handle_shapes_and_types(idx),
-                                 context, builder);
+StatusOr<mlir::Type> ImporterBase::InferInputType(const Node& node, int idx,
+                                                  mlir::Builder builder) {
+  if (specs_.enable_shape_inference) {
+    // TODO(jpienaar): Remove this if shape inference on import flag is removed.
+    ExtendedInferenceContext* shape_context =
+        shape_refiner_->GetExtendedContext(&node);
+    DataType dtype = shape_context->input_type(idx);
+    auto* context = shape_context->get_context();
+    return ConvertDataTypeAndShape(dtype, context->input(idx),
+                                   context->input_handle_shapes_and_types(idx),
+                                   context, builder);
+  }
+  DataType dtype = node.properties()->input_types[idx];
+  mlir::Type element_type;
+  TF_RETURN_IF_ERROR(ConvertDataType(dtype, builder, &element_type));
+  return mlir::UnrankedTensorType::get(element_type);
 }
 
-StatusOr<mlir::TensorType> ImporterBase::InferOutputType(
-    const Node& node, int idx, mlir::Builder builder) {
-  ExtendedInferenceContext* shape_context =
-      shape_refiner_->GetExtendedContext(&node);
-  DataType dtype = shape_context->output_type(idx);
-  auto* context = shape_context->get_context();
-  return ConvertDataTypeAndShape(dtype, context->output(idx),
-                                 context->output_handle_shapes_and_types(idx),
-                                 context, builder);
+StatusOr<mlir::Type> ImporterBase::InferOutputType(const Node& node, int idx,
+                                                   mlir::Builder builder) {
+  if (specs_.enable_shape_inference) {
+    // TODO(jpienaar): Remove this if shape inference on import flag is removed.
+    ExtendedInferenceContext* shape_context =
+        shape_refiner_->GetExtendedContext(&node);
+    DataType dtype = shape_context->output_type(idx);
+    auto* context = shape_context->get_context();
+    return ConvertDataTypeAndShape(dtype, context->output(idx),
+                                   context->output_handle_shapes_and_types(idx),
+                                   context, builder);
+  }
+  DataType dtype = node.properties()->output_types[idx];
+  if (node.IsArg()) {
+    if (auto shape = node.attrs().Find("_output_shapes")) {
+      if (shape->has_list() && shape->list().shape_size() == 1) {
+        return ConvertToMlirTensorType(shape->list().shape().at(0), dtype,
+                                       &builder);
+      }
+    }
+  }
+  mlir::Type element_type;
+  TF_RETURN_IF_ERROR(ConvertDataType(dtype, builder, &element_type));
+  return mlir::UnrankedTensorType::get(element_type);
 }
 
 StatusOr<mlir::TensorType> ImporterBase::ConvertDataTypeAndShape(
@@ -1000,7 +1051,7 @@ StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
       return mlir::TypeAttr::get(type);
     }
     case AttrValue::kShape:
-      return builder_.getStringAttr(mangling_util::MangleShape(value.shape()));
+      return ConvertTensorShapeProto(value.shape());
     case AttrValue::kTensor:
       return ConvertTensorProto(value.tensor());
     case AttrValue::kList: {
@@ -1018,8 +1069,8 @@ StatusOr<mlir::Attribute> ImporterBase::ConvertAttributeValue(
             mangling_util::MangleDataType(static_cast<DataType>(item))));
       }
       for (const auto& item : value.list().shape()) {
-        attrs.push_back(
-            builder_.getStringAttr(mangling_util::MangleShape(item)));
+        TF_ASSIGN_OR_RETURN(auto attr, ConvertTensorShapeProto(item));
+        attrs.push_back(attr);
       }
       for (const auto& item : value.list().tensor()) {
         TF_ASSIGN_OR_RETURN(auto attr, ConvertTensorProto(item));
@@ -1090,7 +1141,7 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   TF_RETURN_IF_ERROR(
       FunctionDefToBodyHelper(*func_def, AttrSlice(), &func_lib, &fbody));
 
-  // Converts the argument and return types to mlir types.
+  // Converts the argument and return types to MLIR types.
   absl::InlinedVector<mlir::NamedAttribute, 8> attributes;
   attributes.reserve(func_def->attr_size());
   for (const auto& name_and_value : func_def->attr()) {
@@ -1126,6 +1177,7 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   // We populate the NodeSpec so that all the _Arg ops get their shape
   // added correctly.
   GraphImportConfig specs;
+  specs.enable_shape_inference = specs_.enable_shape_inference;
   for (const auto& name_and_value : func_def->attr()) {
     if (name_and_value.first == "_input_shapes") {
       auto& list = name_and_value.second.list();
@@ -1167,9 +1219,96 @@ Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
   return Status::OK();
 }
 
+Status ImporterBase::PruneUnreachableNodes(
+    std::unordered_map<string, Node*>* node_name_map) {
+  std::unordered_set<const Node*> prune_start;
+  TF_RETURN_IF_ERROR(GetInputOutputNodes(*node_name_map, &prune_start));
+
+  if (!prune_start.empty()) {
+    if (PruneForReverseReachability(graph_.get(), prune_start)) {
+      VLOG(1) << "Pruned unused nodes in graphdef";
+    } else {
+      VLOG(1) << "No unused nodes in graphdef to prune";
+    }
+  } else {
+    VLOG(1) << "No output nodes specified, skipping pruning";
+  }
+  return Status::OK();
+}
+
+Status ImporterBase::ConvertFeedsToPlaceholders(
+    std::unordered_map<string, Node*>* node_name_map) {
+  // Feeds (edges) are converted into single-output placeholder nodes to
+  // simplify the conversion process.
+  TF_ASSIGN_OR_RETURN(auto feeds_by_node, GetFeedsByNode(specs_.inputs));
+  for (const auto& it : feeds_by_node) {
+    TensorId tensor = ParseTensorName(it.first);
+    auto jt = node_name_map->find(std::string(tensor.node()));
+    if (jt == node_name_map->end()) {
+      return errors::FailedPrecondition(
+          absl::StrCat("Graph does not contain node: ", tensor.node()));
+    }
+
+    Node* node = jt->second;
+    auto op_name = node->op_def().name();
+    if (op_name != "Placeholder" && op_name != "LegacyFedInput" &&
+        op_name != FunctionLibraryDefinition::kArgOp) {
+      for (const auto& output_tensor : it.second) {
+        const int index = output_tensor.first;
+        const ArrayInfo& array_info = output_tensor.second->second;
+
+        DataType dtype = array_info.imported_dtype;
+        // Uses the existing output type if it isn't specified by the user.
+        if (dtype == DT_INVALID) {
+          dtype = node->output_type(index);
+        }
+
+        TF_ASSIGN_OR_RETURN(
+            auto placeholder_node_and_removed,
+            CreatePlaceholderNodeForFeed(array_info.shape, dtype, node, index,
+                                         *node_name_map));
+
+        Node* placeholder_node = placeholder_node_and_removed.first;
+        if (placeholder_node->in_edges().empty()) {
+          graph_->AddControlEdge(graph_->source_node(), placeholder_node,
+                                 true /* skip test for duplicates */);
+        }
+        if (placeholder_node->out_edges().empty()) {
+          graph_->AddControlEdge(placeholder_node, graph_->sink_node(),
+                                 true /* skip test for duplicates */);
+        }
+        remapped_feeds_[{it.first, index}] = placeholder_node->name();
+        (*node_name_map)[placeholder_node->name()] = placeholder_node;
+      }
+    }
+  }
+  return Status::OK();
+}
+
 Status ImporterBase::PrepareConvert(const Graph& graph) {
   TF_RETURN_IF_ERROR(RemoveBackedges(graph));
-  TF_RETURN_IF_ERROR(AddNodesToShapeRefiner());
+
+  auto node_name_map = graph_->BuildNodeNameIndex();
+
+  if (specs_.enable_shape_inference) {
+    // TODO(jpienaar): Remove once infer shapes on import flag is removed.
+    TF_RETURN_IF_ERROR(AddNodesToShapeRefiner(&node_name_map));
+  } else {
+    TF_RETURN_IF_ERROR(ConvertFeedsToPlaceholders(&node_name_map));
+  }
+
+  // Prune nodes in the graph that are not reachable from the output.
+  if (specs_.prune_unused_nodes) {
+    TF_RETURN_IF_ERROR(PruneUnreachableNodes(&node_name_map));
+  }
+
+  if (!specs_.enable_shape_inference) {
+    // Re-initialize ordered_nodes_ since we might have modified the graph.
+    GetReversePostOrder(
+        *graph_, &ordered_nodes_,
+        [](const Node* n1, const Node* n2) { return n1->name() < n2->name(); });
+  }
+
   return Status::OK();
 }
 
@@ -1210,6 +1349,34 @@ Status ImporterBase::Convert(
     function.setArgAttr(entry.first, "tf.resource_arg_unique_id",
                         builder_.getI64IntegerAttr(entry.second));
   }
+
+  // TODO(jpienaar): Update post removing shape_refinier_.
+  if (!specs_.enable_shape_inference) {
+    // Refine graph's type given more precise fetch.
+    auto fetch_op = graph.GetFetch();
+    bool all_equal = true;
+    for (auto it :
+         llvm::zip(fetch_op.getOperandTypes(), graph.getResultTypes())) {
+      if (std::get<0>(it) != std::get<1>(it)) {
+        all_equal = false;
+        break;
+      }
+    }
+    if (all_equal) return Status::OK();
+
+    llvm::SmallVector<mlir::Type, 4> return_types;
+    return_types.reserve(fetch_op.getNumOperands());
+    for (mlir::Type t : fetch_op.getOperandTypes()) return_types.push_back(t);
+    builder_.setInsertionPointToStart(&function.getBody().front());
+    auto new_graph = builder_.create<mlir::tf_executor::GraphOp>(
+        function.getLoc(), return_types, mlir::ValueRange{}, graph.getAttrs());
+    new_graph.body().takeBody(graph.body());
+    graph.replaceAllUsesWith(new_graph);
+    graph.erase();
+    function.setType(mlir::FunctionType::get(
+        func_type.getInputs(), return_types, function.getContext()));
+  }
+
   return Status::OK();
 }
 
@@ -1315,7 +1482,7 @@ mlir::Location ImporterBase::GetLocation(const NodeDef& node_def) {
     std::string name_for_name_loc =
         function_name.empty() ? name.str() : (name + "@" + function_name).str();
     auto name_loc_id = mlir::Identifier::get(name_for_name_loc, context_);
-    const auto& location_it = debug_info.find(debug_info_key);
+    const auto location_it = debug_info.find(debug_info_key);
     if (location_it == debug_info.end()) {
       return mlir::NameLoc::get(name_loc_id, context_);
     }
@@ -1765,13 +1932,43 @@ StatusOr<mlir::FunctionType> ImporterBase::InferLibFunctionType(
   // MLIR function type signature.
 
   llvm::SmallVector<mlir::Type, 4> arg_types;
-  arg_types.reserve(fbody.arg_types.size());
-  for (auto arg : fbody.arg_nodes) {
-    // Find node in the graph using the node id instead of using `arg` directly
-    // because the graph has been cloned.
-    auto* node = graph_->FindNodeId(arg->id());
-    TF_ASSIGN_OR_RETURN(auto type, InferOutputType(*node, /*idx=*/0, builder));
-    arg_types.push_back(type);
+  if (specs_.inputs.empty()) {
+    arg_types.reserve(fbody.arg_types.size());
+    for (auto arg : fbody.arg_nodes) {
+      // Find node in the graph using the node id instead of using `arg`
+      // directly because the graph has been cloned.
+      auto* node = graph_->FindNodeId(arg->id());
+      TF_ASSIGN_OR_RETURN(auto type,
+                          InferOutputType(*node, /*idx=*/0, builder));
+      arg_types.push_back(type);
+    }
+  } else {
+    arg_types.reserve(fbody.arg_types.size());
+    for (const auto& it : llvm::enumerate(specs_.inputs)) {
+      mlir::Type element_type;
+      const auto& node_info = it.value().second;
+      DataType dtype = node_info.imported_dtype;
+      // Uses the existing output type of the arg node if the data type of the
+      // the node isn't specified through the import configuration.
+      if (dtype == DT_INVALID) {
+        auto arg = fbody.arg_nodes[it.index()];
+        auto* node = graph_->FindNodeId(arg->id());
+        dtype = node->output_type(0);
+        if (dtype == DT_INVALID) {
+          return errors::InvalidArgument("Input ", it.index(),
+                                         "has invalid data type");
+        }
+      }
+      TF_RETURN_IF_ERROR(
+          ::tensorflow::ConvertDataType(dtype, builder, &element_type));
+      if (node_info.shape.unknown_rank()) {
+        arg_types.push_back(mlir::UnrankedTensorType::get(element_type));
+      } else {
+        llvm::SmallVector<int64_t, 4> shape;
+        TF_RETURN_IF_ERROR(ConvertToMlirShape(node_info.shape, &shape));
+        arg_types.push_back(mlir::RankedTensorType::get(shape, element_type));
+      }
+    }
   }
 
   llvm::SmallVector<mlir::Type, 4> ret_types;
@@ -2023,9 +2220,13 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
     }
     TF_RETURN_IF_ERROR(
         ::tensorflow::ConvertDataType(imported_dtype, builder, &element_type));
-    llvm::SmallVector<int64_t, 4> shape;
-    TF_RETURN_IF_ERROR(ConvertToMlirShape(node_info.shape, &shape));
-    arg_types.push_back(mlir::RankedTensorType::get(shape, element_type));
+    if (node_info.shape.unknown_rank()) {
+      arg_types.push_back(mlir::UnrankedTensorType::get(element_type));
+    } else {
+      llvm::SmallVector<int64_t, 4> shape;
+      TF_RETURN_IF_ERROR(ConvertToMlirShape(node_info.shape, &shape));
+      arg_types.push_back(mlir::RankedTensorType::get(shape, element_type));
+    }
     i++;
   }
 
@@ -3189,7 +3390,7 @@ Status SavedModelSignatureDefImporter::ReadVariablesFromSession(
     tensors.push_back(*var->tensor());
   }
 
-  for (const auto& iter : llvm::zip(variable_names_and_ops, tensors)) {
+  for (const auto iter : llvm::zip(variable_names_and_ops, tensors)) {
     const auto& name = std::get<0>(iter).first;
     auto location = std::get<0>(iter).second.getLoc();
     const auto& tensor = std::get<1>(iter);

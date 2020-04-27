@@ -41,13 +41,10 @@ typedef struct TF_AbstractTensor TF_AbstractTensor;
 // could contain the op type and other attributes.
 typedef struct TF_AbstractOp TF_AbstractOp;
 
-// `TF_ExecutionContextOptions` define what type of `TF_ExecutionContext` is
-// created. It can be used to pass context specific params.
-typedef struct TF_ExecutionContextOptions TF_ExecutionContextOptions;
-void TF_DeleteExecutionContextOptions(TF_ExecutionContextOptions*);
+TF_ExecutionContext* TF_NewGraphExecutionContext(TF_Status* s);
+TF_ExecutionContext* TF_NewEagerExecutionContext(TFE_ContextOptions*,
+                                                 TF_Status* s);
 
-TF_ExecutionContext* TF_NewExecutionContext(TF_ExecutionContextOptions*,
-                                            TF_Status* s);
 void TF_DeleteExecutionContext(TF_ExecutionContext*);
 
 TF_AbstractOp* TF_NewAbstractOp(TF_ExecutionContext* ctx);
@@ -98,15 +95,10 @@ void TF_ExecuteOperation(TF_AbstractOp* op, int num_inputs,
 // APIs specific to Eager and graph modes
 // -----------------------------------------------------------------------------
 
-TF_ExecutionContextOptions* TF_NewGraphContextOptions();
-TF_ExecutionContextOptions* TF_NewEagerContextOptions(TFE_ContextOptions*);
-
 // Temporary APIs till we figure out how to create scalar valued Eager
 // tensors and how to get value out of eager abstract tensors.
-TF_AbstractTensor* TF_NewAbstractTensor();
-void TF_AbstractTensorSetEagerTensor(
-    TF_AbstractTensor* at, TFE_TensorHandle* t,
-    TF_Status* s);  // `at` takes ownership of `t`.
+TF_AbstractTensor* TF_CreateAbstractTensorFromEagerTensor(TFE_TensorHandle* t,
+                                                          TF_Status* s);
 TFE_TensorHandle* TF_AbstractTensorGetEagerTensor(TF_AbstractTensor* at,
                                                   TF_Status* s);
 TFE_Context* TF_ExecutionContextGetTFEContext(TF_ExecutionContext*);

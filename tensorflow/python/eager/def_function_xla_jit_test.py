@@ -286,7 +286,7 @@ class DefFunctionTest(test.TestCase):
       tape.watch(x)
       with self.assertRaisesRegexp(
           errors.UnimplementedError,
-          'TensorList or Stack crossing the XLA/TF boundary'):
+          'TensorList crossing the XLA/TF boundary'):
         y = f(x)
         tape.gradient(y, x)
 

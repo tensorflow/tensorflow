@@ -253,6 +253,26 @@ retained with length 1.
   let verifier = [{ return Verify(*this); }];
 }
 
+def TF_ApproximateEqualOp : TF_Op<"ApproximateEqual", [Commutative, NoSideEffect]> {
+  let summary = "Returns the truth value of abs(x-y) < tolerance element-wise.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$y,
+
+    DefaultValuedAttr<F32Attr, "1e-05f">:$tolerance
+  );
+
+  let results = (outs
+    I1Tensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ArgMaxOp : TF_Op<"ArgMax", [NoSideEffect]> {
   let summary = [{
 Returns the index with the largest value across dimensions of a tensor.
@@ -3959,8 +3979,7 @@ cublas.
 
 def TF_MatrixBandPartOp : TF_Op<"MatrixBandPart", [AllTypesMatch<["input", "band"]>, NoSideEffect]> {
   let summary = [{
-Copy a tensor setting everything outside a central band in each innermost matrix
-to zero.
+Copy a tensor setting everything outside a central band in each innermost matrix to zero.
   }];
 
   let description = [{
@@ -4714,12 +4733,12 @@ def TF_MaximumOp : TF_Op<"Maximum", [NoSideEffect, ResultsBroadcastableShape]>,
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -4762,12 +4781,12 @@ def TF_MinimumOp : TF_Op<"Minimum", [NoSideEffect, ResultsBroadcastableShape]>,
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$y
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$y
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64]>:$z
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$z
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -5879,6 +5898,8 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   let builders = [
     OpBuilder<"Builder* builder, OperationState& result, Value  input">
   ];
+
+  let hasFolder = 1;
 }
 
 def TF_ReadVariableOp : TF_Op<"ReadVariableOp", []> {
@@ -8432,7 +8453,7 @@ All elements must have the same shape (excepting the first dimension).
     TF_ResourceTensor:$handle,
     F32Tensor:$flow_in,
 
-    DefaultValuedAttr<StrAttr, "tfshape$unknown_rank: true">:$element_shape_except0
+    DefaultValuedAttr<TF_ShapeAttr, "llvm::None">:$element_shape_except0
   );
 
   let results = (outs
@@ -8457,7 +8478,7 @@ All elements selected by `indices` must have the same shape.
     I32Tensor:$indices,
     F32Tensor:$flow_in,
 
-    DefaultValuedAttr<StrAttr, "tfshape$unknown_rank: true">:$element_shape
+    DefaultValuedAttr<TF_ShapeAttr, "llvm::None">:$element_shape
   );
 
   let results = (outs
@@ -8632,7 +8653,7 @@ Write data via Write and read via Read or Pack.
     I32Tensor:$size,
 
     TypeAttr:$dtype,
-    DefaultValuedAttr<StrAttr, "tfshape$unknown_rank: true">:$element_shape,
+    DefaultValuedAttr<TF_ShapeAttr, "llvm::None">:$element_shape,
     DefaultValuedAttr<BoolAttr, "false">:$dynamic_size,
     DefaultValuedAttr<BoolAttr, "true">:$clear_after_read,
     DefaultValuedAttr<BoolAttr, "false">:$identical_element_shapes,
@@ -9565,6 +9586,30 @@ shape(t) ==> [2, 2, 3]
   }];
 
   let hasFolder = 1;
+}
+
+def TF_VariableV2Op : TF_Op<"VariableV2", []> {
+  let summary = [{
+Holds state in the form of a tensor that persists across steps.
+  }];
+
+  let description = [{
+Outputs a ref to the tensor state so it may be read or modified.
+TODO(zhifengc/mrry): Adds a pointer to a more detail document
+about sharing states in tensorflow.
+  }];
+
+  let arguments = (ins
+    TF_ShapeAttr:$shape,
+    StrAttr:$container,
+    StrAttr:$shared_name
+  );
+
+  let results = (outs
+    TF_Tensor:$ref
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_WhereOp : TF_Op<"Where", [NoSideEffect]> {

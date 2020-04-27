@@ -2628,6 +2628,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"ReverseV2", ConvertSimpleOperator<ReverseV2Operator, 2, 1>},
       {"Round", ConvertRoundOperator},
       {"Rsqrt", ConvertSimpleOperator<TensorFlowRsqrtOperator, 1, 1>},
+      {"ScatterNd", ConvertSimpleOperator<ScatterNdOperator, 3, 1>},
       {"SegmentSum", ConvertSimpleOperator<SegmentSumOperator, 2, 1>},
       {"Select", ConvertSimpleOperator<SelectOperator, 3, 1>},
       {"SelectV2", ConvertSimpleOperator<SelectOperator, 3, 1>},

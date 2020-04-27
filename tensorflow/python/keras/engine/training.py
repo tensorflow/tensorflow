@@ -853,6 +853,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     version_utils.disallow_legacy_graph('Model', 'fit')
     self._assert_compile_was_called()
     self._check_call_args('fit')
+    _disallow_inside_tf_function('fit')
 
     if validation_split:
       # Create the validation data using the training data. Only supported for
@@ -1130,6 +1131,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     version_utils.disallow_legacy_graph('Model', 'evaluate')
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
+    _disallow_inside_tf_function('evaluate')
 
     with self.distribute_strategy.scope():
       # Creates a `tf.data.Dataset` and handles batch and epoch iteration.
@@ -1329,6 +1331,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     _keras_api_gauge.get_cell('predict').set(True)
     version_utils.disallow_legacy_graph('Model', 'predict')
     self._check_call_args('predict')
+    _disallow_inside_tf_function('predict')
 
     outputs = None
     with self.distribute_strategy.scope():
@@ -1449,6 +1452,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     """
     self._assert_compile_was_called()
     self._check_call_args('train_on_batch')
+    _disallow_inside_tf_function('train_on_batch')
     with self.distribute_strategy.scope(), \
          training_utils.RespectCompiledTrainableState(self):
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x,
@@ -1508,6 +1512,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     """
     self._assert_compile_was_called()
     self._check_call_args('test_on_batch')
+    _disallow_inside_tf_function('test_on_batch')
     with self.distribute_strategy.scope():
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x,
                                                     y, sample_weight)
@@ -1541,6 +1546,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           expectations of the model.
     """
     self._check_call_args('predict_on_batch')
+    _disallow_inside_tf_function('predict_on_batch')
     with self.distribute_strategy.scope():
       iterator = data_adapter.single_batch_iterator(self.distribute_strategy, x)
       predict_function = self.make_predict_function()
@@ -1944,3 +1950,15 @@ def _minimum_control_deps(outputs):
     if not isinstance(out, variables.Variable):
       return [out]  # Return first Tensor or Op from outputs.
   return []  # No viable Tensor or Op to use for control deps.
+
+
+def _disallow_inside_tf_function(method_name):
+  if ops.inside_function():
+    error_msg = (
+        'Detected a call to `Model.{method_name}` inside a `tf.function`. '
+        '`Model.{method_name} is a high-level endpoint that manages its own '
+        '`tf.function`. Please move the call to `Model.{method_name}` outside '
+        'of all enclosing `tf.function`s. Note that you can call a `Model` '
+        'directly on `Tensor`s inside a `tf.function` like: `model(x)`.'
+    ).format(method_name=method_name)
+    raise RuntimeError(error_msg)

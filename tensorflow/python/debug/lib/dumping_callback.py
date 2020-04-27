@@ -292,7 +292,12 @@ class _DumpingCallback(object):
       # TODO(cais): Evaluate performance optimization options. For the
       # `NO_TENSOR` debug mode, an alternative is to add `debug_tensor` as a
       # control dependency of `tensor.op` without an additional identity op.
-      if tensor_debug_mode == debug_event_pb2.TensorDebugMode.FULL_TENSOR:
+      if (tensor_debug_mode == debug_event_pb2.TensorDebugMode.FULL_TENSOR and
+          op_type != "Const"):
+        # NOTE(b/153716279): Under v1 graph mode, overriding the output tensor
+        # of Const ops can lead to downstream errors related to shapes. We opt
+        # to use an identity op to avoid this issue at the cost of slightly
+        # larger graph size.
         return debug_tensor
       else:
         identity = array_ops.identity(tensor)
@@ -530,8 +535,8 @@ class _DumpingCallback(object):
       is_v1_graph_mode = not ops.executing_eagerly_outside_functions()
       context_id = self._get_context_id(graph)  # Innermost context ID.
       output_tensor_ids = self._get_symbolic_tensor_ids(len(outputs))
-      if op_type in ("Placeholder", "PlaceholderWithDefault"):
-        # In some cases, the op name of a Placeholder op in a graph
+      if op_type in ("Const", "Placeholder", "PlaceholderWithDefault"):
+        # In some cases, the op name of a Const or Placeholder op in a graph
         # can be duplicate (e.g., with the name "resource").
         # When this happens, we give the op an debugger-generated name
         # in order to prevent problems and check failures down the pipe.

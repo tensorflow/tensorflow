@@ -82,6 +82,13 @@ patch_kissfft() {
   echo "Finished patching kissfft"
 }
 
+# Create a header file containing an array with the first 10 images from the
+# CIFAR10 test dataset.
+patch_cifar10_dataset() {
+  xxd -l 30730 -i ${1}/test_batch.bin ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
+  sed -i "s/unsigned char/const unsigned char/g" ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
+}
+
 build_embarc_mli() {
   gmake -j 4 -C ${1}/lib/make TCF_FILE=${2}
 }
@@ -141,7 +148,7 @@ download_and_extract() {
     unzip ${tempfile} -d ${tempdir2} 2>&1 1>/dev/null
     # If the zip file contains nested directories, extract the files from the
     # inner directory.
-    if ls ${tempdir2}/*/* 1> /dev/null 2>&1; then
+    if [ $(find $tempdir2/* -maxdepth 0 | wc -l) = 1 ] && [ -d $tempdir2/* ]; then
       # unzip has no strip components, so unzip to a temp dir, and move the
       # files we want from the tempdir to destination.
       cp -R ${tempdir2}/*/* ${dir}/
@@ -160,6 +167,8 @@ download_and_extract() {
     patch_am_sdk ${dir}
   elif [[ ${action} == "patch_kissfft" ]]; then
     patch_kissfft ${dir}
+  elif [[ ${action} == "patch_cifar10_dataset" ]]; then
+    patch_cifar10_dataset ${dir}
   elif [[ ${action} == "build_embarc_mli" ]]; then
     build_embarc_mli ${dir} ${action_param1}
   elif [[ ${action} ]]; then

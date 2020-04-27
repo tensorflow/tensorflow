@@ -577,6 +577,12 @@ class SavingOptionsTest(test.TestCase):
     self.assertEqual(function_cache[0].name.decode("utf-8"),
                      list(function_aliases.keys())[0])
 
+  def test_accepts_io_device(self):
+    options = save_options.SaveOptions()
+    self.assertEqual(None, options.experimental_io_device)
+    options = save_options.SaveOptions(experimental_io_device="/job:localhost")
+    self.assertEqual("/job:localhost", options.experimental_io_device)
+
 
 class AssetTests(test.TestCase):
 

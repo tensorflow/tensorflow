@@ -25,10 +25,13 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import multi_worker_test_base
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
+from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -2219,6 +2222,30 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       for _ in range(2):
         for x in dataset:
           train_step(x)
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_unimplemented_parameter_server_strategy(self):
+    cluster_spec = multi_worker_test_base.create_in_process_cluster(
+        num_workers=3, num_ps=2)
+    cluster_resolver = SimpleClusterResolver(
+        cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
+        task_type='worker',
+        task_id=1,
+        num_accelerators={'GPU': 0})
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        cluster_resolver)
+
+    self.assertIsInstance(distribution,
+                          (parameter_server_strategy.ParameterServerStrategyV1,
+                           parameter_server_strategy.ParameterServerStrategy))
+
+    with self.assertRaisesRegexp(NotImplementedError,
+                                 'ParameterServerStrategy*'):
+      with distribution.scope():
+        model = simple_sequential_model()
+        optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+        loss = 'mse'
+        model.compile(optimizer, loss)
 
 
 # Models to exercise inserting ancillary layers with add_loss and add_metric.

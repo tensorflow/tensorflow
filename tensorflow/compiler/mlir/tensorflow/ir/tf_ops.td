@@ -28,7 +28,9 @@ limitations under the License.
 #define TF_OPS
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 include "mlir/Interfaces/CallInterfaces.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/IR/OpBase.td"
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
@@ -39,7 +41,8 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
   TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<0>;
 
   let verifier = [{
-    if (handle_dtype().getSubtypes().size() != 1) {
+    if (!handle_dtype().getSubtypes().empty() &&
+        handle_dtype().getSubtypes().size() != 1) {
       return emitOpError(
           "must have exactly one subtype in the result variant type");
     }
@@ -64,7 +67,8 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
 
 // In MLIR, the TensorFlow tensor value is represented as an ElementsAttr, with
 // its type encoding the tensor's shape and data type.
-def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect]> {
+def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Constant tensor op";
 
   let arguments = (ins
@@ -85,6 +89,12 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect]> {
   ];
 
   let hasFolder = 1;
+
+  let extraClassDeclaration = [{
+    static bool isCompatibleReturnTypes(ArrayRef<Type> l, ArrayRef<Type> r) {
+      return BroadcastCompatible(l, r);
+    }
+  }];
 }
 
 def TF_DataFormatVecPermuteOp : TF_Op<"DataFormatVecPermute", [NoSideEffect, SameOperandsAndResultType]> {
@@ -176,7 +186,7 @@ else_branch: A function that takes 'inputs' and returns a list of
 
     FlatSymbolRefAttr:$then_branch,
     FlatSymbolRefAttr:$else_branch,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
 
     // Used to map StatelessIf and If op defined in TensorFlow to a common op.
     BoolAttr:$is_stateless
@@ -279,6 +289,7 @@ def TF_ParseExampleV2Op : TF_Op<"ParseExampleV2",
     Variadic<TensorOf<[F32, I64, TF_Str]>>:$dense_defaults,
 
     Confined<I64Attr, [IntMinValue<0>]>:$num_sparse,
+    TF_ShapeAttrArray:$dense_shapes,
     I32ElementsAttr:$result_segment_sizes
   );
 
@@ -479,7 +490,7 @@ body: A function that takes a list of tensors and returns another
 
     FlatSymbolRefAttr:$cond,
     FlatSymbolRefAttr:$body,
-    DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
+    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
 
     // Used to map StatelessWhile and While op defined in TensorFlow to a common
