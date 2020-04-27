@@ -1892,6 +1892,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
   if (outer_dimension_partitions) {
     instruction->set_outer_dimension_partitions(*outer_dimension_partitions);
   }
+  if (frontend_attributes) {
+    instruction->set_frontend_attributes(*frontend_attributes);
+  }
   return AddInstruction(name, instruction, name_loc);
 }  // NOLINT(readability/fn_size)
 
@@ -1946,7 +1949,7 @@ bool HloParserImpl::ParseFrontendAttributes(
       if (!ParseAttributeName(&attribute)) {
         return false;
       }
-      if (lexer_.GetKind() != TokKind::kIdent) {
+      if (lexer_.GetKind() != TokKind::kString) {
         return false;
       }
       (*frontend_attributes->mutable_map())[attribute] = lexer_.GetStrVal();

@@ -2422,7 +2422,8 @@ TEST_F(HloParserTest, ParseSharding) {
 }
 
 TEST_F(HloParserTest, ParseFrontendAttributes) {
-  const string original = "{attr_a=test_a,attr_b=b}";
+  const string original =
+      R"({attr_a="test_a",attr_b="b",attr_c="s64",attr_d="a/b"})";
   TF_ASSERT_OK_AND_ASSIGN(FrontendAttributes frontend_attributes,
                           ParseFrontendAttributes(original));
   EXPECT_EQ(FrontendAttributesToString(frontend_attributes), original);

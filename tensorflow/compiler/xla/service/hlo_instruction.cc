@@ -3366,8 +3366,14 @@ string FrontendAttributesToString(
   std::vector<std::pair<string, string>> sorted_attributes(
       frontend_attributes.map().begin(), frontend_attributes.map().end());
   absl::c_sort(sorted_attributes);
-  return absl::StrFormat(
-      "{%s}", absl::StrJoin(sorted_attributes, ",", absl::PairFormatter("=")));
+  // Frontend attribute is a comma-separated list of attribute="value" pairs,
+  // e.g., frontend_attributes={name="value_a",type="int32"}.
+  const auto formatter = [](string* out,
+                            const std::pair<string, string>& item) {
+    absl::StrAppend(out, item.first, "=\"", item.second, "\"");
+  };
+  return absl::StrFormat("{%s}",
+                         absl::StrJoin(sorted_attributes, ",", formatter));
 }
 
 string PaddingConfigToString(const PaddingConfig& padding) {
