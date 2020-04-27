@@ -275,7 +275,7 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllReduce) {
 }
 
 TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllToAllToBF16) {
-  auto module = CreateNewVerifiedModule();
+  auto module = CreateNewVerifiedModule(TestName(), /*replica_count=*/2);
 
   auto builder = HloComputation::Builder(TestName());
   Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
@@ -304,7 +304,7 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllToAllToBF16) {
 }
 
 TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllToAllToF32) {
-  auto module = CreateNewVerifiedModule();
+  auto module = CreateNewVerifiedModule(TestName(), /*replica_count=*/2);
 
   auto builder = HloComputation::Builder(TestName());
   Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
