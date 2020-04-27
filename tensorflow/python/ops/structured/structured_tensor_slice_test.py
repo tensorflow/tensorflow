@@ -201,6 +201,10 @@ class StructuredTensorSliceTest(test_util.TensorFlowTestCase,
       (SLICE_BUILDER["f4", 1:, "f4_2"], [b"b"]),
       (SLICE_BUILDER["f4", :, "f4_2"], [b"a", b"b"]),
       (SLICE_BUILDER["f5", :, :, "f5_1"], [[1, 2], [3, 4]]),
+      # Slicing over multiple keys
+      (SLICE_BUILDER[:], EXAMPLE_STRUCT),
+      # List-valued key.
+      (["f2", 1], EXAMPLE_STRUCT["f2"][1]),
   ])
   def testGetitemFromScalarStruct(self, slice_spec, expected):
     # By default, lists are converted to RaggedTensors.
@@ -241,6 +245,29 @@ class StructuredTensorSliceTest(test_util.TensorFlowTestCase,
     self._TestGetItem(struct_vector2, slice_spec, expected)
 
   # TODO(edloper): Add tests for slicing from matrix StructuredTensors.
+
+  @parameterized.parameters([
+      (SLICE_BUILDER[:2], r"Key for indexing a StructuredTensor must be "
+       r"a string or a full slice \(':'\)"),
+      (SLICE_BUILDER["f4", ...], r"Slicing not supported for Ellipsis"),
+      (SLICE_BUILDER["f4", None], r"Slicing not supported for tf.newaxis"),
+      (SLICE_BUILDER["f4", :, 0],
+       r"Key for indexing a StructuredTensor must be a string"),
+  ])
+  def testGetItemError(self, slice_spec, error, exception=ValueError):
+    struct = structured_tensor.StructuredTensor.from_pyval(EXAMPLE_STRUCT)
+    with self.assertRaisesRegexp(exception, error):
+      struct.__getitem__(slice_spec)
+
+  @parameterized.parameters([
+      (SLICE_BUILDER[:, 1],
+       r"Key for indexing a StructuredTensor must be a string"),
+  ])
+  def testGetItemFromVectorError(self, slice_spec, error, exception=ValueError):
+    struct = structured_tensor.StructuredTensor.from_pyval(
+        EXAMPLE_STRUCT_VECTOR)
+    with self.assertRaisesRegexp(exception, error):
+      struct.__getitem__(slice_spec)
 
 
 if __name__ == "__main__":
