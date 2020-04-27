@@ -221,6 +221,20 @@ class RocmTracer {
   static uint64 GetTimestamp();
   static int NumGpus();
 
+  void AddToPendingActivityRecords(uint32 correlation_id) {
+    pending_activity_records_.Add(correlation_id);
+  }
+
+  void RemoveFromPendingActivityRecords(uint32 correlation_id) {
+    pending_activity_records_.Remove(correlation_id);
+  }
+
+  void ClearPendingActivityRecordsCount() { pending_activity_records_.Clear(); }
+
+  size_t GetPendingActivityRecordsCount() {
+    return pending_activity_records_.Count();
+  }
+
  protected:
   // protected constructor for injecting mock cupti interface for testing.
   explicit RocmTracer() : num_gpus_(NumGpus()) {}
@@ -241,6 +255,39 @@ class RocmTracer {
 
   RocmApiCallbackImpl* api_cb_impl_;
   RocmActivityCallbackImpl* activity_cb_impl_;
+
+  class PendingActivityRecords {
+   public:
+    // add a correlation id to the pending set
+    void Add(uint32 correlation_id) {
+      absl::MutexLock lock(&mutex);
+      pending_set.insert(correlation_id);
+    }
+    // remove a correlation id from the pending set
+    void Remove(uint32 correlation_id) {
+      absl::MutexLock lock(&mutex);
+      pending_set.erase(correlation_id);
+    }
+    // clear the pending set
+    void Clear() {
+      absl::MutexLock lock(&mutex);
+      pending_set.clear();
+    }
+    // count the number of correlation ids in the pending set
+    size_t Count() {
+      absl::MutexLock lock(&mutex);
+      return pending_set.size();
+    }
+
+   private:
+    // set of co-relation ids for which the hcc activity record is pending
+    std::set<uint32> pending_set;
+    // the callback which processes the activity records (and consequently
+    // removes items from the pending set) is called in a separate thread
+    // from the one that adds item to the list.
+    absl::Mutex mutex;
+  };
+  PendingActivityRecords pending_activity_records_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(RocmTracer);
 };
