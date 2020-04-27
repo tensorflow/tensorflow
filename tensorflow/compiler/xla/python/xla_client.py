@@ -536,10 +536,8 @@ class CompileOptions(object):
 # There are different implementations of Executable for different backends.
 
 
-def execute_with_python_values(executable, arguments=(), backend=None):
+def execute_with_python_values(executable, arguments, backend):
   """Execute on one replica with Python values as arguments and output."""
-
-  backend = backend or get_local_backend()
 
   def put(arg):
     return backend.buffer_from_pyval(arg, device=executable.local_devices()[0])
@@ -549,7 +547,7 @@ def execute_with_python_values(executable, arguments=(), backend=None):
   return [x.to_py() for x in outputs]
 
 
-def execute_with_python_values_replicated(executable, arguments, backend=None):
+def execute_with_python_values_replicated(executable, arguments, backend):
   """Execute on many replicas with Python values as arguments and output.
 
   Arguments:
@@ -561,7 +559,6 @@ def execute_with_python_values_replicated(executable, arguments, backend=None):
   Returns:
     A list of python values, one per replica.
   """
-  backend = backend or get_local_backend()
   devices = executable.local_devices()
   # pylint: disable=g-complex-comprehension
   flat_args = [(arg, devices[replica])
