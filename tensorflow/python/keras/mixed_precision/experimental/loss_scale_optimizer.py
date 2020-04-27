@@ -255,7 +255,6 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
       raise ValueError('LossScaleOptimizer does not support wrapping '
                        'optimizers with a clipvalue. Optimizer %s has '
                        'clipvalue %s' % (optimizer, optimizer.clipvalue))
-    self._hyper = {}  # Needed for `Optimizer.__getattr__`.
     self._raise_if_strategy_unsupported()
 
     self.clipnorm = None
@@ -278,6 +277,9 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
       # through the LossScaleOptimizer.
       backend.track_variable(weight)
     self._track_trackable(self._loss_scale, 'loss_scale')
+
+    # Needed because the superclass's __getattribute__ checks this.
+    self._hyper = {}
 
     # To support restoring TensorFlow 2.2 checkpoints.
     self._track_trackable(FakeOptimizerForRestoration(self._optimizer),
