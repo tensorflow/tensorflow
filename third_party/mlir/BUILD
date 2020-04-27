@@ -654,6 +654,7 @@ cc_library(
     deps = [
         ":CallOpInterfaces",
         ":CommonFolders",
+        ":Dialect",
         ":IR",
         ":InferTypeOpInterface",
         ":ShapeOpsIncGen",

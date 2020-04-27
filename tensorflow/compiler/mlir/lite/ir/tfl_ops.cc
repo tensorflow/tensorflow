@@ -2089,8 +2089,7 @@ struct WhileResultOperandsMatchAndImplicitCapture
     Operation *op = while_op.getOperation();
     Operation *new_op = rewriter.insert(
         Operation::create(op->getLoc(), op->getName(), types, new_operands,
-                          op->getAttrs(), {}, /*numRegions=*/2,
-                          /*resizableOperandList=*/true));
+                          op->getAttrs(), {}, /*numRegions=*/2));
 
     for (int i = 0; i < 2; ++i) new_op->getRegion(i).takeBody(op->getRegion(i));
     int new_index = 0;
