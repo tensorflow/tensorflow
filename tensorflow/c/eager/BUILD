@@ -369,7 +369,7 @@ tf_cuda_library(
         "c_api_unified_experimental.cc",
         "c_api_unified_experimental_eager.cc",
         "c_api_unified_experimental_graph.cc",
-        "c_api_unified_experimental_private.h",
+        "c_api_unified_experimental_internal.h",
     ],
     hdrs = [
         "c_api_experimental.h",
@@ -466,6 +466,7 @@ tf_cuda_cc_test(
         ":c_api",
         ":c_api_experimental",
         ":c_api_test_util",
+        "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/cc/profiler",
         "//tensorflow/core:lib",
