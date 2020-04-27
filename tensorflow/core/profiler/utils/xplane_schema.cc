@@ -39,16 +39,12 @@ const absl::string_view kKernelLaunchLineName = "Launch Stats";
 const int32 kHostPlaneId = 49;
 const int32 kGpuPlaneBaseId = 0;
 const int32 kCuptiDriverApiPlaneId = 50;
-<<<<<<< HEAD
 const int32 kRocmTracerPlaneId = 51;
-const int32 kMetadataPlaneId = 52;
-=======
 const int32 kMetadataPlaneId = 99;
 const int32 kTFStreamzPlaneId = 98;
 
 const int32 kThreadGroupMinPlaneId = kCuptiDriverApiPlaneId + 1;
 const int32 kThreadGroupMaxPlaneId = kTFStreamzPlaneId - 1;
->>>>>>> google_upstream/master
 
 namespace {
 

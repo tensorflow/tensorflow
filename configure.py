@@ -1171,24 +1171,16 @@ def system_specific_test_config(environ_cp):
   test_only_filters = ['-oss_serial']
   if is_windows():
     test_and_build_filters.append('-no_windows')
-<<<<<<< HEAD
-    if (environ_cp.get('TF_NEED_CUDA', None) == '1') or (environ_cp.get('TF_NEED_ROCM', None) == '1'):
-=======
     if ((environ_cp.get('TF_NEED_CUDA', None) == '1') or
         (environ_cp.get('TF_NEED_ROCM', None) == '1')):
->>>>>>> google_upstream/master
       test_and_build_filters += ['-no_windows_gpu', '-no_gpu']
     else:
       test_and_build_filters.append('-gpu')
   elif is_macos():
     test_and_build_filters += ['-gpu', '-nomac', '-no_mac']
   elif is_linux():
-<<<<<<< HEAD
-    if (environ_cp.get('TF_NEED_CUDA', None) == '1') or (environ_cp.get('TF_NEED_ROCM', None) == '1'):
-=======
     if ((environ_cp.get('TF_NEED_CUDA', None) == '1') or
         (environ_cp.get('TF_NEED_ROCM', None) == '1')):
->>>>>>> google_upstream/master
       test_and_build_filters.append('-no_gpu')
       write_to_bazelrc('test --test_env=LD_LIBRARY_PATH')
     else:
@@ -1427,13 +1419,8 @@ def main():
                                 environ_cp.get('LD_LIBRARY_PATH'))
 
   if (environ_cp.get('TF_NEED_ROCM') == '1' and environ_cp.get('ROCM_PATH')):
-<<<<<<< HEAD
-    write_action_env_to_bazelrc('ROCM_PATH',environ_cp.get('ROCM_PATH'))
-    write_action_env_to_bazelrc('ROCM_ROOT',environ_cp.get('ROCM_PATH'))
-=======
     write_action_env_to_bazelrc('ROCM_PATH', environ_cp.get('ROCM_PATH'))
     write_action_env_to_bazelrc('ROCM_ROOT', environ_cp.get('ROCM_PATH'))
->>>>>>> google_upstream/master
 
   environ_cp['TF_NEED_CUDA'] = str(
       int(get_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)))
