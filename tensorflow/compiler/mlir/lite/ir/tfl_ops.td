@@ -842,6 +842,40 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
   }];
 }
 
+def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
+   NoSideEffect,
+   TFL_OperandHasAtleastRank<0, 2>,
+   TFL_OperandHasAtleastRank<1, 2>,
+   SameOperandsAndResultElementType]> {
+
+  let summary = "Batch Matrix Multiply Operator";
+
+  let description = [{
+Performs a batched matrix multiplication on the inputs. Follows the
+conventions of TensorFlow BatchMatMulV2, with support for unknown dimensions
+in the batch dimensions and broadcasting.
+
+    Inputs:
+      `inputs[0]`: required: input LHS
+      `inputs[1]`: required: input RHS
+      `adjoint_lhs`: optional: Transpose LHS (default false)
+      `adjoint_lhs`: optional: Transpose LHS (default false)
+  }];
+
+  let arguments = (ins
+    TFL_TensorOf<[F32]>:$lhs,
+    TFL_TensorOf<[F32]>:$rhs,
+    DefaultValuedAttr<BoolAttr, "false">:$adjoint_lhs,
+    DefaultValuedAttr<BoolAttr, "false">:$adjoint_rhs
+  );
+
+   let results = (outs
+    TFL_TensorOf<[F32]>:$output
+  );
+
+  let hasOptions = 1;
+}
+
 def TFL_GatherOp : TFL_Op<"gather", [
     NoSideEffect,
     SameOperandsAndResultsScale,

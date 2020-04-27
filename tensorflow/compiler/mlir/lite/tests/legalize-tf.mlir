@@ -1497,3 +1497,28 @@ func @broadcast_to_i32(%input: tensor<3xi32>, %shape: tensor<2xi32>) -> tensor<3
 // CHECK:  [[MUL:%.*]] = "tfl.mul"(%arg0, [[FILL]]) {fused_activation_function = "NONE"} : (tensor<3xi32>, tensor<3x3xi32>) -> tensor<3x3xi32>
 // CHECK:  return [[MUL]] : tensor<3x3xi32>
 }
+
+func @matmul_batch(%arg0: tensor<10x15xf32>, %arg1: tensor<15x17xf32>) -> tensor<10x17xf32> {
+  %0 = "tf.BatchMatMul"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", device = "/device:CPU:0", name = "MatMul", adj_x = false, adj_y = false} :
+(tensor<10x15xf32>, tensor<15x17xf32>) -> tensor<10x17xf32>
+  return %0 : tensor<10x17xf32>
+// CHECK-LABEL: matmul_batch
+// CHECK: "tfl.batch_matmul"(%arg0, %arg1) {adjoint_lhs = false, adjoint_rhs = false} : (tensor<10x15xf32>, tensor<15x17xf32>) -> tensor<10x17xf32>
+}
+
+func @matmul_batchv2(%arg0: tensor<2x10x15xf32>, %arg1: tensor<15x17xf32>) -> tensor<2x10x17xf32> {
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", device = "/device:CPU:0", name = "MatMul", adj_x = false, adj_y = false} :
+(tensor<2x10x15xf32>, tensor<15x17xf32>) -> tensor<2x10x17xf32>
+  return %0 : tensor<2x10x17xf32>
+// CHECK-LABEL: matmul_batchv2
+// CHECK: "tfl.batch_matmul"(%arg0, %arg1) {adjoint_lhs = false, adjoint_rhs = false} : (tensor<2x10x15xf32>, tensor<15x17xf32>) -> tensor<2x10x17xf32>
+}
+
+func @matmul_batchv2_unknown_dim(%arg0: tensor<?x10x15xf32>, %arg1: tensor<15x17xf32>) -> tensor<?x10x17xf32> {
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", device = "/device:CPU:0", name = "MatMul", adj_x = false, adj_y = false} :
+(tensor<?x10x15xf32>, tensor<15x17xf32>) -> tensor<?x10x17xf32>
+  return %0 : tensor<?x10x17xf32>
+// CHECK-LABEL: matmul_batchv2_unknown_dim
+// CHECK: "tfl.batch_matmul"(%arg0, %arg1) {adjoint_lhs = false, adjoint_rhs = false} : (tensor<?x10x15xf32>, tensor<15x17xf32>) -> tensor<?x10x17xf32>
+}
+
