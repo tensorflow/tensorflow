@@ -259,8 +259,7 @@ TEST_F(MklLayoutPassTest, Basic) {
         "A:control->DMT/_2:control;B->E:1;D->E:2;DMT/_0->E:3;DMT/_1->E:4;" \
         "DMT/_2->E:5;E->Z;Y->Z:1");                                        \
   }
-// TODO(nhasabni): Enable bfloat16 test when we enable the operator.
-REGISTER_TEST_FLOAT32(NodeMerge_Conv2DWithBias_Positive);
+REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Positive);
 #undef REGISTER_TEST
 
 // Graph contains only Conv2D, no AddBias.
@@ -411,8 +410,7 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_AttrMismatch);
         "DMT/_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;"            \
         "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                              \
   }
-// TODO(nhasabni): Enable bfloat16 test when we enable the operator.
-REGISTER_TEST_FLOAT32(NodeMerge_Conv2DBackpropFilterFusion_Positive);
+REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Positive);
 #undef REGISTER_TEST
 
 // BiasAddGrad fusion in the presence of BackpropFilter. But nodes do not match
