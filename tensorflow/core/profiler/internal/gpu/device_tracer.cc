@@ -513,6 +513,7 @@ class GpuTracer : public profiler::ProfilerInterface {
   Status Stop() override;
   Status CollectData(RunMetadata* run_metadata) override;
   Status CollectData(XSpace* space) override;
+  bool ExternalProfilerInUse() override;
 
  private:
   Status DoStart();
@@ -672,6 +673,13 @@ Status GpuTracer::CollectData(XSpace* space) {
     }
   }
   return errors::Internal("Invalid profiling state: ", profiling_state_);
+}
+
+bool GpuTracer::ExternalProfilerInUse() {
+  if (cupti_tracer_->ExternalProfilerInUse()) {
+    return true;
+  }
+  return false;
 }
 
 // Not in anonymous namespace for testing purposes.

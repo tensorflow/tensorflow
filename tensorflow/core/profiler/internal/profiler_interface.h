@@ -50,6 +50,11 @@ class ProfilerInterface {
   // After this or the overload above are called once, subsequent calls might
   // return empty data.
   virtual Status CollectData(XSpace* space) = 0;
+
+  // Finds if external profiler that prevents internal profiling exists.
+  virtual bool ExternalProfilerInUse() {
+    return false;
+  } 
 };
 
 }  // namespace profiler

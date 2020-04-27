@@ -1360,6 +1360,24 @@ bool CuptiTracer::IsAvailable() const {
   return NumGpus() && !activity_tracing_enabled_ && !api_tracing_enabled_;
 }
 
+bool CuptiTracer::ExternalProfilerInUse() const {
+  CUpti_SubscriberHandle local_subscriber_;
+  VLOG(1) << "Detecting multiple subscribers";
+  CUptiResult status = cupti_interface_->Subscribe(
+      &local_subscriber_, (CUpti_CallbackFunc)nullptr, nullptr);
+  if (status == CUPTI_ERROR_MAX_LIMIT_REACHED) {
+    VLOG(1) << "Found existing subscribers";
+    return true;
+  } else if (status == CUPTI_SUCCESS) {
+    CUptiResult ret = cupti_interface_->Unsubscribe(local_subscriber_);
+    if (ret != CUPTI_SUCCESS) {
+      LOG(ERROR) << "Failed to unsubscribe detecting subscriber";
+    }
+  }
+  VLOG(1) << "Found no existing subscribers";
+  return false;
+}
+
 int CuptiTracer::NumGpus() {
   static int num_gpus = []() -> int {
     if (cuInit(0) != CUDA_SUCCESS) {
@@ -1526,7 +1544,7 @@ Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
     // API callback is called before any CUDA context is created.
     // This is expected to be rare, and we ignore this case.
     VLOG(3) << "API callback received before creation of CUDA context\n";
-    return errors::Internal("cutpi callback without context");
+    return errors::Internal("cupti callback without context");
   }
 
   // Grab a correct device ID.
