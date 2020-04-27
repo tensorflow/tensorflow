@@ -68,10 +68,8 @@ def histogram_fixed_width_bins(values,
   value_range = [0.0, 5.0]
   new_values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
 
-  with tf.compat.v1.get_default_session() as sess:
-    indices = tf.histogram_fixed_width_bins(new_values, value_range, nbins=5)
-    variables.global_variables_initializer().run()
-    sess.run(indices) # [0, 0, 1, 2, 4, 4]
+  indices = tf.histogram_fixed_width_bins(new_values, value_range, nbins=5)
+  indices # [0, 0, 1, 2, 4, 4]
   ```
   """
   with ops.name_scope(name, 'histogram_fixed_width_bins',
@@ -137,10 +135,8 @@ def histogram_fixed_width(values,
   value_range = [0.0, 5.0]
   new_values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
 
-  with tf.compat.v1.get_default_session() as sess:
-    hist = tf.histogram_fixed_width(new_values, value_range, nbins=5)
-    variables.global_variables_initializer().run()
-    sess.run(hist) => [2, 1, 1, 0, 2]
+  hist = tf.histogram_fixed_width(new_values, value_range, nbins=5)
+  hist # [2, 1, 1, 0, 2]
   ```
   """
   with ops.name_scope(name, 'histogram_fixed_width',
