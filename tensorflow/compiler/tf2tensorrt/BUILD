@@ -491,7 +491,9 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler/costs:graph_properties",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_protobuf//:protobuf_headers",
     ],
 )
