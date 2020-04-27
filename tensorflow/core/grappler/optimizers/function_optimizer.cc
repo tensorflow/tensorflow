@@ -280,6 +280,13 @@ class FunctionOptimizerContext {
 
   const GraphView& graph_view() const { return graph_view_; }
 
+  bool IsFeedNode(const string& node_name) const {
+    return absl::c_any_of(
+        item_->feed, [&](const std::pair<std::string, Tensor>& feed) {
+          return ParseTensorName(feed.first).node() == node_name;
+        });
+  }
+
   bool IsFetchNode(const string& node_name) const {
     return absl::c_any_of(item_->fetch, [&](const string& fetch) {
       return ParseTensorName(fetch).node() == node_name;
@@ -1445,9 +1452,9 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
 
     // Do not specialize if function has custom gradient or marked nospecialize.
     const string grad_func = ctx.function_library().FindGradient(func_name);
-    const bool no_specialize = !grad_func.empty() ||
-                               MarkedNoSpecialize(*func) ||
-                               MarkedForXlaCompilation(node);
+    const bool no_specialize =
+        !grad_func.empty() || ctx.IsFeedNode(node.name()) ||
+        MarkedNoSpecialize(*func) || MarkedForXlaCompilation(node);
 
     if (specialization_worthy && !no_specialize) {
       // TODO(ezhulenev): Specialize function call if input has a known shape.
