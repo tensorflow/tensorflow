@@ -756,6 +756,41 @@ REGISTER_OP("ExtractGlimpse")
                                    c->Dim(input, 3));
     });
 
+REGISTER_OP("ExtractGlimpseV2")
+    .Input("input: float")
+    .Input("size: int32")
+    .Input("offsets: float")
+    .Output("glimpse: float")
+    .Attr("centered: bool = true")
+    .Attr("normalized: bool = true")
+    .Attr("uniform_noise: bool = true")
+    .Attr("noise: string = 'uniform'")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));
+      ShapeHandle offsets;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &offsets));
+
+      DimensionHandle batch_dim;
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(input, 0), c->Dim(offsets, 0), &batch_dim));
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(c->WithValue(c->Dim(offsets, 1), 2, &unused));
+
+      bool uniform_noise = false;
+      TF_RETURN_IF_ERROR(c->GetAttr("uniform_noise", &uniform_noise));
+      string noise;
+      TF_RETURN_IF_ERROR(c->GetAttr("noise", &noise));
+      if (uniform_noise && (!noise.empty() && noise != "uniform")) {
+        return errors::InvalidArgument(
+            "The uniform_noise and noise should not be specified at the same "
+            "time");
+      }
+
+      return SetOutputToSizedImage(c, batch_dim, 1 /* size_input_idx */,
+                                   c->Dim(input, 3));
+    });
+
 // --------------------------------------------------------------------------
 
 REGISTER_OP("CropAndResize")
