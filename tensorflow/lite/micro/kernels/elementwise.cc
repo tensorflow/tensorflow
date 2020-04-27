@@ -106,6 +106,10 @@ TfLiteStatus LogicalNotEval(TfLiteContext* context, TfLiteNode* node) {
   return EvalLogical(context, node, [](bool v) { return !v; });
 }
 
+TfLiteStatus TANHEval(TfLiteContext* context, TfLiteNode* node) {
+	return EvalNumeric(context, node, std::tanh);
+}
+
 }  // namespace
 }  // namespace elementwise
 
@@ -219,6 +223,13 @@ TfLiteRegistration* Register_LOGICAL_NOT() {
       /*custom_name=*/nullptr,
       /*version=*/0};
   return &r;
+}
+
+TfLiteRegistration* Register_TANH() {
+	static TfLiteRegistration r = {};
+	r.prepare = elementwise::GenericPrepare<elementwise::IsNumericSupportedType>;
+	r.invoke = elementwise::TANHEval;
+	return &r;
 }
 
 }  // namespace micro
