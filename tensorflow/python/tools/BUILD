@@ -376,7 +376,6 @@ saved_model_compile_aot(
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     force_without_xla_support_flag = False,
-    tags = ["no_rocm"],
 )
 
 saved_model_compile_aot(
@@ -387,7 +386,6 @@ saved_model_compile_aot(
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     force_without_xla_support_flag = False,
-    tags = ["no_rocm"],
 )
 
 saved_model_compile_aot(
@@ -398,7 +396,6 @@ saved_model_compile_aot(
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     force_without_xla_support_flag = False,
-    tags = ["no_rocm"],
     variables_to_feed = "variable_x",
 )
 
@@ -407,7 +404,6 @@ tf_cc_test(
     srcs = if_xla_available([
         "aot_compiled_test.cc",
     ]),
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/core:test_main",
     ] + if_xla_available([

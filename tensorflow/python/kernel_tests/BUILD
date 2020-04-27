@@ -218,7 +218,6 @@ cuda_py_test(
     srcs = ["cholesky_op_test.py"],
     shard_count = 5,
     tags = [
-        "no_rocm",  # TODO(rocm): feature not supported on ROCm platform
         "nomsan",  # TODO(b/131773093): Re-enable.
     ],
     deps = [

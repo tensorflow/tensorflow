@@ -321,7 +321,6 @@ py_library(
 tf_py_test(
     name = "save_test",
     srcs = ["save_test.py"],
-    tags = ["no_rocm"],
     deps = [
         ":loader",
         ":save",

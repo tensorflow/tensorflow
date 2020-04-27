@@ -290,7 +290,6 @@ tf_py_test(
     shard_count = 20,
     tags = [
         "manual",
-        "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
         "notsan",
     ],
@@ -414,7 +413,6 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 30,
     tags = [
-        "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
     deps = [
@@ -502,7 +500,6 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 8,
     tags = [
-        "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
     deps = [
