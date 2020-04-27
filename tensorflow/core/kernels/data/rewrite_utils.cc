@@ -116,6 +116,9 @@ Status ApplyRewrites(OpKernelContext* ctx,
   std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
       tensorflow::grappler::GrapplerItemFromMetaGraphDef(
           "graph", meta_graph_def, item_config);
+  // Grappler should not optimize function library of tf.data graphs. The
+  // tf.data meta optimizer takes care of optimizing tf.data functions.
+  grappler_item->optimization_options().optimize_function_library = false;
   std::unordered_map<string, tensorflow::DeviceProperties> device_map;
   tensorflow::grappler::VirtualCluster cluster(device_map);
 
