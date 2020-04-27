@@ -127,7 +127,7 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
     oss << ", phase=" << GetActivityPhaseName(data->phase);
     switch (cbid) {
       case HIP_API_ID_hipModuleLaunchKernel:
-      case HIP_API_ID_hipExtModuleLaunchKernel:
+      //case HIP_API_ID_hipExtModuleLaunchKernel:
         break;
       case HIP_API_ID_hipMemcpyDtoH:
         oss << ", sizeBytes=" << data->args.hipMemcpyDtoH.sizeBytes;
@@ -312,7 +312,7 @@ class RocmApiCallbackImpl {
 
       switch (cbid) {
         case HIP_API_ID_hipModuleLaunchKernel:
-        case HIP_API_ID_hipExtModuleLaunchKernel:
+        //case HIP_API_ID_hipExtModuleLaunchKernel:
           AddKernelEventUponApiExit(cbid, data);
           break;
         case HIP_API_ID_hipMemcpyDtoH:
@@ -359,6 +359,7 @@ class RocmApiCallbackImpl {
       event.kernel_info.grid_y = data->args.hipModuleLaunchKernel.gridDimY;
       event.kernel_info.grid_z = data->args.hipModuleLaunchKernel.gridDimZ;
     } else {
+      /*
       // cbid == HIP_API_ID_hipExtModuleLaunchKernel
       const hipFunction_t kernelFunc = data->args.hipExtModuleLaunchKernel.f;
       if (kernelFunc != nullptr) event.name = hipKernelNameRef(kernelFunc);
@@ -381,6 +382,7 @@ class RocmApiCallbackImpl {
           data->args.hipExtModuleLaunchKernel.globalWorkSizeY / blockDimY;
       event.kernel_info.grid_z =
           data->args.hipExtModuleLaunchKernel.globalWorkSizeZ / blockDimZ;
+      */
     }
     collector_->AddEvent(std::move(event));
   }
@@ -502,7 +504,7 @@ class RocmActivityCallbackImpl {
         case ACTIVITY_DOMAIN_HIP_API:
           switch (record->op) {
             case HIP_API_ID_hipModuleLaunchKernel:
-            case HIP_API_ID_hipExtModuleLaunchKernel:
+            //case HIP_API_ID_hipExtModuleLaunchKernel:
               DumpActivityRecord(record);
               AddHipKernelActivityEvent(record);
               break;

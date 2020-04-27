@@ -41,8 +41,6 @@ from tensorflow.python.platform import test
 class DropoutLayersTest(keras_parameterized.TestCase):
 
   def test_dropout(self):
-    if test.is_built_with_rocm:
-      self.skipTest('ROCm dropout donot support noise_shape different than input tensor shape.')
     testing_utils.layer_test(
         keras.layers.Dropout, kwargs={'rate': 0.5}, input_shape=(3, 2))
 
@@ -57,16 +55,12 @@ class DropoutLayersTest(keras_parameterized.TestCase):
     self.assertEqual(True, dropout.supports_masking)
 
   def test_spatial_dropout_1d(self):
-    if test.is_built_with_rocm:
-      self.skipTest('ROCm dropout donot support noise_shape different than input tensor shape.')
     testing_utils.layer_test(
         keras.layers.SpatialDropout1D,
         kwargs={'rate': 0.5},
         input_shape=(2, 3, 4))
 
   def test_spatial_dropout_2d(self):
-    if test.is_built_with_rocm:
-      self.skipTest('ROCm dropout donot support noise_shape different than input tensor shape.')
     testing_utils.layer_test(
         keras.layers.SpatialDropout2D,
         kwargs={'rate': 0.5},
@@ -78,8 +72,6 @@ class DropoutLayersTest(keras_parameterized.TestCase):
         input_shape=(2, 3, 4, 5))
 
   def test_spatial_dropout_3d(self):
-    if test.is_built_with_rocm:
-      self.skipTest('ROCm dropout donot support noise_shape different than input tensor shape.')
     testing_utils.layer_test(
         keras.layers.SpatialDropout3D,
         kwargs={'rate': 0.5},
@@ -91,8 +83,6 @@ class DropoutLayersTest(keras_parameterized.TestCase):
         input_shape=(2, 3, 4, 4, 5))
 
   def test_dropout_partial_noise_shape(self):
-    if test.is_built_with_rocm:
-      self.skipTest('ROCm dropout donot support noise_shape different than input tensor shape.')
     inputs = keras.Input(shape=(5, 10))
     layer = keras.layers.Dropout(0.5, noise_shape=(None, 1, None))
     outputs = layer(inputs)
