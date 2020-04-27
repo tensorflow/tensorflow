@@ -435,7 +435,7 @@ class Translator {
   // Builds operator for the given operation with specified operand and result
   // tensor indices. Emits an error and returns llvm::None on failure.
   Optional<BufferOffset<tflite::Operator>> BuildOperator(
-      Operation* inst, const std::vector<int32_t>& operands,
+      Operation* inst, std::vector<int32_t> operands,
       const std::vector<int32_t>& results,
       const std::vector<int32_t>& intermediates);
 
@@ -927,7 +927,7 @@ uint32_t Translator::GetOpcodeIndex(const std::string& op_name,
 }
 
 Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
-    Operation* inst, const std::vector<int32_t>& operands,
+    Operation* inst, std::vector<int32_t> operands,
     const std::vector<int32_t>& results,
     const std::vector<int32_t>& intermediates) {
   const auto* dialect = inst->getDialect();
@@ -981,6 +981,15 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
 
     std::string op_name = inst->getName().getStringRef().str();
     uint32_t opcode_index = GetOpcodeIndex(op_name, *builtin_code);
+
+    // If this is TransposeConv we need to do a special case of ignoring the
+    // optional tensor, to allow newly created models to run on old runtimes.
+    if (*builtin_code == tflite::BuiltinOperator_TRANSPOSE_CONV) {
+      if (operands.size() == 4 && operands.at(3) == -1) {
+        operands.pop_back();
+      }
+    }
+
     auto offset = CreateFlatBufferOperator(inst, opcode_index, operands,
                                            results, intermediates, &builder_);
     if (!offset) {
