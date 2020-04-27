@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements logic for lowering HLO dialect to LHLO dialect.
+// This file implements logic for lowering HLO/LHLO dialect to Linalg dialect.
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/APInt.h"
@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/map_xla_to_scalar_op.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
@@ -228,6 +229,44 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
 
     rewriter.replaceOp(op, linalgOp.getOperation()->getResults());
     return success();
+  }
+};
+
+/// Pattern to convert BroadcastOp to Linalg ops.
+template <typename OpTy, bool isLHLO = true>
+class BroadcastConverter
+    : public DataMovementOpConverter<BroadcastConverter<OpTy, isLHLO>, OpTy,
+                                     isLHLO> {
+ public:
+  using DataMovementOpConverter<BroadcastConverter, OpTy,
+                                isLHLO>::DataMovementOpConverter;
+
+  static ArrayAttr getIndexingMapsAttr(OpTy broadcastOp, Builder* b) {
+    ShapedType inputType =
+        broadcastOp.operand().getType().template cast<ShapedType>();
+    unsigned inputRank = inputType.getRank();
+    unsigned nloops = getXLAOpResultType<isLHLO>(broadcastOp).getRank();
+
+    // BroadcastOp prepends the dimensions in the `broadcast_sizes` attribute to
+    // the input's dimensions.
+    unsigned numPrependedDims = llvm::size(broadcastOp.broadcast_sizes());
+    SmallVector<AffineExpr, 4> inputDimExprs;
+    inputDimExprs.reserve(inputRank);
+    for (int i = 0; i < inputRank; ++i) {
+      inputDimExprs.push_back(b->getAffineDimExpr(numPrependedDims + i));
+    }
+
+    AffineMap inputMap;
+    MLIRContext* context = b->getContext();
+    if (inputDimExprs.empty()) {
+      // The input is a scalar, i.e. this is a scalar broadcast op.
+      inputMap = AffineMap::get(nloops, /*symbolCount=*/0, context);
+    } else {
+      inputMap =
+          AffineMap::get(nloops, /*symbolCount=*/0, inputDimExprs, context);
+    }
+    return b->getAffineMapArrayAttr(
+        {inputMap, b->getMultiDimIdentityMap(nloops)});
   }
 };
 
@@ -572,7 +611,8 @@ class SliceConverter : public OpConversionPattern<xla_lhlo::SliceOp> {
 void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
-  patterns->insert<BroadcastInDimConverter<xla_lhlo::BroadcastInDimOp>,
+  patterns->insert<BroadcastConverter<xla_lhlo::BroadcastOp>,
+                   BroadcastInDimConverter<xla_lhlo::BroadcastInDimOp>,
                    ConstConverter,
                    IotaConverter,
                    PointwiseToLinalgConverter<xla_lhlo::AbsOp>,
@@ -670,7 +710,8 @@ namespace xla_hlo {
 
 void populateHLOToLinalgConversionPattern(MLIRContext* context,
                                           OwningRewritePatternList* patterns) {
-  patterns->insert<BroadcastInDimConverter<xla_hlo::BroadcastInDimOp, false>,
+  patterns->insert<BroadcastConverter<xla_hlo::BroadcastOp, false>,
+                   BroadcastInDimConverter<xla_hlo::BroadcastInDimOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::AbsOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::AddOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::AndOp, false>,
