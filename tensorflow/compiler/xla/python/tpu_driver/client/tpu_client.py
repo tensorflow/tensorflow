@@ -98,7 +98,7 @@ class TpuBackend(xla_client.Backend):
     options.debug_options.xla_cpu_fast_math_honor_division = True
     options.debug_options.xla_cpu_fast_math_honor_functions = True
     options.debug_options.xla_gpu_enable_fast_min_max = False
-    return _tpu_client.TpuExecutable.Compile(c_computation,
+    return _tpu_client.TpuExecutable.compile(c_computation,
                                              compile_options.argument_layouts,
                                              options, self.client,
                                              compile_options.device_assignment,
@@ -106,14 +106,8 @@ class TpuBackend(xla_client.Backend):
 
   def get_default_device_assignment(self, num_replicas, num_partitions=None):
     if num_partitions is not None:
-      return self.client.GetDefaultDeviceAssignment(num_replicas,
-                                                    num_partitions)
+      return self.client.get_default_device_assignment(num_replicas,
+                                                       num_partitions)
     else:
       # TODO(henrytan): delete this case after all callers can handle 2D output
-      return self.client.GetDefaultDeviceAssignment(num_replicas)
-
-  def serialize(self, executable):
-    return self.client.SerializeExecutable(executable)
-
-  def deserialize(self, serialized_executable):
-    return self.client.DeserializeExecutable(serialized_executable, self.client)
+      return self.client.get_default_device_assignment(num_replicas)

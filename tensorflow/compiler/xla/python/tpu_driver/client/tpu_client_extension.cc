@@ -37,7 +37,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("devices", &PyTpuClient::devices)
       .def("local_devices", &PyTpuClient::local_devices)
       .def("host_id", &PyTpuClient::host_id)
-      .def("GetDefaultDeviceAssignment",
+      .def("get_default_device_assignment",
            [](PyTpuClient* client, int num_replicas, int num_partitions)
                -> StatusOr<std::vector<std::vector<std::shared_ptr<Device>>>> {
              TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
@@ -57,7 +57,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
              return result;
            })
       // TODO(skye): delete after all callers can handle 2D output
-      .def("GetDefaultDeviceAssignment",
+      .def("get_default_device_assignment",
            [](PyTpuClient* client, int num_replicas)
                -> StatusOr<std::vector<std::shared_ptr<Device>>> {
              TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
@@ -72,14 +72,14 @@ PYBIND11_MODULE(tpu_client_extension, m) {
              }
              return result;
            })
-      .def("TransferToInfeed",
+      .def("transfer_to_infeed",
            [](PyTpuClient* client, const LiteralSlice& literal,
               int device_ordinal) {
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
              return client->TransferToInfeed(literal, device_ordinal);
            })
-      .def("TransferFromOutfeed",
+      .def("transfer_from_outfeed",
            [](PyTpuClient* client, const Shape& shape,
               int device_ordinal) -> StatusOr<py::object> {
              GlobalPyRefManager()->CollectGarbage();
@@ -159,9 +159,9 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       });
 
   py::class_<PyTpuExecutable>(m, "TpuExecutable")
-      .def_static("Compile", &PyTpuExecutable::Compile,
+      .def_static("compile", &PyTpuExecutable::Compile,
                   py::call_guard<py::gil_scoped_release>())
-      .def_static("Compile",
+      .def_static("compile",
                   [](const XlaComputation& computation,
                      absl::optional<std::vector<Shape>> argument_layouts,
                      const ExecutableBuildOptions* build_options,
@@ -184,12 +184,17 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("local_logical_device_ids",
            &PyTpuExecutable::local_logical_device_ids)
       .def("local_devices", &PyTpuExecutable::local_devices)
-      .def("SizeOfGeneratedCodeInBytes",
+      .def("size_of_generated_code_in_bytes",
            &PyTpuExecutable::SizeOfGeneratedCodeInBytes)
       .def("Delete", &PyTpuExecutable::Delete)
       .def("Execute", &PyTpuExecutable::Execute,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("ExecuteOnLocalDevices", &PyTpuExecutable::ExecuteOnLocalDevices,
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      .def("delete", &PyTpuExecutable::Delete)
+      .def("execute", &PyTpuExecutable::Execute,
+           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      .def("execute_on_local_devices", &PyTpuExecutable::ExecuteOnLocalDevices,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"));
 
   py::class_<TpuDevice, Device, std::shared_ptr<TpuDevice>>(m, "TpuDevice")
