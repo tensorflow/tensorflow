@@ -1432,15 +1432,18 @@ class ConvertFusedBatchNormV3Op
                              : 0;
       auto const_attr_type = RankedTensorType::get(
           {num_elements}, getElementTypeOrSelf(reserve_space_3_type));
-      auto dummy_const = rewriter.create<ConstOp>(
-          op.getLoc(), reserve_space_3_type,
-          DenseElementsAttr::get<float>(const_attr_type, 0.0));
+
+      Value dummy_const = rewriter.create<ConstOp>(
+          op.getLoc(), DenseElementsAttr::get<float>(const_attr_type, 0.0));
+      if (const_attr_type != reserve_space_3_type)
+        dummy_const = rewriter.create<TensorCastOp>(
+            op.getLoc(), reserve_space_3_type, dummy_const);
       rewriter.replaceOp(op, {/*y=*/y_out,
                               /*batch_mean=*/op.mean(),
                               /*batch_variance=*/op.variance(),
                               /*reserve_space_1=*/op.mean(),
                               /*reserve_space_2=*/op.variance(),
-                              /*reserve_space_3=*/dummy_const.getResult()});
+                              /*reserve_space_3=*/dummy_const});
     }
     return success();
   }
@@ -4751,6 +4754,7 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();
   target.addLegalOp<CallOp>();
+  target.addLegalOp<TensorCastOp>();
 
   if (!allow_partial_conversion) {
     // Fully qualify ReturnOp here as xla_hlo dialect also defines a ReturnOp.
