@@ -334,6 +334,8 @@ class BatchCountingCB(keras.callbacks.Callback):
     self.train_end_batches = []
     self.test_begin_batches = []
     self.test_end_batches = []
+    self.predict_begin_batches = []
+    self.predict_end_batches = []
 
   def on_train_batch_begin(self, batch, logs=None):
     self.train_begin_batches.append(batch)
@@ -346,6 +348,12 @@ class BatchCountingCB(keras.callbacks.Callback):
 
   def on_test_batch_end(self, batch, logs=None):
     self.test_end_batches.append(batch)
+
+  def on_predict_batch_begin(self, batch, logs=None):
+    self.predict_begin_batches.append(batch)
+
+  def on_predict_batch_end(self, batch, logs=None):
+    self.predict_end_batches.append(batch)
 
 
 class TestDistributionStrategyWithNumpyArrays(test.TestCase,
@@ -1763,6 +1771,10 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     self.assertEqual(bc.test_begin_batches, [0, 10, 20, 30, 40])
     self.assertEqual(bc.test_end_batches, [9, 19, 29, 39, 49])
 
+    model.predict(x, batch_size=2, callbacks=[bc])
+    self.assertEqual(bc.predict_begin_batches, [0, 10, 20, 30, 40])
+    self.assertEqual(bc.predict_end_batches, [9, 19, 29, 39, 49])
+
   @combinations.generate(
       combinations.combine(distribution=all_strategies, mode=['eager']))
   def test_host_training_loop_last_partial_execution(self, distribution):
@@ -1782,6 +1794,10 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.evaluate(x, y, batch_size=2, callbacks=[bc])
     self.assertEqual(bc.test_begin_batches, [0, 20, 40])
     self.assertEqual(bc.test_end_batches, [19, 39, 49])
+
+    model.predict(x, batch_size=2, callbacks=[bc])
+    self.assertEqual(bc.predict_begin_batches, [0, 20, 40])
+    self.assertEqual(bc.predict_end_batches, [19, 39, 49])
 
   @combinations.generate(
       combinations.combine(distribution=all_strategies, mode=['eager']))
@@ -1814,6 +1830,11 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     self.assertEqual(bc.test_begin_batches, [0, 20, 40])
     self.assertEqual(bc.test_end_batches, [19, 39, 49])
 
+    predict_ds = ds.repeat(2)
+    model.predict(predict_ds, steps=50, callbacks=[bc])
+    self.assertEqual(bc.predict_begin_batches, [0, 20, 40])
+    self.assertEqual(bc.predict_end_batches, [19, 39, 49])
+
   @combinations.generate(
       combinations.combine(distribution=all_strategies, mode=['eager']))
   def test_host_training_loop_truncate_to_epoch(self, distribution):
@@ -1834,6 +1855,11 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.evaluate(x, y, batch_size=2, callbacks=[bc])
     self.assertEqual(bc.test_begin_batches, [0])
     self.assertEqual(bc.test_end_batches, [24])
+
+    x = np.ones((50, 10))
+    model.predict(x, batch_size=2, callbacks=[bc])
+    self.assertEqual(bc.predict_begin_batches, [0])
+    self.assertEqual(bc.predict_end_batches, [24])
 
   @combinations.generate(
       combinations.times(

@@ -1101,20 +1101,21 @@ class DataHandler(object):
                workers=1,
                use_multiprocessing=False,
                model=None,
-               steps_per_execution=1):
+               steps_per_execution=None):
 
     self._initial_epoch = initial_epoch
     self._epochs = epochs
     self._insufficient_data = False
     self._model = model
-    self._steps_per_execution = steps_per_execution
 
-    # This `Variable` is assigned to by `DataHandler` to allow partial
-    # executions. Save its original value here to reset after a partial
-    # execution.
-    if isinstance(steps_per_execution, int):
-      self._steps_per_execution_value = steps_per_execution
+    # `steps_per_execution_value` is the cached initial value.
+    # `steps_per_execution` is mutable and may be changed by the DataAdapter
+    # to handle partial executions.
+    if steps_per_execution is None:
+      self._steps_per_execution = 1
+      self._steps_per_execution_value = 1
     else:
+      self._steps_per_execution = steps_per_execution
       self._steps_per_execution_value = steps_per_execution.numpy().item()
 
     adapter_cls = select_data_adapter(x, y)
