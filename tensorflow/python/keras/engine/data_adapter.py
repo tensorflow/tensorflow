@@ -849,11 +849,6 @@ class GeneratorDataAdapter(DataAdapter):
                               max_queue_size):
     """Create a callable, possibly including an Enqueuer."""
     if workers > 1 or (workers > 0 and use_multiprocessing):
-      if use_multiprocessing:
-        logging.warning(
-            UserWarning("Using a generator with `use_multiprocessing=True` "
-                        "and multiple workers may duplicate your data. "
-                        "Please consider using the `tf.data.Dataset`."))
       def generator_fn():
         enqueuer = data_utils.GeneratorEnqueuer(
             x, use_multiprocessing=use_multiprocessing)
