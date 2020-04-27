@@ -49,7 +49,8 @@ const Model* GetSimpleModelWithBranch();
 // Returns a simple flatbuffer model with offline planned tensors
 const Model* GetModelWithOfflinePlanning(int num_tensors,
                                          const int32_t* metadata_buffer,
-                                         std::vector<NodeConnection> node_conn);
+                                         NodeConnection* node_conn,
+                                         int num_conns);
 
 // Returns a flatbuffer model with `simple_stateful_op`
 const Model* GetSimpleStatefulModel();

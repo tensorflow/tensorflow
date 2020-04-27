@@ -247,22 +247,22 @@ TF_LITE_MICRO_TEST(OfflinePlannerBranchesAllOnline) {
 
   // The structure is identical to the one in
   // TestAllocationForModelsWithBranches
-  std::vector<tflite::testing::NodeConnection> node_list = {
-      {
-          {0},  // input
-          {1}   // output
-      },
-      {
-          {0},  // input
-          {2}   // output
-      },
-      {
-          {1, 2},  // input1, input2
-          {3}      // output
-      }};
+  int num_conns = 3;
+  tflite::testing::NodeConnection node_list[3] = {{
+                                                      {0},  // input
+                                                      {1}   // output
+                                                  },
+                                                  {
+                                                      {0},  // input
+                                                      {2}   // output
+                                                  },
+                                                  {
+                                                      {1, 2},  // input1, input2
+                                                      {3}      // output
+                                                  }};
 
   const tflite::Model* model = tflite::testing::GetModelWithOfflinePlanning(
-      nbr_tensors, metadata_buffer, node_list);
+      nbr_tensors, metadata_buffer, node_list, num_conns);
 
   TfLiteContext context;
   constexpr size_t arena_size = 4096;
@@ -296,21 +296,22 @@ TF_LITE_MICRO_TEST(OfflinePlannerBasic) {
   int t2 = 2;
   int t3 = 3;
 
-  std::vector<tflite::testing::NodeConnection> node_list = {{
-                                                                {t0},  // input
-                                                                {t1}   // output
-                                                            },
-                                                            {
-                                                                {t1},  // input
-                                                                {t2}   // output
-                                                            },
-                                                            {
-                                                                {t2},  // input
-                                                                {t3}   // output
-                                                            }};
+  int num_conns = 3;
+  tflite::testing::NodeConnection node_list[3] = {{
+                                                      {t0},  // input
+                                                      {t1}   // output
+                                                  },
+                                                  {
+                                                      {t1},  // input
+                                                      {t2}   // output
+                                                  },
+                                                  {
+                                                      {t2},  // input
+                                                      {t3}   // output
+                                                  }};
 
   const tflite::Model* model = tflite::testing::GetModelWithOfflinePlanning(
-      nbr_tensors, metadata_buffer, node_list);
+      nbr_tensors, metadata_buffer, node_list, num_conns);
 
   TfLiteContext context;
   constexpr size_t arena_size = 4096;
@@ -342,7 +343,8 @@ TF_LITE_MICRO_TEST(OfflinePlannerOverlappingAllocation) {
   int t2 = 2;
   int t3 = 3;
 
-  std::vector<tflite::testing::NodeConnection> node_list = {
+  int num_conns = 2;
+  tflite::testing::NodeConnection node_list[2] = {
       {
           {t0, t1},  // input, scratch
           {t2}       // output
@@ -354,7 +356,7 @@ TF_LITE_MICRO_TEST(OfflinePlannerOverlappingAllocation) {
   };
 
   const tflite::Model* model = tflite::testing::GetModelWithOfflinePlanning(
-      nbr_tensors, metadata_buffer, node_list);
+      nbr_tensors, metadata_buffer, node_list, num_conns);
 
   TfLiteContext context;
   constexpr size_t arena_size = 4096;
@@ -389,7 +391,8 @@ TF_LITE_MICRO_TEST(OfflinePlannerOfflineOnline) {
   int t3 = 3;
   int t4 = 4;
 
-  std::vector<tflite::testing::NodeConnection> node_list = {
+  int num_conns = 2;
+  tflite::testing::NodeConnection node_list[2] = {
       {
           {t0, t1},  // input, scratch
           {t2},      // output
@@ -401,7 +404,7 @@ TF_LITE_MICRO_TEST(OfflinePlannerOfflineOnline) {
   };
 
   const tflite::Model* model = tflite::testing::GetModelWithOfflinePlanning(
-      nbr_tensors, metadata_buffer, node_list);
+      nbr_tensors, metadata_buffer, node_list, num_conns);
 
   TfLiteContext context;
   constexpr size_t arena_size = 4096;

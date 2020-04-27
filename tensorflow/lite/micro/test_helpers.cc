@@ -95,8 +95,7 @@ class ModelBuilder {
                std::initializer_list<Tensor> outputs);
 
   void AddMetadata(const char* description_string,
-                      const int32_t* metadata_buffer_data,
-                      size_t num_elements);
+                   const int32_t* metadata_buffer_data, size_t num_elements);
 
   // Constructs the flatbuffer model using `builder_` and return a pointer to
   // it. The returned model has the same lifetime as `builder_`.
@@ -157,16 +156,15 @@ ModelBuilder::Node ModelBuilder::AddNode(
 }
 
 void ModelBuilder::AddMetadata(const char* description_string,
-                            const int32_t* metadata_buffer_data,
-                            size_t num_elements) {
+                               const int32_t* metadata_buffer_data,
+                               size_t num_elements) {
   metadata_[ModelBuilder::nbr_of_metadata_buffers_] =
-              CreateMetadata(*builder_,
-                             builder_->CreateString(description_string),
-                             1 + ModelBuilder::nbr_of_metadata_buffers_);
+      CreateMetadata(*builder_, builder_->CreateString(description_string),
+                     1 + ModelBuilder::nbr_of_metadata_buffers_);
 
-  metadata_buffers_[nbr_of_metadata_buffers_] = tflite::CreateBuffer(*builder_,
-                                                                       builder_->CreateVector((uint8_t*)metadata_buffer_data,
-                                                                       sizeof(uint32_t) * num_elements));
+  metadata_buffers_[nbr_of_metadata_buffers_] = tflite::CreateBuffer(
+      *builder_, builder_->CreateVector((uint8_t*)metadata_buffer_data,
+                                        sizeof(uint32_t) * num_elements));
 
   ModelBuilder::nbr_of_metadata_buffers_++;
 }
@@ -175,14 +173,14 @@ const Model* ModelBuilder::BuildModel(
     std::initializer_list<ModelBuilder::Tensor> inputs,
     std::initializer_list<ModelBuilder::Tensor> outputs) {
   // Model schema requires an empty buffer at idx 0.
-  size_t kBufferSize = 1 + ModelBuilder::nbr_of_metadata_buffers_;
-  flatbuffers::Offset<Buffer> buffers[kBufferSize];
+  size_t buffer_size = 1 + ModelBuilder::nbr_of_metadata_buffers_;
+  flatbuffers::Offset<Buffer> buffers[kMaxMetadataBuffers];
   buffers[0] = tflite::CreateBuffer(*builder_);
 
   // Place the metadata buffers first in the buffer since the indices for them
   // have already been set in AddMetadata()
   for (int i = 1; i < ModelBuilder::nbr_of_metadata_buffers_ + 1; ++i) {
-      buffers[i] = metadata_buffers_[i - 1];
+    buffers[i] = metadata_buffers_[i - 1];
   }
 
   // TFLM only supports single subgraph.
@@ -202,16 +200,16 @@ const Model* ModelBuilder::BuildModel(
         builder_->CreateVector(operator_codes_, next_operator_code_id_),
         builder_->CreateVector(subgraphs, subgraphs_size),
         builder_->CreateString("teset_model"),
-        builder_->CreateVector(buffers, kBufferSize),
-        0,
-        builder_->CreateVector(metadata_, ModelBuilder::nbr_of_metadata_buffers_));
+        builder_->CreateVector(buffers, buffer_size), 0,
+        builder_->CreateVector(metadata_,
+                               ModelBuilder::nbr_of_metadata_buffers_));
   } else {
     model_offset = tflite::CreateModel(
         *builder_, 0,
         builder_->CreateVector(operator_codes_, next_operator_code_id_),
         builder_->CreateVector(subgraphs, subgraphs_size),
         builder_->CreateString("teset_model"),
-        builder_->CreateVector(buffers, kBufferSize));
+        builder_->CreateVector(buffers, buffer_size));
   }
 
   tflite::FinishModelBuffer(*builder_, model_offset);
@@ -293,8 +291,9 @@ const Model* BuildSimpleModelWithBranch() {
 }
 
 const Model* BuildModelWithOfflinePlanning(int number_of_tensors,
-    const int32_t* metadata_buffer,
-    std::vector<NodeConnection> node_conn) {
+                                           const int32_t* metadata_buffer,
+                                           NodeConnection* node_conn,
+                                           int num_conns) {
   using flatbuffers::Offset;
   flatbuffers::FlatBufferBuilder* fb_builder = BuilderInstance();
 
@@ -310,15 +309,16 @@ const Model* BuildModelWithOfflinePlanning(int number_of_tensors,
     tensors[i] = model_builder.AddTensor(TensorType_FLOAT32, {2, 2, 3});
   }
 
-  for (int i = 0; i < node_conn.size(); i++) {
+  for (int i = 0; i < num_conns; ++i) {
     model_builder.AddNode(op_id, node_conn[i].input, node_conn[i].output);
   }
 
-  model_builder.AddMetadata("OfflineMemoryAllocation",
-                            metadata_buffer, number_of_tensors + tflite::testing::kOfflinePlannerHeaderSize);
+  model_builder.AddMetadata(
+      "OfflineMemoryAllocation", metadata_buffer,
+      number_of_tensors + tflite::testing::kOfflinePlannerHeaderSize);
 
   return model_builder.BuildModel(node_conn[0].input,
-                                  node_conn[node_conn.size() - 1].output);
+                                  node_conn[num_conns - 1].output);
 }
 
 const Model* BuildSimpleMockModel() {
@@ -408,8 +408,7 @@ const Model* BuildComplexMockModel() {
   constexpr size_t buffers_size = 7;
   const Offset<Buffer> buffers[buffers_size] = {
       // Op 1 buffers:
-      CreateBuffer(*builder),
-      CreateBuffer(*builder),
+      CreateBuffer(*builder), CreateBuffer(*builder),
       CreateBuffer(*builder,
                    builder->CreateVector(buffer_data_1, buffer_data_size)),
       // Op 2 buffers:
@@ -576,9 +575,10 @@ const Model* GetSimpleModelWithBranch() {
 
 const Model* GetModelWithOfflinePlanning(int num_tensors,
                                          const int32_t* metadata_buffer,
-                                         std::vector<NodeConnection> node_conn) {
-  const Model* model =
-    BuildModelWithOfflinePlanning(num_tensors, metadata_buffer, node_conn);
+                                         NodeConnection* node_conn,
+                                         int num_conns) {
+  const Model* model = BuildModelWithOfflinePlanning(
+      num_tensors, metadata_buffer, node_conn, num_conns);
   return model;
 }
 
