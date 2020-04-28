@@ -1120,7 +1120,6 @@ class DataHandler(object):
 
   def enumerate_epochs(self):
     """Yields `(epoch, tf.data.Iterator)`."""
-<<<<<<< HEAD
     data_iterator = iter(self._dataset)
     for epoch in range(self._initial_epoch, self._epochs):
       if self._insufficient_data:  # Set by `catch_stop_iteration`.
