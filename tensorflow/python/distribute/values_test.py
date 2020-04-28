@@ -1684,10 +1684,10 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
           aggregation=variables_lib.VariableAggregation.SUM)
     self.evaluate(variables_lib.global_variables_initializer())
     with self.assertRaisesRegex(
-        ValueError, "SyncOnReadVariable does not support "):
+        ValueError, "Variable with `synchronization=ON_READ` does not support"):
       self.evaluate(v.assign_add(1.))
     with self.assertRaisesRegex(
-        ValueError, "SyncOnReadVariable does not support "):
+        ValueError, "Variable with `synchronization=ON_READ` does not support"):
       self.evaluate(v.assign_sub(1.))
 
   @combinations.generate(strategy_and_run_tf_function_combinations())
