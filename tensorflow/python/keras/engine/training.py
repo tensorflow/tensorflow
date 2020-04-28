@@ -666,8 +666,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           validation_freq=1,
           max_queue_size=10,
           workers=1,
-          use_multiprocessing=False,
-          **kwargs):
+          use_multiprocessing=False):
     """Trains the model for a fixed number of epochs (iterations on a dataset).
 
     Arguments:
@@ -734,7 +733,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
               - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
               - dataset
-
             For the first two cases, `batch_size` must be provided.
             For the last case, `validation_steps` could be provided.
             Note that `validation_data` does not support all the data types that
@@ -814,7 +812,6 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             `False`. Note that because this implementation relies on
             multiprocessing, you should not pass non-picklable arguments to
             the generator as they can't be passed easily to children processes.
-        **kwargs: Used for backwards compatibility.
 
     Unpacking behavior for iterator-like inputs:
         A common pattern is to pass a tf.data.Dataset, generator, or
