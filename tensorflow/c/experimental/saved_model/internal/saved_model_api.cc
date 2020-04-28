@@ -32,21 +32,29 @@ limitations under the License.
 extern "C" {
 
 TF_SavedModel* TF_LoadSavedModel(const char* dirname, TFE_Context* ctx,
-                                 const char* const* const* tags, int tags_len,
                                  TF_Status* status) {
   std::string saved_model_dir(dirname);
 
-  absl::optional<std::unordered_set<std::string>> optional_tag_set;
-  if (tags != nullptr) {
-    std::unordered_set<std::string> tagset;
-    for (int i = 0; i < tags_len; ++i) {
-      tagset.insert(std::string((*tags)[i]));
-    }
-    optional_tag_set = std::move(tagset);
+  std::unique_ptr<tensorflow::SavedModelAPI> result =
+      ctx->context->LoadSavedModelAPI(dirname, absl::nullopt, &status->status);
+  if (!status->status.ok()) {
+    return nullptr;
+  }
+  return new TF_SavedModel{std::move(result)};
+}
+
+TF_SavedModel* TF_LoadSavedModelWithTags(const char* dirname, TFE_Context* ctx,
+                                         const char* const* tags, int tags_len,
+                                         TF_Status* status) {
+  std::string saved_model_dir(dirname);
+
+  std::unordered_set<std::string> tagset;
+  for (int i = 0; i < tags_len; ++i) {
+    tagset.insert(std::string(tags[i]));
   }
 
   std::unique_ptr<tensorflow::SavedModelAPI> result =
-      ctx->context->LoadSavedModelAPI(dirname, optional_tag_set,
+      ctx->context->LoadSavedModelAPI(dirname, std::move(tagset),
                                       &status->status);
   if (!status->status.ok()) {
     return nullptr;
