@@ -722,17 +722,20 @@ def TFL_SparseConstOp : Op<TFL_Dialect, "pseudo_sparse_const", [NoSideEffect,
     an actual operation and it will be lowered to buffer instead.
   }];
 
-  let arguments = (ins ElementsAttr:$value, SparsityParameterAttr:$s_param);
+  let arguments = (ins ElementsAttr:$value,
+                   SparsityParameterAttr:$s_param,
+                   ElementsAttr:$compressed_data);
 
   let results = (outs AnyTensor:$output);
 
   let builders = [OpBuilder<
     "OpBuilder &, OperationState &state, Attribute value, "
-    "SparsityParameterAttr s_param",
+    "SparsityParameterAttr s_param, Attribute compressed_data",
     [{
       state.addTypes(value.getType());
       state.addAttribute("value", value);
       state.addAttribute("s_param", s_param);
+      state.addAttribute("compressed_data", compressed_data);
     }]>
   ];
 }
@@ -838,6 +841,8 @@ def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
     int GetChannelDimIndex() { return 0; }
     // SparseOpInterface:
     std::vector<int> GetSparseOperands() { return {1}; }
+    std::vector<std::vector<int>> GetFloatBlockSize() { return {{1, 4}}; }
+    std::vector<std::vector<int>> GetQuantizedBlockSize() { return {{1, 16}}; }
   }];
 }
 
@@ -3209,19 +3214,21 @@ def TFL_SparseQConstOp : Op<TFL_Dialect, "pseudo_sparse_qconst", [
   let arguments = (
     ins TensorTypeAttr:$qtype,
     ElementsAttr:$value,
-    SparsityParameterAttr:$s_param
+    SparsityParameterAttr:$s_param,
+    ElementsAttr:$compressed_data
   );
 
   let results = (outs AnyTensor:$output);
 
   let builders = [OpBuilder<
     "OpBuilder &, OperationState &state, TypeAttr qtype, "
-    "Attribute value, SparsityParameterAttr s_param",
+    "Attribute value, SparsityParameterAttr s_param, Attribute compressed_data",
     [{
       state.addTypes(qtype.getValue());
       state.addAttribute("qtype", qtype);
       state.addAttribute("value", value);
       state.addAttribute("s_param", s_param);
+      state.addAttribute("compressed_data", compressed_data);
     }]>
   ];
 }
