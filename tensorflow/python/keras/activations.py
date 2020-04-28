@@ -104,7 +104,8 @@ def elu(x, alpha=1.0):
 
   >>> from tensorflow.keras import models, layers
   >>> model = models.Sequential()
-  >>> model.add(layers.Conv2D(32, (3, 3), activation='elu', input_shape=(28, 28, 1)))
+  >>> model.add(layers.Conv2D(32, (3, 3), activation='elu',
+  ...          input_shape=(28, 28, 1)))
   >>> model.add(layers.MaxPooling2D((2, 2)))
   >>> model.add(layers.Conv2D(64, (3, 3), activation='elu'))
   >>> model.add(layers.MaxPooling2D((2, 2)))
@@ -124,8 +125,8 @@ def elu(x, alpha=1.0):
 
 
   Reference:
-      [Fast and Accurate Deep Network Learning by Exponential Linear Units (ELUs)
-      (Clevert et al, 2016)](https://arxiv.org/abs/1511.07289)
+      [Fast and Accurate Deep Network Learning by Exponential Linear Units
+      (ELUs) (Clevert et al, 2016)](https://arxiv.org/abs/1511.07289)
   """
   return K.elu(x, alpha)
 
