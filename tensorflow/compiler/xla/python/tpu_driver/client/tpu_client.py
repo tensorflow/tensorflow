@@ -82,27 +82,21 @@ class TpuBackend(xla_client.Backend):
     return self.client.host_id()
 
   def buffer_from_pyval(self, pyval, device=None, force_copy=False):
-    if device is None:
-      device = self.client.local_devices()[0]
-    return _tpu_client.PyTpuBuffer.from_python(pyval, self.client, device)
+    return self.client.buffer_from_pyval(pyval, device)
 
   def compile(self, c_computation, compile_options=None):
     compile_options = compile_options or xla_client.CompileOptions()
-    options = _xla.ExecutableBuildOptions()
-    options.num_replicas = compile_options.num_replicas
-    options.num_partitions = compile_options.num_partitions
+    options = _xla.CompileOptions()
+    options.argument_layouts = compile_options.argument_layouts
+    options.parameter_is_tupled_arguments = compile_options.tuple_arguments
+    build_options = options.executable_build_options
+    build_options.num_replicas = compile_options.num_replicas
+    build_options.num_partitions = compile_options.num_partitions
     if compile_options.result_layout:
-      options.result_layout = compile_options.result_layout
-    options.debug_options.xla_cpu_fast_math_honor_infs = True
-    options.debug_options.xla_cpu_fast_math_honor_nans = True
-    options.debug_options.xla_cpu_fast_math_honor_division = True
-    options.debug_options.xla_cpu_fast_math_honor_functions = True
-    options.debug_options.xla_gpu_enable_fast_min_max = False
-    return _tpu_client.TpuExecutable.compile(c_computation,
-                                             compile_options.argument_layouts,
-                                             options, self.client,
-                                             compile_options.device_assignment,
-                                             compile_options.tuple_arguments)
+      build_options.result_layout = compile_options.result_layout
+    if compile_options.device_assignment:
+      build_options.device_assignment = compile_options.device_assignment
+    return self.client.compile(c_computation, options)
 
   def get_default_device_assignment(self, num_replicas, num_partitions=None):
     if num_partitions is not None:

@@ -866,6 +866,57 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("computation_count", &DeviceAssignment::computation_count)
       .def("__repr__", &DeviceAssignment::ToString);
 
+  py::class_<CompileOptions> compile_options(m, "CompileOptions");
+  compile_options
+      .def(py::init([]() -> CompileOptions {
+        CompileOptions options;
+        DebugOptions* debug_options =
+            options.executable_build_options.mutable_debug_options();
+        // Sets fast-math-disabling default options expected by JAX.
+        // TODO(phawkins): make these XLA-wide defaults.
+        debug_options->set_xla_cpu_fast_math_honor_infs(true);
+        debug_options->set_xla_cpu_fast_math_honor_nans(true);
+        debug_options->set_xla_cpu_fast_math_honor_division(true);
+        debug_options->set_xla_cpu_fast_math_honor_functions(true);
+        debug_options->set_xla_gpu_enable_fast_min_max(false);
+        return options;
+      }))
+      .def_readwrite("argument_layouts", &CompileOptions::argument_layouts)
+      .def_readwrite("parameter_is_tupled_arguments",
+                     &CompileOptions::parameter_is_tupled_arguments)
+      .def_readonly("executable_build_options",
+                    &CompileOptions::executable_build_options)
+      // TODO(phawkins): the following fields exist for backward compatibility.
+      // Remove them after JAX has been updated not to use them.
+      .def_readwrite("tuple_arguments",
+                     &CompileOptions::parameter_is_tupled_arguments)
+      .def_property(
+          "num_replicas",
+          [](const CompileOptions& options) {
+            return options.executable_build_options.num_replicas();
+          },
+          [](CompileOptions& options, int num_replicas) {
+            options.executable_build_options.set_num_replicas(num_replicas);
+          })
+      .def_property(
+          "num_partitions",
+          [](const CompileOptions& options) {
+            return options.executable_build_options.num_partitions();
+          },
+          [](CompileOptions& options, int num_partitions) {
+            options.executable_build_options.set_num_partitions(num_partitions);
+          })
+      .def_property(
+          "device_assignment",
+          [](const CompileOptions& options) {
+            return options.executable_build_options.device_assignment();
+          },
+          [](CompileOptions& options,
+             const DeviceAssignment& device_assignment) {
+            options.executable_build_options.set_device_assignment(
+                device_assignment);
+          });
+
   py::class_<Device, ClientAndPtr<Device>>(
       m, "Device",
       "A descriptor of an available device.\n\nSubclasses are used to "
@@ -880,6 +931,9 @@ PYBIND11_MODULE(xla_extension, m) {
                              "This is always 0 except on multi-host platforms.")
       .def_property_readonly("platform", &Device::platform_name)
       .def_property_readonly("device_kind", &Device::device_kind)
+      .def_property_readonly(
+          "client",
+          [](const ClientAndPtr<Device>& device) { return device.client; })
       .def("__str__", &Device::DebugString)
       // TODO(phawkins): remove capitalized names after updating callers.
       .def("TransferToInfeed",
@@ -962,7 +1016,10 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("PLATFORM", GpuAllocatorConfig::Kind::kPlatform)
       .value("BFC", GpuAllocatorConfig::Kind::kBFC);
 
-  py::class_<PyLocalClient, std::shared_ptr<PyLocalClient>>(m, "LocalClient")
+  py::class_<PyLocalClient, std::shared_ptr<PyLocalClient>> py_local_client(
+      m, "LocalClient");
+  py_local_client
+      .def_property_readonly("platform", &PyLocalClient::platform_name)
       .def("device_count", &PyLocalClient::device_count)
       .def("local_device_count", &PyLocalClient::local_device_count)
       .def("devices",
@@ -1031,6 +1088,56 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("create_host_to_device_channel_handle", [](PyLocalClient* client) {
         return client->client()->CreateHostToDeviceChannelHandle();
       });
+  py_local_client.def(
+      "buffer_from_pyval",
+      [](std::shared_ptr<PyLocalClient> client,
+         const pybind11::object& argument, Device* device,
+         bool force_copy) -> StatusOr<ClientAndUniquePtr<PyLocalBuffer>> {
+        if (device == nullptr) {
+          TF_RET_CHECK(!client->local_devices().empty());
+          device = client->local_devices().front();
+        }
+        CHECK(device != nullptr);
+        auto iter = client->id_to_device().find(device->id());
+        if (iter->second != device) {
+          return InvalidArgument(
+              "Cannot copy value to device '%s' with '%s' backend",
+              device->DebugString(), client->platform_name());
+        }
+        GlobalPyRefManager()->CollectGarbage();
+
+        absl::optional<CastToArrayResult> c = CastToArray(argument);
+        if (!c) {
+          return InvalidArgument("from_python argument must be an array.");
+        }
+
+        TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
+                            GetPythonBufferTree(argument));
+        std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
+            GlobalPyRefManager()->ManageReference(std::move(c->array));
+
+        py::gil_scoped_release gil_release;
+        TF_ASSIGN_OR_RETURN(
+            std::unique_ptr<PyLocalBuffer> buffer,
+            PyLocalBuffer::FromHostBuffer(c->buf_ptr, c->shape, force_copy,
+                                          std::move(py_buffer_ref),
+                                          client.get(), device));
+        return WrapWithClient(std::move(client), std::move(buffer));
+      },
+      py::arg("argument"), py::arg("device") = nullptr,
+      py::arg("force_copy") = false);
+  py_local_client.def(
+      "compile",
+      [](std::shared_ptr<PyLocalClient> client,
+         const XlaComputation& computation, CompileOptions options)
+          -> StatusOr<ClientAndUniquePtr<PyLocalExecutable>> {
+        py::gil_scoped_release gil_release;
+        TF_ASSIGN_OR_RETURN(std::unique_ptr<PyLocalExecutable> executable,
+                            PyLocalExecutable::Compile(
+                                computation, client.get(), std::move(options)));
+        return WrapWithClient(std::move(client), std::move(executable));
+      },
+      py::arg("computation"), py::arg("compile_options") = CompileOptions());
 
   m.def("get_cpu_client", &GetCpuClient, py::arg("asynchronous") = true);
   m.def("get_nvidia_gpu_client", &GetNvidiaGpuClient,
@@ -1041,40 +1148,6 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<PyLocalBuffer, ClientAndUniquePtr<PyLocalBuffer>> buffer(
       m, "PyLocalBuffer");
   buffer
-      .def_static(
-          "from_python",
-          [](const pybind11::object& argument,
-             std::shared_ptr<PyLocalClient> client, Device* device,
-             bool force_copy) -> StatusOr<ClientAndUniquePtr<PyLocalBuffer>> {
-            CHECK(device != nullptr);
-            auto iter = client->id_to_device().find(device->id());
-            if (iter->second != device) {
-              return InvalidArgument(
-                  "Cannot copy value to device '%s' with '%s' backend",
-                  device->DebugString(), client->platform_name());
-            }
-            GlobalPyRefManager()->CollectGarbage();
-
-            absl::optional<CastToArrayResult> c = CastToArray(argument);
-            if (!c) {
-              return InvalidArgument("from_python argument must be an array.");
-            }
-
-            TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
-                                GetPythonBufferTree(argument));
-            std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
-                GlobalPyRefManager()->ManageReference(std::move(c->array));
-
-            py::gil_scoped_release gil_release;
-            TF_ASSIGN_OR_RETURN(
-                std::unique_ptr<PyLocalBuffer> buffer,
-                PyLocalBuffer::FromHostBuffer(c->buf_ptr, c->shape, force_copy,
-                                              std::move(py_buffer_ref),
-                                              client.get(), device));
-            return WrapWithClient(std::move(client), std::move(buffer));
-          },
-          py::arg("argument"), py::arg("client"), py::arg("device"),
-          py::arg("force_copy") = false)
       .def("copy_to_device",
            [](PyLocalBuffer* buffer, const ClientAndPtr<Device>& dst_device)
                -> StatusOr<ClientAndUniquePtr<PyLocalBuffer>> {
@@ -1117,6 +1190,10 @@ PYBIND11_MODULE(xla_extension, m) {
             return LiteralToPython(std::move(literal));
           })
       .def("shape", &PyLocalBuffer::on_host_shape)
+      .def_property_readonly("client",
+                             [](const PyLocalBuffer& buffer) {
+                               return buffer.client()->shared_from_this();
+                             })
       .def("device",
            [](const PyLocalBuffer& buffer) {
              return WrapWithClient(buffer.client()->shared_from_this(),
@@ -1148,64 +1225,10 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<PyLocalExecutable, ClientAndUniquePtr<PyLocalExecutable>>
       executable(m, "LocalExecutable");
   executable
-      .def_static("compile",
-                  [](const XlaComputation& computation,
-                     absl::optional<std::vector<Shape>> argument_layouts,
-                     const ExecutableBuildOptions* build_options,
-                     std::shared_ptr<PyLocalClient> client,
-                     absl::optional<DeviceAssignment> device_assignment,
-                     bool parameter_is_tupled_arguments)
-                      -> StatusOr<ClientAndUniquePtr<PyLocalExecutable>> {
-                    py::gil_scoped_release gil_release;
-                    CompileOptions options;
-                    options.argument_layouts = std::move(argument_layouts);
-                    if (build_options) {
-                      options.executable_build_options = *build_options;
-                    }
-                    options.parameter_is_tupled_arguments =
-                        parameter_is_tupled_arguments;
-                    if (device_assignment) {
-                      options.executable_build_options.set_device_assignment(
-                          *device_assignment);
-                    }
-                    TF_ASSIGN_OR_RETURN(
-                        std::unique_ptr<PyLocalExecutable> executable,
-                        PyLocalExecutable::Compile(computation, client.get(),
-                                                   std::move(options)));
-                    return WrapWithClient(std::move(client),
-                                          std::move(executable));
-                  })
-      .def_static("compile",
-                  [](const XlaComputation& computation,
-                     absl::optional<std::vector<Shape>> argument_layouts,
-                     const ExecutableBuildOptions* build_options,
-                     std::shared_ptr<PyLocalClient> client,
-                     absl::optional<std::vector<std::vector<Device*>>>
-                         device_assignment,
-                     bool parameter_is_tupled_arguments)
-                      -> StatusOr<ClientAndUniquePtr<PyLocalExecutable>> {
-                    py::gil_scoped_release gil_release;
-                    CompileOptions options;
-                    options.argument_layouts = std::move(argument_layouts);
-                    if (build_options) {
-                      options.executable_build_options = *build_options;
-                    }
-                    options.parameter_is_tupled_arguments =
-                        parameter_is_tupled_arguments;
-                    if (device_assignment) {
-                      TF_ASSIGN_OR_RETURN(
-                          DeviceAssignment xla_assignment,
-                          DevicesToDeviceAssignment(*device_assignment));
-                      options.executable_build_options.set_device_assignment(
-                          xla_assignment);
-                    }
-                    TF_ASSIGN_OR_RETURN(
-                        std::unique_ptr<PyLocalExecutable> executable,
-                        PyLocalExecutable::Compile(computation, client.get(),
-                                                   std::move(options)));
-                    return WrapWithClient(std::move(client),
-                                          std::move(executable));
-                  })
+      .def_property_readonly("client",
+                             [](const PyLocalExecutable& executable) {
+                               return executable.client()->shared_from_this();
+                             })
       .def("local_logical_device_ids",
            &PyLocalExecutable::local_logical_device_ids)
       .def("local_devices",
@@ -1332,6 +1355,7 @@ PYBIND11_MODULE(xla_extension, m) {
           });
 
   py::class_<DebugOptions>(m, "DebugOptions")
+      .def("__repr__", &DebugOptions::DebugString)
       .def_property("xla_cpu_enable_fast_math",
                     &DebugOptions::xla_cpu_enable_fast_math,
                     &DebugOptions::set_xla_cpu_enable_fast_math)
@@ -1353,6 +1377,7 @@ PYBIND11_MODULE(xla_extension, m) {
 
   py::class_<ExecutableBuildOptions>(m, "ExecutableBuildOptions")
       .def(py::init<>())
+      .def("__repr__", &ExecutableBuildOptions::ToString)
       .def_property(
           "result_layout",
           [](const ExecutableBuildOptions& options) -> absl::optional<Shape> {
@@ -1367,7 +1392,17 @@ PYBIND11_MODULE(xla_extension, m) {
                     &ExecutableBuildOptions::set_num_partitions)
       .def_property_readonly(
           "debug_options", &ExecutableBuildOptions::mutable_debug_options,
-          py::return_value_policy::reference, py::keep_alive<1, 0>());
+          py::return_value_policy::reference, py::keep_alive<1, 0>())
+      .def_property(
+          "device_assignment",
+          [](const ExecutableBuildOptions& options)
+              -> absl::optional<DeviceAssignment> {
+            return options.has_device_assignment()
+                       ? absl::optional<DeviceAssignment>(
+                             options.device_assignment())
+                       : absl::nullopt;
+          },
+          &ExecutableBuildOptions::set_device_assignment);
 
   py::class_<XlaComputation>(m, "XlaComputation")
       .def(py::init([](const py::bytes& serialized_hlo_module_proto)
