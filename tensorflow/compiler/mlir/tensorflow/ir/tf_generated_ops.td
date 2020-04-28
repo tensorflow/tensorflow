@@ -8066,28 +8066,6 @@ shape of `StridedSlice`'s `input`.
   }];
 }
 
-def TF_StringFormatOp : TF_Op<"StringFormat", [NoSideEffect]> {
-  let summary = "Formats a string template using a list of tensors.";
-
-  let description = [{
-Formats a string template using a list of tensors, pretty-printing tensor summaries.
-  }];
-
-  let arguments = (ins
-    Variadic<TF_Tensor>:$inputs,
-
-    DefaultValuedAttr<StrAttr, "%s">:$strtemplate,
-    DefaultValuedAttr<StrAttr, "%s">:$placeholder,
-    DefaultValuedAttr<I64Attr, "3">:$summarize
-  );
-
-  let results = (outs
-    TF_StrTensor:$output
-  );
-
-  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
-}
-
 def TF_SubOp : TF_Op<"Sub", [NoSideEffect, ResultsBroadcastableShape]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x - y element-wise.";
