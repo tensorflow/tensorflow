@@ -147,6 +147,9 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
       case HIP_API_ID_hipMemcpyDtoDAsync:
         oss << ", sizeBytes=" << data->args.hipMemcpyDtoDAsync.sizeBytes;
         break;
+      case HIP_API_ID_hipMemcpyAsync:
+        oss << ", sizeBytes=" << data->args.hipMemcpyAsync.sizeBytes;
+        break;
       case HIP_API_ID_hipMalloc:
         oss << ", size=" << data->args.hipMalloc.size;
         break;
@@ -327,6 +330,7 @@ class RocmApiCallbackImpl {
         case HIP_API_ID_hipMemcpyHtoDAsync:
         case HIP_API_ID_hipMemcpyDtoD:
         case HIP_API_ID_hipMemcpyDtoDAsync:
+        case HIP_API_ID_hipMemcpyAsync:
           AddMemcpyEventUponApiExit(cbid, data);
           break;
         case HIP_API_ID_hipMalloc:
@@ -432,6 +436,11 @@ class RocmApiCallbackImpl {
         event.memcpy_info.num_bytes = data->args.hipMemcpyDtoDAsync.sizeBytes;
         event.memcpy_info.async = true;
         break;
+      case HIP_API_ID_hipMemcpyAsync:
+        event.type = RocmTracerEventType::MemcpyOther;
+        event.memcpy_info.num_bytes = data->args.hipMemcpyAsync.sizeBytes;
+        event.memcpy_info.async = true;
+        break;
       default:
         LOG(ERROR) << "Unsupported memcpy activity observed: " << cbid;
         break;
@@ -520,6 +529,7 @@ class RocmActivityCallbackImpl {
             case HIP_API_ID_hipMemcpyDtoHAsync:
             case HIP_API_ID_hipMemcpyHtoDAsync:
             case HIP_API_ID_hipMemcpyDtoDAsync:
+            case HIP_API_ID_hipMemcpyAsync:
               DumpActivityRecord(record);
               AddHipMemcpyActivityEvent(record);
               break;
@@ -623,6 +633,12 @@ class RocmActivityCallbackImpl {
         break;
       case HIP_API_ID_hipMemcpyDtoDAsync:
         event.type = RocmTracerEventType::MemcpyD2D;
+        event.memcpy_info.async = true;
+        // ROCM TODO: figure out a way to properly populate this field.
+        event.memcpy_info.destination = record->device_id;
+        break;
+      case HIP_API_ID_hipMemcpyAsync:
+        event.type = RocmTracerEventType::MemcpyOther;
         event.memcpy_info.async = true;
         // ROCM TODO: figure out a way to properly populate this field.
         event.memcpy_info.destination = record->device_id;

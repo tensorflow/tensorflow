@@ -620,6 +620,7 @@ RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
       HIP_API_ID_hipExtModuleLaunchKernel,
       HIP_API_ID_hipFree,
       HIP_API_ID_hipMalloc,
+      HIP_API_ID_hipMemcpyAsync,
       HIP_API_ID_hipMemcpyDtoD,
       HIP_API_ID_hipMemcpyDtoDAsync,
       HIP_API_ID_hipMemcpyDtoH,
