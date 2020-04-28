@@ -4091,7 +4091,7 @@ def extract_glimpse(
   Returns:
     A `Tensor` of type `float32`.
   """
-  return gen_image_ops.extract_glimpse_v2(
+  return gen_image_ops.extract_glimpse(
       input=input,
       size=size,
       offsets=offsets,
