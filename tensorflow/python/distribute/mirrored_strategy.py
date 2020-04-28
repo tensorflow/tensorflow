@@ -264,7 +264,8 @@ class MirroredStrategyV1(distribute_lib.StrategyV1):  # pylint: disable=g-missin
 class MirroredExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of MirroredStrategy."""
 
-  def __init__(self, container_strategy, devices=None, cross_device_ops=None):
+  def __init__(self, container_strategy, devices=None, cross_device_ops=None,
+               replication_mode=distribute_lib.InputReplicationMode.PER_WORKER):
     super(MirroredExtended, self).__init__(container_strategy)
     if context.executing_eagerly():
       if devices and not _is_device_list_single_worker(devices):
@@ -285,6 +286,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     assert devices, ("Got an empty `devices` list and unable to recognize "
                      "any local devices.")
     self._cross_device_ops = cross_device_ops
+    self._replication_mode = replication_mode
     self._initialize_strategy(devices)
 
     # TODO(b/128995245): Enable last partial batch support in graph mode.
