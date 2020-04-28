@@ -30,6 +30,8 @@ TF_ConcreteFunction* TF_ConcreteFunctionListGet(TF_ConcreteFunctionList* list,
   return tensorflow::wrap(list->list[i]);
 }
 
-void TF_DeleteConcreteFunction(TF_ConcreteFunctionList* list) { delete list; }
+void TF_DeleteConcreteFunctionList(TF_ConcreteFunctionList* list) {
+  delete list;
+}
 
 }  // end extern "C"
