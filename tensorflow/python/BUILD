@@ -919,6 +919,7 @@ cc_library(
 
 cc_header_only_library(
     name = "py_func_headers_lib",
+    tags = ["no-ide"],
     deps = [
         ":py_func_lib",
     ],
@@ -1147,6 +1148,7 @@ cc_header_only_library(
     extra_deps = [
         "//tensorflow/core:protos_all_cc",
     ],
+    tags = ["no-ide"],
     deps = [
         ":python_op_gen",
     ],
