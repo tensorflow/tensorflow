@@ -2022,6 +2022,18 @@ LogicalResult Verify(WhileOp op) {
   return success();
 }
 
+static LogicalResult Verify(CustomOp op) {
+  OpaqueElementsAttr opaque_attr =
+      op.custom_option().cast<OpaqueElementsAttr>();
+  if (!opaque_attr.getType().hasStaticShape())
+    return op.emitOpError("custom_option should have a static shape.");
+  if (opaque_attr.getValue().size() !=
+      opaque_attr.getType().cast<ShapedType>().getDimSize(0))
+    return op.emitOpError(
+        "custom_option should have the same length of content with shape.");
+  return success();
+}
+
 namespace {
 // Canonicalize While op so that results and operands match and external values
 // are via implicit capture rather than via block args.

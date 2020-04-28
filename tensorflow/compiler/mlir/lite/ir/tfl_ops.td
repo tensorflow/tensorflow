@@ -99,6 +99,16 @@ def TFL_MirrorPaddingAttr : StrEnumAttr<"Padding", "Mirror pad enum", [
 // A type attribute containing the TensorType.
 def TensorTypeAttr : TypeAttrBase<"TensorType", "Tensor type attribute">;
 
+// A type attribute containing OpaqueElementsAttr and bytes.
+def OpaqueBytesAttr : ElementsAttrBase<
+  And<[
+    CPred<"$_self.isa<OpaqueElementsAttr>() ">,
+    CPred<"$_self.cast<OpaqueElementsAttr>().getType()"
+          ".getElementType().isInteger(8)">,
+  ]>,
+  "opaque bytes attribute"
+ >;
+
 //===----------------------------------------------------------------------===//
 // Derived shape attribute class.
 //===----------------------------------------------------------------------===//
@@ -505,38 +515,6 @@ def TFL_TransposeConvOp:
   let hasOptions = 1;
 
   let verifier = [{ return Verify(*this); }];
-}
-
-def TFL_Convolution2DTransposeBiasOp :
-  Op<TFL_Dialect, "convolution_2d_transpose_bias", [
-    NoSideEffect,
-    TFL_OperandHasRank<0, 4>,
-    TFL_OperandHasRank<1, 4>,
-    TFL_OperandIsNoneOrHasRankLessThanOrEqualTo<2, 1>
-  ]> {
-  let summary = " Transpose convolution with bias operator";
-
-  let description = [{
-Performs transpose convolution operation on inputs,
-with the option of adding a bias.
-Note this is a custom op that is not supported in the standard runtime.
-
-    Inputs:
-      `inputs[0]`: required: the input activation tensor
-      `inputs[1]`: required: the filter weight tensor
-      `inputs[2]`: optional: the bias tensor
-  }];
-
-  let arguments = (
-    ins TFL_FpTensor:$input,
-    TFL_FpTensor:$filter,
-    TFL_TensorOfOrNone<[F32]>:$bias,
-    TFL_PaddingAttr:$padding,
-    Confined<I32Attr, [IntPositive]>:$stride_h,
-    Confined<I32Attr, [IntPositive]>:$stride_w
-  );
-
-  let results = (outs TFL_FpTensor:$output);
 }
 
 def TFL_AveragePool2DOp:
@@ -1725,63 +1703,6 @@ def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
   let hasOptions = 1;
 
   let customOption = "Pool2DOptions";
-}
-
-def TFL_MaxPoolingWithArgMax2DOp :
-    Op<TFL_Dialect, "max_pooling_with_argmax_2d", [NoSideEffect]> {
-  let summary = "Max Pool 2D with argmax op";
-
-  let description = [{
-    Performs max pooling on the input and outputs both max values and indices.
-    Each index is a flatten index in a sub-array of "filter_w" x "filter_h" size
-    Note this is a custom op that is not supported in the standard runtime.
-
-    Inputs:
-      `inputs[0]`: required: the input activation tensor
-  }];
-
-  let arguments = (
-    ins AnyTensor:$input,
-    TFL_PaddingAttr:$padding,
-    I32Attr:$stride_w,
-    I32Attr:$stride_h,
-    I32Attr:$filter_w,
-    I32Attr:$filter_h
-  );
-
-  let results = (outs
-    AnyTensor:$value,
-    AnyTensor:$indices
-  );
-}
-
-def TFL_MaxUnpooling2DOp :
-    Op<TFL_Dialect, "max_unpooling_2d", [NoSideEffect, TFL_GpuTargetOp]> {
-  let summary = "Max Unpool 2D";
-
-  let description = [{
-    Performs max unpool operation.
-    To some extent this is the reverse operation of max pooling:
-    the elements in the input activation tensor is stored into the position
-    specified by the input indices.
-    Note this is a custom op that is not supported in the standard runtime.
-
-    Inputs:
-      `inputs[0]`: required: the input activation tensor
-      `inputs[1]`: required: the input indices
-  }];
-
-  let arguments = (
-    ins AnyTensor:$input,
-    AnyTensor:$indices,
-    TFL_PaddingAttr:$padding,
-    I32Attr:$stride_w,
-    I32Attr:$stride_h,
-    I32Attr:$filter_w,
-    I32Attr:$filter_h
-  );
-
-  let results = (outs AnyTensor:$outputs);
 }
 
 def TFL_MaximumOp : TFL_Op<"maximum", [
@@ -3989,6 +3910,29 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
   let verifier = [{ return Verify(*this); }];
 
   let hasCanonicalizer = 1;
+}
+
+def TFL_CustomOp : Op<TFL_Dialect, "custom", [NoSideEffect]> {
+  let summary = "Custom op";
+
+  let description = [{
+    A generic op for any TFLite custom operation.
+
+    input: A list of inputs in the original op.
+    custom_code: A string used to identify which exactly this op is, which
+                 corresponds to operator_codes.custom_code in the flatbuffer.
+    custom_option: a holder to save the op attributes in bytes fashion.
+    output: A list of outputs in the original op.
+  }];
+
+  let arguments = (ins
+    Variadic<TFL_TensorOfOrNone<[AnyType]>>:$input,
+    StrAttr:$custom_code,
+    OpaqueBytesAttr:$custom_option
+  );
+  let results = (outs Variadic<AnyTensor>:$output);
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 #endif // TFL_OPS
