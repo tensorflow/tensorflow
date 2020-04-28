@@ -124,8 +124,7 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
     Formatting a single-tensor template:
     ```python
     >>> tensor = tf.range(10)
-    >>> formatted = tf.strings.format("tensor: {}, suffix", tensor)
-    >>> print(formatted)
+    >>> tf.strings.format("tensor: {}, suffix", tensor)
     tf.Tensor(b'tensor: [0 1 2 ... 7 8 9], suffix', shape=(), dtype=string)
     ```
 
