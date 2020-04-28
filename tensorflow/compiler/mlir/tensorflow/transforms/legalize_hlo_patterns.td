@@ -38,7 +38,6 @@ foreach fromToBinPair = [[HLO_AddOp, TF_AddV2Op],
                          [HLO_MinOp, TF_MinimumOp],
                          [HLO_MulOp, TF_MulOp],
                          [HLO_PowOp, TF_PowOp],
-                         [HLO_DivOp, TF_RealDivOp],
                          [HLO_SubOp, TF_SubOp],
                          [HLO_Atan2Op, TF_Atan2Op],
                          [HLO_RemOp, TF_ModOp]] in
