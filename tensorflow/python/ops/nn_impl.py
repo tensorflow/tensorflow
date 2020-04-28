@@ -741,6 +741,7 @@ def depthwise_conv2d(input,
   to 1.
 
   Usage Example:
+
   >>> x = np.array([
   ...     [1., 2.],
   ...     [3., 4.],
@@ -867,6 +868,7 @@ def depthwise_conv2d_v2(input,
   to 1.
 
   Usage Example:
+
   >>> x = np.array([
   ...     [1., 2.],
   ...     [3., 4.],
