@@ -31,12 +31,10 @@ mkdir -p ${MICRO_LOG_PATH}
 # Get the location of this script file as an absolute path
 SCRIPT_PATH="`dirname \"$BASH_SOURCE\"`"
 SCRIPT_PATH="`( cd \"$SCRIPT_PATH\" && pwd )`"
+pushd tensorflow/lite/micro/tools/make/downloads/xtimecomposer/xTIMEcomposer/15.0.0/ && source SetEnv && popd
 XSIM_FLAGS=""
 
-#if !  docker run -it -v$(pwd):/home/builder:z --rm andrewxcav/xcore_test:latest xsim $1 ${XSIM_FLAGS} 2>&1 | tee ${MICRO_LOG_FILENAME}
-#then
-#  exit_code=1
-#fi
+
 xsim $1 ${XSIM_FLAGS} 2>&1 | tee ${MICRO_LOG_FILENAME}
 
 if grep -q "$2" ${MICRO_LOG_FILENAME}
