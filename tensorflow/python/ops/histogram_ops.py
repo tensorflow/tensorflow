@@ -68,9 +68,8 @@ def histogram_fixed_width_bins(values,
   >>> nbins = 5
   >>> value_range = [0.0, 5.0]
   >>> new_values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
-  >>> indices = tf.histogram_fixed_width_bins(new_values, value_range, nbins=5)
-  >>> print(indices) 
-  tf.Tensor([0 0 1 2 4 4], shape=(6,), dtype=int32)
+  >>> tf.histogram_fixed_width_bins(new_values, value_range, nbins=5)
+  <tf.Tensor: shape=(6,), dtype=int32, numpy=array([0, 0, 1, 2, 4, 4], dtype=int32)>
   ```
   """
   with ops.name_scope(name, 'histogram_fixed_width_bins',
@@ -136,9 +135,8 @@ def histogram_fixed_width(values,
   >>> nbins = 5
   >>> value_range = [0.0, 5.0]
   >>> new_values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
-  >>> hist = tf.histogram_fixed_width(new_values, value_range, nbins=5)
-  >>> print(hist)
-  tf.Tensor([2 1 1 0 2], shape=(5,), dtype=int32)
+  >>> tf.histogram_fixed_width(new_values, value_range, nbins=5)
+  <tf.Tensor: shape=(5,), dtype=int32, numpy=array([2, 1, 1, 0, 2], dtype=int32)>
   ```
   """
   with ops.name_scope(name, 'histogram_fixed_width',
