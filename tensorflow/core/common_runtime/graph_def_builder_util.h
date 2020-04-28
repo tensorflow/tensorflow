@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_UTIL_H_
-#define TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_UTIL_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_DEF_BUILDER_UTIL_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_DEF_BUILDER_UTIL_H_
 
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -32,4 +32,4 @@ Status GraphDefBuilderToGraph(const GraphDefBuilder& builder, Graph* graph);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_GRAPH_GRAPH_DEF_BUILDER_UTIL_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_DEF_BUILDER_UTIL_H_

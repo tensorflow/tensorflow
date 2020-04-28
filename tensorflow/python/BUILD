@@ -712,7 +712,7 @@ tf_python_pybind_extension(
     srcs = [
         "training/quantize_training_wrapper.cc",
     ],
-    hdrs = ["//tensorflow/core/graph:quantize_training_hdrs"],
+    hdrs = ["//tensorflow/core/common_runtime:quantize_training_hdrs"],
     module_name = "_pywrap_quantize_training",
     deps = [
         ":pybind11_lib",
@@ -5952,11 +5952,10 @@ filegroup(
         "//tensorflow/c:tf_status_helper",  # tfe
         "//tensorflow/compiler/jit:flags",  #tfe
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
-        "//tensorflow/core/common_runtime:core_cpu_base_no_ops",  # tf_session
-        "//tensorflow/core/common_runtime:core_cpu_rump_impl",  # quantize_training
         "//tensorflow/core/common_runtime:device",  # device_lib, tfe, tf_session
         "//tensorflow/core/common_runtime:device_factory",  # device_lib, tfe, tf_session
         "//tensorflow/core/common_runtime:graph_constructor",  # tf_session
+        "//tensorflow/core/common_runtime:quantize_training",  # quantize_training
         "//tensorflow/core/common_runtime:session_options",  # device_lib, tfe, tf_session
         "//tensorflow/core/common_runtime:session_state",  # tf_session
         "//tensorflow/core/data/service:server_lib",  # server_lib

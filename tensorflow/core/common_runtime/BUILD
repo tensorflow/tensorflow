@@ -58,7 +58,9 @@ tf_cuda_library(
         "device_factory.h",
         "function.h",
         "function_optimization_registry.h",
+        "gradients.h",
         "graph_constructor.h",
+        "graph_def_builder_util.h",
         "optimization_registry.h",
         "shape_refiner.h",
         "//tensorflow/core/graph:core_cpu_headers",
@@ -157,6 +159,7 @@ filegroup(
         "function_body.h",
         "function_utils.h",
         "graph_constructor.h",
+        "graph_def_builder_util.h",
         "graph_optimizer.h",
         "graph_runner.h",
         "inline_function_utils.h",
@@ -173,7 +176,6 @@ filegroup(
 tf_cuda_library(
     name = "core_cpu_base_no_ops",
     srcs = [
-        "//tensorflow/core/graph:core_cpu_base_no_ops_srcs",
         "//tensorflow/core/public:session_options.h",
         "//tensorflow/core/public:version.h",
     ],
@@ -194,6 +196,7 @@ tf_cuda_library(
         "//third_party/eigen3",
     ] + if_static([
         ":graph_constructor",
+        ":graph_def_builder_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ]),
@@ -225,6 +228,8 @@ filegroup(
         "executor.h",
         "executor_factory.h",
         "function_optimization_registry.h",
+        "graph_optimizer.h",
+        "gradients.h",
         "input_colocation_exemption_registry.h",
         "isolate_placer_inspection_required_ops_pass.h",
         "local_device.h",
@@ -236,12 +241,14 @@ filegroup(
         "lower_while_op.h",
         "memory_types.h",
         "mkl_cpu_allocator.h",
+        "mkl_layout_pass.h",
         "optimization_registry.h",
         "partitioning_utils.h",
         "placer.h",
         "process_util.h",
         "inspecting_placer.h",
         "profile_handler.h",
+        "quantize_training.h",
         "renamed_device.h",
         "rendezvous_mgr.h",
         "rendezvous_util.h",
@@ -256,7 +263,6 @@ filegroup(
         "threadpool_device.h",
         "process_state.h",
         "pool_allocator.h",
-        "//tensorflow/core/graph:core_cpu_lib_headers",
     ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util_header"]),
 )
 
@@ -606,6 +612,23 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "gradients",
+    srcs = ["gradients.cc"],
+    hdrs = ["gradients.h"],
+    deps = [
+        ":device",
+        ":executor",
+        ":graph_constructor",
+        ":graph_optimizer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
 # This library also includes "eval_const_tensor", "graph_runner", and
 # "shape_refiner", because there are circular dependencies between these
 # modules.
@@ -643,6 +666,18 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "graph_def_builder_util",
+    srcs = ["graph_def_builder_util.cc"],
+    hdrs = ["graph_def_builder_util.h"],
+    copts = tf_copts(),
+    deps = [
+        ":graph_constructor",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -794,6 +829,36 @@ cc_library(
 )
 
 cc_library(
+    name = "mkl_layout_pass",
+    srcs = ["mkl_layout_pass.cc"],
+    hdrs = ["mkl_layout_pass.h"],
+    copts = tf_copts(),
+    deps = [
+        ":optimization_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+    ] + mkl_deps(),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "mkl_tfconversion_pass",
+    srcs = ["mkl_tfconversion_pass.cc"],
+    hdrs = ["mkl_tfconversion_pass.h"],
+    copts = tf_copts(),
+    deps = [
+        ":optimization_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+    ] + mkl_deps(),
+    alwayslink = 1,
+)
+
+cc_library(
     name = "optimization_registry",
     srcs = ["optimization_registry.cc"],
     hdrs = ["optimization_registry.h"],
@@ -920,6 +985,32 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
+    ],
+)
+
+filegroup(
+    name = "quantize_training_hdrs",
+    srcs = [
+        "quantize_training.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
+cc_library(
+    name = "quantize_training",
+    srcs = ["quantize_training.cc"],
+    hdrs = [":quantize_training_hdrs"],
+    copts = tf_copts(),
+    deps = [
+        ":executor",
+        ":graph_constructor",
+        ":memory_types",
+        ":session_options",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -1215,7 +1306,6 @@ tf_cuda_library(
         "placer_inspection_required_ops_utils.cc",
         "placer_inspection_required_ops_utils.h",
         "process_function_library_runtime.cc",
-        "//tensorflow/core/graph:core_cpu_impl_srcs",
     ],
     hdrs = [":core_cpu_lib_headers"],
     copts = tf_copts(),
@@ -1226,6 +1316,7 @@ tf_cuda_library(
         ":executor_factory",
         ":function_body",
         ":function_optimization_registry",
+        ":gradients",
         ":graph_constructor",
         ":graph_optimizer",
         ":graph_view",
@@ -1285,12 +1376,15 @@ tf_cuda_library(
         ":device_resolver_local",
         ":device_set",
         ":entry",
+        ":graph_def_builder_util",
         ":graph_view",
         ":hierarchical_tree_broadcaster",
         ":input_colocation_exemption_registry",
         ":local_device",
         ":memory_types",
         ":mkl_cpu_allocator",
+        ":mkl_layout_pass",
+        ":mkl_tfconversion_pass",
         ":optimization_registry",
         ":parallel_concat_optimizer",
         ":partitioning_utils",
@@ -1299,6 +1393,7 @@ tf_cuda_library(
         ":process_state",
         ":process_util",
         ":profile_handler",
+        ":quantize_training",
         ":renamed_device",
         ":rendezvous_mgr",
         ":rendezvous_util",
@@ -2266,5 +2361,82 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test_mkl(
+    name = "mkl_related_tests",
+    size = "small",
+    srcs = [
+        "mkl_layout_pass_test.cc",
+        "mkl_tfconversion_pass_test.cc",
+    ],
+    linkstatic = 1,
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/core/kernels:ops_util",
+        "//third_party/eigen3",
+    ] + if_mkl([
+        "//tensorflow/core/kernels:mkl_aggregate_ops",
+        "//tensorflow/core/kernels:mkl_batch_matmul_op",
+        "//tensorflow/core/kernels:mkl_concat_op",
+        "//tensorflow/core/kernels:mkl_conv_op",
+        "//tensorflow/core/kernels:mkl_cwise_ops_common",
+        "//tensorflow/core/kernels:mkl_dequantize_op",
+        "//tensorflow/core/kernels:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels:mkl_identity_op",
+        "//tensorflow/core/kernels:mkl_input_conversion_op",
+        "//tensorflow/core/kernels:mkl_lrn_op",
+        "//tensorflow/core/kernels:mkl_matmul_op",
+        "//tensorflow/core/kernels:mkl_pooling_ops",
+        "//tensorflow/core/kernels:mkl_qmatmul_op",
+        "//tensorflow/core/kernels:mkl_quantize_op",
+        "//tensorflow/core/kernels:mkl_relu_op",
+        "//tensorflow/core/kernels:mkl_reshape_op",
+        "//tensorflow/core/kernels:mkl_slice_op",
+        "//tensorflow/core/kernels:mkl_softmax_op",
+        "//tensorflow/core/kernels:mkl_tfconv_op",
+        "//tensorflow/core/kernels:mkl_transpose_op",
+        "//tensorflow/core/kernels:mkl_tmp_bf16_ops",
+    ]),
+)
+
+# TODO(bmzhao): Refactor this target to use granular dependencies
+# after stage 4 of the TF build refactor is complete:
+# https://github.com/tensorflow/community/pull/179
+tf_cc_test(
+    name = "quantize_training_test",
+    srcs = ["quantize_training_test.cc"],
+    deps = [
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        "//tensorflow/core",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/util:protos_test_cc",
     ],
 )

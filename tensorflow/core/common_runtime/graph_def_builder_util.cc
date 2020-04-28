@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/graph/graph_def_builder_util.h"
+#include "tensorflow/core/common_runtime/graph_def_builder_util.h"
 
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 
 namespace tensorflow {
 

@@ -17,7 +17,7 @@ limitations under the License.
 // all over the place, we should log an error and execute the original graph.
 #ifdef INTEL_MKL
 
-#include "tensorflow/core/graph/mkl_layout_pass.h"
+#include "tensorflow/core/common_runtime/mkl_layout_pass.h"
 
 #include <algorithm>
 #include <functional>

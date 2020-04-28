@@ -13,16 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/common_runtime/quantize_training.h"
+
 #include <algorithm>
 #include <atomic>
 #include <set>
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/graph/quantize_training.h"
-
-#include "tensorflow/core/common_runtime/executor.h"
-#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
