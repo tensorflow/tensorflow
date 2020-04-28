@@ -29,14 +29,5 @@ The op uses LU decomposition with partial pivoting to compute the inverses.
 If a matrix is not invertible there is no guarantee what the op does. It
 may detect the condition and raise an exception or it may simply return a
 garbage result.
-
-For example:
-```
->>> a = tf.constant([1,2],[3,4], dtype=tf.float32)
->>> tf.linalg.inv(a)
-<tf.Tensor: shape=(2, 2), dtype=float32, numpy=
-array([[-2.0000002 ,  1.0000001 ],
-       [ 1.5000001 , -0.50000006]], dtype=float32)>
-```
 END
 }
