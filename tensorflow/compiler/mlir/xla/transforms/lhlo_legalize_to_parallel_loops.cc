@@ -504,7 +504,7 @@ class SelectAndScatterOpConverter
     // Compute `out[selected_ivs]` = scatter(out[selected_ivs], src_element)`.
     auto rmw = rewriter.create<GenericAtomicRMWOp>(loc, s_and_s_op.out(),
                                                    selected_ivs);
-    OpBuilder rmw_builder = rmw.getBodyBuilder();
+    OpBuilder rmw_builder = OpBuilder::atBlockEnd(rmw.getBody());
     auto acc_result =
         ApplySingleResultLhloCode(loc, {src_elem, rmw.getCurrentValue()},
                                   &s_and_s_op.scatter().front(), &rmw_builder);
@@ -604,7 +604,8 @@ class SelectAndScatterOpConverter
     auto loc = s_and_s_op.getLoc();
 
     WindowLoops window_loops = InsertWindowLoops(s_and_s_op, loop_over_src, b);
-    OpBuilder inner_loop_b = window_loops.inner_loop.getBodyBuilder();
+    auto inner_loop_b =
+        OpBuilder::atBlockEnd(window_loops.inner_loop.getBody());
 
     // Compute ivs in 'arg' buffer and whether these ivs are in the pad area.
     MappedIvs mapped_ivs =

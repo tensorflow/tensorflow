@@ -326,7 +326,7 @@ def BinaryOpSameElementTypeConstraint :
 //===----------------------------------------------------------------------===//
 
 def TFL_BroadcastableBinaryBuilder : OpBuilder<
-  "Builder *builder, OperationState &result, Value lhs, Value rhs",
+  "OpBuilder &builder, OperationState &result, Value lhs, Value rhs",
   [{
     auto resultType =
       OpTrait::util::getBroadcastedType(lhs.getType(), rhs.getType());
@@ -337,17 +337,17 @@ def TFL_BroadcastableBinaryBuilder : OpBuilder<
   }]>;
 
 def TFL_FusedBroadcastableBinaryBuilder : OpBuilder<
-  "Builder *builder, OperationState &result, Value lhs, Value rhs, "
+  "OpBuilder &builder, OperationState &result, Value lhs, Value rhs, "
   "StringAttr fusedActivationFunction",
   [{
     buildFusedBroadcastableBinOp(
-       builder, result, lhs, rhs, fusedActivationFunction);
+       &builder, result, lhs, rhs, fusedActivationFunction);
   }]>;
 
 def TFL_ComparisonBinaryBuilder : OpBuilder<
-  "Builder *builder, OperationState &result, Value lhs, Value rhs",
+  "OpBuilder &builder, OperationState &result, Value lhs, Value rhs",
   [{
-    buildComparisonBinOp(builder, result, lhs, rhs);
+    buildComparisonBinOp(&builder, result, lhs, rhs);
   }]>;
 
 //===----------------------------------------------------------------------===//
@@ -678,7 +678,7 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, NoSideEffect,
   let hasFolder = 1;
 
   let builders = [OpBuilder<
-    "Builder *, OperationState &state, Attribute value",
+    "OpBuilder &, OperationState &state, Attribute value",
     [{
       state.addAttribute("value", value);
       state.addTypes(value.getType());
@@ -727,7 +727,7 @@ def TFL_SparseConstOp : Op<TFL_Dialect, "pseudo_sparse_const", [NoSideEffect,
   let results = (outs AnyTensor:$output);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState &state, Attribute value, "
+    "OpBuilder &, OperationState &state, Attribute value, "
     "SparsityParameterAttr s_param",
     [{
       state.addTypes(value.getType());
@@ -862,9 +862,9 @@ def TFL_GatherOp : TFL_Op<"gather", [
 
   let builders =
   [
-    OpBuilder<"Builder *builder, OperationState &result, "
+    OpBuilder<"OpBuilder &builder, OperationState &result, "
       "Value params, Value indices, IntegerAttr axis",
-        [{ BuildGatherOp(builder, result, params, indices, axis); }]>
+        [{ BuildGatherOp(&builder, result, params, indices, axis); }]>
   ];
 
   let results = (outs
@@ -1183,9 +1183,9 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
   let builders =
   [
     OpBuilder<
-      "Builder *builder, OperationState &result, Value lhs, Value rhs",
+      "OpBuilder &builder, OperationState &result, Value lhs, Value rhs",
       [{
-        buildComparisonBinOp(builder, result, lhs, rhs);
+        buildComparisonBinOp(&builder, result, lhs, rhs);
       }]>
   ];
 
@@ -2208,7 +2208,7 @@ def TFL_ReluOp: TFL_Op<"relu", [NoSideEffect,
   // non-quantization tablegen patterns. Currently, it is used by the
   // elementwise-move reordering pattern in the optimize_patterns.td
   let builders = [OpBuilder<
-    "Builder *, OperationState &state, Value input",
+    "OpBuilder &, OperationState &state, Value input",
     [{
       state.addOperands({input});
       state.addTypes(input.getType());
@@ -2235,7 +2235,7 @@ def TFL_Relu6Op: TFL_Op<"relu6", [NoSideEffect,
   // non-quantization tablegen patterns. Currently, it is used by the
   // elementwise-move reordering pattern in the optimize_patterns.td
   let builders = [OpBuilder<
-    "Builder *, OperationState &state, Value input",
+    "OpBuilder &, OperationState &state, Value input",
     [{
       state.addOperands({input});
       state.addTypes(input.getType());
@@ -2261,7 +2261,7 @@ def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [NoSideEffect,
   // non-quantization tablegen patterns. Currently, it is used by the
   // elementwise-move reordering pattern in the optimize_patterns.td
   let builders = [OpBuilder<
-    "Builder *, OperationState &state, Value input",
+    "OpBuilder &, OperationState &state, Value input",
     [{
       state.addOperands({input});
       state.addTypes(input.getType());
@@ -2431,7 +2431,7 @@ def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
   let results = (outs AnyTensor:$output);
 
   // TODO(jpienaar): autogenerate this.
-  let builders = [OpBuilder<"Builder *builder, OperationState &result, "
+  let builders = [OpBuilder<"OpBuilder &builder, OperationState &result, "
                             "Value condition, Value x, Value y",
   [{
     auto resultType = x.getType();
@@ -2459,10 +2459,10 @@ def TFL_SelectV2Op : TFL_Op<"select_v2", [NoSideEffect]> {
     TFL_TensorOf<[F32, I1, I8, I16, I32, I64, TFL_Uint8]>:$y);
   let results = (outs AnyTensor:$output);
 
-  let builders = [OpBuilder<"Builder *builder, OperationState &result, "
+  let builders = [OpBuilder<"OpBuilder &builder, OperationState &result, "
                             "Value cond, Value x, Value y",
   [{
-    BuildSelectV2Op(builder, result, cond, x, y);
+    BuildSelectV2Op(&builder, result, cond, x, y);
   }]>];
 
   let hasOptions = 1;
@@ -2625,7 +2625,7 @@ def TFL_TanhOp: TFL_Op<"tanh", [
   // non-quantization tablegen patterns. Currently, it is used by the
   // elementwise-move reordering pattern in the optimize_patterns.td
   let builders = [OpBuilder<
-    "Builder *, OperationState &state, Value input",
+    "OpBuilder &, OperationState &state, Value input",
     [{
       state.addOperands({input});
       state.addTypes(input.getType());
@@ -2679,9 +2679,9 @@ def TFL_TopKV2Op: TFL_Op<"topk_v2", [NoSideEffect, TFL_OperandHasRank<1,0>,
     TFL_TensorOf<[F32, I8, I32, I64, TFL_Uint8, QI8, QUI8]>:$values,
     TFL_I32Tensor:$indices);
 
-  let builders = [OpBuilder<"Builder *builder, OperationState &result, "
+  let builders = [OpBuilder<"OpBuilder &builder, OperationState &result, "
                             "Value input, Value k",
-                  [{ BuildTopKOp(builder, result, input, k); }]>];
+                  [{ BuildTopKOp(&builder, result, input, k); }]>];
 
   let hasOptions = 1;
 }
@@ -3187,7 +3187,7 @@ def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
   let results = (outs AnyTensor:$output);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState &state, TypeAttr qtype, Attribute value",
+    "OpBuilder &, OperationState &state, TypeAttr qtype, Attribute value",
     [{
       state.addAttribute("qtype", qtype);
       state.addAttribute("value", value);
@@ -3215,7 +3215,7 @@ def TFL_SparseQConstOp : Op<TFL_Dialect, "pseudo_sparse_qconst", [
   let results = (outs AnyTensor:$output);
 
   let builders = [OpBuilder<
-    "Builder *, OperationState &state, TypeAttr qtype, "
+    "OpBuilder &, OperationState &state, TypeAttr qtype, "
     "Attribute value, SparsityParameterAttr s_param",
     [{
       state.addTypes(qtype.getValue());
