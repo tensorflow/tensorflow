@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import context
+from tensorflow.python.platform import build_info
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
@@ -653,3 +654,25 @@ def disable_mlir_bridge():
 def disable_mlir_graph_optimization():
   """Disables experimental MLIR-Based TensorFlow Compiler Optimizations."""
   context.context().enable_mlir_graph_optimization = False
+
+
+@tf_export('config.get_cuda_version_used_to_compile_tf')
+def get_cuda_version_used_to_compile_tf():
+  """Get the version of NVIDIA CUDA used to compile this TensorFlow release.
+
+  Returns:
+    String representation of CUDA version number (Major.Minor) if CUDA support
+    is included, otherwise None.
+  """
+  return build_info.cuda_build_info.get('cuda_version', None)
+
+
+@tf_export('config.get_cudnn_version_used_to_compile_tf')
+def get_cudnn_version_used_to_compile_tf():
+  """Get the version of NVIDIA cuDNN used to compile this TensorFlow release.
+
+  Returns:
+    String representation of cuDNN version number (Major only) if cuDNN support
+    is included, otherwise None.
+  """
+  return build_info.cuda_build_info.get('cudnn_version', None)
