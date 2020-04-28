@@ -411,7 +411,6 @@ def eigvals(tensor, name=None):
   _SelfAdjointEigV2Grad in linalg_grad.py.
 
   For example:
-  ```
   >>> a = tf.constant([[1,2],[3,4]], dtype=tf.float32)
   >>> tf.linalg.eigvalsh(a)
   <tf.Tensor: shape=(2,), dtype=float32, numpy=
