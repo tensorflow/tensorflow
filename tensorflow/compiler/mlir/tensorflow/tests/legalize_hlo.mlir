@@ -324,11 +324,6 @@ func @const() -> tensor<2xi32> {
   return %0 : tensor<2xi32>
 }
 
-func @const_dynamic_output() -> tensor<*xi32> {
-  %0 = xla_hlo.constant {value = dense<0> : tensor<2xi32>} : tensor<*xi32>
-  return %0 : tensor<*xi32>
-}
-
 func @relu(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   %0 = xla_hlo.constant dense<0> : tensor<i32>
   %1 = "xla_hlo.maximum"(%0, %arg0) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<i32>, tensor<1xi32>) -> tensor<1xi32>
@@ -1069,11 +1064,6 @@ func @convert_i32_f32(%arg0: tensor<2xi32>) -> tensor<2xf32> {
 // CHECK-LABEL:   func @const() -> tensor<2xi32> {
 // CHECK:           [[VAL_190:%.*]] = "tf.Const"() {value = dense<0> : tensor<2xi32>} : () -> tensor<2xi32>
 // CHECK:           return [[VAL_190]] : tensor<2xi32>
-// CHECK:         }
-
-// CHECK-LABEL:   func @const_dynamic_output() -> tensor<*xi32> {
-// CHECK:           [[VAL_191:%.*]] = "tf.Const"() {value = dense<0> : tensor<2xi32>} : () -> tensor<*xi32>
-// CHECK:           return [[VAL_191]] : tensor<*xi32>
 // CHECK:         }
 
 // CHECK-LABEL:   func @relu(

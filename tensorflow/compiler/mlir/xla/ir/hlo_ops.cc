@@ -159,23 +159,15 @@ DenseIntElementsAttr BuildConvPaddingAttrs(
 //===----------------------------------------------------------------------===//
 
 static void Print(ConstOp op, OpAsmPrinter* printer) {
-  // Use short form only if the result type matches type of attribute 'value'.
-  bool use_short_form = op.value().getType() == op.getType();
-
   // Print op name.
   *printer << op.getOperationName();
 
-  // If short form, elide attribute value while printing the attribute
-  // dictionary.
+  // Elide attribute value while printing the attribute dictionary.
   SmallVector<StringRef, 1> elided_attrs;
-  if (use_short_form) elided_attrs.push_back("value");
+  elided_attrs.push_back("value");
   printer->printOptionalAttrDict(op.getAttrs(), elided_attrs);
 
-  if (use_short_form) {
-    *printer << ' ' << op.value();
-  } else {
-    *printer << " : " << op.getType();
-  }
+  *printer << ' ' << op.value();
 }
 
 static ParseResult ParseConstOp(OpAsmParser* parser, OperationState* result) {
@@ -337,6 +329,10 @@ void ConvertOp::build(OpBuilder& builder, OperationState& result, Value operand,
 
 OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
   if (getOperand().getType() == getResult().getType()) return getOperand();
+
+  // If the result has non-static shape, a convert op is necessary to go from
+  // static shape to non-static shape.
+  if (!getResult().getType().cast<TensorType>().hasStaticShape()) return {};
 
   // If the operand is constant, we can do the conversion now.
   if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {

@@ -46,8 +46,9 @@ class HLO_Op<string mnemonic, list<OpTrait> traits> :
 // XLA nullary op definitions.
 //===----------------------------------------------------------------------===//
 
-def HLO_ConstOp : HLO_Op<"constant", [ConstantLike, NoSideEffect]>,
-                  BASE_HLO_ConstOp {
+def HLO_ConstOp : HLO_Op<"constant",
+    [ConstantLike, NoSideEffect, AllTypesMatch<["value", "output"]>]>,
+    BASE_HLO_ConstOp {
   let arguments = (ins
     ElementsAttr:$value
   );
