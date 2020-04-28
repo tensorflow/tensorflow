@@ -1685,9 +1685,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         output_weights.append(weight)
     return backend.batch_get_value(output_weights)
 
+  @deprecation.deprecated(
+      date=None, instructions='Please use `layer.updates` instead.')
   @doc_controls.do_not_generate_docs
   def get_updates_for(self, inputs):
-    """Retrieves updates relevant to a specific set of inputs.
+    """Deprecated, do NOT use!
+
+    Retrieves updates relevant to a specific set of inputs.
 
     Arguments:
       inputs: Input tensor or list/tuple of input tensors.
@@ -1697,9 +1701,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     """
     return self.updates
 
-  @doc_controls.do_not_doc_inheritable
+  @deprecation.deprecated(
+      date=None, instructions='Please use `layer.losses` instead.')
+  @doc_controls.do_not_generate_docs
   def get_losses_for(self, inputs):
-    """Retrieves losses relevant to a specific set of inputs.
+    """Deprecated, do NOT use!
+
+    Retrieves losses relevant to a specific set of inputs.
 
     Arguments:
       inputs: Input tensor or list/tuple of input tensors.
