@@ -4,6 +4,13 @@
 
 load("@local_config_remote_execution//:remote_execution.bzl", "gpu_test_tags")
 
+# RBE settings for tests that require a GPU. This is used in exec_properties of rules
+# that need GPU access.
+GPU_TEST_PROPERTIES = {
+    "dockerRuntime": "nvidia",
+    "Pool": "gpu-pool",
+}
+
 def tf_gpu_tests_tags():
     return ["requires-gpu", "gpu"] + gpu_test_tags()
 
@@ -14,11 +21,11 @@ def tf_cuda_tests_tags():
 def tf_sycl_tests_tags():
     return ["requires-gpu", "gpu"] + gpu_test_tags()
 
-def tf_exec_compatible_with(kwargs):
+def tf_exec_properties(kwargs):
     if ("tags" in kwargs and kwargs["tags"] != None and
         "remote-gpu" in kwargs["tags"]):
-        return ["@org_tensorflow//third_party/toolchains:gpu_test"]
-    return []
+        return GPU_TEST_PROPERTIES
+    return {}
 
 def tf_additional_plugin_deps():
     return select({

@@ -62,6 +62,7 @@ class LogicalBufferAnalysis : public DfsHloVisitorWithDefault {
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleDomain(HloInstruction* domain) override;
   Status HandleCopy(HloInstruction* copy) override;
+  Status HandleCopyStart(HloInstruction* copy_start) override;
   Status HandleCopyDone(HloInstruction* copy_done) override;
   Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandleSend(HloInstruction* send) override;

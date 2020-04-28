@@ -119,7 +119,8 @@ class ExpiringLRUCache {
     std::list<string>::iterator lru_iterator;
   };
 
-  bool LookupLocked(const string& key, T* value) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  bool LookupLocked(const string& key, T* value)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     auto it = cache_.find(key);
     if (it == cache_.end()) {
       return false;
@@ -136,7 +137,7 @@ class ExpiringLRUCache {
   }
 
   void InsertLocked(const string& key, const T& value)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     lru_list_.push_front(key);
     Entry entry{env_->NowSeconds(), value, lru_list_.begin()};
     auto insert = cache_.insert(std::make_pair(key, entry));
@@ -149,7 +150,7 @@ class ExpiringLRUCache {
     }
   }
 
-  bool DeleteLocked(const string& key) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  bool DeleteLocked(const string& key) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     auto it = cache_.find(key);
     if (it == cache_.end()) {
       return false;
@@ -174,11 +175,11 @@ class ExpiringLRUCache {
   mutex mu_;
 
   /// The cache (a map from string key to Entry).
-  std::map<string, Entry> cache_ GUARDED_BY(mu_);
+  std::map<string, Entry> cache_ TF_GUARDED_BY(mu_);
 
   /// The LRU list of entries. The front of the list identifies the most
   /// recently accessed entry.
-  std::list<string> lru_list_ GUARDED_BY(mu_);
+  std::list<string> lru_list_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

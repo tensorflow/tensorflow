@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
@@ -111,11 +112,12 @@ def _make_new_nodes(nodes_by_depth, layer_fn, layer_map, tensor_map):
       # then call node.inbound_layer on them.
       if all(
           tensor in tensor_map for tensor in nest.flatten(node.input_tensors)):
-        computed_tensors = nest.map_structure(lambda t: tensor_map[t],
-                                              node.input_tensors)
         # Call layer.
-        kwargs = node.arguments or {}
-        output_tensors = layer(computed_tensors, **kwargs)
+        args = nest.map_structure(lambda t: tensor_map.get(t, t),
+                                  node.call_args)
+        kwargs = nest.map_structure(lambda t: tensor_map.get(t, t),
+                                    node.call_kwargs)
+        output_tensors = layer(*args, **kwargs)
 
         # Thread-safe way to keep track of what node was created.
         first_output_tensor = nest.flatten(output_tensors)[0]
@@ -450,7 +452,8 @@ def _in_place_subclassed_model_reset(model):
   """
   assert not model._is_graph_network  # Only makes sense for subclassed networks
   # Select correct base class for new Model.
-  version_utils.swap_class(model.__class__, training.Model, training_v1.Model)
+  version_utils.swap_class(model.__class__, training.Model, training_v1.Model,
+                           ops.executing_eagerly_outside_functions())
   # Retrieve all layers tracked by the model as well as their attribute names
   attributes_cache = {}
   for name in dir(model):
@@ -550,6 +553,8 @@ def _reset_build_compile_trackers(model):
   model.outputs = None
   # Reset compile state
   model._is_compiled = False  # pylint:disable=protected-access
+  if not ops.executing_eagerly_outside_functions():
+    model._v1_compile_was_called = False
   model.optimizer = None
 
 
@@ -637,20 +642,23 @@ def clone_and_build_model(
         'Error when cloning model: compile_clone was set to True, but the '
         'original model has not been compiled.')
 
-  with CustomObjectScope(custom_objects or {}):
-    if model._is_graph_network or isinstance(model, Sequential):
-      clone = clone_model(model, input_tensors=input_tensors)
+  if compile_clone:
+    compile_args = model._get_compile_args()  # pylint: disable=protected-access
+    # Allows this method to be robust to switching graph and eager classes.
+    model._get_compile_args = lambda: compile_args
 
-      if all([
-          isinstance(clone, Sequential), not clone._is_graph_network,
-          getattr(model, '_build_input_shape', None) is not None
-      ]):
-        # Set model inputs to build the model and add input/output properties.
-        # TODO(kathywu): Add multiple placeholders to handle edge case where
-        # sequential model has multiple inputs.
-        clone._set_inputs(
-            K.placeholder(
-                model._build_input_shape, dtype=model.inputs[0].dtype))
+  with CustomObjectScope(custom_objects or {}):
+    if model._is_graph_network:
+      clone = clone_model(model, input_tensors=input_tensors)
+    elif isinstance(model, Sequential):
+      clone = clone_model(model, input_tensors=input_tensors)
+      if (not clone._is_graph_network and model._build_input_shape is not None):
+        if ops.executing_eagerly_outside_functions():
+          clone.build(model._build_input_shape)
+        else:
+          clone._set_inputs(
+              K.placeholder(
+                  model._build_input_shape, dtype=model.inputs[0].dtype))
     else:
       try:
         # Prefer clonining the model if serial/deserial logic is implemented for
@@ -702,14 +710,15 @@ def clone_and_build_model(
 
       if len(optimizer) == 1:
         optimizer = optimizer[0]
-    clone.compile(
-        optimizer,
-        model.loss,
-        metrics=metrics_module.clone_metrics(model._compile_metrics),
-        loss_weights=model.loss_weights,
-        sample_weight_mode=model.sample_weight_mode,
-        weighted_metrics=metrics_module.clone_metrics(
-            model._compile_weighted_metrics),
-        target_tensors=target_tensors)
+
+    compile_args['optimizer'] = optimizer
+    if target_tensors is not None:
+      compile_args['target_tensors'] = target_tensors
+    # Ensure Metric objects in new model are separate from existing model.
+    compile_args['metrics'] = metrics_module.clone_metrics(
+        compile_args['metrics'])
+    compile_args['weighted_metrics'] = metrics_module.clone_metrics(
+        compile_args['weighted_metrics'])
+    clone.compile(**compile_args)
 
   return clone

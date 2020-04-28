@@ -41,6 +41,16 @@ filegroup(
     ],
 )
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "training/coordinator.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "gradients",
     srcs = [
@@ -146,6 +156,7 @@ cc_library(
         ":array_grad",
         ":data_flow_grad",
         ":image_grad",
+        ":manip_grad",
         ":math_grad",
         ":nn_grad",
     ],
@@ -484,6 +495,32 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "manip_grad",
+    srcs = ["gradients/manip_grad.cc"],
+    deps = [
+        ":cc_ops",
+        ":grad_op_registry",
+        ":gradients",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "gradients_manip_grad_test",
+    srcs = ["gradients/manip_grad_test.cc"],
+    deps = [
+        ":array_ops",
+        ":cc_ops",
+        ":gradient_checker",
+        ":manip_grad",
+        ":testutil",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 # Generates separate libraries for array_ops and math_ops to reduce the dependency count of targets that depend on only these
 tf_gen_op_wrappers_cc(
     name = "math_ops",
@@ -622,6 +659,7 @@ tf_gen_op_wrappers_cc(
         "tpu_configuration_ops",
         "tpu_cross_replica_ops",
         "tpu_embedding_ops",
+        "tpu_embedding_load_retrieve_ops",
         "tpu_functional_ops",
         "tpu_heartbeat_ops",
         "tpu_host_compute_ops",

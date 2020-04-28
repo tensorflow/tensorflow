@@ -17,18 +17,23 @@ limitations under the License.
 
 #include <algorithm>
 #include <queue>
+#include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_value.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -118,10 +123,11 @@ void HloDataflowAnalysis::MarkValueForDeletion(HloValue::Id value_id) {
 }
 
 void HloDataflowAnalysis::DeleteMarkedValues() {
-#ifndef NDEBUG
-  // Verify that no marked-for-deletion values are in any of the value sets.
+  // Use a set to prevent deleting an id twice.
   absl::flat_hash_set<HloValue::Id> id_set(value_ids_to_delete_.begin(),
                                            value_ids_to_delete_.end());
+#ifndef NDEBUG
+  // Verify that no marked-for-deletion values are in any of the value sets.
   for (const auto& pair : value_sets_) {
     const HloInstruction* instruction = pair.first;
     const InstructionValueSet& instruction_value_set = pair.second;
@@ -138,7 +144,7 @@ void HloDataflowAnalysis::DeleteMarkedValues() {
   }
 #endif
 
-  for (HloValue::Id value_id : value_ids_to_delete_) {
+  for (HloValue::Id value_id : id_set) {
     values_.erase(value_id);
   }
   value_ids_to_delete_.clear();
@@ -216,22 +222,13 @@ bool HloDataflowAnalysis::Phi(
     const HloValue* current_value =
         value_set.values().size() == 1 ? value_set.values()[0] : nullptr;
 
-    // Construct a vector of unique value IDs of the inputs.
-    // Don't add value ids where the input is equal to the definition.
+    // Construct a vector of value IDs of the inputs.
     std::vector<HloValue::Id> input_value_ids;
     for (const InstructionValueSet* input : inputs) {
       for (const HloValue* value : input->element(index).values()) {
-        if (value->defining_instruction() == instruction &&
-            value->defining_index() == index) {
-          continue;
-        }
         input_value_ids.push_back(value->id());
       }
     }
-    absl::c_sort(input_value_ids);
-    input_value_ids.erase(
-        std::unique(input_value_ids.begin(), input_value_ids.end()),
-        input_value_ids.end());
 
     // Remove the existing phi value (if it exists). The phi can be its own
     // input, for example, in while body parameters where the body passes
@@ -240,14 +237,7 @@ bool HloDataflowAnalysis::Phi(
         (current_value != nullptr &&
          current_value->defining_instruction() == instruction &&
          current_value->defining_index() == index);
-    if (current_value_defined_here) {
-      VLOG(5) << "current_value_defined_here: " << current_value->ToString();
-      CHECK(current_value->is_phi());
-      auto it = absl::c_find(input_value_ids, current_value->id());
-      if (it != input_value_ids.end()) {
-        input_value_ids.erase(it);
-      }
-    }
+
     VLOG(5) << "after input_value_ids.size = " << input_value_ids.size();
     if (input_value_ids.empty()) {
       // A value set which has at least one element should never have its value
@@ -277,11 +267,33 @@ bool HloDataflowAnalysis::Phi(
       // Multiple distinct values reach this point. A phi value is
       // necessary.
       CHECK_GT(input_value_ids.size(), 1);
-      if (current_value == nullptr ||
-          !(current_value->is_phi() && current_value_defined_here)) {
+      bool phi_defined_here =
+          current_value_defined_here && current_value->is_phi();
+      if (current_value == nullptr || !phi_defined_here) {
         value_set.Clear();
         value_set.AddValue(NewHloValue(instruction, index, /*is_phi=*/true));
+
+        std::vector<HloValue*> inputs;
+        inputs.reserve(input_value_ids.size());
+        for (HloValue::Id id : input_value_ids) {
+          inputs.push_back(&GetValue(id));
+        }
+        // Register the phi into phi graph.
+        phi_graph_.RegisterPhi(*value_set.values()[0], inputs);
         changed = true;
+      } else if (phi_defined_here) {
+        std::vector<HloValue*> new_inputs;
+        new_inputs.reserve(input_value_ids.size());
+        for (HloValue::Id id : input_value_ids) {
+          new_inputs.push_back(&GetValue(id));
+        }
+
+        if (!phi_graph_.InputsEqualTo(*current_value, new_inputs)) {
+          VLOG(1) << current_value->ToShortString() << " has new phi inputs: ";
+          // Update phi inputs.
+          phi_graph_.RegisterPhi(*current_value, new_inputs);
+          changed = true;
+        }
       }
     }
   }
@@ -376,6 +388,19 @@ bool HloDataflowAnalysis::UpdateSendValueSet(HloInstruction* send) {
       value_set = operand_value_set;
       changed = true;
     }
+  }
+  return changed;
+}
+
+bool HloDataflowAnalysis::UpdateCopyStartValueSet(HloInstruction* copy_start) {
+  CHECK_EQ(copy_start->opcode(), HloOpcode::kCopyStart);
+  bool changed = false;
+  // CopyStart forwards the operand value to element {1} of its output.
+  const HloValueSet& operand_value_set = GetValueSet(copy_start->operand(0));
+  HloValueSet& value_set = GetValueSet(copy_start, {1});
+  if (value_set != operand_value_set) {
+    value_set = operand_value_set;
+    changed = true;
   }
   return changed;
 }
@@ -551,9 +576,9 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
       CHECK_EQ(parameter->parameter_number(), 0);
       inputs.push_back(
           &GetInstructionValueSet(callsite.instruction()->operand(0)));
-      // If the parameter *is* the root, then don't consider it's current state
-      // (InstructionValueSet) as we are recomputing its current
-      // state. Otherwise, the parameter state would never be updated.
+      // If the parameter *is not* the root, parameter state would be
+      // updated by the root, otherwise don't consider it's current state
+      // (InstructionValueSet) as we are recomputing its current state.
       if (parameter !=
           callsite.instruction()->while_body()->root_instruction()) {
         inputs.push_back(&GetInstructionValueSet(
@@ -586,7 +611,6 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
                     "called from call, while, or conditional instructions";
     }
   }
-
   if (ssa_form_ && need_phi) {
     return Phi(parameter, inputs);
   } else {
@@ -682,6 +706,8 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
       return UpdateSendValueSet(instruction);
     case HloOpcode::kRecvDone:
       return UpdateRecvDoneValueSet(instruction);
+    case HloOpcode::kCopyStart:
+      return UpdateCopyStartValueSet(instruction);
     case HloOpcode::kCopyDone:
       return UpdateCopyDoneValueSet(instruction);
     case HloOpcode::kConditional:
@@ -707,10 +733,18 @@ void HloDataflowAnalysis::Propagate() {
       add_to_worklist(instruction);
     }
   }
+  VLOG(1) << "SSA_FORM_: " << ssa_form_;
 
   while (!worklist.empty()) {
     HloInstruction* instruction = worklist.front();
+    auto add_to_worklist = [&](HloInstruction* todo) {
+      if (workset.insert(todo).second) {
+        VLOG(1) << "  Adding todo : " << todo->name();
+        worklist.push(todo);
+      }
+    };
     worklist.pop();
+
     workset.erase(workset.find(instruction));
 
     VLOG(3) << "Worklist top: " << instruction->name();
@@ -863,9 +897,16 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           // values flow from their operands.
           define_value_at(/*index=*/{});
           break;
+        case HloOpcode::kCopyStart:
+          // CopyStart produces a tuple of {destination buffer, aliased operand,
+          // U32 context}.
+          define_value_at(/*index=*/{});
+          define_value_at(/*index=*/{0});
+          define_value_at(/*index=*/{2});
+          break;
         case HloOpcode::kCopyDone:
-          // CopyDone produces an element. Its output aliases its input tuple
-          // element {0}; element one is a context.
+          // CopyDone consumes a tuple produced by CopyStart and produces an
+          // element. Its output aliases its input tuple element {0}.
           break;
         case HloOpcode::kRecvDone:
           // RecvDone produces a two-element tuple. Element zero aliases its
@@ -891,6 +932,43 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
   return Status::OK();
 }
 
+void HloDataflowAnalysis::OptimizePhiValues() {
+  // Only applicable to SSA form where phis are defined.
+  if (!ssa_form_) {
+    return;
+  }
+
+  VLOG(1) << "Before phi graph optimization";
+  XLA_VLOG_LINES(1, phi_graph_.ToString());
+  phi_graph_.Optimize();
+  VLOG(1) << "After phi graph optimization";
+  XLA_VLOG_LINES(1, phi_graph_.ToString());
+
+  for (const HloComputation* computation : module_.computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      InstructionValueSet& instruction_value_set =
+          GetInstructionValueSet(instruction);
+      VLOG(1) << "inst: " << instruction->name();
+      VLOG(1) << instruction_value_set.ToString();
+      instruction_value_set.ForEachMutableElement(
+          [&](const xla::ShapeIndex& index, HloValueSet* value_set) {
+            auto values = value_set->values();
+            if (!(values.size() == 1 && values[0]->is_phi())) {
+              return;
+            }
+            HloValue::Id phi_id = values[0]->id();
+            HloValue::Id new_id = phi_graph_.FindOptimizedValue(phi_id);
+            if (new_id != phi_id) {
+              value_set->Clear();
+              const HloValue& new_value = GetValue(new_id);
+              value_set->AddValue(&new_value);
+              MarkValueForDeletion(phi_id);
+            }
+          });
+    }
+  }
+}
+
 /* static */
 StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
     const HloModule& module, bool ssa_form, bool bitcast_defines_value,
@@ -903,6 +981,7 @@ StatusOr<std::unique_ptr<HloDataflowAnalysis>> HloDataflowAnalysis::Run(
 
   TF_RETURN_IF_ERROR(dataflow_analysis->InitializeInstructionValueSets());
   dataflow_analysis->Propagate();
+  dataflow_analysis->OptimizePhiValues();
 
   // Delete all values marked for deletion.
   dataflow_analysis->DeleteMarkedValues();
@@ -1071,6 +1150,9 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     HloInstruction* user, const ShapeIndex& user_index) const {
   CHECK(user->IsUserOf(operand))
       << "user: " << user->ToString() << " operand: " << operand->ToString();
+  if (operand->opcode() == HloOpcode::kConstant) {
+    return false;
+  }
   const Shape& operand_subshape =
       ShapeUtil::GetSubshape(operand->shape(), operand_index);
   const Shape& user_subshape =

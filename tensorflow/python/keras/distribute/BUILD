@@ -3,10 +3,16 @@
 #   related to dist-strat used by Keras..
 
 load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # TODO(scottzhu): Remove this deps when distribute test are converted to integration test.
+    default_visibility = [
+        "//tensorflow/python/distribute:__pkg__",
+        "//tensorflow/python/keras:__subpackages__",
+        "//tensorflow/tools/pip_package:__pkg__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -85,6 +91,7 @@ py_library(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/eager:context",
@@ -116,7 +123,7 @@ distribute_py_test(
     srcs = ["distribute_strategy_test.py"],
     full_precision = True,
     main = "distribute_strategy_test.py",
-    shard_count = 8,
+    shard_count = 10,
     tags = [
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
@@ -180,9 +187,12 @@ distribute_py_test(
     # shards more evenly.
     shard_count = 19,
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "no_oss",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
+        "notap",  # TODO(b/153671866)
         "notsan",
     ],
     deps = [
@@ -213,7 +223,7 @@ distribute_py_test(
     srcs = ["keras_image_model_correctness_test.py"],
     full_precision = True,
     main = "keras_image_model_correctness_test.py",
-    shard_count = 8,
+    shard_count = 16,
     tags = [
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
@@ -236,9 +246,11 @@ distribute_py_test(
     # shards more evenly.
     shard_count = 31,
     tags = [
+        "manual",
         "multi_and_single_gpu",
         "no_oss",  # b/136660639
         "no_windows_gpu",
+        "notap",  # TODO(b/153672562)
         "notsan",
     ],
     deps = [
@@ -254,9 +266,12 @@ distribute_py_test(
     main = "keras_stateful_lstm_model_correctness_test.py",
     shard_count = 4,
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "no_oss",
         "no_pip",
         "no_windows_gpu",
+        "notap",  # TODO(b/153392670)
         "notsan",
     ],
     deps = [
@@ -272,11 +287,13 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",
         "no_windows_gpu",
         "notsan",
     ],
     deps = [
         ":keras_test_lib",
+        "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
     ],
 )
@@ -320,8 +337,8 @@ cuda_py_test(
     srcs = ["multi_worker_test.py"],
     shard_count = 32,
     tags = [
+        "multi_and_single_gpu",
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
-        # TODO(b/123307453): Add "multi_and_single_gpu",
     ],
     deps = [
         ":multi_worker_testing_utils",
@@ -374,9 +391,11 @@ cuda_py_test(
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "multi_worker_callback_tf2_test",
     srcs = ["multi_worker_callback_tf2_test.py"],
+    python_version = "PY3",
+    shard_count = 10,
     deps = [
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
@@ -419,5 +438,17 @@ py_library(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras/optimizer_v2",
+    ],
+)
+
+py_library(
+    name = "tpu_strategy_test_utils",
+    srcs = ["tpu_strategy_test_utils.py"],
+    deps = [
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/tpu:tpu_strategy_util",
     ],
 )

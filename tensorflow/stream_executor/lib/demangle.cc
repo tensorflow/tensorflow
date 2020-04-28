@@ -33,8 +33,8 @@ namespace port {
 // The API reference of abi::__cxa_demangle() can be found in
 // libstdc++'s manual.
 // https://gcc.gnu.org/onlinedocs/libstdc++/libstdc++-html-USERS-4.3/a01696.html
-string Demangle(const char *mangled) {
-  string demangled;
+std::string Demangle(const char *mangled) {
+  std::string demangled;
   int status = 0;
   char *result = nullptr;
 #if HAS_CXA_DEMANGLE

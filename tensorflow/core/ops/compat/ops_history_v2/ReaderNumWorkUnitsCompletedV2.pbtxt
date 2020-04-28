@@ -1,0 +1,12 @@
+op {
+  name: "ReaderNumWorkUnitsCompletedV2"
+  input_arg {
+    name: "reader_handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "units_completed"
+    type: DT_INT64
+  }
+  is_stateful: true
+}

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -34,6 +35,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util import deprecation
@@ -54,6 +56,7 @@ ops.NotDifferentiable('NonMaxSuppression')
 ops.NotDifferentiable('NonMaxSuppressionV2')
 ops.NotDifferentiable('NonMaxSuppressionWithOverlaps')
 ops.NotDifferentiable('GenerateBoundingBoxProposals')
+
 
 # pylint: disable=invalid-name
 def _assert(cond, ex_type, msg):
@@ -551,12 +554,20 @@ def rot90(image, k=1, name=None):
 
 
   For example:
-  ```python
-  a=tf.constant([[[1],[2]],[[3],[4]]])
-  # rotating `a` counter clockwise by 90 degrees
-  a_rot=tf.image.rot90(a,k=1) #rotated `a`
-  print(a_rot) # [[[2],[4]],[[1],[3]]]
-  ```
+
+  >>> a=tf.constant([[[1],[2]],
+  ...                [[3],[4]]])
+  >>> # rotating `a` counter clockwise by 90 degrees
+  >>> a_rot=tf.image.rot90(a)
+  >>> print(a_rot[...,0].numpy())
+  [[2 4]
+   [1 3]]
+  >>> # rotating `a` counter clockwise by 270 degrees
+  >>> a_rot=tf.image.rot90(a, k=3)
+  >>> print(a_rot[...,0].numpy())
+  [[3 1]
+   [4 2]]
+
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
@@ -680,7 +691,7 @@ def transpose(image, name=None):
     ValueError: if the shape of `image` not supported.
 
   Usage Example:
-  
+
   >>> image = [[[1, 2], [3, 4]],
   ...         [[5, 6], [7, 8]],
   ...         [[9, 10], [11, 12]]]
@@ -849,6 +860,32 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
 
   This op does nothing if `offset_*` is zero and the image already has size
   `target_height` by `target_width`.
+
+  Usage Example:
+
+  >>> x = [[[1., 2., 3.],
+  ...       [4., 5., 6.]],
+  ...       [[7., 8., 9.],
+  ...       [10., 11., 12.]]]
+  >>> padded_image = tf.image.pad_to_bounding_box(x, 1, 1, 4, 4)
+  >>> padded_image
+  <tf.Tensor: shape=(4, 4, 3), dtype=float32, numpy=
+  array([[[ 0.,  0.,  0.],
+  [ 0.,  0.,  0.],
+  [ 0.,  0.,  0.],
+  [ 0.,  0.,  0.]],
+  [[ 0.,  0.,  0.],
+  [ 1.,  2.,  3.],
+  [ 4.,  5.,  6.],
+  [ 0.,  0.,  0.]],
+  [[ 0.,  0.,  0.],
+  [ 7.,  8.,  9.],
+  [10., 11., 12.],
+  [ 0.,  0.,  0.]],
+  [[ 0.,  0.,  0.],
+  [ 0.,  0.,  0.],
+  [ 0.,  0.,  0.],
+  [ 0.,  0.,  0.]]], dtype=float32)>
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -1122,6 +1159,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
 
 @tf_export(v1=['image.ResizeMethod'])
 class ResizeMethodV1(object):
+  """See `v1.image.resize` for details."""
   BILINEAR = 0
   NEAREST_NEIGHBOR = 1
   BICUBIC = 2
@@ -1130,6 +1168,7 @@ class ResizeMethodV1(object):
 
 @tf_export('image.ResizeMethod', v1=[])
 class ResizeMethod(object):
+  """See `tf.image.resize` for details."""
   BILINEAR = 'bilinear'
   NEAREST_NEIGHBOR = 'nearest'
   BICUBIC = 'bicubic'
@@ -1164,9 +1203,6 @@ def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
     if not size.get_shape().is_compatible_with([2]):
       raise ValueError('\'size\' must be a 1-D Tensor of 2 elements: '
                        'new_height, new_width')
-    size_const_as_shape = tensor_util.constant_value_as_shape(size)
-    new_height_const = size_const_as_shape.dims[0].value
-    new_width_const = size_const_as_shape.dims[1].value
 
     if preserve_aspect_ratio:
       # Get the current shapes of the image, even if dynamic.
@@ -1174,10 +1210,10 @@ def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
 
       # do the computation to find the right scale and height/width.
       scale_factor_height = (
-          math_ops.cast(new_height_const, dtypes.float32) /
+          math_ops.cast(size[0], dtypes.float32) /
           math_ops.cast(current_height, dtypes.float32))
       scale_factor_width = (
-          math_ops.cast(new_width_const, dtypes.float32) /
+          math_ops.cast(size[1], dtypes.float32) /
           math_ops.cast(current_width, dtypes.float32))
       scale_factor = math_ops.minimum(scale_factor_height, scale_factor_width)
       scaled_height_const = math_ops.cast(
@@ -1193,9 +1229,10 @@ def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
       size = ops.convert_to_tensor([scaled_height_const, scaled_width_const],
                                    dtypes.int32,
                                    name='size')
-      size_const_as_shape = tensor_util.constant_value_as_shape(size)
-      new_height_const = size_const_as_shape.dims[0].value
-      new_width_const = size_const_as_shape.dims[1].value
+
+    size_const_as_shape = tensor_util.constant_value_as_shape(size)
+    new_height_const = size_const_as_shape.dims[0].value
+    new_width_const = size_const_as_shape.dims[1].value
 
     # If we can determine that the height and width will be unmodified by this
     # transformation, we avoid performing the resize.
@@ -1229,30 +1266,31 @@ def resize_images(images,
 
   Resized images will be distorted if their original aspect ratio is not
   the same as `size`.  To avoid distortions see
-  `tf.compat.v1.image.resize_image_with_pad`.
+  `tf.image.resize_with_pad` or `tf.image.resize_with_crop_or_pad`.
 
-  `method` can be one of:
+  The `method` can be one of:
 
-  *   <b>`ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.](
+  *   <b>`tf.image.ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.](
     https://en.wikipedia.org/wiki/Bilinear_interpolation)
-  *   <b>`ResizeMethod.NEAREST_NEIGHBOR`</b>: [Nearest neighbor interpolation.](
+  *   <b>`tf.image.ResizeMethod.NEAREST_NEIGHBOR`</b>: [
+    Nearest neighbor interpolation.](
     https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
-  *   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.](
+  *   <b>`tf.image.ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.](
     https://en.wikipedia.org/wiki/Bicubic_interpolation)
-  *   <b>`ResizeMethod.AREA`</b>: Area interpolation.
+  *   <b>`tf.image.ResizeMethod.AREA`</b>: Area interpolation.
 
   The return value has the same type as `images` if `method` is
-  `ResizeMethod.NEAREST_NEIGHBOR`. It will also have the same type as `images`
-  if the size of `images` can be statically determined to be the same as `size`,
-  because `images` is returned in this case. Otherwise, the return value has
-  type `float32`.
+  `tf.image.ResizeMethod.NEAREST_NEIGHBOR`. It will also have the same type
+  as `images` if the size of `images` can be statically determined to be the
+  same as `size`, because `images` is returned in this case. Otherwise, the
+  return value has type `float32`.
 
   Args:
     images: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
     size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The new
       size for the images.
-    method: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
+    method: ResizeMethod.  Defaults to `tf.image.ResizeMethod.BILINEAR`.
     align_corners: bool.  If True, the centers of the 4 corner pixels of the
       input and output tensors are aligned, preserving the values at the corner
       pixels. Defaults to `False`.
@@ -1291,7 +1329,7 @@ def resize_images(images,
       return gen_image_ops.resize_area(
           images_t, new_size, align_corners=align_corners)
     else:
-      raise ValueError('Resize method is not implemented.')
+      raise ValueError('Resize method is not implemented: {}'.format(method))
 
   return _resize_images_common(
       images,
@@ -1315,14 +1353,44 @@ def resize_images_v2(images,
   the same as `size`.  To avoid distortions see
   `tf.image.resize_with_pad`.
 
-  When 'antialias' is true, the sampling filter will anti-alias the input image
+  >>> image = tf.constant([
+  ...  [1,0,0,0,0],
+  ...  [0,1,0,0,0],
+  ...  [0,0,1,0,0],
+  ...  [0,0,0,1,0],
+  ...  [0,0,0,0,1],
+  ... ])
+  >>> # Add "batch" and "channels" dimensions
+  >>> image = image[tf.newaxis, ..., tf.newaxis]
+  >>> image.shape.as_list()  # [batch, height, width, channels]
+  [1, 5, 5, 1]
+  >>> tf.image.resize(image, [3,5])[0,...,0].numpy()
+  array([[0.6666667, 0.3333333, 0.       , 0.       , 0.       ],
+         [0.       , 0.       , 1.       , 0.       , 0.       ],
+         [0.       , 0.       , 0.       , 0.3333335, 0.6666665]],
+        dtype=float32)
+
+  It works equally well with a single image instead of a batch of images:
+
+  >>> tf.image.resize(image[0], [3,5]).shape.as_list()
+  [3, 5, 1]
+
+  When `antialias` is true, the sampling filter will anti-alias the input image
   as well as interpolate.  When downsampling an image with [anti-aliasing](
   https://en.wikipedia.org/wiki/Spatial_anti-aliasing) the sampling filter
   kernel is scaled in order to properly anti-alias the input image signal.
-  'antialias' has no effect when upsampling an image.
+  `antialias` has no effect when upsampling an image:
+
+  >>> a = tf.image.resize(image, [5,10])
+  >>> b = tf.image.resize(image, [5,10], antialias=True)
+  >>> tf.reduce_max(abs(a - b)).numpy()
+  0.0
+
+  The `method` argument expects an item from the `image.ResizeMethod` enum, or
+  the string equivalent. The options are:
 
   *   <b>`bilinear`</b>: [Bilinear interpolation.](
-    https://en.wikipedia.org/wiki/Bilinear_interpolation) If 'antialias' is
+    https://en.wikipedia.org/wiki/Bilinear_interpolation) If `antialias` is
     true, becomes a hat/tent filter function with radius 1 when downsampling.
   *   <b>`lanczos3`</b>:  [Lanczos kernel](
     https://en.wikipedia.org/wiki/Lanczos_resampling) with radius 3.
@@ -1340,29 +1408,45 @@ def resize_images_v2(images,
     sigma = 1.5 / 3.0.
   *   <b>`nearest`</b>: [Nearest neighbor interpolation.](
     https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
-    'antialias' has no effect when used with nearest neighbor interpolation.
+    `antialias` has no effect when used with nearest neighbor interpolation.
   *   <b>`area`</b>: Anti-aliased resampling with area interpolation.
-    'antialias' has no effect when used with area interpolation; it
+    `antialias` has no effect when used with area interpolation; it
     always anti-aliases.
   *   <b>`mitchellcubic`</b>: Mitchell-Netravali Cubic non-interpolating filter.
     For synthetic images (especially those lacking proper prefiltering), less
     ringing than Keys cubic kernel but less sharp.
 
-  Note that near image edges the filtering kernel may be partially outside the
+  Note: Near image edges the filtering kernel may be partially outside the
   image boundaries. For these pixels, only input pixels inside the image will be
   included in the filter sum, and the output value will be appropriately
   normalized.
 
-  The return value has the same type as `images` if `method` is
-  `ResizeMethod.NEAREST_NEIGHBOR`. Otherwise, the return value has type
-  `float32`.
+  The return value has type `float32`, unless the `method` is
+  `ResizeMethod.NEAREST_NEIGHBOR`, then the return dtype is the dtype
+  of `images`:
+
+  >>> nn = tf.image.resize(image, [5,7], method='nearest')
+  >>> nn[0,...,0].numpy()
+  array([[1, 0, 0, 0, 0, 0, 0],
+         [0, 1, 1, 0, 0, 0, 0],
+         [0, 0, 0, 1, 0, 0, 0],
+         [0, 0, 0, 0, 1, 1, 0],
+         [0, 0, 0, 0, 0, 0, 1]], dtype=int32)
+
+  With `preserve_aspect_ratio=True`, the aspect ratio is preserved, so `size`
+  is the maximum for each dimension:
+
+  >>> max_10_20 = tf.image.resize(image, [10,20], preserve_aspect_ratio=True)
+  >>> max_10_20.shape.as_list()
+  [1, 10, 10, 1]
 
   Args:
     images: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
     size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The new
       size for the images.
-    method: ResizeMethod.  Defaults to `bilinear`.
+    method: An `image.ResizeMethod`, or string equivalent.  Defaults to
+      `bilinear`.
     preserve_aspect_ratio: Whether to preserve the aspect ratio. If this is set,
       then `images` will be resized to a size that fits in `size` while
       preserving the aspect ratio of the original image. Scales up the image if
@@ -1423,7 +1507,7 @@ def resize_images_v2(images,
     elif method in scale_and_translate_methods:
       return resize_with_scale_and_translate(method)
     else:
-      raise ValueError('Resize method is not implemented.')
+      raise ValueError('Resize method is not implemented: {}'.format(method))
 
   return _resize_images_common(
       images,
@@ -2130,7 +2214,7 @@ def adjust_hue(image, delta, name=None):
     Adjusted image(s), same shape and DType as `image`.
 
   Usage Example:
-    
+
   >>> image = [[[1, 2, 3], [4, 5, 6]],
   ...          [[7, 8, 9], [10, 11, 12]],
   ...          [[13, 14, 15], [16, 17, 18]]]
@@ -2224,10 +2308,10 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
   ...       [10.0, 11.0, 12.0]]]
   >>> tf.image.adjust_jpeg_quality(x, 75)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
-  array([[[1.        , 1.        , 1.        ],
-          [0.9960785 , 0.9960785 , 0.9960785 ]],
-         [[0.98823535, 0.98823535, 0.98823535],
-          [0.98823535, 0.98823535, 0.98823535]]], dtype=float32)>
+  array([[[1., 1., 1.],
+          [1., 1., 1.]],
+         [[1., 1., 1.],
+          [1., 1., 1.]]], dtype=float32)>
 
   Args:
     image: 3D image. The size of the last dimension must be None, 1 or 3.
@@ -2246,14 +2330,14 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
     channels = image.shape.as_list()[-1]
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    image = convert_image_dtype(image, dtypes.uint8)
+    image = convert_image_dtype(image, dtypes.uint8, saturate=True)
     if not _is_tensor(jpeg_quality):
       # If jpeg_quality is a int (not tensor).
       jpeg_quality = ops.convert_to_tensor(jpeg_quality, dtype=dtypes.int32)
     image = gen_image_ops.encode_jpeg_variable_quality(image, jpeg_quality)
 
     image = gen_image_ops.decode_jpeg(image, channels=channels)
-    return convert_image_dtype(image, orig_dtype)
+    return convert_image_dtype(image, orig_dtype, saturate=True)
 
 
 @tf_export('image.random_saturation')
@@ -2429,7 +2513,7 @@ tf_export(
         gen_image_ops.extract_jpeg_shape)
 
 
-@tf_export('image.encode_png')
+@tf_export('io.encode_png', 'image.encode_png')
 def encode_png(image, compression=-1, name=None):
   r"""PNG-encode an image.
 
@@ -2934,7 +3018,7 @@ def non_max_suppression_with_scores(boxes,
   box coordinates corresponding to the selected indices can then be obtained
   using the `tf.gather` operation.  For example:
     ```python
-    selected_indices, selected_scores = tf.image.non_max_suppression_v2(
+    selected_indices, selected_scores = tf.image.non_max_suppression_padded(
         boxes, scores, max_output_size, iou_threshold=1.0, score_threshold=0.1,
         soft_nms_sigma=0.5)
     selected_boxes = tf.gather(boxes, selected_indices)
@@ -2945,12 +3029,12 @@ def non_max_suppression_with_scores(boxes,
   Bodla et al, https://arxiv.org/abs/1704.04503) where boxes reduce the score
   of other overlapping boxes instead of directly causing them to be pruned.
   Consequently, in contrast to `tf.image.non_max_suppression`,
-  `tf.image.non_max_suppression_v2` returns the new scores of each input box in
-  the second output, `selected_scores`.
+  `tf.image.non_max_suppression_padded` returns the new scores of each input box
+  in the second output, `selected_scores`.
 
   To enable this Soft-NMS mode, set the `soft_nms_sigma` parameter to be
   larger than 0.  When `soft_nms_sigma` equals 0, the behavior of
-  `tf.image.non_max_suppression_v2` is identical to that of
+  `tf.image.non_max_suppression_padded` is identical to that of
   `tf.image.non_max_suppression` (except for the extra output) both in function
   and in running time.
 
@@ -2994,62 +3078,6 @@ def non_max_suppression_with_scores(boxes,
          soft_nms_sigma,
          pad_to_max_output_size=False)
     return selected_indices, selected_scores
-
-
-@tf_export('image.non_max_suppression_padded')
-def non_max_suppression_padded(boxes,
-                               scores,
-                               max_output_size,
-                               iou_threshold=0.5,
-                               score_threshold=float('-inf'),
-                               pad_to_max_output_size=False,
-                               name=None):
-  """Greedily selects a subset of bounding boxes in descending order of score.
-
-  Performs algorithmically equivalent operation to tf.image.non_max_suppression,
-  with the addition of an optional parameter which zero-pads the output to
-  be of size `max_output_size`.
-  The output of this operation is a tuple containing the set of integers
-  indexing into the input collection of bounding boxes representing the selected
-  boxes and the number of valid indices in the index set.  The bounding box
-  coordinates corresponding to the selected indices can then be obtained using
-  the `tf.slice` and `tf.gather` operations.  For example:
-    ```python
-    selected_indices_padded, num_valid = tf.image.non_max_suppression_padded(
-        boxes, scores, max_output_size, iou_threshold,
-        score_threshold, pad_to_max_output_size=True)
-    selected_indices = tf.slice(
-        selected_indices_padded, tf.constant([0]), num_valid)
-    selected_boxes = tf.gather(boxes, selected_indices)
-    ```
-
-  Args:
-    boxes: A 2-D float `Tensor` of shape `[num_boxes, 4]`.
-    scores: A 1-D float `Tensor` of shape `[num_boxes]` representing a single
-      score corresponding to each box (each row of boxes).
-    max_output_size: A scalar integer `Tensor` representing the maximum number
-      of boxes to be selected by non-max suppression.
-    iou_threshold: A float representing the threshold for deciding whether boxes
-      overlap too much with respect to IOU.
-    score_threshold: A float representing the threshold for deciding when to
-      remove boxes based on score.
-    pad_to_max_output_size: bool.  If True, size of `selected_indices` output is
-      padded to `max_output_size`.
-    name: A name for the operation (optional).
-
-  Returns:
-    selected_indices: A 1-D integer `Tensor` of shape `[M]` representing the
-      selected indices from the boxes tensor, where `M <= max_output_size`.
-    valid_outputs: A scalar integer `Tensor` denoting how many elements in
-    `selected_indices` are valid.  Valid elements occur first, then padding.
-  """
-  with ops.name_scope(name, 'non_max_suppression_padded'):
-    iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
-    score_threshold = ops.convert_to_tensor(
-        score_threshold, name='score_threshold')
-    return gen_image_ops.non_max_suppression_v4(boxes, scores, max_output_size,
-                                                iou_threshold, score_threshold,
-                                                pad_to_max_output_size)
 
 
 @tf_export('image.non_max_suppression_overlaps')
@@ -3124,21 +3152,6 @@ def rgb_to_yiq(images):
 
   Returns:
     images: tensor with the same shape as `images`.
-
-  Usage Example:
-    
-  >>> image = [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
-  ...          [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
-  ...          [[13.0, 14.0, 15.0], [16.0, 17.0, 18.0]]]
-  >>> image = tf.constant(image)
-  >>> tf.image.rgb_to_yiq(image)
-  <tf.Tensor: shape=(3, 2, 3), dtype=float32, numpy=
-  array([[[ 1.815     , -0.91724455,  0.09962624],
-        [ 4.815     , -0.9172445 ,  0.09951639]],
-       [[ 7.815     , -0.91724443,  0.09940636],
-        [10.815001  , -0.91724455,  0.09929633]],
-       [[13.815001  , -0.91724443,  0.09918654],
-        [16.815     , -0.9172445 ,  0.09907603]]], dtype=float32)>  
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
@@ -3166,21 +3179,6 @@ def yiq_to_rgb(images):
 
   Returns:
     images: tensor with the same shape as `images`.
-
-  Usage Example:
-    
-  >>> image = [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
-  ...          [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
-  ...          [[13.0, 14.0, 15.0], [16.0, 17.0, 18.0]]]
-  >>> image = tf.constant(image)
-  >>> tf.image.yiq_to_rgb(image)
-  <tf.Tensor: shape=(3, 2, 3), dtype=float32, numpy=
-  array([[[ 4.774447  , -1.4856384 ,  3.8992112 ],
-        [12.504881  , -1.2432894 ,  8.691683  ]],
-       [[20.235313  , -1.0009406 , 13.484153  ],
-        [27.965748  , -0.7585919 , 18.276623  ]],
-       [[35.696182  , -0.51624316, 23.069094  ],
-        [43.426617  , -0.27389395, 27.861565  ]]], dtype=float32)>
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
@@ -3202,40 +3200,12 @@ def rgb_to_yuv(images):
   value of the pixels.
   The output is only well defined if the value in images are in [0,1].
 
-  Usage Example:
-
-  >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],
-  ...     [[7.0, 8.0, 9.0],
-  ...       [10.0, 11.0, 12.0]]]
-  >>> tf.image.rgb_to_yuv(x)
-  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
-  array([[[ 1.815    ,  0.5831516, -0.7149856],
-          [ 4.815    ,  0.5831516, -0.7149855]],
-         [[ 7.815    ,  0.5831516, -0.7149856],
-          [10.815001 ,  0.5831518, -0.7149852]]], dtype=float32)>
-
   Args:
     images: 2-D or higher rank. Image data to convert. Last dimension must be
       size 3.
 
   Returns:
     images: tensor with the same shape as `images`.
-    
-  Usage Example:
-  
-  >>> image = [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
-  ...          [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
-  ...          [[13.0, 14.0, 15.0], [16.0, 17.0, 18.0]]]
-  >>> image = tf.constant(image)
-  >>> tf.image.rgb_to_yuv(image)
-  <tf.Tensor: shape=(3, 2, 3), dtype=float32, numpy=
-  array([[[ 1.815     ,  0.5831516 , -0.7149856 ],
-        [ 4.815     ,  0.5831516 , -0.7149855 ]],
-       [[ 7.815     ,  0.5831516 , -0.7149856 ],
-        [10.815001  ,  0.5831518 , -0.7149852 ]],
-       [[13.815001  ,  0.58315134, -0.7149857 ],
-        [16.815     ,  0.58315134, -0.7149854 ]]], dtype=float32)> 
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
@@ -3257,27 +3227,37 @@ def yuv_to_rgb(images):
   The output is only well defined if the Y value in images are in [0,1],
   U and V value are in [-0.5,0.5].
 
+  As per the above description, you need to scale your YUV images if their
+  pixel values are not in the required range. Below given example illustrates
+  preprocessing of each channel of images before feeding them to `yuv_to_rgb`.
+
+  ```python
+  yuv_images = tf.random.uniform(shape=[100, 64, 64, 3], maxval=255)
+  last_dimension_axis = len(yuv_images.shape) - 1
+  yuv_tensor_images = tf.truediv(
+      tf.subtract(
+          yuv_images,
+          tf.reduce_min(yuv_images)
+      ),
+      tf.subtract(
+          tf.reduce_max(yuv_images),
+          tf.reduce_min(yuv_images)
+       )
+  )
+  y, u, v = tf.split(yuv_tensor_images, 3, axis=last_dimension_axis)
+  target_uv_min, target_uv_max = -0.5, 0.5
+  u = u * (target_uv_max - target_uv_min) + target_uv_min
+  v = v * (target_uv_max - target_uv_min) + target_uv_min
+  preprocessed_yuv_images = tf.concat([y, u, v], axis=last_dimension_axis)
+  rgb_tensor_images = tf.image.yuv_to_rgb(preprocessed_yuv_images)
+  ```
+
   Args:
     images: 2-D or higher rank. Image data to convert. Last dimension must be
       size 3.
 
   Returns:
     images: tensor with the same shape as `images`.
-
-  Usage Example:
-  
-  >>> image = [[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
-  ...          [[7.0, 8.0, 9.0], [10.0, 11.0, 12.0]],
-  ...          [[13.0, 14.0, 15.0], [16.0, 17.0, 18.0]]]
-  >>> image = tf.constant(image)
-  >>> tf.image.yuv_to_rgb(image)
-  <tf.Tensor: shape=(3, 2, 3), dtype=float32, numpy=
-  array([[[ 4.419649 , -1.5311501,  5.0641236],
-        [10.839298 , -1.4569428, 14.160309 ]],
-       [[17.258947 , -1.3827351, 23.256495 ],
-        [23.678596 , -1.3085275, 32.35268  ]],
-       [[30.098246 , -1.23432  , 41.448868 ],
-        [36.517895 , -1.1601126, 50.54505  ]]], dtype=float32)>
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
@@ -3524,7 +3504,7 @@ def _ssim_per_channel(img1,
 
   # TODO(sjhwang): Try FFT.
   # TODO(sjhwang): Gaussian kernel is separable in space. Consider applying
-  #   1-by-n and n-by-1 Gaussain filters instead of an n-by-n filter.
+  #   1-by-n and n-by-1 Gaussian filters instead of an n-by-n filter.
   def reducer(x):
     shape = array_ops.shape(x)
     x = array_ops.reshape(x, shape=array_ops.concat([[-1], shape[-3:]], 0))
@@ -3801,9 +3781,8 @@ def image_gradients(image):
     ValueError: If `image` is not a 4D tensor.
   """
   if image.get_shape().ndims != 4:
-    raise ValueError(
-        'image_gradients expects a 4D tensor '
-        '[batch_size, h, w, d], not %s.', image.get_shape())
+    raise ValueError('image_gradients expects a 4D tensor '
+                     '[batch_size, h, w, d], not {}.'.format(image.get_shape()))
   image_shape = array_ops.shape(image)
   batch_size, height, width, depth = array_ops.unstack(image_shape)
   dy = image[:, 1:, :, :] - image[:, :-1, :, :]
@@ -4280,6 +4259,560 @@ def combined_non_max_suppression(boxes,
         score_threshold, pad_per_class, clip_boxes)
 
 
+def _bbox_overlap(boxes_a, boxes_b):
+  """Calculates the overlap (iou - intersection over union) between boxes_a and boxes_b.
+
+  Args:
+    boxes_a: a tensor with a shape of [batch_size, N, 4]. N is the number of
+      boxes per image. The last dimension is the pixel coordinates in
+      [ymin, xmin, ymax, xmax] form.
+    boxes_b: a tensor with a shape of [batch_size, M, 4]. M is the number of
+      boxes. The last dimension is the pixel coordinates in
+      [ymin, xmin, ymax, xmax] form.
+  Returns:
+    intersection_over_union: a tensor with as a shape of [batch_size, N, M],
+    representing the ratio of intersection area over union area (IoU) between
+    two boxes
+  """
+  with ops.name_scope('bbox_overlap'):
+    a_y_min, a_x_min, a_y_max, a_x_max = array_ops.split(
+        value=boxes_a, num_or_size_splits=4, axis=2)
+    b_y_min, b_x_min, b_y_max, b_x_max = array_ops.split(
+        value=boxes_b, num_or_size_splits=4, axis=2)
+
+    # Calculates the intersection area.
+    i_xmin = math_ops.maximum(
+        a_x_min, array_ops.transpose(b_x_min, [0, 2, 1]))
+    i_xmax = math_ops.minimum(
+        a_x_max, array_ops.transpose(b_x_max, [0, 2, 1]))
+    i_ymin = math_ops.maximum(
+        a_y_min, array_ops.transpose(b_y_min, [0, 2, 1]))
+    i_ymax = math_ops.minimum(
+        a_y_max, array_ops.transpose(b_y_max, [0, 2, 1]))
+    i_area = math_ops.maximum(
+        (i_xmax - i_xmin), 0) * math_ops.maximum((i_ymax - i_ymin), 0)
+
+    # Calculates the union area.
+    a_area = (a_y_max - a_y_min) * (a_x_max - a_x_min)
+    b_area = (b_y_max - b_y_min) * (b_x_max - b_x_min)
+    EPSILON = 1e-8
+    # Adds a small epsilon to avoid divide-by-zero.
+    u_area = a_area + array_ops.transpose(b_area, [0, 2, 1]) - i_area + EPSILON
+
+    # Calculates IoU.
+    intersection_over_union = i_area / u_area
+
+    return intersection_over_union
+
+
+def _self_suppression(iou, _, iou_sum, iou_threshold):
+  """Suppress boxes in the same tile.
+
+     Compute boxes that cannot be suppressed by others (i.e.,
+     can_suppress_others), and then use them to suppress boxes in the same tile.
+
+  Args:
+    iou: a tensor of shape [batch_size, num_boxes_with_padding] representing
+    intersection over union.
+    iou_sum: a scalar tensor.
+    iou_threshold: a scalar tensor.
+
+  Returns:
+    iou_suppressed: a tensor of shape [batch_size, num_boxes_with_padding].
+    iou_diff: a scalar tensor representing whether any box is supressed in
+      this step.
+    iou_sum_new: a scalar tensor of shape [batch_size] that represents
+      the iou sum after suppression.
+    iou_threshold: a scalar tensor.
+  """
+  batch_size = array_ops.shape(iou)[0]
+  can_suppress_others = math_ops.cast(
+      array_ops.reshape(
+          math_ops.reduce_max(iou, 1) < iou_threshold, [batch_size, -1, 1]),
+      iou.dtype)
+  iou_after_suppression = array_ops.reshape(
+      math_ops.cast(
+          math_ops.reduce_max(can_suppress_others * iou, 1) < iou_threshold,
+          iou.dtype),
+      [batch_size, -1, 1]) * iou
+  iou_sum_new = math_ops.reduce_sum(iou_after_suppression, [1, 2])
+  return [
+      iou_after_suppression,
+      math_ops.reduce_any(iou_sum - iou_sum_new > iou_threshold), iou_sum_new,
+      iou_threshold
+  ]
+
+
+def _cross_suppression(boxes, box_slice, iou_threshold, inner_idx, tile_size):
+  """Suppress boxes between different tiles.
+
+  Args:
+    boxes: a tensor of shape [batch_size, num_boxes_with_padding, 4]
+    box_slice: a tensor of shape [batch_size, tile_size, 4]
+    iou_threshold: a scalar tensor
+    inner_idx: a scalar tensor representing the tile index of the tile
+      that is used to supress box_slice
+    tile_size: an integer representing the number of boxes in a tile
+
+  Returns:
+    boxes: unchanged boxes as input
+    box_slice_after_suppression: box_slice after suppression
+    iou_threshold: unchanged
+  """
+  batch_size = array_ops.shape(boxes)[0]
+  new_slice = array_ops.slice(
+      boxes, [0, inner_idx * tile_size, 0],
+      [batch_size, tile_size, 4])
+  iou = _bbox_overlap(new_slice, box_slice)
+  box_slice_after_suppression = array_ops.expand_dims(
+      math_ops.cast(math_ops.reduce_all(iou < iou_threshold, [1]),
+                    box_slice.dtype),
+      2) * box_slice
+  return boxes, box_slice_after_suppression, iou_threshold, inner_idx + 1
+
+
+def _suppression_loop_body(boxes, iou_threshold, output_size, idx, tile_size):
+  """Process boxes in the range [idx*tile_size, (idx+1)*tile_size).
+
+  Args:
+    boxes: a tensor with a shape of [batch_size, anchors, 4].
+    iou_threshold: a float representing the threshold for deciding whether boxes
+      overlap too much with respect to IOU.
+    output_size: an int32 tensor of size [batch_size]. Representing the number
+      of selected boxes for each batch.
+    idx: an integer scalar representing induction variable.
+    tile_size: an integer representing the number of boxes in a tile
+
+  Returns:
+    boxes: updated boxes.
+    iou_threshold: pass down iou_threshold to the next iteration.
+    output_size: the updated output_size.
+    idx: the updated induction variable.
+  """
+  with ops.name_scope('suppression_loop_body'):
+    num_tiles = array_ops.shape(boxes)[1] // tile_size
+    batch_size = array_ops.shape(boxes)[0]
+
+    def cross_suppression_func(boxes, box_slice, iou_threshold, inner_idx):
+      return _cross_suppression(boxes, box_slice, iou_threshold, inner_idx,
+                                tile_size)
+
+    # Iterates over tiles that can possibly suppress the current tile.
+    box_slice = array_ops.slice(boxes, [0, idx * tile_size, 0],
+                                [batch_size, tile_size, 4])
+    _, box_slice, _, _ = control_flow_ops.while_loop(
+        lambda _boxes, _box_slice, _threshold, inner_idx: inner_idx < idx,
+        cross_suppression_func,
+        [boxes, box_slice, iou_threshold, constant_op.constant(0)])
+
+    # Iterates over the current tile to compute self-suppression.
+    iou = _bbox_overlap(box_slice, box_slice)
+    mask = array_ops.expand_dims(
+        array_ops.reshape(
+            math_ops.range(tile_size), [1, -1]) > array_ops.reshape(
+                math_ops.range(tile_size), [-1, 1]), 0)
+    iou *= math_ops.cast(
+        math_ops.logical_and(mask, iou >= iou_threshold), iou.dtype)
+    suppressed_iou, _, _, _ = control_flow_ops.while_loop(
+        lambda _iou, loop_condition, _iou_sum, _: loop_condition,
+        _self_suppression,
+        [iou, constant_op.constant(True), math_ops.reduce_sum(iou, [1, 2]),
+         iou_threshold])
+    suppressed_box = math_ops.reduce_sum(suppressed_iou, 1) > 0
+    box_slice *= array_ops.expand_dims(
+        1.0 - math_ops.cast(suppressed_box, box_slice.dtype), 2)
+
+    # Uses box_slice to update the input boxes.
+    mask = array_ops.reshape(
+        math_ops.cast(
+            math_ops.equal(math_ops.range(num_tiles), idx), boxes.dtype),
+        [1, -1, 1, 1])
+    boxes = array_ops.tile(array_ops.expand_dims(
+        box_slice, [1]), [1, num_tiles, 1, 1]) * mask + array_ops.reshape(
+            boxes, [batch_size, num_tiles, tile_size, 4]) * (1 - mask)
+    boxes = array_ops.reshape(boxes, [batch_size, -1, 4])
+
+    # Updates output_size.
+    output_size += math_ops.reduce_sum(
+        math_ops.cast(
+            math_ops.reduce_any(box_slice > 0, [2]), dtypes.int32), [1])
+  return boxes, iou_threshold, output_size, idx + 1
+
+
+@tf_export('image.non_max_suppression_padded')
+def non_max_suppression_padded(boxes,
+                               scores,
+                               max_output_size,
+                               iou_threshold=0.5,
+                               score_threshold=float('-inf'),
+                               pad_to_max_output_size=False,
+                               name=None,
+                               sorted_input=False,
+                               canonicalized_coordinates=False,
+                               tile_size=512):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  Performs algorithmically equivalent operation to tf.image.non_max_suppression,
+  with the addition of an optional parameter which zero-pads the output to
+  be of size `max_output_size`.
+  The output of this operation is a tuple containing the set of integers
+  indexing into the input collection of bounding boxes representing the selected
+  boxes and the number of valid indices in the index set.  The bounding box
+  coordinates corresponding to the selected indices can then be obtained using
+  the `tf.slice` and `tf.gather` operations.  For example:
+    ```python
+    selected_indices_padded, num_valid = tf.image.non_max_suppression_padded(
+        boxes, scores, max_output_size, iou_threshold,
+        score_threshold, pad_to_max_output_size=True)
+    selected_indices = tf.slice(
+        selected_indices_padded, tf.constant([0]), num_valid)
+    selected_boxes = tf.gather(boxes, selected_indices)
+
+  Args:
+    boxes: a tensor of rank 2 or higher with a shape of [..., num_boxes, 4].
+      Dimensions except the last two are batch dimensions.
+    scores: a tensor of rank 1 or higher with a shape of [..., num_boxes].
+    max_output_size: a scalar integer `Tensor` representing the maximum number
+      of boxes to be selected by non max suppression.
+    iou_threshold: a float representing the threshold for deciding whether boxes
+      overlap too much with respect to IoU (intersection over union).
+    score_threshold: a float representing the threshold for box scores. Boxes
+      with a score that is not larger than this threshold will be suppressed.
+    pad_to_max_output_size: whether to pad the output idx to max_output_size.
+      Must be set to True when the input is a batch of images.
+    name: name of operation.
+    sorted_input: a boolean indicating whether the input boxes and scores
+      are sorted in descending order by the score.
+    canonicalized_coordinates: if box coordinates are given as
+    `[y_min, x_min, y_max, x_max]`, settign to True eliminate redundant
+     computation to canonicalize box coordinates.
+    tile_size: an integer representing the number of boxes in a tile, i.e.,
+      the maximum number of boxes per image that can be used to suppress other
+      boxes in parallel; larger tile_size means larger parallelism and
+      potentially more redundant work.
+  Returns:
+    idx: a tensor with a shape of [..., num_boxes] representing the
+      indices selected by non-max suppression. The leadign dimensions
+      are the batch dimensions of the input boxes. All numbers are are within
+      [0, num_boxes). For each image (i.e., idx[i]), only the first num_valid[i]
+      indices (i.e., idx[i][:num_valid[i]]) are valid.
+    num_valid: a tensor of rank 0 or higher with a shape of [...]
+      representing the number of valid indices in idx. Its dimensions are the
+      batch dimensions of the input boxes.
+   Raises:
+    ValueError: When set pad_to_max_output_size to False for batched input.
+  """
+  # if no new arguments are used and no later than 2020/4/20, use the old
+  # version to give us time to fix TFLite conversion
+  if (not sorted_input) and \
+      (not canonicalized_coordinates) and \
+      tile_size == 512 and not compat.forward_compatible(2020, 4, 20):
+    return non_max_suppression_padded_v1(
+        boxes, scores, max_output_size, iou_threshold, score_threshold,
+        pad_to_max_output_size, name)
+  else:
+    return non_max_suppression_padded_v2(
+        boxes, scores, max_output_size, iou_threshold, score_threshold,
+        pad_to_max_output_size, name, sorted_input, canonicalized_coordinates,
+        tile_size)
+
+
+def non_max_suppression_padded_v2(boxes,
+                                  scores,
+                                  max_output_size,
+                                  iou_threshold=0.5,
+                                  score_threshold=float('-inf'),
+                                  pad_to_max_output_size=False,
+                                  name=None,
+                                  sorted_input=False,
+                                  canonicalized_coordinates=False,
+                                  tile_size=512):
+  """Non-maximum suppression.
+
+  Prunes away boxes that have high intersection-over-union (IOU) overlap
+  with previously selected boxes. Bounding boxes are supplied as
+  `[y1, x1, y2, x2]`, where `(y1, x1)` and `(y2, x2)` are the coordinates of any
+  diagonal pair of box corners and the coordinates can be provided as normalized
+  (i.e., lying in the interval `[0, 1]`) or absolute. The bounding box
+  coordinates are cannonicalized to `[y_min, x_min, y_max, x_max]`,
+  where `(y_min, x_min)` and `(y_max, x_mas)` are the coordinates of the lower
+  left and upper right corner. User may indiciate the input box coordinates are
+  already canonicalized to eliminate redundant work by setting
+  canonicalized_coordinates to `True`. Note that this algorithm is agnostic to
+  where the origin is in the coordinate system. Note that this algorithm is
+  invariant to orthogonal transformations and translations of the coordinate
+  system; thus translating or reflections of the coordinate system result in the
+  same boxes being selected by the algorithm.
+
+  Similar to tf.image.non_max_suppression, non_max_suppression_padded
+  implements hard NMS but can operate on a batch of images and improves
+  performance by titling the bounding boxes. Non_max_suppression_padded should
+  be preferred over tf.image_non_max_suppression when running on devices with
+  abundant parallelsim for higher computation speed. For soft NMS, refer to
+  tf.image.non_max_suppression_with_scores.
+
+  While a serial NMS algorithm iteratively uses the highest-scored unprocessed
+  box to suppress boxes, this algorithm uses many boxes to suppress other boxes
+  in parallel. The key idea is to partition boxes into tiles based on their
+  score and suppresses boxes tile by tile, thus achieving parallelism within a
+  tile. The tile size determines the degree of parallelism.
+
+  In cross suppression (using boxes of tile A to suppress boxes of tile B),
+  all boxes in A can independently suppress boxes in B.
+
+  Self suppression (suppressing boxes of the same tile) needs to be iteratively
+  applied until there's no more suppression. In each iteration, boxes that
+  cannot be suppressed are used to suppress boxes in the same tile.
+
+  boxes = boxes.pad_to_multiply_of(tile_size)
+  num_tiles = len(boxes) // tile_size
+  output_boxes = []
+  for i in range(num_tiles):
+    box_tile = boxes[i*tile_size : (i+1)*tile_size]
+    for j in range(i - 1):
+      # in parallel suppress boxes in box_tile using boxes from suppressing_tile
+      suppressing_tile = boxes[j*tile_size : (j+1)*tile_size]
+      iou = _bbox_overlap(box_tile, suppressing_tile)
+      # if the box is suppressed in iou, clear it to a dot
+      box_tile *= _update_boxes(iou)
+    # Iteratively handle the diagnal tile.
+    iou = _box_overlap(box_tile, box_tile)
+    iou_changed = True
+    while iou_changed:
+      # boxes that are not suppressed by anything else
+      suppressing_boxes = _get_suppressing_boxes(iou)
+      # boxes that are suppressed by suppressing_boxes
+      suppressed_boxes = _get_suppressed_boxes(iou, suppressing_boxes)
+      # clear iou to 0 for boxes that are suppressed, as they cannot be used
+      # to suppress other boxes any more
+      new_iou = _clear_iou(iou, suppressed_boxes)
+      iou_changed = (new_iou != iou)
+      iou = new_iou
+    # remaining boxes that can still suppress others, are selected boxes.
+    output_boxes.append(_get_suppressing_boxes(iou))
+    if len(output_boxes) >= max_output_size:
+      break
+
+  Args:
+    boxes: a tensor of rank 2 or higher with a shape of [..., num_boxes, 4].
+      Dimensions except the last two are batch dimensions.
+    scores: a tensor of rank 1 or higher with a shape of [..., num_boxes].
+    max_output_size: a scalar integer `Tensor` representing the maximum number
+      of boxes to be selected by non max suppression.
+    iou_threshold: a float representing the threshold for deciding whether boxes
+      overlap too much with respect to IoU (intersection over union).
+    score_threshold: a float representing the threshold for box scores. Boxes
+      with a score that is not larger than this threshold will be suppressed.
+    pad_to_max_output_size: whether to pad the output idx to max_output_size.
+      Must be set to True when the input is a batch of images.
+    name: name of operation.
+    sorted_input: a boolean indicating whether the input boxes and scores
+      are sorted in descending order by the score.
+    canonicalized_coordinates: if box coordinates are given as
+    `[y_min, x_min, y_max, x_max]`, settign to True eliminate redundant
+     computation to canonicalize box coordinates.
+    tile_size: an integer representing the number of boxes in a tile, i.e.,
+      the maximum number of boxes per image that can be used to suppress other
+      boxes in parallel; larger tile_size means larger parallelism and
+      potentially more redundant work.
+  Returns:
+    idx: a tensor with a shape of [..., num_boxes] representing the
+      indices selected by non-max suppression. The leadign dimensions
+      are the batch dimensions of the input boxes. All numbers are are within
+      [0, num_boxes). For each image (i.e., idx[i]), only the first num_valid[i]
+      indices (i.e., idx[i][:num_valid[i]]) are valid.
+    num_valid: a tensor of rank 0 or higher with a shape of [...]
+      representing the number of valid indices in idx. Its dimensions are the
+      batch dimensions of the input boxes.
+   Raises:
+    ValueError: When set pad_to_max_output_size to False for batched input.
+  """
+  def _sort_scores_and_boxes(scores, boxes):
+    """Sort boxes based their score from highest to lowest.
+
+    Args:
+      scores: a tensor with a shape of [batch_size, num_boxes] representing
+        the scores of boxes.
+      boxes: a tensor with a shape of [batch_size, num_boxes, 4] representing
+        the boxes.
+    Returns:
+      sorted_scores: a tensor with a shape of [batch_size, num_boxes]
+        representing the sorted scores.
+      sorted_boxes: a tensor representing the sorted boxes.
+      sorted_scores_indices: a tensor with a shape of [batch_size, num_boxes]
+        representing the index of the scores in a sorted descending order.
+    """
+    with ops.name_scope('sort_scores_and_boxes'):
+      batch_size = array_ops.shape(boxes)[0]
+      num_boxes = array_ops.shape(boxes)[1]
+      sorted_scores_indices = sort_ops.argsort(
+          scores, axis=1, direction='DESCENDING')
+      index_offsets = math_ops.range(batch_size) * num_boxes
+      indices = array_ops.reshape(
+          sorted_scores_indices + array_ops.expand_dims(index_offsets, 1), [-1])
+      sorted_scores = array_ops.reshape(
+          array_ops.gather(array_ops.reshape(scores, [-1]), indices),
+          [batch_size, -1])
+      sorted_boxes = array_ops.reshape(
+          array_ops.gather(array_ops.reshape(boxes, [-1, 4]), indices),
+          [batch_size, -1, 4])
+    return sorted_scores, sorted_boxes, sorted_scores_indices
+
+  with ops.name_scope(name, 'non_max_suppression_padded'):
+    if not pad_to_max_output_size:
+      # pad_to_max_output_size may be set to False only when the shape of boxes`
+      # is [num_boxes, 4], i.e., a single image. We make best effort to detect
+      # violations at compile time. If `boxes` does not have a static rank,
+      # the check allows computation to proceed.
+      if boxes.get_shape().rank is not None and boxes.get_shape().rank > 2:
+        raise ValueError("'pad_to_max_output_size' (value {}) must be True for "
+                         "batched input".format(pad_to_max_output_size))
+
+    batch_dims = array_ops.shape(boxes)[:-2]
+    num_boxes = array_ops.shape(boxes)[-2]
+    boxes = array_ops.reshape(boxes, [-1, num_boxes, 4])
+    scores = array_ops.reshape(scores, [-1, num_boxes])
+    batch_size = array_ops.shape(boxes)[0]
+    if score_threshold != float('-inf'):
+      with ops.name_scope('filter_by_score'):
+        score_mask = math_ops.cast(scores > score_threshold, scores.dtype)
+        scores *= score_mask
+        box_mask = array_ops.expand_dims(
+            math_ops.cast(score_mask, boxes.dtype), 2)
+        boxes *= box_mask
+
+    if not canonicalized_coordinates:
+      with ops.name_scope('canonicalize_coordinates'):
+        y_1, x_1, y_2, x_2 = array_ops.split(
+            value=boxes, num_or_size_splits=4, axis=2)
+        y_1_is_min = math_ops.reduce_all(
+            math_ops.less_equal(y_1[0, 0, 0], y_2[0, 0, 0]))
+        y_min, y_max = control_flow_ops.cond(
+            y_1_is_min, lambda: (y_1, y_2), lambda: (y_2, y_1))
+        x_1_is_min = math_ops.reduce_all(
+            math_ops.less_equal(x_1[0, 0, 0], x_2[0, 0, 0]))
+        x_min, x_max = control_flow_ops.cond(
+            x_1_is_min, lambda: (x_1, x_2), lambda: (x_2, x_1))
+        boxes = array_ops.concat([y_min, x_min, y_max, x_max], axis=2)
+
+    if not sorted_input:
+      scores, boxes, sorted_indices = _sort_scores_and_boxes(scores, boxes)
+
+    pad = math_ops.cast(
+        math_ops.ceil(
+            math_ops.cast(math_ops.maximum(num_boxes, max_output_size),
+                          dtypes.float32) / tile_size
+            ),
+        dtypes.int32) * tile_size - num_boxes
+    boxes = array_ops.pad(
+        math_ops.cast(boxes, dtypes.float32), [[0, 0], [0, pad], [0, 0]])
+    scores = array_ops.pad(
+        math_ops.cast(scores, dtypes.float32), [[0, 0], [0, pad]])
+    num_boxes_after_padding = num_boxes + pad
+    num_iterations = num_boxes_after_padding // tile_size
+    def _loop_cond(unused_boxes, unused_threshold, output_size, idx):
+      return math_ops.logical_and(
+          math_ops.reduce_min(output_size) < max_output_size,
+          idx < num_iterations)
+
+    def suppression_loop_body(boxes, iou_threshold, output_size, idx):
+      return _suppression_loop_body(
+          boxes, iou_threshold, output_size, idx, tile_size)
+
+    selected_boxes, _, output_size, _ = control_flow_ops.while_loop(
+        _loop_cond, suppression_loop_body,
+        [boxes, iou_threshold, array_ops.zeros([batch_size], dtypes.int32),
+         constant_op.constant(0)]
+        )
+    num_valid = math_ops.minimum(output_size, max_output_size)
+    idx = num_boxes_after_padding - math_ops.cast(
+        nn_ops.top_k(
+            math_ops.cast(math_ops.reduce_any(
+                selected_boxes > 0, [2]), dtypes.int32) *
+            array_ops.expand_dims(
+                math_ops.range(num_boxes_after_padding, 0, -1), 0),
+            max_output_size)[0], dtypes.int32)
+    idx = math_ops.minimum(idx, num_boxes - 1)
+
+    if not sorted_input:
+      index_offsets = math_ops.range(batch_size) * num_boxes
+      gather_idx = array_ops.reshape(
+          idx + array_ops.expand_dims(index_offsets, 1), [-1])
+      idx = array_ops.reshape(
+          array_ops.gather(array_ops.reshape(sorted_indices, [-1]),
+                           gather_idx),
+          [batch_size, -1])
+    invalid_index = array_ops.fill([batch_size, max_output_size], 0)
+    idx_index = array_ops.expand_dims(math_ops.range(max_output_size), 0)
+    num_valid_expanded = array_ops.expand_dims(num_valid, 1)
+    idx = array_ops.where(idx_index < num_valid_expanded,
+                          idx, invalid_index)
+
+    num_valid = array_ops.reshape(num_valid, batch_dims)
+    if not pad_to_max_output_size:
+      idx = idx[0, :num_valid]
+      return idx, num_valid
+    last_dim = constant_op.constant(-1, shape=[1])
+    batch_dims = array_ops.concat([batch_dims, last_dim], 0)
+    idx = array_ops.reshape(idx, batch_dims)
+    return idx, num_valid
+
+
+def non_max_suppression_padded_v1(boxes,
+                                  scores,
+                                  max_output_size,
+                                  iou_threshold=0.5,
+                                  score_threshold=float('-inf'),
+                                  pad_to_max_output_size=False,
+                                  name=None):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  Performs algorithmically equivalent operation to tf.image.non_max_suppression,
+  with the addition of an optional parameter which zero-pads the output to
+  be of size `max_output_size`.
+  The output of this operation is a tuple containing the set of integers
+  indexing into the input collection of bounding boxes representing the selected
+  boxes and the number of valid indices in the index set.  The bounding box
+  coordinates corresponding to the selected indices can then be obtained using
+  the `tf.slice` and `tf.gather` operations.  For example:
+    ```python
+    selected_indices_padded, num_valid = tf.image.non_max_suppression_padded(
+        boxes, scores, max_output_size, iou_threshold,
+        score_threshold, pad_to_max_output_size=True)
+    selected_indices = tf.slice(
+        selected_indices_padded, tf.constant([0]), num_valid)
+    selected_boxes = tf.gather(boxes, selected_indices)
+    ```
+
+  Args:
+    boxes: A 2-D float `Tensor` of shape `[num_boxes, 4]`.
+    scores: A 1-D float `Tensor` of shape `[num_boxes]` representing a single
+      score corresponding to each box (each row of boxes).
+    max_output_size: A scalar integer `Tensor` representing the maximum number
+      of boxes to be selected by non-max suppression.
+    iou_threshold: A float representing the threshold for deciding whether boxes
+      overlap too much with respect to IOU.
+    score_threshold: A float representing the threshold for deciding when to
+      remove boxes based on score.
+    pad_to_max_output_size: bool.  If True, size of `selected_indices` output is
+      padded to `max_output_size`.
+    name: A name for the operation (optional).
+
+  Returns:
+    selected_indices: A 1-D integer `Tensor` of shape `[M]` representing the
+      selected indices from the boxes tensor, where `M <= max_output_size`.
+    valid_outputs: A scalar integer `Tensor` denoting how many elements in
+    `selected_indices` are valid.  Valid elements occur first, then padding.
+  """
+  with ops.name_scope(name, 'non_max_suppression_padded'):
+    iou_threshold = ops.convert_to_tensor(iou_threshold, name='iou_threshold')
+    score_threshold = ops.convert_to_tensor(
+        score_threshold, name='score_threshold')
+    return gen_image_ops.non_max_suppression_v4(boxes, scores, max_output_size,
+                                                iou_threshold, score_threshold,
+                                                pad_to_max_output_size)
+
+
 @tf_export('image.draw_bounding_boxes', v1=[])
 def draw_bounding_boxes_v2(images, boxes, colors, name=None):
   """Draw bounding boxes on a batch of images.
@@ -4356,6 +4889,8 @@ def draw_bounding_boxes(images, boxes, name=None, colors=None):
     boxes: A `Tensor` of type `float32`. 3-D with shape `[batch,
       num_bounding_boxes, 4]` containing bounding boxes.
     name: A name for the operation (optional).
+    colors: A `Tensor` of type `float32`. 2-D. A list of RGBA colors to cycle
+      through for the boxes.
 
   Returns:
     A `Tensor`. Has the same type as `images`.
@@ -4394,7 +4929,7 @@ def generate_bounding_box_proposals(scores,
                                     min_size=16,
                                     post_nms_topn=300,
                                     name=None):
-  """ Generate bounding box proposals from encoded bounding boxes.
+  """Generate bounding box proposals from encoded bounding boxes.
 
   Returns:
     rois: Region of interest boxes sorted by their scores.

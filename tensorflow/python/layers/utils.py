@@ -13,16 +13,14 @@
 # limitations under the License.
 # =============================================================================
 
-"""Contains layer utilies for input validation and format conversion.
-"""
+"""Contains layer utilities for input validation and format conversion."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.ops import variables
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.framework import smart_cond as smart_module
-from tensorflow.python.util import nest
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import variables
 
 
 def convert_data_format(data_format, ndim):
@@ -214,7 +212,7 @@ def constant_value(pred):
 
     Raises:
       TypeError: If `pred` is not a Variable, Tensor or bool, or Python
-        interger 1 or 0.
+        integer 1 or 0.
     """
   # Allow integer booleans.
   if isinstance(pred, int):
@@ -226,61 +224,3 @@ def constant_value(pred):
   if isinstance(pred, variables.Variable):
     return None
   return smart_module.smart_constant_value(pred)
-
-
-def object_list_uid(object_list):
-  """Creates a single string from object ids."""
-  object_list = nest.flatten(object_list)
-  return ', '.join(str(abs(id(x))) for x in object_list)
-
-
-def static_shape(x):
-  """Get the static shape of a Tensor, or None if it is unavailable."""
-  if x is None:
-    return None
-  try:
-    return tuple(x.get_shape().as_list())
-  except ValueError:
-    return None
-
-
-def get_reachable_from_inputs(inputs, targets=None):
-  """Returns the set of tensors reachable from `inputs`.
-
-  Stops if all targets have been found (target is optional).
-
-  Only valid in Symbolic mode, not Eager mode.
-
-  Args:
-    inputs: List of tensors.
-    targets: List of tensors.
-
-  Returns:
-    A set of tensors reachable from the inputs (includes the inputs themselves).
-  """
-  reachable = set(inputs)
-  if targets:
-    targets = set(targets)
-  queue = inputs[:]
-
-  while queue:
-    x = queue.pop()
-    outputs = []
-    try:
-      consumers = x.consumers()
-    except AttributeError:
-      # Case where x is a variable type
-      consumers = [x.op]
-    for z in consumers:
-      consumer_outputs = z.outputs
-      if consumer_outputs:  # May be None
-        outputs += consumer_outputs
-
-    for y in outputs:
-      if y not in reachable:
-        reachable.add(y)
-        queue.insert(0, y)
-
-    if targets and targets.issubset(reachable):
-      return reachable
-  return reachable

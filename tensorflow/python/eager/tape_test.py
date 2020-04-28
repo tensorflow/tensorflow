@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import tape
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -31,6 +32,7 @@ from tensorflow.python.ops import math_ops
 # Importing nn_grad for the registration functions.
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import variables
 
 
 @custom_gradient.custom_gradient
@@ -164,6 +166,49 @@ class TapeTest(test.TestCase):
     t = constant_op.constant(1.0)
     g, = backprop.gradients_function(fn, [0])(t)
     self.assertAllEqual(g, 1.0)
+
+
+class VariableWatcherTest(test.TestCase):
+
+  def testBasic(self):
+    var1 = variables.Variable(0.0)
+    var2 = variables.Variable(1.0)
+    with tape.VariableWatcher() as variable_watcher:
+      var1.assign_add(1.0)
+      var2.assign_add(2.0)
+
+    self.assertAllEqual(variable_watcher.watched_variables(), (var1, var2))
+
+  def testNonTrainableVariables(self):
+    var1 = variables.Variable(0.0)
+    var2 = variables.Variable(1.0, trainable=False)
+    with tape.VariableWatcher() as variable_watcher:
+      var1.assign_add(1.0)
+      var2.assign_add(2.0)
+
+    self.assertAllEqual(variable_watcher.watched_variables(), (var1,))
+
+  def testMultipleScopes(self):
+    var1 = variables.Variable(0.0)
+    var2 = variables.Variable(1.0)
+    with tape.VariableWatcher() as variable_watcher1:
+      var1.assign_add(1.0)
+      with tape.VariableWatcher() as variable_watcher2:
+        var2.assign_add(2.0)
+
+    # variable_watcher1 should see both vars and variable_watcher2 only sees
+    # var2
+    self.assertAllEqual(variable_watcher1.watched_variables(), (var1, var2))
+    self.assertAllEqual(variable_watcher2.watched_variables(), (var2,))
+
+  def testCreateVariables(self):
+    with tape.VariableWatcher() as variable_watcher:
+      var1 = variables.Variable(0.0)
+      var2 = variables.Variable(1.0)
+      var1.assign_add(1.0)
+      var2.assign_add(2.0)
+
+    self.assertAllEqual(variable_watcher.watched_variables(), (var1, var2))
 
 
 if __name__ == '__main__':

@@ -1,3 +1,8 @@
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
+
 package(
     default_visibility = [
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
@@ -199,6 +204,7 @@ filegroup(
         "flatmap.h",
         "flatrep.h",
         "inlined_vector.h",
+        "top_n.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -216,7 +222,6 @@ filegroup(
         "optional.h",
         "priority_queue_util.h",
         "subtle/map_traits.h",
-        "top_n.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

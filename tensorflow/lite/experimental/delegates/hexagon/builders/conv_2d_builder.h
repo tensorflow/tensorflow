@@ -34,15 +34,45 @@ class Conv2dOpBuilder : public OpBuilder {
   TfLiteStatus RegisterOutputs(const TfLiteIntArray* outputs,
                                TfLiteContext* context) override;
 
-  ~Conv2dOpBuilder();
+  ~Conv2dOpBuilder() override;
 
  private:
+  // TODO(b/142009955): Combine into common util for all types of Conv.
+  TfLiteStatus ProcessPerChannelQuantizedWeights(const TfLiteIntArray* inputs,
+                                                 const TfLiteIntArray* outputs,
+                                                 TfLiteContext* context,
+                                                 float* weights_min,
+                                                 float* weights_max);
+
+  TfLiteStatus InitializeWeightsNodes(const TfLiteIntArray* inputs,
+                                      const TfLiteIntArray* outputs,
+                                      TfLiteContext* context,
+                                      const int input_depth);
+
+  TfLiteStatus ProcessPerChannelQuantizedBias(const TfLiteIntArray* inputs,
+                                              const TfLiteIntArray* outputs,
+                                              TfLiteContext* context,
+                                              float* bias_min, float* bias_max);
+
+  TfLiteStatus InitializeBiasNodes(const TfLiteIntArray* inputs,
+                                   const TfLiteIntArray* outputs,
+                                   TfLiteContext* context);
+
   TensorID node_output_;
   std::vector<float> transposed_weights_;
   std::vector<int> stride_shape_;
   std::vector<int> weight_shape_;
-  float data_min_, data_max_, weights_min_, weights_max_, bias_min_, bias_max_,
-      output_min_, output_max_;
+  OpBuilder* weights_data_node_ = nullptr;
+  OpBuilder* weights_min_node_ = nullptr;
+  OpBuilder* weights_max_node_ = nullptr;
+  OpBuilder* bias_data_node_ = nullptr;
+  OpBuilder* bias_min_node_ = nullptr;
+  OpBuilder* bias_max_node_ = nullptr;
+
+  // Non-null only if node has per-channel quantized weights/biases.
+  OpBuilder* channel_scales_node_ = nullptr;
+  float* scales_data_ = nullptr;
+  int num_scale_values_ = 1;
 
   // Only used for dilated Depthwise Conv.
   std::vector<int> dilation_factors_h_w_;

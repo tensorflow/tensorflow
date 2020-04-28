@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
+from tensorflow.python.autograph.pyct import naming
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
@@ -35,11 +36,17 @@ global_b = 17
 class LivenessAnalyzerTestBase(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
+    # TODO(mdan): Use a custom FunctionTransformer here.
     node, source = parser.parse_entity(test_fn, future_features=())
     entity_info = transformer.EntityInfo(
-        source_code=source, source_file=None, future_features=(), namespace={})
+        name=test_fn.__name__,
+        source_code=source,
+        source_file=None,
+        future_features=(),
+        namespace={})
     node = qual_names.resolve(node)
-    ctx = transformer.Context(entity_info)
+    namer = naming.Namer({})
+    ctx = transformer.Context(entity_info, namer, None)
     node = activity.resolve(node, ctx)
     graphs = cfg.build(node)
     liveness.resolve(node, ctx, graphs)
@@ -229,6 +236,38 @@ class LivenessAnalyzerTest(LivenessAnalyzerTestBase):
     self.assertHasLiveIn(fn_body[0], ('a', 'x'))
     self.assertHasLiveIn(fn_body[0].body[0], ('x',))
     self.assertHasLiveIn(fn_body[1], ('x',))
+
+  def test_live_in_raise(self):
+
+    def test_fn(x, a, b, c):
+      if a > 0:
+        b = b + 1
+        raise c
+      return x
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasLiveIn(fn_body[0], ('a', 'b', 'c', 'x'))
+    self.assertHasLiveIn(fn_body[0].body[0], ('b', 'c'))
+    self.assertHasLiveIn(fn_body[1], ('x',))
+
+  def test_live_out_except_variable(self):
+
+    def test_fn(x, a):
+      try:
+        pass
+      except a as b:
+        raise b
+      return x
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    # Note: 'a' is not live because there is no raise statement inside the
+    # try, and we discount the possibility of other code in the try block
+    # raising an error.
+    self.assertHasLiveIn(fn_body[0], ('b', 'x'))
 
   def test_live_in_return_statement(self):
 

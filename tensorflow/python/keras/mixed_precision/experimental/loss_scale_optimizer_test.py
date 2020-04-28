@@ -23,11 +23,13 @@ import os
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
@@ -40,6 +42,10 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.tracking import util as trackable_utils
+
+# Disable not-callable lint error, as the linter is unable to detect that
+# LossScale instances are callable.
+# pylint: disable=not-callable
 
 
 # If called outside any strategy.scope() calls, this will return the default
@@ -64,6 +70,7 @@ TESTCASES = ({
 
 
 @test_util.with_control_flow_v2
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
 
   def _run_if_in_graph_mode(self, val):
@@ -81,7 +88,6 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     return lambda: opt.minimize(loss, var_list=[var])
 
   @parameterized.named_parameters(*TESTCASES)
-  @test_util.run_in_graph_and_eager_modes
   def testFixedLossScaleAppliedToLossWithMinimize(self, strategy_fn):
     with strategy_fn().scope() as strategy:
       var = variables.Variable([5.0])
@@ -115,32 +121,40 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     # mp_test_util.create_identity_with_grad_check_fn added an assertion op.
     self.evaluate(run_op)
 
-  @test_util.run_in_graph_and_eager_modes
   def testGetScaledLoss(self):
     opt = gradient_descent.SGD(2.0)
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2.)
-    loss = ops.convert_to_tensor(5.)
+    loss = ops.convert_to_tensor_v2(5.)
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(loss)))
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(lambda: loss)()))
-    loss = ops.convert_to_tensor(5., dtype='float16')
+    loss = ops.convert_to_tensor_v2(5., dtype='float16')
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(loss)))
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(lambda: loss)()))
 
-  @test_util.run_in_graph_and_eager_modes
   def testGetUnscaledGradients(self):
     opt = gradient_descent.SGD(2.0)
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2)
     scaled_grads = [
-        ops.convert_to_tensor(3.),
-        None,
-        ops.convert_to_tensor(-4., dtype='float16')
+        ops.convert_to_tensor_v2(3.), None,
+        ops.convert_to_tensor_v2(-4., dtype='float16')
     ]
     grads = opt.get_unscaled_gradients(scaled_grads)
     grads = [self.evaluate(g) if g is not None else g for g in grads]
     self.assertEqual([1.5, None, -2.], grads)
 
+  def testGetUnscaledSparseGradients(self):
+    opt = gradient_descent.SGD(2.0)
+    opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2)
+    sparse_scaled_grad = ops.IndexedSlices(
+        ops.convert_to_tensor_v2([[4., 2.], [8., 5.]]),
+        ops.convert_to_tensor_v2([1, 3], dtype='int32'),
+        dense_shape=ops.convert_to_tensor_v2([5, 2], dtype='int32'))
+    sparse_grad = opt.get_unscaled_gradients([sparse_scaled_grad])[0]
+    self.assertIsInstance(sparse_grad, ops.IndexedSlices)
+    self.assertAllEqual([[2., 1.], [4., 2.5]],
+                        self.evaluate(sparse_grad.values))
+
   @parameterized.named_parameters(*TESTCASES)
-  @test_util.run_in_graph_and_eager_modes
   def testDynamicLossScale(self, strategy_fn):
     strategy = strategy_fn()
     learning_rate = 2.
@@ -174,7 +188,6 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose([1.], self.evaluate(var))
 
   @parameterized.named_parameters(*TESTCASES)
-  @test_util.run_in_graph_and_eager_modes
   def testDynamicUpdate(self, strategy_fn):
     with strategy_fn().scope() as strategy:
       var = variables.Variable([1.0, 2.0])
@@ -205,7 +218,6 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(2., self.evaluate(opt.loss_scale()))
 
   @parameterized.named_parameters(*TESTCASES)
-  @test_util.run_in_graph_and_eager_modes
   def testDynamicLossScaleWithFloat16Loss(self, strategy_fn):
     strategy = strategy_fn()
     learning_rate = 2.
@@ -227,7 +239,6 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose([3.], self.evaluate(var))
 
   @parameterized.named_parameters(*TESTCASES)
-  @test_util.run_in_graph_and_eager_modes
   def testDynamicLossScaleWithSlots(self, strategy_fn):
     strategy_obj = strategy_fn()
     if (isinstance(strategy_obj, mirrored_strategy.MirroredStrategy) and
@@ -267,7 +278,6 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
 
       self.assertEqual(opt.get_slot_names(), ['momentum'])
 
-  @test_util.run_in_graph_and_eager_modes
   def testIterations(self):
     opt = gradient_descent.SGD(2.0)
     lso = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=10.)
@@ -275,40 +285,25 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(lso.iterations, 7)
     self.assertEqual(opt.iterations, 7)
 
-  @test_util.run_in_graph_and_eager_modes
   def testWeightMethods(self):
-    var = variables.Variable([1.0])
-    opt = gradient_descent.SGD(1.0)
-    initial_loss_scale = 2.
-    loss_scale = loss_scale_module.DynamicLossScale(
-        initial_loss_scale=initial_loss_scale, increment_period=1,
-        multiplier=4)
-    opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
-    run_op = opt.minimize(lambda: var * 2, [var])
-    self.evaluate(variables.global_variables_initializer())
-    self._run_if_in_graph_mode(run_op)
+    with self.test_session():
+      var = variables.Variable([1.0])
+      opt = gradient_descent.SGD(1.0)
+      initial_loss_scale = 2.
+      loss_scale = loss_scale_module.DynamicLossScale(
+          initial_loss_scale=initial_loss_scale, increment_period=1,
+          multiplier=4)
+      opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+      run_op = opt.minimize(lambda: var * 2, [var])
+      self.evaluate(variables.global_variables_initializer())
+      self._run_if_in_graph_mode(run_op)
 
-    self.assertLen(opt.weights, 1)  # The 'iterations' weight
-    self.assertEqual(self.evaluate(opt.weights[0]), 1)
-    self.assertEqual(opt.get_weights()[0], 1)
-    self.assertEqual(self.evaluate(opt.variables()[0]), 1)
-    opt.set_weights([np.array(2.)])
-    self.assertEqual(self.evaluate(opt.variables()[0]), 2)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testSlotMethodErrors(self):
-    opt = gradient_descent.SGD(1.0, momentum=1.0)
-    opt = loss_scale_optimizer.LossScaleOptimizer(opt, 'dynamic')
-    with self.assertRaisesRegexp(
-        AttributeError,
-        'You cannot call get_slot on a LossScaleOptimizer. This limitation '
-        'will be removed in the future.'):
-      opt.get_slot(None, None)
-    with self.assertRaisesRegexp(
-        AttributeError,
-        'You cannot call add_slot on a LossScaleOptimizer. This limitation '
-        'will be removed in the future.'):
-      opt.add_slot(None, None)
+      self.assertLen(opt.weights, 1)  # The 'iterations' weight
+      self.assertEqual(self.evaluate(opt.weights[0]), 1)
+      self.assertEqual(opt.get_weights()[0], 1)
+      self.assertEqual(self.evaluate(opt.variables()[0]), 1)
+      opt.set_weights([np.array(2.)])
+      self.assertEqual(self.evaluate(opt.variables()[0]), 2)
 
   def testPassingNoneToLossScale(self):
     opt = gradient_descent.SGD()
@@ -316,9 +311,8 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       loss_scale_optimizer.LossScaleOptimizer(opt, None)
 
   @parameterized.named_parameters(*TESTCASES)
-  @test_util.run_in_graph_and_eager_modes
   def testGettingAndSettingLearningRate(self, strategy_fn):
-    with strategy_fn().scope() as strategy:
+    with self.test_session(), strategy_fn().scope() as strategy:
       var = variables.Variable([5.0])
       opt = adam.Adam(learning_rate=1.0)
       loss = lambda: var * 2.0
@@ -341,7 +335,6 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(AttributeError):
         opt.not_an_attr += 3
 
-  @test_util.run_in_graph_and_eager_modes
   def testArbitraryAttributesNotExposed(self):
     opt = adam.Adam(learning_rate=1.0)
     # Test that Adam has attributes 'epsilon' and 'beta1'
@@ -359,7 +352,6 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
         "'LossScaleOptimizer' object has no attribute 'beta_1'"):
       opt.beta_1  # pylint: disable=pointless-statement
 
-  @test_util.run_in_graph_and_eager_modes
   def testApplyGradientsGetsUnwrappedTensors(self):
     # Tests that gradients passed to apply_gradients are not wrapped in a
     # DistributionStrategy wrapper, such as PerReplica, but instead are raw
@@ -370,10 +362,15 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
 
     class MyOptimizer(gradient_descent.SGD):
 
-      def apply_gradients(self, grads_and_vars, name=None):
+      def apply_gradients(self,
+                          grads_and_vars,
+                          name=None,
+                          experimental_aggregate_gradients=True):
         for grad, _ in grads_and_vars:
           outer_self.assertIsInstance(grad, ops.Tensor)
-        return super(MyOptimizer, self).apply_gradients(grads_and_vars, name)
+        return super(MyOptimizer,
+                     self).apply_gradients(grads_and_vars, name,
+                                           experimental_aggregate_gradients)
 
     with create_mirrored_strategy().scope() as strategy:
       var = variables.Variable([5.0])
@@ -383,10 +380,49 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
       run_fn = lambda: opt.minimize(loss, [var])
       strategy.experimental_run(run_fn)
 
-  @parameterized.named_parameters(*TESTCASES)
-  @test_util.run_in_graph_and_eager_modes
-  def testCheckpoint(self, strategy_fn):
+  @parameterized.named_parameters({
+      'testcase_name': 'SaveAndRestoreBase',
+      'strategy_fn': default_strategy_fn,
+      'save_with_ls': True,
+      'restore_with_ls': True,
+  }, {
+      'testcase_name': 'SaveAndRestoreDistribute',
+      'strategy_fn': create_mirrored_strategy,
+      'save_with_ls': True,
+      'restore_with_ls': True,
+  }, {
+      'testcase_name': 'SaveBase',
+      'strategy_fn': default_strategy_fn,
+      'save_with_ls': True,
+      'restore_with_ls': False,
+  }, {
+      'testcase_name': 'SaveDistribute',
+      'strategy_fn': create_mirrored_strategy,
+      'save_with_ls': True,
+      'restore_with_ls': False,
+  }, {
+      'testcase_name': 'RestoreBase',
+      'strategy_fn': default_strategy_fn,
+      'save_with_ls': False,
+      'restore_with_ls': True,
+  }, {
+      'testcase_name': 'RestoreDistribute',
+      'strategy_fn': create_mirrored_strategy,
+      'save_with_ls': False,
+      'restore_with_ls': True,
+  })
+  def testCheckpoint(self, strategy_fn, save_with_ls, restore_with_ls):
+
+    class MySGD(gradient_descent.SGD):
+      """A custom optimizer that tracks an extra variable."""
+
+      def __init__(self, *args, **kwargs):
+        super(MySGD, self).__init__(*args, **kwargs)
+        self.my_var = variables.Variable(0.)
+        self._track_trackable(self.my_var, 'my_var')
+
     strategy = strategy_fn()
+    replicas = strategy.num_replicas_in_sync
     if (isinstance(strategy, mirrored_strategy.MirroredStrategy) and
         not context.executing_eagerly()):
       # TODO(b/121381184): Enable running the test in this case.
@@ -395,40 +431,90 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     with self.test_session(), strategy.scope():
       # Build and run a simple model.
       var = variables.Variable([2.0])
-      loss_scale = loss_scale_module.DynamicLossScale(
-          initial_loss_scale=1., increment_period=2.,
-          multiplier=2.)
-      opt = gradient_descent.SGD(1., momentum=1.)
-      opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
-      run_fn = lambda: opt.minimize(lambda: var + 1., var_list=[var])
+      opt = inner_opt = MySGD(1., momentum=1.)
+      if save_with_ls:
+        loss_scale = loss_scale_module.DynamicLossScale(
+            initial_loss_scale=1., increment_period=2.,
+            multiplier=2.)
+        opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
+      run_fn = lambda: opt.minimize(lambda: var / replicas + 1., var_list=[var])
       opt_op = strategy.experimental_run(run_fn)
       self.evaluate(variables.global_variables_initializer())
-      self.evaluate(opt_op)
-      self.assertEqual(self.evaluate(loss_scale()), 1.)
-      self.assertEqual(self.evaluate(loss_scale._num_good_steps), 1)
-      slot_var = opt._optimizer.get_slot(var, 'momentum')
-      slot_value = self.evaluate(slot_var).item()
+      self.evaluate(strategy.experimental_local_results(opt_op))
+
+      # Assert values.
+      self.assertEqual(self.evaluate(var), 1.)
+      if save_with_ls:
+        self.assertEqual(self.evaluate(loss_scale()), 1.)
+        self.assertEqual(self.evaluate(loss_scale._num_good_steps), 1)
+      slot_var = opt.get_slot(var, 'momentum')
+      self.assertEqual(self.evaluate(slot_var).item(), -1)
+      self.assertEqual(self.evaluate(opt.iterations), 1)
+
+      # Set optimizer variable to check arbitrary optimizer attributes can be
+      # saved/restored
+      self.evaluate(inner_opt.my_var.assign(1.))
 
       # Save a checkpoint.
       checkpoint = trackable_utils.Checkpoint(optimizer=opt, var=var)
       prefix = os.path.join(self.get_temp_dir(), 'ckpt')
       save_path = checkpoint.save(prefix)
 
-      # Run model again.
-      self.evaluate(strategy.experimental_run(run_fn))
-      self.assertEqual(self.evaluate(loss_scale()), 2.)
-      self.assertEqual(self.evaluate(loss_scale._num_good_steps), 0)
-      self.assertNotAlmostEqual(self.evaluate(slot_var).item(), slot_value)
+      # Create new model
+      var = variables.Variable([2.0])
+      opt = inner_opt = MySGD(1., momentum=1.)
+      if restore_with_ls:
+        loss_scale = loss_scale_module.DynamicLossScale(
+            initial_loss_scale=1., increment_period=2.,
+            multiplier=2.)
+        opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
 
-      # Load checkpoint and ensure loss scale is back to it's original value.
+      # Restore new model.
+      checkpoint = trackable_utils.Checkpoint(optimizer=opt, var=var)
       status = checkpoint.restore(save_path)
-      status.assert_consumed()
-      status.run_restore_ops()
-      self.assertEqual(self.evaluate(loss_scale()), 1.)
-      self.assertEqual(self.evaluate(loss_scale._num_good_steps), 1)
-      self.assertAlmostEqual(self.evaluate(slot_var).item(), slot_value)
+      if save_with_ls:
+        status.assert_existing_objects_matched()
+      else:
+        status.assert_nontrivial_match()
 
-  @test_util.run_in_graph_and_eager_modes
+      # Assert restored values. We can only assert in eager mode since the
+      # variables are uninitialized in graph mode
+      if context.executing_eagerly():
+        self.assertEqual(self.evaluate(var), 1.)
+        if save_with_ls and restore_with_ls:
+          self.assertEqual(self.evaluate(loss_scale()), 1.)
+          self.assertEqual(self.evaluate(loss_scale._num_good_steps), 1)
+        elif restore_with_ls:
+          self.assertEqual(self.evaluate(loss_scale()), 1.)
+          self.assertEqual(self.evaluate(loss_scale._num_good_steps), 0)
+        self.assertEqual(self.evaluate(opt.iterations), 1)
+
+      # Run the model again.
+      run_fn = lambda: opt.minimize(lambda: var / replicas + 1., var_list=[var])
+      opt_op = strategy.experimental_run(run_fn)
+
+      # Assert new values.
+      self.evaluate(variables.global_variables_initializer())
+      status.run_restore_ops()
+      self.evaluate(strategy.experimental_local_results(opt_op))
+      self.assertEqual(self.evaluate(var), -1)
+      slot_var = opt.get_slot(var, 'momentum')
+      self.assertEqual(self.evaluate(slot_var).item(), -2)
+      self.assertEqual(self.evaluate(opt.iterations), 2)
+      self.assertEqual(self.evaluate(inner_opt.my_var), 1)
+
+      # Restore model again to test restoring after slots are created
+      status = checkpoint.restore(save_path)
+      if save_with_ls and restore_with_ls:
+        status.assert_consumed()
+      elif save_with_ls:
+        status.assert_existing_objects_matched()
+      elif restore_with_ls:
+        status.assert_nontrivial_match()
+      status.run_restore_ops()
+      self.assertEqual(self.evaluate(var), 1)
+      self.assertEqual(self.evaluate(slot_var).item(), -1)
+
   def testGetConfig(self):
     opt = gradient_descent.SGD(2., momentum=0.5)
     loss_scale = loss_scale_module.DynamicLossScale(
@@ -447,7 +533,6 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(opt.loss_scale.increment_period, 3.)
     self.assertEqual(opt.loss_scale.multiplier, 4.)
 
-  @test_util.run_in_graph_and_eager_modes
   def testSerializationWithBuiltInOptimizer(self):
     opt = gradient_descent.SGD(2., momentum=0.5)
     loss_scale = loss_scale_module.DynamicLossScale(
@@ -466,7 +551,6 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(opt.loss_scale.increment_period, 3.)
     self.assertEqual(opt.loss_scale.multiplier, 4.)
 
-  @test_util.run_in_graph_and_eager_modes
   def testSerializationWithCustomOptimizer(self):
     class MySGD(gradient_descent.SGD):
 
@@ -492,6 +576,22 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(opt.loss_scale.increment_period, 3.)
     self.assertEqual(opt.loss_scale.multiplier, 4.)
     self.assertEqual(opt._optimizer.my_attribute, 123)
+
+  def testUnsupportedStrategy(self):
+    strategy = central_storage_strategy.CentralStorageStrategy()
+    expected_error = (
+        'Loss scaling is not supported with the tf.distribute.Strategy: '
+        'CentralStorageStrategy. Try using a different Strategy, e.g. a '
+        'MirroredStrategy')
+    with strategy.scope(), self.assertRaisesRegexp(ValueError, expected_error):
+      loss_scale_optimizer.LossScaleOptimizer(gradient_descent.SGD(), 1.)
+    opt = loss_scale_optimizer.LossScaleOptimizer(gradient_descent.SGD(), 1.)
+    with strategy.scope():
+      var = variables.Variable(1.0)
+      loss = lambda: var * 2.0
+      run_fn = lambda: opt.minimize(loss, [var])
+      with self.assertRaisesRegexp(ValueError, expected_error):
+        strategy.experimental_run(run_fn)
 
 
 if __name__ == '__main__':

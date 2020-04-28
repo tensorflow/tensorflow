@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors
@@ -28,9 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradient_checker
-from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
@@ -736,7 +733,8 @@ class MinMaxOpTest(test.TestCase):
   def testBasic(self):
     x = np.random.rand(1, 3, 2) * 100.
     y = np.random.rand(1, 3, 2) * 100.
-    for t in [np.float16, np.float32, np.float64, np.int32, np.int64]:
+    for t in [np.float16, np.float32, np.float64, np.uint8, np.int16, np.int32,
+              np.int64]:
       self._compare(x.astype(t), y.astype(t), use_gpu=False)
       self._compare(x.astype(t), y.astype(t), use_gpu=True)
 
@@ -1228,59 +1226,11 @@ class PolyvalTest(test.TestCase):
       tf_val = math_ops.polyval(coeffs, x)
       self.assertAllClose(np_val, self.evaluate(tf_val))
 
-
-class SingularGradientOpTest(test.TestCase):
-
-  @test_util.run_deprecated_v1
-  def testGradientAtSingularity(self):
-    if not compat.forward_compatible(2020, 3, 14):
-      self.skipTest("Skipping test for future functionality.")
-
-    ops_and_singularity = [
-        (gen_math_ops.reciprocal, (0.,)),
-        (gen_math_ops.rsqrt, (0.,)),
-        (gen_math_ops.sqrt, (0.,)),
-        (gen_math_ops.sqrt_grad, (
-            0.,
-            0.,
-        )),
-        (gen_math_ops.reciprocal_grad, (
-            1.,
-            0.,
-        )),
-        (gen_math_ops.tan, (np.pi / 2,)),
-        (gen_math_ops.log, (0.,)),
-        (gen_math_ops.log1p, (-1.,)),
-        (gen_math_ops.acosh, (0.,)),
-        (gen_math_ops.asin, (1.,)),
-        (gen_math_ops.acos, (1.,)),
-        (gen_math_ops.atan2, (0., 0.)),
-        (gen_math_ops.div, (1., 0.)),
-        (gen_math_ops.div_no_nan, (1., 0.)),
-        (gen_math_ops.real_div, (1., 0.)),
-        (math_ops.pow, (0., -1.)),
-    ]
-    for op, singularity in ops_and_singularity:
-      for dtype in (dtypes_lib.half, dtypes_lib.float32, dtypes_lib.float64,
-                    dtypes_lib.complex64, dtypes_lib.complex128):
-        if dtype.is_complex and op in [
-            gen_math_ops.asin, gen_math_ops.acos, gen_math_ops.atan2
-        ]:
-          continue
-        if dtype == dtypes_lib.half and op in [
-            gen_math_ops.acosh, gen_math_ops.asin, gen_math_ops.acos,
-            gen_math_ops.atan2
-        ]:
-          continue
-        with self.cached_session():
-          print("op = ", op, ", singularity = ", singularity, ", type = ",
-                dtype)
-          args = [constant_op.constant(s, dtype=dtype) for s in singularity]
-          grad_y = constant_op.constant(0, dtype=dtype)
-          y = op(*args)
-          g = gradients_impl.gradients(y, args, grad_ys=grad_y)
-          g_val = self.evaluate(g)
-          self.assertAllEqual(g_val, np.zeros(len(singularity)))
+  def test_coeffs_raise(self):
+    x = np.random.rand(2, 2).astype(np.float32)
+    coeffs = {}
+    with self.assertRaisesRegexp(ValueError, "Argument coeffs must be list"):
+      math_ops.polyval(coeffs, x)
 
 
 if __name__ == "__main__":

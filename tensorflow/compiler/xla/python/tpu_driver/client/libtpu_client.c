@@ -36,13 +36,13 @@ void* LoadAndInitializeDriver(const char* shared_lib,
 
   PrototypeTpuDriver_Initialize* initialize_fn;
   *(void**)(&initialize_fn) = dlsym(handle, "TpuDriver_Initialize");
-  initialize_fn(driver_fn);
+  initialize_fn(driver_fn, true);
 
   return handle;
 }
 
 int main(int argc, char** argv) {
-  char* api_path = "./libtpu.so";
+  char* api_path = "libtpu.so";
   if (argc == 2) {
     api_path = argv[1];
   }

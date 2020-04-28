@@ -1,0 +1,62 @@
+# RUN: not tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false -tf-input-arrays=x,y -tf-input-data-types=DT_INT32,DT_INT32 -tf-input-shapes=2:3 -tf-output-arrays=x_y_sum %s --tf-debug-info=%s.debug -o - 2>&1 | FileCheck %s --dump-input-on-failure
+
+# Checks that source debug information is used in the output error message.
+# CHECK: error: 'tf.Add' op operands don't have broadcast-compatible shapes
+# CHECK: math_ops.add(x, y, name='x_y_sum')
+# CHECK: build_graph(out_dir)
+node: {
+  name: "x"
+  op: "Placeholder"
+  attr: {
+    key: "shape"
+    value: {
+      shape: {
+        dim: {
+          size: -1
+        }
+      }
+    }
+  }
+  attr: {
+    key: "dtype"
+    value: {
+      type: DT_INT32
+    }
+  }
+}
+node: {
+  name: "y"
+  op: "Placeholder"
+  attr: {
+    key: "shape"
+    value: {
+      shape: {
+        dim: {
+          size: -1
+        }
+      }
+    }
+  }
+  attr: {
+    key: "dtype"
+    value: {
+      type: DT_INT32
+    }
+  }
+}
+node: {
+  name: "x_y_sum"
+  op: "Add"
+  input: "x"
+  input: "y"
+  attr: {
+    key: "T"
+    value: {
+      type: DT_INT32
+    }
+  }
+}
+versions: {
+  producer: 321
+}
+

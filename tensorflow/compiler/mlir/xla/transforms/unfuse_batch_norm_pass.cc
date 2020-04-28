@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
@@ -26,20 +27,12 @@ namespace xla_hlo {
 
 namespace {
 
-struct TestUnfuseBatchNormPass : public FunctionPass<TestUnfuseBatchNormPass> {
-  void runOnFunction() override {
-    ConversionTarget conversionTarget(getContext());
-    OwningRewritePatternList conversionPatterns;
-
-    // Consider the xla_hlo dialect legal for tests.
-    conversionTarget.addLegalDialect<XlaHloDialect>();
-    conversionTarget.addIllegalOp<xla_hlo::BatchNormInferenceOp>();
-
-    PopulateUnfuseBatchNormPatterns(&getContext(), &conversionPatterns);
-    if (failed(applyPartialConversion(getFunction(), conversionTarget,
-                                      conversionPatterns))) {
-      return signalPassFailure();
-    }
+struct TestUnfuseBatchNormPass
+    : public PassWrapper<TestUnfuseBatchNormPass, OperationPass<>> {
+  void runOnOperation() override {
+    OwningRewritePatternList patterns;
+    PopulateUnfuseBatchNormPatterns(&getContext(), &patterns);
+    applyPatternsAndFoldGreedily(getOperation(), patterns);
   }
 };
 

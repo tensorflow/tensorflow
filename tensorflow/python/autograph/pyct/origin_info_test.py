@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
 import textwrap
 
 from tensorflow.python.autograph.pyct import anno
@@ -209,6 +210,44 @@ class OriginInfoTest(test.TestCase):
     self.assertEqual(ret_origin.loc.col_offset, 4)
     self.assertEqual(ret_origin.source_code_line, '  return self')
     self.assertIsNone(ret_origin.comment)
+
+  def test_resolve_entity_decorated_function(self):
+
+    test_fn = basic_definitions.decorated_function
+    node, source = parser.parse_entity(
+        test_fn, inspect_utils.getfutureimports(test_fn))
+    origin_info.resolve_entity(node, source, test_fn)
+
+    # The line numbers below should match those in basic_definitions.py
+
+    def_origin = anno.getanno(node, anno.Basic.ORIGIN)
+    if sys.version_info >= (3, 8):
+      self.assertEqual(def_origin.loc.lineno, 67)
+      self.assertEqual(
+          def_origin.source_code_line, 'def decorated_function(x):')
+    else:
+      self.assertEqual(def_origin.loc.lineno, 65)
+      self.assertEqual(def_origin.source_code_line, '@basic_decorator')
+    self.assertEqual(def_origin.loc.col_offset, 0)
+    self.assertIsNone(def_origin.comment)
+
+    if_origin = anno.getanno(node.body[0], anno.Basic.ORIGIN)
+    self.assertEqual(if_origin.loc.lineno, 68)
+    self.assertEqual(if_origin.loc.col_offset, 2)
+    self.assertEqual(if_origin.source_code_line, '  if x > 0:')
+    self.assertIsNone(if_origin.comment)
+
+    ret1_origin = anno.getanno(node.body[0].body[0], anno.Basic.ORIGIN)
+    self.assertEqual(ret1_origin.loc.lineno, 69)
+    self.assertEqual(ret1_origin.loc.col_offset, 4)
+    self.assertEqual(ret1_origin.source_code_line, '    return 1')
+    self.assertIsNone(ret1_origin.comment)
+
+    ret2_origin = anno.getanno(node.body[1], anno.Basic.ORIGIN)
+    self.assertEqual(ret2_origin.loc.lineno, 70)
+    self.assertEqual(ret2_origin.loc.col_offset, 2)
+    self.assertEqual(ret2_origin.source_code_line, '  return 2')
+    self.assertIsNone(ret2_origin.comment)
 
 
 if __name__ == '__main__':

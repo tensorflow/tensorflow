@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -69,45 +71,6 @@ void SetProtoIdAndName(T* entry, const string& base_name, char separator,
   entry->set_id(id);
   entry->set_name(GetFullName(base_name, separator, id));
 }
-
-template <typename InstructionType>
-StatusOr<InstructionType> LookUpInstructionByHandleInternal(
-    const absl::flat_hash_map<int64, int64>& handle_to_index,
-    const std::vector<HloInstructionProto>& instructions, int64 handle) {
-  auto it = handle_to_index.find(handle);
-  if (it == handle_to_index.end()) {
-    return InvalidArgument("No XlaOp with handle %d", handle);
-  }
-  return const_cast<InstructionType>(&instructions.at(it->second));
-}
-
-Status CheckBuildersAffinity(const XlaBuilder* op_builder,
-                             const XlaBuilder* builder, int64 handle) {
-  if (op_builder != builder) {
-    return InvalidArgument(
-        "XlaOp with handle %d is built by builder '%s', but is trying to use "
-        "it in builder '%s'",
-        handle, op_builder->name(), builder->name());
-  }
-  return Status::OK();
-}
-
-template <typename InstructionType, typename OpBuilderType,
-          typename BuilderType, typename OpType>
-StatusOr<InstructionType> LookUpInstructionInternal(
-    const absl::flat_hash_map<int64, int64>& handle_to_index,
-    const std::vector<HloInstructionProto>& instructions,
-    OpBuilderType op_builder, BuilderType builder, OpType op_handle) {
-  if (op_builder == nullptr) {
-    return InvalidArgument(
-        "Invalid XlaOp with handle %d; the builder of this op is freed",
-        op_handle);
-  }
-  TF_RETURN_IF_ERROR(CheckBuildersAffinity(op_builder, builder, op_handle));
-  return LookUpInstructionByHandleInternal<InstructionType>(
-      handle_to_index, instructions, op_handle);
-}
-
 }  // namespace
 
 XlaOp operator-(XlaOp x) { return Neg(x); }
@@ -142,7 +105,7 @@ XlaOp operator>>(XlaOp x, XlaOp y) {
 
 StatusOr<const Shape*> XlaBuilder::GetShapePtr(XlaOp op) const {
   TF_RETURN_IF_ERROR(first_error_);
-  TF_RETURN_IF_ERROR(CheckBuildersAffinity(op.builder(), this, op.handle()));
+  TF_RETURN_IF_ERROR(CheckOpBuilder(op));
   auto it = handle_to_index_.find(op.handle());
   if (it == handle_to_index_.end()) {
     return InvalidArgument("No XlaOp with handle %d", op.handle());
@@ -527,7 +490,9 @@ StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(const Shape& output_shape,
   }
 
   // Eliminate the size one dimensions.
-  TF_ASSIGN_OR_RETURN(XlaOp reshaped_operand, Reshape(reshaped_shape, operand));
+  TF_ASSIGN_OR_RETURN(
+      XlaOp reshaped_operand,
+      ReshapeInternal(reshaped_shape, operand, /*inferred_dimension=*/-1));
   // Broadcast 'reshape' up to the larger size.
   return InDimBroadcast(broadcast_shape, reshaped_operand,
                         broadcast_dimensions);
@@ -535,12 +500,10 @@ StatusOr<XlaOp> XlaBuilder::AddBroadcastSequence(const Shape& output_shape,
 
 XlaOp XlaBuilder::UnaryOp(HloOpcode unop, XlaOp operand) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferUnaryOpShape(unop, *operand_shape));
-    *instr.mutable_shape() = shape.ToProto();
-    return AddInstruction(std::move(instr), unop, {operand});
+    return AddOpWithShape(unop, shape, {operand});
   });
 }
 
@@ -548,31 +511,17 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
                            absl::Span<const int64> broadcast_dimensions,
                            absl::optional<ComparisonDirection> direction) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferBinaryOpShape(
                          binop, *lhs_shape, *rhs_shape, broadcast_dimensions));
-    *instr.mutable_shape() = shape.ToProto();
-    if (binop == HloOpcode::kCompare) {
-      if (!direction.has_value()) {
-        return InvalidArgument(
-            "kCompare expects a ComparisonDirection, but none provided.");
-      }
-      instr.set_comparison_direction(ComparisonDirectionToString(*direction));
-    } else if (direction.has_value()) {
-      return InvalidArgument(
-          "A comparison direction is provided for a non-compare opcode: %s.",
-          HloOpcodeString(binop));
-    }
 
     const int64 lhs_rank = lhs_shape->rank();
     const int64 rhs_rank = rhs_shape->rank();
 
     XlaOp updated_lhs = lhs;
     XlaOp updated_rhs = rhs;
-
     if (!broadcast_dimensions.empty() && lhs_rank != rhs_rank) {
       const bool should_broadcast_lhs = lhs_rank < rhs_rank;
       XlaOp from = should_broadcast_lhs ? lhs : rhs;
@@ -613,13 +562,42 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
                           AddBroadcastSequence(shape, updated_rhs));
     }
 
-    return AddInstruction(std::move(instr), binop, {updated_lhs, updated_rhs});
+    if (binop == HloOpcode::kCompare) {
+      if (!direction.has_value()) {
+        return InvalidArgument(
+            "kCompare expects a ComparisonDirection, but none provided.");
+      }
+      return Compare(shape, updated_lhs, updated_rhs, *direction);
+    }
+
+    if (direction.has_value()) {
+      return InvalidArgument(
+          "A comparison direction is provided for a non-compare opcode: %s.",
+          HloOpcodeString(binop));
+    }
+    return BinaryOpNoBroadcast(binop, shape, updated_lhs, updated_rhs);
   });
+}
+
+XlaOp XlaBuilder::BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape,
+                                      XlaOp lhs, XlaOp rhs) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return AddInstruction(std::move(instr), binop, {lhs, rhs});
+  });
+}
+
+StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
+                                    ComparisonDirection direction) {
+  HloInstructionProto instr;
+  instr.set_comparison_direction(ComparisonDirectionToString(direction));
+  *instr.mutable_shape() = shape.ToProto();
+  return AddInstruction(std::move(instr), HloOpcode::kCompare, {lhs, rhs});
 }
 
 XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     XlaOp updated_lhs = lhs;
     XlaOp updated_rhs = rhs;
     XlaOp updated_ehs = ehs;
@@ -672,8 +650,8 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
           "%s Input scalar shapes may have been changed to non-scalar shapes.",
           status_or_shape.status().error_message());
     }
-    *instr.mutable_shape() = status_or_shape.ConsumeValueOrDie().ToProto();
-    return AddInstruction(std::move(instr), triop,
+
+    return AddOpWithShape(triop, status_or_shape.ValueOrDie(),
                           {updated_lhs, updated_rhs, updated_ehs});
   });
 }
@@ -786,8 +764,9 @@ XlaOp XlaBuilder::BroadcastInDim(
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     // Output shape, in the case of degenerate broadcast, the out_dim_size is
     // not necessarily the same as the dimension sizes of the output shape.
-    auto output_shape =
-        ShapeUtil::MakeShape(operand_shape->element_type(), out_dim_size);
+    TF_ASSIGN_OR_RETURN(auto output_shape,
+                        ShapeUtil::MakeValidatedShape(
+                            operand_shape->element_type(), out_dim_size));
     if (operand_shape->rank() != broadcast_dimensions.size()) {
       return InvalidArgument(
           "Size of broadcast_dimensions has to match operand's rank; operand "
@@ -827,8 +806,8 @@ XlaOp XlaBuilder::BroadcastInDim(
   });
 }
 
-StatusOr<XlaOp> XlaBuilder::Reshape(const Shape& shape, XlaOp operand,
-                                    int64 inferred_dimension) {
+StatusOr<XlaOp> XlaBuilder::ReshapeInternal(const Shape& shape, XlaOp operand,
+                                            int64 inferred_dimension) {
   TF_RETURN_IF_ERROR(first_error_);
 
   HloInstructionProto instr;
@@ -843,21 +822,27 @@ XlaOp XlaBuilder::Slice(XlaOp operand, absl::Span<const int64> start_indices,
                         absl::Span<const int64> limit_indices,
                         absl::Span<const int64> strides) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferSliceShape(
                                          *operand_shape, start_indices,
                                          limit_indices, strides));
-    *instr.mutable_shape() = shape.ToProto();
-    for (int i = 0; i < start_indices.size(); i++) {
-      auto* slice_config = instr.add_slice_dimensions();
-      slice_config->set_start(start_indices[i]);
-      slice_config->set_limit(limit_indices[i]);
-      slice_config->set_stride(strides[i]);
-    }
-
-    return AddInstruction(std::move(instr), HloOpcode::kSlice, {operand});
+    return SliceInternal(shape, operand, start_indices, limit_indices, strides);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::SliceInternal(const Shape& shape, XlaOp operand,
+                                          absl::Span<const int64> start_indices,
+                                          absl::Span<const int64> limit_indices,
+                                          absl::Span<const int64> strides) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  for (int i = 0; i < start_indices.size(); i++) {
+    auto* slice_config = instr.add_slice_dimensions();
+    slice_config->set_start(start_indices[i]);
+    slice_config->set_limit(limit_indices[i]);
+    slice_config->set_stride(strides[i]);
+  }
+  return AddInstruction(std::move(instr), HloOpcode::kSlice, {operand});
 }
 
 XlaOp XlaBuilder::SliceInDim(XlaOp operand, int64 start_index,
@@ -973,39 +958,47 @@ XlaOp XlaBuilder::DynamicUpdateSlice(XlaOp operand, XlaOp update,
 XlaOp XlaBuilder::ConcatInDim(absl::Span<const XlaOp> operands,
                               int64 dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(operands));
     absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
                       [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferConcatOpShape(
                                          operand_shape_ptrs, dimension));
-    *instr.mutable_shape() = shape.ToProto();
-
-    instr.add_dimensions(dimension);
-
-    return AddInstruction(std::move(instr), HloOpcode::kConcatenate, operands);
+    return ConcatInDimInternal(shape, operands, dimension);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::ConcatInDimInternal(
+    const Shape& shape, absl::Span<const XlaOp> operands, int64 dimension) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+
+  instr.add_dimensions(dimension);
+
+  return AddInstruction(std::move(instr), HloOpcode::kConcatenate, operands);
 }
 
 XlaOp XlaBuilder::Pad(XlaOp operand, XlaOp padding_value,
                       const PaddingConfig& padding_config) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(const Shape* padding_value_shape,
                         GetShapePtr(padding_value));
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferPadShape(
                          *operand_shape, *padding_value_shape, padding_config));
-    *instr.mutable_shape() = shape.ToProto();
-    *instr.mutable_padding_config() = padding_config;
-
-    return AddInstruction(std::move(instr), HloOpcode::kPad,
-                          {operand, padding_value});
+    return PadInternal(shape, operand, padding_value, padding_config);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::PadInternal(const Shape& shape, XlaOp operand,
+                                        XlaOp padding_value,
+                                        const PaddingConfig& padding_config) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  *instr.mutable_padding_config() = padding_config;
+  return AddInstruction(std::move(instr), HloOpcode::kPad,
+                        {operand, padding_value});
 }
 
 XlaOp XlaBuilder::Reshape(XlaOp operand, absl::Span<const int64> dimensions,
@@ -1019,7 +1012,7 @@ XlaOp XlaBuilder::Reshape(XlaOp operand, absl::Span<const int64> dimensions,
     XlaOp transposed = IsIdentityPermutation(dimensions)
                            ? operand
                            : Transpose(operand, dimensions);
-    return Reshape(shape, transposed, inferred_dimension);
+    return ReshapeInternal(shape, transposed, inferred_dimension);
   });
 }
 
@@ -1030,6 +1023,13 @@ XlaOp XlaBuilder::Reshape(XlaOp operand, absl::Span<const int64> new_sizes,
     std::vector<int64> dimensions(shape->dimensions_size());
     std::iota(dimensions.begin(), dimensions.end(), 0);
     return Reshape(operand, dimensions, new_sizes, inferred_dimension);
+  });
+}
+
+XlaOp XlaBuilder::Reshape(const Shape& shape, XlaOp operand,
+                          int64 inferred_dimension) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    return ReshapeInternal(shape, operand, inferred_dimension);
   });
 }
 
@@ -1094,7 +1094,6 @@ XlaOp XlaBuilder::Select(XlaOp pred, XlaOp on_true, XlaOp on_false) {
 
 XlaOp XlaBuilder::Tuple(absl::Span<const XlaOp> elements) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     std::vector<const Shape*> operand_shape_ptrs;
     TF_ASSIGN_OR_RETURN(const auto& operand_shapes, GetOperandShapes(elements));
     absl::c_transform(operand_shapes, std::back_inserter(operand_shape_ptrs),
@@ -1102,14 +1101,19 @@ XlaOp XlaBuilder::Tuple(absl::Span<const XlaOp> elements) {
     TF_ASSIGN_OR_RETURN(const Shape shape,
                         ShapeInference::InferVariadicOpShape(
                             HloOpcode::kTuple, operand_shape_ptrs));
-    *instr.mutable_shape() = shape.ToProto();
-    return AddInstruction(std::move(instr), HloOpcode::kTuple, elements);
+    return TupleInternal(shape, elements);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::TupleInternal(const Shape& shape,
+                                          absl::Span<const XlaOp> elements) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  return AddInstruction(std::move(instr), HloOpcode::kTuple, elements);
 }
 
 XlaOp XlaBuilder::GetTupleElement(XlaOp tuple_data, int64 index) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* tuple_shape, GetShapePtr(tuple_data));
     if (!tuple_shape->IsTuple()) {
       return InvalidArgument(
@@ -1121,14 +1125,20 @@ XlaOp XlaBuilder::GetTupleElement(XlaOp tuple_data, int64 index) {
           "GetTupleElement() index (%d) out of range for tuple shape %s", index,
           ShapeUtil::HumanString(*tuple_shape));
     }
-    *instr.mutable_shape() =
-        ShapeUtil::GetTupleElementShape(*tuple_shape, index).ToProto();
-
-    instr.set_tuple_index(index);
-
-    return AddInstruction(std::move(instr), HloOpcode::kGetTupleElement,
-                          {tuple_data});
+    return GetTupleElementInternal(
+        ShapeUtil::GetTupleElementShape(*tuple_shape, index), tuple_data,
+        index);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::GetTupleElementInternal(const Shape& shape,
+                                                    XlaOp tuple_data,
+                                                    int64 index) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  instr.set_tuple_index(index);
+  return AddInstruction(std::move(instr), HloOpcode::kGetTupleElement,
+                        {tuple_data});
 }
 
 XlaOp XlaBuilder::Dot(XlaOp lhs, XlaOp rhs,
@@ -1148,19 +1158,27 @@ XlaOp XlaBuilder::DotGeneral(XlaOp lhs, XlaOp rhs,
                              const DotDimensionNumbers& dimension_numbers,
                              const PrecisionConfig* precision_config) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferDotOpShape(*lhs_shape, *rhs_shape,
                                                         dimension_numbers));
-    *instr.mutable_shape() = shape.ToProto();
-    *instr.mutable_dot_dimension_numbers() = dimension_numbers;
-    if (precision_config != nullptr) {
-      *instr.mutable_precision_config() = *precision_config;
-    }
-    return AddInstruction(std::move(instr), HloOpcode::kDot, {lhs, rhs});
+    return DotGeneralInternal(shape, lhs, rhs, dimension_numbers,
+                              precision_config);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::DotGeneralInternal(
+    const Shape& shape, XlaOp lhs, XlaOp rhs,
+    const DotDimensionNumbers& dimension_numbers,
+    const PrecisionConfig* precision_config) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  *instr.mutable_dot_dimension_numbers() = dimension_numbers;
+  if (precision_config != nullptr) {
+    *instr.mutable_precision_config() = *precision_config;
+  }
+  return AddInstruction(std::move(instr), HloOpcode::kDot, {lhs, rhs});
 }
 
 Status XlaBuilder::VerifyConvolution(
@@ -1413,14 +1431,11 @@ XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
 XlaOp XlaBuilder::InfeedWithToken(XlaOp token, const Shape& shape,
                                   const string& config) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     if (!LayoutUtil::HasLayout(shape)) {
       return InvalidArgument("Given shape to Infeed must have a layout");
     }
     const Shape infeed_instruction_shape =
         ShapeUtil::MakeTupleShape({shape, ShapeUtil::MakeTokenShape()});
-    *instr.mutable_shape() = infeed_instruction_shape.ToProto();
-    instr.set_infeed_config(config);
 
     if (shape.IsArray() && sharding() &&
         sharding()->type() == OpSharding::OTHER) {
@@ -1433,9 +1448,16 @@ XlaOp XlaBuilder::InfeedWithToken(XlaOp token, const Shape& shape,
       return InvalidArgument(
           "Replicated sharding is not yet supported for infeeds");
     }
-
-    return AddInstruction(std::move(instr), HloOpcode::kInfeed, {token});
+    return InfeedWithTokenInternal(infeed_instruction_shape, token, config);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::InfeedWithTokenInternal(
+    const Shape& infeed_instruction_shape, XlaOp token, const string& config) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = infeed_instruction_shape.ToProto();
+  instr.set_infeed_config(config);
+  return AddInstruction(std::move(instr), HloOpcode::kInfeed, {token});
 }
 
 void XlaBuilder::Outfeed(XlaOp operand, const Shape& shape_with_layout,
@@ -1494,10 +1516,6 @@ XlaOp XlaBuilder::OutfeedWithToken(XlaOp operand, XlaOp token,
                                    const Shape& shape_with_layout,
                                    const string& outfeed_config) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-
-    *instr.mutable_shape() = ShapeUtil::MakeTokenShape().ToProto();
-
     // Check and set outfeed shape.
     if (!LayoutUtil::HasLayout(shape_with_layout)) {
       return InvalidArgument("Given shape to Outfeed must have a layout");
@@ -1509,13 +1527,20 @@ XlaOp XlaBuilder::OutfeedWithToken(XlaOp operand, XlaOp token,
           ShapeUtil::HumanStringWithLayout(shape_with_layout),
           ShapeUtil::HumanStringWithLayout(*operand_shape));
     }
-    *instr.mutable_outfeed_shape() = shape_with_layout.ToProto();
-
-    instr.set_outfeed_config(outfeed_config);
-
-    return AddInstruction(std::move(instr), HloOpcode::kOutfeed,
-                          {operand, token});
+    return OutfeedWithTokenInternal(operand, token, shape_with_layout,
+                                    outfeed_config);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::OutfeedWithTokenInternal(
+    XlaOp operand, XlaOp token, const Shape& shape_with_layout,
+    const string& outfeed_config) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = ShapeUtil::MakeTokenShape().ToProto();
+  *instr.mutable_outfeed_shape() = shape_with_layout.ToProto();
+  instr.set_outfeed_config(outfeed_config);
+  return AddInstruction(std::move(instr), HloOpcode::kOutfeed,
+                        {operand, token});
 }
 
 XlaOp XlaBuilder::CreateToken() {
@@ -1590,19 +1615,69 @@ XlaOp XlaBuilder::CustomCall(
   });
 }
 
+XlaOp XlaBuilder::CustomCall(
+    const string& call_target_name, absl::Span<const XlaOp> operands,
+    const XlaComputation& computation, const Shape& shape, const string& opaque,
+    absl::optional<absl::Span<const Shape>> operand_shapes_with_layout) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    if (absl::StartsWith(call_target_name, "$")) {
+      return InvalidArgument(
+          "Invalid custom_call_target \"%s\": Call targets that start with '$' "
+          "are reserved for internal use.",
+          call_target_name);
+    }
+    *instr.mutable_shape() = shape.ToProto();
+    instr.set_custom_call_target(call_target_name);
+    instr.set_backend_config(opaque);
+    if (operand_shapes_with_layout.has_value()) {
+      if (!LayoutUtil::HasLayout(shape)) {
+        return InvalidArgument(
+            "Result shape must have layout for custom call with constrained "
+            "layout.");
+      }
+      if (operands.size() != operand_shapes_with_layout->size()) {
+        return InvalidArgument(
+            "Must specify a shape with layout for each operand for custom call "
+            "with constrained layout; given %d shapes, expected %d",
+            operand_shapes_with_layout->size(), operands.size());
+      }
+      instr.set_constrain_layout(true);
+      int64 operand_num = 0;
+      for (const Shape& operand_shape : *operand_shapes_with_layout) {
+        if (!LayoutUtil::HasLayout(operand_shape)) {
+          return InvalidArgument(
+              "No layout specified for operand %d for custom call with "
+              "constrained layout.",
+              operand_num);
+        }
+        *instr.add_operand_shapes_with_layout() = operand_shape.ToProto();
+        ++operand_num;
+      }
+    }
+    AddCalledComputation(computation, &instr);
+    return AddInstruction(std::move(instr), HloOpcode::kCustomCall, operands);
+  });
+}
+
 XlaOp XlaBuilder::Transpose(XlaOp operand,
                             absl::Span<const int64> permutation) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferTransposeShape(
                                          *operand_shape, permutation));
-    *instr.mutable_shape() = shape.ToProto();
-    for (int64 dim : permutation) {
-      instr.add_dimensions(dim);
-    }
-    return AddInstruction(std::move(instr), HloOpcode::kTranspose, {operand});
+    return TransposeInternal(shape, operand, permutation);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::TransposeInternal(
+    const Shape& shape, XlaOp operand, absl::Span<const int64> permutation) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  for (int64 dim : permutation) {
+    instr.add_dimensions(dim);
+  }
+  return AddInstruction(std::move(instr), HloOpcode::kTranspose, {operand});
 }
 
 XlaOp XlaBuilder::Rev(XlaOp operand, absl::Span<const int64> dimensions) {
@@ -1646,12 +1721,10 @@ XlaOp XlaBuilder::Sort(absl::Span<const XlaOp> operands,
 XlaOp XlaBuilder::ConvertElementType(XlaOp operand,
                                      PrimitiveType new_element_type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferConvertShape(
                                          *operand_shape, new_element_type));
-    *instr.mutable_shape() = shape.ToProto();
-    return AddInstruction(std::move(instr), HloOpcode::kConvert, {operand});
+    return AddOpWithShape(HloOpcode::kConvert, shape, {operand});
   });
 }
 
@@ -1752,6 +1825,36 @@ XlaOp XlaBuilder::RngUniform(XlaOp a, XlaOp b, const Shape& shape) {
   return RngOp(RandomDistribution::RNG_UNIFORM, {a, b}, shape);
 }
 
+XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
+                                  XlaOp initial_state, const Shape& shape) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
+    TF_ASSIGN_OR_RETURN(Shape state_shape, GetShape(initial_state));
+    Shape output_shape = shape;
+    switch (output_shape.element_type()) {
+      case PrimitiveType::F32:
+      case PrimitiveType::S32:
+      case PrimitiveType::U32:
+        output_shape.set_element_type(PrimitiveType::U32);
+        break;
+      case PrimitiveType::F64:
+      case PrimitiveType::S64:
+      case PrimitiveType::U64:
+        output_shape.set_element_type(PrimitiveType::U64);
+        break;
+      default:
+        return InvalidArgument("Unsupported shape for RngBitGenerator: %s",
+                               PrimitiveType_Name(output_shape.element_type()));
+    }
+    *instr.mutable_shape() =
+        ShapeUtil::MakeTupleShape({state_shape, output_shape}).ToProto();
+    instr.set_rng_algorithm(algorithm);
+    return AddInstruction(std::move(instr), HloOpcode::kRngBitGenerator,
+                          {initial_state});
+  });
+}
+
 XlaOp XlaBuilder::While(const XlaComputation& condition,
                         const XlaComputation& body, XlaOp init) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
@@ -1778,25 +1881,31 @@ XlaOp XlaBuilder::Gather(XlaOp input, XlaOp start_indices,
                          absl::Span<const int64> slice_sizes,
                          bool indices_are_sorted) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
-    instr.set_indices_are_sorted(indices_are_sorted);
-
     TF_ASSIGN_OR_RETURN(const Shape* input_shape, GetShapePtr(input));
     TF_ASSIGN_OR_RETURN(const Shape* start_indices_shape,
                         GetShapePtr(start_indices));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferGatherShape(
                                          *input_shape, *start_indices_shape,
                                          dimension_numbers, slice_sizes));
-    *instr.mutable_shape() = shape.ToProto();
-
-    *instr.mutable_gather_dimension_numbers() = dimension_numbers;
-    for (int64 bound : slice_sizes) {
-      instr.add_gather_slice_sizes(bound);
-    }
-
-    return AddInstruction(std::move(instr), HloOpcode::kGather,
-                          {input, start_indices});
+    return GatherInternal(shape, input, start_indices, dimension_numbers,
+                          slice_sizes, indices_are_sorted);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::GatherInternal(
+    const Shape& shape, XlaOp input, XlaOp start_indices,
+    const GatherDimensionNumbers& dimension_numbers,
+    absl::Span<const int64> slice_sizes, bool indices_are_sorted) {
+  HloInstructionProto instr;
+  instr.set_indices_are_sorted(indices_are_sorted);
+  *instr.mutable_shape() = shape.ToProto();
+  *instr.mutable_gather_dimension_numbers() = dimension_numbers;
+  for (int64 bound : slice_sizes) {
+    instr.add_gather_slice_sizes(bound);
+  }
+
+  return AddInstruction(std::move(instr), HloOpcode::kGather,
+                        {input, start_indices});
 }
 
 XlaOp XlaBuilder::Scatter(XlaOp input, XlaOp scatter_indices, XlaOp updates,
@@ -1900,6 +2009,16 @@ XlaOp XlaBuilder::ConditionalImpl(
     return AddInstruction(std::move(instr), HloOpcode::kConditional,
                           absl::MakeSpan(operands));
   });
+}
+
+Status XlaBuilder::CheckOpBuilder(XlaOp op) const {
+  if (this != op.builder()) {
+    return InvalidArgument(
+        "XlaOp with handle %d is built by builder '%s', but is trying to use "
+        "it in builder '%s'",
+        op.handle(), op.builder()->name(), name());
+  }
+  return Status::OK();
 }
 
 XlaOp XlaBuilder::Reduce(XlaOp operand, XlaOp init_value,
@@ -2188,7 +2307,8 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
 
 XlaOp XlaBuilder::AllToAll(XlaOp operand, int64 split_dimension,
                            int64 concat_dimension, int64 split_count,
-                           const std::vector<ReplicaGroup>& replica_groups) {
+                           const std::vector<ReplicaGroup>& replica_groups,
+                           const absl::optional<Layout>& layout) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
 
@@ -2223,7 +2343,21 @@ XlaOp XlaBuilder::AllToAll(XlaOp operand, int64 split_dimension,
                       [](const Shape& shape) { return &shape; });
     TF_ASSIGN_OR_RETURN(
         Shape shape, ShapeInference::InferAllToAllTupleShape(slice_shape_ptrs));
+
+    if (layout) {
+      TF_RET_CHECK(shape.IsTuple() && !ShapeUtil::IsNestedTuple(shape));
+      for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+        if (layout->minor_to_major().size() != shape.tuple_shapes(i).rank()) {
+          return InvalidArgument(
+              "Provided layout must be compatible with the operand shape: %s "
+              "vs %s",
+              layout->ToString(), operand_shape->ToString());
+        }
+        *(shape.mutable_tuple_shapes(i)->mutable_layout()) = *layout;
+      }
+    }
     *instr.mutable_shape() = shape.ToProto();
+
     for (const ReplicaGroup& group : replica_groups) {
       *instr.add_replica_groups() = group;
     }
@@ -2527,6 +2661,11 @@ XlaOp XlaBuilder::GetDimensionSize(XlaOp operand, int64 dimension) {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferGetDimensionSizeShape(
                                          *operand_shape, dimension));
+    // Calling GetDimensionSize on a static dimension returns a constant
+    // instruction.
+    if (!operand_shape->is_dynamic_dimension(dimension)) {
+      return ConstantR0<int32>(this, operand_shape->dimensions(dimension));
+    }
     *instr.mutable_shape() = shape.ToProto();
     instr.add_dimensions(dimension);
     return AddInstruction(std::move(instr), HloOpcode::kGetDimensionSize,
@@ -2538,8 +2677,20 @@ XlaOp XlaBuilder::SetDimensionSize(XlaOp operand, XlaOp val, int64 dimension) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferSetDimensionSizeShape(
                                          *operand_shape, dimension));
+    // Setting an op's dynamic dimension to the static size is a noop.
+    TF_ASSIGN_OR_RETURN(const HloInstructionProto* val_proto,
+                        LookUpInstruction(val));
+    if (StringToHloOpcode(val_proto->opcode()).ValueOrDie() ==
+        HloOpcode::kConstant) {
+      TF_ASSIGN_OR_RETURN(auto literal,
+                          Literal::CreateFromProto(val_proto->literal(), true));
+      if (literal.Get<int32>({}) == shape.dimensions(dimension)) {
+        return operand;
+      }
+    }
     *instr.mutable_shape() = shape.ToProto();
     instr.add_dimensions(dimension);
     return AddInstruction(std::move(instr), HloOpcode::kSetDimensionSize,
@@ -2795,6 +2946,13 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
   return op;
 }
 
+StatusOr<XlaOp> XlaBuilder::AddOpWithShape(HloOpcode opcode, const Shape& shape,
+                                           absl::Span<const XlaOp> operands) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = shape.ToProto();
+  return AddInstruction(std::move(instr), opcode, operands);
+}
+
 void XlaBuilder::AddCalledComputation(const XlaComputation& computation,
                                       HloInstructionProto* instr) {
   absl::flat_hash_map<int64, int64> remapped_ids;
@@ -2847,27 +3005,23 @@ void XlaBuilder::AddCalledComputation(const XlaComputation& computation,
 StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
     const XlaOp op) const {
   TF_RETURN_IF_ERROR(first_error_);
-  return LookUpInstructionInternal<const HloInstructionProto*>(
-      handle_to_index_, instructions_, op.builder_, this, op.handle());
+  return LookUpInstructionInternal<const HloInstructionProto*>(op);
 }
 
 StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstructionByHandle(
     int64 handle) const {
-  return LookUpInstructionByHandleInternal<const HloInstructionProto*>(
-      handle_to_index_, instructions_, handle);
+  return LookUpInstructionByHandleInternal<const HloInstructionProto*>(handle);
 }
 
 StatusOr<HloInstructionProto*> XlaBuilder::LookUpMutableInstruction(
     const XlaOp op) {
   TF_RETURN_IF_ERROR(first_error_);
-  return LookUpInstructionInternal<HloInstructionProto*>(
-      handle_to_index_, instructions_, op.builder_, this, op.handle());
+  return LookUpInstructionInternal<HloInstructionProto*>(op);
 }
 
 StatusOr<HloInstructionProto*> XlaBuilder::LookUpMutableInstructionByHandle(
     int64 handle) {
-  return LookUpInstructionByHandleInternal<HloInstructionProto*>(
-      handle_to_index_, instructions_, handle);
+  return LookUpInstructionByHandleInternal<HloInstructionProto*>(handle);
 }
 
 // Enqueues a "retrieve parameter value" instruction for a parameter that was
@@ -2918,6 +3072,10 @@ XlaOp Reshape(const XlaOp operand, absl::Span<const int64> dimensions,
 
 XlaOp Reshape(const XlaOp operand, absl::Span<const int64> new_sizes) {
   return operand.builder()->Reshape(operand, new_sizes);
+}
+
+XlaOp Reshape(const Shape& shape, XlaOp operand) {
+  return operand.builder()->Reshape(shape, operand);
 }
 
 XlaOp ReshapeWithInferredDimension(XlaOp operand,
@@ -3150,6 +3308,16 @@ XlaOp CustomCall(XlaBuilder* builder, const string& call_target_name,
                              /*operand_shapes_with_layout=*/absl::nullopt);
 }
 
+XlaOp CustomCallWithComputation(XlaBuilder* builder,
+                                const string& call_target_name,
+                                absl::Span<const XlaOp> operands,
+                                const XlaComputation& computation,
+                                const Shape& shape, const string& opaque) {
+  return builder->CustomCall(call_target_name, operands, computation, shape,
+                             opaque,
+                             /*operand_shapes_with_layout=*/absl::nullopt);
+}
+
 XlaOp CustomCallWithLayout(XlaBuilder* builder, const string& call_target_name,
                            absl::Span<const XlaOp> operands, const Shape& shape,
                            absl::Span<const Shape> operand_shapes_with_layout,
@@ -3313,9 +3481,10 @@ XlaOp AllReduce(const XlaOp operand, const XlaComputation& computation,
 
 XlaOp AllToAll(const XlaOp operand, int64 split_dimension,
                int64 concat_dimension, int64 split_count,
-               const std::vector<ReplicaGroup>& replica_groups) {
+               const std::vector<ReplicaGroup>& replica_groups,
+               const absl::optional<Layout>& layout) {
   return operand.builder()->AllToAll(operand, split_dimension, concat_dimension,
-                                     split_count, replica_groups);
+                                     split_count, replica_groups, layout);
 }
 
 XlaOp CollectivePermute(
@@ -3458,6 +3627,12 @@ XlaOp RngNormal(const XlaOp mu, const XlaOp sigma, const Shape& shape) {
 
 XlaOp RngUniform(const XlaOp a, const XlaOp b, const Shape& shape) {
   return a.builder()->RngUniform(a, b, shape);
+}
+
+XlaOp RngBitGenerator(RandomAlgorithm algorithm, const XlaOp initial_state,
+                      const Shape& shape) {
+  return initial_state.builder()->RngBitGenerator(algorithm, initial_state,
+                                                  shape);
 }
 
 XlaOp While(const XlaComputation& condition, const XlaComputation& body,

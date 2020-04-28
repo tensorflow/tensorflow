@@ -40,6 +40,9 @@ tf_py_test(
     grpc_enabled = True,
     main = "client_test.py",
     python_version = "PY3",
+    tags = [
+        "no_oss_py2",
+    ],
     deps = [
         ":client",
         "//tensorflow/python:client_testlib",

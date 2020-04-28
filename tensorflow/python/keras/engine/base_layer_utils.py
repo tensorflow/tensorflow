@@ -29,6 +29,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
+from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_func_graphs
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
@@ -44,7 +45,7 @@ def create_mean_metric(value, name=None):
   # import keras will import base_layer and then this module, and metric relies
   # on base_layer, which result into a cyclic dependency.
   from tensorflow.python.keras import metrics as metrics_module  # pylint: disable=g-import-not-at-top
-  metric_obj = metrics_module.Mean(name=name)
+  metric_obj = metrics_module.Mean(name=name, dtype=value.dtype)
   return metric_obj, metric_obj(value)
 
 
@@ -109,18 +110,17 @@ def make_variable(name,
   if initializer is not None and not callable(initializer):
     initializing_from_value = True
 
-  with ops.init_scope():
-    if initializing_from_value:
-      init_val = initializer
-      variable_dtype = None
-    else:
-      # Instantiate initializer if provided initializer is a type object.
-      if isinstance(
-          initializer,
-          (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
-        initializer = initializer()
-      init_val = lambda: initializer(shape, dtype=dtype)
-      variable_dtype = dtype.base_dtype
+  if initializing_from_value:
+    init_val = initializer
+    variable_dtype = None
+  else:
+    # Instantiate initializer if provided initializer is a type object.
+    if isinstance(
+        initializer,
+        (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
+      initializer = initializer()
+    init_val = lambda: initializer(shape, dtype=dtype)
+    variable_dtype = dtype.base_dtype
   if use_resource is None:
     use_resource = True
 
@@ -182,7 +182,8 @@ def create_keras_history(tensors):
       operations and need to have Keras metadata assigned to them.
 
   Returns:
-    keras_tensors: The Tensors found that came from a Keras Layer.
+    created_layers: List. The `TensorFlowOpLayer` instances created to wrap
+      the raw Tensorflow operations.
   """
   _, created_layers = _create_keras_history_helper(tensors, set(), [])
   return created_layers
@@ -253,8 +254,10 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
       op_layer = base_layer.TensorFlowOpLayer(
           node_def, constants=constants, name=name)
       created_layers.append(op_layer)
-      op_layer._add_inbound_node(  # pylint: disable=protected-access
-          layer_inputs, op.outputs)
+      op_layer._set_connectivity_metadata(  # pylint: disable=protected-access
+          args=(layer_inputs,),
+          kwargs={},
+          outputs=op.outputs)
       processed_ops.update([op])
   return processed_ops, created_layers
 
@@ -393,6 +396,9 @@ def call_context():
   if getattr(_call_context, 'call_context', None) is None:
     _call_context.call_context = CallContext()
   return _call_context.call_context
+
+
+control_flow_util_v2._register_keras_layer_context_function(call_context)  # pylint: disable=protected-access
 
 
 class CallContext(object):
@@ -651,17 +657,9 @@ def mark_as_return(outputs, acd):
   return nest.map_structure(_mark_as_return, outputs)
 
 
-def default(method):
-  """Decorates a method to detect overrides in subclasses."""
-  method._is_default = True  # pylint: disable=protected-access
-  return method
-
-
 V2_DTYPE_BEHAVIOR = None
 
 
-# These two functions are not exported because we plan on removing them in the
-# future.
 def enable_v2_dtype_behavior():
   """Enable the V2 dtype behavior for Keras layers.
 

@@ -56,7 +56,7 @@ void FramePair::AdjustBox(const BoundingBox box,
   *scale_y = 1.0f;
 
   // The assumption is that all deltas that make it to this stage with a
-  // correspondending optical_flow_found_keypoint_[i] == true are not in
+  // corresponding optical_flow_found_keypoint_[i] == true are not in
   // themselves degenerate.
   //
   // The degeneracy with scale arose because if the points are too close to the

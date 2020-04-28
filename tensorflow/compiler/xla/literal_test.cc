@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal.h"
 
+#include <limits>
 #include <vector>
 
 #include "absl/base/casts.h"
@@ -2009,8 +2010,7 @@ TEST_F(LiteralUtilTest, IsEqualAt) {
   EXPECT_TRUE(c3.IsEqualAt({}, val_double));
   EXPECT_TRUE(c3.IsEqualAt({}, val_integral));
   EXPECT_TRUE(c3.IsEqualAt({}, val_complex));
-  double val_inf = 1. / 0;
-  EXPECT_FALSE(c3.IsEqualAt({}, val_inf));
+  EXPECT_FALSE(c3.IsEqualAt({}, std::numeric_limits<double>::infinity()));
   complex128 val_true_complex = {10, 3};
   complex64 val_smaller_complex = {10, 3};
   Literal c4 = LiteralUtil::CreateR0<complex128>(val_true_complex);

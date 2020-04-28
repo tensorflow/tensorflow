@@ -15,6 +15,10 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 package(
     default_visibility = [
@@ -43,11 +47,13 @@ exports_files(
         "logging.h",
         "lookup_interface.h",
         "memory_types.h",
+        "metrics.h",
         "model.h",
         "node_def_builder.h",
         "numeric_op.h",
-        "op.h",
+        "numeric_op_base.h",
         "op_kernel.h",
+        "op_requires.h",
         "op_segment.h",
         "ops_util.h",
         "partial_tensor_shape.h",
@@ -61,7 +67,6 @@ exports_files(
         "resource_var.h",
         "run_handler.h",
         "run_handler_util.h",
-        "selective_registration.h",
         "session_state.h",
         "shared_ptr_variant.h",
         "stats_aggregator.h",
@@ -70,10 +75,12 @@ exports_files(
         "tensor_util.h",
         "thread_factory.h",
         "tracking_allocator.h",
-        "unique_tensor_references.h",
         "versions.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/common_runtime:__pkg__",
+    ],
 )
 
 # List of exported test source files that do not yet have local build rules.
@@ -126,9 +133,13 @@ exports_files(
     [
         "attr_value_util.h",
         "common_shape_fns.h",
+        "kernel_shape_util.h",
         "node_def_util.h",
+        "node_properties.h",
+        "op.h",
         "op_def_builder.h",
         "op_def_util.h",
+        "selective_registration.h",
         "shape_inference.h",
     ],
     visibility = ["//tensorflow/core:__subpackages__"],
@@ -160,20 +171,25 @@ filegroup(
         "graph_to_functiondef.h",
         "kernel_def_builder.h",
         "kernel_def_util.h",
+        "kernel_shape_util.h",
         "local_rendezvous.h",
         "log_memory.h",
         "logging.h",
         "lookup_interface.h",
         "memory_types.h",
+        "metrics.h",
         "model.h",
         "node_def_builder.h",
         "node_def_util.h",
+        "node_properties.h",
         "numeric_op.h",
+        "numeric_op_base.h",
         "numeric_types.h",
         "op.h",
         "op_def_builder.h",
         "op_def_util.h",
         "op_kernel.h",
+        "op_requires.h",
         "op_segment.h",
         "ops_util.h",
         "partial_tensor_shape.h",
@@ -206,7 +222,6 @@ filegroup(
         "type_traits.h",
         "typed_allocator.h",
         "types.h",
-        "unique_tensor_references.h",
         "variant.h",
         "variant_encode_decode.h",
         "variant_op_registry.h",
@@ -233,9 +248,9 @@ filegroup(
         "logging.cc",
         "lookup_interface.cc",
         "memory_types.cc",
+        "metrics.cc",
         "model.cc",
         "node_def_builder.cc",
-        "op.cc",
         "op_kernel.cc",
         "op_segment.cc",
         "ops_util.cc",
@@ -245,7 +260,6 @@ filegroup(
         "run_handler_util.cc",
         "tensor_slice.cc",
         "tensor_util.cc",
-        "unique_tensor_references.cc",
         "versions.cc",
     ],
 )
@@ -262,9 +276,15 @@ filegroup(
         "bfloat16.h",
         "bounds_check.h",
         "cpu_allocator_impl.cc",
+        "kernel_shape_util.cc",
+        "kernel_shape_util.h",
         "log_memory.cc",
         "log_memory.h",
+        "numeric_op_base.h",
         "numeric_types.h",
+        "op_requires.h",
+        "ops_util.cc",
+        "ops_util.h",
         "register_types.h",
         "resource_handle.cc",
         "resource_handle.h",
@@ -329,12 +349,16 @@ filegroup(
         "lookup_interface.h",
         "memory_types.cc",
         "memory_types.h",
+        "metrics.cc",
+        "metrics.h",
         "model.cc",
         "model.h",
         "node_def_builder.cc",
         "node_def_builder.h",
         "node_def_util.cc",
         "node_def_util.h",
+        "node_properties.cc",
+        "node_properties.h",
         "numeric_op.h",
         "op.cc",
         "op.h",
@@ -346,8 +370,6 @@ filegroup(
         "op_kernel.h",
         "op_segment.cc",
         "op_segment.h",
-        "ops_util.cc",
-        "ops_util.h",
         "partial_tensor_shape.h",
         "queue_interface.h",
         "reader_interface.h",
@@ -367,15 +389,12 @@ filegroup(
         "shape_inference.cc",
         "shape_inference.h",
         "stats_aggregator.h",
-        "tensor_interface.h",
         "tensor_reference.h",
         "tensor_slice.cc",
         "tensor_slice.h",
         "tensor_util.cc",
         "tensor_util.h",
         "thread_factory.h",
-        "unique_tensor_references.cc",
-        "unique_tensor_references.h",
         "versions.cc",
         "versions.h",
     ],
@@ -585,7 +604,10 @@ cc_library(
 cc_library(
     name = "numeric_types",
     hdrs = ["numeric_types.h"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = [
+        "//tensorflow/compiler:__subpackages__",
+        "//tensorflow/core:__subpackages__",
+    ],
     deps = [
         "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/platform:types",
@@ -610,7 +632,10 @@ cc_library(
         "partial_tensor_shape.h",
         "tensor_shape.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/runtime_fallback:__pkg__",
+    ],
     deps = [
         ":bounds_check",
         ":tensor_shape_proto_cc",
@@ -760,6 +785,19 @@ cc_library(
 )
 
 cc_library(
+    name = "kernel_shape_util",
+    srcs = ["kernel_shape_util.cc"],
+    hdrs = ["kernel_shape_util.h"],
+    deps = [
+        ":tensor",
+        ":tensor_shape",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/util:padding",
+    ],
+)
+
+cc_library(
     name = "common_shape_fns",
     srcs = ["common_shape_fns.cc"],
     hdrs = ["common_shape_fns.h"],
@@ -774,6 +812,7 @@ cc_library(
         "//tensorflow/core/util:padding",
         "//tensorflow/core/util:tensor_format",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -852,7 +891,23 @@ cc_library(
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
+        "//tensorflow/core/util:padding",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "node_properties",
+    srcs = ["node_properties.cc"],
+    hdrs = ["node_properties.h"],
+    deps = [
+        ":node_def_proto_cc",
+        ":node_def_util",
+        ":op",
+        ":op_def_proto_cc",
+        ":tensor",
+        ":types_proto_cc",
+        "//tensorflow/core/lib/core:status",
     ],
 )
 
@@ -876,6 +931,40 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_library(
+    name = "selective_registration",
+    hdrs = ["selective_registration.h"],
+)
+
+cc_library(
+    name = "op",
+    srcs = ["op.cc"],
+    hdrs = ["op.h"],
+    deps = [
+        ":op_def_builder",
+        ":op_def_util",
+        ":selective_registration",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/lib/gtl:map_util",
+        "//tensorflow/core/lib/strings:str_util",
+        "//tensorflow/core/lib/strings:strcat",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:thread_annotations",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
+    name = "op_requires",
+    hdrs = ["op_requires.h"],
+    deps = ["//tensorflow/core/platform:macros"],
 )
 
 # Files whose users still need to be migrated from core:framework to the
@@ -933,6 +1022,7 @@ tf_cc_tests(
         "model_test.cc",
         "node_def_builder_test.cc",
         "node_def_util_test.cc",
+        "node_properties_test.cc",
         "op_compatibility_test.cc",
         "op_def_builder_test.cc",
         "op_def_util_test.cc",
@@ -951,7 +1041,6 @@ tf_cc_tests(
         "tensor_util_test.cc",
         "tracking_allocator_test.cc",
         "types_test.cc",
-        "unique_tensor_references_test.cc",
         "variant_op_registry_test.cc",
         "variant_test.cc",
     ],
@@ -997,7 +1086,7 @@ tf_cc_tests(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "op_gen_lib.h",
         "rendezvous.h",

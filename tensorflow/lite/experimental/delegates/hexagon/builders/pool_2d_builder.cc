@@ -19,8 +19,8 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/hexagon_nn/hexagon_nn.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -35,9 +35,8 @@ TfLiteStatus Pool2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   int tensor_id = inputs->data[0];
   const auto& data_tensor = context->tensors[tensor_id];
   AddInput(graph_builder_->GetHexagonTensorId(tensor_id));
-  TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
-      data_tensor, &data_min_, &data_max_, std::numeric_limits<uint8_t>::min(),
-      std::numeric_limits<uint8_t>::max()));
+  TF_LITE_ENSURE_STATUS(
+      ComputeMinAndMaxQuantValues(data_tensor, &data_min_, &data_max_));
   auto* data_min_const = graph_builder_->AddConstNodeWithData(
       quant_bound_shape.data(), (char*)&data_min_, sizeof(data_min_));
   auto* data_max_const = graph_builder_->AddConstNodeWithData(
@@ -90,15 +89,13 @@ TfLiteStatus Pool2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
 
     // Output min/max for requantization.
     TF_LITE_ENSURE_STATUS(ComputeMinAndMaxQuantValues(
-        context->tensors[outputs->data[0]], &output_min_, &output_max_,
-        std::numeric_limits<uint8_t>::min(),
-        std::numeric_limits<uint8_t>::max()));
+        context->tensors[outputs->data[0]], &output_min_, &output_max_));
     auto* output_min_const = graph_builder_->AddConstNodeWithData(
         quant_bound_shape.data(), (char*)&output_min_, sizeof(output_min_));
     auto* output_max_const = graph_builder_->AddConstNodeWithData(
         quant_bound_shape.data(), (char*)&output_max_, sizeof(output_max_));
 
-    auto* requantize_op = graph_builder_->AddNode();
+    auto* requantize_op = graph_builder_->AddNode(GetTFLiteNodeID());
     requantize_op->SetOpType(OP_Requantize_8to8);
     requantize_op->AddInput(pool_out);
     requantize_op->AddInput(pool_out_min);

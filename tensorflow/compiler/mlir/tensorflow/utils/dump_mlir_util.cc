@@ -24,9 +24,10 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/path.h"
 
 namespace tensorflow {
 
@@ -42,7 +43,8 @@ std::string MakeUniqueFilename(string name) {
   // Remove illegal characters from `name`.
   for (int i = 0; i < name.size(); ++i) {
     char ch = name[i];
-    if (ch == '/' || ch == '[' || ch == ']' || ch == '*' || ch == '?') {
+    if (ch == '/' || ch == '[' || ch == ']' || ch == '*' || ch == '?' ||
+        ch == '\\') {
       name[i] = '_';
     }
   }
@@ -61,14 +63,14 @@ std::string MakeUniqueFilename(string name) {
   return filename;
 }
 
-// Simple raw_ostream that prints to LOG(INFO).
+// Simple raw_ostream that prints to stderr.
 struct LogInfoRawStream : public llvm::raw_ostream {
   LogInfoRawStream() { SetUnbuffered(); }
   ~LogInfoRawStream() override = default;
   uint64_t current_pos() const override { return 0; }
 
   void write_impl(const char* ptr, size_t size) override {
-    LOG(INFO) << absl::string_view(ptr, size);
+    fprintf(stderr, "%.*s", static_cast<int>(size), ptr);
   }
 };
 
@@ -97,24 +99,20 @@ struct WritableFileRawStream : public llvm::raw_ostream {
 Status CreateFileForDumping(llvm::StringRef name,
                             std::unique_ptr<llvm::raw_ostream>* os,
                             std::string* filepath, llvm::StringRef dirname) {
-  const char* dir = nullptr;
+  std::string dir;
   if (!dirname.empty())
-    dir = dirname.data();
+    dir = std::string(dirname);
   else
-    dir = getenv("TF_DUMP_GRAPH_PREFIX");
+    dir = GetDumpDirFromEnvVar();
 
-  if (!dir) {
-    LOG(WARNING)
-        << "Failed to generate file because dump location is not specified "
-           "through either "
-           "TF_DUMP_GRAPH_PREFIX environment variable or function argument.";
+  if (dir.empty()) {
     return Status(error::Code::INVALID_ARGUMENT,
                   "(TF_DUMP_GRAPH_PREFIX not specified)");
   }
 
-  if (std::strncmp(dir, "-", 2) == 0) {
+  if (dir == "-") {
     *os = std::make_unique<LogInfoRawStream>();
-    *filepath = "LOG(INFO)";
+    *filepath = "(stderr)";
     return Status();
   }
 
@@ -126,8 +124,7 @@ Status CreateFileForDumping(llvm::StringRef name,
                  << "' directory for dumping: " << status;
     return Status(error::Code::UNAVAILABLE, "(unavailable)");
   }
-  *filepath =
-      llvm::Twine(dir).concat("/").concat(MakeUniqueFilename(name)).str();
+  *filepath = io::JoinPath(dir, MakeUniqueFilename(std::string(name)));
 
   // Try to open the file and generate a raw_ostream.
   std::unique_ptr<WritableFile> file;
@@ -147,9 +144,41 @@ std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
   if (!result.ok()) return result.error_message();
 
-  op->print(*os, mlir::OpPrintingFlags().useLocalScope());
+  op->print(*os, mlir::OpPrintingFlags().useLocalScope().printGenericOpForm());
   LOG(INFO) << "Dumped MLIR operation '" << op->getName().getStringRef().str()
             << "' to '" << filepath << "'";
+  return filepath;
+}
+
+std::string GetDumpDirFromEnvVar() {
+  const char* prefix_env = getenv("TF_DUMP_GRAPH_PREFIX");
+  if (!prefix_env) {
+    LOG(WARNING)
+        << "Failed to dump MLIR module because dump location is not "
+        << " specified through TF_DUMP_GRAPH_PREFIX environment variable.";
+    return "";
+  }
+
+  std::string result = prefix_env;
+
+  if (absl::EqualsIgnoreCase(result, "sponge") &&
+      !io::GetTestUndeclaredOutputsDir(&result)) {
+    LOG(WARNING) << "TF_DUMP_GRAPH_PREFIX=sponge but "
+                    "TEST_UNDECLARED_OUTPUT_DIRS is not set";
+    return "";
+  }
+  return result;
+}
+
+std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
+                                llvm::StringRef dirname) {
+  std::unique_ptr<llvm::raw_ostream> os;
+  std::string filepath;
+  Status result = CreateFileForDumping(name, &os, &filepath, dirname);
+  if (!result.ok()) return result.error_message();
+
+  (*os) << content;
+  LOG(INFO) << "Outputted requested string to '" << filepath << "'";
   return filepath;
 }
 

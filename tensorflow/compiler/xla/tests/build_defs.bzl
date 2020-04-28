@@ -173,7 +173,7 @@ def xla_test(
 
         test_names.append(test_name)
 
-    native.test_suite(name = name, tests = test_names)
+    native.test_suite(name = name, tags = tags, tests = test_names)
 
 def xla_test_library(
         name,

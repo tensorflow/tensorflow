@@ -209,16 +209,6 @@ void MaxEvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node,
 
 }  // namespace
 
-void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
-}
-
-void Free(TfLiteContext* context, void* buffer) {}
-
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  return kTfLiteOk;
-}
-
 TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLitePoolParams*>(node->builtin_data);
   OpData data;
@@ -240,8 +230,8 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
       AverageEvalInt8(context, node, params, &data, input, output);
       break;
     default:
-      context->ReportError(context, "Input type %s is not currently supported",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Input type %s is not currently supported",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -264,8 +254,8 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
       MaxEvalQuantizedUInt8(context, node, params, &data, input, output);
       break;
     default:
-      context->ReportError(context, "Type %s not currently supported.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Type %s not currently supported.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -274,18 +264,26 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace pooling
 
 TfLiteRegistration* Register_AVERAGE_POOL_2D() {
-  static TfLiteRegistration r = {
-      pooling::Init,
-      pooling::Free,
-      pooling::Prepare,
-      pooling::AverageEval,
-  };
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/pooling::AverageEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_MAX_POOL_2D() {
-  static TfLiteRegistration r = {pooling::Init, pooling::Free, pooling::Prepare,
-                                 pooling::MaxEval};
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/pooling::MaxEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

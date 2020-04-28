@@ -1,4 +1,5 @@
 *tensorflow*
+*absl*kSeed*;
 *toco*
 *perftools*gputools*
 *tf_*
@@ -8,3 +9,4 @@
 *nsync_*
 *stream_executor*
 *xla*
+*PyInit_*

@@ -62,7 +62,55 @@ class LearningRateSchedule(object):
 
 @keras_export("keras.optimizers.schedules.ExponentialDecay")
 class ExponentialDecay(LearningRateSchedule):
-  """A LearningRateSchedule that uses an exponential decay schedule."""
+  """A LearningRateSchedule that uses an exponential decay schedule.
+
+  When training a model, it is often recommended to lower the learning rate as
+  the training progresses. This schedule applies an exponential decay function
+  to an optimizer step, given a provided initial learning rate.
+
+  The schedule a 1-arg callable that produces a decayed learning
+  rate when passed the current optimizer step. This can be useful for changing
+  the learning rate value across different invocations of optimizer functions.
+  It is computed as:
+
+  ```python
+  def decayed_learning_rate(step):
+    return initial_learning_rate * decay_rate ^ (step / decay_steps)
+  ```
+
+  If the argument `staircase` is `True`, then `step / decay_steps` is
+  an integer division and the decayed learning rate follows a
+  staircase function.
+
+  You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
+  as the learning rate.
+  Example: When fitting a Keras model, decay every 100000 steps with a base
+  of 0.96:
+
+  ```python
+  initial_learning_rate = 0.1
+  lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+      initial_learning_rate,
+      decay_steps=100000,
+      decay_rate=0.96,
+      staircase=True)
+
+  model.compile(optimizer=tf.keras.optimizers.SGD(learning_rate=lr_schedule),
+                loss='sparse_categorical_crossentropy',
+                metrics=['accuracy'])
+
+  model.fit(data, labels, epochs=5)
+  ```
+
+  The learning rate schedule is also serializable and deserializable using
+  `tf.keras.optimizers.schedules.serialize` and
+  `tf.keras.optimizers.schedules.deserialize`.
+
+  Returns:
+    A 1-arg callable learning rate schedule that takes the current optimizer
+    step and outputs the decayed learning rate, a scalar `Tensor` of the same
+    type as `initial_learning_rate`.
+  """
 
   def __init__(
       self,
@@ -72,48 +120,6 @@ class ExponentialDecay(LearningRateSchedule):
       staircase=False,
       name=None):
     """Applies exponential decay to the learning rate.
-
-    When training a model, it is often recommended to lower the learning rate as
-    the training progresses. This schedule applies an exponential decay function
-    to an optimizer step, given a provided initial learning rate.
-
-    The schedule a 1-arg callable that produces a decayed learning
-    rate when passed the current optimizer step. This can be useful for changing
-    the learning rate value across different invocations of optimizer functions.
-    It is computed as:
-
-    ```python
-    def decayed_learning_rate(step):
-      return initial_learning_rate * decay_rate ^ (step / decay_steps)
-    ```
-
-    If the argument `staircase` is `True`, then `step / decay_steps` is
-    an integer division and the decayed learning rate follows a
-    staircase function.
-
-    You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
-    as the learning rate.
-    Example: When fitting a Keras model, decay every 100000 steps with a base
-    of 0.96:
-
-    ```python
-    initial_learning_rate = 0.1
-    lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-        initial_learning_rate,
-        decay_steps=100000,
-        decay_rate=0.96,
-        staircase=True)
-
-    model.compile(optimizer=tf.keras.optimizers.SGD(learning_rate=lr_schedule),
-                  loss='sparse_categorical_crossentropy',
-                  metrics=['accuracy'])
-
-    model.fit(data, labels, epochs=5)
-    ```
-
-    The learning rate schedule is also serializable and deserializable using
-    `tf.keras.optimizers.schedules.serialize` and
-    `tf.keras.optimizers.schedules.deserialize`.
 
     Args:
       initial_learning_rate: A scalar `float32` or `float64` `Tensor` or a
@@ -126,11 +132,6 @@ class ExponentialDecay(LearningRateSchedule):
         intervals
       name: String.  Optional name of the operation.  Defaults to
         'ExponentialDecay'.
-
-    Returns:
-      A 1-arg callable learning rate schedule that takes the current optimizer
-      step and outputs the decayed learning rate, a scalar `Tensor` of the same
-      type as `initial_learning_rate`.
     """
     super(ExponentialDecay, self).__init__()
     self.initial_learning_rate = initial_learning_rate
@@ -141,7 +142,7 @@ class ExponentialDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "ExponentialDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor(
+      initial_learning_rate = ops.convert_to_tensor_v2(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
@@ -166,7 +167,41 @@ class ExponentialDecay(LearningRateSchedule):
 
 @keras_export("keras.optimizers.schedules.PiecewiseConstantDecay")
 class PiecewiseConstantDecay(LearningRateSchedule):
-  """A LearningRateSchedule that uses a piecewise constant decay schedule."""
+  """A LearningRateSchedule that uses a piecewise constant decay schedule.
+
+  The function returns a 1-arg callable to compute the piecewise constant
+  when passed the current optimizer step. This can be useful for changing the
+  learning rate value across different invocations of optimizer functions.
+
+  Example: use a learning rate that's 1.0 for the first 100001 steps, 0.5
+    for the next 10000 steps, and 0.1 for any additional steps.
+
+  ```python
+  step = tf.Variable(0, trainable=False)
+  boundaries = [100000, 110000]
+  values = [1.0, 0.5, 0.1]
+  learning_rate_fn = keras.optimizers.schedules.PiecewiseConstantDecay(
+      boundaries, values)
+
+  # Later, whenever we perform an optimization step, we pass in the step.
+  learning_rate = learning_rate_fn(step)
+  ```
+
+  You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
+  as the learning rate. The learning rate schedule is also serializable and
+  deserializable using `tf.keras.optimizers.schedules.serialize` and
+  `tf.keras.optimizers.schedules.deserialize`.
+
+  Returns:
+    A 1-arg callable learning rate schedule that takes the current optimizer
+    step and outputs the decayed learning rate, a scalar `Tensor` of the same
+    type as the boundary tensors.
+
+    The output of the 1-arg function that takes the `step`
+    is `values[0]` when `step <= boundaries[0]`,
+    `values[1]` when `step > boundaries[0]` and `step <= boundaries[1]`, ...,
+    and values[-1] when `step > boundaries[-1]`.
+  """
 
   def __init__(
       self,
@@ -174,29 +209,6 @@ class PiecewiseConstantDecay(LearningRateSchedule):
       values,
       name=None):
     """Piecewise constant from boundaries and interval values.
-
-    The function returns a 1-arg callable to compute the piecewise constant
-    when passed the current optimizer step. This can be useful for changing the
-    learning rate value across different invocations of optimizer functions.
-
-    Example: use a learning rate that's 1.0 for the first 100001 steps, 0.5
-      for the next 10000 steps, and 0.1 for any additional steps.
-
-    ```python
-    step = tf.Variable(0, trainable=False)
-    boundaries = [100000, 110000]
-    values = [1.0, 0.5, 0.1]
-    learning_rate_fn = keras.optimizers.schedules.PiecewiseConstantDecay(
-        boundaries, values)
-
-    # Later, whenever we perform an optimization step, we pass in the step.
-    learning_rate = learning_rate_fn(step)
-    ```
-
-    You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
-    as the learning rate. The learning rate schedule is also serializable and
-    deserializable using `tf.keras.optimizers.schedules.serialize` and
-    `tf.keras.optimizers.schedules.deserialize`.
 
     Args:
       boundaries: A list of `Tensor`s or `int`s or `float`s with strictly
@@ -208,16 +220,6 @@ class PiecewiseConstantDecay(LearningRateSchedule):
         type.
       name: A string. Optional name of the operation. Defaults to
         'PiecewiseConstant'.
-
-    Returns:
-      A 1-arg callable learning rate schedule that takes the current optimizer
-      step and outputs the decayed learning rate, a scalar `Tensor` of the same
-      type as the boundary tensors.
-
-      The output of the 1-arg function that takes the `step`
-      is `values[0]` when `step <= boundaries[0]`,
-      `values[1]` when `step > boundaries[0]` and `step <= boundaries[1]`, ...,
-      and values[-1] when `step > boundaries[-1]`.
 
     Raises:
       ValueError: if the number of elements in the lists do not match.
@@ -236,7 +238,7 @@ class PiecewiseConstantDecay(LearningRateSchedule):
     with ops.name_scope_v2(self.name or "PiecewiseConstant"):
       boundaries = ops.convert_n_to_tensor(self.boundaries)
       values = ops.convert_n_to_tensor(self.values)
-      x_recomp = ops.convert_to_tensor(step)
+      x_recomp = ops.convert_to_tensor_v2(step)
       for i, b in enumerate(boundaries):
         if b.dtype.base_dtype != x_recomp.dtype.base_dtype:
           # We cast the boundaries to have the same type as the step
@@ -265,7 +267,75 @@ class PiecewiseConstantDecay(LearningRateSchedule):
 
 @keras_export("keras.optimizers.schedules.PolynomialDecay")
 class PolynomialDecay(LearningRateSchedule):
-  """A LearningRateSchedule that uses a polynomial decay schedule."""
+  """A LearningRateSchedule that uses a polynomial decay schedule.
+
+  It is commonly observed that a monotonically decreasing learning rate, whose
+  degree of change is carefully chosen, results in a better performing model.
+  This schedule applies a polynomial decay function to an optimizer step,
+  given a provided `initial_learning_rate`, to reach an `end_learning_rate`
+  in the given `decay_steps`.
+
+  It requires a `step` value to compute the decayed learning rate. You
+  can just pass a TensorFlow variable that you increment at each training
+  step.
+
+  The schedule is a 1-arg callable that produces a decayed learning rate
+  when passed the current optimizer step. This can be useful for changing the
+  learning rate value across different invocations of optimizer functions.
+  It is computed as:
+
+  ```python
+  def decayed_learning_rate(step):
+    step = min(step, decay_steps)
+    return ((initial_learning_rate - end_learning_rate) *
+            (1 - step / decay_steps) ^ (power)
+           ) + end_learning_rate
+  ```
+
+  If `cycle` is True then a multiple of `decay_steps` is used, the first one
+  that is bigger than `step`.
+
+  ```python
+  def decayed_learning_rate(step):
+    decay_steps = decay_steps * ceil(step / decay_steps)
+    return ((initial_learning_rate - end_learning_rate) *
+            (1 - step / decay_steps) ^ (power)
+           ) + end_learning_rate
+  ```
+
+  You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
+  as the learning rate.
+  Example: Fit a model while decaying from 0.1 to 0.01 in 10000 steps using
+  sqrt (i.e. power=0.5):
+
+  ```python
+  ...
+  starter_learning_rate = 0.1
+  end_learning_rate = 0.01
+  decay_steps = 10000
+  learning_rate_fn = tf.keras.optimizers.schedules.PolynomialDecay(
+      starter_learning_rate,
+      decay_steps,
+      end_learning_rate,
+      power=0.5)
+
+  model.compile(optimizer=tf.keras.optimizers.SGD(
+                    learning_rate=learning_rate_fn),
+                loss='sparse_categorical_crossentropy',
+                metrics=['accuracy'])
+
+  model.fit(data, labels, epochs=5)
+  ```
+
+  The learning rate schedule is also serializable and deserializable using
+  `tf.keras.optimizers.schedules.serialize` and
+  `tf.keras.optimizers.schedules.deserialize`.
+
+  Returns:
+    A 1-arg callable learning rate schedule that takes the current optimizer
+    step and outputs the decayed learning rate, a scalar `Tensor` of the same
+    type as `initial_learning_rate`.
+  """
 
   def __init__(
       self,
@@ -276,68 +346,6 @@ class PolynomialDecay(LearningRateSchedule):
       cycle=False,
       name=None):
     """Applies a polynomial decay to the learning rate.
-
-    It is commonly observed that a monotonically decreasing learning rate, whose
-    degree of change is carefully chosen, results in a better performing model.
-    This schedule applies a polynomial decay function to an optimizer step,
-    given a provided `initial_learning_rate`, to reach an `end_learning_rate`
-    in the given `decay_steps`.
-
-    It requires a `step` value to compute the decayed learning rate. You
-    can just pass a TensorFlow variable that you increment at each training
-    step.
-
-    The schedule is a 1-arg callable that produces a decayed learning rate
-    when passed the current optimizer step. This can be useful for changing the
-    learning rate value across different invocations of optimizer functions.
-    It is computed as:
-
-    ```python
-    def decayed_learning_rate(step):
-      step = min(step, decay_steps)
-      return ((initial_learning_rate - end_learning_rate) *
-              (1 - step / decay_steps) ^ (power)
-             ) + end_learning_rate
-    ```
-
-    If `cycle` is True then a multiple of `decay_steps` is used, the first one
-    that is bigger than `step`.
-
-    ```python
-    def decayed_learning_rate(step):
-      decay_steps = decay_steps * ceil(step / decay_steps)
-      return ((initial_learning_rate - end_learning_rate) *
-              (1 - step / decay_steps) ^ (power)
-             ) + end_learning_rate
-    ```
-
-    You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
-    as the learning rate.
-    Example: Fit a model while decaying from 0.1 to 0.01 in 10000 steps using
-    sqrt (i.e. power=0.5):
-
-    ```python
-    ...
-    starter_learning_rate = 0.1
-    end_learning_rate = 0.01
-    decay_steps = 10000
-    learning_rate_fn = tf.keras.optimizers.schedules.PolynomialDecay(
-        starter_learning_rate,
-        decay_steps,
-        end_learning_rate,
-        power=0.5)
-
-    model.compile(optimizer=tf.keras.optimizers.SGD(
-                      learning_rate=learning_rate_fn),
-                  loss='sparse_categorical_crossentropy',
-                  metrics=['accuracy'])
-
-    model.fit(data, labels, epochs=5)
-    ```
-
-    The learning rate schedule is also serializable and deserializable using
-    `tf.keras.optimizers.schedules.serialize` and
-    `tf.keras.optimizers.schedules.deserialize`.
 
     Args:
       initial_learning_rate: A scalar `float32` or `float64` `Tensor` or a
@@ -351,11 +359,6 @@ class PolynomialDecay(LearningRateSchedule):
       cycle: A boolean, whether or not it should cycle beyond decay_steps.
       name: String.  Optional name of the operation. Defaults to
         'PolynomialDecay'.
-
-    Returns:
-      A 1-arg callable learning rate schedule that takes the current optimizer
-      step and outputs the decayed learning rate, a scalar `Tensor` of the same
-      type as `initial_learning_rate`.
     """
     super(PolynomialDecay, self).__init__()
 
@@ -368,7 +371,7 @@ class PolynomialDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "PolynomialDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor(
+      initial_learning_rate = ops.convert_to_tensor_v2(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
       end_learning_rate = math_ops.cast(self.end_learning_rate, dtype)
@@ -408,7 +411,56 @@ class PolynomialDecay(LearningRateSchedule):
 
 @keras_export("keras.optimizers.schedules.InverseTimeDecay")
 class InverseTimeDecay(LearningRateSchedule):
-  """A LearningRateSchedule that uses an inverse time decay schedule."""
+  """A LearningRateSchedule that uses an inverse time decay schedule.
+
+  When training a model, it is often recommended to lower the learning rate as
+  the training progresses. This schedule applies the inverse decay function
+  to an optimizer step, given a provided initial learning rate.
+  It requires a `step` value to compute the decayed learning rate. You can
+  just pass a TensorFlow variable that you increment at each training step.
+
+  The schedule a 1-arg callable that produces a decayed learning
+  rate when passed the current optimizer step. This can be useful for changing
+  the learning rate value across different invocations of optimizer functions.
+  It is computed as:
+
+  ```python
+  def decayed_learning_rate(step):
+    return initial_learning_rate / (1 + decay_rate * step / decay_step)
+  ```
+
+  or, if `staircase` is `True`, as:
+
+  ```python
+  def decayed_learning_rate(step):
+    return initial_learning_rate / (1 + decay_rate * floor(step / decay_step))
+  ```
+
+  You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
+  as the learning rate.
+  Example: Fit a Keras model when decaying 1/t with a rate of 0.5:
+
+  ```python
+  ...
+  initial_learning_rate = 0.1
+  decay_steps = 1.0
+  decay_rate = 0.5
+  learning_rate_fn = keras.optimizers.schedules.InverseTimeDecay(
+    initial_learning_rate, decay_steps, decay_rate)
+
+  model.compile(optimizer=tf.keras.optimizers.SGD(
+                    learning_rate=learning_rate_fn),
+                loss='sparse_categorical_crossentropy',
+                metrics=['accuracy'])
+
+  model.fit(data, labels, epochs=5)
+  ```
+
+  Returns:
+    A 1-arg callable learning rate schedule that takes the current optimizer
+    step and outputs the decayed learning rate, a scalar `Tensor` of the same
+    type as `initial_learning_rate`.
+  """
 
   def __init__(
       self,
@@ -419,49 +471,6 @@ class InverseTimeDecay(LearningRateSchedule):
       name=None):
     """Applies inverse time decay to the initial learning rate.
 
-    When training a model, it is often recommended to lower the learning rate as
-    the training progresses. This schedule applies the inverse decay function
-    to an optimizer step, given a provided initial learning rate.
-    It requires a `step` value to compute the decayed learning rate. You can
-    just pass a TensorFlow variable that you increment at each training step.
-
-    The schedule a 1-arg callable that produces a decayed learning
-    rate when passed the current optimizer step. This can be useful for changing
-    the learning rate value across different invocations of optimizer functions.
-    It is computed as:
-
-    ```python
-    def decayed_learning_rate(step):
-      return initial_learning_rate / (1 + decay_rate * step / decay_step)
-    ```
-
-    or, if `staircase` is `True`, as:
-
-    ```python
-    def decayed_learning_rate(step):
-      return initial_learning_rate / (1 + decay_rate * floor(step / decay_step))
-    ```
-
-    You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
-    as the learning rate.
-    Example: Fit a Keras model when decaying 1/t with a rate of 0.5:
-
-    ```python
-    ...
-    initial_learning_rate = 0.1
-    decay_steps = 1.0
-    decay_rate = 0.5
-    learning_rate_fn = keras.optimizers.schedules.InverseTimeDecay(
-      initial_learning_rate, decay_steps, decay_rate)
-
-    model.compile(optimizer=tf.keras.optimizers.SGD(
-                      learning_rate=learning_rate_fn),
-                  loss='sparse_categorical_crossentropy',
-                  metrics=['accuracy'])
-
-    model.fit(data, labels, epochs=5)
-    ```
-
     Args:
       initial_learning_rate: A scalar `float32` or `float64` `Tensor` or a
         Python number.  The initial learning rate.
@@ -471,11 +480,6 @@ class InverseTimeDecay(LearningRateSchedule):
         continuous, fashion.
       name: String.  Optional name of the operation.  Defaults to
         'InverseTimeDecay'.
-
-    Returns:
-      A 1-arg callable learning rate schedule that takes the current optimizer
-      step and outputs the decayed learning rate, a scalar `Tensor` of the same
-      type as `initial_learning_rate`.
     """
     super(InverseTimeDecay, self).__init__()
 
@@ -487,7 +491,7 @@ class InverseTimeDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "InverseTimeDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor(
+      initial_learning_rate = ops.convert_to_tensor_v2(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
@@ -513,7 +517,47 @@ class InverseTimeDecay(LearningRateSchedule):
 
 @keras_export("keras.experimental.CosineDecay")
 class CosineDecay(LearningRateSchedule):
-  """A LearningRateSchedule that uses a cosine decay schedule."""
+  """A LearningRateSchedule that uses a cosine decay schedule.
+
+  See [Loshchilov & Hutter, ICLR2016], SGDR: Stochastic Gradient Descent
+  with Warm Restarts. https://arxiv.org/abs/1608.03983
+
+  When training a model, it is often recommended to lower the learning rate as
+  the training progresses. This schedule applies a cosine decay function
+  to an optimizer step, given a provided initial learning rate.
+  It requires a `step` value to compute the decayed learning rate. You can
+  just pass a TensorFlow variable that you increment at each training step.
+
+  The schedule a 1-arg callable that produces a decayed learning
+  rate when passed the current optimizer step. This can be useful for changing
+  the learning rate value across different invocations of optimizer functions.
+  It is computed as:
+
+  ```python
+  def decayed_learning_rate(step):
+    step = min(step, decay_steps)
+    cosine_decay = 0.5 * (1 + cos(pi * step / decay_steps))
+    decayed = (1 - alpha) * cosine_decay + alpha
+    return initial_learning_rate * decayed
+  ```
+
+  Example usage:
+  ```python
+  decay_steps = 1000
+  lr_decayed_fn = tf.keras.experimental.CosineDecay(
+      initial_learning_rate, decay_steps)
+  ```
+
+  You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
+  as the learning rate. The learning rate schedule is also serializable and
+  deserializable using `tf.keras.optimizers.schedules.serialize` and
+  `tf.keras.optimizers.schedules.deserialize`.
+
+  Returns:
+    A 1-arg callable learning rate schedule that takes the current optimizer
+    step and outputs the decayed learning rate, a scalar `Tensor` of the same
+    type as `initial_learning_rate`.
+  """
 
   def __init__(
       self,
@@ -523,40 +567,6 @@ class CosineDecay(LearningRateSchedule):
       name=None):
     """Applies cosine decay to the learning rate.
 
-    See [Loshchilov & Hutter, ICLR2016], SGDR: Stochastic Gradient Descent
-    with Warm Restarts. https://arxiv.org/abs/1608.03983
-
-    When training a model, it is often recommended to lower the learning rate as
-    the training progresses. This schedule applies a cosine decay function
-    to an optimizer step, given a provided initial learning rate.
-    It requires a `step` value to compute the decayed learning rate. You can
-    just pass a TensorFlow variable that you increment at each training step.
-
-    The schedule a 1-arg callable that produces a decayed learning
-    rate when passed the current optimizer step. This can be useful for changing
-    the learning rate value across different invocations of optimizer functions.
-    It is computed as:
-
-    ```python
-    def decayed_learning_rate(step):
-      step = min(step, decay_steps)
-      cosine_decay = 0.5 * (1 + cos(pi * step / decay_steps))
-      decayed = (1 - alpha) * cosine_decay + alpha
-      return initial_learning_rate * decayed
-    ```
-
-    Example usage:
-    ```python
-    decay_steps = 1000
-    lr_decayed_fn = tf.keras.experimental.CosineDecay(
-        initial_learning_rate, decay_steps)
-    ```
-
-    You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
-    as the learning rate. The learning rate schedule is also serializable and
-    deserializable using `tf.keras.optimizers.schedules.serialize` and
-    `tf.keras.optimizers.schedules.deserialize`.
-
     Args:
       initial_learning_rate: A scalar `float32` or `float64` Tensor or a
         Python number. The initial learning rate.
@@ -565,10 +575,6 @@ class CosineDecay(LearningRateSchedule):
       alpha: A scalar `float32` or `float64` Tensor or a Python number.
         Minimum learning rate value as a fraction of initial_learning_rate.
       name: String. Optional name of the operation.  Defaults to 'CosineDecay'.
-    Returns:
-      A 1-arg callable learning rate schedule that takes the current optimizer
-      step and outputs the decayed learning rate, a scalar `Tensor` of the same
-      type as `initial_learning_rate`.
     """
     super(CosineDecay, self).__init__()
 
@@ -579,7 +585,7 @@ class CosineDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "CosineDecay"):
-      initial_learning_rate = ops.convert_to_tensor(
+      initial_learning_rate = ops.convert_to_tensor_v2(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
@@ -604,7 +610,45 @@ class CosineDecay(LearningRateSchedule):
 
 @keras_export("keras.experimental.CosineDecayRestarts")
 class CosineDecayRestarts(LearningRateSchedule):
-  """A LearningRateSchedule that uses a cosine decay schedule with restarts."""
+  """A LearningRateSchedule that uses a cosine decay schedule with restarts.
+
+  See [Loshchilov & Hutter, ICLR2016], SGDR: Stochastic Gradient Descent
+  with Warm Restarts. https://arxiv.org/abs/1608.03983
+
+  When training a model, it is often recommended to lower the learning rate as
+  the training progresses. This schedule applies a cosine decay function with
+  restarts to an optimizer step, given a provided initial learning rate.
+  It requires a `step` value to compute the decayed learning rate. You can
+  just pass a TensorFlow variable that you increment at each training step.
+
+  The schedule a 1-arg callable that produces a decayed learning
+  rate when passed the current optimizer step. This can be useful for changing
+  the learning rate value across different invocations of optimizer functions.
+
+  The learning rate multiplier first decays
+  from 1 to `alpha` for `first_decay_steps` steps. Then, a warm
+  restart is performed. Each new warm restart runs for `t_mul` times more
+  steps and with `m_mul` times smaller initial learning rate.
+
+  Example usage:
+  ```python
+  first_decay_steps = 1000
+  lr_decayed_fn = (
+    tf.keras.experimental.CosineDecayRestarts(
+        initial_learning_rate,
+        first_decay_steps))
+  ```
+
+  You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
+  as the learning rate. The learning rate schedule is also serializable and
+  deserializable using `tf.keras.optimizers.schedules.serialize` and
+  `tf.keras.optimizers.schedules.deserialize`.
+
+  Returns:
+    A 1-arg callable learning rate schedule that takes the current optimizer
+    step and outputs the decayed learning rate, a scalar `Tensor` of the same
+    type as `initial_learning_rate`.
+  """
 
   def __init__(
       self,
@@ -615,38 +659,6 @@ class CosineDecayRestarts(LearningRateSchedule):
       alpha=0.0,
       name=None):
     """Applies cosine decay with restarts to the learning rate.
-
-    See [Loshchilov & Hutter, ICLR2016], SGDR: Stochastic Gradient Descent
-    with Warm Restarts. https://arxiv.org/abs/1608.03983
-
-    When training a model, it is often recommended to lower the learning rate as
-    the training progresses. This schedule applies a cosine decay function with
-    restarts to an optimizer step, given a provided initial learning rate.
-    It requires a `step` value to compute the decayed learning rate. You can
-    just pass a TensorFlow variable that you increment at each training step.
-
-    The schedule a 1-arg callable that produces a decayed learning
-    rate when passed the current optimizer step. This can be useful for changing
-    the learning rate value across different invocations of optimizer functions.
-
-    The learning rate multiplier first decays
-    from 1 to `alpha` for `first_decay_steps` steps. Then, a warm
-    restart is performed. Each new warm restart runs for `t_mul` times more
-    steps and with `m_mul` times smaller initial learning rate.
-
-    Example usage:
-    ```python
-    first_decay_steps = 1000
-    lr_decayed_fn = (
-      tf.keras.experimental.CosineDecayRestarts(
-          initial_learning_rate,
-          first_decay_steps))
-    ```
-
-    You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
-    as the learning rate. The learning rate schedule is also serializable and
-    deserializable using `tf.keras.optimizers.schedules.serialize` and
-    `tf.keras.optimizers.schedules.deserialize`.
 
     Args:
       initial_learning_rate: A scalar `float32` or `float64` Tensor or a Python
@@ -660,10 +672,6 @@ class CosineDecayRestarts(LearningRateSchedule):
       alpha: A scalar `float32` or `float64` Tensor or a Python number.
         Minimum learning rate value as a fraction of the initial_learning_rate.
       name: String. Optional name of the operation.  Defaults to 'SGDRDecay'.
-    Returns:
-      A 1-arg callable learning rate schedule that takes the current optimizer
-      step and outputs the decayed learning rate, a scalar `Tensor` of the same
-      type as `initial_learning_rate`.
     """
     super(CosineDecayRestarts, self).__init__()
 
@@ -676,7 +684,7 @@ class CosineDecayRestarts(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "SGDRDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor(
+      initial_learning_rate = ops.convert_to_tensor_v2(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
       first_decay_steps = math_ops.cast(self.first_decay_steps, dtype)
@@ -728,7 +736,57 @@ class CosineDecayRestarts(LearningRateSchedule):
 
 @keras_export("keras.experimental.LinearCosineDecay")
 class LinearCosineDecay(LearningRateSchedule):
-  """A LearningRateSchedule that uses a linear cosine decay schedule."""
+  """A LearningRateSchedule that uses a linear cosine decay schedule.
+
+  See [Bello et al., ICML2017] Neural Optimizer Search with RL.
+  https://arxiv.org/abs/1709.07417
+
+  For the idea of warm starts here controlled by `num_periods`,
+  see [Loshchilov & Hutter, ICLR2016] SGDR: Stochastic Gradient Descent
+  with Warm Restarts. https://arxiv.org/abs/1608.03983
+
+  Note that linear cosine decay is more aggressive than cosine decay and
+  larger initial learning rates can typically be used.
+
+  When training a model, it is often recommended to lower the learning rate as
+  the training progresses. This schedule applies a linear cosine decay
+  function to an optimizer step, given a provided initial learning rate.
+  It requires a `step` value to compute the decayed learning rate. You can
+  just pass a TensorFlow variable that you increment at each training step.
+
+  The schedule a 1-arg callable that produces a decayed learning
+  rate when passed the current optimizer step. This can be useful for changing
+  the learning rate value across different invocations of optimizer functions.
+  It is computed as:
+
+  ```python
+  def decayed_learning_rate(step):
+    step = min(step, decay_steps)
+    linear_decay = (decay_steps - step) / decay_steps
+    cosine_decay = 0.5 * (
+        1 + cos(pi * 2 * num_periods * step / decay_steps))
+    decayed = (alpha + linear_decay) * cosine_decay + beta
+    return initial_learning_rate * decayed
+  ```
+
+  Example usage:
+  ```python
+  decay_steps = 1000
+  lr_decayed_fn = (
+    tf.keras.experimental.LinearCosineDecay(
+      initial_learning_rate, decay_steps))
+  ```
+
+  You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
+  as the learning rate. The learning rate schedule is also serializable and
+  deserializable using `tf.keras.optimizers.schedules.serialize` and
+  `tf.keras.optimizers.schedules.deserialize`.
+
+  Returns:
+    A 1-arg callable learning rate schedule that takes the current optimizer
+    step and outputs the decayed learning rate, a scalar `Tensor` of the same
+    type as `initial_learning_rate`.
+  """
 
   def __init__(
       self,
@@ -739,50 +797,6 @@ class LinearCosineDecay(LearningRateSchedule):
       beta=0.001,
       name=None):
     """Applies linear cosine decay to the learning rate.
-
-    See [Bello et al., ICML2017] Neural Optimizer Search with RL.
-    https://arxiv.org/abs/1709.07417
-
-    For the idea of warm starts here controlled by `num_periods`,
-    see [Loshchilov & Hutter, ICLR2016] SGDR: Stochastic Gradient Descent
-    with Warm Restarts. https://arxiv.org/abs/1608.03983
-
-    Note that linear cosine decay is more aggressive than cosine decay and
-    larger initial learning rates can typically be used.
-
-    When training a model, it is often recommended to lower the learning rate as
-    the training progresses. This schedule applies a linear cosine decay
-    function to an optimizer step, given a provided initial learning rate.
-    It requires a `step` value to compute the decayed learning rate. You can
-    just pass a TensorFlow variable that you increment at each training step.
-
-    The schedule a 1-arg callable that produces a decayed learning
-    rate when passed the current optimizer step. This can be useful for changing
-    the learning rate value across different invocations of optimizer functions.
-    It is computed as:
-
-    ```python
-    def decayed_learning_rate(step):
-      step = min(step, decay_steps)
-      linear_decay = (decay_steps - step) / decay_steps
-      cosine_decay = 0.5 * (
-          1 + cos(pi * 2 * num_periods * step / decay_steps))
-      decayed = (alpha + linear_decay) * cosine_decay + beta
-      return initial_learning_rate * decayed
-    ```
-
-    Example usage:
-    ```python
-    decay_steps = 1000
-    lr_decayed_fn = (
-      tf.keras.experimental.LinearCosineDecay(
-        initial_learning_rate, decay_steps))
-    ```
-
-    You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
-    as the learning rate. The learning rate schedule is also serializable and
-    deserializable using `tf.keras.optimizers.schedules.serialize` and
-    `tf.keras.optimizers.schedules.deserialize`.
 
     Args:
       initial_learning_rate: A scalar `float32` or `float64` Tensor or a Python
@@ -795,10 +809,6 @@ class LinearCosineDecay(LearningRateSchedule):
       beta: See computation above.
       name: String.  Optional name of the operation.  Defaults to
         'LinearCosineDecay'.
-    Returns:
-      A 1-arg callable learning rate schedule that takes the current optimizer
-      step and outputs the decayed learning rate, a scalar `Tensor` of the same
-      type as `initial_learning_rate`.
     """
     super(LinearCosineDecay, self).__init__()
 
@@ -811,7 +821,7 @@ class LinearCosineDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "LinearCosineDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor(
+      initial_learning_rate = ops.convert_to_tensor_v2(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)
@@ -844,7 +854,59 @@ class LinearCosineDecay(LearningRateSchedule):
 
 @keras_export("keras.experimental.NoisyLinearCosineDecay")
 class NoisyLinearCosineDecay(LearningRateSchedule):
-  """A LearningRateSchedule that uses a noisy linear cosine decay schedule."""
+  """A LearningRateSchedule that uses a noisy linear cosine decay schedule.
+
+  See [Bello et al., ICML2017] Neural Optimizer Search with RL.
+  https://arxiv.org/abs/1709.07417
+
+  For the idea of warm starts here controlled by `num_periods`,
+  see [Loshchilov & Hutter, ICLR2016] SGDR: Stochastic Gradient Descent
+  with Warm Restarts. https://arxiv.org/abs/1608.03983
+
+  Note that linear cosine decay is more aggressive than cosine decay and
+  larger initial learning rates can typically be used.
+
+  When training a model, it is often recommended to lower the learning rate as
+  the training progresses. This schedule applies a noisy linear cosine decay
+  function to an optimizer step, given a provided initial learning rate.
+  It requires a `step` value to compute the decayed learning rate. You can
+  just pass a TensorFlow variable that you increment at each training step.
+
+  The schedule a 1-arg callable that produces a decayed learning
+  rate when passed the current optimizer step. This can be useful for changing
+  the learning rate value across different invocations of optimizer functions.
+  It is computed as:
+
+  ```python
+  def decayed_learning_rate(step):
+    step = min(step, decay_steps)
+    linear_decay = (decay_steps - step) / decay_steps)
+    cosine_decay = 0.5 * (
+        1 + cos(pi * 2 * num_periods * step / decay_steps))
+    decayed = (alpha + linear_decay + eps_t) * cosine_decay + beta
+    return initial_learning_rate * decayed
+  ```
+  where eps_t is 0-centered gaussian noise with variance
+  initial_variance / (1 + global_step) ** variance_decay
+
+  Example usage:
+  ```python
+  decay_steps = 1000
+  lr_decayed_fn = (
+    tf.keras.experimental.NoisyLinearCosineDecay(
+      initial_learning_rate, decay_steps))
+  ```
+
+  You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
+  as the learning rate. The learning rate schedule is also serializable and
+  deserializable using `tf.keras.optimizers.schedules.serialize` and
+  `tf.keras.optimizers.schedules.deserialize`.
+
+  Returns:
+    A 1-arg callable learning rate schedule that takes the current optimizer
+    step and outputs the decayed learning rate, a scalar `Tensor` of the same
+    type as `initial_learning_rate`.
+  """
 
   def __init__(
       self,
@@ -857,52 +919,6 @@ class NoisyLinearCosineDecay(LearningRateSchedule):
       beta=0.001,
       name=None):
     """Applies noisy linear cosine decay to the learning rate.
-
-    See [Bello et al., ICML2017] Neural Optimizer Search with RL.
-    https://arxiv.org/abs/1709.07417
-
-    For the idea of warm starts here controlled by `num_periods`,
-    see [Loshchilov & Hutter, ICLR2016] SGDR: Stochastic Gradient Descent
-    with Warm Restarts. https://arxiv.org/abs/1608.03983
-
-    Note that linear cosine decay is more aggressive than cosine decay and
-    larger initial learning rates can typically be used.
-
-    When training a model, it is often recommended to lower the learning rate as
-    the training progresses. This schedule applies a noisy linear cosine decay
-    function to an optimizer step, given a provided initial learning rate.
-    It requires a `step` value to compute the decayed learning rate. You can
-    just pass a TensorFlow variable that you increment at each training step.
-
-    The schedule a 1-arg callable that produces a decayed learning
-    rate when passed the current optimizer step. This can be useful for changing
-    the learning rate value across different invocations of optimizer functions.
-    It is computed as:
-
-    ```python
-    def decayed_learning_rate(step):
-      step = min(step, decay_steps)
-      linear_decay = (decay_steps - step) / decay_steps)
-      cosine_decay = 0.5 * (
-          1 + cos(pi * 2 * num_periods * step / decay_steps))
-      decayed = (alpha + linear_decay + eps_t) * cosine_decay + beta
-      return initial_learning_rate * decayed
-    ```
-    where eps_t is 0-centered gaussian noise with variance
-    initial_variance / (1 + global_step) ** variance_decay
-
-    Example usage:
-    ```python
-    decay_steps = 1000
-    lr_decayed_fn = (
-      tf.keras.experimental.NoisyLinearCosineDecay(
-        initial_learning_rate, decay_steps))
-    ```
-
-    You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
-    as the learning rate. The learning rate schedule is also serializable and
-    deserializable using `tf.keras.optimizers.schedules.serialize` and
-    `tf.keras.optimizers.schedules.deserialize`.
 
     Args:
       initial_learning_rate: A scalar `float32` or `float64` Tensor or a Python
@@ -917,10 +933,6 @@ class NoisyLinearCosineDecay(LearningRateSchedule):
       beta: See computation above.
       name: String.  Optional name of the operation.  Defaults to
         'NoisyLinearCosineDecay'.
-    Returns:
-      A 1-arg callable learning rate schedule that takes the current optimizer
-      step and outputs the decayed learning rate, a scalar `Tensor` of the same
-      type as `initial_learning_rate`.
     """
     super(NoisyLinearCosineDecay, self).__init__()
 
@@ -935,7 +947,7 @@ class NoisyLinearCosineDecay(LearningRateSchedule):
 
   def __call__(self, step):
     with ops.name_scope_v2(self.name or "NoisyLinearCosineDecay") as name:
-      initial_learning_rate = ops.convert_to_tensor(
+      initial_learning_rate = ops.convert_to_tensor_v2(
           self.initial_learning_rate, name="initial_learning_rate")
       dtype = initial_learning_rate.dtype
       decay_steps = math_ops.cast(self.decay_steps, dtype)

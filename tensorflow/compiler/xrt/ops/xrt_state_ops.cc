@@ -216,4 +216,16 @@ backing the handles, and re-allocate and send back the data to the device.
 This operation helps with device memory fragmentation.
 )");
 
+REGISTER_OP("XRTMetricsCollect")
+    .Input("request: string")
+    .Output("result: string")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .Doc(
+        R"(
+Reads the selected metric values from the metrics collection registry.
+
+'request' is a serialized xrt::XRTMetricsCollect proto.
+'result' is a serialized xrt::MetricsReport proto.
+)");
+
 }  // namespace tensorflow

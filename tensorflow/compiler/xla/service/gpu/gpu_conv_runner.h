@@ -35,6 +35,9 @@ struct RunConvOptions {
 
   // Use this algorithm, instead of the one from the instruction.
   absl::optional<se::dnn::AlgorithmDesc> algo_override;
+
+  // Use this scratch_bytes size, instead of the one from the instruction.
+  absl::optional<size_t> scratch_size_override;
 };
 
 // Implementation struct exposed for debugging and log analysis.

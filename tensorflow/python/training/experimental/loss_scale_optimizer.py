@@ -88,7 +88,7 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
 
     This adjusts the dynamic range of the gradient evaluation by scaling up
     the `loss` value. The gradient values are then scaled back down by the
-    recipricol of the loss scale. This is useful in reduced precision training
+    reciprocal of the loss scale. This is useful in reduced precision training
     where small gradient values would otherwise underflow the representable
     range.
 
@@ -137,17 +137,17 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
 
   def _unscale_grads(self, grads):
     loss_scale = self._loss_scale()
-    loss_scale_reciprical = 1 / loss_scale
+    loss_scale_reciprocal = 1 / loss_scale
     return [
-        None if g is None else self._scale_grad(g, loss_scale_reciprical)
+        None if g is None else self._scale_grad(g, loss_scale_reciprocal)
         for g in grads
     ]
 
-  def _scale_grad(self, grad, loss_scale_reciprical):
+  def _scale_grad(self, grad, loss_scale_reciprocal):
     if isinstance(grad, ops.IndexedSlices):
-      grad_vals = grad.values * loss_scale_reciprical
+      grad_vals = grad.values * loss_scale_reciprocal
       return ops.IndexedSlices(grad_vals, grad.indices, grad.dense_shape)
-    return grad * loss_scale_reciprical
+    return grad * loss_scale_reciprocal
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to variables.
@@ -243,3 +243,8 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
   def _resource_apply_dense(self, grad, handle):
     """This function should never be called."""
     raise RuntimeError('This function should never be called')
+
+  def variables(self):
+    """Returns the variables of the Optimizer."""
+    return (self._optimizer.variables() +
+            list(self._loss_scale._weights.values()))  # pylint: disable=protected-access

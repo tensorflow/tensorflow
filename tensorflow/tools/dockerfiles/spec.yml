@@ -25,28 +25,19 @@ header: |
 # of functionality ("slices") by listing all of the "slice sets" to use when
 # building.
 #
-# For example, a release that uses {nightly}{py} would create 4 Dockerfiles
-# (which could become images or concrete Dockerfiles), because the "nightly"
-# and "py" slice sets both have two entries:
-#
-#   - nightly (no -py2 because the Python 2 slice set has add_to_name: ""
-#   - nightly-py3
-#   - nightly-gpu (similar)
-#   - nightly-gpu-py3
-#
 # Releases are all treated differently by TensorFlow's CI systems.
 releases:
     # Built Nightly and pushed to tensorflow/tensorflow
     nightly:
         tag_specs:
-            - "{nightly}{py}{jupyter}"
-            - "{_TAG_PREFIX}{ubuntu-devel}{py}"
+            - "{nightly}{jupyter}"
+            - "{_TAG_PREFIX}{ubuntu-devel}"
 
     # Built per-release and pushed to tensorflow/tensorflow
     # --arg _TAG_PREFIX=<val> should be set to "1.11" (for example) or "latest".
     versioned:
         tag_specs:
-            - "{_TAG_PREFIX}{ubuntu}{py}{jupyter}"
+            - "{_TAG_PREFIX}{ubuntu}{jupyter}"
 
     # Dockerfiles stored in the TF repo; not pushed anywhere
     dockerfiles:
@@ -61,14 +52,6 @@ releases:
             - "{ubuntu-devel-horovod}{jupyter}"
 
 slice_sets:
-
-    py:
-        - add_to_name: ""
-          args:
-              - USE_PYTHON_3_NOT_2=
-        - add_to_name: "-py3"
-          args:
-              - USE_PYTHON_3_NOT_2=1
 
     jupyter:
         - add_to_name: ""

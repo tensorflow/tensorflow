@@ -25,8 +25,11 @@ when rates are to be added.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/extract_volume_patches_op.h"
+
 #include <vector>
+
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"

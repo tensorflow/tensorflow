@@ -21,6 +21,8 @@ limitations under the License.
 #ifdef INTEL_MKL
 
 #define EIGEN_USE_THREADS
+
+#include <unordered_map>
 #include <vector>
 
 #include "mkldnn.hpp"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/util/mkl_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -38,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 #endif
 
-using mkldnn::lrn_across_channels;
 using mkldnn::lrn_backward;
 using mkldnn::lrn_forward;
 using mkldnn::prop_kind;
@@ -69,7 +71,8 @@ class MklLRNOp : public OpKernel {
  public:
   ~MklLRNOp() {}
 
-  explicit MklLRNOp(OpKernelConstruction* context) : OpKernel(context) {
+  explicit MklLRNOp(OpKernelConstruction* context)
+      : OpKernel(context), cpu_engine_(ENGINE_CPU, 0) {
     int64 depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
     OP_REQUIRES(
@@ -85,6 +88,7 @@ class MklLRNOp : public OpKernel {
     workspace_enabled_ = false;
     OP_REQUIRES_OK(context,
                    context->GetAttr("workspace_enabled", &workspace_enabled_));
+    fwd_stream_.reset(new CPU_STREAM(cpu_engine_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -92,7 +96,6 @@ class MklLRNOp : public OpKernel {
       SanityCheckInputs(context);
       if (!context->status().ok()) return;
 
-      auto cpu_engine = engine(engine::cpu, 0);
       const Tensor& src_tensor = MklGetInput(context, kIdxInput);
       MklDnnShape src_dnn_shape;
       GetMklShape(context, kIdxInput, &src_dnn_shape);
@@ -120,9 +123,9 @@ class MklLRNOp : public OpKernel {
       // and we can enable the workspace
       workspace_enabled_ = true;
 
-      MklDnnData<T> src_dnn_data(&cpu_engine);
-      MklDnnData<T> dst_dnn_data(&cpu_engine);
-      MklDnnData<uint8> workspace_dnn_data(&cpu_engine);
+      MklDnnData<T> src_dnn_data(&cpu_engine_);
+      MklDnnData<T> dst_dnn_data(&cpu_engine_);
+      MklDnnData<uint8> workspace_dnn_data(&cpu_engine_);
 
       TensorShape tf_output_shape = src_tensor.shape();
 
@@ -134,35 +137,53 @@ class MklLRNOp : public OpKernel {
       // and MKL-DNN performs normalization over Channel, we tell MKL-DNN
       // that input is in NHWC layout with Channel being the last dimension.
       src_dnn_data.SetUsrMem(src_md, &src_tensor);
-      src_dnn_data.SetOpMemDesc(input_dims, memory::format::nhwc);
+      src_dnn_data.SetOpMemDesc(input_dims, MEMORY_FORMAT::nhwc);
 
-      // output_dnn_data and workspace both have the same shape as input
+      // dst_dnn_data has the same shape as input.
       dst_dnn_data.SetUsrMem(src_md);
-      dst_dnn_data.SetOpMemDesc(input_dims, memory::format::nhwc);
+      dst_dnn_data.SetOpMemDesc(input_dims, MEMORY_FORMAT::nhwc);
 
       // Create LRN primitive descriptor.
       // Tensorflow's normalization semantics is across channels.
       // MKL-DNN also supports normalization within channel.
-      auto lrn_desc = lrn_forward::desc(prop_kind::forward, lrn_across_channels,
-                                        src_dnn_data.GetUsrMemDesc(),
-                                        kernel_size, new_alpha, beta_, bias_);
-      auto lrn_prim_desc = lrn_forward::primitive_desc(lrn_desc, cpu_engine);
+      auto lrn_desc = lrn_forward::desc(
+          prop_kind::forward, ALGORITHM::lrn_across_channels,
+          src_dnn_data.GetUsrMemDesc(), kernel_size, new_alpha, beta_, bias_);
+      auto lrn_prim_desc = lrn_forward::primitive_desc(lrn_desc, cpu_engine_);
 
       // Allocate output_dnn_data tensor.
       Tensor* output_tensor = nullptr;
-      memory::format input_format = src_dnn_shape.GetTfDataFormat();
+      auto input_format = src_dnn_shape.GetTfDataFormat();
       AllocateOutputTensor(context, lrn_prim_desc, input_dims, input_format,
                            &output_tensor);
       OP_REQUIRES_OK(context, context->status());
-      CHECK_NOTNULL(output_tensor);
+      DCHECK(output_tensor != nullptr);
       dst_dnn_data.SetUsrMemDataHandle(output_tensor);
 
       // Handle workspace required for MKL-DNN.
       AllocateWorkspaceTensor(context, lrn_prim_desc, &workspace_dnn_data);
       OP_REQUIRES_OK(context, context->status());
 
-      PrepareAndExecuteNet(lrn_prim_desc, &src_dnn_data, &dst_dnn_data,
-                           &workspace_dnn_data);
+      // Check for input reorder
+      src_dnn_data.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
+          lrn_prim_desc.PRIMITIVE_DESC_SRC, cpu_engine_));
+
+      std::vector<primitive> net;
+#ifdef ENABLE_MKLDNN_V1
+      net.push_back(lrn_forward(lrn_prim_desc));
+      std::vector<std::unordered_map<int, memory>> net_args;
+      net_args.push_back({{MKLDNN_ARG_SRC, src_dnn_data.GetOpMem()},
+                          {MKLDNN_ARG_WORKSPACE, workspace_dnn_data.GetOpMem()},
+                          { MKLDNN_ARG_DST,
+                            dst_dnn_data.GetOpMem() }});
+      net.push_back(lrn_forward(lrn_prim_desc));
+      net.at(0).execute(*fwd_stream_, net_args.at(0));
+#else
+      net.push_back(lrn_forward(lrn_prim_desc, src_dnn_data.GetOpMem(),
+                                workspace_dnn_data.GetOpMem(),
+                                dst_dnn_data.GetOpMem()));
+      fwd_stream_->submit(net).wait();
+#endif
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
@@ -174,33 +195,13 @@ class MklLRNOp : public OpKernel {
   }
 
  private:
-  void PrepareAndExecuteNet(const lrn_forward::primitive_desc& lrn_fwd_desc,
-                            MklDnnData<T>* src_dnn_data,
-                            MklDnnData<T>* dst_dnn_data,
-                            MklDnnData<uint8>* wksp_dnn_data = nullptr) {
-    // Check for input reorder
-    src_dnn_data->CheckReorderToOpMem(lrn_fwd_desc.src_primitive_desc());
-
-    // Create pooling primitive and add it to net
-    std::vector<primitive> net;
-    if (wksp_dnn_data != nullptr) {
-      net.push_back(lrn_forward(lrn_fwd_desc, src_dnn_data->GetOpMem(),
-                                wksp_dnn_data->GetOpMem(),
-                                dst_dnn_data->GetOpMem()));
-    } else {
-      net.push_back(lrn_forward(lrn_fwd_desc, src_dnn_data->GetOpMem(),
-                                dst_dnn_data->GetOpMem()));
-    }
-    stream(stream::kind::eager).submit(net).wait();
-  }
-
   void AllocateOutputTensor(
       OpKernelContext* context,
       const lrn_forward::primitive_desc& lrn_fwd_prim_desc,
       const memory::dims output_dims_mkl_order,
-      const memory::format& output_tf_format, Tensor** output_tensor) {
-    CHECK_NOTNULL(output_tensor);
-    memory::primitive_desc dst_pd = lrn_fwd_prim_desc.dst_primitive_desc();
+      const MKL_TENSOR_FORMAT& output_tf_format, Tensor** output_tensor) {
+    DCHECK(output_tensor != nullptr);
+    MEMORY_PRIMITIVE_DESC dst_pd = lrn_fwd_prim_desc.PRIMITIVE_DESC_DST;
 
     MklDnnShape output_mkl_shape;
     // We only handle the case when the inputs and output are in Mkl format
@@ -231,8 +232,7 @@ class MklLRNOp : public OpKernel {
 
     auto in_shaped = input.shaped<T, 2>({nodes * batch, depth});
     // Multiplying the input with the band matrix has the effect of reducing
-    // the
-    // correct patch along the depth.
+    // the correct patch along the depth.
     Eigen::Tensor<T, 2, Eigen::RowMajor> multiplier(depth, depth);
     GetBandMatrix<T>(depth, depth_radius_, &multiplier);
 
@@ -242,7 +242,7 @@ class MklLRNOp : public OpKernel {
     mkl_output_mkl_shape.SetDimensions(4);
     AllocateOutputSetMklShape(context, kIdxOutput, &output_dnn_data,
                               input.shape(), mkl_output_mkl_shape);
-    CHECK_NOTNULL(output_dnn_data);
+    DCHECK(output_dnn_data != nullptr);
 
     Tensor* workspace_tensor = nullptr;
     MklDnnShape workspace_mkl_shape;
@@ -251,7 +251,7 @@ class MklLRNOp : public OpKernel {
     workspace_tf_shape.AddDim(0);
     AllocateOutputSetMklShape(context, kIdxWorkspace, &workspace_tensor,
                               workspace_tf_shape, workspace_mkl_shape);
-    CHECK_NOTNULL(workspace_tensor);
+    DCHECK(workspace_tensor);
 
     auto out_shaped = output_dnn_data->shaped<T, 2>({nodes * batch, depth});
     Eigen::array<DimPair, 1> dims = {{DimPair(1, 0)}};
@@ -271,10 +271,10 @@ class MklLRNOp : public OpKernel {
       OpKernelContext* context,
       const lrn_forward::primitive_desc& lrn_fwd_prim_desc,
       MklDnnData<uint8>* dnn_data_wksp) {
-    CHECK_NOTNULL(dnn_data_wksp);
+    DCHECK(dnn_data_wksp != nullptr);
     Tensor* workspace_tensor = nullptr;
-    memory::primitive_desc workspace_pd =
-        lrn_fwd_prim_desc.workspace_primitive_desc();
+    MEMORY_PRIMITIVE_DESC workspace_pd =
+        lrn_fwd_prim_desc.PRIMITIVE_DESC_WORKSPACE;
     size_t workspace_bytes = workspace_pd.get_size();
     MklDnnShape workspace_mkl_shape;
     // the workspace tensor is a uint8 tensor that has
@@ -284,7 +284,7 @@ class MklLRNOp : public OpKernel {
     workspace_tf_shape.AddDim(workspace_bytes);
     AllocateOutputSetMklShape(context, kIdxWorkspace, &workspace_tensor,
                               workspace_tf_shape, workspace_mkl_shape);
-    CHECK_NOTNULL(workspace_tensor);
+    DCHECK(workspace_tensor != nullptr);
     dnn_data_wksp->SetUsrMem(workspace_pd, workspace_tensor);
   }
 
@@ -316,12 +316,15 @@ class MklLRNOp : public OpKernel {
   float bias_;
   float alpha_;
   float beta_;
+  engine cpu_engine_;
+  std::shared_ptr<stream> fwd_stream_;
 };
 
 template <typename T>
 class MklLRNGradOp : public OpKernel {
  public:
-  explicit MklLRNGradOp(OpKernelConstruction* context) : OpKernel(context) {
+  explicit MklLRNGradOp(OpKernelConstruction* context)
+      : OpKernel(context), cpu_engine_(ENGINE_CPU, 0) {
     int64 depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
     OP_REQUIRES(
@@ -336,6 +339,7 @@ class MklLRNGradOp : public OpKernel {
     workspace_enabled_ = false;
     OP_REQUIRES_OK(context,
                    context->GetAttr("workspace_enabled", &workspace_enabled_));
+    bwd_stream_.reset(new CPU_STREAM(cpu_engine_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -343,11 +347,10 @@ class MklLRNGradOp : public OpKernel {
       SanityCheckInputs(context);
       if (!context->status().ok()) return;
 
-      auto cpu_engine = engine(engine::cpu, 0);
-      MklDnnData<T> input_grad_dnn_data(&cpu_engine);
-      MklDnnData<T> orig_input_dnn_data(&cpu_engine);
-      MklDnnData<T> orig_output_dnn_data(&cpu_engine);
-      MklDnnData<T> output_dnn_data(&cpu_engine);
+      MklDnnData<T> input_grad_dnn_data(&cpu_engine_);
+      MklDnnData<T> orig_input_dnn_data(&cpu_engine_);
+      MklDnnData<T> orig_output_dnn_data(&cpu_engine_);
+      MklDnnData<T> output_dnn_data(&cpu_engine_);
 
       MklDnnShape input_grad_dnn_shape, orig_input_dnn_shape,
           orig_output_dnn_shape;
@@ -389,11 +392,11 @@ class MklLRNGradOp : public OpKernel {
       memory::dims orig_input_dims =
           orig_input_dnn_shape.GetSizesAsMklDnnDims();
       orig_input_dnn_data.SetUsrMem(orig_input_md, &orig_input_tensor);
-      orig_input_dnn_data.SetOpMemDesc(orig_input_dims, memory::format::nhwc);
+      orig_input_dnn_data.SetOpMemDesc(orig_input_dims, MEMORY_FORMAT::nhwc);
 
       // output_dnn_data has the same shape as original input
       output_dnn_data.SetUsrMem(orig_input_md);
-      output_dnn_data.SetOpMemDesc(orig_input_dims, memory::format::nhwc);
+      output_dnn_data.SetOpMemDesc(orig_input_dims, MEMORY_FORMAT::nhwc);
 
       // MKL-DNN has a notion of kernel_size and not depth_radius.
       int kernel_size = 2 * depth_radius_ + 1;
@@ -402,38 +405,57 @@ class MklLRNGradOp : public OpKernel {
       // Create LRN backward primitive descriptor. It requires LRN forward
       // primitive descriptor also.
       auto lrn_fwd_desc = lrn_forward::desc(
-          prop_kind::forward, lrn_across_channels, orig_input_md, kernel_size,
-          new_alpha, beta_, bias_);
-      auto lrn_fwd_prim_desc =
-          lrn_forward::primitive_desc(lrn_fwd_desc, cpu_engine);
-      auto lrn_bwd_desc = lrn_backward::desc(
-          lrn_across_channels, original_output_md, target_diff_dst_md,
+          prop_kind::forward, ALGORITHM::lrn_across_channels, orig_input_md,
           kernel_size, new_alpha, beta_, bias_);
+      auto lrn_fwd_prim_desc =
+          lrn_forward::primitive_desc(lrn_fwd_desc, cpu_engine_);
+      auto lrn_bwd_desc = lrn_backward::desc(
+          ALGORITHM::lrn_across_channels, original_output_md,
+          target_diff_dst_md, kernel_size, new_alpha, beta_, bias_);
       auto lrn_bwd_prim_desc = lrn_backward::primitive_desc(
-          lrn_bwd_desc, cpu_engine, lrn_fwd_prim_desc);
+          lrn_bwd_desc, cpu_engine_, lrn_fwd_prim_desc);
 
       Tensor* output_tensor = nullptr;
-      memory::format orig_input_format = orig_input_dnn_shape.GetTfDataFormat();
+      auto orig_input_format = orig_input_dnn_shape.GetTfDataFormat();
       AllocateOutputTensor(context, lrn_bwd_prim_desc, orig_input_dims,
                            orig_input_format, &output_tensor);
       OP_REQUIRES_OK(context, context->status());
-      CHECK_NOTNULL(output_tensor);
+      DCHECK(output_tensor != nullptr);
       output_dnn_data.SetUsrMemDataHandle(output_tensor);
 
       // Create LRN primitive and add it to the net
       // At this point, workspace is enabled, so we don't need
       // to check. Pass input workspace to LRN backward primitive.
       const Tensor& workspace_tensor = MklGetInput(context, kIdxWorkspace);
-      MklDnnData<uint8> workspace_dnn_data(&cpu_engine);
+      MklDnnData<uint8> workspace_dnn_data(&cpu_engine_);
       ConfigureWorkspace(workspace_tensor,
-                         lrn_fwd_prim_desc.workspace_primitive_desc(),
+                         lrn_fwd_prim_desc.PRIMITIVE_DESC_WORKSPACE,
                          &workspace_dnn_data);
 
-      PrepareAndExecuteNet(
-          lrn_bwd_prim_desc, lrn_fwd_prim_desc, &orig_input_dnn_data,
-          &input_grad_dnn_data, &output_dnn_data,
-          memory::primitive_desc(target_diff_dst_md, cpu_engine),
-          &workspace_dnn_data);
+      // Check for input reordering on the diff dst input
+      input_grad_dnn_data.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
+          lrn_bwd_prim_desc.PRIMITIVE_DESC_DIFF_DST, cpu_engine_));
+
+      // Check for input reordering on the original input
+      orig_input_dnn_data.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
+          lrn_fwd_prim_desc.PRIMITIVE_DESC_SRC, cpu_engine_));
+
+      std::vector<primitive> net;
+#ifdef ENABLE_MKLDNN_V1
+      std::vector<std::unordered_map<int, memory>> net_args;
+      net.push_back(lrn_backward(lrn_bwd_prim_desc));
+      net_args.push_back({{MKLDNN_ARG_SRC, orig_input_dnn_data.GetOpMem()},
+                          {MKLDNN_ARG_DIFF_DST, input_grad_dnn_data.GetOpMem()},
+                          { MKLDNN_ARG_DST,
+                            output_dnn_data.GetOpMem() }});
+      net.push_back(lrn_backward(lrn_bwd_prim_desc));
+      net.at(0).execute(*bwd_stream_, net_args.at(0));
+#else
+      net.push_back(lrn_backward(
+          lrn_bwd_prim_desc, orig_input_dnn_data.GetOpMem(),
+          input_grad_dnn_data.GetOpMem(), output_dnn_data.GetOpMem()));
+      bwd_stream_->submit(net).wait();
+#endif
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
@@ -448,10 +470,9 @@ class MklLRNGradOp : public OpKernel {
       OpKernelContext* context,
       const lrn_backward::primitive_desc& lrn_bkwd_prim_desc,
       const memory::dims output_dims_mkl_order,
-      const memory::format& output_tf_format, Tensor** output_tensor) {
-    CHECK_NOTNULL(output_tensor);
-    memory::primitive_desc dst_pd =
-        lrn_bkwd_prim_desc.diff_src_primitive_desc();
+      const MKL_TENSOR_FORMAT& output_tf_format, Tensor** output_tensor) {
+    DCHECK(output_tensor != nullptr);
+    MEMORY_PRIMITIVE_DESC dst_pd = lrn_bkwd_prim_desc.PRIMITIVE_DESC_DIFF_SRC;
     MklDnnShape output_mkl_shape;
 
     // We assume that all outputs at this point are MKL Tensors
@@ -472,56 +493,28 @@ class MklLRNGradOp : public OpKernel {
   memory::desc ConfigureInputGradient(const Tensor& input_grad_tensor,
                                       const MklDnnShape& input_grad_dnn_shape,
                                       MklDnnData<T>* input_grad_dnn_data) {
-    CHECK_NOTNULL(input_grad_dnn_data);
+    DCHECK(input_grad_dnn_data != nullptr);
     // This shouldn't be necessary at this point, but just in case
-    CHECK_EQ(input_grad_dnn_shape.IsMklTensor(), true);
+    DCHECK(input_grad_dnn_shape.IsMklTensor() == true);
 
     memory::desc input_grad_md = input_grad_dnn_shape.GetCurLayout();
     memory::dims orig_input_dims = input_grad_dnn_shape.GetSizesAsMklDnnDims();
     input_grad_dnn_data->SetUsrMem(input_grad_md, &input_grad_tensor);
-    input_grad_dnn_data->SetOpMemDesc(orig_input_dims, memory::format::nhwc);
+    input_grad_dnn_data->SetOpMemDesc(orig_input_dims, MEMORY_FORMAT::nhwc);
     return input_grad_md;
   }
 
-  void PrepareAndExecuteNet(
-      const lrn_backward::primitive_desc& lrn_bkwd_desc,
-      const lrn_forward::primitive_desc& lrn_fwd_desc,
-      MklDnnData<T>* src_dnn_data, MklDnnData<T>* input_gradient_diff_dst,
-      MklDnnData<T>* output_diff_src,
-      const memory::primitive_desc& target_diff_dst_pd,
-      const MklDnnData<uint8>* workspace_dnn_data = nullptr) {
-    // Check for input reordering on the diff dst input
-    input_gradient_diff_dst->CheckReorderToOpMem(
-        lrn_bkwd_desc.diff_dst_primitive_desc());
-
-    // Check for input reordering on the original input
-    src_dnn_data->CheckReorderToOpMem(lrn_fwd_desc.src_primitive_desc());
-    // Create pooling primitive and add it to net
-    std::vector<primitive> net;
-    if (nullptr == workspace_dnn_data) {
-      net.push_back(lrn_backward(lrn_bkwd_desc, src_dnn_data->GetOpMem(),
-                                 input_gradient_diff_dst->GetOpMem(),
-                                 output_diff_src->GetOpMem()));
-    } else {
-      net.push_back(lrn_backward(lrn_bkwd_desc, src_dnn_data->GetOpMem(),
-                                 input_gradient_diff_dst->GetOpMem(),
-                                 workspace_dnn_data->GetOpMem(),
-                                 output_diff_src->GetOpMem()));
-    }
-    stream(stream::kind::eager).submit(net).wait();
-  }
-
   void ConfigureWorkspace(const Tensor& workspace_tensor,
-                          memory::primitive_desc workspace_pd,
+                          MEMORY_PRIMITIVE_DESC workspace_pd,
                           MklDnnData<uint8>* workspace_dnn_data) {
-    CHECK_NOTNULL(workspace_dnn_data);
+    DCHECK(workspace_dnn_data);
 
     workspace_dnn_data->SetUsrMem(workspace_pd, &workspace_tensor);
   }
 
   // Fallback implementation - Taken from lrn_op.cc
-  // TODO(intelft) Check if we can use EigenLRNOp directly instead of making a
-  // copy.
+  // TODO(intel-tf) Check if we can use EigenLRNOp directly
+  // instead of making a copy.
   void MklDefaultToEigen(OpKernelContext* context) {
     Tensor input_gradient_tensor;
     Tensor orig_input_tensor;
@@ -676,6 +669,8 @@ class MklLRNGradOp : public OpKernel {
   float bias_;
   float alpha_;
   float beta_;
+  engine cpu_engine_;
+  std::shared_ptr<stream> bwd_stream_;
 };
 
 #define REGISTER_MKL_LRN_CPU(T)                                \

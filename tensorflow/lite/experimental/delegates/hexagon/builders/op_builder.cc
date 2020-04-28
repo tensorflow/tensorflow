@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/delegates/hexagon/builders/op_builder.h"
 
+#include "hexagon/hexagon_nn_ops.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/builders/op_factory.h"
@@ -31,7 +32,9 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
     case kTfLiteBuiltinArgMin:
       return CreateArgMinMaxOpBuilder(this, OP_ArgMin_8);
     case kTfLiteBuiltinMul:
-      return CreateArithmeticBuilder(this, OP_QuantizedMul_8x8to8);
+      // The 32-bit version of Mul is more accurate, and robust to disparities
+      // in input/output ranges.
+      return CreateArithmeticBuilder(this, OP_QuantizedMul_8x8to32);
     case kTfLiteBuiltinSub:
       return CreateArithmeticBuilder(this, OP_QuantizedSub_8p8to8);
     case kTfLiteBuiltinMean:
@@ -84,6 +87,8 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
       return CreateSpaceToDepthBuilder(this, OP_SpaceToDepth_8);
     case kTfLiteBuiltinDepthToSpace:
       return CreateSpaceToDepthBuilder(this, OP_DepthToSpace_8);
+    case kTfLiteBuiltinQuantize:
+      return CreateQuantizeBuilder(this, OP_Requantize_8to8);
     default:
       context_->ReportError(context_, "Op not supported: %d", op_type);
       return nullptr;
@@ -156,13 +161,17 @@ void delegates::hexagon::GraphBuilder::AddOutputTensors(
 
 OpBuilder::TensorID OpBuilder::AddOutput(const TfLiteIntArray* dims) {
   op_node_.outputs.push_back(hexagon_nn_output());
-  op_node_.outputs.back().elementsize = sizeof(float);
+  op_node_.outputs.back().elementsize = sizeof(uint8_t);
   op_node_.outputs.back().rank = 4;
   // TODO(karimnosseir): What is a good to estimate the max size ?
   int batch_size, height_size, width_size, depth_size;
   GetDims(&batch_size, &height_size, &width_size, &depth_size, dims);
   auto& max_sizes = op_node_.outputs.back().max_sizes;
-  max_sizes[0] = batch_size;
+  if (graph_builder_->GraphHasDynamicBatch()) {
+    max_sizes[0] = graph_builder_->GetMaxBatchSize();
+  } else {
+    max_sizes[0] = batch_size;
+  }
   max_sizes[1] = height_size;
   max_sizes[2] = width_size;
   max_sizes[3] = depth_size;
@@ -178,6 +187,9 @@ OpBuilder::TensorID OpBuilder::AddOutput(
   for (int i = 0; i < max_sizes_vect.size(); ++i) {
     max_sizes[i] = max_sizes_vect[i];
   }
+  if (graph_builder_->GraphHasDynamicBatch()) {
+    max_sizes[0] = graph_builder_->GetMaxBatchSize();
+  }
   return TensorID(GetID(), op_node_.outputs.size() - 1);
 }
 
@@ -190,20 +202,35 @@ const OpNode* OpBuilder::Build() {
   return &op_node_;
 }
 
-OpBuilder* GraphBuilder::AddNode() {
+OpBuilder* GraphBuilder::AddNode(int tflite_node_index) {
   OpBuilder* op = new OpBuilder(this, OP_Nop);
   builders_.emplace_back(op);
   op->SetNodeId(builders_.size());
+  op->SetTFLiteNodeId(tflite_node_index);
   return op;
 }
 
-OpBuilder* GraphBuilder::AddNodeFromTfLiteOp(int op_type, TfLiteNode* node) {
+OpBuilder* GraphBuilder::AddNodeFromTfLiteOp(int op_type, TfLiteNode* node,
+                                             int tflite_node_index) {
   OpBuilder* op = CreateOpBuilderFromTfLiteOp(op_type);
   builders_.emplace_back(op);
   op->SetNodeId(builders_.size());
+  op->SetTFLiteNodeId(tflite_node_index);
   op->SetBuiltinData(node->builtin_data);
   op->SetTfLiteNode(node);
   return op;
+}
+
+void GraphBuilder::AddBatchSeqConfig(int max_size_for_batch,
+                                     TfLiteIntArray* input_batch_dimensions,
+                                     TfLiteIntArray* output_batch_dimensions) {
+  OpBuilder* batch_seq_node =
+      CreateBatchSeqBuilder(this, OP_BatchSeqConfig, max_size_for_batch,
+                            input_batch_dimensions, output_batch_dimensions);
+  builders_.emplace_back(batch_seq_node);
+  batch_seq_node->SetNodeId(builders_.size());
+  batch_seq_node->PopulateSubGraph(nullptr, nullptr, nullptr);
+  max_size_for_batch_ = max_size_for_batch;
 }
 
 }  // namespace hexagon

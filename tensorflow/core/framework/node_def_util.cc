@@ -158,6 +158,15 @@ const AttrValue* AttrSlice::Find(StringPiece attr_name) const {
   return nullptr;
 }
 
+const AttrValue* AttrSlice::FindByString(const string& attr_name) const {
+  auto iter = attrs_->find(attr_name);
+  if (iter != attrs_->end()) {
+    return &iter->second;
+  } else {
+    return nullptr;
+  }
+}
+
 Status AttrSlice::Find(StringPiece attr_name,
                        const AttrValue** attr_value) const {
   *attr_value = Find(attr_name);
@@ -249,10 +258,8 @@ bool AttrSlice::EqualAttrs(AttrSlice other, Scratch* scratch) const {
     }                                                                     \
     return true;                                                          \
   }
-#ifdef USE_TSTRING
 DEFINE_GET_ATTR(tstring, s, "string", emplace_back, v, ;)
 DEFINE_TRY_GET_ATTR(tstring, s, "string", emplace_back, v, ;)
-#endif
 DEFINE_GET_ATTR(string, s, "string", emplace_back, v, ;)
 DEFINE_TRY_GET_ATTR(string, s, "string", emplace_back, v, ;)
 DEFINE_GET_ATTR(int64, i, "int", emplace_back, v, ;)
@@ -421,6 +428,13 @@ bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
   return true;
 }
 
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   Padding* value) {
+  string str_value;
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, attr_name, &str_value));
+  return GetPaddingFromString(str_value, value);
+}
+
 namespace {  // Helper for InOutTypesForNode().
 
 template <class NodeDefOrAttrSlice>
@@ -473,6 +487,11 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
   if (arg_def.is_ref()) {
     // For all types that were added by this function call, make them refs.
     for (size_t i = original_size; i < sig->size(); ++i) {
+      if (IsRefType((*sig)[i])) {
+        return errors::InvalidArgument(
+            "Requested reference to a reference type: ",
+            arg_def.ShortDebugString());
+      }
       (*sig)[i] = MakeRefType((*sig)[i]);
     }
   }

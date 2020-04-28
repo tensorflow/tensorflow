@@ -161,6 +161,21 @@ REGISTER_OP("ParallelMapDataset")
     .Attr("preserve_cardinality: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("ParallelMapDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("other_arguments: Targuments")
+    .Input("num_parallel_calls: int64")
+    .Output("handle: variant")
+    .Attr("f: func")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("use_inter_op_parallelism: bool = true")
+    // "true", "false", or "default".
+    .Attr("deterministic: string = 'default'")
+    .Attr("preserve_cardinality: bool = false")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("PrefetchDataset")
     .Input("input_dataset: variant")
     .Input("buffer_size: int64")
@@ -210,6 +225,39 @@ REGISTER_OP("ParallelInterleaveDatasetV2")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("sloppy: bool = false")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("ParallelInterleaveDatasetV3")
+    .Input("input_dataset: variant")
+    .Input("other_arguments: Targuments")
+    .Input("cycle_length: int64")
+    .Input("block_length: int64")
+    .Input("num_parallel_calls: int64")
+    .Output("handle: variant")
+    .Attr("f: func")
+    // "true", "false", or "default".
+    .Attr("deterministic: string = 'default'")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+// Like V3, but adds buffer_output_elements and prefetch_input_elements.
+REGISTER_OP("ParallelInterleaveDatasetV4")
+    .Input("input_dataset: variant")
+    .Input("other_arguments: Targuments")
+    .Input("cycle_length: int64")
+    .Input("block_length: int64")
+    .Input("buffer_output_elements: int64")
+    .Input("prefetch_input_elements: int64")
+    .Input("num_parallel_calls: int64")
+    .Output("handle: variant")
+    .Attr("f: func")
+    // "true", "false", or "default".
+    .Attr("deterministic: string = 'default'")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("FilterDataset")
@@ -355,6 +403,24 @@ REGISTER_OP("RangeDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("AnonymousSeedGenerator")
+    .Input("seed: int64")
+    .Input("seed2: int64")
+    .Input("reshuffle: bool")
+    .Output("handle: resource")
+    .Output("deleter: variant")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      c->set_output(1, c->Scalar());
+      return Status::OK();
+    });
+
+REGISTER_OP("DeleteSeedGenerator")
+    .Input("handle: resource")
+    .Input("deleter: variant")
+    .SetShapeFn(shape_inference::NoOutputs);
+
+// Deprecated in favor of AnonymousSeedGenerator/DeleteSeedGenerator.
 REGISTER_OP("AnonymousRandomSeedGenerator")
     .Input("seed: int64")
     .Input("seed2: int64")
@@ -366,10 +432,18 @@ REGISTER_OP("AnonymousRandomSeedGenerator")
       return Status::OK();
     });
 
+// Deprecated in favor of AnonymousSeedGenerator/DeleteSeedGenerator.
 REGISTER_OP("DeleteRandomSeedGenerator")
     .Input("handle: resource")
     .Input("deleter: variant")
     .SetShapeFn(shape_inference::NoOutputs);
+
+REGISTER_OP("DummySeedGenerator")
+    .Output("handle: resource")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
 
 REGISTER_OP("ShuffleDataset")
     .Input("input_dataset: variant")
@@ -398,9 +472,29 @@ REGISTER_OP("ShuffleDatasetV2")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
-      // buffer_size, seed, and seed2 should be scalars.
+      // buffer_size and seed_generator should be scalars.
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
+REGISTER_OP("ShuffleDatasetV3")
+    .Input("input_dataset: variant")
+    .Input("buffer_size: int64")
+    .Input("seed: int64")
+    .Input("seed2: int64")
+    .Input("seed_generator: resource")
+    .Output("handle: variant")
+    .Attr("reshuffle_each_iteration: bool = true")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // buffer_size, seed, seed2, and seed_generator should be scalars.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
       return shape_inference::ScalarShape(c);
     });
 
@@ -436,6 +530,13 @@ REGISTER_OP("DeleteMemoryCache")
     .Input("handle: resource")
     .Input("deleter: variant")
     .SetShapeFn(shape_inference::NoOutputs);
+
+REGISTER_OP("DummyMemoryCache")
+    .Output("handle: resource")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      return Status::OK();
+    });
 
 REGISTER_OP("CacheDataset")
     .Input("input_dataset: variant")

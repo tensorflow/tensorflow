@@ -18,10 +18,11 @@ limitations under the License.
 #include <numeric>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
 namespace {
@@ -141,7 +142,7 @@ Flag::Flag(const char* name,
       flag_type_(flag_type) {}
 
 bool Flag::Parse(const std::string& arg, bool* value_parsing_ok) const {
-  return ParseFlag(arg, name_, flag_type_ == POSITIONAL, value_hook_,
+  return ParseFlag(arg, name_, flag_type_ == kPositional, value_hook_,
                    value_parsing_ok);
 }
 
@@ -165,7 +166,12 @@ std::string Flag::GetTypeName() const {
 /*static*/ bool Flags::Parse(int* argc, const char** argv,
                              const std::vector<Flag>& flag_list) {
   bool result = true;
-  std::vector<bool> unknown_flags(*argc, true);
+  std::vector<bool> unknown_argvs(*argc, true);
+  // Record the list of flags that have been processed. key is the flag's name
+  // and the value is the corresponding argv index if there's one, or -1 when
+  // the argv list doesn't contain this flag.
+  std::unordered_map<std::string, int> processed_flags;
+
   // Stores indexes of flag_list in a sorted order.
   std::vector<int> sorted_idx(flag_list.size());
   std::iota(std::begin(sorted_idx), std::end(sorted_idx), 0);
@@ -174,53 +180,84 @@ std::string Flag::GetTypeName() const {
   });
   int positional_count = 0;
 
-  for (int i = 0; i < sorted_idx.size(); ++i) {
-    const Flag& flag = flag_list[sorted_idx[i]];
+  for (int idx = 0; idx < sorted_idx.size(); ++idx) {
+    const Flag& flag = flag_list[sorted_idx[idx]];
+
+    const auto it = processed_flags.find(flag.name_);
+    if (it != processed_flags.end()) {
+      TFLITE_LOG(WARN) << "Duplicate flags: " << flag.name_;
+      if (it->second != -1) {
+        bool value_parsing_ok;
+        flag.Parse(argv[it->second], &value_parsing_ok);
+        if (!value_parsing_ok) {
+          TFLITE_LOG(ERROR) << "Failed to parse flag '" << flag.name_
+                            << "' against argv '" << argv[it->second] << "'";
+          result = false;
+        }
+        continue;
+      } else if (flag.flag_type_ == Flag::kRequired) {
+        TFLITE_LOG(ERROR) << "Required flag not provided: " << flag.name_;
+        // If the required flag isn't found, we immediately stop the whole flag
+        // parsing.
+        result = false;
+        break;
+      }
+    }
+
     // Parses positional flags.
-    if (flag.flag_type_ == Flag::POSITIONAL) {
+    if (flag.flag_type_ == Flag::kPositional) {
       if (++positional_count >= *argc) {
-        TFLITE_LOG(TFLITE_LOG_ERROR, "Too few command line arguments");
+        TFLITE_LOG(ERROR) << "Too few command line arguments.";
         return false;
       }
       bool value_parsing_ok;
       flag.Parse(argv[positional_count], &value_parsing_ok);
       if (!value_parsing_ok) {
-        TFLITE_LOG(TFLITE_LOG_ERROR, "Failed to parse positional flag: %s",
-                   flag.name_.c_str());
+        TFLITE_LOG(ERROR) << "Failed to parse positional flag: " << flag.name_;
         return false;
       }
-      unknown_flags[positional_count] = false;
+      unknown_argvs[positional_count] = false;
+      processed_flags[flag.name_] = positional_count;
       continue;
     }
 
     // Parse other flags.
     bool was_found = false;
     for (int i = positional_count + 1; i < *argc; ++i) {
-      if (!unknown_flags[i]) continue;
+      if (!unknown_argvs[i]) continue;
       bool value_parsing_ok;
       was_found = flag.Parse(argv[i], &value_parsing_ok);
       if (!value_parsing_ok) {
-        TFLITE_LOG(TFLITE_LOG_ERROR, "Failed to parse flag: %s",
-                   flag.name_.c_str());
+        TFLITE_LOG(ERROR) << "Failed to parse flag '" << flag.name_
+                          << "' against argv '" << argv[i] << "'";
         result = false;
       }
       if (was_found) {
-        unknown_flags[i] = false;
+        unknown_argvs[i] = false;
+        processed_flags[flag.name_] = i;
         break;
       }
     }
-    // Check if required flag not found.
-    if (flag.flag_type_ == Flag::REQUIRED && !was_found) {
-      TFLITE_LOG(TFLITE_LOG_ERROR, "Required flag not provided: %s",
-                 flag.name_.c_str());
+
+    // If the flag is found from the argv (i.e. the flag name appears in argv),
+    // continue to the next flag parsing.
+    if (was_found) continue;
+
+    // The flag isn't found, do some bookkeeping work.
+    processed_flags[flag.name_] = -1;
+    if (flag.flag_type_ == Flag::kRequired) {
+      TFLITE_LOG(ERROR) << "Required flag not provided: " << flag.name_;
       result = false;
+      // If the required flag isn't found, we immediately stop the whole flag
+      // parsing by breaking the outer-loop (i.e. the 'sorted_idx'-iteration
+      // loop).
       break;
     }
   }
 
   int dst = 1;  // Skip argv[0]
   for (int i = 1; i < *argc; ++i) {
-    if (unknown_flags[i]) {
+    if (unknown_argvs[i]) {
       argv[dst++] = argv[i];
     }
   }
@@ -243,7 +280,7 @@ std::string Flag::GetTypeName() const {
   // Prints usage for positional flag.
   for (int i = 0; i < sorted_idx.size(); ++i) {
     const Flag& flag = flag_list[sorted_idx[i]];
-    if (flag.flag_type_ == Flag::POSITIONAL) {
+    if (flag.flag_type_ == Flag::kPositional) {
       positional_count++;
       usage_text << " <" << flag.name_ << ">";
     } else {
@@ -258,7 +295,7 @@ std::string Flag::GetTypeName() const {
   std::vector<std::string> name_column(flag_list.size());
   for (int i = 0; i < sorted_idx.size(); ++i) {
     const Flag& flag = flag_list[sorted_idx[i]];
-    if (flag.flag_type_ != Flag::POSITIONAL) {
+    if (flag.flag_type_ != Flag::kPositional) {
       name_column[i] += "--";
       name_column[i] += flag.name_;
       name_column[i] += "=";
@@ -283,7 +320,8 @@ std::string Flag::GetTypeName() const {
     usage_text << "\t";
     usage_text << std::left << std::setw(max_name_width) << name_column[i];
     usage_text << "\t" << type_name << "\t";
-    usage_text << (flag.flag_type_ != Flag::OPTIONAL ? "required" : "optional");
+    usage_text << (flag.flag_type_ != Flag::kOptional ? "required"
+                                                      : "optional");
     usage_text << "\t" << flag.usage_text_ << "\n";
   }
   return usage_text.str();

@@ -12,6 +12,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/shuffle_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -296,23 +297,23 @@ std::vector<GetNextTestCase<ShuffleDatasetParams>> GetNextTestCases() {
       {/*dataset_params=*/ShuffleDatasetParams7(),
        /*expected_shuffle_outputs=*/
        CreateTensors<int64>(TensorShape({}),
-                            {{9}, {0}, {8}, {6}, {1}, {3}, {7}, {2}, {4}, {5},
-                             {4}, {3}, {0}, {5}, {8}, {2}, {6}, {9}, {7}, {1}}),
+                            {{2}, {6}, {1}, {3}, {9}, {5}, {0}, {8}, {7}, {4},
+                             {0}, {5}, {1}, {7}, {2}, {9}, {8}, {4}, {6}, {3}}),
        /*expected_reshuffle_outputs=*/
-       CreateTensors<int64>(TensorShape({}), {{9}, {0}, {8}, {6}, {1}, {3}, {7},
-                                              {2}, {4}, {5}, {4}, {3}, {0}, {5},
-                                              {8}, {2}, {6}, {9}, {7}, {1}})},
+       CreateTensors<int64>(TensorShape({}), {{1}, {6}, {0}, {5}, {2}, {7}, {4},
+                                              {3}, {9}, {8}, {6}, {5}, {0}, {9},
+                                              {4}, {7}, {2}, {8}, {1}, {3}})},
       {/*dataset_params=*/ShuffleDatasetParams8(),
        /*expected_shuffle_outputs=*/
        CreateTensors<int64>(
            TensorShape({}),
-           {{2}, {0}, {1}, {2}, {0}, {1}, {1}, {2}, {0}, {1}, {0},
-            {2}, {2}, {0}, {1}, {1}, {0}, {2}, {2}, {1}, {0}}),
+           {{1}, {2}, {0}, {1}, {2}, {0}, {1}, {0}, {2}, {1}, {0},
+            {2}, {0}, {2}, {1}, {0}, {1}, {2}, {1}, {2}, {0}}),
        /*expected_reshuffle_outputs=*/
        CreateTensors<int64>(
            TensorShape({}),
-           {{2}, {0}, {1}, {2}, {0}, {1}, {1}, {2}, {0}, {1}, {0},
-            {2}, {2}, {0}, {1}, {1}, {0}, {2}, {2}, {1}, {0}})}};
+           {{1}, {0}, {2}, {0}, {1}, {2}, {2}, {1}, {0}, {0}, {1},
+            {2}, {0}, {2}, {1}, {0}, {1}, {2}, {1}, {0}, {2}})}};
 }
 
 class ParameterizedGetNextTest : public ShuffleDatasetOpTest,
@@ -343,8 +344,8 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
   // Reshuffle the dataset.
   end_of_sequence = false;
   TF_ASSERT_OK(dataset_->MakeIterator(
-      iterator_ctx_.get(), test_case.dataset_params.iterator_prefix(),
-      &iterator_));
+      iterator_ctx_.get(), /*parent=*/nullptr,
+      test_case.dataset_params.iterator_prefix(), &iterator_));
   std::vector<Tensor> reshuffled_out_tensors;
   while (!end_of_sequence) {
     std::vector<Tensor> next;
@@ -495,16 +496,16 @@ IteratorSaveAndRestoreTestCases() {
       {/*dataset_params=*/ShuffleDatasetParams7(),
        /*breakpoints=*/{0, 5, 22},
        /*expected_shuffle_outputs=*/
-       CreateTensors<int64>(TensorShape({}), {{9}, {0}, {8}, {6}, {1}, {3}, {7},
-                                              {2}, {4}, {5}, {4}, {3}, {0}, {5},
-                                              {8}, {2}, {6}, {9}, {7}, {1}})},
+       CreateTensors<int64>(TensorShape({}), {{2}, {6}, {1}, {3}, {9}, {5}, {0},
+                                              {8}, {7}, {4}, {0}, {5}, {1}, {7},
+                                              {2}, {9}, {8}, {4}, {6}, {3}})},
       {/*dataset_params=*/ShuffleDatasetParams8(),
        /*breakpoints=*/{0, 5, 20},
        /*expected_shuffle_outputs=*/
        CreateTensors<int64>(
            TensorShape({}),
-           {{2}, {0}, {1}, {2}, {0}, {1}, {1}, {2}, {0}, {1}, {0},
-            {2}, {2}, {0}, {1}, {1}, {0}, {2}, {2}, {1}, {0}})}};
+           {{1}, {2}, {0}, {1}, {2}, {0}, {1}, {0}, {2}, {1}, {0},
+            {2}, {0}, {2}, {1}, {0}, {1}, {2}, {1}, {2}, {0}})}};
 }
 
 class ParameterizedIteratorSaveAndRestoreTest

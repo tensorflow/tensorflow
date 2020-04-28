@@ -71,7 +71,7 @@ namespace {
 struct CachedInterpolation {
   int64 lower;  // Lower source index used in the interpolation
   int64 upper;  // Upper source index used in the interpolation
-  // 1-D linear iterpolation scale (see:
+  // 1-D linear interpolation scale (see:
   // https://en.wikipedia.org/wiki/Bilinear_interpolation)
   float lerp;
 };
@@ -311,7 +311,7 @@ struct ResizeBilinearGrad<CPUDevice, T> {
 
     // Each resized output pixel was computed as a weighted average of four
     // input pixels. Here we find the four input pixel locations that
-    // contributed to each output pixel and propgate the gradient at the output
+    // contributed to each output pixel and propagate the gradient at the output
     // pixel location to each of those four input pixel locations in the same
     // proportions that they originally contributed to the output pixel.
     // Here is the forward-propagation pseudo-code, for reference:

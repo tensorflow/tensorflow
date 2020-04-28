@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_CONVERT_TYPE_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_CONVERT_TYPE_H_
 
-#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {

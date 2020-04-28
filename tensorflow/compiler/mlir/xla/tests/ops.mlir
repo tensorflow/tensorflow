@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -verify-diagnostics -split-input-file | tf-opt | FileCheck %s
+// RUN: xla-opt %s -verify-diagnostics -split-input-file | xla-opt | FileCheck %s
 
 // Tests for types, ops with custom constraints, verifiers, printer or parser
 // methods.
@@ -102,8 +102,16 @@ func @broadcast_in_dim(%arg0: tensor<1x2xi32>) -> tensor<1x2x2xi32> {
 
 // CHECK-LABEL: func @broadcast_in_dim_zero_rank
 func @broadcast_in_dim_zero_rank(%arg0: tensor<i32>) -> tensor<1x2x3xi32> {
-  %0 = "xla_hlo.broadcast_in_dim"(%arg0) : (tensor<i32>) -> tensor<1x2x3xi32>
+  %0 = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<i32>) -> tensor<1x2x3xi32>
   return %0 : tensor<1x2x3xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @dynamic_broadcast_in_dim
+func @dynamic_broadcast_in_dim(%arg0: tensor<?x?xi32>, %shape: tensor<3xi64>) -> tensor<?x?x?xi32> {
+  %0 = "xla_hlo.dynamic_broadcast_in_dim"(%arg0, %shape) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<?x?xi32>, tensor<3xi64>) -> tensor<?x?x?xi32>
+  return %0 : tensor<?x?x?xi32>
 }
 
 // -----
@@ -268,6 +276,38 @@ func @dot_bad_precision_config(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>) -
 
 // -----
 
+func @infeed_invalid_number_of_results(%token: !xla_hlo.token) -> tuple<tuple<tensor<i32>>, !xla_hlo.token, tensor<i32>> {
+  // expected-error@+1 {{result is expected to be a tuple of size 2, but got 3}}
+  %0 = "xla_hlo.infeed"(%token) {infeed_config = "foobar"} : (!xla_hlo.token) -> tuple<tuple<tensor<i32>>, !xla_hlo.token, tensor<i32>>
+  return %0 : tuple<tuple<tensor<i32>>, !xla_hlo.token, tensor<i32>>
+}
+
+// -----
+
+func @infeed_non_token_second_result(%token: !xla_hlo.token) -> tuple<tuple<tensor<i32>>, tensor<i32>> {
+  // expected-error@+1 {{second element of result tuple is expected to be of token type, but got 'tensor<i32>'}}
+  %0 = "xla_hlo.infeed"(%token) {infeed_config = "foobar"} : (!xla_hlo.token) -> tuple<tuple<tensor<i32>>, tensor<i32>>
+  return %0 : tuple<tuple<tensor<i32>>, tensor<i32>>
+}
+
+// -----
+
+func @iota_scalar() -> tensor<i32> {
+  // expected-error@+1 {{does not support scalars}}
+  %0 = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<i32>
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @iota_invalid_iota_dimension() -> tensor<4xi32> {
+  // expected-error@+1 {{iota dimension cannot go beyond the output rank or be negative}}
+  %0 = "xla_hlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<4xi32>
+  return %0 : tensor<4xi32>
+}
+
+// -----
+
 func @map_mismatched_args(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // expected-error@+1 {{expects number of operands to match the arity of map computation, but got: 2 and 1}}
   %0 = "xla_hlo.map"(%arg0, %arg1) ( {
@@ -376,11 +416,47 @@ func @map_unranked(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> 
 
 // -----
 
+func @recv_invalid_number_of_results(%token: !xla_hlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>, !xla_hlo.token> {
+  // expected-error@+1 {{result is expected to be a tuple of size 2, but got 3}}
+  %0 = "xla_hlo.recv"(%token) {
+    channel_id = {
+      handle = 5 : i64,
+      type = 3 : i64  // Host to device channel
+    },
+    is_host_transfer = true
+  } : (!xla_hlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>, !xla_hlo.token>
+  return %0 : tuple<tensor<3x4xi32>, tensor<i32>, !xla_hlo.token>
+}
+
+// -----
+
+func @recv_non_token_second_result(%token: !xla_hlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>> {
+  // expected-error@+1 {{second element of result tuple is expected to be of token type, but got 'tensor<i32>'}}
+  %0 = "xla_hlo.recv"(%token) {
+    channel_id = {
+      handle = 5 : i64,
+      type = 3 : i64  // Host to device channel
+    },
+    is_host_transfer = true
+  } : (!xla_hlo.token) -> tuple<tensor<3x4xi32>, tensor<i32>>
+  return %0 : tuple<tensor<3x4xi32>, tensor<i32>>
+}
+
+// -----
+
 func @rng_uniform_invalid_type(%mu: tensor<complex<f32>>, %sigma: tensor<f32>) -> tensor<2x3x5xf32> {
   %shape = xla_hlo.constant dense<[2, 3, 5]> : tensor<3xi64>
-  // expected-error@+1 {{must be tensor of pred (AKA boolean or 1-bit integer) or 8/16/32/64-bit integer or floating-point values, but got 'tensor<complex<f32>>'}}
+  // expected-error@+1 {{but got 'tensor<complex<f32>>'}}
   %0 = "xla_hlo.rng_uniform"(%mu, %sigma, %shape) : (tensor<complex<f32>>, tensor<f32>, tensor<3xi64>) -> tensor<2x3x5xf32>
   return %0 : tensor<2x3x5xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @scalars_to_dimension_tensor
+func @scalars_to_dimension_tensor(%arg0: i32, %arg1: i32) -> tensor<2xi32> {
+  %0 = "xla_hlo.scalars_to_dimension_tensor"(%arg0, %arg1) : (i32, i32) -> tensor<2xi32>
+  return %0 : tensor<2xi32>
 }
 
 // -----
@@ -401,6 +477,31 @@ func @select_scalar_pred(%arg0: tensor<i1>, %arg1: tensor<2x3xi32>, %arg2: tenso
 
 // -----
 
+// CHECK-LABEL: func @select_cast_compatible_types
+func @select_cast_compatible_types(%arg0: tensor<i1>, %arg1: tensor<*xi32>, %arg2: tensor<2x3xi32>) -> tensor<*xi32> {
+  %0 = "xla_hlo.select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<*xi32>, tensor<2x3xi32>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+
+// -----
+
+func @select_cast_compatible_types(%arg0: tensor<i1>, %arg1: tensor<2x?xi32>, %arg2: tensor<?x3xi32>) -> tensor<?x?xi32> {
+  // TODO(lucyfox): Update once this is supported.
+  // expected-error@+1 {{currently unsupported operand types: 'tensor<2x?xi32>' and 'tensor<?x3xi32>'}}
+  %0 = "xla_hlo.select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<2x?xi32>, tensor<?x3xi32>) -> tensor<?x?xi32>
+  return %0 : tensor<?x?xi32>
+}
+
+// -----
+
+// CHECK-LABEL: func @select_scalar_x_y
+func @select_scalar_x_y(%arg0: tensor<i1>, %arg1: tensor<i32>, %arg2: tensor<i32>) -> tensor<i32> {
+  %0 = "xla_hlo.select"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<i32>, tensor<i32>) -> tensor<i32>
+  return %0 : tensor<i32>
+}
+
+// -----
+
 func @select_bad_pred_type(%arg0: tensor<3xi32>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
   // expected-error@+1 {{must be tensor of pred (AKA boolean or 1-bit integer) values}}
   %0 = "xla_hlo.select"(%arg0, %arg1, %arg2) : (tensor<3xi32>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
@@ -409,18 +510,16 @@ func @select_bad_pred_type(%arg0: tensor<3xi32>, %arg1: tensor<2x3xi32>, %arg2: 
 
 // -----
 
-// TODO(jpienaar): Re-enable post updating select function verify.
 func @select_bad_shape_mismatch(%arg0: tensor<3xi1>, %arg1: tensor<2x4xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
-  // should-be-error@+1 {{on_true type (tensor<2x4xi32>) does not match on_false type (tensor<2x3xi32>)}}
+  // expected-error@+1 {{incompatible operand types: 'tensor<2x4xi32>' and 'tensor<2x3xi32>'}}
   %0 = "xla_hlo.select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<2x4xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   return %0 : tensor<2x3xi32>
 }
 
 // -----
 
-// TODO(jpienaar): Re-enable post updating select function verify.
 func @select_bad_element_type_mismatch(%arg0: tensor<3xi1>, %arg1: tensor<2x3xf32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
-  // should-be-error@+1 {{on_true type (tensor<2x3xf32>) does not match on_false type (tensor<2x3xi32>)}}
+  // expected-error@+1 {{incompatible operand types: 'tensor<2x3xf32>' and 'tensor<2x3xi32>'}}
   %0 = "xla_hlo.select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<2x3xf32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   return %0 : tensor<2x3xi32>
 }
@@ -452,33 +551,57 @@ func @slice_operand_result_mismatch(%arg0: tensor<3x4xi32>) -> tensor<1x4xf32> {
 // -----
 
 // CHECK-LABEL: func @dynamic_slice
-func @dynamic_slice(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
-  %0 = "xla_hlo.dynamic-slice"(%arg0, %arg1) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<2xi64>) -> tensor<1x4xi32>
+func @dynamic_slice(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xi32> {
+  %0 = "xla_hlo.dynamic-slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
   return %0 : tensor<1x4xi32>
 }
 
 // -----
 
-func @dynamic_slice_mismatch_indices(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
-  // expected-error@+1 {{failed to verify that all of {start_indices, slice_sizes} have same shape}}
-  %0 = "xla_hlo.dynamic-slice"(%arg0, %arg1) {slice_sizes = dense<[4]> : tensor<1xi64>} : (tensor<3x4xi32>, tensor<2xi64>) -> tensor<1x4xi32>
+func @dynamic_slice_mismatch_indices(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xi32> {
+  // expected-error@+1 {{has mismatched number of slice sizes (1) and number of start indices (2)}}
+  %0 = "xla_hlo.dynamic-slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[4]> : tensor<1xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>
   return %0 : tensor<1x4xi32>
 }
 
 // -----
 
 // CHECK-LABEL: @dynamic_slice_different_indice_element_type
-func @dynamic_slice_different_indice_element_type(%arg0: tensor<3x4xi32>, %arg1: tensor<1xi32>) -> tensor<1x4xi32> {
-  %0 = "xla_hlo.dynamic-slice"(%arg0, %arg1) {slice_sizes = dense<[4]> : tensor<1xi64>} : (tensor<3x4xi32>, tensor<1xi32>) -> tensor<1x4xi32>
+func @dynamic_slice_different_indice_element_type(%arg0: tensor<3x4xi32>, %arg1: tensor<i32>) -> tensor<1x4xi32> {
+  %0 = "xla_hlo.dynamic-slice"(%arg0, %arg1) {slice_sizes = dense<[4]> : tensor<1xi64>} : (tensor<3x4xi32>, tensor<i32>) -> tensor<1x4xi32>
   return %0 : tensor<1x4xi32>
 }
 
 // -----
 
-func @dynamic_slice_mismatch_element_types(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xf32> {
+func @dynamic_slice_mismatch_element_types(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xf32> {
   // expected-error@+1 {{failed to verify that all of {operand, result} have same element type}}
-  %0 = "xla_hlo.dynamic-slice"(%arg0, %arg1) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<2xi64>) -> tensor<1x4xf32>
+  %0 = "xla_hlo.dynamic-slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xf32>
   return %0 : tensor<1x4xf32>
+}
+
+// -----
+
+func @dynamic_slice_invalid_start(%arg0: tensor<3x4xi32>, %arg1: tensor<2xi64>) -> tensor<1x4xi32> {
+  // expected-error@+1 {{operand #1 must be a 0-dim integer tensor of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer values, but got 'tensor<2xi64>'}}
+  %0 = "xla_hlo.dynamic-slice"(%arg0, %arg1) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<2xi64>) -> tensor<1x4xi32>
+  return %0 : tensor<1x4xi32>
+}
+
+// -----
+
+// CHECK-LABEL: @dynamic_update_slice
+func @dynamic_update_slice(%input: tensor<3x4xi64>, %update: tensor<2xi64>, %start1: tensor<i64>, %start2: tensor<i64>) -> tensor<3x4xi64> {
+  %0 = "xla_hlo.dynamic-update-slice"(%input, %update, %start1, %start2) : (tensor<3x4xi64>, tensor<2xi64>, tensor<i64>, tensor<i64>) -> tensor<3x4xi64>
+  return %0 : tensor<3x4xi64>
+}
+
+// -----
+
+func @dynamic_update_slice_invalid_start(%input: tensor<3x4xi64>, %update: tensor<2xi64>, %start: tensor<2xi64>) -> tensor<3x4xi64> {
+  // expected-error@+1 {{operand #2 must be a 0-dim integer tensor of 8/16/32/64-bit signless integer or 8/16/32/64-bit unsigned integer values, but got 'tensor<2xi64>'}}
+  %0 = "xla_hlo.dynamic-update-slice"(%input, %update, %start) : (tensor<3x4xi64>, tensor<2xi64>, tensor<2xi64>) -> tensor<3x4xi64>
+  return %0 : tensor<3x4xi64>
 }
 
 // -----
@@ -655,7 +778,7 @@ func @or_i1_type(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
 // -----
 
 func @or_invalid_f32_type(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
-  // expected-error@+1 {{must be tensor of pred (AKA boolean or 1-bit integer) or 8/16/32/64-bit integer values, but got 'tensor<4xf32>'}}
+  // expected-error@+1 {{but got 'tensor<4xf32>'}}
   %0 = "xla_hlo.or"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
@@ -792,4 +915,85 @@ func @sort_wrong_block_arg_type(%input0: tensor<16x16xf32>, %input1: tensor<16x1
     "xla_hlo.return"(%7) : (tensor<i1>) -> ()
   }) {dimension = 1 : i64, is_stable = true} : (tensor<16x16xf32>, tensor<16x16xi32>) -> tuple<tensor<16x16xf32>, tensor<16x16xi32>>
   return
+}
+
+// -----
+
+// CHECK: func @dequantize
+func @dequantize(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
+  %0 = "xla_hlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "MIN_COMBINED", transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
+  return %0 : tensor<16x64xbf16>
+}
+
+// -----
+
+func @dequantize_wrong_shape(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
+  // expected-error @+1 {{mismatched dimensions.}}
+  %0 = "xla_hlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "MIN_COMBINED", transpose_output = true} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
+  return %0 : tensor<16x64xbf16>
+}
+
+// -----
+
+func @dequantize_wrong_size(%arg: tensor<16x16xi32>) -> tensor<16x16xbf16> {
+  // expected-error @+1 {{last dimension of output should be 4x of the input.}}
+  %0 = "xla_hlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "MIN_COMBINED", transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x16xbf16>
+  return %0 : tensor<16x16xbf16>
+}
+
+// -----
+
+func @dequantize_wrong_mode(%arg: tensor<16x16xi32>) -> tensor<16x64xbf16> {
+  // expected-error @+1 {{Dequantization mode. Only MIN_COMBINED is supported.}}
+  %0 = "xla_hlo.dequantize"(%arg) {min_range = -0.1 : f32, max_range = 0.1 : f32, mode = "hello", transpose_output = false} : (tensor<16x16xi32>) -> tensor<16x64xbf16>
+  return %0 : tensor<16x64xbf16>
+}
+
+// -----
+
+func @reshape_invalid_shapes(%operand: tensor<2x4xf32>) -> tensor<3x3xf32> {
+  // expected-error @+1 {{number of output elements (9) doesn't match expected number of elements (8)}}
+  %0 = "xla_hlo.reshape"(%operand) : (tensor<2x4xf32>) -> tensor<3x3xf32>
+  return %0 : tensor<3x3xf32>
+}
+
+// -----
+
+func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
+  // expected-error @+1 {{lhs and rhs should have the same number of batching dimensions}}
+  %0 = "xla_hlo.dot_general"(%arg0, %arg1) { dot_dimension_numbers = {
+    lhs_batching_dimensions = dense<0> : tensor<1xi64>,
+    lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
+    rhs_batching_dimensions = dense<[]> : tensor<0xi64>,
+    rhs_contracting_dimensions = dense<1> : tensor<1xi64>
+  }} : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  return
+}
+
+// -----
+
+func @dot_general(%arg0: tensor<?x?x?xf32>, %arg1: tensor<?x?x?xf32>) {
+  // expected-error @+1 {{lhs and rhs should have the same number of contracting dimensions}}
+  %0 = "xla_hlo.dot_general"(%arg0, %arg1) { dot_dimension_numbers = {
+    lhs_batching_dimensions = dense<0> : tensor<1xi64>,
+    lhs_contracting_dimensions = dense<[]> : tensor<0xi64>,
+    rhs_batching_dimensions = dense<0> : tensor<1xi64>,
+    rhs_contracting_dimensions = dense<1> : tensor<1xi64>
+  }} : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> tensor<?x?x?xf32>
+  return
+}
+
+// -----
+
+func @compatible_shapes(%arg0: tensor<?xf32>, %shape: tensor<2xindex>) -> tensor<?x?xf32> {
+  %0 = "xla_hlo.dynamic_reshape"(%arg0, %shape) : (tensor<?xf32>, tensor<2xindex>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
+}
+
+// -----
+
+func @incompatible_shapes(%arg0: tensor<?xf32>, %shape: tensor<2xindex>) -> tensor<?xf32> {
+  // expected-error @+1 {{output should have a rank equal to the number of elements in output_shape}}
+  %0 = "xla_hlo.dynamic_reshape"(%arg0, %shape) : (tensor<?xf32>, tensor<2xindex>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
 }

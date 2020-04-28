@@ -19,6 +19,7 @@ limitations under the License.
 #include <sys/types.h>
 
 #include "public/gemmlowp.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_multithread.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv.h"
@@ -47,7 +48,7 @@ using reference_ops::BroadcastGreaterEqual;
 using reference_ops::BroadcastLess;
 using reference_ops::BroadcastLessEqual;
 using reference_ops::BroadcastMul4DSlow;
-using reference_ops::BroadcastSub4DSlow;
+using reference_ops::BroadcastSubSlow;
 using reference_ops::Concatenation;
 using reference_ops::ConcatenationWithScaling;
 using reference_ops::DepthConcatenation;
@@ -511,10 +512,11 @@ struct LegacyPerChannelDepthwiseConvWorkerTask : public gemmlowp::Task {
         thread_dim_(thread_dim) {}
 
   void Run() override {
+    CpuBackendContext backend_context;
     optimized_integer_ops::DepthwiseConvImpl(
         params_, output_multiplier_, output_shift_, input_shape_, input_data_,
         filter_shape_, filter_data_, bias_shape_, bias_data_, output_shape_,
-        output_data_, thread_start_, thread_end_, thread_dim_);
+        output_data_, thread_start_, thread_end_, thread_dim_, backend_context);
   }
 
  private:
@@ -567,11 +569,12 @@ inline void DepthwiseConvPerChannel(
   thread_count = std::max(1, std::min(thread_count, max_threads));
 
   if (thread_count == 1) {
+    CpuBackendContext backend_context;
     optimized_integer_ops::DepthwiseConvImpl(
         params, output_multiplier, output_shift, input_shape, input_data,
         filter_shape, filter_data, bias_shape, bias_data, output_shape,
         output_data, /*thread_start=*/0,
-        /*thread_end=*/output_rows, /*thread_dim=*/1);
+        /*thread_end=*/output_rows, /*thread_dim=*/1, backend_context);
   } else {
     std::vector<gemmlowp::Task*> tasks(thread_count);
     int thread_start = 0;
@@ -2551,8 +2554,10 @@ inline void HybridConv(const int8_t* input_data, const Dims<4>& input_dims,
                        int stride_width, int stride_height, int pad_width,
                        int pad_height, float* scaling_factors_ptr,
                        float output_activation_min, float output_activation_max,
+                       int32_t* scratch_data, const Dims<4>& scratch_dims,
                        float* output_data, const Dims<4>& output_dims,
-                       int8_t* im2col_data, const Dims<4>& im2col_dims) {
+                       int8_t* im2col_data, const Dims<4>& im2col_dims,
+                       CpuBackendContext* context) {
   tflite::ConvParams op_params;
   // Padding type is ignored, but still set.
   op_params.padding_type = PaddingType::kSame;
@@ -2565,8 +2570,9 @@ inline void HybridConv(const int8_t* input_data, const Dims<4>& input_dims,
 
   HybridConv(op_params, scaling_factors_ptr, DimsToShape(input_dims),
              input_data, DimsToShape(filter_dims), filter_data,
-             DimsToShape(bias_dims), bias_data, DimsToShape(output_dims),
-             output_data, DimsToShape(im2col_dims), im2col_data);
+             DimsToShape(bias_dims), bias_data, DimsToShape(scratch_dims),
+             scratch_data, DimsToShape(output_dims), output_data,
+             DimsToShape(im2col_dims), im2col_data, context);
 }
 
 template <FusedActivationFunctionType Ac>
@@ -2938,6 +2944,18 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
   TransposeConv(op_params, DimsToShape(input_dims), input_data,
                 DimsToShape(filter_dims), filter_data, DimsToShape(output_dims),
                 output_data, DimsToShape(im2col_dims), im2col_data);
+}
+
+inline void TransposeConvV2(
+    const ConvParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& hwoi_ordered_filter_shape,
+    const float* hwoi_ordered_filter_data, const RuntimeShape& output_shape,
+    float* output_data, const RuntimeShape& col2im_shape, float* col2im_data,
+    CpuBackendContext* cpu_backend_context) {
+  TransposeConvV2(params, input_shape, input_data, hwoi_ordered_filter_shape,
+                  hwoi_ordered_filter_data, /*bias_shape*/ RuntimeShape(),
+                  /*bias_data*/ nullptr, output_shape, output_data,
+                  col2im_shape, col2im_data, cpu_backend_context);
 }
 
 template <typename T>
@@ -3423,9 +3441,9 @@ void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
   tflite::ArithmeticParams op_params;
   SetActivationParams(output_activation_min, output_activation_max, &op_params);
 
-  BroadcastDiv4DSlow(op_params, DimsToShape(input1_dims), input1_data,
-                     DimsToShape(input2_dims), input2_data,
-                     DimsToShape(output_dims), output_data);
+  BroadcastDivSlow(op_params, DimsToShape(input1_dims), input1_data,
+                   DimsToShape(input2_dims), input2_data,
+                   DimsToShape(output_dims), output_data);
 }
 
 template <FusedActivationFunctionType Ac>

@@ -23,62 +23,42 @@ from __future__ import print_function
 import tensorflow.compat.v1 as tf
 from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 
-# Verify that the tf.versions attribute exists. It is difficult to enforce
-# contents, since the version numbers change over time. The conversion logic
-# itself is verified in the common graphdef converter, so here just assert
-# it is being invoked.
-# CHECK: module
-# CHECK-SAME: tf.versions
-# CHECK-SAME: bad_consumers
-# CHECK-SAME: min_consumer
-# CHECK-SAME: producer
+# CHECK: "tf_saved_model.global_tensor"() {is_mutable, sym_name = "[[VAR0:[a-zA-Z_0-9]+]]", type = tensor<5x3xf32>, value = {{.*}} : tensor<5x3xf32>} : () -> ()
+# CHECK: "tf_saved_model.global_tensor"() {is_mutable, sym_name = "[[VAR1:[a-zA-Z_0-9]+]]", type = tensor<3x5xf32>, value = {{.*}} : tensor<3x5xf32>} : () -> ()
+# CHECK:      func {{@[a-zA-Z_0-9]+}}(
+# CHECK-SAME:   [[ARG0:%.*]]: tensor<!tf.resource<tensor<5x3xf32>>> {tf_saved_model.bound_input = @[[VAR0]]},
+# CHECK-SAME:   [[ARG1:%.*]]: tensor<!tf.resource<tensor<3x5xf32>>> {tf_saved_model.bound_input = @[[VAR1]]})
+# CHECK-SAME:             -> (tensor<5x5xf32> {{{.*}}})
+# CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["key"]
 
-# CHECK: "tf_saved_model.global_tensor"() {is_mutable, sym_name = "y", type = tensor<1x3xf32>, value = {{.*}} : tensor<1x3xf32>} : () -> ()
-# CHECK: "tf_saved_model.global_tensor"() {is_mutable, sym_name = "z", type = tensor<3x3xf32>, value = {{.*}} : tensor<3x3xf32>} : () -> ()
-# CHECK: func @basic([[ARG0:%.*]]: tensor<3x1xf32>,
-# CHECK-SAME: [[ARG1:%.*]]: tensor<!tf.resource<tensor<1x3xf32>>> {tf_saved_model.bound_input = @y}
-# CHECK-SAME: [[ARG2:%.*]]: tensor<!tf.resource<tensor<3x3xf32>>> {tf_saved_model.bound_input = @z}) -> tensor<3x3xf32>
-# CHECK-NEXT: [[R0:%.*]] = "tf.ReadVariableOp"([[ARG1]]) {{{.*}}} : (tensor<!tf.resource<tensor<1x3xf32>>>) -> tensor<1x3xf32>
-# CHECK-NEXT: [[R1:%.*]] = "tf.MatMul"([[ARG0]], [[R0]]) {{{.*}}} : (tensor<3x1xf32>, tensor<1x3xf32>) -> tensor<3x3xf32>
-# CHECK-NEXT: [[R2:%.*]] = "tf.ReadVariableOp"([[ARG2]]) {{{.*}}} : (tensor<!tf.resource<tensor<3x3xf32>>>) -> tensor<3x3xf32>
-# CHECK-NEXT: [[R3:%.*]] = "tf.MatMul"([[R1]], [[R2]]) {{{.*}}} : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<3x3xf32>
-# CHECK-NEXT: return [[R3]] : tensor<3x3xf32>
+# CHECK-NEXT: [[R0:%.*]] = "tf.ReadVariableOp"([[ARG0]]) {{{.*}}} : (tensor<!tf.resource<tensor<5x3xf32>>>) -> tensor<5x3xf32>
+# CHECK-NEXT: [[R1:%.*]] = "tf.ReadVariableOp"([[ARG1]]) {{{.*}}} : (tensor<!tf.resource<tensor<3x5xf32>>>) -> tensor<3x5xf32>
+# CHECK-NEXT: [[R2:%.*]] = "tf.MatMul"([[R0]], [[R1]]) {{{.*}}} : (tensor<5x3xf32>, tensor<3x5xf32>) -> tensor<5x5xf32>
 
 
 def Test():
 
-  # Default TF1.x uses reference variables that are not supported by SavedModel
-  # v1 Importer. To use SavedModel V1 Importer, resource variables should be
-  # enabled.
-  tf.compat.v1.enable_resource_variables()
-
-  tf.compat.v1.disable_eager_execution()
-
-  x = tf.constant([[1.0], [1.0], [1.0]])
+  x = tf.compat.v1.get_variable(
+      name='x',
+      shape=(5, 3),
+      initializer=tf.random_normal_initializer(),
+      trainable=True)
   y = tf.compat.v1.get_variable(
       name='y',
-      shape=(1, 3),
+      shape=(3, 5),
       initializer=tf.random_normal_initializer(),
       trainable=True)
-  z = tf.compat.v1.get_variable(
-      name='z',
-      shape=(3, 3),
-      initializer=tf.random_normal_initializer(),
-      trainable=True)
-  r = tf.matmul(x, y)
-  s = tf.matmul(r, z)
-
-  tensor_info_x = tf.compat.v1.saved_model.utils.build_tensor_info(x)
-  tensor_info_s = tf.compat.v1.saved_model.utils.build_tensor_info(s)
+  z = tf.matmul(x, y)
+  tensor_info_z = tf.compat.v1.saved_model.utils.build_tensor_info(z)
 
   return {
-      'basic':
-          (tf.compat.v1.saved_model.signature_def_utils.build_signature_def(
-              inputs={'x': tensor_info_x},
-              outputs={'s': tensor_info_s},
-              method_name=tf.saved_model.PREDICT_METHOD_NAME))
+      'key': (tf.compat.v1.saved_model.signature_def_utils.build_signature_def(
+          inputs=None,
+          outputs={'z': tensor_info_z},
+          method_name='some_function'))
   }
 
 
 if __name__ == '__main__':
+  common_v1.set_tf_options()
   common_v1.do_test(Test())

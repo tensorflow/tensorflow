@@ -81,7 +81,29 @@ cuda_py_test(
     name = "linear_operator_block_diag_test",
     size = "medium",
     srcs = ["linear_operator_block_diag_test.py"],
-    shard_count = 6,
+    shard_count = 8,
+    tags = [
+        "noasan",
+        "optonly",
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/ops/linalg",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "linear_operator_block_lower_triangular_test",
+    size = "medium",
+    srcs = ["linear_operator_block_lower_triangular_test.py"],
+    shard_count = 8,
     tags = [
         "noasan",
         "optonly",
@@ -261,7 +283,7 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
-    xla_enable_strict_auto_jit = False,  # Fails in XLA b/143610154
+    xla_enable_strict_auto_jit = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

@@ -154,8 +154,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       EvalFloat(context, node, params, &data, input1, input2, output);
       break;
     default:
-      context->ReportError(context, "Type %s (%d) not supported.",
-                           TfLiteTypeGetName(input1->type), input1->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input1->type), input1->type);
       return kTfLiteError;
   }
 

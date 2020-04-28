@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_CONV_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_CONV_H_
 
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
@@ -58,8 +58,6 @@ inline void ConvPerChannel(
   const bool need_im2col = stride_width != 1 || stride_height != 1 ||
                            filter_width != 1 || filter_height != 1;
   const int8 input_zero_point = -input_offset;
-  TFLITE_DCHECK_GE(input_zero_point, output_activation_min);
-  TFLITE_DCHECK_LE(input_zero_point, output_activation_max);
   const uint8 zero_point_byte =
       *reinterpret_cast<const uint8*>(&input_zero_point);
   if (need_dilated_im2col) {

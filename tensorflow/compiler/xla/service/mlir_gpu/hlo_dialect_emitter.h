@@ -20,10 +20,10 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -52,12 +52,13 @@ class HloDialectEmitter : public DfsHloVisitorWithDefault {
   StatusOr<mlir::Value> EmitComputation(const HloComputation& computation);
 
   Status DefaultAction(HloInstruction* instr) override;
-  Status HandleBroadcast(HloInstruction* broadcast) override;
-  Status HandleCompare(HloInstruction* compare) override;
-  Status HandleConstant(HloInstruction* constant) override;
-  Status HandleIota(HloInstruction* iota) override;
-  Status HandleParameter(HloInstruction* param) override;
-  Status HandleReduce(HloInstruction* reduce) override;
+  Status HandleBroadcast(HloInstruction* instr) override;
+  Status HandleCompare(HloInstruction* instr) override;
+  Status HandleConcatenate(HloInstruction* instr) override;
+  Status HandleConstant(HloInstruction* instr) override;
+  Status HandleIota(HloInstruction* instr) override;
+  Status HandleParameter(HloInstruction* instr) override;
+  Status HandleReduce(HloInstruction* instr) override;
 
  private:
   mlir::Location getLocation(const HloInstruction* instr) const;

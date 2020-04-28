@@ -151,17 +151,6 @@ gentbl(
 )
 
 gentbl(
-    name = "attributes_compat_gen",
-    tbl_outs = [("-gen-attrs", "lib/IR/AttributesCompatFunc.inc")],
-    tblgen = ":llvm-tblgen",
-    td_file = "lib/IR/AttributesCompatFunc.td",
-    td_srcs = [
-        "lib/IR/AttributesCompatFunc.td",
-        "include/llvm/IR/Attributes.td",
-    ],
-)
-
-gentbl(
     name = "instcombine_transforms_gen",
     tbl_outs = [(
         "-gen-searchable-tables",
@@ -479,7 +468,9 @@ llvm_target_list = [
             ("-gen-disassembler", "lib/Target/AMDGPU/AMDGPUGenDisassemblerTables.inc"),
             ("-gen-pseudo-lowering", "lib/Target/AMDGPU/AMDGPUGenMCPseudoLowering.inc"),
             ("-gen-searchable-tables", "lib/Target/AMDGPU/AMDGPUGenSearchableTables.inc"),
-            ("-gen-global-isel", "lib/Target/AMDGPU/AMDGPUGenGlobalISel.inc"),
+        ],
+        "tbl_deps": [
+            ":amdgpu_isel_target_gen",
         ],
     },
     {
@@ -569,6 +560,33 @@ llvm_target_list = [
     },
 ]
 
+filegroup(
+    name = "common_target_td_sources",
+    srcs = glob([
+        "include/llvm/CodeGen/*.td",
+        "include/llvm/IR/Intrinsics*.td",
+        "include/llvm/TableGen/*.td",
+        "include/llvm/Target/*.td",
+        "include/llvm/Target/GlobalISel/*.td",
+    ]),
+)
+
+gentbl(
+    name = "amdgpu_isel_target_gen",
+    tbl_outs = [
+        ("-gen-global-isel", "lib/Target/AMDGPU/AMDGPUGenGlobalISel.inc"),
+        ("-gen-global-isel-combiner -combiners=AMDGPUPreLegalizerCombinerHelper", "lib/Target/AMDGPU/AMDGPUGenPreLegalizeGICombiner.inc"),
+        ("-gen-global-isel-combiner -combiners=AMDGPUPostLegalizerCombinerHelper", "lib/Target/AMDGPU/AMDGPUGenPostLegalizeGICombiner.inc"),
+    ],
+    tblgen = ":llvm-tblgen",
+    td_file = "lib/Target/AMDGPU/AMDGPUGISel.td",
+    td_srcs = [
+        ":common_target_td_sources",
+    ] + glob([
+        "lib/Target/AMDGPU/*.td",
+    ]),
+)
+
 [
     gentbl(
         name = target["lower_name"] + "_target_gen",
@@ -584,6 +602,7 @@ llvm_target_list = [
             "include/llvm/Target/*.td",
             "include/llvm/Target/GlobalISel/*.td",
         ]),
+        deps = target.get("tbl_deps", []),
     )
     for target in llvm_target_list
 ]
@@ -624,6 +643,18 @@ cc_binary(
     linkopts = llvm_linkopts,
     deps = [
         ":support",
+    ],
+)
+
+cc_library(
+    name = "all_targets",
+    deps = [
+        ":aarch64_code_gen",
+        ":amdgpu_code_gen",
+        ":arm_code_gen",
+        ":nvptx_code_gen",
+        ":powerpc_code_gen",
+        ":x86_code_gen",
     ],
 )
 
@@ -705,6 +736,7 @@ cc_library(
         ":aarch64_target_gen",
         ":aarch64_utils",
         ":attributes_gen",
+        ":binary_format",
         ":config",
         ":intrinsic_enums_gen",
         ":intrinsics_impl_gen",
@@ -1120,6 +1152,7 @@ cc_library(
         ":arm_target_gen",
         ":arm_utils",
         ":attributes_gen",
+        ":binary_format",
         ":config",
         ":intrinsic_enums_gen",
         ":intrinsics_impl_gen",
@@ -1704,7 +1737,6 @@ cc_library(
         ":aarch64_enums_gen",
         ":amdgcn_enums_gen",
         ":arm_enums_gen",
-        ":attributes_compat_gen",
         ":attributes_gen",
         ":binary_format",
         ":bpf_enums_gen",
@@ -1860,7 +1892,9 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":config",
+        ":debug_info_dwarf",
         ":mc",
+        ":object",
         ":support",
     ],
 )
@@ -1900,6 +1934,7 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
+        ":binary_format",
         ":config",
         ":debug_info_code_view",
         ":debug_info_msf",
@@ -1970,6 +2005,23 @@ cc_library(
         ":support",
         ":target",
     ],
+)
+
+cc_library(
+    name = "extensions",
+    srcs = glob([
+        "lib/Extensions/*.c",
+        "lib/Extensions/*.cpp",
+        "lib/Extensions/*.inc",
+        "lib/Extensions/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Extensions/*.h",
+        "include/llvm/Extensions/*.def",
+        "include/llvm/Extensions/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [":config"],
 )
 
 cc_library(
@@ -2194,6 +2246,7 @@ cc_library(
         ":bit_writer",
         ":config",
         ":core",
+        ":frontend_open_mp",
         ":inst_combine",
         ":instrumentation",
         ":ir_reader",
@@ -2345,11 +2398,13 @@ cc_library(
     deps = [
         ":aggressive_inst_combine",
         ":analysis",
+        ":binary_format",
         ":bit_reader",
         ":bit_writer",
         ":code_gen",
         ":config",
         ":core",
+        ":extensions",
         ":inst_combine",
         ":ipo",
         ":linker",
@@ -3168,6 +3223,7 @@ cc_library(
         ":code_gen",
         ":config",
         ":core",
+        ":coroutines",
         ":inst_combine",
         ":instrumentation",
         ":ipo",
@@ -3250,6 +3306,7 @@ cc_library(
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/PowerPC"],
     deps = [
         ":attributes_gen",
+        ":binary_format",
         ":config",
         ":intrinsic_enums_gen",
         ":intrinsics_impl_gen",
@@ -3722,7 +3779,7 @@ cc_library(
     deps = [
         ":config",
         ":demangle",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
 )
 
@@ -4292,7 +4349,6 @@ cc_library(
         ":x86_defs",
         ":x86_desc",
         ":x86_info",
-        ":x86_utils",
     ],
 )
 
@@ -4311,13 +4367,12 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/X86"],
     deps = [
+        ":binary_format",
         ":config",
         ":mc",
         ":mc_disassembler",
-        ":object",
         ":support",
         ":x86_info",
-        ":x86_utils",
     ],
 )
 
@@ -4363,27 +4418,6 @@ cc_library(
         ":mc",
         ":support",
         ":x86_target_gen",
-    ],
-)
-
-cc_library(
-    name = "x86_utils",
-    srcs = glob([
-        "lib/Target/X86/Utils/*.c",
-        "lib/Target/X86/Utils/*.cpp",
-        "lib/Target/X86/Utils/*.inc",
-    ]),
-    hdrs = glob([
-        "include/llvm/Target/X86/Utils/*.h",
-        "include/llvm/Target/X86/Utils/*.def",
-        "include/llvm/Target/X86/Utils/*.inc",
-        "lib/Target/X86/Utils/*.h",
-    ]),
-    copts = llvm_copts + ["-Iexternal/llvm-project/llvm/lib/Target/X86"],
-    deps = [
-        ":code_gen",
-        ":config",
-        ":support",
     ],
 )
 

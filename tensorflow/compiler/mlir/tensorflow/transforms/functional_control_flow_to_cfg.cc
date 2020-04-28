@@ -16,14 +16,14 @@ limitations under the License.
 // This transformation pass transforms functional control flow operations in the
 // standard TensorFlow dialect to MLIR Control Flow Graph (CFG) form.
 
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -34,32 +34,15 @@ namespace TF {
 namespace {
 
 struct FunctionalControlFlowToCFG
-    : public FunctionPass<FunctionalControlFlowToCFG> {
+    : public PassWrapper<FunctionalControlFlowToCFG, FunctionPass> {
   void runOnFunction() override;
 };
 
 // Lowers a general tensor argument that is used as a condition to a functional
-// control flow op into an i1 value.  This needs to implement the general
-// TensorFlow semantics, which are:
-//
-//   If the tensor is a scalar of non-boolean type, the scalar is converted to a
-//   boolean according to the following rule: if the scalar is a numerical
-//   value, non-zero means True and zero means False; if the scalar is a string,
-//   non-empty means True and empty means False. If the tensor is not a scalar,
-//   being empty means False and being non-empty means True.
-//
+// control flow op into an i1 value.
 static Value LowerCondition(Location loc, Value value, OpBuilder* builder) {
-  // TODO: Right now we just handle zero-D tensors of boolean values.
-  // FIXME: This is almost all wrong, but is a placeholder to unblock the one
-  // testcases, later patches will build on this once I build the right infra to
-  // support it.
-  TensorType type = value.getType().cast<TensorType>();
-  if (!type.hasRank() || type.getRank() != 0 ||
-      !type.getElementType().isInteger(1)) {
-    return emitError(loc, "only supports zero-D bool tensors now"), nullptr;
-  }
-
-  auto scalar = builder->create<ExtractElementOp>(loc, value);
+  auto zero_d = builder->create<ToBoolOp>(loc, value);
+  auto scalar = builder->create<ExtractElementOp>(loc, zero_d);
   return scalar.getResult();
 }
 
@@ -329,7 +312,7 @@ void FunctionalControlFlowToCFG::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateTFFunctionalControlFlowToCFG() {
+std::unique_ptr<OperationPass<FuncOp>> CreateTFFunctionalControlFlowToCFG() {
   return std::make_unique<FunctionalControlFlowToCFG>();
 }
 

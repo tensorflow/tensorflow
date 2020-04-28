@@ -47,6 +47,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
+from tensorflow.python.training.saving import checkpoint_options
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.training.tracking import tracking
@@ -408,6 +409,28 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     status = ckpt.restore(save_path=save_path)
     del ckpt
     status.assert_consumed()
+
+  @test_util.run_in_graph_and_eager_modes
+  def testPassingCheckpointOptions(self):
+    localhost = "/job:localhost/device:CPU:0"
+    options = checkpoint_options.CheckpointOptions(
+        experimental_io_device=localhost)
+    prefix = os.path.join(self.get_temp_dir(), "ckpt")
+    v = variable_scope.get_variable(name="v", initializer=0.)
+    self.evaluate(v.initializer)
+    ckpt = trackable_utils.Checkpoint(v=v)
+    self.evaluate(trackable_utils.gather_initializers(ckpt))
+    save_path = ckpt.save(file_prefix=prefix, options=options)
+    status = ckpt.restore(save_path=save_path, options=options)
+    del ckpt
+    status.assert_consumed()
+
+    # In graph mode, verify that the save and restore ops were set to run on
+    # localhost.
+    if not context.executing_eagerly():
+      for op in ops.get_default_graph().get_operations():
+        if op.type in ("SaveV2", "RestoreV2"):
+          self.assertEqual(localhost, op.device)
 
   @test_util.run_in_graph_and_eager_modes
   def testSaveRestore(self):
@@ -1257,7 +1280,6 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
         model=deferred_sequential)
     status = deferred_sequential_checkpoint.restore(save_path)
     deferred_sequential.add(core.Dense(4))
-    deferred_sequential(constant_op.constant([[1.]]))
     deferred_second_dense = core.Dense(5)
     deferred_sequential.add(deferred_second_dense)
     deferred_sequential(constant_op.constant([[1.]]))
@@ -1376,8 +1398,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_write_checkpoint_from_function(self):
     checkpoint_prefix = os.path.join(self.get_temp_dir(), "ckpt")
-    save_checkpoint = trackable_utils.Checkpoint(
-        v=variables_lib.Variable(1.))
+    save_checkpoint = trackable_utils.Checkpoint(v=variables_lib.Variable(1.))
 
     @def_function.function
     def _write_checkpoint():
@@ -1386,14 +1407,21 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
 
     self.evaluate([save_checkpoint.v.initializer])
     self.evaluate(_write_checkpoint())
-    load_checkpoint = trackable_utils.Checkpoint(
-        v=variables_lib.Variable(0.))
-    load_checkpoint.restore(checkpoint_prefix).run_restore_ops()
+    load_checkpoint = trackable_utils.Checkpoint(v=variables_lib.Variable(0.))
+    # Use read() instead of restore() which allows us to check that all
+    # existing objects were loaded.
+    status = load_checkpoint.read(checkpoint_prefix)
+    status.assert_existing_objects_matched()
+    status.assert_consumed()
+    status.run_restore_ops()
     self.assertEqual(1., self.evaluate(load_checkpoint.v))
     self.evaluate(save_checkpoint.v.assign(3.))
     self.evaluate(_write_checkpoint())
     self.evaluate(save_checkpoint.v.assign(0.))
-    load_checkpoint.restore(checkpoint_prefix).run_restore_ops()
+    status = load_checkpoint.read(checkpoint_prefix)
+    status.assert_existing_objects_matched()
+    status.assert_consumed()
+    status.run_restore_ops()
     self.assertEqual(3., self.evaluate(load_checkpoint.v))
 
   def test_inititialize_with_data_structures(self):

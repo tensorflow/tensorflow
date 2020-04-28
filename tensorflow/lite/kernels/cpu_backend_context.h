@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "public/gemmlowp.h"
-#include "tensorflow/lite/experimental/ruy/context.h"
+#include "ruy/context.h"  // from @ruy
 #include "tensorflow/lite/external_cpu_backend_context.h"
 
 namespace tflite {
@@ -43,6 +43,8 @@ class CpuBackendContext final : public TfLiteInternalBackendContext {
 
   int max_num_threads() const { return max_num_threads_; }
 
+  void ClearCaches() override { ruy_context_->ClearPrepackedCache(); }
+
  private:
   // To enable a smooth transition from the current direct usage
   // of the underlying gemmlowp context to going through abstractions
@@ -53,7 +55,7 @@ class CpuBackendContext final : public TfLiteInternalBackendContext {
   const std::unique_ptr<ruy::Context> ruy_context_;
   const std::unique_ptr<gemmlowp::GemmContext> gemmlowp_context_;
 
-  // The maxinum of threads used for parallelizing TfLite ops. However,
+  // The maximum of threads used for parallelizing TfLite ops. However,
   // cpu_backend_threadpool::Execute creates as many threads as it's
   // asked to, regardless of this. Typically a call site would query
   // cpu_backend_context->max_num_threads() and used that to determine

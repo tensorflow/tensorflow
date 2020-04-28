@@ -1,5 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
+load("//tensorflow/lite/micro:build_def.bzl", "cc_library", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 
@@ -178,8 +178,11 @@ cc_library(
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools/optimize:quantization_utils",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "//tensorflow/lite/tools/versioning",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -227,14 +230,15 @@ cc_test(
 
 cc_library(
     name = "tflite_with_ruy_enabled",
+    build_for_embedded = True,
     defines = ["TFLITE_WITH_RUY"],
     visibility = ["//visibility:private"],
 )
 
 cc_library(
     name = "tflite_with_ruy_default",
-    visibility = ["//visibility:private"],
-    deps = select({
+    build_for_embedded = True,
+    select_deps = {
         ":chromiumos_arm64": [":tflite_with_ruy_enabled"],
         ":cpu_aarch64": [":tflite_with_ruy_enabled"],
         ":cpu_arm64": [":tflite_with_ruy_enabled"],
@@ -244,16 +248,18 @@ cc_library(
         ":cpu_arm64_v8a": [":tflite_with_ruy_enabled"],
         "//tensorflow:android_arm": ["tflite_with_ruy_enabled"],
         "//conditions:default": [],
-    }),
+    },
+    visibility = ["//visibility:private"],
 )
 
 cc_library(
     name = "tflite_with_ruy",
-    deps = select({
+    build_for_embedded = True,
+    select_deps = {
         ":tflite_with_ruy_explicit_true": [":tflite_with_ruy_enabled"],
         ":tflite_with_ruy_explicit_false": [],
         "//conditions:default": [":tflite_with_ruy_default"],
-    }),
+    },
 )
 
 cc_library(
@@ -271,7 +277,7 @@ cc_library(
         # For now this unconditionally depends on both ruy and gemmlowp.
         # See the comment inside class CpuBackendContext on the
         # gemmlowp_context_ and ruy_context_ members.
-        "//tensorflow/lite/experimental/ruy:context",
+        "@ruy//ruy:context",
         "@gemmlowp",
         "//tensorflow/lite:external_cpu_backend_context",
     ],
@@ -292,8 +298,8 @@ cc_library(
         # We only need to depend on gemmlowp when tflite_with_ruy
         # is false, but putting these dependencies in a select() seems to
         # defeat copybara's rewriting rules.
-        "//tensorflow/lite/experimental/ruy:context",
-        "//tensorflow/lite/experimental/ruy:thread_pool",
+        "@ruy//ruy:context",
+        "@ruy//ruy:thread_pool",
         "@gemmlowp",
     ],
 )
@@ -331,9 +337,9 @@ cc_library(
         ":cpu_backend_threadpool",
         # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
         # cpu_backend_gemm.h about why ruy is the generic path.
-        "//tensorflow/lite/experimental/ruy",
-        "//tensorflow/lite/experimental/ruy:path",
-        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+        "@ruy//ruy",
+        "@ruy//ruy:path",
+        "@ruy//ruy/profiler:instrumentation",
         # We only need to depend on gemmlowp and Eigen when tflite_with_ruy
         # is false, but putting these dependencies in a select() seems to
         # defeat copybara's rewriting rules.
@@ -352,7 +358,7 @@ cc_test(
         "@com_google_googletest//:gtest",
         # ruy's reference path provides the reference implementation
         # that this test compares against.
-        "//tensorflow/lite/experimental/ruy",
+        "@ruy//ruy",
     ],
 )
 
@@ -373,11 +379,12 @@ cc_library(
     hdrs = [
         "kernel_util.h",
     ],
-    copts = tflite_copts(),
+    build_for_embedded = True,
+    copts = tflite_copts() + micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels/internal:quantization_util",
-        "//tensorflow/lite/kernels/internal:round",
         "@flatbuffers",
     ],
 )
@@ -408,6 +415,7 @@ cc_library(
     name = "padding",
     srcs = [],
     hdrs = ["padding.h"],
+    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",
@@ -423,6 +431,7 @@ cc_library(
         "arg_min_max.cc",
         "audio_spectrogram.cc",
         "basic_rnn.cc",
+        "batch_matmul.cc",
         "batch_to_space_nd.cc",
         "bidirectional_sequence_lstm.cc",
         "bidirectional_sequence_rnn.cc",
@@ -523,7 +532,8 @@ cc_library(
         ":lstm_shared",
         ":op_macros",
         ":padding",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:framework_lib",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:audio_utils",
@@ -541,10 +551,10 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -590,12 +600,12 @@ cc_library(
         ":op_macros",
         "//tensorflow/lite:context",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/experimental/kernels:hashtable_op_kernels",
-        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+        "//tensorflow/lite/kernels/hashtable:hashtable_op_kernels",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor",
         "//third_party/fft2d:fft2d_headers",
         "@fft2d",
+        "@ruy//ruy/profiler:instrumentation",
     ],
 )
 
@@ -608,12 +618,13 @@ cc_library(
         ":cpu_backend_context",
         ":op_macros",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+        "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:kernel_utils",
+        "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_utils",
-        "@gemmlowp",
+        "@ruy//ruy/profiler:instrumentation",
     ],
 )
 
@@ -621,6 +632,28 @@ cc_library(
     name = "lstm_shared",
     hdrs = ["lstm_shared.h"],
     copts = tflite_copts(),
+)
+
+# For internal usage by shared libraries only.
+cc_library(
+    name = "builtin_ops_all_linked",
+    srcs = ["register.cc"],
+    hdrs = [
+        "builtin_op_kernels.h",
+        "fully_connected.h",
+        "register.h",
+    ],
+    copts = tflite_copts(),
+    # Limit visibility to TFLite only.
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+    deps = [
+        ":builtin_op_kernels",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -631,13 +664,11 @@ cc_library(
         "fully_connected.h",
         "register.h",
     ],
-    copts = tflite_copts(),
     deps = [
         ":builtin_op_kernels",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:framework_lib",
         "//tensorflow/lite/c:common",
     ],
-    alwayslink = 1,
 )
 
 # The builtin_ops target will resolve to optimized kernels when available. This
@@ -701,7 +732,10 @@ cc_test(
     name = "activations_test",
     size = "small",
     srcs = ["activations_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -716,7 +750,10 @@ cc_test(
     name = "add_test",
     size = "small",
     srcs = ["add_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -825,6 +862,19 @@ cc_test(
 )
 
 cc_test(
+    name = "batch_matmul_test",
+    size = "small",
+    srcs = ["batch_matmul_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "cast_test",
     size = "small",
     srcs = ["cast_test.cc"],
@@ -877,8 +927,26 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
         "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "depthwise_conv_hybrid_test",
+    size = "small",
+    srcs = ["depthwise_conv_hybrid_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels/internal:test_util",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
@@ -1068,7 +1136,8 @@ cc_test(
     name = "l2norm_test",
     size = "small",
     srcs = ["l2norm_test.cc"],
-    tags = ["tflite_nnapi"],
+    # TODO(b/143912164): Enable NNAPI test when fix nnapi.
+    # tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1137,7 +1206,10 @@ cc_test(
     name = "mul_test",
     size = "small",
     srcs = ["mul_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1161,6 +1233,17 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "reshape_test_common",
+    testonly = 1,
+    hdrs = [
+        "reshape_test_common.h",
+    ],
+    deps = [
+        ":test_util",
+    ],
+)
+
 cc_test(
     name = "reshape_test",
     size = "small",
@@ -1168,6 +1251,7 @@ cc_test(
     tags = ["tflite_nnapi"],
     deps = [
         ":builtin_ops",
+        ":reshape_test_common",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
@@ -1339,7 +1423,10 @@ cc_test(
     name = "pooling_test",
     size = "small",
     srcs = ["pooling_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1353,7 +1440,10 @@ cc_test(
     name = "softmax_test",
     size = "small",
     srcs = ["softmax_test.cc"],
-    tags = ["tflite_nnapi"],
+    tags = [
+        "tflite_nnapi",
+        "tflite_xnnpack",
+    ],
     deps = [
         ":builtin_ops",
         ":test_main",

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -28,6 +29,35 @@ namespace profiler {
 ABSL_CONST_INIT extern const absl::string_view kHostThreads;
 // Name prefix of XPlane that contains GPU events.
 ABSL_CONST_INIT extern const absl::string_view kGpuPlanePrefix;
+// Name of XPlane that contains CUPTI driver API generated events.
+ABSL_CONST_INIT extern const absl::string_view kCuptiDriverApiPlaneName;
+// Name of XPlane that contains profile metadata such as XLA debug info.
+ABSL_CONST_INIT extern const absl::string_view kMetadataPlane;
+// Name of XPlane that contains kpi related metrics.
+ABSL_CONST_INIT extern const absl::string_view kTFStreamzPlane;
+
+// Names of XLines that contain ML-level events.
+ABSL_CONST_INIT extern const absl::string_view kStepLineName;
+ABSL_CONST_INIT extern const absl::string_view kTensorFlowNameScopeLineName;
+ABSL_CONST_INIT extern const absl::string_view kTensorFlowOpLineName;
+ABSL_CONST_INIT extern const absl::string_view kXlaModuleLineName;
+ABSL_CONST_INIT extern const absl::string_view kXlaOpLineName;
+ABSL_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
+
+// Id of XPlane that contains TraceMe events.
+ABSL_CONST_INIT extern const int32 kHostPlaneId;
+// Ids prefix of XPlane that contains GPU events.
+ABSL_CONST_INIT extern const int32 kGpuPlaneBaseId;
+// Id of XPlane that contains CUPTI driver API generated events which happens
+// on CPU host threads, e.g. Kernel launch.
+ABSL_CONST_INIT extern const int32 kCuptiDriverApiPlaneId;
+// Id of XPlane that contains profile metadata such as XLA debug info.
+ABSL_CONST_INIT extern const int32 kMetadataPlaneId;
+// Id of XPlane that contains kpi related metrics.
+ABSL_CONST_INIT extern const int32 kTFStreamzPlaneId;
+
+ABSL_CONST_INIT extern const int32 kThreadGroupMinPlaneId;
+ABSL_CONST_INIT extern const int32 kThreadGroupMaxPlaneId;
 
 // Interesting event types (i.e., TraceMe names).
 enum HostEventType {
@@ -37,11 +67,15 @@ enum HostEventType {
   kSessionRun,
   kFunctionRun,
   kRunGraph,
+  kRunGraphDone,
+  kTfOpRun,
   kEagerKernelExecute,
   kExecutorStateProcess,
   kExecutorDoneCallback,
   kMemoryAllocation,
   kMemoryDeallocation,
+  // Performance counter related.
+  kRemotePerf,
   // tf.data captured function events.
   kTfDataCapturedFunctionRun,
   kTfDataCapturedFunctionRunWithBorrowedArgs,
@@ -61,7 +95,18 @@ enum HostEventType {
   kWhileOpStartBody,
   kForOp,
   kPartitionedCallOp,
-  kLastHostEventType = kPartitionedCallOp,
+  // XLA related.
+  kLocalExecutableExecuteOnLocalDevice,
+  kLocalExecutableExecute,
+  // tf.data related.
+  kIteratorGetNextOp,
+  // Virtual events for grouping.
+  kHostTrainingLoopIteration,
+  kAsyncExecutorTraceContext,
+  // GPU related.
+  kKernelLaunch,
+  kKernelExecute,
+  kLastHostEventType = kKernelExecute,
 };
 
 enum StatType {
@@ -88,13 +133,21 @@ enum StatType {
   kBytesAvailable,
   kFragmentation,
   kPeakBytesInUse,
+  kRequestedBytes,
+  kAllocationBytes,
+  kAddress,
+  kRegionType,
+  kDataType,
+  kTensorShapes,
   // Device trace arguments.
   kDeviceId,
   kContextId,
   kCorrelationId,
   kMemcpyDetails,
   kMemallocDetails,
+  kKernelAnnotation,
   kKernelDetails,
+  kStream,
   // Stats added when processing traces.
   kGroupId,
   kStepName,
@@ -102,6 +155,16 @@ enum StatType {
   kTfOp,
   kHloOp,
   kHloModule,
+  kEquation,
+  kIsEager,
+  // Performance counter related.
+  kRawValue,
+  kScaledValue,
+  kThreadId,
+  // XLA metadata map related.
+  kSelfDurationPs,
+  kMinDurationPs,
+  kHloProto,
   // Device capability related.
   kDevCapClockRateKHz,
   kDevCapCoreCount,
@@ -112,28 +175,32 @@ enum StatType {
   kLastStatType = kDevCapComputeCapMinor,
 };
 
-absl::Span<const absl::string_view> GetHostEventTypeStrMap();
+absl::string_view GetHostEventTypeStr(HostEventType event_type);
 
-inline absl::string_view GetHostEventTypeStr(HostEventType event_type) {
-  return GetHostEventTypeStrMap()[event_type];
-}
+bool IsHostEventType(HostEventType event_type, absl::string_view event_name);
 
 inline bool IsHostEventType(HostEventType event_type,
                             absl::string_view event_name) {
-  return GetHostEventTypeStrMap()[event_type] == event_name;
+  return GetHostEventTypeStr(event_type) == event_name;
 }
 
-absl::Span<const absl::string_view> GetStatTypeStrMap();
+absl::optional<int64> FindHostEventType(absl::string_view event_name);
 
-inline absl::string_view GetStatTypeStr(StatType stat_type) {
-  return GetStatTypeStrMap()[stat_type];
-}
+absl::string_view GetStatTypeStr(StatType stat_type);
+
+bool IsStatType(StatType stat_type, absl::string_view stat_name);
 
 inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
   return GetStatTypeStr(stat_type) == stat_name;
 }
 
-StatType GetStatType(absl::string_view stat_name);
+absl::optional<int64> FindStatType(absl::string_view stat_name);
+
+// Returns true if the given stat shouldn't be shown in the trace viewer.
+inline bool IsInternalStat(absl::optional<int64> stat_type) {
+  return stat_type == StatType::kKernelDetails ||
+         stat_type == StatType::kLevel0;
+}
 
 }  // namespace profiler
 }  // namespace tensorflow

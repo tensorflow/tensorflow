@@ -93,6 +93,11 @@ def _should_record_summaries_internal(default_state):
   if _summary_state.writer is None:
     return constant_op.constant(False)
 
+  if not callable(_summary_state.is_recording):
+    static_cond = tensor_util.constant_value(_summary_state.is_recording)
+    if static_cond is not None and not static_cond:
+      return constant_op.constant(False)
+
   resolve = lambda x: x() if callable(x) else x
   cond_distributed = resolve(_summary_state.is_recording_distribution_strategy)
   cond = resolve(_summary_state.is_recording)
@@ -110,6 +115,7 @@ def _should_record_summaries_v2():
   return _should_record_summaries_internal(default_state=True)
 
 
+@tf_export("summary.should_record_summaries", v1=[])
 def should_record_summaries():
   """Returns boolean Tensor which is true if summaries should be recorded."""
   return _should_record_summaries_internal(default_state=False)
@@ -1107,7 +1113,7 @@ def keras_model(name, data, step=None):
 
   Writing the Keras model configuration allows the TensorBoard graph plugin to
   render a conceptual graph, as opposed to graph of ops. In case the model fails
-  to serialze as JSON, it ignores and returns False.
+  to serialize as JSON, it ignores and returns False.
 
   Args:
     name: A name for this summary. The summary tag used for TensorBoard will be

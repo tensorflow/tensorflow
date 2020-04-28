@@ -29,13 +29,13 @@ int16_t g_audio_output_buffer[kMaxAudioSampleSize];
 int32_t g_latest_audio_timestamp = 0;
 
 // Checks for MacOS errors, prints information and returns a TF Lite version.
-#define RETURN_IF_OS_ERROR(error, error_reporter)                       \
-  do {                                                                  \
-    if (error != noErr) {                                               \
-      error_reporter->Report("Error: %s:%d (%d)\n", __FILE__, __LINE__, \
-                             error);                                    \
-      return kTfLiteError;                                              \
-    }                                                                   \
+#define RETURN_IF_OS_ERROR(error, error_reporter)                           \
+  do {                                                                      \
+    if (error != noErr) {                                                   \
+      TF_LITE_REPORT_ERROR(error_reporter, "Error: %s:%d (%d)\n", __FILE__, \
+                           __LINE__, error);                                \
+      return kTfLiteError;                                                  \
+    }                                                                       \
   } while (0);
 
 // Called when an audio input buffer has been filled.

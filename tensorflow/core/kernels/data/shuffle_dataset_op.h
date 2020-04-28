@@ -48,10 +48,10 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
                    DatasetBase** output) override;
 
  private:
-  class ReshufflingDataset;
-  class ReshufflingDatasetV2;
-  class FixedSeedDataset;
-  int op_version_;
+  class Dataset;
+  class DatasetV2;
+  class DatasetV3;
+  int op_version_ = 0;
   bool reshuffle_each_iteration_;
 };
 

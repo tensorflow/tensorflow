@@ -152,7 +152,7 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
         |z y x w|
     ```
 
-    `block_depth = 2` means `A` is block symmetric circulant with symemtric
+    `block_depth = 2` means `A` is block symmetric circulant with symmetric
     circulant blocks.  For example, with `W`, `X`, `Y`, `Z` symmetric circulant,
 
     ```

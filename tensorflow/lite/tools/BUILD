@@ -1,5 +1,4 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
 package(
@@ -9,27 +8,129 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["logging.h"])
+
 common_copts = ["-Wall"]
 
 py_binary(
     name = "visualize",
     srcs = ["visualize.py"],
-    data = [
-        "//tensorflow/lite/schema:schema.fbs",
-        "//tensorflow/python:platform",
-        "@flatbuffers//:flatc",
-    ],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    deps = ["//tensorflow/lite/python:schema_py"],
 )
 
-tf_cc_binary(
+py_test(
+    name = "visualize_test",
+    srcs = ["visualize_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
+    ],
+    deps = [
+        ":test_utils",
+        ":visualize",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_binary(
+    name = "convert_image_to_csv",
+    srcs = ["convert_image_to_csv.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:io_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:session",
+    ],
+)
+
+py_test(
+    name = "convert_image_to_csv_test",
+    srcs = ["convert_image_to_csv_test.py"],
+    data = ["//tensorflow/core:image_testdata"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":convert_image_to_csv",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_binary(
+    name = "strip_strings",
+    srcs = ["strip_strings.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":flatbuffer_utils",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_binary(
+    name = "randomize_weights",
+    srcs = ["randomize_weights.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":flatbuffer_utils",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_library(
+    name = "flatbuffer_utils",
+    srcs = ["flatbuffer_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/lite/python:schema_py",
+        "@flatbuffers//:runtime_py",
+    ],
+)
+
+py_test(
+    name = "flatbuffer_utils_test",
+    srcs = ["flatbuffer_utils_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
+    ],
+    deps = [
+        ":flatbuffer_utils",
+        ":test_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_library(
+    name = "test_utils",
+    srcs = ["test_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/lite/python:schema_py",
+        "@flatbuffers//:runtime_py",
+    ],
+)
+
+cc_binary(
     name = "generate_op_registrations",
     srcs = ["gen_op_registration_main.cc"],
     deps = [
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/lite/tools:gen_op_registration",
+        ":command_line_flags",
+        ":gen_op_registration",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -105,11 +206,36 @@ cc_test(
 )
 
 cc_library(
+    name = "logging",
+    hdrs = ["logging.h"],
+    copts = common_copts,
+)
+
+cc_library(
+    name = "tool_params",
+    srcs = ["tool_params.cc"],
+    hdrs = ["tool_params.h"],
+    copts = tflite_copts(),
+    deps = [":logging"],
+)
+
+cc_test(
+    name = "tool_params_test",
+    srcs = ["tool_params_test.cc"],
+    copts = tflite_copts(),
+    visibility = ["//visibility:private"],
+    deps = [
+        ":tool_params",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "command_line_flags",
     srcs = ["command_line_flags.cc"],
     hdrs = ["command_line_flags.h"],
     copts = tflite_copts(),
-    deps = ["//tensorflow/lite:minimal_logging"],
+    deps = ["//tensorflow/lite/tools:logging"],
 )
 
 cc_test(
@@ -119,8 +245,18 @@ cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":command_line_flags",
-        "//tensorflow/lite/testing:util",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+py_binary(
+    name = "zip_files",
+    srcs = ["zip_files.py"],
+    python_version = "PY3",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/profiling/profile_summarizer.h"
 
+#include <memory>
 #include <sstream>
 
 #include "tensorflow/lite/profiling/memory_info.h"
@@ -85,25 +86,21 @@ OperatorDetails GetOperatorDetails(const tflite::Interpreter& interpreter,
   return details;
 }
 
-tensorflow::StatSummarizerOptions GetProfileSummarizerOptions() {
-  auto options = tensorflow::StatSummarizerOptions();
-  // Summary will be manually handled per subgraphs in order to keep the
-  // compatibility.
-  options.show_summary = false;
-  options.show_memory = false;
-  return options;
-}
-
 }  // namespace
 
-ProfileSummarizer::ProfileSummarizer()
-    : delegate_stats_calculator_(
-          new tensorflow::StatsCalculator(GetProfileSummarizerOptions())) {
+ProfileSummarizer::ProfileSummarizer(
+    std::shared_ptr<ProfileSummaryFormatter> summary_formatter)
+    : summary_formatter_(summary_formatter) {
   // Create stats calculator for the primary graph.
   stats_calculator_map_[0] = std::unique_ptr<tensorflow::StatsCalculator>(
-      new tensorflow::StatsCalculator(GetProfileSummarizerOptions()));
-}
+      new tensorflow::StatsCalculator(
+          summary_formatter_->GetStatSummarizerOptions()));
 
+  // Create stats calculator for the delegation op.
+  delegate_stats_calculator_ = std::unique_ptr<tensorflow::StatsCalculator>(
+      new tensorflow::StatsCalculator(
+          summary_formatter_->GetStatSummarizerOptions()));
+}
 void ProfileSummarizer::ProcessProfiles(
     const std::vector<const ProfileEvent*>& profile_stats,
     const tflite::Interpreter& interpreter) {
@@ -209,44 +206,10 @@ tensorflow::StatsCalculator* ProfileSummarizer::GetStatsCalculator(
   if (stats_calculator_map_.count(subgraph_index) == 0) {
     stats_calculator_map_[subgraph_index] =
         std::unique_ptr<tensorflow::StatsCalculator>(
-            new tensorflow::StatsCalculator(GetProfileSummarizerOptions()));
+            new tensorflow::StatsCalculator(
+                summary_formatter_->GetStatSummarizerOptions()));
   }
   return stats_calculator_map_[subgraph_index].get();
-}
-
-std::string ProfileSummarizer::GenerateReport(std::string tag,
-                                              bool include_output_string) {
-  std::stringstream stream;
-  bool has_non_primary_graph =
-      (stats_calculator_map_.size() - stats_calculator_map_.count(0)) > 0;
-  for (auto& stats_calc : stats_calculator_map_) {
-    auto subgraph_index = stats_calc.first;
-    auto subgraph_stats = stats_calc.second.get();
-    if (has_non_primary_graph) {
-      if (subgraph_index == 0)
-        stream << "Primary graph " << tag << ":" << std::endl;
-      else
-        stream << "Subgraph (index: " << subgraph_index << ") " << tag << ":"
-               << std::endl;
-    }
-    if (include_output_string) {
-      stream << subgraph_stats->GetOutputString();
-    }
-    if (subgraph_index != 0) {
-      stream << "Subgraph (index: " << subgraph_index << ") ";
-    }
-    stream << subgraph_stats->GetShortSummary() << std::endl;
-  }
-
-  if (delegate_stats_calculator_->num_runs() > 0) {
-    stream << "Delegate internal: " << std::endl;
-    if (include_output_string) {
-      stream << delegate_stats_calculator_->GetOutputString();
-    }
-    stream << delegate_stats_calculator_->GetShortSummary() << std::endl;
-  }
-
-  return stream.str();
 }
 
 }  // namespace profiling

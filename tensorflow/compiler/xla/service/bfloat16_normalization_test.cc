@@ -260,7 +260,8 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllReduce) {
       ShapeUtil::MakeTupleShape({f32_shape, bf16_shape}), {a, b}, reduction,
       /*replica_groups=*/{},
       /*constrain_layout=*/false,
-      /*channel_id=*/absl::nullopt));
+      /*channel_id=*/absl::nullopt,
+      /*use_global_device_ids=*/false));
   builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(bf16_shape, crs, 1));
 
@@ -274,7 +275,7 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllReduce) {
 }
 
 TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllToAllToBF16) {
-  auto module = CreateNewVerifiedModule();
+  auto module = CreateNewVerifiedModule(TestName(), /*replica_count=*/2);
 
   auto builder = HloComputation::Builder(TestName());
   Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
@@ -288,7 +289,7 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllToAllToBF16) {
   replica_groups[0].add_replica_ids(1);
   HloInstruction* a2a = builder.AddInstruction(HloInstruction::CreateAllToAll(
       ShapeUtil::MakeTupleShape({bf16_shape, bf16_shape}), {a, a},
-      replica_groups, absl::nullopt));
+      replica_groups, /*constrain_layout=*/false, absl::nullopt));
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_TRUE(Normalize(module.get()));
@@ -303,7 +304,7 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllToAllToBF16) {
 }
 
 TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllToAllToF32) {
-  auto module = CreateNewVerifiedModule();
+  auto module = CreateNewVerifiedModule(TestName(), /*replica_count=*/2);
 
   auto builder = HloComputation::Builder(TestName());
   Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
@@ -317,7 +318,7 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllToAllToF32) {
   replica_groups[0].add_replica_ids(1);
   HloInstruction* a2a = builder.AddInstruction(HloInstruction::CreateAllToAll(
       ShapeUtil::MakeTupleShape({bf16_shape, f32_shape}), {a, a},
-      replica_groups, absl::nullopt));
+      replica_groups, /*constrain_layout=*/false, absl::nullopt));
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_TRUE(Normalize(module.get()));

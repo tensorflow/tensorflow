@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -91,12 +92,18 @@ class PartitioningUtilsTest : public ::testing::Test {
   // Fills subgraph with an identify function arg->identity->ret
   // where each node has type `dtype` and arg/ret nodes have
   // indices `arg_index` and `ret_index`.
-  void SubGraph(Graph* subgraph, DataType dtype, int arg_index, int ret_index) {
+  void SubGraph(Graph* subgraph, DataType dtype,
+                gtl::ArraySlice<int> arg_indices,
+                gtl::ArraySlice<int> ret_indices) {
     Scope s = Scope::NewRootScope();
     Scope s1 = s.WithDevice("/job:a/replica:0/task:0/device:CPU:0");
-    auto x = ops::_Arg(s1.WithOpName("x"), dtype, arg_index);
-    auto id_x = ops::Identity(s1.WithOpName("id_x"), x);
-    auto dx_retval = ops::_Retval(s1.WithOpName("retval1"), id_x, ret_index);
+    CHECK_EQ(arg_indices.size(), ret_indices.size());
+    for (size_t i = 0; i < arg_indices.size(); ++i) {
+      auto x = ops::_Arg(s1.WithOpName("x"), dtype, arg_indices[i]);
+      auto id_x = ops::Identity(s1.WithOpName("id_x"), x);
+      auto dx_retval =
+          ops::_Retval(s1.WithOpName("retval1"), id_x, ret_indices[i]);
+    }
     TF_ASSERT_OK(s.ToGraph(subgraph));
     Placer placer(subgraph, "", &device_set_, device0_);
     TF_ASSERT_OK(placer.Run());
@@ -175,8 +182,8 @@ void CheckIndex(const Node& node, int expected_index) {
 }
 
 TEST_F(PartitioningUtilsTest, UpdateArgsAndRets) {
-  std::unique_ptr<Graph> graph = absl::make_unique<Graph>(OpRegistry::Global());
-  SubGraph(graph.get(), DT_FLOAT, 3, 5);
+  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  SubGraph(graph.get(), DT_FLOAT, {3}, {5});
 
   std::vector<int> arg_indices;
   std::vector<int> ret_indices;
@@ -200,6 +207,28 @@ TEST_F(PartitioningUtilsTest, UpdateArgsAndRets) {
   CheckIndex(*nodes["x"], 0);
   ASSERT_EQ(1, nodes.count("retval1"));
   CheckIndex(*nodes["retval1"], 0);
+}
+
+TEST_F(PartitioningUtilsTest, UpdateArgsAndRets_Order) {
+  auto graph = absl::make_unique<Graph>(OpRegistry::Global());
+  SubGraph(graph.get(), DT_FLOAT, {9, 7, 5, 3, 1}, {2, 4, 6, 8, 10});
+
+  std::vector<int> arg_indices;
+  std::vector<int> ret_indices;
+  std::vector<AllocatorAttributes> arg_alloc_attrs;
+  std::vector<AllocatorAttributes> ret_alloc_attrs;
+
+  string device_type = "CPU";
+
+  Status status = UpdateArgAndRetvalMetadata(
+      graph.get(), device_type, &arg_indices, &ret_indices, &arg_alloc_attrs,
+      &ret_alloc_attrs);
+  ASSERT_TRUE(status.ok()) << status.ToString();
+
+  CheckIndices({1, 3, 5, 7, 9}, arg_indices);
+  CheckIndices({2, 4, 6, 8, 10}, ret_indices);
+  CheckAlloc({false, false, false, false, false}, arg_alloc_attrs);
+  CheckAlloc({false, false, false, false, false}, ret_alloc_attrs);
 }
 
 }  // anonymous namespace

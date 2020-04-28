@@ -38,6 +38,9 @@ namespace toco {
 //
 //   SpaceToBatchND -> Expand -> Conv2D -> Squeeze -> BatchToSpaceND -> BiasAdd
 //
+//   Pad -> SpaceToBatchND -> Expand -> Conv2D -> Squeeze -> BatchToSpaceND ->
+//   BiasAdd
+//
 //   SpaceToBatchND -> Expand -> Conv2D -> Squeeze -> Pad -> BatchToSpaceND ->
 //   BiasAdd
 //
@@ -83,7 +86,7 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
                            ? GetOpWithInput(*model, post_conv_op->outputs[0])
                            : GetOpWithInput(*model, conv_op->outputs[0]);
   bool has_pad_op = false;
-  if (pad_op->type == OperatorType::kPad) {
+  if (pad_op && pad_op->type == OperatorType::kPad) {
     has_pad_op = true;
     CHECK_EQ(pad_op->inputs.size(), 2);
     CHECK_EQ(pad_op->outputs.size(), 1);
@@ -118,6 +121,19 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
   }
   CHECK_EQ(bias_add_op->inputs.size(), 2);
   CHECK_EQ(bias_add_op->outputs.size(), 1);
+
+  //   If still Pad Op is not present, there might be possiblity it is added
+  //   before STB Op like below Pad -> SpaceToBatchND -> Expand -> Conv2D ->
+  //   Squeeze -> BatchToSpaceND -> BiasAdd So eliminate this Pad Op as well
+  if (!has_pad_op) {
+    auto* pre_stb_pad_op = GetOpWithOutput(*model, stb_op->inputs[0]);
+    // If it is a Pad Op then just rewire the Input of Pad Op with Input of STB
+    if (pre_stb_pad_op && pre_stb_pad_op->type == OperatorType::kPad) {
+      stb_op->inputs[0] = pre_stb_pad_op->inputs[0];
+      has_pad_op = true;
+      pad_op = pre_stb_pad_op;
+    }
+  }
 
   // 2. RE-WIRE OPERATORS
   // ***************************************************************************
@@ -209,8 +225,8 @@ bool ResolveDilatedConv(Model* model, Operator* conv_base_op, Operator* stb_op,
         dilation_factor);
     if (changed) {
       LOG(INFO)
-          << "Replaced sub-netork with Dilated DepthwiseConv2D op outputting \""
-          << conv_base_op->outputs[0] << "\".";
+          << "Replaced sub-network with Dilated DepthwiseConv2D op outputting "
+          << "\"" << conv_base_op->outputs[0] << "\".";
     }
   }
 

@@ -216,6 +216,10 @@ class HloSharding {
   // REQUIRES: !IsTuple()
   Shape TileShape(const Shape& shape) const;
 
+  // Gets the tile shape on the device.
+  // REQUIRES: !IsTuple()
+  Shape TileShape(const Shape& shape, int64 device) const;
+
  private:
   HloSharding()
       : replicated_(true),

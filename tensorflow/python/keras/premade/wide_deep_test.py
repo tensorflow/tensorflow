@@ -21,8 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.eager import context
-from tensorflow.python.feature_column import dense_features_v2
-from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import input_layer
@@ -52,8 +50,7 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         optimizer=['sgd', 'adam'],
         loss='mse',
         metrics=[],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     wide_deep_model.fit(inputs, output, epochs=5)
     self.assertTrue(wide_deep_model.built)
 
@@ -73,8 +70,7 @@ class WideDeepModelTest(keras_parameterized.TestCase):
           optimizer=[linear_opt, dnn_opt],
           loss='mse',
           metrics=[],
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
       self.evaluate(variables.global_variables_initializer())
       wide_deep_model.fit(inputs, output, epochs=1)
       self.assertAllClose(
@@ -94,8 +90,7 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         optimizer=['sgd', 'adam'],
         loss='mse',
         metrics=[],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     wide_deep_model.fit(inputs, output, epochs=5)
 
   def test_wide_deep_model_with_multi_outputs(self):
@@ -135,8 +130,7 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         optimizer='sgd',
         loss='mse',
         metrics=[],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     wide_deep_model.fit(inputs, output, epochs=5)
     self.assertTrue(wide_deep_model.built)
 
@@ -160,8 +154,7 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         optimizer='sgd',
         loss='mse',
         metrics=[],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.fit([linear_input_np, dnn_input_np, input_b_np], output_np, epochs=5)
 
   def test_wide_deep_model_with_sub_model_trained(self):
@@ -178,88 +171,20 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         optimizer='sgd',
         loss='mse',
         metrics=[],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     dnn_model.compile(
         optimizer='adam',
         loss='mse',
         metrics=[],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     linear_model.fit(linear_inp, output, epochs=50)
     dnn_model.fit(dnn_inp, output, epochs=50)
     wide_deep_model.compile(
         optimizer=['sgd', 'adam'],
         loss='mse',
         metrics=[],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     wide_deep_model.fit(inputs, output, epochs=50)
-
-  # This test is an example for cases where linear and dnn model accepts
-  # same raw input and same transformed inputs, i.e., the raw input is
-  # categorical, and both linear and dnn model accept one hot encoding.
-  def test_wide_deep_model_with_single_feature_column(self):
-    vocab_list = ['alpha', 'beta', 'gamma']
-    vocab_val = [0.4, 0.6, 0.9]
-    data = np.random.choice(vocab_list, size=256)
-    y = np.zeros_like(data, dtype=np.float32)
-    for vocab, val in zip(vocab_list, vocab_val):
-      indices = np.where(data == vocab)
-      y[indices] = val + np.random.uniform(
-          low=-0.01, high=0.01, size=indices[0].shape)
-    cat_column = fc.categorical_column_with_vocabulary_list(
-        key='symbol', vocabulary_list=vocab_list)
-    ind_column = fc.indicator_column(cat_column)
-    dense_feature_layer = dense_features_v2.DenseFeatures([ind_column])
-    linear_model = linear.LinearModel(
-        use_bias=False, kernel_initializer='zeros')
-    dnn_model = sequential.Sequential([core.Dense(units=1)])
-    wide_deep_model = wide_deep.WideDeepModel(linear_model, dnn_model)
-    combined = sequential.Sequential([dense_feature_layer, wide_deep_model])
-    opt = gradient_descent.SGD(learning_rate=0.1)
-    combined.compile(
-        opt,
-        'mse', [],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
-    combined.fit(x={'symbol': data}, y=y, batch_size=32, epochs=10)
-
-  # This test is an example for cases where linear and dnn model accepts
-  # same raw input but different transformed inputs, i.e,. the raw input is
-  # categorical, and linear model accepts one hot encoding, while dnn model
-  # accepts embedding encoding.
-  def test_wide_deep_model_with_two_feature_columns(self):
-    vocab_list = ['alpha', 'beta', 'gamma']
-    vocab_val = [0.4, 0.6, 0.9]
-    data = np.random.choice(vocab_list, size=256)
-    y = np.zeros_like(data, dtype=np.float32)
-    for vocab, val in zip(vocab_list, vocab_val):
-      indices = np.where(data == vocab)
-      y[indices] = val + np.random.uniform(
-          low=-0.01, high=0.01, size=indices[0].shape)
-    cat_column = fc.categorical_column_with_vocabulary_list(
-        key='symbol', vocabulary_list=vocab_list)
-    ind_column = fc.indicator_column(cat_column)
-    emb_column = fc.embedding_column(cat_column, dimension=5)
-    linear_feature_layer = dense_features_v2.DenseFeatures([ind_column])
-    linear_model = linear.LinearModel(
-        use_bias=False, kernel_initializer='zeros')
-    combined_linear = sequential.Sequential(
-        [linear_feature_layer, linear_model])
-    dnn_model = sequential.Sequential([core.Dense(units=1)])
-    dnn_feature_layer = dense_features_v2.DenseFeatures([emb_column])
-    combined_dnn = sequential.Sequential([dnn_feature_layer, dnn_model])
-    wide_deep_model = wide_deep.WideDeepModel(combined_linear, combined_dnn)
-    opt = gradient_descent.SGD(learning_rate=0.1)
-    wide_deep_model.compile(
-        opt,
-        'mse', [],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
-    wide_deep_model.fit(x={'symbol': data}, y=y, batch_size=32, epochs=10)
-    self.assertEqual(3, linear_model.inputs[0].shape[1])
-    self.assertEqual(5, dnn_model.inputs[0].shape[1])
 
   def test_config(self):
     linear_model = linear.LinearModel(units=1)

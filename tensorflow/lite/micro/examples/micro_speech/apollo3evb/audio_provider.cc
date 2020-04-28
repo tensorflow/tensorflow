@@ -144,21 +144,25 @@ void enable_burst_mode(tflite::ErrorReporter* error_reporter) {
   if (AM_HAL_STATUS_SUCCESS ==
       am_hal_burst_mode_initialize(&eBurstModeAvailable)) {
     if (AM_HAL_BURST_AVAIL == eBurstModeAvailable) {
-      error_reporter->Report("Apollo3 Burst Mode is Available\n");
+      TF_LITE_REPORT_ERROR(error_reporter, "Apollo3 Burst Mode is Available\n");
     } else {
-      error_reporter->Report("Apollo3 Burst Mode is Not Available\n");
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Apollo3 Burst Mode is Not Available\n");
     }
   } else {
-    error_reporter->Report("Failed to Initialize for Burst Mode operation\n");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Failed to Initialize for Burst Mode operation\n");
   }
 
   // Put the MCU into "Burst" mode.
   if (AM_HAL_STATUS_SUCCESS == am_hal_burst_mode_enable(&eBurstMode)) {
     if (AM_HAL_BURST_MODE == eBurstMode) {
-      error_reporter->Report("Apollo3 operating in Burst Mode (96MHz)\n");
+      TF_LITE_REPORT_ERROR(error_reporter,
+                           "Apollo3 operating in Burst Mode (96MHz)\n");
     }
   } else {
-    error_reporter->Report("Failed to Enable Burst Mode operation\n");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Failed to Enable Burst Mode operation\n");
   }
 }
 
@@ -242,7 +246,7 @@ void pdm_start_dma(tflite::ErrorReporter* error_reporter) {
 
   // Start the data transfer.
   if (AM_HAL_STATUS_SUCCESS != am_hal_pdm_dma_start(g_pdm_handle, &sTransfer)) {
-    error_reporter->Report("Error - configuring PDM DMA failed.");
+    TF_LITE_REPORT_ERROR(error_reporter, "Error - configuring PDM DMA failed.");
   }
 
   // Reset the PDM DMA flags.
@@ -309,13 +313,15 @@ extern "C" void am_pdm0_isr(void) {
   // Read the interrupt status.
   if (AM_HAL_STATUS_SUCCESS !=
       am_hal_pdm_interrupt_status_get(g_pdm_handle, &ui32IntMask, false)) {
-    g_pdm_dma_error_reporter->Report("Error reading PDM0 interrupt status.");
+    TF_LITE_REPORT_ERROR(g_pdm_dma_error_reporter,
+                         "Error reading PDM0 interrupt status.");
   }
 
   // Clear the PDM interrupt.
   if (AM_HAL_STATUS_SUCCESS !=
       am_hal_pdm_interrupt_clear(g_pdm_handle, ui32IntMask)) {
-    g_pdm_dma_error_reporter->Report("Error clearing PDM interrupt status.");
+    TF_LITE_REPORT_ERROR(g_pdm_dma_error_reporter,
+                         "Error clearing PDM interrupt status.");
   }
 
 #if USE_DEBUG_GPIO
@@ -370,7 +376,8 @@ TfLiteStatus InitAudioRecording(tflite::ErrorReporter* error_reporter) {
   // Set the clock frequency.
   if (AM_HAL_STATUS_SUCCESS !=
       am_hal_clkgen_control(AM_HAL_CLKGEN_CONTROL_SYSCLK_MAX, 0)) {
-    error_reporter->Report("Error - configuring the system clock failed.");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Error - configuring the system clock failed.");
     return kTfLiteError;
   }
 
@@ -380,11 +387,13 @@ TfLiteStatus InitAudioRecording(tflite::ErrorReporter* error_reporter) {
   // Set the default cache configuration and enable it.
   if (AM_HAL_STATUS_SUCCESS !=
       am_hal_cachectrl_config(&am_hal_cachectrl_defaults)) {
-    error_reporter->Report("Error - configuring the system cache failed.");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Error - configuring the system cache failed.");
     return kTfLiteError;
   }
   if (AM_HAL_STATUS_SUCCESS != am_hal_cachectrl_enable()) {
-    error_reporter->Report("Error - enabling the system cache failed.");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Error - enabling the system cache failed.");
     return kTfLiteError;
   }
 
@@ -397,7 +406,8 @@ TfLiteStatus InitAudioRecording(tflite::ErrorReporter* error_reporter) {
   uint32_t ui32LPMMode = CACHECTRL_FLASHCFG_LPMMODE_STANDBY;
   if (am_hal_cachectrl_control(AM_HAL_CACHECTRL_CONTROL_LPMMODE_SET,
                                &ui32LPMMode)) {
-    error_reporter->Report("Error - enabling cache sleep state failed.");
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Error - enabling cache sleep state failed.");
   }
 
   // Enable Instruction & Data pre-fetching.
@@ -409,7 +419,7 @@ TfLiteStatus InitAudioRecording(tflite::ErrorReporter* error_reporter) {
   // Enable the floating point module, and configure the core for lazy stacking.
   am_hal_sysctrl_fpu_enable();
   am_hal_sysctrl_fpu_stacking_enable(true);
-  error_reporter->Report("FPU Enabled.");
+  TF_LITE_REPORT_ERROR(error_reporter, "FPU Enabled.");
 
   // Configure the LEDs.
   am_devices_led_array_init(am_bsp_psLEDs, AM_BSP_NUM_LEDS);
@@ -466,7 +476,8 @@ TfLiteStatus InitAudioRecording(tflite::ErrorReporter* error_reporter) {
   // Trigger the PDM DMA for the first time manually.
   pdm_start_dma(g_pdm_dma_error_reporter);
 
-  error_reporter->Report("\nPDM DMA Threshold = %d", PDMn(0)->FIFOTHR);
+  TF_LITE_REPORT_ERROR(error_reporter, "\nPDM DMA Threshold = %d",
+                       PDMn(0)->FIFOTHR);
 
   // Turn on LED 0 to indicate PDM initialized
   am_devices_led_on(am_bsp_psLEDs, 0);

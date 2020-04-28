@@ -28,11 +28,19 @@ from absl import flags
 from absl import logging
 import tensorflow.compat.v1 as tf
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_mlir  # pylint: disable=g-direct-tensorflow-import
 
 # Use /tmp to make debugging the tests easier (see README.md)
 flags.DEFINE_string('save_model_path', '', 'Path to save the model to.')
 FLAGS = flags.FLAGS
+
+
+def set_tf_options():
+  # Default TF1.x uses reference variables that are not supported by SavedModel
+  # v1 Importer. To use SavedModel V1 Importer, resource variables should be
+  # enabled.
+  tf.enable_resource_variables()
+  tf.compat.v1.disable_eager_execution()
 
 
 # This function needs to take a "create_module_fn", as opposed to just the
@@ -80,14 +88,15 @@ def do_test(signature_def_map, show_debug_info=False):
     builder.save()
 
     logging.info('Saved model to: %s', save_model_path)
-    mlir = pywrap_tensorflow.experimental_convert_saved_model_v1_to_mlir(
+    mlir = pywrap_mlir.experimental_convert_saved_model_v1_to_mlir(
         save_model_path, ','.join([tf.saved_model.tag_constants.SERVING]),
         show_debug_info)
     # We don't strictly need this, but it serves as a handy sanity check
     # for that API, which is otherwise a bit annoying to test.
     # The canonicalization shouldn't affect these tests in any way.
-    mlir = pywrap_tensorflow.experimental_run_pass_pipeline(
-        mlir, 'tf-standard-pipeline', show_debug_info)
+    mlir = pywrap_mlir.experimental_run_pass_pipeline(mlir,
+                                                      'tf-standard-pipeline',
+                                                      show_debug_info)
     print(mlir)
 
   app.run(app_main)

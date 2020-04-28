@@ -18,10 +18,12 @@ limitations under the License.
 
 #include <cmath>
 #include <complex>
+#include <iostream>
+#include <limits>
 
 #include "tensorflow/core/platform/byte_order.h"
 
-#ifdef __CUDACC__
+#if defined(__CUDACC__) || (defined(__HIPCC__) && defined(__HIP__))
 // All functions callable from CUDA code must be qualified with __device__
 #define B16_DEVICE_FUNC __host__ __device__
 
@@ -51,6 +53,10 @@ struct bfloat16 {
     bfloat16 output;
     if (float_isnan(v)) {
       output.value = NAN_VALUE;
+      return output;
+    } else if (std::fabs(v) < std::numeric_limits<float>::min()) {
+      // Flush denormal to +/- 0.
+      output.value = std::signbit(v) ? 0x8000 : 0;
       return output;
     }
     const uint16_t* p = reinterpret_cast<const uint16_t*>(&v);
@@ -195,6 +201,9 @@ struct bfloat16 {
       // qNaN magic: All exponent bits set + most significant bit of fraction
       // set.
       output.value = 0x7fc0;
+    } else if (std::fabs(v) < std::numeric_limits<float>::min()) {
+      // Flush denormal to +/- 0.0
+      output.value = std::signbit(v) ? 0x8000 : 0;
     } else {
       // Fast rounding algorithm that rounds a half value to nearest even. This
       // reduces expected error when we convert a large number of floats. Here
@@ -383,11 +392,11 @@ struct bfloat16 {
   uint16_t value;
 
   // A value that represents "not a number".
-  static const uint16_t NAN_VALUE = 0x7FC0;
+  static constexpr uint16_t NAN_VALUE = 0x7FC0;
 
  private:
   // A value that represents "zero".
-  static const uint16_t ZERO_VALUE = 0;
+  static constexpr uint16_t ZERO_VALUE = 0;
 
   B16_DEVICE_FUNC static bool float_isnan(const float& x) {
 #ifdef __CUDA_ARCH__

@@ -27,7 +27,9 @@ from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 
@@ -49,6 +51,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         equality_fn = self.assertAllClose
       equality_fn(result, expected, rtol=1e-3)
 
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testAdd(self):
     for dtype in self.numeric_types:
       self._assertOpOutputMatchesExpected(
@@ -69,6 +72,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                 np.array([7, 11], dtype=dtype)),
           expected=np.array([[8, 13], [10, 15]], dtype=dtype))
 
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testBroadcast(self):
     for dtype in self.numeric_types:
       v = np.arange(4, dtype=np.int32).astype(dtype).reshape([2, 2])
@@ -77,6 +81,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(v,),
           expected=np.tile(v, (7, 42, 1, 1)))
 
+  @test_util.disable_mlir_bridge('Unsigned ints are not supported yet')
   def testShiftRightLogical(self):
     self._assertOpOutputMatchesExpected(
         xla.shift_right_logical,
@@ -88,6 +93,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         args=(np.array([0xFFFFFFFF, 16], dtype=np.uint32), np.uint32(4)),
         expected=np.array([0x0FFFFFFF, 1], dtype=np.uint32))
 
+  @test_util.disable_mlir_bridge('Unsigned ints are not supported yet')
   def testShiftRightArithmetic(self):
     self._assertOpOutputMatchesExpected(
         xla.shift_right_arithmetic,
@@ -104,6 +110,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                       xla_data_pb2.PrecisionConfig.HIGHEST)
 
   @parameterized.parameters(*PRECISION_VALUES)
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testConv(self, precision):
     for dtype in set(self.float_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):
@@ -188,6 +195,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(np.array([1, 2, 3], dtype=dtype),),
           expected=np.array([-1, -2, -3], dtype=dtype))
 
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testPad(self):
     for dtype in self.numeric_types:
 
@@ -207,6 +215,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                [7, 7, 7, 7, 7], [7, 2, 3, 7, 7], [7, 7, 7, 7, 7]],
               dtype=dtype))
 
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testReduce(self):
     for dtype in set(self.numeric_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):
@@ -257,6 +266,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(np.arange(12, dtype=np.int32).astype(dtype).reshape([3, 4]),),
           expected=np.array([0, 45, 120, 231], dtype=dtype))
 
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testSelectAndScatter(self):
     for dtype in set(self.numeric_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):
@@ -410,4 +420,7 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
 
 
 if __name__ == '__main__':
+  # This test is using Tensorflow sessions which are not compatible with eager
+  # mode.
+  ops.disable_eager_execution()
   googletest.main()

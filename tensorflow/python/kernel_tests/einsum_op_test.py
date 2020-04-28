@@ -254,7 +254,7 @@ class EinsumOpTest(test.TestCase):
       output = self.evaluate(gen_linalg_ops.einsum(inputs, equation))
       self.assertAllClose(output, np.zeros(output_shape), atol=1e-4, rtol=1e-4)
 
-    # Contractions along zero-sized dimensons.
+    # Contractions along zero-sized dimensions.
     check('ab,bc->ac', [(0, 10), (10, 10)], (0, 10))
     # From transformer xl.
     check('ibnd,ijbn->jnd', [(1, 0, 5, 10), (1, 1, 0, 5)], (1, 5, 10))

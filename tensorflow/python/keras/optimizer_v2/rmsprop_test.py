@@ -21,7 +21,6 @@ from __future__ import print_function
 import copy
 import itertools
 import math
-import platform
 
 from absl.testing import parameterized
 import numpy as np
@@ -31,6 +30,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import embedding_ops
@@ -41,8 +41,7 @@ from tensorflow.python.platform import test
 
 _DATA_TYPES = [dtypes.half, dtypes.float32, dtypes.float64]
 # TODO(b/143684500): Eigen to support complex sqrt
-if (not test_util.IsBuiltWithNvcc() and platform.system() != "Windows" and
-    not test.is_built_with_rocm()):
+if not test_util.IsBuiltWithNvcc():
   _DATA_TYPES += [dtypes.complex64, dtypes.complex128]
 
 _TEST_PARAM_VALUES = [
@@ -103,10 +102,10 @@ class RMSpropOptimizerTest(test.TestCase):
         var_t[gindex] = var[gindex] - lr * gvalue / (np.sqrt(denom_t) + epsilon)
     return var_t, mg_t, rms_t, mom_t
 
-  @test_util.run_deprecated_v1
   def testDense(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for (dtype, learning_rate, rho, momentum, epsilon, centered) in _TESTPARAMS:
-      with test_util.use_gpu():
+      with ops.get_default_graph().as_default(), test_util.use_gpu():
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1, 0.2], dtype=dtype.as_numpy_dtype)
@@ -180,204 +179,208 @@ class RMSpropOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
-  @test_util.run_deprecated_v1
   def testDenseWithLearningRateDecay(self):
-    var0_np = np.array([1.0, 2.0])
-    grads0_np = np.array([0.1, 0.2])
-    var1_np = np.array([3.0, 4.0])
-    grads1_np = np.array([0.01, 0.2])
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
+    with ops.Graph().as_default():
+      var0_np = np.array([1.0, 2.0])
+      grads0_np = np.array([0.1, 0.2])
+      var1_np = np.array([3.0, 4.0])
+      grads1_np = np.array([0.01, 0.2])
 
-    var0 = resource_variable_ops.ResourceVariable(var0_np)
-    var1 = resource_variable_ops.ResourceVariable(var1_np)
-    grads0 = constant_op.constant(grads0_np)
-    grads1 = constant_op.constant(grads1_np)
-    learning_rate = 0.01
-    rho = 0.9
-    momentum = 0.0
-    epsilon = 1e-7
-    centered = False
-    decay = 0.5
-    opt = rmsprop.RMSprop(
-        learning_rate=learning_rate,
-        rho=rho,
-        momentum=momentum,
-        epsilon=epsilon,
-        centered=centered,
-        decay=decay)
+      var0 = resource_variable_ops.ResourceVariable(var0_np)
+      var1 = resource_variable_ops.ResourceVariable(var1_np)
+      grads0 = constant_op.constant(grads0_np)
+      grads1 = constant_op.constant(grads1_np)
+      learning_rate = 0.01
+      rho = 0.9
+      momentum = 0.0
+      epsilon = 1e-7
+      centered = False
+      decay = 0.5
+      opt = rmsprop.RMSprop(
+          learning_rate=learning_rate,
+          rho=rho,
+          momentum=momentum,
+          epsilon=epsilon,
+          centered=centered,
+          decay=decay)
 
-    update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-    self.evaluate(variables.global_variables_initializer())
+      update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+      self.evaluate(variables.global_variables_initializer())
 
-    rms0 = opt.get_slot(var0, "rms")
-    self.assertIsNotNone(rms0)
-    rms1 = opt.get_slot(var1, "rms")
-    self.assertIsNotNone(rms1)
-    if momentum > 0.:
-      mom0 = opt.get_slot(var0, "momentum")
-      mom1 = opt.get_slot(var1, "momentum")
-    else:
-      mom0 = None
-      mom1 = None
-
-    mg0_np = np.array([0.0, 0.0])
-    mg1_np = np.array([0.0, 0.0])
-    rms0_np = np.array([0.0, 0.0])
-    rms1_np = np.array([0.0, 0.0])
-    mom0_np = np.array([0.0, 0.0])
-    mom1_np = np.array([0.0, 0.0])
-
-    # Fetch params to validate initial values
-    self.assertAllClose([1.0, 2.0], self.evaluate(var0))
-    self.assertAllClose([3.0, 4.0], self.evaluate(var1))
-
-    # Run 4 steps of RMSprop
-    for t in range(2):
-      self.evaluate(update)
-
-      lr = learning_rate / (1 + decay * t)
-      var0_np, mg0_np, rms0_np, mom0_np = self._rmsprop_update_numpy(
-          var0_np, grads0_np, mg0_np, rms0_np, mom0_np, lr, rho, momentum,
-          epsilon, centered)
-      var1_np, mg1_np, rms1_np, mom1_np = self._rmsprop_update_numpy(
-          var1_np, grads1_np, mg1_np, rms1_np, mom1_np, lr, rho, momentum,
-          epsilon, centered)
-
-      # Validate updated params
-      self.assertAllCloseAccordingToType(rms0_np, self.evaluate(rms0))
-      self.assertAllCloseAccordingToType(rms1_np, self.evaluate(rms1))
+      rms0 = opt.get_slot(var0, "rms")
+      self.assertIsNotNone(rms0)
+      rms1 = opt.get_slot(var1, "rms")
+      self.assertIsNotNone(rms1)
       if momentum > 0.:
-        self.assertAllCloseAccordingToType(mom0_np, self.evaluate(mom0))
-        self.assertAllCloseAccordingToType(mom1_np, self.evaluate(mom1))
-      self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
-      self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
+        mom0 = opt.get_slot(var0, "momentum")
+        mom1 = opt.get_slot(var1, "momentum")
+      else:
+        mom0 = None
+        mom1 = None
 
-  @test_util.run_deprecated_v1
+      mg0_np = np.array([0.0, 0.0])
+      mg1_np = np.array([0.0, 0.0])
+      rms0_np = np.array([0.0, 0.0])
+      rms1_np = np.array([0.0, 0.0])
+      mom0_np = np.array([0.0, 0.0])
+      mom1_np = np.array([0.0, 0.0])
+
+      # Fetch params to validate initial values
+      self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+      self.assertAllClose([3.0, 4.0], self.evaluate(var1))
+
+      # Run 4 steps of RMSprop
+      for t in range(2):
+        self.evaluate(update)
+
+        lr = learning_rate / (1 + decay * t)
+        var0_np, mg0_np, rms0_np, mom0_np = self._rmsprop_update_numpy(
+            var0_np, grads0_np, mg0_np, rms0_np, mom0_np, lr, rho, momentum,
+            epsilon, centered)
+        var1_np, mg1_np, rms1_np, mom1_np = self._rmsprop_update_numpy(
+            var1_np, grads1_np, mg1_np, rms1_np, mom1_np, lr, rho, momentum,
+            epsilon, centered)
+
+        # Validate updated params
+        self.assertAllCloseAccordingToType(rms0_np, self.evaluate(rms0))
+        self.assertAllCloseAccordingToType(rms1_np, self.evaluate(rms1))
+        if momentum > 0.:
+          self.assertAllCloseAccordingToType(mom0_np, self.evaluate(mom0))
+          self.assertAllCloseAccordingToType(mom1_np, self.evaluate(mom1))
+        self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+        self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
+
   def testDenseWithLearningRateInverseTimeDecay(self):
-    var0_np = np.array([1.0, 2.0])
-    grads0_np = np.array([0.1, 0.2])
-    var1_np = np.array([3.0, 4.0])
-    grads1_np = np.array([0.01, 0.2])
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
+    with ops.Graph().as_default():
+      var0_np = np.array([1.0, 2.0])
+      grads0_np = np.array([0.1, 0.2])
+      var1_np = np.array([3.0, 4.0])
+      grads1_np = np.array([0.01, 0.2])
 
-    var0 = resource_variable_ops.ResourceVariable(var0_np)
-    var1 = resource_variable_ops.ResourceVariable(var1_np)
-    grads0 = constant_op.constant(grads0_np)
-    grads1 = constant_op.constant(grads1_np)
-    learning_rate = 0.01
-    rho = 0.9
-    momentum = 0.0
-    epsilon = 1e-7
-    centered = False
-    decay = 0.5
-    lr_schedule = learning_rate_schedule.InverseTimeDecay(
-        learning_rate, decay_steps=1.0, decay_rate=decay)
-    opt = rmsprop.RMSprop(
-        learning_rate=lr_schedule,
-        rho=rho,
-        momentum=momentum,
-        epsilon=epsilon,
-        centered=centered)
+      var0 = resource_variable_ops.ResourceVariable(var0_np)
+      var1 = resource_variable_ops.ResourceVariable(var1_np)
+      grads0 = constant_op.constant(grads0_np)
+      grads1 = constant_op.constant(grads1_np)
+      learning_rate = 0.01
+      rho = 0.9
+      momentum = 0.0
+      epsilon = 1e-7
+      centered = False
+      decay = 0.5
+      lr_schedule = learning_rate_schedule.InverseTimeDecay(
+          learning_rate, decay_steps=1.0, decay_rate=decay)
+      opt = rmsprop.RMSprop(
+          learning_rate=lr_schedule,
+          rho=rho,
+          momentum=momentum,
+          epsilon=epsilon,
+          centered=centered)
 
-    update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
-    self.evaluate(variables.global_variables_initializer())
+      update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
+      self.evaluate(variables.global_variables_initializer())
 
-    rms0 = opt.get_slot(var0, "rms")
-    self.assertIsNotNone(rms0)
-    rms1 = opt.get_slot(var1, "rms")
-    self.assertIsNotNone(rms1)
-    if momentum > 0.:
-      mom0 = opt.get_slot(var0, "momentum")
-      mom1 = opt.get_slot(var1, "momentum")
-    else:
-      mom0 = None
-      mom1 = None
-
-    mg0_np = np.array([0.0, 0.0])
-    mg1_np = np.array([0.0, 0.0])
-    rms0_np = np.array([0.0, 0.0])
-    rms1_np = np.array([0.0, 0.0])
-    mom0_np = np.array([0.0, 0.0])
-    mom1_np = np.array([0.0, 0.0])
-
-    # Fetch params to validate initial values
-    self.assertAllClose([1.0, 2.0], self.evaluate(var0))
-    self.assertAllClose([3.0, 4.0], self.evaluate(var1))
-
-    # Run 4 steps of RMSprop
-    for t in range(2):
-      self.evaluate(update)
-
-      lr = learning_rate / (1 + decay * t)
-      var0_np, mg0_np, rms0_np, mom0_np = self._rmsprop_update_numpy(
-          var0_np, grads0_np, mg0_np, rms0_np, mom0_np, lr, rho, momentum,
-          epsilon, centered)
-      var1_np, mg1_np, rms1_np, mom1_np = self._rmsprop_update_numpy(
-          var1_np, grads1_np, mg1_np, rms1_np, mom1_np, lr, rho, momentum,
-          epsilon, centered)
-
-      # Validate updated params
-      self.assertAllCloseAccordingToType(rms0_np, self.evaluate(rms0))
-      self.assertAllCloseAccordingToType(rms1_np, self.evaluate(rms1))
+      rms0 = opt.get_slot(var0, "rms")
+      self.assertIsNotNone(rms0)
+      rms1 = opt.get_slot(var1, "rms")
+      self.assertIsNotNone(rms1)
       if momentum > 0.:
-        self.assertAllCloseAccordingToType(mom0_np, self.evaluate(mom0))
-        self.assertAllCloseAccordingToType(mom1_np, self.evaluate(mom1))
-      self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
-      self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
+        mom0 = opt.get_slot(var0, "momentum")
+        mom1 = opt.get_slot(var1, "momentum")
+      else:
+        mom0 = None
+        mom1 = None
 
-  @test_util.run_deprecated_v1
+      mg0_np = np.array([0.0, 0.0])
+      mg1_np = np.array([0.0, 0.0])
+      rms0_np = np.array([0.0, 0.0])
+      rms1_np = np.array([0.0, 0.0])
+      mom0_np = np.array([0.0, 0.0])
+      mom1_np = np.array([0.0, 0.0])
+
+      # Fetch params to validate initial values
+      self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+      self.assertAllClose([3.0, 4.0], self.evaluate(var1))
+
+      # Run 4 steps of RMSprop
+      for t in range(2):
+        self.evaluate(update)
+
+        lr = learning_rate / (1 + decay * t)
+        var0_np, mg0_np, rms0_np, mom0_np = self._rmsprop_update_numpy(
+            var0_np, grads0_np, mg0_np, rms0_np, mom0_np, lr, rho, momentum,
+            epsilon, centered)
+        var1_np, mg1_np, rms1_np, mom1_np = self._rmsprop_update_numpy(
+            var1_np, grads1_np, mg1_np, rms1_np, mom1_np, lr, rho, momentum,
+            epsilon, centered)
+
+        # Validate updated params
+        self.assertAllCloseAccordingToType(rms0_np, self.evaluate(rms0))
+        self.assertAllCloseAccordingToType(rms1_np, self.evaluate(rms1))
+        if momentum > 0.:
+          self.assertAllCloseAccordingToType(mom0_np, self.evaluate(mom0))
+          self.assertAllCloseAccordingToType(mom1_np, self.evaluate(mom1))
+        self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+        self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
+
   def testMinimizeSparseResourceVariable(self):
-    for dtype in _DATA_TYPES:
-      var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
-      x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
+    with ops.Graph().as_default():
+      for dtype in _DATA_TYPES:
+        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
-      def loss():
-        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
-        return pred * pred
+        def loss():
+          pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
+          return pred * pred
 
-      sgd_op = rmsprop.RMSprop(
-          learning_rate=1.0, rho=0.0, momentum=0.0, epsilon=0.0,
-          centered=False).minimize(
-              loss, var_list=[var0])
-      self.evaluate(variables.global_variables_initializer())
-      # Fetch params to validate initial values
-      self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
-      # Run 1 step of sgd
-      self.evaluate(sgd_op)
-      # Validate updated params
-      self.assertAllCloseAccordingToType([[0., 1.]],
-                                         self.evaluate(var0),
-                                         atol=0.01)
+        sgd_op = rmsprop.RMSprop(
+            learning_rate=1.0, rho=0.0, momentum=0.0, epsilon=0.0,
+            centered=False).minimize(
+                loss, var_list=[var0])
+        self.evaluate(variables.global_variables_initializer())
+        # Fetch params to validate initial values
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
+        # Run 1 step of sgd
+        self.evaluate(sgd_op)
+        # Validate updated params
+        self.assertAllCloseAccordingToType([[0., 1.]],
+                                           self.evaluate(var0),
+                                           atol=0.01)
 
-  @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariableCentered(self):
-    for dtype in _DATA_TYPES:
-      if test_util.is_xla_enabled() and dtype.is_complex:
-        self.skipTest("b/143578550")
-      var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
-      x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
+    with ops.Graph().as_default():
+      for dtype in _DATA_TYPES:
+        if test_util.is_xla_enabled() and dtype.is_complex:
+          self.skipTest("b/143578550")
+        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
-      def loss():
-        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
-        return pred * pred
+        def loss():
+          pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
+          return pred * pred
 
-      # loss = lambda: pred * pred  # pylint: disable=cell-var-from-loop
-      sgd_op = rmsprop.RMSprop(
-          learning_rate=1.0, rho=0.0, momentum=0.0, epsilon=1.0,
-          centered=True).minimize(
-              loss, var_list=[var0])
-      self.evaluate(variables.global_variables_initializer())
-      # Fetch params to validate initial values
-      self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
-      # Run 1 step of sgd
-      self.evaluate(sgd_op)
-      # Validate updated params
-      self.assertAllCloseAccordingToType([[-111, -138]],
-                                         self.evaluate(var0),
-                                         atol=0.01)
+        # loss = lambda: pred * pred  # pylint: disable=cell-var-from-loop
+        sgd_op = rmsprop.RMSprop(
+            learning_rate=1.0, rho=0.0, momentum=0.0, epsilon=1.0,
+            centered=True).minimize(
+                loss, var_list=[var0])
+        self.evaluate(variables.global_variables_initializer())
+        # Fetch params to validate initial values
+        self.assertAllCloseAccordingToType([[1.0, 2.0]], self.evaluate(var0))
+        # Run 1 step of sgd
+        self.evaluate(sgd_op)
+        # Validate updated params
+        self.assertAllCloseAccordingToType([[-111, -138]],
+                                           self.evaluate(var0),
+                                           atol=0.01)
 
-  @test_util.run_deprecated_v1
   def testSparse(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for (dtype, learning_rate, rho, momentum, epsilon, centered) in _TESTPARAMS:
-      with test_util.use_gpu():
+      with ops.get_default_graph().as_default(), test_util.use_gpu():
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1], dtype=dtype.as_numpy_dtype)
@@ -545,11 +548,11 @@ class RMSpropOptimizerTest(test.TestCase):
           self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 
 
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
 class SlotColocationTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([True, False])
   @test_util.run_gpu_only
-  @test_util.run_in_graph_and_eager_modes
   def testRunMinimizeOnGPUForCPUVariables(self, use_resource):
     with ops.device("/device:CPU:0"):
       if use_resource:

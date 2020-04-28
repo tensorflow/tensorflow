@@ -201,66 +201,6 @@ Status GpuSparse::Initialize() {
 //=============================================================================
 
 template <typename Scalar, typename SparseFn>
-static inline Status GtsvImpl(SparseFn op, cusparseHandle_t cusparse_handle,
-                              int m, int n, const Scalar* dl, const Scalar* d,
-                              const Scalar* du, Scalar* B, int ldb) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(op(cusparse_handle, m, n, AsCudaComplex(dl),
-                                  AsCudaComplex(d), AsCudaComplex(du),
-                                  AsCudaComplex(B), ldb));
-  return Status::OK();
-}
-
-#define GTSV_INSTANCE(Scalar, sparse_prefix)                                   \
-  template <>                                                                  \
-  Status GpuSparse::Gtsv<Scalar>(int m, int n, const Scalar* dl,               \
-                                 const Scalar* d, const Scalar* du, Scalar* B, \
-                                 int ldb) const {                              \
-    DCHECK(initialized_);                                                      \
-    return GtsvImpl(SPARSE_FN(gtsv, sparse_prefix), *gpusparse_handle_, m, n,  \
-                    dl, d, du, B, ldb);                                        \
-  }
-
-TF_CALL_LAPACK_TYPES(GTSV_INSTANCE);
-
-#define GTSV_NO_PIVOT_INSTANCE(Scalar, sparse_prefix)                      \
-  template <>                                                              \
-  Status GpuSparse::GtsvNoPivot<Scalar>(int m, int n, const Scalar* dl,    \
-                                        const Scalar* d, const Scalar* du, \
-                                        Scalar* B, int ldb) const {        \
-    DCHECK(initialized_);                                                  \
-    return GtsvImpl(SPARSE_FN(gtsv_nopivot, sparse_prefix),                \
-                    *gpusparse_handle_, m, n, dl, d, du, B, ldb);          \
-  }
-
-TF_CALL_LAPACK_TYPES(GTSV_NO_PIVOT_INSTANCE);
-
-template <typename Scalar, typename SparseFn>
-static inline Status GtsvStridedBatchImpl(SparseFn op,
-                                          cusparseHandle_t cusparse_handle,
-                                          int m, const Scalar* dl,
-                                          const Scalar* d, const Scalar* du,
-                                          Scalar* x, int batchCount,
-                                          int batchStride) {
-  TF_RETURN_IF_GPUSPARSE_ERROR(op(cusparse_handle, m, AsCudaComplex(dl),
-                                  AsCudaComplex(d), AsCudaComplex(du),
-                                  AsCudaComplex(x), batchCount, batchStride));
-  return Status::OK();
-}
-
-#define GTSV_STRIDED_BATCH_INSTANCE(Scalar, sparse_prefix)                   \
-  template <>                                                                \
-  Status GpuSparse::GtsvStridedBatch<Scalar>(                                \
-      int m, const Scalar* dl, const Scalar* d, const Scalar* du, Scalar* x, \
-      int batchCount, int batchStride) const {                               \
-    DCHECK(initialized_);                                                    \
-    return GtsvStridedBatchImpl(SPARSE_FN(gtsvStridedBatch, sparse_prefix),  \
-                                *gpusparse_handle_, m, dl, d, du, x,         \
-                                batchCount, batchStride);                    \
-  }
-
-TF_CALL_LAPACK_TYPES(GTSV_STRIDED_BATCH_INSTANCE);
-
-template <typename Scalar, typename SparseFn>
 static inline Status Gtsv2Impl(SparseFn op, cusparseHandle_t cusparse_handle,
                                int m, int n, const Scalar* dl, const Scalar* d,
                                const Scalar* du, Scalar* B, int ldb,

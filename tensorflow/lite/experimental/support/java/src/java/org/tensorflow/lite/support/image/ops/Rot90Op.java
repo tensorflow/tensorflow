@@ -17,6 +17,7 @@ package org.tensorflow.lite.support.image.ops;
 
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
+import android.graphics.PointF;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.support.image.ImageOperator;
 import org.tensorflow.lite.support.image.TensorImage;
@@ -34,7 +35,8 @@ public class Rot90Op implements ImageOperator {
   /**
    * Creates a Rot90 Op which will rotate image by 90 degree for {@code k} times counter-clockwise.
    *
-   * @param k: The number of times the image is rotated by 90 degrees.
+   * @param k: The number of times the image is rotated by 90 degrees. If it's positive, the image
+   *     will be rotated counter-clockwise. If it's negative, the op will rotate image clockwise.
    */
   public Rot90Op(int k) {
     numRotation = k % 4;
@@ -67,5 +69,35 @@ public class Rot90Op implements ImageOperator {
     Bitmap output = Bitmap.createBitmap(input, 0, 0, w, h, matrix, false);
     image.load(output);
     return image;
+  }
+
+  @Override
+  public int getOutputImageHeight(int inputImageHeight, int inputImageWidth) {
+    return (numRotation % 2 == 0) ? inputImageHeight : inputImageWidth;
+  }
+
+  @Override
+  public int getOutputImageWidth(int inputImageHeight, int inputImageWidth) {
+    return (numRotation % 2 == 0) ? inputImageWidth : inputImageHeight;
+  }
+
+  @Override
+  public PointF inverseTransform(PointF point, int inputImageHeight, int inputImageWidth) {
+    int inverseNumRotation = (4 - numRotation) % 4;
+    int height = getOutputImageHeight(inputImageHeight, inputImageWidth);
+    int width = getOutputImageWidth(inputImageHeight, inputImageWidth);
+    return transformImpl(point, height, width, inverseNumRotation);
+  }
+
+  private static PointF transformImpl(PointF point, int height, int width, int numRotation) {
+    if (numRotation == 0) {
+      return point;
+    } else if (numRotation == 1) {
+      return new PointF(point.y, width - point.x);
+    } else if (numRotation == 2) {
+      return new PointF(width - point.x, height - point.y);
+    } else { // numRotation == 3
+      return new PointF(height - point.y, point.x);
+    }
   }
 }

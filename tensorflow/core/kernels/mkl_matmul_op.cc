@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/kernels/mkl_matmul_ops_common.h"
 #include "tensorflow/core/util/mkl_util.h"
 
 // This header file is part of MKL ML, need equivalent file in MKL DNN
@@ -173,18 +174,25 @@ class MklMatMulOp : public OpKernel {
 #endif
   }
 
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
   void MklBlasGemm(OpKernelContext* ctx, bool transa, bool transb, const int m,
                    const int n, const int k, const bfloat16* a, const int lda,
                    const bfloat16* b, const int ldb, bfloat16* c,
                    const int ldc) {
     const float alpha = 1.0f;
     const float beta = 0.0f;
-    const char* const ftrans[] = {"N", "T", "C"};
     const int index_transa = transa ? 1 : 0;
     const int index_transb = transb ? 1 : 0;
 
     Tensor c_float;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, {m, n}, &c_float));
+#ifdef ENABLE_MKLDNN_V1
+    const char ftrans[] = {'N', 'T', 'C'};
+    dnnl_gemm<bfloat16>(ftrans[index_transa], ftrans[index_transb], m, n, k,
+                        alpha, a, lda, b, ldb, beta,
+                        c_float.flat<float>().data(), ldc);
+#else
+    const char* const ftrans[] = {"N", "T", "C"};
 
     // MKL-DNN only supports the Fortran API and requires column major while
     // Tensorflow uses row major so we reverse the order of A and B.
@@ -193,9 +201,10 @@ class MklMatMulOp : public OpKernel {
                             reinterpret_cast<const mkldnn_bfloat16_t*>(b), &ldb,
                             reinterpret_cast<const mkldnn_bfloat16_t*>(a), &lda,
                             &beta, c_float.flat<float>().data(), &ldc);
-
+#endif  // ENABLE_MKLDNN_V1
     FloatToBFloat16(c_float.flat<float>().data(), c, c_float.NumElements());
   }
+#endif  // ENABLE_INTEL_MKL_BFLOAT16
 
 // MKL-DNN only supports SGEMM and bfloat16-GEMM.
 #ifndef INTEL_MKL_DNN_ONLY
@@ -257,7 +266,9 @@ class MklMatMulOp : public OpKernel {
 // TODO(inteltf) Consider template specialization when adding/removing
 // additional types
 TF_CALL_float(REGISTER_CPU);
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
 TF_CALL_bfloat16(REGISTER_CPU);
+#endif  // ENABLE_INTEL_MKL_BFLOAT16
 
 #ifndef INTEL_MKL_DNN_ONLY
 TF_CALL_double(REGISTER_CPU);

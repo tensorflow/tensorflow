@@ -152,7 +152,7 @@ class CollectionRegistry {
   std::unique_ptr<RegistrationHandle> Register(
       const AbstractMetricDef* metric_def,
       const CollectionFunction& collection_function)
-      LOCKS_EXCLUDED(mu_) TF_MUST_USE_RESULT;
+      TF_LOCKS_EXCLUDED(mu_) TF_MUST_USE_RESULT;
 
   // Options for collecting metrics.
   struct CollectMetricsOptions {
@@ -173,7 +173,7 @@ class CollectionRegistry {
   // Unregisters the metric from this registry. This is private because the
   // public interface provides a Registration handle which automatically calls
   // this upon destruction.
-  void Unregister(const AbstractMetricDef* metric_def) LOCKS_EXCLUDED(mu_);
+  void Unregister(const AbstractMetricDef* metric_def) TF_LOCKS_EXCLUDED(mu_);
 
   // TF environment, mainly used for timestamping.
   Env* const env_;
@@ -186,7 +186,7 @@ class CollectionRegistry {
     CollectionFunction collection_function;
     uint64 registration_time_millis;
   };
-  std::map<StringPiece, CollectionInfo> registry_ GUARDED_BY(mu_);
+  std::map<StringPiece, CollectionInfo> registry_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CollectionRegistry);
 };
@@ -264,7 +264,7 @@ class Collector {
   MetricCollector<metric_kind, Value, NumLabels> GetMetricCollector(
       const MetricDef<metric_kind, Value, NumLabels>* const metric_def,
       const uint64 registration_time_millis,
-      internal::Collector* const collector) LOCKS_EXCLUDED(mu_) {
+      internal::Collector* const collector) TF_LOCKS_EXCLUDED(mu_) {
     auto* const point_set = [&]() {
       mutex_lock l(mu_);
       return collected_metrics_->point_set_map
@@ -279,17 +279,17 @@ class Collector {
   uint64 collection_time_millis() const { return collection_time_millis_; }
 
   void CollectMetricDescriptor(const AbstractMetricDef* const metric_def)
-      LOCKS_EXCLUDED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
 
   void CollectMetricValues(
       const CollectionRegistry::CollectionInfo& collection_info);
 
   std::unique_ptr<CollectedMetrics> ConsumeCollectedMetrics()
-      LOCKS_EXCLUDED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
 
  private:
   mutable mutex mu_;
-  std::unique_ptr<CollectedMetrics> collected_metrics_ GUARDED_BY(mu_);
+  std::unique_ptr<CollectedMetrics> collected_metrics_ TF_GUARDED_BY(mu_);
   const uint64 collection_time_millis_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Collector);
@@ -359,6 +359,37 @@ MetricCollector<metric_kind, Value, NumLabels> MetricCollectorGetter::Get(
   return collector_->GetMetricCollector(metric_def, registration_time_millis_,
                                         collector_);
 }
+
+class Exporter {
+ public:
+  virtual ~Exporter() {}
+  virtual void PeriodicallyExportMetrics() = 0;
+  virtual void ExportMetrics() = 0;
+};
+
+namespace exporter_registration {
+
+class ExporterRegistration {
+ public:
+  explicit ExporterRegistration(Exporter* exporter) : exporter_(exporter) {
+    exporter_->PeriodicallyExportMetrics();
+  }
+
+ private:
+  Exporter* exporter_;
+};
+
+}  // namespace exporter_registration
+
+#define REGISTER_TF_METRICS_EXPORTER(exporter) \
+  REGISTER_TF_METRICS_EXPORTER_UNIQ_HELPER(__COUNTER__, exporter)
+
+#define REGISTER_TF_METRICS_EXPORTER_UNIQ_HELPER(ctr, exporter) \
+  REGISTER_TF_METRICS_EXPORTER_UNIQ(ctr, exporter)
+
+#define REGISTER_TF_METRICS_EXPORTER_UNIQ(ctr, exporter)                       \
+  static ::tensorflow::monitoring::exporter_registration::ExporterRegistration \
+      exporter_registration_##ctr(new exporter())
 
 }  // namespace monitoring
 }  // namespace tensorflow

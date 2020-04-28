@@ -28,11 +28,11 @@ limitations under the License.
 
 #include <atomic>
 #include <map>
-#include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -64,7 +64,7 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
@@ -733,11 +733,16 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     return;
   }
 
+#if GOOGLE_CUDA
   // Tensor Core (NVIDIA Volta+ GPUs) supports efficient convolution with fp16
   // in NHWC data layout. In all other configurations it's more efficient to
   // run computation in NCHW data format.
   const bool compute_in_nhwc =
       DataTypeToEnum<T>::value == DT_HALF && IsVoltaOrLater(*stream->parent());
+#else
+  // fast NHWC implementation is a CUDA only feature
+  const bool compute_in_nhwc = false;
+#endif
 
   // We only do one directional conversion: NHWC->NCHW. We never convert in the
   // other direction. Grappler layout optimizer selects preferred layout and
@@ -979,6 +984,12 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                                     device_id,                // device_id
                                     conv_desc.group_count()};
   AlgorithmConfig algorithm_config;
+#if TENSORFLOW_USE_ROCM
+  // cudnn_use_autotune is applicable only the CUDA flow
+  // for ROCm/MIOpen, we need to call GetMIOpenConvolveAlgorithms explicitly
+  // if we do not have a cached algorithm_config for this conv_parameters
+  cudnn_use_autotune = true;
+#endif
   if (cudnn_use_autotune &&
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
 #if GOOGLE_CUDA
@@ -1001,7 +1012,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
         WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
     std::vector<tensorflow::AutotuneResult> results;
-    for (auto profile_algorithm : algorithms) {
+    for (const auto& profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
       se::RedzoneAllocator rz_scratch_allocator(
@@ -1041,16 +1052,19 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     }
 
 #elif TENSORFLOW_USE_ROCM
+    DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+
     std::vector<ProfileResult> algorithms;
-    OP_REQUIRES(ctx,
-                stream->parent()->GetMIOpenConvolveAlgorithms(
-                    se::dnn::ConvolutionKind::FORWARD, stream,
-                    se::dnn::ToDataType<T>::value, input_desc, filter_desc,
-                    conv_desc, output_desc, &algorithms),
-                errors::Unknown(
-                    "Failed to get convolution algorithm. This is probably "
-                    "because MIOpen failed to initialize, so try looking to "
-                    "see if a warning log message was printed above."));
+    OP_REQUIRES(
+        ctx,
+        stream->parent()->GetMIOpenConvolveAlgorithms(
+            se::dnn::ConvolutionKind::FORWARD, se::dnn::ToDataType<T>::value,
+            stream, input_desc, input_ptr, filter_desc, filter_ptr, output_desc,
+            output_ptr, conv_desc, &scratch_allocator, &algorithms),
+        errors::Unknown(
+            "Failed to get convolution algorithm. This is probably "
+            "because MIOpen failed to initialize, so try looking to "
+            "see if a warning log message was printed above."));
     se::DeviceMemory<T> output_tensor = output_ptr;
 
     std::vector<tensorflow::AutotuneResult> results;
@@ -1069,7 +1083,6 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     } else {
       for (auto miopen_algorithm : algorithms) {
         auto profile_algorithm = miopen_algorithm.algorithm();
-        DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
         ProfileResult profile_result;
         bool miopen_launch_status = false;
         miopen_launch_status =
@@ -1077,7 +1090,9 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                 ->ThenConvolveWithAlgorithm(
                     input_desc, input_ptr, filter_desc, filter_ptr, conv_desc,
                     output_desc, &output_ptr, &scratch_allocator,
-                    AlgorithmConfig(profile_algorithm), &profile_result)
+                    AlgorithmConfig(profile_algorithm,
+                                    miopen_algorithm.scratch_size()),
+                    &profile_result)
                 .ok();
         if (miopen_launch_status && profile_result.is_valid()) {
           results.emplace_back();

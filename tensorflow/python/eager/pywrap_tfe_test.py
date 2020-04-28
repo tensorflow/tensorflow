@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+import traceback
+
 import numpy as np
 
 from tensorflow.python import pywrap_tfe
@@ -28,6 +31,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
@@ -35,7 +39,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python import keras
 
 
 class Tests(test.TestCase):
@@ -237,8 +240,7 @@ class Tests(test.TestCase):
   @test_util.assert_no_garbage_created
   def testInvalidNumOutputs(self):
     with self.assertRaisesRegexp(
-        Exception,
-        "Value for attr 'num_split' of -1 must be at least minimum 1"):
+        Exception, r"Value for number_attr\(\) -1 < 0 \[Op:Split\]"):
       array_ops.split(value=[1, 2, 3], num_or_size_splits=-1)
 
     with self.assertRaisesRegexp(
@@ -258,10 +260,12 @@ class Tests(test.TestCase):
 
   def testEagerExecute_InvalidType(self):
     # Test case for GitHub issue 26879.
-    value = keras.layers.Input((128, 128, 1), dtype="float32")
-    with self.assertRaisesRegexp(TypeError,
-                                 "Expected list for 'values' argument"):
-      _ = array_ops.stack(value, axis=1)
+    with ops.Graph().as_default():
+      a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
+      m = resource_variable_ops.ResourceVariable(a_2_by_2)
+      with self.assertRaisesRegexp(TypeError,
+                                   "Expected list for 'values' argument"):
+        _ = array_ops.stack(m, axis=1)
 
   def testGraphResourceVariableRaisesFallback(self):
     with ops.Graph().as_default():
@@ -333,6 +337,18 @@ class Tests(test.TestCase):
     # TODO(b/147828820): Converting with tensors should work.
     # _ = ops.EagerTensor([[t]], device=ctx.device_name, dtype=None)
 
+  def testFallbackErrorNotVisibleWhenFallbackMethodRaises(self):
+    ctx = context.context()
+    ctx.ensure_initialized()
+
+    try:
+      math_ops.mat_mul([[1., 1.] * 2], [[1., 1.] * 3])
+    except errors.InvalidArgumentError:
+      etype, value, tb = sys.exc_info()
+      full_exception_text = " ".join(
+          traceback.format_exception(etype, value, tb))
+
+    self.assertNotRegex(full_exception_text, "_FallbackException")
 
 if __name__ == "__main__":
   test.main()

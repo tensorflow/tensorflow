@@ -55,16 +55,13 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
       &data->output_activation_max));
 
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
-    double real_multiplier =
-        input1->params.scale * input2->params.scale / output->params.scale;
+    double real_multiplier = static_cast<double>(input1->params.scale) *
+                             static_cast<double>(input2->params.scale) /
+                             static_cast<double>(output->params.scale);
     QuantizeMultiplier(real_multiplier, &data->output_multiplier,
                        &data->output_shift);
   }
 
-  return kTfLiteOk;
-}
-
-TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
@@ -152,8 +149,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       EvalFloat(context, node, params, &data, input1, input2, output);
       break;
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           input1->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input1->type), input1->type);
       return kTfLiteError;
   }
 
@@ -162,7 +159,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace mul
 
 TfLiteRegistration* Register_MUL() {
-  static TfLiteRegistration r = {nullptr, nullptr, mul::Prepare, mul::Eval};
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/nullptr,
+                                 /*invoke=*/mul::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

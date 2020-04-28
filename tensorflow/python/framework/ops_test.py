@@ -90,6 +90,7 @@ class ResourceTest(test_util.TensorFlowTestCase):
                   resources.shared_resources()).eval()), 0)
 
 
+@test_util.disable_tfrt("Graph is not supported yet.")
 class TensorAndShapeTest(test_util.TensorFlowTestCase):
 
   def testShape(self):
@@ -107,7 +108,7 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
         ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
     t = op.outputs[0]
     with self.assertRaisesRegexp(TypeError, "Cannot iterate"):
-      next(iter(t))
+      iter(t)
 
   def testIterableGraph(self):
     if context.executing_eagerly():
@@ -180,8 +181,8 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
       a = array_ops.ones([1, 2, 3])
       b = array_ops.ones([4, 5, 6])
       with self.assertRaisesRegexp(
-          ValueError, r"Dimensions must be equal, but are 2 and 5 for 'add' "
-          r"\(op: 'Add(V2)?'\) with input shapes: \[1,2,3\], \[4,5,6\]."):
+          ValueError, r"Dimensions must be equal, but are 2 and 5 for .*add"
+          r".*Add(V2)?.* with input shapes: \[1,2,3\], \[4,5,6\]."):
         _ = a + b
 
   def testNumpyArray(self):
@@ -210,19 +211,19 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     z = constant_op.constant([6, 10])
     w = variables.Variable(5)
 
-    self.assertEqual(x1.experimental_ref(), x1.experimental_ref())
-    self.assertEqual(x2.experimental_ref(), x2.experimental_ref())
-    self.assertEqual(x1.experimental_ref(), x2.experimental_ref())
-    self.assertEqual(y.experimental_ref(), y.experimental_ref())
-    self.assertEqual(z.experimental_ref(), z.experimental_ref())
-    self.assertEqual(w.experimental_ref(), w.experimental_ref())
+    self.assertEqual(x1.ref(), x1.ref())
+    self.assertEqual(x2.ref(), x2.ref())
+    self.assertEqual(x1.ref(), x2.ref())
+    self.assertEqual(y.ref(), y.ref())
+    self.assertEqual(z.ref(), z.ref())
+    self.assertEqual(w.ref(), w.ref())
 
-    self.assertNotEqual(x1.experimental_ref(), y.experimental_ref())
-    self.assertNotEqual(x1.experimental_ref(), z.experimental_ref())
-    self.assertNotEqual(x1.experimental_ref(), w.experimental_ref())
-    self.assertNotEqual(y.experimental_ref(), z.experimental_ref())
-    self.assertNotEqual(y.experimental_ref(), w.experimental_ref())
-    self.assertNotEqual(z.experimental_ref(), w.experimental_ref())
+    self.assertNotEqual(x1.ref(), y.ref())
+    self.assertNotEqual(x1.ref(), z.ref())
+    self.assertNotEqual(x1.ref(), w.ref())
+    self.assertNotEqual(y.ref(), z.ref())
+    self.assertNotEqual(y.ref(), w.ref())
+    self.assertNotEqual(z.ref(), w.ref())
 
   def testRefDeref(self):
     x1 = constant_op.constant(3)
@@ -231,19 +232,19 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     z = constant_op.constant([6, 10])
     w = variables.Variable(5)
 
-    self.assertIs(x1, x1.experimental_ref().deref())
-    self.assertIs(x2, x2.experimental_ref().deref())
-    self.assertIs(x1, x2.experimental_ref().deref())
-    self.assertIs(x2, x1.experimental_ref().deref())
-    self.assertIs(y, y.experimental_ref().deref())
-    self.assertIs(z, z.experimental_ref().deref())
+    self.assertIs(x1, x1.ref().deref())
+    self.assertIs(x2, x2.ref().deref())
+    self.assertIs(x1, x2.ref().deref())
+    self.assertIs(x2, x1.ref().deref())
+    self.assertIs(y, y.ref().deref())
+    self.assertIs(z, z.ref().deref())
 
-    self.assertIsNot(x1, y.experimental_ref().deref())
-    self.assertIsNot(x1, z.experimental_ref().deref())
-    self.assertIsNot(x1, w.experimental_ref().deref())
-    self.assertIsNot(y, z.experimental_ref().deref())
-    self.assertIsNot(y, w.experimental_ref().deref())
-    self.assertIsNot(z, w.experimental_ref().deref())
+    self.assertIsNot(x1, y.ref().deref())
+    self.assertIsNot(x1, z.ref().deref())
+    self.assertIsNot(x1, w.ref().deref())
+    self.assertIsNot(y, z.ref().deref())
+    self.assertIsNot(y, w.ref().deref())
+    self.assertIsNot(z, w.ref().deref())
 
   def testRefInSet(self):
     x1 = constant_op.constant(3)
@@ -252,22 +253,22 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     z = constant_op.constant([6, 10])
     w = variables.Variable(5)
 
-    self.assertEqual(x1.experimental_ref(), x2.experimental_ref())
+    self.assertEqual(x1.ref(), x2.ref())
 
     tensor_set = {
-        x1.experimental_ref(),
-        x2.experimental_ref(),
-        y.experimental_ref(),
-        z.experimental_ref(),
-        w.experimental_ref(),
+        x1.ref(),
+        x2.ref(),
+        y.ref(),
+        z.ref(),
+        w.ref(),
     }
 
     self.assertEqual(len(tensor_set), 4)
-    self.assertIn(x1.experimental_ref(), tensor_set)
-    self.assertIn(x2.experimental_ref(), tensor_set)
-    self.assertIn(y.experimental_ref(), tensor_set)
-    self.assertIn(z.experimental_ref(), tensor_set)
-    self.assertIn(w.experimental_ref(), tensor_set)
+    self.assertIn(x1.ref(), tensor_set)
+    self.assertIn(x2.ref(), tensor_set)
+    self.assertIn(y.ref(), tensor_set)
+    self.assertIn(z.ref(), tensor_set)
+    self.assertIn(w.ref(), tensor_set)
 
   def testRefInDict(self):
     x1 = constant_op.constant(3)
@@ -276,39 +277,40 @@ class TensorAndShapeTest(test_util.TensorFlowTestCase):
     z = constant_op.constant([6, 10])
     w = variables.Variable(5)
 
-    self.assertEqual(x1.experimental_ref(), x2.experimental_ref())
+    self.assertEqual(x1.ref(), x2.ref())
 
     tensor_dict = {
-        x1.experimental_ref(): "x1",
-        y.experimental_ref(): "y",
-        z.experimental_ref(): "z",
-        w.experimental_ref(): "w",
+        x1.ref(): "x1",
+        y.ref(): "y",
+        z.ref(): "z",
+        w.ref(): "w",
     }
 
     self.assertEqual(len(tensor_dict), 4)
 
     # Overwriting x1
-    tensor_dict[x2.experimental_ref()] = "x2"
+    tensor_dict[x2.ref()] = "x2"
     self.assertEqual(len(tensor_dict), 4)
 
-    self.assertEqual(tensor_dict[x1.experimental_ref()], "x2")
-    self.assertEqual(tensor_dict[x2.experimental_ref()], "x2")
-    self.assertEqual(tensor_dict[y.experimental_ref()], "y")
-    self.assertEqual(tensor_dict[z.experimental_ref()], "z")
-    self.assertEqual(tensor_dict[w.experimental_ref()], "w")
+    self.assertEqual(tensor_dict[x1.ref()], "x2")
+    self.assertEqual(tensor_dict[x2.ref()], "x2")
+    self.assertEqual(tensor_dict[y.ref()], "y")
+    self.assertEqual(tensor_dict[z.ref()], "z")
+    self.assertEqual(tensor_dict[w.ref()], "w")
 
   def testTensorRefStrong(self):
     x = constant_op.constant(1.)
-    x_ref = x.experimental_ref()
+    x_ref = x.ref()
     del x
     self.assertIsNotNone(x_ref.deref())
 
   def testVariableRefStrong(self):
     x = variables.Variable(1.)
-    x_ref = x.experimental_ref()
+    x_ref = x.ref()
     del x
     self.assertIsNotNone(x_ref.deref())
 
+@test_util.disable_tfrt("Graph mode is not supported yet.")
 @test_util.run_all_in_graph_and_eager_modes
 class IndexedSlicesTest(test_util.TensorFlowTestCase):
 
@@ -353,6 +355,7 @@ class IndexedSlicesTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(x.indices, [0, 2])
 
 
+@test_util.disable_tfrt("Graph mode is not supported yet.")
 @test_util.run_all_in_graph_and_eager_modes
 class IndexedSlicesSpecTest(test_util.TensorFlowTestCase,
                             parameterized.TestCase):
@@ -498,6 +501,7 @@ def _apply_op(g, *args, **kwargs):
     return op.outputs
 
 
+@test_util.disable_tfrt("Graph is not supported yet.")
 class OperationTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
@@ -695,7 +699,8 @@ class OperationTest(test_util.TensorFlowTestCase):
   def testConvertToLongLongTensorType(self):
     tensor = ops.convert_to_tensor(
         # Get a numpy array of dtype NPY_LONGLONG
-        np.prod(constant_op.constant([1])._shape_tuple()))
+        np.prod(constant_op.constant([1])._shape_tuple()),
+        dtype=dtypes.int64)
     self.assertEqual(dtypes.int64, tensor.dtype)
 
   @test_util.run_in_graph_and_eager_modes
@@ -1427,6 +1432,7 @@ class NameTest(test_util.TensorFlowTestCase):
                        g.create_op("FloatOutput", [], [dtypes.float32]).name)
 
 
+@test_util.disable_tfrt("Device API are not supported yet.")
 class DeviceTest(test_util.TensorFlowTestCase):
 
   def testNoDevice(self):
@@ -2007,6 +2013,7 @@ class CollectionTest(test_util.TensorFlowTestCase):
       # Collections are ordered.
       self.assertEqual([90, 100], ops.get_collection("key"))
 
+  @test_util.disable_tfrt("Functions are not supported yet.")
   def test_defun(self):
     with context.eager_mode():
 
@@ -2113,6 +2120,7 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
     # e should be dominated by c.
     self.assertEqual(e.op.control_inputs, [])
 
+  @test_util.disable_tfrt("Graph is not supported yet.")
   @test_util.run_in_graph_and_eager_modes
   def testEager(self):
     def future():
@@ -2433,6 +2441,7 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     self._testGraphElements([a, variable, b])
 
 
+@test_util.disable_tfrt("Graphs are not supported yet.")
 class InitScopeTest(test_util.TensorFlowTestCase):
 
   def testClearsControlDependencies(self):
@@ -2735,6 +2744,7 @@ class InitScopeTest(test_util.TensorFlowTestCase):
           self.assertFalse(self.evaluate(f()))
 
 
+@test_util.disable_tfrt("Graphs are not supported yet.")
 class GraphTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -3212,6 +3222,7 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
       b = variables.Variable([3.0], name="b")
     self.assertEqual([b"loc:@a"], b.op.colocation_groups())
 
+  @test_util.disable_tfrt("Functions are not supported yet.")
   def testColocateWithVariableInFunction(self):
     v = variables.Variable(1.)
 
@@ -3247,6 +3258,7 @@ class DeprecatedTest(test_util.TensorFlowTestCase):
 
 class DenseTensorLikeTypeTest(test_util.TensorFlowTestCase):
 
+  @test_util.disable_tfrt("Graph is not supported yet.")
   def testSuccess(self):
     op = ops.Operation(
         ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
@@ -3420,6 +3432,7 @@ ops.register_tensor_conversion_function(
 
 class CustomConvertToCompositeTensorTest(test_util.TensorFlowTestCase):
 
+  @test_util.disable_tfrt("b/154858769")
   def testCompositeTensorConversion(self):
     """Tests that a user can register a CompositeTensor converter."""
     x = _MyTuple((1, [2., 3.], [[4, 5], [6, 7]]))

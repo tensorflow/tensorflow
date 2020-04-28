@@ -42,18 +42,93 @@ limitations under the License.
 
 namespace xla {
 
+// TODO(b/150633678): Both the ExecutionInput and ExecutionOutput need to be
+// revisited, with the execute APIs taking data structure which can better model
+// shareable buffers.
+//
+// ExecutionInput buffers are in one of three states:
+//
+// 1) Owned by the caller and immutable.
+// 2) Donated by the caller but returned on error.
+// 3) Donated by the caller and freed on error.
+//
+// Case (1) buffers are stored as MaybeOwningDeviceMemory(DeviceMemoryBase).
+// Case (2) buffers are stored as MaybeOwningDeviceMemory(OwningDeviceMemory),
+//   with their indices present in unowned_indices_.
+// Case (3) buffers are stored as MaybeOwningDeviceMemory(OwningDeviceMemory),
+//   with their indices absent from unowned_indices_.
+class ExecutionInput {
+ public:
+  ExecutionInput() = default;
+  explicit ExecutionInput(xla::Shape shape) : buffers_(std::move(shape)) {}
+  explicit ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers)
+      : buffers_(std::move(buffers)) {}
+  ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers,
+                 std::vector<ShapeIndex> owner_held_indices)
+      : buffers_(std::move(buffers)),
+        unowned_indices_(std::move(owner_held_indices)) {}
+  ExecutionInput(ExecutionInput&&) = default;
+
+  ~ExecutionInput() {
+    for (auto& index : unowned_indices_) {
+      auto buffer = buffers_.mutable_element(index)->Release();
+      if (buffer) {
+        buffer->Release();
+      }
+    }
+  }
+
+  ExecutionInput& operator=(ExecutionInput&&) = default;
+
+  const Shape& shape() const { return buffers_.shape(); }
+
+  void SetBuffer(const ShapeIndex& index, MaybeOwningDeviceMemory buffer) {
+    *buffers_.mutable_element(index) = std::move(buffer);
+  }
+
+  void SetUnownedBuffer(const ShapeIndex& index,
+                        MaybeOwningDeviceMemory buffer) {
+    *buffers_.mutable_element(index) = std::move(buffer);
+    unowned_indices_.push_back(index);
+  }
+
+  void SetUnownedIndex(const ShapeIndex& index) {
+    unowned_indices_.push_back(index);
+  }
+
+  const ShapeTree<MaybeOwningDeviceMemory>& Buffers() const { return buffers_; }
+
+  ShapeTree<MaybeOwningDeviceMemory>* MutableBuffers() { return &buffers_; }
+
+  MaybeOwningDeviceMemory* MutableBuffer(const ShapeIndex& index) {
+    return buffers_.mutable_element(index);
+  }
+
+  const MaybeOwningDeviceMemory& Buffer(const ShapeIndex& index) const {
+    return buffers_.element(index);
+  }
+
+ private:
+  ShapeTree<MaybeOwningDeviceMemory> buffers_;
+  // (Unordered) set of indices of buffers that should be returned to the
+  // caller if an error occurs when enqueuing the computation.
+  std::vector<ShapeIndex> unowned_indices_;
+};
+
 // ExecutionOutput encapsulates the output buffers of a execution and the
 // leftover buffers to be released by the caller.
 class ExecutionOutput {
  public:
+  explicit ExecutionOutput(ScopedShapedBuffer result)
+      : result_(std::move(result)) {}
   ExecutionOutput(ScopedShapedBuffer result,
-                  std::vector<se::OwningDeviceMemory> to_be_released,
-                  std::vector<ShapeIndex> aliased_indices,
-                  se::OwningDeviceMemory output_shape_table)
+                  std::vector<se::OwningDeviceMemory> to_be_released)
       : result_(std::move(result)),
-        to_be_released_(std::move(to_be_released)),
-        aliased_indices_(std::move(aliased_indices)),
-        output_shape_table_(std::move(output_shape_table)) {}
+        to_be_released_(std::move(to_be_released)) {}
+  ExecutionOutput(Shape on_host_shape, Shape on_device_shape,
+                  se::DeviceMemoryAllocator* allocator, int device_ordinal)
+      : result_(std::move(on_host_shape), std::move(on_device_shape), allocator,
+                device_ordinal) {}
   ExecutionOutput(ExecutionOutput&&) = default;
   ExecutionOutput& operator=(ExecutionOutput&&) = default;
 
@@ -66,6 +141,15 @@ class ExecutionOutput {
     }
   }
 
+  void AddAliasedIndex(ShapeIndex index) {
+    aliased_indices_.push_back(std::move(index));
+  }
+
+  void AddToBeReleased(se::OwningDeviceMemory mem) {
+    to_be_released_.push_back(std::move(mem));
+  }
+
+
   // Should be called once it is known that the execute operation succeeded,
   // before returning the ExecutionOutput to the caller.
   ExecutionOutput& Commit() {
@@ -75,17 +159,11 @@ class ExecutionOutput {
 
   const ScopedShapedBuffer& Result() const { return result_; }
 
-  const se::OwningDeviceMemory& ShapeTable() const {
-    return output_shape_table_;
-  }
+  ScopedShapedBuffer* MutableResult() { return &result_; }
 
   ScopedShapedBuffer ConsumeResult() {
     aliased_indices_.clear();
     return std::move(result_);
-  }
-
-  se::OwningDeviceMemory ConsumeShapeTable() {
-    return std::move(output_shape_table_);
   }
 
   const std::vector<se::OwningDeviceMemory>& ToBeReleased() const {
@@ -169,12 +247,12 @@ class Executable {
   // complete.
   StatusOr<ExecutionOutput> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
+      std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile);
 
   virtual StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
+      std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) = 0;
 
   // Same as ExecuteOnStream(), but runs this executable on multiple
@@ -208,7 +286,7 @@ class Executable {
 
   StatusOr<ExecutionOutput> ExecuteAsyncOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments);
+      std::vector<ExecutionInput> arguments);
 
   const HloProfilePrinterData& hlo_profile_printer_data() const {
     CHECK(hlo_profiling_enabled());

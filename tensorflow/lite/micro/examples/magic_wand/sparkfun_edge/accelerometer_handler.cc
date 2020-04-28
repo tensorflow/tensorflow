@@ -13,6 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+#define ARDUINO_EXCLUDE_CODE
+#endif  // defined(ARDUINO) && !defined(ARDUINO_SFE_EDGE)
+
+#ifndef ARDUINO_EXCLUDE_CODE
+
 #include "tensorflow/lite/micro/examples/magic_wand/accelerometer_handler.h"
 
 // These are headers from Ambiq's Apollo3 SDK.
@@ -23,8 +29,8 @@ limitations under the License.
 #include "am_util.h"        // NOLINT
 #include "lis2dh12_platform_apollo3.h"
 
-lis2dh12_platform_apollo3_if_t dev_if = {0};  // accelerometer device interface
-lis2dh12_ctx_t dev_ctx = {0};                 // accelerometer device control
+lis2dh12_platform_apollo3_if_t dev_if;  // accelerometer device interface
+lis2dh12_ctx_t dev_ctx;                 // accelerometer device control
 
 // A union representing either int16_t[3] or uint8_t[6],
 // storing the most recent data
@@ -40,7 +46,8 @@ int initAccelerometer(void) {
   uint32_t retVal32 = 0;
   static uint8_t whoamI = 0;
 
-  am_hal_iom_config_t i2cConfig = {0};
+  am_hal_iom_config_t i2cConfig;
+  memset((void*)(&i2cConfig), 0x00, sizeof(am_hal_iom_config_t));
   i2cConfig.eInterfaceMode = AM_HAL_IOM_I2C_MODE;
   i2cConfig.ui32ClockFreq = AM_HAL_IOM_100KHZ;
 
@@ -117,8 +124,9 @@ TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
   // Collecting data at 25Hz.
   int accInitRes = initAccelerometer();
   if (accInitRes != (int)AM_HAL_STATUS_SUCCESS) {
-    error_reporter->Report("Failed to initialize the accelerometer. (code %d)",
-                           accInitRes);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Failed to initialize the accelerometer. (code %d)",
+                         accInitRes);
   }
 
   // Enable the accelerometer's FIFO buffer.
@@ -127,38 +135,30 @@ TfLiteStatus SetupAccelerometer(tflite::ErrorReporter* error_reporter) {
   // it's not fetched in time, so we need to make sure that model inference is
   // faster than 1/25Hz * 32 = 1.28s
   if (lis2dh12_fifo_set(&dev_ctx, 1)) {
-    error_reporter->Report("Failed to enable FIFO buffer.");
+    TF_LITE_REPORT_ERROR(error_reporter, "Failed to enable FIFO buffer.");
   }
 
   if (lis2dh12_fifo_mode_set(&dev_ctx, LIS2DH12_BYPASS_MODE)) {
-    error_reporter->Report("Failed to clear FIFO buffer.");
-    return 0;
+    TF_LITE_REPORT_ERROR(error_reporter, "Failed to clear FIFO buffer.");
+    return kTfLiteError;
   }
 
   if (lis2dh12_fifo_mode_set(&dev_ctx, LIS2DH12_DYNAMIC_STREAM_MODE)) {
-    error_reporter->Report("Failed to set streaming mode.");
-    return 0;
+    TF_LITE_REPORT_ERROR(error_reporter, "Failed to set streaming mode.");
+    return kTfLiteError;
   }
 
-  error_reporter->Report("Magic starts!");
+  TF_LITE_REPORT_ERROR(error_reporter, "Magic starts!");
 
   return kTfLiteOk;
 }
 
 bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
-                       int length, bool reset_buffer) {
-  // Clear the buffer if required, e.g. after a successful prediction
-  if (reset_buffer) {
-    memset(save_data, 0, 600 * sizeof(float));
-    begin_index = 0;
-    pending_initial_data = true;
-    // Wait 10ms after a reset to avoid hang
-    am_util_delay_ms(10);
-  }
+                       int length) {
   // Check FIFO buffer for new samples
   lis2dh12_fifo_src_reg_t status;
   if (lis2dh12_fifo_status_get(&dev_ctx, &status)) {
-    error_reporter->Report("Failed to get FIFO status.");
+    TF_LITE_REPORT_ERROR(error_reporter, "Failed to get FIFO status.");
     return false;
   }
 
@@ -179,7 +179,7 @@ bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
     memset(data_raw_acceleration.u8bit, 0x00, 3 * sizeof(int16_t));
     // If the return value is non-zero, sensor data was successfully read
     if (lis2dh12_acceleration_raw_get(&dev_ctx, data_raw_acceleration.u8bit)) {
-      error_reporter->Report("Failed to get raw data.");
+      TF_LITE_REPORT_ERROR(error_reporter, "Failed to get raw data.");
     } else {
       // Convert each raw 16-bit value into floating point values representing
       // milli-Gs, a unit of acceleration, and store in the current position of
@@ -215,3 +215,5 @@ bool ReadAccelerometer(tflite::ErrorReporter* error_reporter, float* input,
   }
   return true;
 }
+
+#endif  // ARDUINO_EXCLUDE_CODE

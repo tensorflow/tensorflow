@@ -36,6 +36,5 @@ upper_tabs:
         path: /xla/tutorials/autoclustering_xla
       - title: Use XLA with tf.function
         path: /xla/tutorials/compile
-        status: experimental
 
 - include: /_upper_tabs_right.yaml

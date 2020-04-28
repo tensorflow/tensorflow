@@ -24,11 +24,11 @@ namespace {
 auto* pctsampler_with_labels = PercentileSampler<1>::New(
     {"/tensorflow/test/percentile_sampler_with_labels",
      "Percentile sampler with one label.", "MyLabel"},
-    {25.0, 50.0, 90.0, 99.0}, 1024);
+    {25.0, 50.0, 90.0, 99.0}, 1024, UnitOfMeasure::kNumber);
 auto* pctsampler_without_labels = PercentileSampler<0>::New(
     {"/tensorflow/test/percentile_sampler_without_labels",
      "Percentile sampler without labels initialized as empty."},
-    {25.0, 50.0, 90.0, 99.0}, 1024);
+    {25.0, 50.0, 90.0, 99.0}, 1024, UnitOfMeasure::kNumber);
 
 TEST(LabeledPercentileSamplerTest, FixedPercentilesValues) {
   auto* cell = pctsampler_with_labels->GetCell("MyLabel");

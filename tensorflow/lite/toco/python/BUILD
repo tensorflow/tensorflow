@@ -35,9 +35,12 @@ cc_library(
     ],
     deps = [
         "@com_google_protobuf//:protobuf_headers",
-        "//third_party/python_runtime:headers",
         "//tensorflow/core:lib",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
+        "//tensorflow/lite/python/interpreter_wrapper:python_error_reporter",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/toco/logging:conversion_log_util",
         "//tensorflow/lite/toco:model_flags_proto_cc",
         "//tensorflow/lite/toco:toco_convert",
@@ -47,8 +50,10 @@ cc_library(
         "//tensorflow/lite/toco:toco_port",
         "//tensorflow/lite/toco:toco_tooling",
         "//tensorflow/lite/toco:tooling_util",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/compiler/mlir/lite/python:graphdef_to_tfl_flatbuffer",
+        "//tensorflow/compiler/mlir/lite/python:saved_model_to_tfl_flatbuffer",
+        "//tensorflow/compiler/mlir/lite/quantization/lite:quantize_model",
+        "//tensorflow/compiler/mlir/lite/sparsity:sparsify_model",
     ] + select({
         # This is required when running `tflite_convert` from `bazel`.
         # It requires to link with TensorFlow Ops to get the op definitions.

@@ -49,8 +49,8 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-_TF_MIN_BAZEL_VERSION = '1.2.1'
-_TF_MAX_BAZEL_VERSION = '1.2.1'
+_TF_MIN_BAZEL_VERSION = '2.0.0'
+_TF_MAX_BAZEL_VERSION = '3.99.0'
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
@@ -1155,7 +1155,7 @@ def set_trisycl_include_dir(environ_cp):
   write_action_env_to_bazelrc('TRISYCL_INCLUDE_DIR', trisycl_include_dir)
 
 
-def system_specific_test_config(env):
+def system_specific_test_config(environ_cp):
   """Add default build and test flags required for TF tests to bazelrc."""
   write_to_bazelrc('test --flaky_test_attempts=3')
   write_to_bazelrc('test --test_size_filters=small,medium')
@@ -1171,14 +1171,16 @@ def system_specific_test_config(env):
   test_only_filters = ['-oss_serial']
   if is_windows():
     test_and_build_filters.append('-no_windows')
-    if env.get('TF_NEED_CUDA', None) == '1':
+    if ((environ_cp.get('TF_NEED_CUDA', None) == '1') or
+        (environ_cp.get('TF_NEED_ROCM', None) == '1')):
       test_and_build_filters += ['-no_windows_gpu', '-no_gpu']
     else:
       test_and_build_filters.append('-gpu')
   elif is_macos():
     test_and_build_filters += ['-gpu', '-nomac', '-no_mac']
   elif is_linux():
-    if env.get('TF_NEED_CUDA', None) == '1':
+    if ((environ_cp.get('TF_NEED_CUDA', None) == '1') or
+        (environ_cp.get('TF_NEED_ROCM', None) == '1')):
       test_and_build_filters.append('-no_gpu')
       write_to_bazelrc('test --test_env=LD_LIBRARY_PATH')
     else:
@@ -1221,7 +1223,7 @@ def is_reduced_optimize_huge_functions_available(environ_cp):
   only, as of 2019-11-19). TensorFlow needs this flag to massively reduce
   compile times, but until 16.4 is officially released, we can't depend on it.
 
-  See also https://groups.google.com/a/tensorflow.org/g/build/c/SsW98Eo7l3o
+  See also https://groups.google.com/a/tensorflow.org/d/topic/build/SsW98Eo7l3o/discussion
 
   Because it's very annoying to check this manually (to check the MSVC installed
   versions, you need to use the registry, and it's not clear if Bazel will be
@@ -1390,9 +1392,8 @@ def main():
   else:
     environ_cp['TF_CONFIGURE_IOS'] = '0'
 
-  xla_enabled_by_default = is_linux() or is_macos()
-  set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
-                xla_enabled_by_default, 'xla')
+  if environ_cp.get('TF_ENABLE_XLA', '1') == '1':
+    write_to_bazelrc('build --config=xla')
 
   set_action_env_var(
       environ_cp,
@@ -1416,6 +1417,10 @@ def main():
       environ_cp.get('LD_LIBRARY_PATH') != '1'):
     write_action_env_to_bazelrc('LD_LIBRARY_PATH',
                                 environ_cp.get('LD_LIBRARY_PATH'))
+
+  if (environ_cp.get('TF_NEED_ROCM') == '1' and environ_cp.get('ROCM_PATH')):
+    write_action_env_to_bazelrc('ROCM_PATH', environ_cp.get('ROCM_PATH'))
+    write_action_env_to_bazelrc('ROCM_ROOT', environ_cp.get('ROCM_PATH'))
 
   environ_cp['TF_NEED_CUDA'] = str(
       int(get_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)))
@@ -1523,7 +1528,7 @@ def main():
     create_android_ndk_rule(environ_cp)
     create_android_sdk_rule(environ_cp)
 
-  system_specific_test_config(os.environ)
+  system_specific_test_config(environ_cp)
 
   set_action_env_var(environ_cp, 'TF_CONFIGURE_IOS', 'iOS', False)
   if environ_cp.get('TF_CONFIGURE_IOS') == '1':

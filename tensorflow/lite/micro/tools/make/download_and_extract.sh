@@ -71,11 +71,22 @@ patch_am_sdk() {
 # Fixes issues with KissFFT.
 patch_kissfft() {
   sed -i -E $'s@#ifdef FIXED_POINT@// Patched automatically by download_dependencies.sh so default is 16 bit.\\\n#ifndef FIXED_POINT\\\n#define FIXED_POINT (16)\\\n#endif\\\n// End patch.\\\n\\\n#ifdef FIXED_POINT@g' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
+
+  # Fix for https://github.com/mborgerding/kissfft/issues/20
+  sed -i -E $'s@#ifdef FIXED_POINT@#ifdef FIXED_POINT\\\n#include <stdint.h> /* Patched. */@g' tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
+
   sed -i -E "s@#define KISS_FFT_MALLOC malloc@#define KISS_FFT_MALLOC(X) (void*)(0) /* Patched. */@g" tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
   sed -i -E "s@#define KISS_FFT_FREE free@#define KISS_FFT_FREE(X) /* Patched. */@g" tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
   sed -ir -E "s@(fprintf.*\);)@/* \1 */@g" tensorflow/lite/micro/tools/make/downloads/kissfft/tools/kiss_fftr.c
   sed -ir -E "s@(exit.*\);)@return; /* \1 */@g" tensorflow/lite/micro/tools/make/downloads/kissfft/tools/kiss_fftr.c
   echo "Finished patching kissfft"
+}
+
+# Create a header file containing an array with the first 10 images from the
+# CIFAR10 test dataset.
+patch_cifar10_dataset() {
+  xxd -l 30730 -i ${1}/test_batch.bin ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
+  sed -i "s/unsigned char/const unsigned char/g" ${1}/../../../../examples/image_recognition_experimental/first_10_cifar_images.h
 }
 
 build_embarc_mli() {
@@ -98,14 +109,15 @@ download_and_extract() {
   command -v curl >/dev/null 2>&1 || {
     echo >&2 "The required 'curl' tool isn't installed. Try 'apt-get install curl'."; exit 1;
   }
-  
+
   echo "downloading ${url}" >&2
   mkdir -p "${dir}"
   # We've been seeing occasional 56 errors from valid URLs, so set up a retry
   # loop to attempt to recover from them.
   for (( i=1; i<=$curl_retries; ++i ))
-  do  
-    CURL_RESULT=$(curl -Ls --retry 5 "${url}" > ${tempfile} || true)
+  do
+    curl -Ls --fail --retry 5 "${url}" > ${tempfile}
+    CURL_RESULT=$?
     if [[ $CURL_RESULT -eq 0 ]]
     then
       break
@@ -124,7 +136,7 @@ download_and_extract() {
     echo "Checksum error for '${url}'. Expected ${expected_md5} but found ${DOWNLOADED_MD5}"
     exit 1
   fi
-  
+
   if [[ "${url}" == *gz ]]; then
     tar -C "${dir}" --strip-components=1 -xzf ${tempfile}
   elif [[ "${url}" == *tar.xz ]]; then
@@ -136,7 +148,7 @@ download_and_extract() {
     unzip ${tempfile} -d ${tempdir2} 2>&1 1>/dev/null
     # If the zip file contains nested directories, extract the files from the
     # inner directory.
-    if ls ${tempdir2}/*/* 1> /dev/null 2>&1; then
+    if [ $(find $tempdir2/* -maxdepth 0 | wc -l) = 1 ] && [ -d $tempdir2/* ]; then
       # unzip has no strip components, so unzip to a temp dir, and move the
       # files we want from the tempdir to destination.
       cp -R ${tempdir2}/*/* ${dir}/
@@ -155,6 +167,8 @@ download_and_extract() {
     patch_am_sdk ${dir}
   elif [[ ${action} == "patch_kissfft" ]]; then
     patch_kissfft ${dir}
+  elif [[ ${action} == "patch_cifar10_dataset" ]]; then
+    patch_cifar10_dataset ${dir}
   elif [[ ${action} == "build_embarc_mli" ]]; then
     build_embarc_mli ${dir} ${action_param1}
   elif [[ ${action} ]]; then

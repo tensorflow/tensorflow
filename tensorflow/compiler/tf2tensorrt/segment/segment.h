@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -37,12 +38,17 @@ using SegmentNodesVector = std::vector<std::set<const Node*>>;
 struct SegmentOptions {
   // Segment must contain at least this many nodes.
   int minimum_segment_size = 2;
+  bool use_implicit_batch = true;
+  // When use_implicit_batch is false or when we are building dynamic engines,
+  // we allow dynamic non-batch dimensions.
+  bool allow_dynamic_non_batch_dim = false;
   std::set<string> exclude_node_list;
 };
 
 // Get the subgraphs of a graph that can be handled by TensorRT.
 //
-// @param graph Graph of the network
+// @param tf_graph Graph of the network.
+// @graph_properties is the static graph properties.
 // @param candidate_fn A function that returns OK for a Node* if
 // that node can be handled by TensorRT.
 // @param segments Returns the TensorRT segments/subgraphs. Each entry
@@ -50,6 +56,7 @@ struct SegmentOptions {
 // all the NodeDefs in that subgraph.
 // @return the status.
 Status SegmentGraph(const Graph* tf_graph,
+                    const grappler::GraphProperties* graph_properties,
                     const std::function<Status(const Node*)>& candidate_fn,
                     const std::function<bool(const Edge*)>& input_candidate_fn,
                     const std::function<bool(const Edge*)>& output_candidate_fn,

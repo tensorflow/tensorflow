@@ -25,6 +25,9 @@ from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -86,6 +89,22 @@ class MapFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
           r = function(r)
       expected_output.append(r)
     self.assertDatasetProduces(dataset, expected_output=expected_output)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCapturedInputs(self):
+    a = constant_op.constant(3, dtype=dtypes.int64)
+    b = constant_op.constant(4, dtype=dtypes.int64)
+    some_tensor = math_ops.mul(a, b)
+
+    # We currently do not support functions with captured inputs.
+    dataset = dataset_ops.Dataset.range(1).apply(
+        testing.assert_next(["Map", "Map"
+                            ])).map(lambda x: some_tensor).map(lambda x: x)
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_fusion = True
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(dataset, expected_output=[some_tensor])
 
 
 if __name__ == "__main__":

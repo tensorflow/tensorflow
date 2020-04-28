@@ -173,6 +173,9 @@ xla::DebugOptions BuildXlaDebugOptions(const xla::DebugOptions& ref_options) {
   options.set_xla_dump_hlo_as_text(ref_options.xla_dump_hlo_as_text());
   options.set_xla_dump_hlo_snapshots(ref_options.xla_dump_hlo_snapshots());
   options.set_xla_dump_hlo_pass_re(ref_options.xla_dump_hlo_pass_re());
+  options.set_xla_dump_include_timestamp(
+      ref_options.xla_dump_include_timestamp());
+  options.set_xla_dump_max_hlo_modules(ref_options.xla_dump_max_hlo_modules());
   for (auto& pass : ref_options.xla_disable_hlo_passes()) {
     options.add_xla_disable_hlo_passes(pass);
   }

@@ -676,12 +676,10 @@ Status Encapsulator::Subgraph::AddFunctionCallNode(
 Status Encapsulator::GetFunctionNameAttr(Node const* node, string* attr) const {
   AttrSlice attrs = node->attrs();
   attr->clear();
-  bool found_group_attribute = false;
   for (const auto& node_attr : attrs) {
     if (node_attr.first == group_attribute_) {
       TF_RETURN_IF_ERROR(AttrValueHasType(node_attr.second, "string"));
       *attr = node_attr.second.s();
-      found_group_attribute = true;
       break;
     }
   }
@@ -790,7 +788,6 @@ Status Encapsulator::SplitIntoSubgraphs(FunctionLibraryDefinition* library) {
 
   TF_RETURN_IF_ERROR(CopySubgraphNodes(&node_images));
   TF_RETURN_IF_ERROR(CopySubgraphEdges(node_images, &src_arg_pairs));
-
   MarkGuaranteedConstants(*graph_in_, src_arg_pairs);
 
   for (auto& entry : subgraphs_) {

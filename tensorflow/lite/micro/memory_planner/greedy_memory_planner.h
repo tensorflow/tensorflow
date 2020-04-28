@@ -61,7 +61,7 @@ class GreedyMemoryPlanner : public MemoryPlanner {
 
   // Returns the high-water mark of used memory. This is the minimum size of a
   // memory arena you'd need to allocate to hold these buffers.
-  int GetMaximumMemorySize() override;
+  size_t GetMaximumMemorySize() override;
 
   // How many buffers have been recorded.
   int GetBufferCount() override;
@@ -85,6 +85,17 @@ class GreedyMemoryPlanner : public MemoryPlanner {
     int requirements_index;
     int next_entry_index;
   };
+
+  // Number of bytes required in order to plan a buffer.
+  static size_t per_buffer_size() {
+    const int per_buffer_size =
+        sizeof(BufferRequirements) +  // requirements_
+        sizeof(int) +                 // buffer_sizes_sorted_by_size_
+        sizeof(int) +                 // buffer_ids_sorted_by_size_
+        sizeof(ListEntry) +           // buffers_sorted_by_offset_
+        sizeof(int);                  // buffer_offsets_;
+    return per_buffer_size;
+  }
 
  private:
   // Whether a buffer is active in a given time range.

@@ -62,7 +62,8 @@ BUILD_TF_V2_CONTAINERS=${BUILD_TF_V2_CONTAINERS:-yes}
 BUILD_TF_BFLOAT16_CONTAINERS=${BUILD_TF_BFLOAT16_CONTAINERS:-no}
 ENABLE_SECURE_BUILD=${ENABLE_SECURE_BUILD:-no}
 BAZEL_VERSION=${BAZEL_VERSION}
-BUILD_PY2_CONTAINERS=${BUILD_PY2_CONTAINERS:-yes}
+BUILD_PY2_CONTAINERS=${BUILD_PY2_CONTAINERS:-no}
+ENABLE_DNNL1=${ENABLE_DNNL1:-no}
 
 debug "ROOT_CONTAINER=${ROOT_CONTAINER}"
 debug "TF_ROOT_CONTAINER_TAG=${TF_ROOT_CONTAINER_TAG}"
@@ -80,6 +81,7 @@ debug "ENABLE_SECURE_BUILD=${ENABLE_SECURE_BUILD}"
 debug "TMP_DIR=${TMP_DIR}"
 debug "BAZEL_VERSION=${BAZEL_VERSION}"
 debug "BUILD_PY2_CONTAINERS=${BUILD_PY2_CONTAINERS}"
+debug "ENABLE_DNNL1=${ENABLE_DNNL1}"
 
 function build_container()
 {
@@ -117,6 +119,11 @@ function build_container()
   #Add build arg for Secure Build
   if [[ ${ENABLE_SECURE_BUILD} == "yes" ]]; then
     TF_DOCKER_BUILD_ARGS+=("--build-arg ENABLE_SECURE_BUILD=--secure-build")
+  fi
+
+  # Add build arg for DNNL1
+  if [[ ${ENABLE_DNNL1} == "yes" ]]; then
+    TF_DOCKER_BUILD_ARGS+=("--build-arg ENABLE_DNNL1=--enable-dnnl1")
   fi
 
   # BAZEL Version
@@ -294,8 +301,6 @@ do
       if [[ "${PYTHON}" == "python3" ]]; then
         TF_DOCKER_BUILD_ARGS+=("--build-arg WHL_DIR=/tmp/pip3")
         TF_DOCKER_BUILD_ARGS+=("--build-arg PIP=pip3")
-        FINAL_TAG="${FINAL_TAG}-py3"
-        ROOT_CONTAINER_TAG="${ROOT_CONTAINER_TAG}-py3"
       fi
 
       TF_DOCKER_BUILD_ARGS+=("--build-arg PYTHON=${PYTHON}")
@@ -308,4 +313,3 @@ do
       tag_container "${TEMP_IMAGE_NAME}" "${FINAL_IMAGE_NAME}:${FINAL_TAG}"
   done
 done
-

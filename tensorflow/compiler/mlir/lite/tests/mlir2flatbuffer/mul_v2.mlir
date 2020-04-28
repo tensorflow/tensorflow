@@ -58,6 +58,12 @@ func @main(tensor<3x!quant.uniform<i8:f32, 0.1>>) -> tensor<3x!quant.uniform<i8:
   // CHECK-NEXT:    data: [ 2, 2, 2 ]
   // CHECK-NEXT:  }, {
   // CHECK-EMPTY:
+  // CHECK-NEXT:  }, {
+  // CHECK-NEXT:    data: [ 49, 46, 49, 52, 46, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+  // CHECK-NEXT:  } ],
+  // CHECK-NEXT:  metadata: [ {
+  // CHECK-NEXT:  name: "min_runtime_version",
+  // CHECK-NEXT:  buffer: 4
   // CHECK-NEXT:  } ]
   // CHECK-NEXT:}
 

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <type_traits>
 
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
@@ -1496,37 +1496,37 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
     // For the current (filter_x, filter_y) point in the filter,
     // compute the boundaries of the corresponding output row segment.
-    int out_x_loop_start_unclampled = 0;
-    int out_x_loop_end_unclampled = 0;
+    int out_x_loop_start_unclamped = 0;
+    int out_x_loop_end_unclamped = 0;
     if (kAllowStrided) {
       if (stride == 2) {
-        out_x_loop_start_unclampled =
+        out_x_loop_start_unclamped =
             (pad_width - dilation_factor * filter_x + 1) / 2;
-        out_x_loop_end_unclampled =
+        out_x_loop_end_unclamped =
             (pad_width + input_width - dilation_factor * filter_x + 1) / 2;
       } else if (stride == 4) {
-        out_x_loop_start_unclampled =
+        out_x_loop_start_unclamped =
             (pad_width - dilation_factor * filter_x + 3) / 4;
-        out_x_loop_end_unclampled =
+        out_x_loop_end_unclamped =
             (pad_width + input_width - dilation_factor * filter_x + 3) / 4;
       } else {
-        out_x_loop_start_unclampled =
+        out_x_loop_start_unclamped =
             (pad_width - dilation_factor * filter_x + stride - 1) / stride;
-        out_x_loop_end_unclampled = (pad_width + input_width -
-                                     dilation_factor * filter_x + stride - 1) /
-                                    stride;
+        out_x_loop_end_unclamped = (pad_width + input_width -
+                                    dilation_factor * filter_x + stride - 1) /
+                                   stride;
       }
     } else {
-      out_x_loop_start_unclampled = pad_width - dilation_factor * filter_x;
-      out_x_loop_end_unclampled =
+      out_x_loop_start_unclamped = pad_width - dilation_factor * filter_x;
+      out_x_loop_end_unclamped =
           pad_width + input_width - dilation_factor * filter_x;
     }
     // The kernel will have to iterate on the segment of the
     // output row that starts at out_x_loop_start and out_x_loop_end.
     const int out_x_loop_start =
-        std::max(out_x_buffer_start, out_x_loop_start_unclampled);
+        std::max(out_x_buffer_start, out_x_loop_start_unclamped);
     const int out_x_loop_end =
-        std::min(out_x_buffer_end, out_x_loop_end_unclampled);
+        std::min(out_x_buffer_end, out_x_loop_end_unclamped);
 
     int32* acc_buffer_ptr =
         acc_buffer + (out_x_loop_start - out_x_buffer_start) * output_depth;
@@ -2023,7 +2023,7 @@ inline void DepthwiseConvWithRounding(
     using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
     DotProduct3x3KernelType kernel_type =
         optimized_ops::depthwise_conv::CategorizeDotProductKernel(
-            input_shape, filter_shape, params);
+            input_shape, filter_shape, output_shape, params);
     if (kernel_type != DotProduct3x3KernelType::kNone) {
       ruy::profiler::ScopeLabel specialized_label(
           "DepthwiseConv/8bit/3x3XDotProduct");

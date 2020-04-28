@@ -12,17 +12,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdlib>
 #include <fstream>
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/platform/logging.h"
+#include "absl/types/optional.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/stages/image_classification_stage.h"
+#include "tensorflow/lite/tools/evaluation/tasks/task_executor.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
+#include "tensorflow/lite/tools/logging.h"
 
 namespace tflite {
 namespace evaluation {
@@ -36,8 +40,6 @@ constexpr char kBlacklistFilePathFlag[] = "blacklist_file_path";
 constexpr char kNumImagesFlag[] = "num_images";
 constexpr char kInterpreterThreadsFlag[] = "num_interpreter_threads";
 constexpr char kDelegateFlag[] = "delegate";
-constexpr char kNnapiDelegate[] = "nnapi";
-constexpr char kGpuDelegate[] = "gpu";
 
 template <typename T>
 std::vector<T> GetFirstN(const std::vector<T>& v, int n) {
@@ -46,106 +48,83 @@ std::vector<T> GetFirstN(const std::vector<T>& v, int n) {
   return result;
 }
 
-bool EvaluateModel(const std::string& model_file_path,
-                   const std::vector<ImageLabel>& image_labels,
-                   const std::vector<std::string>& model_labels,
-                   std::string delegate, std::string output_file_path,
-                   int num_interpreter_threads) {
-  EvaluationStageConfig eval_config;
-  eval_config.set_name("image_classification");
-  auto* classification_params = eval_config.mutable_specification()
-                                    ->mutable_image_classification_params();
-  auto* inference_params = classification_params->mutable_inference_params();
-  inference_params->set_model_file_path(model_file_path);
-  inference_params->set_num_threads(num_interpreter_threads);
-  if (delegate == kNnapiDelegate) {
-    inference_params->set_delegate(TfliteInferenceParams::NNAPI);
-  } else if (delegate == kGpuDelegate) {
-    inference_params->set_delegate(TfliteInferenceParams::GPU);
-  }
-  classification_params->mutable_topk_accuracy_eval_params()->set_k(10);
+class ImagenetClassification : public TaskExecutor {
+ public:
+  ImagenetClassification(int* argc, char* argv[]);
+  ~ImagenetClassification() override {}
 
-  ImageClassificationStage eval(eval_config);
+  // If the run is successful, the latest metrics will be returned.
+  absl::optional<EvaluationStageMetrics> Run() final;
 
-  eval.SetAllLabels(model_labels);
-  if (eval.Init() != kTfLiteOk) return false;
+ private:
+  void OutputResult(const EvaluationStageMetrics& latest_metrics) const;
+  std::string model_file_path_;
+  std::string ground_truth_images_path_;
+  std::string ground_truth_labels_path_;
+  std::string model_output_labels_path_;
+  std::string blacklist_file_path_;
+  std::string output_file_path_;
+  std::string delegate_;
+  int num_images_;
+  int num_interpreter_threads_;
+  DelegateProviders delegate_providers_;
+};
 
-  const int step = image_labels.size() / 100;
-  for (int i = 0; i < image_labels.size(); ++i) {
-    if (step > 1 && i % step == 0) {
-      LOG(INFO) << "Evaluated: " << i / step << "%";
-    }
-
-    eval.SetInputs(image_labels[i].image, image_labels[i].label);
-    if (eval.Run() != kTfLiteOk) return false;
-  }
-
-  std::ofstream metrics_ofile;
-  metrics_ofile.open(output_file_path, std::ios::out);
-  metrics_ofile << eval.LatestMetrics().DebugString();
-  metrics_ofile.close();
-
-  return true;
-}
-
-int Main(int argc, char* argv[]) {
-  // Command Line Flags.
-  std::string model_file_path;
-  std::string ground_truth_images_path;
-  std::string ground_truth_labels_path;
-  std::string model_output_labels_path;
-  std::string blacklist_file_path;
-  std::string output_file_path;
-  std::string delegate;
-  int num_images = 0;
-  int num_interpreter_threads = 1;
+ImagenetClassification::ImagenetClassification(int* argc, char* argv[])
+    : num_images_(0), num_interpreter_threads_(1) {
   std::vector<tflite::Flag> flag_list = {
-      tflite::Flag::CreateFlag(kModelFileFlag, &model_file_path,
+      tflite::Flag::CreateFlag(kModelFileFlag, &model_file_path_,
                                "Path to test tflite model file."),
       tflite::Flag::CreateFlag(
-          kModelOutputLabelsFlag, &model_output_labels_path,
+          kModelOutputLabelsFlag, &model_output_labels_path_,
           "Path to labels that correspond to output of model."
           " E.g. in case of mobilenet, this is the path to label "
           "file where each label is in the same order as the output"
           " of the model."),
       tflite::Flag::CreateFlag(
-          kGroundTruthImagesPathFlag, &ground_truth_images_path,
+          kGroundTruthImagesPathFlag, &ground_truth_images_path_,
           "Path to ground truth images. These will be evaluated in "
           "alphabetical order of filename"),
       tflite::Flag::CreateFlag(
-          kGroundTruthLabelsFlag, &ground_truth_labels_path,
+          kGroundTruthLabelsFlag, &ground_truth_labels_path_,
           "Path to ground truth labels, corresponding to alphabetical ordering "
           "of ground truth images."),
       tflite::Flag::CreateFlag(
-          kBlacklistFilePathFlag, &blacklist_file_path,
+          kBlacklistFilePathFlag, &blacklist_file_path_,
           "Path to blacklist file (optional) where each line is a single "
           "integer that is "
           "equal to index number of blacklisted image."),
-      tflite::Flag::CreateFlag(kOutputFilePathFlag, &output_file_path,
+      tflite::Flag::CreateFlag(kOutputFilePathFlag, &output_file_path_,
                                "File to output metrics proto to."),
-      tflite::Flag::CreateFlag(kNumImagesFlag, &num_images,
+      tflite::Flag::CreateFlag(kNumImagesFlag, &num_images_,
                                "Number of examples to evaluate, pass 0 for all "
                                "examples. Default: 0"),
       tflite::Flag::CreateFlag(
-          kInterpreterThreadsFlag, &num_interpreter_threads,
+          kInterpreterThreadsFlag, &num_interpreter_threads_,
           "Number of interpreter threads to use for inference."),
-      tflite::Flag::CreateFlag(kDelegateFlag, &delegate,
-                               "Delegate to use for inference, if available. "
-                               "Must be one of {'nnapi', 'gpu'}"),
+      tflite::Flag::CreateFlag(
+          kDelegateFlag, &delegate_,
+          "Delegate to use for inference, if available. "
+          "Must be one of {'nnapi', 'gpu', 'hexagon', 'xnnpack'}"),
   };
-  tflite::Flags::Parse(&argc, const_cast<const char**>(argv), flag_list);
+  tflite::Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
+  delegate_providers_.InitFromCmdlineArgs(argc, const_cast<const char**>(argv));
+}
 
+absl::optional<EvaluationStageMetrics> ImagenetClassification::Run() {
   // Process images in filename-sorted order.
   std::vector<std::string> image_files, ground_truth_image_labels;
-  TF_LITE_ENSURE_STATUS(GetSortedFileNames(
-      StripTrailingSlashes(ground_truth_images_path), &image_files));
-  if (!ReadFileLines(ground_truth_labels_path, &ground_truth_image_labels)) {
-    LOG(ERROR) << "Could not read ground truth labels file";
-    return 0;
+  if (GetSortedFileNames(StripTrailingSlashes(ground_truth_images_path_),
+                         &image_files) != kTfLiteOk) {
+    return absl::nullopt;
+  }
+  if (!ReadFileLines(ground_truth_labels_path_, &ground_truth_image_labels)) {
+    TFLITE_LOG(ERROR) << "Could not read ground truth labels file";
+    return absl::nullopt;
   }
   if (image_files.size() != ground_truth_image_labels.size()) {
-    LOG(ERROR) << "Number of images and ground truth labels is not same";
-    return 0;
+    TFLITE_LOG(ERROR) << "Number of images and ground truth labels is not same";
+    return absl::nullopt;
   }
   std::vector<ImageLabel> image_labels;
   image_labels.reserve(image_files.size());
@@ -154,30 +133,79 @@ int Main(int argc, char* argv[]) {
   }
 
   // Filter out blacklisted/unwanted images.
-  TF_LITE_ENSURE_STATUS(
-      FilterBlackListedImages(blacklist_file_path, &image_labels));
-  if (num_images > 0) {
-    image_labels = GetFirstN(image_labels, num_images);
+  if (FilterBlackListedImages(blacklist_file_path_, &image_labels) !=
+      kTfLiteOk) {
+    return absl::nullopt;
+  }
+  if (num_images_ > 0) {
+    image_labels = GetFirstN(image_labels, num_images_);
   }
 
   std::vector<std::string> model_labels;
-  if (!ReadFileLines(model_output_labels_path, &model_labels)) {
-    LOG(ERROR) << "Could not read model output labels file";
-    return 0;
+  if (!ReadFileLines(model_output_labels_path_, &model_labels)) {
+    TFLITE_LOG(ERROR) << "Could not read model output labels file";
+    return absl::nullopt;
   }
 
-  if (!EvaluateModel(model_file_path, image_labels, model_labels, delegate,
-                     output_file_path, num_interpreter_threads)) {
-    LOG(ERROR) << "Could not evaluate model";
-    return 0;
+  EvaluationStageConfig eval_config;
+  eval_config.set_name("image_classification");
+  auto* classification_params = eval_config.mutable_specification()
+                                    ->mutable_image_classification_params();
+  auto* inference_params = classification_params->mutable_inference_params();
+  inference_params->set_model_file_path(model_file_path_);
+  inference_params->set_num_threads(num_interpreter_threads_);
+  inference_params->set_delegate(ParseStringToDelegateType(delegate_));
+  classification_params->mutable_topk_accuracy_eval_params()->set_k(10);
+
+  ImageClassificationStage eval(eval_config);
+
+  eval.SetAllLabels(model_labels);
+  if (eval.Init(&delegate_providers_) != kTfLiteOk) return absl::nullopt;
+
+  const int step = image_labels.size() / 100;
+  for (int i = 0; i < image_labels.size(); ++i) {
+    if (step > 1 && i % step == 0) {
+      TFLITE_LOG(INFO) << "Evaluated: " << i / step << "%";
+    }
+    eval.SetInputs(image_labels[i].image, image_labels[i].label);
+    if (eval.Run() != kTfLiteOk) return absl::nullopt;
   }
 
-  return 0;
+  const auto latest_metrics = eval.LatestMetrics();
+  OutputResult(latest_metrics);
+  return absl::make_optional(latest_metrics);
+}
+
+void ImagenetClassification::OutputResult(
+    const EvaluationStageMetrics& latest_metrics) const {
+  if (!output_file_path_.empty()) {
+    std::ofstream metrics_ofile;
+    metrics_ofile.open(output_file_path_, std::ios::out);
+    metrics_ofile << latest_metrics.SerializeAsString();
+    metrics_ofile.close();
+  }
+
+  TFLITE_LOG(INFO) << "Num evaluation runs: " << latest_metrics.num_runs();
+  const auto& metrics =
+      latest_metrics.process_metrics().image_classification_metrics();
+  const auto& preprocessing_latency = metrics.pre_processing_latency();
+  TFLITE_LOG(INFO) << "Preprocessing latency: avg="
+                   << preprocessing_latency.avg_us() << "(us), std_dev="
+                   << preprocessing_latency.std_deviation_us() << "(us)";
+  const auto& inference_latency = metrics.inference_latency();
+  TFLITE_LOG(INFO) << "Inference latency: avg=" << inference_latency.avg_us()
+                   << "(us), std_dev=" << inference_latency.std_deviation_us()
+                   << "(us)";
+  const auto& accuracy_metrics = metrics.topk_accuracy_metrics();
+  for (int i = 0; i < accuracy_metrics.topk_accuracies_size(); ++i) {
+    TFLITE_LOG(INFO) << "Top-" << i + 1
+                     << " Accuracy: " << accuracy_metrics.topk_accuracies(i);
+  }
+}
+
+std::unique_ptr<TaskExecutor> CreateTaskExecutor(int* argc, char* argv[]) {
+  return std::unique_ptr<TaskExecutor>(new ImagenetClassification(argc, argv));
 }
 
 }  // namespace evaluation
 }  // namespace tflite
-
-int main(int argc, char* argv[]) {
-  return tflite::evaluation::Main(argc, argv);
-}

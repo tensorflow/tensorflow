@@ -41,13 +41,8 @@ void ReverseSortInPlace(int* values, int* ids, int size) {
 GreedyMemoryPlanner::GreedyMemoryPlanner(unsigned char* scratch_buffer,
                                          int scratch_buffer_size)
     : buffer_count_(0), need_to_calculate_offsets_(true) {
-  const int per_buffer_size = sizeof(BufferRequirements) +  // requirements_
-                              sizeof(int) +  // buffer_sizes_sorted_by_size_
-                              sizeof(int) +  // buffer_ids_sorted_by_size_
-                              sizeof(ListEntry) +  // buffers_sorted_by_offset_
-                              sizeof(int);         // buffer_offsets_;
   // Allocate the arrays we need within the scratch buffer arena.
-  max_buffer_count_ = scratch_buffer_size / per_buffer_size;
+  max_buffer_count_ = scratch_buffer_size / per_buffer_size();
 
   unsigned char* next_free = scratch_buffer;
   requirements_ = reinterpret_cast<BufferRequirements*>(next_free);
@@ -73,7 +68,8 @@ TfLiteStatus GreedyMemoryPlanner::AddBuffer(
     tflite::ErrorReporter* error_reporter, int size, int first_time_used,
     int last_time_used) {
   if (buffer_count_ >= max_buffer_count_) {
-    error_reporter->Report("Too many buffers (max is %d)", max_buffer_count_);
+    TF_LITE_REPORT_ERROR(error_reporter, "Too many buffers (max is %d)",
+                         max_buffer_count_);
     return kTfLiteError;
   }
   BufferRequirements* current = &requirements_[buffer_count_];
@@ -240,17 +236,19 @@ void GreedyMemoryPlanner::CalculateOffsetsIfNeeded() {
   }
 }
 
-int GreedyMemoryPlanner::GetMaximumMemorySize() {
+size_t GreedyMemoryPlanner::GetMaximumMemorySize() {
   CalculateOffsetsIfNeeded();
   if (buffer_count_ == 0) {
     return 0;
   }
   ListEntry* entry = &buffers_sorted_by_offset_[0];
-  int max_size = 0;
+  size_t max_size = 0;
   while (entry) {
     BufferRequirements* requirements =
         &requirements_[entry->requirements_index];
-    const int current_size = entry->offset + requirements->size;
+    // TODO(b/148246793): Update all size and offset variables types from
+    //                    int to size_t
+    const size_t current_size = entry->offset + requirements->size;
     if (current_size > max_size) {
       max_size = current_size;
     }
@@ -266,7 +264,8 @@ void GreedyMemoryPlanner::PrintMemoryPlan(ErrorReporter* error_reporter) {
   CalculateOffsetsIfNeeded();
 
   for (int i = 0; i < buffer_count_; ++i) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "Planner buffer ID: %d, calculated offset: %d, size required: %d, "
         "first_time_created: %d, "
         "last_time_used: %d",
@@ -327,7 +326,7 @@ void GreedyMemoryPlanner::PrintMemoryPlan(ErrorReporter* error_reporter) {
       }
     }
     line[kLineWidth] = 0;
-    error_reporter->Report("%s", line);
+    TF_LITE_REPORT_ERROR(error_reporter, "%s", (const char*)line);
   }
 }
 
@@ -337,8 +336,9 @@ TfLiteStatus GreedyMemoryPlanner::GetOffsetForBuffer(
     tflite::ErrorReporter* error_reporter, int buffer_index, int* offset) {
   CalculateOffsetsIfNeeded();
   if ((buffer_index < 0) || (buffer_index >= buffer_count_)) {
-    error_reporter->Report("buffer index %d is outside range 0 to %d",
-                           buffer_index, buffer_count_);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "buffer index %d is outside range 0 to %d",
+                         buffer_index, buffer_count_);
     return kTfLiteError;
   }
   *offset = buffer_offsets_[buffer_index];
@@ -374,10 +374,10 @@ bool GreedyMemoryPlanner::DoAnyBuffersOverlap(ErrorReporter* error_reporter) {
         continue;
       }
       were_overlaps_found = true;
-      error_reporter->Report(
-          "Overlap: %d (%d=>%d, %d->%d) vs %d (%d=>%d, %d->%d)", i,
-          a_first_time_used, a_last_time_used, a_start_offset, a_end_offset, j,
-          b_first_time_used, b_last_time_used, b_start_offset, b_end_offset);
+      TF_LITE_REPORT_ERROR(
+          error_reporter, "Overlap: %d (%d=>%d, %d->%d) vs %d (%d=>%d, %d->%d)",
+          i, a_first_time_used, a_last_time_used, a_start_offset, a_end_offset,
+          j, b_first_time_used, b_last_time_used, b_start_offset, b_end_offset);
     }
   }
   return were_overlaps_found;

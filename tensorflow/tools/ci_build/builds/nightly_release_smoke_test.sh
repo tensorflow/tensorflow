@@ -18,6 +18,9 @@
 set -e
 set -x
 
+CPU_MAX_WHL_SIZE=190M
+GPU_MAX_WHL_SIZE=510M
+
 function run_smoke_test() {
   VENV_TMP_DIR=$(mktemp -d)
 
@@ -35,6 +38,9 @@ function run_smoke_test() {
   # Test TensorflowFlow imports
   test_tf_imports
 
+  # Test TensorFlow whl file size
+  test_tf_whl_size
+
   RESULT=$?
   # Deactivate from virtualenv.
   deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
@@ -49,13 +55,15 @@ function test_tf_imports() {
   # test for basic import and perform tf.add operation.
   RET_VAL=$(python -c "import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)")
   if ! [[ ${RET_VAL} == *'(4,)'* ]]; then
+    echo "Unexpected return value: ${RET_VALUE}"
     echo "PIP test on virtualenv FAILED, will not upload ${WHL_NAME} package."
      return 1
   fi
 
   # test basic keras is available
   RET_VAL=$(python -c "import tensorflow as tf; print(tf.keras.__name__)")
-  if ! [[ ${RET_VAL} == *'tensorflow_core.python.keras.api._v2.keras'* ]]; then
+  if ! [[ ${RET_VAL} == *'tensorflow.keras'* ]]; then
+    echo "Unexpected return value: ${RET_VALUE}"
     echo "PIP test on virtualenv FAILED, will not upload ${WHL_NAME} package."
     return 1
   fi
@@ -63,6 +71,7 @@ function test_tf_imports() {
   # similar test for estimator
   RET_VAL=$(python -c "import tensorflow as tf; print(tf.estimator.__name__)")
   if ! [[ ${RET_VAL} == *'tensorflow_estimator.python.estimator.api._v2.estimator'* ]]; then
+    echo "Unexpected return value: ${RET_VALUE}"
     echo "PIP test on virtualenv FAILED, will not upload ${WHL_NAME} package."
     return 1
   fi
@@ -71,6 +80,26 @@ function test_tf_imports() {
 
   popd
   return $RESULT
+}
+
+function test_tf_whl_size() {
+  # We do not need a separate check for MacOS regular binaries.
+  # We check for the `_cpu` string in the whl file name.
+  if [[ "$WHL_NAME" == *"_cpu"* ]]; then
+    # Check CPU whl size.
+    if [[ $(find $WHL_NAME -type f -size +${CPU_MAX_WHL_SIZE}) ]]; then
+      echo "The CPU whl size has exceeded ${CPU_MAX_WHL_SIZE}MB. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
+  else
+    # Check GPU whl size.
+    if [[ $(find $WHL_NAME -type f -size +${GPU_MAX_WHL_SIZE}) ]]; then
+      echo "The GPU whl size has exceeded ${GPU_MAX_WHL_SIZE}MB. To keep
+within pypi's CDN distribution limit, we must not exceed that threshold."
+      return 1
+    fi
+  fi
 }
 
 ###########################################################################

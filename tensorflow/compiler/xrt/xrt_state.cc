@@ -588,7 +588,8 @@ xla::StatusOr<xla::ShapedBuffer> XRTTupleAllocation::ToShapedBuffer() {
                                   allocator_->platform(), device_ordinal_);
   for (const auto& index_buffer : buffers_) {
     if (index_buffer.second == nullptr ||
-        index_buffer.second->allocation().is_null()) {
+        (index_buffer.second->allocation().is_null() &&
+         index_buffer.second->allocation().size() > 0)) {
       return errors::InvalidArgument("Literal buffer at index ",
                                      index_buffer.first.ToString(),
                                      " has been released");
@@ -632,7 +633,7 @@ Status XRTTupleAllocation::AliasBufferFrom(const XRTTupleAllocation& source,
   *buffers_.mutable_element(dest_index) = source_buffer;
   source_buffer->Ref();
   if (dest_buffer != nullptr) {
-    // If we handed over the ownership of a buffer in ToDeviceMemoryTree(), we
+    // If we handed over the ownership of a buffer in ToExecutionInput(), we
     // will be called here on the way back from execution, to alias back the
     // buffer at that index. In that case the buffers will be the same. So we
     // need to discard the memory at the destination buffer, before releasing
@@ -646,30 +647,32 @@ Status XRTTupleAllocation::AliasBufferFrom(const XRTTupleAllocation& source,
   return Status::OK();
 }
 
-xla::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>>
-XRTTupleAllocation::ToDeviceMemoryTree(
+xla::StatusOr<xla::ExecutionInput> XRTTupleAllocation::ToExecutionInput(
     const std::function<xla::StatusOr<bool>(const xla::ShapeIndex&)>&
-        release_checker) {
-  xla::ShapeTree<xla::MaybeOwningDeviceMemory> shaped_tree(on_device_shape());
+        alias_checker) {
+  xla::ExecutionInput result(on_device_shape());
   for (const auto& index_buffer : buffers_) {
     if (index_buffer.second == nullptr ||
-        index_buffer.second->allocation().is_null()) {
+        (index_buffer.second->allocation().is_null() &&
+         index_buffer.second->allocation().size() > 0)) {
       return errors::InvalidArgument("Literal buffer at index ",
                                      index_buffer.first.ToString(),
                                      " has been released");
     }
-    TF_ASSIGN_OR_RETURN(bool should_release,
-                        release_checker(index_buffer.first));
-    if (!should_release) {
-      *shaped_tree.mutable_element(index_buffer.first) =
-          index_buffer.second->allocation();
+    TF_ASSIGN_OR_RETURN(bool should_alias, alias_checker(index_buffer.first));
+    if (!should_alias) {
+      result.SetBuffer(
+          index_buffer.first,
+          xla::MaybeOwningDeviceMemory(index_buffer.second->allocation()));
     } else {
       // We keep the ownership of the device memory here.
-      *shaped_tree.mutable_element(index_buffer.first) = se::OwningDeviceMemory(
-          index_buffer.second->allocation(), device_ordinal_, allocator_);
+      result.SetUnownedBuffer(
+          index_buffer.first,
+          xla::MaybeOwningDeviceMemory(se::OwningDeviceMemory(
+              index_buffer.second->allocation(), device_ordinal_, allocator_)));
     }
   }
-  return std::move(shaped_tree);
+  return std::move(result);
 }
 
 }  // namespace tensorflow

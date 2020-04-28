@@ -18,6 +18,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include "absl/base/call_once.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
@@ -44,20 +46,21 @@ using se::rocm::ScopedActivateExecutorContext;
 int NcclManager::instance_count = 0;
 #endif
 
-#define NCCL_RETURN_IF_ERROR(...)                               \
-  do {                                                          \
-    ncclResult_t nccl_status = (__VA_ARGS__);                   \
-    if (nccl_status != ncclSuccess) {                           \
-      return errors::Internal(ncclGetErrorString(nccl_status)); \
-    }                                                           \
+#define NCCL_RETURN_IF_ERROR(...)                                        \
+  do {                                                                   \
+    ncclResult_t nccl_status = (__VA_ARGS__);                            \
+    if (nccl_status != ncclSuccess) {                                    \
+      return errors::Internal("NCCL: ", ncclGetErrorString(nccl_status), \
+                              ". Set NCCL_DEBUG=WARN for detail.");      \
+    }                                                                    \
   } while (0)
 
-#define CUDA_RETURN_IF_ERROR(...)                               \
-  do {                                                          \
-    cudaError_t cuda_status = (__VA_ARGS__);                    \
-    if (cuda_status != cudaSuccess) {                           \
-      return errors::Internal(cudaGetErrorString(cuda_status)); \
-    }                                                           \
+#define CUDA_RETURN_IF_ERROR(...)                                         \
+  do {                                                                    \
+    cudaError_t cuda_status = (__VA_ARGS__);                              \
+    if (cuda_status != cudaSuccess) {                                     \
+      return errors::Internal("CUDA: ", cudaGetErrorString(cuda_status)); \
+    }                                                                     \
   } while (0)
 
 // Contains data for a single stream used for nccl communication; this includes
@@ -85,8 +88,8 @@ struct NcclManager::NcclStream : public core::RefCounted {
   mutex mu;
   condition_variable cv;
   // Has (collective, participant_idx) pairs.
-  std::deque<std::pair<Collective*, int>> pending_launches_ GUARDED_BY(mu);
-  bool shutdown_requested GUARDED_BY(mu) = false;
+  std::deque<std::pair<Collective*, int>> pending_launches_ TF_GUARDED_BY(mu);
+  bool shutdown_requested TF_GUARDED_BY(mu) = false;
 };
 
 struct NcclManager::CommunicatorMember {
@@ -113,6 +116,10 @@ struct NcclManager::Communicator {
 };
 
 namespace {
+
+static constexpr DataTypeSet kValidDataTypes =
+    ToSet(DT_HALF) | ToSet(DT_FLOAT) | ToSet(DT_DOUBLE) | ToSet(DT_INT32) |
+    ToSet(DT_INT64);
 
 ncclDataType_t ToNcclType(DataType t) {
   switch (t) {
@@ -237,8 +244,8 @@ NcclManager* NcclManager::instance() {
 #if TENSORFLOW_USE_ROCM
   // singleton does not count against total instances
   // see comment above in Collective constructor concerning ROCm platform
-  static std::once_flag once;
-  std::call_once(once, [] { --NcclManager::instance_count; });
+  static absl::once_flag once;
+  absl::call_once(once, [] { --NcclManager::instance_count; });
 #endif
   return instance;
 }
@@ -445,6 +452,7 @@ void NcclManager::AddReduceSend(std::unique_ptr<Participant> participant,
 void NcclManager::AddReduceRecv(std::unique_ptr<Participant> participant,
                                 const Context& context,
                                 ncclRedOp_t reduction_op) {
+  participant->root = true;
   AddParticipant(std::move(participant), context, kReduce, reduction_op);
 }
 
@@ -546,6 +554,13 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
           "Collective ", collective->collective_key, " already has root_rank ",
           collective->root_rank, " but new participant has root_rank ",
           context.source_rank);
+    }
+    if (collective->status.ok() &&
+        !kValidDataTypes.Contains(collective->data_type)) {
+      collective->status = errors::Internal(
+          "Collective ", collective->collective_key,
+          " expected data types compatible with NCCL but instead got ",
+          DataTypeString(collective->data_type));
     }
 
     if (context.source_rank >= 0) {

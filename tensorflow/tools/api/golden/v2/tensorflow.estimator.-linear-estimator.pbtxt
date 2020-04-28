@@ -22,7 +22,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'head\', \'feature_columns\', \'model_dir\', \'optimizer\', \'config\', \'sparse_combiner\'], varargs=None, keywords=None, defaults=[\'None\', \'Ftrl\', \'None\', \'sum\'], "
+    argspec: "args=[\'self\', \'head\', \'feature_columns\', \'model_dir\', \'optimizer\', \'config\', \'sparse_combiner\', \'warm_start_from\'], varargs=None, keywords=None, defaults=[\'None\', \'Ftrl\', \'None\', \'sum\', \'None\'], "
   }
   member_method {
     name: "eval_dir"

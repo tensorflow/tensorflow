@@ -67,6 +67,7 @@ py_library(
     deps = [
         ":base_cluster_resolver_py",
         "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/tpu/client",
     ] + tf_additional_rpc_deps(),
 )
@@ -151,6 +152,7 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training_server_lib",
         "//tensorflow/python/tpu/client",
+        "@absl_py//absl/testing:flagsaver",
     ],
 )
 

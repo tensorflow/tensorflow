@@ -385,10 +385,7 @@ TEST(ArrayOpsTest, Unique_ShapeFn) {
   ShapeInferenceTestOp op("Unique");
   INFER_OK(op, "?", "[?];in0");
   INFER_OK(op, "[5]", "[?];in0");
-  INFER_ERROR(
-      "Shape must be rank 1 but is rank 5 for '' (op: '') with input shapes: "
-      "[1,2,3,?,5].",
-      op, "[1,2,3,?,5]");
+  INFER_ERROR("Shape must be rank 1 but is rank 5", op, "[1,2,3,?,5]");
 }
 
 TEST(ArrayOpsTest, UniqueWithCounts_ShapeFn) {
@@ -865,12 +862,14 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // No valid shape provided.
   INFER_OK(op, "?;?", "?");
   INFER_OK(op, "[?];?", "?");
+  INFER_OK(op, "?;[?]", "?");
   INFER_OK(op, "[?];[?]", "?");
   INFER_OK(op, "[4];[?]", "?");
 
   // All dimensions provided.
   Tensor new_shape = test::AsTensor<int32>({1, 2, 3});
   op.input_tensors[1] = &new_shape;
+  INFER_OK(op, "?;[3]", "[1,2,3]");
   INFER_OK(op, "[?];[3]", "[1,2,3]");
   INFER_OK(op, "[6];[3]", "[1,2,3]");
   // The number of elements should match for the reshape to succeed.
@@ -881,6 +880,7 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // Unknown dimensions.
   // Flatten:
   new_shape = test::AsTensor<int32>({-1});
+  INFER_OK(op, "?;[1]", "[?]");
   INFER_OK(op, "[?];[1]", "[d0_0]");
   INFER_OK(op, "[2,2];[1]", "[4]");
   // The first dimension is inferred:
@@ -893,6 +893,7 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // Multiple missing dimensions cannot be inferred.
   new_shape = test::AsTensor<int32>({-1, -1, 2});
   INFER_OK(op, "[8];[3]", "[?,?,2]");
+  INFER_OK(op, "?;[3]", "[?,?,2]");
 
   // Symbolic shape propagation
   new_shape = test::AsTensor<int32>({-1, 2, 3});
@@ -1362,7 +1363,7 @@ TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {
   INFER_ERROR("Dimension size must be evenly divisible by 2 but is 13", op,
               "[1,10,10,3];[2,2]");
 
-  // Negative paddsings
+  // Negative paddings
   paddings = test::AsTensor<int32>({1, -2, 3, 4}, {{2, 2}});
   op.input_tensors[1] = &paddings;
   INFER_ERROR("cannot be negative", op, "[1,10,10,3];[2,2]");
@@ -1441,6 +1442,16 @@ TEST(ArrayOpsTest, SpaceToBatchND_ShapeFn) {
     op.input_tensors[2] = nullptr;
   }
 
+  {
+    Tensor block_shape = test::AsTensor<int32>({});
+    op.input_tensors[1] = &block_shape;
+    Tensor paddings = test::AsTensor<int32>({});
+    op.input_tensors[2] = &paddings;
+    INFER_OK(op, "?;[0];[0,2]", "?");
+    op.input_tensors[1] = nullptr;
+    op.input_tensors[2] = nullptr;
+  }
+
   INFER_ERROR("rank", op, "[1,3,3,1];[2];[1]");
   INFER_ERROR("shape", op, "[1,3,3,1];[2];[1,2]");
 }
@@ -1482,7 +1493,7 @@ TEST(ArrayOpsTest, BatchToSpace_ShapeFn) {
   INFER_ERROR("Negative dimension size caused by subtracting", op,
               "[4,8,8,3];[2,2]");
 
-  // Negative paddsings
+  // Negative paddings
   croppings = test::AsTensor<int32>({1, -2, 3, 4}, {{2, 2}});
   op.input_tensors[1] = &croppings;
   INFER_ERROR("cannot be negative", op, "[4,8,8,3];[2,2]");

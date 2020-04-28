@@ -44,6 +44,7 @@ Status TRTOptimizationPass::Init(
   if (config == nullptr) {
     return Status::OK();
   }
+  VLOG(1) << "config = " << config->DebugString();
   const auto params = config->parameter_map();
   if (params.count("minimum_segment_size")) {
     minimum_segment_size_ = params.at("minimum_segment_size").i();
@@ -70,6 +71,9 @@ Status TRTOptimizationPass::Init(
   if (params.count("trt_logger")) {
     trt_logger_name_ = params.at("trt_logger").s();
   }
+  if (params.count("allow_build_at_runtime")) {
+    allow_build_at_runtime_ = params.at("allow_build_at_runtime").b();
+  }
   if (params.count("use_implicit_batch")) {
     use_implicit_batch_ = params.at("use_implicit_batch").b();
   }
@@ -89,7 +93,7 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
     const auto dev_names = cluster->GetDeviceNames();
     if (!dev_names.empty()) {
       LOG(INFO) << offset << " Device names:";
-      for (const auto s : dev_names) {
+      for (const auto& s : dev_names) {
         LOG(INFO) << offset2 << s;
       }
     }
@@ -97,7 +101,7 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
     auto status = cluster->GetPeakMemoryUsage(&peak_mem);
     if (status == Status::OK()) {
       LOG(INFO) << offset << "Peak Memory Usage :";
-      for (auto s : peak_mem) {
+      for (const auto& s : peak_mem) {
         LOG(INFO) << offset2 << s.first << " = " << s.second;
       }
     }
@@ -105,7 +109,7 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
     const auto dev_props = cluster->GetDevices();
     if (!dev_props.empty()) {
       LOG(INFO) << offset << "Device properties:";
-      for (auto k : dev_props) {
+      for (const auto& k : dev_props) {
         LOG(INFO) << offset2 << k.first;
         const auto& dt = k.second;
         LOG(INFO) << offset3 << "type          = " << dt.type();
@@ -123,7 +127,7 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
         LOG(INFO) << offset3 << "bandwidth     = " << dt.bandwidth();
         if (dt.environment_size()) {
           LOG(INFO) << offset3 << "environment   :";
-          for (const auto e : dt.environment()) {
+          for (const auto& e : dt.environment()) {
             LOG(INFO) << offset4 << e.first << " = " << e.second;
           }
         }
@@ -265,6 +269,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   cp.max_cached_engines = max_cached_batches_;
   cp.use_calibration = use_calibration_;
   cp.use_implicit_batch = use_implicit_batch_;
+  cp.allow_build_at_runtime = allow_build_at_runtime_;
   auto status = ConvertAfterShapes(cp);
   VLOG(1) << "Returning from " << name_;
   return status;

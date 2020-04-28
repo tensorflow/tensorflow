@@ -92,18 +92,6 @@ tensorflow_rbe_config(
 )
 
 tensorflow_rbe_config(
-    name = "ubuntu16.04-py3-gcc7_manylinux2010-cuda10.0-cudnn7-tensorrt5.1",
-    compiler = "/dt7/usr/bin/gcc",
-    compiler_prefix = "/usr/bin",
-    cuda_version = "10.0",
-    cudnn_version = "7",
-    os = "ubuntu16.04-manylinux2010",
-    python_version = "3",
-    tensorrt_install_path = "/usr",
-    tensorrt_version = "5.1",
-)
-
-tensorflow_rbe_config(
     name = "ubuntu16.04-py3-clang_manylinux2010-cuda10.0-cudnn7-tensorrt5.1",
     compiler = "/clang_r373795/bin/clang",
     cuda_version = "10.0",
@@ -137,12 +125,4 @@ tensorflow_rbe_config(
     sysroot = "/dt7",
     tensorrt_install_path = "/usr",
     tensorrt_version = "6.0",
-)
-
-tensorflow_rbe_config(
-    name = "ubuntu16.04-py3_opt-gcc5-rocm",
-    compiler = "gcc",
-    os = "ubuntu16.04",
-    python_version = "3",
-    rocm_version = "2.5",  # Any version will do.
 )

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -52,6 +53,7 @@ constexpr char kExperimentalMapAndBatchOp[] = "ExperimentalMapAndBatchDataset";
 constexpr char kMapAndBatchOp[] = "MapAndBatchDataset";
 constexpr char kMapOp[] = "MapDataset";
 constexpr char kParallelMapOp[] = "ParallelMapDataset";
+constexpr char kParallelMapV2Op[] = "ParallelMapDatasetV2";
 constexpr char kChooseFastestOp[] = "ChooseFastestBranchDataset";
 constexpr char kPrefetchOp[] = "PrefetchDataset";
 
@@ -253,7 +255,13 @@ Status AddNewMapNode(const NodeDef& old_map_node, const NodeDef& old_batch_node,
                      const FunctionDef& vectorized_func,
                      MutableGraphView* graph, NodeDef** new_map_node) {
   NodeDef map_node;
-  map_node.set_op(old_map_node.op() == kMapOp ? kMapOp : kParallelMapOp);
+  if (old_map_node.op() == kMapOp) {
+    map_node.set_op(kMapOp);
+  } else if (old_map_node.op() == kParallelMapOp) {
+    map_node.set_op(kParallelMapOp);
+  } else {
+    map_node.set_op(kParallelMapV2Op);
+  }
   graph_utils::SetUniqueGraphNodeName(map_node.op(), graph->graph(), &map_node);
 
   // Set the `input_dataset` input argument
@@ -267,13 +275,17 @@ Status AddNewMapNode(const NodeDef& old_map_node, const NodeDef& old_batch_node,
       CopyInputs("other_arguments", input_map, old_map_node, &map_node));
 
   // Set the `num_parallel_calls` input argument
-  if (old_map_node.op() != kMapOp) {
+  if (map_node.op() == kParallelMapOp) {
     // `num_parallel_calls` = `kAutotune`
     // TODO(rachelim): Evaluate the performance of other potential
     // transformations to `num_parallel_calls`,
     // e.g. ceil(old num_parallel_calls // batch size)
     auto autotune_val = graph_utils::AddScalarConstNode(
         static_cast<int32>(data::model::kAutotune), graph);
+    map_node.add_input(autotune_val->name());
+  } else if (map_node.op() == kParallelMapV2Op) {
+    auto autotune_val =
+        graph_utils::AddScalarConstNode(data::model::kAutotune, graph);
     map_node.add_input(autotune_val->name());
   }
 
@@ -287,6 +299,12 @@ Status AddNewMapNode(const NodeDef& old_map_node, const NodeDef& old_batch_node,
   }
 
   (*map_node.mutable_attr())["use_inter_op_parallelism"].set_b(true);
+  if (old_map_node.attr().contains("sloppy")) {
+    graph_utils::CopyAttribute("sloppy", old_map_node, &map_node);
+  }
+  if (old_map_node.attr().contains("deterministic")) {
+    graph_utils::CopyAttribute("deterministic", old_map_node, &map_node);
+  }
   *new_map_node = graph->AddNode(std::move(map_node));
   return Status::OK();
 }
@@ -325,6 +343,7 @@ Status AddBranch(gtl::ArraySlice<const NodeDef*> branch,
                  FunctionDefLibrary* library) {
   FunctionDef* branch_func = library->add_function();
   auto* signature = branch_func->mutable_signature();
+  (*branch_func->mutable_attr())[data::kTFDataFunction].set_b(true);
   graph_utils::SetUniqueGraphFunctionName("branch", library, branch_func);
 
   // Input dataset.
@@ -468,7 +487,8 @@ bool FindMapAndBatchPattern(const MutableGraphView& graph, const NodeDef& node,
       tmp_input_node = graph_utils::GetInputNode(*tmp_input_node, graph);
     }
     if (tmp_input_node->op() != kMapOp &&
-        tmp_input_node->op() != kParallelMapOp) {
+        tmp_input_node->op() != kParallelMapOp &&
+        tmp_input_node->op() != kParallelMapV2Op) {
       return false;
     }
     map_node = tmp_input_node;

@@ -1,7 +1,7 @@
 # Understand the C++ library
 
 The TensorFlow Lite for Microcontrollers C++ library is part of the
-[TensorFlow repository](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro).
+[TensorFlow repository](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro).
 It is designed to be readable, easy to modify, well-tested, easy to integrate,
 and compatible with regular TensorFlow Lite.
 
@@ -11,7 +11,7 @@ provides information about creating your own project.
 ## File structure
 
 The
-[`micro`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro)
+[`micro`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro)
 root directory has a relatively simple structure. However, since it is located
 inside of the extensive TensorFlow repository, we have created scripts and
 pre-generated project files that provide the relevant source files in isolation

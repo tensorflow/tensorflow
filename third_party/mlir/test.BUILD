@@ -47,37 +47,59 @@ gentbl(
 )
 
 gentbl(
-    name = "TestOpsIncGen",
-    strip_include_prefix = "lib/TestDialect",
+    name = "TestLinalgMatmulToVectorPatternsIncGen",
     tbl_outs = [
         (
-            "-gen-op-decls",
-            "lib/TestDialect/TestOps.h.inc",
-        ),
-        (
-            "-gen-op-defs",
-            "lib/TestDialect/TestOps.cpp.inc",
-        ),
-        (
-            "-gen-enum-decls",
-            "lib/TestDialect/TestOpEnums.h.inc",
-        ),
-        (
-            "-gen-enum-defs",
-            "lib/TestDialect/TestOpEnums.cpp.inc",
-        ),
-        (
             "-gen-rewriters",
-            "lib/TestDialect/TestPatterns.inc",
+            "lib/DeclarativeTransforms/TestLinalgMatmulToVectorPatterns.h.inc",
         ),
     ],
     tblgen = "@llvm-project//mlir:mlir-tblgen",
-    td_file = "lib/TestDialect/TestOps.td",
+    td_file = "lib/DeclarativeTransforms/TestLinalgMatmulToVectorPatterns.td",
+    td_srcs = [
+        "@llvm-project//mlir:VectorTransformPatternsTdFiles",
+        "@llvm-project//mlir:LinalgTransformPatternsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "TestOpsIncGen",
+    strip_include_prefix = "lib/Dialect/Test",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "lib/Dialect/Test/TestOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "lib/Dialect/Test/TestOps.cpp.inc",
+        ),
+        (
+            "-gen-dialect-decls",
+            "lib/Dialect/Test/TestOpsDialect.h.inc",
+        ),
+        (
+            "-gen-enum-decls",
+            "lib/Dialect/Test/TestOpEnums.h.inc",
+        ),
+        (
+            "-gen-enum-defs",
+            "lib/Dialect/Test/TestOpEnums.cpp.inc",
+        ),
+        (
+            "-gen-rewriters",
+            "lib/Dialect/Test/TestPatterns.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "lib/Dialect/Test/TestOps.td",
     td_srcs = [
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/IR/OpAsmInterface.td",
-        "@llvm-project//mlir:include/mlir/Analysis/CallInterfaces.td",
-        "@llvm-project//mlir:include/mlir/Analysis/InferTypeOpInterface.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
     ],
     test = True,
 )
@@ -85,27 +107,31 @@ gentbl(
 cc_library(
     name = "TestDialect",
     srcs = [
-        "lib/TestDialect/TestDialect.cpp",
-        "lib/TestDialect/TestPatterns.cpp",
+        "lib/Dialect/Test/TestDialect.cpp",
+        "lib/Dialect/Test/TestPatterns.cpp",
     ],
     hdrs = [
-        "lib/TestDialect/TestDialect.h",
+        "lib/Dialect/Test/TestDialect.h",
     ],
     includes = [
         "lib/DeclarativeTransforms",
-        "lib/TestDialect",
+        "lib/Dialect/Test",
     ],
     deps = [
         ":TestOpsIncGen",
         "@llvm-project//llvm:support",
-        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:ControlFlowInterfaces",
+        "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:StandardToStandard",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -113,6 +139,7 @@ cc_library(
     srcs = [
         "lib/IR/TestFunc.cpp",
         "lib/IR/TestMatchers.cpp",
+        "lib/IR/TestSideEffects.cpp",
         "lib/IR/TestSymbolUses.cpp",
     ],
     deps = [
@@ -123,7 +150,6 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -137,7 +163,6 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -145,16 +170,20 @@ cc_library(
     srcs = glob([
         "lib/Transforms/*.cpp",
     ]),
-    includes = ["lib/TestDialect"],
+    defines = ["MLIR_CUDA_CONVERSIONS_ENABLED"],
+    includes = ["lib/Dialect/Test"],
     deps = [
         ":TestDialect",
+        ":TestLinalgMatmulToVectorPatternsIncGen",
         ":TestLinalgTransformPatternsIncGen",
         ":TestVectorTransformPatternsIncGen",
         "@llvm-project//llvm:support",
-        "@llvm-project//mlir:AffineOps",
+        "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:EDSC",
         "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:GPUToCUDATransforms",
+        "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
@@ -168,5 +197,36 @@ cc_library(
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorToLoops",
     ],
-    alwayslink = 1,
+)
+
+cc_library(
+    name = "TestAffine",
+    srcs = glob([
+        "lib/Dialect/Affine/*.cpp",
+    ]),
+    deps = [
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Affine",
+        "@llvm-project//mlir:AffineTransforms",
+        "@llvm-project//mlir:AffineUtils",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorOps",
+    ],
+)
+
+cc_library(
+    name = "TestSPIRV",
+    srcs = glob([
+        "lib/Dialect/SPIRV/*.cpp",
+    ]),
+    deps = [
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SPIRVDialect",
+        "@llvm-project//mlir:SPIRVLowering",
+    ],
 )

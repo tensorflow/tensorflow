@@ -24,8 +24,13 @@ limitations under the License.
 
 namespace tflite {
 namespace evaluation {
+namespace {
+// Default cropping fraction value.
+const float kCroppingFraction = 0.875;
+}  // namespace
 
-TfLiteStatus ImageClassificationStage::Init() {
+TfLiteStatus ImageClassificationStage::Init(
+    const DelegateProviders* delegate_providers) {
   // Ensure inference params are provided.
   if (!config_.specification().has_image_classification_params()) {
     LOG(ERROR) << "ImageClassificationParams not provided";
@@ -43,7 +48,8 @@ TfLiteStatus ImageClassificationStage::Init() {
   *tflite_inference_config.mutable_specification()
        ->mutable_tflite_inference_params() = params.inference_params();
   inference_stage_.reset(new TfliteInferenceStage(tflite_inference_config));
-  if (inference_stage_->Init() != kTfLiteOk) return kTfLiteError;
+  if (inference_stage_->Init(delegate_providers) != kTfLiteOk)
+    return kTfLiteError;
 
   // Validate model inputs.
   const TfLiteModelInfo* model_info = inference_stage_->GetModelInfo();
@@ -61,16 +67,16 @@ TfLiteStatus ImageClassificationStage::Init() {
   }
 
   // ImagePreprocessingStage
-  EvaluationStageConfig preprocessing_config;
-  preprocessing_config.set_name("image_preprocessing");
-  auto* preprocess_params = preprocessing_config.mutable_specification()
-                                ->mutable_image_preprocessing_params();
-  preprocess_params->set_image_height(input_shape->data[1]);
-  preprocess_params->set_image_width(input_shape->data[2]);
-  preprocess_params->set_output_type(static_cast<int>(input_type));
-  // Preserving aspect improves the accuracy by about 0.5%.
-  preprocess_params->set_aspect_preserving(true);
-  preprocessing_stage_.reset(new ImagePreprocessingStage(preprocessing_config));
+  if (!config_.specification().has_image_preprocessing_params()) {
+    tflite::evaluation::ImagePreprocessingConfigBuilder builder(
+        "image_preprocessing", input_type);
+    builder.AddCroppingStep(kCroppingFraction, true /*square*/);
+    builder.AddResizingStep(input_shape->data[2], input_shape->data[1], false);
+    builder.AddDefaultNormalizationStep();
+    preprocessing_stage_.reset(new ImagePreprocessingStage(builder.build()));
+  } else {
+    preprocessing_stage_.reset(new ImagePreprocessingStage(config_));
+  }
   if (preprocessing_stage_->Init() != kTfLiteOk) return kTfLiteError;
 
   // TopkAccuracyEvalStage.

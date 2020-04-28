@@ -33,18 +33,18 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // copying or parsing, it's a very lightweight operation.
   const tflite::Model* model = ::tflite::GetModel(g_sine_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    error_reporter->Report(
-        "Model provided is schema version %d not equal "
-        "to supported version %d.\n",
-        model->version(), TFLITE_SCHEMA_VERSION);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Model provided is schema version %d not equal "
+                         "to supported version %d.\n",
+                         model->version(), TFLITE_SCHEMA_VERSION);
   }
 
   // This pulls in all the operation implementations we need
   tflite::ops::micro::AllOpsResolver resolver;
 
   // Create an area of memory to use for input, output, and intermediate arrays.
-  // Finding the minimum value for your model may require some trial and error.
-  const int tensor_arena_size = 2 * 1024;
+  // `arena_used_bytes` can be used to retrieve the optimal size.
+  const int tensor_arena_size = 2208 + 16 + 100 /* some reserved space */;
   uint8_t tensor_arena[tensor_arena_size];
 
   // Build an interpreter to run the model with
@@ -53,6 +53,10 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Allocate memory from the tensor_arena for the model's tensors
   TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+  // At the time of writing, the hello world model uses 2208 bytes, we leave
+  // 100 bytes head room here to make the test less fragile and in the same
+  // time, alert for substantial increase.
+  TF_LITE_MICRO_EXPECT_LE(interpreter.arena_used_bytes(), 2208 + 100);
 
   // Obtain a pointer to the model's input tensor
   TfLiteTensor* input = interpreter.input(0);

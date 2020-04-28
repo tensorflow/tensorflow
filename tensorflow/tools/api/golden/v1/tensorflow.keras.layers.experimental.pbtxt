@@ -1,6 +1,10 @@
 path: "tensorflow.keras.layers.experimental"
 tf_module {
   member {
+    name: "RandomFourierFeatures"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "preprocessing"
     mtype: "<type \'module\'>"
   }

@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_LIB_TRACEME_H_
 #define TENSORFLOW_CORE_PROFILER_LIB_TRACEME_H_
 
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -28,13 +30,6 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-// This is specifically used for instrumenting Tensorflow ops.
-// Takes input as whether a TF op is expensive or not and returns the TraceMe
-// level to be assigned to trace that particular op. Assigns level 2 for
-// expensive ops (these are high-level details and shown by default in profiler
-// UI). Assigns level 3 for cheap ops (low-level details not shown by default).
-inline int GetTFTraceMeLevel(bool is_expensive) { return is_expensive ? 2 : 3; }
-
 // Predefined levels:
 // - Level 1 (kCritical) is the default and used only for user instrumentation.
 // - Level 2 (kInfo) is used by profiler for instrumenting high level program
@@ -46,6 +41,15 @@ enum TraceMeLevel {
   kInfo = 2,
   kVerbose = 3,
 };
+
+// This is specifically used for instrumenting Tensorflow ops.
+// Takes input as whether a TF op is expensive or not and returns the TraceMe
+// level to be assigned to trace that particular op. Assigns level 2 for
+// expensive ops (these are high-level details and shown by default in profiler
+// UI). Assigns level 3 for cheap ops (low-level details not shown by default).
+inline int GetTFTraceMeLevel(bool is_expensive) {
+  return is_expensive ? kInfo : kVerbose;
+}
 
 // This class permits user-specified (CPU) tracing activities. A trace activity
 // is started when an object of this class is created and stopped when the
@@ -158,6 +162,26 @@ class TraceMe {
 #endif
   }
 
+  // Sets new_metadata in the metadata part of no_init_.name.
+  void SetMetadata(absl::string_view new_metadata) {
+#if !defined(IS_MOBILE_PLATFORM)
+    if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
+      if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
+        absl::string_view orig = no_init_.name;
+        if (absl::EndsWith(orig, "#")) {
+          // orig does have metadata.
+          absl::ConsumeSuffix(&orig, "#");
+          absl::ConsumePrefix(&new_metadata, "#");
+          no_init_.name = absl::StrCat(orig, ",", new_metadata);
+        } else {
+          // orig does not have metadata.
+          absl::StrAppend(&no_init_.name, new_metadata);
+        }
+      }
+    }
+#endif
+  }
+
   ~TraceMe() { Stop(); }
 
   // Static API, for use when scoped objects are inconvenient.
@@ -216,6 +240,12 @@ class TraceMe {
 
   uint64 start_time_ = kUntracedActivity;
 };
+
+// Whether OpKernel::TraceString will populate additional information for
+// profiler, such as tensor shapes.
+inline bool TfOpDetailsEnabled() {
+  return TraceMe::Active(TraceMeLevel::kVerbose);
+}
 
 }  // namespace profiler
 }  // namespace tensorflow

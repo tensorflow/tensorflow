@@ -19,18 +19,25 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/stream.h"
 
 namespace xla {
 
 LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
-                                   bool synchronous_deallocation,
+                                   LocalClient* client,
+                                   AllocationModel allocation_model,
                                    bool asynchronous, bool allow_event_reuse)
-    : synchronous_deallocation_(synchronous_deallocation),
+    : allocation_model_(allocation_model),
       event_pool_(allow_event_reuse),
       compute_semaphore_(/*capacity=*/asynchronous ? 32 : 1),
-      executor_(executor) {
+      executor_(executor),
+      client_(client),
+      prng_seed_generator_(prng_seed_device_()),
+      prng_seed_distribution_(std::numeric_limits<int>::min(),
+                              std::numeric_limits<int>::max()) {
   compute_stream_ = absl::make_unique<se::Stream>(executor);
   host_to_device_stream_ = absl::make_unique<se::Stream>(executor);
   callback_stream_ = absl::make_unique<se::Stream>(executor);
@@ -109,6 +116,33 @@ se::Stream* LocalDeviceState::GetDeviceToDeviceStream() {
   next_device_to_device_stream_ =
       (next_device_to_device_stream_ + 1) % device_to_device_streams_.size();
   return device_to_device_streams_.at(i).get();
+}
+
+std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {
+  absl::MutexLock lock(&mu_);
+  if (usage_stream_pool_.empty()) {
+    auto stream = absl::make_unique<se::Stream>(compute_stream_->parent());
+    stream->Init();
+    return stream;
+  } else {
+    std::unique_ptr<se::Stream> stream = std::move(usage_stream_pool_.top());
+    usage_stream_pool_.pop();
+    return stream;
+  }
+}
+
+void LocalDeviceState::ReturnStreamToPool(std::unique_ptr<se::Stream> stream) {
+  absl::MutexLock lock(&mu_);
+  usage_stream_pool_.push(std::move(stream));
+}
+
+int LocalDeviceState::GetNewPrngSeed() {
+  absl::MutexLock lock(&mu_);
+  int x = 0;
+  do {
+    x = prng_seed_distribution_(prng_seed_generator_);
+  } while (x == 0);
+  return x;
 }
 
 }  // namespace xla

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/index_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -133,8 +134,9 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
   } else if (shape.IsArray()) {
     if (allocate_arrays) {
       // Literals can be used as DMA targets, which can require alignment. We
-      // force a 16-byte minimum alignment.
-      constexpr int kMinimumAlignment = 16;
+      // force a tensorflow::Allocator::kAllocatorAlignment-byte minimum
+      // alignment.
+      constexpr int kMinimumAlignment = 64;
       piece->set_buffer(static_cast<char*>(tensorflow::port::AlignedMalloc(
           piece->size_bytes(), kMinimumAlignment)));
     }
@@ -195,6 +197,34 @@ Literal LiteralBase::CreateFromShape(const Shape& shape) {
         }
       });
   return literal;
+}
+
+absl::optional<int64> LiteralBase::GetFirstInteger() const {
+  switch (shape().element_type()) {
+    case U8:
+      return GetFirstElement<uint8>();
+    case U16:
+      return GetFirstElement<uint16>();
+    case U32:
+      return GetFirstElement<uint32>();
+    case U64: {
+      int64 v = GetFirstElement<uint64>();
+      if (v < 0) {
+        return absl::nullopt;
+      }
+      return v;
+    }
+    case S8:
+      return GetFirstElement<int8>();
+    case S16:
+      return GetFirstElement<int16>();
+    case S32:
+      return GetFirstElement<int32>();
+    case S64:
+      return GetFirstElement<int64>();
+    default:
+      return absl::nullopt;
+  }
 }
 
 template <typename NativeT>

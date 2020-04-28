@@ -225,6 +225,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:custom_ops",
+        "//tensorflow/lite/kernels/hashtable:hashtable_op_kernels",
         "//tensorflow/lite/kernels:reference_ops",
         "//tensorflow/lite/tools/evaluation:utils",
     ] + select({
@@ -540,6 +541,7 @@ edgetpu_ops = [
     "conv_relu1",
     "conv_relu6",
     "depthwiseconv",  # high error
+    "expand_dims",
     "fully_connected",
     "l2norm",  # high error
     "maximum",
@@ -548,6 +550,7 @@ edgetpu_ops = [
     "minimum",
     "mul",
     "pad",  # high error
+    "pack",
     "relu",
     "relu1",
     "relu6",

@@ -82,12 +82,15 @@ StatusOr<std::unique_ptr<HloModule>> LoadModuleFromData(
     HloSnapshot proto;
     if (format == "pb") {
       if (!proto.ParseFromString(data) &&
-          !proto.mutable_hlo()->ParseFromString(data)) {
+          !proto.mutable_hlo()->ParseFromString(data) &&
+          !proto.mutable_hlo()->mutable_hlo_module()->ParseFromString(data)) {
         return InvalidArgument("Failed to parse input as HLO protobuf binary");
       }
     } else if (format == "pbtxt") {
       if (!google::protobuf::TextFormat::ParseFromString(data, &proto) &&
-          !google::protobuf::TextFormat::ParseFromString(data, proto.mutable_hlo())) {
+          !google::protobuf::TextFormat::ParseFromString(data, proto.mutable_hlo()) &&
+          !google::protobuf::TextFormat::ParseFromString(
+              data, proto.mutable_hlo()->mutable_hlo_module())) {
         return InvalidArgument("Failed to parse input as HLO protobuf text");
       }
     } else {

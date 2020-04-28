@@ -35,7 +35,7 @@ import os
 import re
 import zipfile
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 # TODO(aselle): Disable GPU for now
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -127,6 +127,7 @@ from tensorflow.lite.testing.op_tests.reverse_sequence import make_reverse_seque
 from tensorflow.lite.testing.op_tests.reverse_v2 import make_reverse_v2_tests
 from tensorflow.lite.testing.op_tests.rfft2d import make_rfft2d_tests
 from tensorflow.lite.testing.op_tests.round import make_round_tests
+from tensorflow.lite.testing.op_tests.scatter_nd import make_scatter_nd_tests
 from tensorflow.lite.testing.op_tests.shape import make_shape_tests
 from tensorflow.lite.testing.op_tests.sigmoid import make_sigmoid_tests
 from tensorflow.lite.testing.op_tests.slice import make_slice_tests

@@ -60,13 +60,13 @@ class FusedIrEmitter : public ConstDfsHloVisitorWithDefault {
 
   FusedIrEmitter(GeneratorForOperandIrArrays operand_arrays_generator,
                  ElementalIrEmitter* elemental_emitter,
-                 llvm::Value* tile_param_x = nullptr,
-                 llvm::Value* tile_param_y = nullptr,
+                 llvm::Value* thread_id_x = nullptr,
+                 llvm::Value* thread_id_y = nullptr,
                  absl::Span<llvm::Value* const> param_shmem_buffers = {})
       : operand_arrays_(),
         operand_arrays_generator_(std::move(operand_arrays_generator)),
-        tile_param_x_(tile_param_x),
-        tile_param_y_(tile_param_y),
+        thread_id_x_(thread_id_x),
+        thread_id_y_(thread_id_y),
         param_shmem_buffers_(param_shmem_buffers.begin(),
                              param_shmem_buffers.end()),
         elemental_emitter_(elemental_emitter),
@@ -121,10 +121,10 @@ class FusedIrEmitter : public ConstDfsHloVisitorWithDefault {
   GeneratorForOperandIrArrays operand_arrays_generator_;
 
   // The x coordinate within a tile.
-  llvm::Value* tile_param_x_;
+  llvm::Value* thread_id_x_;
 
   // The y coordinate within a tile.
-  llvm::Value* tile_param_y_;
+  llvm::Value* thread_id_y_;
 
   // Param_buffers_[i] stores the tile buffer for the ith parameter or nullptr
   // if the parameter is not tiled.

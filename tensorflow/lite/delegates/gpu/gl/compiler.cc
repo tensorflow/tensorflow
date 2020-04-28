@@ -102,9 +102,9 @@ class CompilerImpl : public Compiler {
     }
   }
 
-  Status Compile(const GraphFloat32& graph,
-                 const std::unordered_set<int>& tflite_graph_io,
-                 const ShaderCodeCallback& callback) final {
+  absl::Status Compile(const GraphFloat32& graph,
+                       const std::unordered_set<int>& tflite_graph_io,
+                       const ShaderCodeCallback& callback) final {
     // It is important to have ids in a compiled graph identical to the given
     // graph.
     RETURN_IF_ERROR(graph.MakeExactCopy(&compiled_graph_));
@@ -120,8 +120,18 @@ class CompilerImpl : public Compiler {
     for (auto node : compiled_graph_.nodes()) {
       CompiledNodeAttributes attr;
       attr.node_indices.push_back(node->id);
-      RETURN_IF_ERROR(node_shader_.GenerateCode(
-          {&compiled_graph_, &gpu_info_, node, options_}, &attr.code));
+      NodeShader::GenerationContext ctx = {&gpu_info_, options_,
+                                           node->operation.type,
+                                           node->operation.attributes};
+      for (const auto& tensor : graph.FindInputs(node->id)) {
+        const auto& shape = tensor->tensor.shape;
+        ctx.input_shapes.push_back({shape.b, shape.h, shape.w, shape.c});
+      }
+      for (const auto& tensor : graph.FindOutputs(node->id)) {
+        const auto& shape = tensor->tensor.shape;
+        ctx.output_shapes.push_back({shape.b, shape.h, shape.w, shape.c});
+      }
+      RETURN_IF_ERROR(node_shader_.GenerateCode(ctx, &attr.code));
       node->operation.attributes = std::move(attr);
     }
 
@@ -129,22 +139,22 @@ class CompilerImpl : public Compiler {
     if (options_.fuse_operations) {
       FuseAutoOutputWithInline fuse_inline;
       if (!transformer.Apply("fuse_auto_with_inline", &fuse_inline)) {
-        return InternalError("fuse_auto_with_inline failed");
+        return absl::InternalError("fuse_auto_with_inline failed");
       }
       FuseInplaceUpdate fuse_inplace;
       if (!transformer.Apply("fuse_inplace_update", &fuse_inplace)) {
-        return InternalError("fuse_inplace failed");
+        return absl::InternalError("fuse_inplace failed");
       }
       if (options_.auto_input_fusion) {
         FuseAutoInput fuse_auto_input;
         if (!transformer.Apply("fuse_auto_input", &fuse_auto_input)) {
-          return InternalError("fuse_auto_input failed");
+          return absl::InternalError("fuse_auto_input failed");
         }
       }
     }
     RemoveUnusedInplaceUpdates remove_inplace_updates;
     if (!transformer.Apply("remove_inplace_updates", &remove_inplace_updates)) {
-      return InternalError("remove_inplace_updates failed");
+      return absl::InternalError("remove_inplace_updates failed");
     }
 
     // Prepare internal objects.
@@ -176,12 +186,11 @@ class CompilerImpl : public Compiler {
         auto shape = outputs[0]->tensor.shape;
         for (auto output : outputs) {
           if (shape != output->tensor.shape) {
-            return FailedPreconditionError(
+            return absl::FailedPreconditionError(
                 "Workload uint3() requires all output sizes to match");
           }
         }
-        attr.code.workload =
-            uint3(shape.w, shape.h, IntegralDivideRoundUp(shape.c, 4));
+        attr.code.workload = uint3(shape.w, shape.h, DivideRoundUp(shape.c, 4));
       }
 
       int num_textures = 0;
@@ -274,7 +283,7 @@ class CompilerImpl : public Compiler {
       RETURN_IF_ERROR(codegen.Build(std::move(attr), &shader_code));
       RETURN_IF_ERROR(callback(std::move(shader_code)));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
  private:

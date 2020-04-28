@@ -18,10 +18,11 @@ limitations under the License.
 
 #include <deque>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "include/pybind11/pybind11.h"
+#include "pybind11/pybind11.h"
 
 namespace xla {
 
@@ -61,6 +62,7 @@ class PythonRefManager {
   // Creates a managed std::shared_ptr to an object. When the shared_ptr is
   // destroyed, the reference to 'object' will be added to python_garbage_,
   // and collected next time CollectGarbage() is called.
+  std::shared_ptr<ManagedPyObjects> ManageReference(pybind11::object object);
   std::shared_ptr<ManagedPyObjects> ManageReferences(
       absl::Span<pybind11::object> objects);
 
@@ -71,7 +73,7 @@ class PythonRefManager {
 
  private:
   absl::Mutex mu_;
-  std::deque<pybind11::object> python_garbage_ GUARDED_BY(mu_);
+  std::deque<pybind11::object> python_garbage_ ABSL_GUARDED_BY(mu_);
 };
 
 // A global PythonRefManager. Unless `CollectGarbage()` is called before

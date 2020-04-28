@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
+
+#include "tensorflow/compiler/xla/service/fusion_node_indexing_evaluation.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 
@@ -122,8 +124,19 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   // inefficiencies in the fusion emitter.
   // TODO(b/119692968): Remove this once the fusion emitter can handle
   // arbitrary fusion nodes.
-  if (FusedIrEmitter::IsFusedIrEmitterInefficient(consumer, producer)) {
-    return false;
+  if (consumer->opcode() == HloOpcode::kFusion) {
+    if (fusion_node_evaluations_.find(consumer) ==
+        fusion_node_evaluations_.end()) {
+      // We have no cached results for this fusion node yet. This can happen
+      // when we run the InstructionFusion pass more than once. We can only
+      // cache the results within one run.
+      fusion_node_evaluations_.emplace(consumer,
+                                       FusionNodeIndexingEvaluation(consumer));
+    }
+    if (fusion_node_evaluations_.at(consumer).AverageCodeDuplicationTooHigh(
+            producer)) {
+      return false;
+    }
   }
 
   if (consumer->opcode() == HloOpcode::kDot) {
@@ -188,6 +201,22 @@ HloInstruction::FusionKind CpuInstructionFusion::ChooseKind(
   return CanBeOutputFused(producer, consumer)
              ? HloInstruction::FusionKind::kOutput
              : HloInstruction::FusionKind::kLoop;
+}
+
+HloInstruction* CpuInstructionFusion::FuseInstruction(
+    HloInstruction* fusion_instruction, HloInstruction* producer) {
+  auto evaluation = fusion_node_evaluations_.find(fusion_instruction);
+  if (evaluation == fusion_node_evaluations_.end()) {
+    evaluation = fusion_node_evaluations_
+                     .emplace(fusion_instruction,
+                              FusionNodeIndexingEvaluation(fusion_instruction))
+                     .first;
+  }
+  auto indexing_users = evaluation->second.RemoveFusionOperand(producer);
+  HloInstruction* new_producer =
+      InstructionFusion::FuseInstruction(fusion_instruction, producer);
+  evaluation->second.UpdateEvaluationCache(new_producer, indexing_users);
+  return new_producer;
 }
 }  // namespace cpu
 }  // namespace xla
