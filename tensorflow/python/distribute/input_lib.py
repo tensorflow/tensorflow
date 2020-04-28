@@ -467,6 +467,8 @@ class DistributedDatasetInterface(collections_abc.Iterable,
         "DistributedDataset.reduce must be implemented in descendants.")
 
 
+
+
 class InputWorkers(object):
   """A 1-to-many mapping from input worker devices to compute devices."""
 
