@@ -299,14 +299,27 @@ class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
                 "getElementTypeOrSelf($_op.getResult(" # i # "))) == "
             "quant::QuantizedType::castToStorageType("
                 "getElementTypeOrSelf($_op.getOperand(" # j # ")))">]>]>]>;
+
 //===----------------------------------------------------------------------===//
 // TFL op common constraints.
 //===----------------------------------------------------------------------===//
 
 // This is a constraint for most of the binary ops, e.g., add, mul, div, etc.
-// Binary ops lhs & rhs should have the same value type.
+// Binary ops lhs & rhs should have the same value type, and is capable to
+// compare quantiziation types as well.
 def BinaryOpSameElementTypeConstraint :
-  PredOpTrait<"operands have same element type", TCopVTEtIsSameAs<0, 1>>;
+  PredOpTrait<"operands have same element type",
+    Or<[
+      TCopVTEtIsSameAs<0, 1>,
+      // Two operands' values are both quantized and their type have the same
+      // underlying storage type.
+      And<[
+        SubstLeaves<"$_self", "getElementTypeOrSelf($_op.getOperand(0))",
+          quant_QuantizedType.predicate>,
+        CPred<"quant::QuantizedType::castToStorageType("
+                  "getElementTypeOrSelf($_op.getOperand(0))) == "
+              "quant::QuantizedType::castToStorageType("
+                  "getElementTypeOrSelf($_op.getOperand(1)))">]>]>>;
 
 //===----------------------------------------------------------------------===//
 // TFL common builders.
@@ -1937,6 +1950,8 @@ def TFL_MinimumOp : TFL_Op<"minimum", [
 def TFL_MulOp : TFL_Op<"mul", [ResultsBroadcastableShape,
                                NoSideEffect,
                                Commutative,
+                               BinaryOpSameElementTypeConstraint,
+                               TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 5>,
                                TFL_GpuTargetOp]> {
   let summary = "Multiplication operator";
 
