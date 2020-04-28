@@ -621,7 +621,6 @@ py_library(
     deps = [":test"],
 )
 
-# TODO(b/153582383): Move tf_ops_alwayslink dependency to c_api_tfrt instead.
 cuda_py_test(
     name = "benchmarks_test",
     srcs = ["benchmarks_test.py"],

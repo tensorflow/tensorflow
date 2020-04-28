@@ -1788,23 +1788,29 @@ def disable_mlir_bridge(description):  # pylint: disable=unused-argument
 # The description is just for documentation purposes.
 def disable_tfrt(unused_description):
 
-  def disable_tfrt_impl(func):
-    """Execute the test method only if tfrt is not enabled."""
+  def disable_tfrt_impl(cls_or_func):
+    """Execute the test only if tfrt is not enabled."""
 
-    def decorator(func):
+    if tf_inspect.isclass(cls_or_func):
+      if is_tfrt_enabled():
+        return None
+      else:
+        return cls_or_func
+    else:
+      def decorator(func):
 
-      def decorated(self, *args, **kwargs):
-        if is_tfrt_enabled():
-          return
-        else:
-          return func(self, *args, **kwargs)
+        def decorated(self, *args, **kwargs):
+          if is_tfrt_enabled():
+            return
+          else:
+            return func(self, *args, **kwargs)
 
-      return decorated
+        return decorated
 
-    if func is not None:
-      return decorator(func)
+      if cls_or_func is not None:
+        return decorator(cls_or_func)
 
-    return decorator
+      return decorator
 
   return disable_tfrt_impl
 

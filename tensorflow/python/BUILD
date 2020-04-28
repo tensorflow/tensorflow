@@ -1969,6 +1969,7 @@ py_library(
 )
 
 # Including this as a dependency will result in tests to use TFRT.
+# TODO(b/153582383): Move tf_ops_alwayslink dependency to c_api_tfrt instead.
 py_library(
     name = "is_tfrt_test_true",
     srcs = ["framework/is_tfrt_test_true.py"],
@@ -2378,6 +2379,7 @@ tf_py_test(
     main = "framework/ops_test.py",
     python_version = "PY3",
     tags = ["no_pip"],  # test_ops_2 is not available in pip.
+    tfrt_enabled = True,
     deps = [
         ":cond_v2",
         ":control_flow_ops",
