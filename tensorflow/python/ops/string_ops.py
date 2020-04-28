@@ -123,29 +123,26 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
   Example:
     Formatting a single-tensor template:
     ```python
-    tensor = tf.range(10)
-    formatted = tf.strings.format("tensor: {}, suffix", tensor)
-    expected = "tensor: [0 1 2 ... 7 8 9], suffix"
-
-    assert(formatted == expected)
+    >>> tensor = tf.range(10)
+    >>> formatted = tf.strings.format("tensor: {}, suffix", tensor)
+    >>> expected = "tensor: [0 1 2 ... 7 8 9], suffix"
+    >>> assert(formatted == expected)
     ```
 
     Formatting a multi-tensor template:
     ```python
-    tensor_one = tf.reshape(tf.range(100), [10, 10])
-    tensor_two = tf.range(10)
-    formatted = tf.strings.format("first: {}, second: {}, suffix",
-      (tensor_one, tensor_two))
-
-    expected = ("first: [[0 1 2 ... 7 8 9]\n"
-          " [10 11 12 ... 17 18 19]\n"
-          " [20 21 22 ... 27 28 29]\n"
-          " ...\n"
-          " [70 71 72 ... 77 78 79]\n"
-          " [80 81 82 ... 87 88 89]\n"
-          " [90 91 92 ... 97 98 99]], second: [0 1 2 ... 7 8 9], suffix")
-
-    assert(formatted == expected)
+    >>> tensor_one = tf.reshape(tf.range(100), [10, 10])
+    >>> tensor_two = tf.range(10)
+    >>> formatted = tf.strings.format("first: {}, second: {}, suffix",
+    ...                               (tensor_one, tensor_two))
+    >>> expected = ("first: [[0 1 2 ... 7 8 9]\n"
+    ...             " [10 11 12 ... 17 18 19]\n"
+    ...             " [20 21 22 ... 27 28 29]\n"
+    ...             " ...\n"
+    ...             " [70 71 72 ... 77 78 79]\n"
+    ...             " [80 81 82 ... 87 88 89]\n"
+    ...             " [90 91 92 ... 97 98 99]], second: [0 1 2 ... 7 8 9], suffix")
+    >>> assert(formatted == expected)
     ```
 
   Args:
