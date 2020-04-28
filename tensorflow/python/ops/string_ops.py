@@ -125,7 +125,7 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
     ```python
     >>> tensor = tf.range(10)
     >>> tf.strings.format("tensor: {}, suffix", tensor)
-    tf.Tensor(b'tensor: [0 1 2 ... 7 8 9], suffix', shape=(), dtype=string)
+    <tf.Tensor: shape=(), dtype=string, numpy=b'tensor: [0 1 2 ... 7 8 9], suffix'>
     ```
 
     Formatting a multi-tensor template:
@@ -134,7 +134,7 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
     >>> tensor_two = tf.range(10)
     >>> tf.strings.format("first: {}, second: {}, suffix",
     ...                               (tensor_one, tensor_two))
-    tf.Tensor(b'first: [[0 1 2 ... 7 8 9]\n [10 11 12 ... 17 18 19]\n [20 21 22 ... 27 28 29]\n ...\n [70 71 72 ... 77 78 79]\n [80 81 82 ... 87 88 89]\n [90 91 92 ... 97 98 99]], second: [0 1 2 ... 7 8 9], suffix', shape=(), dtype=string)
+    <tf.Tensor: shape=(), dtype=string, numpy=b'first: [[0 1 2 ... 7 8 9]\n [10 11 12 ... 17 18 19]\n [20 21 22 ... 27 28 29]\n ...\n [70 71 72 ... 77 78 79]\n [80 81 82 ... 87 88 89]\n [90 91 92 ... 97 98 99]], second: [0 1 2 ... 7 8 9], suffix'>
     ```
 
   Args:
