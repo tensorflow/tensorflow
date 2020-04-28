@@ -887,6 +887,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<int64>> dimensions;
       attrs["dimensions"] = {/*required=*/false, AttrTy::kBracedInt64List,
                              &dimensions};
+      optional<bool> constrain_layout;
+      attrs["constrain_layout"] = {/*required=*/false, AttrTy::kBool,
+                                   &constrain_layout};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs) ||
           (dimensions && dimensions->size() != 1)) {
         return false;
@@ -900,7 +903,9 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
         split_dimension = dimensions->at(0);
       }
       instruction = builder->AddInstruction(HloInstruction::CreateAllToAll(
-          shape, operands, replica_groups, channel_id, split_dimension));
+          shape, operands, replica_groups,
+          constrain_layout ? *constrain_layout : false, channel_id,
+          split_dimension));
       break;
     }
     case HloOpcode::kCollectivePermute: {

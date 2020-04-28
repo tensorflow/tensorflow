@@ -430,6 +430,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           /*replica_groups=*/
           std::vector<ReplicaGroup>(proto.replica_groups().begin(),
                                     proto.replica_groups().end()),
+          /*constrain_layout=*/proto.constrain_layout(),
           /*channel_id=*/channel_id, split_dimension);
       break;
     }
@@ -939,11 +940,12 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const std::vector<ReplicaGroup>& replica_groups,
+    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id,
     const absl::optional<int64>& split_dimension) {
   return absl::make_unique<HloAllToAllInstruction>(
-      shape, operands, replica_groups, channel_id, split_dimension);
+      shape, operands, replica_groups, constrain_layout, channel_id,
+      split_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1375,6 +1377,8 @@ bool HloInstruction::HasSideEffectNoRecurse() const {
     case HloOpcode::kAllReduce:
       return channel_id().has_value() ||
              Cast<HloAllReduceInstruction>(this)->constrain_layout();
+    case HloOpcode::kAllToAll:
+      return Cast<HloAllToAllInstruction>(this)->constrain_layout();
     case HloOpcode::kCustomCall:
       return Cast<HloCustomCallInstruction>(this)
           ->custom_call_has_side_effect();

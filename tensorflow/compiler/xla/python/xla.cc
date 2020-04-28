@@ -330,7 +330,8 @@ void BuildOpsSubmodule(py::module* m) {
       py::arg("shape_with_layout") = absl::nullopt);
   ops.def("AllToAll", &AllToAll, py::arg("operand"), py::arg("split_dimension"),
           py::arg("concat_dimension"), py::arg("split_count"),
-          py::arg("replica_groups") = py::list());
+          py::arg("replica_groups") = py::list(),
+          py::arg("layout") = absl::nullopt);
   ops.def("CollectivePermute", &CollectivePermute, py::arg("operand"),
           py::arg("source_target_pairs"));
   ops.def("CreateToken", &CreateToken, py::arg("builder"));
