@@ -707,6 +707,10 @@ py_library(
     name = "combinations",
     srcs = ["combinations.py"],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
+    ],
     deps = [
         ":multi_process_runner",
         ":multi_worker_test_base",
@@ -738,6 +742,10 @@ py_library(
     name = "strategy_combinations",
     srcs = ["strategy_combinations.py"],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
+    ],
     deps = [
         ":central_storage_strategy",
         ":collective_all_reduce_strategy",
@@ -1578,7 +1586,6 @@ py_library(
     srcs = ["multi_process_runner.py"],
     deps = [
         ":multi_process_lib",
-        ":multi_worker_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:tf2",
         "//tensorflow/python/compat:v2_compat",
@@ -1599,6 +1606,7 @@ py_test(
     shard_count = 12,
     deps = [
         ":multi_process_runner",
+        ":multi_worker_test_base",
         "//tensorflow/python/eager:test",
     ],
 )
@@ -1609,6 +1617,7 @@ py_test(
     python_version = "PY3",
     deps = [
         ":multi_process_runner",
+        ":multi_worker_test_base",
         "//tensorflow/python/eager:test",
     ],
 )
