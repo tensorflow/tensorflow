@@ -351,7 +351,7 @@ class KnownRatio : public Node {
       return SelfProcessingTimeLocked();
     }
     double old_input_time = input_times->back();
-    input_times->back() +=
+    input_times->back() =
         (old_input_time + SelfProcessingTimeLocked()) / ratio_;
     auto cleanup = gtl::MakeCleanup([input_times, old_input_time]() {
       input_times->back() = old_input_time;
