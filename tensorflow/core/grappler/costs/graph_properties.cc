@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 
 #include "absl/types/optional.h"
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -590,6 +591,20 @@ bool IsWhiteListedOpTypeForEvaluateNode(const string& op_type) {
   return kOpTpeWhitelist->find(op_type) != kOpTpeWhitelist->end();
 }
 
+// Negative shape size of '-1' represents unknown, while negative shape sizes
+// less than -1 represent unknown symbolic shapes (e.g. the shape of [-5, 5, -1,
+// -5] really means [x, 5, ?, x]). Before we can output the tensors as shapes,
+// we need to normalize them: mark all values <-1 as "unknown" (-1).
+static void NormalizeShapeForOutput(TensorShapeProto* shape) {
+  for (int i = 0; i < shape->dim_size(); i++) {
+    if (shape->dim(i).size() < -1) {
+      VLOG(2) << "Normalizing dimension: " << i << " from "
+              << shape->dim(i).size() << " to -1";
+      shape->mutable_dim(i)->set_size(-1);
+    }
+  }
+}
+
 // Processes symbolic shapes.
 // Each symbolic shape or dimension is represented by a handle. Unlike the TF
 // shape refiner which creates new handles every time it processes an unknown
@@ -722,7 +737,8 @@ class SymbolicShapeRefiner {
     return it->second.inference_context.get();
   }
 
-  // Forward the shapes from the function input nodes to
+  // Forward the shapes from the function input nodes, PartitionedCalls or
+  // StatefulPartitionedCall to
   // the argument nodes (which are Placeholder nodes), then
   // perform shape inference on the function body.
   //
@@ -732,10 +748,12 @@ class SymbolicShapeRefiner {
   // In the event of an error, UpdateNode will simply set `function_node`'s
   // output shape to be Unknown.
   Status UpdateFunction(const NodeDef* function_node) {
-    auto it = fun_to_grappler_function_item_.find(function_node->op());
+    NameAttrList function;
+    TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(*function_node, &function));
+    auto it = fun_to_grappler_function_item_.find(function.name());
     if (it == fun_to_grappler_function_item_.end()) {
       return errors::InvalidArgument(
-          function_node->op(),
+          function.name(),
           " was not previously added to SymbolicShapeRefiner.");
     }
 
@@ -743,7 +761,7 @@ class SymbolicShapeRefiner {
         it->second;
     if (!maybe_grappler_function_item.has_value()) {
       VLOG(3) << "Skip failed to instantiate function call: function_name="
-              << function_node->op();
+              << function.name();
 
       auto* ctx = GetNodeContext(function_node);
       auto* ic = ctx->inference_context.get();
@@ -789,11 +807,7 @@ class SymbolicShapeRefiner {
       const auto& handle = input_ic->output(output_port_num);
       input_ic->ShapeHandleToProto(handle, &proto);
       // There may be dim.size < -1 in SymbolicShapeRefiner. Change those to -1.
-      for (int i = 0; i < proto.dim_size(); i++) {
-        if (proto.dim(i).size() < -1) {
-          proto.mutable_dim(i)->set_size(-1);
-        }
-      }
+      NormalizeShapeForOutput(&proto);
 
       AttrValue output_attr;
       output_attr.mutable_list()->add_shape()->Swap(&proto);
@@ -870,8 +884,9 @@ class SymbolicShapeRefiner {
             out_tensor.ToString(), " has invalid position ", out_tensor.index(),
             " (output_properties.size() = ", output_properties.size(), ").");
       }
-      auto const& outprop = output_properties[out_tensor.index()];
-      const TensorShapeProto& shape = outprop.shape();
+      auto& outprop = output_properties[out_tensor.index()];
+      TensorShapeProto shape = outprop.shape();
+      NormalizeShapeForOutput(&shape);
       ShapeHandle out;
       TF_RETURN_IF_ERROR(ic->MakeShapeFromShapeProto(shape, &out));
       ic->set_output(output, out);
@@ -1196,15 +1211,14 @@ class SymbolicShapeRefiner {
     return true;
   }
 
-  Status AddFunction(const NodeDef* function_node) {
-    auto it = fun_to_grappler_function_item_.find(function_node->op());
+  Status AddFunction(const NodeDef* function_node, NameAttrList function) {
+    auto it = fun_to_grappler_function_item_.find(function.name());
     if (it != fun_to_grappler_function_item_.end()) {
       return Status::OK();
     }
 
     const FunctionDef* function_def =
-        CHECK_NOTNULL(function_library_.Find(function_node->op()));
-
+        CHECK_NOTNULL(function_library_.Find(function.name()));
     GrapplerFunctionItem grappler_function_item;
     Status function_instantiated =
         MakeGrapplerFunctionItem(*function_def, function_library_,
@@ -1242,10 +1256,15 @@ class SymbolicShapeRefiner {
 
   Status AddNode(const NodeDef* node) {
     NodeContext& node_ctx = node_to_context_[node];
-    TF_RETURN_IF_ERROR(function_library_.LookUp(node->op(), &node_ctx.op_data));
+    NameAttrList function;
+    TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(*node, &function));
+
+    // For PartitionedCall, op_data represents the function info.
+    TF_RETURN_IF_ERROR(
+        function_library_.LookUp(function.name(), &node_ctx.op_data));
 
     if (node_ctx.op_data->is_function_op) {
-      TF_RETURN_IF_ERROR(AddFunction(node));
+      TF_RETURN_IF_ERROR(AddFunction(node, function));
     }
 
     TF_RETURN_IF_ERROR(InOutTypesForNode(*node, node_ctx.op_data->op_def,
@@ -2525,13 +2544,7 @@ Status GraphProperties::AnnotateOutputShapes(GraphDef* output_graph_def,
       TensorShapeProto* proto = attr_output_shape.mutable_list()->add_shape();
       *proto = tensor_property.shape();
       if (!allow_symbolic_shapes) {
-        // There may be dim.size < -1 in SymbolicShapeRefiner. Change those to
-        // -1.
-        for (int i = 0; i < proto->dim_size(); i++) {
-          if (proto->dim(i).size() < -1) {
-            proto->mutable_dim(i)->set_size(-1);
-          }
-        }
+        NormalizeShapeForOutput(proto);
       }
     }
     (*node->mutable_attr())["_output_shapes"] = attr_output_shape;

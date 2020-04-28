@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 
 #include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -2000,6 +2001,79 @@ TEST_F(GraphPropertiesTest, ShapeAnnotationWithoutInferenceFn) {
   EXPECT_EQ(DT_FLOAT, prop.dtype());
   EXPECT_EQ(2, prop.shape().dim_size());
   EXPECT_EQ("float: [10,100]", PropToString(prop));
+}
+
+TEST_F(GraphPropertiesTest, PartitionedCallOp) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  FunctionDefLibrary library;
+  FunctionDef called_func = FunctionDefHelper::Create(
+      "identity_function",
+      /*in_def=*/{"arg0: int32"},
+      /*out_def=*/{"ret0: int32"},
+      /*attr_def=*/{},
+      {{{"Identity"}, "Identity", {"arg0"}, {{"T", DT_INT32}}}},
+      /*ret_def=*/{{"ret0", "Identity:output:0"}});
+  *library.add_function() = called_func;
+  TF_CHECK_OK(root.graph()->AddFunctionLibrary(library));
+
+  Output in = ops::Const(root, {3, 1, 2, 0});
+  NameAttrList b_name_attr;
+  b_name_attr.set_name("identity_function");
+  ops::PartitionedCall call(root.WithOpName("identity_call"), {in}, {DT_INT32},
+                            b_name_attr);
+
+  GrapplerItem item;
+  TF_CHECK_OK(root.ToGraphDef(&item.graph));
+
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(
+      /*assume_valid_feeds=*/true,
+      /*aggressive_shape_inference=*/false,
+      /*include_tensor_values=*/true));
+
+  EXPECT_EQ("int32: [4]",
+            PropToString(properties.GetOutputProperties("identity_call")[0]));
+}
+
+TEST_F(GraphPropertiesTest, NonTrivialInputPartitionedCallOp) {
+  auto f = FunctionDefHelper::Create(
+      // Name
+      "FunctionWhichAdds",
+      // Inputs
+      {"arg0: int32", "arg1: int32"},
+      // Outputs
+      {"ret0: int32"},
+      /*attr_def=*/{},
+      // Nodes
+      {{{"a"}, "Add", {"arg0", "arg1"}, {{"T", DT_INT32}}}},
+      /*ret_def=*/{{"ret0", "a:z:0"}});
+
+  FunctionDefLibrary function_lib;
+  function_lib.add_function()->Swap(&f);
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  TF_CHECK_OK(root.graph()->AddFunctionLibrary(function_lib));
+
+  PartialTensorShape input_shape({2, 2, -1});
+  Output in1 =
+      ops::Placeholder(root, DT_INT32, ops::Placeholder::Shape(input_shape));
+  Output in2 =
+      ops::Placeholder(root, DT_INT32, ops::Placeholder::Shape(input_shape));
+  NameAttrList b_name_attr;
+  b_name_attr.set_name("FunctionWhichAdds");
+  ops::PartitionedCall call(root.WithOpName("add_call"), {in1, in2}, {DT_INT32},
+                            b_name_attr);
+
+  GrapplerItem item;
+  TF_CHECK_OK(root.ToGraphDef(&item.graph));
+
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(
+      /*assume_valid_feeds=*/true,
+      /*aggressive_shape_inference=*/false,
+      /*include_tensor_values=*/true));
+
+  EXPECT_EQ("int32: [2,2,-1]",
+            PropToString(properties.GetOutputProperties("add_call")[0]));
 }
 
 TEST_F(GraphPropertiesTest, ShapeAnnotatedFunctionOp) {
