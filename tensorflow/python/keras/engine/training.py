@@ -509,30 +509,19 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     Returns:
       Boolean, whether the model should run eagerly.
     """
-    if self._run_eagerly is True and not context.executing_eagerly():
-      raise ValueError('You can only set `run_eagerly=True` if eager execution '
-                       'is enabled.')
-    if not self.dynamic:
-      if self._run_eagerly is None:
-        # Respect `tf.config.experimental_run_functions_eagerly` unless
-        # `run_eagerly` was explicitly passed to `compile`.
-        return def_function.RUN_FUNCTIONS_EAGERLY
-      else:
-        return self._run_eagerly
-    else:
-      if not context.executing_eagerly():
-        raise ValueError('Your model contains layers that can only be '
-                         'successfully run in eager execution (layers '
-                         'constructed with `dynamic=True`). '
-                         'You must enable eager execution with '
-                         '`tf.enable_eager_execution()`.')
-      if self._run_eagerly is False:
-        # TODO(fchollet): consider using py_func to enable this.
-        raise ValueError('Your model contains layers that can only be '
-                         'successfully run in eager execution (layers '
-                         'constructed with `dynamic=True`). '
-                         'You cannot set `run_eagerly=False`.')
-      return context.executing_eagerly()
+    if self.dynamic and self._run_eagerly is False:  # pylint:disable=g-bool-id-comparison
+      # TODO(fchollet): consider using py_func to enable this.
+      raise ValueError('Your model contains layers that can only be '
+                       'successfully run in eager execution (layers '
+                       'constructed with `dynamic=True`). '
+                       'You cannot set `run_eagerly=False`.')
+
+    # Run eagerly logic, by priority:
+    # (1) Dynamic models must be run eagerly.
+    # (2) Explicitly setting run_eagerly causes a Model to be run eagerly.
+    # (3) Not explicitly setting run_eagerly defaults to TF's global setting.
+    return (self.dynamic or self._run_eagerly or
+            (def_function.RUN_FUNCTIONS_EAGERLY and self._run_eagerly is None))
 
   @run_eagerly.setter
   def run_eagerly(self, value):
