@@ -233,7 +233,7 @@ class TrackedDeviceBuffer {
       definition_events_;
 
   // in_use_ starts out true, and is set to false when the buffer is released
-  // from its owning PyLocalBuffer. Once in_use_ is false, the buffer may no
+  // from its owning PjRtBuffer. Once in_use_ is false, the buffer may no
   // longer be used on any stream.
   bool in_use_;
   // Set of streams that the buffer has ever been used on, see comment on

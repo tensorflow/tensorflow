@@ -53,7 +53,7 @@ struct GpuAllocatorConfig {
 
 // distributed_client may be nullptr in non-distributed settings.
 // distributed_client should not be Open()ed before calling this function.
-StatusOr<std::shared_ptr<PyLocalClient>> GetNvidiaGpuClient(
+StatusOr<std::shared_ptr<PjRtClient>> GetNvidiaGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id);
 
