@@ -13,31 +13,29 @@ namespace conv {
 //**************************************
 //**************************************
 //**************************************
-// Shallowin_Deepout
+// Shallow
 //**************************************
 //**************************************
 //**************************************
-namespace sido {
+namespace shallow {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  ::xcore::conv::Conv2DParams conv2d_legacy_params;
-  ::xcore::conv::Conv2DUnpaddedShape unpadded_shape;
-  padding_mode_t padding_mode;
-  if (buffer)
-    parse_custom_options(buffer, length, conv2d_legacy_params, &unpadded_shape,
-                         nullptr, &padding_mode);
+  ::xcore::conv::Conv2DParams conv2d_params;
+  ::xcore::ParRegionArray par_regions;
+
+  if (buffer) parse_custom_options(buffer, length, conv2d_params, &par_regions);
 
   void *data = nullptr;
-  context->AllocatePersistentBuffer(context, sizeof(::xcore::conv::Conv2D_SIDO),
-                                    &data);
-  ::xcore::conv::Conv2D_SIDO *op = new (data)::xcore::conv::Conv2D_SIDO(
-      conv2d_legacy_params, unpadded_shape, padding_mode);
+  context->AllocatePersistentBuffer(
+      context, sizeof(::xcore::conv::Conv2D_Shallow), &data);
+  ::xcore::conv::Conv2D_Shallow *op =
+      new (data)::xcore::conv::Conv2D_Shallow(conv2d_params, par_regions);
 
   return op;
 }
 
 TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 4);
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   const TfLiteTensor *input = GetInput(context, node, 0);
@@ -45,15 +43,18 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *bias = GetInput(context, node, 2);
   const TfLiteTensor *output = GetOutput(context, node, 0);
 
-  auto *op = reinterpret_cast<::xcore::conv::Conv2D_SIDO *>(node->user_data);
+  auto *op = reinterpret_cast<::xcore::conv::Conv2D_Shallow *>(node->user_data);
 
-  op->Init(input->dims->data[1],      // X_h
-           input->dims->data[2],      // X_w
-           input->dims->data[3],      // C_in (after padding)
-           output->dims->data[1],     // Y_h
-           output->dims->data[2],     // Y_w
-           input->params.zero_point,  // zero_point
-           weights->data.int8, bias->data.i16);
+  // set param values not parsed from custom options
+  op->params.K_h = weights->dims->data[1];
+
+  op->Init(input->dims->data[1],   // X_h
+           input->dims->data[2],   // X_w
+           input->dims->data[3],   // C_in
+           output->dims->data[1],  // Y_h
+           output->dims->data[2],  // Y_w
+           weights->dims->data[0]  // C_out
+  );
 
   return kTfLiteOk;
 }
@@ -61,10 +62,10 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
 TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   const TfLiteTensor *input = GetInput(context, node, 0);
   const TfLiteTensor *weights = GetInput(context, node, 1);
-  const TfLiteTensor *shift_scale = GetInput(context, node, 3);
+  const TfLiteTensor *shift_scale = GetInput(context, node, 2);
   TfLiteTensor *output = GetOutput(context, node, 0);
 
-  auto *op = reinterpret_cast<::xcore::conv::Conv2D_SIDO *>(node->user_data);
+  auto *op = reinterpret_cast<::xcore::conv::Conv2D_Shallow *>(node->user_data);
 
   op->Eval(output->data.int8,     // Y
            input->data.int8,      // X,
@@ -75,7 +76,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   return kTfLiteOk;
 }
 
-}  // namespace sido
+}  // namespace shallow
 
 //**************************************
 //**************************************
@@ -90,8 +91,7 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   ::xcore::conv::Conv2DParams conv2d_params;
   ::xcore::ParRegionArray par_regions;
 
-  if (buffer)
-    parse_custom_options(buffer, length, conv2d_params, nullptr, &par_regions);
+  if (buffer) parse_custom_options(buffer, length, conv2d_params, &par_regions);
 
   void *data = nullptr;
   context->AllocatePersistentBuffer(context, sizeof(::xcore::conv::Conv2D_Deep),
@@ -151,18 +151,16 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 namespace n1x1 {
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
-  ::xcore::conv::Conv2DParams conv2d_legacy_params;
+  ::xcore::conv::Conv2DParams conv2d_params;
   ::xcore::ParRegionArray par_regions;
 
-  if (buffer)
-    parse_custom_options(buffer, length, conv2d_legacy_params, nullptr,
-                         &par_regions);
+  if (buffer) parse_custom_options(buffer, length, conv2d_params, &par_regions);
 
   void *data = nullptr;
   context->AllocatePersistentBuffer(context, sizeof(::xcore::conv::Conv2D_1x1),
                                     &data);
   ::xcore::conv::Conv2D_1x1 *op =
-      new (data)::xcore::conv::Conv2D_1x1(conv2d_legacy_params, par_regions);
+      new (data)::xcore::conv::Conv2D_1x1(conv2d_params, par_regions);
 
   return data;
 }
@@ -219,8 +217,7 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   ::xcore::conv::Conv2DParams conv2d_params;
   ::xcore::ParRegionArray par_regions;
 
-  if (buffer)
-    parse_custom_options(buffer, length, conv2d_params, nullptr, &par_regions);
+  if (buffer) parse_custom_options(buffer, length, conv2d_params, &par_regions);
 
   void *data = nullptr;
   context->AllocatePersistentBuffer(
@@ -285,9 +282,9 @@ TfLiteRegistration *Register_Conv2D_Deep() {
   return &r;
 }
 
-TfLiteRegistration *Register_Conv2D_SIDO() {
-  static TfLiteRegistration r = {conv::sido::Init, nullptr, conv::sido::Prepare,
-                                 conv::sido::Eval};
+TfLiteRegistration *Register_Conv2D_Shallow() {
+  static TfLiteRegistration r = {conv::shallow::Init, nullptr,
+                                 conv::shallow::Prepare, conv::shallow::Eval};
   return &r;
 }
 
@@ -297,7 +294,7 @@ TfLiteRegistration *Register_Conv2D_1x1() {
   return &r;
 }
 
-TfLiteRegistration *Register_Conv2D_depthwise() {
+TfLiteRegistration *Register_Conv2D_Depthwise() {
   static TfLiteRegistration r = {conv::depthwise::Init, nullptr,
                                  conv::depthwise::Prepare,
                                  conv::depthwise::Eval};
