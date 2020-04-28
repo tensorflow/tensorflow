@@ -185,6 +185,10 @@ bool InferShapeForNonTFDialectOperation(Operation* op, Dialect* tf_dialect) {
         iter_sink.getOperands().drop_front().take_front(), iter_source,
         tf_dialect);
   }
+  if (auto tensor_cast = dyn_cast<mlir::TensorCastOp>(op)) {
+    return InferShapeForPassThroughOps(
+        tensor_cast.getOperation()->getOperands(), op, tf_dialect);
+  }
   return false;
 }
 
