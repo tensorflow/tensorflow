@@ -263,15 +263,17 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
     }
 
     // Invariant: 
-    // isa<quant::QuantizeCastOp>(dq_arg.getDefiningOp()) &&
+    // isa<quant::QuantizeCastOp>(dq_arg.getDefiningOp()) -->
     // getdq_arg.getType() != q_op.getResult().getType() 
     //
     // as otherwise qdq pair would have been optimized away.
 
     auto qd_arg_def_q_op = 
       dyn_cast_or_null<quant::QuantizeCastOp>(dq_arg.getDefiningOp());
-    assert(qd_arg_def_q_op);
-    
+    if(!qd_arg_def_q_op) {
+      return;
+    }
+
     qd_arg_def_q_op.emitWarning() << " quantizer's output has another quantizer ("
         << q_op.getLoc()
         << ") as consumer - intentional?";
