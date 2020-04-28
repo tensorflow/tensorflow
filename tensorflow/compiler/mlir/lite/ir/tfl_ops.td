@@ -268,6 +268,14 @@ def TFL_FloatNonNegative : AttrConstraint<
     CPred<"!$_self.cast<FloatAttr>().getValue().isNegative()">,
     "whose value is non-negative">;
 
+def TFL_BoolTrue: AttrConstraint<
+    CPred<"$_self.cast<BoolAttr>().getValue()">,
+    "whose value is true">;
+
+def TFL_BoolFalse: AttrConstraint<
+    CPred<"!$_self.cast<BoolAttr>().getValue()">,
+    "whose value is false">;
+
 // This is a quantization-aware version of TCresVTEtIsSameAsOp
 class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
   TCOpResIsShapedTypePred<i, j>,
@@ -856,7 +864,7 @@ def TFL_GatherOp : TFL_Op<"gather", [
   }];
 
   let arguments = (ins
-    TFL_TensorOf<[F32, I1, I8, I32, I64, TFL_Str, QI8, QUI8, QI16]>:$params,
+    TFL_TensorOf<[F32, I1, I8, I32, I64, TFL_Str, UI8, QI8, QUI8]>:$params,
     TFL_TensorOf<[I32, I64]>:$indices,
     I32Attr:$axis
   );
@@ -869,13 +877,16 @@ def TFL_GatherOp : TFL_Op<"gather", [
   ];
 
   let results = (outs
-    TFL_TensorOf<[F32, I1, I8, I32, I64, TFL_Str, QI8, QUI8, QI16]>:$output
+    TFL_TensorOf<[F32, I1, I8, I32, I64, TFL_Str, UI8, QI8, QUI8]>:$output
   );
 
   let hasOptions = 1;
 }
 
-def TFL_GatherNdOp : TFL_Op<"gather_nd", [NoSideEffect]> {
+def TFL_GatherNdOp : TFL_Op<"gather_nd", [
+    NoSideEffect,
+    PredOpTrait<"params and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "Gather_nd operator";
 
   let description = [{
@@ -978,7 +989,10 @@ convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imag
 }
 
 def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
-    ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 4>,
+    ResultsBroadcastableShape,
+    NoSideEffect,
+    NoQuantizableResult]> {
   let summary = "Greater_equal operator";
 
   let description = [{
@@ -986,8 +1000,8 @@ def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
   }];
 
   let arguments = (
-      ins AnyTensor:$lhs,
-      AnyTensor:$rhs);
+      ins TFL_TensorOf<[F32, I32, I64, QUI8, QI8]>:$lhs,
+      TFL_TensorOf<[F32, I32, I64, QUI8, QI8]>:$rhs);
 
   let results = (outs TFL_BoolTensor:$output);
 
@@ -1295,7 +1309,10 @@ def TFL_ExpOp: TFL_Op<"exp", [NoSideEffect,
 }
 
 def TFL_ExpandDimsOp: TFL_Op<"expand_dims", [
-    NoSideEffect, SameOperandsAndResultsScale]> {
+    NoSideEffect,
+    SameOperandsAndResultsScale,
+    PredOpTrait<"input and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>]> {
   let summary = "Inserts a dimension of 1 into a tensor's shape.";
 
   let description = [{
@@ -1332,7 +1349,7 @@ size 1.
   }];
 
   // TODO: Restriction on dim's size and valid range are not modeled here.
-  let arguments = (ins AnyTensor:$input, TFL_IntTensor:$dim);
+  let arguments = (ins AnyTensor:$input, TFL_I32OrI64Tensor:$dim);
 
   let results = (outs AnyTensor:$output);
 
@@ -1378,16 +1395,19 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
   let customOption = "SqueezeOptions";
 }
 
-def TFL_FillOp: TFL_Op<"fill", [NoSideEffect]> {
+def TFL_FillOp: TFL_Op<"fill", [
+    NoSideEffect,
+    PredOpTrait<"input and result must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
   let summary = "Fill the tensor with given value.";
   let description = [{
     Fill the tensor with given value.
   }];
 
   let arguments = (ins TFL_I32OrI64Tensor:$dims,
-                  AnyTensor:$value);
+                   TFL_TensorOf<[F32, I32, I64, I1, TFL_Str]>:$input);
 
-  let results = (outs AnyTensor:$res);
+  let results = (outs TFL_TensorOf<[F32, I32, I64, I1, TFL_Str]>:$result);
 
   let hasOptions = 0;
 }
@@ -1405,7 +1425,12 @@ def TFL_FloorOp: TFL_Op<"floor", [NoSideEffect, SameOperandsAndResultType]> {
 }
 
 def TFL_FloorDivOp : TFL_Op<"floor_div", [
-    ResultsBroadcastableShape, NoSideEffect, BinaryOpSameElementTypeConstraint]> {
+    ResultsBroadcastableShape,
+    NoSideEffect,
+    BinaryOpSameElementTypeConstraint,
+    PredOpTrait<"lhs and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 4>]> {
   let summary = "Floor div operator";
 
   let description = [{
@@ -1413,9 +1438,9 @@ def TFL_FloorDivOp : TFL_Op<"floor_div", [
   }];
 
   let arguments = (
-    ins AnyTensor:$lhs, AnyTensor:$rhs);
+    ins TFL_TensorOf<[F32, I32]>:$lhs, TFL_TensorOf<[F32, I32]>:$rhs);
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_TensorOf<[F32, I32]>:$output);
 
   let builders = [TFL_BroadcastableBinaryBuilder];
 
@@ -1424,7 +1449,13 @@ def TFL_FloorDivOp : TFL_Op<"floor_div", [
   let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
-def TFL_FloorModOp : TFL_Op<"floor_mod", [ResultsBroadcastableShape, NoSideEffect]> {
+def TFL_FloorModOp : TFL_Op<"floor_mod", [
+    ResultsBroadcastableShape,
+    NoSideEffect,
+    BinaryOpSameElementTypeConstraint,
+    PredOpTrait<"lhs and output must have same element type",
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
+    TFL_BinaryOperandsHaveSameShapesOrBroadcastableShape<0, 1, 4>]> {
   let summary = "Division reminder";
 
   let description = [{
@@ -3044,7 +3075,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice",
   [
     NoSideEffect,
     PredOpTrait<"input and output must have same element type",
-    TFL_TCresVTEtIsSameAsOp<0, 0>>,
+      TFL_TCresVTEtIsSameAsOp<0, 0>>,
     SameOperandsAndResultsScale,
     TFL_GpuTargetOp
   ]> {
@@ -3185,17 +3216,17 @@ def TFL_FakeQuantOp : TFL_Op<"fake_quant", [NoSideEffect]> {
   }];
 
   let arguments = (
-    ins AnyTensor:$input,
+    ins TFL_FpTensor:$input,
     // The expected [min, max] range of values.
     F32Attr:$min,
     F32Attr:$max,
 
     // The bitwidth of the quantization; between 2 and 16, inclusive.
-    I32Attr:$num_bits,
+    Confined<I32Attr, [IntMinValue<2>, IntMaxValue<16>]>:$num_bits,
     // Quantization range starts from 0 or 1; starts from 1 if true.
-    BoolAttr:$narrow_range);
+    Confined<BoolAttr, [TFL_BoolFalse]>:$narrow_range);
 
-  let results = (outs AnyTensor:$output);
+  let results = (outs TFL_FpTensor:$output);
 
   let hasCanonicalizer = 0b1;
 
