@@ -734,6 +734,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
               - tuple `(x_val, y_val, val_sample_weights)` of Numpy arrays
               - dataset
+              - A generator or `keras.utils.Sequence` returning `(inputs, targets)`
+            or `(inputs, targets, sample_weights)`.
 
             For the first two cases, `batch_size` must be provided.
             For the last case, `validation_steps` could be provided.
