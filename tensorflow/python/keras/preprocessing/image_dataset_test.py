@@ -199,13 +199,13 @@ class ImageDatasetFromDirectoryTest(keras_parameterized.TestCase):
     directory = self._prepare_directory(num_classes=2, count=10)
     dataset = image_dataset.image_dataset_from_directory(
         directory, batch_size=10, image_size=(18, 18),
-        validation_split=0.2, subset='training')
+        validation_split=0.2, subset='training', seed=1337)
     batch = next(iter(dataset))
     self.assertLen(batch, 2)
     self.assertEqual(batch[0].shape, (8, 18, 18, 3))
     dataset = image_dataset.image_dataset_from_directory(
         directory, batch_size=10, image_size=(18, 18),
-        validation_split=0.2, subset='validation')
+        validation_split=0.2, subset='validation', seed=1337)
     batch = next(iter(dataset))
     self.assertLen(batch, 2)
     self.assertEqual(batch[0].shape, (2, 18, 18, 3))
@@ -284,6 +284,14 @@ class ImageDatasetFromDirectoryTest(keras_parameterized.TestCase):
                                 '`subset` must be either "training" or'):
       _ = image_dataset.image_dataset_from_directory(
           directory, validation_split=0.2, subset='other')
+
+    with self.assertRaisesRegex(ValueError, '`validation_split` must be set'):
+      _ = image_dataset.image_dataset_from_directory(
+          directory, validation_split=0, subset='training')
+
+    with self.assertRaisesRegex(ValueError, 'must provide a `seed`'):
+      _ = image_dataset.image_dataset_from_directory(
+          directory, validation_split=0.2, subset='training')
 
 
 if __name__ == '__main__':
