@@ -20,12 +20,13 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_metrics_db.h"
 #include "tensorflow/core/profiler/convert/xplane_to_step_events.h"
+#include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
-#include "tensorflow/core/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 
@@ -77,6 +78,24 @@ void SetRunEnvironment(int32 accelerator_count, RunEnvironment* env) {
   env->set_device_core_count(accelerator_count);
 }
 
+void ProcessHostPlane(const XPlane* host_plane, bool use_device_step_events,
+                      OpMetricsDb* op_metrics_db, StepEvents* step_events,
+                      TfFunctionDb* tf_function_db) {
+  absl::flat_hash_map<int64, TfOp> tf_ops =
+      CollectTfOpsFromHostThreadsXPlane(*host_plane);
+  OpMetricsDbCombiner combiner(op_metrics_db);
+  XPlaneVisitor plane = CreateTfXPlaneVisitor(host_plane);
+  plane.ForEachLine([&](const XLineVisitor& line) {
+    ConsumeTfMetricsDbData(
+        ConvertHostThreadsXLineToTfMetricsDbData(line, tf_ops), &combiner);
+    CombineStepEvents(ConvertHostThreadsXLineToStepEvents(
+                          line, use_device_step_events, *step_events),
+                      step_events);
+    CombineTfFunctionDb(ConvertHostThreadsXLineToTfFunctionDb(line),
+                        tf_function_db);
+  });
+}
+
 }  // namespace
 
 OpStats ConvertXSpaceToOpStats(const XSpace& space) {
@@ -112,12 +131,9 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space) {
   // Convert a host plane.
   bool has_device = !device_planes.empty();
   if (host_plane) {
-    *op_stats.mutable_host_op_metrics_db() =
-        ConvertHostThreadsXPlaneToOpMetricsDb(*host_plane);
-    CombineStepEvents(
-        ConvertHostThreadsXPlaneToStepEvents(
-            *host_plane, /*use_device_step_events=*/has_device, step_events),
-        &step_events);
+    ProcessHostPlane(host_plane, has_device,
+                     op_stats.mutable_host_op_metrics_db(), &step_events,
+                     op_stats.mutable_tf_function_db());
   }
   StepEvents nonoverlapped_step_events = ToNonOverlappedStepEvents(step_events);
   *op_stats.mutable_step_db() =
