@@ -415,7 +415,6 @@ def eigvals(tensor, name=None):
   >>> tf.linalg.eigvalsh(a)
   <tf.Tensor: shape=(2,), dtype=float32, numpy=
   array([-0.8541021,  5.854102 ], dtype=float32)>
-  ```
 
   Args:
     tensor: `Tensor` of shape `[..., N, N]`.
