@@ -128,6 +128,7 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
     switch (cbid) {
       case HIP_API_ID_hipModuleLaunchKernel:
       case HIP_API_ID_hipExtModuleLaunchKernel:
+      case HIP_API_ID_hipHccModuleLaunchKernel:
         break;
       case HIP_API_ID_hipMemcpyDtoH:
         oss << ", sizeBytes=" << data->args.hipMemcpyDtoH.sizeBytes;
@@ -316,6 +317,7 @@ class RocmApiCallbackImpl {
       switch (cbid) {
         case HIP_API_ID_hipModuleLaunchKernel:
         case HIP_API_ID_hipExtModuleLaunchKernel:
+        case HIP_API_ID_hipHccModuleLaunchKernel:
           AddKernelEventUponApiExit(cbid, data);
 #if ROCTRACER_FLUSH_BUG_WORKAROUND
           // Add the correlation_ids for these events to the pending set
@@ -356,41 +358,66 @@ class RocmApiCallbackImpl {
     event.source = RocmTracerEventSource::ApiCallback;
     event.thread_id = GetCachedTID();
     event.correlation_id = data->correlation_id;
-    if (cbid == HIP_API_ID_hipModuleLaunchKernel) {
-      const hipFunction_t kernelFunc = data->args.hipModuleLaunchKernel.f;
-      if (kernelFunc != nullptr) event.name = hipKernelNameRef(kernelFunc);
+    switch (cbid) {
+      case HIP_API_ID_hipModuleLaunchKernel: {
+        const hipFunction_t kernelFunc = data->args.hipModuleLaunchKernel.f;
+        if (kernelFunc != nullptr) event.name = hipKernelNameRef(kernelFunc);
 
-      event.kernel_info.dynamic_shared_memory_usage =
-          data->args.hipModuleLaunchKernel.sharedMemBytes;
-      event.kernel_info.block_x = data->args.hipModuleLaunchKernel.blockDimX;
-      event.kernel_info.block_y = data->args.hipModuleLaunchKernel.blockDimY;
-      event.kernel_info.block_z = data->args.hipModuleLaunchKernel.blockDimZ;
-      event.kernel_info.grid_x = data->args.hipModuleLaunchKernel.gridDimX;
-      event.kernel_info.grid_y = data->args.hipModuleLaunchKernel.gridDimY;
-      event.kernel_info.grid_z = data->args.hipModuleLaunchKernel.gridDimZ;
-    } else {
-      // cbid == HIP_API_ID_hipExtModuleLaunchKernel
-      const hipFunction_t kernelFunc = data->args.hipExtModuleLaunchKernel.f;
-      if (kernelFunc != nullptr) event.name = hipKernelNameRef(kernelFunc);
+        event.kernel_info.dynamic_shared_memory_usage =
+            data->args.hipModuleLaunchKernel.sharedMemBytes;
+        event.kernel_info.block_x = data->args.hipModuleLaunchKernel.blockDimX;
+        event.kernel_info.block_y = data->args.hipModuleLaunchKernel.blockDimY;
+        event.kernel_info.block_z = data->args.hipModuleLaunchKernel.blockDimZ;
+        event.kernel_info.grid_x = data->args.hipModuleLaunchKernel.gridDimX;
+        event.kernel_info.grid_y = data->args.hipModuleLaunchKernel.gridDimY;
+        event.kernel_info.grid_z = data->args.hipModuleLaunchKernel.gridDimZ;
+      } break;
+      case HIP_API_ID_hipExtModuleLaunchKernel: {
+        const hipFunction_t kernelFunc = data->args.hipExtModuleLaunchKernel.f;
+        if (kernelFunc != nullptr) event.name = hipKernelNameRef(kernelFunc);
 
-      event.kernel_info.dynamic_shared_memory_usage =
-          data->args.hipExtModuleLaunchKernel.sharedMemBytes;
-      unsigned int blockDimX =
-          data->args.hipExtModuleLaunchKernel.localWorkSizeX;
-      unsigned int blockDimY =
-          data->args.hipExtModuleLaunchKernel.localWorkSizeY;
-      unsigned int blockDimZ =
-          data->args.hipExtModuleLaunchKernel.localWorkSizeZ;
+        event.kernel_info.dynamic_shared_memory_usage =
+            data->args.hipExtModuleLaunchKernel.sharedMemBytes;
+        unsigned int blockDimX =
+            data->args.hipExtModuleLaunchKernel.localWorkSizeX;
+        unsigned int blockDimY =
+            data->args.hipExtModuleLaunchKernel.localWorkSizeY;
+        unsigned int blockDimZ =
+            data->args.hipExtModuleLaunchKernel.localWorkSizeZ;
 
-      event.kernel_info.block_x = blockDimX;
-      event.kernel_info.block_y = blockDimY;
-      event.kernel_info.block_z = blockDimZ;
-      event.kernel_info.grid_x =
-          data->args.hipExtModuleLaunchKernel.globalWorkSizeX / blockDimX;
-      event.kernel_info.grid_y =
-          data->args.hipExtModuleLaunchKernel.globalWorkSizeY / blockDimY;
-      event.kernel_info.grid_z =
-          data->args.hipExtModuleLaunchKernel.globalWorkSizeZ / blockDimZ;
+        event.kernel_info.block_x = blockDimX;
+        event.kernel_info.block_y = blockDimY;
+        event.kernel_info.block_z = blockDimZ;
+        event.kernel_info.grid_x =
+            data->args.hipExtModuleLaunchKernel.globalWorkSizeX / blockDimX;
+        event.kernel_info.grid_y =
+            data->args.hipExtModuleLaunchKernel.globalWorkSizeY / blockDimY;
+        event.kernel_info.grid_z =
+            data->args.hipExtModuleLaunchKernel.globalWorkSizeZ / blockDimZ;
+      } break;
+      case HIP_API_ID_hipHccModuleLaunchKernel: {
+        const hipFunction_t kernelFunc = data->args.hipHccModuleLaunchKernel.f;
+        if (kernelFunc != nullptr) event.name = hipKernelNameRef(kernelFunc);
+
+        event.kernel_info.dynamic_shared_memory_usage =
+            data->args.hipHccModuleLaunchKernel.sharedMemBytes;
+        unsigned int blockDimX =
+            data->args.hipHccModuleLaunchKernel.localWorkSizeX;
+        unsigned int blockDimY =
+            data->args.hipHccModuleLaunchKernel.localWorkSizeY;
+        unsigned int blockDimZ =
+            data->args.hipHccModuleLaunchKernel.localWorkSizeZ;
+
+        event.kernel_info.block_x = blockDimX;
+        event.kernel_info.block_y = blockDimY;
+        event.kernel_info.block_z = blockDimZ;
+        event.kernel_info.grid_x =
+            data->args.hipHccModuleLaunchKernel.globalWorkSizeX / blockDimX;
+        event.kernel_info.grid_y =
+            data->args.hipHccModuleLaunchKernel.globalWorkSizeY / blockDimY;
+        event.kernel_info.grid_z =
+            data->args.hipHccModuleLaunchKernel.globalWorkSizeZ / blockDimZ;
+      } break;
     }
     collector_->AddEvent(std::move(event));
   }
@@ -519,6 +546,7 @@ class RocmActivityCallbackImpl {
           switch (record->op) {
             case HIP_API_ID_hipModuleLaunchKernel:
             case HIP_API_ID_hipExtModuleLaunchKernel:
+            case HIP_API_ID_hipHccModuleLaunchKernel:
               DumpActivityRecord(record);
               AddHipKernelActivityEvent(record);
               break;
