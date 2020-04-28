@@ -1100,6 +1100,7 @@ class Dense(Layer):
     kernel_constraint: Constraint function applied to
       the `kernel` weights matrix.
     bias_constraint: Constraint function applied to the bias vector.
+    seed: Seed that will be used by kernel initializers.
 
   Input shape:
     N-D tensor with shape: `(batch_size, ..., input_dim)`.
@@ -1123,6 +1124,7 @@ class Dense(Layer):
                activity_regularizer=None,
                kernel_constraint=None,
                bias_constraint=None,
+               seed=None,
                **kwargs):
     if 'input_shape' not in kwargs and 'input_dim' in kwargs:
       kwargs['input_shape'] = (kwargs.pop('input_dim'),)
@@ -1133,7 +1135,7 @@ class Dense(Layer):
     self.units = int(units) if not isinstance(units, int) else units
     self.activation = activations.get(activation)
     self.use_bias = use_bias
-    self.kernel_initializer = initializers.get(kernel_initializer)
+    self.kernel_initializer = initializers.get(kernel_initializer, seed)
     self.bias_initializer = initializers.get(bias_initializer)
     self.kernel_regularizer = regularizers.get(kernel_regularizer)
     self.bias_regularizer = regularizers.get(bias_regularizer)

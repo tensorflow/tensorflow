@@ -147,14 +147,15 @@ def deserialize(config, custom_objects=None):
 
 
 @keras_export('keras.initializers.get')
-def get(identifier):
+def get(identifier, seed=None):
   if identifier is None:
     return None
   if isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
-    identifier = str(identifier)
-    return deserialize(identifier)
+    seed_config = {'seed': seed} if seed else {}
+    config = {'class_name': str(identifier), 'config': seed_config}
+    return deserialize(config)
   elif callable(identifier):
     return identifier
   else:
