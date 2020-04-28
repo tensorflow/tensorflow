@@ -61,7 +61,7 @@ namespace data {
 const int64 kRetryTimeoutMicros = 1000LL * 1000 * 60 * 60;  // 60 minutes.
 
 // Default interval between task list refreshes.
-const int64 kDefaultTaskRefreshIntervalMs = 1000 * 60;  // 60 seconds.
+const int64 kDefaultTaskRefreshIntervalMs = 1000;  // 1 second.
 
 // Dataset for reading data from the tf.data service non-deterministically.
 //
@@ -172,9 +172,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             });
       }
 
-      while (results_.empty() &&
-             (!tasks_initialized_ || num_unfinished_tasks_ > 0) &&
-             !cancelled_) {
+      while (results_.empty() && !job_finished_ && !cancelled_) {
         cv_.wait(l);
       }
       if (cancelled_) {
@@ -267,9 +265,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       }
       absl::flat_hash_set<int64> task_ids;
       mutex_lock l(mu_);
-      if (resp.task_info_size() > 0 || resp.job_finished()) {
-        tasks_initialized_ = true;
-      }
+      job_finished_ = resp.job_finished();
       for (auto& task : resp.task_info()) {
         task_ids.insert(task.id());
         if (task_threads_.contains(task.id())) {
@@ -457,8 +453,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     std::shared_ptr<::grpc::ChannelCredentials> credentials_;
     int64 num_unfinished_tasks_ TF_GUARDED_BY(mu_) = 0;
 
-    // Whether we've initialized the first task_threads yet.
-    bool tasks_initialized_ = false;
+    bool job_finished_ = false;
     // Must come second to last so that task threads are joined before
     // destroying other fields.
     absl::flat_hash_map<int64, std::unique_ptr<TaskThread>> task_threads_

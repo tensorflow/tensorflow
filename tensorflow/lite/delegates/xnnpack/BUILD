@@ -76,6 +76,22 @@ cc_library(
 )
 
 cc_library(
+    name = "fully_connected_tester",
+    testonly = 1,
+    srcs = ["fully_connected_tester.cc"],
+    hdrs = ["fully_connected_tester.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:schema_fbs_version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "pool_2d_tester",
     testonly = 1,
     srcs = ["pool_2d_tester.cc"],
@@ -193,6 +209,21 @@ cc_test(
     tags = ["nomsan"],  # b/145129478
     deps = [
         ":depthwise_conv_2d_tester",
+        ":test_main",
+        ":xnnpack_delegate_test_mode",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "fully_connected_test",
+    srcs = ["fully_connected_test.cc"],
+    linkopts = select({
+        "//tensorflow:emscripten": EMSCRIPTEN_LINKOPTS,
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":fully_connected_tester",
         ":test_main",
         ":xnnpack_delegate_test_mode",
         "@com_google_googletest//:gtest",

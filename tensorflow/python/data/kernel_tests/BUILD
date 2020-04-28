@@ -81,7 +81,7 @@ tf_py_test(
 
 tf_py_test(
     name = "data_service_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["data_service_ops_test.py"],
     deps = [
         "//tensorflow:tensorflow_py",

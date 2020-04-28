@@ -180,6 +180,7 @@ enum class OperatorType : uint8 {
   kMatrixSetDiagV2,
   kMatrixDiagV3,
   kMatrixSetDiagV3,
+  kScatterNd,
   // Debugging operators.
   kNumericVerify
 };
@@ -2194,6 +2195,10 @@ struct MatrixSetDiagV2Operator : Operator {
 // skipped. (It has never been, and should never be, exposed in the public API.)
 struct MatrixSetDiagV3Operator : Operator {
   MatrixSetDiagV3Operator() : Operator(OperatorType::kMatrixSetDiagV3) {}
+};
+
+struct ScatterNdOperator : Operator {
+  ScatterNdOperator() : Operator(OperatorType::kScatterNd) {}
 };
 
 struct SegmentSumOperator : Operator {

@@ -21,6 +21,7 @@ from __future__ import print_function
 import copy
 import itertools
 
+from tensorflow.python.autograph.lang import directives
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
@@ -198,6 +199,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     # override compile with custom logic.
     self.compiled_loss = None
     self.compiled_metrics = None
+
+    self._steps_per_execution = None
 
     self._init_batch_counters()
 
@@ -1231,21 +1234,43 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     if self.predict_function is not None:
       return self.predict_function
 
-    def predict_function(iterator):
-      """Runs one call to `self.predict_function`."""
+    def step_function(model, iterator):
+      """Runs a single evaluation step."""
 
       def run_step(data):
-        outputs = self.predict_step(data)
-        # Ensure counter is updated only if `predict_step` succeeds.
+        outputs = model.predict_step(data)
+        # Ensure counter is updated only if `test_step` succeeds.
         with ops.control_dependencies(_minimum_control_deps(outputs)):
-          self._predict_counter.assign_add(1)
+          model._predict_counter.assign_add(1)  # pylint: disable=protected-access
         return outputs
 
       data = next(iterator)
-      outputs = self.distribute_strategy.run(run_step, args=(data,))
+      outputs = model.distribute_strategy.run(run_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='concat')
       return outputs
+
+    if (self._steps_per_execution is None or
+        self._steps_per_execution.numpy().item() == 1):
+
+      def predict_function(iterator):
+        """Runs an evaluation execution with one step."""
+        return step_function(self, iterator)
+
+    else:
+
+      def predict_function(iterator):
+        """Runs an evaluation execution with multiple steps."""
+        outputs = step_function(self, iterator)
+        for _ in math_ops.range(self._steps_per_execution - 1):
+          directives.set_loop_options(
+              shape_invariants=[(
+                  t, tf_utils.get_tensor_spec(t, dynamic_batch=True).shape)
+                                for t in nest.flatten(outputs)])
+          step_outputs = step_function(self, iterator)
+          outputs = nest.map_structure(lambda t1, t2: concat([t1, t2]), outputs,
+                                       step_outputs)
+        return outputs
 
     if not self.run_eagerly:
       predict_function = def_function.function(
@@ -1345,7 +1370,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           max_queue_size=max_queue_size,
           workers=workers,
           use_multiprocessing=use_multiprocessing,
-          model=self)
+          model=self,
+          steps_per_execution=self._steps_per_execution)
 
       # Container that configures and calls `tf.keras.Callback`s.
       if not isinstance(callbacks, callbacks_module.CallbackList):
@@ -1377,7 +1403,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                   batch_outputs,
                   lambda output, batch_output: output.append(batch_output),
                   outputs, batch_outputs)
-            callbacks.on_predict_batch_end(step, {'outputs': batch_outputs})
+            end_step = step + data_handler.step_increment
+            callbacks.on_predict_batch_end(end_step, {'outputs': batch_outputs})
       callbacks.on_predict_end()
     all_outputs = nest.map_structure_up_to(batch_outputs, concat, outputs)
     return tf_utils.to_numpy_or_python_type(all_outputs)

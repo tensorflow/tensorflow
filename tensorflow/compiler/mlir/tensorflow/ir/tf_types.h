@@ -264,6 +264,9 @@ class TensorFlowTypeWithSubtype : public TensorFlowType {
 
   // Converts a TypeWithSubtype type to the same type but without its subtypes.
   Type RemoveSubtypes();
+
+  // Returns the subtypes.
+  ArrayRef<TensorType> GetSubtypes();
 };
 
 // Returns the corresponding TensorFlow type with subtypes but without its
@@ -294,6 +297,21 @@ class VariantType : public detail::TypeWithSubtypeImpl<VariantType> {
   static unsigned getTypeKind() { return TensorFlowTypes::VARIANT; }
   static std::string getTypeName() { return "VariantType"; }
 };
+
+// Returns whether two arrays of Type are broadcast compatible.
+bool BroadcastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs);
+
+// Returns whether the two elemental types are compatible. Shapes are compatible
+// if:
+// - the types are statically equal
+// - could be dynamically equal
+//   - considering dynamic shapes equal unless contradictory info known;
+//   - element types are equivalent, modulo subtypes possible be less exact
+//     (e.g., a resource type without subtype is considered compatible with
+//      resource type with known subtype).
+// Provide option to ignore ref types on 'lhs'.
+bool HasCompatibleElementTypes(Type lhs, Type rhs,
+                               bool may_ignore_ref_type_lhs = false);
 
 }  // end namespace TF
 }  // end namespace mlir

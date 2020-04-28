@@ -20,6 +20,7 @@ limitations under the License.
 #define TF_EXECUTOR_DIALECT
 
 include "mlir/IR/OpBase.td"
+include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 
 //===----------------------------------------------------------------------===//
 // TensorFlow dialect definitions
@@ -234,9 +235,9 @@ def TfExecutor_YieldOp : TfExecutor_Op<"yield",
 def TfExecutor_SwitchOp : TfExecutor_Op<"Switch",
     [ControlOperandsAfterAllData, HasParent<"GraphOp">,
      PredOpTrait<"data operand must be broadcastable to true result",
-                 TCOpIsBroadcastableToRes<0, 0>>,
+                 TF_OpIsBroadcastableToRes<0, 0>>,
      PredOpTrait<"data operand must be broadcastable to false result",
-                 TCOpIsBroadcastableToRes<0, 1>>]>{
+                 TF_OpIsBroadcastableToRes<0, 1>>]>{
   let summary = [{
     The "tf_executor.Switch" operation takes a data operand and a boolean
     predicate condition, and returns two values matching the type of the data
@@ -356,7 +357,7 @@ def TfExecutor_MergeOp : TfExecutor_Op<"Merge",
 def TfExecutor_EnterOp : TfExecutor_Op<"Enter",
     [ControlOperandsAfterAllData, HasParent<"GraphOp">,
      PredOpTrait<"data operand must be broadcastable to result",
-                 TCOpIsBroadcastableToRes<0, 0>>]>{
+                 TF_OpIsBroadcastableToRes<0, 0>>]>{
   let summary = [{
     The "tf_executor.Enter" operation forwards its input to Tensorflow while
     loop.
@@ -531,7 +532,7 @@ def TfExecutor_NextIterationSinkOp : TfExecutor_Op<"NextIteration.Sink",
 def TfExecutor_ExitOp : TfExecutor_Op<"Exit",
     [HasParent<"GraphOp">,
      PredOpTrait<"data operand must be broadcastable to result",
-                 TCOpIsBroadcastableToRes<0, 0>>]>{
+                 TF_OpIsBroadcastableToRes<0, 0>>]>{
 
   let summary = [{
     The "tf_executor.Exit" operation forwards a value from an while loop to its

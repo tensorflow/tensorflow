@@ -48,7 +48,7 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
     }
   }
 
-  if (IsRemote()) {
+  if (Type() == REMOTE) {
     const tensorflow::Tensor* t = nullptr;
     TensorHandle* h_cpu = nullptr;
     *status = EagerCopyToDevice(this, ctx_, &ctx_->Executor(), ctx_->HostCPU(),
@@ -68,7 +68,7 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
     h_cpu->Unref();
     delete tf_tensor;
     return retval;
-  } else {
+  } else if (Type() == LOCAL) {
     tensorflow::Tensor tensor;
     if (IsCPU(device()) || HasLocalMirror(nullptr)) {
       const tensorflow::Tensor* src = nullptr;
@@ -95,6 +95,10 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
     AbstractTensorInterface* retval = tf_tensor->tensor;
     delete tf_tensor;
     return retval;
+  } else {
+    *status = errors::InvalidArgument(
+        "Resolve() is not supoorted on packed TensorHandles.");
+    return nullptr;
   }
 }
 

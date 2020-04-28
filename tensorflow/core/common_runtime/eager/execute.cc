@@ -200,7 +200,8 @@ Status ValidateInputTypeAndPlacement(
             "together.");
       }
       Device* handle_device = absl::get<Device*>(handle_device_variant);
-      const bool maybe_copy = !skip_remote_copy || !handle->IsRemote();
+      const bool maybe_copy =
+          !skip_remote_copy || handle->Type() != TensorHandle::REMOTE;
       // If the input is already on the right device, then nothing to do.
       if (expected_device != handle_device && maybe_copy) {
         TF_RETURN_IF_ERROR(CopyInputToExpectedDevice(ctx, op, kernel->device(),
@@ -258,7 +259,7 @@ Status GetDeviceForInput(const EagerContext& ctx, TensorHandle* tensor_handle,
   }
   Device* cpu_device = ctx.HostCPU();
   string device_name;
-  if (tensor_handle->IsRemote()) {
+  if (tensor_handle->Type() != TensorHandle::LOCAL) {
     Device* device = absl::get<Device*>(tensor_handle->device());
     device_name = device != nullptr ? device->name() : cpu_device->name();
     *result = (device == nullptr ? cpu_device : device);
@@ -357,32 +358,10 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
   return Status::OK();
 }
 
-// There are a lot of references to devices in this function and around.
-// Here is what they mean:
-//  EagerOperation::Device(): The device on which the user requested the op
-//    be executed, except if we had to change the device due to resource inputs
-//    or CPU pinning. If the user did not request a device, the op does not
-//    take resources, and we did not pin it to CPU, the device can be nullptr.
-//  KernelAndDevice::Device(): The first time we see an op (combined with
-//    its attributes), we need to create a KernelAndDevice object for it.
-//    If op->Device() is a nullptr, we select a device for the op when
-//    creating the KernelAndDevice. A concrete device will always be selected
-//    here except when `op` is a function to be executed using function library
-//    runtime. In this case, we don't select a device because running
-//    a function with explicitly requested device has different behavior than
-//    running without an explicitly requested device.
-Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
-                         int* num_retvals) {
-  ScopedMemoryDebugAnnotation op_annotation(
-      op->op_name(), op->remote_func_params().has_value()
-                         ? op->remote_func_params().value().step_id.value_or(0)
-                         : 0);
-  profiler::TraceMe activity(
-      [&] { return absl::StrCat("EagerLocalExecute: ", op->Name()); },
-      profiler::TraceMeLevel::kInfo);
+Status GetOrCreateKernelAndDevice(
+    EagerOperation* op, TensorHandle** retvals, int* num_retvals,
+    core::RefCountPtr<KernelAndDevice>* out_kernel) {
   EagerContext& ctx = op->EagerContext();
-  auto& executor = op->Executor();
-  TF_RETURN_IF_ERROR(executor.status());
   Device* device = absl::get<Device*>(op->Device());
 
   Fprint128 cache_key = op->MutableAttrs()->CacheKey(op->DeviceName());
@@ -414,11 +393,13 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     // which doesn't accept remote inputs.
     for (int i = 0; i < op->Inputs().size(); i++) {
       TensorHandle* input = op->Inputs()[i];
-      if (!ctx.LazyCopyFunctionRemoteInputs() && input->IsRemote()) {
+      if (!ctx.LazyCopyFunctionRemoteInputs() &&
+          input->Type() == TensorHandle::REMOTE) {
         TensorHandle* handle = nullptr;
-        TF_RETURN_IF_ERROR(EagerCopyToDevice(
-            input, &ctx, &executor, device == nullptr ? ctx.HostCPU() : device,
-            /* mirror= */ true, &handle));
+        TF_RETURN_IF_ERROR(
+            EagerCopyToDevice(input, &ctx, &op->Executor(),
+                              device == nullptr ? ctx.HostCPU() : device,
+                              /*mirror=*/true, &handle));
         op->UpdateInput(i, handle);
         // Unref handle since it has a ref as an input now
         handle->Unref();
@@ -480,9 +461,10 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
     if (device == nullptr) {
       PrioritizedDeviceTypeVector supported_devs;
-      TF_RETURN_IF_ERROR(SupportedDeviceTypesForNode(
-          ctx.prioritized_device_type_list(), ndef, &supported_devs,
-          &ctx.HostCPU()->parsed_name()));
+      auto device_type_list = ctx.prioritized_device_type_list();
+      TF_RETURN_IF_ERROR(
+          SupportedDeviceTypesForNode(*device_type_list, ndef, &supported_devs,
+                                      &ctx.HostCPU()->parsed_name()));
       if (supported_devs.empty()) {
         return errors::NotFound("Could not find valid device for node.\nNode:",
                                 FormatNodeDefForError(ndef),
@@ -568,6 +550,42 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
       }
     }
   }
+  kernel->Ref();  // Ownership of reference is passed to out_kernel.
+  out_kernel->reset(kernel.get());
+  return Status::OK();
+}
+
+// There are a lot of references to devices in this function and around.
+// Here is what they mean:
+//  EagerOperation::Device(): The device on which the user requested the op
+//    be executed, except if we had to change the device due to resource inputs
+//    or CPU pinning. If the user did not request a device, the op does not
+//    take resources, and we did not pin it to CPU, the device can be nullptr.
+//  KernelAndDevice::Device(): The first time we see an op (combined with
+//    its attributes), we need to create a KernelAndDevice object for it.
+//    If op->Device() is a nullptr, we select a device for the op when
+//    creating the KernelAndDevice. A concrete device will always be selected
+//    here except when `op` is a function to be executed using function library
+//    runtime. In this case, we don't select a device because running
+//    a function with explicitly requested device has different behavior than
+//    running without an explicitly requested device.
+Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
+                         int* num_retvals) {
+  ScopedMemoryDebugAnnotation op_annotation(
+      op->op_name(), op->remote_func_params().has_value()
+                         ? op->remote_func_params().value().step_id.value_or(0)
+                         : 0);
+  profiler::TraceMe activity(
+      [&] { return absl::StrCat("EagerLocalExecute: ", op->Name()); },
+      profiler::TraceMeLevel::kInfo);
+  EagerContext& ctx = op->EagerContext();
+  auto& executor = op->Executor();
+  TF_RETURN_IF_ERROR(executor.status());
+
+  core::RefCountPtr<KernelAndDevice> kernel;
+  TF_RETURN_IF_ERROR(
+      GetOrCreateKernelAndDevice(op, retvals, num_retvals, &kernel));
+
   int num_outputs = kernel->num_outputs();
   if (num_outputs > *num_retvals) {
     return errors::InvalidArgument("Expecting ", num_outputs,
@@ -985,6 +1003,61 @@ Status MaybeUpdateOpDevice(EagerOperation* op) {
 
   return Status::OK();
 }
+
+Status GetKernelOutputs(std::vector<Tensor>* outputs, int num_outputs,
+                        TensorHandle** retvals, EagerContext* ctx,
+                        KernelAndDevice* kernel) {
+  for (int i = 0; i < num_outputs; ++i) {
+    if (retvals[i] == nullptr) {
+      retvals[i] = TensorHandle::CreateLocalHandle(
+          std::move((*outputs)[i]),
+          /* d= */ ctx->CanonicalDevice(kernel->OutputDevice(i)),
+          /* op_device= */ kernel->device(),
+          /* resource_device= */ kernel->OutputResourceDevice(i), ctx);
+    } else {
+      if (TF_PREDICT_FALSE(kernel->device() != retvals[i]->op_device())) {
+        return errors::Internal(
+            "Kernel output tensor handle has a different op device than the "
+            "kernel. This should never happen.");
+      }
+      if (TF_PREDICT_FALSE(ctx->CanonicalDevice(kernel->OutputDevice(i)) !=
+                           absl::get<Device*>(retvals[i]->device()))) {
+        return errors::Internal(
+            "Kernel output tensor handle locates on a different device than "
+            "the specified kernel output device. This should never happen.");
+      }
+
+      TF_RETURN_IF_ERROR(
+          retvals[i]->SetTensor(std::move((*outputs)[i]),
+                                ctx->CanonicalDevice(kernel->OutputDevice(i))));
+    }
+  }
+  return Status::OK();
+}
+
+void CollectGraphs(EagerContext* ctx) {
+  mutex_lock ml(*ctx->MetadataMu());
+
+  GraphCollector* collector = ctx->GetGraphCollector();
+  mutex_lock mll(collector->mu);
+
+  // Adding to partition graphs for backward compatibility.
+  for (const auto& graph : collector->partitioned_graphs) {
+    *ctx->RunMetadataProto()->add_partition_graphs() = graph;
+  }
+
+  if (collector->dirty) {
+    auto* function_graphs = ctx->RunMetadataProto()->add_function_graphs();
+    *function_graphs->mutable_post_optimization_graph() =
+        collector->optimized_graph;
+    *function_graphs->mutable_pre_optimization_graph() = collector->raw_graph;
+    for (const auto& graph : collector->partitioned_graphs) {
+      *function_graphs->add_partition_graphs() = graph;
+    }
+  }
+
+  collector->ClearGraphs();
+}
 }  // namespace
 
 Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
@@ -1060,50 +1133,18 @@ Status EagerKernelExecute(
   TF_RETURN_IF_ERROR(kernel->Run(container, inputs, &outputs,
                                  cancellation_manager, remote_func_params));
   if (graph_collector != nullptr) {
-    mutex_lock ml(*ctx->MetadataMu());
-    {
-      GraphCollector* collector = ctx->GetGraphCollector();
-      mutex_lock mll(collector->mu);
-
-      // Adding to partition graphs for backward compatibility.
-      for (const auto& graph : collector->partitioned_graphs) {
-        *ctx->RunMetadataProto()->add_partition_graphs() = graph;
-      }
-
-      if (collector->dirty) {
-        auto* function_graphs = ctx->RunMetadataProto()->add_function_graphs();
-        *function_graphs->mutable_post_optimization_graph() =
-            collector->optimized_graph;
-        *function_graphs->mutable_pre_optimization_graph() =
-            collector->raw_graph;
-        for (const auto& graph : collector->partitioned_graphs) {
-          *function_graphs->add_partition_graphs() = graph;
-        }
-      }
-
-      collector->ClearGraphs();
-    }
+    CollectGraphs(ctx);
   }
-  DCHECK_EQ(retvals.size(), outputs.size());
 
-  for (int i = 0; i < retvals.size(); ++i) {
-    if (retvals[i] == nullptr) {
-      retvals[i] = TensorHandle::CreateLocalHandle(
-          std::move(outputs[i]),
-          /* d= */ ctx->CanonicalDevice(kernel->OutputDevice(i)),
-          /* op_device= */ kernel->device(),
-          /* resource_device= */ kernel->OutputResourceDevice(i), ctx);
-    } else {
-      DCHECK_EQ(kernel->device(), retvals[i]->op_device());
-      DCHECK_EQ(ctx->CanonicalDevice(kernel->OutputDevice(i)),
-                absl::get<Device*>(retvals[i]->device()));
-
-      TF_RETURN_IF_ERROR(
-          retvals[i]->SetTensor(std::move(outputs[i]),
-                                ctx->CanonicalDevice(kernel->OutputDevice(i))));
-    }
+  if (TF_PREDICT_FALSE(retvals.size() != outputs.size())) {
+    return errors::Internal(
+        "EagerKernelExecute returns a list of ", outputs.size(),
+        " tensors but ", retvals.size(),
+        " is expected. This should never "
+        "happen. Please file a bug with the TensorFlow team.");
   }
-  return Status::OK();
+  return GetKernelOutputs(&outputs, retvals.size(), retvals.data(), ctx,
+                          kernel.get());
 }
 
 namespace {

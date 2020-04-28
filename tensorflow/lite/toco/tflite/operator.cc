@@ -2061,6 +2061,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       ::tflite::BuiltinOperator_RANK, OperatorType::kRank));
   ops.emplace_back(new SimpleOperator<SegmentSumOperator>(
       ::tflite::BuiltinOperator_SEGMENT_SUM, OperatorType::kSegmentSum));
+  ops.emplace_back(MakeUnique<SimpleOperator<ScatterNdOperator>>(
+      ::tflite::BuiltinOperator_SCATTER_ND, OperatorType::kScatterNd));
   return ops;
 }
 }  // namespace

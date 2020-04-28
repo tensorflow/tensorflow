@@ -654,11 +654,8 @@ LogicalResult HanldeWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
     arg_data_type_and_updated_output_index[entry.getFirst()] = {
         entry.getSecond(), update_index};
     if (!new_output_shapes.empty()) {
-      tensorflow::TensorShapeProto shape_proto;
-      tensorflow::ConvertTypeToTensorShape(entry.getSecond())
-          .AsProto(&shape_proto);
-      new_output_shapes[entry.getFirst()] = builder.getStringAttr(
-          tensorflow::mangling_util::MangleShape(shape_proto));
+      new_output_shapes[entry.getFirst()] =
+          tensorflow::ConvertTypeToTensorShapeAttr(entry.getSecond());
     }
   }
   AddLoadsStoresOutsideControlFlowOp(new_while,
@@ -800,11 +797,8 @@ LogicalResult HandleIfOP(TF::IfOp if_op, FuncOp then_branch,
     arg_data_type_and_updated_output_index[entry.getFirst() + 1] = {
         entry.getSecond(), update_index};
     if (!if_op.output_shapes().getValue().empty() && update_index >= 0) {
-      tensorflow::TensorShapeProto shape_proto;
-      tensorflow::ConvertTypeToTensorShape(entry.getSecond())
-          .AsProto(&shape_proto);
-      new_output_shapes.push_back(builder.getStringAttr(
-          tensorflow::mangling_util::MangleShape(shape_proto)));
+      new_output_shapes.push_back(
+          tensorflow::ConvertTypeToTensorShapeAttr(entry.getSecond()));
     }
   }
   AddLoadsStoresOutsideControlFlowOp(new_if,

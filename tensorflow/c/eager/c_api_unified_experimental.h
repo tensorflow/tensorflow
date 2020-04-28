@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_C_API_UNIFIED_EXPERIMENTAL_H_
 
 #include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 
 #ifdef __cplusplus
@@ -34,26 +35,34 @@ extern "C" {
 // E.g. it could know whether we're in eager mode or in graph mode, keeps track
 // of gradient tapes, etc.
 typedef struct TF_ExecutionContext TF_ExecutionContext;
+
 // A TF_AbstractTensor is an input to an operation. E.g. it could be a union
-// type of eager and graph tensors.
+// type of eager and graph tensors. It is also the result of executing an
+// operation.
 typedef struct TF_AbstractTensor TF_AbstractTensor;
+
 // A TF_AbstractOp is the metadata we need to execute an operation. E.g. this
 // could contain the op type and other attributes.
 typedef struct TF_AbstractOp TF_AbstractOp;
 
-// `TF_ExecutionContextOptions` define what type of `TF_ExecutionContext` is
-// created. It can be used to pass context specific params.
-typedef struct TF_ExecutionContextOptions TF_ExecutionContextOptions;
-void TF_DeleteExecutionContextOptions(TF_ExecutionContextOptions*);
+// Stores a function representation that can be used for execution or for
+// setting functional attributes of other composite ops e.g. control flow.
+typedef struct TF_AbstractFunction TF_AbstractFunction;
 
-TF_ExecutionContext* TF_NewExecutionContext(TF_ExecutionContextOptions*,
-                                            TF_Status* s);
+// Creates a context for tracing the execution of operations into a function.
+TF_ExecutionContext* TF_NewGraphExecutionContext(TF_Status* s);
+
+// Creates a context for eager execution of operations.
+TF_ExecutionContext* TF_NewEagerExecutionContext(TFE_ContextOptions*,
+                                                 TF_Status* s);
+
 void TF_DeleteExecutionContext(TF_ExecutionContext*);
 
+// Create an operation suitable to use with the provided context. The operation
+// requires its type (e.g. "AddV2") to be set independently.
 TF_AbstractOp* TF_NewAbstractOp(TF_ExecutionContext* ctx);
 void TF_DeleteAbstractOp(TF_AbstractOp*);
 
-void TF_DeleteAbstractTensor(TF_AbstractTensor*);
 // TODO(srbs): Add APIs for specifying attrs etc.
 // `op_type` must outlive `op`.
 void TF_AbstractOpSetOpType(TF_AbstractOp* op, const char* const op_type,
@@ -65,9 +74,16 @@ void TF_AbstractOpSetOpName(TF_AbstractOp* op, const char* const op_name,
 void TF_AbstractOpSetAttrType(TF_AbstractOp* op, const char* const attr_name,
                               TF_DataType value, TF_Status* s);
 
-// TF_OutputList just lets us not specify the number of outputs of an operation
+void TF_DeleteAbstractTensor(TF_AbstractTensor*);
+
+// TF_OutputList holds the list of TF_AbstractTensor that results from executing
+// an operation.
+// It just lets us not specify the number of outputs of an operation
 // beforehand. This forces a memory allocation in the runtime, which is bad, but
 // it allows for generic code.
+// TODO(aminim): the description above isn't clear with respect to
+// TF_OutputListNumOutputs and the current eager implementation which requires
+// the number of outputs to be set by the client.
 typedef struct TF_OutputList TF_OutputList;
 TF_OutputList* TF_NewOutputList();
 void TF_DeleteOutputList(TF_OutputList* o);
@@ -75,38 +91,38 @@ void TF_OutputListSetNumOutputs(TF_OutputList* o, int, TF_Status*);
 int TF_OutputListNumOutputs(TF_OutputList* o);
 TF_AbstractTensor* TF_OutputListGet(TF_OutputList* o, int i);
 
-// Stores a function representation that can be used for execution or for
-// setting functional attributes of other composite ops e.g. control flow.
-typedef struct TF_AbstractFunction TF_AbstractFunction;
-TF_AbstractFunction* TF_ExecutionContextToFunction(
-    const TF_ExecutionContext* fn_body, const char* fn_name, int num_inputs,
-    const TF_AbstractTensor* inputs, int num_outputs,
-    const TF_AbstractTensor* outputs, TF_Status* status);
-void TF_DeleteAbstractFunction(TF_AbstractFunction*);
-void TF_ExecutionContextRegisterFunction(TF_ExecutionContext*,
-                                         TF_AbstractFunction*, TF_Status*);
-
 // TF_ExecuteOperation will, if in eager mode, execute, if in graph mode, maybe
-// capture some inputs and then add a node in the graph, and after
-// execution/node creation it'll go and record things that happened in any tape
-// which happens to be active.
+// capture some inputs and then add a node in the graph. The output tensors are
+// returned through the provided TF_OutputList.
+// Any active tape will observe the effects of this execution.
 void TF_ExecuteOperation(TF_AbstractOp* op, int num_inputs,
                          TF_AbstractTensor* const* inputs, TF_OutputList* o,
                          TF_ExecutionContext* ctx, TF_Status* s);
 
-// -----------------------------------------------------------------------------
-// APIs specific to Eager and graph modes
-// -----------------------------------------------------------------------------
+// Creates a new TF_AbstractFunction from the current tracing states in the
+// context. The returned TF_GraphToFunction must be deleted by the client.
+// TODO(aminim): clarify the contract on the state of the context after this
+// call.
+TF_AbstractFunction* TF_ExecutionContextToFunction(
+    const TF_ExecutionContext* fn_body, const char* fn_name, int num_inputs,
+    const TF_AbstractTensor* inputs, int num_outputs,
+    const TF_AbstractTensor* outputs, TF_Status* status);
 
-TF_ExecutionContextOptions* TF_NewGraphContextOptions();
-TF_ExecutionContextOptions* TF_NewEagerContextOptions(TFE_ContextOptions*);
+void TF_DeleteAbstractFunction(TF_AbstractFunction*);
+
+// Register the function with the given context. This is particularly useful for
+// making a function available to an eager context.
+void TF_ExecutionContextRegisterFunction(TF_ExecutionContext*,
+                                         TF_AbstractFunction*, TF_Status*);
+
+// -----------------------------------------------------------------------------
+// APIs specific to Eager modes
+// -----------------------------------------------------------------------------
 
 // Temporary APIs till we figure out how to create scalar valued Eager
 // tensors and how to get value out of eager abstract tensors.
-TF_AbstractTensor* TF_NewAbstractTensor();
-void TF_AbstractTensorSetEagerTensor(
-    TF_AbstractTensor* at, TFE_TensorHandle* t,
-    TF_Status* s);  // `at` takes ownership of `t`.
+TF_AbstractTensor* TF_CreateAbstractTensorFromEagerTensor(TFE_TensorHandle* t,
+                                                          TF_Status* s);
 TFE_TensorHandle* TF_AbstractTensorGetEagerTensor(TF_AbstractTensor* at,
                                                   TF_Status* s);
 TFE_Context* TF_ExecutionContextGetTFEContext(TF_ExecutionContext*);

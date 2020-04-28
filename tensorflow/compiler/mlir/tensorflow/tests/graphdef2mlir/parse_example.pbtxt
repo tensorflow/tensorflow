@@ -1,8 +1,8 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input0 -tf-input-data-types=DT_STRING -tf-input-shapes=32 -tf-output-arrays=ParseExample/ParseExampleV2:0,ParseExample/ParseExampleV2:7 -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=input0 -tf-input-data-types=DT_STRING -tf-input-shapes=32 -tf-output-arrays=ParseExample/ParseExampleV2:0,ParseExample/ParseExampleV2:7 -o - | FileCheck %s
 
 # CHECK: %[[parse_example:.*]]:8, %[[parse_example_control:.*]] = tf_executor.island wraps "tf.ParseExampleV2"(%arg0,
 # CHECK: result_segment_sizes = dense<[2, 2, 2, 2, 0, 0]> : vector<6xi32>
-# CHECK: tf_executor.fetch %[[parse_example]]#0, %[[parse_example]]#7 : tensor<?x2xi64>, tensor<32xf32>
+# CHECK: tf_executor.fetch %[[parse_example]]#0, %[[parse_example]]#7 : tensor<*xi64>, tensor<*xf32>
 
 node {
   name: "input0"

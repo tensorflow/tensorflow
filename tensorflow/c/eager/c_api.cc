@@ -611,13 +611,12 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     }
   }
 
-  tensorflow::RemoteRendezvous* r =
-      grpc_server->worker_env()->rendezvous_mgr->Find(context_id);
   auto session_name = tensorflow::strings::StrCat("eager_", context_id);
-  auto* device_mgr = grpc_server->worker_env()->device_mgr;
-  std::shared_ptr<tensorflow::WorkerSession> worker_session;
-
   if (reset_context) {
+    tensorflow::RemoteRendezvous* r =
+        grpc_server->worker_env()->rendezvous_mgr->Find(context_id);
+    auto* device_mgr = grpc_server->worker_env()->device_mgr;
+    std::shared_ptr<tensorflow::WorkerSession> worker_session;
     TF_RETURN_IF_ERROR(grpc_server->worker_env()->session_mgr->CreateSession(
         session_name, server_def, base_request.cluster_device_attributes(),
         true));
@@ -647,10 +646,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     LOG_AND_RETURN_IF_ERROR(
         grpc_server->worker_env()->session_mgr->UpdateSession(
             session_name, server_def, base_request.cluster_device_attributes(),
-            true));
-    LOG_AND_RETURN_IF_ERROR(context->UpdateRemoteMaster(
-        grpc_server->worker_env(), std::move(remote_eager_workers),
-        added_workers, removed_workers, context_id, r));
+            /*isolate_session_state=*/true));
+    LOG_AND_RETURN_IF_ERROR(
+        context->UpdateRemoteMaster(context_id, std::move(remote_eager_workers),
+                                    added_workers, removed_workers));
   }
 #undef LOG_AND_RETURN_IF_ERROR
 
@@ -1026,10 +1025,10 @@ void* TFE_TensorHandleDevicePointer(TFE_TensorHandle* h, TF_Status* status) {
     return t->data();
   }
 
-  if (handle->IsRemote()) {
+  if (handle->Type() != tensorflow::TensorHandle::LOCAL) {
     status->status = tensorflow::errors::InvalidArgument(
-        "TFE_TensorHandleDevicePointer may not be called on a remote tensor "
-        "handle.");
+        "TFE_TensorHandleDevicePointer may not be called on a ",
+        handle->TypeString(), " tensor handle.");
     return nullptr;
   }
   tensorflow::Device* device(absl::get<tensorflow::Device*>(handle->device()));
@@ -1100,10 +1099,10 @@ size_t TFE_TensorHandleDeviceMemorySize(TFE_TensorHandle* h,
   }
   tensorflow::TensorHandle* handle =
       tensorflow::TensorHandleFromInterface(h->handle);
-  if (handle->IsRemote()) {
+  if (handle->Type() != tensorflow::TensorHandle::LOCAL) {
     status->status = tensorflow::errors::InvalidArgument(
-        "TFE_TensorHandleDeviceMemorySize may not be called on a remote tensor "
-        "handle.");
+        "TFE_TensorHandleDeviceMemorySize may not be called on a ",
+        handle->TypeString(), " tensor handle.");
     return 0;
   }
   const tensorflow::Tensor* tensor;

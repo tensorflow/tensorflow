@@ -105,17 +105,12 @@ LogicalResult GetSplitElementTypeAndCount(TF::TensorArraySplitV3Op split,
 // Tries to infer the tensor array element shape.
 llvm::Optional<llvm::SmallVector<int64_t, 8>> GetTensorArrayElementShape(
     TF::TensorArrayV3Op ta, ModuleOp module) {
-  tensorflow::TensorShapeProto element_shape;
-  if (tensorflow::mangling_util::DemangleShape(ta.element_shape().str(),
-                                               &element_shape)
-          .ok()) {
-    tensorflow::PartialTensorShape shape(element_shape);
-    if (shape.IsFullyDefined()) {
-      // Convert int64 to int64_.
-      auto int64_dims = shape.dim_sizes();
-      llvm::SmallVector<int64_t, 8> dims(int64_dims.begin(), int64_dims.end());
-      return dims;
-    }
+  auto element_shape = ta.element_shapeAttr().cast<mlir::TF::ShapeAttr>();
+  if (element_shape.hasStaticShape()) {
+    auto shape = element_shape.getShape();
+    // Convert int64 to int64_.
+    llvm::SmallVector<int64_t, 8> dims(shape.begin(), shape.end());
+    return dims;
   }
 
   bool has_failure = false;

@@ -119,3 +119,10 @@ tf_proto_library(
     cc_api_version = 2,
     visibility = [":friends"],
 )
+
+tf_proto_library(
+    name = "memory_profile_proto",
+    srcs = ["memory_profile.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)

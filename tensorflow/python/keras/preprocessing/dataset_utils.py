@@ -170,19 +170,16 @@ def get_training_or_validation_split(samples, labels, validation_split, subset):
   Returns:
     tuple (samples, labels), potentially restricted to the specified subset.
   """
-  if validation_split:
-    if not 0 < validation_split < 1:
-      raise ValueError(
-          '`validation_split` must be between 0 and 1, received: %s' %
-          (validation_split,))
-  if subset is None:
+  if not validation_split:
     return samples, labels
 
   num_val_samples = int(validation_split * len(samples))
   if subset == 'training':
+    print('Using %d files for training.' % (len(samples) - num_val_samples,))
     samples = samples[:-num_val_samples]
     labels = labels[:-num_val_samples]
   elif subset == 'validation':
+    print('Using %d files for validation.' % (num_val_samples,))
     samples = samples[-num_val_samples:]
     labels = labels[-num_val_samples:]
   else:
@@ -199,3 +196,22 @@ def labels_to_dataset(labels, label_mode, num_classes):
   elif label_mode == 'categorical':
     label_ds = label_ds.map(lambda x: array_ops.one_hot(x, num_classes))
   return label_ds
+
+
+def check_validation_split_arg(validation_split, subset, shuffle, seed):
+  """Raise errors in case of invalid argument values."""
+  if validation_split and not 0 < validation_split < 1:
+    raise ValueError(
+        '`validation_split` must be between 0 and 1, received: %s' %
+        (validation_split,))
+  if (validation_split or subset) and not (validation_split and subset):
+    raise ValueError(
+        'If `subset` is set, `validation_split` must be set, and inversely.')
+  if subset not in ('training', 'validation', None):
+    raise ValueError('`subset` must be either "training" '
+                     'or "validation", received: %s' % (subset,))
+  if validation_split and shuffle and seed is None:
+    raise ValueError(
+        'If using `validation_split` and shuffling the data, you must provide '
+        'a `seed` argument, to make sure that there is no overlap between the '
+        'training and validation subset.')

@@ -133,6 +133,7 @@ class _DummyEagerGraph(threading.local):
     # get a different key.
     super(_DummyEagerGraph, self).__init__()
     self.key = _DummyEagerGraph._WeakReferencableClass()
+    self.learning_phase_is_set = False
 
 
 _DUMMY_EAGER_GRAPH = _DummyEagerGraph()
@@ -295,6 +296,7 @@ def clear_session():
   _SESSION.session = None
   graph = get_graph()
   with graph.as_default():
+    _DUMMY_EAGER_GRAPH.learning_phase_is_set = False
     _GRAPH_LEARNING_PHASES.clear()
     # Create the learning phase placeholder in graph using the default factory.
     _GRAPH_LEARNING_PHASES.setdefault(graph)
@@ -351,7 +353,7 @@ def learning_phase():
 
 
 def global_learning_phase_is_set():
-  return _DUMMY_EAGER_GRAPH.key in _GRAPH_LEARNING_PHASES
+  return _DUMMY_EAGER_GRAPH.learning_phase_is_set
 
 
 def _mark_func_graph_as_unsaveable(graph, learning_phase):
@@ -420,6 +422,7 @@ def set_learning_phase(value):
     if context.executing_eagerly():
       # In an eager context, the learning phase values applies to both the eager
       # context and the internal Keras graph.
+      _DUMMY_EAGER_GRAPH.learning_phase_is_set = True
       _GRAPH_LEARNING_PHASES[_DUMMY_EAGER_GRAPH.key] = value
     _GRAPH_LEARNING_PHASES[get_graph()] = value
 
@@ -451,11 +454,14 @@ def learning_phase_scope(value):
           _DUMMY_EAGER_GRAPH.key, None)
     previous_graph_value = _GRAPH_LEARNING_PHASES.get(get_graph(), None)
 
+  learning_phase_previously_set = _DUMMY_EAGER_GRAPH.learning_phase_is_set
   try:
     set_learning_phase(value)
     yield
   finally:
     # Restore learning phase to initial value.
+    if not learning_phase_previously_set:
+      _DUMMY_EAGER_GRAPH.learning_phase_is_set = False
     with ops.init_scope():
       if context.executing_eagerly():
         if previous_eager_value is not None:

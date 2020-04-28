@@ -23,8 +23,10 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.keras.preprocessing import dataset_utils
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export('keras.preprocessing.text_dataset_from_directory', v1=[])
 def text_dataset_from_directory(directory,
                                 labels='inferred',
                                 label_mode='int',
@@ -129,6 +131,8 @@ def text_dataset_from_directory(directory,
     raise ValueError(
         '`label_mode` argument must be one of "int", "categorical", "binary", '
         'or None. Received: %s' % (label_mode,))
+  dataset_utils.check_validation_split_arg(
+      validation_split, subset, shuffle, seed)
 
   if seed is None:
     seed = np.random.randint(1e6)

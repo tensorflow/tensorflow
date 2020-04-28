@@ -36,7 +36,8 @@ Status ExecuteNodeArgs::Init(
       if (!s.ok()) {
 #if !defined(IS_MOBILE_PLATFORM)
         uint64 context_view_id = ctx->GetContextViewId();
-        if (in->IsRemote() || in->HasRemoteMirror(d, context_view_id)) {
+        if (in->Type() == TensorHandle::REMOTE ||
+            in->HasRemoteMirror(d, context_view_id)) {
           if (!has_remote_inputs_) {
             has_remote_inputs_ = true;
           }

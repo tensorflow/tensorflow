@@ -69,8 +69,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           module_str, /*replica_count=*/4));
   auto param = module->entry_computation()->parameter_instruction(0);
   param->set_parameter_replicated_at_leaf_buffers(
       absl::Span<const bool>{false, true});
@@ -149,8 +149,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           module_str, /*replica_count=*/4));
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<HloReplicationAnalysis> analysis,
       HloReplicationAnalysis::Run(module.get(), /*cross_partition_spmd=*/true));
@@ -575,8 +575,8 @@ ENTRY entry {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           module_str, /*replica_count=*/2));
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloReplicationAnalysis> analysis,
                           HloReplicationAnalysis::Run(
                               module.get(), /*cross_partition_spmd=*/false));

@@ -69,6 +69,9 @@ def : Pat<(HLO_ComplexOp $r, $i), (TF_ComplexOp $r, $i)>;
 // Unary op patterns.
 //===----------------------------------------------------------------------===//
 
+def : Pat<(HLO_ConvertOp HLO_Tensor:$operand),
+          (TF_CastOp $operand, ConstBoolAttrFalse)>;
+
 foreach Mapping = [[HLO_AbsOp, TF_AbsOp],
                    [HLO_BitcastConvertOp, TF_BitcastOp],
                    [HLO_CeilOp, TF_CeilOp],

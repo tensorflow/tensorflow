@@ -163,11 +163,10 @@ filegroup(
     ],
 )
 
-# Both of these files depend on common_runtime.
+# This file depends on common_runtime.
 filegroup(
     name = "core_cpu_base_no_ops_srcs",
     srcs = [
-        "graph_constructor.cc",
         "graph_def_builder_util.cc",
     ],
 )
@@ -250,7 +249,6 @@ filegroup(
         "gradients.h",
         "graph.cc",
         "graph.h",
-        "graph_constructor.cc",
         "graph_constructor.h",
         "graph_def_builder.cc",
         "graph_def_builder.h",

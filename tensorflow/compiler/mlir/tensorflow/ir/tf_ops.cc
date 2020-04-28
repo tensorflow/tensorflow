@@ -154,53 +154,6 @@ static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
   return dim_or_rank == -1;
 }
 
-bool BroadcastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
-  if (lhs.size() != rhs.size()) return false;
-  for (auto types : llvm::zip(lhs, rhs)) {
-    auto lhs_type = std::get<0>(types);
-    auto rhs_type = std::get<1>(types);
-
-    // This should be true for all TF ops:
-    auto lhs_tt = lhs_type.dyn_cast<TensorType>();
-    auto rhs_tt = rhs_type.dyn_cast<TensorType>();
-    if (!lhs_tt || !rhs_tt) {
-      if (lhs_type != rhs_type) return false;
-      continue;
-    }
-
-    // Verify matching element types. These should be identical, except for
-    // variant type where unknown subtype is considered compatible with all
-    // subtypes.
-    auto lhs_et = lhs_tt.getElementType();
-    auto rhs_et = rhs_tt.getElementType();
-    if (lhs_et != rhs_et) {
-      // If either is not a variant type, then the element types don't match.
-      auto lhs_vt = lhs_et.dyn_cast<TF::VariantType>();
-      auto rhs_vt = rhs_et.dyn_cast<TF::VariantType>();
-      if (!lhs_vt || !rhs_vt) return false;
-
-      // Consider the subtype of variant types.
-      auto lhs_vt_st = lhs_vt.getSubtypes();
-      auto rhs_vt_st = rhs_vt.getSubtypes();
-      if (!lhs_vt_st.empty() && !rhs_vt_st.empty()) {
-        for (auto subtypes : llvm::zip(lhs_vt_st, rhs_vt_st)) {
-          if (!BroadcastCompatible(std::get<0>(subtypes),
-                                   std::get<1>(subtypes)))
-            return false;
-        }
-      }
-    }
-
-    auto lhs_rt = lhs_type.dyn_cast<RankedTensorType>();
-    auto rhs_rt = rhs_type.dyn_cast<RankedTensorType>();
-    if (!lhs_rt || !rhs_rt) return true;
-    SmallVector<int64_t, 4> shape;
-    return OpTrait::util::getBroadcastedShape(lhs_rt.getShape(),
-                                              rhs_rt.getShape(), shape);
-  }
-  return true;
-}
-
 // Returns the tf.Equal/tf.NotEqual result type given `x` and `y` and inputs. If
 // `incompatible_shape_error` is true, reports error if `x` and `y` has
 // incompatible shapes. Otherwise, returns a tensor type with unknown rank.
@@ -2349,6 +2302,17 @@ void RankOp::build(Builder *builder, OperationState &result, Value input) {
                        input);
 }
 
+// This will create a constant value for RankOp of a ranked tensor.
+OpFoldResult RankOp::fold(ArrayRef<Attribute> operands) {
+  auto type = input().getType();
+  auto ranked_type = type.dyn_cast<RankedTensorType>();
+  if (!ranked_type) return {};
+
+  auto output_type = getType().cast<ShapedType>();
+  int32_t rank = ranked_type.getRank();
+  return DenseIntElementsAttr::get(output_type, rank);
+}
+
 //===----------------------------------------------------------------------===//
 // RealDivOp
 //===----------------------------------------------------------------------===//
@@ -3802,10 +3766,82 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
       >();
   addInterfaces<TFInlinerInterface>();
+  addAttributes<ShapeAttr>();
 
   // Support unknown operations because not all TensorFlow operations are
   // registered.
   allowUnknownOperations();
+}
+
+namespace {
+
+ShapeAttr ParseShapeAttr(MLIRContext *context, StringRef spec, Location loc) {
+  auto emit_error = [&, spec]() {
+    emitError(loc, "invalid TensorFlow shape attribute: ") << spec;
+    return nullptr;
+  };
+
+  if (!spec.consume_front("shape<")) return emit_error();
+
+  if (spec.consume_front("*>"))
+    return mlir::TF::ShapeAttr::get(context, llvm::None);
+
+  SmallVector<int64_t, 4> shape;
+  while (!spec.consume_front(">")) {
+    int64_t dim;
+
+    if (spec.consume_front("?"))
+      dim = -1;
+    else if (spec.consumeInteger(10, dim) || dim < 0)
+      return emit_error();
+
+    spec.consume_front("x");
+
+    shape.push_back(dim);
+  }
+
+  return mlir::TF::ShapeAttr::get(context, llvm::makeArrayRef(shape));
+}
+
+void PrintShapeAttr(ShapeAttr attr, DialectAsmPrinter &os) {  // NOLINT
+  os << "shape";
+
+  os << "<";
+  if (attr.hasRank()) {
+    auto print_dim = [&](int64_t dim) {
+      if (dim > -1)
+        os << dim;
+      else
+        os << "?";
+    };
+    llvm::interleave(attr.getShape(), os, print_dim, "x");
+  } else {
+    os << "*";
+  }
+  os << ">";
+}
+
+}  // namespace
+
+Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
+                                            Type type) const {
+  auto spec = parser.getFullSymbolSpec();
+  Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
+
+  if (spec.startswith("shape")) return ParseShapeAttr(getContext(), spec, loc);
+
+  return (emitError(loc, "unknown TensorFlow attribute: " + spec), nullptr);
+}
+
+void TensorFlowDialect::printAttribute(Attribute attr,
+                                       DialectAsmPrinter &os) const {
+  switch (attr.getKind()) {
+    case AttrKind::SHAPE:
+      PrintShapeAttr(attr.cast<ShapeAttr>(), os);
+      break;
+    default:
+      llvm_unreachable("unexpected tensorflow attribute kind");
+  }
 }
 
 // Parses a type registered to this dialect.

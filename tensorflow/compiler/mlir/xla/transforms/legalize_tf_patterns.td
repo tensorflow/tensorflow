@@ -434,7 +434,8 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyRankedTensor:$input, $num_lower, $num_
 // Nullary op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
+def : Pat<(TF_ConstOp:$res ElementsAttr:$value),
+          (TensorCastOp (HLO_ConstOp $value)),
           [(HLO_Tensor $res)]>;
 
 //===----------------------------------------------------------------------===//
