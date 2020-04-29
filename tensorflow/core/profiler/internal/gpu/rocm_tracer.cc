@@ -182,7 +182,7 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
   } else {
     oss << ": " << cbid;
   }
-  VLOG(kRocmTracerVlog2) << oss.str();
+  VLOG(kRocmTracerVlog) << oss.str();
 }
 
 void DumpActivityRecord(const roctracer_record_t* record) {
@@ -198,7 +198,7 @@ void DumpActivityRecord(const roctracer_record_t* record) {
   oss << ", thread_id=" << record->thread_id;
   oss << ", external_id=" << record->external_id;
   oss << ", bytes=" << record->bytes;
-  VLOG(kRocmTracerVlog2) << oss.str();
+  VLOG(kRocmTracerVlog) << oss.str();
 }
 
 }  // namespace
@@ -302,7 +302,7 @@ void DumpRocmTracerEvent(const RocmTracerEvent& event, uint64 start_walltime_ns,
       DCHECK(false);
       break;
   }
-  VLOG(kRocmTracerVlog2) << oss.str();
+  VLOG(kRocmTracerVlog) << oss.str();
 }
 
 class RocmApiCallbackImpl {
@@ -884,9 +884,9 @@ class RocmActivityCallbackImpl {
 
 void AnnotationMap::Add(uint32 correlation_id, const std::string& annotation) {
   if (annotation.empty()) return;
-  VLOG(kRocmTracerVlog2) << "Add annotation: "
-                         << " correlation_id: " << correlation_id
-                         << " annotation: " << annotation;
+  VLOG(kRocmTracerVlog) << "Add annotation: "
+                        << " correlation_id: " << correlation_id
+                        << " annotation: " << annotation;
   absl::MutexLock lock(&map_.mutex);
   if (map_.annotations.size() < max_size_) {
     absl::string_view annotation_str =
@@ -966,17 +966,17 @@ Status RocmTracer::EnableApiTracing() {
     activity_domain_t domain = iter.first;
     std::vector<uint32_t>& ops = iter.second;
     if (ops.size() == 0) {
-      VLOG(kRocmTracerVlog1) << "Enabling API tracing for domain "
-                             << GetActivityDomainName(domain);
+      VLOG(kRocmTracerVlog) << "Enabling API tracing for domain "
+                            << GetActivityDomainName(domain);
       RETURN_IF_ROCTRACER_ERROR(
           roctracer_enable_domain_callback(domain, ApiCallback, this));
     } else {
-      VLOG(kRocmTracerVlog1)
-          << "Enabling API tracing for " << ops.size() << " ops in domain "
-          << GetActivityDomainName(domain);
+      VLOG(kRocmTracerVlog) << "Enabling API tracing for " << ops.size()
+                            << " ops in domain "
+                            << GetActivityDomainName(domain);
       for (auto& op : ops) {
-        VLOG(kRocmTracerVlog2) << "Enabling API tracing for "
-                               << GetActivityDomainOpName(domain, op);
+        VLOG(kRocmTracerVlog) << "Enabling API tracing for "
+                              << GetActivityDomainOpName(domain, op);
         RETURN_IF_ROCTRACER_ERROR(
             roctracer_enable_op_callback(domain, op, ApiCallback, this));
       }
@@ -993,16 +993,16 @@ Status RocmTracer::DisableApiTracing() {
     activity_domain_t domain = iter.first;
     std::vector<uint32_t>& ops = iter.second;
     if (ops.size() == 0) {
-      VLOG(kRocmTracerVlog1) << "Disabling API tracing for domain "
-                             << GetActivityDomainName(domain);
+      VLOG(kRocmTracerVlog) << "Disabling API tracing for domain "
+                            << GetActivityDomainName(domain);
       RETURN_IF_ROCTRACER_ERROR(roctracer_disable_domain_callback(domain));
     } else {
-      VLOG(kRocmTracerVlog1)
-          << "Disabling API tracing for " << ops.size() << " ops in domain "
-          << GetActivityDomainName(domain);
+      VLOG(kRocmTracerVlog) << "Disabling API tracing for " << ops.size()
+                            << " ops in domain "
+                            << GetActivityDomainName(domain);
       for (auto& op : ops) {
-        VLOG(kRocmTracerVlog2) << "Disabling API tracing for "
-                               << GetActivityDomainOpName(domain, op);
+        VLOG(kRocmTracerVlog) << "Disabling API tracing for "
+                              << GetActivityDomainOpName(domain, op);
         RETURN_IF_ROCTRACER_ERROR(roctracer_disable_op_callback(domain, op));
       }
     }
@@ -1022,7 +1022,7 @@ void RocmTracer::ActivityCallbackHandler(const char* begin, const char* end) {
     LOG(WARNING) << "ActivityCallbackHandler called when "
                     "activity_tracing_enabled_ is false";
 
-    VLOG(kRocmTracerVlog1) << "Dropped Activity Records Start";
+    VLOG(kRocmTracerVlog) << "Dropped Activity Records Start";
     const roctracer_record_t* record =
         reinterpret_cast<const roctracer_record_t*>(begin);
     const roctracer_record_t* end_record =
@@ -1031,7 +1031,7 @@ void RocmTracer::ActivityCallbackHandler(const char* begin, const char* end) {
       DumpActivityRecord(record);
       roctracer_next_record(record, &record);
     }
-    VLOG(kRocmTracerVlog1) << "Dropped Activity Records End";
+    VLOG(kRocmTracerVlog) << "Dropped Activity Records End";
   }
 }
 
@@ -1046,7 +1046,7 @@ Status RocmTracer::EnableActivityTracing() {
       properties.buffer_size = 0x1000;
       properties.buffer_callback_fun = ActivityCallback;
       properties.buffer_callback_arg = this;
-      VLOG(kRocmTracerVlog1) << "Creating roctracer activity buffer";
+      VLOG(kRocmTracerVlog) << "Creating roctracer activity buffer";
       RETURN_IF_ROCTRACER_ERROR(roctracer_open_pool(&properties));
     }
   }
@@ -1055,16 +1055,16 @@ Status RocmTracer::EnableActivityTracing() {
     activity_domain_t domain = iter.first;
     std::vector<uint32_t>& ops = iter.second;
     if (ops.size() == 0) {
-      VLOG(kRocmTracerVlog1) << "Enabling Activity tracing for domain "
-                             << GetActivityDomainName(domain);
+      VLOG(kRocmTracerVlog) << "Enabling Activity tracing for domain "
+                            << GetActivityDomainName(domain);
       RETURN_IF_ROCTRACER_ERROR(roctracer_enable_domain_activity(domain));
     } else {
-      VLOG(kRocmTracerVlog1)
-          << "Enabling Activity tracing for " << ops.size() << " ops in domain "
-          << GetActivityDomainName(domain);
+      VLOG(kRocmTracerVlog) << "Enabling Activity tracing for " << ops.size()
+                            << " ops in domain "
+                            << GetActivityDomainName(domain);
       for (auto& op : ops) {
-        VLOG(kRocmTracerVlog2) << "Enabling Activity tracing for "
-                               << GetActivityDomainOpName(domain, op);
+        VLOG(kRocmTracerVlog) << "Enabling Activity tracing for "
+                              << GetActivityDomainOpName(domain, op);
         RETURN_IF_ROCTRACER_ERROR(roctracer_enable_op_activity(domain, op));
       }
     }
@@ -1080,16 +1080,16 @@ Status RocmTracer::DisableActivityTracing() {
     activity_domain_t domain = iter.first;
     std::vector<uint32_t>& ops = iter.second;
     if (ops.size() == 0) {
-      VLOG(kRocmTracerVlog1) << "Disabling Activity tracing for domain "
-                             << GetActivityDomainName(domain);
+      VLOG(kRocmTracerVlog) << "Disabling Activity tracing for domain "
+                            << GetActivityDomainName(domain);
       RETURN_IF_ROCTRACER_ERROR(roctracer_disable_domain_activity(domain));
     } else {
-      VLOG(kRocmTracerVlog1)
-          << "Disabling Activity tracing for " << ops.size()
-          << " ops in domain " << GetActivityDomainName(domain);
+      VLOG(kRocmTracerVlog) << "Disabling Activity tracing for " << ops.size()
+                            << " ops in domain "
+                            << GetActivityDomainName(domain);
       for (auto& op : ops) {
-        VLOG(kRocmTracerVlog2) << "Disabling Activity tracing for "
-                               << GetActivityDomainOpName(domain, op);
+        VLOG(kRocmTracerVlog) << "Disabling Activity tracing for "
+                              << GetActivityDomainOpName(domain, op);
         RETURN_IF_ROCTRACER_ERROR(roctracer_disable_op_activity(domain, op));
       }
     }
@@ -1110,14 +1110,14 @@ Status RocmTracer::DisableActivityTracing() {
   int duration_ms = 100;
   size_t threshold = 1;
   for (int i = 0; i < 6; i++, duration_ms *= 2, threshold *= 2) {
-    VLOG(kRocmTracerVlog1) << "ROCTRACER_FLUSH_BUG_WORKAROUND :"
-                           << " Pending count = "
-                           << GetPendingActivityRecordsCount()
-                           << ", Threshold = " << threshold;
+    VLOG(kRocmTracerVlog) << "ROCTRACER_FLUSH_BUG_WORKAROUND :"
+                          << " Pending count = "
+                          << GetPendingActivityRecordsCount()
+                          << ", Threshold = " << threshold;
     if (GetPendingActivityRecordsCount() < threshold) break;
     std::this_thread::sleep_for(std::chrono::milliseconds(duration_ms));
-    VLOG(kRocmTracerVlog1) << "ROCTRACER_FLUSH_BUG_WORKAROUND : slept for "
-                           << duration_ms << " ms";
+    VLOG(kRocmTracerVlog) << "ROCTRACER_FLUSH_BUG_WORKAROUND : slept for "
+                          << duration_ms << " ms";
   }
   ClearPendingActivityRecordsCount();
 #endif
@@ -1125,7 +1125,7 @@ Status RocmTracer::DisableActivityTracing() {
   // Flush the activity buffer BEFORE setting the activity_tracing_enable_
   // flag to FALSE. This is because the activity record callback routine is
   // gated by the same flag
-  VLOG(kRocmTracerVlog1) << "Flushing roctracer activity buffer";
+  VLOG(kRocmTracerVlog) << "Flushing roctracer activity buffer";
   RETURN_IF_ROCTRACER_ERROR(roctracer_flush_activity());
 
   activity_tracing_enabled_ = false;

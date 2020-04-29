@@ -182,11 +182,11 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   void Flush() override {
     mutex_lock lock(aggregated_events_mutex_);
 
-    VLOG(kRocmTracerVlog1) << "RocmTraceCollector collected "
-                           << num_callback_events_ << " callback events, "
-                           << num_activity_events_
-                           << " activity events, and aggregated them into "
-                           << aggregated_events_.size() << " events.";
+    VLOG(kRocmTracerVlog) << "RocmTraceCollector collected "
+                          << num_callback_events_ << " callback events, "
+                          << num_activity_events_
+                          << " activity events, and aggregated them into "
+                          << aggregated_events_.size() << " events.";
 
     for (auto& iter : aggregated_events_) {
       auto& event = iter.second;
@@ -215,9 +215,9 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       // and num_gpus == 1, set the logical_id to 0
       if ((logical_id == RocmTracerEvent::kInvalidDeviceId) &&
           (options_.num_gpus == 1)) {
-        VLOG(kRocmTracerVlog2) << "Explicitly setting device_id to 0 for event "
-                                  "with correlation_id="
-                               << event.correlation_id;
+        VLOG(kRocmTracerVlog) << "Explicitly setting device_id to 0 for event "
+                                 "with correlation_id="
+                              << event.correlation_id;
         logical_id = 0;
       }
 
@@ -723,7 +723,7 @@ Status GpuTracer::DoCollectData(StepStats* step_stats) {
 Status GpuTracer::CollectData(RunMetadata* run_metadata) {
   switch (profiling_state_) {
     case State::kNotStarted:
-      VLOG(kRocmTracerVlog1)
+      VLOG(kRocmTracerVlog)
           << "No trace data collected, session wasn't started";
       return Status::OK();
     case State::kStartedOk:
@@ -732,7 +732,7 @@ Status GpuTracer::CollectData(RunMetadata* run_metadata) {
       LOG(ERROR) << "Cannot collect, roctracer failed to start";
       return Status::OK();
     case State::kStoppedError:
-      VLOG(kRocmTracerVlog1) << "No trace data collected";
+      VLOG(kRocmTracerVlog) << "No trace data collected";
       return Status::OK();
     case State::kStoppedOk: {
       // Input run_metadata is shared by profiler interfaces, we need append.
@@ -755,7 +755,7 @@ Status GpuTracer::DoCollectData(XSpace* space) {
 Status GpuTracer::CollectData(XSpace* space) {
   switch (profiling_state_) {
     case State::kNotStarted:
-      VLOG(kRocmTracerVlog1)
+      VLOG(kRocmTracerVlog)
           << "No trace data collected, session wasn't started";
       return Status::OK();
     case State::kStartedOk:
@@ -764,7 +764,7 @@ Status GpuTracer::CollectData(XSpace* space) {
       LOG(ERROR) << "Cannot collect, roctracer failed to start";
       return Status::OK();
     case State::kStoppedError:
-      VLOG(kRocmTracerVlog1) << "No trace data collected";
+      VLOG(kRocmTracerVlog) << "No trace data collected";
       return Status::OK();
     case State::kStoppedOk: {
       DoCollectData(space);
