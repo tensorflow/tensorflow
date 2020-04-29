@@ -70,7 +70,12 @@ class BaseConvolutionOpModel : public SingleOpModel {
               input.scale * filter.per_channel_quantization_scales[i];
           bias_zero_points[i] = 0;
         }
-        TensorData bias{TensorType_INT32,
+        tflite::TensorType bias_type = TensorType_INT32;
+        if (input.type == TensorType_INT16) {
+          // In case of 16-bit, the bias type is set to be int 64.
+          bias_type = TensorType_INT64;
+        }
+        TensorData bias{bias_type,
                         {bias_size},
                         /*min=*/0,
                         /*max=*/0,
@@ -1344,11 +1349,6 @@ class PerChannelQuantizedConvolutionOpModel : public BaseConvolutionOpModel {
 };
 
 TEST_P(ConvolutionOpTest, SimplePerTensorTest) {
-  // TODO(b/138722124): Enable these tests on NNAPI.
-  if (SingleOpModel::GetForceUseNnapi()) {
-    return;
-  }
-
   PerChannelQuantizedConvolutionOpModel m(
       GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
       {TensorType_INT8,

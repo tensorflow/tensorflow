@@ -30,6 +30,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import embedding_ops
@@ -40,7 +41,7 @@ from tensorflow.python.platform import test
 
 _DATA_TYPES = [dtypes.half, dtypes.float32, dtypes.float64]
 # TODO(b/143684500): Eigen to support complex sqrt
-if (not test_util.IsBuiltWithNvcc() and not test.is_built_with_rocm()):
+if not test_util.IsBuiltWithNvcc():
   _DATA_TYPES += [dtypes.complex64, dtypes.complex128]
 
 _TEST_PARAM_VALUES = [
@@ -547,11 +548,11 @@ class RMSpropOptimizerTest(test.TestCase):
           self.evaluate(opt.variables()[0]), self.evaluate(opt.iterations))
 
 
+@combinations.generate(combinations.combine(mode=["graph", "eager"]))
 class SlotColocationTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([True, False])
   @test_util.run_gpu_only
-  @test_util.run_in_graph_and_eager_modes
   def testRunMinimizeOnGPUForCPUVariables(self, use_resource):
     with ops.device("/device:CPU:0"):
       if use_resource:

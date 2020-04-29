@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/profiler_options.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
@@ -37,9 +37,20 @@ namespace tensorflow {
 class ProfilerSession {
  public:
   // Creates and ProfilerSession and starts profiling.
-  static std::unique_ptr<ProfilerSession> Create(
-      const profiler::ProfilerOptions& options);
+  static std::unique_ptr<ProfilerSession> Create(const ProfileOptions& options);
   static std::unique_ptr<ProfilerSession> Create();
+
+  static ProfileOptions DefaultOptions() {
+    ProfileOptions options;
+    options.set_version(1);
+    options.set_device_tracer_level(1);
+    options.set_host_tracer_level(2);
+    options.set_device_type(ProfileOptions::UNSPECIFIED);
+    options.set_python_tracer_level(0);
+    options.set_enable_hlo_proto(false);
+    options.set_include_dataset_ops(true);
+    return options;
+  }
 
   // Deletes an existing Profiler and enables starting a new one.
   ~ProfilerSession();
@@ -52,12 +63,9 @@ class ProfilerSession {
   tensorflow::Status CollectData(RunMetadata* run_metadata)
       TF_LOCKS_EXCLUDED(mutex_);
 
-  tensorflow::Status SerializeToString(string* content)
-      TF_LOCKS_EXCLUDED(mutex_);
-
  private:
   // Constructs an instance of the class and starts profiling
-  explicit ProfilerSession(const profiler::ProfilerOptions& options);
+  explicit ProfilerSession(const ProfileOptions& options);
 
   // ProfilerSession is neither copyable or movable.
   ProfilerSession(const ProfilerSession&) = delete;
@@ -72,6 +80,7 @@ class ProfilerSession {
   tensorflow::Status status_ TF_GUARDED_BY(mutex_);
   const uint64 start_time_ns_;
   mutex mutex_;
+  ProfileOptions options_;
 };
 
 }  // namespace tensorflow

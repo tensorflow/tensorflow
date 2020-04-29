@@ -41,13 +41,8 @@ void ReverseSortInPlace(int* values, int* ids, int size) {
 GreedyMemoryPlanner::GreedyMemoryPlanner(unsigned char* scratch_buffer,
                                          int scratch_buffer_size)
     : buffer_count_(0), need_to_calculate_offsets_(true) {
-  const int per_buffer_size = sizeof(BufferRequirements) +  // requirements_
-                              sizeof(int) +  // buffer_sizes_sorted_by_size_
-                              sizeof(int) +  // buffer_ids_sorted_by_size_
-                              sizeof(ListEntry) +  // buffers_sorted_by_offset_
-                              sizeof(int);         // buffer_offsets_;
   // Allocate the arrays we need within the scratch buffer arena.
-  max_buffer_count_ = scratch_buffer_size / per_buffer_size;
+  max_buffer_count_ = scratch_buffer_size / per_buffer_size();
 
   unsigned char* next_free = scratch_buffer;
   requirements_ = reinterpret_cast<BufferRequirements*>(next_free);
@@ -331,7 +326,7 @@ void GreedyMemoryPlanner::PrintMemoryPlan(ErrorReporter* error_reporter) {
       }
     }
     line[kLineWidth] = 0;
-    TF_LITE_REPORT_ERROR(error_reporter, "%s", line);
+    TF_LITE_REPORT_ERROR(error_reporter, "%s", (const char*)line);
   }
 }
 

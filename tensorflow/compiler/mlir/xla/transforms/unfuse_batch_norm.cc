@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
@@ -36,7 +36,7 @@ namespace {
 Value BroadcastToFeatureDim(Location loc, RankedTensorType result_type,
                             Value value_1d, Value shape_value,
                             int64_t feature_dim,
-                            ConversionPatternRewriter& rewriter) {  // NOLINT
+                            PatternRewriter& rewriter) {  // NOLINT
   Builder b(rewriter.getContext());
   auto dims_type = RankedTensorType::get({1}, b.getIntegerType(64));
   auto dims = DenseIntElementsAttr::get(dims_type, {feature_dim});
@@ -52,7 +52,7 @@ Value BroadcastToFeatureDim(Location loc, RankedTensorType result_type,
 // Calculate the shape value of operand, assuming it is a dynamic shape with
 // static rank.
 Value CalculateShapeValue(Location loc, Value operand,
-                          ConversionPatternRewriter& rewriter) {  // NOLINT
+                          PatternRewriter& rewriter) {  // NOLINT
   RankedTensorType result_type = operand.getType().dyn_cast<RankedTensorType>();
   llvm::SmallVector<Value, 4> shape_values;
   int64_t rank = result_type.getRank();
@@ -70,7 +70,7 @@ Value CalculateShapeValue(Location loc, Value operand,
 Value MaterializeEpsilon(Operation* op, FloatAttr epsilon_attr,
                          FloatType fp_type, Value variance,
                          RankedTensorType broadcast_to_type,
-                         ConversionPatternRewriter& rewriter) {  // NOLINT
+                         PatternRewriter& rewriter) {  // NOLINT
   Builder b(rewriter.getContext());
   if (epsilon_attr.getType() != fp_type) {
     // Need to convert.
@@ -108,27 +108,24 @@ Value MaterializeEpsilon(Operation* op, FloatAttr epsilon_attr,
 }
 
 class UnfuseBatchNormInferencePattern
-    : public OpConversionPattern<xla_hlo::BatchNormInferenceOp> {
+    : public OpRewritePattern<xla_hlo::BatchNormInferenceOp> {
  public:
-  using OpConversionPattern::OpConversionPattern;
+  using OpRewritePattern<xla_hlo::BatchNormInferenceOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(
-      xla_hlo::BatchNormInferenceOp bn_op, ArrayRef<Value> raw_operands,
-      ConversionPatternRewriter& rewriter) const override {
-    xla_hlo::BatchNormInferenceOpOperandAdaptor operands(raw_operands);
-
+  LogicalResult matchAndRewrite(xla_hlo::BatchNormInferenceOp bn_op,
+                                PatternRewriter& rewriter) const override {
     // Enforce type invariants.
     // Note that we deduce the actual element type from the variance,
     // which should not be subject to quantization at a higher level.
-    auto input_type = operands.operand().getType().dyn_cast<RankedTensorType>();
+    auto input_type = bn_op.operand().getType().dyn_cast<RankedTensorType>();
     auto variance_type =
-        operands.variance().getType().dyn_cast<RankedTensorType>();
+        bn_op.variance().getType().dyn_cast<RankedTensorType>();
     if (!input_type || !variance_type) {
-      return matchFailure();
+      return failure();
     }
     auto fp_type = variance_type.getElementType().dyn_cast<FloatType>();
     if (!fp_type) {
-      return matchFailure();
+      return failure();
     }
     int64_t feature_dim = bn_op.feature_index().getSExtValue();
 
@@ -136,29 +133,28 @@ class UnfuseBatchNormInferencePattern
     // stddev = sqrt(variance + epsilon)
     auto epsilon =
         MaterializeEpsilon(bn_op.getOperation(), bn_op.epsilonAttr(), fp_type,
-                           operands.variance(), variance_type, rewriter);
+                           bn_op.variance(), variance_type, rewriter);
     if (!epsilon) {
-      return matchFailure();
+      return failure();
     }
-    Value stddev =
-        rewriter.create<xla_hlo::AddOp>(bn_op.getLoc(), operands.variance(),
-                                        epsilon, /*broadcast_dims=*/nullptr);
+    Value stddev = rewriter.create<xla_hlo::AddOp>(
+        bn_op.getLoc(), bn_op.variance(), epsilon, /*broadcast_dims=*/nullptr);
     stddev = rewriter.create<xla_hlo::SqrtOp>(bn_op.getLoc(), stddev);
 
     // Broadcast all terms.
     Value shape_value;
     if (!input_type.hasStaticShape()) {
       shape_value =
-          CalculateShapeValue(bn_op.getLoc(), operands.operand(), rewriter);
+          CalculateShapeValue(bn_op.getLoc(), bn_op.operand(), rewriter);
     }
     auto broadcast_scale =
-        BroadcastToFeatureDim(bn_op.getLoc(), input_type, operands.scale(),
+        BroadcastToFeatureDim(bn_op.getLoc(), input_type, bn_op.scale(),
                               shape_value, feature_dim, rewriter);
     auto broadcast_offset =
-        BroadcastToFeatureDim(bn_op.getLoc(), input_type, operands.offset(),
+        BroadcastToFeatureDim(bn_op.getLoc(), input_type, bn_op.offset(),
                               shape_value, feature_dim, rewriter);
     auto broadcast_mean =
-        BroadcastToFeatureDim(bn_op.getLoc(), input_type, operands.mean(),
+        BroadcastToFeatureDim(bn_op.getLoc(), input_type, bn_op.mean(),
                               shape_value, feature_dim, rewriter);
     auto broadcast_stddev = BroadcastToFeatureDim(
         bn_op.getLoc(), input_type, stddev, shape_value, feature_dim, rewriter);
@@ -166,7 +162,7 @@ class UnfuseBatchNormInferencePattern
     // Compute:
     // scale * (input - mean) / stddev + offset
     Value result = rewriter.create<xla_hlo::SubOp>(
-        bn_op.getLoc(), operands.operand(), broadcast_mean, nullptr);
+        bn_op.getLoc(), bn_op.operand(), broadcast_mean, nullptr);
     result = rewriter.create<xla_hlo::MulOp>(bn_op.getLoc(), result,
                                              broadcast_scale, nullptr);
     result = rewriter.create<xla_hlo::DivOp>(bn_op.getLoc(), result,
@@ -174,7 +170,7 @@ class UnfuseBatchNormInferencePattern
     rewriter.replaceOpWithNewOp<xla_hlo::AddOp>(bn_op, result, broadcast_offset,
                                                 nullptr);
 
-    return matchSuccess();
+    return success();
   }
 };
 

@@ -187,7 +187,7 @@ MaliGPU GetMaliGPUVersion(const std::string& device_name) {
       {"G52", MaliGPU::G52},   {"G72", MaliGPU::G72},   {"G76", MaliGPU::G76},
       {"G57", MaliGPU::G57},   {"G77", MaliGPU::G77},
   };
-  for (auto v : kMapping) {
+  for (const auto& v : kMapping) {
     if (device_name.find(v.first) != std::string::npos) {
       return v.second;
     }
@@ -297,10 +297,19 @@ bool MaliInfo::IsMidgard() const {
   return IsMaliT6xx() || IsMaliT7xx() || IsMaliT8xx();
 }
 
-bool MaliInfo::IsBifrost() const {
+bool MaliInfo::IsBifrostGen1() const {
   return gpu_version == MaliGPU::G31 || gpu_version == MaliGPU::G51 ||
-         gpu_version == MaliGPU::G71 || gpu_version == MaliGPU::G52 ||
-         gpu_version == MaliGPU::G72 || gpu_version == MaliGPU::G76;
+         gpu_version == MaliGPU::G71;
+}
+
+bool MaliInfo::IsBifrostGen2() const {
+  return gpu_version == MaliGPU::G52 || gpu_version == MaliGPU::G72;
+}
+
+bool MaliInfo::IsBifrostGen3() const { return gpu_version == MaliGPU::G76; }
+
+bool MaliInfo::IsBifrost() const {
+  return IsBifrostGen1() || IsBifrostGen2() || IsBifrostGen3();
 }
 
 bool MaliInfo::IsValhall() const {
@@ -507,11 +516,11 @@ void CLDevice::DisableOneLayerTextureArray() {
   info_.adreno_info.support_one_layer_texture_array = false;
 }
 
-Status CreateDefaultGPUDevice(CLDevice* result) {
+absl::Status CreateDefaultGPUDevice(CLDevice* result) {
   cl_uint num_platforms;
   clGetPlatformIDs(0, nullptr, &num_platforms);
   if (num_platforms == 0) {
-    return UnknownError("No supported OpenCL platform.");
+    return absl::UnknownError("No supported OpenCL platform.");
   }
   std::vector<cl_platform_id> platforms(num_platforms);
   clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
@@ -520,7 +529,7 @@ Status CreateDefaultGPUDevice(CLDevice* result) {
   cl_uint num_devices;
   clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 0, nullptr, &num_devices);
   if (num_devices == 0) {
-    return UnknownError("No GPU on current platform.");
+    return absl::UnknownError("No GPU on current platform.");
   }
 
   std::vector<cl_device_id> devices(num_devices);
@@ -528,7 +537,7 @@ Status CreateDefaultGPUDevice(CLDevice* result) {
                  nullptr);
 
   *result = CLDevice(devices[0], platform_id);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cl

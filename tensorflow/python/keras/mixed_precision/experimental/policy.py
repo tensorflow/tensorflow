@@ -57,8 +57,8 @@ class Policy(object):
   not have a single dtype. When the variable dtype does not match the compute
   dtype, variables will be automatically casted to the compute dtype to avoid
   type errors. In this case, `tf.keras.layers.Layer.dtype` refers to the
-  variable dtype, not the compute dtype. See [the mixed precision
-  guide](https://www.tensorflow.org/guide/keras/mixed_precision) for more
+  variable dtype, not the compute dtype. See [the mixed precision guide](
+    https://www.tensorflow.org/guide/keras/mixed_precision) for more
   information on how to use mixed precision.
 
   Certain policies also have a `tf.mixed_precision.experimental.LossScale`
@@ -119,8 +119,8 @@ class Policy(object):
   `'mixed_bfloat16'`, no loss scaling is done and loss scaling never needs to be
   manually applied.
 
-  See [the mixed precision
-  guide](https://www.tensorflow.org/guide/keras/mixed_precision) for more
+  See [the mixed precision guide](
+    https://www.tensorflow.org/guide/keras/mixed_precision) for more
   information on using mixed precision
 
   ### How to use float64 in a Keras model
@@ -333,7 +333,8 @@ class Policy(object):
     self._loss_scale = keras_loss_scale_module.get(loss_scale)
 
     if name in ('mixed_float16', 'mixed_bloat16'):
-      device_compatibility_check.log_device_compatibility_check(name)
+      device_compatibility_check.log_device_compatibility_check(name,
+                                                                skip_local=True)
 
   def _parse_name(self, name):
     """Parses a Policy name into a compute and variable dtype.
@@ -515,21 +516,20 @@ def policy_defaults_to_floatx():
   return _global_policy is None and base_layer_utils.v2_dtype_behavior_enabled()
 
 
-def _check_if_mixed_precision_graph_rewrite_is_enabled():
-  # TODO(reedwm): Update this comment once the Keras API is complete.
+def _check_if_mixed_precision_graph_rewrite_is_enabled(policy):
   if mixed_precision_global_state.mixed_precision_graph_rewrite_is_enabled:
     raise ValueError(
-        'The mixed precision policy cannot be set, because the mixed '
-        'precision graph rewrite has already been enabled.\n'
-        'At most, one of the following functions can be called:\n\n'
+        'The global dtype policy cannot be set to "{policy.name}", because the '
+        'mixed precision graph rewrite has already been enabled.\n'
+        'At most, one of the following can be called:\n\n'
         '  1. tf.train.experimental.enable_mixed_precision_graph_rewrite() '
         '(You called this first)\n'
-        '  2. tf.keras.mixed_precision.experimental.set_policy() (You called '
-        'this second)\n\n'
+        '  2. tf.keras.mixed_precision.experimental.set_policy() with a mixed '
+        'precision policy (You called this second)\n\n'
         'You called both functions, which is an error, because both functions '
         'enable you to use mixed precision. If in doubt which function to use, '
         'use the second, as it supports Eager execution and is more '
-        'customizable.')
+        'customizable.'.format(policy=policy))
 
 
 @keras_export('keras.mixed_precision.experimental.set_policy', v1=[])
@@ -546,14 +546,15 @@ def set_policy(policy):
     policy: A Policy, or a string that will be converted to a Policy..
   """
   global _global_policy
-  _check_if_mixed_precision_graph_rewrite_is_enabled()
   if not base_layer_utils.v2_dtype_behavior_enabled():
     raise ValueError('The global policy can only be set in TensorFlow 2')
   if policy is not None and not isinstance(policy, Policy):
     policy = Policy(policy)
+  is_mixed_policy = policy is not None and policy.should_cast_variables
+  if is_mixed_policy:
+    _check_if_mixed_precision_graph_rewrite_is_enabled(policy)
   _global_policy = policy
-  mixed_precision_global_state.using_default_mixed_precision_policy = (
-      _global_policy is None)
+  mixed_precision_global_state.using_mixed_precision_policy = is_mixed_policy
 
 
 # TODO(reedwm): Make this thread local

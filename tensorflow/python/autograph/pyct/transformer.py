@@ -23,7 +23,7 @@ import collections
 import gast
 
 from tensorflow.python.autograph.pyct import anno
-from tensorflow.python.autograph.pyct import loader
+from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import templates
 
@@ -36,20 +36,26 @@ class Context(object):
 
   Attributes:
     info: EntityInfo, immutable.
+    namer: naming.Namer.
     current_origin: origin_info.OriginInfo, holds the OriginInfo of the last
       AST node to be processed successfully. Useful for error handling.
+    user: An user-supplied context object. The object is opaque to the
+      infrastructure, but will pe passed through to all custom transformations.
   """
 
-  def __init__(self, info):
+  def __init__(self, info, namer, user_context):
     self.info = info
+    self.namer = namer
     self.current_origin = None
+    self.user = user_context
 
 
 # TODO(mdan): Move to a standalone file.
 class EntityInfo(
     collections.namedtuple(
         'EntityInfo',
-        ('source_code', 'source_file', 'future_features', 'namespace'))):
+        ('name', 'source_code', 'source_file', 'future_features', 'namespace'))
+):
   """Contains information about a Python entity.
 
   Immutable.
@@ -57,6 +63,7 @@ class EntityInfo(
   Examples of entities include functions and classes.
 
   Attributes:
+    name: The name that identifies this entity.
     source_code: The entity's source code.
     source_file: The entity's source file.
     future_features: Tuple[Text], the future features that this entity was
@@ -181,20 +188,19 @@ class _State(object):
     return self._value[key]
 
 
-class Base(gast.NodeTransformer):
-  """Base class for general-purpose code transformers transformers.
+class NodeStateTracker(object):
+  """Base class for general-purpose Python code transformation.
 
-  This is an extension of ast.NodeTransformer that provides a few additional
-  functions, like state tracking within the scope of arbitrary node, helpers
-  for processing code blocks, debugging, mapping of transformed code to
-  original code, and others.
+  This abstract class provides helpful functions, like state tracking within
+  the scope of arbitrary node, helpers for processing code blocks, debugging,
+  mapping of transformed code to original code, and others.
 
   Scope-local state tracking: to keep state across nodes, at the level of
   (possibly nested) scopes, use enter/exit_local_scope and set/get_local.
   You must call enter/exit_local_scope manually, but the transformer detects
   when they are not properly paired.
 
-  The transformer allows keeping state across calls to `visit_*` that is local
+  The transformer allows keeping state across calls that is local
   to arbitrary nodes and their descendants, using the self.state attribute.
   Multiple independent scopes are allowed and automatically constructed.
 
@@ -207,7 +213,7 @@ class Base(gast.NodeTransformer):
       def __init__(self):
         self.foo_property = None
 
-    class DummyTransformer(Base):
+    class DummyTransformer(NodeStateTracker, ast.NodeTransformer):
 
       def visit_If(self, node):
         self.state[FooType].enter()
@@ -261,14 +267,8 @@ class Base(gast.NodeTransformer):
   def debug_print_src(self, node):
     """Helper method useful for debugging. Prints the AST as code."""
     if __debug__:
-      print(loader.load_ast(node))
+      print(parser.unparse(node))
     return node
-
-  def create_assignment(self, target, expression):
-    template = """
-      target = expression
-    """
-    return templates.replace(template, target=target, expression=expression)
 
   def visit_block(self, nodes, before_visit=None, after_visit=None):
     """A more powerful version of generic_visit for statement blocks.
@@ -346,6 +346,21 @@ class Base(gast.NodeTransformer):
         node_destination = new_destination
     return results
 
+
+# TODO(mdan): Rename to PythonCodeTransformer.
+class Base(NodeStateTracker, gast.NodeTransformer):
+  """Base class for general-purpose Python-to-Python code transformation.
+
+  This is an extension of ast.NodeTransformer that provides the additional
+  functions offered by NodeStateTracker.
+  """
+
+  def create_assignment(self, target, expression):
+    template = """
+      target = expression
+    """
+    return templates.replace(template, target=target, expression=expression)
+
   # TODO(mdan): Remove.
   def apply_to_single_assignments(self, targets, values, apply_fn):
     """Applies a function to each individual assignment.
@@ -393,17 +408,6 @@ class Base(gast.NodeTransformer):
       else:
         # TODO(mdan): Look into allowing to rewrite the AST here.
         apply_fn(target, values)
-
-  def _get_source(self, node):
-    try:
-      source, _ = loader.load_ast(node)
-      return source
-    # pylint: disable=broad-except
-    # This function is used for error reporting.  If an exception occurs here,
-    # it should be suppressed, in favor of emitting as informative a message
-    # about the original error as possible.
-    except Exception:
-      return '<could not convert AST to source>'
 
   def visit(self, node):
     if not isinstance(node, gast.AST):
@@ -460,3 +464,69 @@ class Base(gast.NodeTransformer):
       self.ctx.current_origin = parent_origin
 
     return result
+
+
+class CodeGenerator(NodeStateTracker, gast.NodeVisitor):
+  """Base class for general-purpose Python-to-string code transformation.
+
+  Similar to Base, but outputs arbitrary strings instead of a Python AST.
+
+  This uses the same visitor mechanism that the standard NodeVisitor uses,
+  meaning that subclasses write handlers for the different kinds of nodes.
+  New code is generated using the emit method, which appends to a code buffer
+  that can be afterwards obtained from code_buffer.
+
+  Example:
+
+    class SimpleCodeGen(CodeGenerator):
+
+      def visitIf(self, node):
+        self.emit('if ')
+        self.visit(node.test)
+        self.emit(' { ')
+        self.visit(node.body)
+        self.emit(' } else { ')
+        self.visit(node.orelse)
+        self.emit(' } ')
+
+    node = ast.parse(...)
+    gen = SimpleCodeGen()
+    gen.visit(node)
+    # gen.code_buffer contains the resulting code
+  """
+
+  def __init__(self, ctx):
+    super(CodeGenerator, self).__init__(ctx)
+
+    self._output_code = ''
+    self.source_map = {}
+
+  def emit(self, code):
+    self._output_code += code
+
+  @property
+  def code_buffer(self):
+    return self._output_code
+
+  def visit(self, node):
+    if anno.hasanno(node, anno.Basic.SKIP_PROCESSING):
+      return
+
+    parent_origin = self.ctx.current_origin
+    eof_before = len(self._output_code)
+    if anno.hasanno(node, anno.Basic.ORIGIN):
+      self.ctx.current_origin = anno.getanno(node, anno.Basic.ORIGIN)
+
+    try:
+      super(CodeGenerator, self).visit(node)
+
+      # By default, all replacements receive the origin info of the replaced
+      # node.
+      eof_after = len(self._output_code)
+      if eof_before - eof_after:
+        inherited_origin = anno.getanno(
+            node, anno.Basic.ORIGIN, default=parent_origin)
+        if inherited_origin is not None:
+          self.source_map[(eof_before, eof_after)] = inherited_origin
+    finally:
+      self.ctx.current_origin = parent_origin

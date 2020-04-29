@@ -24,6 +24,8 @@ import os
 import threading
 import time
 
+from absl.testing import parameterized
+
 from tensorflow.core.protobuf import debug_event_pb2
 from tensorflow.python.debug.lib import debug_events_reader
 from tensorflow.python.debug.lib import debug_events_writer
@@ -34,16 +36,17 @@ from tensorflow.python.framework import versions
 from tensorflow.python.platform import googletest
 
 
-class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
+class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase,
+                            parameterized.TestCase):
 
   def testMultiThreadedConstructorCallWorks(self):
-    def InitWriter():
+    def init_writer():
       debug_events_writer.DebugEventsWriter(self.dump_root)
 
     num_threads = 4
     threads = []
     for _ in range(num_threads):
-      thread = threading.Thread(target=InitWriter)
+      thread = threading.Thread(target=init_writer)
       thread.start()
       threads.append(thread)
     for thread in threads:
@@ -51,15 +54,15 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
     # Verify that there is only one debug event file of each type.
     metadata_paths = glob.glob(os.path.join(self.dump_root, "*.metadata"))
-    self.assertEqual(len(metadata_paths), 1)
+    self.assertLen(metadata_paths, 1)
     source_files_paths = glob.glob(
         os.path.join(self.dump_root, "*.source_files"))
-    self.assertEqual(len(source_files_paths), 1)
+    self.assertLen(source_files_paths, 1)
     stack_frames_paths = glob.glob(
         os.path.join(self.dump_root, "*.stack_frames"))
-    self.assertEqual(len(stack_frames_paths), 1)
+    self.assertLen(stack_frames_paths, 1)
     graphs_paths = glob.glob(os.path.join(self.dump_root, "*.graphs"))
-    self.assertEqual(len(graphs_paths), 1)
+    self.assertLen(graphs_paths, 1)
     self._readAndCheckMetadataFile()
 
   def testWriteSourceFilesAndStackFrames(self):
@@ -123,7 +126,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
     source_file_state = {"counter": 0, "lock": threading.Lock()}
 
-    def WriteSourceFile():
+    def writer_source_file():
       source_file = debug_event_pb2.SourceFile()
       with source_file_state["lock"]:
         source_file.file_path = "/home/tf2user/file_%d.py" % source_file_state[
@@ -136,7 +139,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
     stack_frame_state = {"counter": 0, "lock": threading.Lock()}
 
-    def WriteStackFrame():
+    def write_stack_frame():
       stack_frame = debug_event_pb2.StackFrameWithId()
       with stack_frame_state["lock"]:
         stack_frame.id = "stack_frame_%d" % stack_frame_state["counter"]
@@ -148,7 +151,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
     graph_op_state = {"counter": 0, "lock": threading.Lock()}
 
-    def WriteGraphOpCreation():
+    def write_graph_op_creation():
       graph_op_creation = debug_event_pb2.GraphOpCreation()
       with graph_op_state["lock"]:
         graph_op_creation.op_name = "Op%d" % graph_op_state["counter"]
@@ -162,11 +165,11 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
     threads = []
     for i in range(num_threads):
       if i % 3 == 0:
-        target = WriteSourceFile
+        target = writer_source_file
       elif i % 3 == 1:
-        target = WriteStackFrame
+        target = write_stack_frame
       else:
-        target = WriteGraphOpCreation
+        target = write_graph_op_creation
       thread = threading.Thread(target=target)
       thread.start()
       threads.append(thread)
@@ -256,7 +259,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
       actuals = list(reader.graph_execution_traces_iterator())
       # Before FlushExecutionFiles() is called. No data should have been written
       # to the file.
-      self.assertEqual(len(actuals), 0)
+      self.assertEmpty(actuals)
 
       writer.FlushExecutionFiles()
       actuals = list(item.debug_event.graph_execution_trace
@@ -294,7 +297,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
     execution_state = {"counter": 0, "lock": threading.Lock()}
 
-    def WriteExecution():
+    def write_execution():
       execution = debug_event_pb2.Execution()
       with execution_state["lock"]:
         execution.op_type = "OpType%d" % execution_state["counter"]
@@ -303,7 +306,7 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
 
     graph_execution_trace_state = {"counter": 0, "lock": threading.Lock()}
 
-    def WriteGraphExecutionTrace():
+    def write_graph_execution_trace():
       with graph_execution_trace_state["lock"]:
         op_name = "Op%d" % graph_execution_trace_state["counter"]
         graph_op_creation = debug_event_pb2.GraphOpCreation(
@@ -317,9 +320,9 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
     threads = []
     for i in range(circular_buffer_size * 4):
       if i % 2 == 0:
-        target = WriteExecution
+        target = write_execution
       else:
-        target = WriteGraphExecutionTrace
+        target = write_graph_execution_trace
       thread = threading.Thread(target=target)
       thread.start()
       threads.append(thread)
@@ -340,6 +343,244 @@ class DebugEventsWriterTest(dumping_callback_test_lib.DumpingCallbackTestBase):
       op_names = [trace.op_name for trace in reader.graph_execution_traces()]
       self.assertLen(op_names, circular_buffer_size)
       self.assertLen(op_names, len(set(op_names)))
+
+  def testConcurrentSourceFileRandomReads(self):
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root)
+
+    for i in range(100):
+      source_file = debug_event_pb2.SourceFile(
+          host_name="localhost", file_path="/tmp/file_%d.py" % i)
+      source_file.lines.append("# File %d" % i)
+      writer.WriteSourceFile(source_file)
+    writer.FlushNonExecutionFiles()
+
+    reader = debug_events_reader.DebugDataReader(self.dump_root)
+    reader.update()
+    lines = [None] * 100
+    def read_job_1():
+      # Read in the reverse order to enhance randomness of the read access.
+      for i in range(49, -1, -1):
+        lines[i] = reader.source_lines("localhost", "/tmp/file_%d.py" % i)
+    def read_job_2():
+      for i in range(99, 49, -1):
+        lines[i] = reader.source_lines("localhost", "/tmp/file_%d.py" % i)
+    thread_1 = threading.Thread(target=read_job_1)
+    thread_2 = threading.Thread(target=read_job_2)
+    thread_1.start()
+    thread_2.start()
+    thread_1.join()
+    thread_2.join()
+    for i in range(100):
+      self.assertEqual(lines[i], ["# File %d" % i])
+
+  def testConcurrentExecutionUpdateAndRandomRead(self):
+    circular_buffer_size = -1
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   circular_buffer_size)
+
+    writer_state = {"counter": 0, "done": False}
+
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      def write_and_update_job():
+        while True:
+          if writer_state["done"]:
+            break
+          execution = debug_event_pb2.Execution()
+          execution.op_type = "OpType%d" % writer_state["counter"]
+          writer_state["counter"] += 1
+          writer.WriteExecution(execution)
+          writer.FlushExecutionFiles()
+          reader.update()
+      # On the sub-thread, keep writing and reading new Execution protos.
+      write_and_update_thread = threading.Thread(target=write_and_update_job)
+      write_and_update_thread.start()
+      # On the main thread, do concurrent random read.
+      while True:
+        exec_digests = reader.executions(digest=True)
+        if exec_digests:
+          exec_0 = reader.read_execution(exec_digests[0])
+          self.assertEqual(exec_0.op_type, "OpType0")
+          writer_state["done"] = True
+          break
+        else:
+          time.sleep(0.1)
+          continue
+      write_and_update_thread.join()
+
+  def testConcurrentExecutionRandomReads(self):
+    circular_buffer_size = -1
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   circular_buffer_size)
+
+    for i in range(100):
+      execution = debug_event_pb2.Execution()
+      execution.op_type = "OpType%d" % i
+      writer.WriteExecution(execution)
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+
+    reader = debug_events_reader.DebugDataReader(self.dump_root)
+    reader.update()
+    executions = [None] * 100
+    def read_job_1():
+      execution_digests = reader.executions(digest=True)
+      # Read in the reverse order to enhance randomness of the read access.
+      for i in range(49, -1, -1):
+        execution = reader.read_execution(execution_digests[i])
+        executions[i] = execution
+    def read_job_2():
+      execution_digests = reader.executions(digest=True)
+      for i in range(99, 49, -1):
+        execution = reader.read_execution(execution_digests[i])
+        executions[i] = execution
+    thread_1 = threading.Thread(target=read_job_1)
+    thread_2 = threading.Thread(target=read_job_2)
+    thread_1.start()
+    thread_2.start()
+    thread_1.join()
+    thread_2.join()
+    for i in range(100):
+      self.assertEqual(executions[i].op_type, "OpType%d" % i)
+
+  def testConcurrentGraphExecutionTraceUpdateAndRandomRead(self):
+    circular_buffer_size = -1
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   circular_buffer_size)
+    debugged_graph = debug_event_pb2.DebuggedGraph(graph_id="graph1",
+                                                   graph_name="graph1")
+    writer.WriteDebuggedGraph(debugged_graph)
+
+    writer_state = {"counter": 0, "done": False}
+
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      def write_and_update_job():
+        while True:
+          if writer_state["done"]:
+            break
+          op_name = "Op%d" % writer_state["counter"]
+          graph_op_creation = debug_event_pb2.GraphOpCreation(
+              op_type="FooOp", op_name=op_name, graph_id="graph1")
+          writer.WriteGraphOpCreation(graph_op_creation)
+          trace = debug_event_pb2.GraphExecutionTrace(
+              op_name=op_name, tfdbg_context_id="graph1")
+          writer.WriteGraphExecutionTrace(trace)
+          writer_state["counter"] += 1
+          writer.FlushNonExecutionFiles()
+          writer.FlushExecutionFiles()
+          reader.update()
+      # On the sub-thread, keep writing and reading new GraphExecutionTraces.
+      write_and_update_thread = threading.Thread(target=write_and_update_job)
+      write_and_update_thread.start()
+      # On the main thread, do concurrent random read.
+      while True:
+        digests = reader.graph_execution_traces(digest=True)
+        if digests:
+          trace_0 = reader.read_graph_execution_trace(digests[0])
+          self.assertEqual(trace_0.op_name, "Op0")
+          writer_state["done"] = True
+          break
+        else:
+          time.sleep(0.1)
+          continue
+      write_and_update_thread.join()
+
+  def testConcurrentGraphExecutionTraceRandomReads(self):
+    circular_buffer_size = -1
+    writer = debug_events_writer.DebugEventsWriter(self.dump_root,
+                                                   circular_buffer_size)
+    debugged_graph = debug_event_pb2.DebuggedGraph(graph_id="graph1",
+                                                   graph_name="graph1")
+    writer.WriteDebuggedGraph(debugged_graph)
+
+    for i in range(100):
+      op_name = "Op%d" % i
+      graph_op_creation = debug_event_pb2.GraphOpCreation(
+          op_type="FooOp", op_name=op_name, graph_id="graph1")
+      writer.WriteGraphOpCreation(graph_op_creation)
+      trace = debug_event_pb2.GraphExecutionTrace(
+          op_name=op_name, tfdbg_context_id="graph1")
+      writer.WriteGraphExecutionTrace(trace)
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+
+    reader = debug_events_reader.DebugDataReader(self.dump_root)
+    reader.update()
+    traces = [None] * 100
+    def read_job_1():
+      digests = reader.graph_execution_traces(digest=True)
+      for i in range(49, -1, -1):
+        traces[i] = reader.read_graph_execution_trace(digests[i])
+    def read_job_2():
+      digests = reader.graph_execution_traces(digest=True)
+      for i in range(99, 49, -1):
+        traces[i] = reader.read_graph_execution_trace(digests[i])
+    thread_1 = threading.Thread(target=read_job_1)
+    thread_2 = threading.Thread(target=read_job_2)
+    thread_1.start()
+    thread_2.start()
+    thread_1.join()
+    thread_2.join()
+    for i in range(100):
+      self.assertEqual(traces[i].op_name, "Op%d" % i)
+
+  @parameterized.named_parameters(
+      ("Begin1End3", 1, 3, 1, 3),
+      ("Begin0End3", 0, 3, 0, 3),
+      ("Begin0EndNeg1", 0, -1, 0, 4),
+      ("BeginNoneEnd3", None, 3, 0, 3),
+      ("Begin2EndNone", 2, None, 2, 5),
+      ("BeginNoneEndNone", None, None, 0, 5),
+  )
+  def testRangeReadingExecutions(self, begin, end, expected_begin,
+                                 expected_end):
+    writer = debug_events_writer.DebugEventsWriter(
+        self.dump_root, circular_buffer_size=-1)
+    for i in range(5):
+      execution = debug_event_pb2.Execution(op_type="OpType%d" % i)
+      writer.WriteExecution(execution)
+    writer.FlushExecutionFiles()
+    writer.Close()
+
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      reader.update()
+      executions = reader.executions(begin=begin, end=end)
+    self.assertLen(executions, expected_end - expected_begin)
+    self.assertEqual(executions[0].op_type, "OpType%d" % expected_begin)
+    self.assertEqual(executions[-1].op_type, "OpType%d" % (expected_end - 1))
+
+  @parameterized.named_parameters(
+      ("Begin1End3", 1, 3, 1, 3),
+      ("Begin0End3", 0, 3, 0, 3),
+      ("Begin0EndNeg1", 0, -1, 0, 4),
+      ("BeginNoneEnd3", None, 3, 0, 3),
+      ("Begin2EndNone", 2, None, 2, 5),
+      ("BeginNoneEndNone", None, None, 0, 5),
+  )
+  def testRangeReadingGraphExecutionTraces(self, begin, end, expected_begin,
+                                           expected_end):
+    writer = debug_events_writer.DebugEventsWriter(
+        self.dump_root, circular_buffer_size=-1)
+    debugged_graph = debug_event_pb2.DebuggedGraph(
+        graph_id="graph1", graph_name="graph1")
+    writer.WriteDebuggedGraph(debugged_graph)
+    for i in range(5):
+      op_name = "Op_%d" % i
+      graph_op_creation = debug_event_pb2.GraphOpCreation(
+          op_name=op_name, graph_id="graph1")
+      writer.WriteGraphOpCreation(graph_op_creation)
+      trace = debug_event_pb2.GraphExecutionTrace(
+          op_name=op_name, tfdbg_context_id="graph1")
+      writer.WriteGraphExecutionTrace(trace)
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+    writer.Close()
+
+    with debug_events_reader.DebugDataReader(self.dump_root) as reader:
+      reader.update()
+      traces = reader.graph_execution_traces(begin=begin, end=end)
+    self.assertLen(traces, expected_end - expected_begin)
+    self.assertEqual(traces[0].op_name, "Op_%d" % expected_begin)
+    self.assertEqual(traces[-1].op_name, "Op_%d" % (expected_end - 1))
 
 
 class DataObjectsTest(test_util.TensorFlowTestCase):

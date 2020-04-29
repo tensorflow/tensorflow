@@ -270,10 +270,7 @@ class Queue {
   // Marks the queue closed, and waits until it is empty.
   void CloseAndWaitUntilEmpty();
 
-  bool closed() const {
-    mutex_lock l(mu_);
-    return closed_;
-  }
+  bool closed() const TF_NO_THREAD_SAFETY_ANALYSIS { return closed_.load(); }
 
  private:
   // Same as IsEmpty(), but assumes the caller already holds a lock on 'mu_'.
@@ -305,7 +302,7 @@ class Queue {
   // Whether this queue can accept new tasks. This variable is monotonic: it
   // starts as false, and then at some point gets set to true and remains true
   // for the duration of this object's life.
-  bool closed_ TF_GUARDED_BY(mu_) = false;
+  std::atomic<bool> closed_ TF_GUARDED_BY(mu_){false};
 
   // The enqueued batches. See the invariants in the class comments above.
   std::deque<std::unique_ptr<Batch<TaskType>>> batches_ TF_GUARDED_BY(mu_);

@@ -280,6 +280,13 @@ class FunctionOptimizerContext {
 
   const GraphView& graph_view() const { return graph_view_; }
 
+  bool IsFeedNode(const string& node_name) const {
+    return absl::c_any_of(
+        item_->feed, [&](const std::pair<std::string, Tensor>& feed) {
+          return ParseTensorName(feed.first).node() == node_name;
+        });
+  }
+
   bool IsFetchNode(const string& node_name) const {
     return absl::c_any_of(item_->fetch, [&](const string& fetch) {
       return ParseTensorName(fetch).node() == node_name;
@@ -1198,6 +1205,13 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
   std::vector<string> inlined_function_names;
 
+  // Do not inline function call nodes that are part of a feed set.
+  NodeNames feed_nodes;
+  feed_nodes.reserve(item.feed.size());
+  for (const std::pair<std::string, Tensor>& feed : item.feed) {
+    feed_nodes.insert(ParseTensorName(feed.first).node());
+  }
+
   // If a function call is inside a While loop, it must have an incoming control
   // edge, because it will be used to pass execution frame into the function
   // body. All nodes without inputs in the function body (e.g. Const and NoOp)
@@ -1233,6 +1247,8 @@ Status InlineFunctionCalls(const GrapplerItem& item,
     if (!IsFunctionCall(flib_def, *n)) continue;
     // Skip function calls that we plan to compile later.
     if (MarkedForXlaCompilation(n->def())) continue;
+    // Skip nodes in a feed set.
+    if (feed_nodes.contains(n->name())) continue;
 
     // Function body that we will inline into the main graph. It can be a
     // function instantiation, or a gradient function instantiated from
@@ -1436,9 +1452,9 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
 
     // Do not specialize if function has custom gradient or marked nospecialize.
     const string grad_func = ctx.function_library().FindGradient(func_name);
-    const bool no_specialize = !grad_func.empty() ||
-                               MarkedNoSpecialize(*func) ||
-                               MarkedForXlaCompilation(node);
+    const bool no_specialize =
+        !grad_func.empty() || ctx.IsFeedNode(node.name()) ||
+        MarkedNoSpecialize(*func) || MarkedForXlaCompilation(node);
 
     if (specialization_worthy && !no_specialize) {
       // TODO(ezhulenev): Specialize function call if input has a known shape.

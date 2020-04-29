@@ -22,6 +22,7 @@ import gast
 import six
 
 from tensorflow.python.autograph.pyct import anno
+from tensorflow.python.autograph.pyct import naming
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
@@ -113,11 +114,17 @@ class ScopeTest(test.TestCase):
 class ActivityAnalyzerTestBase(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
+    # TODO(mdan): Use a custom FunctionTransformer here.
     node, source = parser.parse_entity(test_fn, future_features=())
     entity_info = transformer.EntityInfo(
-        source_code=source, source_file=None, future_features=(), namespace={})
+        name=test_fn.__name__,
+        source_code=source,
+        source_file=None,
+        future_features=(),
+        namespace={})
     node = qual_names.resolve(node)
-    ctx = transformer.Context(entity_info)
+    namer = naming.Namer({})
+    ctx = transformer.Context(entity_info, namer, None)
     node = activity.resolve(node, ctx)
     return node, entity_info
 
@@ -366,17 +373,48 @@ class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
         y = x * x
         return y
 
-      b = a
-      for i in a:
-        c = b
-        b -= f(i)
-      return b, c
+      return f(a)
+
+    node, _ = self._parse_and_analyze(test_fn)
+
+    fn_node = node
+    scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(scope, ('a', 'f'), ('f',))
+
+    fn_def_node = node.body[0]
+
+    scope = anno.getanno(fn_def_node, anno.Static.SCOPE)
+    self.assertScopeIs(scope, (), ('f'))
+
+    scope = anno.getanno(fn_def_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(scope, ('x', 'y'), ('y',))
+
+    scope = anno.getanno(fn_def_node, NodeAnno.ARGS_AND_BODY_SCOPE)
+    self.assertScopeIs(scope, ('x', 'y'), ('y',))
+    self.assertSymbolSetsAre(('x', 'y'), scope.bound, 'BOUND')
+
+  def test_nested_function_arg_defaults(self):
+
+    def test_fn(a):
+
+      def f(x=a):
+        y = x * x
+        return y
+
+      return f(a)
 
     node, _ = self._parse_and_analyze(test_fn)
     fn_def_node = node.body[0]
 
     self.assertScopeIs(
-        anno.getanno(fn_def_node, NodeAnno.BODY_SCOPE), ('x', 'y'), ('y',))
+        anno.getanno(fn_def_node, anno.Static.SCOPE), ('a',), ('f',))
+
+    scope = anno.getanno(fn_def_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(scope, ('x', 'y'), ('y',))
+
+    scope = anno.getanno(fn_def_node, NodeAnno.ARGS_AND_BODY_SCOPE)
+    self.assertScopeIs(scope, ('x', 'y'), ('y',))
+    self.assertSymbolSetsAre(('x', 'y'), scope.bound, 'BOUND')
 
   def test_constructor_attributes(self):
 
@@ -475,64 +513,154 @@ class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
     self.assertScopeIs(
         anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('foo', 'x'), ())
 
-  def test_params(self):
-
-    def test_fn(a, b):  # pylint: disable=unused-argument
-      return b
-
-    node, _ = self._parse_and_analyze(test_fn)
-    fn_node = node
-    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
-    self.assertScopeIs(body_scope, ('b',), ())
-    self.assertScopeIs(body_scope.parent, ('b',), ())
-
-    args_scope = anno.getanno(fn_node.args, anno.Static.SCOPE)
-    self.assertSymbolSetsAre(('a', 'b'), args_scope.params.keys(), 'params')
-
-  def test_lambda_captures_reads(self):
+  def test_lambda(self):
 
     def test_fn(a, b):
-      return lambda: a + b
+      return lambda: (a + b)
 
     node, _ = self._parse_and_analyze(test_fn)
-    fn_node = node
-    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
-    self.assertScopeIs(body_scope, ('a', 'b'), ())
-    # Nothing local to the lambda is tracked.
-    self.assertSymbolSetsAre((), body_scope.params.keys(), 'params')
 
-  def test_lambda_params_are_isolated(self):
+    fn_node = node
+    scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(scope, ('a', 'b'), ())
+
+    lam_def_node = node.body[0].value
+
+    scope = anno.getanno(lam_def_node, anno.Static.SCOPE)
+    self.assertScopeIs(scope, (), ())
+
+    scope = anno.getanno(lam_def_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(scope, ('a', 'b'), ())
+
+    scope = anno.getanno(lam_def_node, NodeAnno.ARGS_AND_BODY_SCOPE)
+    self.assertScopeIs(scope, ('a', 'b'), ())
+    self.assertSymbolSetsAre((), scope.bound, 'BOUND')
+
+    scope = anno.getanno(lam_def_node.args, anno.Static.SCOPE)
+    self.assertSymbolSetsAre((), scope.params.keys(), 'lambda params')
+
+  def test_lambda_params_args(self):
 
     def test_fn(a, b):  # pylint: disable=unused-argument
       return lambda a: a + b
 
     node, _ = self._parse_and_analyze(test_fn)
+
     fn_node = node
-    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
-    self.assertScopeIs(body_scope, ('b',), ())
-    self.assertSymbolSetsAre((), body_scope.params.keys(), 'params')
+    scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    # Note: `a` in `a + b` is not "read" here because it's hidden by the `a`
+    # argument.
+    self.assertScopeIs(scope, ('b',), ())
+
+    lam_def_node = node.body[0].value
+
+    scope = anno.getanno(lam_def_node, anno.Static.SCOPE)
+    self.assertScopeIs(scope, (), ())
+
+    scope = anno.getanno(lam_def_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(scope, ('a', 'b'), ())
+
+    scope = anno.getanno(lam_def_node, NodeAnno.ARGS_AND_BODY_SCOPE)
+    self.assertScopeIs(scope, ('a', 'b'), ())
+    self.assertSymbolSetsAre(('a',), scope.bound, 'BOUND')
+
+    scope = anno.getanno(lam_def_node.args, anno.Static.SCOPE)
+    self.assertSymbolSetsAre(('a',), scope.params.keys(), 'lambda params')
+
+  def test_lambda_params_arg_defaults(self):
+
+    def test_fn(a, b, c):  # pylint: disable=unused-argument
+      return lambda b=c: a + b
+
+    node, _ = self._parse_and_analyze(test_fn)
+
+    fn_node = node
+    scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    # Note: `b` is not "read" here because it's hidden by the argument.
+    self.assertScopeIs(scope, ('a', 'c'), ())
+
+    lam_def_node = node.body[0].value
+
+    scope = anno.getanno(lam_def_node, anno.Static.SCOPE)
+    self.assertScopeIs(scope, ('c',), ())
+
+    scope = anno.getanno(lam_def_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(scope, ('a', 'b'), ())
+
+    scope = anno.getanno(lam_def_node, NodeAnno.ARGS_AND_BODY_SCOPE)
+    self.assertScopeIs(scope, ('a', 'b'), ())
+    self.assertSymbolSetsAre(('b',), scope.bound, 'BOUND')
+
+    scope = anno.getanno(lam_def_node.args, anno.Static.SCOPE)
+    self.assertSymbolSetsAre(('b',), scope.params.keys(), 'lambda params')
 
   def test_lambda_complex(self):
 
-    def test_fn(a, b, c, d):  # pylint: disable=unused-argument
-      a = (lambda a, b, c: a + b + c)(d, 1, 2) + b
+    def test_fn(a, b, c, d, e):  # pylint: disable=unused-argument
+      a = (lambda a, b, c=e: a + b + c)(d, 1, 2) + b
 
     node, _ = self._parse_and_analyze(test_fn)
+
     fn_node = node
-    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
-    self.assertScopeIs(body_scope, ('b', 'd'), ('a',))
-    self.assertSymbolSetsAre((), body_scope.params.keys(), 'params')
+    scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(scope, ('d', 'b', 'e'), ('a',))
+
+    lam_def_node = node.body[0].value.left.func
+
+    scope = anno.getanno(lam_def_node, anno.Static.SCOPE)
+    self.assertScopeIs(scope, ('e',), ())
+
+    scope = anno.getanno(lam_def_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(scope, ('a', 'b', 'c'), ())
+
+    scope = anno.getanno(lam_def_node, NodeAnno.ARGS_AND_BODY_SCOPE)
+    self.assertScopeIs(scope, ('a', 'b', 'c'), ())
+    self.assertSymbolSetsAre(('a', 'b', 'c'), scope.bound, 'BOUND')
+
+    scope = anno.getanno(lam_def_node.args, anno.Static.SCOPE)
+    self.assertSymbolSetsAre(
+        ('a', 'b', 'c'), scope.params.keys(), 'lambda params')
 
   def test_lambda_nested(self):
 
-    def test_fn(a, b, c, d, e):  # pylint: disable=unused-argument
-      a = lambda a, b: d(lambda b: a + b + c)  # pylint: disable=undefined-variable
+    def test_fn(a, b, c, d, e, f):  # pylint: disable=unused-argument
+      a = lambda a, b: d(lambda b=f: a + b + c)  # pylint: disable=undefined-variable
 
     node, _ = self._parse_and_analyze(test_fn)
+
     fn_node = node
-    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
-    self.assertScopeIs(body_scope, ('c', 'd'), ('a',))
-    self.assertSymbolSetsAre((), body_scope.params.keys(), 'params')
+    scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(scope, ('d', 'c', 'f'), ('a',))
+
+    outer_lam_def = node.body[0].value
+
+    scope = anno.getanno(outer_lam_def, anno.Static.SCOPE)
+    self.assertScopeIs(scope, (), ())
+
+    scope = anno.getanno(outer_lam_def, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(scope, ('d', 'f', 'a', 'c'), ())
+
+    scope = anno.getanno(outer_lam_def, NodeAnno.ARGS_AND_BODY_SCOPE)
+    self.assertScopeIs(scope, ('d', 'f', 'a', 'c'), ())
+    self.assertSymbolSetsAre(('a', 'b'), scope.bound, 'BOUND')
+
+    scope = anno.getanno(outer_lam_def.args, anno.Static.SCOPE)
+    self.assertSymbolSetsAre(('a', 'b'), scope.params.keys(), 'lambda params')
+
+    inner_lam_def = outer_lam_def.body.args[0]
+
+    scope = anno.getanno(inner_lam_def, anno.Static.SCOPE)
+    self.assertScopeIs(scope, ('f',), ())
+
+    scope = anno.getanno(inner_lam_def, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(scope, ('a', 'b', 'c'), ())
+
+    scope = anno.getanno(inner_lam_def, NodeAnno.ARGS_AND_BODY_SCOPE)
+    self.assertScopeIs(scope, ('a', 'b', 'c'), ())
+    self.assertSymbolSetsAre(('b',), scope.bound, 'BOUND')
+
+    scope = anno.getanno(inner_lam_def.args, anno.Static.SCOPE)
+    self.assertSymbolSetsAre(('b',), scope.params.keys(), 'lambda params')
 
   def test_comprehension_targets_are_isolated(self):
 
@@ -600,9 +728,11 @@ class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
     node, _ = self._parse_and_analyze(test_fn)
     fn_node = node
     body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
-    self.assertScopeIs(body_scope, ('global_b', 'c'), ('global_a',))
+    self.assertScopeIs(body_scope, ('global_a', 'global_b', 'c'), ('global_a',))
     self.assertSetEqual(body_scope.globals, set(
         (QN('global_a'), QN('global_b'))))
+    global_a_scope = anno.getanno(fn_node.body[0], anno.Static.SCOPE)
+    self.assertScopeIs(global_a_scope, ('global_a',), ())
 
   def test_class_definition_basic(self):
 

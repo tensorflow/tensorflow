@@ -266,6 +266,12 @@ class RNN(Layer):
       RNN calculation. However, most TensorFlow data is batch-major, so by
       default this function accepts input and emits output in batch-major
       form.
+    zero_output_for_mask: Boolean (default `False`).
+      Whether the output should use zeros for the masked timesteps. Note that
+      this field is only used when `return_sequences` is True and mask is
+      provided. It can useful if you want to reuse the raw output sequence of
+      the RNN without interference from the masked timesteps, eg, merging
+      bidirectional RNNs.
 
   Call arguments:
     inputs: Input tensor.
@@ -608,16 +614,17 @@ class RNN(Layer):
         '`cell.state_size`. Received `state_spec`={}; '
         'however `cell.state_size` is '
         '{}'.format(init_state_specs, cell_state_sizes))
-    flat_cell_state_size = nest.flatten(cell_state_sizes)
-    flat_state_spec = nest.flatten(init_state_specs)
+    flat_cell_state_sizes = nest.flatten(cell_state_sizes)
+    flat_state_specs = nest.flatten(init_state_specs)
 
-    if len(flat_cell_state_size) != len(flat_state_spec):
+    if len(flat_cell_state_sizes) != len(flat_state_specs):
       raise validation_error
-    for i in range(len(flat_cell_state_size)):
+    for cell_state_spec, cell_state_size in zip(flat_state_specs,
+                                                flat_cell_state_sizes):
       if not tensor_shape.TensorShape(
           # Ignore the first axis for init_state which is for batch
-          flat_state_spec[i].shape[1:]).is_compatible_with(
-              tensor_shape.TensorShape(flat_cell_state_size[i])):
+          cell_state_spec.shape[1:]).is_compatible_with(
+              tensor_shape.TensorShape(cell_state_size)):
         raise validation_error
 
   @doc_controls.do_not_doc_inheritable
@@ -687,10 +694,14 @@ class RNN(Layer):
     if is_keras_tensor:
       # Compute the full input spec, including state and constants
       full_input = [inputs] + additional_inputs
-      # The original input_spec is None since there could be a nested tensor
-      # input. Update the input_spec to match the inputs.
-      full_input_spec = generic_utils.to_list(
-          nest.map_structure(lambda _: None, inputs)) + additional_specs
+      if self.built:
+        # Keep the input_spec since it has been populated in build() method.
+        full_input_spec = self.input_spec + additional_specs
+      else:
+        # The original input_spec is None since there could be a nested tensor
+        # input. Update the input_spec to match the inputs.
+        full_input_spec = generic_utils.to_list(
+            nest.map_structure(lambda _: None, inputs)) + additional_specs
       # Perform the call with temporarily replaced input_spec
       self.input_spec = full_input_spec
       output = super(RNN, self).__call__(full_input, **kwargs)
@@ -794,9 +805,10 @@ class RNN(Layer):
         zero_output_for_mask=self.zero_output_for_mask)
 
     if self.stateful:
-      updates = []
-      for state_, state in zip(nest.flatten(self.states), nest.flatten(states)):
-        updates.append(state_ops.assign(state_, state))
+      updates = [
+          state_ops.assign(self_state, state) for self_state, state in zip(
+              nest.flatten(self.states), nest.flatten(states))
+      ]
       self.add_update(updates)
 
     if self.return_sequences:
@@ -1337,7 +1349,8 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
     if self.activation is not None:
       output = self.activation(output)
 
-    return output, [output]
+    new_state = [output] if nest.is_sequence(states) else output
+    return output, new_state
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
     return _generate_zero_filled_state_for_cell(self, inputs, batch_size, dtype)
@@ -1876,7 +1889,8 @@ class GRUCell(DropoutRNNCellMixin, Layer):
       hh = self.activation(x_h + recurrent_h)
     # previous and candidate state mixed by update gate
     h = z * h_tm1 + (1 - z) * hh
-    return h, [h]
+    new_state = [h] if nest.is_sequence(states) else h
+    return h, new_state
 
   def get_config(self):
     config = {
@@ -2219,8 +2233,8 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
     unit_forget_bias: Boolean.
       If True, add 1 to the bias of the forget gate at initialization.
       Setting it to true will also force `bias_initializer="zeros"`.
-      This is recommended in [Jozefowicz et
-        al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
+      This is recommended in [Jozefowicz et al., 2015](
+        http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix.
     recurrent_regularizer: Regularizer function applied to
@@ -2336,7 +2350,7 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
         def bias_initializer(_, *args, **kwargs):
           return K.concatenate([
               self.bias_initializer((self.units,), *args, **kwargs),
-              initializers.Ones()((self.units,), *args, **kwargs),
+              initializers.get('ones')((self.units,), *args, **kwargs),
               self.bias_initializer((self.units * 2,), *args, **kwargs),
           ])
       else:
@@ -2489,7 +2503,8 @@ class PeepholeLSTMCell(LSTMCell):
   well as the previous hidden state (which is what LSTMCell is limited to).
   This allows PeepholeLSTMCell to better learn precise timings over LSTMCell.
 
-  From [Gers et al.](http://www.jmlr.org/papers/volume3/gers02a/gers02a.pdf):
+  From [Gers et al., 2002](
+    http://www.jmlr.org/papers/volume3/gers02a/gers02a.pdf):
 
   "We find that LSTM augmented by 'peephole connections' from its internal
   cells to its multiplicative gates can learn the fine distinction between
@@ -2498,9 +2513,7 @@ class PeepholeLSTMCell(LSTMCell):
 
   The peephole implementation is based on:
 
-  [Long short-term memory recurrent neural network architectures for
-   large scale acoustic modeling.
-  ](https://research.google.com/pubs/archive/43905.pdf)
+  [Sak et al., 2014](https://research.google.com/pubs/archive/43905.pdf)
 
   Example:
 
@@ -2587,8 +2600,8 @@ class LSTM(RNN):
     unit_forget_bias: Boolean.
       If True, add 1 to the bias of the forget gate at initialization.
       Setting it to true will also force `bias_initializer="zeros"`.
-      This is recommended in [Jozefowicz et
-        al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf).
+      This is recommended in [Jozefowicz et al., 2015](
+        http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf).
     kernel_regularizer: Regularizer function applied to
       the `kernel` weights matrix.
     recurrent_regularizer: Regularizer function applied to

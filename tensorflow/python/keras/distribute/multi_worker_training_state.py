@@ -170,7 +170,10 @@ class MultiWorkerTrainingState(object):
     successfully finishes.
     """
     self._assert_in_multi_worker_mode()
-    tracking.AutoTrackable.__delattr__(self._model, CKPT_SAVED_EPOCH)
+    # Model may not have such attr if there was a failure before the attr was
+    # added to the model
+    if hasattr(self._model, CKPT_SAVED_EPOCH):
+      tracking.AutoTrackable.__delattr__(self._model, CKPT_SAVED_EPOCH)
     if multi_worker_util.should_save_checkpoint():
       _remove_dir(self._backup_dir)
     else:

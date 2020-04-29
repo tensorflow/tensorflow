@@ -45,8 +45,8 @@ from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
-from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
+from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
@@ -401,7 +401,7 @@ class Layer(base_layer.Layer):
     if initializer is None:
       # If dtype is DT_FLOAT, provide a uniform unit scaling initializer
       if dtype.is_floating:
-        initializer = initializers.glorot_uniform()
+        initializer = initializers.get('glorot_uniform')
       # If dtype is DT_INT/DT_UINT, provide a default value `zero`
       # If dtype is DT_BOOL, provide a default value `FALSE`
       elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
@@ -697,16 +697,17 @@ class Layer(base_layer.Layer):
       mask_arg_passed_by_framework = True
       kwargs['mask'] = input_masks
 
-    # If `training` argument was not explicitly passed, propagate `training`
-    # value from this layer's calling layer.
+    # If `training` argument is None or not explicitly passed,
+    # propagate `training` value from this layer's calling layer.
+    training_value = None
     training_arg_passed_by_framework = False
     # Priority 1: `training` was explicitly passed.
     if self._call_arg_was_passed('training', args, kwargs):
       training_value = self._get_call_arg_value('training', args, kwargs)
       if not self._expects_training_arg:
         kwargs.pop('training')
-    else:
-      training_value = None
+
+    if training_value is None:
       # Priority 2: `training` was passed to a parent layer.
       if call_context.training is not None:
         training_value = call_context.training
@@ -726,7 +727,8 @@ class Layer(base_layer.Layer):
           training_value = math_ops.cast(training_value, dtypes.bool)
         else:
           training_value = bool(training_value)
-        kwargs['training'] = training_value
+        args, kwargs = self._set_call_arg_value(
+            'training', training_value, args, kwargs)
         training_arg_passed_by_framework = True
 
     # Only create Keras history if at least one tensor originates from a
@@ -797,11 +799,12 @@ class Layer(base_layer.Layer):
                              '(layer: ' + self.name + ').')
           if base_layer_utils.have_all_keras_metadata(inputs):
             if training_arg_passed_by_framework:
-              kwargs.pop('training')
+              args, kwargs = self._set_call_arg_value(
+                  'training', None, args, kwargs, pop_kwarg_if_none=True)
             if mask_arg_passed_by_framework:
               kwargs.pop('mask')
-            inputs, outputs = self._set_connectivity_metadata_(
-                inputs, outputs, args, kwargs)
+            outputs = self._set_connectivity_metadata((inputs,) + args, kwargs,
+                                                      outputs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, input_masks)
           if hasattr(self, '_set_inputs') and not self.inputs:
@@ -1733,6 +1736,18 @@ class Layer(base_layer.Layer):
       self._dtype_policy = policy.Policy(dtypes.as_dtype(dtype).name)
     else:
       self._dtype_policy = policy.global_policy()
+    if (self._dtype_policy.name == 'mixed_float16' and
+        not loss_scale_optimizer.strategy_supports_loss_scaling()):
+      # Although only loss scaling doesn't support certain strategies, to avoid
+      # confusion, we disallow the 'mixed_float16' policy with unsupported
+      # strategies. This is because 'mixed_float16' requires loss scaling for
+      # numeric stability.
+      strategy = ds_context.get_strategy()
+      raise ValueError('Mixed precision is not supported with the '
+                       'tf.distribute.Strategy: %s. Either stop using mixed '
+                       'precision by removing the use of the "%s" policy or '
+                       'use a different Strategy, e.g. a MirroredStrategy.' %
+                       (strategy.__class__.__name__, self._dtype_policy.name))
 
     # This has no impact on the layer behavior, and is only used for printing
     # warnings.
@@ -1992,70 +2007,23 @@ class Layer(base_layer.Layer):
     args_dict = dict(zip(call_fn_args, args))
     return args_dict[arg_name]
 
-  def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):
-
-    # If the layer returns tensors from its inputs, unmodified,
-    # we copy them to avoid loss of tensor metadata.
-    output_ls = nest.flatten(outputs)
-    inputs_ls = object_identity.ObjectIdentitySet(nest.flatten(inputs))
-    output_ls_copy = []
-    for x in output_ls:
-      if x in inputs_ls:
-        with backend.name_scope(self.name):
-          x = array_ops.identity(x)
-      output_ls_copy.append(x)
-    outputs = nest.pack_sequence_as(outputs, output_ls_copy)
-
-    # Ignore `inputs` arg.
-    arguments = dict(zip(self._call_fn_args[1:], args))
-    arguments.update(kwargs)
-
-    # Add an inbound node to the layer, so it can keep track of this call.
-    # This updates the layer history of the output tensor(s).
-    self._add_inbound_node(
-        input_tensors=inputs, output_tensors=outputs, arguments=arguments)
-    return inputs, outputs
-
-  def _add_inbound_node(self,
-                        input_tensors,
-                        output_tensors,
-                        arguments=None):
-    """Internal method to create an inbound node for the layer.
-
-    Arguments:
-        input_tensors: list of input tensors.
-        output_tensors: list of output tensors.
-        arguments: dictionary of keyword arguments that were passed to the
-            `call` method of the layer at the call that created the node.
-    """
-    inbound_layers = nest.map_structure(lambda t: t._keras_history.layer,
-                                        input_tensors)
-    node_indices = nest.map_structure(lambda t: t._keras_history.node_index,
-                                      input_tensors)
-    tensor_indices = nest.map_structure(lambda t: t._keras_history.tensor_index,
-                                        input_tensors)
-
-    # Create node, add it to inbound nodes.
-    node_module.Node(
-        self,
-        inbound_layers=inbound_layers,
-        node_indices=node_indices,
-        tensor_indices=tensor_indices,
-        input_tensors=input_tensors,
-        output_tensors=output_tensors,
-        arguments=arguments)
-
-    # Update tensor history metadata.
-    # The metadata attribute consists of
-    # 1) a layer instance
-    # 2) a node index for the layer
-    # 3) a tensor index for the node.
-    # The allows layer reuse (multiple nodes per layer) and multi-output
-    # or multi-input layers (e.g. a layer can return multiple tensors,
-    # and each can be sent to a different layer).
-    for i, tensor in enumerate(nest.flatten(output_tensors)):
-      tensor._keras_history = KerasHistory(self,
-                                           len(self._inbound_nodes) - 1, i)  # pylint: disable=protected-access
+  def _set_call_arg_value(
+      self, arg_name, new_value, args,
+      kwargs, inputs_in_args=False, pop_kwarg_if_none=False):
+    arg_pos = self._call_fn_arg_positions.get(arg_name, None)
+    if arg_pos is not None:
+      if not inputs_in_args:
+        # Ignore `inputs` arg.
+        arg_pos = arg_pos - 1
+      if len(args) > arg_pos:
+        args = list(args)
+        args[arg_pos] = new_value
+        return args, kwargs
+    if new_value is None and pop_kwarg_if_none:
+      kwargs.pop(arg_name, None)
+    else:
+      kwargs[arg_name] = new_value
+    return args, kwargs
 
   def _get_node_attribute_at_index(self, node_index, attr, attr_name):
     """Private utility to retrieves an attribute (e.g. inputs) from a node.
@@ -2381,6 +2349,14 @@ class Layer(base_layer.Layer):
     if all_args and all_args[0] == 'self':
       return all_args[1:]
     return all_args
+
+  @property
+  @tracking.cached_per_instance
+  def _call_fn_arg_positions(self):
+    call_fn_arg_positions = dict()
+    for pos, arg in enumerate(self._call_fn_args):
+      call_fn_arg_positions[arg] = pos
+    return call_fn_arg_positions
 
   @property
   @tracking.cached_per_instance

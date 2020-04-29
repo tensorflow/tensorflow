@@ -61,7 +61,7 @@ class Tensor {
   int Height() const { return shape_.h; }
   int Depth() const { return shape_.d; }
   int Channels() const { return shape_.c; }
-  int Slices() const { return IntegralDivideRoundUp(shape_.c, 4); }
+  int Slices() const { return DivideRoundUp(shape_.c, 4); }
   int Batch() const { return shape_.b; }
 
   // returns int4(width * batch, height, slices, batch)
@@ -87,20 +87,22 @@ class Tensor {
   // memory ptr.
   cl_mem GetMemoryPtrForWriting() const;
 
-  Status WriteData(CLCommandQueue* queue, const TensorFloat32& src);
-  Status WriteData(CLCommandQueue* queue, const Tensor5DFloat32& src);
-  Status ReadData(CLCommandQueue* queue, TensorFloat32* dst) const;
-  Status ReadData(CLCommandQueue* queue, Tensor5DFloat32* dst) const;
+  absl::Status WriteData(CLCommandQueue* queue, const TensorFloat32& src);
+  absl::Status WriteData(CLCommandQueue* queue, const Tensor5DFloat32& src);
+  absl::Status ReadData(CLCommandQueue* queue, TensorFloat32* dst) const;
+  absl::Status ReadData(CLCommandQueue* queue, Tensor5DFloat32* dst) const;
 
  private:
-  Status IsValid(const BHWC& shape) const;
-  Status IsValid(const BHWDC& shape) const;
+  absl::Status IsValid(const BHWC& shape) const;
+  absl::Status IsValid(const BHWDC& shape) const;
 
   int GetChannelsAlignment() const;
   int GetAlignedChannels() const;
 
-  Status WriteDataBHWDC(absl::Span<const float> in, CLCommandQueue* queue);
-  Status ReadDataBHWDC(absl::Span<float> out, CLCommandQueue* queue) const;
+  absl::Status WriteDataBHWDC(absl::Span<const float> in,
+                              CLCommandQueue* queue);
+  absl::Status ReadDataBHWDC(absl::Span<float> out,
+                             CLCommandQueue* queue) const;
 
   template <typename T>
   void DataFromBHWDC(absl::Span<const float> src, absl::Span<T> dst) const;
@@ -145,31 +147,35 @@ class Tensor {
 
 using TensorPtr = std::shared_ptr<Tensor>;
 
-Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
-                            const BHWC& shape,
-                            const TensorDescriptor& descriptor,
-                            CLMemory* result);
+absl::Status AllocateTensorMemory(const CLContext& context,
+                                  const CLDevice& device, const BHWC& shape,
+                                  const TensorDescriptor& descriptor,
+                                  CLMemory* result);
 
-Status AllocateTensorMemory(const CLContext& context, const CLDevice& device,
-                            const BHWDC& shape,
-                            const TensorDescriptor& descriptor,
-                            CLMemory* result);
+absl::Status AllocateTensorMemory(const CLContext& context,
+                                  const CLDevice& device, const BHWDC& shape,
+                                  const TensorDescriptor& descriptor,
+                                  CLMemory* result);
 
-Status CreateTensor(const CLContext& context, const CLDevice& device,
-                    const BHWC& shape, const TensorDescriptor& descriptor,
-                    Tensor* result);
+absl::Status CreateTensor(const CLContext& context, const CLDevice& device,
+                          const BHWC& shape, const TensorDescriptor& descriptor,
+                          Tensor* result);
 
-Status CreateTensor(const CLContext& context, const CLDevice& device,
-                    const BHWDC& shape, const TensorDescriptor& descriptor,
-                    Tensor* result);
-
-Status CreateSharedTensor(const CLContext& context, const CLDevice& device,
-                          cl_mem memory, const BHWC& shape,
+absl::Status CreateTensor(const CLContext& context, const CLDevice& device,
+                          const BHWDC& shape,
                           const TensorDescriptor& descriptor, Tensor* result);
 
-Status CreateSharedTensor(const CLContext& context, const CLDevice& device,
-                          cl_mem memory, const BHWDC& shape,
-                          const TensorDescriptor& descriptor, Tensor* result);
+absl::Status CreateSharedTensor(const CLContext& context,
+                                const CLDevice& device, cl_mem memory,
+                                const BHWC& shape,
+                                const TensorDescriptor& descriptor,
+                                Tensor* result);
+
+absl::Status CreateSharedTensor(const CLContext& context,
+                                const CLDevice& device, cl_mem memory,
+                                const BHWDC& shape,
+                                const TensorDescriptor& descriptor,
+                                Tensor* result);
 
 }  // namespace cl
 }  // namespace gpu

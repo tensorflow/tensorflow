@@ -603,7 +603,7 @@ def _exec_find_cuda_config(repository_ctx, script_path, cuda_libraries):
         "f = open('script.py', 'wb');" +
         "f.write(script);" +
         "f.close();" +
-        "system('%s script.py %s');" % (python_bin, " ".join(cuda_libraries))
+        "system('\"%s\" script.py %s');" % (python_bin, " ".join(cuda_libraries))
     )
 
     return execute(repository_ctx, [python_bin, "-c", decompress_and_execute_cmd])
@@ -771,10 +771,6 @@ filegroup(name="cudnn-include")
             "%{cuda_version}": "",
             "%{cuda_lib_version}": "",
             "%{cudnn_version}": "",
-            "%{cuda_compute_capabilities}": ",".join([
-                "CudaVersion(\"%s\")" % c
-                for c in _DEFAULT_CUDA_COMPUTE_CAPABILITIES
-            ]),
             "%{cuda_toolkit_path}": "",
         },
         "cuda/cuda/cuda_config.h",
@@ -1024,8 +1020,10 @@ def _create_local_cuda_repository(repository_ctx):
     cuda_defines = {}
     cuda_defines["%{builtin_sysroot}"] = tf_sysroot
     cuda_defines["%{cuda_toolkit_path}"] = ""
+    cuda_defines["%{compiler}"] = "unknown"
     if is_cuda_clang:
         cuda_defines["%{cuda_toolkit_path}"] = cuda_config.config["cuda_toolkit_path"]
+        cuda_defines["%{compiler}"] = "clang"
 
     host_compiler_prefix = get_host_environ(repository_ctx, _GCC_HOST_COMPILER_PREFIX)
     if not host_compiler_prefix:
@@ -1138,10 +1136,6 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cuda_version}": cuda_config.cuda_version,
             "%{cuda_lib_version}": cuda_config.cuda_lib_version,
             "%{cudnn_version}": cuda_config.cudnn_version,
-            "%{cuda_compute_capabilities}": ", ".join([
-                "CudaVersion(\"%s\")" % c
-                for c in cuda_config.compute_capabilities
-            ]),
             "%{cuda_toolkit_path}": cuda_config.cuda_toolkit_path,
         },
     )

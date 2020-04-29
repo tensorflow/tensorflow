@@ -78,14 +78,26 @@ class BaseActivationsOpModel : public SingleOpModel {
   }
 
   // A dedicated constructor for SOFTMAX, which does some options.
-  BaseActivationsOpModel(float softmax_beta, TensorData input) {
+  BaseActivationsOpModel(float softmax_beta, TensorData input,
+                         TensorType output_type) {
     input_ = AddInput(input);
-    if (input.type == TensorType_UINT8) {
-      output_ = AddOutput({input.type, {}, 0, 0, 1. / 256});
-    } else if (input.type == TensorType_INT8) {
+    if (output_type == TensorType_UINT8) {
+      output_ = AddOutput({TensorType_UINT8, {}, 0, 0, 1. / 256});
+    } else if (output_type == TensorType_INT8) {
       output_ = AddOutput({TensorType_INT8, {}, 0, 0, 1. / 256, -128});
+    } else if (input.type == TensorType_INT16 &&
+               output_type == TensorType_INT16) {
+      output_ = AddOutput({TensorType_INT16,
+                           {},
+                           0,
+                           0,
+                           1.0f / (std::numeric_limits<int16_t>::max() + 1),
+                           0});
+    } else if (input.type != TensorType_INT16 &&
+               output_type == TensorType_INT16) {
+      output_ = AddOutput({TensorType_INT16, {}, 0, 0, 1. / 32768, -16384});
     } else {
-      output_ = AddOutput({input.type, {}});
+      output_ = AddOutput({output_type, {}});
     }
     SetBuiltinOp(BuiltinOperator_SOFTMAX, BuiltinOptions_SoftmaxOptions,
                  CreateSoftmaxOptions(builder_, softmax_beta).Union());
@@ -761,19 +773,19 @@ TEST_P(TanhOpTest, TanhInt16) {
   const float kMax = 32767.f / 32768.f;
   QuantizedActivationsOpModel m(
       GetRegistration(), BuiltinOperator_TANH,
-      /*input=*/{TensorType_INT16, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
-      /*output=*/{TensorType_INT16, {1, 2, 4, 1}, kMin, kMax});
-  m.SetInput<int16_t>({
-      0, -6, 2, 4,   //
-      -4, -2, 8, 1,  //
-  });
+      /*input=*/{TensorType_INT16, {1, 2, 8, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT16, {1, 2, 8, 1}, kMin, kMax});
+  m.SetInput<int16_t>({0, -6, 2, 4,   //
+                       -4, -2, 8, 1,  //
+                       7, -8, 3, -5,  //
+                       6, -1, -3, 5});
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
-                  {
-                      0.0, -0.999987, 0.964027, 0.999329,     //
-                      -0.999329, -0.96402, 0.99999, 0.76159,  //
-                  },
+                  {0.0, -0.999987, 0.964027, 0.999329,                //
+                   -0.999329, -0.96402, 0.99999, 0.76159,             //
+                   0.999998337, -0.99999, 0.995054754, -0.999909204,  //
+                   0.999999996, -0.76159, -0.995054754, 0.999909204},
                   kQuantizedToleranceInt16)));
 }
 
@@ -902,25 +914,25 @@ TEST_P(LogisticOpTest, SigmoidInt16) {
   const float kMax = 32767.f / 32768.f;
   QuantizedActivationsOpModel m(
       GetRegistration(), BuiltinOperator_LOGISTIC,
-      /*input=*/{TensorType_INT16, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
-      /*output=*/{TensorType_INT16, {1, 2, 4, 1}, kMin, kMax});
-  m.SetInput<int16_t>({
-      0, -6, 2, 4,   //
-      3, -2, 10, 1,  //
-  });
+      /*input=*/{TensorType_INT16, {1, 2, 6, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT16, {1, 2, 6, 1}, kMin, kMax});
+  m.SetInput<int16_t>({0, -6, 2, 4,  //
+                       3, -2, 8, 1,  //
+                       5, -8, 7, -3});
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
                       0.5, 0.002473, 0.880797, 0.982014,       //
-                      0.952574, 0.119203, 0.999955, 0.731059,  //
+                      0.952574, 0.119203, 0.9995, 0.731059,    //
+                      0.993307, 0.0003535, 0.999089, 0.047426  //
                   },
                   kQuantizedToleranceInt16)));
 }
 
 TEST(FloatActivationsOpTest, Softmax4D) {
-  FloatActivationsOpModel m(0.1,
-                            /*input=*/{TensorType_FLOAT32, {1, 2, 1, 4}});
+  FloatActivationsOpModel m(0.1f, {TensorType_FLOAT32, {1, 2, 1, 4}},
+                            TensorType_FLOAT32);
   m.SetInput({
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
@@ -932,8 +944,8 @@ TEST(FloatActivationsOpTest, Softmax4D) {
                              })));
 
   // Same input, but a different shape.
-  FloatActivationsOpModel m2(0.1,
-                             /*input=*/{TensorType_FLOAT32, {4, 1, 1, 2}});
+  FloatActivationsOpModel m2(0.1f, {TensorType_FLOAT32, {4, 1, 1, 2}},
+                             TensorType_FLOAT32);
   m2.SetInput({
       0, -6,  //
       2, 4,   //
@@ -950,9 +962,8 @@ TEST(FloatActivationsOpTest, Softmax4D) {
 }
 
 TEST(QuantizedActivationsOpTest, Softmax4DUint8) {
-  QuantizedActivationsOpModel m(
-      0.1,
-      /*input=*/{TensorType_UINT8, {1, 2, 1, 4}, -10, 10});
+  QuantizedActivationsOpModel m(0.1f, {TensorType_UINT8, {1, 2, 1, 4}, -10, 10},
+                                TensorType_UINT8);
   m.SetInput<uint8_t>({
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
@@ -968,8 +979,7 @@ TEST(QuantizedActivationsOpTest, Softmax4DUint8) {
 
   // Same input, but a different shape.
   QuantizedActivationsOpModel m2(
-      0.1,
-      /*input=*/{TensorType_UINT8, {4, 1, 1, 2}, -10, 10});
+      0.1f, {TensorType_UINT8, {4, 1, 1, 2}, -10, 10}, TensorType_UINT8);
   m2.SetInput<uint8_t>({
       0, -6,  //
       2, 4,   //
@@ -988,11 +998,48 @@ TEST(QuantizedActivationsOpTest, Softmax4DUint8) {
                   kQuantizedTolerance)));
 }
 
+TEST(QuantizedActivationsOpTest, Softmax4DUint8Int16) {
+  QuantizedActivationsOpModel m(0.1f, {TensorType_UINT8, {1, 2, 1, 4}, -10, 10},
+                                TensorType_INT16);
+  m.SetInput<uint8_t>({
+      0, -6, 2, 4,   // depth = 0
+      3, -2, 10, 1,  // depth = 1
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      .23463, .12877, .28658, .35003,  //
+                      .22528, .13664, .45365, .18443,  //
+                  },
+                  kQuantizedTolerance)));
+
+  // Same input, but a different shape.
+  QuantizedActivationsOpModel m2(
+      0.1f, {TensorType_UINT8, {4, 1, 1, 2}, -10, 10}, TensorType_INT16);
+  m2.SetInput<uint8_t>({
+      0, -6,  //
+      2, 4,   //
+      3, -2,  //
+      10, 1,  //
+  });
+  m2.Invoke();
+  EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.645656, 0.354344,  //
+                      0.450166, 0.549834,  //
+                      0.622459, 0.377541,  //
+                      0.710949, 0.28905,   //
+                  },
+                  kQuantizedTolerance)));
+}
+
 // Test quantized softmax with int8 input and output. With the same input as in
 // QuantizedActivationsOpTest.Softmax1D, the dequantized output is identical.
 TEST(QuantizedActivationsOpTest, Softmax1DInt8) {
-  QuantizedActivationsOpModel m(0.1,
-                                /*input=*/{TensorType_INT8, {8}, -10, 10});
+  QuantizedActivationsOpModel m(0.1, {TensorType_INT8, {8}, -10, 10},
+                                TensorType_INT8);
   m.SetInput<int8_t>({0, -6, 2, 4, 3, -2, 10, 1});
   m.Invoke();
   EXPECT_THAT(
@@ -1002,11 +1049,169 @@ TEST(QuantizedActivationsOpTest, Softmax1DInt8) {
                                       kQuantizedTolerance)));
 }
 
+// Test quantized softmax with int16 input and output. With the same input as in
+// QuantizedActivationsOpTest.Softmax2D, the dequantized output is identical.
+TEST(QuantizedActivationsOpTest, Softmax1DInt16) {
+  QuantizedActivationsOpModel m(1,
+                                /*input=*/{TensorType_INT16, {3}, -3, 3},
+                                /*output_type-*/ TensorType_INT16);
+  m.SetInput<int16_t>({1, 2, 3});
+  m.Invoke();
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int16_t>(),
+      ElementsAreArray(ArrayFloatNear({0.0900269, 0.2447285, 0.66524096},
+                                      kQuantizedToleranceInt16)));
+}
+
+TEST(QuantizedActivationsOpTest, Softmax1DInt16ZeroElement) {
+  QuantizedActivationsOpModel m(0.1,
+                                /*input=*/{TensorType_INT16, {1}, -1, 1},
+                                TensorType_INT16);
+  m.SetInput<int16_t>({0});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear({1}, kQuantizedToleranceInt16)));
+}
+
+TEST(QuantizedActivationsOpTest, Softmax2DInt16) {
+  QuantizedActivationsOpModel m(0.1,
+                                /*input=*/{TensorType_INT16, {2, 4}, -10, 10},
+                                TensorType_INT16);
+  m.SetInput<int16_t>({
+      0, -6, 2, 4,   //
+      3, -2, 10, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      .23463, .12877, .28658, .35003,  //
+                      .22528, .13664, .45365, .18443,  //
+                  },
+                  kQuantizedToleranceInt16)));
+
+  // Same input, but a different shape.
+  QuantizedActivationsOpModel m2(0.1,
+                                 /*input=*/{TensorType_INT16, {4, 2}, -10, 10},
+                                 TensorType_INT16);
+  m2.SetInput<int16_t>({
+      0, -6,  //
+      2, 4,   //
+      3, -2,  //
+      10, 1,  //
+  });
+  m2.Invoke();
+  EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.645656, 0.354344,  //
+                      0.450166, 0.549834,  //
+                      0.622459, 0.377541,  //
+                      0.710949, 0.28905,   //
+                  },
+                  kQuantizedToleranceInt16)));
+}
+
+TEST(QuantizedActivationsOpTest, Softmax3DInt16) {
+  QuantizedActivationsOpModel m(
+      1,
+      /*input=*/{TensorType_INT16, {1, 2, 4}, -10, 10}, TensorType_INT16);
+  m.SetInput<int16_t>({
+      0, -6, 2, 4,   // depth = 0
+      3, -2, 10, 1,  // depth = 1
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      .0158756, .000039, .1173, .866779,   //
+                      .00091, .0000061, .998959, .000123,  //
+                  },
+                  kQuantizedTolerance)));
+
+  // Same input, but a different shape.
+  QuantizedActivationsOpModel m2(
+      1,
+      /*input=*/{TensorType_INT16, {4, 1, 2}, -10, 10}, TensorType_INT16);
+  m2.SetInput<int16_t>({
+      0, -6,  //
+      2, 4,   //
+      3, -2,  //
+      10, 1,  //
+  });
+  m2.Invoke();
+  EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.997527, 0.0024726,       //
+                      0.11920292, 0.88079707,    //
+                      0.99330715, 0.00669285,    //
+                      0.999876605, 0.000123395,  //
+                  },
+                  kQuantizedTolerance)));
+}
+
+// Test quantized softmax with int16 input and output. With the same input as in
+// QuantizedActivationsOpTest.Softmax4D, the dequantized output is identical.
+TEST(QuantizedActivationsOpTest, Softmax4DInt16) {
+  QuantizedActivationsOpModel m(
+      0.1,
+      /*input=*/{TensorType_INT16, {1, 2, 1, 4}, -10, 10}, TensorType_INT16);
+  m.SetInput<int16_t>({
+      0, -6, 2, 4,   // depth = 0
+      3, -2, 10, 1,  // depth = 1
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      .23463, .12877, .28658, .35003,  //
+                      .22528, .13664, .45365, .18443,  //
+                  },
+                  kQuantizedToleranceInt16)));
+
+  // Same input, but a different shape.
+  QuantizedActivationsOpModel m2(
+      0.1,
+      /*input=*/{TensorType_INT16, {4, 1, 1, 2}, -10, 10}, TensorType_INT16);
+  m2.SetInput<int16_t>({
+      0, -6,  //
+      2, 4,   //
+      3, -2,  //
+      10, 1,  //
+  });
+  m2.Invoke();
+  EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.645656, 0.354344,  //
+                      0.450166, 0.549834,  //
+                      0.622459, 0.377541,  //
+                      0.710949, 0.28905,   //
+                  },
+                  kQuantizedToleranceInt16)));
+}
+
+// Test quantized softmax with int8 input and int16 output. With the same input
+// as in QuantizedActivationsOpTest.Softmax1D, the dequantized output is
+// identical.
+TEST(QuantizedActivationsOpTest, Softmax1DInt8Int16) {
+  QuantizedActivationsOpModel m(0.1f, {TensorType_INT8, {8}, -10, 10},
+                                TensorType_INT16);
+  m.SetInput<int8_t>({0, -6, 2, 4, 3, -2, 10, 1});
+  m.Invoke();
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int16_t>(),
+      ElementsAreArray(ArrayFloatNear({0.09766, 0.05469, 0.12109, 0.14453,
+                                       0.13281, 0.07813, 0.26563, 0.10938},
+                                      kQuantizedTolerance)));
+}
+
 // Test quantized softmax with int8 input and output. With the same input as in
 // QuantizedActivationsOpTest.Softmax2D, the dequantized output is identical.
 TEST(QuantizedActivationsOpTest, Softmax2DInt8) {
-  QuantizedActivationsOpModel m(0.1,
-                                /*input=*/{TensorType_INT8, {2, 4}, -10, 10});
+  QuantizedActivationsOpModel m(0.1f, {TensorType_INT8, {2, 4}, -10, 10},
+                                TensorType_INT8);
   m.SetInput<int8_t>({
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
@@ -1021,8 +1226,87 @@ TEST(QuantizedActivationsOpTest, Softmax2DInt8) {
                   kQuantizedTolerance)));
 
   // Same input, but a different shape.
-  QuantizedActivationsOpModel m2(0.1,
-                                 /*input=*/{TensorType_INT8, {4, 2}, -10, 10});
+  QuantizedActivationsOpModel m2(0.1f, {TensorType_INT8, {4, 2}, -10, 10},
+                                 TensorType_INT8);
+  m2.SetInput<int8_t>({
+      0, -6,  //
+      2, 4,   //
+      3, -2,  //
+      10, 1,  //
+  });
+  m2.Invoke();
+  EXPECT_THAT(m2.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.645656, 0.354344,  //
+                      0.450166, 0.549834,  //
+                      0.622459, 0.377541,  //
+                      0.710949, 0.28905,   //
+                  },
+                  kQuantizedTolerance)));
+}
+
+// Test quantized softmax with int8 input and int16 output. With the same input
+// as in QuantizedActivationsOpTest.Softmax2D, the dequantized output is
+// identical.
+TEST(QuantizedActivationsOpTest, Softmax2DInt8Int16) {
+  QuantizedActivationsOpModel m(0.1f, {TensorType_INT8, {2, 4}, -10, 10},
+                                TensorType_INT16);
+  m.SetInput<int8_t>({
+      0, -6, 2, 4,   //
+      3, -2, 10, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      .23463, .12877, .28658, .35003,  //
+                      .22528, .13664, .45365, .18443,  //
+                  },
+                  kQuantizedTolerance)));
+
+  // Same input, but a different shape.
+  QuantizedActivationsOpModel m2(0.1f, {TensorType_INT8, {4, 2}, -10, 10},
+                                 TensorType_INT16);
+  m2.SetInput<int8_t>({
+      0, -6,  //
+      2, 4,   //
+      3, -2,  //
+      10, 1,  //
+  });
+  m2.Invoke();
+  EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.645656, 0.354344,  //
+                      0.450166, 0.549834,  //
+                      0.622459, 0.377541,  //
+                      0.710949, 0.28905,   //
+                  },
+                  kQuantizedTolerance)));
+}
+
+// Test quantized softmax with int8 input and output. With the same input as in
+// QuantizedActivationsOpTest.Softmax3D, the dequantized output is identical.
+TEST(QuantizedActivationsOpTest, Softmax3DInt8) {
+  QuantizedActivationsOpModel m(0.1f, {TensorType_INT8, {1, 2, 4}, -10, 10},
+                                TensorType_INT8);
+  m.SetInput<int8_t>({
+      0, -6, 2, 4,   // depth = 0
+      3, -2, 10, 1,  // depth = 1
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      .23463, .12877, .28658, .35003,  //
+                      .22528, .13664, .45365, .18443,  //
+                  },
+                  kQuantizedTolerance)));
+
+  // Same input, but a different shape.
+  QuantizedActivationsOpModel m2(0.1f, {TensorType_INT8, {4, 1, 2}, -10, 10},
+                                 TensorType_INT8);
   m2.SetInput<int8_t>({
       0, -6,  //
       2, 4,   //
@@ -1043,15 +1327,57 @@ TEST(QuantizedActivationsOpTest, Softmax2DInt8) {
 
 // Test quantized softmax with int8 input and output. With the same input as in
 // QuantizedActivationsOpTest.Softmax3D, the dequantized output is identical.
-TEST(QuantizedActivationsOpTest, Softmax3DInt8) {
-  QuantizedActivationsOpModel m(
-      0.1,
-      /*input=*/{TensorType_INT8, {1, 2, 4}, -10, 10});
+TEST(QuantizedActivationsOpTest, Softmax3DInt8Int16) {
+  QuantizedActivationsOpModel m(0.1f, {TensorType_INT8, {1, 2, 4}, -10, 10},
+                                TensorType_INT16);
   m.SetInput<int8_t>({
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
   });
   m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      .23463, .12877, .28658, .35003,  //
+                      .22528, .13664, .45365, .18443,  //
+                  },
+                  kQuantizedTolerance)));
+
+  // Same input, but a different shape.
+  QuantizedActivationsOpModel m2(0.1f, {TensorType_INT8, {4, 1, 2}, -10, 10},
+                                 TensorType_INT16);
+  m2.SetInput<int8_t>({
+      0, -6,  //
+      2, 4,   //
+      3, -2,  //
+      10, 1,  //
+  });
+  m2.Invoke();
+  EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.645656, 0.354344,  //
+                      0.450166, 0.549834,  //
+                      0.622459, 0.377541,  //
+                      0.710949, 0.28905,   //
+                  },
+                  kQuantizedTolerance)));
+}
+
+// Test quantized softmax with int8 input and output. With the same input as in
+// QuantizedActivationsOpTest.Softmax4D, the dequantized output is identical.
+TEST(QuantizedActivationsOpTest, Softmax4DInt8) {
+  QuantizedActivationsOpModel m(0.1f, {TensorType_INT8, {1, 2, 1, 4}, -10, 10},
+                                TensorType_INT8);
+  m.SetInput<int8_t>({
+      0, -6, 2, 4,   // depth = 0
+      3, -2, 10, 1,  // depth = 1
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({
+                                         -68, -95, -54, -38,  //
+                                         -70, -93, -12, -81,  //
+                                     }));
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
@@ -1061,9 +1387,8 @@ TEST(QuantizedActivationsOpTest, Softmax3DInt8) {
                   kQuantizedTolerance)));
 
   // Same input, but a different shape.
-  QuantizedActivationsOpModel m2(
-      0.1,
-      /*input=*/{TensorType_INT8, {4, 1, 2}, -10, 10});
+  QuantizedActivationsOpModel m2(0.1f, {TensorType_INT8, {4, 1, 1, 2}, -10, 10},
+                                 TensorType_INT8);
   m2.SetInput<int8_t>({
       0, -6,  //
       2, 4,   //
@@ -1084,20 +1409,15 @@ TEST(QuantizedActivationsOpTest, Softmax3DInt8) {
 
 // Test quantized softmax with int8 input and output. With the same input as in
 // QuantizedActivationsOpTest.Softmax4D, the dequantized output is identical.
-TEST(QuantizedActivationsOpTest, Softmax4DInt8) {
-  QuantizedActivationsOpModel m(
-      0.1,
-      /*input=*/{TensorType_INT8, {1, 2, 1, 4}, -10, 10});
+TEST(QuantizedActivationsOpTest, Softmax4DInt8Int16) {
+  QuantizedActivationsOpModel m(0.1f, {TensorType_INT8, {1, 2, 1, 4}, -10, 10},
+                                TensorType_INT16);
   m.SetInput<int8_t>({
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
   });
   m.Invoke();
-  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({
-                                         -68, -95, -54, -38,  //
-                                         -70, -93, -12, -81,  //
-                                     }));
-  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
                       .23463, .12877, .28658, .35003,  //
@@ -1106,9 +1426,8 @@ TEST(QuantizedActivationsOpTest, Softmax4DInt8) {
                   kQuantizedTolerance)));
 
   // Same input, but a different shape.
-  QuantizedActivationsOpModel m2(
-      0.1,
-      /*input=*/{TensorType_INT8, {4, 1, 1, 2}, -10, 10});
+  QuantizedActivationsOpModel m2(0.1f, {TensorType_INT8, {4, 1, 1, 2}, -10, 10},
+                                 TensorType_INT16);
   m2.SetInput<int8_t>({
       0, -6,  //
       2, 4,   //
@@ -1116,7 +1435,7 @@ TEST(QuantizedActivationsOpTest, Softmax4DInt8) {
       10, 1,  //
   });
   m2.Invoke();
-  EXPECT_THAT(m2.GetDequantizedOutput<int8_t>(),
+  EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
                       0.645656, 0.354344,  //
@@ -1128,8 +1447,8 @@ TEST(QuantizedActivationsOpTest, Softmax4DInt8) {
 }
 
 TEST(FloatActivationsOpTest, Softmax3D) {
-  FloatActivationsOpModel m(0.1,
-                            /*input=*/{TensorType_FLOAT32, {1, 2, 4}});
+  FloatActivationsOpModel m(0.1f, {TensorType_FLOAT32, {1, 2, 4}},
+                            TensorType_FLOAT32);
   m.SetInput({
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
@@ -1141,8 +1460,8 @@ TEST(FloatActivationsOpTest, Softmax3D) {
                              })));
 
   // Same input, but a different shape.
-  FloatActivationsOpModel m2(0.1,
-                             /*input=*/{TensorType_FLOAT32, {4, 1, 2}});
+  FloatActivationsOpModel m2(0.1f, {TensorType_FLOAT32, {4, 1, 2}},
+                             TensorType_FLOAT32);
   m2.SetInput({
       0, -6,  //
       2, 4,   //
@@ -1159,9 +1478,8 @@ TEST(FloatActivationsOpTest, Softmax3D) {
 }
 
 TEST(QuantizedActivationsOpTest, Softmax3DUint8) {
-  QuantizedActivationsOpModel m(
-      0.1,
-      /*input=*/{TensorType_UINT8, {1, 2, 4}, -10, 10});
+  QuantizedActivationsOpModel m(0.1f, {TensorType_UINT8, {1, 2, 4}, -10, 10},
+                                TensorType_UINT8);
   m.SetInput<uint8_t>({
       0, -6, 2, 4,   // depth = 0
       3, -2, 10, 1,  // depth = 1
@@ -1176,9 +1494,8 @@ TEST(QuantizedActivationsOpTest, Softmax3DUint8) {
                   kQuantizedTolerance)));
 
   // Same input, but a different shape.
-  QuantizedActivationsOpModel m2(
-      0.1,
-      /*input=*/{TensorType_UINT8, {4, 1, 2}, -10, 10});
+  QuantizedActivationsOpModel m2(0.1f, {TensorType_UINT8, {4, 1, 2}, -10, 10},
+                                 TensorType_UINT8);
   m2.SetInput<uint8_t>({
       0, -6,  //
       2, 4,   //
@@ -1197,9 +1514,46 @@ TEST(QuantizedActivationsOpTest, Softmax3DUint8) {
                   kQuantizedTolerance)));
 }
 
+TEST(QuantizedActivationsOpTest, Softmax3DUint8Int16) {
+  QuantizedActivationsOpModel m(0.1f, {TensorType_UINT8, {1, 2, 4}, -10, 10},
+                                TensorType_INT16);
+  m.SetInput<uint8_t>({
+      0, -6, 2, 4,   // depth = 0
+      3, -2, 10, 1,  // depth = 1
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      .23463, .12877, .28658, .35003,  //
+                      .22528, .13664, .45365, .18443,  //
+                  },
+                  kQuantizedTolerance)));
+
+  // Same input, but a different shape.
+  QuantizedActivationsOpModel m2(0.1f, {TensorType_UINT8, {4, 1, 2}, -10, 10},
+                                 TensorType_INT16);
+  m2.SetInput<uint8_t>({
+      0, -6,  //
+      2, 4,   //
+      3, -2,  //
+      10, 1,  //
+  });
+  m2.Invoke();
+  EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.645656, 0.354344,  //
+                      0.450166, 0.549834,  //
+                      0.622459, 0.377541,  //
+                      0.710949, 0.28905,   //
+                  },
+                  kQuantizedTolerance)));
+}
+
 TEST(FloatActivationsOpTest, Softmax1D) {
-  FloatActivationsOpModel m(0.1,
-                            /*input=*/{TensorType_FLOAT32, {8}});
+  FloatActivationsOpModel m(0.1f, {TensorType_FLOAT32, {8}},
+                            TensorType_FLOAT32);
   m.SetInput({0, -6, 2, 4, 3, -2, 10, 1});
   m.Invoke();
   EXPECT_THAT(
@@ -1209,8 +1563,8 @@ TEST(FloatActivationsOpTest, Softmax1D) {
 }
 
 TEST(QuantizedActivationsOpTest, Softmax1DUint8) {
-  QuantizedActivationsOpModel m(0.1,
-                                /*input=*/{TensorType_UINT8, {8}, -10, 10});
+  QuantizedActivationsOpModel m(0.1f, {TensorType_UINT8, {8}, -10, 10},
+                                TensorType_UINT8);
   m.SetInput<uint8_t>({0, -6, 2, 4, 3, -2, 10, 1});
   m.Invoke();
   EXPECT_THAT(
@@ -1220,9 +1574,21 @@ TEST(QuantizedActivationsOpTest, Softmax1DUint8) {
                                       kQuantizedTolerance)));
 }
 
+TEST(QuantizedActivationsOpTest, Softmax1DUint8Int16) {
+  QuantizedActivationsOpModel m(0.1f, {TensorType_UINT8, {8}, -10, 10},
+                                TensorType_INT16);
+  m.SetInput<uint8_t>({0, -6, 2, 4, 3, -2, 10, 1});
+  m.Invoke();
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int16_t>(),
+      ElementsAreArray(ArrayFloatNear({0.09766, 0.05469, 0.12109, 0.14453,
+                                       0.13281, 0.07813, 0.26563, 0.10938},
+                                      kQuantizedTolerance)));
+}
+
 TEST(FloatActivationsOpTest, Softmax2D) {
-  FloatActivationsOpModel m(0.1,
-                            /*input=*/{TensorType_FLOAT32, {2, 4}});
+  FloatActivationsOpModel m(0.1f, {TensorType_FLOAT32, {2, 4}},
+                            TensorType_FLOAT32);
   m.SetInput({
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
@@ -1234,8 +1600,8 @@ TEST(FloatActivationsOpTest, Softmax2D) {
                              })));
 
   // Same input, but a different shape.
-  FloatActivationsOpModel m2(0.1,
-                             /*input=*/{TensorType_FLOAT32, {4, 2}});
+  FloatActivationsOpModel m2(0.1f, {TensorType_FLOAT32, {4, 2}},
+                             TensorType_FLOAT32);
   m2.SetInput({
       0, -6,  //
       2, 4,   //
@@ -1252,8 +1618,8 @@ TEST(FloatActivationsOpTest, Softmax2D) {
 }
 
 TEST(FloatActivationsOpTest, Softmax2DMultithreading) {
-  FloatActivationsOpModel m(0.1,
-                            /*input=*/{TensorType_FLOAT32, {16, 4}});
+  FloatActivationsOpModel m(0.1f, {TensorType_FLOAT32, {16, 4}},
+                            TensorType_FLOAT32);
   m.SetInput({
       0, -6, 2,  4,  //  Thread 1.
       3, -2, 10, 1,  //
@@ -1294,8 +1660,8 @@ TEST(FloatActivationsOpTest, Softmax2DMultithreading) {
                              })));
 
   // Same input, but a different shape.
-  FloatActivationsOpModel m2(0.1,
-                             /*input=*/{TensorType_FLOAT32, {16, 2}});
+  FloatActivationsOpModel m2(0.1f, {TensorType_FLOAT32, {16, 2}},
+                             TensorType_FLOAT32);
   m2.SetInput({
       0,  -6,  // Thread 1
       2,  4,   //
@@ -1337,8 +1703,8 @@ TEST(FloatActivationsOpTest, Softmax2DMultithreading) {
 }
 
 TEST(QuantizedActivationsOpTest, Softmax2DUint8) {
-  QuantizedActivationsOpModel m(0.1,
-                                /*input=*/{TensorType_UINT8, {2, 4}, -10, 10});
+  QuantizedActivationsOpModel m(0.1f, {TensorType_UINT8, {2, 4}, -10, 10},
+                                TensorType_UINT8);
   m.SetInput<uint8_t>({
       0, -6, 2, 4,   //
       3, -2, 10, 1,  //
@@ -1353,8 +1719,8 @@ TEST(QuantizedActivationsOpTest, Softmax2DUint8) {
                   kQuantizedTolerance)));
 
   // Same input, but a different shape.
-  QuantizedActivationsOpModel m2(0.1,
-                                 /*input=*/{TensorType_UINT8, {4, 2}, -10, 10});
+  QuantizedActivationsOpModel m2(0.1f, {TensorType_UINT8, {4, 2}, -10, 10},
+                                 TensorType_UINT8);
   m2.SetInput<uint8_t>({
       0, -6,  //
       2, 4,   //
@@ -1363,6 +1729,43 @@ TEST(QuantizedActivationsOpTest, Softmax2DUint8) {
   });
   m2.Invoke();
   EXPECT_THAT(m2.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.645656, 0.354344,  //
+                      0.450166, 0.549834,  //
+                      0.622459, 0.377541,  //
+                      0.710949, 0.28905,   //
+                  },
+                  kQuantizedTolerance)));
+}
+
+TEST(QuantizedActivationsOpTest, Softmax2DUint8Int16) {
+  QuantizedActivationsOpModel m(0.1f, {TensorType_UINT8, {2, 4}, -10, 10},
+                                TensorType_INT16);
+  m.SetInput<uint8_t>({
+      0, -6, 2, 4,   //
+      3, -2, 10, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      .23463, .12877, .28658, .35003,  //
+                      .22528, .13664, .45365, .18443,  //
+                  },
+                  kQuantizedTolerance)));
+
+  // Same input, but a different shape.
+  QuantizedActivationsOpModel m2(0.1f, {TensorType_UINT8, {4, 2}, -10, 10},
+                                 TensorType_INT16);
+  m2.SetInput<uint8_t>({
+      0, -6,  //
+      2, 4,   //
+      3, -2,  //
+      10, 1,  //
+  });
+  m2.Invoke();
+  EXPECT_THAT(m2.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
                       0.645656, 0.354344,  //
@@ -1565,6 +1968,36 @@ TEST(QuantizedActivationsOpTest, PRelu) {
                                           128, 64, 192,   // Row 2, Column 1
                                           128, 112, 144,  // Row 1, Column 2
                                       }));
+}
+
+TEST(QuantizedActivationsOpTest, PReluInt8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedPReluOpModel m({TensorType_INT8, {1, 2, 2, 3}, kMin, kMax},
+                          {TensorType_INT8, {1, 1, 3}, kMin, kMax});
+  m.SetInput<int8_t>({
+      0.0f, 0.0f, 0.0f,        // Row 1, Column 1
+      0.5f, 0.5f, 0.5f,        // Row 1, Column 2
+      -1.0f, -1.0f, -1.0f,     // Row 2, Column 1
+      -0.25f, -0.25f, -0.25f,  // Row 1, Column 2
+  });
+  m.SetAlpha<int8_t>({0.0f, 0.5f, -0.5f});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0f, 0.0f, 0.0f,       // Row 1, Column 1
+                      0.5f, 0.5f, 0.5f,       // Row 1, Column 2
+                      0.0f, -0.5f, 0.5f,      // Row 2, Column 1
+                      0.0f, -0.125f, 0.125f,  // Row 1, Column 2
+                  },
+                  kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({
+                                         0, 0, 0,     // Row 1, Column 1
+                                         64, 64, 64,  // Row 1, Column 2
+                                         0, -64, 64,  // Row 2, Column 1
+                                         0, -16, 16,  // Row 1, Column 2
+                                     }));
 }
 
 class LeakyReluOpModel : public SingleOpModel {

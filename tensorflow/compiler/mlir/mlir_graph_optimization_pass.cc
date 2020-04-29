@@ -21,6 +21,10 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_os_ostream.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -30,6 +34,10 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
+
+static inline absl::string_view StringRefToView(llvm::StringRef ref) {
+  return {ref.data(), ref.size()};
+}
 
 // Dumps the MLIR module to disk.
 // This require the TF_DUMP_GRAPH_PREFIX to be set to a path that exist (or can
@@ -82,6 +90,17 @@ MlirOptimizationPassRegistry& MlirOptimizationPassRegistry::Global() {
   return *global;
 }
 
+static void RegisterDialects() {
+  static bool init_once = []() {
+    mlir::registerDialect<mlir::StandardOpsDialect>();
+    mlir::registerDialect<mlir::tf_device::TensorFlowDeviceDialect>();
+    mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
+    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
+    return true;
+  }();
+  (void)init_once;
+}
+
 Status MlirFunctionOptimizationPass::Run(
     const DeviceSet& device_set, const ConfigProto& config_proto,
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
@@ -103,10 +122,12 @@ Status MlirFunctionOptimizationPass::Run(
           << "(registered " << registry_->passes().size() << " passes)";
 
   GraphDebugInfo debug_info;
+  RegisterDialects();
   mlir::MLIRContext context;
   GraphImportConfig import_config;
   import_config.graph_as_function = true;
   import_config.control_outputs = *control_ret_node_names;
+  import_config.upgrade_legacy = true;
   TF_ASSIGN_OR_RETURN(auto module_ref,
                       ConvertGraphToMlir(**graph, debug_info, *flib_def,
                                          import_config, &context));
@@ -115,7 +136,7 @@ Status MlirFunctionOptimizationPass::Run(
 
   for (auto& pass_registration : registry_->passes()) {
     llvm::StringRef name = pass_registration.pass->name();
-    VLOG(2) << "Run MLIR graph optimization pass: " << absl::string_view(name);
+    VLOG(2) << "Run MLIR graph optimization pass: " << StringRefToView(name);
 
     if (VLOG_IS_ON(1)) {
       DumpModule(*module_ref, llvm::formatv("mlir_{0}_before_", name));
@@ -129,7 +150,6 @@ Status MlirFunctionOptimizationPass::Run(
   }
 
   GraphExportConfig export_config;
-  export_config.graph_as_function = true;
   absl::flat_hash_set<Node*> control_ret_nodes;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       ConvertMlirToGraph(*module_ref, export_config, graph, flib_def,
@@ -174,9 +194,12 @@ Status MlirV1CompatGraphOptimizationPass::Run(
           << "(registered" << registry_->passes().size() << " passes)";
 
   GraphDebugInfo debug_info;
+  RegisterDialects();
   mlir::MLIRContext context;
   GraphImportConfig import_config;
-  import_config.upgrade_legacy = true;
+  // TODO(b/150959075): Running functionalization before TPU cluster formation
+  // is not semantics preserving and should be disabled for now.
+  import_config.upgrade_legacy = false;
   TF_ASSIGN_OR_RETURN(
       auto module_ref,
       ConvertGraphToMlir(**options.graph, debug_info, *options.flib_def,
@@ -185,8 +208,8 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   AddDevicesToOp(*module_ref, options.device_set);
 
   for (auto& pass_registration : registry_->passes()) {
-    absl::string_view name = pass_registration.pass->name();
-    VLOG(2) << "Run MLIR graph optimization pass: " << name;
+    llvm::StringRef name = pass_registration.pass->name();
+    VLOG(2) << "Run MLIR graph optimization pass: " << StringRefToView(name);
 
     if (VLOG_IS_ON(1)) {
       DumpModule(*module_ref, llvm::formatv("mlir_{0}_before_", name));

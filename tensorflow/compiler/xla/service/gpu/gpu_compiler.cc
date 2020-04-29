@@ -86,7 +86,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
@@ -153,9 +152,11 @@ Status GpuCompiler::OptimizeHloModule(
 
     pipeline.AddPass<Convolution4DExpander>();
 
-    auto cost_model = [](HloInstruction*) {
-      // We need a cost model for GPUs. Currently, do nothing.
-      return false;
+    auto cost_model = [](HloInstruction* conv) {
+      auto operand = conv->operand(0);
+      return operand->shape().dimensions(conv->convolution_dimension_numbers()
+                                             .input_batch_dimension()) ==
+             conv->batch_group_count();
     };
     pipeline.AddPass<DepthwiseConvolutionConverter>(cost_model);
 
@@ -178,8 +179,9 @@ Status GpuCompiler::OptimizeHloModule(
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-      pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
-                                            /*allow_mixed_precision=*/false);
+      pass.AddInvariantCheckerDebug<HloVerifier>(
+          /*layout_sensitive=*/false,
+          /*allow_mixed_precision=*/false);
 
       // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
       // where possible.  Not every batchnorm op can be implemented as a call to
@@ -205,6 +207,16 @@ Status GpuCompiler::OptimizeHloModule(
       pipeline.AddPass<ZeroSizedHloElimination>();
 
       AlgebraicSimplifierOptions options;
+      // When transposes appear in a fusion node, we can easily adjust the
+      // multi-dimensional index to create the one needed for the operand. This
+      // is not as easy with bitcasts, because we don't have the information
+      // readily available which dimensions are permuted. In addition to that,
+      // if we have a transpose and a reshape next to each other, they will both
+      // be replaced by a bitcast, and we replace bitcast(bitcast) with one
+      // bitcast. This leads to having to linearize and then delinearize the
+      // index.
+      options.set_replace_transpose_with_bitcast(false);
+      options.set_enable_conv_operand_swap(false);
       pass.AddPass<AlgebraicSimplifier>(options);
       // AlgebraicSimplifier may add contracting dimensions to a dot.
       pass.AddPass<DotDecomposer>();
@@ -217,7 +229,6 @@ Status GpuCompiler::OptimizeHloModule(
       // pass.AddPass<SliceSinker>();
 
       pass.AddPass<HloDCE>();
-      pass.AddPass<ReshapeMover>();
       pass.AddPass<HloConstantFolding>();
       pass.AddPass<ConditionalSimplifier>();
     }
@@ -279,7 +290,7 @@ Status GpuCompiler::OptimizeHloModule(
     fusion.AddPass<VariadicOpSplitter>();
     /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
      * fixing the ticket. */
-    fusion.AddInvariantChecker<HloVerifier>(
+    fusion.AddInvariantCheckerDebug<HloVerifier>(
         /*layout_sensitive=*/true,
         /*allow_mixed_precision=*/false,
         LayoutAssignment::InstructionCanChangeLayout);
@@ -306,6 +317,15 @@ Status GpuCompiler::OptimizeHloModule(
         /*combine_threshold_count=*/256);
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
+  {
+    // Now we allow to replace any transposes outside of fusions with bitcasts.
+    HloPassPipeline pipeline("final_algebraic_simplifier");
+    AlgebraicSimplifierOptions options;
+    options.set_is_layout_sensitive(true);
+    options.set_enable_conv_operand_swap(false);
+    pipeline.AddPass<AlgebraicSimplifier>(options);
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
   return Status::OK();
 }
 
@@ -320,7 +340,7 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   HloPassPipeline pipeline("GPU-ir-emit-prepare");
   /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
    * fixing the ticket. */
-  pipeline.AddInvariantChecker<HloVerifier>(
+  pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/true,
       /*allow_mixed_precision=*/false,
       LayoutAssignment::InstructionCanChangeLayout);
@@ -359,7 +379,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   HloPassPipeline pipeline("post-layout_assignment");
   /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
    * fixing the ticket. */
-  pipeline.AddInvariantChecker<HloVerifier>(
+  pipeline.AddInvariantCheckerDebug<HloVerifier>(
       /*layout_sensitive=*/true,
       /*allow_mixed_precision=*/false,
       LayoutAssignment::InstructionCanChangeLayout);
@@ -372,6 +392,16 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   AlgebraicSimplifierOptions options;
   options.set_is_layout_sensitive(true);
+  // When transposes appear in a fusion node, we can easily adjust the
+  // multi-dimensional index to create the one needed for the operand. This
+  // is not as easy with bitcasts, because we don't have the information
+  // readily available which dimensions are permuted. In addition to that,
+  // if we have a transpose and a reshape next to each other, they will both
+  // be replaced by a bitcast, and we replace bitcast(bitcast) with one
+  // bitcast. This leads to having to linearize and then delinearize the
+  // index.
+  options.set_replace_transpose_with_bitcast(false);
+  options.set_enable_conv_operand_swap(false);
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
 
   if (RequireDeterminism() ||
@@ -518,7 +548,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
         << "Invalid LLVM IR before optimizations:\n"
         << err_stream.str()
         << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
-           "Rerun with --xla_dump_to to get the IR. ";
+           "Rerun with --xla_dump_to to get the IR and looks for files with "
+           "name containing: *"
+        << FilenameFor(*module, "", "") << "*";
   }
 
   GpuVersion gpu_version = GetGpuVersion(stream_exec);

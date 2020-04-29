@@ -28,12 +28,17 @@ hexagon_op_tests(
         "arg_min_max_test.cc",
         "concat_test.cc",
         "conv_test.cc",
+        "l2_norm_test.cc",
+        "matmul_test.cc",
         "mul_test.cc",
         "neg_test.cc",
         "pad_test.cc",
         "pool_test.cc",
+        "quantize_test.cc",
         "reduce_test.cc",
-        "resize_bilinear_test.cc",
+        "reshape_test.cc",
+        "resize_test.cc",
+        "softmax_test.cc",
         "space_to_depth_test.cc",
         "split_test.cc",
         "transpose_conv_test.cc",
@@ -41,6 +46,33 @@ hexagon_op_tests(
     ],
     deps = [
         ":hexagon_delegate_op_model",
+        "//tensorflow/lite/kernels:reshape_test_common",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "batch_seq_config_test",
+    srcs = [
+        "batch_seq_config_test.cc",
+    ],
+    tags = [
+        "no_oss",
+        "nobuilder",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/testing:util",
+        "//tensorflow/lite/tools:logging",
+        "//tensorflow/lite/tools/benchmark:benchmark_utils",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/flags:parse",
+        "@com_google_googletest//:gtest",
     ],
 )

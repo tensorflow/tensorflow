@@ -26,6 +26,7 @@ py_test(
     tags = [
         "no_oss_py2",
         "no_pip",
+        "no_rocm",
         "no_windows",  # numpy prints differently on windows.
         "noasan",
         "nomsan",
@@ -182,6 +183,17 @@ py_library(
         ":base_dir_oss",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:util",
+    ],
+)
+
+py_binary(
+    name = "build_java_api_docs",
+    srcs = ["build_java_api_docs.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )
 

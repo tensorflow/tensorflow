@@ -20,6 +20,10 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
 )
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
 
 package(
     default_visibility = [
@@ -140,6 +144,7 @@ filegroup(
         "matmul_autotune.h",
         "matmul_bcast.h",
         "mirror_pad_mode.h",
+        "mkl_threadpool.h",
         "mkl_types.h",
         "mkl_util.h",
         "overflow.h",
@@ -269,6 +274,7 @@ filegroup(
 filegroup(
     name = "mkl_util_hdrs",
     srcs = [
+        "mkl_threadpool.h",
         "mkl_util.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -444,6 +450,7 @@ cc_library(
     srcs = ["version_info.cc"],
     hdrs = ["//tensorflow/core/public:version.h"],
     copts = tf_copts(),
+    alwayslink = if_static(0, 1),
 )
 
 cc_library(

@@ -44,7 +44,7 @@ py_test(
     ],
     deps = [
         ":interpreter",
-        "//tensorflow/lite/python/testdata:test_registerer_wrapper",
+        "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
@@ -157,6 +157,24 @@ py_test(
     name = "lite_v2_test",
     srcs = ["lite_v2_test.py"],
     python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+    ],
+    deps = [
+        ":lite",
+        ":lite_v2_test_util",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "lite_v2_test_util",
+    testonly = 1,
+    srcs = ["lite_v2_test_util.py"],
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",

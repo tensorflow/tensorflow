@@ -14,7 +14,6 @@ the model to the XNNPACK delegate. The users must destroy the delegate with
 `TfLiteXNNPackDelegateDelete` **after** releasing the TensorFlow Lite
 interpreter. The snippet below illustrates the typical usage:
 
-
 ```c++
 // Build the interpreter
 std::unique_ptr<tflite::Interpreter> interpreter;
@@ -40,7 +39,7 @@ interpreter->Invoke()
 
 ...
 
-// IMPORTANT: release the interpreter before destroing the delegate
+// IMPORTANT: release the interpreter before destroying the delegate
 interpreter.reset();
 TfLiteXNNPackDelegateDelete(xnnpack_delegate);
 ```
@@ -58,6 +57,15 @@ Below is the list of current operators and limitations:
 
 * Inputs and outputs must be in 32-bit floating-point format.
 * Only addition with two inputs is supported.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
+
+### `AVERAGE_POOL_2D`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* 1x1 pooling is not supported.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 * Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
@@ -83,6 +91,16 @@ Below is the list of current operators and limitations:
 * Dynamically allocated (with `kTfLiteDynamic` allocation type) input and output
   are not supported.
 
+### `FULLY_CONNECTED`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* Bias is mandatory.
+* Both filter and bias must be static (use `kTfLiteMmapRo` allocation type).
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) input and output
+  are not supported.
+
 ### `HARD_SWISH`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -92,6 +110,15 @@ Below is the list of current operators and limitations:
 ### `LOGISTIC`
 
 * Inputs and outputs must be in 32-bit floating-point format.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
+
+### `MAX_POOL_2D`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* 1x1 pooling is not supported.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
 * Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
   output are not supported.
 

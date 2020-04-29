@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -lhlo-legalize-to-linalg -split-input-file | FileCheck %s --dump-input-on-failure
+// RUN: xla-opt %s -lhlo-legalize-to-linalg -split-input-file | FileCheck %s --dump-input-on-failure
 
 // CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @element_wise
@@ -47,7 +47,7 @@ func @element_wise_scalar(%lhs: memref<f32>, %rhs: memref<f32>,
 // CHECK-LABEL: func @minf
 func @minf(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
           %result: memref<2x2xf32>) {
-  "xla_lhlo.min"(%lhs, %rhs, %result)
+  "xla_lhlo.minimum"(%lhs, %rhs, %result)
       : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
@@ -62,7 +62,7 @@ func @minf(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 // CHECK-LABEL: func @maxi
 func @maxi(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
           %result: memref<2x2xi32>) {
-  "xla_lhlo.max"(%lhs, %rhs, %result)
+  "xla_lhlo.maximum"(%lhs, %rhs, %result)
       : (memref<2x2xi32>, memref<2x2xi32>, memref<2x2xi32>) -> ()
   return
 }
@@ -91,7 +91,7 @@ func @and(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
 // CHECK-LABEL: func @exp
 func @exp(%input: memref<2x2xf32>,
           %result: memref<2x2xf32>) {
-  "xla_lhlo.exp"(%input, %result)
+  "xla_lhlo.exponential"(%input, %result)
       : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
@@ -193,6 +193,32 @@ func @iota(%out: memref<7x10xi64>) {
 
 // -----
 
+// CHECK-DAG: #[[OPERAND_MAP:.+]] = affine_map<(d0, d1, d2) -> ()>
+// CHECK-DAG: #[[RESULT_MAP:.+]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+// CHECK-LABEL: func @broadcast_scalar
+func @broadcast_scalar(%operand: memref<f32>, %result: memref<4x2x1xf32>) {
+  "xla_lhlo.broadcast"(%operand, %result) {broadcast_sizes = dense<[4, 2, 1]> : tensor<3xi64>} : (memref<f32>, memref<4x2x1xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[OPERAND:.+]]: f32, %{{.+}}: f32):
+// CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// -----
+
+// CHECK-DAG: #[[OPERAND_MAP:.+]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d3, d4, d5)>
+// CHECK-DAG: #[[RESULT_MAP:.+]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d0, d1, d2, d3, d4, d5)>
+// CHECK-LABEL: func @broadcast
+func @broadcast(%operand: memref<4x?x16xf32>, %result: memref<4x2x1x4x?x16xf32>) {
+  "xla_lhlo.broadcast"(%operand, %result) {broadcast_sizes = dense<[4, 2, 1]> : tensor<3xi64>} : (memref<4x?x16xf32>, memref<4x2x1x4x?x16xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic {{{.*}}indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[OPERAND:.+]]: f32, %{{.+}}: f32):
+// CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32
+
+// -----
+
 // CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d4, d0, d2)>
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)>
 // CHECK-LABEL: func @dynamic_broadcast
@@ -260,6 +286,23 @@ func @abs(%input: memref<2x2xf32>,
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
 // CHECK-NEXT:   %[[RESULT:.*]] = absf %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+func @abs(%input: memref<2x2xi32>,
+          %result: memref<2x2xi32>) {
+  "xla_lhlo.abs"(%input, %result)
+      : (memref<2x2xi32>, memref<2x2xi32>) -> ()
+  return
+}
+
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[L0:.*]] = constant 0 : i32
+// CHECK-NEXT:   %[[L1:.*]] = cmpi "sge", %[[OPERAND_IN]], %[[L0]] : i32
+// CHECK-NEXT:   %[[L2:.*]] = subi %[[L0]], %[[OPERAND_IN]] : i32
+// CHECK-NEXT:   %[[RESULT:.*]] = select %[[L1]], %[[OPERAND_IN]], %[[L2]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
 
@@ -376,7 +419,7 @@ func @convert_f32_to_f32(%input: memref<2x2xf32>,
 // CHECK-LABEL: func @cos
 func @cos(%input: memref<2x2xf32>,
           %result: memref<2x2xf32>) {
-  "xla_lhlo.cos"(%input, %result)
+  "xla_lhlo.cosine"(%input, %result)
       : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
@@ -390,7 +433,7 @@ func @cos(%input: memref<2x2xf32>,
 // CHECK-LABEL: func @neg
 func @neg(%input: memref<2x2xf32>,
           %result: memref<2x2xf32>) {
-  "xla_lhlo.neg"(%input, %result)
+  "xla_lhlo.negate"(%input, %result)
       : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
@@ -398,6 +441,22 @@ func @neg(%input: memref<2x2xf32>,
 // CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
 // CHECK-NEXT:   %[[RESULT:.*]] = negf %[[OPERAND_IN]] : f32
 // CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
+// CHECK-LABEL: func @neg
+func @neg(%input: memref<2x2xi32>,
+          %result: memref<2x2xi32>) {
+  "xla_lhlo.negate"(%input, %result)
+      : (memref<2x2xi32>, memref<2x2xi32>) -> ()
+  return
+}
+
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: i32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[L0:.*]] = constant 0 : i32 
+// CHECK-NEXT:   %[[RESULT:.*]] = subi %[[L0]], %[[OPERAND_IN]] : i32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : i32
 
 // -----
 

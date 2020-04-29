@@ -1,3 +1,4 @@
+// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
 HloModule AddMultiply
 
 ENTRY %AddMultiply (x: f32[2,2], y: f32[2,2], z: f32[2,2]) -> f32[2,2] {
@@ -14,7 +15,7 @@ ENTRY %AddMultiply (x: f32[2,2], y: f32[2,2], z: f32[2,2]) -> f32[2,2] {
 //  CHECK:   %[[REF1:.*]] = tensor_load %[[ARG1]] : [[TYPE]]
 //  CHECK:   %[[REF2:.*]] = tensor_load %[[ARG2]] : [[TYPE]]
 //  CHECK:   %[[ADD:.*]] = xla_hlo.add %[[REF1]], %[[REF2]]
-//  CHECK:   %[[MUL:.*]] = xla_hlo.mul %[[ADD]], %[[REF0]]
+//  CHECK:   %[[MUL:.*]] = xla_hlo.multiply %[[ADD]], %[[REF0]]
 //  CHECK:   tensor_store %[[MUL]], %[[RESULT]]
 //  CHECK:   "xla_lhlo.terminator"()
 //  CHECK-NEXT: }

@@ -284,7 +284,7 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
   status = optimizer.Optimize(cluster.get(), item_copy, &output);
   TF_EXPECT_OK(status);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   item.fetch = {"e"};
   item.init_ops = {init.name()};
   auto tensors_expected = EvaluateFetchNodes(item);
@@ -336,7 +336,7 @@ TEST_F(MemoryOptimizerTest, SwappingHeuristics) {
     }
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   auto tensors_expected = EvaluateFetchNodes(item);
   GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
@@ -385,7 +385,7 @@ TEST_F(MemoryOptimizerTest, UnswappableInputs) {
     }
   }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   auto tensors_expected = EvaluateFetchNodes(item);
   GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
@@ -502,7 +502,7 @@ TEST_F(RelaxAllocatorConstraintsTest, DifferentDevice) {
   auto node = output.node(2);
   EXPECT_EQ("assign", node.name());
   EXPECT_EQ(0, node.attr().count("_grappler_relax_allocator_constraints"));
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   item.fetch = {"exp"};
   item.init_ops = {"variable"};
   auto tensors_expected = EvaluateFetchNodes(item);
@@ -629,7 +629,7 @@ TEST_F(RelaxAllocatorConstraintsTest, AssignNodeInFanout) {
   EXPECT_EQ(1, node.attr().count("_grappler_relax_allocator_constraints"));
   EXPECT_EQ(true, node.attr().at("_grappler_relax_allocator_constraints").b());
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   item.init_ops = {"exp_cpu", "variable_gpu"};
   auto tensors_expected = EvaluateFetchNodes(item);
   GrapplerItem optimized = item.WithGraph(std::move(output));

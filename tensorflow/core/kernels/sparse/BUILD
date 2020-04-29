@@ -60,6 +60,7 @@ tf_kernel_library(
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:bitwise_ops_op_lib",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
@@ -77,6 +78,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:scatter_nd_op",
         "//tensorflow/core/kernels:slice_op",
         "//tensorflow/core/kernels:transpose_functor",
+        "//tensorflow/core/kernels:gpu_prim_hdrs",
     ] + if_cuda_or_rocm([
         "//tensorflow/core/kernels:cuda_solvers",
         "//tensorflow/core/kernels:cuda_sparse",

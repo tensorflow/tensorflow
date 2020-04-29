@@ -40,7 +40,7 @@ std::string Add::GetElementWiseCode(
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ);
   c += GetArgsDeclaration();
-  c += ::tflite::gpu::cl::GetArgsDeclaration(linked_operations);
+  c += cl::GetArgsDeclaration(linked_operations);
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
   c += "    int4 src_size,\n";
   c += "    int4 dst_size\n";
@@ -70,10 +70,10 @@ std::string Add::GetElementWiseCode(
 Add::Add(const OperationDef& definition, const std::vector<int>& channels,
          int dst_channels)
     : ElementwiseOperation(definition),
-      dst_depth_(IntegralDivideRoundUp(dst_channels, 4)) {
+      dst_depth_(DivideRoundUp(dst_channels, 4)) {
   src_depthes_.resize(channels.size());
   for (int i = 0; i < channels.size(); ++i) {
-    src_depthes_[i] = IntegralDivideRoundUp(channels[i], 4);
+    src_depthes_[i] = DivideRoundUp(channels[i], 4);
   }
 }
 
@@ -143,17 +143,17 @@ std::string Add::GetArgsDeclaration() const {
   return args;
 }
 
-Status Add::BindArguments(CLKernel* kernel) {
+absl::Status Add::BindArguments(CLKernel* kernel) {
   for (int i = 1; i < src_depthes_.size(); ++i) {
     RETURN_IF_ERROR(kernel->SetMemoryAuto(src_[i]->GetMemoryPtr()));
   }
   for (int i = 1; i < src_depthes_.size(); ++i) {
     RETURN_IF_ERROR(kernel->SetBytesAuto(src_[i]->GetWBatchedHSB()));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Add::Compile(const CreationContext& creation_context) {
+absl::Status Add::Compile(const CreationContext& creation_context) {
   const auto code = GetElementWiseCode(definition_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,

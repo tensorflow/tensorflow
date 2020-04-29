@@ -86,8 +86,8 @@ def set_floatx(value):
   likely cause numeric stability issues. Instead, mixed precision, which is
   using a mix of float16 and float32, can be used by calling
   `tf.keras.mixed_precision.experimental.set_policy('mixed_float16')`. See the
-  [mixed precision
-  guide](https://www.tensorflow.org/guide/keras/mixed_precision) for details.
+  [mixed precision guide](
+    https://www.tensorflow.org/guide/keras/mixed_precision) for details.
 
   Arguments:
       value: String; `'float16'`, `'float32'`, or `'float64'`.

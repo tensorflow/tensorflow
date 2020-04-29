@@ -26,6 +26,8 @@ limitations under the License.
 namespace tensorflow {
 namespace eager {
 
+const int64 kInvalidRemoteOpId = -1;
+
 // This class manages the states required to setup an eager cluster.
 // TODO(fishx): Move remote state from context to this class.
 class RemoteMgr {

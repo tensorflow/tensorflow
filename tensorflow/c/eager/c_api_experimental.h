@@ -296,6 +296,10 @@ TF_CAPI_EXPORT extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetLazyRemoteInputsCopy(
     TFE_ContextOptions*, bool lazy_copy);
 
+// Sets whether to use TFRT
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
+                                                     bool use_tfrt);
+
 // -----------------------------------------------------------------------------
 // Cancellation APIs.
 
@@ -388,12 +392,6 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
 TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context* ctx,
                                                 TF_Status* status);
 
-// If the TensorHandle is copied to another device as part of an op execution,
-// the copy is destroyed after the op has executed. Enabling implicit mirroring
-// causes the copy to be held as a mirror for the lifetime of the TensorHandle.
-TF_CAPI_EXPORT extern void TFE_TensorHandleEnableImplicitMirroring(
-    TFE_TensorHandle*, TF_Status*);
-
 // This function will block till the operation that produces `h` has
 // completed. This is only valid on local TFE_TensorHandles. The pointer
 // returned will be on the device in which the TFE_TensorHandle resides (so e.g.
@@ -433,11 +431,6 @@ TF_CAPI_EXPORT extern void TFE_HostAddressSpace(TFE_Context* ctx,
 // A reference to an op's name -> attribute mapping
 typedef struct TFE_OpAttrs TFE_OpAttrs;
 
-// Fetch a struct with a reference to information about attributes of `op`.
-//
-// The `attrs` struct does not own any memory, and `op` must outlive it.
-TF_CAPI_EXPORT extern void TFE_OpGetAttrs(TFE_Op* op, TFE_OpAttrs* attrs);
-
 // Add attributes in `attrs` to `op`.
 //
 // Does not overwrite or update existing attributes, but adds new ones.
@@ -458,27 +451,29 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrValueProto(const TFE_Op* op,
                                                    size_t proto_len,
                                                    TF_Status* status);
 
-#define TFE_CUSTOM_DEVICE_VERSION 1
+#define TFE_CUSTOM_DEVICE_VERSION 2
 
 // Struct to be filled in
 typedef struct TFE_CustomDevice {
   int version = TFE_CUSTOM_DEVICE_VERSION;
   // Method to copy a tensor to the custom device.
-  TFE_TensorHandle* (*copy_tensor_to_device)(TFE_TensorHandle* tensor,
+  TFE_TensorHandle* (*copy_tensor_to_device)(TFE_Context* context,
+                                             TFE_TensorHandle* tensor,
                                              TF_Status* status,
                                              void* device_info) = nullptr;
 
   // Method to copy a tensor from the custom device to a target device.
-  TFE_TensorHandle* (*copy_tensor_from_device)(TFE_TensorHandle* tensor,
+  TFE_TensorHandle* (*copy_tensor_from_device)(TFE_Context* context,
+                                               TFE_TensorHandle* tensor,
                                                const char* target_device_name,
                                                TF_Status* status,
                                                void* device_info);
 
   // Method to execute an operation.
-  void (*execute)(int num_inputs, TFE_TensorHandle** inputs,
-                  const char* operation_name, const TFE_OpAttrs* attributes,
-                  int* num_outputs, TFE_TensorHandle** outputs, TF_Status* s,
-                  void* device_info);
+  void (*execute)(TFE_Context* context, int num_inputs,
+                  TFE_TensorHandle** inputs, const char* operation_name,
+                  const TFE_OpAttrs* attributes, int* num_outputs,
+                  TFE_TensorHandle** outputs, TF_Status* s, void* device_info);
 
   // Method to delete a device.
   void (*delete_device)(void* device_info);
@@ -515,14 +510,33 @@ typedef struct TFE_CustomDevice {
 // This API is highly experimental, and in particular is expected to change when
 // it starts supporting operations with attributes and when tf.function support
 // is added.
-void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
-                              const char* device_name, void* device_info,
-                              TF_Status* status);
+TF_CAPI_EXPORT extern void TFE_RegisterCustomDevice(TFE_Context* ctx,
+                                                    TFE_CustomDevice device,
+                                                    const char* device_name,
+                                                    void* device_info,
+                                                    TF_Status* status);
 
 TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
                                                      const char* function_name,
                                                      TF_Buffer* buf,
                                                      TF_Status* status);
+
+// Allocate and return a new Tensor on the host.
+//
+// The caller must set the Tensor values by writing them to the pointer returned
+// by TF_TensorData with length TF_TensorByteSize.
+TF_CAPI_EXPORT extern TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx,
+                                                        TF_DataType dtype,
+                                                        const int64_t* dims,
+                                                        int num_dims,
+                                                        TF_Status* status);
+
+// Given a Tensor, wrap it with a TensorHandle
+//
+// Similar to TFE_NewTensorHandle, but includes a pointer to the TFE_Context.
+// The context should be identical to that of the Tensor.
+TF_CAPI_EXPORT TFE_TensorHandle* TFE_NewTensorHandleFromTensor(
+    TFE_Context* ctx, TF_Tensor* t, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

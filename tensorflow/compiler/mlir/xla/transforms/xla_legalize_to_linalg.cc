@@ -13,24 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements logic for lowering HLO dialect to LHLO dialect.
+// This file implements logic for lowering HLO/LHLO dialect to Linalg dialect.
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/APInt.h"
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/AffineExpr.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/map_xla_to_scalar_op.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
@@ -48,13 +49,13 @@ ArrayAttr GetNParallelLoopsAttrs(unsigned nParallelLoops, Builder* b) {
 }
 
 template <bool isLHLO = true>
+Value getResultValue(Operation* op) {
+  return isLHLO ? op->getOperand(op->getNumOperands() - 1) : op->getResult(0);
+}
+
+template <bool isLHLO = true>
 ShapedType getXLAOpResultType(Operation* op) {
-  if (isLHLO) {
-    return op->getOperand(op->getNumOperands() - 1)
-        .getType()
-        .cast<ShapedType>();
-  }
-  return op->getResult(0).getType().cast<ShapedType>();
+  return getResultValue<isLHLO>(op).getType().template cast<ShapedType>();
 }
 
 template <bool isLHLO = true>
@@ -73,7 +74,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
  public:
   using OpConversionPattern<OpTy>::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       OpTy op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
@@ -81,10 +82,10 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
         op.getOperation()->getOperand(0).getType().template cast<ShapedType>();
     if (!argType.hasRank()) {
       emitError(loc, "lhlo to linalg conversion expects ranked args");
-      return ConversionPattern::matchFailure();
+      return failure();
     }
     if (!argType.getElementType().isSignlessIntOrFloat()) {
-      return ConversionPattern::matchFailure();
+      return failure();
     }
 
     // Construct the indexing maps needed for linalg.generic ops.
@@ -94,9 +95,9 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     // This doesnt account for implicit broadcast, but the working assumption
     // here is that are broadcasts have been made explicit.
     unsigned nloops = argType.getRank();
-    if (!nloops) {
-      return ConversionPattern::matchFailure();
-    }
+
+    if (isLHLO && !nloops) return failure();
+
     int operandCount = (isLHLO ? args.size() - 1 : args.size());
     auto verifyArgOrResultType = [&](Value val) -> ShapedType {
       auto shapedType = val.getType().dyn_cast<ShapedType>();
@@ -105,13 +106,14 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
            !shapedType.isa<RankedTensorType>()) ||
           shapedType.getRank() != nloops)
         return nullptr;
-      indexingMaps.emplace_back(
-          AffineMapAttr::get(rewriter.getMultiDimIdentityMap(nloops)));
+      indexingMaps.emplace_back(AffineMapAttr::get(
+          nloops ? rewriter.getMultiDimIdentityMap(nloops)
+                 : AffineMap::get(nloops, 0, rewriter.getContext())));
       return shapedType;
     };
     for (const auto& arg : llvm::enumerate(args)) {
       auto shapedType = verifyArgOrResultType(arg.value());
-      if (!shapedType) return ConversionPattern::matchFailure();
+      if (!shapedType) return failure();
       auto& result_or_body_arg =
           arg.index() < operandCount ? bodyArgTypes : bodyResultTypes;
       result_or_body_arg.emplace_back(shapedType.getElementType());
@@ -122,7 +124,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
              "When lowering HLO ops result can't be part of arguments");
       Value result = op.getOperation()->getResult(0);
       auto shapedType = verifyArgOrResultType(result);
-      if (!shapedType) return ConversionPattern::matchFailure();
+      if (!shapedType) return failure();
       bodyResultTypes.push_back(shapedType.getElementType());
       opResultTypes.push_back(shapedType);
     }
@@ -133,7 +135,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
         rewriter.getI64IntegerAttr(bodyResultTypes.size()),  // args_out
         rewriter.getArrayAttr(indexingMaps),
         GetNParallelLoopsAttrs(nloops, &rewriter),
-        /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
+        /*doc=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
     auto* region = &linalgOp.region();
@@ -152,11 +154,11 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     Value opResult = xla_lhlo::XlaOpToStdScalarOp::map<OpTy>(
         op, bodyResultTypes, bodyArgs, &rewriter);
     if (!opResult) {
-      return ConversionPattern::matchFailure();
+      return failure();
     }
     rewriter.create<linalg::YieldOp>(loc, opResult);
     rewriter.replaceOp(op, linalgOp.getOperation()->getResults());
-    return ConversionPattern::matchSuccess();
+    return success();
   }
 };
 
@@ -165,7 +167,7 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
  public:
   using OpConversionPattern<LhloOp>::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       LhloOp lhlo_op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = lhlo_op.getLoc();
@@ -173,7 +175,7 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
         lhlo_op.getOperand(0).getType().template dyn_cast<ShapedType>();
     if (!argType || !argType.getElementType().isSignlessIntOrFloat() ||
         (argType.getRank() != 0)) {
-      return ConversionPattern::matchFailure();
+      return failure();
     }
 
     // Create two loads from the input.
@@ -185,7 +187,7 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
         &rewriter);
     rewriter.create<StoreOp>(loc, opResult, lhlo_op.out());
     rewriter.eraseOp(lhlo_op);
-    return ConversionPattern::matchSuccess();
+    return success();
   }
 };
 
@@ -199,18 +201,14 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
  public:
   using OpConversionPattern<OpTy>::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       OpTy op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
-    if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(op))
-      return ConversionPattern::matchFailure();
+    if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(op)) return failure();
     auto operandType = op.operand().getType().template cast<ShapedType>();
     auto resultType = getXLAOpResultType<isLHLO>(op);
-    if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(op))
-      return ConversionPattern::matchFailure();
-    ArrayAttr indexingMapsAttr =
-        static_cast<const Derived&>(*this).getIndexingMapsAttr(op, &rewriter);
-    if (!indexingMapsAttr) return ConversionPattern::matchFailure();
+    ArrayAttr indexingMapsAttr = Derived::getIndexingMapsAttr(op, &rewriter);
+    if (!indexingMapsAttr) return failure();
 
     OpBuilder::InsertionGuard linalgOpGuard(rewriter);
     auto nloops = resultType.getRank();
@@ -219,7 +217,7 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
         loc, isLHLO ? ArrayRef<Type>{} : resultType, args,
         rewriter.getI64IntegerAttr(1), rewriter.getI64IntegerAttr(1),
         indexingMapsAttr, GetNParallelLoopsAttrs(nloops, &rewriter),
-        /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
+        /*doc=*/nullptr, /*library_call=*/nullptr);
 
     auto* region = &linalgOp.region();
     auto* block = rewriter.createBlock(region, region->end());
@@ -230,7 +228,45 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
     rewriter.create<linalg::YieldOp>(loc, block->getArgument(0));
 
     rewriter.replaceOp(op, linalgOp.getOperation()->getResults());
-    return ConversionPattern::matchSuccess();
+    return success();
+  }
+};
+
+/// Pattern to convert BroadcastOp to Linalg ops.
+template <typename OpTy, bool isLHLO = true>
+class BroadcastConverter
+    : public DataMovementOpConverter<BroadcastConverter<OpTy, isLHLO>, OpTy,
+                                     isLHLO> {
+ public:
+  using DataMovementOpConverter<BroadcastConverter, OpTy,
+                                isLHLO>::DataMovementOpConverter;
+
+  static ArrayAttr getIndexingMapsAttr(OpTy broadcastOp, Builder* b) {
+    ShapedType inputType =
+        broadcastOp.operand().getType().template cast<ShapedType>();
+    unsigned inputRank = inputType.getRank();
+    unsigned nloops = getXLAOpResultType<isLHLO>(broadcastOp).getRank();
+
+    // BroadcastOp prepends the dimensions in the `broadcast_sizes` attribute to
+    // the input's dimensions.
+    unsigned numPrependedDims = llvm::size(broadcastOp.broadcast_sizes());
+    SmallVector<AffineExpr, 4> inputDimExprs;
+    inputDimExprs.reserve(inputRank);
+    for (int i = 0; i < inputRank; ++i) {
+      inputDimExprs.push_back(b->getAffineDimExpr(numPrependedDims + i));
+    }
+
+    AffineMap inputMap;
+    MLIRContext* context = b->getContext();
+    if (inputDimExprs.empty()) {
+      // The input is a scalar, i.e. this is a scalar broadcast op.
+      inputMap = AffineMap::get(nloops, /*symbolCount=*/0, context);
+    } else {
+      inputMap =
+          AffineMap::get(nloops, /*symbolCount=*/0, inputDimExprs, context);
+    }
+    return b->getAffineMapArrayAttr(
+        {inputMap, b->getMultiDimIdentityMap(nloops)});
   }
 };
 
@@ -242,7 +278,7 @@ class BroadcastInDimConverter
   using DataMovementOpConverter<BroadcastInDimConverter<OpTy, isLHLO>, OpTy,
                                 isLHLO>::DataMovementOpConverter;
 
-  ArrayAttr getIndexingMapsAttr(OpTy broadcastOp, Builder* b) const {
+  static ArrayAttr getIndexingMapsAttr(OpTy broadcastOp, Builder* b) {
     auto resultType = getXLAOpResultType<isLHLO>(broadcastOp);
     auto operandType =
         broadcastOp.operand().getType().template cast<ShapedType>();
@@ -270,34 +306,12 @@ class BroadcastInDimConverter
         // The input is a scalar, i.e. this is a scalar broadcast op.
         inputMap = AffineMap::get(nloops, /*symbolCount=*/0, b->getContext());
       } else {
-        inputMap = AffineMap::get(nloops, /*symbolCount=*/0, dimExprs);
+        inputMap = AffineMap::get(nloops, /*symbolCount=*/0, dimExprs,
+                                  b->getContext());
       }
     }
     return b->getAffineMapArrayAttr(
         {inputMap, b->getMultiDimIdentityMap(nloops)});
-  }
-};
-
-template <typename OpTy, bool isLHLO = true>
-class TransposeConverter
-    : public DataMovementOpConverter<TransposeConverter<OpTy, isLHLO>, OpTy,
-                                     isLHLO> {
- public:
-  using DataMovementOpConverter<TransposeConverter<OpTy, isLHLO>, OpTy,
-                                isLHLO>::DataMovementOpConverter;
-  ArrayAttr getIndexingMapsAttr(OpTy op, Builder* b) const {
-    auto resultType =
-        getXLAOpResultType<isLHLO>(op).template cast<ShapedType>();
-    auto nloops = resultType.getRank();
-    SmallVector<AffineExpr, 2> inputExprs;
-    inputExprs.resize(resultType.getRank());
-    for (auto permutation : llvm::enumerate(op.permutation())) {
-      inputExprs[permutation.value().getZExtValue()] =
-          b->getAffineDimExpr(permutation.index());
-    }
-    return b->getAffineMapArrayAttr(
-        {AffineMap::get(nloops, /*symbolCount=*/0, inputExprs),
-         b->getMultiDimIdentityMap(nloops)});
   }
 };
 
@@ -314,15 +328,33 @@ class TransposeConverter
 /// can have indexing maps
 /// [affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> (d0, d1,
 /// d2)>]
+
+// TODO(ravishankarm): This pattern needs to be removed. The general reshape
+// lowering hits a corner case where the following sequence of operations
+// cannot be fused cause the resulting indexing map is not invertible.
+//
+// %r = linalg.reshape %s [affine_map<(d0, d1, d2) -> (d0, d1)>,
+//                         affine_map<(d0, d1, d2) -> (d2)>]
+//      : tensor<5x5xf32> into tensor<5x1x5xf32>
+// %f = linalg.generic
+//      {...
+//       indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d1, d2)>,
+//                        affine_map<(d0, d1, d2) -> (d0, d2)>],
+//       iterator_types = ["parallel", "parallel", "parallel"]} %r {..}
+//      : tensor<5x1x5xf32> -> tensor<5x5xf32>
+//
+// The resolution of this requires a canonicalization on linalg ops where the
+// dims of size 1 are removed. This pattern can be removed after that.
 template <typename OpTy, bool isLHLO = true>
 class ReshapeAddRemoveDimConverter
     : public DataMovementOpConverter<ReshapeAddRemoveDimConverter<OpTy, isLHLO>,
                                      OpTy, isLHLO> {
  public:
-  using DataMovementOpConverter<ReshapeAddRemoveDimConverter<OpTy, isLHLO>,
-                                OpTy, isLHLO>::DataMovementOpConverter;
+  ReshapeAddRemoveDimConverter(MLIRContext* context)
+      : DataMovementOpConverter<ReshapeAddRemoveDimConverter<OpTy, isLHLO>,
+                                OpTy, isLHLO>(context, 100) {}
 
-  ArrayAttr getIndexingMapsAttr(OpTy op, Builder* b) const {
+  static ArrayAttr getIndexingMapsAttr(OpTy op, Builder* b) {
     auto resultType =
         getXLAOpResultType<isLHLO>(op).template cast<ShapedType>();
     auto operandType =
@@ -368,8 +400,108 @@ class ReshapeAddRemoveDimConverter
       return nullptr;
     inputExprs.resize(operandShape.size(), b->getAffineConstantExpr(0));
     return b->getAffineMapArrayAttr(
-        {AffineMap::get(nloops, /*symbolCount=*/0, inputExprs),
+        {AffineMap::get(nloops, /*symbolCount=*/0, inputExprs, b->getContext()),
          b->getMultiDimIdentityMap(nloops)});
+  }
+};
+
+template <typename OpTy, bool isLHLO = true>
+class TransposeConverter
+    : public DataMovementOpConverter<TransposeConverter<OpTy, isLHLO>, OpTy,
+                                     isLHLO> {
+ public:
+  using DataMovementOpConverter<TransposeConverter<OpTy, isLHLO>, OpTy,
+                                isLHLO>::DataMovementOpConverter;
+  static ArrayAttr getIndexingMapsAttr(OpTy op, Builder* b) {
+    auto resultType =
+        getXLAOpResultType<isLHLO>(op).template cast<ShapedType>();
+    auto nloops = resultType.getRank();
+    SmallVector<AffineExpr, 2> inputExprs;
+    inputExprs.resize(resultType.getRank());
+    for (auto permutation : llvm::enumerate(op.permutation())) {
+      inputExprs[permutation.value().getZExtValue()] =
+          b->getAffineDimExpr(permutation.index());
+    }
+    return b->getAffineMapArrayAttr(
+        {AffineMap::get(nloops, /*symbolCount=*/0, inputExprs, b->getContext()),
+         b->getMultiDimIdentityMap(nloops)});
+  }
+};
+
+// Converts reshape ops that can be proven to be either a collapse of dimensions
+// or expansion of dimensions of the operand.
+template <typename OpTy, bool isLHLO = true>
+class ReshapeOpConverter : public OpConversionPattern<OpTy> {
+ public:
+  using OpConversionPattern<OpTy>::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      OpTy reshapeOp, ArrayRef<Value> args,
+      ConversionPatternRewriter& rewriter) const final {
+    if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(reshapeOp))
+      return failure();
+    ShapedType operandType =
+        reshapeOp.operand().getType().template cast<ShapedType>();
+    ShapedType resultType = getXLAOpResultType<isLHLO>(reshapeOp);
+
+    if (!operandType.hasStaticShape() || !resultType.hasStaticShape())
+      return failure();
+
+    // TODO(ravishankarm): To make this pattern not match the pattern that
+    // ReshapeAddRemoveDimConverter is for, check that condition here. Remove
+    // this when ReshapeAddRemoveDimConverter pattern is removed.
+    if (ReshapeAddRemoveDimConverter<OpTy, isLHLO>::getIndexingMapsAttr(
+            reshapeOp, &rewriter))
+      return failure();
+
+    // Compute the reassociation maps for the linalg operation.
+    ArrayRef<int64_t> srcShape =
+        (operandType.getRank() > resultType.getRank() ? operandType.getShape()
+                                                      : resultType.getShape());
+    ArrayRef<int64_t> dstShape =
+        (operandType.getRank() > resultType.getRank() ? resultType.getShape()
+                                                      : operandType.getShape());
+    unsigned currSrcDim = 0, currDstDim = 0;
+    SmallVector<SmallVector<AffineExpr, 4>, 4> exprs(dstShape.size());
+    while (currSrcDim < srcShape.size() && currDstDim < dstShape.size()) {
+      int64_t dstSize = dstShape[currDstDim];
+      int64_t srcSize = srcShape[currSrcDim];
+      while (srcSize < dstSize && currSrcDim < srcShape.size()) {
+        exprs[currDstDim].push_back(rewriter.getAffineDimExpr(currSrcDim++));
+        srcSize *= srcShape[currSrcDim];
+      }
+      if (srcSize == dstSize) {
+        exprs[currDstDim].push_back(rewriter.getAffineDimExpr(currSrcDim++));
+        // If the next dim in dstShape is not 1, treat subsequent dims in
+        // srcShape which are 1 to be collapsed.
+        if (currDstDim == dstShape.size() - 1 ||
+            dstShape[currDstDim + 1] != 1) {
+          while (currSrcDim < srcShape.size() && srcShape[currSrcDim] == 1) {
+            exprs[currDstDim].push_back(
+                rewriter.getAffineDimExpr(currSrcDim++));
+          }
+        }
+      } else {
+        return failure();
+      }
+      currDstDim++;
+    }
+    if (currSrcDim != srcShape.size()) return failure();
+
+    SmallVector<ArrayRef<AffineExpr>, 4> reassociationMaps;
+    for (auto& expr : exprs) reassociationMaps.push_back(expr);
+
+    if (isLHLO) {
+      Value reshapeBuffer = rewriter.create<linalg::ReshapeOp>(
+          reshapeOp.getLoc(), resultType, args[0], reassociationMaps);
+      rewriter.replaceOpWithNewOp<linalg::CopyOp>(
+          reshapeOp, reshapeBuffer, args[1], /*inputPermutation =*/nullptr,
+          /*outputPermutation =*/nullptr);
+    } else {
+      rewriter.replaceOpWithNewOp<linalg::TensorReshapeOp>(
+          reshapeOp, resultType, args[0], reassociationMaps);
+    }
+    return success();
   }
 };
 
@@ -377,15 +509,15 @@ class IotaConverter : public OpConversionPattern<xla_lhlo::IotaOp> {
  public:
   using OpConversionPattern<xla_lhlo::IotaOp>::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       xla_lhlo::IotaOp iotaOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto resultMemrefType =
         iotaOp.getOperand().getType().dyn_cast<MemRefType>();
-    if (!resultMemrefType) return matchFailure();
+    if (!resultMemrefType) return failure();
 
     auto resultElementType = resultMemrefType.getElementType();
-    if (!resultElementType.isSignlessIntOrFloat()) return matchFailure();
+    if (!resultElementType.isSignlessIntOrFloat()) return failure();
 
     // Construct the indexing maps needed for linalg.generic ops.
     unsigned nloops = resultMemrefType.getRank();
@@ -400,7 +532,7 @@ class IotaConverter : public OpConversionPattern<xla_lhlo::IotaOp> {
         rewriter.getI64IntegerAttr(1),  // args_out
         rewriter.getArrayAttr(indexingMaps),
         GetNParallelLoopsAttrs(nloops, &rewriter),
-        /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
+        /*doc=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
     auto* region = &linalgOp.region();
@@ -420,7 +552,7 @@ class IotaConverter : public OpConversionPattern<xla_lhlo::IotaOp> {
     }
     rewriter.create<linalg::YieldOp>(loc, castOp->getResult(0));
     rewriter.eraseOp(iotaOp);
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -428,17 +560,17 @@ class ConstConverter : public OpConversionPattern<xla_lhlo::ConstOp> {
  public:
   using OpConversionPattern<xla_lhlo::ConstOp>::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       xla_lhlo::ConstOp constOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = constOp.getLoc();
     auto valueAttr = constOp.value().cast<DenseElementsAttr>();
-    if (valueAttr.getType().getRank() != 0) return matchFailure();
+    if (valueAttr.getType().getRank() != 0) return failure();
     auto stdConstOp =
         rewriter.create<mlir::ConstantOp>(loc, valueAttr.getValue({}));
     rewriter.create<mlir::StoreOp>(loc, stdConstOp, constOp.getOperand());
     rewriter.eraseOp(constOp);
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -446,7 +578,7 @@ class SliceConverter : public OpConversionPattern<xla_lhlo::SliceOp> {
  public:
   using OpConversionPattern<xla_lhlo::SliceOp>::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       xla_lhlo::SliceOp sliceOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = sliceOp.getLoc();
@@ -454,7 +586,7 @@ class SliceConverter : public OpConversionPattern<xla_lhlo::SliceOp> {
         sliceOp.getOperand(0).getType().template dyn_cast<ShapedType>();
     if (!argType || !argType.hasRank()) {
       emitError(loc, "lhlo to linalg conversion expects known-rank args");
-      return ConversionPattern::matchFailure();
+      return failure();
     }
 
     SmallVector<Value, 3> ranges;
@@ -472,14 +604,15 @@ class SliceConverter : public OpConversionPattern<xla_lhlo::SliceOp> {
         rewriter.create<linalg::SliceOp>(loc, sliceOp.getOperand(0), ranges);
     rewriter.create<linalg::CopyOp>(loc, linalg_slice, sliceOp.getOperand(1));
     rewriter.eraseOp(sliceOp);
-    return matchSuccess();
+    return success();
   }
 };
 
 void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
-  patterns->insert<BroadcastInDimConverter<xla_lhlo::BroadcastInDimOp>,
+  patterns->insert<BroadcastConverter<xla_lhlo::BroadcastOp>,
+                   BroadcastInDimConverter<xla_lhlo::BroadcastInDimOp>,
                    ConstConverter,
                    IotaConverter,
                    PointwiseToLinalgConverter<xla_lhlo::AbsOp>,
@@ -532,7 +665,8 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
 //     iterator_types = ["parallel", "parallel"],
 //   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 // }
-struct LhloLegalizeToLinalg : public FunctionPass<LhloLegalizeToLinalg> {
+struct LhloLegalizeToLinalg
+    : public PassWrapper<LhloLegalizeToLinalg, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
@@ -546,7 +680,8 @@ struct LhloLegalizeToLinalg : public FunctionPass<LhloLegalizeToLinalg> {
   }
 };
 
-struct HloLegalizeToLinalg : public FunctionPass<HloLegalizeToLinalg> {
+struct HloLegalizeToLinalg
+    : public PassWrapper<HloLegalizeToLinalg, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
@@ -563,7 +698,7 @@ struct HloLegalizeToLinalg : public FunctionPass<HloLegalizeToLinalg> {
 }  // namespace
 
 namespace xla_lhlo {
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeLhloToLinalgPass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToLinalgPass() {
   return absl::make_unique<LhloLegalizeToLinalg>();
 }
 
@@ -575,14 +710,14 @@ namespace xla_hlo {
 
 void populateHLOToLinalgConversionPattern(MLIRContext* context,
                                           OwningRewritePatternList* patterns) {
-  patterns->insert<BroadcastInDimConverter<xla_hlo::BroadcastInDimOp, false>,
-                   ReshapeAddRemoveDimConverter<xla_hlo::ReshapeOp, false>,
-                   TransposeConverter<xla_hlo::TransposeOp, false>,
+  patterns->insert<BroadcastConverter<xla_hlo::BroadcastOp, false>,
+                   BroadcastInDimConverter<xla_hlo::BroadcastInDimOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::AbsOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::AddOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::AndOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::CeilOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::CompareOp, false>,
+                   PointwiseToLinalgConverter<xla_hlo::CosOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::CopyOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::DivOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::ExpOp, false>,
@@ -596,10 +731,13 @@ void populateHLOToLinalgConversionPattern(MLIRContext* context,
                    PointwiseToLinalgConverter<xla_hlo::SelectOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::SqrtOp, false>,
                    PointwiseToLinalgConverter<xla_hlo::SubOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::TanhOp, false>>(context);
+                   PointwiseToLinalgConverter<xla_hlo::TanhOp, false>,
+                   ReshapeAddRemoveDimConverter<xla_hlo::ReshapeOp, false>,
+                   ReshapeOpConverter<xla_hlo::ReshapeOp, false>,
+                   TransposeConverter<xla_hlo::TransposeOp, false>>(context);
 }
 
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeHloToLinalgPass() {
+std::unique_ptr<OperationPass<FuncOp>> createLegalizeHloToLinalgPass() {
   return absl::make_unique<HloLegalizeToLinalg>();
 }
 

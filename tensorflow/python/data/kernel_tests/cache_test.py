@@ -244,8 +244,6 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset_ops.Dataset.from_tensor_slices(components).repeat(0))
     cache_dataset = repeat_dataset.cache()
 
-    # Create initialization ops for iterators without and with
-    # caching, respectively.
     self.assertDatasetProduces(cache_dataset, expected_output=[])
 
   @combinations.generate(test_base.default_test_combinations())
@@ -363,6 +361,24 @@ class MemoryCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
     for i in range(10):
       self.assertEqual(next(it1), i)
       self.assertEqual(next(it2), i)
+
+  @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
+  def testCacheKnownCardinality(self):
+
+    # Check that a dataset which produces random permutation of range(10) ends
+    # up being cached when we read all of its element but do not reach EOF.
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.shuffle(10, reshuffle_each_iteration=True).cache()
+
+    it = iter(dataset)
+
+    results = []
+    for _ in range(10):
+      results.append(next(it))
+
+    it = iter(dataset)
+    for i in range(10):
+      self.assertEqual(next(it), results[i])
 
 
 if __name__ == "__main__":

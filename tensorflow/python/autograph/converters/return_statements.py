@@ -256,7 +256,7 @@ class ReturnStatementsTransformer(converter.Base):
     state = self.state[_Block]
     if state.create_guard_now:
       template = """
-        if ag__.not_(do_return_var_name):
+        if not do_return_var_name:
           original_node
       """
       cond, = templates.replace(
@@ -285,7 +285,7 @@ class ReturnStatementsTransformer(converter.Base):
     node.body = self._visit_statement_block(node, node.body)
     if self.state[_Block].return_used:
       node.test = templates.replace_as_expression(
-          'ag__.and_(lambda: ag__.not_(control_var), lambda: test)',
+          'not control_var and test',
           test=node.test,
           control_var=self.state[_Function].do_return_var_name)
 
@@ -302,12 +302,12 @@ class ReturnStatementsTransformer(converter.Base):
       extra_test = anno.getanno(node, anno.Basic.EXTRA_LOOP_TEST, default=None)
       if extra_test is not None:
         extra_test = templates.replace_as_expression(
-            'ag__.and_(lambda: ag__.not_(control_var), lambda: extra_test)',
+            'not control_var and extra_test',
             extra_test=extra_test,
             control_var=self.state[_Function].do_return_var_name)
       else:
         extra_test = templates.replace_as_expression(
-            'ag__.not_(control_var)',
+            'not control_var',
             control_var=self.state[_Function].do_return_var_name)
       anno.setanno(node, anno.Basic.EXTRA_LOOP_TEST, extra_test)
 

@@ -82,6 +82,7 @@ are verified in `IsNodeSupportedByHexagon`:
 * Mul (without any activation) (b/129276536)
 * Neg
 * Pad: Only supports 0 padding (b/139277813)
+* Quantize (8-bit inputs & outputs only)
 * Relu
 * Relu6
 * Reshape

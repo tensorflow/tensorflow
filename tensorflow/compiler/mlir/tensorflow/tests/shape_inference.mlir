@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-shape-inference -verify-diagnostics | FileCheck %s -dump-input=fail -color
+// RUN: tf-opt %s -tf-shape-inference -verify-diagnostics | FileCheck %s -dump-input=fail
 
 module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 130 : i32}} {
 // CHECK-LABEL: func @main(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32>
@@ -27,11 +27,11 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 // CHECK: %[[MUL:.*]] = "tf.Mul"{{.*}} (tensor<1xf32>, tensor<10xf32>) -> tensor<10xf32>
 // CHECK: %[[ADD:.*]] = "tf.Add"(%[[MUL]], %[[MUL]]) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
 // CHECK: %[[CAST:.*]] = "tf.Cast"(%[[ADD]]) {{.*}} : (tensor<10xf32>) -> tensor<*xf32>
-// CHECK: %[[UNKNOWN:.*]] = "unknown.A"(%[[CAST]]) : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK: %[[UNKNOWN:.*]] = addf %[[CAST]], %[[CAST]] : tensor<*xf32>
 // CHECK: return %[[UNKNOWN]] : tensor<*xf32>
     %0 = "tf.Mul"(%arg0, %arg1) : (tensor<1xf32>, tensor<10xf32>) -> tensor<*xf32>
     %1 = "tf.Add"(%0, %0) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-    %2 = "unknown.A"(%1) : (tensor<*xf32>) -> tensor<*xf32>
+    %2 = addf %1, %1 : tensor<*xf32>
     return %2 : tensor<*xf32>
   }
 
@@ -71,6 +71,15 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
     return %1 : tensor<?x?x?x?xf32>
   }
 
+// Tests where tf.Const's value needs to be refined.
+
+  func @const_refine() -> tensor<*xi32> {
+    %0 = "tf.Const"() {value = dense<[3, 2]> : tensor<2xi32>} : () -> tensor<*xi32>
+    // CHECK: "tf.Const"
+    // CHECK-SAME: -> tensor<2xi32>
+    return %0 : tensor<*xi32>
+  }
+
 // Tests the case where an op's shape function returns non-fully-defined shapes.
 
 // CHECK-LABEL: func @op_non_fully_defined_shape_fn
@@ -92,7 +101,7 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
 
   // CHECK-LABEL: func @shape_from_if_to_branch_functions
   func @shape_from_if_to_branch_functions(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>) -> tensor<1x2x3xf32> {
-    %0 = "tf.If"(%arg0, %arg1) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @if_else_branch, is_stateless = true, name = "if", output_shapes = ["tfshape$"], then_branch = @if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+    %0 = "tf.If"(%arg0, %arg1) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @if_else_branch, is_stateless = true, name = "if", output_shapes = [#tf.shape<>], then_branch = @if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
     return %0 : tensor<1x2x3xf32>
   }
 
@@ -116,8 +125,8 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
 
   // CHECK-LABEL: func @shape_from_while_to_cond_body_functions
   func @shape_from_while_to_cond_body_functions(%arg0: tensor<4xf32>, %arg1: tensor<!tf.resource<tensor<4xf32>>>, %arg2: tensor<!tf.resource<tensor<*xf32>>>) -> tensor<4xf32> {
-    // CHECK "tf.While"
-    // CHECK-SAME (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<*xf32>>>) -> (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<*xf32>>>)
+    // CHECK: "tf.While"
+    // CHECK-SAME: (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<*xf32>>>) -> (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<*xf32>>>)
     %0:3 = "tf.While"(%arg0, %arg1, %arg2) {cond = @while_cond_func, body = @while_body_func, is_stateless = true} : (tensor<4xf32>, tensor<!tf.resource<tensor<4xf32>>>, tensor<!tf.resource<tensor<*xf32>>>) -> (tensor<4xf32>, tensor<*x!tf.resource>, tensor<!tf.resource<tensor<*xf32>>>)
     return %0#0 : tensor<4xf32>
   }
@@ -175,15 +184,15 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
   // CHECK-LABEL: func @invalid_function_reused_by_control_flows
   func @invalid_function_reused_by_control_flows(%arg0: tensor<i1>, %arg1: tensor<1x2x3xf32>) -> tensor<1x2x3xf32> {
 	  // expected-warning @+1 {{unable to refine shape}}
-    %0 = "tf.If"(%arg0, %arg1) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @reused_if_else_branch, is_stateless = true, name = "if", output_shapes = ["tfshape$"], then_branch = @reused_if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+    %0 = "tf.If"(%arg0, %arg1) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @reused_if_else_branch, is_stateless = true, name = "if", output_shapes = [#tf.shape<>], then_branch = @reused_if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
 	  // expected-warning @+1 {{unable to refine shape}}
-    %1 = "tf.If"(%arg0, %0) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @reused_if_else_branch, is_stateless = true, name = "if", output_shapes = ["tfshape$"], then_branch = @reused_if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
+    %1 = "tf.If"(%arg0, %0) {Tcond = i1, Tin = ["tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _xla_propagate_compile_time_consts = true, device = "", else_branch = @reused_if_else_branch, is_stateless = true, name = "if", output_shapes = [#tf.shape<>], then_branch = @reused_if_then_branch} : (tensor<i1>, tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
     return %0 : tensor<1x2x3xf32>
   }
 
   // CHECK-LABEL: func @reused_if_then_branch
   // CHECK-SAME: (%arg0: tensor<*xf32>) -> tensor<*xf32>
-	// expected-error @+1 {{expected control flow function reused_if_then_branch to have exactly 1 use}}
+	// expected-warning @+1 {{expected control flow function reused_if_then_branch to have exactly 1 use}}
   func @reused_if_then_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK: return
     // CHECK-SAME: tensor<*xf32>
@@ -192,7 +201,7 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
 
   // CHECK-LABEL: func @reused_if_else_branch
   // CHECK-SAME: (%arg0: tensor<*xf32>) -> tensor<*xf32>
-	// expected-error @+1 {{expected control flow function reused_if_else_branch to have exactly 1 use}}
+	// expected-warning @+1 {{expected control flow function reused_if_else_branch to have exactly 1 use}}
   func @reused_if_else_branch(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK: "tf.Identity"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
     %0 = "tf.Identity"(%arg0) : (tensor<*xf32>) -> (tensor<*xf32>)
@@ -248,6 +257,49 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
     return %0 : tensor<?x?x?xf32>
   }
 
+  // Check that supported tf_executor ops can receive data from ops on which
+  // shape inference has inferred the result types, without throwing any errors.
+  // CHECK-LABEL: func @supported_tf_executor_users
+  func @supported_tf_executor_users(%arg0: tensor<32x?x256x4xf32>, %arg1: tensor<?x?x?xf32>, %arg2: tensor<i1>, %arg3: tensor<i32>) -> tensor<?x?x?xf32> {
+    %0 = tf_executor.graph {
+      %island:3 = tf_executor.island {
+        %dims = "tf.Const"() {value = dense<[32, -1, 4]> : tensor<3xi32>} : () -> tensor<3xi32>
+        %reshape = "tf.Reshape"(%arg0, %dims) : (tensor<32x?x256x4xf32>, tensor<3xi32>) -> tensor<?x?x?xf32>
+        %cast = "tf.Cast"(%arg2) : (tensor<i1>) -> tensor<*xi1>
+        tf_executor.yield %reshape, %cast : tensor<?x?x?xf32>, tensor<*xi1>
+      }
+      // CHECK: tf_executor.Merge
+      // CHECK-SAME: : (tensor<32x?x4xf32>, tensor<?x?x?xf32>) ->
+      // CHECK: tf_executor.Switch
+      // CHECK-SAME: : (tensor<32x?x4xf32>, tensor<i1>) ->
+      // CHECK: tf_executor.SwitchN
+      // CHECK-SAME: : tensor<?x?x?xf32>
+      // CHECK: tf_executor.Enter
+      // CHECK-SAME: : (tensor<32x?x4xf32>) ->
+      // CHECK: tf_executor.Exit
+      // CHECK-SAME: : tensor<?x?x?xf32>
+      // CHECK: tf_executor.LoopCond
+      // CHECK-SAME: : tensor<*xi1>
+      %merge:3 = "tf_executor.Merge"(%island#0, %arg1) : (tensor<?x?x?xf32>, tensor<?x?x?xf32>) -> (tensor<?x?x?xf32>, tensor<i32>, !tf_executor.control)
+      %switch:3 = "tf_executor.Switch"(%island#0, %arg2) : (tensor<?x?x?xf32>, tensor<i1>) -> (tensor<?x?x?xf32>, tensor<?x?x?xf32>, !tf_executor.control)
+      %switchn:3 = "tf_executor.SwitchN"(%island#0, %arg3) {num_outs = 2} : (tensor<?x?x?xf32>, tensor<i32>) -> (tensor<?x?x?xf32>, tensor<?x?x?xf32>, !tf_executor.control)
+      %enter:2 = "tf_executor.Enter"(%island#0) { frame_name = "frame"} : (tensor<?x?x?xf32>) -> (tensor<?x?x?xf32>, !tf_executor.control)
+      %exit:2 = "tf_executor.Exit"(%island#0) : (tensor<?x?x?xf32>) -> (tensor<?x?x?xf32>, !tf_executor.control)
+      %loop_cond:2 = "tf_executor.LoopCond" (%island#1) : (tensor<*xi1>) -> (tensor<*xi1>, !tf_executor.control)
+      tf_executor.fetch %enter#0 : tensor<?x?x?xf32>
+    }
+    return %0 : tensor<?x?x?xf32>
+  }
+
+  // Tests that tensor_cast result shapes are refined.
+  // CHECK-LABEL: func @tensor_cast_refine
+  func @tensor_cast_refine(%arg0: tensor<4xi32>) -> (tensor<*xi32>) {
+    // CHECK: tensor_cast
+    // CHECK-SAME: tensor<4xi32> to tensor<4xi32>
+    %0 = tensor_cast %arg0 : tensor<4xi32> to tensor<*xi32>
+    return %0 : tensor<*xi32>
+  }
+
   // CHECK-LABEL: func @fold_cast
   func @fold_cast(%arg0: tensor<*xf32>) -> tensor<*xf32> {
     // CHECK-NOT: Cast
@@ -277,5 +329,65 @@ func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
   // CHECK-LABEL: func @variant_body_func
   func @variant_body_func(%arg0: tensor<!tf.variant<tensor<16x1xf32>>>) -> tensor<!tf.variant<tensor<16x1xf32>>> {
     return %arg0 : tensor<!tf.variant<tensor<16x1xf32>>>
+  }
+
+  // Test propagation from called functions to the call site.
+  // CHECK-LABEL: func @stateful_partitioned_call(
+  // CHECK-SAME: -> tensor<20xi32>
+  func @stateful_partitioned_call(%arg0: tensor<20xi32>) -> tensor<*xi32> {
+    // CHECK: tf.PartitionedCall
+    // CHECK-SAME: (tensor<20xi32>) -> tensor<20xi32>
+    %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @a_called_func} : (tensor<20xi32>) -> (tensor<*xi32>)
+    // CHECK: tf.StatefulPartitionedCall
+    // CHECK-SAME: (tensor<20xi32>) -> tensor<20xi32>
+    %1 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @stateful_partitioned_call_func} : (tensor<20xi32>) -> (tensor<*xi32>)
+    return %0 : tensor<*xi32>
+  }
+  func @a_called_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
+    return %arg0 : tensor<?xi32>
+  }
+  func @stateful_partitioned_call_func(%arg0: tensor<?xi32>) -> (tensor<?xi32>) {
+    return %arg0 : tensor<?xi32>
+  }
+
+  // Test propagation involving const values across caller and callee.
+  func @partitioned_call_const(%arg0 : tensor<6xf32>) -> tensor<*xf32> {
+    %0 = "tf.Const"() {value = dense<[3, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+    %1 = "tf.PartitionedCall"(%0) {config = "", config_proto = "", executor_type = "", f = @partitioned_call_func_const} : (tensor<2xi32>) -> (tensor<2xi32>)
+    // CHECK: "tf.Reshape"
+    // CHECK-SAME: tensor<3x2xf32>
+    %2 = "tf.Reshape"(%arg0, %1) : (tensor<6xf32>, tensor<2xi32>) -> tensor<*xf32>
+    return %2 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @partitioned_call_func_const
+  func @partitioned_call_func_const(%arg0: tensor<2xi32>) -> tensor<2xi32> {
+    // CHECK: %[[CONST:.*]] = "tf.Const"() {value = dense<[3, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
+    // CHECK: return %[[CONST]]
+    return %arg0 : tensor<2xi32>
+  }
+
+  // CHECK-LABEL: func @tensor_list_refine
+  func @tensor_list_refine() {
+    tf_executor.graph {
+      %control = tf_executor.island {
+        %0 = "tf.Const"() {device = "", value = dense<2> : tensor<2xi32>} : () -> tensor<2xi32>
+        %1 = "tf.Const"() {device = "", value = dense<3> : tensor<i32>} : () -> tensor<i32>
+        // CHECK: TensorListReserve{{.*}}-> tensor<!tf.variant<tensor<2x2x!tf.variant>>>
+        %2 = "tf.TensorListReserve"(%0, %1) {device = ""} : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<*x!tf.variant>>>
+        // CHECK: TensorListReserve{{.*}}-> tensor<!tf.variant<tensor<2x2xf32>>>
+        %3 = "tf.TensorListReserve"(%0, %1) {device = ""} : (tensor<2xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<*xf32>>>
+        %4 = "tf.Const"() {device = "", value = dense<0> : tensor<i32>} : () -> tensor<i32>
+        %5 = "tf.Const"() {device = "", value = dense<[[1.000000e+00, 2.000000e+00], [3.000000e+00, 4.000000e+00]]> : tensor<2x2xf32>} : () -> tensor<2x2xf32>
+        // CHECK: tf.TensorListSetItem{{.*}}: (tensor<!tf.variant<tensor<2x2xf32>>>, tensor<i32>, tensor<2x2xf32>) -> tensor<!tf.variant<tensor<2x2xf32>>>
+        %6 = "tf.TensorListSetItem"(%3, %4, %5) {device = ""} : (tensor<!tf.variant<tensor<*xf32>>>, tensor<i32>, tensor<2x2xf32>)-> tensor<*x!tf.variant>
+        %7 = "tf.Const"() {device = "", value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+        // CHECK: tf.TensorListStack{{.*}}: (tensor<!tf.variant<tensor<2x2xf32>>>, tensor<i32>) -> tensor<?x2x2xf32>
+        %8 = "tf.TensorListStack"(%6, %7) {device = "", num_elements = -1 : i64} : (tensor<*x!tf.variant>, tensor<i32>) -> tensor<*xf32>
+        tf_executor.yield
+      }
+      tf_executor.fetch
+    }
+    return
   }
 }

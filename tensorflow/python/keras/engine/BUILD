@@ -5,7 +5,12 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # TODO(scottzhu): Remove non-keras deps from TF.
+    default_visibility = [
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/feature_column:__pkg__",
+        "//tensorflow/python/keras:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -42,6 +47,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras:activations",
@@ -65,7 +71,7 @@ py_library(
         "//tensorflow/python/module",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_util",
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
@@ -106,6 +112,7 @@ py_library(
         ":base_layer_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:tf2",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
@@ -196,6 +203,7 @@ tf_py_test(
     srcs = ["data_adapter_test.py"],
     python_version = "PY3",
     tags = [
+        "no_oss_py38",  # TODO(b/150615192)
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
     deps = [
@@ -230,8 +238,12 @@ cuda_py_test(
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
     deps = [
+        ":engine",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:combinations",
+        "//tensorflow/python/keras/layers:convolutional",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -277,13 +289,37 @@ tf_py_test(
     python_version = "PY3",
     shard_count = 20,
     tags = [
+        "manual",
         "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
         "notsan",
     ],
     deps = [
+        ":engine",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:training_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:callbacks",
+        "//tensorflow/python/keras:combinations",
+        "//tensorflow/python/keras:losses",
+        "//tensorflow/python/keras:metrics",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/layers",
+        "//tensorflow/python/keras/utils:data_utils",
+        "//tensorflow/python/keras/utils:np_utils",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -352,8 +388,20 @@ tf_py_test(
         "notsan",
     ],
     deps = [
+        ":engine",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:util",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
+        "//tensorflow/python/keras:losses",
+        "//tensorflow/python/keras:metrics",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/layers",
+        "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/keras/utils:data_utils",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -371,24 +419,6 @@ tf_py_test(
     ],
     deps = [
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
-    name = "feature_columns_integration_test",
-    size = "medium",
-    srcs = ["feature_columns_integration_test.py"],
-    python_version = "PY3",
-    tags = [
-        "nomac",  # TODO(mihaimaruseac): b/127695564
-        "notsan",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -466,6 +496,23 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "node_test",
+    size = "medium",
+    srcs = ["node_test.py"],
+    python_version = "PY3",
+    shard_count = 3,
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    deps = [
+        ":base_layer",
+        ":engine",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/utils:layer_utils",
+    ],
+)
+
+tf_py_test(
     name = "base_layer_test",
     size = "medium",
     srcs = ["base_layer_test.py"],
@@ -536,6 +583,23 @@ tf_py_test(
     ],
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "deferred_sequential_test",
+    size = "small",
+    srcs = ["deferred_sequential_test.py"],
+    python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",

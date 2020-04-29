@@ -156,7 +156,8 @@ TfLiteStatus EvalHybrid(
     TfLiteTensor* aux_input_quantized, TfLiteTensor* output_state_quantized,
     TfLiteTensor* cell_state_quantized, TfLiteTensor* output_state,
     TfLiteTensor* cell_state, TfLiteTensor* output_scratch_buffer,
-    TfLiteTensor* output, CpuBackendContext* context);
+    TfLiteTensor* output, TfLiteTensor* zero_points, TfLiteTensor* row_sums,
+    int row_sums_size, bool* compute_row_sums, CpuBackendContext* context);
 
 TfLiteStatus EvalInteger8x8_16(
     const TfLiteTensor* input, const TfLiteTensor* input_to_input_weights,

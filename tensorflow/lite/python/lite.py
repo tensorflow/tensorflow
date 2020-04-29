@@ -37,6 +37,8 @@ from tensorflow.lite.experimental.tensorboard.ops_util import get_potentially_su
 from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
+from tensorflow.lite.python.convert import mlir_quantize as _mlir_quantize
+from tensorflow.lite.python.convert import mlir_sparsify as _mlir_sparsify
 from tensorflow.lite.python.convert import OpsSet
 from tensorflow.lite.python.convert import toco_convert  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import toco_convert_graph_def as _toco_convert_graph_def
@@ -71,9 +73,11 @@ from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundEr
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
 from tensorflow.python.keras.saving import saving_utils as _saving_utils
 from tensorflow.python.lib.io import file_io as _file_io
+from tensorflow.python.saved_model import loader_impl as _loader_impl
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
 from tensorflow.python.saved_model.load import load as _load
+from tensorflow.python.saved_model.loader_impl import parse_saved_model_with_debug_info as _parse_saved_model_with_debug_info
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
@@ -280,11 +284,16 @@ class TFLiteConverterBase(object):
     self.optimizations = []
     self.representative_dataset = None
     self.experimental_new_converter = _USE_EXPERIMENTAL_NEW_CONVERTER
-    self.experimental_new_quantizer = False
-    self.experimental_calibrate_only = False
+    self._experimental_new_quantizer = False
+    self._experimental_calibrate_only = False
     # The 'GraphDebugInfo'  contains the stack traces of all the original nodes
     # in the `GraphDef` to the converter.
     self._debug_info = None
+    self._saved_model_dir = None
+    self._saved_model_tags = None
+    self._saved_model_version = None
+    self._saved_model_exported_names = []
+    self._experimental_sparsify_model = False
 
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
@@ -297,7 +306,9 @@ class TFLiteConverterBase(object):
     """
     if not optimizers:
       optimizers = []
-    optimizers.append("constfold")
+    # MLIR converter will take care of constant folding instead of grappler.
+    if not self.experimental_new_converter:
+      optimizers.append("constfold")
 
     is_only_flex_enabled = (
         set([OpsSet.SELECT_TF_OPS]) == set(self.target_spec.supported_ops))
@@ -310,16 +321,23 @@ class TFLiteConverterBase(object):
 
   def _calibrate_quantize_model(self, result, inference_input_type,
                                 inference_output_type, allow_float):
+    """Calibrate and quantize the model."""
     if not isinstance(self.representative_dataset, RepresentativeDataset):
       self.representative_dataset = RepresentativeDataset(
           self.representative_dataset)
     calibrate_quantize = _calibrator.Calibrator(result)
-    if self.experimental_calibrate_only:
-      return calibrate_quantize.calibrate(self.representative_dataset.input_gen)
+    if self._experimental_calibrate_only or self._experimental_new_quantizer:
+      calibrated = calibrate_quantize.calibrate(
+          self.representative_dataset.input_gen)
+
+    if self._experimental_calibrate_only:
+      return calibrated
+    elif self._experimental_new_quantizer:
+      return _mlir_quantize(calibrated)
     else:
       return calibrate_quantize.calibrate_and_quantize(
           self.representative_dataset.input_gen, inference_input_type,
-          inference_output_type, allow_float, self.experimental_new_quantizer)
+          inference_output_type, allow_float)
 
   def _is_unknown_shapes_allowed(self, fp32_execution):
     # TODO(b/128319310): Investigate which quantization methods work.
@@ -346,7 +364,48 @@ class TFLiteConverterBase(object):
         "target_ops": self.target_spec.supported_ops,
         "enable_mlir_converter": self.experimental_new_converter,
     }
+
+    if self._saved_model_dir:
+      args.update({
+          "saved_model_dir": self._saved_model_dir,
+          "saved_model_version": self._saved_model_version,
+          "saved_model_tags": self._saved_model_tags,
+          "saved_model_exported_names": self._saved_model_exported_names,
+      })
+
     return args
+
+  def _contains_function_with_implements_attr(self, saved_model_proto):
+    meta_graph = saved_model_proto.meta_graphs[0]
+    for function in meta_graph.graph_def.library.function:
+      if function.attr.get("_implements", None) or function.attr.get(
+          "api_implements", None):
+        return True
+    return False
+
+  def _parse_saved_model_args(self):
+    """Parses SavedModel arguments from the given Keras/RNN SavedModel."""
+    if not self.experimental_new_converter:
+      self._saved_model_dir = None
+      return
+    if self._saved_model_dir:
+      try:
+        saved_model_proto, _ = (
+            _parse_saved_model_with_debug_info(self._saved_model_dir))
+      except OSError:
+        # If it fails to read the given saved model, it will fall back to the
+        # frozen graph def path.
+        self._saved_model_dir = None
+        return
+      if not self._contains_function_with_implements_attr(saved_model_proto):
+        self._saved_model_dir = None
+      else:
+        self._saved_model_exported_names = []
+        self._saved_model_version = saved_model_proto.saved_model_schema_version
+        if self._saved_model_version not in [1, 2]:
+          raise ValueError(
+              "SavedModel file format({0}) is not supported".format(
+                  self._saved_model_version))
 
 
 @_tf_export("lite.TFLiteConverter", v1=[])
@@ -365,14 +424,11 @@ class TFLiteConverterV2(TFLiteConverterBase):
       to apply when converting the model. E.g. `[Optimize.DEFAULT]`
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use the
-      dataset to evaluate different optimizations.
+      dataset to evaluate different optimizations. Note that this is an optional
+      attribute but it is necessary if INT8 is the only support builtin ops in
+      target ops.
     experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
-    experimental_new_quantizer: Experimental flag, subject to change.
-      Enables MLIR-based post-training quantization.
-    experimental_calibrate_only: Experimental flag, subject to change.
-      Calibrates the converted model with representative dataset, but not
-      quantize it.
   Example usage:
 
     ```python
@@ -390,7 +446,11 @@ class TFLiteConverterV2(TFLiteConverterBase):
     ```
   """
 
-  def __init__(self, funcs, trackable_obj=None):
+  def __init__(self,
+               funcs,
+               trackable_obj=None,
+               saved_model_dir=None,
+               saved_model_tags=None):
     """Constructor for TFLiteConverter.
 
     Args:
@@ -401,10 +461,19 @@ class TFLiteConverterV2(TFLiteConverterBase):
         get garbage collected since functions have a weak reference to
         Variables. This is only required when the tf.AutoTrackable object is not
         maintained by the user (e.g. `from_saved_model`).
+      saved_model_dir: Directory of the SavedModel. This argument can be null
+        when it creates via the from_keras_model and from_concrete_function
+        methods.
+      saved_model_tags: Set of tags identifying the MetaGraphDef within the
+        SavedModel to analyze. All tags in the tag set must be present. (default
+        set(SERVING)).  This argument will be available when the saved model dir
+        argument is set.
     """
     super(TFLiteConverterV2, self).__init__()
     self._funcs = funcs
     self._trackable_obj = trackable_obj
+    self._saved_model_dir = saved_model_dir
+    self._saved_model_tags = saved_model_tags
 
   @classmethod
   def from_concrete_functions(cls, funcs):
@@ -426,7 +495,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
         message = "This function takes in a list of ConcreteFunction."
         if isinstance(func, _def_function.Function):
           message += (" To get the ConcreteFunction from a Function,"
-                      " call from_concrete_function.")
+                      " call get_concrete_function.")
         raise ValueError(message)
     return cls(funcs)
 
@@ -449,8 +518,26 @@ class TFLiteConverterV2(TFLiteConverterBase):
     Raises:
       Invalid signature keys.
     """
+    # When run without eager enabled, this will return the legacy
+    # TFLiteConverter.
+    if not context.executing_eagerly():
+      signature_key = None
+      if signature_keys:
+        if len(signature_keys) != 1:
+          raise ValueError("Only support a single signature key.")
+        else:
+          signature_key = signature_keys[0]
+      logging.warning("Invoking the TF1 implementation of TFLiteConverter "
+                      "because eager is disabled. Consider enabling eager.")
+      return TFLiteConverter.from_saved_model(saved_model_dir,
+                                              signature_key=signature_key,
+                                              tag_set=tags)
+
     # Ensures any graphs created in Eager mode are able to run. This is required
     # in order to create a tf.estimator.Exporter that exports a TFLite model.
+    if tags is None:
+      tags = set([_tag_constants.SERVING])
+
     with context.eager_mode():
       saved_model = _load(saved_model_dir, tags)
     if not signature_keys:
@@ -463,7 +550,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
                          "'{}'.".format(key, ",".join(saved_model.signatures)))
       funcs.append(saved_model.signatures[key])
 
-    return cls(funcs, saved_model)
+    return cls(funcs, saved_model, saved_model_dir, tags)
 
   @classmethod
   def from_keras_model(cls, model):
@@ -499,34 +586,66 @@ class TFLiteConverterV2(TFLiteConverterBase):
 
     Raises:
       ValueError:
+        No concrete functions is specified.
         Multiple concrete functions are specified.
         Input shape is not specified.
         Invalid quantization parameters.
     """
     # TODO(b/130297984): Add support for converting multiple function.
-    if len(self._funcs) != 1:
+
+    if len(self._funcs) == 0:
+      raise ValueError("No ConcreteFunction is specified.")
+
+    if len(self._funcs) > 1:
       raise ValueError("This converter can only convert a single "
                        "ConcreteFunction. Converting multiple functions is "
                        "under development.")
 
-    # graph_def is used here to preserve the node bug information
-    frozen_func, graph_def = (
-        _convert_to_constants.convert_variables_to_constants_v2_as_graph(
-            self._funcs[0], lower_control_flow=False))
-    self._graph_def = graph_def
-    input_tensors = [
-        tensor for tensor in frozen_func.inputs
-        if tensor.dtype != _dtypes.resource
-    ]
-    output_tensors = frozen_func.outputs
+    # Parses SavedModel argument.
+    self._parse_saved_model_args()
 
-    # Run a Grappler pass.
-    graph_def = _run_graph_optimizations(
-        graph_def,
-        input_tensors,
-        output_tensors,
-        config=self._grappler_config(),
-        graph=frozen_func.graph)
+    # graph_def is used here to preserve the node bug information
+    if self._saved_model_dir:
+      graph = _ops.Graph()
+      saved_model = _loader_impl.SavedModelLoader(self._saved_model_dir)
+      saved_model.load_graph(graph, tags=self._saved_model_tags)
+      meta_graph = saved_model.get_meta_graph_def_from_tags(
+          self._saved_model_tags)
+      signature_def = meta_graph.signature_def[
+          _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+      input_tensors = [
+          graph.get_tensor_by_name(signature_def.inputs[key].name)
+          for key in signature_def.inputs
+      ]
+      output_tensors = [
+          graph.get_tensor_by_name(signature_def.outputs[key].name)
+          for key in signature_def.outputs
+      ]
+      self._graph_def = graph_def = meta_graph.graph_def
+    else:
+      frozen_func, graph_def = (
+          _convert_to_constants.convert_variables_to_constants_v2_as_graph(
+              self._funcs[0], lower_control_flow=False))
+      self._graph_def = graph_def
+
+      input_tensors = [
+          tensor for tensor in frozen_func.inputs
+          if tensor.dtype != _dtypes.resource
+      ]
+      output_tensors = frozen_func.outputs
+
+      # Run a Grappler pass.
+      grappler_config = self._grappler_config()
+      # Skip running grappler when there are no optimizers to run. If not,
+      # grappler will run with the default optimizer set and it will lead to
+      # causing an unexpected behavior.
+      if grappler_config.graph_options.rewrite_options.optimizers:
+        graph_def = _run_graph_optimizations(
+            graph_def,
+            input_tensors,
+            output_tensors,
+            config=grappler_config,
+            graph=frozen_func.graph)
 
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
                                   self.representative_dataset, graph_def)
@@ -597,6 +716,9 @@ class TFLiteConverterV2(TFLiteConverterBase):
     elif quant_mode.post_training_int8_allow_float():
       result = self._calibrate_quantize_model(result, constants.FLOAT,
                                               constants.FLOAT, True)
+
+    if self._experimental_sparsify_model:
+      result = _mlir_sparsify(result)
 
     return result
 
@@ -681,11 +803,7 @@ class TFLiteConverter(TFLiteConverterBase):
       the dataset to evaluate different optimizations.
     experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
-    experimental_new_quantizer: Experimental flag, subject to change.
-      Enables MLIR-based post-training quantization.
-    experimental_calibrate_only: Experimental flag, subject to change.
-      Calibrates the converted model with representative dataset, but not
-      quantize it.
+
   Example usage:
 
     ```python
@@ -718,7 +836,9 @@ class TFLiteConverter(TFLiteConverterBase):
                output_tensors,
                input_arrays_with_shape=None,
                output_arrays=None,
-               experimental_debug_info_func=None):
+               experimental_debug_info_func=None,
+               saved_model_dir=None,
+               saved_model_tags=None):
     """Constructor for TFLiteConverter.
 
     Args:
@@ -736,6 +856,13 @@ class TFLiteConverter(TFLiteConverterBase):
         `output_tensors` are None. (default None)
       experimental_debug_info_func: An experimental function to retrieve the
         graph debug info for a set of nodes from the `graph_def`.
+      saved_model_dir: Directory of the SavedModel. This argument can be null
+        when it creates via the from_keras_model and from_concrete_function
+        methods.
+      saved_model_tags: Set of tags identifying the MetaGraphDef within the
+        SavedModel to analyze. All tags in the tag set must be present. (default
+        set(SERVING)).  This argument will be available when the saved model dir
+        argument is set.
 
     Raises:
       ValueError: Invalid arguments.
@@ -759,6 +886,8 @@ class TFLiteConverter(TFLiteConverterBase):
     self.conversion_summary_dir = None
     self._debug_info_func = experimental_debug_info_func
     self._custom_opdefs = None
+    self._saved_model_dir = saved_model_dir
+    self._saved_model_tags = saved_model_tags
 
     # Attributes are used by models that cannot be loaded into TensorFlow.
     if not self._has_valid_tensors():
@@ -921,7 +1050,9 @@ class TFLiteConverter(TFLiteConverterBase):
         graph_def=result[0],
         input_tensors=result[1],
         output_tensors=result[2],
-        experimental_debug_info_func=_build_debug_info_func(result[3]))
+        experimental_debug_info_func=_build_debug_info_func(result[3]),
+        saved_model_dir=saved_model_dir,
+        saved_model_tags=tag_set)
 
   @classmethod
   def from_keras_model_file(cls,
@@ -1052,6 +1183,9 @@ class TFLiteConverter(TFLiteConverterBase):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
+    # Parses SavedModel argument.
+    self._parse_saved_model_args()
+
     quant_mode = QuantizationMode(self.optimizations, self.target_spec,
                                   self.representative_dataset, self._graph_def)
 
@@ -1127,28 +1261,29 @@ class TFLiteConverter(TFLiteConverterBase):
           "are not enabled.")
 
     optimized_graph = self._graph_def
-    # if it is not uint8 or int8 with post-training quantization, it is not
-    # quantization aware training, then graph optimization is applied.
-    # Graph optimization is disabled for quantization aware training.
-    if (self.inference_type != constants.QUANTIZED_UINT8 or
-        (self.inference_type == constants.INT8 and
-         (post_training_optimize or weight_only_quantize))):
-      try:
-        # TODO(b/150163103): Merge `disabling lower using switch merge' calls.
-        # Grappler will also try to lower while loop into switch merge
-        # representation which is undesired for Ophints, so we simply remove
-        # those attributes to prevent Grappler from doing so.
-        graph_def = _convert_to_constants.disable_lower_using_switch_merge(
-            optimized_graph)
-        # Run function inlining optimization to ensure any models generated
-        # through the from_frozen_graph path have been inlined.
-        optimized_graph = _run_graph_optimizations(
-            graph_def,
-            self._input_tensors,
-            self._output_tensors,
-            config=self._grappler_config(["function"]))
-      except Exception:
-        optimized_graph = self._graph_def
+    if not self._saved_model_dir:
+      # if it is not uint8 or int8 with post-training quantization, it is not
+      # quantization aware training, then graph optimization is applied.
+      # Graph optimization is disabled for quantization aware training.
+      if (self.inference_type != constants.QUANTIZED_UINT8 or
+          (self.inference_type == constants.INT8 and
+           (post_training_optimize or weight_only_quantize))):
+        try:
+          # TODO(b/150163103): Merge `disabling lower using switch merge' calls.
+          # Grappler will also try to lower while loop into switch merge
+          # representation which is undesired for Ophints, so we simply remove
+          # those attributes to prevent Grappler from doing so.
+          graph_def = _convert_to_constants.disable_lower_using_switch_merge(
+              optimized_graph)
+          # Run function inlining optimization to ensure any models generated
+          # through the from_frozen_graph path have been inlined.
+          optimized_graph = _run_graph_optimizations(
+              graph_def,
+              self._input_tensors,
+              self._output_tensors,
+              config=self._grappler_config(["function"]))
+        except Exception:
+          optimized_graph = self._graph_def
 
     self._debug_info = _get_debug_info(self._debug_info_func, optimized_graph)
 
@@ -1212,6 +1347,9 @@ class TFLiteConverter(TFLiteConverterBase):
     elif quant_mode.post_training_int8_allow_float():
       result = self._calibrate_quantize_model(result, inference_input_type,
                                               inference_output_type, True)
+
+    if self._experimental_sparsify_model:
+      result = _mlir_sparsify(result)
 
     return result
 

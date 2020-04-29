@@ -13,16 +13,16 @@
 # limitations under the License.
 # ==============================================================================
 """
-Top-level module of TensorFlow. By convention, we refer to this module as 
-`tf` instead of `tensorflow`, following the common practice of importing 
+Top-level module of TensorFlow. By convention, we refer to this module as
+`tf` instead of `tensorflow`, following the common practice of importing
 TensorFlow via the command `import tensorflow as tf`.
 
-The primary function of this module is to import all of the public TensorFlow 
-interfaces into a single place. The interfaces themselves are located in 
+The primary function of this module is to import all of the public TensorFlow
+interfaces into a single place. The interfaces themselves are located in
 sub-modules, as described below.
 
-Note that the file `__init__.py` in the TensorFlow source code tree is actually 
-only a placeholder to enable test cases to run. The TensorFlow build replaces 
+Note that the file `__init__.py` in the TensorFlow source code tree is actually
+only a placeholder to enable test cases to run. The TensorFlow build replaces
 this file with a file generated from [`api_template.__init__.py`](https://www.github.com/tensorflow/tensorflow/blob/master/tensorflow/api_template.__init__.py)
 """
 
@@ -40,6 +40,11 @@ import sys as _sys
 
 from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
+
+# Make sure code inside the TensorFlow codebase can use tf2.enabled() at import.
+_os.environ['TF2_BEHAVIOR'] = '1'
+from tensorflow.python import tf2 as _tf2
+_tf2.enable()
 
 # API IMPORTS PLACEHOLDER
 
@@ -111,7 +116,7 @@ from tensorflow.python.lib.io import file_io as _fi
 
 # Get sitepackages directories for the python installation.
 _site_packages_dirs = []
-_site_packages_dirs += [_site.USER_SITE]
+_site_packages_dirs += [] if _site.USER_SITE is None else [_site.USER_SITE]
 _site_packages_dirs += [_p for _p in _sys.path if 'site-packages' in _p]
 if 'getsitepackages' in dir(_site):
   _site_packages_dirs += _site.getsitepackages()

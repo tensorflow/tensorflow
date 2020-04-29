@@ -20,14 +20,13 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
 #include "absl/memory/memory.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:llvm-project
-#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
@@ -44,7 +43,8 @@ namespace TFL {
 #include "tensorflow/compiler/mlir/lite/utils/generated_op_quant_spec_getters.inc"
 
 namespace {
-class DefaultQuantParamsPass : public FunctionPass<DefaultQuantParamsPass> {
+class DefaultQuantParamsPass
+    : public PassWrapper<DefaultQuantParamsPass, FunctionPass> {
  public:
   explicit DefaultQuantParamsPass(double default_min, double default_max)
       : default_min_(default_min), default_max_(default_max) {}
@@ -220,7 +220,7 @@ quant::QuantParams DefaultQuantParamsPass::GetDefaultQuantParams(
 }
 
 // Creates an instance of the default quant parameters pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateDefaultQuantParamsPass(
+std::unique_ptr<OperationPass<FuncOp>> CreateDefaultQuantParamsPass(
     double default_min, double default_max) {
   return absl::make_unique<DefaultQuantParamsPass>(default_min, default_max);
 }

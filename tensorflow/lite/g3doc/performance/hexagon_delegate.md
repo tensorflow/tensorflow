@@ -1,6 +1,6 @@
-# Tensorflow Lite Hexagon delegate
+# TensorFlow Lite Hexagon delegate
 
-This document explains how to use the Tensorflow Lite Hexagon Delegate in your
+This document explains how to use the TensorFlow Lite Hexagon Delegate in your
 application using the Java and/or C API. The delegate leverages the Qualcomm
 Hexagon library to execute quantized kernels on the DSP. Note that the delegate
 is intended to *complement* NNAPI functionality, particularly for devices where
@@ -74,6 +74,7 @@ dependencies {
     “libhexagon_nn_skel_v66.so”
     *   [v1.10.3](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_1_10_3_1.run)
     *   [v1.14](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.14.run)
+    *   [v1.17](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.17.0.0.run)
 
 Note: You will need to accept the license agreement.
 

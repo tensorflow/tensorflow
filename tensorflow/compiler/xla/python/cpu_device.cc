@@ -24,9 +24,10 @@ static const char kCpuPlatformName[] = "cpu";
 
 CpuDevice::CpuDevice(int id,
                      std::unique_ptr<LocalDeviceState> local_device_state)
-    : Device(id, std::move(local_device_state), kCpuPlatformName) {}
+    : Device(id, std::move(local_device_state), kCpuPlatformName,
+             /*device_kind=*/kCpuPlatformName) {}
 
-StatusOr<std::shared_ptr<PyLocalClient>> GetCpuClient(bool asynchronous) {
+StatusOr<std::shared_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform("Host"));
   if (platform->VisibleDeviceCount() <= 0) {
@@ -42,13 +43,13 @@ StatusOr<std::shared_ptr<PyLocalClient>> GetCpuClient(bool asynchronous) {
     se::StreamExecutor* executor =
         client->backend().stream_executor(i).ValueOrDie();
     auto device_state = absl::make_unique<LocalDeviceState>(
-        executor, client, /*synchronous_deallocation=*/true, asynchronous,
+        executor, client, LocalDeviceState::kSynchronous, asynchronous,
         /*allow_event_reuse=*/false);
     auto device = absl::make_unique<CpuDevice>(i, std::move(device_state));
     devices.push_back(std::move(device));
   }
 
-  return std::make_shared<PyLocalClient>(
+  return std::make_shared<PjRtClient>(
       kCpuPlatformName, client, std::move(devices), /*host_id=*/0,
       /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
       /*gpu_run_options=*/nullptr);

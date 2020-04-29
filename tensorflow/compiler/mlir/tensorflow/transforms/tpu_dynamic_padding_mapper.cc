@@ -24,15 +24,15 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
@@ -48,8 +48,9 @@ constexpr char kPaddingMapAttr[] = "padding_map";
 // (user).
 
 namespace {
-struct TPUDynamicPaddingMapper : public ModulePass<TPUDynamicPaddingMapper> {
-  void runOnModule() override;
+struct TPUDynamicPaddingMapper
+    : public PassWrapper<TPUDynamicPaddingMapper, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Creates a mapping from replicated input index (in `tf_device.replicate` op)
@@ -123,10 +124,12 @@ LogicalResult GetRemappedPaddings(
     if (arg_index_it == remapped_indices.end()) continue;
 
     auto padding_arg_index_it = remapped_indices.find(padding_arg_index);
-    if (padding_arg_index_it == remapped_indices.end())
-      return launch_func.emitOpError(llvm::formatv(
+    if (padding_arg_index_it == remapped_indices.end()) {
+      launch_func.emitWarning(llvm::formatv(
           "bad '{0}' attribute at index {1}, unused padding_arg_index {2}",
           kPaddingMapAttr, idx, padding_arg_index));
+      continue;
+    }
 
     padding_proto.set_arg_index(arg_index_it->second);
     padding_proto.set_padding_arg_index(padding_arg_index_it->getSecond());
@@ -190,8 +193,8 @@ LogicalResult RemapAndAssignPaddingMaps(tf_device::LaunchFuncOp launch_func,
   return success();
 }
 
-void TPUDynamicPaddingMapper::runOnModule() {
-  ModuleOp module = getModule();
+void TPUDynamicPaddingMapper::runOnOperation() {
+  ModuleOp module = getOperation();
   SymbolTable symbol_table(module);
   module.walk([&](tf_device::LaunchFuncOp launch_func) {
     RemapAndAssignPaddingMaps(launch_func, &symbol_table);
@@ -199,7 +202,7 @@ void TPUDynamicPaddingMapper::runOnModule() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUDynamicPaddingMapperPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicPaddingMapperPass() {
   return std::make_unique<TPUDynamicPaddingMapper>();
 }
 

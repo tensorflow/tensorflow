@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iostream>
+
 #include "absl/strings/str_split.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
@@ -20,16 +22,17 @@ limitations under the License.
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/FileUtilities.h"  // TF:llvm-project
+#include "mlir/IR/AsmState.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
-#include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
-#include "tensorflow/compiler/mlir/lite/flatbuffer_translate_flags.h"
+#include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
+#include "tensorflow/compiler/mlir/lite/flatbuffer_export_flags.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
@@ -126,6 +129,9 @@ int main(int argc, char **argv) {
   // We need to disable duplicated ones to provide a cleaner command-line option
   // interface. That also means we need to relay the value set in one option to
   // all its aliases.
+  mlir::registerAsmPrinterCLOptions();
+  mlir::registerMLIRContextCLOptions();
+  mlir::registerPassManagerCLOptions();
   llvm::cl::ParseCommandLineOptions(
       argc, argv, "TF GraphDef to TFLite FlatBuffer converter\n");
 
@@ -138,13 +144,24 @@ int main(int argc, char **argv) {
   // TODO(b/147435528): We need to test the e2e behavior once the graph freezing
   // inside mlir is done.
   if (import_saved_model_object_graph || import_saved_model_signature_defs) {
+    int saved_model_version;
+    if (import_saved_model_object_graph) {
+      saved_model_version = 2;
+    } else {
+      saved_model_version = 1;
+    }
     if (input_mlir)
       module = tensorflow::errors::InvalidArgument(
           "Importing saved model should not have input_mlir set");
-    module = tensorflow::ImportSavedModel(import_saved_model_object_graph,
-                                          import_saved_model_signature_defs,
-                                          input_file_name, saved_model_tags,
-                                          saved_model_exported_names, &context);
+
+    std::unordered_set<std::string> tags =
+        absl::StrSplit(saved_model_tags, ',');
+    std::vector<std::string> exported_names_vector =
+        absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
+    absl::Span<std::string> exported_names(exported_names_vector);
+
+    module = tensorflow::ImportSavedModel(input_file_name, saved_model_version,
+                                          tags, exported_names, &context);
   } else {
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
@@ -158,6 +175,7 @@ int main(int argc, char **argv) {
   if (!module.ok()) return kTrFailure;
 
   mlir::PassManager pm(&context);
+  applyPassManagerCLOptions(pm);
 
   // Set the quantization specifications from the command line flags.
   mlir::TFL::QuantizationSpecs quant_specs;
@@ -195,11 +213,7 @@ int main(int argc, char **argv) {
   mlir::TFL::PassConfig pass_config(quant_specs);
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
-
-  // Currently we only do shape inference for saved model import.
-  if (import_saved_model_object_graph || import_saved_model_signature_defs) {
-    pass_config.shape_inference = true;
-  }
+  pass_config.legalize_tf_while = convert_tf_while_to_tfl_while;
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
   // TODO(b/150901738): Move those into tf_tfl_translate.cc.
@@ -207,7 +221,7 @@ int main(int argc, char **argv) {
   if (pass_config.legalize_tf_while) {
     pm.addPass(mlir::TFL::CreateWhileOutlinePass());
   }
-  pm.addPass(mlir::TFL::CreateRuntimeTypeVerifyPass());
+  pm.addPass(mlir::TFL::CreateRuntimeVerifyPass());
 
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(

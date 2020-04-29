@@ -154,6 +154,23 @@ XEventBuilder CreateXEvent(
                       stats);
 }
 
+XEventBuilder CreateXEventWithStringViewMetadataValue(
+    XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
+    absl::string_view event_name, int64 offset_ps, int64 duration_ps,
+    const absl::flat_hash_map<StatType, absl::string_view /*stat_value*/>&
+        stats) {
+  auto event_builder = line_builder->AddEvent(
+      *plane_builder->GetOrCreateEventMetadata(event_name));
+  event_builder.SetOffsetPs(offset_ps);
+  event_builder.SetDurationPs(duration_ps);
+  for (const auto& stat_type_and_value : stats) {
+    event_builder.AddStatValue(*plane_builder->GetOrCreateStatMetadata(
+                                   GetStatTypeStr(stat_type_and_value.first)),
+                               stat_type_and_value.second);
+  }
+  return event_builder;
+}
+
 void RemovePlaneWithName(XSpace* space, absl::string_view name) {
   auto* planes = space->mutable_planes();
   planes->erase(
@@ -209,12 +226,16 @@ void SortXSpace(XSpace* space) {
   for (XPlane& plane : *space->mutable_planes()) SortXPlane(&plane);
 }
 
-void NormalizeTimeLine(XSpace* space, uint64 start_time_ns) {
+void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns) {
+  for (XLine& line : *plane->mutable_lines()) {
+    DCHECK_GE(line.timestamp_ns(), start_time_ns);
+    line.set_timestamp_ns(line.timestamp_ns() - start_time_ns);
+  }
+}
+
+void NormalizeTimestamps(XSpace* space, uint64 start_time_ns) {
   for (XPlane& plane : *space->mutable_planes()) {
-    for (XLine& line : *plane.mutable_lines()) {
-      DCHECK_GE(line.timestamp_ns(), start_time_ns);
-      line.set_timestamp_ns(line.timestamp_ns() - start_time_ns);
-    }
+    NormalizeTimestamps(&plane, start_time_ns);
   }
 }
 
@@ -272,7 +293,7 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
       }
       event.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
         dst_event.AddStat(*dst.GetOrCreateStatMetadata(stat.Name()),
-                          stat.RawStat());
+                          stat.RawStat(), src_plane);
       });
     });
   });
@@ -284,6 +305,24 @@ uint64 GetStartTimestampNs(const XPlane& plane) {
     plane_timestamp = std::min<int64>(plane_timestamp, line.timestamp_ns());
   }
   return plane_timestamp;
+}
+
+void CreateTfFunctionCallEvent(XPlaneBuilder* plane_builder,
+                               XLineBuilder* line_builder,
+                               absl::string_view function_name, int64 offset_ps,
+                               int64 duration_ps,
+                               absl::string_view execution_mode,
+                               int64 tracing_count) {
+  XEventBuilder event_builder = CreateXEventWithStringViewMetadataValue(
+      plane_builder, line_builder, function_name, offset_ps, duration_ps,
+      {{StatType::kTfFunctionCall, execution_mode}});
+  if (tracing_count >= 0) {
+    // Adds the tracing_count stats only if tracing_count is valid.
+    event_builder.AddStatValue(
+        *plane_builder->GetOrCreateStatMetadata(
+            GetStatTypeStr(StatType::kTfFunctionTracingCount)),
+        tracing_count);
+  }
 }
 
 }  // namespace profiler

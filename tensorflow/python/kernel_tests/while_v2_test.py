@@ -1175,6 +1175,53 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     Fn()
 
+  @test_util.run_v2_only
+  def testInheritParentNameScope(self):
+
+    @def_function.function
+    def F():
+      with ops.name_scope("foo"):
+
+        def Cond(unused_i):
+          with ops.name_scope("cond"):
+            actual_name_scope = ops.get_name_scope()
+            expected_name_scope = "foo/while/cond"
+            assert actual_name_scope == expected_name_scope, (
+                "%s does not match %s" %
+                (actual_name_scope, expected_name_scope))
+          return False
+
+        def Body(i):
+          with ops.name_scope("body"):
+            actual_name_scope = ops.get_name_scope()
+            expected_name_scope = "foo/while/body"
+            assert actual_name_scope == expected_name_scope, (
+                "%s does not match %s" %
+                (actual_name_scope, expected_name_scope))
+          return i
+
+        return while_v2.while_loop(Cond, Body, [0.])
+
+    F()
+
+  @test_util.run_deprecated_v1  # Need to pass RunMetadata.
+  def testDisableLowering(self):
+    old = control_flow_util_v2._DISABLE_LOWER_USING_SWITCH_MERGE
+    control_flow_util_v2._DISABLE_LOWER_USING_SWITCH_MERGE = True
+    with self.session() as sess:
+      x = constant_op.constant(2.)
+      ret = while_loop_v2(
+          lambda v: v < 8., lambda v: v * v, [x], return_same_structure=False)
+
+      opts = config_pb2.RunOptions(trace_level=config_pb2.RunOptions.FULL_TRACE)
+      run_metadata = config_pb2.RunMetadata()
+      self.assertEqual(sess.run(ret, options=opts, run_metadata=run_metadata),
+                       16)
+      for dev_stat in run_metadata.step_stats.dev_stats:
+        for ns in dev_stat.node_stats:
+          self.assertNotIn("switch", ns.node_name)
+    control_flow_util_v2._DISABLE_LOWER_USING_SWITCH_MERGE = old
+
 
 def ScalarShape():
   return ops.convert_to_tensor([], dtype=dtypes.int32)

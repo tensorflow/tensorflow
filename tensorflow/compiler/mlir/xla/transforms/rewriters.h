@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 
 namespace mlir {
 namespace xla_hlo {
@@ -61,6 +61,16 @@ void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
                                      OwningRewritePatternList *patterns);
 
 }  // namespace xla_hlo
+
+namespace xla_chlo {
+
+// Populates a collection of conversion patterns for legalizing client-HLO to
+// HLO.
+void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
+                                       OwningRewritePatternList *patterns);
+
+}  // namespace xla_chlo
+
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_TRANSFORMS_REWRITERS_H_

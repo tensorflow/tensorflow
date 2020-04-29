@@ -121,11 +121,11 @@ std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
   return algorithms;
 }
 
-StatusOr<std::vector<se::dnn::ProfileResult>> GetAlgorithms(
+StatusOr<std::vector<se::dnn::ProfileResult>> GetMIOpenAlgorithms(
     const HloCustomCallInstruction* conv,
     absl::Span<se::DeviceMemoryBase> operand_buffers,
     se::DeviceMemoryBase result_buffer, se::StreamExecutor* stream_exec,
-    se::Stream* stream) {
+    ScratchAllocator* scratch_allocator, se::Stream* stream) {
   std::vector<se::dnn::ProfileResult> algorithms;
 
   TF_ASSIGN_OR_RETURN(se::dnn::ConvolutionKind kind,
@@ -137,8 +137,9 @@ StatusOr<std::vector<se::dnn::ProfileResult>> GetAlgorithms(
                       GetGpuConvParams(conv, operand_buffers, result_buffer));
 
   bool succ = stream_exec->GetMIOpenConvolveAlgorithms(
-      kind, stream, dtype, params.input_descriptor, params.filter_descriptor,
-      params.conv_desc, params.output_descriptor, &algorithms);
+      kind, dtype, stream, params.input_descriptor, params.input_buf,
+      params.filter_descriptor, params.filter_buf, params.output_descriptor,
+      params.output_buf, params.conv_desc, scratch_allocator, &algorithms);
   DCHECK(succ);
 
   return algorithms;
@@ -680,9 +681,12 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
           ShapeUtil::ByteSizeOf(instr->shape().tuple_shapes(0))));
   initialize_buffer(result_buffer);
 
-  TF_ASSIGN_OR_RETURN(std::vector<se::dnn::ProfileResult> algorithms,
-                      GetAlgorithms(instr, absl::MakeSpan(operand_buffers),
-                                    result_buffer, stream_exec_, stream));
+  ScratchAllocator scratch_allocator(device_ordinal, allocator);
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<se::dnn::ProfileResult> algorithms,
+      GetMIOpenAlgorithms(instr, absl::MakeSpan(operand_buffers), result_buffer,
+                          stream_exec_, &scratch_allocator, stream));
 
   std::vector<AutotuneResult> profile_results;
 
@@ -705,7 +709,6 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
                        AlgorithmToString(alg)),
           2);
 
-      ScratchAllocator scratch_allocator(device_ordinal, allocator);
       se::dnn::ProfileResult profile_result;
       VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
               << instr->ToString();
@@ -714,6 +717,7 @@ GpuConvAlgorithmPicker::PickBestAlgorithmNoCacheRocm(
       RunConvOptions options;
       options.profile_result = &profile_result;
       options.algo_override = alg;
+      options.scratch_size_override = miopen_alg.scratch_size();
       Status launch_status =
           RunGpuConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
                      &scratch_allocator, stream, options);

@@ -18,8 +18,9 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -43,6 +44,9 @@ void ConvertToTensorShapeProto(llvm::ArrayRef<int64_t> shape,
 
 // Converts an MLIR type to a TensorFlow tensor shape.
 PartialTensorShape ConvertTypeToTensorShape(const mlir::Type& type);
+
+// Converts an MLIR shaped type to a TensorFlow shape attribute.
+mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type);
 
 // Converts an MLIR elements attribute to a TensorFlow tensor proto.
 Status ConvertToTensorProto(mlir::ElementsAttr attr,

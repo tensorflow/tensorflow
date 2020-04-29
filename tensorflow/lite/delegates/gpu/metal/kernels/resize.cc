@@ -54,7 +54,7 @@ std::string GetResizeBilinearCode(bool half_pixel_centers) {
       int4 st;
       st.xy = max(itex_coord_floor, int2(0, 0));
       st.zw = min(itex_coord_floor + int2(1, 1), borders);
-      const float2 t = tex_coord - tex_coord_floor; //interpolating factors
+      const float2 t = tex_coord - tex_coord_floor; // interpolating factors
       const int src_index0 = (gid.z * size.y + st.y) * size.x + st.x;
       const int src_index1 = (gid.z * size.y + st.y) * size.x + st.z;
       const int src_index2 = (gid.z * size.y + st.w) * size.x + st.x;
@@ -153,10 +153,10 @@ std::vector<ComputeTaskDescriptorPtr> Resize(int id, ValueId input_id,
   desc->resize_function = [output_id](const std::map<ValueId, BHWC>& buffers) {
     const uint3 groups_size{16, 16, 1};
     const auto& dst_dim = buffers.find(output_id)->second;
-    int groups_x = IntegralDivideRoundUp(dst_dim.w, groups_size.x);
-    int groups_y = IntegralDivideRoundUp(dst_dim.h, groups_size.y);
-    const int dst_layers = IntegralDivideRoundUp(dst_dim.c, 4);
-    int groups_z = IntegralDivideRoundUp(dst_layers, groups_size.z);
+    int groups_x = DivideRoundUp(dst_dim.w, groups_size.x);
+    int groups_y = DivideRoundUp(dst_dim.h, groups_size.y);
+    const int dst_layers = DivideRoundUp(dst_dim.c, 4);
+    int groups_z = DivideRoundUp(dst_layers, groups_size.z);
     return std::make_pair(groups_size, uint3{groups_x, groups_y, groups_z});
   };
   return {desc};

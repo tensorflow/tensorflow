@@ -42,6 +42,12 @@ message OverviewPageAnalysis {
   double device_compute_16bit_percent = 9;
   // Percentage of device computation that is 32-bit.
   double device_compute_32bit_percent = 10;
+  // Percentage of TF ops executed on the host.
+  double host_tf_op_percent = 11;
+  // Percentage of TF ops executed on the device.
+  double device_tf_op_percent = 12;
+  // Host trace level.
+  uint32 host_trace_level = 13;
 }
 
 // Overview result for a performance tip to users.
@@ -72,9 +78,12 @@ message GenericRecommendation {
 message OverviewPageRecommendation {
   // Possible performance bottleneck: "host", "device", "both".
   string bottleneck = 1;
-  // A statement that recommends the next steps for investigating the
+  // A statement for input that recommends the next steps for investigating the
   // bottleneck.
   string statement = 2;
+  // A statement for output that recommends the next steps for investigating the
+  // bottleneck.
+  string output_statement = 9;
   // A list of tips for improving host performance.
   repeated OverviewPageTip host_tips = 3;
   // A list of tips for improving device performance.
@@ -154,5 +163,7 @@ message OverviewPage {
   OverviewPageAnalysis analysis = 3;
   // The recommendation made to the user.
   OverviewPageRecommendation recommendation = 4;
+  // Errors.
+  repeated string errors = 7;
   reserved 1, 5;
 }

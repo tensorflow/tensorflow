@@ -25,8 +25,8 @@ using ::testing::ElementsAreArray;
 using uint8 = std::uint8_t;
 
 enum class TestType {
-  CONST = 0,
-  DYNAMIC = 1,
+  kConst = 0,
+  kDynamic = 1,
 };
 
 class ResizeBilinearOpModel : public SingleOpModel {
@@ -35,7 +35,7 @@ class ResizeBilinearOpModel : public SingleOpModel {
                                  std::initializer_list<int> size_data,
                                  TestType test_type,
                                  bool half_pixel_centers = false) {
-    bool const_size = (test_type == TestType::CONST);
+    bool const_size = (test_type == TestType::kConst);
 
     input_ = AddInput(input);
     if (const_size) {
@@ -332,7 +332,7 @@ TEST_P(ResizeBilinearOpTest, ThreeDimensionalResizeInt8) {
 }
 
 INSTANTIATE_TEST_SUITE_P(ResizeBilinearOpTest, ResizeBilinearOpTest,
-                         testing::Values(TestType::CONST, TestType::DYNAMIC));
+                         testing::Values(TestType::kConst, TestType::kDynamic));
 
 }  // namespace
 }  // namespace tflite

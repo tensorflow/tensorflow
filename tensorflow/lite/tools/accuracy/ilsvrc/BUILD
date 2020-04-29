@@ -24,7 +24,7 @@ cc_library(
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/tools:command_line_flags",
-        "//tensorflow/lite/tools/accuracy/ilsvrc/default:custom_delegates",
+        "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
         "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
@@ -58,5 +58,6 @@ cc_binary(
     deps = [
         ":imagenet_accuracy_eval_lib",
         "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools/evaluation:evaluation_delegate_provider",
     ],
 )

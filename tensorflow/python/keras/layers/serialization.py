@@ -21,51 +21,149 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
+
 from tensorflow.python import tf2
-from tensorflow.python.keras.engine.base_layer import AddLoss
-from tensorflow.python.keras.engine.base_layer import AddMetric
-from tensorflow.python.keras.engine.base_layer import TensorFlowOpLayer
-from tensorflow.python.keras.engine.input_layer import Input
-from tensorflow.python.keras.engine.input_layer import InputLayer
-from tensorflow.python.keras.layers.advanced_activations import *
-from tensorflow.python.keras.layers.convolutional import *
-from tensorflow.python.keras.layers.convolutional_recurrent import *
-from tensorflow.python.keras.layers.core import *
-from tensorflow.python.keras.layers.cudnn_recurrent import *
-from tensorflow.python.keras.layers.dense_attention import *
-from tensorflow.python.keras.layers.embeddings import *
-from tensorflow.python.keras.layers.local import *
-from tensorflow.python.keras.layers.merge import *
-from tensorflow.python.keras.layers.noise import *
-from tensorflow.python.keras.layers.normalization import *
-from tensorflow.python.keras.layers.pooling import *
-from tensorflow.python.keras.layers.preprocessing.image_preprocessing import *
-from tensorflow.python.keras.layers.preprocessing.normalization_v1 import *
-from tensorflow.python.keras.layers.recurrent import *
-from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import *
-from tensorflow.python.keras.layers.wrappers import *
-from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
-from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import input_spec
+from tensorflow.python.keras.layers import advanced_activations
+from tensorflow.python.keras.layers import convolutional
+from tensorflow.python.keras.layers import convolutional_recurrent
+from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.layers import cudnn_recurrent
+from tensorflow.python.keras.layers import dense_attention
+from tensorflow.python.keras.layers import embeddings
+from tensorflow.python.keras.layers import local
+from tensorflow.python.keras.layers import merge
+from tensorflow.python.keras.layers import noise
+from tensorflow.python.keras.layers import normalization
+from tensorflow.python.keras.layers import normalization_v2
+from tensorflow.python.keras.layers import pooling
+from tensorflow.python.keras.layers import recurrent
+from tensorflow.python.keras.layers import recurrent_v2
+from tensorflow.python.keras.layers import rnn_cell_wrapper_v2
+from tensorflow.python.keras.layers import wrappers
+from tensorflow.python.keras.layers.preprocessing import image_preprocessing
+from tensorflow.python.keras.layers.preprocessing import normalization as preprocessing_normalization
+from tensorflow.python.keras.layers.preprocessing import normalization_v1 as preprocessing_normalization_v1
+from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.util import tf_inspect as inspect
 from tensorflow.python.util.tf_export import keras_export
 
-if tf2.enabled():
-  from tensorflow.python.keras.layers.normalization_v2 import *  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.keras.layers.recurrent_v2 import *  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.keras.layers.preprocessing.normalization import *  # pylint: disable=g-import-not-at-top
 
-# This deserialization table is added for backward compatibility, as in TF 1.13,
-# BatchNormalizationV1 and BatchNormalizationV2 are used as class name for v1
-# and v2 version of BatchNormalization, respectively. Here we explicitly convert
-# them to the canonical name in the config of deserialization.
-_DESERIALIZATION_TABLE = {
-    'BatchNormalizationV1': 'BatchNormalization',
-    'BatchNormalizationV2': 'BatchNormalization',
-}
+ALL_MODULES = (
+    base_layer,
+    input_layer,
+    advanced_activations,
+    convolutional,
+    convolutional_recurrent,
+    core,
+    cudnn_recurrent,
+    dense_attention,
+    embeddings,
+    local,
+    merge,
+    noise,
+    normalization,
+    pooling,
+    image_preprocessing,
+    preprocessing_normalization_v1,
+    recurrent,
+    wrappers
+)
+ALL_V2_MODULES = (
+    rnn_cell_wrapper_v2,
+    normalization_v2,
+    recurrent_v2,
+    preprocessing_normalization
+)
+FEATURE_COLUMN_V1_OBJECTS = {}
+FEATURE_COLUMN_V2_OBJECTS = {}
+# ALL_OBJECTS is meant to be a global mutable. Hence we need to make it
+# thread-local to avoid concurrent mutations.
+LOCAL = threading.local()
+
+
+def inject_feature_column_v1_objects(name, cls):
+  global FEATURE_COLUMN_V1_OBJECTS
+  FEATURE_COLUMN_V1_OBJECTS[name] = cls
+
+
+def inject_feature_column_v2_objects(name, cls):
+  global FEATURE_COLUMN_V2_OBJECTS
+  FEATURE_COLUMN_V2_OBJECTS[name] = cls
+
+
+def populate_deserializable_objects():
+  """Populates dict ALL_OBJECTS with every built-in layer.
+  """
+  global LOCAL
+  if not hasattr(LOCAL, 'ALL_OBJECTS'):
+    LOCAL.ALL_OBJECTS = {}
+    LOCAL.GENERATED_WITH_V2 = None
+
+  if LOCAL.ALL_OBJECTS and LOCAL.GENERATED_WITH_V2 == tf2.enabled():
+    # Objects dict is already generated for the proper TF version:
+    # do nothing.
+    return
+
+  LOCAL.ALL_OBJECTS = {}
+  LOCAL.GENERATED_WITH_V2 = tf2.enabled()
+
+  base_cls = base_layer.Layer
+  generic_utils.populate_dict_with_module_objects(
+      LOCAL.ALL_OBJECTS,
+      ALL_MODULES,
+      obj_filter=lambda x: inspect.isclass(x) and issubclass(x, base_cls))
+
+  # Overwrite certain V1 objects with V2 versions
+  if tf2.enabled():
+    generic_utils.populate_dict_with_module_objects(
+        LOCAL.ALL_OBJECTS,
+        ALL_V2_MODULES,
+        obj_filter=lambda x: inspect.isclass(x) and issubclass(x, base_cls))
+
+  # These deserialization aliases are added for backward compatibility,
+  # as in TF 1.13, "BatchNormalizationV1" and "BatchNormalizationV2"
+  # were used as class name for v1 and v2 version of BatchNormalization,
+  # respectively. Here we explicitly convert them to their canonical names.
+  LOCAL.ALL_OBJECTS['BatchNormalizationV1'] = normalization.BatchNormalization
+  LOCAL.ALL_OBJECTS[
+      'BatchNormalizationV2'] = normalization_v2.BatchNormalization
+
+  # Prevent circular dependencies.
+  from tensorflow.python.keras import models  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.keras.premade.linear import LinearModel  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.keras.premade.wide_deep import WideDeepModel  # pylint: disable=g-import-not-at-top
+
+  LOCAL.ALL_OBJECTS['Input'] = input_layer.Input
+  LOCAL.ALL_OBJECTS['InputSpec'] = input_spec.InputSpec
+  LOCAL.ALL_OBJECTS['Network'] = models.Network
+  LOCAL.ALL_OBJECTS['Model'] = models.Model
+  LOCAL.ALL_OBJECTS['Sequential'] = models.Sequential
+  LOCAL.ALL_OBJECTS['LinearModel'] = LinearModel
+  LOCAL.ALL_OBJECTS['WideDeepModel'] = WideDeepModel
+
+  if tf2.enabled():
+    LOCAL.ALL_OBJECTS.update(FEATURE_COLUMN_V2_OBJECTS)
+  else:
+    LOCAL.ALL_OBJECTS.update(FEATURE_COLUMN_V1_OBJECTS)
+
+  # Merge layers, function versions.
+  LOCAL.ALL_OBJECTS['add'] = merge.add
+  LOCAL.ALL_OBJECTS['subtract'] = merge.subtract
+  LOCAL.ALL_OBJECTS['multiply'] = merge.multiply
+  LOCAL.ALL_OBJECTS['average'] = merge.average
+  LOCAL.ALL_OBJECTS['maximum'] = merge.maximum
+  LOCAL.ALL_OBJECTS['minimum'] = merge.minimum
+  LOCAL.ALL_OBJECTS['concatenate'] = merge.concatenate
+  LOCAL.ALL_OBJECTS['dot'] = merge.dot
 
 
 @keras_export('keras.layers.serialize')
 def serialize(layer):
-  return serialize_keras_object(layer)
+  return generic_utils.serialize_keras_object(layer)
 
 
 @keras_export('keras.layers.deserialize')
@@ -80,30 +178,9 @@ def deserialize(config, custom_objects=None):
   Returns:
       Layer instance (may be Model, Sequential, Network, Layer...)
   """
-  # Prevent circular dependencies.
-  from tensorflow.python.keras import models  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.keras.premade.linear import LinearModel  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.keras.premade.wide_deep import WideDeepModel  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.feature_column import dense_features  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.feature_column import sequence_feature_column as sfc  # pylint: disable=g-import-not-at-top
-
-  globs = globals()  # All layers.
-  globs['Network'] = models.Network
-  globs['Model'] = models.Model
-  globs['Sequential'] = models.Sequential
-  globs['LinearModel'] = LinearModel
-  globs['WideDeepModel'] = WideDeepModel
-
-  # Prevent circular dependencies with FeatureColumn serialization.
-  globs['DenseFeatures'] = dense_features.DenseFeatures
-  globs['SequenceFeatures'] = sfc.SequenceFeatures
-
-  layer_class_name = config['class_name']
-  if layer_class_name in _DESERIALIZATION_TABLE:
-    config['class_name'] = _DESERIALIZATION_TABLE[layer_class_name]
-
-  return deserialize_keras_object(
+  populate_deserializable_objects()
+  return generic_utils.deserialize_keras_object(
       config,
-      module_objects=globs,
+      module_objects=LOCAL.ALL_OBJECTS,
       custom_objects=custom_objects,
       printable_module_name='layer')

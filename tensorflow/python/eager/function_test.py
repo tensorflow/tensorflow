@@ -30,14 +30,13 @@ import numpy
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
-from tensorflow.python import keras
 from tensorflow.python.autograph.core import ag_ctx
-from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -52,9 +51,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.engine import training as keras_training
-from tensorflow.python.keras.layers import core
-from tensorflow.python.keras.optimizer_v2 import adam
+from tensorflow.python.framework import type_spec
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -68,9 +65,9 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -94,28 +91,6 @@ def total_function_cache(defined):
   # pylint: enable=protected-access
 
 
-class MiniModel(keras_training.Model):
-  """Minimal model for mnist.
-
-  Useful for testing and debugging on slow TPU simulators.
-  """
-
-  def __init__(self):
-    super(MiniModel, self).__init__(name='')
-    self.fc = keras.layers.Dense(1, name='fc', kernel_initializer='ones',
-                                 bias_initializer='ones')
-
-  def call(self, inputs, training=True):
-    return self.fc(inputs)
-
-
-class DefunnedMiniModel(MiniModel):
-
-  @function.defun
-  def call(self, inputs, training=True):
-    return super(DefunnedMiniModel, self).call(inputs, training=training)
-
-
 def _example_indexed_slices_with_dense_shape():
   return indexed_slices.IndexedSlices(
       constant_op.constant([1, 2]), constant_op.constant([0, 1]),
@@ -125,6 +100,16 @@ def _example_indexed_slices_with_dense_shape():
 def _example_indexed_slices_without_dense_shape():
   return indexed_slices.IndexedSlices(
       constant_op.constant([1, 2]), constant_op.constant([0, 1]))
+
+
+def _spec_for_value(value):
+  """Returns the (nested) TypeSpec for a value."""
+  if nest.is_sequence(value):
+    return nest.map_structure(_spec_for_value, value)
+  elif isinstance(value, (ops.Tensor, composite_tensor.CompositeTensor)):
+    return type_spec.type_spec_from_value(value)
+  else:
+    return value
 
 
 class FunctionTest(test.TestCase, parameterized.TestCase):
@@ -287,6 +272,36 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       numpy.testing.assert_equal(r1.eval(), [3.])
       numpy.testing.assert_equal(r2.eval(), [3., 3.])
 
+  def testImplementsAttributeAsNameAttrList(self):
+    implements_attr = (
+        'name: "embedding_matmul" attr {   key: "key1"   value {     i: 2   } '
+        '} attr {   key: "key2"   value {     b: false   } }')
+    v = def_function.function(
+        experimental_implements=implements_attr)(lambda x, y: x + y)
+    with context.graph_mode(), self.cached_session():
+      a = array_ops.placeholder(dtypes.float32, ())
+      b = array_ops.placeholder(dtypes.float32, ())
+      v(a, b)
+      gradients_impl.gradients(v(a, b), [a, b])
+      fdefs = ops.get_default_graph().as_graph_def().library.function
+      self.assertLen(fdefs, 3)
+      not_present = 0
+      present = 0
+      for f in fdefs:
+        name = f.signature.name
+        if 'forward' in name or 'backward' in name:
+          not_present += 1
+          self.assertNotIn(function.IMPLEMENTS_ATTRIBUTE_NAME, f.attr, f)
+        else:
+          present += 1
+          attr_value = f.attr[function.IMPLEMENTS_ATTRIBUTE_NAME]
+          self.assertIsNotNone(attr_value.func, f)
+          self.assertEqual(attr_value.func.name, 'embedding_matmul')
+          name_attrs = attr_value.func.attr
+          self.assertLen(name_attrs, 2)
+      self.assertEqual(not_present, 2, fdefs)
+      self.assertEqual(present, 1, fdefs)
+
   def testExternalControlDependency(self):
     with ops.Graph().as_default(), self.test_session():
       v = variables.Variable(1.0)
@@ -409,26 +424,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(unknown_dim[0])
     self.assertLen(total_function_cache(func), 3)
 
-  def testFunctionRelaxationLosesInnerDimWithKerasLayer(self):
-    layer = keras.layers.Dense(1)
-    fn = def_function.function(experimental_relax_shapes=True)(layer)
-
-    with self.captureWritesToStream(sys.stderr) as printed:
-      fn(array_ops.ones((3, 2)))
-      self.assertNotIn('ValueError', printed.contents())
-    with self.captureWritesToStream(sys.stderr) as printed:
-      # Use batch size 2 to trigger a second cache miss on the shape.
-      fn(array_ops.ones((2, 2)))
-      self.assertNotIn('ValueError', printed.contents())
-
-    # Shape relaxation passes TensorShape([None, None]), which causes layer
-    # matmul to fail, due to incompatible dims.  What would have been a graph
-    # build time error (layer would complain about the inner dim being 4).
-    with self.captureWritesToStream(sys.stderr) as printed:
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   r'Matrix size-incompatible'):
-        fn(array_ops.ones((3, 4)))
-
   def testNestedShapeFunctionRelaxation(self):
 
     got_shape = [None]
@@ -460,7 +455,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def f(_):
       return 1.0
 
-    with self.assertRaisesRegexp(AttributeError, 'set'):
+    with self.assertRaisesRegexp(ValueError, r'Got type: set'):
       f(set([]))
 
   def testFuncName(self):
@@ -780,11 +775,68 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # shouldn't trigger another function definition.
     self.assertLen(total_function_cache(defined), 1)
 
+    np_ones = numpy.ones([], numpy.float32)
+    np_zeros = numpy.zeros([], numpy.float32)
+    tf_ones = array_ops.ones([])
+    tf_zeros = array_ops.zeros([])
+
     # Test that the numpy array is properly an argument to the graph function.
-    self.assertEqual(1., defined(numpy.ones([])).numpy())
-    self.assertEqual(0., defined(numpy.zeros([])).numpy())
-    self.assertEqual(1., defined(array_ops.ones([])).numpy())
-    self.assertEqual(0., defined(array_ops.zeros([])).numpy())
+    self.assertEqual(1., defined(np_ones).numpy())
+    self.assertLen(total_function_cache(defined), 2)
+    self.assertEqual(0., defined(np_zeros).numpy())
+    self.assertEqual(1., defined(tf_ones).numpy())
+    self.assertEqual(0., defined(tf_zeros).numpy())
+    self.assertLen(total_function_cache(defined), 2)
+
+    # Test that mutable inputs are supported.
+    mutable = numpy.ones([], numpy.float32)
+    self.assertEqual(1., defined(mutable).numpy())
+    mutable.fill(0)
+    self.assertEqual(0., defined(mutable).numpy())
+
+    class MyNdarray(numpy.ndarray):
+      pass
+
+     # Test that the subclasses of ndarray are converted too.
+    self.assertEqual(1., defined(np_ones.view(MyNdarray)).numpy())
+    self.assertEqual(0., defined(np_zeros.view(MyNdarray)).numpy())
+
+    # We should not have triggered any re-tracing of the python function.
+    self.assertLen(total_function_cache(defined), 2)
+
+  def testNumpyDtypeInputSupported(self):
+    @function.defun
+    def f(x, dtype):
+      return constant_op.constant(dtype(x))
+
+    self.assertEqual(f(1, numpy.float32).numpy(), numpy.float32(1))
+    self.assertEqual(f(2, numpy.float32).numpy(), numpy.float32(2))
+    self.assertEqual(f(1, numpy.int32).numpy(), numpy.int32(1))
+    self.assertEqual(f(2, numpy.int32).numpy(), numpy.int32(2))
+
+  def testDefunNumpyArraysConvertedToTensorsInKwargs(self):
+
+    def f(**kwargs):
+      x = kwargs.pop('x')
+      self.assertIsInstance(x, ops.Tensor)
+      return x
+
+    x = random_ops.random_uniform([2, 2]).numpy()
+    defined = function.defun(f)
+    defined(x=x)
+    self.assertLen(total_function_cache(defined), 1)
+
+    x = random_ops.random_uniform([2, 2]).numpy()
+    defined(x=x)
+    # A NumPy array with different values but the same shape and dtype
+    # shouldn't trigger another function definition.
+    self.assertLen(total_function_cache(defined), 1)
+
+    # Test that the numpy array is properly an argument to the graph function.
+    self.assertEqual(1., defined(x=numpy.ones([])).numpy())
+    self.assertEqual(0., defined(x=numpy.zeros([])).numpy())
+    self.assertEqual(1., defined(x=array_ops.ones([])).numpy())
+    self.assertEqual(0., defined(x=array_ops.zeros([])).numpy())
 
   def testDefunCapturedInt32(self):
     x = constant_op.constant(1, dtype=dtypes.int32)
@@ -1483,24 +1535,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       has_device.f()
     self.assertIn('CPU', has_device.v.device)
 
-  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
-  def testDefunKerasModelCall(self):
-    model = MiniModel()
-    model.call = function.defun(model.call)
-
-    x = array_ops.ones([1, 2])
-    y = model(x)
-
-    if not context.executing_eagerly():
-      self.evaluate(variables.global_variables_initializer())
-
-    self.assertAllEqual([[3.0]], self.evaluate(y))
-
-    # Break the reference cycle between the MiniModel and the defun:
-    # `MiniModel` --(through its `call` method)--> `Function`
-    # `Function` --(instancemethod on `MiniModel`)--> `MiniModel`
-    del model.call
-
   @test_util.run_in_graph_and_eager_modes
   def testDeviceAnnotationsRespected(self):
 
@@ -1801,6 +1835,18 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, 'incompatible'):
       func([['wrong dtype']])
 
+  def testNoKeywordOnlyArgumentsWithInputSignature(self):
+    if sys.version_info[0] < 3:
+      self.skipTest('keyword_only arguments only exist in Python 3.')
+
+    func = eval('lambda x, *, y: x')  # pylint: disable=eval-used
+    signature = [tensor_spec.TensorSpec(None, dtypes.int32)]
+    with self.assertRaisesRegexp(
+        ValueError, 'Cannot define a TensorFlow function from a Python '
+        'function with keyword-only arguments when input_signature is '
+        'provided.'):
+      def_function.function(func, signature)
+
   def testNestedInputSignatures(self):
 
     def expected_foo(a, b):
@@ -1917,7 +1963,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined(array_ops.ones([2, 1]))
 
     # Wrong number of arguments.
-    with self.assertRaisesRegexp(TypeError, r'Received 2 argument\(s\)'):
+    with self.assertRaisesRegexp(
+        TypeError, r'takes 1 positional arguments \(as specified by the '
+        r'input_signature\) but 2 were given'):
       defined(array_ops.ones([2]), array_ops.ones([2]))
     with self.assertRaisesRegexp(ValueError,
                                  'Structure of Python function inputs.*'):
@@ -1958,10 +2006,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return -1.0 * a
 
     x = constant_op.constant(1.0)
-    with self.assertRaisesRegexp(TypeError, 'only pass arguments'):
+    with self.assertRaisesRegexp(
+        TypeError, 'got keyword argument `training` '
+        'that was not included in input_signature'):
       foo(x, training=True)
 
-    with self.assertRaisesRegexp(TypeError, 'only pass arguments'):
+    with self.assertRaisesRegexp(
+        TypeError, 'got keyword argument `training` '
+        'that was not included in input_signature'):
       foo(x, training=False)
 
     self.assertAllEqual(x.numpy(), foo(x).numpy())
@@ -2484,8 +2536,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return x
 
     graph_function = foo.get_concrete_function(constant_op.constant(1.0))
-    with self.assertRaisesRegexp(
-        ValueError, 'All inputs to `ConcreteFunction`s must be Tensors;.*'):
+    with self.assertRaises((TypeError, ValueError)):
       graph_function('Not a Tensor.')
 
   def testSwapImplementationWithGrapplerPlugin(self):
@@ -2682,53 +2733,17 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertLen(total_function_cache(defined),
                    3 if ops.Tensor._USE_EQUALITY else 5)
 
-  def testDecoratedMethod(self):
-    m = DefunnedMiniModel()
-    instance_call_one = m.call(array_ops.ones([1, 2]), training=True)
-    instance_call_two = m.call(
-        inputs=array_ops.ones([1, 2]), training=True)
-    class_call = DefunnedMiniModel.call(m, array_ops.ones([1, 2]),
-                                        training=True)
-    self.assertAllEqual(instance_call_one, instance_call_two)
-    self.assertAllEqual(instance_call_one, class_call)
-
-  def testDecoratedMethodUniqueFunctionPerInstance(self):
-    m = DefunnedMiniModel()
-    n = DefunnedMiniModel()
-
-    class_method_one = DefunnedMiniModel.call
-    class_method_two = DefunnedMiniModel.call
-
-    m_method_one = m.call
-    m_method_two = m.call
-
-    n_method_one = n.call
-    n_method_two = n.call
-
-    self.assertEqual(class_method_one, class_method_two)
-    self.assertEqual(m_method_one, m_method_two)
-    self.assertEqual(n_method_one, n_method_two)
-    self.assertNotEqual(m.call, n.call)
-
   def testDecoratedMethodInspect(self):
+
+    class DefunnedMiniModel(object):
+
+      @function.defun
+      def call(self, inputs, training=True):
+        pass
+
     m = DefunnedMiniModel()
     fullargspec = tf_inspect.getfullargspec(m.call)
     self.assertIn('training', fullargspec.args)
-
-  def testDecoratedMethodGetConcreteFunction(self):
-    m = DefunnedMiniModel()
-    instance_call_one = m.call.get_concrete_function(
-        array_ops.ones([1, 2]), training=False)
-    instance_call_two = m.call.get_concrete_function(
-        inputs=array_ops.ones([1, 2]), training=False)
-    self.assertAllEqual(instance_call_one(array_ops.ones([1, 2])),
-                        instance_call_two(array_ops.ones([1, 2])))
-
-    # Also make sure get_concrete_function works on the class method
-    DefunnedMiniModel.call.get_concrete_function(
-        m, array_ops.ones([1, 2]), training=False)
-    DefunnedMiniModel.call.get_concrete_function(
-        m, inputs=array_ops.ones([1, 2]), training=True)
 
   def testFunctionModifiesInputList(self):
     # Tests on `list` methods that do in place modification, except `list.sort`
@@ -2884,21 +2899,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                        constant_op.constant(2.)]]
 
       modify_same_flat(nested_input)
-
-  def testDecoratedMethodVariableCleanup(self):
-    m = DefunnedMiniModel()
-    m(array_ops.ones([1, 2]))
-    variable_refs = list({v.ref() for v in m.variables})
-    self.assertLen(variable_refs, 2)
-    del m
-
-    # Verifying if the variables are only referenced from variable_refs.
-    # We expect the reference counter to be 1, but `sys.getrefcount` reports
-    # one higher reference counter because a temporary is created when we call
-    # sys.getrefcount().  Hence check if the number returned is 2.
-    # https://docs.python.org/3/library/sys.html#sys.getrefcount
-    self.assertEqual(sys.getrefcount(variable_refs[0].deref()), 2)
-    self.assertEqual(sys.getrefcount(variable_refs[1].deref()), 2)
 
   def testExecutorType(self):
     @function.defun
@@ -3210,6 +3210,432 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertLen(function._function_callbacks, 2)
     function.clear_function_callbacks()
     self.assertEmpty(function._function_callbacks)  # pylint:disable=protected-access
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionWithNestedTensorInputs(self):
+
+    @def_function.function
+    def f(x, y):
+      return (x['a'] + x['b'], y[0] + y[1])
+
+    a = constant_op.constant(1000)
+    b = constant_op.constant(200)
+    c = constant_op.constant(30)
+    d = {'a': a, 'b': b}
+    e = (c, 4)
+
+    # Test different argument signatures when constructing the concrete func.
+    for cf in [
+        f.get_concrete_function(d, e),
+        f.get_concrete_function(d, y=e),
+        f.get_concrete_function(y=e, x=d),
+        f.get_concrete_function(_spec_for_value(d), _spec_for_value(e)),
+        f.get_concrete_function(_spec_for_value(d), y=_spec_for_value(e)),
+        f.get_concrete_function(y=_spec_for_value(e), x=_spec_for_value(d))
+    ]:
+      # Test different calling conventions when calling the concrete func.
+      for output in [
+          cf(d, e),  # structured signature
+          cf(d, y=e),  # structured signature w/ kwarg
+          cf(y=e, x=d),  # structured signature w/ 2 kwargs
+          cf(a, b, c),  # flat signature
+          cf(x=a, x_1=b, y=c)  # flat signature w/ kwargs
+      ]:
+        self.assertIsInstance(output, tuple)
+        self.assertLen(output, 2)
+        self.assertAllEqual(output[0], 1200)
+        self.assertAllEqual(output[1], 34)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionWithNestedNonTensorInputs(self):
+
+    @def_function.function
+    def f(x, y):
+      return (x['a'] + x['b'], y[0] + y[1])
+
+    a = {'a': constant_op.constant(1000), 'b': constant_op.constant(200)}
+    b = (50, 3)
+
+    for cf in [  # argument y is bound to non-Tensor value (50, 3).
+        f.get_concrete_function(a, b),
+        f.get_concrete_function(a, y=b),
+        f.get_concrete_function(x=a, y=b)
+    ]:
+      for output in [cf(a), cf(x=a), cf(a, b), cf(x=a, y=b)]:
+        self.assertAllEqual(output[0] + output[1], 1253)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionWithBoundNestedNonTensorInputs(self):
+
+    @def_function.function
+    def f(x, y):
+      return (x['a'] + x['b'], y[0] + y[1])
+
+    a = {'a': 3000, 'b': 200, 'c': 9000}
+    b = (constant_op.constant(30), 4)
+
+    for cf in [  # argument x is bound to non-tensor value `a`
+        f.get_concrete_function(a, b),
+        f.get_concrete_function(a, y=b),
+        f.get_concrete_function(x=a, y=b)
+    ]:
+      for output in [cf(a, b), cf(a, y=b), cf(y=b), cf(x=a, y=b)]:
+        self.assertAllEqual(output[0] + output[1], 3234)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionWithAllBoundNestedNonTensorInputs(self):
+
+    @def_function.function
+    def f(x, y):
+      return (x['a'] + x['b'], y[0] + y[1])
+
+    a = {'a': 5000, 'b': 500}
+    b = (50, 5)
+
+    cf = f.get_concrete_function(a, b)
+    for output in [cf(), cf(a), cf(y=b)]:
+      self.assertAllEqual(output[0] + output[1], 5555)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionStructuredSignatureKeywordOrder(self):
+    # Check that keyword-only arguments are sorted appropriately, so that they
+    # feed the right tensor into each input.
+    @def_function.function
+    def g(**kwargs):
+      return string_ops.reduce_join(
+          string_ops.reduce_join(
+              ops.convert_to_tensor(sorted(kwargs.items())),
+              axis=1,
+              separator='='),
+          axis=0,
+          separator=', ')
+
+    s = constant_op.constant('s')
+    g.get_concrete_function(q=s, a=s, p=s, r=s, v=s, m=s, l=s)
+    self.assertAllEqual(
+        g(m='a', r='b', v='c', q='d', l='e', a='f', p='g'),
+        b'a=f, l=e, m=a, p=g, q=d, r=b, v=c')
+    self.assertAllEqual(
+        g(q='d', a='f', p='g', r='b', v='c', m='a', l='e'),
+        b'a=f, l=e, m=a, p=g, q=d, r=b, v=c')
+    self.assertAllEqual(
+        g(a='f', l='e', m='a', p='g', q='d', r='b', v='c'),
+        b'a=f, l=e, m=a, p=g, q=d, r=b, v=c')
+
+  # pylint: disable=g-long-lambda
+  @parameterized.named_parameters([
+      dict(
+          testcase_name='MissingArg',
+          conc_args=lambda: (1, constant_op.constant(2)),
+          call_args=lambda: (1,),
+          error=r'func\(x, y\) missing required arguments: y'),
+      dict(
+          testcase_name='MissingVararg',
+          conc_args=lambda: (1, 2, constant_op.constant(1.0)),
+          call_args=lambda: (1, 2),
+          error=r'func\(x, y, <arg3>\) missing required arguments: <arg3>'),
+      dict(
+          testcase_name='ExtraPositionalArg',
+          conc_args=lambda: (1, 2),
+          call_args=lambda: (1, 2, 3),
+          error=r'func\(x, y\) takes 2 positional arguments but 3 were given'),
+      dict(
+          testcase_name='MissingKeywordOnlyArg',
+          conc_args=lambda: (1, 2),
+          conc_kwargs=lambda: {'c': constant_op.constant(1.0)},
+          call_args=lambda: (1, 2),
+          error=r'func\(x, y, \*, c\) missing required arguments: c'),
+      dict(
+          testcase_name='ExtraKeywordArg',
+          conc_args=lambda: (1, 2),
+          call_args=lambda: (1, 2),
+          call_kwargs=lambda: {'c': constant_op.constant(1.0)},
+          error=r'func\(x, y\) got unexpected keyword arguments: c'),
+      dict(
+          testcase_name='ExpectedRaggedGotNest',
+          conc_args=lambda: (ragged_factory_ops.constant([[1, 2], [3]]),),
+          call_args=lambda: ({
+              'a': constant_op.constant([1, 2, 3])
+          },),
+          error=r'func\(x, y\): argument x had incorrect type\n'
+          r'  expected: RaggedTensor\n'
+          r"       got: {'a': (Eager)?Tensor}"),
+      dict(
+          testcase_name='WrongRaggedRank',
+          conc_args=lambda: (ragged_factory_ops.constant([[1, 2], [3]]),),
+          call_args=lambda: (ragged_factory_ops.constant([[[1]]]),),
+          error=r'func\(x, y\): argument x had incorrect type\n'),
+      dict(
+          testcase_name='WrongRaggedDType',
+          conc_args=lambda: (ragged_factory_ops.constant([[1]]),),
+          call_args=lambda: (ragged_factory_ops.constant([[1.0]]),),
+          error=r'func\(x, y\): argument x had incorrect type\n'),
+      dict(
+          testcase_name='ExpectedDictGotTensor',
+          conc_args=lambda: ({
+              'a': constant_op.constant(1),
+              'b': constant_op.constant(1)
+          },),
+          call_args=lambda: (constant_op.constant(1),),
+          error=r'func\(x, y\): argument x had incorrect type\n'),
+      dict(
+          testcase_name='ExpectedTupleGotTensor',
+          conc_args=lambda:
+          ((constant_op.constant(1), constant_op.constant(2)),),
+          call_args=lambda: (constant_op.constant(1),),
+          error=r'func\(x, y\): argument x had incorrect type\n'),
+      dict(
+          testcase_name='WrongDType',
+          conc_args=lambda: (constant_op.constant(1),),
+          call_args=lambda: (constant_op.constant(1.0),),
+          exception=(ValueError, errors.InvalidArgumentError,
+                     # on xla_gpu, we get InternalError instead.
+                     errors.InternalError)),
+      dict(
+          testcase_name='ExpectedTensorGotInt',
+          conc_args=lambda: (constant_op.constant(1),),
+          call_args=lambda: (5,),
+          error=r'func\(x, y\) expected a Tensor in x, but got int value 5'),
+      dict(
+          testcase_name='ExpectedIntGotDifferentInt',
+          conc_args=lambda: (5,),
+          call_args=lambda: (8,),
+          error=r'ConcreteFunction func\(x, y\) was constructed with int '
+          r'value 5 in x, but was called with int value 8'),
+      dict(
+          testcase_name='ExpectedIntGotTensor',
+          conc_args=lambda: (5,),
+          call_args=lambda: (constant_op.constant(6),),
+          error=r'ConcreteFunction func\(x, y\) was constructed with int '
+          'value 5 in x, but was called with (Eager)?Tensor value .*'),
+      dict(
+          testcase_name='TwoValuesForArgument',
+          conc_args=lambda: (1, 2),
+          call_args=lambda: (1, 2),
+          call_kwargs=lambda: {'x': 3},
+          error=r"func\(x, y\) got two values for argument 'x'"),
+  ])
+  # pylint: enable=g-long-lambda
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionStructuredSignatureError(self,
+                                                   conc_args=(),
+                                                   conc_kwargs=None,
+                                                   call_args=(),
+                                                   call_kwargs=None,
+                                                   error='.*',
+                                                   exception=TypeError):
+    """Tests for errors in the structrued signature.
+
+    Args:
+      conc_args: Positional arguments used for get_concrete_function.
+      conc_kwargs: Keyword arguments used for get_concrete_function.
+      call_args: Positional arguments used to call the function.
+      call_kwargs: Keyword arguments used to call the function.
+      error: Expected exception message.
+      exception: Expected exception type.
+    """
+    conc_args = conc_args() if callable(conc_args) else conc_args
+    conc_kwargs = conc_kwargs() if callable(conc_kwargs) else conc_kwargs or {}
+    call_args = call_args() if callable(call_args) else call_args
+    call_kwargs = call_kwargs() if callable(call_kwargs) else call_kwargs or {}
+    self.assertIsInstance(conc_args, tuple)
+    self.assertIsInstance(call_args, tuple)
+    self.assertIsInstance(conc_kwargs, dict)
+    self.assertIsInstance(call_kwargs, dict)
+
+    @def_function.function
+    def func(x, y=5, *varargs, **kwargs):  # pylint: disable=keyword-arg-before-vararg
+      del y, varargs, kwargs
+      return x
+
+    conc = func.get_concrete_function(*conc_args, **conc_kwargs)
+    with self.assertRaisesRegexp(exception, error):
+      self.evaluate(conc(*call_args, **call_kwargs))
+
+  # pylint: disable=g-long-lambda
+  @parameterized.named_parameters([
+      dict(
+          testcase_name='MissingArg',
+          conc_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          call_args=lambda: (constant_op.constant(1),),
+          error=r'func\(x, y\) missing required arguments: y'),
+      dict(
+          testcase_name='TwoValuesForArg',
+          conc_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          call_args=lambda: (constant_op.constant(1),),
+          call_kwargs=lambda: {
+              'x': constant_op.constant(1),
+              'y': constant_op.constant(1)
+          },
+          error=r"func\(x, y\) got two values for argument 'x'"),
+      dict(
+          testcase_name='ExtraPositionalArg',
+          conc_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          call_args=lambda: (constant_op.constant(1), constant_op.constant(2),
+                             constant_op.constant(3)),
+          error=r'func\(x, y\) takes 2 positional arguments but 3 were given'),
+      dict(
+          testcase_name='UnexpectedKeywordArg',
+          conc_args=lambda: (constant_op.constant(1),),
+          call_args=lambda: (constant_op.constant(1),),
+          call_kwargs=lambda: {'c': constant_op.constant(1)},
+          error=r'func\(x\) got unexpected keyword arguments: c'),
+      dict(
+          testcase_name='MissingVararg',
+          conc_args=lambda: (constant_op.constant(1), constant_op.constant(2),
+                             constant_op.constant(3)),
+          call_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          error=r'func\(x, y, varargs_0\) missing required '
+          r'arguments: varargs_0'),
+      dict(
+          testcase_name='MissingKeywordArg',
+          conc_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          conc_kwargs=lambda: {'c': constant_op.constant(1)},
+          call_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          error=r'func\(x, y, c\) missing required arguments: c'),
+      dict(
+          testcase_name='ExpectedTensorGotInt',
+          conc_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          call_args=lambda: (5, constant_op.constant(2)),
+          error=r'func\(x, y\): expected argument #0\(zero-based\) to be '
+          r'a Tensor; got int \(5\)'),
+      dict(
+          testcase_name='WrongDType',
+          conc_args=lambda: (constant_op.constant(1),),
+          call_args=lambda: (constant_op.constant(1.0),),
+          exception=(ValueError, errors.InvalidArgumentError,
+                     # on xla_gpu, we get InternalError instead.
+                     errors.InternalError)),
+      dict(
+          testcase_name='MissingKeywordArgNestPiece',
+          conc_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          conc_kwargs=lambda: {'c': ragged_factory_ops.constant([[1]])},
+          call_args=lambda: (constant_op.constant(1), constant_op.constant(2)),
+          call_kwargs=lambda: {'c': constant_op.constant(1)},
+          error=r'func\(x, y, c, c_1\) missing required arguments: c_1'),
+  ])
+  # pylint: enable=g-long-lambda
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionFlatSignatureError(self,
+                                             conc_args=(),
+                                             conc_kwargs=None,
+                                             call_args=(),
+                                             call_kwargs=None,
+                                             error='.*',
+                                             exception=TypeError):
+    """Tests for errors in the flat signature.
+
+    Args:
+      conc_args: Positional arguments used for get_concrete_function.
+      conc_kwargs: Keyword arguments used for get_concrete_function.
+      call_args: Positional arguments used to call the function.
+      call_kwargs: Keyword arguments used to call the function.
+      error: Expected exception message.
+      exception: Expected exception type.
+    """
+    conc_args = conc_args() if callable(conc_args) else conc_args
+    conc_kwargs = conc_kwargs() if callable(conc_kwargs) else conc_kwargs or {}
+    call_args = call_args() if callable(call_args) else call_args
+    call_kwargs = call_kwargs() if callable(call_kwargs) else call_kwargs or {}
+    self.assertIsInstance(conc_args, tuple)
+    self.assertIsInstance(call_args, tuple)
+    self.assertIsInstance(conc_kwargs, dict)
+    self.assertIsInstance(call_kwargs, dict)
+
+    @def_function.function
+    def func(x, y=5, *varargs, **kwargs):  # pylint: disable=keyword-arg-before-vararg
+      del y, varargs, kwargs
+      return x
+
+    conc = func.get_concrete_function(*conc_args, **conc_kwargs)
+
+    # Remove _function_spec, to disable the structured signature.
+    conc._set_function_spec(None)  # pylint: disable=protected-access
+
+    with self.assertRaisesRegexp(exception, error):
+      self.evaluate(conc(*call_args, **call_kwargs))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConcreteFunctionAmbiguousSignature(self):
+    # When both the flat & structured signatures are applicable, but they
+    # give different results, we use the structured signature.  Note: we expect
+    # this to be extremely rare.
+    @def_function.function
+    def f(x, y):
+      return x * 10 + y
+
+    conc = f.get_concrete_function(
+        x=tensor_spec.TensorSpec(None, dtypes.int32, name='y'),
+        y=tensor_spec.TensorSpec(None, dtypes.int32, name='x'))
+
+    result = conc(x=constant_op.constant(5), y=constant_op.constant(6))
+    self.assertAllEqual(result, 56)
+
+  def testPrettyPrintedSignature(self):
+
+    @def_function.function
+    def func(x, kangaroo=None, octopus=7):
+      del octopus, kangaroo
+      return x
+
+    scalar = constant_op.constant(5)
+    vector = constant_op.constant([10, 10, 20])
+    ragged = ragged_factory_ops.constant([[10, 20], [40]])
+
+    c1 = func.get_concrete_function(scalar, vector)
+    c1_summary = r'func\(x, kangaroo, octopus=7\)'
+    c1_details = (r'  Args:\n'
+                  r'    x: int32 Tensor, shape=\(\)\n'
+                  r'    kangaroo: int32 Tensor, shape=\(3,\)\n'
+                  r'  Returns:\n'
+                  r'    int32 Tensor, shape=\(\)')
+    self.assertRegexpMatches(
+        c1.pretty_printed_signature(verbose=False), c1_summary)
+    self.assertRegexpMatches(
+        c1.pretty_printed_signature(verbose=True),
+        c1_summary + '\n' + c1_details)
+    self.assertRegexpMatches(
+        repr(c1), r'<ConcreteFunction func\(x, kangaroo, octopus=7\) at .*>')
+    self.assertRegexpMatches(
+        str(c1), 'ConcreteFunction {}\n{}'.format(c1_summary, c1_details))
+
+    c2 = func.get_concrete_function(scalar, ragged, 3)
+    c2_summary = r'func\(x, kangaroo, octopus=3\)'
+    c2_details = (r'  Args:\n'
+                  r'    x: int32 Tensor, shape=\(\)\n'
+                  r'    kangaroo: RaggedTensorSpec\(.*\)\n'
+                  r'  Returns:\n'
+                  r'    int32 Tensor, shape=\(\)')
+    self.assertRegexpMatches(c2.pretty_printed_signature(),
+                             c2_summary + '\n' + c2_details)
+
+    c3 = func.get_concrete_function({'a': scalar, 'b': [ragged, ragged]})
+    c3_summary = r'func\(x, kangaroo=None, octopus=7\)'
+    c3_details = (r'  Args:\n'
+                  r"    x: {'a': <1>, 'b': \[<2>, <3>\]}\n"
+                  r'      <1>: int32 Tensor, shape=\(\)\n'
+                  r'      <2>: RaggedTensorSpec\(.*\)\n'
+                  r'      <3>: RaggedTensorSpec\(.*\)\n'
+                  r'  Returns:\n'
+                  r"    {'a': <1>, 'b': \[<2>, <3>\]}\n"
+                  r'      <1>: int32 Tensor, shape=\(\)\n'
+                  r'      <2>: RaggedTensorSpec\(.*\)\n'
+                  r'      <3>: RaggedTensorSpec\(.*\)')
+    self.assertRegexpMatches(c3.pretty_printed_signature(),
+                             c3_summary + '\n' + c3_details)
+
+    # pylint: disable=keyword-arg-before-vararg
+    @def_function.function
+    def func2(x, y=3, *args, **kwargs):
+      return (x, y, args, kwargs)
+
+    c4 = func2.get_concrete_function(scalar, 4, 5, a=scalar)
+    c4_summary = 'func2(x, y=4, <arg3>=5, *, a)'
+    self.assertEqual(c4.pretty_printed_signature(verbose=False), c4_summary)
+
+    c5 = func2.get_concrete_function(8, vector)
+    c5_summary = 'func2(x=8, y)'
+    self.assertEqual(c5.pretty_printed_signature(verbose=False), c5_summary)
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
@@ -3561,56 +3987,6 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
       h()
 
     self.assertEqual((v,), tape.watched_variables())
-
-  def testStandardTrainingLoopInFunction(self):
-    layer = core.Dense(2)
-    dataset = (
-        dataset_ops.DatasetV2.from_tensors(
-            (array_ops.ones([784]), array_ops.ones([], dtypes.int32)))
-        .map(lambda x, y: (x, y))
-        .repeat(10)
-        .batch(32))
-    optimizer = adam.Adam()
-
-    @def_function.function
-    def train():
-      for x, y in dataset:
-        with backprop.GradientTape() as tape:
-          out = layer(x)
-          loss = math_ops.reduce_mean(
-              nn_ops.sparse_softmax_cross_entropy_with_logits(
-                  logits=out, labels=y))
-        layer_variables = layer.trainable_variables
-        gradients = tape.gradient(loss, layer_variables)
-        optimizer.apply_gradients(zip(gradients, layer_variables))
-
-    train()
-
-  def testEarlyStoppingTrainingLoopInFunction(self):
-    layer = core.Dense(2)
-    dataset = (
-        dataset_ops.DatasetV2.from_tensors(
-            (array_ops.ones([784]), array_ops.ones([], dtypes.int32)))
-        .map(lambda x, y: (x, y))
-        .repeat(10)
-        .batch(32))
-    optimizer = adam.Adam()
-
-    @def_function.function
-    def train():
-      for x, y in dataset:
-        with backprop.GradientTape() as tape:
-          out = layer(x)
-          loss = math_ops.reduce_mean(
-              nn_ops.sparse_softmax_cross_entropy_with_logits(
-                  logits=out, labels=y))
-        layer_variables = layer.trainable_variables
-        gradients = tape.gradient(loss, layer_variables)
-        optimizer.apply_gradients(zip(gradients, layer_variables))
-        if optimizer.iterations > 3:
-          break
-
-    train()
 
   def testDeferredCapture(self):
     value = 1.0

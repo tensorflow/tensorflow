@@ -69,8 +69,8 @@ class TensorShapeRep {
   int64 num_elements() const { return num_elements_; }
 
   /// For error messages.
-  string DebugString() const;
-  static string DebugString(const TensorShapeProto& proto);
+  std::string DebugString() const;
+  static std::string DebugString(const TensorShapeProto& proto);
 
   void DumpRep() const;  // XXX
 
@@ -103,10 +103,10 @@ class TensorShapeRep {
 
   // We use the max value of uint16 or uint32 to represent unknown shapes, so
   // the maximum representable valid shape in these representations is one less.
-  static const int64 kMaxRep16 = std::numeric_limits<uint16>::max() - 1;
-  static const int64 kMaxRep32 = std::numeric_limits<uint32>::max() - 1;
-  static const uint16 kUnknownRep16 = std::numeric_limits<uint16>::max();
-  static const uint32 kUnknownRep32 = std::numeric_limits<uint32>::max();
+  static constexpr int64 kMaxRep16 = std::numeric_limits<uint16>::max() - 1;
+  static constexpr int64 kMaxRep32 = std::numeric_limits<uint32>::max() - 1;
+  static constexpr uint16 kUnknownRep16 = std::numeric_limits<uint16>::max();
+  static constexpr uint32 kUnknownRep32 = std::numeric_limits<uint32>::max();
 
   Rep16* as16() { return reinterpret_cast<Rep16*>(buf()); }
   Rep32* as32() { return reinterpret_cast<Rep32*>(buf()); }
@@ -134,7 +134,7 @@ class TensorShapeRep {
   // We store the number of dimensions in byte 14, and the RepTag in byte 15.
   // Bytes [0..13] vary depending on the representation.
   // A value of 255 indicates unknown rank in the PartialTensorShape case.
-  static const uint8 kUnknownRank = 255;
+  static constexpr uint8 kUnknownRank = 255;
   uint8 ndims_byte() const { return buf()[14]; }
   void set_ndims_byte(uint8 nd) { buf()[14] = nd; }
 
@@ -397,7 +397,8 @@ class TensorShapeUtils {
   static Status MakeShape(gtl::ArraySlice<int64> shape,
                           PartialTensorShape* out);
 
-  static string ShapeListString(const gtl::ArraySlice<TensorShape>& shapes);
+  static std::string ShapeListString(
+      const gtl::ArraySlice<TensorShape>& shapes);
 
   /// \brief Returns true iff `shape` starts with `prefix`.
   static bool StartsWith(const TensorShape& shape, const TensorShape& prefix);
@@ -462,7 +463,7 @@ class PartialTensorShape : public TensorShapeBase<PartialTensorShape> {
 /// common predicates on a partially known tensor shape.
 class PartialTensorShapeUtils {
  public:
-  static string PartialShapeListString(
+  static std::string PartialShapeListString(
       const gtl::ArraySlice<PartialTensorShape>& shapes);
 
   static bool AreIdentical(const gtl::ArraySlice<PartialTensorShape>& shapes0,

@@ -33,34 +33,28 @@ namespace {
 
 class TridiagonalTest
     : public ClientLibraryTestBase,
-      public ::testing::WithParamInterface<std::tuple<int, int, int, int>> {};
+      public ::testing::WithParamInterface<std::tuple<int, int, int>> {};
 
 XLA_TEST_P(TridiagonalTest, Solves) {
   const auto& spec = GetParam();
   xla::XlaBuilder builder(TestName());
 
-  const int64 num_eqs = 5;
-  const int64 num_rhs = 3;
-  const int64 lower_diagonal_batch_size = std::get<0>(spec);
-  const int64 main_diagonal_batch_size = std::get<1>(spec);
-  const int64 upper_diagonal_batch_size = std::get<2>(spec);
-  const int64 rhs_diagonal_batch_size = std::get<2>(spec);
+  // TODO(belletti): parametrize num_rhs.
+  const int64 batch_size = std::get<0>(spec);
+  const int64 num_eqs = std::get<1>(spec);
+  const int64 num_rhs = std::get<2>(spec);
 
-  const int64 max_batch_size =
-      std::max({lower_diagonal_batch_size, main_diagonal_batch_size,
-                upper_diagonal_batch_size, rhs_diagonal_batch_size});
-
-  Array3D<float> lower_diagonal(lower_diagonal_batch_size, 1, num_eqs);
-  Array3D<float> main_diagonal(main_diagonal_batch_size, 1, num_eqs);
-  Array3D<float> upper_diagonal(upper_diagonal_batch_size, 1, num_eqs);
-  Array3D<float> rhs(rhs_diagonal_batch_size, num_rhs, num_eqs);
+  Array3D<float> lower_diagonal(batch_size, 1, num_eqs);
+  Array3D<float> main_diagonal(batch_size, 1, num_eqs);
+  Array3D<float> upper_diagonal(batch_size, 1, num_eqs);
+  Array3D<float> rhs(batch_size, num_rhs, num_eqs);
 
   lower_diagonal.FillRandom(1.0, /*mean=*/0.0, /*seed=*/0);
   main_diagonal.FillRandom(0.05, /*mean=*/1.0,
-                           /*seed=*/max_batch_size * num_eqs);
+                           /*seed=*/batch_size * num_eqs);
   upper_diagonal.FillRandom(1.0, /*mean=*/0.0,
-                            /*seed=*/2 * max_batch_size * num_eqs);
-  rhs.FillRandom(1.0, /*mean=*/0.0, /*seed=*/3 * max_batch_size * num_eqs);
+                            /*seed=*/2 * batch_size * num_eqs);
+  rhs.FillRandom(1.0, /*mean=*/0.0, /*seed=*/3 * batch_size * num_eqs);
 
   XlaOp lower_diagonal_xla;
   XlaOp main_diagonal_xla;
@@ -119,10 +113,9 @@ XLA_TEST_P(TridiagonalTest, Solves) {
 }
 
 INSTANTIATE_TEST_CASE_P(TridiagonalTestInstantiation, TridiagonalTest,
-                        ::testing::Combine(::testing::Values(1, 8),
-                                           ::testing::Values(1, 8),
-                                           ::testing::Values(1, 8),
-                                           ::testing::Values(1, 8)));
+                        ::testing::Combine(::testing::Values(1, 12),
+                                           ::testing::Values(4, 8),
+                                           ::testing::Values(1, 12)));
 
 }  // namespace
 }  // namespace tridiagonal

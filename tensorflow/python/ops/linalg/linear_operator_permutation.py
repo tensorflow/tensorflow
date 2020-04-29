@@ -75,6 +75,7 @@ class LinearOperatorPermutation(linear_operator.LinearOperator):
   x = ... Shape [3, 4] Tensor
   operator.matmul(x)
   ==> Shape [3, 4] Tensor
+  ```
 
   #### Shape compatibility
 

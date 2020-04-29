@@ -16,7 +16,6 @@ limitations under the License.
 
 // These are headers from the ARM CMSIS-NN library.
 #include "arm_nnfunctions.h"  // NOLINT
-#include "scratch_buffer.h"   // NOLINT
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -128,10 +127,13 @@ TfLiteStatus AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
   const int padding_width = data->padding.width;
 
   int16_t* scratch_buffer = nullptr;
-  int32_t buffer_size = arm_avgpool_s8_get_buffer_size(output_width, depth);
 
-  TF_LITE_ENSURE_OK(
-      context, get_cmsis_scratch_buffer(context, &scratch_buffer, buffer_size));
+  auto* buffer_idx = reinterpret_cast<int*>(node->user_data);
+
+  if (*buffer_idx > -1) {
+    void* raw = context->GetScratchBuffer(context, *buffer_idx);
+    scratch_buffer = reinterpret_cast<int16_t*>(raw);
+  }
 
   TF_LITE_ENSURE_EQ(
       context,
@@ -207,12 +209,38 @@ void MaxEvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node,
 }  // namespace
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
+  void* raw;
+  context->AllocatePersistentBuffer(context, sizeof(int), &raw);
+  return raw;
 }
 
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+#if defined(__ARM_FEATURE_DSP)
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
+  RuntimeShape input_shape = GetTensorShape(input);
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+
+  RuntimeShape output_shape = GetTensorShape(output);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+
+  const int depth = MatchingDim(input_shape, 3, output_shape, 3);
+  const int output_width = output_shape.Dims(2);
+
+  const int32_t buffer_size =
+      arm_avgpool_s8_get_buffer_size(output_width, depth);
+
+  int* buffer_idx = reinterpret_cast<int*>(node->user_data);
+
+  node->user_data = buffer_idx;
+  if (buffer_size > 0) {
+    TF_LITE_ENSURE_STATUS(
+        context->RequestScratchBufferInArena(context, buffer_size, buffer_idx));
+  } else {
+    *buffer_idx = -1;
+  }
+#endif
   return kTfLiteOk;
 }
 
@@ -273,18 +301,26 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace pooling
 
 TfLiteRegistration* Register_AVERAGE_POOL_2D() {
-  static TfLiteRegistration r = {
-      pooling::Init,
-      pooling::Free,
-      pooling::Prepare,
-      pooling::AverageEval,
-  };
+  static TfLiteRegistration r = {/*init=*/pooling::Init,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/pooling::Prepare,
+                                 /*invoke=*/pooling::AverageEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 
 TfLiteRegistration* Register_MAX_POOL_2D() {
-  static TfLiteRegistration r = {pooling::Init, pooling::Free, pooling::Prepare,
-                                 pooling::MaxEval};
+  static TfLiteRegistration r = {/*init=*/pooling::Init,
+                                 /*free=*/nullptr,
+                                 /*prepare=*/pooling::Prepare,
+                                 /*invoke=*/pooling::MaxEval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

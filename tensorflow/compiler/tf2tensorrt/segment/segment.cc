@@ -21,14 +21,18 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/tf2tensorrt/segment/union_find.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/env_var.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -36,8 +40,11 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 namespace segment {
+namespace {
 using absl::StrAppend;
+using absl::StrAppendFormat;
 using absl::StrCat;
+using absl::StrJoin;
 
 // A simple graph representation to mirror Graph. This structure
 // helps saving memory since segmenter modifies the graph in place, preventing
@@ -240,8 +247,6 @@ struct NodePtrCompare {
   }
 };
 
-namespace {
-
 // Copied from TF ReverseDFS, which only works for Graph.
 void StableDFS(const SimpleGraph& g, bool reverse,
                const std::vector<const SimpleNode*>& start,
@@ -341,7 +346,68 @@ bool CanContractEdge(const SimpleEdge* edge,
             });
   return !has_cycle;
 }
-}  // namespace
+
+// TODO(bixia): put this to a common utility file.
+string TensorPropertiesToString(const OpInfo::TensorProperties& prop) {
+  string s = StrCat(DataTypeString(prop.dtype()), ": ");
+  StrAppend(&s, "[");
+  if (prop.shape().unknown_rank()) {
+    StrAppend(&s, "?");
+  } else {
+    StrAppend(&s, StrJoin(prop.shape().dim(), ",",
+                          [](string* out, const TensorShapeProto_Dim& d) {
+                            StrAppendFormat(out, "%d", d.size());
+                          }));
+  }
+  StrAppend(&s, "]");
+  return s;
+}
+
+string TensorPropertiesToString(
+    const std::vector<OpInfo::TensorProperties>& properties) {
+  return StrJoin(properties, "; ",
+                 [](string* out, const OpInfo::TensorProperties& prop) {
+                   StrAppend(out, TensorPropertiesToString(prop));
+                 });
+}
+
+// Returns true if we can't be sure that the operand with the given properties
+// won't have negative values for non-batch dimensions.
+//
+bool HasDynamicNonBatchDimension(const OpInfo::TensorProperties& prop) {
+  const TensorShapeProto& shape = prop.shape();
+  if (shape.unknown_rank()) return true;
+
+  // Scalar is a well specified shape, and TRT supports implicit broadcasting
+  // from scalar to other shapes.
+  if (shape.dim_size() == 0) return false;
+  for (int i = 1; i < shape.dim_size(); ++i) {
+    // The value of a dynamic dimension can be other negative values besides
+    // -1, representing the symbolic group of the dimension.
+    if (shape.dim(i).size() <= -1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Returns true if we can't be sure that the operation won't have dynamic
+// non-batch dimension involved. We only check the shape of the first output
+// assuming shape inference already propagates the shapes.
+bool OperationHasDynamicNonBatchDimension(
+    const grappler::GraphProperties* graph_properties, const Node* node) {
+  VLOG(3) << "process node " << node->name();
+  // If the node doesn't have any input or output, not computation is involved.
+  if (node->num_inputs() == 0 || node->num_outputs() == 0) return false;
+
+  // If the node doesn't have output properties, return true to be conservative.
+  if (!graph_properties->HasOutputProperties(node->name())) return true;
+  VLOG(3) << "output shapes "
+          << TensorPropertiesToString(
+                 graph_properties->GetOutputProperties(node->name()));
+  return HasDynamicNonBatchDimension(
+      graph_properties->GetOutputProperties(node->name()).at(0));
+}
 
 void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
                   std::vector<const SimpleEdge*>* remove_edges) {
@@ -401,12 +467,25 @@ void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
   }
 }
 
+}  // namespace
+
 Status SegmentGraph(const Graph* tf_graph,
+                    const grappler::GraphProperties* graph_properties,
                     const std::function<Status(const Node*)>& candidate_fn,
                     const std::function<bool(const Edge*)>& input_candidate_fn,
                     const std::function<bool(const Edge*)>& output_candidate_fn,
                     const SegmentOptions& options,
                     SegmentNodesVector* segments) {
+  if (!options.use_implicit_batch && !options.allow_dynamic_non_batch_dim) {
+    return errors::Internal(
+        "Explicit batch mode should allow dynamic non-batch dimensions");
+  }
+
+  if (!options.allow_dynamic_non_batch_dim && !graph_properties) {
+    return errors::Internal(
+        "Need graph propertities to disallow dynamic non-batch dimensions");
+  }
+
   // Steps:
   // 1. run the segmentation algorithm to find all the segments, which uses
   //    candidate_fn to determine the candidates segment nodes;
@@ -422,27 +501,47 @@ Status SegmentGraph(const Graph* tf_graph,
   // for TRT.
   std::unordered_set<string> unsupported_ops;
   int num_unsupported_ops = 0;
+
+  // Getting the operations blacklisted for conversion
+  string tftrt_op_blacklist_str;
+  TF_CHECK_OK(
+      ReadStringFromEnvVar("TF_TRT_OP_BLACKLIST", "", &tftrt_op_blacklist_str));
+
+  auto tftrt_op_blacklist = gtl::FlatSet<string>{};  // non-absl ok
+
+  for (const auto& x : str_util::Split(tftrt_op_blacklist_str, ",")) {
+    tftrt_op_blacklist.insert(x);
+  }
+
+  // Parsing each node of the graph
   std::vector<UnionFind<SimpleNode*>> node_segments;
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     SimpleNode* node = graph->FindNodeId(i);
-    if (options.exclude_node_list.count(node->name()) != 0) {
+    auto exclude_node = [&](absl::string_view reason) {
       VLOG(1) << "Not a TF-TRT candidate, "
               << "(Op type: " << node->tf_node()->type_string() << "), "
               << "(Op name: " << node->name() << "), "
-              << "(Reason: excluded by segmenter option)";
+              << "(Reason: " << reason << ")";
       unsupported_ops.emplace(node->tf_node()->type_string());
       num_unsupported_ops++;
       node = nullptr;
+    };
+    if (options.exclude_node_list.count(node->name()) != 0) {
+      exclude_node("excluded by segmenter option");
+    } else if (!options.allow_dynamic_non_batch_dim &&
+               OperationHasDynamicNonBatchDimension(graph_properties,
+                                                    node->tf_node())) {
+      exclude_node("dynamic non-batch dimensions not allowed");
     } else {
       const Status status = candidate_fn(node->tf_node());
       if (!status.ok()) {
-        VLOG(1) << "Not a TF-TRT candidate, "
-                << "(Op type: " << node->tf_node()->type_string() << "), "
-                << "(Op name: " << node->name() << "), "
-                << "(Reason: " << status << ")";
-        unsupported_ops.emplace(node->tf_node()->type_string());
-        num_unsupported_ops++;
-        node = nullptr;
+        exclude_node(status.error_message());
+      } else if (tftrt_op_blacklist.count(node->tf_node()->type_string())) {
+        // WARNING verbosity since the user explicitly requests this behavior.
+        LOG(WARNING) << "Blacklisted as TF-TRT candidate, "
+                     << "(Op type: " << node->tf_node()->type_string() << "), "
+                     << "(Op name: " << node->name() << ")";
+        exclude_node("Blacklisted with the env var TF_TRT_OP_BLACKLIST");
       } else {
         VLOG(2) << "Accepted as a TF-TRT candidate, "
                 << "(Op type: " << node->tf_node()->type_string() << "), "

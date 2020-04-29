@@ -33,36 +33,31 @@ namespace gl {
 namespace {
 
 bool IsApplyMaskSupported(const NodeShader::GenerationContext& ctx) {
-  const auto inputs = ctx.graph->FindInputs(ctx.node->id);
-  if (inputs.size() != 2) return false;
-  const auto& shape0 = inputs[0]->tensor.shape;
-  const auto& shape1 = inputs[1]->tensor.shape;
+  if (ctx.input_shapes.size() != 2) return false;
 
   // [H, W, C] x [H, W, 0][0]
-  if (shape0.h == shape1.h && shape0.w == shape1.w && shape1.c == 1) {
+  if (ctx.input_shapes[0][1] == ctx.input_shapes[1][1] &&
+      ctx.input_shapes[0][2] == ctx.input_shapes[1][2] &&
+      ctx.input_shapes[1][3] == 1) {
     return true;
   }
 
   // [H, W, C] x [H, W, C]
-  if (shape0 == shape1) {
-    return true;
-  }
+  if (ctx.input_shapes[0] == ctx.input_shapes[1]) return true;
 
   // [H, W, C] x [0, 0, C]
-  return shape1.h == 1 && shape1.w == 1 && shape0.c == shape1.c;
+  return ctx.input_shapes[1][1] == 1 && ctx.input_shapes[1][2] == 1 &&
+         ctx.input_shapes[0][3] == ctx.input_shapes[1][3];
 }
 
-Status GenerateApplyMaskCode(const NodeShader::GenerationContext& ctx,
-                             GeneratedCode* generated_code) {
-  const auto inputs = ctx.graph->FindInputs(ctx.node->id);
-  const auto& shape0 = inputs[0]->tensor.shape;
-  const auto& shape1 = inputs[1]->tensor.shape;
-
+absl::Status GenerateApplyMaskCode(const NodeShader::GenerationContext& ctx,
+                                   GeneratedCode* generated_code) {
   std::string source = "value_0 = $input_data_0[gid.x, gid.y, gid.z]$ * ";
-  if (shape1.c == 1) {
+  if (ctx.input_shapes[1][3] == 1) {
     // [H, W, C] x [H, W, 0][0]
     absl::StrAppend(&source, "$input_data_1[gid.x, gid.y, 0]$.x;");
-  } else if (shape0.h == shape1.h && shape0.w == shape1.w) {
+  } else if (ctx.input_shapes[0][1] == ctx.input_shapes[1][1] &&
+             ctx.input_shapes[0][2] == ctx.input_shapes[1][2]) {
     // [H, W, C] x [H, W, C]
     absl::StrAppend(&source, "$input_data_1[gid.x, gid.y, gid.z]$;");
   } else {
@@ -80,13 +75,12 @@ Status GenerateApplyMaskCode(const NodeShader::GenerationContext& ctx,
       /*input=*/IOStructure::ONLY_DEFINITIONS,
       /*output=*/IOStructure::AUTO,
   };
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status GenerateMultiplyScalarCode(const NodeShader::GenerationContext& ctx,
-                                  GeneratedCode* generated_code) {
-  auto attr =
-      absl::any_cast<MultiplyAttributes>(ctx.node->operation.attributes);
+absl::Status GenerateMultiplyScalarCode(
+    const NodeShader::GenerationContext& ctx, GeneratedCode* generated_code) {
+  const auto& attr = absl::any_cast<const MultiplyAttributes&>(ctx.op_attr);
   auto muls = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
   auto scalar = absl::get_if<float>(&attr.param);
 
@@ -103,16 +97,17 @@ Status GenerateMultiplyScalarCode(const NodeShader::GenerationContext& ctx,
     };
   } else {
     if (!muls) {
-      return InvalidArgumentError("Empty parameters for Multiplication.");
+      return absl::InvalidArgumentError("Empty parameters for Multiplication.");
     }
-    auto shape = ctx.graph->FindInputs(ctx.node->id)[0]->tensor.shape;
     *generated_code = {
         /*parameters=*/{},
         /*objects=*/{{"mul_buffer", MakeReadonlyObject(muls->data)}},
         /*shared_variables=*/{},
         // Declare workload explicitly because shader depends on gid.z.
         /*workload=*/
-        uint3(shape.w, shape.h, IntegralDivideRoundUp(shape.c, 4)),
+        uint3(static_cast<int>(ctx.input_shapes[0][2]),
+              static_cast<int>(ctx.input_shapes[0][1]),
+              DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)),
         /*workgroup=*/uint3(),
         /*source_code=*/"value_0 *= $mul_buffer[gid.z]$;",
         /*input=*/IOStructure::AUTO,
@@ -120,13 +115,13 @@ Status GenerateMultiplyScalarCode(const NodeShader::GenerationContext& ctx,
     };
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 class Multiply : public NodeShader {
  public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     if (IsApplyMaskSupported(ctx)) {
       return GenerateApplyMaskCode(ctx, generated_code);
     } else {

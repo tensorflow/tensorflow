@@ -513,10 +513,11 @@ HloRecvDoneInstruction::CloneWithNewOperandsImpl(
 HloCollectiveInstruction::HloCollectiveInstruction(
     HloOpcode opcode, const Shape& shape,
     absl::Span<HloInstruction* const> operands,
-    const std::vector<ReplicaGroup>& replica_groups,
+    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id)
     : HloChannelInstruction(opcode, shape, channel_id),
-      replica_groups_(replica_groups) {
+      replica_groups_(replica_groups),
+      constrain_layout_(constrain_layout) {
   for (auto operand : operands) {
     AppendOperand(operand);
   }
@@ -526,6 +527,7 @@ HloInstructionProto HloCollectiveInstruction::ToProto() const {
   HloInstructionProto proto = HloChannelInstruction::ToProto();
   *proto.mutable_replica_groups() = {replica_groups_.begin(),
                                      replica_groups_.end()};
+  proto.set_constrain_layout(constrain_layout_);
   return proto;
 }
 
@@ -535,6 +537,9 @@ std::vector<string> HloCollectiveInstruction::ExtraAttributesToStringImpl(
       HloChannelInstruction::ExtraAttributesToStringImpl(options);
   result.push_back(
       StrCat("replica_groups=", ReplicaGroupsToString(replica_groups())));
+  if (constrain_layout_) {
+    result.push_back("constrain_layout=true");
+  }
   return result;
 }
 
@@ -557,14 +562,13 @@ HloAllReduceInstruction::HloAllReduceInstruction(
     const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id, bool use_global_device_ids)
     : HloCollectiveInstruction(HloOpcode::kAllReduce, shape, operands,
-                               replica_groups, channel_id),
-      constrain_layout_(constrain_layout),
+                               replica_groups, constrain_layout, channel_id),
       use_global_device_ids_(use_global_device_ids) {
   AppendComputation(reduce_computation);
 }
 
 bool HloAllReduceInstruction::IsNoop() const {
-  for (auto replica_group : replica_groups()) {
+  for (const auto& replica_group : replica_groups()) {
     if (replica_group.replica_ids().size() != 1) {
       return false;
     }
@@ -574,7 +578,6 @@ bool HloAllReduceInstruction::IsNoop() const {
 
 HloInstructionProto HloAllReduceInstruction::ToProto() const {
   HloInstructionProto proto = HloCollectiveInstruction::ToProto();
-  proto.set_constrain_layout(constrain_layout_);
   proto.set_use_global_device_ids(use_global_device_ids_);
   return proto;
 }
@@ -583,9 +586,6 @@ std::vector<string> HloAllReduceInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   std::vector<string> result =
       HloCollectiveInstruction::ExtraAttributesToStringImpl(options);
-  if (constrain_layout_) {
-    result.push_back("constrain_layout=true");
-  }
   if (use_global_device_ids_) {
     result.push_back("use_global_device_ids=true");
   }
@@ -614,11 +614,11 @@ HloAllReduceInstruction::CloneWithNewOperandsImpl(
 
 HloAllToAllInstruction::HloAllToAllInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const std::vector<ReplicaGroup>& replica_groups,
+    const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
     const absl::optional<int64>& channel_id,
     const absl::optional<int64>& split_dimension)
     : HloCollectiveInstruction(HloOpcode::kAllToAll, shape, operands,
-                               replica_groups, channel_id),
+                               replica_groups, constrain_layout, channel_id),
       split_dimension_(split_dimension) {}
 
 std::unique_ptr<HloInstruction>
@@ -626,7 +626,8 @@ HloAllToAllInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
   return absl::make_unique<HloAllToAllInstruction>(
-      shape, new_operands, replica_groups(), channel_id(), split_dimension());
+      shape, new_operands, replica_groups(), constrain_layout(), channel_id(),
+      split_dimension());
 }
 
 HloInstructionProto HloAllToAllInstruction::ToProto() const {

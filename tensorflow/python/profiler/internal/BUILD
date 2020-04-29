@@ -118,7 +118,9 @@ tf_python_pybind_extension(
     ],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler:profiler_service_proto_cc",
         "//tensorflow/core/profiler/convert:xplane_to_profile_response",
+        "//tensorflow/core/profiler/convert:xplane_to_trace_events",
         "//tensorflow/core/profiler/lib:profiler_session_headers",
         "//tensorflow/core/profiler/rpc:profiler_server",
         "//tensorflow/core/profiler/rpc/client:capture_profile",
@@ -127,4 +129,21 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/memory",
         "@pybind11",
     ],
+)
+
+cc_library(
+    name = "python_hooks",
+    srcs = ["python_hooks.cc"],
+    hdrs = ["python_hooks.h"],
+    copts = ["-fexceptions"],
+    features = ["-use_header_modules"],  # Incompatible with -fexceptions.
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@pybind11",
+    ],
+    alwayslink = True,
 )

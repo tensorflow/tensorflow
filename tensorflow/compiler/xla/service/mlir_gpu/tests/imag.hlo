@@ -1,0 +1,11 @@
+// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
+HloModule Imag
+
+ENTRY %Imag (x: c64[2,2]{0,1}) -> f32[2,2] {
+  %x = c64[2,2]{0,1} parameter(0)
+  ROOT %imag = f32[2,2]{0,1} imag(%x)
+}
+
+// CHECK: func @imag(%[[IN:.*]]: [[BUF_C64:.*]], %[[OUT:.*]]: [[BUF_F32:.*]]) {
+// CHECK:   "xla_lhlo.imag"(%[[IN]], %[[OUT]]) : ([[BUF_C64]], [[BUF_F32]]) -> ()
+// CHECK: }

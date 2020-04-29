@@ -28,7 +28,7 @@ namespace {
 // computation wait for the inputs to be produced before executing.
 TEST(GpuMultiStream, Basics) {
   TF_ASSERT_OK_AND_ASSIGN(
-      std::shared_ptr<PyLocalClient> client,
+      std::shared_ptr<PjRtClient> client,
       GetNvidiaGpuClient(/*asynchronous=*/true, GpuAllocatorConfig(),
                          /*distributed_client=*/nullptr, /*node_id=*/0));
 
@@ -54,10 +54,9 @@ TEST(GpuMultiStream, Basics) {
   device_assignment(0, 0) = device->id();
   compile_options.executable_build_options.set_device_assignment(
       device_assignment);
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<PyLocalExecutable> executable,
-      PyLocalExecutable::Compile(computation, client.get(),
-                                 std::move(compile_options)));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtExecutable> executable,
+                          PjRtExecutable::Compile(computation, client.get(),
+                                                  std::move(compile_options)));
 
   int64 dummy_size = 1 << 20;
   std::vector<int32> dummy_inputs(dummy_size);
@@ -72,26 +71,26 @@ TEST(GpuMultiStream, Basics) {
     // must wait.
     TF_ASSERT_OK_AND_ASSIGN(
         auto dummy_buffer,
-        PyLocalBuffer::FromHostBuffer(
+        PjRtBuffer::FromHostBuffer(
             dummy_inputs.data(), dummy_shape, /*force_copy=*/false,
             /*buffer_reference=*/nullptr, client.get(), device));
     TF_ASSERT_OK_AND_ASSIGN(
         auto in_buffer0,
-        PyLocalBuffer::FromHostBuffer(
-            inputs.data(), shape, /*force_copy=*/false,
-            /*buffer_reference=*/nullptr, client.get(), device));
+        PjRtBuffer::FromHostBuffer(inputs.data(), shape, /*force_copy=*/false,
+                                   /*buffer_reference=*/nullptr, client.get(),
+                                   device));
     TF_ASSERT_OK_AND_ASSIGN(
         auto in_buffer1,
-        PyLocalBuffer::FromHostBuffer(
-            inputs.data(), shape, /*force_copy=*/false,
-            /*buffer_reference=*/nullptr, client.get(), device));
+        PjRtBuffer::FromHostBuffer(inputs.data(), shape, /*force_copy=*/false,
+                                   /*buffer_reference=*/nullptr, client.get(),
+                                   device));
     // The execution may be enqueued before the transfers complete, requiring
     // adequate device-side synchronization.
+    ExecuteOptions options;
+    options.untuple_result = true;
     TF_ASSERT_OK_AND_ASSIGN(
-        auto out_buffer,
-        executable->Execute({in_buffer0.get(), in_buffer1.get()}));
-
-    TF_ASSERT_OK_AND_ASSIGN(auto out_buffers, out_buffer->DestructureTuple());
+        auto out_buffers,
+        executable->Execute({in_buffer0.get(), in_buffer1.get()}, options));
 
     TF_ASSERT_OK_AND_ASSIGN(auto out_literal, out_buffers[0]->ToLiteral());
     LiteralTestUtil::ExpectR1Equal<int32>(expected_outputs, *out_literal);

@@ -37,7 +37,7 @@ class ReLU : public ElementwiseOperation {
   void SetLinkIndex(int index) override;
   std::string GetCoreCode(const LinkingContext& context) const override;
   std::string GetArgsDeclaration() const override;
-  Status BindArguments(CLKernel* kernel) override;
+  absl::Status BindArguments(CLKernel* kernel) override;
 
   friend ReLU CreateReLU(const CreationContext& creation_context,
                          const OperationDef& definition,

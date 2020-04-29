@@ -288,6 +288,7 @@ tf_kernel_library(
     deps = [
         ":bounds_check",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//third_party/eigen3",
     ],
     alwayslink = 0,
@@ -514,6 +515,16 @@ cc_library(
     name = "ops_util_hdrs",
     hdrs = ["ops_util.h"],
     deps = ["//third_party/eigen3"],
+)
+
+cc_library(
+    name = "gpu_prim_hdrs",
+    hdrs = ["gpu_prim.h"],
+    deps = if_cuda([
+        "@cub_archive//:cub",
+    ]) + if_rocm([
+        "@local_config_rocm//rocm:rocprim",
+    ]),
 )
 
 cc_library(
@@ -981,14 +992,7 @@ ARRAY_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
     "//third_party/eigen3",
-] + if_sycl(["//tensorflow/core:sycl_runtime"])
-
-cc_library(
-    name = "array_not_windows",
-    deps = [
-        ":immutable_constant_op",
-    ],
-)
+] + if_sycl(["//tensorflow/core/common_runtime/sycl:sycl_runtime"])
 
 tf_kernel_library(
     name = "immutable_constant_op",
@@ -1035,6 +1039,7 @@ cc_library(
         ":host_constant_op",
         ":identity_n_op",
         ":identity_op",
+        ":immutable_constant_op",
         ":inplace_ops",
         ":listdiff_op",
         ":matrix_band_part_op",
@@ -1276,7 +1281,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "shape_ops",
     prefix = "shape_ops",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + ["//tensorflow/core/common_runtime:dma_helper"],
 )
 
 tf_kernel_library(
@@ -1319,7 +1324,23 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "tile_ops",
-    srcs = ["tile_functor_cpu.cc"],
+    srcs = [
+        "tile_functor_cpu.h",
+        "tile_functor_cpu_bfloat16.cc",
+        "tile_functor_cpu_bool.cc",
+        "tile_functor_cpu_complex128.cc",
+        "tile_functor_cpu_complex64.cc",
+        "tile_functor_cpu_double.cc",
+        "tile_functor_cpu_float.cc",
+        "tile_functor_cpu_half.cc",
+        "tile_functor_cpu_int16.cc",
+        "tile_functor_cpu_int32.cc",
+        "tile_functor_cpu_int64.cc",
+        "tile_functor_cpu_int8.cc",
+        "tile_functor_cpu_tstring.cc",
+        "tile_functor_cpu_uint8.cc",
+        "tile_functor_sycl.cc",
+    ],
     hdrs = ["tile_functor.h"],
     gpu_srcs = [
         "tile_functor.h",
@@ -1350,7 +1371,9 @@ tf_kernel_library(
 tf_kernel_library(
     name = "unique_op",
     prefix = "unique_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 tf_kernel_library(
@@ -1382,12 +1405,9 @@ tf_kernel_library(
         "where_op_gpu_impl_8.cu.cc",
     ],
     deps = if_cuda_or_rocm([
-        ":cuda_solvers",
-    ]) + if_cuda([
-        "@cub_archive//:cub",
-    ]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]) + ARRAY_DEPS,
+               ":cuda_solvers",
+           ]) + [":gpu_prim_hdrs"] +
+           ARRAY_DEPS,
 )
 
 cc_library(
@@ -2261,6 +2281,25 @@ tf_kernel_library(
 )
 
 tf_cc_test(
+    name = "shape_ops_test",
+    size = "small",
+    srcs = ["shape_ops_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":shape_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:single_threaded_executor",
+    ],
+)
+
+tf_cc_test(
     name = "slice_op_test",
     size = "small",
     srcs = ["slice_op_test.cc"],
@@ -2317,6 +2356,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:single_threaded_executor",
     ],
 )
 
@@ -2626,9 +2666,9 @@ tf_kernel_library(
     deps = DYNAMIC_DEPS + [
         ":fill_functor",
         ":gather_functor",
-    ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
+        ":gpu_prim_hdrs",
+        "//tensorflow/core:framework_internal",
+    ],
 )
 
 tf_kernel_library(
@@ -3028,7 +3068,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "crop_and_resize_op",
     prefix = "crop_and_resize_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["//tensorflow/core:framework_internal"],
 )
 
 tf_kernel_library(
@@ -3070,8 +3110,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "generate_box_proposals_op",
     gpu_srcs = ["generate_box_proposals_op.cu.cc"],
-    deps = if_cuda([
-        "@cub_archive//:cub",
+    deps = [":gpu_prim_hdrs"] + if_cuda([
         ":non_max_suppression_op_gpu",
     ]),
 )
@@ -3079,7 +3118,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "non_max_suppression_op",
     prefix = "non_max_suppression_op",
-    deps = IMAGE_DEPS + if_cuda(["@cub_archive//:cub"]),
+    deps = IMAGE_DEPS + [":gpu_prim_hdrs"],
 )
 
 tf_kernel_library(
@@ -3576,6 +3615,7 @@ tf_kernel_library(
     visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
@@ -3919,13 +3959,6 @@ MATH_DEPS = [
     "//third_party/eigen3",
 ]
 
-cc_library(
-    name = "math_not_windows",
-    deps = [
-        ":sparse_matmul_op",
-    ],
-)
-
 tf_kernel_library(
     name = "sparse_matmul_op",
     defines = select({
@@ -3964,6 +3997,7 @@ cc_library(
         ":scan_ops",
         ":segment_reduction_ops",
         ":sequence_ops",
+        ":sparse_matmul_op",
         "//tensorflow/core/kernels/special_math:special_math_op",
     ],
 )
@@ -4081,7 +4115,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "check_numerics_op",
     prefix = "check_numerics_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + ["//tensorflow/core:framework_internal"],
 )
 
 tf_kernel_library(
@@ -4153,11 +4187,10 @@ tf_kernel_library(
     name = "reduction_ops",
     gpu_srcs = ["reduction_gpu_kernels.cu.h"],
     prefix = "reduction_ops",
-    deps = MATH_DEPS + [":transpose_functor"] + if_cuda([
-        "@cub_archive//:cub",
-    ]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
+    deps = MATH_DEPS + [
+        ":gpu_prim_hdrs",
+        ":transpose_functor",
+    ],
 )
 
 tf_kernel_library(
@@ -4180,11 +4213,7 @@ tf_kernel_library(
         "scan_ops_gpu_half.cu.cc",
         "scan_ops_gpu_int.cu.cc",
     ],
-    deps = MATH_DEPS + if_cuda([
-        "@cub_archive//:cub",
-    ]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
+    deps = MATH_DEPS + [":gpu_prim_hdrs"],
 )
 
 tf_kernel_library(
@@ -4785,11 +4814,7 @@ tf_kernel_library(
     prefix = "softmax_op",
     deps = NN_DEPS + if_cuda_or_rocm([
         ":reduction_ops",
-    ]) + if_cuda([
-        "@cub_archive//:cub",
-    ]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
+    ]) + [":gpu_prim_hdrs"],
 )
 
 tf_kernel_library(
@@ -4821,11 +4846,7 @@ tf_kernel_library(
         "topk_op_gpu_int8.cu.cc",
         "topk_op_gpu_uint8.cu.cc",
     ],
-    deps = NN_DEPS + if_cuda([
-        "@cub_archive//:cub",
-    ]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
+    deps = NN_DEPS + [":gpu_prim_hdrs"],
 )
 
 tf_kernel_library(
@@ -4844,41 +4865,38 @@ tf_kernel_library(
     name = "bincount_op",
     prefix = "bincount_op",
     deps = [
+        ":gpu_prim_hdrs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
-    ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
+    ],
 )
 
 tf_kernel_library(
     name = "histogram_op",
     prefix = "histogram_op",
     deps = [
+        ":gpu_prim_hdrs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
-    ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
+    ],
 )
 
 tf_kernel_library(
     name = "l2loss_op",
     prefix = "l2loss_op",
     deps = [
+        ":gpu_prim_hdrs",
         ":reduction_ops",
-        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_grad",
-    ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
+        "//third_party/eigen3",
+    ],
 )
 
 tf_cuda_cc_test(
@@ -5218,6 +5236,15 @@ tf_cuda_cc_test(
     ],
 )
 
+cc_library(
+    name = "stateful_random_ops_header",
+    hdrs = ["stateful_random_ops.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
 tf_kernel_library(
     name = "stateful_random_ops",
     prefix = "stateful_random_ops",
@@ -5230,6 +5257,7 @@ tf_kernel_library(
         ":resource_variable_ops",
         ":scatter_functor",
         ":state",
+        ":stateful_random_ops_header",
         ":training_op_helpers",
         ":variable_ops",
         "//tensorflow/core:core_cpu",
@@ -5617,7 +5645,7 @@ STATE_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
-] + if_sycl(["//tensorflow/core:sycl_runtime"])
+] + if_sycl(["//tensorflow/core/common_runtime/sycl:sycl_runtime"])
 
 tf_kernel_library(
     name = "count_up_to_op",
@@ -6007,16 +6035,13 @@ tf_kernel_library(
         ":random_op",
         ":random_ops",
         ":stateless_random_ops",
+        ":gpu_prim_hdrs",
         "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
-    ]) + if_cuda([
-        "@cub_archive//:cub",
-    ]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
     ]),
 )
 
@@ -6562,6 +6587,7 @@ filegroup(
         "data_format_ops.h",
         "depthtospace_op.h",
         "depthwise_conv_op.h",
+        "extract_image_patches_op.h",
         "fake_quant_ops_functor.h",
         "fused_batch_norm_op.h",
         "gemm_functors.h",
@@ -6650,6 +6676,7 @@ filegroup(
         "cwise_op_bitwise_and.cc",
         "cwise_op_bitwise_or.cc",
         "cwise_op_bitwise_xor.cc",
+        "cwise_op_conj.cc",
         "cwise_op_cos.cc",
         "cwise_op_cosh.cc",
         "cwise_op_div.cc",
@@ -6745,6 +6772,7 @@ filegroup(
         "decode_bmp_op.cc",
         "depthtospace_op.cc",
         "dynamic_stitch_op.cc",
+        "extract_image_patches_op.cc",
         "fft_ops.cc",
         "in_topk_op.cc",
         "in_topk_op.h",
@@ -6830,7 +6858,20 @@ filegroup(
         "summary_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",
-        "tile_functor_cpu.cc",
+        "tile_functor_cpu.h",
+        "tile_functor_cpu_bfloat16.cc",
+        "tile_functor_cpu_bool.cc",
+        "tile_functor_cpu_complex128.cc",
+        "tile_functor_cpu_complex64.cc",
+        "tile_functor_cpu_double.cc",
+        "tile_functor_cpu_float.cc",
+        "tile_functor_cpu_half.cc",
+        "tile_functor_cpu_int16.cc",
+        "tile_functor_cpu_int32.cc",
+        "tile_functor_cpu_int64.cc",
+        "tile_functor_cpu_int8.cc",
+        "tile_functor_cpu_tstring.cc",
+        "tile_functor_cpu_uint8.cc",
         "tile_ops.cc",
         "tile_ops_cpu_impl_1.cc",
         "tile_ops_cpu_impl_2.cc",
@@ -6915,6 +6956,8 @@ filegroup(
             "*_gpu*",
             "*_3d*",
             "*.cu.*",
+            # Helper files for tests
+            "eigen_benchmark.h",
             # Ops already in android_srcs
             "pooling_ops_common.cc",
             # Ops which we are currently excluding because they are likely
@@ -6970,6 +7013,11 @@ filegroup(
         # rule above. Seems to have only have worked before because of
         # hdrs_check loose.
         "stateful_random_ops_cpu_gpu.h",
+        # Allows conv_3d ops for android but excluded from *_3d* rule above.
+        "conv_3d.h",
+        "conv_ops_3d.h",
+        "conv_ops_3d.cc",
+        "conv_ops_gpu.h",
     ],
     visibility = ["//visibility:public"],
 )
@@ -8332,6 +8380,13 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "data_service_ops",
+    deps = [
+        "//tensorflow/core/kernels/data/experimental:data_service_kernels",
+    ],
+)
+
+tf_kernel_library(
     name = "dataset_ops",
     deps = [
         "//tensorflow/core/kernels/data",
@@ -8479,6 +8534,62 @@ tf_cc_shared_object(
     deps = [
         ":kernel_platform_strings",
         "//tensorflow/core:all_kernels_impl",
+    ],
+)
+
+# Manually curated set of tests that are useful for building and testing against
+# platforms and architecures that don't support CUDA.
+# TODO(b/153737462): Automatically filter tests to create the appropriate
+# portable test list.
+test_suite(
+    name = "portable_kernel_tests",
+    tags = [
+        "manual",  # Avoid redundancy when using wildcard test patterns.
+    ],
+    tests = [
+        ":batch_matmul_op_test",
+        ":batch_norm_op_test",
+        ":broadcast_to_op_test",
+        ":cast_op_test",
+        ":concat_op_test",
+        ":control_flow_ops_test",
+        ":crop_and_resize_op_test",
+        ":cwise_ops_test",
+        ":deep_conv2d_test",
+        ":dequantize_op_test",
+        ":diag_op_test",
+        ":eigen_activations_test",
+        ":eigen_pooling_test",
+        ":eigen_spatial_convolutions_test",
+        ":gather_nd_op_test",
+        ":matmul_op_test",
+        ":mfcc_test",
+        ":multinomial_op_test",
+        ":nn_ops_test",
+        ":non_max_suppression_op_test",
+        ":quantization_utils_test",
+        ":quantize_and_dequantize_op_test",
+        ":quantize_op_test",
+        ":quantized_activation_ops_test",
+        ":quantized_batch_norm_op_test",
+        ":quantized_conv_ops_test",
+        ":quantized_matmul_op_test",
+        ":quantized_pooling_ops_test",
+        ":random_binomial_op_test",
+        ":random_op_test",
+        ":random_poisson_op_test",
+        ":reduction_ops_test",
+        ":requantization_range_op_test",
+        ":resize_bilinear_op_test",
+        ":scatter_op_test",
+        ":segment_reduction_ops_test",
+        ":slice_op_test",
+        ":spectrogram_test",
+        ":split_op_test",
+        ":split_v_op_test",
+        ":strided_slice_op_test",
+        ":unique_op_test",
+        ":variable_ops_test",
     ],
 )
 

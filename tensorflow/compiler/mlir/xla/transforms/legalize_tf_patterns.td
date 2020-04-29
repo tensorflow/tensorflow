@@ -52,7 +52,8 @@ def GetHLOAxisFromTFAxisVariadic : NativeCodeCall<
 
 def : Pattern<
     (TF_FusedBatchNormOp:$root $x, $scale, $offset, $mean, $variance, $epsilon,
-                               $data_format, FalseBoolAttr:$is_training),
+                         $exponential_avg_factor, $data_format,
+                         FalseBoolAttr:$is_training),
     [(HLO_BatchNormInferenceOp $x, $scale, $offset, $mean, $variance,
                                $epsilon, (FeatureDimension $data_format, $x)),
      // We already guaranteed that the last four results has no use so it
@@ -185,16 +186,6 @@ def : Pat<(TF_FloorModOp AnyStaticShapeTensor:$l, AnyStaticShapeTensor:$r),
         (NullDenseIntElementsAttr)),
         (HLO_AddOp $r,
          $rem, (BinBroadcastDimensions $r, $rem)), $rem)>;
-
-//===----------------------------------------------------------------------===//
-// BroadcastTo op patterns.
-//===----------------------------------------------------------------------===//
-
-// input and result needs to ranked for computation of the broadcast dimensions.
-def : Pat<(TF_BroadcastToOp:$result AnyRankedTensor:$input, $shape),
-          (HLO_BroadcastInDimOp $input,
-           (BinBroadcastDimensionsNonEmpty $input, $result)),
-           [(AnyRankedTensor $result)]>;
 
 //===----------------------------------------------------------------------===//
 // Logical & bitwise binary op patterns.
@@ -382,7 +373,7 @@ class createIotaOp<string dim>: NativeCodeCall<
 def createConvertOp: NativeCodeCall<
   "CreateConvertOp(&($_builder), $0.getOwner()->getLoc(), $1, $2)">;
 
-// Performs a substitution of MatrixBandPartOp for XLA HLO ops. Psuedocode is
+// Performs a substitution of MatrixBandPartOp for XLA HLO ops. Pseudocode is
 // shown below, given a tensor `input` with k dimensions [I, J, K, ..., M, N]
 // and two integers, `num_lower` and `num_upper`:
 //
@@ -444,7 +435,8 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyRankedTensor:$input, $num_lower, $num_
 // Nullary op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
+def : Pat<(TF_ConstOp:$res ElementsAttr:$value),
+          (TensorCastOp (HLO_ConstOp $value)),
           [(HLO_Tensor $res)]>;
 
 //===----------------------------------------------------------------------===//
@@ -454,14 +446,14 @@ def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
 // TODO(hinsu): Make these patterns to TF to TF lowering. Relu6 lowering will
 // require HLO canonicalization of min and max on a tensor to ClampOp.
 
-// TODO(hinsu): Lower unsinged and quantized types after supporting
+// TODO(hinsu): Lower unsigned and quantized types after supporting
 // them in GetScalarOfType.
 def : Pat<(TF_ReluOp AnyRankedTensor:$input),
           (HLO_MaxOp (HLO_ConstOp:$zero (GetScalarOfType<0> $input)), $input,
                      (BinBroadcastDimensions $zero, $input)),
           [(TF_SintOrFpTensor $input)]>;
 
-// TODO(hinsu): Lower unsinged and quantized types after supporting
+// TODO(hinsu): Lower unsigned and quantized types after supporting
 // them in GetScalarOfType.
 def : Pat<(TF_Relu6Op AnyRankedTensor:$input),
           (HLO_ClampOp (HLO_ConstOp (GetScalarOfType<0> $input)), $input,
@@ -489,6 +481,9 @@ def : Pat<(TF_ReluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$featu
 // Slice op patterns.
 //===----------------------------------------------------------------------===//
 
+def CastToI64AndUnpackTensor: NativeCodeCall<
+  "UnpackTensorAlongZeroDim($0.getLoc(), CastValueToI64($0.getLoc(), $1, &$_builder), &$_builder).output()">;
+
 def CanBeTranslatedToDynamicSlice : Constraint<CPred<
   "CanBeTranslatedToDynamicSlice($0, $1, $2.cast<DenseIntElementsAttr>())">>;
 
@@ -498,7 +493,8 @@ def TFSliceSizes2HLOSliceSizes : NativeCodeCall<
 
 def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
            (TF_ConstOp $slice_sizes)),
-          (HLO_DynamicSliceOp $input, (CastValueToI64 $op, $starting_indices),
+          (HLO_DynamicSliceOp $input,
+           (CastToI64AndUnpackTensor $op, $starting_indices),
            (TFSliceSizes2HLOSliceSizes $input, $starting_indices, $slice_sizes)),
           [(CanBeTranslatedToDynamicSlice $input, $starting_indices,
             $slice_sizes)]>;
@@ -547,6 +543,7 @@ foreach Mapping = [
                    [TF_LogicalNotOp, HLO_NotOp],
                    [TF_NegOp, HLO_NegOp],
                    [TF_RealOp, HLO_RealOp],
+                   [TF_RoundOp, HLO_RoundOp],
                    [TF_RsqrtOp, HLO_RsqrtOp],
                    [TF_SinOp, HLO_SinOp],
                    [TF_SqrtOp, HLO_SqrtOp],
@@ -616,3 +613,14 @@ def : Pat<(srcDstOpPair[0]:$old $shape, $seed, $seed2),
             (CastValueToI64 $old, $shape)),
           [(IsShapedTensor $shape)]>;
 }
+
+//===----------------------------------------------------------------------===//
+// Sigmoid grad op.
+//===----------------------------------------------------------------------===//
+def : Pat<(TF_SigmoidGradOp AnyRankedTensor:$l, AnyRankedTensor:$r),
+          (HLO_MulOp
+           (HLO_MulOp $r, $l, (NullDenseIntElementsAttr)),
+           (HLO_SubOp (HLO_ConstOp (ConstantSplat<"1"> $l)), $l,
+            (NullDenseIntElementsAttr)),
+           (NullDenseIntElementsAttr)),
+          [(IEEEFloatTensor $l)]>;

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
+#include "tensorflow/core/profiler/utils/errors.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
@@ -122,10 +123,12 @@ std::string GeneratePrecisionStatement(const PrecisionStats& precision_stats) {
 
 void SetCommonRecommendation(const string& input_classification,
                              const string& input_statement,
+                             const string& output_statement,
                              HardwareType hardware_type,
                              OverviewPageRecommendation* re) {
   re->set_bottleneck(input_classification);
   re->set_statement(input_statement);
+  re->set_output_statement(output_statement);
   ComputeHostTips(re);
   ComputeDeviceTips(hardware_type, re);
   ComputeDocumentationTips(re);
@@ -149,13 +152,13 @@ OverviewPageRecommendation ComputeGenericRecommendation(
 
 OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   OverviewPageAnalysis analysis;
-  OpMetricsDb metrics_db = CreateTfMetricsDbFromHloMetricsDb(
+  OpMetricsDb device_tf_op_metrics_db = CreateTfMetricsDbFromDeviceOpMetricsDb(
       op_stats.device_op_metrics_db(), /*with_idle=*/false);
-  uint64 total_device_time_ps = metrics_db.total_time_ps();
+  uint64 total_device_time_ps = device_tf_op_metrics_db.total_time_ps();
   constexpr int kNumTopOpsShown = 10;
   double device_cumulative_fraction = 0.0;
   for (const OpMetrics* metrics :
-       SortedOpMetricsDb(metrics_db, kNumTopOpsShown)) {
+       SortedOpMetricsDb(device_tf_op_metrics_db, kNumTopOpsShown)) {
     OverviewTfOp* op = analysis.add_top_device_ops();
     op->set_name(metrics->name());
     op->set_category(metrics->category());
@@ -180,6 +183,20 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
       SafeDivide(
           op_stats.device_op_metrics_db().precision_stats().compute_32bit_ps(),
           total_device_compute_ps));
+  uint64 num_host_tf_ops = 0;
+  for (const OpMetrics& metrics : op_stats.host_op_metrics_db().metrics_db()) {
+    num_host_tf_ops += metrics.occurrences();
+  }
+  uint64 num_device_tf_ops = 0;
+  for (const OpMetrics& metrics : device_tf_op_metrics_db.metrics_db()) {
+    num_device_tf_ops += metrics.occurrences();
+  }
+  uint64 num_total_tf_ops = num_host_tf_ops + num_device_tf_ops;
+  analysis.set_host_tf_op_percent(
+      100.0 * SafeDivide(num_host_tf_ops, num_total_tf_ops));
+  analysis.set_device_tf_op_percent(
+      100.0 * SafeDivide(num_device_tf_ops, num_total_tf_ops));
+  analysis.set_host_trace_level(op_stats.run_environment().host_trace_level());
   return analysis;
 }
 
@@ -236,22 +253,23 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
   *overview_page.mutable_analysis() = ComputeAnalysisResult(op_stats);
   *overview_page.mutable_input_analysis() =
       ConvertOpStatsToInputPipelineAnalysis(op_stats, hardware_type);
-  BottleneckAnalysis bottleneck =
-      ComputeBottleneckAnalysis(overview_page.input_analysis().step_details());
+  BottleneckAnalysis bottleneck = ComputeBottleneckAnalysis(
+      overview_page.input_analysis().input_time_breakdown(),
+      overview_page.input_analysis().step_details());
   *overview_page.mutable_recommendation() = ComputeGenericRecommendation(
       bottleneck, op_stats.device_op_metrics_db().precision_stats());
   SetCommonRecommendation(bottleneck.input_classification(),
-                          bottleneck.input_statement(), hardware_type,
+                          bottleneck.input_statement(), "", hardware_type,
                           overview_page.mutable_recommendation());
   return overview_page;
 }
 
 void SetRemarks(const OpStats& op_stats, OverviewPageAnalysis* analysis) {
-  if (op_stats.step_db().step_sequence_size() == 0) {
-    analysis->set_remark_text(
-        "WARNING: No step markers observed and hence the step time is actually "
-        "unknown. This may happen if your profiling duration is shorter than "
-        "the step time. In that case, you may try to profile longer.");
+  if (op_stats.step_db().use_incomplete_step()) {
+    analysis->set_remark_text(absl::StrCat("WARNING: ", kErrorIncompleteStep));
+    analysis->set_remark_color("red");
+  } else if (op_stats.step_db().step_sequence().empty()) {
+    analysis->set_remark_text(absl::StrCat("WARNING: ", kErrorNoStepMarker));
     analysis->set_remark_color("red");
   } else {
     analysis->set_remark_text("");

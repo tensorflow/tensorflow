@@ -211,15 +211,46 @@ ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
   if (!device.IsMali()) {
     return conv_params;
   }
-  const int width = shape.w * shape.b;
-  if (width % 2 == 0) {
-    conv_params.element_size = 8;
+  bool can_use_flt8 = (shape.w * shape.b) % 2 == 0 &&
+                      definition.precision != CalculationsPrecision::F32;
+  bool is_midgard = device.IsMali() && device.GetInfo().mali_info.IsMidgard();
+  if (is_midgard) {
+    if (can_use_flt8) {
+      conv_params.element_size = 8;
+    }
+    if (definition.precision == CalculationsPrecision::F16 || !can_use_flt8) {
+      conv_params.block_size.x = 2;
+    }
+    return conv_params;
   }
-  if (device.GetInfo().compute_units_count <= 4) {
-    if (definition.precision == CalculationsPrecision::F16) {
-      conv_params.block_size.x *= 2;
+
+  int task_size = shape.w * shape.b * shape.h * dst_depth;
+  int block_size =
+      GetRecommendedBlockSizeForConv(device, definition.precision, task_size);
+
+  if (!can_use_flt8 && block_size > 4) {
+    block_size = 4;
+  }
+
+  if (can_use_flt8 && block_size >= 2) {
+    conv_params.element_size = 8;
+    block_size /= 2;
+  }
+  if (block_size == 4) {
+    conv_params.block_size.x = 2;
+    if (definition.precision == CalculationsPrecision::F32 && dst_depth < 32) {
+      conv_params.block_size.y = 2;
+    } else {
+      conv_params.block_size.z = 2;
+    }
+  } else if (block_size == 2) {
+    if (dst_depth >= 32) {
+      conv_params.block_size.z = 2;
+    } else {
+      conv_params.block_size.x = 2;
     }
   }
+
   return conv_params;
 }
 
@@ -260,50 +291,50 @@ ConvBuffer1x1& ConvBuffer1x1::operator=(ConvBuffer1x1&& operation) {
   return *this;
 }
 
-Status ConvBuffer1x1::Compile(const CreationContext& creation_context) {
+absl::Status ConvBuffer1x1::Compile(const CreationContext& creation_context) {
   std::string code =
       GenerateConvBuffer1x1(definition_, conv_params_, linked_operations_);
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ConvBuffer1x1::BindArguments() {
+absl::Status ConvBuffer1x1::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  const int src_width_elements = IntegralDivideRoundUp(
+  const int src_width_elements = DivideRoundUp(
       src_[0]->Width() * src_[0]->Batch(), (conv_params_.element_size / 4));
   int4 src_size = int4(src_width_elements, src_[0]->Height(), src_[0]->Slices(),
                        src_width_elements * src_[0]->Height());
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_size));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 ConvBuffer1x1::GetGridSize() const {
-  const int dst_width_elements = IntegralDivideRoundUp(
+  const int dst_width_elements = DivideRoundUp(
       dst_[0]->Width() * dst_[0]->Batch(), (conv_params_.element_size / 4));
   const int grid_x =
-      IntegralDivideRoundUp(dst_width_elements, conv_params_.block_size.x);
+      DivideRoundUp(dst_width_elements, conv_params_.block_size.x);
   const int grid_y =
-      IntegralDivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
+      DivideRoundUp(dst_[0]->Height(), conv_params_.block_size.y);
   const int grid_z =
-      IntegralDivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.z);
+      DivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.z);
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status ConvBuffer1x1::Tune(const TuningParameters& params) {
+absl::Status ConvBuffer1x1::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
                               &conv_params_.work_group_size);
 }
 
-Status ConvBuffer1x1::AddToQueue(CLCommandQueue* queue) {
+absl::Status ConvBuffer1x1::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(),
                                  conv_params_.work_group_size);
@@ -320,15 +351,15 @@ bool IsConvBuffer1x1Supported(const OperationDef& definition,
          attr.padding.appended.w == 0 && attr.padding.appended.h == 0;
 }
 
-Status CreateConvBuffer1x1(const CreationContext& creation_context,
-                           const OperationDef& definition,
-                           const Convolution2DAttributes& attr,
-                           ConvBuffer1x1* result, const BHWC* shape) {
+absl::Status CreateConvBuffer1x1(const CreationContext& creation_context,
+                                 const OperationDef& definition,
+                                 const Convolution2DAttributes& attr,
+                                 ConvBuffer1x1* result, const BHWC* shape) {
   if (!IsConvBuffer1x1Supported(definition, attr)) {
-    return InvalidArgumentError("ConvBuffer1x1 doesn't supported");
+    return absl::InvalidArgumentError("ConvBuffer1x1 doesn't supported");
   }
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   ConvBuffer1x1::ConvParams conv_params;
   if (shape) {
     conv_params = GetBestParams(*creation_context.device, definition, *shape,
@@ -341,12 +372,12 @@ Status CreateConvBuffer1x1(const CreationContext& creation_context,
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
-Status CreateConvBuffer1x1(const CreationContext& creation_context,
-                           const OperationDef& definition,
-                           const FullyConnectedAttributes& attr,
-                           ConvBuffer1x1* result, const BHWC* shape) {
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+absl::Status CreateConvBuffer1x1(const CreationContext& creation_context,
+                                 const OperationDef& definition,
+                                 const FullyConnectedAttributes& attr,
+                                 ConvBuffer1x1* result, const BHWC* shape) {
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   ConvBuffer1x1::ConvParams conv_params;
   if (shape) {
     conv_params = GetBestParams(*creation_context.device, definition, *shape,
@@ -361,13 +392,12 @@ Status CreateConvBuffer1x1(const CreationContext& creation_context,
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
-Status CreateConvBuffer1x1Wino4x4To6x6(const CreationContext& creation_context,
-                                       const OperationDef& definition,
-                                       const Convolution2DAttributes& attr,
-                                       ConvBuffer1x1* result,
-                                       const BHWC* shape) {
-  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
+absl::Status CreateConvBuffer1x1Wino4x4To6x6(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const Convolution2DAttributes& attr, ConvBuffer1x1* result,
+    const BHWC* shape) {
+  const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
+  const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
   ConvBuffer1x1::ConvParams conv_params;
   if (shape) {
     conv_params = GetBestParams(*creation_context.device, definition, *shape,

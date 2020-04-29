@@ -23,7 +23,6 @@ limitations under the License.
 #include "absl/types/variant.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
-#include "tensorflow/core/common_runtime/eager/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
@@ -90,6 +89,12 @@ class FakeEagerClient : public EagerClient {
   CLIENT_METHOD(KeepAlive);
   CLIENT_METHOD(CloseContext);
 #undef CLIENT_METHOD
+
+  void RunComponentFunctionAsync(const RunComponentFunctionRequest* request,
+                                 RunComponentFunctionResponse* response,
+                                 StatusCallback done) override {
+    impl_->RunComponentFunction(request, response, std::move(done));
+  }
 
   void StreamingEnqueueAsync(const EnqueueRequest* request,
                              EnqueueResponse* response,
@@ -554,19 +559,14 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
 
     fdef_ = MatMulFunction();
     TF_ASSERT_OK(func_lib_def_.AddFunctionDef(fdef_));
-    eager_pflr_ = absl::make_unique<EagerProcessFunctionLibraryRuntime>(
+    eager_pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
         remote_device_mgr_.get(), Env::Default(), /*config=*/
         nullptr, TF_GRAPH_DEF_VERSION, &func_lib_def_, OptimizerOptions(),
         /*thread_pool=*/nullptr, eager_cluster_flr_.get());
   }
 
-  void CheckOutputsAndClose(const int64 op_id) {
-    const tensorflow::Tensor* t = nullptr;
-    tensorflow::TensorHandle* tensor_handle;
-    TF_ASSERT_OK(eager_service_impl_.GetTensorHandle(
-        context_id_, RemoteTensorHandleInternal(2, 0), &tensor_handle));
-    TF_ASSERT_OK(tensor_handle->Tensor(&t));
-    auto actual = t->flat<float>();
+  void CheckOutputTensorAndClose(const Tensor& tensor) {
+    auto actual = tensor.flat<float>();
     EXPECT_EQ(4, actual.size());
     EXPECT_EQ(7, actual(0));
     EXPECT_EQ(10, actual(1));
@@ -581,6 +581,15 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
                                                   &close_context_response));
   }
 
+  void CheckOutputsAndClose(const int64 op_id) {
+    const tensorflow::Tensor* t = nullptr;
+    tensorflow::TensorHandle* tensor_handle;
+    TF_ASSERT_OK(eager_service_impl_.GetTensorHandle(
+        context_id_, RemoteTensorHandleInternal(2, 0), &tensor_handle));
+    TF_ASSERT_OK(tensor_handle->Tensor(&t));
+    CheckOutputTensorAndClose(*t);
+  }
+
  protected:
   const string local_device_ = "/job:localhost/replica:0/task:0/device:CPU:0";
   const string remote_device_ = "/job:localhost/replica:0/task:1/device:CPU:0";
@@ -589,14 +598,12 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
   uint64 context_id_;
   tensorflow::FunctionDef fdef_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> eager_pflr_;
-
- private:
-  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
   std::unique_ptr<EagerClusterFunctionLibraryRuntime> eager_cluster_flr_;
+  FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
 };
 
 // Test executes a remote function through
-// EagerProcessFunctionLibraryRuntime(EagerClusterFunctionLibraryRuntime).
+// ProcessFunctionLibraryRuntime(EagerClusterFunctionLibraryRuntime).
 TEST_F(FunctionWithRemoteInputsTest, EagerPFLRTest) {
   Init();
   // Instantiate MatMulFunction on remote_device.
@@ -651,7 +658,57 @@ TEST_F(FunctionWithRemoteInputsTest, EagerPFLRTest) {
   CheckOutputsAndClose(op_id);
 }
 
-// Test executes a remote function through KernelAndDeviceFunc.
+// Test executes a remote function with local input and output tensors.
+TEST_F(FunctionWithRemoteInputsTest,
+       EagerClusterFLRTestWithLocalInputAndOutput) {
+  Init();
+  // Instantiate MatMulFunction on remote_device.
+  FunctionLibraryRuntime::Handle handle;
+  EXPECT_TRUE(MatMulHasAttrWithDefaultValue(fdef_));
+  Status status;
+  Notification instantiate_done;
+  eager_cluster_flr_->Instantiate(
+      fdef_.signature().name(), func_lib_def_, AttrSlice(&fdef_.attr()),
+      FunctionLibraryRuntime::InstantiateOptions(), &handle,
+      [&status, &instantiate_done](const Status& s) {
+        status = s;
+        instantiate_done.Notify();
+      });
+  instantiate_done.WaitForNotification();
+  TF_ASSERT_OK(status);
+  EagerContext* ctx = nullptr;
+  TF_ASSERT_OK(eager_service_impl_.GetEagerContext(context_id_, &ctx));
+  for (const string& func_name : ctx->FuncLibDef()->ListFunctionNames()) {
+    const FunctionDef* fdef = ctx->FuncLibDef()->Find(func_name);
+    EXPECT_TRUE(fdef != nullptr);
+    if (absl::StartsWith(func_name, "MatMulFunction")) {
+      EXPECT_FALSE(MatMulHasAttrWithDefaultValue(*fdef));
+    }
+  }
+  const tensorflow::Tensor* input_tensor = nullptr;
+  tensorflow::TensorHandle* tensor_handle;
+  TF_ASSERT_OK(eager_service_impl_.GetTensorHandle(
+      context_id_, RemoteTensorHandleInternal(1, 0), &tensor_handle));
+  TF_ASSERT_OK(tensor_handle->Tensor(&input_tensor));
+
+  // Send input_tensor to the remote device, execute MatMulFunction on the
+  // remote device, and send the output back.
+  FunctionLibraryRuntime::Options opts;
+  Notification execute_done;
+  std::vector<Tensor> inputs = {*input_tensor};
+  std::vector<Tensor> outputs;
+  eager_cluster_flr_->Run(opts, handle, inputs, &outputs,
+                          [&status, &execute_done](const Status& s) {
+                            status = s;
+                            execute_done.Notify();
+                          });
+  execute_done.WaitForNotification();
+  TF_ASSERT_OK(status);
+  EXPECT_EQ(outputs.size(), 1);
+  CheckOutputTensorAndClose(outputs.at(0));
+}
+
+// Test executes a remote function through KernelAndDeviceFunc::Run.
 TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
   Init();
   Device* local_device;
@@ -689,9 +746,62 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       });
   std::vector<Tensor> outputs;
 
-  TF_ASSERT_OK(kernel->Run(inputs, &outputs, /*cancellation_manager=*/nullptr,
+  TF_ASSERT_OK(kernel->Run(/*step_container=*/nullptr, inputs, &outputs,
+                           /*cancellation_manager=*/nullptr,
                            /*remote_func_params=*/absl::nullopt));
 
+  CheckOutputsAndClose(op_id);
+}
+
+// Test executes a remote function through KernelAndDeviceFunc::RunAsync.
+TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
+  Init();
+  Device* local_device;
+  TF_ASSERT_OK(device_mgr_->LookupDevice(local_device_, &local_device));
+  std::vector<Device*> input_dev_ptrs;
+  input_dev_ptrs.push_back(local_device);
+  FunctionLibraryRuntime* flr = eager_pflr_->GetFLR(remote_device_);
+  EagerContext* ctx = nullptr;
+  TF_ASSERT_OK(eager_service_impl_.GetEagerContext(context_id_, &ctx));
+  core::RefCountPtr<KernelAndDeviceFunc> kernel = nullptr;
+  const int64 op_id = 2;
+  kernel.reset(new KernelAndDeviceFunc(
+      flr, eager_pflr_.get(), std::move(input_dev_ptrs), {}, /*runner=*/nullptr,
+      /*collective_executor=*/nullptr, local_device, fdef_.signature().name(),
+      [ctx](const int64 step_id) { return ctx->CreateRendezvous(step_id); },
+      [=]() { return op_id; }));
+
+  // Instantiate MatMulFunction on remote_device.
+  const NodeDef node_def = MatMulFunctionNodeDef();
+  TF_ASSERT_OK(kernel->InstantiateFunc(node_def, nullptr));
+
+  // Run MatMulFunction on remote_device.
+  gtl::InlinedVector<TensorValue, 4> input_tensors = {TensorValue()};
+  RemoteTensorHandle input;
+  input.set_op_id(1);
+  input.set_output_num(0);
+  input.set_op_device(local_device_);
+  input.set_device(local_device_);
+  std::vector<RemoteTensorHandle> remote_handles = {input};
+  TestExecuteNodeArgs inputs(
+      std::move(input_tensors),
+      [&remote_handles](const int index, RemoteTensorHandle* handle) -> Status {
+        *handle = remote_handles.at(index);
+        return Status::OK();
+      });
+  std::vector<Tensor> outputs;
+
+  Status status;
+  Notification n;
+  kernel->RunAsync(/*step_container=*/nullptr, inputs, &outputs,
+                   /*cancellation_manager=*/nullptr,
+                   /*remote_func_params=*/absl::nullopt,
+                   [&status, &n](const Status& s) {
+                     status = s;
+                     n.Notify();
+                   });
+  n.WaitForNotification();
+  TF_ASSERT_OK(status);
   CheckOutputsAndClose(op_id);
 }
 

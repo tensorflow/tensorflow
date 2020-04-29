@@ -106,6 +106,15 @@ android_library(
 )
 
 java_library(
+    name = "tensorflowlite_javalib",
+    srcs = JAVA_SRCS,
+    javacopts = JAVACOPTS,
+    deps = [
+        "@org_checkerframework_qual",
+    ],
+)
+
+java_library(
     name = "tensorflowlitelib",
     srcs = JAVA_SRCS,
     javacopts = JAVACOPTS,
@@ -202,6 +211,8 @@ java_test(
         "src/testdata/int64.bin",
         "src/testdata/invalid_model.bin",
         "src/testdata/string.bin",
+        # Takes a scalar string and reshapes to a rank-1, single element string.
+        "src/testdata/string_scalar.bin",
         "src/testdata/uint8.bin",
         "src/testdata/with_custom_op.lite",
     ],

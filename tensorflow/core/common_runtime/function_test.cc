@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
@@ -40,7 +41,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -164,10 +164,11 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, /*thread_pool=*/nullptr,
         /*parent=*/nullptr, /*custom_kernel_creator=*/nullptr,
         /*session_metadata=*/nullptr,
-        [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
-          *r = new IntraProcessRendezvous(device_mgr);
-          return Status::OK();
-        }));
+        Rendezvous::Factory{
+            [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+              *r = new IntraProcessRendezvous(device_mgr);
+              return Status::OK();
+            }}));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
     flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
@@ -390,6 +391,19 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesTwo) {
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
   TF_CHECK_OK(InstantiateAndRunViaCallFrameInterface(
       flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+}
+
+TEST_F(FunctionLibraryRuntimeTest, XTimesTwo_MultiDeviceBacked) {
+  Init({test::function::XTimesTwo()});
+  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  Tensor y;
+
+  FunctionLibraryRuntime::InstantiateOptions options;
+  options.is_multi_device_function = true;
+
+  TF_CHECK_OK(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, options,
+                                {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
 }
 

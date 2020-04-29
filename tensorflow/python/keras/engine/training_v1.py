@@ -25,6 +25,7 @@ from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import monitoring
@@ -161,6 +162,9 @@ class Model(training_lib.Model):
         ops.executing_eagerly_outside_functions())
 
     self._v1_compile_was_called = False
+
+  def _init_batch_counters(self):
+    pass  # Batch counters should not be created in legacy graph mode.
 
   @trackable.no_automatic_dependency_tracking
   def _set_strategy(self, strategy):
@@ -354,6 +358,12 @@ class Model(training_lib.Model):
         if distribution_strategy_context.in_cross_replica_context():
           self._distribution_strategy = (
               distribution_strategy_context.get_strategy())
+
+    if isinstance(self._distribution_strategy,
+                  (parameter_server_strategy.ParameterServerStrategyV1,
+                   parameter_server_strategy.ParameterServerStrategy)):
+      raise NotImplementedError('ParameterServerStrategy currently only works '
+                                'with the tf.Estimator API')
 
     if not self._experimental_run_tf_function:
       self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
@@ -797,7 +807,7 @@ class Model(training_lib.Model):
                use_multiprocessing=False):
     """Returns the loss value & metrics values for the model in test mode.
 
-    Computation is done in batches.
+    Computation is done in batches (see the `batch_size` arg.)
 
     Arguments:
         x: Input data. It could be:
@@ -817,7 +827,7 @@ class Model(training_lib.Model):
           `keras.utils.Sequence` instance, `y` should not be specified (since
           targets will be obtained from the iterator/dataset).
         batch_size: Integer or `None`.
-            Number of samples per gradient update.
+            Number of samples per batch of computation.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` if your data is in the
             form of symbolic tensors, dataset,
@@ -900,7 +910,7 @@ class Model(training_lib.Model):
               use_multiprocessing=False):
     """Generates output predictions for the input samples.
 
-    Computation is done in batches.
+    Computation is done in batches (see the `batch_size` arg.)
 
     Arguments:
         x: Input samples. It could be:
@@ -911,7 +921,7 @@ class Model(training_lib.Model):
           - A `tf.data` dataset.
           - A generator or `keras.utils.Sequence` instance.
         batch_size: Integer or `None`.
-            Number of samples per gradient update.
+            Number of samples per batch of computation.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` if your data is in the
             form of symbolic tensors, dataset,

@@ -44,6 +44,19 @@ namespace {
 // events on eager tensors. This is set by TFE_Py_InitEagerTensor, if at all.
 PyObject* eager_tensor_profiler = nullptr;
 
+// Read-only dict. Please don't use this in any setting where the dict might
+// actually get mutated. This is only used to pass empty kwargs when creating a
+// new EagerTensor.
+PyObject* EmptyDict() {
+  static PyObject* empty_dict = PyDict_New();
+  return empty_dict;
+}
+
+PyObject* EmptyTuple() {
+  static PyObject* empty_tuple = PyTuple_New(0);
+  return empty_tuple;
+}
+
 TFE_Context* GetContextHandle(PyObject* py_context) {
   tensorflow::Safe_PyObjectPtr py_context_handle(
       PyObject_GetAttrString(py_context, "_handle"));
@@ -291,15 +304,6 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
       return nullptr;
     }
   }
-
-  // We always enable implicit mirroring for constants. Without this, code
-  // written previously under the assumption that
-  //
-  //   with tf.device('GPU:0'): x = tf.constant(1.0)
-  //
-  // will be placed in the GPU will suffer a non-trivial performance regression
-  // (measured at ~20% for certain benchmarks).
-  handle->handle->EnableImplicitMirroring();
 
   return handle.release();
 }
@@ -810,7 +814,7 @@ PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
     return nullptr;
   }
   EagerTensor* t = reinterpret_cast<EagerTensor*>(
-      EagerTensorType->tp_new(EagerTensorType, Py_None, Py_None));
+      EagerTensorType->tp_new(EagerTensorType, EmptyTuple(), EmptyDict()));
   if (t != nullptr) {
     t->id = get_uid();
     Py_INCREF(Py_None);

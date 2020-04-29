@@ -285,6 +285,10 @@ foreach L2NormalizePairs = [[TFL_MulOp, TFL_RsqrtOp], [TFL_DivOp, TFL_SqrtOp]]
 def AreBroadcastableTypes : Constraint<CPred<
   "TFL::IsBroadcastableElementsAttrAndType($0.getType(), $1.getType())">>;
 
+def OperandsBroadcastToOutputType : Constraint<CPred<
+  "TFL::OperandsBroadcastToOutputType($0.getType(), $1.getType(), "
+                                     "$2.getType())">>;
+
 def IsTailOfShape : Constraint<CPred<
   "TFL::IsTailOfShape($0.getType(), $1.getType())">>;
 
@@ -293,15 +297,15 @@ def HaveSameType : Constraint<CPred<"$0.getType(), $1.getType()">>;
 // Pattern for skipping Tile if it is mainly for broadcasting and the
 // Op is already supporting broadcasting.
 multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
-  def : Pat<(BinaryOp (TFL_TileOp $input, (ConstantOp $tile)),
+  def : Pat<(BinaryOp:$result (TFL_TileOp $input, (ConstantOp $tile)),
              $operand, $act_func),
   (BinaryOp $input, $operand, $act_func),
-  [(AreBroadcastableTypes $input, $operand)]>;
+  [(OperandsBroadcastToOutputType $input, $operand, $result)]>;
 
-  def : Pat<(BinaryOp $operand,
+  def : Pat<(BinaryOp:$result $operand,
              (TFL_TileOp $input, (ConstantOp $tile)), $act_func),
   (BinaryOp $operand, $input, $act_func),
-  [(AreBroadcastableTypes $operand, $input)]>;
+  [(OperandsBroadcastToOutputType $operand, $input, $result)]>;
 }
 
 // Multi-pattern consisting of matching stand-alone op or op followed by relu.
@@ -335,11 +339,15 @@ foreach BinaryOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp] in {
                       (ConstantOp:$rhs $a), TFL_AF_None),
             (TFL_ReshapeOp (BinaryOp $input, $rhs, TFL_AF_None), $shape),
              // The broadcasting of "BinaryOp" only happens in the lower
-             // dimensions, and the higher dimensions are same.
+             // dimensions, and the higher dimensions are same, so we know the
+             // result and input of the "BinaryOp" in the source pattern have
+             // the same shape, which is defined by `shape`.
             [(IsTailOfShape $rhs, $lhs),
              (HasOneUse $lhs),
-             // the two operands of the binary op is broadcastable
-             (AreBroadcastableTypes $rhs, $input)]>;
+             // The result of the new "BinaryOp" will have the same shape as
+             // `input`. In other words, the shape of the `Reshape` op are not
+             // changed after the transformation.
+             (IsTailOfShape $rhs, $input)]>;
 }
 
 foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
@@ -359,11 +367,28 @@ foreach BinaryOp = [TFL_FloorDivOp, TFL_FloorModOp, TFL_MinimumOp,
                       (ConstantOp:$rhs $a)),
             (TFL_ReshapeOp (BinaryOp $input, $rhs), $shape),
              // The broadcasting of "BinaryOp" only happens in the lower
-             // dimensions, and the higher dimensions are same.
+             // dimensions, and the higher dimensions are same, so we know the
+             // result and input of the "BinaryOp" in the source pattern have
+             // the same shape, which is defined by `shape`.
             [(IsTailOfShape $rhs, $lhs),
              (HasOneUse $lhs),
-             // the two operands of the binary op is broadcastable
-             (AreBroadcastableTypes $rhs, $input)]>;
+             // The result of the new "BinaryOp" will have the same shape as
+             // `input`. In other words, the shape of the `Reshape` op are not
+             // changed after the transformation.
+             (IsTailOfShape $rhs, $input)]>;
+}
+
+// Reorder the element-wise value operations and the element move operations,
+// such that the value operation happens before move operation.
+foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
+                   TFL_ReluOp, TFL_Relu1Op, TFL_Relu6Op, TFL_RoundOp,
+                   TFL_TanhOp, TFL_SqrtOp, TFL_SquareOp] in {
+  foreach MoveOp = [TFL_DepthToSpaceOp, TFL_ExpandDimsOp, TFL_SqueezeOp,
+                   TFL_ReshapeOp, TFL_TransposeOp] in {
+    def : Pat<(ValueOp:$value (MoveOp:$move $input, $move_def)),
+              (MoveOp (ValueOp $input), $move_def),
+              [(HasOneUse $move)]>;
+  }
 }
 
 // Returns shape of a ranked tensor.
@@ -382,8 +407,9 @@ def : Pat<(TFL_ExpandDimsOp:$expand_dims_op $input, $dim),
            (ConstantOp (GetShape $expand_dims_op))),
           [(AnyStaticShapeTensor $expand_dims_op)]>;
 
-class ValueEquals<string val> : Constraint<CPred<
+class FloatValueEquals<string val> : Constraint<CPred<
   "$0.cast<DenseElementsAttr>().getNumElements() == 1 &&"
+  "$0.isa<DenseFPElementsAttr>() &&"
   "*$0.cast<DenseElementsAttr>().getValues<float>().begin() == " # val>>;
 
 // ReLU patterns
@@ -391,13 +417,13 @@ def : Pat<(TFL_MinimumOp (TFL_MaximumOp $input,
                           (ConstantOp $NegOne)),
            (ConstantOp $One)),
           (TFL_Relu1Op $input),
-          [(ValueEquals<"-1"> $NegOne), (ValueEquals<"1"> $One)]>;
+          [(FloatValueEquals<"-1"> $NegOne), (FloatValueEquals<"1"> $One)]>;
 
 def : Pat<(TFL_MaximumOp (TFL_MinimumOp $input,
                           (ConstantOp $One)),
            (ConstantOp $NegOne)),
           (TFL_Relu1Op $input),
-          [(ValueEquals<"-1"> $NegOne), (ValueEquals<"1"> $One)]>;
+          [(FloatValueEquals<"-1"> $NegOne), (FloatValueEquals<"1"> $One)]>;
 
 def : Pat<(TFL_MaximumOp (TFL_MulOp:$mul_out $input1,
                           (ConstantOp F32ElementsAttr:$alpha), TFL_AF_None),

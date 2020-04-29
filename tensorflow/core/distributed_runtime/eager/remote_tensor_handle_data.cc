@@ -54,7 +54,7 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
   VLOG(3) << "Sending request to delete " << request->DebugString();
   std::unique_ptr<EagerNode> node(
       absl::make_unique<eager::DestroyTensorHandleNode>(
-          std::move(request), eager_client.get(), ready));
+          std::move(request), std::move(eager_client), ready));
   auto& executor = ctx->Executor();
   if (executor.Async()) {
     Status status = executor.AddOrExecute(std::move(node));
@@ -173,6 +173,10 @@ Status RemoteTensorHandleData::IsPoisoned() const {
 }
 
 Status RemoteTensorHandleData::SetShape(const TensorShape& shape) {
+  // If `is_ready_` is set previously due to poisoning, return the original
+  // error that poisoned this tensor.
+  TF_RETURN_IF_ERROR(IsPoisoned());
+
   mutex_lock l(mu_);
   if (is_ready_) {
     return errors::Internal("SetShape is only called on non-ready handles.");

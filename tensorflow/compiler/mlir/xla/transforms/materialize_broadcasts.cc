@@ -15,11 +15,11 @@ limitations under the License.
 
 #include <numeric>
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
@@ -48,8 +48,8 @@ static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
 // Returns true and sets out_lhs and out_rhs to BroadcastInDimOps if successful,
 // returns false otherwise.
 template <typename SrcOp>
-bool CreateBroadcastsForBinaryOp(SrcOp op, PatternRewriter *rewriter,
-                                 Value *out_lhs, Value *out_rhs) {
+bool CreateStaticBroadcastsForBinaryOp(SrcOp op, PatternRewriter *rewriter,
+                                       Value *out_lhs, Value *out_rhs) {
   if (!op.broadcast_dimensions().hasValue()) {
     // Note: the op may still have an implicit broadcast on it, such as
     // for (tensor<1xf32>, tensor<4xf32>).
@@ -256,34 +256,82 @@ bool CreateDynamicBroadcastsForBinaryOp(SrcOp op, PatternRewriter *rewriter,
 }
 
 template <typename SrcOp>
+bool CreateBroadcastForBinaryOp(SrcOp op, PatternRewriter *rewriter,
+                                Value *out_lhs, Value *out_rhs) {
+  auto op_ranked_type = op.getType().template dyn_cast<RankedTensorType>();
+  if (!op_ranked_type) return false;
+
+  if (op_ranked_type.hasStaticShape()) {
+    if (!CreateStaticBroadcastsForBinaryOp(op, rewriter, out_lhs, out_rhs)) {
+      return false;
+    }
+  } else {
+    if (!CreateDynamicBroadcastsForBinaryOp(op, rewriter, out_lhs, out_rhs)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+template <typename SrcOp>
 struct BinaryOpWithBroadcastConvert : public OpRewritePattern<SrcOp> {
   explicit BinaryOpWithBroadcastConvert(MLIRContext *context)
       : OpRewritePattern<SrcOp>(context) {}
 
-  PatternMatchResult matchAndRewrite(SrcOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(SrcOp op,
+                                PatternRewriter &rewriter) const override {
     Value new_lhs;
     Value new_rhs;
 
-    auto op_ranked_type = op.getType().template dyn_cast<RankedTensorType>();
-    if (!op_ranked_type) return this->matchFailure();
-
-    if (op_ranked_type.hasStaticShape()) {
-      if (!CreateBroadcastsForBinaryOp(op, &rewriter, &new_lhs, &new_rhs)) {
-        return this->matchFailure();
-      }
-    } else {
-      if (!CreateDynamicBroadcastsForBinaryOp(op, &rewriter, &new_lhs,
-                                              &new_rhs)) {
-        return this->matchFailure();
-      }
-    }
+    if (!CreateBroadcastForBinaryOp(op, &rewriter, &new_lhs, &new_rhs))
+      return failure();
 
     // Replace the original op with a new one that uses the new args.
     // New args are broadcasts, so no dims are needed on the replacement op.
     rewriter.replaceOpWithNewOp<SrcOp>(op, op.getType(), new_lhs, new_rhs,
                                        /*broadcast_dims=*/nullptr);
-    return this->matchSuccess();
+    return success();
+  }
+};
+
+// Converts ClampOp with broadcast semantics. ClampOp requires "all three arrays
+// must be the same shape. Alternatively, as a restricted form of broadcasting,
+// min and/or max can be a scalar of type T."
+struct ClampWithBroadcastConvert : public OpRewritePattern<ClampOp> {
+  explicit ClampWithBroadcastConvert(MLIRContext *context)
+      : OpRewritePattern<ClampOp>(context) {}
+
+  LogicalResult matchAndRewrite(ClampOp op,
+                                PatternRewriter &rewriter) const override {
+    auto operand_type = op.operand().getType().dyn_cast<RankedTensorType>();
+    auto max_type = op.max().getType().dyn_cast<RankedTensorType>();
+    auto min_type = op.min().getType().dyn_cast<RankedTensorType>();
+    // Unrancked types are not supported.
+    if (!operand_type || !max_type || !min_type) return failure();
+    // Does not support operand with dynamic dimensions for now.
+    if (!operand_type.hasStaticShape()) return failure();
+
+    ArrayRef<int64_t> operand_shape = operand_type.getShape();
+
+    Value max_value = op.max();
+    if (max_type != operand_type) {
+      assert(max_type.getRank() == 0);
+      max_value = rewriter.createOrFold<BroadcastOp>(
+          op.getLoc(), operand_type, max_value,
+          rewriter.getI64TensorAttr(operand_shape));
+    }
+
+    Value min_value = op.min();
+    if (min_type != operand_type) {
+      assert(min_type.getRank() == 0);
+      min_value = rewriter.createOrFold<BroadcastOp>(
+          op.getLoc(), operand_type, min_value,
+          rewriter.getI64TensorAttr(operand_shape));
+    }
+
+    rewriter.replaceOpWithNewOp<ClampOp>(op, op.getType(), min_value,
+                                         op.operand(), max_value);
+    return success();
   }
 };
 
@@ -292,18 +340,18 @@ struct CompareWithBroadcastConvert : public OpRewritePattern<CompareOp> {
   explicit CompareWithBroadcastConvert(MLIRContext *context)
       : OpRewritePattern<CompareOp>(context) {}
 
-  PatternMatchResult matchAndRewrite(CompareOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(CompareOp op,
+                                PatternRewriter &rewriter) const override {
     Value new_lhs;
     Value new_rhs;
-    if (!CreateBroadcastsForBinaryOp(op, &rewriter, &new_lhs, &new_rhs)) {
-      return this->matchFailure();
-    }
+
+    if (!CreateBroadcastForBinaryOp(op, &rewriter, &new_lhs, &new_rhs))
+      return failure();
 
     rewriter.replaceOpWithNewOp<CompareOp>(op, op.getType(), new_lhs, new_rhs,
                                            /*broadcast_dims=*/nullptr,
                                            op.comparison_direction());
-    return this->matchSuccess();
+    return success();
   }
 };
 
@@ -337,6 +385,11 @@ void SetupMaterializeBroadcastsLegality(MLIRContext *context,
   ADD_DYNAMICALLY_LEGAL_OP_WITH_BROADCAST(CompareOp);
 
 #undef ADD_DYNAMICALLY_LEGAL_OP_WITH_BROADCAST
+
+  conversionTarget->addDynamicallyLegalOp<ClampOp>([](ClampOp op) {
+    return op.max().getType() == op.operand().getType() &&
+           op.min().getType() == op.operand().getType();
+  });
 }
 
 void PopulateMaterializeBroadcastsPatterns(MLIRContext *context,
@@ -361,6 +414,8 @@ void PopulateMaterializeBroadcastsPatterns(MLIRContext *context,
   patterns->insert<BinaryOpWithBroadcastConvert<OrOp>>(context);
   patterns->insert<BinaryOpWithBroadcastConvert<XorOp>>(context);
 
+  // ClampOp. It can have a restricted form of broadcasting.
+  patterns->insert<ClampWithBroadcastConvert>(context);
   // CompareOp. Note the specialized class instead of using the template.
   patterns->insert<CompareWithBroadcastConvert>(context);
 }

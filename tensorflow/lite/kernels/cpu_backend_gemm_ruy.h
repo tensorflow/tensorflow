@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_RUY_H_
 #define TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_RUY_H_
 
-#include "tensorflow/lite/experimental/ruy/path.h"
-#include "tensorflow/lite/experimental/ruy/ruy.h"
+#include "ruy/path.h"  // from @ruy
+#include "ruy/ruy.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 
@@ -28,38 +28,35 @@ namespace detail {
 template <typename Scalar, typename DataPointer>
 void MakeRuyMatrix(const MatrixParams<Scalar>& params, DataPointer data_ptr,
                    ruy::Matrix<Scalar>* dst) {
-  dst->layout.rows = params.rows;
-  dst->layout.cols = params.cols;
-  if (params.order == Order::kColMajor) {
-    dst->layout.order = ruy::Order::kColMajor;
-    dst->layout.stride = params.rows;
-  } else {
-    dst->layout.order = ruy::Order::kRowMajor;
-    dst->layout.stride = params.cols;
-  }
+  ruy::Order ruy_order = params.order == Order::kColMajor
+                             ? ruy::Order::kColMajor
+                             : ruy::Order::kRowMajor;
+  ruy::MakeSimpleLayout(params.rows, params.cols, ruy_order,
+                        dst->mutable_layout());
   // Note that ruy::Matrix::data is a ConstCheckingPtr, not a plain pointer.
   // It does care whether we assign to it a Scalar* or a const Scalar*.
-  dst->data = data_ptr;
-  dst->zero_point = params.zero_point;
-  dst->cacheable = params.cacheable;
+  dst->set_data(data_ptr);
+  dst->set_zero_point(params.zero_point);
+  dst->set_cacheable(params.cacheable);
 }
 
 template <typename GemmParamsType, typename RuySpecType>
-void MakeRuySpec(const GemmParamsType& params, RuySpecType* ruy_spec) {
+void MakeRuyMulParams(const GemmParamsType& params,
+                      RuySpecType* ruy_mul_params) {
   // This validation has already been performed by the Gemm API entry point,
   // but it doesn't hurt to test specifically this again here, where it's
   // being used.
   ValidateGemmParams(params);
 
-  ruy_spec->multiplier_fixedpoint = params.multiplier_fixedpoint;
-  ruy_spec->multiplier_exponent = params.multiplier_exponent;
-  ruy_spec->multiplier_fixedpoint_perchannel =
-      params.multiplier_fixedpoint_perchannel;
-  ruy_spec->multiplier_exponent_perchannel =
-      params.multiplier_exponent_perchannel;
-  ruy_spec->bias = params.bias;
-  ruy_spec->clamp_min = params.clamp_min;
-  ruy_spec->clamp_max = params.clamp_max;
+  ruy_mul_params->set_multiplier_fixedpoint(params.multiplier_fixedpoint);
+  ruy_mul_params->set_multiplier_exponent(params.multiplier_exponent);
+  ruy_mul_params->set_multiplier_fixedpoint_perchannel(
+      params.multiplier_fixedpoint_perchannel);
+  ruy_mul_params->set_multiplier_exponent_perchannel(
+      params.multiplier_exponent_perchannel);
+  ruy_mul_params->set_bias(params.bias);
+  ruy_mul_params->set_clamp_min(params.clamp_min);
+  ruy_mul_params->set_clamp_max(params.clamp_max);
 }
 
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
@@ -78,22 +75,11 @@ struct GemmImplUsingRuy {
     MakeRuyMatrix(rhs_params, rhs_data, &ruy_rhs);
     MakeRuyMatrix(dst_params, dst_data, &ruy_dst);
 
-    ruy::BasicSpec<AccumScalar, DstScalar> ruy_spec;
-    MakeRuySpec(params, &ruy_spec);
+    ruy::MulParams<AccumScalar, DstScalar> ruy_mul_params;
+    MakeRuyMulParams(params, &ruy_mul_params);
 
-// If Ruy is not selected intentionally (TFLITE_WITH_RUY not defined)
-// and GEMMLOWP_NEON is absent, we fall back to Ruy for some quantized
-// kernels. Some Ruy paths are still experimental, so we restrict to reference
-// code in that case.
-#if !defined(TFLITE_WITH_RUY) && !defined(GEMMLOWP_NEON)
-    constexpr ruy::Path kRuyPath =
-        ruy::Path::kReference | ruy::Path::kStandardCpp;
-#else
-    constexpr ruy::Path kRuyPath = ruy::kAllPaths;
-#endif
-
-    ruy::Mul<kRuyPath>(ruy_lhs, ruy_rhs, ruy_spec, context->ruy_context(),
-                       &ruy_dst);
+    ruy::Mul(ruy_lhs, ruy_rhs, ruy_mul_params, context->ruy_context(),
+             &ruy_dst);
   }
 };
 

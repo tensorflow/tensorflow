@@ -99,8 +99,7 @@ Status XlaCompileOnDemandOp::MustArgumentBeConstant(
   // TODO(jmolloy): This could be expensive, so memoize.
   std::vector<int> constant_input_indices;
   TF_RETURN_IF_ERROR(GetCompileTimeConstInputs(
-      op_kernel, &constant_input_indices, flib_runtime,
-      /*cached_arg_indices=*/nullptr));
+      op_kernel, &constant_input_indices, flib_runtime));
   *result = absl::c_binary_search(constant_input_indices, argument_idx);
   return Status::OK();
 }
@@ -146,16 +145,9 @@ Status XlaCompileOnDemandOp::Compile(
         attrs.set_on_host(true);
         TF_RETURN_IF_ERROR(ctx->allocate_temp(
             device_tensor.dtype(), device_tensor.shape(), &host_tensor, attrs));
-        Notification n;
-        Status status;
-        ctx->op_device_context()->CopyDeviceTensorToCPU(
+        Status status = ctx->op_device_context()->CopyDeviceTensorToCPUSync(
             &device_tensor, "ConstantArgument",
-            reinterpret_cast<Device*>(ctx->device()), &host_tensor,
-            [&](Status s) {
-              status = s;
-              n.Notify();
-            });
-        n.WaitForNotification();
+            reinterpret_cast<Device*>(ctx->device()), &host_tensor);
         if (!status.ok()) {
           LOG(ERROR) << "Copying tensor of shape "
                      << device_tensor.shape().DebugString() << " from "

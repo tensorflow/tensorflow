@@ -22,6 +22,7 @@ import six
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
+from tensorflow.python.autograph.pyct import naming
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import transformer
@@ -37,11 +38,17 @@ global_b = 17
 class ReachingDefinitionsAnalyzerTestBase(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
+    # TODO(mdan): Use a custom FunctionTransformer here.
     node, source = parser.parse_entity(test_fn, future_features=())
     entity_info = transformer.EntityInfo(
-        source_code=source, source_file=None, future_features=(), namespace={})
+        name=test_fn.__name__,
+        source_code=source,
+        source_file=None,
+        future_features=(),
+        namespace={})
     node = qual_names.resolve(node)
-    ctx = transformer.Context(entity_info)
+    namer = naming.Namer({})
+    ctx = transformer.Context(entity_info, namer, None)
     node = activity.resolve(node, ctx)
     graphs = cfg.build(node)
     node = reaching_definitions.resolve(node, ctx, graphs,
@@ -247,7 +254,8 @@ class ReachingDefinitionsAnalyzerTest(ReachingDefinitionsAnalyzerTestBase):
     self.assertHasDefs(fn_body[2].value, 2)
 
     inner_fn_body = fn_body[1].body[1].body
-    self.assertSameDef(inner_fn_body[0].value, def_of_a_in_if)
+    def_of_a_in_foo = inner_fn_body[0].value
+    self.assertHasDefs(def_of_a_in_foo, 0)
 
   def test_nested_functions_isolation(self):
 

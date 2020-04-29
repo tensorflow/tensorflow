@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
@@ -115,6 +116,9 @@ class LiteralBase {
   // required for that index.
   template <typename NativeT>
   NativeT GetFirstElement() const;
+
+  // As above but returns any integer type casted to an int64.
+  absl::optional<int64> GetFirstInteger() const;
 
   // As Get(), but determines the correct type and converts the value
   // into text.

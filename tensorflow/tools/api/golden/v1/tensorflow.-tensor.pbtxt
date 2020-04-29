@@ -1,7 +1,7 @@
 path: "tensorflow.Tensor"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.ops.Tensor\'>"
-  is_instance: "<class \'tensorflow.python.framework.tensor_like._TensorLike\'>"
+  is_instance: "<class \'tensorflow.python.types.internal.NativeObject\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "OVERLOADABLE_OPERATORS"

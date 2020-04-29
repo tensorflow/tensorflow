@@ -117,16 +117,6 @@ def Assert(condition, data, summarize=None, name=None):
   If `condition` evaluates to false, print the list of tensors in `data`.
   `summarize` determines how many entries of the tensors to print.
 
-  NOTE: In graph mode, to ensure that Assert executes, one usually attaches
-  a dependency:
-
-  ```python
-  # Ensure maximum element of x is smaller or equal to 1
-  assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
-  with tf.control_dependencies([assert_op]):
-    ... code using x ...
-  ```
-
   Args:
     condition: The condition to evaluate.
     data: The tensors to print out when condition is false.
@@ -141,8 +131,17 @@ def Assert(condition, data, summarize=None, name=None):
     @end_compatibility
 
   Raises:
-    @compatibility(eager)
-    `tf.errors.InvalidArgumentError` if `condition` is not true
+    @compatibility(TF1)
+    When in TF V1 mode (that is, outside `tf.function`) Assert needs a control
+    dependency on the output to ensure the assertion executes:
+
+  ```python
+  # Ensure maximum element of x is smaller or equal to 1
+  assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
+  with tf.control_dependencies([assert_op]):
+    ... code using x ...
+  ```
+
     @end_compatibility
   """
   if context.executing_eagerly():
@@ -1724,6 +1723,10 @@ class WhileContext(ControlFlowContext):
     We move any external control dependencies of the op to the loop pivot, to
     ensure they get executed.
     """
+    # This is needed to prevent frame mismatch errors where there are Const
+    # nodes inside tf.function in v1 while_loop and inlining is turned on.
+    if op.type in ["PartitionedCall", "StatefulPartitionedCall"]:
+      op._add_control_input(self.GetControlPivot().op)  # pylint: disable=protected-access
     if not op.inputs:
       # Remove any external control dependency on this op
       control_inputs, external_inputs = self._RemoveExternalControlEdges(op)
@@ -2866,6 +2869,23 @@ def group(*inputs, **kwargs):
 
   When this op finishes, all ops in `inputs` have finished. This op has no
   output.
+
+  Note: *In TensorFlow 2 with eager and/or Autograph, you should not require
+  this method, as code executes in your expected order.* Only use tf.group when
+  working with v1-style code or in a graph context such as inside `Dataset.map`.
+
+  When operating in a v1-style graph context, ops are not executed in the same
+  order as specified in the code; TensorFlow will attempt to execute ops in
+  parallel or in an order convienient to the result it is computing.  `tf.group`
+  allows you to request that one or more results finish before execution
+  continues.
+
+  `tf.group` creates a single op (of type `NoOp`), and then adds appropriate
+  control dependencies.  Thus, `c = tf.group(a, b)` will compute the same graph
+  as this:
+
+      with tf.control_dependencies([a, b]):
+          c = tf.no_op()
 
   See also `tf.tuple` and
   `tf.control_dependencies`.

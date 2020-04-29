@@ -115,22 +115,21 @@ Softmax1x1& Softmax1x1::operator=(Softmax1x1&& kernel) {
   return *this;
 }
 
-Status Softmax1x1::Compile(const CreationContext& creation_context) {
+absl::Status Softmax1x1::Compile(const CreationContext& creation_context) {
   const auto code = GetSoftmaxKernelCode(definition_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
-Status Softmax1x1::AddToQueue(CLCommandQueue* queue) {
+absl::Status Softmax1x1::AddToQueue(CLCommandQueue* queue) {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
   const int depth = src_[0]->Slices();
-  RETURN_IF_ERROR(
-      kernel_.SetBytesAuto(int2(depth, IntegralDivideRoundUp(depth, 32))));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(int2(depth, DivideRoundUp(depth, 32))));
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(GetMaskForLastPlane(src_[0]->Channels())));
 

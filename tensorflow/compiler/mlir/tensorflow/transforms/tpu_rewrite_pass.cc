@@ -26,15 +26,15 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -98,8 +98,9 @@ constexpr char kBadArrayAttrLengthMsg[] =
 //    %4 = "tf.SomeOp"(%3)
 
 namespace {
-struct TPURewritePass : public ModulePass<TPURewritePass> {
-  void runOnModule() override;
+struct TPURewritePass
+    : public PassWrapper<TPURewritePass, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Creates a missing attribute error message.
@@ -223,7 +224,7 @@ LogicalResult SetMetadataProtoPaddingMap(
   if (!padding_map)
     return op.emitOpError(CreateMissingAttributeMsg(kPaddingMapAttr));
 
-  for (const auto padding_and_idx : llvm::enumerate(padding_map)) {
+  for (const auto& padding_and_idx : llvm::enumerate(padding_map)) {
     auto& padding_attr = padding_and_idx.value();
     auto padding_attr_str = padding_attr.dyn_cast<StringAttr>();
     if (!padding_attr_str)
@@ -470,29 +471,31 @@ void AssignDevicesToReplicate(
 }
 
 // Creates a `tf.TPUExecute` op that executes TPU program.
-Operation* BuildExecuteOp(
+LogicalResult BuildExecuteOp(
     const int core_id, llvm::ArrayRef<xla::OpSharding> output_sharding_config,
     llvm::ArrayRef<Value> inputs, tf_device::LaunchFuncOp launch_func,
-    OpBuilder* builder) {
+    OpBuilder* builder, TF::TPUExecuteOp* execute_op) {
   // TODO(b/139377366): Need to snapshot all resource variable inputs in
   // follow-up CLs.
-
-  auto output_types = tensorflow::GetOutputTypesForLogicalDeviceComputation(
-      core_id, output_sharding_config, launch_func);
+  llvm::SmallVector<Type, 4> output_types;
+  auto result = tensorflow::GetOutputTypesForLogicalDeviceComputation(
+      core_id, output_sharding_config, launch_func, &output_types);
+  if (failed(result)) return failure();
 
   // TPUExecute has same output types as launch_func.
-  return builder->create<TF::TPUExecuteOp>(launch_func.getLoc(), output_types,
-                                           inputs,
-                                           llvm::ArrayRef<NamedAttribute>{});
+  *execute_op = builder->create<TF::TPUExecuteOp>(
+      launch_func.getLoc(), output_types, inputs,
+      llvm::ArrayRef<NamedAttribute>{});
+  return success();
 }
 
 // Creates a tf_device.parallel_execute op that wraps TPUExecute op to
 // represent execution of TPU program in multiple logical cores.
-tf_device::ParallelExecuteOp BuildParallelExecuteOp(
+LogicalResult BuildParallelExecuteOp(
     llvm::ArrayRef<llvm::SmallVector<std::string, 8>> execution_devices,
     llvm::ArrayRef<xla::OpSharding> output_sharding_config,
     Operation* compile_op, tf_device::LaunchFuncOp launch_func,
-    OpBuilder* builder) {
+    OpBuilder* builder, tf_device::ParallelExecuteOp* parallel_execute_op) {
   const int num_cores_per_replica = execution_devices.front().size();
   // parallel_execute op returns concatenated list of return values of
   // all its regions.
@@ -505,25 +508,31 @@ tf_device::ParallelExecuteOp BuildParallelExecuteOp(
                                     num_cores_per_replica);
 
   for (int core = 0; core < num_cores_per_replica; ++core) {
-    auto output_types = tensorflow::GetOutputTypesForLogicalDeviceComputation(
-        core, output_sharding_config, launch_func);
+    llvm::SmallVector<Type, 4> output_types;
+    auto result = tensorflow::GetOutputTypesForLogicalDeviceComputation(
+        core, output_sharding_config, launch_func, &output_types);
+    if (failed(result)) return failure();
+
     for (Type t : output_types) concatenated_output_types.emplace_back(t);
   }
 
-  auto parallel_execute_op = builder->create<tf_device::ParallelExecuteOp>(
+  *parallel_execute_op = builder->create<tf_device::ParallelExecuteOp>(
       launch_func.getLoc(), num_cores_per_replica, concatenated_output_types);
 
   // Extract inputs for each region of the parallel_execute op. The i-th
   // element in the list represents the input lists to TPU computation for
   // i-th logical core.
-  auto input_list = tensorflow::ExtractInputsForLogicalDevices(
-      num_cores_per_replica, launch_func);
+  llvm::SmallVector<llvm::SmallVector<mlir::Value, 4>, 4> input_list;
+  builder->setInsertionPoint(*parallel_execute_op);
+  auto result = tensorflow::ExtractInputsForLogicalDevices(
+      num_cores_per_replica, launch_func, builder, &input_list);
+  if (failed(result)) return failure();
 
   const bool replicated = execution_devices.size() != 1;
   // For each logical core, create a region with TPUExecute op.
   assert(input_list.size() == num_cores_per_replica);
   for (int core = 0; core < num_cores_per_replica; ++core) {
-    auto& region = parallel_execute_op.GetRegionBlockWithIndex(core);
+    auto& region = parallel_execute_op->GetRegionBlockWithIndex(core);
     builder->setInsertionPointToEnd(&region);
 
     // Create Execute op.
@@ -534,8 +543,10 @@ tf_device::ParallelExecuteOp BuildParallelExecuteOp(
     auto execute_inputs = input_list[core];
     execute_inputs.emplace_back(compile_op->getResult(core + 1));
 
-    auto execute = BuildExecuteOp(core, output_sharding_config, execute_inputs,
-                                  launch_func, builder);
+    TF::TPUExecuteOp execute;
+    result = BuildExecuteOp(core, output_sharding_config, execute_inputs,
+                            launch_func, builder, &execute);
+    if (failed(result)) return failure();
 
     // If computation is replicated, use aliased device. Otherwise there is only
     // one execution device per core and the device is assigned to the execute
@@ -551,7 +562,7 @@ tf_device::ParallelExecuteOp BuildParallelExecuteOp(
                                          region_launch_op.getResults());
   }
 
-  return parallel_execute_op;
+  return success();
 }
 
 tf_device::LaunchOp AssignDevicesToReplicatedExecute(
@@ -696,29 +707,37 @@ LogicalResult Rewrite(
                            builder);
 
   llvm::SmallVector<xla::OpSharding, 4> output_shardings;
-  auto result = tensorflow::ParseAndValidateOutputSharding(launch_func,
-                                                           &output_shardings);
+  auto result = tensorflow::ParseAndValidateOutputSharding(
+      num_cores_per_replica, launch_func, &output_shardings);
   if (failed(result)) return failure();
 
   if (num_cores_per_replica > 1) {
     // For model parallelism, tf_device.parallel_execute is used to express
     // concurrent device execution across multiple logical devices.
-    tf_device::ParallelExecuteOp execute_op = BuildParallelExecuteOp(
-        tpu_device_assignment.execution_devices, output_shardings, compile_op,
-        launch_func, builder);
+
+    tf_device::ParallelExecuteOp execute_op;
+    result = BuildParallelExecuteOp(tpu_device_assignment.execution_devices,
+                                    output_shardings, compile_op, launch_func,
+                                    builder, &execute_op);
+    if (failed(result)) return failure();
 
     // As tf_device.parallel_execute wraps # logical cores number of TPUExecute
     // ops, the number of return values of parallel_execute op exceeds that of
     // launch_func op. As so, each return value of parallel_execute op must be
     // mapped with corresponding return value usages of launch_func.
-    tensorflow::RemapOutputsFromLogicalDevices(output_shardings, launch_func,
-                                               execute_op);
+    tensorflow::RemapOutputsFromLogicalDevices(launch_func.getLoc(),
+                                               output_shardings, launch_func,
+                                               execute_op, builder);
   } else {
     llvm::SmallVector<Value, 4> execute_inputs(launch_func.getOperands());
     execute_inputs.emplace_back(compile_op->getResult(1));
 
-    Operation* execute_op = BuildExecuteOp(
-        /*core_id=*/0, output_shardings, execute_inputs, launch_func, builder);
+    TF::TPUExecuteOp execute_op;
+    result = BuildExecuteOp(
+        /*core_id=*/0, output_shardings, execute_inputs, launch_func, builder,
+        &execute_op);
+    if (failed(result)) return failure();
+
     tf_device::LaunchOp launch_op = AssignDevicesToReplicatedExecute(
         tpu_device_assignment.execution_devices, execute_op, builder);
     launch_func.replaceAllUsesWith(launch_op);
@@ -729,13 +748,13 @@ LogicalResult Rewrite(
   return success();
 }
 
-void TPURewritePass::runOnModule() {
+void TPURewritePass::runOnOperation() {
   mlir::TF::RuntimeDevices devices;
-  if (failed(tensorflow::GetDevicesFromOp(getModule(), &devices)))
+  if (failed(tensorflow::GetDevicesFromOp(getOperation(), &devices)))
     return signalPassFailure();
 
   OpBuilder builder(&getContext());
-  auto result = getModule().walk([&](tf_device::LaunchFuncOp op) {
+  auto result = getOperation().walk([&](tf_device::LaunchFuncOp op) {
     if (failed(Rewrite(op, devices.device_names(), &builder)))
       return WalkResult::interrupt();
 
@@ -745,14 +764,14 @@ void TPURewritePass::runOnModule() {
   if (result.wasInterrupted()) return signalPassFailure();
 
   // Eliminate TPUCompilationResultOp now that the rewrite is complete.
-  getModule().walk([&](TF::TPUCompilationResultOp op) { op.erase(); });
+  getOperation().walk([&](TF::TPUCompilationResultOp op) { op.erase(); });
 
   // TODO(b/139377366): Remove functions that are no longer needed.
 }
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTPURewritePass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass() {
   return std::make_unique<TPURewritePass>();
 }
 

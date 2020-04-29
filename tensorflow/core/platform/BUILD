@@ -56,9 +56,7 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 
 package(
-    default_visibility = [
-        "//tensorflow:__subpackages__",
-    ],
+    default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -601,6 +599,7 @@ cc_library(
     name = "stacktrace_handler",
     textual_hdrs = ["stacktrace_handler.h"],
     deps = tf_windows_aware_platform_deps("stacktrace_handler"),
+    alwayslink = 1,
 )
 
 cc_library(
@@ -1264,8 +1263,11 @@ filegroup(
     name = "lib_hdrs",
     srcs = [
         "abi.h",
+        "base64.h",
         "casts.h",
+        "coding.h",
         "context.h",
+        "cord.h",
         "cpu_feature_guard.h",
         "cpu_info.h",
         "dynamic_annotations.h",
@@ -1291,6 +1293,7 @@ filegroup(
         "profile_utils/cpu_utils.h",
         "profile_utils/i_cpu_utils_helper.h",
         "protobuf.h",
+        "random.h",
         "resource.h",
         "stacktrace.h",
         "stacktrace_handler.h",

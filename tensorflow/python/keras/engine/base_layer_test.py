@@ -29,6 +29,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
@@ -124,6 +125,7 @@ class BaseLayerTest(keras_parameterized.TestCase):
 
       def build(self, input_shape):
         self.build_counter += 1
+        self.build_shape = input_shape
 
       def call(self, inputs):
         return inputs
@@ -131,14 +133,17 @@ class BaseLayerTest(keras_parameterized.TestCase):
     layer = BuildCounter(dtype=dtypes.float64)
     output_shape = layer.compute_output_shape((None, 10))
     self.assertEqual(layer.build_counter, 1)
+    self.assertEqual(layer.build_shape.as_list(), [None, 10])
     self.assertEqual(output_shape.as_list(), [None, 10])
     output_signature = layer.compute_output_signature(
         tensor_spec.TensorSpec(dtype=dtypes.float64, shape=[None, 10]))
     self.assertEqual(layer.build_counter, 1)
+    self.assertEqual(layer.build_shape.as_list(), [None, 10])
     self.assertEqual(output_signature.dtype, dtypes.float64)
     self.assertEqual(output_signature.shape.as_list(), [None, 10])
     layer(np.ones((5, 10)))
     self.assertEqual(layer.build_counter, 1)
+    self.assertEqual(layer.build_shape.as_list(), [None, 10])
 
   def test_eager_switch_case_input(self):
     task = input_layer.Input(shape=(), dtype=dtypes.int32)
@@ -936,6 +941,30 @@ class NameScopingTest(keras_parameterized.TestCase):
     self.assertEqual(layer.bias.name, 'MyName/bias:0')
     self.assertEqual(layer.kernel.name, 'MyName/kernel:0')
 
+  def test_name_scope_functional_api(self):
+    inputs = input_layer.Input((3,))
+    layer = layers.Dense(10, name='MyName')
+    _ = layer(inputs)
+    self.assertEqual(layer.bias.name, 'MyName/bias:0')
+    self.assertEqual(layer.kernel.name, 'MyName/kernel:0')
+
+  def test_name_scope_functional_api_nested(self):
+
+    class NestedLayer(base_layer.Layer):
+
+      def __init__(self, name='OuterName'):
+        super(NestedLayer, self).__init__(name=name)
+        self.dense = layers.Dense(10, name='InnerName')
+
+      def call(self, inputs):
+        return self.dense(inputs)
+
+    inputs = input_layer.Input((3,))
+    layer = NestedLayer()
+    _ = layer(inputs)
+    self.assertEqual(layer.dense.bias.name, 'OuterName/InnerName/bias:0')
+    self.assertEqual(layer.dense.kernel.name, 'OuterName/InnerName/kernel:0')
+
   def test_name_scope_sublayer(self):
 
     class NameScopeTracker(base_layer.Layer):
@@ -1082,46 +1111,6 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
     self.assertEqual(backend.get_value(layer.counter), 1.)
 
-  def test_conditional_updates_in_call(self):
-
-    class MyLayer(base_layer.Layer):
-
-      def __init__(self):
-        super(MyLayer,
-              self).__init__(dynamic=testing_utils.should_run_eagerly())
-
-      def build(self, input_shape):
-        self.counter = self.add_weight(
-            shape=(), trainable=False, initializer='zeros')
-
-      def call(self, inputs, training=None):
-        if training:
-          z = math_ops.reduce_sum(inputs)
-          self.add_update(lambda: self.counter.assign_add(z))
-        return inputs
-
-      def compute_output_shape(self, input_shape):
-        return input_shape
-
-    if testing_utils.should_run_eagerly():
-      inputs = input_layer.Input((3,))
-      layer = MyLayer()
-      outputs = layer(inputs)
-      model = training_lib.Model(inputs, outputs)
-      model.compile(
-          'sgd',
-          'mse',
-          run_eagerly=testing_utils.should_run_eagerly())
-      model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
-      self.assertEqual(backend.get_value(layer.counter), 6.)
-    else:
-      # TODO(fchollet): support the same workflow in graph mode.
-      with self.assertRaisesRegexp(RuntimeError,
-                                   '`add_update` in a control flow branch'):
-        layer = MyLayer()
-        layer(input_layer.Input((3,)))
-        _ = layer.updates
-
   def test_conditional_losses_in_call(self):
 
     class MyLayer(base_layer.Layer):
@@ -1138,21 +1127,13 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
       def compute_output_shape(self, input_shape):
         return input_shape
 
-    if testing_utils.should_run_eagerly():
-      inputs = input_layer.Input((3,))
-      layer = MyLayer()
-      outputs = layer(inputs)
-      model = training_lib.Model(inputs, outputs)
-      model.compile(
-          'sgd',
-          'mse',
-          run_eagerly=testing_utils.should_run_eagerly())
-      loss = model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
-      self.assertEqual(loss, 2 * 3)
-    else:
-      with self.assertRaisesRegexp(RuntimeError,
-                                   '`add_loss` in a control flow branch'):
-        layer = MyLayer()(input_layer.Input((3,)))
+    inputs = input_layer.Input((3,))
+    layer = MyLayer()
+    outputs = layer(inputs)
+    model = training_lib.Model(inputs, outputs)
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    loss = model.train_on_batch(np.ones((2, 3)), np.ones((2, 3)))
+    self.assertEqual(loss, 2 * 3)
 
   def test_conditional_callable_losses(self):
     model = sequential.Sequential([
@@ -1193,22 +1174,13 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
       def compute_output_shape(self, input_shape):
         return input_shape
 
-    if testing_utils.should_run_eagerly():
-      inputs = input_layer.Input((3,))
-      layer = MyLayer()
-      outputs = layer(inputs)
-      model = training_lib.Model(inputs, outputs)
-      model.compile(
-          'sgd',
-          'mse',
-          run_eagerly=testing_utils.should_run_eagerly())
-      history = model.fit(np.ones((2, 3)), np.ones((2, 3)))
-      self.assertEqual(history.history['sum'][-1], 2 * 3)
-    else:
-      # TODO(fchollet): support the same workflow in graph mode.
-      with self.assertRaisesRegexp(RuntimeError,
-                                   '`add_metric` in a control flow branch'):
-        layer = MyLayer()(input_layer.Input((3,)))
+    inputs = input_layer.Input((3,))
+    layer = MyLayer()
+    outputs = layer(inputs)
+    model = training_lib.Model(inputs, outputs)
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    history = model.fit(np.ones((2, 3)), np.ones((2, 3)))
+    self.assertEqual(history.history['sum'][-1], 2 * 3)
 
   def test_conditional_activity_regularizer_in_call(self):
 
@@ -1237,8 +1209,8 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     if testing_utils.should_run_eagerly():
       model.fit(x, y, epochs=2, batch_size=5)
     else:
-      with self.assertRaisesRegexp(
-          RuntimeError, '`activity_regularizer` in a control flow branch'):
+      with self.assertRaisesRegexp(errors_impl.InaccessibleTensorError,
+                                   'ActivityRegularizer'):
         model.fit(x, y, epochs=2, batch_size=5)
 
   def test_conditional_activity_regularizer_with_wrappers_in_call(self):
@@ -1269,8 +1241,8 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
     if testing_utils.should_run_eagerly():
       model.fit(x, y, epochs=2, batch_size=5)
     else:
-      with self.assertRaisesRegexp(
-          RuntimeError, '`activity_regularizer` in a control flow branch'):
+      with self.assertRaisesRegexp(errors_impl.InaccessibleTensorError,
+                                   'ActivityRegularizer'):
         model.fit(x, y, epochs=2, batch_size=5)
 
 

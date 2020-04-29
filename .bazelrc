@@ -19,10 +19,10 @@
 # Compiler options:
 #     cuda_clang:             Use clang when building CUDA code.
 #     c++17:                  Build with C++17 options
-#     C++1z:                  Build with C++17 options
+#     c++1z:                  Build with C++17 options
 #     avx_linux:              Build with avx instruction set on linux.
 #     avx2_linux:             Build with avx2 instruction set on linux.
-#     arch_native_linux:      Build with instruction sets available to the host machine on linux
+#     native_arch_linux:      Build with instruction sets available to the host machine on linux
 #     avx_win:                Build with avx instruction set on windows
 #     avx2_win:               Build with avx2 instruction set on windows
 #
@@ -73,6 +73,10 @@
 #     tensorflow_testing_rbe_linux: RBE options to use RBE with tensorflow-testing project on linux
 #     tensorflow_testing_rbe_win:   RBE options to use RBE with tensorflow-testing project on windows
 #
+# Embedded Linux options (experimental and only tested with TFLite build yet)
+#     elinux:          General Embedded Linux options shared by all flavors.
+#     elinux_aarch64:  Embedded Linux options for aarch64 (ARM64) CPU support.
+#     elinux_armhf:    Embedded Linux options for armhf (ARMv7) CPU support.
 
 
 
@@ -356,7 +360,15 @@ build:rbe_cpu_linux --extra_execution_platforms"=@org_tensorflow//third_party/to
 build:rbe_cpu_linux --host_platform="@org_tensorflow//third_party/toolchains:rbe_ubuntu16.04-manylinux2010"
 build:rbe_cpu_linux --platforms="@org_tensorflow//third_party/toolchains:rbe_ubuntu16.04-manylinux2010"
 
-build:rbe_linux_cuda_nvcc --config=rbe_linux
+build:rbe_linux_cuda_base --config=rbe_linux
+build:rbe_linux_cuda_base --repo_env=TF_NEED_TENSORRT=1
+build:rbe_linux_cuda_base --repo_env=TF_CUDA_VERSION=10
+build:rbe_linux_cuda_base --repo_env=TF_CUDNN_VERSION=7
+build:rbe_linux_cuda_base --repo_env=REMOTE_GPU_TESTING=1
+build:rbe_linux_cuda_base --repo_env=TF_NEED_CUDA=1
+test:rbe_linux_cuda_base --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
+
+build:rbe_linux_cuda_nvcc --config=rbe_linux_cuda_base
 build:rbe_linux_cuda_nvcc --crosstool_top="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain"
 build:rbe_linux_cuda_nvcc --extra_toolchains="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain-linux-x86_64"
 build:rbe_linux_cuda_nvcc --extra_execution_platforms="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
@@ -365,13 +377,20 @@ build:rbe_linux_cuda_nvcc --platforms="@ubuntu16.04-py3-gcc7_manylinux2010-cuda1
 build:rbe_linux_cuda_nvcc --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda"
 build:rbe_linux_cuda_nvcc --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_tensorrt"
 build:rbe_linux_cuda_nvcc --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_nccl"
-build:rbe_linux_cuda_nvcc --repo_env=TF_NEED_TENSORRT=1
-build:rbe_linux_cuda_nvcc --repo_env=TF_CUDA_VERSION=10
-build:rbe_linux_cuda_nvcc --repo_env=TF_CUDNN_VERSION=7
-build:rbe_linux_cuda_nvcc --repo_env=REMOTE_GPU_TESTING=1
-build:rbe_linux_cuda_nvcc --repo_env=TF_NEED_CUDA=1
 build:rbe_linux_cuda_nvcc --define=using_cuda_nvcc=true
-test:rbe_linux_cuda_nvcc --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
+test:rbe_linux_cuda_nvcc --config=rbe_linux_cuda_base
+
+build:rbe_linux_cuda_clang --config=rbe_linux_cuda_base
+build:rbe_linux_cuda_clang --crosstool_top="@ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain"
+build:rbe_linux_cuda_clang --extra_toolchains="@ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_cuda_clang --extra_execution_platforms="@ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
+build:rbe_linux_cuda_clang --host_platform="@ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
+build:rbe_linux_cuda_clang --platforms="@ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
+build:rbe_linux_cuda_clang --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda"
+build:rbe_linux_cuda_clang --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_tensorrt"
+build:rbe_linux_cuda_clang --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_nccl"
+build:rbe_linux_cuda_clang --define=using_cuda_clang=true
+test:rbe_linux_cuda_clang --config=rbe_linux_cuda_base
 
 common:rbe_gpu_linux --config=rbe_linux_cuda_nvcc
 
@@ -417,6 +436,14 @@ build:tensorflow_testing_rbe_linux --config=rbe_linux
 
 common:tensorflow_testing_rbe_win --remote_instance_name=projects/tensorflow-testing/instances/windows
 build:tensorflow_testing_rbe_win --config=tensorflow_testing_rbe
+
+# TFLite build configs for generic embedded Linux
+build:elinux --crosstool_top=@local_config_embedded_arm//:toolchain
+build:elinux --host_crosstool_top=@bazel_tools//tools/cpp:toolchain
+build:elinux_aarch64 --config=elinux
+build:elinux_aarch64 --cpu=aarch64
+build:elinux_armhf --config=elinux
+build:elinux_armhf --cpu=armhf
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
 # Default options should come above this line

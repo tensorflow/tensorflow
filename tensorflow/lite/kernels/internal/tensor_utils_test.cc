@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 
+#include <math.h>
+
 #include <gmock/gmock.h>
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 
@@ -25,6 +28,13 @@ limitations under the License.
 
 namespace tflite {
 namespace tensor_utils {
+
+TEST(uKernels, FloorLog2Test) {
+  for (int i = 1; i < 257; ++i) {
+    EXPECT_EQ(::tflite::FloorLog2(i),
+              static_cast<int>(std::floor(std::log2(i))));
+  }
+}
 
 TEST(uKernels, ClipTest) {
   constexpr int kVectorSize = 10;
@@ -371,14 +381,14 @@ TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_16Test) {
   const int32_t multiplier = 2080364544;
   const int32_t shift = -2;
 
-  std::vector<int32_t> scrach(2 * 9, 0);
+  std::vector<int32_t> scratch(2 * 9, 0);
   std::vector<int16_t> output = {10, 2, 33, 4, 5,  6,  65, 4,  3,
                                  52, 1, 2,  8, -1, -2, 11, 17, -18};
   MatrixBatchVectorMultiplyAccumulate(
       input.data(), input_zeropoint_times_weights.data(),
       input_to_gate_weights.data(), multiplier, shift,
       /*n_batch=*/2, /*n_input=*/30, /*n_output=*/9, /*output_zp=*/0,
-      scrach.data(), output.data(), &context);
+      scratch.data(), output.data(), &context);
   const std::vector<int16_t> expected_output = {
       -210, 331,  153, 139, -570, -657, 258, 515,  -495,
       91,   -243, -73, 603, -744, -269, 169, -748, -174,
@@ -457,6 +467,37 @@ TEST(uKernels, HybridMatrixBatchVectorMultiplyAccumulate8x8_16Test) {
       &context);
 
   EXPECT_THAT(output2, testing::ElementsAreArray(expected_output));
+
+  // Run with a large batch size to trigger the CpuBackendGemm path on any
+  // device.
+  constexpr int kBatchMultiplier = 8;
+  std::vector<int8_t> input_big_batch(input.size() * kBatchMultiplier);
+  std::vector<float> scaling_factors_big_batch(scaling_factors.size() *
+                                               kBatchMultiplier);
+  std::vector<int32_t> scratch_big_batch(scratch.size() * kBatchMultiplier);
+  std::vector<int32_t> input_offsets_big_batch(input_offsets.size() *
+                                               kBatchMultiplier);
+  for (int i = 0; i < kBatchMultiplier; i++) {
+    std::copy(input.begin(), input.end(),
+              input_big_batch.begin() + i * input.size());
+    std::copy(scaling_factors.begin(), scaling_factors.end(),
+              scaling_factors_big_batch.begin() + i * scaling_factors.size());
+    std::copy(input_offsets.begin(), input_offsets.end(),
+              input_offsets_big_batch.begin() + i * input_offsets.size());
+  }
+  std::vector<float> output_big_batch(output.size() * kBatchMultiplier, 0);
+  MatrixBatchVectorMultiplyAccumulate(
+      input_to_gate_weights.data(), /*m_rows=*/8, /*m_cols=*/32,
+      input_big_batch.data(), scaling_factors_big_batch.data(),
+      /*n_batch*/ 4 * kBatchMultiplier, output_big_batch.data(), nullptr,
+      input_offsets_big_batch.data(), scratch_big_batch.data(), row_sums,
+      &compute_row_sums, &context);
+  for (int i = 0; i < kBatchMultiplier; i++) {
+    std::vector<float> output_per_batch(
+        output_big_batch.begin() + i * output.size(),
+        output_big_batch.begin() + (i + 1) * output.size());
+    EXPECT_THAT(output_per_batch, testing::ElementsAreArray(expected_output));
+  }
 }
 
 // Qautnized matmul with 2 * 30 input and 9 * 30 matrix.
@@ -497,11 +538,11 @@ TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_8Test) {
 
   std::vector<int8_t> output = {1, 2, 3, 4, 5,  6,  5,  4,  3,
                                 2, 1, 2, 8, -1, -2, 11, 17, 18};
-  std::vector<int32_t> scrach(2 * 9, 0);
+  std::vector<int32_t> scratch(2 * 9, 0);
   MatrixBatchVectorMultiplyAccumulate(
       input.data(), input_zeropoint_times_weights.data(),
       input_to_gate_weights.data(), multiplier, shift,
-      /*n_batch=*/2, /*n_input=*/30, /*n_output=*/9, output_zp, scrach.data(),
+      /*n_batch=*/2, /*n_input=*/30, /*n_output=*/9, output_zp, scratch.data(),
       output.data(), &context);
   const std::vector<int8_t> expected_output = {
       5,   -9, -2, -30, -5, -11, -22, -18, 18,

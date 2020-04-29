@@ -38,19 +38,68 @@ struct TFL_CAPI_EXPORT TfLiteHexagonDelegateOptions {
   // This corresponds to the debug level in the hexagon SDK. 0 (default)
   // means no debug.
   int debug_level;
+
   // This corresponds to powersave_level in the hexagon SDK.
   // where 0 (default) means high performance which means more power
   // consumption.
   int powersave_level;
+
   // If set to true, performance information about the graph will be dumped
   // to Standard output, this includes cpu cycles.
   // WARNING: Experimental and subject to change anytime.
   bool print_graph_profile;
+
   // If set to true, graph structure will be dumped to Standard output.
   // This is usually beneficial to see what actual nodes executed on
   // the DSP. Combining with 'debug_level' more information will be printed.
   // WARNING: Experimental and subject to change anytime.
   bool print_graph_debug;
+
+  // This sets the maximum number of Hexagon graphs created with
+  // hexagon_nn_init. Each graph corresponds to one delegated node subset in the
+  // TFLite model.
+  int max_delegated_partitions;
+  // This sets the minimum number of nodes per graph created with
+  // hexagon_nn_init. Defaults to 2.
+  int min_nodes_per_partition;
+
+  // If true, then the hexagon graph will adapt for inputs with dynamic batch.
+  // See below options are needed to be set.
+  // Currently, Only supported when the whole graph is delegated, and
+  // with batch as index 0.
+  // WARNING: Experimental and subject to change anytime.
+  bool enable_dynamic_batch_size;
+
+  // Maximum value for a batch dimension when evaluating graphs with
+  // dynamic batch. The input to the graph can have value for batch bigger than
+  // this number, internally the graph will run multiple times each with
+  // batch dimension <= max_batch_size. you should decide the value of this
+  // based on memory/latency tradeoffs.
+  // This needs to be set only if 'enable_dynamic_batch_size' is true.
+  // Not needed for fixed graphs.
+  // WARNING: Experimental and subject to change anytime.
+  int max_batch_size;
+
+  // Each element identifies the index of the batch dimension in a single input.
+  // input_batch_dimensions->data[i] is the index of the batch dimension for
+  // input[i]. If the graph has 1 input then the size of the array should be 1,
+  // and so on. This needs to be set only if 'enable_dynamic_batch_size' is
+  // true. Not needed for fixed graphs.
+  // If input[i] doesn't have dynamic batch, then input_batch_dimensions[i]
+  // should be -1.
+  // Delegate will take ownership of the pointer.
+  // WARNING: Experimental and subject to change anytime.
+  TfLiteIntArray* input_batch_dimensions;
+
+  // Each element identifies the index of the batch dimension in a single
+  // output. output_batch_dimensions->data[i] is the index of the batch
+  // dimension for output[i]. If the graph has 1 output then the size of the
+  // array should be 1, and so on. This needs to be set only if
+  // 'enable_dynamic_batch_size' is true. Not needed for fixed graphs. If
+  // output[i] has doesn't have dynamic batch, then output_batch_dimensions[i]
+  // should be -1. Delegate will take ownership of the pointer. WARNING:
+  // Experimental and subject to change anytime.
+  TfLiteIntArray* output_batch_dimensions;
 };
 
 // Return a delegate that uses Hexagon SDK for ops execution.

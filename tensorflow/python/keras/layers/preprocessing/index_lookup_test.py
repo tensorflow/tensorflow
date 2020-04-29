@@ -18,7 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
 import os
+import random
+import string
 
 from absl.testing import parameterized
 import numpy as np
@@ -27,9 +30,11 @@ from tensorflow.python import keras
 from tensorflow.python import tf2
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers.preprocessing import index_lookup
@@ -380,6 +385,44 @@ class CategoricalEncodingAdaptTest(
     layer.set_vocabulary(vocab_data)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_single_string_generator_dataset(self):
+
+    def word_gen():
+      for _ in itertools.count(1):
+        yield "".join(random.choice(string.ascii_letters) for i in range(2))
+
+    ds = dataset_ops.Dataset.from_generator(word_gen, dtypes.string,
+                                            tensor_shape.TensorShape([]))
+    batched_ds = ds.take(100).batch(1)
+    input_t = keras.Input(shape=(), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=10, num_oov_tokens=0, reserve_zero=False)
+    _ = layer(input_t)
+    layer.adapt(batched_ds)
+
+
+@keras_parameterized.run_all_keras_modes
+class IndexLookupDistributionTest(
+    keras_parameterized.TestCase,
+    preprocessing_test_utils.PreprocessingLayerTest):
+
+  def test_cpu_distribution(self):
+    vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
+
+    strategy = one_device_strategy.OneDeviceStrategy("/cpu:0")
+
+    with strategy.scope():
+      input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+      layer = get_layer_class()()
+      layer.set_vocabulary(vocab_data)
+      int_data = layer(input_data)
+      model = keras.Model(inputs=input_data, outputs=int_data)
     output_dataset = model.predict(input_array)
     self.assertAllEqual(expected_output, output_dataset)
 
