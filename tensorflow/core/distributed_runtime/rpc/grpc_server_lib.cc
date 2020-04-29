@@ -132,7 +132,9 @@ GrpcServer::~GrpcServer() {
 void GrpcServer::MaybeMutateBuilder(::grpc::ServerBuilder* builder) {}
 
 // Look up the port that has been requested for this task in `server_def`.
-Status GrpcServer::GetHostAndPort(const ServerDef& server_def, string* host_name, int* port) const {
+Status GrpcServer::GetHostAndPort(const ServerDef& server_def,
+                                  string* host_name,
+                                  int* port) const {
   *port = -1;
   *host_name = "localhost";
   for (const auto& job : server_def.cluster().job()) {
@@ -180,9 +182,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   // otherwise if 'task_index=-1' the program will abort.
 
   int requested_port;
-  string host_name;
-  TF_RETURN_IF_ERROR(GetHostAndPort(server_def_, &host_name, &requested_port));
-  host_name_ = host_name;
+  TF_RETURN_IF_ERROR(GetHostAndPort(server_def_, &host_name_, &requested_port));
 
   SessionOptions sess_opts;
   ConfigProto config = server_def_.default_session_config();

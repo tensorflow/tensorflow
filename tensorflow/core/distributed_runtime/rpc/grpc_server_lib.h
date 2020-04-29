@@ -104,7 +104,9 @@ class GrpcServer : public ServerInterface {
   Status UpdateServerDef(const ServerDef& server_def);
 
  protected:
-  virtual Status GetHostAndPort(const ServerDef& server_def, string* host_name, int* port) const;
+  virtual Status GetHostAndPort(const ServerDef& server_def,
+                                string* host_name,
+                                int* port) const;
   Status Init(const GrpcServerOptions& opts = GrpcServerOptions());
 
   // A subclass can override this method to support secure credentials.
