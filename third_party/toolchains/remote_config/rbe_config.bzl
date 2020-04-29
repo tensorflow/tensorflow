@@ -1,6 +1,6 @@
 """Macro that creates external repositories for remote config."""
 
-load("//third_party/py:python_configure.bzl", "remote_python_configure")
+load("//third_party/py:python_configure.bzl", "local_python_configure", "remote_python_configure")
 load("//third_party/gpus:cuda_configure.bzl", "remote_cuda_configure")
 load("//third_party/nccl:nccl_configure.bzl", "remote_nccl_configure")
 load("//third_party/gpus:rocm_configure.bzl", "remote_rocm_configure")
@@ -113,6 +113,7 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = No
             name = "%s_config_python" % name,
             environ = env,
             exec_properties = exec_properties,
+            platform_constraint = "@%s_config_platform//:platform_constraint" % name,
         )
 
         remote_rocm_configure(
@@ -127,10 +128,17 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = No
             "Pool": "default",
         }
 
+        remote_platform_configure(
+            name = "%s_config_platform" % name,
+            platform = "linux",
+            platform_exec_properties = exec_properties,
+        )
+
         remote_python_configure(
             name = "%s_config_python" % name,
             environ = env,
             exec_properties = exec_properties,
+            platform_constraint = "@%s_config_platform//:platform_constraint" % name,
         )
     else:
         fail("Neither cuda_version, rocm_version nor python_version specified.")
@@ -156,7 +164,20 @@ def _tensorflow_rbe_win_config(name, python_bin_path, container_name = "windows-
         name = "%s_config_python" % name,
         environ = env,
         exec_properties = exec_properties,
+        platform_constraint = "@%s_config_platform//:platform_constraint" % name,
+    )
+
+def _tensorflow_local_config(name):
+    remote_platform_configure(
+        name = "%s_config_platform" % name,
+        platform = "local",
+        platform_exec_properties = {},
+    )
+    local_python_configure(
+        name = "%s_config_python" % name,
+        platform_constraint = "@%s_config_platform//:platform_constraint" % name,
     )
 
 tensorflow_rbe_config = _tensorflow_rbe_config
 tensorflow_rbe_win_config = _tensorflow_rbe_win_config
+tensorflow_local_config = _tensorflow_local_config
