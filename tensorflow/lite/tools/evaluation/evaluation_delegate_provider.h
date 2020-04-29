@@ -33,7 +33,7 @@ class DelegateProviders {
   DelegateProviders();
 
   // Initialize delegate-related parameters from commandline arguments and
-  // returns true if sucessful.
+  // returns true if successful.
   bool InitFromCmdlineArgs(int* argc, const char** argv);
 
   // Get all parameters from all registered delegate providers.

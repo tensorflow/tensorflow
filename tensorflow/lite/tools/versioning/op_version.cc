@@ -110,7 +110,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.input_types.size() == 2) {
         return 6;
       }
-      // `keep_num_dims` is supported at verison 5.
+      // `keep_num_dims` is supported at version 5.
       if (op_sig.options.fully_connected.keep_num_dims) {
         return 5;
       }

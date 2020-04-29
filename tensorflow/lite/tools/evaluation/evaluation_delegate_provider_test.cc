@@ -66,7 +66,7 @@ TEST(EvaluationDelegateProviderTest, GetAllParamsWithTfliteInferenceParams) {
   TfliteInferenceParams params;
   params.set_delegate(TfliteInferenceParams::NONE);
   params.set_num_threads(4);
-  // The same-meaning parameter in TfliteInferenceParams takes precendence.
+  // The same-meaning parameter in TfliteInferenceParams takes precedence.
   tools::ToolParams tool_params = providers.GetAllParams(params);
   EXPECT_EQ(4, tool_params.Get<int>("num_threads"));
   EXPECT_EQ(1, argc);
