@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function_body.h"
+#include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
@@ -80,26 +81,6 @@ std::unique_ptr<FunctionLibraryRuntime> NewFunctionLibraryRuntime(
 // TODO(zhifengc): Asks math expert to say the comment again.
 std::unique_ptr<FunctionBody> SymbolicGradient(const FunctionBody& f);
 
-// Returns true iff `n` represents a function call. `n` can be a native
-// function call (n.type_string() is the function name),
-// a PartitionedCall/StatefulPartitionedCall, or a SymbolicGradient (which
-// has been deprecated for a while).
-bool IsFunctionCall(const FunctionLibraryDefinition& lib_def, const Node& n);
-
-// Instantiates FunctionDef into a graph. Set *fbody to point to the
-// FunctionBody that holds the instantiated FunctionDef.
-Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,
-                               const FunctionLibraryDefinition* lib_def,
-                               std::unique_ptr<FunctionBody>* fbody);
-
-// Instantiates FunctionDef into a graph. Set *fbody to point to the
-// FunctionBody that holds the instantiated FunctionDef. Use custom function
-// signature lookup, in case instantiated function is not in the 'lib_def'.
-Status FunctionDefToBodyHelper(
-    const FunctionDef& fdef, const AttrSlice& attrs,
-    const FunctionLibraryDefinition* lib_def,
-    const std::function<Status(const string&, const OpDef**)>& get_func_sig,
-    std::unique_ptr<FunctionBody>* fbody);
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_H_
