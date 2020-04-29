@@ -43,6 +43,13 @@ struct MemcpyDetails {
   bool async;
 };
 
+struct MemsetDetails {
+  // The number of memory elements getting set
+  size_t num_elements;
+  // Whether or not the memset is asynchronous.
+  bool async;
+};
+
 struct MemAllocDetails {
   // The amount of data requested for cudaMalloc events.
   uint64 num_bytes;
@@ -78,6 +85,7 @@ enum class RocmTracerEventType {
   MemcpyP2P,
   MemcpyOther,
   MemoryAlloc,
+  Memset,
   StreamSynchronize,
   Generic,
 };
@@ -122,6 +130,7 @@ struct RocmTracerEvent {
   int64 stream_id = kInvalidStreamId;
   union {
     MemcpyDetails memcpy_info;      // If type == Memcpy*
+    MemsetDetails memset_info;      // If type == Memset*
     MemAllocDetails memalloc_info;  // If type == MemoryAlloc
     KernelDetails kernel_info;      // If type == Kernel
   };

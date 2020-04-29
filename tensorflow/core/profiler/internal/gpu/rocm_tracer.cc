@@ -151,6 +151,22 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
       case HIP_API_ID_hipMemcpyAsync:
         oss << ", sizeBytes=" << data->args.hipMemcpyAsync.sizeBytes;
         break;
+      case HIP_API_ID_hipMemsetD32:
+        oss << ", value=" << data->args.hipMemsetD32.value;
+        oss << ", count=" << data->args.hipMemsetD32.count;
+        break;
+      case HIP_API_ID_hipMemsetD32Async:
+        oss << ", value=" << data->args.hipMemsetD32Async.value;
+        oss << ", count=" << data->args.hipMemsetD32Async.count;
+        break;
+      case HIP_API_ID_hipMemsetD8:
+        oss << ", value=" << data->args.hipMemsetD8.value;
+        oss << ", count=" << data->args.hipMemsetD8.count;
+        break;
+      case HIP_API_ID_hipMemsetD8Async:
+        oss << ", value=" << data->args.hipMemsetD8Async.value;
+        oss << ", count=" << data->args.hipMemsetD8Async.count;
+        break;
       case HIP_API_ID_hipMalloc:
         oss << ", size=" << data->args.hipMalloc.size;
         break;
@@ -335,6 +351,12 @@ class RocmApiCallbackImpl {
         case HIP_API_ID_hipMemcpyAsync:
           AddMemcpyEventUponApiExit(cbid, data);
           break;
+        case HIP_API_ID_hipMemsetD32:
+        case HIP_API_ID_hipMemsetD32Async:
+        case HIP_API_ID_hipMemsetD8:
+        case HIP_API_ID_hipMemsetD8Async:
+          AddMemsetEventUponApiExit(cbid, data);
+          break;
         case HIP_API_ID_hipMalloc:
         case HIP_API_ID_hipFree:
           AddMallocEventUponApiExit(cbid, data);
@@ -494,6 +516,44 @@ class RocmApiCallbackImpl {
     collector_->AddEvent(std::move(event));
   }
 
+  void AddMemsetEventUponApiExit(uint32_t cbid, const hip_api_data_t* data) {
+    RocmTracerEvent event;
+    event.domain = RocmTracerEventDomain::HIP_API;
+    event.name = roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid, 0);
+    event.source = RocmTracerEventSource::ApiCallback;
+    event.thread_id = GetCachedTID();
+    event.correlation_id = data->correlation_id;
+
+    // ROCM TODO: figure out a way to properly populate this field.
+    event.memcpy_info.destination = 0;
+    switch (cbid) {
+      case HIP_API_ID_hipMemsetD8:
+        event.type = RocmTracerEventType::Memset;
+        event.memset_info.num_elements = data->args.hipMemsetD8.count;
+        event.memset_info.async = false;
+        break;
+      case HIP_API_ID_hipMemsetD8Async:
+        event.type = RocmTracerEventType::Memset;
+        event.memset_info.num_elements = data->args.hipMemsetD8Async.count;
+        event.memset_info.async = true;
+        break;
+      case HIP_API_ID_hipMemsetD32:
+        event.type = RocmTracerEventType::Memset;
+        event.memset_info.num_elements = data->args.hipMemsetD32.count;
+        event.memset_info.async = false;
+        break;
+      case HIP_API_ID_hipMemsetD32Async:
+        event.type = RocmTracerEventType::Memset;
+        event.memset_info.num_elements = data->args.hipMemsetD32Async.count;
+        event.memset_info.async = true;
+        break;
+      default:
+        LOG(ERROR) << "Unsupported memset activity observed: " << cbid;
+        break;
+    }
+    collector_->AddEvent(std::move(event));
+  }
+
   void AddMallocEventUponApiExit(uint32_t cbid, const hip_api_data_t* data) {
     RocmTracerEvent event;
     event.domain = RocmTracerEventDomain::HIP_API;
@@ -579,6 +639,14 @@ class RocmActivityCallbackImpl {
             case HIP_API_ID_hipMemcpyAsync:
               DumpActivityRecord(record);
               AddHipMemcpyActivityEvent(record);
+              break;
+
+            case HIP_API_ID_hipMemsetD32:
+            case HIP_API_ID_hipMemsetD32Async:
+            case HIP_API_ID_hipMemsetD8:
+            case HIP_API_ID_hipMemsetD8Async:
+              DumpActivityRecord(record);
+              AddHipMemsetActivityEvent(record);
               break;
 
             case HIP_API_ID_hipMalloc:
@@ -694,6 +762,42 @@ class RocmActivityCallbackImpl {
         event.type = RocmTracerEventType::MemcpyOther;
         event.memcpy_info.async = false;
         event.memcpy_info.destination = record->device_id;
+        break;
+    }
+
+    event.start_time_ns = record->begin_ns;
+    event.end_time_ns = record->end_ns;
+
+    collector_->AddEvent(std::move(event));
+  }
+
+  void AddHipMemsetActivityEvent(const roctracer_record_t* record) {
+    RocmTracerEvent event;
+    event.domain = RocmTracerEventDomain::HIP_API;
+    event.source = RocmTracerEventSource::Activity;
+    event.name = roctracer_op_string(record->domain, record->op, record->kind);
+    event.correlation_id = record->correlation_id;
+    event.annotation =
+        collector_->annotation_map()->LookUp(event.correlation_id);
+
+    event.type = RocmTracerEventType::Memset;
+
+    switch (record->op) {
+      case HIP_API_ID_hipMemsetD8:
+        event.memset_info.num_elements = record->bytes;
+        event.memcpy_info.async = false;
+        break;
+      case HIP_API_ID_hipMemsetD8Async:
+        event.memset_info.num_elements = record->bytes;
+        event.memcpy_info.async = true;
+        break;
+      case HIP_API_ID_hipMemsetD32:
+        event.memset_info.num_elements = record->bytes / 4;
+        event.memcpy_info.async = false;
+        break;
+      case HIP_API_ID_hipMemsetD32Async:
+        event.memset_info.num_elements = record->bytes / 4;
+        event.memcpy_info.async = true;
         break;
     }
 

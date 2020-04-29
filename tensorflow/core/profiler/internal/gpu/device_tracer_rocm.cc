@@ -192,6 +192,12 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       auto& event = iter.second;
       uint32 physical_id = event.device_id;
 
+      // sliently drop events that we capture via roctracer
+      // but do not yet know how to export to either stepstats or xplane
+      // sliently because we only want to use OnEventsDropped for cases
+      // when we drop events because they are somehow invalid
+      if (event.type == RocmTracerEventType::Memset) continue;
+
       // determine the logical device id
       uint32 logical_id = options_.num_gpus;
       auto kv_pair = device_id_map_.find(physical_id);
@@ -632,6 +638,10 @@ RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
       HIP_API_ID_hipMemcpyDtoHAsync,
       HIP_API_ID_hipMemcpyHtoD,
       HIP_API_ID_hipMemcpyHtoDAsync,
+      HIP_API_ID_hipMemsetD32,
+      HIP_API_ID_hipMemsetD32Async,
+      HIP_API_ID_hipMemsetD8,
+      HIP_API_ID_hipMemsetD8Async,
       HIP_API_ID_hipModuleLaunchKernel,
       HIP_API_ID_hipStreamSynchronize,
   };
