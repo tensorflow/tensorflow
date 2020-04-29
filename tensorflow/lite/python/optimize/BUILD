@@ -76,20 +76,3 @@ py_test(
         "@six_archive//:six",
     ],
 )
-
-py_test(
-    name = "sparsify_model_test",
-    srcs = ["sparsify_model_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_oss",
-        "no_pip",
-    ],
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
-    ],
-)
