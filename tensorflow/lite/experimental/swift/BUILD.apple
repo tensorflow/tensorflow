@@ -42,6 +42,9 @@ swift_library(
 # bazel build -c opt --config=ios_fat //tensorflow/lite/experimental/swift:TensorFlowLite_framework
 ios_static_framework(
     name = "TensorFlowLite_framework",
+    avoid_deps = [
+        "//tensorflow/lite/experimental/ios:tensorflow_lite_c",
+    ],
     bundle_name = "TensorFlowLite",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
     deps = [
