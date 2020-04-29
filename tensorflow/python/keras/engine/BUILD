@@ -496,6 +496,23 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "node_test",
+    size = "medium",
+    srcs = ["node_test.py"],
+    python_version = "PY3",
+    shard_count = 3,
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    deps = [
+        ":base_layer",
+        ":engine",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/utils:layer_utils",
+    ],
+)
+
+tf_py_test(
     name = "base_layer_test",
     size = "medium",
     srcs = ["base_layer_test.py"],

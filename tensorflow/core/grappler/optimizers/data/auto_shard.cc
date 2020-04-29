@@ -30,12 +30,13 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 namespace grappler {
 namespace {
 
-// clang-format off
+constexpr char kAssertCardinalityDatasetOpName[] = "AssertCardinalityDataset";
 constexpr char kShardDatasetOpName[] = "ShardDataset";
 constexpr char kShuffleDatasetOpName[] = "ShuffleDataset";
 constexpr char kShuffleDatasetV2OpName[] = "ShuffleDatasetV2";
@@ -48,6 +49,7 @@ constexpr char kReshuffleEachIteration[] = "reshuffle_each_iteration";
 constexpr char kOutputShapes[] = "output_shapes";
 constexpr char kOutputTypes[] = "output_types";
 
+// clang-format off
 constexpr std::array<const char*, 6> kReaderDatasetOps = {
     "FixedLengthRecordDataset",
     "FixedLengthRecordDatasetV2",
@@ -62,9 +64,8 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 31> kPassThroughOps = {
+constexpr std::array<const char*, 30> kPassThroughOps = {
     "_Retval",
-    "AssertCardinalityDataset",
     "AssertNextDataset",
     "BatchDataset",
     "BatchDatasetV2",
@@ -415,6 +416,16 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers, int64 index,
                            FunctionLibraryDefinition* flib,
                            MutableGraphView* graph,
                            absl::flat_hash_set<string>* nodes_to_delete) {
+  if (node.op() == kAssertCardinalityDatasetOpName) {
+    LOG(WARNING) << "The `assert_cardinality` transformation is currently not "
+                    "handled by the auto-shard rewrite and will be removed.";
+    nodes_to_delete->insert(node.name());
+    TF_RETURN_IF_ERROR(graph->UpdateFanouts(node.name(), node.input(0)));
+    const NodeDef* input_node = graph_utils::GetInputNode(node, *graph, 0);
+    return RecursivelyHandleOp(*input_node, num_workers, index, flib, graph,
+                               nodes_to_delete);
+  }
+
   if (IsDatasetNodeOfType(node, kUnshardableSourceDatasetOps)) {
     return errors::NotFound("Found an unshardable source dataset: ",
                             node.DebugString());

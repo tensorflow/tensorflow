@@ -25,10 +25,13 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import multi_worker_test_base
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
+from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -331,6 +334,8 @@ class BatchCountingCB(keras.callbacks.Callback):
     self.train_end_batches = []
     self.test_begin_batches = []
     self.test_end_batches = []
+    self.predict_begin_batches = []
+    self.predict_end_batches = []
 
   def on_train_batch_begin(self, batch, logs=None):
     self.train_begin_batches.append(batch)
@@ -343,6 +348,12 @@ class BatchCountingCB(keras.callbacks.Callback):
 
   def on_test_batch_end(self, batch, logs=None):
     self.test_end_batches.append(batch)
+
+  def on_predict_batch_begin(self, batch, logs=None):
+    self.predict_begin_batches.append(batch)
+
+  def on_predict_batch_end(self, batch, logs=None):
+    self.predict_end_batches.append(batch)
 
 
 class TestDistributionStrategyWithNumpyArrays(test.TestCase,
@@ -1760,6 +1771,10 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     self.assertEqual(bc.test_begin_batches, [0, 10, 20, 30, 40])
     self.assertEqual(bc.test_end_batches, [9, 19, 29, 39, 49])
 
+    model.predict(x, batch_size=2, callbacks=[bc])
+    self.assertEqual(bc.predict_begin_batches, [0, 10, 20, 30, 40])
+    self.assertEqual(bc.predict_end_batches, [9, 19, 29, 39, 49])
+
   @combinations.generate(
       combinations.combine(distribution=all_strategies, mode=['eager']))
   def test_host_training_loop_last_partial_execution(self, distribution):
@@ -1779,6 +1794,10 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.evaluate(x, y, batch_size=2, callbacks=[bc])
     self.assertEqual(bc.test_begin_batches, [0, 20, 40])
     self.assertEqual(bc.test_end_batches, [19, 39, 49])
+
+    model.predict(x, batch_size=2, callbacks=[bc])
+    self.assertEqual(bc.predict_begin_batches, [0, 20, 40])
+    self.assertEqual(bc.predict_end_batches, [19, 39, 49])
 
   @combinations.generate(
       combinations.combine(distribution=all_strategies, mode=['eager']))
@@ -1811,6 +1830,11 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     self.assertEqual(bc.test_begin_batches, [0, 20, 40])
     self.assertEqual(bc.test_end_batches, [19, 39, 49])
 
+    predict_ds = ds.repeat(2)
+    model.predict(predict_ds, steps=50, callbacks=[bc])
+    self.assertEqual(bc.predict_begin_batches, [0, 20, 40])
+    self.assertEqual(bc.predict_end_batches, [19, 39, 49])
+
   @combinations.generate(
       combinations.combine(distribution=all_strategies, mode=['eager']))
   def test_host_training_loop_truncate_to_epoch(self, distribution):
@@ -1831,6 +1855,11 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.evaluate(x, y, batch_size=2, callbacks=[bc])
     self.assertEqual(bc.test_begin_batches, [0])
     self.assertEqual(bc.test_end_batches, [24])
+
+    x = np.ones((50, 10))
+    model.predict(x, batch_size=2, callbacks=[bc])
+    self.assertEqual(bc.predict_begin_batches, [0])
+    self.assertEqual(bc.predict_end_batches, [24])
 
   @combinations.generate(
       combinations.times(
@@ -2220,6 +2249,30 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
         for x in dataset:
           train_step(x)
 
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def test_unimplemented_parameter_server_strategy(self):
+    cluster_spec = multi_worker_test_base.create_in_process_cluster(
+        num_workers=3, num_ps=2)
+    cluster_resolver = SimpleClusterResolver(
+        cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
+        task_type='worker',
+        task_id=1,
+        num_accelerators={'GPU': 0})
+    distribution = parameter_server_strategy.ParameterServerStrategy(
+        cluster_resolver)
+
+    self.assertIsInstance(distribution,
+                          (parameter_server_strategy.ParameterServerStrategyV1,
+                           parameter_server_strategy.ParameterServerStrategy))
+
+    with self.assertRaisesRegexp(NotImplementedError,
+                                 'ParameterServerStrategy*'):
+      with distribution.scope():
+        model = simple_sequential_model()
+        optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+        loss = 'mse'
+        model.compile(optimizer, loss)
+
 
 # Models to exercise inserting ancillary layers with add_loss and add_metric.
 def _functional_with_add_loss_and_metric(input_shape, num_classes, l1, l2):
@@ -2394,12 +2447,16 @@ class TestModelCapturesStrategy(test.TestCase, parameterized.TestCase):
     # Make model with distribution strategy
     with distribution.scope():
       model = DeterministicModel(distribution)
+      optimizer = keras.optimizers.adam_v2.Adam(1e-4)
 
     # Compile & evaluate the model outside of the distribution strategy scope
     model.compile(
-        optimizer=keras.optimizers.adam_v2.Adam(1e-4),
+        optimizer=optimizer,
         loss=keras.losses.MeanSquaredError(),
         metrics=['binary_accuracy'])
+
+    # Call `optimizer.iterations` out of strategy scope.
+    self.assertEqual(model.optimizer.iterations.numpy(), 0)
 
     # Non-eager training doesn't support steps_per_epoch=None.
     for unused_epoch in range(2):
@@ -2429,7 +2486,7 @@ class TestModelCapturesStrategy(test.TestCase, parameterized.TestCase):
     with distribution.scope():
       metric = keras.metrics.BinaryAccuracy()
     model.compile(
-        optimizer=keras.optimizers.adam_v2.Adam(1e-4),
+        optimizer=optimizer,
         loss=keras.losses.MeanSquaredError(),
         metrics=[metric])
 

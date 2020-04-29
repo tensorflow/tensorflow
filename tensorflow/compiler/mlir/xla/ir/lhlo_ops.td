@@ -423,7 +423,7 @@ def FusionOp : LHLO_Op<"fusion", [SingleBlockImplicitTerminator<"TerminatorOp">]
 
   let skipDefaultBuilders = 1;
   let builders = [
-     OpBuilder<"Builder *builder, OperationState &result, "
+     OpBuilder<"OpBuilder &builder, OperationState &result, "
                "ArrayRef<NamedAttribute> attributes">
    ];
 }

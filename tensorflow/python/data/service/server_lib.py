@@ -38,6 +38,7 @@ class MasterServer(object):
         "grpc+local", and make sure your binary links in
         `data/service:local_credentials`.
     """
+    self._protocol = protocol
     self._server = _pywrap_server_lib.TF_DATA_NewMasterServer(0, protocol)
     self._running = True
 
@@ -48,7 +49,8 @@ class MasterServer(object):
     The returned string will be in the form protocol://address:port, e.g.
     "grpc://localhost:1000".
     """
-    return _pywrap_server_lib.TF_DATA_MasterServerTarget(self._server)
+    port = _pywrap_server_lib.TF_DATA_MasterServerBoundPort(self._server)
+    return "{0}://localhost:{1}".format(self._protocol, port)
 
   def num_tasks(self):
     """Returns the number of tasks on the master."""
@@ -85,8 +87,9 @@ class WorkerServer(object):
       master_address: The address of the tf.data master server to register with.
       port: The port to bind to.
     """
+    self._protocol = protocol
     self._server = _pywrap_server_lib.TF_DATA_NewWorkerServer(
-        port, protocol, master_address)
+        port, protocol, master_address, "localhost:%port%")
     self._running = True
 
   @property
@@ -96,7 +99,8 @@ class WorkerServer(object):
     The returned string will be in the form protocol://address:port, e.g.
     "grpc://localhost:1000".
     """
-    return _pywrap_server_lib.TF_DATA_WorkerServerTarget(self._server)
+    port = _pywrap_server_lib.TF_DATA_WorkerServerBoundPort(self._server)
+    return "{0}://localhost:{1}".format(self._protocol, port)
 
   def stop(self):
     """Shuts down and deletes the server.

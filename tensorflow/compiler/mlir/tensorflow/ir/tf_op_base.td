@@ -63,12 +63,38 @@ def TF_OperandsSameAsResultsTypeOrRef : NativeOpTrait<
 // format), as an example all element wise operations are layout agnostic.
 def TF_LayoutAgnostic : NativeOpTrait<"TF::LayoutAgnostic">;
 
+// Variant of broadcastable trait that considers TF's subtype behavior.
+class TF_OpIsBroadcastableToRes<int opId, int resId> : And<[
+    TCOpResIsShapedTypePred<opId, resId>,
+    CPred<"mlir::TF::BroadcastCompatible("
+              "$_op.getOperand(" # opId # ").getType(), "
+              "$_op.getResult(" # resId # ").getType())">]>;
+
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions
 //===----------------------------------------------------------------------===//
 
 class TF_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<TF_Dialect, mnemonic, traits>;
+
+//===----------------------------------------------------------------------===//
+// TensorFlow attribute definitions
+//===----------------------------------------------------------------------===//
+
+class TF_TensorFlowAttr <string name, string description> :
+    Attr<CPred<"$_self.isa<mlir::TF::" # name # "Attr>()">,
+         "TensorFlow " # description # " attribute">;
+
+def TF_ShapeAttr : TF_TensorFlowAttr<"Shape", "shape"> {
+  let returnType = "llvm::Optional<llvm::ArrayRef<int64_t>>";
+  let convertFromStorage = "$_self.cast<mlir::TF::ShapeAttr>().getValue()";
+
+  // Create a ranked shape attr by default.
+  let constBuilderCall = "mlir::TF::ShapeAttr::get($_builder.getContext(), $0)";
+}
+
+def TF_ShapeAttrArray :
+    TypedArrayAttrBase<TF_ShapeAttr, "tensorflow shape attribute array">;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow type definitions
@@ -273,8 +299,15 @@ class TF_DerivedOperandShapeListAttr<int idx> : DerivedAttr<
   "auto values = getODSOperands(" # idx # ");\n"
   "return {mlir::TF::OperandShapeIterator(values.begin()), "
           "mlir::TF::OperandShapeIterator(values.end())};",
-  // TODO(jpienaar): Update post TensorShapeAttr landing.
-  [{ nullptr }]
+  [{
+    ArrayAttr::get(
+      [&](){
+        llvm::SmallVector<Attribute, 4> ret;
+        for (auto shape : $_self)
+          ret.push_back(mlir::TF::ShapeAttr::get($_ctx, shape));
+        return ret;
+      }(), $_ctx)
+  }]
 >;
 
 // A derived attribute that returns the size of `idx`-th ODS-declared variadic
@@ -322,8 +355,15 @@ class TF_DerivedResultShapeListAttr<int idx> : DerivedAttr<
   "auto values = getODSResults(" # idx # ");\n"
   "return {mlir::TF::ResultShapeIterator(values.begin()), "
           "mlir::TF::ResultShapeIterator(values.end())};",
-  // TODO(jpienaar): Update post TensorShapeAttr landing.
-  [{ nullptr }]
+  [{
+    ArrayAttr::get(
+      [&](){
+        llvm::SmallVector<Attribute, 4> ret;
+        for (auto shape : $_self)
+          ret.push_back(mlir::TF::ShapeAttr::get($_ctx, shape));
+        return ret;
+      }(), $_ctx)
+  }]
 >;
 
 // A derived attribute that returns the shape of the first result type.
@@ -363,7 +403,7 @@ def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
 // behavior. The result type has the same element type as both operands.
 class WithBroadcastableBinOpBuilder {
   list<OpBuilder> builders = [OpBuilder<
-"Builder *builder, OperationState &result, Value  x, Value  y",
+"OpBuilder &builder, OperationState &result, Value  x, Value  y",
 [{
   auto resultType =
       OpTrait::util::getBroadcastedType(x.getType(), y.getType());
@@ -378,12 +418,12 @@ class WithBroadcastableBinOpBuilder {
 // behavior. The result type has bool element type.
 class WithBroadcastableCmpOpBuilder {
   list<OpBuilder> builders = [OpBuilder<
-"Builder *builder, OperationState &result, Value  x, Value  y",
+"OpBuilder &builder, OperationState &result, Value  x, Value  y",
 [{
   Type resultType;
   if (x.getType().isa<UnrankedTensorType>() ||
       y.getType().isa<UnrankedTensorType>()) {
-    resultType = UnrankedTensorType::get(builder->getI1Type());
+    resultType = UnrankedTensorType::get(builder.getI1Type());
   } else {
     SmallVector<int64_t, 4> resultShape;
     if (!OpTrait::util::getBroadcastedShape(
@@ -393,7 +433,7 @@ class WithBroadcastableCmpOpBuilder {
                       "operands have no broadcastable shapes");
     }
 
-    resultType = RankedTensorType::get(resultShape, builder->getI1Type());
+    resultType = RankedTensorType::get(resultShape, builder.getI1Type());
   }
   return build(builder, result, resultType, x, y);
 }]

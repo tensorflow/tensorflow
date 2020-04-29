@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/python/local_device_state.h"
-#include "tensorflow/compiler/xla/python/shared_device_buffer.h"
+#include "tensorflow/compiler/xla/python/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -43,9 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 
 // API notes:
-// Despite having the name "PyLocalClient", it is intended that this API may
-// also be consumed from C++. Python/pybind11/NumPy logic should therefore not
-// be used in this API.
+// PjRt stands for "Pretty much Just another RunTime".
 
 namespace xla {
 
@@ -97,34 +95,34 @@ class Device {
 };
 
 // Forward declaration.
-class PyLocalBuffer;
+class PjRtBuffer;
 
 // Helper struct for cross host transfers, returned by the callback from a call
-// to PyLocalBuffer::MakeCrossHostReceiveBuffers.
-struct PyLocalCrossHostRecvBuffer {
+// to PjRtBuffer::MakeCrossHostReceiveBuffers.
+struct PjRtCrossHostRecvBuffer {
   // serialized_descriptor should be transmitted to the sender and passed to a
   // call to src_buffer->CopyToRemoteDevice.
   std::string serialized_descriptor;
   // The buffer that will hold the result of the transfer.
-  std::unique_ptr<PyLocalBuffer> buffer;
+  std::unique_ptr<PjRtBuffer> buffer;
 };
-using PyLocalCrossHostRecvNotifier =
-    std::function<void(StatusOr<std::vector<PyLocalCrossHostRecvBuffer>>&&)>;
+using PjRtCrossHostRecvNotifier =
+    std::function<void(StatusOr<std::vector<PjRtCrossHostRecvBuffer>>&&)>;
 
 // Encapsulates the state of Python session with XLA.
 //
-// It is the responsibility of the client of this API to keep the PyLocalClient
+// It is the responsibility of the client of this API to keep the PjRtClient
 // alive as long as any of the other runtime objects are alive.
-class PyLocalClient : public std::enable_shared_from_this<PyLocalClient> {
+class PjRtClient : public std::enable_shared_from_this<PjRtClient> {
  public:
   // `allocator` may null, in which case the platform default allocator is used.
-  explicit PyLocalClient(
+  explicit PjRtClient(
       std::string platform_name, LocalClient* client,
       std::vector<std::unique_ptr<Device>> devices, int host_id,
       std::unique_ptr<se::DeviceMemoryAllocator> allocator,
       std::unique_ptr<tensorflow::Allocator> host_memory_allocator,
       std::unique_ptr<GpuExecutableRunOptions> gpu_run_options);
-  virtual ~PyLocalClient() = default;
+  virtual ~PjRtClient() = default;
 
   virtual StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const;
@@ -170,15 +168,15 @@ class PyLocalClient : public std::enable_shared_from_this<PyLocalClient> {
       const LocalExecutable& executable, bool tuple_inputs) const;
 
  protected:
-  friend class PyLocalBuffer;
+  friend class PjRtBuffer;
   virtual void EnqueueCrossHostReceive(
-      std::vector<std::unique_ptr<PyLocalBuffer>>&& buffers,
-      PyLocalCrossHostRecvNotifier&& notifier) const {
+      std::vector<std::unique_ptr<PjRtBuffer>>&& buffers,
+      PjRtCrossHostRecvNotifier&& notifier) const {
     notifier(Unimplemented("Cross host receives not implemented."));
   }
 
   virtual Status CopyToRemoteDevice(
-      PyLocalBuffer* buffer, absl::string_view serialized_descriptor) const {
+      PjRtBuffer* buffer, absl::string_view serialized_descriptor) const {
     return Unimplemented("Cross host sends not implemented.");
   }
 
@@ -211,24 +209,24 @@ class PyLocalClient : public std::enable_shared_from_this<PyLocalClient> {
 StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
     absl::Span<const std::vector<Device*>> devices);
 
-// Holds a reference from Python to a tuple of device buffers. A PyLocalBuffer
+// Holds a reference from Python to a tuple of device buffers. A PjRtBuffer
 // can be either valid or invalid. An invalid buffer is one that has never been
 // initialized, or a buffer that has been deleted (e.g., by calling Delete, or
 // by donating it to a computation that aliases an input parameter to an
-// output). We allow PyLocalBuffer objects to outlive the underlying device
+// output). We allow PjRtBuffer objects to outlive the underlying device
 // buffers so we can decouple buffer lifetimes from the corresponding Python
 // references if needed. Thread-safe.
-class PyLocalBuffer {
+class PjRtBuffer {
  public:
-  // Helper class to retain a "hold" on a PyLocalBuffer. A ScopedHold may not
-  // outlive its parent PyLocalBuffer.
+  // Helper class to retain a "hold" on a PjRtBuffer. A ScopedHold may not
+  // outlive its parent PjRtBuffer.
   //
   // There are three types of hold, as follows:
   //
   // 1) Usage hold: a transient hold while an operation using the buffer is
   //    being enqueued onto a stream.
   // A client acquires a usage hold by calling
-  // PyLocalBuffer::GetBufferWithHold(kUsage) or the convenience wrapper
+  // PjRtBuffer::GetBufferWithHold(kUsage) or the convenience wrapper
   // GetBufferWithUsageHold(). If the enqueue completes successfully the hold
   // should be released using a call to ConvertUsageHold. If the ScopedHold is
   // deleted without ConvertUsageHold being called, e.g., on error, the hold is
@@ -239,16 +237,16 @@ class PyLocalBuffer {
   // 2) External hold: a potentially long-lived hold while the buffer is being
   //    shared by an external framework, e.g., NumPy.
   // A client acquires an external hold by calling
-  // PyLocalBuffer::GetBufferWithHold(kExternal) or the convenience wrapper
+  // PjRtBuffer::GetBufferWithHold(kExternal) or the convenience wrapper
   // GetBufferWithExternalReference and releases it by deleting the ScopedHold.
   // The external framework should not modify the underlying buffer unless it is
   // confident via its own synchronization that modifications do not race with
-  // reads from the PyLocalBuffer.
+  // reads from the PjRtBuffer.
   //
   // 3) Donation hold: a transient hold while an execution that donates the
   //    buffer is being enqueued onto the compute stream.
   // A client acquires a donation hold by calling
-  // PyLocalBuffer::GetBufferWithHold(kDonation). If the enqueue completes
+  // PjRtBuffer::GetBufferWithHold(kDonation). If the enqueue completes
   // successfully the hold should be released using a call to ConfirmDonation
   // after which the buffer is invalid. If the ScopedHold is deleted without
   // ConfirmDonation being called, e.g., on error, the hold is dropped and the
@@ -262,8 +260,8 @@ class PyLocalBuffer {
   // will block if there are any outstanding usage holds until those holds are
   // dropped or converted.
   //
-  // Calls to PyLocalBuffer::Release (and transitively to
-  // PyLocalBuffer::Delete() and ~PyLocalBuffer()) will block until all usage
+  // Calls to PjRtBuffer::Release (and transitively to
+  // PjRtBuffer::Delete() and ~PjRtBuffer()) will block until all usage
   // and donation holds are either deleted or converted/confirmed.
   class ScopedHold {
    public:
@@ -319,16 +317,15 @@ class PyLocalBuffer {
                     se::DeviceMemoryAllocator* allocator) const;
 
    private:
-    friend class PyLocalBuffer;
+    friend class PjRtBuffer;
 
     // Helper struct that makes it possible to move a ScopedHold through a
     // closure.
     using ForClosure =
-        std::tuple<PyLocalBuffer*, Type,
+        std::tuple<PjRtBuffer*, Type,
                    StatusOr<std::shared_ptr<TrackedDeviceBuffer>>>;
 
-    ScopedHold(PyLocalBuffer* parent, Type type)
-        : parent_(parent), type_(type) {
+    ScopedHold(PjRtBuffer* parent, Type type) : parent_(parent), type_(type) {
       SetError(InvalidArgument("Buffer has not been initialized"));
     }
     explicit ScopedHold(const ForClosure& closure_helper)
@@ -350,7 +347,7 @@ class PyLocalBuffer {
     // passed through a closure that is incompatible with std::move.
     ForClosure ToClosure();
 
-    PyLocalBuffer* const parent_;
+    PjRtBuffer* const parent_;
     const Type type_;
     // There is an invariant that if buffer_or_.ok() then
     // buffer_or_.ValueOrDie() != nullptr.
@@ -362,45 +359,45 @@ class PyLocalBuffer {
   // `buffer_reference` is an optional shared pointer that should be kept alive
   // by the runtime as long as the contents of `data` may still be accessed by
   // the runtime (may be nullptr).
-  static StatusOr<std::unique_ptr<PyLocalBuffer>> FromHostBuffer(
+  static StatusOr<std::unique_ptr<PjRtBuffer>> FromHostBuffer(
       const void* data, const Shape& shape, bool force_copy,
-      std::shared_ptr<void> buffer_reference, PyLocalClient* client,
+      std::shared_ptr<void> buffer_reference, PjRtClient* client,
       Device* device);
 
   // Note that literal must remain in scope until the transfer has completed, so
   // the caller should, for example, wait for BlockHostUntilReady() completes on
   // the return value before letting literal go out of scope.
-  static StatusOr<std::unique_ptr<PyLocalBuffer>> FromHostLiteral(
-      const LiteralSlice& literal, PyLocalClient* client, Device* device);
+  static StatusOr<std::unique_ptr<PjRtBuffer>> FromHostLiteral(
+      const LiteralSlice& literal, PjRtClient* client, Device* device);
 
-  // Asynchronously makes a vector of PyLocalBuffers that can be used to receive
+  // Asynchronously makes a vector of PjRtBuffers that can be used to receive
   // cross host transfers using `client` on `device'. `shapes` must be the exact
   // shapes, with identical layouts, corresponding to the buffers that will be
   // sent. When resources for the transfer are available, notifier will be
-  // called with a vector of PyLocalCrossHostRecvBuffer structs, one for each
+  // called with a vector of PjRtCrossHostRecvBuffer structs, one for each
   // shape in `shapes`. Each struct contains a buffer that will contain the
   // received value, and an opaque string that should be transmitted to the
   // sending host and used in a call to CopyToRemoteDevice. None of the recv
   // buffers will become ready until *all* of the sends have completed.
-  static void MakeCrossHostReceiveBuffers(
-      absl::Span<const Shape> shapes, PyLocalClient* client, Device* device,
-      PyLocalCrossHostRecvNotifier&& notifier);
+  static void MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
+                                          PjRtClient* client, Device* device,
+                                          PjRtCrossHostRecvNotifier&& notifier);
 
-  PyLocalBuffer(Shape on_host_shape, Shape on_device_shape,
-                std::shared_ptr<TrackedDeviceBuffer> device_buffer,
-                PyLocalClient* client, Device* device);
-  ~PyLocalBuffer();
+  PjRtBuffer(Shape on_host_shape, Shape on_device_shape,
+             std::shared_ptr<TrackedDeviceBuffer> device_buffer,
+             PjRtClient* client, Device* device);
+  ~PjRtBuffer();
 
-  PyLocalBuffer(const PyLocalBuffer&) = delete;
-  PyLocalBuffer(PyLocalBuffer&&) = delete;
-  PyLocalBuffer& operator=(const PyLocalBuffer&) = delete;
-  PyLocalBuffer& operator=(PyLocalBuffer&&) = delete;
+  PjRtBuffer(const PjRtBuffer&) = delete;
+  PjRtBuffer(PjRtBuffer&&) = delete;
+  PjRtBuffer& operator=(const PjRtBuffer&) = delete;
+  PjRtBuffer& operator=(PjRtBuffer&&) = delete;
 
   const Shape& on_host_shape() const { return on_host_shape_; }
   const Shape& on_device_shape() const { return on_device_shape_; }
   Device* device() const { return device_; }
   const std::string& platform_name() const { return client_->platform_name(); }
-  PyLocalClient* client() const { return client_; }
+  PjRtClient* client() const { return client_; }
   bool IsEmptyTuple() const {
     return on_host_shape_.IsTuple() && on_host_shape_.tuple_shapes_size() == 0;
   }
@@ -446,8 +443,8 @@ class PyLocalBuffer {
   // True if and only if Delete or Release has previously been called.
   bool IsDeleted();
 
-  // Returns a view of the PyLocalBuffer device memory as a ShapedBuffer. The
-  // PyLocalBuffer retains ownership of the device buffers.
+  // Returns a view of the PjRtBuffer device memory as a ShapedBuffer. The
+  // PjRtBuffer retains ownership of the device buffers.
   StatusOr<ShapedBuffer> AsShapedBuffer() const;
 
   // Returns a hold on the TrackedDeviceBuffer holding the device
@@ -462,7 +459,7 @@ class PyLocalBuffer {
 
   // Copies the buffer to device `dst_device`. Returns an error if the buffer is
   // already on dst_device.
-  StatusOr<std::unique_ptr<PyLocalBuffer>> CopyToDevice(Device* dst_device);
+  StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(Device* dst_device);
 
   // Copies the buffer to the remote device encoded in serialized_descriptor.
   // This call must be preceded by a call to MakeCrossHostReceiveBuffers on the
@@ -480,10 +477,10 @@ class PyLocalBuffer {
   Status BlockHostUntilReady();
 
  private:
-  friend class PyLocalClient;
+  friend class PjRtClient;
   // The cached value of the buffer on the host, produced either from a call to
   // CopyToHost or from a call to ToLiteral. Once a value has been fetched to
-  // the host, it persists Delete() is called or the PyLocalBuffer is destroyed.
+  // the host, it persists Delete() is called or the PjRtBuffer is destroyed.
   struct HostValue {
     absl::Notification ready;
     // status and value are valid for reading only after `ready` has been
@@ -525,14 +522,14 @@ class PyLocalBuffer {
   // buffer==device_buffer_ or device_buffer_==nullptr.
   void DropHold(ScopedHold::Type type, TrackedDeviceBuffer* buffer);
 
-  StatusOr<std::pair<std::unique_ptr<PyLocalBuffer>,
+  StatusOr<std::pair<std::unique_ptr<PjRtBuffer>,
                      std::shared_ptr<BufferSequencingEvent>>>
   CopyToDeviceHelper(Device* dst_device, LocalDeviceState* dst_local_device,
                      LocalDeviceState* transfer_local_device,
                      se::Stream* transfer_stream,
                      std::shared_ptr<TrackedDeviceBuffer> src_device_buffer);
 
-  PyLocalClient* const client_;
+  PjRtClient* const client_;
   const Shape on_host_shape_;
   const Shape on_device_shape_;
   Device* const device_;
@@ -559,9 +556,9 @@ struct CompileOptions {
 };
 
 struct ExecuteOptions {
-  // If true, the client must pass a single PyLocalBuffer which contains all of
+  // If true, the client must pass a single PjRtBuffer which contains all of
   // the arguments as a single XLA tuple, otherwise each argument must be
-  // passed in its own PyLocalBuffer. May only be true if the executable was
+  // passed in its own PjRtBuffer. May only be true if the executable was
   // compiled with parameter_is_tupled_arguments==true.
   bool arguments_are_tupled = false;
   // If true, the computation must return a tuple, which will be destructured
@@ -574,19 +571,19 @@ struct ExecuteOptions {
 // partition, as specified by the build options). If any input/output alias
 // has been specified in the computation, the parameter containing the input
 // buffer will be donated when passed to the execution.
-class PyLocalExecutable {
+class PjRtExecutable {
  public:
-  static StatusOr<std::unique_ptr<PyLocalExecutable>> Compile(
-      const XlaComputation& computation, PyLocalClient* client,
+  static StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+      const XlaComputation& computation, PjRtClient* client,
       CompileOptions options);
 
-  PyLocalExecutable(std::vector<std::unique_ptr<LocalExecutable>> executables,
-                    bool parameter_is_tupled_arguments,
-                    DeviceAssignment device_assignment,
-                    std::vector<std::pair<int, int>> local_logical_device_ids,
-                    std::vector<Device*> local_devices, PyLocalClient* client);
+  PjRtExecutable(std::vector<std::unique_ptr<LocalExecutable>> executables,
+                 bool parameter_is_tupled_arguments,
+                 DeviceAssignment device_assignment,
+                 std::vector<std::pair<int, int>> local_logical_device_ids,
+                 std::vector<Device*> local_devices, PjRtClient* client);
 
-  PyLocalClient* client() const { return client_; }
+  PjRtClient* client() const { return client_; }
 
   int num_replicas() const {
     return executables_[0]->build_options().num_replicas();
@@ -618,21 +615,21 @@ class PyLocalExecutable {
 
   const std::vector<Device*>& local_devices() const { return local_devices_; }
 
-  StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> Execute(
-      absl::Span<PyLocalBuffer* const> argument_handles,
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> Execute(
+      absl::Span<PjRtBuffer* const> argument_handles,
       const ExecuteOptions& options) const;
 
-  StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> ExecuteOnLocalDevice(
-      absl::Span<PyLocalBuffer* const> argument_handles, Device* device,
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteOnLocalDevice(
+      absl::Span<PjRtBuffer* const> argument_handles, Device* device,
       const ExecuteOptions& options) const;
 
   // Execute on local devices. Takes a sequence of argument lists (one argument
   // list per local device) and returns a tuple of results (one result per local
   // device). The number of argument lists must be equal to the local device
   // count.
-  StatusOr<std::vector<std::vector<std::unique_ptr<PyLocalBuffer>>>>
+  StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
   ExecuteOnLocalDevices(
-      absl::Span<const std::vector<PyLocalBuffer*>> argument_handles,
+      absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options) const;
 
   void Delete() { executables_.clear(); }
@@ -642,20 +639,20 @@ class PyLocalExecutable {
  private:
   // Initializes information about which arguments to which executables must be
   // donated due to aliases that were specified by the computation.
-  Status SetUpDonation(PyLocalClient* client, bool tuple_inputs);
+  Status SetUpDonation(PjRtClient* client, bool tuple_inputs);
   StatusOr<ScopedShapedBuffer> EnqueueExecution(
-      absl::Span<PyLocalBuffer* const> argument_handles, int replica,
+      absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, int executable_idx, const RunId& run_id,
       const ExecuteOptions& options, Device* device,
-      std::vector<PyLocalBuffer::ScopedHold>* device_buffers) const;
-  StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> ExecuteHelper(
-      absl::Span<PyLocalBuffer* const> argument_handles, int replica,
+      std::vector<PjRtBuffer::ScopedHold>* device_buffers) const;
+  StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteHelper(
+      absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options) const;
 
   // Create shared pointers so we can free them after the execution: with
   // asynchronous execution, the process being executed can outlive the
   // executable itself.
-  PyLocalClient* const client_;
+  PjRtClient* const client_;
   // One executable per partition.
   std::vector<std::shared_ptr<LocalExecutable>> executables_;
   // Per-executable set of parameters that have any aliased buffers and thus

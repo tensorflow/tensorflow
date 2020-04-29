@@ -402,8 +402,9 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile,
 namespace {
 
 // Align buffers to 16-byte boundaries.
-constexpr int64 kMemoryAlignment = 16;
-auto memory_alignment = [](LogicalBuffer::Color) { return kMemoryAlignment; };
+int64 memory_alignment(LogicalBuffer::Color) {
+  return cpu_function_runtime::kMinAlign;
+}
 
 llvm::TargetOptions CompilerTargetOptions(
     const HloModuleConfig& module_config) {

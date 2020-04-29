@@ -657,7 +657,7 @@ LogicalResult Verify(FullyConnectedOp op) {
 // GatherOp
 //===----------------------------------------------------------------------===//
 
-static void BuildGatherOp(Builder *builder, OperationState &result,
+static void BuildGatherOp(OpBuilder *builder, OperationState &result,
                           Value params, Value indices, IntegerAttr axis) {
   auto params_type = params.getType().cast<TensorType>();
   auto indices_type = indices.getType().cast<TensorType>();
@@ -665,7 +665,7 @@ static void BuildGatherOp(Builder *builder, OperationState &result,
   // If params/indices is unranked, then output is unranked.
   if (!params_type.hasRank() || !indices_type.hasRank())
     return TFL::GatherOp::build(
-        builder, result, UnrankedTensorType::get(params_type.getElementType()),
+        *builder, result, UnrankedTensorType::get(params_type.getElementType()),
         params, indices, axis);
 
   int64_t params_rank = params_type.getRank();
@@ -710,7 +710,7 @@ static void BuildGatherOp(Builder *builder, OperationState &result,
   }
 
   TFL::GatherOp::build(
-      builder, result,
+      *builder, result,
       RankedTensorType::get(shape, params_type.getElementType()), params,
       indices, axis);
 }
@@ -1191,7 +1191,7 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
 // TopKOp
 //===----------------------------------------------------------------------===//
 
-static void BuildTopKOp(Builder *builder, OperationState &result, Value input,
+static void BuildTopKOp(OpBuilder *builder, OperationState &result, Value input,
                         Value k) {
   // Output size is only known if k is constant value. A negative dimension is
   // considered dynamic so use -1 here if k is not a constant value.
@@ -1206,14 +1206,14 @@ static void BuildTopKOp(Builder *builder, OperationState &result, Value input,
   // If value is unranked, then so is results.
   if (!val_type.hasRank())
     return TFL::TopKV2Op::build(
-        builder, result, UnrankedTensorType::get(val_type.getElementType()),
+        *builder, result, UnrankedTensorType::get(val_type.getElementType()),
         UnrankedTensorType::get(builder->getIntegerType(32)), input, k);
 
   // Resultant shape is value.shape[:-1] + [k]
   std::vector<int64_t> shape(val_type.getShape());
   shape[shape.size() - 1] = const_k;
   TFL::TopKV2Op::build(
-      builder, result, RankedTensorType::get(shape, val_type.getElementType()),
+      *builder, result, RankedTensorType::get(shape, val_type.getElementType()),
       RankedTensorType::get(shape, builder->getIntegerType(32)), input, k);
 }
 
@@ -2022,6 +2022,18 @@ LogicalResult Verify(WhileOp op) {
   return success();
 }
 
+static LogicalResult Verify(CustomOp op) {
+  OpaqueElementsAttr opaque_attr =
+      op.custom_option().cast<OpaqueElementsAttr>();
+  if (!opaque_attr.getType().hasStaticShape())
+    return op.emitOpError("custom_option should have a static shape.");
+  if (opaque_attr.getValue().size() !=
+      opaque_attr.getType().cast<ShapedType>().getDimSize(0))
+    return op.emitOpError(
+        "custom_option should have the same length of content with shape.");
+  return success();
+}
+
 namespace {
 // Canonicalize While op so that results and operands match and external values
 // are via implicit capture rather than via block args.
@@ -2089,8 +2101,7 @@ struct WhileResultOperandsMatchAndImplicitCapture
     Operation *op = while_op.getOperation();
     Operation *new_op = rewriter.insert(
         Operation::create(op->getLoc(), op->getName(), types, new_operands,
-                          op->getAttrs(), {}, /*numRegions=*/2,
-                          /*resizableOperandList=*/true));
+                          op->getAttrs(), {}, /*numRegions=*/2));
 
     for (int i = 0; i < 2; ++i) new_op->getRegion(i).takeBody(op->getRegion(i));
     int new_index = 0;

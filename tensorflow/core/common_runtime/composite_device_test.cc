@@ -50,6 +50,21 @@ TEST(CompositeDeviceTest, Basic) {
   {
     Status status;
     underlying_devices.push_back(
+        "/job:localhost/replica:0/task:0/device:CPU:0");
+    std::unique_ptr<CompositeDevice> composite_device =
+        CompositeDevice::MakeDevice(underlying_devices, /*unique_device_id=*/1,
+                                    &status);
+    EXPECT_EQ(composite_device, nullptr);
+    EXPECT_EQ(error::INVALID_ARGUMENT, status.code());
+    EXPECT_TRUE(
+        absl::StrContains(status.error_message(), "Got a duplicated device"))
+        << status.ToString();
+    underlying_devices.pop_back();
+  }
+
+  {
+    Status status;
+    underlying_devices.push_back(
         "/job:localhost/replica:0/task:0/device:GPU:0");
     std::unique_ptr<CompositeDevice> composite_device =
         CompositeDevice::MakeDevice(underlying_devices, /*unique_device_id=*/1,

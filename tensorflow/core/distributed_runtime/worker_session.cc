@@ -129,8 +129,11 @@ Status WorkerSession::UpdateWorkerCacheAndDevices(
     std::unique_ptr<WorkerCacheInterface> new_worker_cache,
     std::vector<std::unique_ptr<Device>> added_remote_devices,
     const std::vector<Device*>& removed_remote_devices) {
-  worker_cache_ = std::shared_ptr<WorkerCacheInterface>(
-      new WorkerFreeListCache(std::move(new_worker_cache)));
+  {
+    mutex_lock l(worker_session_state_mu_);
+    worker_cache_ = std::shared_ptr<WorkerCacheInterface>(
+        new WorkerFreeListCache(std::move(new_worker_cache)));
+  }
   TF_RETURN_IF_ERROR(remote_device_mgr_->RemoveDevices(removed_remote_devices));
   TF_RETURN_IF_ERROR(
       remote_device_mgr_->AddDevices(std::move(added_remote_devices)));

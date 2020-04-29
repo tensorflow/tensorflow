@@ -16,8 +16,9 @@ constraint_value(
 
 platform(
     name = "platform",
+    visibility = ["//visibility:public"],
     constraint_values = [
-        "@bazel_tools//platforms:x86_64",
+        "@bazel_tools//platforms:%{cpu}",
         "@bazel_tools//platforms:%{platform}",
         ":platform_constraint",
     ],

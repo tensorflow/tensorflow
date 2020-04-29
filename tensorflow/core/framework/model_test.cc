@@ -396,10 +396,11 @@ class TestNode : public model::Node {
     return 0;
   }
 
-  double TotalProcessingTimeLocked(
-      absl::flat_hash_map<string, double>* processing_times) override
+  void TotalProcessingTimeLocked(
+      absl::flat_hash_map<string, double>* processing_times,
+      absl::flat_hash_map<string, double>* total_processing_times) override
       TF_SHARED_LOCKS_REQUIRED(mu_) {
-    return 0;
+    total_processing_times->insert(std::make_pair(long_name(), 0));
   }
 };
 

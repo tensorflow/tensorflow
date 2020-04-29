@@ -865,17 +865,9 @@ TfLiteStatus QuantizeBiases(ModelT* model,
         continue;
       }
       for (const int bias_idx : property.biases) {
-        if (op->inputs[bias_idx] == kTfLiteOptionalTensor) {
+        if (bias_idx >= op->inputs.size() ||
+            op->inputs[bias_idx] == kTfLiteOptionalTensor) {
           continue;
-        }
-        if (bias_idx >= op->inputs.size()) {
-          TF_LITE_REPORT_ERROR(
-              error_reporter,
-              "Required input index %d is larger than the input length of "
-              "op  %s at index %d in subgraph %d",
-              bias_idx, op->inputs.size(), EnumNameBuiltinOperator(op_code),
-              op_idx, subgraph_idx);
-          return kTfLiteError;
         }
         // Quantize if it is not quantized already as the
         // output of another op or input of another op.
@@ -1046,7 +1038,8 @@ TfLiteStatus EnsureBiasScaleCompatibility(
 
       // Loop over all bias tensors.
       for (const int bias_idx : property.biases) {
-        if (op->inputs[bias_idx] == kTfLiteOptionalTensor) {
+        if (bias_idx >= op->inputs.size() ||
+            op->inputs[bias_idx] == kTfLiteOptionalTensor) {
           continue;
         }
         TensorT* bias_tensor = subgraph->tensors[op->inputs[bias_idx]].get();

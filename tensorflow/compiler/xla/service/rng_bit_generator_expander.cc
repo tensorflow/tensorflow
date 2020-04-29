@@ -30,6 +30,18 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
+namespace {
+
+StatusOr<XlaOp> GetPhiloxStateOp(XlaOp input_state) {
+  TF_ASSIGN_OR_RETURN(const Shape* shape,
+                      input_state.builder()->GetShapePtr(input_state));
+  if (shape->dimensions(0) >= 3) {
+    return Slice(input_state, {1}, {3}, {1});
+  }
+  return Rev(input_state, {0});
+}
+
+}  // namespace
 
 bool RngBitGeneratorExpander::InstructionMatchesPattern(
     HloInstruction* instruction) {
@@ -56,10 +68,11 @@ StatusOr<HloComputation*> RngBitGeneratorExpander::GetGeneratorComputation(
       generator = ThreeFryBitGenerator;
       state_op = Slice(state_param, {1}, {2}, {1});
       break;
-    case RandomAlgorithm::RNG_PHILOX:
+    case RandomAlgorithm::RNG_PHILOX: {
       generator = PhiloxBitGenerator;
-      state_op = Slice(state_param, {1}, {3}, {1});
+      TF_ASSIGN_OR_RETURN(state_op, GetPhiloxStateOp(state_param));
       break;
+    }
     default:
       return Unimplemented("Unsupported random algorthm: %s",
                            RandomAlgorithm_Name(algorithm));

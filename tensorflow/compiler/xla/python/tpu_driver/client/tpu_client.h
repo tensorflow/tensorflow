@@ -267,8 +267,7 @@ class PyTpuExecutable {
       const XlaComputation& computation,
       absl::optional<std::vector<Shape>> argument_layouts,
       const ExecutableBuildOptions* build_options,
-      std::shared_ptr<PyTpuClient> client,
-      absl::optional<DeviceAssignment> device_assignment, bool tuple_arguments);
+      std::shared_ptr<PyTpuClient> client, bool tuple_arguments);
 
   PyTpuExecutable(
       std::unique_ptr<tpu_driver::CompiledProgramHandle> compiled_program,
@@ -284,6 +283,8 @@ class PyTpuExecutable {
   PyTpuExecutable(PyTpuExecutable&&) = delete;
   PyTpuExecutable& operator=(const PyTpuExecutable&) = delete;
   PyTpuExecutable& operator=(PyTpuExecutable&&) = delete;
+
+  std::shared_ptr<PyTpuClient> client() const { return client_; }
 
   int num_replicas() const { return device_assignment_.replica_count(); }
   int num_partitions() const { return device_assignment_.computation_count(); }

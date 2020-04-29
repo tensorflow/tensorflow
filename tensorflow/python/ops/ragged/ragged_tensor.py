@@ -1374,7 +1374,7 @@ class RaggedTensor(composite_tensor.CompositeTensor,
     if not outer_axis < inner_axis:
       raise ValueError("Expected outer_axis (%d) to be less than "
                        "inner_axis (%d)" % (outer_axis, inner_axis))
-    return _merge_dims(self, outer_axis, inner_axis)
+    return merge_dims(self, outer_axis, inner_axis)
 
   def _set_shape(self, shape):
     """Updates the static shape of `self` to be `shape`.
@@ -2491,7 +2491,7 @@ def _nrows(tensor, out_type=dtypes.int32):
     return array_ops.shape(tensor, out_type=out_type)[0]
 
 
-def _merge_dims(value, outer_axis, inner_axis):
+def merge_dims(value, outer_axis, inner_axis):
   """Merges value[outer_axis...inner_axis] into a single dimension.
 
   See `RaggedTensor.merge_dims()` for more details.  This helper differs from
@@ -2529,7 +2529,7 @@ def _merge_dims(value, outer_axis, inner_axis):
   # Handle outer_axis>1 via recursion.
   if outer_axis > 1:
     return value.with_values(
-        _merge_dims(value.values, outer_axis - 1, inner_axis - 1))
+        merge_dims(value.values, outer_axis - 1, inner_axis - 1))
 
   # At this point, we know outer_axis == 1, and value is a RaggedTensor.
   # So we need to flatten the values and build a corresponding splits tensor.

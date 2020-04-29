@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_INTERNAL_CONCRETE_FUNCTION_TYPE_H_
 #define TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_INTERNAL_CONCRETE_FUNCTION_TYPE_H_
 
+#include "tensorflow/c/conversion_macros.h"
 #include "tensorflow/c/experimental/saved_model/core/concrete_function.h"
-#include "tensorflow/c/experimental/saved_model/internal/conversion_macros.h"
 
 // Internal structures used by the SavedModel C API. These are likely to change
 // and should not be depended on.

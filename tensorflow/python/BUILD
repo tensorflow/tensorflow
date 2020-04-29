@@ -4,7 +4,7 @@
 #  ":platform" - Low-level and platform-specific Python code.
 
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
@@ -28,7 +28,7 @@ load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
 load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_local_platform_constraint")
+load("//tensorflow:tensorflow.bzl", "tf_py_build_info_genrule")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_proto_library_py", "tf_protos_grappler")  # @unused
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_plugin_deps", "tf_additional_xla_deps_py")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
@@ -147,6 +147,7 @@ py_library(
         ":confusion_matrix",
         ":control_flow_ops",
         ":cudnn_rnn_ops_gen",
+        ":distributed_framework_test_lib",
         ":errors",
         ":framework",
         ":framework_combinations",
@@ -205,11 +206,8 @@ py_library(
         "//tensorflow/python/data",
         "//tensorflow/python/debug:debug_py",
         "//tensorflow/python/distribute",
-        "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:distribute_config",
         "//tensorflow/python/distribute:estimator_training",
-        "//tensorflow/python/distribute:multi_worker_test_base",
-        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/dlpack",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:monitoring",
@@ -241,7 +239,6 @@ py_library(
 tf_py_build_info_genrule(
     name = "py_build_info_gen",
     out = "platform/build_info.py",
-    exec_compatible_with = tf_local_platform_constraint(),
 )
 
 py_library(
@@ -718,7 +715,7 @@ tf_python_pybind_extension(
     srcs = [
         "training/quantize_training_wrapper.cc",
     ],
-    hdrs = ["//tensorflow/core/graph:quantize_training_hdrs"],
+    hdrs = ["//tensorflow/core/common_runtime:quantize_training_hdrs"],
     module_name = "_pywrap_quantize_training",
     deps = [
         ":pybind11_lib",
@@ -911,7 +908,8 @@ cc_library(
         ":safe_ptr",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
-        "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/c/eager:tfe_context_internal",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -927,6 +925,7 @@ cc_library(
 
 cc_header_only_library(
     name = "py_func_headers_lib",
+    tags = ["no-ide"],
     deps = [
         ":py_func_lib",
     ],
@@ -1014,7 +1013,8 @@ cc_library(
         ":safe_ptr",
         "//tensorflow/c:tensor_interface",
         "//tensorflow/c:tf_tensor_internal",
-        "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/c/eager:tfe_context_internal",
+        "//tensorflow/c/eager:tfe_tensorhandle_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/python_runtime:headers",
@@ -1155,6 +1155,7 @@ cc_header_only_library(
     extra_deps = [
         "//tensorflow/core:protos_all_cc",
     ],
+    tags = ["no-ide"],
     deps = [
         ":python_op_gen",
     ],
@@ -1778,6 +1779,7 @@ py_library(
     name = "composite_tensor",
     srcs = ["framework/composite_tensor.py"],
     srcs_version = "PY2AND3",
+    visibility = visibility + ["//tensorflow:composite_tensor_whitelist"],
     deps = [
         ":dtypes",
         ":tensor_util",
@@ -1851,6 +1853,7 @@ py_library(
     name = "type_spec",
     srcs = ["framework/type_spec.py"],
     srcs_version = "PY2AND3",
+    visibility = visibility + ["//tensorflow:composite_tensor_whitelist"],
     deps = [
         ":dtypes",
         ":tensor_shape",
@@ -1973,6 +1976,7 @@ py_library(
 )
 
 # Including this as a dependency will result in tests to use TFRT.
+# TODO(b/153582383): Move tf_ops_alwayslink dependency to c_api_tfrt instead.
 py_library(
     name = "is_tfrt_test_true",
     srcs = ["framework/is_tfrt_test_true.py"],
@@ -2382,6 +2386,7 @@ tf_py_test(
     main = "framework/ops_test.py",
     python_version = "PY3",
     tags = ["no_pip"],  # test_ops_2 is not available in pip.
+    tfrt_enabled = True,
     deps = [
         ":cond_v2",
         ":control_flow_ops",
@@ -5534,6 +5539,7 @@ py_library(
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
+        "//tensorflow:composite_tensor_whitelist",
     ],
     deps = [
         ":tf_decorator",
@@ -5953,10 +5959,10 @@ filegroup(
         "//tensorflow/c:tf_status_helper",  # tfe
         "//tensorflow/compiler/jit:flags",  #tfe
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
-        "//tensorflow/core/common_runtime:core_cpu_base_no_ops",  # tf_session
-        "//tensorflow/core/common_runtime:core_cpu_rump_impl",  # quantize_training
         "//tensorflow/core/common_runtime:device",  # device_lib, tfe, tf_session
         "//tensorflow/core/common_runtime:device_factory",  # device_lib, tfe, tf_session
+        "//tensorflow/core/common_runtime:graph_constructor",  # tf_session
+        "//tensorflow/core/common_runtime:quantize_training",  # quantize_training
         "//tensorflow/core/common_runtime:session_options",  # device_lib, tfe, tf_session
         "//tensorflow/core/common_runtime:session_state",  # tf_session
         "//tensorflow/core/data/service:server_lib",  # server_lib

@@ -22,6 +22,7 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.DoubleBuffer;
+import java.nio.FloatBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.Test;
@@ -207,6 +208,15 @@ public final class InterpreterTest {
     };
     float[] expected = {3.69f, 19.62f, 23.43f};
     assertThat(outputOneD).usingTolerance(0.1f).containsExactly(expected).inOrder();
+  }
+
+  @Test
+  public void testRunWithScalarInput() {
+    FloatBuffer parsedOutput = FloatBuffer.allocate(1);
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      interpreter.run(2.37f, parsedOutput);
+    }
+    assertThat(parsedOutput.get(0)).isWithin(0.1f).of(7.11f);
   }
 
   @Test

@@ -18,11 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_mod
 from tensorflow.python.keras.engine import compile_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -238,6 +242,52 @@ class LossesContainerTest(keras_parameterized.TestCase):
     output_3_metric = loss_container.metrics[2]
     self.assertEqual(output_3_metric.name, 'output3_loss')
     self.assertEqual(output_3_metric.result().numpy(), 2.)
+
+  def test_mismatched_dtypes(self):
+    y_t = constant_op.constant([1, 9, 2, -5], shape=(2, 2))
+    y_p = constant_op.constant([4, 8, 12, 8],
+                               shape=(2, 2),
+                               dtype=dtypes.float32)
+
+    def my_mae(labels, preds):
+      self.assertEqual(labels.dtype, dtypes.int32)
+      self.assertEqual(preds.dtype, dtypes.float32)
+      labels = math_ops.cast(labels, preds.dtype)
+      return K.mean(math_ops.abs(preds - labels), axis=-1)
+
+    loss_container = compile_utils.LossesContainer(my_mae)
+    total_loss = loss_container(y_t, y_p)
+    self.assertEqual(total_loss.dtype, dtypes.float32)
+
+  def test_integer_dtypes(self):
+    y_t = constant_op.constant([1, 9, 2, -5], shape=(2, 2))
+    y_p = constant_op.constant([4, 8, 12, 8], shape=(2, 2), dtype=dtypes.int64)
+
+    def my_mae(labels, preds):
+      self.assertEqual(labels.dtype, dtypes.int64)
+      self.assertEqual(preds.dtype, dtypes.int64)
+      return K.mean(math_ops.abs(preds - labels), axis=-1)
+
+    loss_container = compile_utils.LossesContainer(my_mae)
+    total_loss = loss_container(y_t, y_p)
+    self.assertEqual(total_loss.dtype, dtypes.int64)
+
+  def test_float_dtypes(self):
+    y_t = constant_op.constant([1, 9, 2, -5],
+                               shape=(2, 2),
+                               dtype=dtypes.float32)
+    y_p = constant_op.constant([4, 8, 12, 8],
+                               shape=(2, 2),
+                               dtype=dtypes.float64)
+
+    def my_mae(labels, preds):
+      self.assertEqual(labels.dtype, dtypes.float64)
+      self.assertEqual(preds.dtype, dtypes.float64)
+      return K.mean(math_ops.abs(preds - labels), axis=-1)
+
+    loss_container = compile_utils.LossesContainer(my_mae)
+    total_loss = loss_container(y_t, y_p)
+    self.assertEqual(total_loss.dtype, dtypes.float64)
 
 
 class MetricsContainerTest(keras_parameterized.TestCase):

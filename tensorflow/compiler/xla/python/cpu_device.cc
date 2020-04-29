@@ -27,7 +27,7 @@ CpuDevice::CpuDevice(int id,
     : Device(id, std::move(local_device_state), kCpuPlatformName,
              /*device_kind=*/kCpuPlatformName) {}
 
-StatusOr<std::shared_ptr<PyLocalClient>> GetCpuClient(bool asynchronous) {
+StatusOr<std::shared_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetPlatform("Host"));
   if (platform->VisibleDeviceCount() <= 0) {
@@ -49,7 +49,7 @@ StatusOr<std::shared_ptr<PyLocalClient>> GetCpuClient(bool asynchronous) {
     devices.push_back(std::move(device));
   }
 
-  return std::make_shared<PyLocalClient>(
+  return std::make_shared<PjRtClient>(
       kCpuPlatformName, client, std::move(devices), /*host_id=*/0,
       /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
       /*gpu_run_options=*/nullptr);

@@ -249,9 +249,9 @@ class TFLiteCostEstimator<MaximumOp, hardware::GPU> {
   static bool IsSupported(mlir::Operation* op) { return true; }
 };
 
-// tfl.max_unpooling_2d
+// tfl.custom
 template <>
-class TFLiteCostEstimator<MaxUnpooling2DOp, hardware::GPU> {
+class TFLiteCostEstimator<CustomOp, hardware::GPU> {
  public:
   static double GetCost(mlir::Operation* op) {
     llvm::errs() << "No defined cost function for op: "

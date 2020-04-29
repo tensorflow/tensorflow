@@ -700,12 +700,13 @@ class Function(object):
       tm.set_metadata(tf_function_call=execution_mode + "-" + compiler,
                       tracing_count=new_tracing_count)
 
-    if without_tracing:
-      _frequent_tracing_detector.called_without_tracing(
-          self._key_for_call_stats)
-    else:
-      _frequent_tracing_detector.called_with_tracing(self._key_for_call_stats,
-                                                     self._python_function)
+    if context.executing_eagerly():
+      if without_tracing:
+        _frequent_tracing_detector.called_without_tracing(
+            self._key_for_call_stats)
+      else:
+        _frequent_tracing_detector.called_with_tracing(self._key_for_call_stats,
+                                                       self._python_function)
 
     return result
 

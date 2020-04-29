@@ -1785,6 +1785,7 @@ class AttrTrackingLayer(base_layer.Layer):
     return super(AttrTrackingLayer, self).dynamic
 
 
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class CacheCorrectnessTest(keras_parameterized.TestCase):
 
   def layer_and_network_test(self):
@@ -1919,8 +1920,12 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
     class MyLayer(base_layer.Layer):
 
       def call(self, x, training=None):
-        self.training = training
-        return x
+        if training is None:
+          return x * -1.0
+        elif training:
+          return x
+        else:
+          return x * 0.0
 
     my_layer = MyLayer()
     x = np.ones((1, 10))
@@ -1929,9 +1934,8 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
     outputs = my_layer(inputs, training=True)
     network = network_lib.Network(inputs, outputs)
 
-    network(x, training=False)
     # Hard-coded value passed during construction is respected.
-    self.assertTrue(my_layer.training)
+    self.assertAllEqual(network(x, training=False), x)
 
     inputs = input_layer_lib.Input(10)
     outputs = my_layer(inputs, training=False)
@@ -1939,19 +1943,16 @@ class CacheCorrectnessTest(keras_parameterized.TestCase):
 
     network(x, training=True)
     # Hard-coded value passed during construction is respected.
-    self.assertFalse(my_layer.training)
+    self.assertAllEqual(network(x, training=True), x * 0.0)
 
     inputs = input_layer_lib.Input(10)
     outputs = my_layer(inputs, training=None)
     network = network_lib.Network(inputs, outputs)
 
-    network(x, training=True)
     # `None` value passed during construction is overridden.
-    self.assertTrue(my_layer.training)
-    network(x, training=False)
+    self.assertAllEqual(network(x, training=True), x)
     # `None` value passed during construction is overridden.
-    self.assertFalse(my_layer.training)
-
+    self.assertAllEqual(network(x, training=False), x * 0.0)
 
 if __name__ == '__main__':
   test.main()

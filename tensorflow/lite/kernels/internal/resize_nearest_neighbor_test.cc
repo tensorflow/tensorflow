@@ -91,19 +91,17 @@ TEST(ResizeNearestNeighborReference, Test2x2To3x3) {
                                      output_shape, output_data);
 }
 
-// TODO(b/154864449): Re-enable.
-// TEST(ResizeNearestNeighborReference, Test2x2To3x3_AlignCorners) {
-//   RuntimeShape input_shape = {1, 2, 2, 1};
-//   std::vector<uint8> input_data = {1, 2, 3, 4};
-//   std::vector<int32> output_size_data = {3, 3};
-//   RuntimeShape output_shape = {1, 3, 3, 1};
-//   std::vector<uint8> output_data = {1, 2, 2, 3, 4, 4, 3, 4, 4};
-//
-//   TestReferenceResizeNearestNeighbor(input_shape, input_data,
-//   output_size_data,
-//                                      output_shape, output_data,
-//                                      /*align_corners=*/true);
-// }
+TEST(ResizeNearestNeighborReference, Test2x2To3x3_AlignCorners) {
+  RuntimeShape input_shape = {1, 2, 2, 1};
+  std::vector<uint8> input_data = {1, 2, 3, 4};
+  std::vector<int32> output_size_data = {3, 3};
+  RuntimeShape output_shape = {1, 3, 3, 1};
+  std::vector<uint8> output_data = {1, 2, 2, 3, 4, 4, 3, 4, 4};
+
+  TestReferenceResizeNearestNeighbor(input_shape, input_data, output_size_data,
+                                     output_shape, output_data,
+                                     /*align_corners=*/true);
+}
 
 TEST(ResizeNearestNeighborReference, Test2x2To3x3_HalfPixelCenters) {
   RuntimeShape input_shape = {1, 2, 2, 1};

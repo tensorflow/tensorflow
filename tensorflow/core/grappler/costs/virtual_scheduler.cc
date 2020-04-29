@@ -36,6 +36,12 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+const char kAttrInputSrc[] = "input_source_";
+const char kAttrSrcDevice[] = "send_device";
+const char kAttrDstDevice[] = "recv_device";
+const char kAttrTensorName[] = "tensor_name";
+const char kChannelDevice[] = "Channel";
+
 namespace {
 
 using ::tensorflow::strings::HumanReadableNumBytes;

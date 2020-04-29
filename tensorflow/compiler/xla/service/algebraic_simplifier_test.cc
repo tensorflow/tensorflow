@@ -4183,6 +4183,31 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicSlice) {
   EXPECT_THAT(computation->root_instruction(), GmockMatch(m::Parameter()));
 }
 
+TEST_F(AlgebraicSimplifierTest, ConstantDynamicSlice) {
+  auto m = CreateNewVerifiedModule();
+  HloComputation::Builder builder(TestName());
+
+  Shape shape = ShapeUtil::MakeShape(F32, {10, 100, 1000});
+  std::vector<HloInstruction*> params;
+  for (int i = 0; i < 3; ++i) {
+    params.push_back(builder.AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateR0<int32>(2 << (i + 1)))));
+  }
+  Shape ds_shape = ShapeUtil::MakeShape(F32, {2, 20, 200});
+  builder.AddInstruction(HloInstruction::CreateDynamicSlice(
+      ds_shape,
+      builder.AddInstruction(
+          HloInstruction::CreateParameter(0, shape, "operand")),
+      params,
+      /*slice_sizes=*/{2, 20, 200}));
+
+  auto computation = m->AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(m.get()).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Slice(m::Parameter())));
+}
+
 // A dynamic-update-slice is trivial if its start indices are all zeroes and the
 // size of its "update" equals the size of its output.  In this case, the
 // dynamic-update-slice is equal to its update.

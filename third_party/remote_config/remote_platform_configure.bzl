@@ -10,6 +10,16 @@ def _remote_platform_configure_impl(repository_ctx):
             platform = "osx"
         else:
             platform = "linux"
+
+    cpu = "x86_64"
+    if "MACHTYPE" in repository_ctx.os.environ:
+        machine_type = repository_ctx.os.environ["MACHTYPE"]
+        if (machine_type.startswith("ppc") or
+            machine_type.startswith("powerpc")):
+            cpu = "ppc"
+        elif machine_type.startswith("s390x"):
+            cpu = "s390x"
+
     exec_properties = repository_ctx.attr.platform_exec_properties
 
     serialized_exec_properties = "{"
@@ -23,6 +33,7 @@ def _remote_platform_configure_impl(repository_ctx):
         {
             "%{platform}": platform,
             "%{exec_properties}": serialized_exec_properties,
+            "%{cpu}": cpu,
         },
     )
 

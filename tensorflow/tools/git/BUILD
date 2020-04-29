@@ -14,4 +14,5 @@ py_binary(
     exec_compatible_with = ["@local_execution_config_platform//:platform_constraint"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no-remote-exec"],
 )

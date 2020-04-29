@@ -1505,7 +1505,7 @@ cuda_py_test(
     name = "diag_op_test",
     size = "medium",
     srcs = ["diag_op_test.py"],
-    shard_count = 2,
+    shard_count = 6,
     tags = ["no_windows_gpu"],
     deps = [
         "//tensorflow/python:array_ops",

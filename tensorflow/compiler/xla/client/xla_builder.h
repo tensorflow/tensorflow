@@ -557,7 +557,8 @@ class XlaBuilder {
 
   XlaOp AllToAll(XlaOp operand, int64 split_dimension, int64 concat_dimension,
                  int64 split_count,
-                 const std::vector<ReplicaGroup>& replica_groups);
+                 const std::vector<ReplicaGroup>& replica_groups,
+                 const absl::optional<Layout>& layout = absl::nullopt);
 
   XlaOp CollectivePermute(
       XlaOp operand,
@@ -993,7 +994,8 @@ class XlaBuilder {
                          const absl::optional<Shape>& shape_with_layout);
   friend XlaOp AllToAll(XlaOp operand, int64 split_dimension,
                         int64 concat_dimension, int64 split_count,
-                        const std::vector<ReplicaGroup>& replica_groups);
+                        const std::vector<ReplicaGroup>& replica_groups,
+                        const absl::optional<Layout>& layout);
   friend XlaOp CollectivePermute(
       XlaOp operand,
       const std::vector<std::pair<int64, int64>>& source_target_pairs);
@@ -1789,9 +1791,13 @@ XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
                 const absl::optional<Shape>& shape_with_layout = absl::nullopt);
 
 // Enqueues an operation that do an Alltoall of the operand cross cores.
+// An optional `layout` can be specified to force the layout of the instruction.
+// This is used to guarantee the same layout for a group of AllToAll ops
+// compiled separately.
 XlaOp AllToAll(XlaOp operand, int64 split_dimension, int64 concat_dimension,
                int64 split_count,
-               const std::vector<ReplicaGroup>& replica_groups = {});
+               const std::vector<ReplicaGroup>& replica_groups = {},
+               const absl::optional<Layout>& layout = absl::nullopt);
 
 // Enqueues an collective operation that sends and receives data cross replicas.
 //

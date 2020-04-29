@@ -133,8 +133,9 @@ gentbl(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/tf_executor_ops.td",
     td_srcs = [
-        "@llvm-project//mlir:include/mlir/IR/OpBase.td",
+        ":tensorflow_ops_td_files",
         "@llvm-project//mlir:include/mlir/Dialect/StandardOps/IR/Ops.td",
+        "@llvm-project//mlir:include/mlir/IR/OpBase.td",
     ],
 )
 
@@ -216,6 +217,17 @@ cc_library(
 )
 
 cc_library(
+    name = "tensorflow_attributes",
+    srcs = [
+        "ir/tf_attributes.cc",
+    ],
+    hdrs = [
+        "ir/tf_attributes.h",
+    ],
+    deps = ["@llvm-project//mlir:IR"],
+)
+
+cc_library(
     name = "tensorflow_types",
     srcs = [
         "ir/tf_types.cc",
@@ -226,6 +238,7 @@ cc_library(
     ],
     deps = [
         "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -266,6 +279,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":error_util",
+        ":tensorflow_attributes",
         ":tensorflow_canonicalize_inc_gen",
         ":tensorflow_device_ops_inc_gen",
         ":tensorflow_executor_inc_gen",
@@ -531,6 +545,7 @@ cc_library(
         ":mangling_util",
         ":mlir_roundtrip_flags",
         ":tensorflow",
+        ":tensorflow_attributes",
         ":tensorflow_passes",
         ":tensorflow_types",
         ":translate_utils",
@@ -603,6 +618,7 @@ cc_library(
         ":convert_type",
         ":mangling_util",
         ":tensorflow",
+        ":tensorflow_attributes",
         ":tensorflow_types",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
@@ -771,6 +787,7 @@ cc_library(
     deps = [
         ":convert_type",
         ":mangling_util",
+        ":tensorflow_attributes",
         ":tensorflow_types",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -790,7 +807,9 @@ tf_cc_test(
     srcs = ["utils/convert_tensor_test.cc"],
     deps = [
         ":convert_tensor",
+        ":tensorflow",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

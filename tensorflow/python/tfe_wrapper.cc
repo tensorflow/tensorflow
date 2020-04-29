@@ -270,7 +270,6 @@ static py::object TFE_ClearScalarCache() {
 // are only assigning this to functions that return opaque types.
 
 PYBIND11_MODULE(_pywrap_tfe, m) {
-  py::class_<TFE_Context> TFE_Context_class(m, "TFE_Context");
   py::class_<TFE_Executor> TFE_Executor_class(m, "TFE_Executor");
   py::class_<TFE_ContextOptions> TFE_ContextOptions_class(m,
                                                           "TFE_ContextOptions");
@@ -760,7 +759,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_ContextStartStep", [](py::handle& o) {
     TFE_ContextStartStep(tensorflow::InputTFE_Context(o.ptr()));
   });
-  m.def("TFE_ContextEndStep", &TFE_ContextEndStep);
+  m.def("TFE_ContextEndStep", [](py::handle& o) {
+    TFE_ContextEndStep(tensorflow::InputTFE_Context(o.ptr()));
+  });
   m.def("TFE_Py_RegisterVSpace", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterVSpace(o.ptr()));
   });

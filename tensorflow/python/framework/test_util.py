@@ -31,6 +31,7 @@ import random
 import re
 import tempfile
 import threading
+import time
 import unittest
 
 from absl.testing import parameterized
@@ -1787,23 +1788,29 @@ def disable_mlir_bridge(description):  # pylint: disable=unused-argument
 # The description is just for documentation purposes.
 def disable_tfrt(unused_description):
 
-  def disable_tfrt_impl(func):
-    """Execute the test method only if tfrt is not enabled."""
+  def disable_tfrt_impl(cls_or_func):
+    """Execute the test only if tfrt is not enabled."""
 
-    def decorator(func):
+    if tf_inspect.isclass(cls_or_func):
+      if is_tfrt_enabled():
+        return None
+      else:
+        return cls_or_func
+    else:
+      def decorator(func):
 
-      def decorated(self, *args, **kwargs):
-        if is_tfrt_enabled():
-          return
-        else:
-          return func(self, *args, **kwargs)
+        def decorated(self, *args, **kwargs):
+          if is_tfrt_enabled():
+            return
+          else:
+            return func(self, *args, **kwargs)
 
-      return decorated
+        return decorated
 
-    if func is not None:
-      return decorator(func)
+      if cls_or_func is not None:
+        return decorator(cls_or_func)
 
-    return decorator
+      return decorator
 
   return disable_tfrt_impl
 
@@ -1902,6 +1909,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self._threads = []
     self._tempdir = None
     self._cached_session = None
+    self._test_start_time = None
 
   def setUp(self):
     self._ClearCachedSession()
@@ -1925,7 +1933,15 @@ class TensorFlowTestCase(googletest.TestCase):
     if self.id().endswith(".test_session"):
       self.skipTest("Not a test.")
 
+    self._test_start_time = time.time()
+
   def tearDown(self):
+    # If a subclass overrides setUp and doesn't call the parent class's setUp,
+    # then we may not have set the start time.
+    if self._test_start_time is not None:
+      logging.info("time(%s): %ss", self.id(),
+                   round(time.time() - self._test_start_time, 2))
+
     for thread in self._threads:
       thread.check_termination()
 

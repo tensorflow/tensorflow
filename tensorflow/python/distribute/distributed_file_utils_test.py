@@ -106,6 +106,27 @@ class DistributedFileUtilsTest(test.TestCase):
     self.assertTrue(os.path.exists(file_to_write))
     distributed_file_utils.remove_temp_dirpath(temp_dir, strategy)
     self.assertFalse(os.path.exists(file_to_write))
+    self.assertFalse(os.path.exists(os.path.dirname(file_to_write)))
+
+  def testMultipleRemoveOrigDirPathIsFine(self):
+    temp_dir = self.get_temp_dir()
+    strategy = DistributedFileUtilsTest.MockedWorkerStrategy()
+    dir_to_write = distributed_file_utils.write_dirpath(temp_dir, strategy)
+    file_to_write = os.path.join(dir_to_write, 'tmp')
+    self._write_dummy_file(file_to_write)
+    distributed_file_utils.remove_temp_dirpath(temp_dir, strategy)
+    distributed_file_utils.remove_temp_dirpath(temp_dir, strategy)
+    distributed_file_utils.remove_temp_dirpath(temp_dir, strategy)
+
+  def testMultipleRemoveDirToWritePathIsFine(self):
+    temp_dir = self.get_temp_dir()
+    strategy = DistributedFileUtilsTest.MockedWorkerStrategy()
+    dir_to_write = distributed_file_utils.write_dirpath(temp_dir, strategy)
+    file_to_write = os.path.join(dir_to_write, 'tmp')
+    self._write_dummy_file(file_to_write)
+    distributed_file_utils.remove_temp_dirpath(dir_to_write, strategy)
+    distributed_file_utils.remove_temp_dirpath(dir_to_write, strategy)
+    distributed_file_utils.remove_temp_dirpath(dir_to_write, strategy)
 
 
 if __name__ == '__main__':

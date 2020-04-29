@@ -12,17 +12,14 @@
 # Note(bmzhao): All *type.h files in this directory are the internal definitions of
 # the opaque C types. These headers should only be visible to internal tensorflow
 # implementors.
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+    "tf_copts",
+)
 
 package(
     licenses = ["notice"],  # Apache 2.0
-)
-
-cc_library(
-    name = "conversion_macros",
-    hdrs = [
-        "conversion_macros.h",
-    ],
 )
 
 cc_library(
@@ -33,6 +30,7 @@ cc_library(
     hdrs = [
         "//tensorflow/c/experimental/saved_model/public:concrete_function.h",
     ],
+    copts = tf_copts(),
     # TODO(bmzhao): Remove this as we refactor C API to granular targets,
     # so that we can depend on c/eager/c_api_unified_experimental.h.
     features = ["-layering_check"],
@@ -46,6 +44,7 @@ cc_library(
         "//tensorflow/c:c_api_macros",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/c/eager:tfe_op_internal",
         "//tensorflow/c/experimental/saved_model/core:concrete_function",
         "//tensorflow/c/experimental/saved_model/core:function_metadata",
     ],
@@ -59,6 +58,7 @@ cc_library(
     hdrs = [
         "//tensorflow/c/experimental/saved_model/public:concrete_function_list.h",
     ],
+    copts = tf_copts(),
     visibility = [
         "//tensorflow/c/experimental/saved_model/public:__pkg__",
     ],
@@ -87,7 +87,7 @@ cc_library(
         "concrete_function_type.h",
     ],
     deps = [
-        ":conversion_macros",
+        "//tensorflow/c:conversion_macros",
         "//tensorflow/c/experimental/saved_model/core:concrete_function",
     ],
 )
@@ -100,6 +100,7 @@ cc_library(
     hdrs = [
         "//tensorflow/c/experimental/saved_model/public:function_metadata.h",
     ],
+    copts = tf_copts(),
     visibility = [
         "//tensorflow/c/experimental/saved_model/public:__pkg__",
     ],
@@ -116,7 +117,7 @@ cc_library(
         "function_metadata_type.h",
     ],
     deps = [
-        ":conversion_macros",
+        "//tensorflow/c:conversion_macros",
         "//tensorflow/c/experimental/saved_model/core:function_metadata",
     ],
 )
@@ -129,6 +130,7 @@ cc_library(
     hdrs = [
         "//tensorflow/c/experimental/saved_model/public:saved_model_api.h",
     ],
+    copts = tf_copts(),
     visibility = [
         "//tensorflow/c/experimental/saved_model/public:__pkg__",
     ],

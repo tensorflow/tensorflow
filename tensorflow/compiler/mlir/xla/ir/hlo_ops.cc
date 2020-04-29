@@ -159,23 +159,15 @@ DenseIntElementsAttr BuildConvPaddingAttrs(
 //===----------------------------------------------------------------------===//
 
 static void Print(ConstOp op, OpAsmPrinter* printer) {
-  // Use short form only if the result type matches type of attribute 'value'.
-  bool use_short_form = op.value().getType() == op.getType();
-
   // Print op name.
   *printer << op.getOperationName();
 
-  // If short form, elide attribute value while printing the attribute
-  // dictionary.
+  // Elide attribute value while printing the attribute dictionary.
   SmallVector<StringRef, 1> elided_attrs;
-  if (use_short_form) elided_attrs.push_back("value");
+  elided_attrs.push_back("value");
   printer->printOptionalAttrDict(op.getAttrs(), elided_attrs);
 
-  if (use_short_form) {
-    *printer << ' ' << op.value();
-  } else {
-    *printer << " : " << op.getType();
-  }
+  *printer << ' ' << op.value();
 }
 
 static ParseResult ParseConstOp(OpAsmParser* parser, OperationState* result) {
@@ -205,7 +197,8 @@ OpFoldResult ConstOp::fold(ArrayRef<Attribute> operands) {
 }
 
 // Builds a constant op with the specified attribute `value`.
-void ConstOp::build(Builder* builder, OperationState& result, Attribute value) {
+void ConstOp::build(OpBuilder& builder, OperationState& result,
+                    Attribute value) {
   Type type;
   if (auto elemAttr = value.dyn_cast<ElementsAttr>()) {
     type = elemAttr.getType();
@@ -271,7 +264,7 @@ static LogicalResult Verify(IotaOp op) {
 // AbsOp
 //===----------------------------------------------------------------------===//
 
-void AbsOp::build(Builder* builder, OperationState& result, Value operand) {
+void AbsOp::build(OpBuilder& builder, OperationState& result, Value operand) {
   auto shaped_type = operand.getType().cast<ShapedType>();
   Type new_type;
   if (!shaped_type.getElementType().isa<ComplexType>()) {
@@ -322,7 +315,7 @@ static LogicalResult Verify(CollectivePermuteOp op) {
 // ConvertOp
 //===----------------------------------------------------------------------===//
 
-void ConvertOp::build(Builder* builder, OperationState& result, Value operand,
+void ConvertOp::build(OpBuilder& builder, OperationState& result, Value operand,
                       Type result_element_ty) {
   Type result_ty;
   Type operand_ty = operand.getType();
@@ -336,6 +329,10 @@ void ConvertOp::build(Builder* builder, OperationState& result, Value operand,
 
 OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
   if (getOperand().getType() == getResult().getType()) return getOperand();
+
+  // If the result has non-static shape, a convert op is necessary to go from
+  // static shape to non-static shape.
+  if (!getResult().getType().cast<TensorType>().hasStaticShape()) return {};
 
   // If the operand is constant, we can do the conversion now.
   if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
@@ -555,6 +552,19 @@ static LogicalResult Verify(BroadcastInDimOp op) {
   return success();
 }
 
+OpFoldResult BroadcastInDimOp::fold(ArrayRef<Attribute>) {
+  auto type = getType().cast<RankedTensorType>();
+  if (type != getOperand().getType()) {
+    return nullptr;
+  }
+  auto broadcast_values = broadcast_dimensions().getValues<int64_t>();
+  if (!std::equal(broadcast_values.begin(), broadcast_values.end(),
+                  llvm::seq<int64_t>(0, type.getRank()).begin())) {
+    return nullptr;
+  }
+  return getOperand();
+}
+
 //===----------------------------------------------------------------------===//
 // ScalarsToDimensionTensorOp
 //===----------------------------------------------------------------------===//
@@ -725,7 +735,7 @@ static LogicalResult Verify(ClampOp op) {
 // ComplexOp
 //===----------------------------------------------------------------------===//
 
-void ComplexOp::build(Builder* builder, OperationState& state, Value lhs,
+void ComplexOp::build(OpBuilder& builder, OperationState& state, Value lhs,
                       Value rhs) {
   auto type = lhs.getType();
   auto element_ty = ComplexType::get(getElementTypeOrSelf(type));
@@ -770,7 +780,7 @@ Type CreateRealType(Type type) {
 }
 }  // namespace
 
-void ImagOp::build(Builder* builder, OperationState& state, Value val) {
+void ImagOp::build(OpBuilder& builder, OperationState& state, Value val) {
   build(builder, state, CreateRealType(val.getType()), val);
 }
 
@@ -783,7 +793,7 @@ OpFoldResult ImagOp::fold(ArrayRef<Attribute> operands) {
   return {};
 }
 
-void RealOp::build(Builder* builder, OperationState& state, Value val) {
+void RealOp::build(OpBuilder& builder, OperationState& state, Value val) {
   build(builder, state, CreateRealType(val.getType()), val);
 }
 
@@ -1096,7 +1106,7 @@ static TensorType GetReduceResultType(Type operand_ty,
   return RankedTensorType::get(shape, element_ty);
 }
 
-void ReduceOp::build(Builder* builder, OperationState& state,
+void ReduceOp::build(OpBuilder& builder, OperationState& state,
                      ValueRange operands, ValueRange init_values,
                      DenseIntElementsAttr dimensions) {
   SmallVector<Type, 1> result_ty;
@@ -1104,7 +1114,7 @@ void ReduceOp::build(Builder* builder, OperationState& state,
 
   for (Value operand : operands) {
     result_ty.push_back(
-        GetReduceResultType(operand.getType(), dimensions, builder));
+        GetReduceResultType(operand.getType(), dimensions, &builder));
   }
   build(builder, state, result_ty, operands, init_values, dimensions);
 }
@@ -1328,15 +1338,15 @@ static Type GetBroadcastType(Builder* builder, Type x, Type y,
 }
 }  // namespace
 
-#define BINARY_BUILDER(Op)                                                   \
-  void Op::build(Builder* builder, OperationState& result, Value left,       \
-                 Value right, DenseIntElementsAttr broadcast_dimensions) {   \
-    auto type = GetBroadcastType(builder, left.getType().cast<ShapedType>(), \
-                                 right.getType().cast<ShapedType>(),         \
-                                 getElementTypeOrSelf(right.getType()),      \
-                                 broadcast_dimensions);                      \
-    return Op::build(builder, result, type, left, right,                     \
-                     broadcast_dimensions);                                  \
+#define BINARY_BUILDER(Op)                                                    \
+  void Op::build(OpBuilder& builder, OperationState& result, Value left,      \
+                 Value right, DenseIntElementsAttr broadcast_dimensions) {    \
+    auto type = GetBroadcastType(&builder, left.getType().cast<ShapedType>(), \
+                                 right.getType().cast<ShapedType>(),          \
+                                 getElementTypeOrSelf(right.getType()),       \
+                                 broadcast_dimensions);                       \
+    return Op::build(builder, result, type, left, right,                      \
+                     broadcast_dimensions);                                   \
   }
 
 BINARY_BUILDER(AddOp);
@@ -1361,14 +1371,14 @@ BINARY_BUILDER(XorOp);
 // SliceOp
 //===----------------------------------------------------------------------===//
 
-void SliceOp::build(Builder* builder, OperationState& result, Value operand,
+void SliceOp::build(OpBuilder& builder, OperationState& result, Value operand,
                     DenseIntElementsAttr start_indices,
                     DenseIntElementsAttr limit_indices,
                     DenseIntElementsAttr strides) {
-  return build(
-      builder, result,
-      InferOutputTypes(builder, operand, start_indices, limit_indices, strides),
-      operand, start_indices, limit_indices, strides);
+  return build(builder, result,
+               InferOutputTypes(&builder, operand, start_indices, limit_indices,
+                                strides),
+               operand, start_indices, limit_indices, strides);
 }
 
 // Returns output dimension size for slice result for the given arguments.
@@ -1415,16 +1425,16 @@ Type SliceOp::InferOutputTypes(Builder* builder, Value operand,
 // SortOp
 //===----------------------------------------------------------------------===//
 
-void SortOp::build(Builder* builder, OperationState& state, ValueRange operands,
-                   int64_t dimension, bool is_stable) {
+void SortOp::build(OpBuilder& builder, OperationState& state,
+                   ValueRange operands, int64_t dimension, bool is_stable) {
   state.addOperands(operands);
-  state.addAttribute("dimension", builder->getI64IntegerAttr(dimension));
-  state.addAttribute("is_stable", builder->getBoolAttr(dimension));
+  state.addAttribute("dimension", builder.getI64IntegerAttr(dimension));
+  state.addAttribute("is_stable", builder.getBoolAttr(dimension));
 
   SmallVector<Type, 2> element_types;
   element_types.reserve(operands.size());
   for (Value operand : operands) element_types.push_back(operand.getType());
-  state.addTypes(builder->getTupleType(element_types));
+  state.addTypes(builder.getTupleType(element_types));
 
   state.addRegion();
 }
@@ -1599,24 +1609,24 @@ static LogicalResult Verify(TriangularSolveOp op) {
 // GetTupleElementOp
 //===----------------------------------------------------------------------===//
 
-void GetTupleElementOp::build(Builder* builder, OperationState& result,
+void GetTupleElementOp::build(OpBuilder& builder, OperationState& result,
                               Value tuple, int32_t index) {
   if (auto tuple_type = tuple.getType().dyn_cast<TupleType>()) {
     auto element_type = tuple_type.getType(index);
     build(builder, result, element_type, tuple,
-          builder->getI32IntegerAttr(index));
+          builder.getI32IntegerAttr(index));
     return;
   }
 
   build(builder, result, tuple.getType(), tuple,
-        builder->getI32IntegerAttr(index));
+        builder.getI32IntegerAttr(index));
 }
 
 //===----------------------------------------------------------------------===//
 // TupleOp
 //===----------------------------------------------------------------------===//
 
-void TupleOp::build(Builder* builder, OperationState& result,
+void TupleOp::build(OpBuilder& builder, OperationState& result,
                     ValueRange values) {
   SmallVector<Type, 4> types;
   types.reserve(values.size());
@@ -1624,7 +1634,7 @@ void TupleOp::build(Builder* builder, OperationState& result,
     types.push_back(val.getType());
   }
 
-  build(builder, result, builder->getTupleType(types), values);
+  build(builder, result, builder.getTupleType(types), values);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1640,11 +1650,11 @@ void UnaryEinsumOp::getCanonicalizationPatterns(
 // CompareOp
 //===----------------------------------------------------------------------===//
 
-void CompareOp::build(Builder* builder, OperationState& result, Value lhs,
+void CompareOp::build(OpBuilder& builder, OperationState& result, Value lhs,
                       Value rhs, DenseIntElementsAttr broadcast_dimensions,
                       StringAttr comparison_direction) {
-  auto new_type = GetBroadcastType(builder, lhs.getType(), rhs.getType(),
-                                   builder->getI1Type(), broadcast_dimensions);
+  auto new_type = GetBroadcastType(&builder, lhs.getType(), rhs.getType(),
+                                   builder.getI1Type(), broadcast_dimensions);
   build(builder, result, new_type, lhs, rhs, broadcast_dimensions,
         comparison_direction);
 }

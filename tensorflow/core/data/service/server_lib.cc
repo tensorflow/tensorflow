@@ -23,6 +23,10 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+namespace {
+constexpr char kPortPlaceholder[] = "%port%";
+}
+
 GrpcDataServerBase::GrpcDataServerBase(int port, const std::string& protocol)
     : requested_port_(port), protocol_(protocol) {}
 
@@ -43,7 +47,7 @@ Status GrpcDataServerBase::Start() {
 
   TF_RETURN_IF_ERROR(StartServiceInternal());
 
-  LOG(INFO) << "Started data service running at " << Target();
+  VLOG(1) << "Started tf.data service running at 0.0.0.0:" << BoundPort();
   return Status::OK();
 }
 
@@ -51,9 +55,7 @@ void GrpcDataServerBase::Stop() { server_->Shutdown(); }
 
 void GrpcDataServerBase::Join() { server_->Wait(); }
 
-std::string GrpcDataServerBase::Target() {
-  return strings::StrCat(protocol_, "://localhost:", bound_port_);
-}
+int GrpcDataServerBase::BoundPort() { return bound_port(); }
 
 MasterGrpcDataServer::MasterGrpcDataServer(int port,
                                            const std::string& protocol)
@@ -80,8 +82,11 @@ Status MasterGrpcDataServer::NumTasks(int* num_tasks) {
 
 WorkerGrpcDataServer::WorkerGrpcDataServer(int port,
                                            const std::string& protocol,
-                                           const std::string& master_address)
-    : GrpcDataServerBase(port, protocol), master_address_(master_address) {}
+                                           const std::string& master_address,
+                                           const std::string& worker_address)
+    : GrpcDataServerBase(port, protocol),
+      master_address_(master_address),
+      worker_address_(worker_address) {}
 
 WorkerGrpcDataServer::~WorkerGrpcDataServer() { delete service_; }
 
@@ -92,7 +97,14 @@ void WorkerGrpcDataServer::AddServiceToBuilder(grpc::ServerBuilder* builder) {
 }
 
 Status WorkerGrpcDataServer::StartServiceInternal() {
-  service_->Start(strings::StrCat("localhost:", bound_port()));
+  std::string worker_address = worker_address_;
+  if (worker_address.empty()) {
+    worker_address = absl::StrCat("localhost:", kPortPlaceholder);
+  }
+  std::string resolved_address = str_util::StringReplace(
+      worker_address, kPortPlaceholder, absl::StrCat(bound_port()),
+      /*replace_all=*/false);
+  service_->Start(resolved_address);
   return Status::OK();
 }
 
@@ -105,8 +117,16 @@ Status NewMasterServer(int port, const std::string& protocol,
 Status NewWorkerServer(int port, const std::string& protocol,
                        const std::string& master_address,
                        std::unique_ptr<WorkerGrpcDataServer>* out_server) {
-  *out_server =
-      absl::make_unique<WorkerGrpcDataServer>(port, protocol, master_address);
+  return NewWorkerServer(port, protocol, master_address, /*worker_address=*/"",
+                         out_server);
+}
+
+Status NewWorkerServer(int port, const std::string& protocol,
+                       const std::string& master_address,
+                       const std::string& worker_address,
+                       std::unique_ptr<WorkerGrpcDataServer>* out_server) {
+  *out_server = absl::make_unique<WorkerGrpcDataServer>(
+      port, protocol, master_address, worker_address);
   return Status::OK();
 }
 

@@ -24,6 +24,9 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tape.h"
+#include "tensorflow/c/eager/tfe_context_internal.h"
+#include "tensorflow/c/eager/tfe_op_internal.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -80,9 +83,10 @@ TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
               const char* raw_device_name, TF_Status* status) {
   auto op = ReleaseThreadLocalOp(ctx);
   if (!op) {
-    op.reset(new TFE_Op{ctx->context->CreateOperation()});
+    op.reset(tensorflow::wrap(tensorflow::unwrap(ctx)->CreateOperation()));
   }
-  status->status = op->operation->Reset(op_or_function_name, raw_device_name);
+  status->status =
+      tensorflow::unwrap(op.get())->Reset(op_or_function_name, raw_device_name);
   if (!status->status.ok()) {
     op.reset();
   }
@@ -91,7 +95,7 @@ TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
 
 void ReturnOp(TFE_Context* ctx, TFE_Op* op) {
   if (op) {
-    op->operation->Clear();
+    tensorflow::unwrap(op)->Clear();
     thread_local_eager_operation_map[ctx].reset(op);
   }
 }
@@ -1500,7 +1504,7 @@ static PyTypeObject TFE_Py_Tape_Type = {
     sizeof(TFE_Py_Tape),                          /* tp_basicsize */
     0,                                            /* tp_itemsize */
     &TFE_Py_Tape_Delete,                          /* tp_dealloc */
-    0,                                            /* tp_print */
+    nullptr,                                      /* tp_print */
     nullptr,                                      /* tp_getattr */
     nullptr,                                      /* tp_setattr */
     nullptr,                                      /* tp_reserved */
@@ -1538,7 +1542,7 @@ static PyTypeObject TFE_Py_ForwardAccumulator_Type = {
     sizeof(TFE_Py_ForwardAccumulator),                      /* tp_basicsize */
     0,                                                      /* tp_itemsize */
     &TFE_Py_ForwardAccumulatorDelete,                       /* tp_dealloc */
-    0,                                                      /* tp_print */
+    nullptr,                                                /* tp_print */
     nullptr,                                                /* tp_getattr */
     nullptr,                                                /* tp_setattr */
     nullptr,                                                /* tp_reserved */
@@ -1573,7 +1577,7 @@ static PyTypeObject TFE_Py_VariableWatcher_Type = {
     sizeof(TFE_Py_VariableWatcher),                          /* tp_basicsize */
     0,                                                       /* tp_itemsize */
     &TFE_Py_VariableWatcher_Delete,                          /* tp_dealloc */
-    0,                                                       /* tp_print */
+    nullptr,                                                 /* tp_print */
     nullptr,                                                 /* tp_getattr */
     nullptr,                                                 /* tp_setattr */
     nullptr,                                                 /* tp_reserved */
@@ -1990,21 +1994,22 @@ bool ListContainsNone(PyObject* list) {
 
 static PyTapeTensor TapeTensorFromTensor(PyObject* tensor) {
   if (EagerTensor_CheckExact(tensor)) {
-    TFE_TensorHandle* t = EagerTensor_Handle(tensor);
+    tensorflow::AbstractTensorHandleInterface* handle =
+        tensorflow::unwrap(EagerTensor_Handle(tensor));
     tensorflow::int64 id = PyEagerTensor_ID(tensor);
     tensorflow::DataType dtype =
-        static_cast<tensorflow::DataType>(t->handle->DataType());
+        static_cast<tensorflow::DataType>(handle->DataType());
     if (dtype == tensorflow::DT_VARIANT) {
       return PyTapeTensor(id, dtype, tensor);
     }
 
     tensorflow::TensorShape tensor_shape;
     int num_dims;
-    tensorflow::Status status = t->handle->NumDims(&num_dims);
+    tensorflow::Status status = handle->NumDims(&num_dims);
     if (status.ok()) {
       for (int i = 0; i < num_dims; ++i) {
         tensorflow::int64 dim_size;
-        status = t->handle->Dim(i, &dim_size);
+        status = handle->Dim(i, &dim_size);
         if (!status.ok()) break;
         tensor_shape.AddDim(dim_size);
       }
@@ -3511,7 +3516,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     return nullptr;
   }
 
-  const tensorflow::OpDef* op_def = op->operation->OpDef();
+  const tensorflow::OpDef* op_def = tensorflow::unwrap(op)->OpDef();
   if (op_def == nullptr) return nullptr;
 
   if (args_size < kFastPathExecuteInputStartIndex + op_def->input_arg_size()) {
@@ -3850,14 +3855,15 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
                                        bool include_tensor_ranks_only,
                                        EncodeResult* result) {
   if (EagerTensor_CheckExact(arg)) {
-    TFE_TensorHandle* t = EagerTensor_Handle(arg);
+    tensorflow::AbstractTensorHandleInterface* handle =
+        tensorflow::unwrap(EagerTensor_Handle(arg));
 
     absl::StrAppend(&result->str, kDType,
-                    static_cast<tensorflow::DataType>(t->handle->DataType()));
+                    static_cast<tensorflow::DataType>(handle->DataType()));
     absl::StrAppend(&result->str, kShape);
 
     int num_dims;
-    tensorflow::Status status = t->handle->NumDims(&num_dims);
+    tensorflow::Status status = handle->NumDims(&num_dims);
     if (!status.ok()) return status;
 
     if (include_tensor_ranks_only) {
@@ -3865,7 +3871,7 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
     } else {
       for (int i = 0; i < num_dims; ++i) {
         tensorflow::int64 dim_size;
-        status = t->handle->Dim(i, &dim_size);
+        status = handle->Dim(i, &dim_size);
         if (!status.ok()) return status;
         absl::StrAppend(&result->str, dim_size, kShapeDelim);
       }
