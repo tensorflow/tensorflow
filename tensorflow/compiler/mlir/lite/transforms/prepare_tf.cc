@@ -81,13 +81,52 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
   bool unfold_batch_matmul_;
 };
 
+
+template <class TFFakeQuantOp>
+struct FetchConstantMinMaxInputs {
+
+  using AttrType = DenseFPElementsAttr;
+  bool operator () (TFFakeQuantOp tf_op, AttrType &min_value, AttrType &max_value) const {
+    Value min = tf_op.min(), max = tf_op.max();
+    ;
+    // TODO This is likely redundant (Identity elimination rule are in
+    // prepare_patterns.td.  If not, its certainly, incomplete as neither
+    // IdentityN ops Nor chains of Identiy* (not sooo rare) are handled
+    if (auto id1 = dyn_cast_or_null<TF::IdentityOp>(min.getDefiningOp()))
+      min = id1.input();
+    if (auto id2 = dyn_cast_or_null<TF::IdentityOp>(max.getDefiningOp()))
+      max = id2.input();
+    if (!matchPattern(min, m_Constant(&min_value))) {
+      return false;
+    }
+    if (!matchPattern(max, m_Constant(&max_value))) {
+      return false;
+    }
+    return true; // Succesfully matched and fetched.
+  }
+};
+
+
+template <class TFFakeQuantOp>
+struct FetchMinMaxAttrs {
+
+  using AttrType = FloatAttr;
+  bool operator () (TFFakeQuantOp tf_op, AttrType &min_value, AttrType &max_value) const {
+    min_value = tf_op.minAttr();
+    max_value = tf_op.maxAttr();
+    return true;  // Succesfully matched and fetched.
+  }
+};
+
+
 // TODO(fengliuai): move this rule to PreparePatterns.td
 // TODO(fengliuai): reuse the quantization/tensorflow/tf_to_quant pass.
 // TODO(b/140968741): propagate the sign from the command line. Currently all
 // the FakeQuant is assumed to targeting UIN8, but per-channel kernel is
 // actually INT8.
 // Inserts a "tfl.quantize" and "tfl.dequantize" op pair (QDQs) after the
-// "tf.FakeQuantWithMinMaxVarsOp" to be constant folded. Since the constant
+// tf.FakeQyantWithMinMax{Vars|VarsPerChannel|Args}Op
+// to be constant folded. Since the constant
 // folding logic will use a "std.constant" op to replace the
 // "tf.FakeQuantWithMinMaxVarsOp", the "tfl.quantize" op is used to preserve
 // the quantization parameters as a TypeAttr and "tfl.dequantize" op used to
@@ -111,17 +150,33 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
 //                   |
 //              tf.dequantize
 //                   |
-template <typename TFFakeQuantOp, bool PerAxis>
+//
+//
+// Warns if the (most likely unwanted, currently not quite correctly handled)
+// case of back-to-back tf.FakeQuant occurs
+//
+//             tf.FakeQuant*
+//                   |
+//             tf.FakeQuant*
+//
+// tf.identity / tf.IdentityN between the tf.FakeQuant* ops
+// need no special treatment are already eliminated before the rewrites / check is applied.
+//
+
+template <typename TFFakeQuantOp, bool PerAxis, class FetchMinMax>
 struct InsertTFLQuantOpsAfterTFFakeQuantOp
     : public OpRewritePattern<TFFakeQuantOp> {
-  using BaseType = InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp, PerAxis>;
+  using BaseType = InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp, PerAxis, FetchMinMax>;
 
-  explicit InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp, PerAxis>(
+  explicit InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp, PerAxis, FetchMinMax>(
       MLIRContext *ctx)
       : OpRewritePattern<TFFakeQuantOp>(ctx) {}
 
+  FetchMinMax fetchMinMax;
+
+  using FetchAttrType = typename FetchMinMax::AttrType;
   LogicalResult matchAndRewrite(TFFakeQuantOp tf_op,
-                                PatternRewriter &rewriter) const override {
+                                     PatternRewriter &rewriter) const override {
     // We don't want to insert quantize/dequantize if the quantize op exists.
     auto res = tf_op.outputs();
     if (!res.hasOneUse() || isa<QuantizeOp>(*res.user_begin()))
@@ -130,14 +185,11 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
     // Extract the min/max constant values from the operands. We also consider
     // a special case that there are tf.Identity ops between the min/max
     // constants and the tf.FakeQuantWithMinMaxVarsOp.
-    Value min = tf_op.min(), max = tf_op.max();
-    DenseFPElementsAttr min_value, max_value;
-    if (auto id1 = dyn_cast_or_null<TF::IdentityOp>(min.getDefiningOp()))
-      min = id1.input();
-    if (auto id2 = dyn_cast_or_null<TF::IdentityOp>(max.getDefiningOp()))
-      max = id2.input();
-    if (!matchPattern(min, m_Constant(&min_value))) return failure();
-    if (!matchPattern(max, m_Constant(&max_value))) return failure();
+
+    FetchAttrType min_value, max_value;
+    if (!fetchMinMax(tf_op, min_value, max_value)) {
+      return this->failure();
+    }
 
     int quant_dim = -1;
     if (PerAxis) {
@@ -171,12 +223,28 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
   }
 };
 
+//
+// Three instances of the rule to cover the three different types of
+// TF::FakeQuant operators
+// 
 using PreparePerTensorFakeQuant =
-    InsertTFLQuantOpsAfterTFFakeQuantOp<TF::FakeQuantWithMinMaxVarsOp, false>;
+    InsertTFLQuantOpsAfterTFFakeQuantOp<TF::FakeQuantWithMinMaxVarsOp, 
+                                        false,
+                                        FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsOp>
+                                       >;
 
 using PreparePerChannelFakeQuant =
     InsertTFLQuantOpsAfterTFFakeQuantOp<TF::FakeQuantWithMinMaxVarsPerChannelOp,
-                                        true>;
+                                        true,
+                                        FetchConstantMinMaxInputs<TF::FakeQuantWithMinMaxVarsPerChannelOp>
+                                       >;
+
+using PreparePerTensorFakeQuantWithMinMaxArgs =
+    InsertTFLQuantOpsAfterTFFakeQuantOp<TF::FakeQuantWithMinMaxArgsOp,
+                                        false,
+                                        FetchMinMaxAttrs<TF::FakeQuantWithMinMaxArgsOp>
+                                       >;
+
 
 // Templated class for declaring a converter from some TensorFlow convolution
 // op into its counterpart in TensorFlow Lite.
@@ -619,9 +687,13 @@ void PrepareTFPass::runOnFunction() {
 
   // This pattern was intented to uses TFL QDQs to preserve the quantization
   // parameters from the TF Quant ops, thus this pattern should run with the
-  // first `applyPatternsAndFoldGreedily` method, which would otherwise removes
-  // the TF FakeQuant ops by the constant folding.
-  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant>(ctx);
+  // first `applyPatternsGreedily` method, which would otherwise removes the
+  // TF FakeQuant ops by the constant folding.
+  //patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant, 
+  //                PreparePerTensorFakeQuantWithMinMaxArgs>(ctx);
+
+  patterns.insert<PreparePerTensorFakeQuant, PreparePerChannelFakeQuant, PreparePerTensorFakeQuantWithMinMaxArgs>(ctx);
+
 
   // This pattern will try to identify and optimize for dilated convolution.
   // e.g. Patterns like "SpaceToBatchND -> Conv2D -> BatchToSpaceND" will be

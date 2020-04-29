@@ -206,6 +206,15 @@ DenseElementsAttr GetShape(Value output_val) {
       llvm::makeArrayRef(shape));
 }
 
+bool notFromQuantOpDifferentQuanteUse( Value val, TypeAttr qtype) {
+  auto val_defn_op = val.getDefiningOp();
+  TFL::QuantizeOp q_op = llvm::dyn_cast_or_null<TFL::QuantizeOp>(val_defn_op);
+  if( !q_op)
+    return true;
+
+  return q_op.qtype() == qtype.getValue();
+}
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
 // Fuse Add with proceeding FullyConnected.
