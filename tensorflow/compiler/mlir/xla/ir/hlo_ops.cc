@@ -811,9 +811,53 @@ OpFoldResult RealOp::fold(ArrayRef<Attribute> operands) {
 // ConcatenateOp
 //===----------------------------------------------------------------------===//
 
+namespace {
+class ConcatenateOperandRemoval : public OpRewritePattern<ConcatenateOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+  LogicalResult matchAndRewrite(ConcatenateOp op,
+                                PatternRewriter& rewriter) const override {
+    auto axis = op.dimension().getLimitedValue();
+    llvm::SmallVector<Value, 6> new_operands;
+    for (auto operand : op.getOperands()) {
+      auto ty = operand.getType().cast<ShapedType>();
+      if (ty.getDimSize(axis) != 0) {
+        new_operands.push_back(operand);
+      }
+    }
+
+    if (!new_operands.empty() && new_operands.size() < op.getNumOperands()) {
+      rewriter.replaceOpWithNewOp<ConcatenateOp>(op, op.getResult().getType(),
+                                                 new_operands, op.dimension());
+      return success();
+    }
+
+    return failure();
+  }
+};
+}  // namespace
+
+void ConcatenateOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<ConcatenateOperandRemoval>(context);
+}
+
 OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
   if (getNumOperands() == 1) return getOperand(0);
-  return {};
+
+  ShapedType type = getResult().getType().cast<ShapedType>();
+  if (!type.hasStaticShape()) return {};
+
+  auto axis = dimension().getLimitedValue();
+  llvm::SmallVector<Value, 6> new_operands;
+  for (auto operand : getOperands()) {
+    auto ty = operand.getType().cast<ShapedType>();
+    if (ty.getDimSize(axis) != 0) {
+      return {};
+    }
+  }
+
+  return DenseElementsAttr::get(type, ArrayRef<Attribute>());
 }
 
 static LogicalResult Verify(ConcatenateOp op) {

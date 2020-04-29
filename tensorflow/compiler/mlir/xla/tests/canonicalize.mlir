@@ -1,5 +1,50 @@
 // RUN: xla-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s --dump-input-on-failure
 
+// CHECK-LABEL: concatenate_noop
+func @concatenate_noop(%arg0: tensor<4xi32>) -> tensor<4xi32> {
+  // CHECK-SAME: [[ARG:%.+]]: tensor<4xi32>
+  %0 = "xla_hlo.concatenate"(%arg0) { dimension = 0 : i64 } : (tensor<4xi32>) -> tensor<4xi32>
+
+  // CHECK: return [[ARG]]
+  return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: concatenate_remove_operand
+func @concatenate_remove_operand(%arg0: tensor<4xi32>, %arg1: tensor<0xi32>) -> tensor<4xi32> {
+  // CHECK-SAME: [[ARG0:%.+]]: tensor<4xi32>
+  // CHECK-SAME: [[ARG1:%.+]]: tensor<0xi32>
+  %0 = "xla_hlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<4xi32>, tensor<0xi32>) -> tensor<4xi32>
+
+  // CHECK: return [[ARG0]]
+  return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: concatenate_empty_bool
+func @concatenate_empty_bool(%arg0: tensor<0xi1>, %arg1: tensor<0xi1>) -> tensor<0xi1> {
+  // CHECK: xla_hlo.constant
+  %0 = "xla_hlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<0xi1>, tensor<0xi1>) -> tensor<0xi1>
+
+  return %0 : tensor<0xi1>
+}
+
+// CHECK-LABEL: concatenate_empty_int
+func @concatenate_empty_int(%arg0: tensor<0xi32>, %arg1: tensor<0xi32>) -> tensor<0xi32> {
+  // CHECK: xla_hlo.constant
+  %0 = "xla_hlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<0xi32>, tensor<0xi32>) -> tensor<0xi32>
+
+  return %0 : tensor<0xi32>
+}
+
+// CHECK-LABEL: concatenate_empty_float
+func @concatenate_empty_float(%arg0: tensor<0xf32>, %arg1: tensor<0xf32>) -> tensor<0xf32> {
+  // CHECK: xla_hlo.constant
+  %0 = "xla_hlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<0xf32>, tensor<0xf32>) -> tensor<0xf32>
+
+  return %0 : tensor<0xf32>
+}
+
+
+// CHECK-LABEL: dynamic_slice_variable_start
 func @dynamic_slice_variable_start(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xi32> {
   // CHECK: "xla_hlo.dynamic-slice"
   %1 = "xla_hlo.dynamic-slice"(%arg0, %arg1, %arg2) {slice_sizes = dense<[1, 4]> : tensor<2xi64>} : (tensor<3x4xi32>, tensor<i64>, tensor<i64>) -> tensor<1x4xi32>

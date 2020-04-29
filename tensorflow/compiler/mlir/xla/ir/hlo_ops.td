@@ -847,6 +847,7 @@ def HLO_ConcatenateOp : HLO_Op<"concatenate",
 
   let results = (outs HLO_Tensor);
 
+  let hasCanonicalizer = 1;
   let hasFolder = 1;
 
 }
