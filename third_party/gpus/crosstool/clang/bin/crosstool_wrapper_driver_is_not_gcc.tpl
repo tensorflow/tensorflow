@@ -151,6 +151,21 @@ def GetNvccOptions(argv):
     return ' '.join(['--'+a for a in options])
   return ''
 
+def system(cmd):
+  """Invokes cmd with os.system().
+
+  Args:
+    cmd: The command.
+
+  Returns:
+    The exit code if the process exited with exit() or -signal
+    if the process was terminated by a signal.
+  """
+  retv = os.system(cmd)
+  if os.WIFEXITED(retv):
+    return os.WEXITSTATUS(retv)
+  else:
+    return -os.WTERMSIG(retv)
 
 def InvokeNvcc(argv, log=False):
   """Call nvcc with arguments assembled from argv.
@@ -160,7 +175,7 @@ def InvokeNvcc(argv, log=False):
     log: True if logging is requested.
 
   Returns:
-    The return value of calling os.system('nvcc ' + args)
+    The return value of calling system('nvcc ' + args)
   """
 
   host_compiler_options = GetHostCompilerOptions(argv)
@@ -231,7 +246,7 @@ def InvokeNvcc(argv, log=False):
            ' -I .' +
            ' -x cu ' + opt + includes + ' ' + srcs + ' -M -o ' + depfile)
     if log: Log(cmd)
-    exit_status = os.system(cmd)
+    exit_status = system(cmd)
     if exit_status != 0:
       return exit_status
 
@@ -245,7 +260,7 @@ def InvokeNvcc(argv, log=False):
   # Need to investigate and fix.
   cmd = 'PATH=' + PREFIX_DIR + ':$PATH ' + cmd
   if log: Log(cmd)
-  return os.system(cmd)
+  return system(cmd)
 
 
 def main():

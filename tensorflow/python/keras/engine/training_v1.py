@@ -534,7 +534,7 @@ class Model(training_lib.Model):
                        'is enabled.')
     if not self.dynamic:
       if self._run_eagerly is None:
-        # Respect `tf.config.experimental_run_functions_eagerly` unless
+        # Respect `tf.config.run_functions_eagerly` unless
         # `run_eagerly` was explicitly passed to `compile`.
         return def_function.RUN_FUNCTIONS_EAGERLY
       else:

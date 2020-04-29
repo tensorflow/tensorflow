@@ -1333,16 +1333,19 @@ class ConvertFusedBatchNormV3Op
     auto feature_dim =
         getFeatureDimensionAttr(rewriter, op.data_formatAttr(), op.x());
 
-    auto input_type_tensor = op.x().getType().dyn_cast<TensorType>();
+    auto input_type_tensor = op.x().getType().cast<TensorType>();
     auto input_element_type = input_type_tensor.getElementType();
 
-    auto scale_type_tensor = op.scale().getType().dyn_cast<TensorType>();
+    auto scale_type_tensor = op.scale().getType().cast<TensorType>();
     auto scale_element_type = scale_type_tensor.getElementType();
+
+    auto mean_type_tensor = op.mean().getType().cast<TensorType>();
+    auto mean_element_type = mean_type_tensor.getElementType();
     // In the training case, dimensions of input tensors must be static.
-    if (op.is_training() && ((!input_type_tensor.hasStaticShape()) ||
-                             (!scale_type_tensor.hasStaticShape()))) {
+    if (op.is_training() && (!input_type_tensor.hasStaticShape() ||
+                             !scale_type_tensor.hasStaticShape() ||
+                             !mean_type_tensor.hasStaticShape()))
       return failure();
-    }
 
     // TODO(b/69928690): Support mixed precision in the XLA batch
     // normalization operators. As a workaround, create a new x with the same
@@ -1376,6 +1379,7 @@ class ConvertFusedBatchNormV3Op
           op.getLoc(), bn_train_op_result, 0);
       Value batch_mean = rewriter.create<xla_hlo::GetTupleElementOp>(
           op.getLoc(), bn_train_op_result, 1);
+      Value reserve_space_1 = batch_mean;
       Value batch_variance = rewriter.create<xla_hlo::GetTupleElementOp>(
           op.getLoc(), bn_train_op_result, 2);
 
@@ -1389,14 +1393,47 @@ class ConvertFusedBatchNormV3Op
       auto factor_const_op = rewriter.create<xla_hlo::ConstOp>(
           op.getLoc(), rewriter.getFloatAttr(scale_element_type, factor));
 
-      auto corrected_variance = rewriter.create<xla_hlo::MulOp>(
+      Value corrected_variance = rewriter.create<xla_hlo::MulOp>(
           op.getLoc(), batch_variance.getType(), batch_variance,
-          factor_const_op, /*DenseIntElementsAttr=*/DenseIntElementsAttr());
+          factor_const_op, /*broadcast_dimensions=*/DenseIntElementsAttr());
 
       // Convert back to input type to stay aligned with expected output type
       // for TF op.
       y_out = rewriter.create<xla_hlo::ConvertOp>(op.getLoc(), y_out,
                                                   input_element_type);
+
+      float exponential_avg_factor =
+          op.exponential_avg_factor().convertToFloat();
+      if (exponential_avg_factor != 1.0f) {
+        auto alpha = rewriter.create<xla_hlo::ConstOp>(
+            op.getLoc(), rewriter.getFloatAttr(mean_element_type,
+                                               1.0f - exponential_avg_factor));
+        auto beta = rewriter.create<xla_hlo::ConstOp>(
+            op.getLoc(),
+            rewriter.getFloatAttr(mean_element_type, exponential_avg_factor));
+
+        // new_running_mean = alpha * old_mean + beta * batch_mean.
+        auto alpha_mul_old_mean = rewriter.create<MulOp>(
+            op.getLoc(), op.mean().getType(), alpha, op.mean(),
+            /*broadcast_dimensions=*/DenseIntElementsAttr());
+        auto beta_mul_batch_mean = rewriter.create<MulOp>(
+            op.getLoc(), batch_mean.getType(), beta, batch_mean,
+            /*broadcast_dimensions=*/DenseIntElementsAttr());
+        batch_mean = rewriter.create<AddOp>(
+            op.getLoc(), alpha_mul_old_mean, beta_mul_batch_mean,
+            /*broadcast_dimensions=*/DenseIntElementsAttr());
+
+        // new_running_variance = alpha * old_variance + beta * batch_variance.
+        auto alpha_mul_old_variance = rewriter.create<MulOp>(
+            op.getLoc(), op.variance().getType(), alpha, op.variance(),
+            /*broadcast_dimensions=*/DenseIntElementsAttr());
+        auto beta_mul_batch_variance = rewriter.create<MulOp>(
+            op.getLoc(), corrected_variance.getType(), beta, corrected_variance,
+            /*broadcast_dimensions=*/DenseIntElementsAttr());
+        corrected_variance = rewriter.create<AddOp>(
+            op.getLoc(), alpha_mul_old_variance, beta_mul_batch_variance,
+            /*broadcast_dimensions=*/DenseIntElementsAttr());
+      }
 
       // TF FusedBatchNormV3 op expects 5 outputs. Outputs 3 and 4 are
       // currently marked as "reserved spaces 1 and 2". They are used to
@@ -1406,8 +1443,8 @@ class ConvertFusedBatchNormV3Op
       // matter what we pass there.
       rewriter.replaceOp(op, {y_out, /*batch_mean=*/batch_mean,
                               /*batch_variance=*/corrected_variance,
-                              /*reserve_space_1=*/batch_mean,
-                              /*reserve_space_2=*/corrected_variance,
+                              /*reserve_space_1=*/reserve_space_1,
+                              /*reserve_space_2=*/batch_variance,
                               /*reserve_space_3=*/op.x()});
     } else {  // Inference case.
       auto bn_train_op = rewriter.create<BatchNormInferenceOp>(
@@ -1715,10 +1752,7 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
     auto shaped_type = operand.getType().cast<ShapedType>();
     auto constant_ones = rewriter.create<BroadcastOp>(
         op.getLoc(), shaped_type, scalar_one,
-        DenseIntElementsAttr::get(
-            RankedTensorType::get({shaped_type.getRank()},
-                                  rewriter.getIntegerType(64)),
-            shaped_type.getShape()));
+        GetI64ElementsAttr(shaped_type.getShape(), &rewriter));
 
     auto scaled_input = rewriter.create<MulOp>(
         op.getLoc(), operand, constant_ones, DenseIntElementsAttr());

@@ -278,6 +278,7 @@ Status ConvertMLIRToXlaComputation(
 
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::xla_hlo::createLegalizeTFPass(true));
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  tf2xla.addPass(mlir::TF::CreateTFShapeInferencePass());
 
   // Leverage tf2xla kernels for ops that didn't get lowered in the previous
   // legalization pass.

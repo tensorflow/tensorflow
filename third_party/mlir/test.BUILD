@@ -87,6 +87,14 @@ gentbl(
             "lib/Dialect/Test/TestOpEnums.cpp.inc",
         ),
         (
+            "-gen-struct-attr-decls",
+            "lib/Dialect/Test/TestOpStructs.h.inc",
+        ),
+        (
+            "-gen-struct-attr-defs",
+            "lib/Dialect/Test/TestOpStructs.cpp.inc",
+        ),
+        (
             "-gen-rewriters",
             "lib/Dialect/Test/TestPatterns.inc",
         ),
@@ -96,6 +104,7 @@ gentbl(
     td_srcs = [
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/IR/OpAsmInterface.td",
+        "@llvm-project//mlir:include/mlir/IR/SymbolInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/ControlFlowInterfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",

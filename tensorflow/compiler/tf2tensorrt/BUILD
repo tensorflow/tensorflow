@@ -384,6 +384,7 @@ tf_cuda_library(
         ":utils",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "//tensorflow/core/common_runtime:core_cpu",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",

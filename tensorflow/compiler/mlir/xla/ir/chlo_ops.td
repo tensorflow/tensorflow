@@ -88,7 +88,7 @@ class HLOClient_BroadcastBinaryElementwiseOp<
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value left, Value  right, "
+    "OpBuilder &builder, OperationState &result, Value left, Value  right, "
     "DenseIntElementsAttr broadcast_dimensions"
   >];
 

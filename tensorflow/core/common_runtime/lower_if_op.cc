@@ -15,8 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/lower_if_op.h"
 
-#include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/lower_functional_ops.h"
+#include "tensorflow/core/common_runtime/inline_function_utils.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -27,7 +26,7 @@ namespace {
 using NodeOut = NodeBuilder::NodeOut;
 
 constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
-    LowerFunctionalOpsPass::kLowerAsMultiDeviceFunctionAttr;
+    LowerFunctionalOpsConstants::kLowerAsMultiDeviceFunctionAttr;
 
 // Convenience builder to make it easy to construct a conditional with a single
 // function call in the then and else branch. This first converts the if node

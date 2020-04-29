@@ -86,7 +86,7 @@ tensorflow::DeviceFactory::ListAllPhysicalDevices
 [session_options]  # device_lib, tfe, tf_session
 tensorflow::SessionOptions::SessionOptions
 
-[core_cpu_rump_impl]  # quantize_training
+[quantize_training]  # quantize_training
 tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 
 [session_state]  # tf_session

@@ -16,9 +16,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/lower_function_call_op.h"
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/common_runtime/inline_function_utils.h"
-#include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_node_util.h"
@@ -30,7 +29,7 @@ using KeepCallerNode = InlineFunctionBodyOptions::KeepCallerNode;
 using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
 
 constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
-    LowerFunctionalOpsPass::kLowerAsMultiDeviceFunctionAttr;
+    LowerFunctionalOpsConstants::kLowerAsMultiDeviceFunctionAttr;
 
 bool LowerAsMultiDeviceFunction(const Node* n) {
   if (n->IsPartitionedCall()) return true;

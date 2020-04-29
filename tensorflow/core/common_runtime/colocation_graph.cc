@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
-#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/inspecting_placer.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"

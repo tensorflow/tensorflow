@@ -2796,7 +2796,6 @@ tf_cc_test_mkl(
     name = "mkl_related_tests",
     size = "small",
     srcs = [
-        "//tensorflow/core/graph:mkl_related_tests",
         "//tensorflow/core/util:mkl_util_test_srcs",
     ],
     linkstatic = 1,

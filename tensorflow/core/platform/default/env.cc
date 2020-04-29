@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/ram_file_system.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -214,6 +215,8 @@ class PosixEnv : public Env {
 #if defined(PLATFORM_POSIX) || defined(__APPLE__) || defined(__ANDROID__)
 REGISTER_FILE_SYSTEM("", PosixFileSystem);
 REGISTER_FILE_SYSTEM("file", LocalPosixFileSystem);
+REGISTER_FILE_SYSTEM("ram", RamFileSystem);
+
 Env* Env::Default() {
   static Env* default_env = new PosixEnv;
   return default_env;

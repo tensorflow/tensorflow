@@ -92,10 +92,11 @@ Status GetNumRetvals(tensorflow::EagerContext* context, const string& op_name,
   return Status::OK();
 }
 
-Status GetEagerOperation(const Operation& operation,
-                         EagerContext* eager_context,
-                         EagerExecutor* eager_executor,
-                         EagerOperation* eager_op) {
+Status GetEagerOperationAndNumRetvals(const Operation& operation,
+                                      EagerContext* eager_context,
+                                      EagerExecutor* eager_executor,
+                                      EagerOperation* eager_op,
+                                      int* num_retvals) {
   const char* name = operation.name().c_str();  // Shorthand
   absl::optional<tensorflow::EagerRemoteFunctionParams> remote_func_params =
       absl::nullopt;
@@ -138,7 +139,10 @@ Status GetEagerOperation(const Operation& operation,
   for (const auto& attr : operation.attrs()) {
     eager_op->MutableAttrs()->Set(attr.first, attr.second);
   }
-  return Status::OK();
+
+  // TODO(nareshmodi): Consider caching this.
+  return GetNumRetvals(eager_context, operation.name(), operation.attrs(),
+                       num_retvals);
 }
 
 Status TensorHandleProto(TensorHandle* handle, TensorProto* proto) {
@@ -406,18 +410,78 @@ Status EagerServiceImpl::CreateMasterContext(
   return Status::OK();
 }
 
+void EagerServiceImpl::RunComponentFunction(
+    const RunComponentFunctionRequest* request,
+    RunComponentFunctionResponse* response, StatusCallback done) {
+  ServerContext* context = nullptr;
+  Status s = GetServerContext(request->context_id(), &context);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
+  core::ScopedUnref context_unref(context);
+
+  auto& operation = request->operation();
+  // This codepath should only be triggered for executing component function
+  if (!operation.is_function() || !operation.is_component_function()) {
+    done(errors::Internal(
+        "RunComponentFunction request can only be used to execute "
+        "component functions."));
+    return;
+  }
+
+  EagerContext* eager_context = context->Context();
+  EagerExecutor* eager_executor = &eager_context->Executor();
+
+  EagerOperation* op = new EagerOperation(eager_context);
+  int* num_retvals = new int(0);
+  s = GetEagerOperationAndNumRetvals(operation, eager_context, eager_executor,
+                                     op, num_retvals);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
+  if (!op->IsLocal()) {
+    done(errors::Internal(
+        "Received RunComponentFunction request with remote function device. "));
+    return;
+  }
+
+  auto* retvals = new absl::FixedArray<TensorHandle*>(*num_retvals);
+  VLOG(3) << "ServerContext: Calling EagerLocalExecuteAsync for op "
+          << operation.id();
+
+  context->Ref();
+  EagerLocalExecuteAsync(
+      op, retvals->data(), num_retvals,
+      [op, op_id = operation.id(), num_retvals, retvals, response,
+       eager_context, context, done = std::move(done)](const Status& status) {
+        auto wrapped_done = [&](const Status& status) {
+          context->Unref();
+          done(status);
+          delete op;
+          delete num_retvals;
+          delete retvals;
+        };
+        if (!status.ok()) {
+          wrapped_done(status);
+          return;
+        }
+        wrapped_done(AddOpRetvalsToResponse(
+            eager_context, op_id, *num_retvals, retvals->data(),
+            [response] { return response->add_tensor(); },
+            [response] { return response->add_shape(); }));
+      });
+}
+
 Status EagerServiceImpl::ExecuteOp(const Operation& operation,
                                    EagerContext* eager_context,
                                    EagerExecutor* eager_executor,
                                    QueueResponse* queue_response) {
   tensorflow::EagerOperation op(eager_context);
-  TF_RETURN_IF_ERROR(
-      GetEagerOperation(operation, eager_context, eager_executor, &op));
-
   int num_retvals = 0;
-  // TODO(nareshmodi): Consider caching this.
-  TF_RETURN_IF_ERROR(GetNumRetvals(eager_context, operation.name(),
-                                   operation.attrs(), &num_retvals));
+  TF_RETURN_IF_ERROR(GetEagerOperationAndNumRetvals(
+      operation, eager_context, eager_executor, &op, &num_retvals));
 
   absl::FixedArray<tensorflow::TensorHandle*> retvals(num_retvals);
   VLOG(3) << "ServerContext: Calling EagerExecute for op " << operation.id();

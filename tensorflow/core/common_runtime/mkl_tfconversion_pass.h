@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// A graph pass that rewrites graph for propagating MKL layout as a tensor
+// An optimization pass that inserts MklToTf conversion nodes in the graph
 
-#ifndef TENSORFLOW_CORE_GRAPH_MKL_LAYOUT_PASS_H_
-#define TENSORFLOW_CORE_GRAPH_MKL_LAYOUT_PASS_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_MKL_TFCONVERSION_PASS_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_MKL_TFCONVERSION_PASS_H_
 
 #ifdef INTEL_MKL
 
@@ -24,13 +24,17 @@ limitations under the License.
 #include <memory>
 #include "tensorflow/core/graph/graph.h"
 
+#ifdef _WIN32
+typedef unsigned int uint;
+#endif
+
 namespace tensorflow {
 // Interface to invoke the pass for unit test
 //
 // Returns true if and only if 'g' is mutated.
-extern bool RunMklLayoutRewritePass(std::unique_ptr<Graph>* g);
+extern bool InsertMklToTfConversionNodes(std::unique_ptr<Graph>* g);
 }  // namespace tensorflow
 
 #endif
 
-#endif  // TENSORFLOW_CORE_GRAPH_MKL_LAYOUT_PASS_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_MKL_TFCONVERSION_PASS_H_

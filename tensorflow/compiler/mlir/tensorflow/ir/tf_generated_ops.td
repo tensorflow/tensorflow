@@ -1107,6 +1107,15 @@ tf.Tensor(
 
 In the above example, the input Tensor with the shape of `[1, 3]`
 is broadcasted to output Tensor with shape of `[3, 3]`.
+
+When doing broadcasted operations such as multiplying a tensor
+by a scalar, broadcasting (usually) confers some time or space
+benefit, as the broadcasted tensor is never materialized.
+
+However, `broadcast_to` does not carry with it any such benefits.
+The newly-created tensor takes the full memory of the broadcasted
+shape. (In a graph context, `broadcast_to` might be fused to
+subsequent operation and then be optimized away, however.)
   }];
 
   let arguments = (ins
@@ -2218,7 +2227,7 @@ tf.math.equal(x, y) ==> array([True,  True])
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value  x, "
+    OpBuilder<"OpBuilder& builder, OperationState& result, Value  x, "
               "Value  y, BoolAttr incompatible_shape_error">
   ];
 
@@ -2374,7 +2383,7 @@ size 1.
   TF_DerivedOperandTypeAttr Tdim = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value  condition, "
+    OpBuilder<"OpBuilder& builder, OperationState& result, Value  condition, "
               "Value  dim">
   ];
 }
@@ -2584,7 +2593,7 @@ fill([2, 3], 9) ==> [[9, 9, 9]
   }];
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value dims, Value value"
+    "OpBuilder &builder, OperationState &result, Value dims, Value value"
   >];
 }
 
@@ -2668,6 +2677,7 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
     F32Tensor:$variance,
 
     DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
+    DefaultValuedAttr<F32Attr, "1.0f">:$exponential_avg_factor,
     DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
     DefaultValuedAttr<BoolAttr, "true">:$is_training
   );
@@ -2807,6 +2817,7 @@ The size of 1D Tensors matches the dimension C of the 4D Tensors.
     F32Tensor:$variance,
 
     DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
+    DefaultValuedAttr<F32Attr, "1.0f">:$exponential_avg_factor,
     DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
     DefaultValuedAttr<BoolAttr, "true">:$is_training
   );
@@ -4614,7 +4625,7 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value input, "
+    "OpBuilder &builder, OperationState &result, Value input, "
     "Value reduction_indices, BoolAttr keep_dims"
   >];
 }
@@ -5160,7 +5171,7 @@ def TF_NotEqualOp : TF_Op<"NotEqual", [Commutative, NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value  x, "
+    OpBuilder<"OpBuilder& builder, OperationState& result, Value  x, "
               "Value  y, BoolAttr incompatible_shape_error">
   ];
 
@@ -5279,7 +5290,7 @@ output =
   TF_DerivedOperandTypeAttr TI = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value  indices, "
+    OpBuilder<"OpBuilder& builder, OperationState& result, Value  indices, "
               "Value  depth, Value  on_value, Value  off_value, "
               "IntegerAttr axis">
   ];
@@ -5861,7 +5872,7 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value  start, "
+    OpBuilder<"OpBuilder& builder, OperationState& result, Value  start, "
               "Value  limit, Value  delta">
   ];
 }
@@ -5896,7 +5907,7 @@ of the tensor. Rank is also known as "order", "degree", or "ndims."
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value  input">
+    OpBuilder<"OpBuilder& builder, OperationState& result, Value  input">
   ];
 
   let hasFolder = 1;
@@ -6156,7 +6167,7 @@ reshape(t, []) ==> 7
 
   let builders = [
     OpBuilder<
-      "Builder* builder, OperationState& result, Value  tensor, Value  shape">
+      "OpBuilder& builder, OperationState& result, Value  tensor, Value  shape">
   ];
 
   let verifier = [{
@@ -7062,7 +7073,7 @@ def TF_SelectV2Op : TF_Op<"SelectV2", [NoSideEffect]> {
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value  condition, Value  e, Value  t">
+    OpBuilder<"OpBuilder& builder, OperationState& result, Value  condition, Value  e, Value  t">
   ];
 }
 
@@ -7096,7 +7107,7 @@ shape(t) ==> [2, 2, 3]
   }];
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& result, Value  input, BoolAttr use32Bit">
+    OpBuilder<"OpBuilder& builder, OperationState& result, Value  input, BoolAttr use32Bit">
   ];
 
   let hasFolder = 1;
@@ -8064,28 +8075,6 @@ shape of `StridedSlice`'s `input`.
   }];
 }
 
-def TF_StringFormatOp : TF_Op<"StringFormat", [NoSideEffect]> {
-  let summary = "Formats a string template using a list of tensors.";
-
-  let description = [{
-Formats a string template using a list of tensors, pretty-printing tensor summaries.
-  }];
-
-  let arguments = (ins
-    Variadic<TF_Tensor>:$inputs,
-
-    DefaultValuedAttr<StrAttr, "%s">:$strtemplate,
-    DefaultValuedAttr<StrAttr, "%s">:$placeholder,
-    DefaultValuedAttr<I64Attr, "3">:$summarize
-  );
-
-  let results = (outs
-    TF_StrTensor:$output
-  );
-
-  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
-}
-
 def TF_SubOp : TF_Op<"Sub", [NoSideEffect, ResultsBroadcastableShape]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x - y element-wise.";
@@ -8134,7 +8123,7 @@ retained with length 1.
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value input, "
+    "OpBuilder &builder, OperationState &result, Value input, "
     "Value reduction_indices, BoolAttr keep_dims"
   >];
 }
@@ -9067,7 +9056,7 @@ On GPU, if an out of bound index is found, the index is ignored.
 
   let builders = [
     OpBuilder<
-      "Builder* builder, OperationState& result, "
+      "OpBuilder& builder, OperationState& result, "
       "Value tensor, Value indices, Value updates",
       [{build(builder, result, tensor.getType(), tensor, indices, updates);}]
     >
@@ -9152,8 +9141,8 @@ as true/false for a branch condition.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value value", [{
-      build(builder, result, RankedTensorType::get({}, builder->getI1Type()),
+    "OpBuilder &builder, OperationState &result, Value value", [{
+      build(builder, result, RankedTensorType::get({}, builder.getI1Type()),
             value);
     }]>];
 
@@ -9217,7 +9206,7 @@ The output `y` has the same rank as `x`. The shapes of `x` and `y` satisfy:
 
   let builders = [
     OpBuilder<
-      "Builder* builder, OperationState& result, Value  x, Value  perm">
+      "OpBuilder& builder, OperationState& result, Value  x, Value  perm">
   ];
 
   let verifier = [{

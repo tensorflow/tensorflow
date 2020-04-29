@@ -801,12 +801,14 @@ func @constants() -> () {
 
   // CHECK: xla_hlo.constant {extra_attr = 3 : i32} dense<0> : tensor<i32>
   %1 = "xla_hlo.constant"() {extra_attr = 3 : i32, value = dense<0> : tensor<i32>} : () -> (tensor<i32>)
+  return
+}
 
-  // CHECK: xla_hlo.constant {value = dense<0> : tensor<i32>} : tensor<*xi32>
-  %2 = "xla_hlo.constant"() {value = dense<0> : tensor<i32>} : () -> (tensor<*xi32>)
+// -----
 
-  // CHECK: xla_hlo.constant {extra_attr = 3 : i32, value = dense<0> : tensor<i32>} : tensor<*xi32>
-  %3 = "xla_hlo.constant"() {extra_attr = 3 : i32, value = dense<0> : tensor<i32>} : () -> (tensor<*xi32>)
+func @constant_invalid() -> () {
+  // expected-error@+1 {{op failed to verify that all of {value, output} have same type}}
+  %0 = "xla_hlo.constant"() {value = dense<0> : tensor<i32>} : () -> (tensor<*xi32>)
   return
 }
 

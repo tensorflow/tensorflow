@@ -209,10 +209,12 @@ cc_library(
         ":xplane_to_kernel_stats_db",
         ":xplane_to_op_metrics_db",
         ":xplane_to_step_events",
+        ":xplane_to_tf_functions",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:hardware_types_proto_cc",
         "//tensorflow/core/profiler/protobuf:kernel_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_stats_proto_cc",
+        "//tensorflow/core/profiler/protobuf:tf_function_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:event_span",
         "//tensorflow/core/profiler/utils:hardware_type_utils",
@@ -229,6 +231,7 @@ tf_cc_test(
     srcs = ["xplane_to_op_stats_test.cc"],
     deps = [
         ":xplane_to_op_stats",
+        ":xplane_to_tf_functions",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
@@ -369,5 +372,45 @@ cc_library(
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/core/profiler/utils:xplane_visitor",
+    ],
+)
+
+cc_library(
+    name = "xplane_to_tf_functions",
+    srcs = ["xplane_to_tf_functions.cc"],
+    hdrs = ["xplane_to_tf_functions.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/protobuf:tf_function_proto_cc",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:tf_xplane_visitor",
+        "//tensorflow/core/profiler/utils:timespan",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
+        "//tensorflow/core/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "xplane_to_tf_functions_test",
+    size = "small",
+    srcs = ["xplane_to_tf_functions_test.cc"],
+    deps = [
+        ":xplane_to_tf_functions",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/profiler/protobuf:tf_function_proto_cc",
+        "//tensorflow/core/profiler/utils:tf_xplane_visitor",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_schema",
+        "//tensorflow/core/profiler/utils:xplane_utils",
     ],
 )

@@ -192,8 +192,9 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
   // Create single island forwarding per replica result.
   builder.setInsertionPoint(island_op);
   auto island_sink = builder.create<tf_executor::IslandOp>(
-      island_op.getLoc(), llvm::to_vector<8>(island_op.getResultTypes()),
-      island_operands, llvm::ArrayRef<NamedAttribute>{});
+      island_op.getLoc(),
+      llvm::to_vector<8>(island_op.GetYield().fetches().getTypes()),
+      tf_executor::ControlType::get(island_op.getContext()), island_operands);
   island_sink.body().push_back(new Block);
 
   // Move replicate island YieldOp over to new single island.

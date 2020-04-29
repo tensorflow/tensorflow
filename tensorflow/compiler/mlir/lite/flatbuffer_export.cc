@@ -191,7 +191,8 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
 
 static bool IsConst(Operation* op) {
   return isa<mlir::ConstantOp>(op) || isa<mlir::TF::ConstOp>(op) ||
-         isa<tfl::ConstOp>(op) || isa<tfl::QConstOp>(op);
+         isa<tfl::ConstOp>(op) || isa<tfl::QConstOp>(op) ||
+         isa<tfl::SparseConstOp>(op) || isa<tfl::SparseQConstOp>(op);
 }
 
 template <typename T>
@@ -455,6 +456,9 @@ class Translator {
   // Returns a unique name for `val`.
   std::string UniqueName(mlir::Value val);
 
+  BufferOffset<tflite::SparsityParameters> BuildSparsityParameters(
+      const mlir::TFL::SparsityParameterAttr& s_attr);
+
   ModuleOp module_;
 
   tensorflow::OpOrArgNameMapper& name_mapper_;
@@ -501,9 +505,9 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   } else if (auto cst = dyn_cast<tfl::QConstOp>(inst)) {
     attr = cst.value();
   } else if (auto cst = dyn_cast<tfl::SparseConstOp>(inst)) {
-    attr = cst.value();
+    attr = cst.compressed_data();
   } else if (auto cst = dyn_cast<tfl::SparseQConstOp>(inst)) {
-    attr = cst.value();
+    attr = cst.compressed_data();
   } else {
     return empty_buffer_;
   }
@@ -617,11 +621,12 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     shape_signature = std::vector<int32_t>(shape_ref.begin(), shape_ref.end());
   }
 
-  if (inst) {
+  BufferOffset<tflite::SparsityParameters> s_params = 0;
+  if (auto* inst = value.getDefiningOp()) {
     if (auto cst = dyn_cast<tfl::SparseConstOp>(inst)) {
-      // CreateSparsityParameters(cst.s_param());
+      s_params = BuildSparsityParameters(cst.s_param());
     } else if (auto cst = dyn_cast<tfl::SparseQConstOp>(inst)) {
-      // CreateSparsityParameters(cst.s_param());
+      s_params = BuildSparsityParameters(cst.s_param());
     }
   }
 
@@ -666,12 +671,12 @@ Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
     return tflite::CreateTensor(
         builder_, builder_.CreateVector(shape), tflite_element_type,
         (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
-        /*is_variable=*/is_variable);
+        /*is_variable=*/is_variable, s_params);
   } else {
     return tflite::CreateTensor(
         builder_, builder_.CreateVector(shape), tflite_element_type,
         (is_variable ? 0 : buffer_idx), builder_.CreateString(name), q_params,
-        /*is_variable=*/is_variable, /*sparsity=*/0,
+        /*is_variable=*/is_variable, s_params,
         /*shape_signature=*/builder_.CreateVector(shape_signature));
   }
 }
@@ -1381,6 +1386,60 @@ Optional<std::string> Translator::TranslateInternal() {
   // Return serialized string for the built FlatBuffer.
   return std::string(reinterpret_cast<const char*>(builder_.GetBufferPointer()),
                      builder_.GetSize());
+}
+
+BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
+    const mlir::TFL::SparsityParameterAttr& s_attr) {
+  const int dim_size = s_attr.dim_metadata().size();
+  std::vector<flatbuffers::Offset<tflite::DimensionMetadata>> fb_dim_metadata(
+      dim_size);
+  for (int i = 0; i < dim_size; i++) {
+    const auto dim_metadata =
+        s_attr.dim_metadata()[i].dyn_cast<mlir::TFL::DimensionMetadataAttr>();
+    if (dim_metadata.format().getValue() == "DENSE") {
+      fb_dim_metadata[i] =
+          tflite::CreateDimensionMetadata(builder_, tflite::DimensionType_DENSE,
+                                          dim_metadata.dense_size().getInt());
+
+    } else {
+      auto segments = dim_metadata.segments();
+      std::vector<int> vector_segments(segments.size(), 0);
+      for (int j = 0; j < segments.size(); j++) {
+        vector_segments[j] = segments[j].dyn_cast<mlir::IntegerAttr>().getInt();
+      }
+      auto array_segments =
+          tflite::CreateInt32Vector(builder_,
+                                    builder_.CreateVector(vector_segments))
+              .Union();
+      auto indices = dim_metadata.indices();
+      std::vector<int> vector_indices(indices.size(), 0);
+      for (int j = 0; j < indices.size(); j++) {
+        vector_indices[j] = indices[j].dyn_cast<mlir::IntegerAttr>().getInt();
+      }
+      auto array_indices = tflite::CreateInt32Vector(
+                               builder_, builder_.CreateVector(vector_indices))
+                               .Union();
+      fb_dim_metadata[i] = tflite::CreateDimensionMetadata(
+          builder_, tflite::DimensionType_SPARSE_CSR, 0,
+          tflite::SparseIndexVector_Int32Vector, array_segments,
+          tflite::SparseIndexVector_Int32Vector, array_indices);
+    }
+  }
+
+  std::vector<int> traversal_order(dim_size);
+  for (int i = 0; i < dim_size; i++) {
+    traversal_order[i] =
+        s_attr.traversal_order()[i].dyn_cast<mlir::IntegerAttr>().getInt();
+  }
+  const int block_map_size = s_attr.block_map().size();
+  std::vector<int> block_map(block_map_size);
+  for (int i = 0; i < block_map_size; i++) {
+    block_map[i] = s_attr.block_map()[i].dyn_cast<mlir::IntegerAttr>().getInt();
+  }
+
+  return tflite::CreateSparsityParameters(
+      builder_, builder_.CreateVector(traversal_order),
+      builder_.CreateVector(block_map), builder_.CreateVector(fb_dim_metadata));
 }
 
 }  // namespace

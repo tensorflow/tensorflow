@@ -157,6 +157,8 @@ enum StatType {
   kHloModule,
   kEquation,
   kIsEager,
+  kTfFunctionCall,
+  kTfFunctionTracingCount,
   // Performance counter related.
   kRawValue,
   kScaledValue,

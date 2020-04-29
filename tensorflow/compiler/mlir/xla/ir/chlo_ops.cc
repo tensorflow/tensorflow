@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/ir/chlo_ops.h"
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
@@ -223,7 +224,7 @@ LogicalResult BroadcastCompareOp::reifyReturnTypeShapes(
   }
 
 #define BROADCAST_BINARY_OP_DEFS(Op)                                           \
-  void Op::build(Builder* builder, OperationState& result, Value left,         \
+  void Op::build(OpBuilder& builder, OperationState& result, Value left,       \
                  Value right, DenseIntElementsAttr broadcast_dimensions) {     \
     auto type = GetBroadcastType(                                              \
         left.getType().cast<ShapedType>(), right.getType().cast<ShapedType>(), \

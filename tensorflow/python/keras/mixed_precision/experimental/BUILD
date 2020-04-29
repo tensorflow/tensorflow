@@ -180,7 +180,7 @@ py_library(
 
 cuda_py_test(
     name = "loss_scale_optimizer_test",
-    size = "small",
+    size = "medium",
     srcs = ["loss_scale_optimizer_test.py"],
     python_version = "PY3",
     deps = [

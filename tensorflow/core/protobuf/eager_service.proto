@@ -173,6 +173,18 @@ message WaitQueueDoneResponse {
   // propagate some stats.
 }
 
+message RunComponentFunctionRequest {
+  fixed64 context_id = 1;
+
+  Operation operation = 2;
+}
+
+message RunComponentFunctionResponse {
+  repeated TensorShapeProto shape = 1;
+
+  repeated TensorProto tensor = 2;
+}
+
 message KeepAliveRequest {
   fixed64 context_id = 1;
 }
@@ -271,6 +283,22 @@ service EagerService {
   // Takes a set of op IDs and waits until those ops are done. Returns any error
   // in the stream so far.
   rpc WaitQueueDone(WaitQueueDoneRequest) returns (WaitQueueDoneResponse);
+
+  // This takes an Eager operation and executes it in async mode on the remote
+  // server. Different from EnqueueRequest, ops/functions sent through this
+  // type of requests are allowed to execute in parallel and no ordering is
+  // preserved by RPC stream or executor.
+  // This request type should only be used for executing component functions.
+  // Ordering of component functions should be enforced by their corresponding
+  // main functions. The runtime ensures the following invarients for component
+  // functions (CFs) and their main functions (MFs):
+  // (1) MF1 -> MF2 ==> CF1 -> CF2 ("->" indicates order of execution);
+  // (2) MF1 || MF2 ==> CF1 || CF2 ("||" indicates possible parallel execution);
+  // (3) For CF1 and CF2 that come from the same MF, CF1 || CF2
+  // For executing ops/main functions, use Enqueue or StreamingEnqueue instead
+  // for correct ordering.
+  rpc RunComponentFunction(RunComponentFunctionRequest)
+      returns (RunComponentFunctionResponse);
 
   // Contexts are always created with a deadline and no RPCs within a deadline
   // will trigger a context garbage collection. KeepAlive calls can be used to

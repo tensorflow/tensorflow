@@ -657,7 +657,7 @@ LogicalResult Verify(FullyConnectedOp op) {
 // GatherOp
 //===----------------------------------------------------------------------===//
 
-static void BuildGatherOp(Builder *builder, OperationState &result,
+static void BuildGatherOp(OpBuilder *builder, OperationState &result,
                           Value params, Value indices, IntegerAttr axis) {
   auto params_type = params.getType().cast<TensorType>();
   auto indices_type = indices.getType().cast<TensorType>();
@@ -665,7 +665,7 @@ static void BuildGatherOp(Builder *builder, OperationState &result,
   // If params/indices is unranked, then output is unranked.
   if (!params_type.hasRank() || !indices_type.hasRank())
     return TFL::GatherOp::build(
-        builder, result, UnrankedTensorType::get(params_type.getElementType()),
+        *builder, result, UnrankedTensorType::get(params_type.getElementType()),
         params, indices, axis);
 
   int64_t params_rank = params_type.getRank();
@@ -710,7 +710,7 @@ static void BuildGatherOp(Builder *builder, OperationState &result,
   }
 
   TFL::GatherOp::build(
-      builder, result,
+      *builder, result,
       RankedTensorType::get(shape, params_type.getElementType()), params,
       indices, axis);
 }
@@ -1191,7 +1191,7 @@ OpFoldResult SubOp::fold(ArrayRef<Attribute> operands) {
 // TopKOp
 //===----------------------------------------------------------------------===//
 
-static void BuildTopKOp(Builder *builder, OperationState &result, Value input,
+static void BuildTopKOp(OpBuilder *builder, OperationState &result, Value input,
                         Value k) {
   // Output size is only known if k is constant value. A negative dimension is
   // considered dynamic so use -1 here if k is not a constant value.
@@ -1206,14 +1206,14 @@ static void BuildTopKOp(Builder *builder, OperationState &result, Value input,
   // If value is unranked, then so is results.
   if (!val_type.hasRank())
     return TFL::TopKV2Op::build(
-        builder, result, UnrankedTensorType::get(val_type.getElementType()),
+        *builder, result, UnrankedTensorType::get(val_type.getElementType()),
         UnrankedTensorType::get(builder->getIntegerType(32)), input, k);
 
   // Resultant shape is value.shape[:-1] + [k]
   std::vector<int64_t> shape(val_type.getShape());
   shape[shape.size() - 1] = const_k;
   TFL::TopKV2Op::build(
-      builder, result, RankedTensorType::get(shape, val_type.getElementType()),
+      *builder, result, RankedTensorType::get(shape, val_type.getElementType()),
       RankedTensorType::get(shape, builder->getIntegerType(32)), input, k);
 }
 
