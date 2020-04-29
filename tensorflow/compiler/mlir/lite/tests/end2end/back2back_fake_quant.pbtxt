@@ -1167,7 +1167,7 @@ versions {
 }
 
 # CHECK: {{.*: warning:}} loc(fused["sequential/quant_dense/oquant/FakeQuantWithMinMaxVars"{{.*\): }}quantizer's output has another quantizer
-# CHECK-NEXT: {{.*: warning:}} loc(fused["sequential/quant_dense_2/oquant/FakeQuantWithMinMaxVars"{{.*\): }}quantizer's output has another quantizer
+# CHECK: {{.*: warning:}} loc(fused["sequential/quant_dense_2/oquant/FakeQuantWithMinMaxVars"{{.*\): }}quantizer's output has another quantizer
 
 # RESULT1: name: "Identity"
 # RESULT1-NEXT: quantization:
