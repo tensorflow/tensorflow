@@ -1,6 +1,7 @@
-# SYSTEM memory regions indicate where external memory might be located.
-#   The TCF has no specific knowledge of whether SYSTEM regions contain 
-#   external memory or not.
+# Difference with common EMSDP LCF file (to reduce data access time): 
+# - move data from external PSRAM to DCCM
+# - move text from SRAM to ICCM
+#
 # CCMWRAP memory regions indicate unusable portions of the address space
 #   due to CCM memory wrapping into upper addresses beyond its size
 

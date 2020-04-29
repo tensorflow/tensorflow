@@ -1,5 +1,10 @@
 ifeq ($(TARGET), arc_emsdp)
 
+# Patch of arc make project to adjust it specifically 
+# for experimental person detection example. In particular:
+# - Use Linker command file with better usage of fast memory
+# - Stripout TFLM reference code by default.
+
   person_detection_HDRS += \
   person_detection_int8_patch.txt
   
