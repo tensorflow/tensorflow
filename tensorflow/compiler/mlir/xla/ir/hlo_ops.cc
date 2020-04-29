@@ -1439,8 +1439,18 @@ static Attribute FoldSlice(SliceOp* op, I values) {
 }
 
 OpFoldResult SliceOp::fold(ArrayRef<Attribute> operands) {
+  // Check if the SliceOp is a NoOp operation.
+  auto operand_shape = getOperand().getType().cast<ShapedType>().getShape();
+  auto result_type = getResult().getType().cast<ShapedType>();
+  auto result_shape = result_type.getShape();
+
+  if (result_type.hasStaticShape() && (operand_shape == result_shape)) {
+    return getOperand();
+  }
+
   if (operands.empty() || !operands.front()) return {};
 
+  // Evaluate for statically valued inputs.
   DenseElementsAttr elements = operands.front().dyn_cast<DenseElementsAttr>();
   if (!elements) return {};
 

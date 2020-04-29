@@ -31,6 +31,15 @@ func @dynamic_slice_constant_start_dynamic_shape(%arg0: tensor<?x4xi32>, %arg1: 
   return %2 : tensor<?x4xi32>
 }
 
+// CHECK-LABEL: slice_2D_noop
+// CHECK-SAME: [[ARG:%.+]]: tensor<2x2xi64>
+func @slice_2D_noop(%arg0: tensor<2x2xi64>) -> tensor<2x2xi64> {
+  %0 = "xla_hlo.slice"(%arg0) { limit_indices = dense<[2, 2]> : tensor<2xi64>, start_indices = dense<[0, 0]> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<2x2xi64>) -> (tensor<2x2xi64>)
+
+  // CHECK-NEXT: return [[ARG]]
+  return %0 : tensor<2x2xi64>
+}
+
 // CHECK-LABEL: slice_1D_fold
 func @slice_1D_fold() -> tensor<2xi64> {
   %0 = xla_hlo.constant dense<[5, 7, 9, 10]> : tensor<4xi64>
