@@ -1526,7 +1526,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     >>> result = dataset.map(lambda x: x + 1)
 
     >>> # Each element is a tuple containing two `tf.Tensor` objects.
-    >>> elements = [(1, "foo"), (2, "bar"), (3, "baz)")]
+    >>> elements = [(1, "foo"), (2, "bar"), (3, "baz")]
     >>> dataset = tf.data.Dataset.from_generator(
     ...     lambda: elements, (tf.int32, tf.string))
     >>> # `map_func` takes two arguments of type `tf.Tensor`. This function
