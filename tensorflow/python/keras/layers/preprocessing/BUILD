@@ -4,6 +4,7 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
+load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
 
 package(
     default_visibility = [
@@ -421,17 +422,20 @@ tf_py_test(
     ],
 )
 
-tpu_py_test(
-    name = "text_vectorization_tpu_test",
-    srcs = ["text_vectorization_tpu_test.py"],
-    disable_experimental = True,
+distribute_py_test(
+    name = "text_vectorization_distribution_test",
+    srcs = ["text_vectorization_distribution_test.py"],
+    main = "text_vectorization_distribution_test.py",
     python_version = "PY3",
-    tags = ["no_oss"],
+    tags = [
+        "multi_and_single_gpu",
+    ],
     deps = [
         ":text_vectorization",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras",
-        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
     ],
 )
 
