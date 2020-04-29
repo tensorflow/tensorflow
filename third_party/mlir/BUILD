@@ -127,7 +127,6 @@ cc_library(
     hdrs = [
         "include/mlir-c/Core.h",
         "include/mlir/EDSC/Builders.h",
-        "include/mlir/EDSC/Intrinsics.h",
     ],
     includes = ["include"],
     deps = [
