@@ -15,11 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/experimental/data_service_ops.h"
 
-#include "grpcpp/create_channel.h"
-#include "grpcpp/security/credentials.h"
-#include "tensorflow/core/data/service/credentials_factory.h"
-#include "tensorflow/core/data/service/grpc_util.h"
-#include "tensorflow/core/data/service/master.grpc.pb.h"
+#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/platform/errors.h"
@@ -69,26 +65,14 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(
       ctx, AsGraphDef(ctx, dataset, std::move(serialization_ctx), &graph_def));
 
-  VLOG(3) << "Registering dataset with master at " << address
-          << ". Protocol=" << protocol;
-  std::shared_ptr<::grpc::ChannelCredentials> credentials;
-  OP_REQUIRES_OK(
-      ctx, CredentialsFactory::CreateClientCredentials(protocol, &credentials));
-  auto channel = ::grpc::CreateChannel(address, credentials);
-  auto master_stub = MasterService::NewStub(channel);
-  GetOrRegisterDatasetRequest req;
-  *req.mutable_dataset()->mutable_graph() = graph_def;
-  GetOrRegisterDatasetResponse resp;
-  grpc::ClientContext client_ctx;
-  auto status = master_stub->GetOrRegisterDataset(&client_ctx, req, &resp);
-  if (!status.ok()) {
-    ctx->CtxFailure(grpc_util::WrapError("Failed to register dataset", status));
-    return;
-  }
+  DataServiceMasterClient client(address, protocol);
+  int64 dataset_id;
+  OP_REQUIRES_OK(ctx, client.RegisterDataset(graph_def, &dataset_id));
+
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape{}, &output));
   auto output_dataset_id = output->tensor<int64, 0>();
-  output_dataset_id() = resp.dataset_id();
+  output_dataset_id() = dataset_id;
 }
 
 CreateJobOp::CreateJobOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
@@ -114,24 +98,11 @@ void CreateJobOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx,
                  ParseProcessingMode(processing_mode_str, &processing_mode));
 
-  std::shared_ptr<::grpc::ChannelCredentials> credentials;
-  OP_REQUIRES_OK(
-      ctx, CredentialsFactory::CreateClientCredentials(protocol, &credentials));
-  auto channel = ::grpc::CreateChannel(address, credentials);
-  auto master_stub = MasterService::NewStub(channel);
-  CreateJobRequest req;
-  req.set_dataset_id(dataset_id);
-  req.set_processing_mode(ProcessingModeDef(processing_mode));
-  CreateJobResponse resp;
-  grpc::ClientContext client_ctx;
-  auto status = master_stub->CreateJob(&client_ctx, req, &resp);
-  if (!status.ok()) {
-    ctx->CtxFailure(grpc_util::WrapError(
-        absl::StrCat("Failed to begin epoch for dataset id ", dataset_id),
-        status));
-    return;
-  }
-  JobToken token(resp.job_id());
+  DataServiceMasterClient client(address, protocol);
+  int64 job_id;
+  OP_REQUIRES_OK(ctx, client.CreateJob(dataset_id, processing_mode, &job_id));
+
+  JobToken token(job_id);
   Tensor* output;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape{}, &output));
   auto output_token = output->tensor<Variant, 0>();
