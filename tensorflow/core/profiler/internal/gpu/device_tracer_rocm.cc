@@ -616,19 +616,30 @@ class GpuTracer : public profiler::ProfilerInterface {
 
 RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
   RocmTracerOptions options;
+  std::vector<uint32_t> empty_vec;
 
+  // clang formatting does not preserve one entry per line
+  // clang-format off
   std::vector<uint32_t> hip_api_domain_ops{
-      HIP_API_ID_hipExtModuleLaunchKernel, HIP_API_ID_hipFree,
-      HIP_API_ID_hipHccModuleLaunchKernel, HIP_API_ID_hipMalloc,
-      HIP_API_ID_hipMemcpyAsync,           HIP_API_ID_hipMemcpyDtoD,
-      HIP_API_ID_hipMemcpyDtoDAsync,       HIP_API_ID_hipMemcpyDtoH,
-      HIP_API_ID_hipMemcpyDtoHAsync,       HIP_API_ID_hipMemcpyHtoD,
-      HIP_API_ID_hipMemcpyHtoDAsync,       HIP_API_ID_hipModuleLaunchKernel,
+      HIP_API_ID_hipExtModuleLaunchKernel,
+      HIP_API_ID_hipFree,
+      HIP_API_ID_hipHccModuleLaunchKernel,
+      HIP_API_ID_hipMalloc,
+      HIP_API_ID_hipMemcpyAsync,
+      HIP_API_ID_hipMemcpyDtoD,
+      HIP_API_ID_hipMemcpyDtoDAsync,
+      HIP_API_ID_hipMemcpyDtoH,
+      HIP_API_ID_hipMemcpyDtoHAsync,
+      HIP_API_ID_hipMemcpyHtoD,
+      HIP_API_ID_hipMemcpyHtoDAsync,
+      HIP_API_ID_hipModuleLaunchKernel,
       HIP_API_ID_hipStreamSynchronize,
   };
-  options.api_callbacks.emplace(ACTIVITY_DOMAIN_HIP_API, hip_api_domain_ops);
+  // clang-format on
 
-  std::vector<uint32_t> empty_vec;
+  options.api_callbacks.emplace(ACTIVITY_DOMAIN_HIP_API, hip_api_domain_ops);
+  // options.api_callbacks.emplace(ACTIVITY_DOMAIN_HIP_API, empty_vec);
+
   // options.activity_tracing.emplace(ACTIVITY_DOMAIN_HIP_API,
   // hip_api_domain_ops);
   options.activity_tracing.emplace(ACTIVITY_DOMAIN_HIP_API, empty_vec);
