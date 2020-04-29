@@ -167,7 +167,8 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
           // the activity records, then they will show up during the subsequent
           // call to enable, and we will end up here!
           OnEventsDropped(
-              "Activity event encountered before a corresponding API event", 1);
+              "Activity event encountered before a corresponding API event",
+              event.correlation_id);
           break;
       }
     }
@@ -617,16 +618,12 @@ RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
   RocmTracerOptions options;
 
   std::vector<uint32_t> hip_api_domain_ops{
-      HIP_API_ID_hipExtModuleLaunchKernel,
-      HIP_API_ID_hipFree,
-      HIP_API_ID_hipMalloc,
-      HIP_API_ID_hipMemcpyDtoD,
-      HIP_API_ID_hipMemcpyDtoDAsync,
-      HIP_API_ID_hipMemcpyDtoH,
-      HIP_API_ID_hipMemcpyDtoHAsync,
-      HIP_API_ID_hipMemcpyHtoD,
-      HIP_API_ID_hipMemcpyHtoDAsync,
-      HIP_API_ID_hipModuleLaunchKernel,
+      HIP_API_ID_hipExtModuleLaunchKernel, HIP_API_ID_hipFree,
+      HIP_API_ID_hipHccModuleLaunchKernel, HIP_API_ID_hipMalloc,
+      HIP_API_ID_hipMemcpyAsync,           HIP_API_ID_hipMemcpyDtoD,
+      HIP_API_ID_hipMemcpyDtoDAsync,       HIP_API_ID_hipMemcpyDtoH,
+      HIP_API_ID_hipMemcpyDtoHAsync,       HIP_API_ID_hipMemcpyHtoD,
+      HIP_API_ID_hipMemcpyHtoDAsync,       HIP_API_ID_hipModuleLaunchKernel,
       HIP_API_ID_hipStreamSynchronize,
   };
   options.api_callbacks.emplace(ACTIVITY_DOMAIN_HIP_API, hip_api_domain_ops);

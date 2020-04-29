@@ -128,6 +128,7 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
     switch (cbid) {
       case HIP_API_ID_hipModuleLaunchKernel:
       case HIP_API_ID_hipExtModuleLaunchKernel:
+      case HIP_API_ID_hipHccModuleLaunchKernel:
         break;
       case HIP_API_ID_hipMemcpyDtoH:
         oss << ", sizeBytes=" << data->args.hipMemcpyDtoH.sizeBytes;
@@ -146,6 +147,9 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
         break;
       case HIP_API_ID_hipMemcpyDtoDAsync:
         oss << ", sizeBytes=" << data->args.hipMemcpyDtoDAsync.sizeBytes;
+        break;
+      case HIP_API_ID_hipMemcpyAsync:
+        oss << ", sizeBytes=" << data->args.hipMemcpyAsync.sizeBytes;
         break;
       case HIP_API_ID_hipMalloc:
         oss << ", size=" << data->args.hipMalloc.size;
@@ -313,6 +317,7 @@ class RocmApiCallbackImpl {
       switch (cbid) {
         case HIP_API_ID_hipModuleLaunchKernel:
         case HIP_API_ID_hipExtModuleLaunchKernel:
+        case HIP_API_ID_hipHccModuleLaunchKernel:
           AddKernelEventUponApiExit(cbid, data);
 #if ROCTRACER_FLUSH_BUG_WORKAROUND
           // Add the correlation_ids for these events to the pending set
@@ -327,6 +332,7 @@ class RocmApiCallbackImpl {
         case HIP_API_ID_hipMemcpyHtoDAsync:
         case HIP_API_ID_hipMemcpyDtoD:
         case HIP_API_ID_hipMemcpyDtoDAsync:
+        case HIP_API_ID_hipMemcpyAsync:
           AddMemcpyEventUponApiExit(cbid, data);
           break;
         case HIP_API_ID_hipMalloc:
@@ -352,41 +358,66 @@ class RocmApiCallbackImpl {
     event.source = RocmTracerEventSource::ApiCallback;
     event.thread_id = GetCachedTID();
     event.correlation_id = data->correlation_id;
-    if (cbid == HIP_API_ID_hipModuleLaunchKernel) {
-      const hipFunction_t kernelFunc = data->args.hipModuleLaunchKernel.f;
-      if (kernelFunc != nullptr) event.name = hipKernelNameRef(kernelFunc);
+    switch (cbid) {
+      case HIP_API_ID_hipModuleLaunchKernel: {
+        const hipFunction_t kernelFunc = data->args.hipModuleLaunchKernel.f;
+        if (kernelFunc != nullptr) event.name = hipKernelNameRef(kernelFunc);
 
-      event.kernel_info.dynamic_shared_memory_usage =
-          data->args.hipModuleLaunchKernel.sharedMemBytes;
-      event.kernel_info.block_x = data->args.hipModuleLaunchKernel.blockDimX;
-      event.kernel_info.block_y = data->args.hipModuleLaunchKernel.blockDimY;
-      event.kernel_info.block_z = data->args.hipModuleLaunchKernel.blockDimZ;
-      event.kernel_info.grid_x = data->args.hipModuleLaunchKernel.gridDimX;
-      event.kernel_info.grid_y = data->args.hipModuleLaunchKernel.gridDimY;
-      event.kernel_info.grid_z = data->args.hipModuleLaunchKernel.gridDimZ;
-    } else {
-      // cbid == HIP_API_ID_hipExtModuleLaunchKernel
-      const hipFunction_t kernelFunc = data->args.hipExtModuleLaunchKernel.f;
-      if (kernelFunc != nullptr) event.name = hipKernelNameRef(kernelFunc);
+        event.kernel_info.dynamic_shared_memory_usage =
+            data->args.hipModuleLaunchKernel.sharedMemBytes;
+        event.kernel_info.block_x = data->args.hipModuleLaunchKernel.blockDimX;
+        event.kernel_info.block_y = data->args.hipModuleLaunchKernel.blockDimY;
+        event.kernel_info.block_z = data->args.hipModuleLaunchKernel.blockDimZ;
+        event.kernel_info.grid_x = data->args.hipModuleLaunchKernel.gridDimX;
+        event.kernel_info.grid_y = data->args.hipModuleLaunchKernel.gridDimY;
+        event.kernel_info.grid_z = data->args.hipModuleLaunchKernel.gridDimZ;
+      } break;
+      case HIP_API_ID_hipExtModuleLaunchKernel: {
+        const hipFunction_t kernelFunc = data->args.hipExtModuleLaunchKernel.f;
+        if (kernelFunc != nullptr) event.name = hipKernelNameRef(kernelFunc);
 
-      event.kernel_info.dynamic_shared_memory_usage =
-          data->args.hipExtModuleLaunchKernel.sharedMemBytes;
-      unsigned int blockDimX =
-          data->args.hipExtModuleLaunchKernel.localWorkSizeX;
-      unsigned int blockDimY =
-          data->args.hipExtModuleLaunchKernel.localWorkSizeY;
-      unsigned int blockDimZ =
-          data->args.hipExtModuleLaunchKernel.localWorkSizeZ;
+        event.kernel_info.dynamic_shared_memory_usage =
+            data->args.hipExtModuleLaunchKernel.sharedMemBytes;
+        unsigned int blockDimX =
+            data->args.hipExtModuleLaunchKernel.localWorkSizeX;
+        unsigned int blockDimY =
+            data->args.hipExtModuleLaunchKernel.localWorkSizeY;
+        unsigned int blockDimZ =
+            data->args.hipExtModuleLaunchKernel.localWorkSizeZ;
 
-      event.kernel_info.block_x = blockDimX;
-      event.kernel_info.block_y = blockDimY;
-      event.kernel_info.block_z = blockDimZ;
-      event.kernel_info.grid_x =
-          data->args.hipExtModuleLaunchKernel.globalWorkSizeX / blockDimX;
-      event.kernel_info.grid_y =
-          data->args.hipExtModuleLaunchKernel.globalWorkSizeY / blockDimY;
-      event.kernel_info.grid_z =
-          data->args.hipExtModuleLaunchKernel.globalWorkSizeZ / blockDimZ;
+        event.kernel_info.block_x = blockDimX;
+        event.kernel_info.block_y = blockDimY;
+        event.kernel_info.block_z = blockDimZ;
+        event.kernel_info.grid_x =
+            data->args.hipExtModuleLaunchKernel.globalWorkSizeX / blockDimX;
+        event.kernel_info.grid_y =
+            data->args.hipExtModuleLaunchKernel.globalWorkSizeY / blockDimY;
+        event.kernel_info.grid_z =
+            data->args.hipExtModuleLaunchKernel.globalWorkSizeZ / blockDimZ;
+      } break;
+      case HIP_API_ID_hipHccModuleLaunchKernel: {
+        const hipFunction_t kernelFunc = data->args.hipHccModuleLaunchKernel.f;
+        if (kernelFunc != nullptr) event.name = hipKernelNameRef(kernelFunc);
+
+        event.kernel_info.dynamic_shared_memory_usage =
+            data->args.hipHccModuleLaunchKernel.sharedMemBytes;
+        unsigned int blockDimX =
+            data->args.hipHccModuleLaunchKernel.localWorkSizeX;
+        unsigned int blockDimY =
+            data->args.hipHccModuleLaunchKernel.localWorkSizeY;
+        unsigned int blockDimZ =
+            data->args.hipHccModuleLaunchKernel.localWorkSizeZ;
+
+        event.kernel_info.block_x = blockDimX;
+        event.kernel_info.block_y = blockDimY;
+        event.kernel_info.block_z = blockDimZ;
+        event.kernel_info.grid_x =
+            data->args.hipHccModuleLaunchKernel.globalWorkSizeX / blockDimX;
+        event.kernel_info.grid_y =
+            data->args.hipHccModuleLaunchKernel.globalWorkSizeY / blockDimY;
+        event.kernel_info.grid_z =
+            data->args.hipHccModuleLaunchKernel.globalWorkSizeZ / blockDimZ;
+      } break;
     }
     collector_->AddEvent(std::move(event));
   }
@@ -430,6 +461,11 @@ class RocmApiCallbackImpl {
       case HIP_API_ID_hipMemcpyDtoDAsync:
         event.type = RocmTracerEventType::MemcpyD2D;
         event.memcpy_info.num_bytes = data->args.hipMemcpyDtoDAsync.sizeBytes;
+        event.memcpy_info.async = true;
+        break;
+      case HIP_API_ID_hipMemcpyAsync:
+        event.type = RocmTracerEventType::MemcpyOther;
+        event.memcpy_info.num_bytes = data->args.hipMemcpyAsync.sizeBytes;
         event.memcpy_info.async = true;
         break;
       default:
@@ -510,6 +546,7 @@ class RocmActivityCallbackImpl {
           switch (record->op) {
             case HIP_API_ID_hipModuleLaunchKernel:
             case HIP_API_ID_hipExtModuleLaunchKernel:
+            case HIP_API_ID_hipHccModuleLaunchKernel:
               DumpActivityRecord(record);
               AddHipKernelActivityEvent(record);
               break;
@@ -520,6 +557,7 @@ class RocmActivityCallbackImpl {
             case HIP_API_ID_hipMemcpyDtoHAsync:
             case HIP_API_ID_hipMemcpyHtoDAsync:
             case HIP_API_ID_hipMemcpyDtoDAsync:
+            case HIP_API_ID_hipMemcpyAsync:
               DumpActivityRecord(record);
               AddHipMemcpyActivityEvent(record);
               break;
@@ -623,6 +661,12 @@ class RocmActivityCallbackImpl {
         break;
       case HIP_API_ID_hipMemcpyDtoDAsync:
         event.type = RocmTracerEventType::MemcpyD2D;
+        event.memcpy_info.async = true;
+        // ROCM TODO: figure out a way to properly populate this field.
+        event.memcpy_info.destination = record->device_id;
+        break;
+      case HIP_API_ID_hipMemcpyAsync:
+        event.type = RocmTracerEventType::MemcpyOther;
         event.memcpy_info.async = true;
         // ROCM TODO: figure out a way to properly populate this field.
         event.memcpy_info.destination = record->device_id;
