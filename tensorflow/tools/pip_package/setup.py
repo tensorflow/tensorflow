@@ -86,7 +86,7 @@ REQUIRED_PACKAGES = [
 ]
 
 GPU_DESCRIPTION = ''
-if build_info.is_cuda_build:
+if build_info.build_info['is_cuda_build']:
   gpu_header = (f'\nTensorFlow {_VERSION} for NVIDIA GPUs was built with these '
                 'platform and library versions:\n\n  - ')
   cbi = build_info.cuda_build_info

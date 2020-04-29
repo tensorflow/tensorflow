@@ -656,23 +656,26 @@ def disable_mlir_graph_optimization():
   context.context().enable_mlir_graph_optimization = False
 
 
-@tf_export('config.get_cuda_version_used_to_compile_tf')
-def get_cuda_version_used_to_compile_tf():
-  """Get the version of NVIDIA CUDA used to compile this TensorFlow release.
+@tf_export('config.get_build_info()')
+def get_build_info():
+  """Get a dictionary describing TensorFlow's build environment.
+
+  Values are generated when TensorFlow is compiled, and are static for each
+  TensorFlow package. This information is limited to a subset of the following
+  keys based on the platforms targeted by the package:
+
+    - cuda_version
+    - cudnn_version
+    - tensorrt_version
+    - nccl_version
+    - is_cuda_build
+    - is_rocm_build
+    - msvcp_dll_names
+    - nvcuda_dll_name
+    - cudart_dll_name
+    - cudnn_dll_name
 
   Returns:
-    String representation of CUDA version number (Major.Minor) if CUDA support
-    is included, otherwise None.
+    A Dictionary describing TensorFlow's build environment.
   """
   return build_info.cuda_build_info.get('cuda_version', None)
-
-
-@tf_export('config.get_cudnn_version_used_to_compile_tf')
-def get_cudnn_version_used_to_compile_tf():
-  """Get the version of NVIDIA cuDNN used to compile this TensorFlow release.
-
-  Returns:
-    String representation of cuDNN version number (Major only) if cuDNN support
-    is included, otherwise None.
-  """
-  return build_info.cuda_build_info.get('cudnn_version', None)
