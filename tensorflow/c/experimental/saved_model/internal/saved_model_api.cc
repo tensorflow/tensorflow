@@ -36,7 +36,8 @@ TF_SavedModel* TF_LoadSavedModel(const char* dirname, TFE_Context* ctx,
   std::string saved_model_dir(dirname);
 
   std::unique_ptr<tensorflow::SavedModelAPI> result =
-      ctx->context->LoadSavedModelAPI(dirname, absl::nullopt, &status->status);
+      tensorflow::unwrap(ctx)->LoadSavedModelAPI(dirname, absl::nullopt,
+                                                 &status->status);
   if (!status->status.ok()) {
     return nullptr;
   }
@@ -54,8 +55,8 @@ TF_SavedModel* TF_LoadSavedModelWithTags(const char* dirname, TFE_Context* ctx,
   }
 
   std::unique_ptr<tensorflow::SavedModelAPI> result =
-      ctx->context->LoadSavedModelAPI(dirname, std::move(tagset),
-                                      &status->status);
+      tensorflow::unwrap(ctx)->LoadSavedModelAPI(dirname, std::move(tagset),
+                                                 &status->status);
   if (!status->status.ok()) {
     return nullptr;
   }

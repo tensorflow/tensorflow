@@ -23,14 +23,15 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/c/eager/tfe_context_internal.h"
-#include "tensorflow/c/eager/tfe_op_internal.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 
 // An equivalent of a tensorflow::NameAttrList protocol buffer, but used in ways
 // that sometimes do not require serialization.
+typedef struct TFE_Context TFE_Context;
+typedef struct TFE_Op TFE_Op;
+
 struct TFE_OpAttrs {
   explicit TFE_OpAttrs() : attributes(nullptr) {}
 
