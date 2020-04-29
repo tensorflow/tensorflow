@@ -1749,10 +1749,12 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
         op.getLoc(),
         rewriter.getFloatAttr(getElementTypeOrSelf(operand.getType()), 0.5));
 
-    auto shaped_type = operand.getType().cast<ShapedType>();
+    auto type = operand.getType().dyn_cast<RankedTensorType>();
+    if (!type)
+      return rewriter.notifyMatchFailure(op, "requires ranked tensor type");
     auto constant_ones = rewriter.create<BroadcastOp>(
-        op.getLoc(), shaped_type, scalar_one,
-        GetI64ElementsAttr(shaped_type.getShape(), &rewriter));
+        op.getLoc(), type, scalar_one,
+        GetI64ElementsAttr(type.getShape(), &rewriter));
 
     auto scaled_input = rewriter.create<MulOp>(
         op.getLoc(), operand, constant_ones, DenseIntElementsAttr());
