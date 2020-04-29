@@ -37,7 +37,9 @@ void MakeRuyMatrix(const MatrixParams<Scalar>& params, DataPointer data_ptr,
   // It does care whether we assign to it a Scalar* or a const Scalar*.
   dst->set_data(data_ptr);
   dst->set_zero_point(params.zero_point);
+#ifdef TFLITE_WITH_RUY_GEMV
   dst->set_cacheable(params.cacheable);
+#endif
 }
 
 template <typename GemmParamsType, typename RuySpecType>
