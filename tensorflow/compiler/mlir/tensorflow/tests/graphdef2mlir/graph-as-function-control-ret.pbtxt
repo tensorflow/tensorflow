@@ -186,7 +186,7 @@ versions {
 # mapped correctly.
 
 # CHECK-LABEL: func @main
-# CHECK-SAME:  (%{{.*}}: tensor<*xf32>, %[[ARG_1:.*]]: tensor<*x!tf.resource>, %[[ARG_2:.*]]: tensor<*x!tf.resource>)
+# CHECK-SAME:  (%{{.*}}: tensor<*xf32>, %[[ARG_1:.*]]: tensor<*x!tf.resource<tensor<f32>>>, %[[ARG_2:.*]]: tensor<*x!tf.resource<tensor<f32>>>)
 # CHECK-SAME:  control_outputs = "var1_add,var2_add"
 # CHECK-SAME:  inputs = "arg0,arg1,arg2"
 # CHECK-SAME:  outputs = "ret"
@@ -194,11 +194,9 @@ versions {
 # CHECK-DAG:     %[[VAR_ADD_2:.*]] = tf_executor.island wraps "tf.AssignAddVariableOp"(%[[ARG_2]], %{{.*}})
 # CHECK:         tf_executor.fetch %{{.*}}, %[[VAR_ADD_1]], %[[VAR_ADD_2]]
 
-
 # Test duplicate control ret node names.
 
 # UNIQUE: Control outputs must be unique
-
 
 # Test missing control ret node name.
 

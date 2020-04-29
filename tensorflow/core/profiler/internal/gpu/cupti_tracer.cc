@@ -121,7 +121,7 @@ const char *getActivityUnifiedMemoryKindString(
       if (status == CUPTI_ERROR_INSUFFICIENT_PRIVILEGES) {                  \
         return errors::PermissionDenied("CUPTI need root access!");         \
       } else {                                                              \
-        return errors::Internal(absl::StrCat("CUPTI call error", errstr));  \
+        return errors::Internal("CUPTI call error", errstr);                \
       }                                                                     \
     }                                                                       \
   } while (false)
@@ -1390,6 +1390,7 @@ void CuptiTracer::Enable(const CuptiTracerOptions &option,
 
   Status status = EnableApiTracing();
   need_root_access_ |= status.code() == error::PERMISSION_DENIED;
+  if (!status.ok()) return;
 
   if (option_->enable_activity_api) {
     EnableActivityTracing().IgnoreError();
@@ -1412,11 +1413,14 @@ void CuptiTracer::Disable() {
 
 Status CuptiTracer::EnableApiTracing() {
   if (api_tracing_enabled_) return Status::OK();
-  api_tracing_enabled_ = true;
 
   VLOG(1) << "Enable subscriber";
+  // Subscribe can return CUPTI_ERROR_MAX_LIMIT_REACHED.
+  // The application which calls CUPTI APIs cannot be used with Nvidia tools
+  // like nvprof, Nvidia Visual Profiler, Nsight Compute, Nsight Systems.
   RETURN_IF_CUPTI_ERROR(cupti_interface_->Subscribe(
       &subscriber_, (CUpti_CallbackFunc)ApiCallback, this));
+  api_tracing_enabled_ = true;
 
   if (!option_->cbids_selected.empty()) {
     for (auto cbid : option_->cbids_selected) {
@@ -1530,7 +1534,7 @@ Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
   RETURN_IF_CUPTI_ERROR(
       cupti_interface_->GetDeviceId(cbdata->context, &device_id));
   if (device_id >= num_gpus_) {
-    return errors::Internal(absl::StrCat("Invalid device id:", device_id));
+    return errors::Internal("Invalid device id:", device_id);
   }
 
   if (cbdata->callbackSite == CUPTI_API_ENTER) {

@@ -275,6 +275,9 @@ cc_library(
     name = "server_lib",
     srcs = ["server_lib.cc"],
     hdrs = ["server_lib.h"],
+    visibility = [
+        "//visibility:public",
+    ],
     deps = [
         ":credentials_factory",
         ":grpc_master_impl",

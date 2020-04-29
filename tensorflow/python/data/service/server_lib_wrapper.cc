@@ -44,9 +44,9 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
       },
       py::return_value_policy::reference);
   m.def(
-      "TF_DATA_MasterServerTarget",
-      [](tensorflow::data::MasterGrpcDataServer* server) -> std::string {
-        return server->Target();
+      "TF_DATA_MasterServerBoundPort",
+      [](tensorflow::data::MasterGrpcDataServer* server) -> int {
+        return server->BoundPort();
       },
       py::return_value_policy::copy);
   m.def("TF_DATA_DeleteMasterServer",
@@ -63,20 +63,21 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
 
   m.def(
       "TF_DATA_NewWorkerServer",
-      [](int port, std::string protocol, std::string master_address)
+      [](int port, std::string protocol, std::string master_address,
+         std::string worker_address)
           -> std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> {
         std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> server;
         tensorflow::Status status = tensorflow::data::NewWorkerServer(
-            port, protocol, master_address, &server);
+            port, protocol, master_address, worker_address, &server);
         tensorflow::MaybeRaiseFromStatus(status);
         server->Start();
         return server;
       },
       py::return_value_policy::reference);
   m.def(
-      "TF_DATA_WorkerServerTarget",
-      [](tensorflow::data::WorkerGrpcDataServer* server) -> std::string {
-        return server->Target();
+      "TF_DATA_WorkerServerBoundPort",
+      [](tensorflow::data::WorkerGrpcDataServer* server) -> int {
+        return server->BoundPort();
       },
       py::return_value_policy::copy);
   m.def("TF_DATA_DeleteWorkerServer",

@@ -2576,6 +2576,15 @@ func CheckNumerics(scope *Scope, tensor tf.Output, message string) (output tf.Ou
 // In the above example, the input Tensor with the shape of `[1, 3]`
 // is broadcasted to output Tensor with shape of `[3, 3]`.
 //
+// When doing broadcasted operations such as multiplying a tensor
+// by a scalar, broadcasting (usually) confers some time or space
+// benefit, as the broadcasted tensor is never materialized.
+//
+// However, `broadcast_to` does not carry with it any such benefits.
+// The newly-created tensor takes the full memory of the broadcasted
+// shape. (In a graph context, `broadcast_to` might be fused to
+// subsequent operation and then be optimized away, however.)
+//
 // Arguments:
 //	input: A Tensor to broadcast.
 //	shape: An 1-D `int` Tensor. The shape of the desired output.
@@ -6915,9 +6924,7 @@ func GetSessionHandle(scope *Scope, value tf.Output) (handle tf.Output) {
 	return op.Output(0)
 }
 
-// Copy a tensor setting everything outside a central band in each innermost matrix
-//
-// to zero.
+// Copy a tensor setting everything outside a central band in each innermost matrix to zero.
 //
 // The `band` part is computed as follows:
 // Assume `input` has `k` dimensions `[I, J, K, ..., M, N]`, then the output is a
@@ -40144,9 +40151,9 @@ func ResourceApplyMomentumUseNesterov(value bool) ResourceApplyMomentumAttr {
 	}
 }
 
-// Update '*var' according to the momentum scheme. Set use_nesterov = True if you
+// Update '*var' according to the momentum scheme.
 //
-// want to use Nesterov momentum.
+// Set use_nesterov = True if you want to use Nesterov momentum.
 //
 // accum = accum * momentum + grad
 // var -= lr * accum
@@ -47099,7 +47106,7 @@ func ResourceApplyAdagradV2UpdateSlots(value bool) ResourceApplyAdagradV2Attr {
 // Update '*var' according to the adagrad scheme.
 //
 // accum += grad * grad
-// var -= lr * grad * (1 / sqrt(accum))
+// var -= lr * grad * (1 / (sqrt(accum) + epsilon))
 //
 // Arguments:
 //	var_: Should be from a Variable().

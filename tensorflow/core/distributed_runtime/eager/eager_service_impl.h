@@ -96,6 +96,10 @@ class EagerServiceImpl {
   Status WaitQueueDone(const WaitQueueDoneRequest* request,
                        WaitQueueDoneResponse* response);
 
+  void RunComponentFunction(const RunComponentFunctionRequest* request,
+                            RunComponentFunctionResponse* response,
+                            StatusCallback done);
+
   Status KeepAlive(const KeepAliveRequest* request,
                    KeepAliveResponse* response);
 
@@ -216,12 +220,6 @@ class EagerServiceImpl {
   mutex contexts_mu_;
   std::unordered_map<uint64, ServerContext*> contexts_
       TF_GUARDED_BY(contexts_mu_);
-
-  // Mutex to guard access to EagerContext in `contexts_`. Different from
-  // `contexts_mu_` which guards adding / removing item from the map, this mutex
-  // is supposed to be used to avoid concurrent reading/updating the state of an
-  // EagerContext inside the map.
-  mutex context_update_mu_;
 
   std::unique_ptr<Thread> gc_thread_;
   mutex gc_thread_shutdown_mu_;

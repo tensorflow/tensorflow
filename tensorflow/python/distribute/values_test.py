@@ -1855,6 +1855,146 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
 @combinations.generate(
     combinations.combine(
         distribution=[
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+        ],
+        aggregation=[
+            variables_lib.VariableAggregation.MEAN,
+            variables_lib.VariableAggregation.SUM,
+            variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
+        ],
+        mode=["graph", "eager"]))
+class SyncOnReadScatterReplicaTest(test.TestCase, parameterized.TestCase):
+
+  def testScatterSub(self, distribution, aggregation):
+    with distribution.scope():
+      v = variables_lib.Variable(
+          [1., 1., 1.],
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=aggregation)
+    self.evaluate(v.initializer)
+
+    delta = values.PerReplica([
+        indexed_slices.IndexedSlices(
+            values=[[0.], [1.]], indices=[0, 1], dense_shape=(3,)),
+        indexed_slices.IndexedSlices(
+            values=[[1.], [2.]], indices=[1, 2], dense_shape=(3,)),
+    ])
+
+    with self.assertRaises(NotImplementedError):
+      self.evaluate(distribution.run(v.scatter_sub, args=(delta,)))
+
+  def testScatterAdd(self, distribution, aggregation):
+    with distribution.scope():
+      v = variables_lib.Variable(
+          [1., 1., 1.],
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=aggregation)
+    self.evaluate(v.initializer)
+
+    delta = values.PerReplica([
+        indexed_slices.IndexedSlices(
+            values=[[0.], [1.]], indices=[0, 1], dense_shape=(3,)),
+        indexed_slices.IndexedSlices(
+            values=[[1.], [2.]], indices=[1, 2], dense_shape=(3,)),
+    ])
+
+    with self.assertRaises(NotImplementedError):
+      self.evaluate(distribution.run(v.scatter_add, args=(delta,)))
+
+  def testScatterDiv(self, distribution, aggregation):
+    with distribution.scope():
+      v = variables_lib.Variable(
+          [2., 6., 1.],
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=aggregation)
+    self.evaluate(v.initializer)
+
+    delta = values.PerReplica([
+        indexed_slices.IndexedSlices(
+            values=[[2.], [2.]], indices=[0, 1], dense_shape=(3,)),
+        indexed_slices.IndexedSlices(
+            values=[[3.], [3.]], indices=[1, 2], dense_shape=(3,)),
+    ])
+
+    with self.assertRaises(NotImplementedError):
+      self.evaluate(distribution.run(v.scatter_div, args=(delta,)))
+
+  def testScatterMul(self, distribution, aggregation):
+    with distribution.scope():
+      v = variables_lib.Variable(
+          [2., 1., 1.],
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=aggregation)
+    self.evaluate(v.initializer)
+
+    delta = values.PerReplica([
+        indexed_slices.IndexedSlices(
+            values=[[2.], [3.]], indices=[0, 1], dense_shape=(3,)),
+        indexed_slices.IndexedSlices(
+            values=[[4.], [5.]], indices=[1, 2], dense_shape=(3,)),
+    ])
+
+    with self.assertRaises(NotImplementedError):
+      self.evaluate(distribution.run(v.scatter_mul, args=(delta,)))
+
+  def testScatterMin(self, distribution, aggregation):
+    with distribution.scope():
+      v = variables_lib.Variable(
+          [3., 4., 5.],
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=aggregation)
+    self.evaluate(v.initializer)
+
+    delta = values.PerReplica([
+        indexed_slices.IndexedSlices(
+            values=[[1.], [8.]], indices=[0, 1], dense_shape=(3,)),
+        indexed_slices.IndexedSlices(
+            values=[[9.], [2.]], indices=[1, 2], dense_shape=(3,)),
+    ])
+
+    with self.assertRaises(NotImplementedError):
+      self.evaluate(distribution.run(v.scatter_min, args=(delta,)))
+
+  def testScatterMax(self, distribution, aggregation):
+    with distribution.scope():
+      v = variables_lib.Variable(
+          [3., 4., 5.],
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=aggregation)
+    self.evaluate(v.initializer)
+
+    delta = values.PerReplica([
+        indexed_slices.IndexedSlices(
+            values=[[1.], [8.]], indices=[0, 1], dense_shape=(3,)),
+        indexed_slices.IndexedSlices(
+            values=[[9.], [2.]], indices=[1, 2], dense_shape=(3,)),
+    ])
+
+    with self.assertRaises(NotImplementedError):
+      self.evaluate(distribution.run(v.scatter_max, args=(delta,)))
+
+  def testScatterUpdate(self, distribution, aggregation):
+    with distribution.scope():
+      v = variables_lib.Variable(
+          [0., 0., 0.],
+          synchronization=variables_lib.VariableSynchronization.ON_READ,
+          aggregation=aggregation)
+    self.evaluate(v.initializer)
+
+    delta = values.PerReplica([
+        indexed_slices.IndexedSlices(
+            values=[[1.], [2.]], indices=[0, 1], dense_shape=(3,)),
+        indexed_slices.IndexedSlices(
+            values=[[3.], [4.]], indices=[1, 2], dense_shape=(3,)),
+    ])
+
+    with self.assertRaises(NotImplementedError):
+      self.evaluate(distribution.run(v.scatter_min, args=(delta,)))
+
+
+@combinations.generate(
+    combinations.combine(
+        distribution=[
             strategy_combinations.central_storage_strategy_with_two_gpus
         ],
         mode=["graph", "eager"]))
@@ -2007,6 +2147,13 @@ class PerReplicaTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegex(TypeError, "Could not build a TypeSpec for"):
       control_flow_ops.cond(
           condition, lambda: per_replica_1, lambda: per_replica_2)
+
+
+def _make_index_slices(values, indices, dense_shape=None):
+  if dense_shape:
+    dense_shape = array_ops.identity(dense_shape)
+  return indexed_slices.IndexedSlices(
+      array_ops.identity(values), array_ops.identity(indices), dense_shape)
 
 
 if __name__ == "__main__":

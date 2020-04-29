@@ -70,7 +70,7 @@ def TfDevice_LaunchOp : TfDevice_Op<"launch",
   }];
 
   let builders = [
-    OpBuilder<[{Builder *builder, OperationState &result,
+    OpBuilder<[{OpBuilder &builder, OperationState &result,
                 StringAttr device, ArrayRef<Type> result_types}],
       [{
         result.addAttribute("device", device);
@@ -94,7 +94,7 @@ def TfDevice_ReturnOp : TfDevice_Op<"return", [Terminator]> {
   );
 
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result",
+    "OpBuilder &builder, OperationState &result",
     [{
       build(builder, result, {});
     }]>
@@ -167,7 +167,7 @@ def TfDevice_ParallelExecuteOp : TfDevice_Op<"parallel_execute",
   }];
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& state, int num_regions,"
+    OpBuilder<"OpBuilder& builder, OperationState& state, int num_regions,"
               "llvm::ArrayRef<Type> output_types">,
   ];
 
@@ -266,11 +266,11 @@ For example:
   }];
 
   let builders = [
-    OpBuilder<"Builder* builder, OperationState& state, int n, "
+    OpBuilder<"OpBuilder& builder, OperationState& state, int n, "
               "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>& devices, "
               "llvm::ArrayRef<std::pair<llvm::ArrayRef<Value>, Type>> replicated_inputs, "
               "llvm::ArrayRef<Type> replica_output_types">,
-    OpBuilder<"Builder* builder, OperationState& state, int n, "
+    OpBuilder<"OpBuilder& builder, OperationState& state, int n, "
               "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>& devices, "
               "llvm::ArrayRef<std::pair<Operation::operand_range, Type>> replicated_inputs, "
               "Operation::result_type_range replica_output_types">

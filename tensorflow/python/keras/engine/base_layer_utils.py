@@ -254,8 +254,10 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
       op_layer = base_layer.TensorFlowOpLayer(
           node_def, constants=constants, name=name)
       created_layers.append(op_layer)
-      op_layer._add_inbound_node(  # pylint: disable=protected-access
-          layer_inputs, op.outputs)
+      op_layer._set_connectivity_metadata(  # pylint: disable=protected-access
+          args=(layer_inputs,),
+          kwargs={},
+          outputs=op.outputs)
       processed_ops.update([op])
   return processed_ops, created_layers
 

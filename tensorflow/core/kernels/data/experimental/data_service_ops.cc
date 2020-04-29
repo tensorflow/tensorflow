@@ -69,7 +69,8 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(
       ctx, AsGraphDef(ctx, dataset, std::move(serialization_ctx), &graph_def));
 
-  // ::grpc::ChannelArguments args;
+  VLOG(3) << "Registering dataset with master at " << address
+          << ". Protocol=" << protocol;
   std::shared_ptr<::grpc::ChannelCredentials> credentials;
   OP_REQUIRES_OK(
       ctx, CredentialsFactory::CreateClientCredentials(protocol, &credentials));

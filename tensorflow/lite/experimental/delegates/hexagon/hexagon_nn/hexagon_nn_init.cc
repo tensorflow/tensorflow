@@ -26,8 +26,8 @@ limitations under the License.
 #ifdef __cplusplus
 extern "C" {
 #endif
-// Version 1.14
-static const int kHexagonNNVersion = 136193;
+// Version 1.17
+static const int kHexagonNNVersion = 136960;
 #pragma weak remote_handle_control  // Declare it as a weak symbol
 void hexagon_nn_global_init() {
   rpcmem_init();

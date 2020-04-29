@@ -156,9 +156,9 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "shared_device_buffer",
-    srcs = ["shared_device_buffer.cc"],
-    hdrs = ["shared_device_buffer.h"],
+    name = "tracked_device_buffer",
+    srcs = ["tracked_device_buffer.cc"],
+    hdrs = ["tracked_device_buffer.h"],
     deps = [
         ":event_pool",
         ":local_device_state",
@@ -176,10 +176,10 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "shared_device_buffer_test",
-    srcs = ["shared_device_buffer_test.cc"],
+    name = "tracked_device_buffer_test",
+    srcs = ["tracked_device_buffer_test.cc"],
     deps = [
-        ":shared_device_buffer",
+        ":tracked_device_buffer",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -219,7 +219,8 @@ cc_library(
     deps = [
         ":event_pool",
         ":local_device_state",
-        ":shared_device_buffer",
+        ":tracked_device_buffer",
+        "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -243,6 +244,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:stream",
+        "//tensorflow/stream_executor/host:host_platform_id",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -321,7 +323,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":local_client",
-        ":shared_device_buffer",
+        ":tracked_device_buffer",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/stream_executor:device_memory",
@@ -391,7 +393,7 @@ pybind_extension(
         ":dlpack",
         ":local_client",
         ":nvidia_gpu_device",
-        ":shared_device_buffer",
+        ":tracked_device_buffer",
         ":python_ref_manager",
         ":types",
         "@com_google_absl//absl/base",

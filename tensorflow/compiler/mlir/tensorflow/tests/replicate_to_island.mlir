@@ -132,3 +132,32 @@ func @unused_replica_control(%arg0: tensor<i1>, %arg1: tensor<i1>) {
 // CHECK:      %[[ISLAND_2:.*]], %[[ISLAND_2_control:.*]] = tf_executor.island(%[[ISLAND_1_control]])
 // CHECK:        tf_executor.yield %[[ISLAND_0]]#0
 // CHECK:      tf_executor.fetch %[[ISLAND_2]]
+
+
+// Tests replicate with dynamic result shapes uses its inner ops to determine
+// types for sink island.
+// CHECK-LABEL: func @replicate_body_result_types
+func @replicate_body_result_types() {
+  "tf_executor.graph"() ( {
+    %0:3 = "tf_executor.island"() ( {
+      %1:2 = "tf_device.replicate"() ( {
+      ^bb0:
+        %a = "tf.opA"() : () -> tensor<i1>
+        "tf_device.return"(%a) : (tensor<i1>) -> ()
+      }) {n = 2 : i32} : () -> (tensor<*xi1>, tensor<*xi1>)
+      "tf_executor.yield"(%1#0, %1#1) : (tensor<*xi1>, tensor<*xi1>) -> ()
+    }) : () -> (tensor<*xi1>, tensor<*xi1>, !tf_executor.control)
+    "tf_executor.fetch"(%0#2) : (!tf_executor.control) -> ()
+  }) : () -> ()
+  return
+}
+
+// CHECK:      %[[ISLAND_0:.*]], %{{.*}} = tf_executor.island
+// CHECK-NEXT:   %[[OP_A_0:.*]] = "tf.opA"()
+// CHECK-NEXT:   tf_executor.yield %[[OP_A_0]] : tensor<i1>
+// CHECK:      %[[ISLAND_1:.*]], %{{.*}} = tf_executor.island
+// CHECK-NEXT:   %[[OP_A_1:.*]] = "tf.opA"()
+// CHECK-NEXT:   tf_executor.yield %[[OP_A_1]] : tensor<i1>
+// CHECK:      %[[ISLAND_2:.*]]:2, %[[ISLAND_2_CTRL:.*]] = tf_executor.island
+// CHECK-NEXT:   tf_executor.yield %[[ISLAND_0]], %[[ISLAND_1]] : tensor<i1>, tensor<i1>
+// CHECK:      tf_executor.fetch %[[ISLAND_2_CTRL]] : !tf_executor.control

@@ -21,10 +21,10 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(PyLocalBuffer* buffer);
+StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(PjRtBuffer* buffer);
 
-StatusOr<std::unique_ptr<PyLocalBuffer>> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, PyLocalClient* client);
+StatusOr<std::unique_ptr<PjRtBuffer>> DLPackManagedTensorToBuffer(
+    const pybind11::capsule& tensor, PjRtClient* client);
 
 }  // namespace xla
 

@@ -42,6 +42,7 @@ from tensorflow.python.data.util import random_seed
 from tensorflow.python.data.util import structure
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import auto_control_deps_utils as acd_utils
@@ -3267,6 +3268,12 @@ class StructuredFunctionWrapper(object):
         _warn_if_collections(transformation_name)
 
     else:
+      if def_function.functions_run_eagerly():
+        warnings.warn(
+            "Even though the tf.config.experimental_run_functions_eagerly "
+            "option is set, this option does not apply to tf.data functions. "
+            "tf.data functions are still traced and executed as graphs.")
+
       defun_kwargs.update({"func_name": func_name})
       defun_kwargs.update({"_tf_data_function": True})
 

@@ -76,6 +76,15 @@ bool IsAnyMin(const NodeDef& node) {
   return op == "Min" || op == "SegmentMin" || op == "UnsortedSegmentMin";
 }
 
+bool IsAnySparseSegmentReduction(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "SparseSegmentSum" || op == "SparseSegmentSumWithNumSegments" ||
+         op == "SparseSegmentMean" ||
+         op == "SparseSegmentMeanWithNumSegments" ||
+         op == "SparseSegmentSqrtN" ||
+         op == "SparseSegmentSqrtNWithNumSegments";
+}
+
 bool IsApproximateEqual(const NodeDef& node) {
   return node.op() == "ApproximateEqual";
 }
@@ -266,6 +275,11 @@ bool IsFusedBatchNormGrad(const NodeDef& node) {
   const auto& op = node.op();
   return op == "FusedBatchNormGrad" || op == "FusedBatchNormGradV2" ||
          op == "FusedBatchNormGradV3";
+}
+
+bool IsGather(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Gather" || op == "GatherV2";
 }
 
 bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }
@@ -588,6 +602,11 @@ bool IsTranspose(const NodeDef& node) { return node.op() == "Transpose"; }
 bool IsTruncateDiv(const NodeDef& node) { return node.op() == "TruncateDiv"; }
 
 bool IsTruncateMod(const NodeDef& node) { return node.op() == "TruncateMod"; }
+
+bool IsUnique(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Unique" || op == "UniqueV2";
+}
 
 bool IsUnpack(const NodeDef& node) { return node.op() == "Unpack"; }
 

@@ -191,15 +191,17 @@ upper_tabs:
       - title: "Text classification"
         path: /lite/models/text_classification/overview
 
-    - name: "Python API"
+    - name: "API"
       skip_translation: true
       contents:
-      - title: "Python API"
+      - title: API Reference
+        path: /lite/api_docs/
+      - heading: "Python"
+      - title: "Overview"
+        status: external
         path: /api_docs/python/tf/lite
-    - name: "C++ API"
-      skip_translation: true
-      contents:
-      - title: "C++ API"
+      - heading: "C++"
+      - title: Overview
         path: /lite/api_docs/cc/
       - include: /lite/api_docs/cc/_doxygen.yaml
 

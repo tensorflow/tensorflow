@@ -138,9 +138,9 @@ def DenseNet(
     classifier_activation='softmax'):
   """Instantiates the DenseNet architecture.
 
-  Reference paper:
-  - [Densely Connected Convolutional Networks]
-    (https://arxiv.org/abs/1608.06993) (CVPR 2017 Best Paper Award)
+  Reference:
+  - [Densely Connected Convolutional Networks](
+      https://arxiv.org/abs/1608.06993) (CVPR 2017)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is

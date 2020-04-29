@@ -31,10 +31,10 @@ namespace {
 
 static const char kGpuPlatformName[] = "gpu";
 
-// A custom PyLocalClient that overrides the device assignment method.
-class GpuClient : public xla::PyLocalClient {
+// A custom PjRtClient that overrides the device assignment method.
+class GpuClient : public xla::PjRtClient {
  public:
-  using xla::PyLocalClient::PyLocalClient;
+  using xla::PjRtClient::PjRtClient;
 
   xla::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -52,8 +52,7 @@ xla::StatusOr<xla::DeviceAssignment> GpuClient::GetDefaultDeviceAssignment(
     return assignment;
   }
   // Fallback to default global device assignment if we can't run locally.
-  return PyLocalClient::GetDefaultDeviceAssignment(num_replicas,
-                                                   num_partitions);
+  return PjRtClient::GetDefaultDeviceAssignment(num_replicas, num_partitions);
 }
 
 // Builds an xla::LocalClient for the GPU platform.
@@ -290,7 +289,7 @@ GpuDevice::GpuDevice(int id,
     : Device(id, std::move(local_device_state), kGpuPlatformName,
              std::move(device_kind), node_id) {}
 
-StatusOr<std::shared_ptr<PyLocalClient>> GetNvidiaGpuClient(
+StatusOr<std::shared_ptr<PjRtClient>> GetNvidiaGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id) {
   TF_ASSIGN_OR_RETURN(LocalClient * xla_client, GetGpuXlaClient());
@@ -313,7 +312,7 @@ StatusOr<std::shared_ptr<PyLocalClient>> GetNvidiaGpuClient(
     devices = BuildLocalDevices(std::move(local_device_states));
   }
 
-  std::shared_ptr<PyLocalClient> pyclient = std::make_shared<GpuClient>(
+  std::shared_ptr<PjRtClient> pyclient = std::make_shared<GpuClient>(
       "gpu", xla_client, std::move(devices),
       /*node_id=*/node_id, std::move(allocator),
       std::move(host_memory_allocator),

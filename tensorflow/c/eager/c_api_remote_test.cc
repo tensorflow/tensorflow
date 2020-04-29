@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
+#include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/platform/casts.h"
@@ -233,7 +234,8 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote, bool func) {
     ASSERT_TRUE(GetDeviceName(ctx, &cpu_device_name, "CPU"));
     TFE_OpSetDevice(matmul, cpu_device_name.c_str(), status);
     EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-    auto remote_arg = tensorflow::TensorHandleFromInterface(h1_task2->handle);
+    auto remote_arg =
+        tensorflow::TensorHandleFromInterface(tensorflow::unwrap(h1_task2));
     // The input handles should never change since they have been mirrored.
     ASSERT_FALSE(remote_arg->HasLocalMirror(nullptr));
   }
@@ -245,7 +247,8 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote, bool func) {
 
   // TODO(gjn): Add support for waiting on async local mirrors
   if (!remote && !async) {
-    auto remote_arg = tensorflow::TensorHandleFromInterface(h1_task2->handle);
+    auto remote_arg =
+        tensorflow::TensorHandleFromInterface(tensorflow::unwrap(h1_task2));
     // The input handles should never change since they have been mirrored.
     ASSERT_TRUE(remote_arg->HasLocalMirror(nullptr));
   }

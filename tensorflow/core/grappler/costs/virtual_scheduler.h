@@ -32,11 +32,11 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-inline constexpr char kAttrInputSrc[] = "input_source_";
-inline constexpr char kAttrSrcDevice[] = "send_device";
-inline constexpr char kAttrDstDevice[] = "recv_device";
-inline constexpr char kAttrTensorName[] = "tensor_name";
-inline constexpr char kChannelDevice[] = "Channel";
+ABSL_CONST_INIT extern const char kAttrInputSrc[];
+ABSL_CONST_INIT extern const char kAttrSrcDevice[];
+ABSL_CONST_INIT extern const char kAttrDstDevice[];
+ABSL_CONST_INIT extern const char kAttrTensorName[];
+ABSL_CONST_INIT extern const char kChannelDevice[];
 
 struct NodeState {
   // A node (i.e., an op) takes a set of input:port pairs and produces

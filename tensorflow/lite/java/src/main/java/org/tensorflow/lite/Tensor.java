@@ -31,6 +31,7 @@ import java.util.Arrays;
  * not needed to be closed by the client. However, once the {@code NativeInterpreterWrapper} has
  * been closed, the tensor handle will be invalidated.
  */
+// TODO(b/153882978): Add scalar getters similar to TF's Java API.
 public final class Tensor {
 
   /**
@@ -187,8 +188,10 @@ public final class Tensor {
     throwIfDataIsIncompatible(src);
     if (isBuffer(src)) {
       setTo((Buffer) src);
-    } else {
+    } else if (src.getClass().isArray()) {
       writeMultiDimensionalArray(nativeHandle, src);
+    } else {
+      writeScalar(nativeHandle, src);
     }
   }
 
@@ -300,19 +303,39 @@ public final class Tensor {
   static DataType dataTypeOf(Object o) {
     if (o != null) {
       Class<?> c = o.getClass();
-      while (c.isArray()) {
-        c = c.getComponentType();
-      }
-      if (float.class.equals(c) || o instanceof FloatBuffer) {
-        return DataType.FLOAT32;
-      } else if (int.class.equals(c) || o instanceof IntBuffer) {
-        return DataType.INT32;
-      } else if (byte.class.equals(c)) {
-        return DataType.UINT8;
-      } else if (long.class.equals(c) || o instanceof LongBuffer) {
-        return DataType.INT64;
-      } else if (String.class.equals(c)) {
-        return DataType.STRING;
+      // For arrays, the data elements must be a *primitive* type, e.g., an
+      // array of floats is fine, but not an array of Floats.
+      if (c.isArray()) {
+        while (c.isArray()) {
+          c = c.getComponentType();
+        }
+        if (float.class.equals(c)) {
+          return DataType.FLOAT32;
+        } else if (int.class.equals(c)) {
+          return DataType.INT32;
+        } else if (byte.class.equals(c)) {
+          return DataType.UINT8;
+        } else if (long.class.equals(c)) {
+          return DataType.INT64;
+        } else if (String.class.equals(c)) {
+          return DataType.STRING;
+        }
+      } else {
+        // For scalars, the type will be boxed.
+        if (Float.class.equals(c) || o instanceof FloatBuffer) {
+          return DataType.FLOAT32;
+        } else if (Integer.class.equals(c) || o instanceof IntBuffer) {
+          return DataType.INT32;
+        } else if (Byte.class.equals(c)) {
+          // Note that we don't check for ByteBuffer here; ByteBuffer payloads
+          // are allowed to map to any type, and should be handled earlier
+          // in the input/output processing pipeline.
+          return DataType.UINT8;
+        } else if (Long.class.equals(c) || o instanceof LongBuffer) {
+          return DataType.INT64;
+        } else if (String.class.equals(c)) {
+          return DataType.STRING;
+        }
       }
     }
     throw new IllegalArgumentException(
@@ -465,6 +488,8 @@ public final class Tensor {
   private static native void readMultiDimensionalArray(long handle, Object dst);
 
   private static native void writeMultiDimensionalArray(long handle, Object src);
+
+  private static native void writeScalar(long handle, Object src);
 
   private static native int index(long handle);
 

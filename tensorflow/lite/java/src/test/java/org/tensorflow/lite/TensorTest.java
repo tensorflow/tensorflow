@@ -242,6 +242,22 @@ public final class TensorTest {
     tensor.setTo(inputFloatBuffer);
     tensor.copyTo(output);
     assertThat(output[0][0][0][0]).isEqualTo(5.0f);
+
+    // Assign from scalar float.
+    wrapper.resizeInput(0, new int[0]);
+    wrapper.allocateTensors();
+    float scalar = 5.0f;
+    tensor.setTo(scalar);
+    FloatBuffer outputScalar = FloatBuffer.allocate(1);
+    tensor.copyTo(outputScalar);
+    assertThat(outputScalar.get(0)).isEqualTo(5.0f);
+
+    // Assign from boxed scalar Float.
+    Float boxedScalar = 9.0f;
+    tensor.setTo(boxedScalar);
+    outputScalar = FloatBuffer.allocate(1);
+    tensor.copyTo(outputScalar);
+    assertThat(outputScalar.get(0)).isEqualTo(9.0f);
   }
 
   @Test
@@ -374,6 +390,9 @@ public final class TensorTest {
     float[][][][] differentShapeInput = new float[1][8][8][3];
     assertThat(tensor.getInputShapeIfDifferent(differentShapeInput))
         .isEqualTo(new int[] {1, 8, 8, 3});
+
+    Float differentShapeInputScalar = 5.0f;
+    assertThat(tensor.getInputShapeIfDifferent(differentShapeInputScalar)).isEqualTo(new int[] {});
   }
 
   @Test
@@ -389,6 +408,9 @@ public final class TensorTest {
     assertThat(dataType).isEqualTo(DataType.FLOAT32);
     FloatBuffer testFloatBuffer = FloatBuffer.allocate(1);
     dataType = Tensor.dataTypeOf(testFloatBuffer);
+    assertThat(dataType).isEqualTo(DataType.FLOAT32);
+    float testFloat = 1.0f;
+    dataType = Tensor.dataTypeOf(testFloat);
     assertThat(dataType).isEqualTo(DataType.FLOAT32);
     try {
       double[] testDoubleArray = {0.783, 0.251};
@@ -443,6 +465,20 @@ public final class TensorTest {
     assertThat(shape[0]).isEqualTo(2);
     assertThat(shape[1]).isEqualTo(3);
     assertThat(shape[2]).isEqualTo(1);
+  }
+
+  @Test
+  public void testCopyToScalarUnsupported() {
+    wrapper.resizeInput(0, new int[0]);
+    wrapper.allocateTensors();
+    tensor.setTo(5.0f);
+    Float outputScalar = 7.0f;
+    try {
+      tensor.copyTo(outputScalar);
+      fail();
+    } catch (IllegalArgumentException e) {
+      // Expected failure.
+    }
   }
 
   @Test
