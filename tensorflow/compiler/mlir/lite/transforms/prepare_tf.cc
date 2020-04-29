@@ -179,8 +179,9 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
                                      PatternRewriter &rewriter) const override {
     // We don't want to insert quantize/dequantize if the quantize op exists.
     auto res = tf_op.outputs();
-    if (!res.hasOneUse() || isa<QuantizeOp>(*res.user_begin()))
+    if (!res.hasOneUse() || isa<QuantizeOp>(*res.user_begin())) {
       return failure();
+    }
 
     // Extract the min/max constant values from the operands. We also consider
     // a special case that there are tf.Identity ops between the min/max
@@ -188,7 +189,7 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
 
     FetchAttrType min_value, max_value;
     if (!fetchMinMax(tf_op, min_value, max_value)) {
-      return this->failure();
+      return failure();
     }
 
     int quant_dim = -1;
@@ -206,8 +207,10 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
     TypeAttr qtype = quant::GetQuantizedTypeAttr(
         rewriter, res_type, min_value, max_value, quant_dim, num_bits,
         narrow_range, /*is_signed=*/false);
-    if (!qtype) failure();
-
+    if (!qtype) {
+      return failure();
+    }
+    
     // Finally, use the quantization parameter to create the quantize and
     // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
     // and its users.
