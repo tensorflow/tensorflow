@@ -266,17 +266,19 @@ tf_py_test(
     ],
 )
 
-tpu_py_test(
-    name = "categorical_encoding_tpu_test",
-    srcs = ["categorical_encoding_tpu_test.py"],
-    disable_experimental = True,
+distribute_py_test(
+    name = "categorical_encoding_distribution_test",
+    srcs = ["categorical_encoding_distribution_test.py"],
+    main = "categorical_encoding_distribution_test.py",
     python_version = "PY3",
-    tags = ["no_oss"],
+    tags = [
+        "multi_and_single_gpu",
+    ],
     deps = [
         ":categorical_encoding",
-        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
-        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
     ],
 )
 
@@ -293,17 +295,17 @@ tf_py_test(
     ],
 )
 
-tpu_py_test(
-    name = "discretization_tpu_test",
-    srcs = ["discretization_tpu_test.py"],
-    disable_experimental = True,
+distribute_py_test(
+    name = "discretization_distribution_test",
+    srcs = ["discretization_distribution_test.py"],
+    main = "discretization_distribution_test.py",
     python_version = "PY3",
-    tags = ["no_oss"],
+    tags = ["multi_and_single_gpu"],
     deps = [
         ":discretization",
-        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
-        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
     ],
 )
 
@@ -322,16 +324,16 @@ cuda_py_test(
 )
 
 tpu_py_test(
-    name = "hashing_tpu_test",
-    srcs = ["hashing_tpu_test.py"],
-    disable_experimental = True,
+    name = "hashing_distribution_test",
+    srcs = ["hashing_distribution_test.py"],
+    main = "hashing_distribution_test.py",
     python_version = "PY3",
-    tags = ["no_oss"],
+    tags = ["multi_and_single_gpu"],
     deps = [
         ":hashing",
-        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
-        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
     ],
 )
 
@@ -352,16 +354,16 @@ tf_py_test(
 )
 
 tpu_py_test(
-    name = "index_lookup_tpu_test",
-    srcs = ["index_lookup_tpu_test.py"],
-    disable_experimental = True,
+    name = "index_lookup_distribution_test",
+    srcs = ["index_lookup_distribution_test.py"],
+    main = "index_lookup_distribution_test.py",
     python_version = "PY3",
     tags = ["no_oss"],
     deps = [
         ":index_lookup",
-        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/keras",
-        "//tensorflow/python/keras/distribute:tpu_strategy_test_utils",
     ],
 )
 

@@ -21,21 +21,24 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import keras_parameterized
-from tensorflow.python.keras.distribute import tpu_strategy_test_utils
 from tensorflow.python.keras.layers.preprocessing import categorical_encoding
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.platform import test
 
 
-@keras_parameterized.run_all_keras_modes(
-    always_skip_v1=True, always_skip_eager=True)
+@combinations.generate(
+    combinations.combine(
+        distribution=strategy_combinations.all_strategies,
+        mode=["eager", "graph"]))
 class CategoricalEncodingDistributionTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
 
-  def test_tpu_distribution(self):
+  def test_distribution(self, distribution):
     input_array = np.array([[1, 2, 3, 1], [0, 3, 1, 0]])
 
     # pyformat: disable
@@ -44,9 +47,7 @@ class CategoricalEncodingDistributionTest(
     # pyformat: enable
     max_tokens = 6
 
-    strategy = tpu_strategy_test_utils.get_tpu_strategy()
-
-    with strategy.scope():
+    with distribution.scope():
       input_data = keras.Input(shape=(4,), dtype=dtypes.int32)
       layer = categorical_encoding.CategoricalEncoding(
           max_tokens=max_tokens, output_mode=categorical_encoding.BINARY)
