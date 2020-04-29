@@ -3594,7 +3594,7 @@ func BoostedTreesSparseCalculateBestFeatureSplit(scope *Scope, node_id_range tf.
 //	l1: l1 regularization factor on leaf weights, per instance based.
 //	l2: l2 regularization factor on leaf weights, per instance based.
 //	tree_complexity: adjustment to the gain, per leaf based.
-//	min_node_weight: mininum avg of hessians in a node before required for the node to be considered for splitting.
+//	min_node_weight: minimum avg of hessians in a node before required for the node to be considered for splitting.
 //	logits_dimension: The dimension of logit, i.e., number of classes.
 //
 // Returns:
@@ -5648,7 +5648,7 @@ func CudnnRNNV3TimeMajor(value bool) CudnnRNNV3Attr {
 //     shape is [batch_size, seq_length, dir * num_units].
 // output_h: The same shape has input_h.
 // output_c: The same shape as input_c for LSTM. An empty tensor for other models.
-// is_training: Indicates whether this operation is used for inferenece or
+// is_training: Indicates whether this operation is used for inference or
 //   training.
 // time_major: Indicates whether the input/output format is time major or batch
 //     major.
@@ -5799,7 +5799,7 @@ func CudnnRNNV2IsTraining(value bool) CudnnRNNV2Attr {
 //     dir * num_units].
 // output_h: The same shape has input_h.
 // output_c: The same shape as input_c for LSTM. An empty tensor for other models.
-// is_training: Indicates whether this operation is used for inferenece or
+// is_training: Indicates whether this operation is used for inference or
 //   training.
 // reserve_space: An opaque tensor that can be used in backprop calculation. It
 //   is only produced if is_training is true.
@@ -15863,7 +15863,7 @@ func RetrieveTPUEmbeddingAdagradParameters(scope *Scope, num_shards int64, shard
 // N is the size of the segment being reduced.
 //
 // Like `SparseSegmentSqrtN`, but allows missing ids in `segment_ids`. If an id is
-// misisng, the `output` tensor at that position will be zeroed.
+// missing, the `output` tensor at that position will be zeroed.
 //
 // Read
 // [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
@@ -17731,7 +17731,7 @@ func SparseSegmentMean(scope *Scope, data tf.Output, indices tf.Output, segment_
 // Computes the sum along sparse segments of a tensor.
 //
 // Like `SparseSegmentSum`, but allows missing ids in `segment_ids`. If an id is
-// misisng, the `output` tensor at that position will be zeroed.
+// missing, the `output` tensor at that position will be zeroed.
 //
 // Read
 // [the section on segmentation](https://tensorflow.org/api_docs/python/tf/sparse#Segmentation)
@@ -19892,7 +19892,7 @@ func TensorListPopBack(scope *Scope, input_handle tf.Output, element_shape tf.Ou
 // Adjust the saturation of one or more images.
 //
 // `images` is a tensor of at least 3 dimensions.  The last dimension is
-// interpretted as channels, and must be three.
+// interpreted as channels, and must be three.
 //
 // The input image is considered in the RGB colorspace. Conceptually, the RGB
 // colors are first mapped into HSV. A scale is then applied all the saturation
@@ -23150,7 +23150,7 @@ func QuantizedMatMulWithBiasAndReluAndRequantizeInputQuantMode(value string) Qua
 // dimension of `a` (after being transposed if `transpose_a` is non-zero) must
 // match the outer dimension of `b` (after being transposed if `transposed_b` is
 // non-zero). Then do broadcast add operation with bias values on the matrix
-// mulplication result. The bias size must match inner dimension of `b`.  Then do
+// multiplication result. The bias size must match inner dimension of `b`.  Then do
 // relu activation to get non-negative result. Then do requantize operation to get
 // final uint8 result.
 //
@@ -23237,7 +23237,7 @@ func QuantizedMatMulWithBiasAndReluInputQuantMode(value string) QuantizedMatMulW
 // dimension of `a` (after being transposed if `transpose_a` is non-zero) must
 // match the outer dimension of `b` (after being transposed if `transposed_b` is
 // non-zero). Then do broadcast add operation with bias values on the matrix
-// mulplication result. The bias size must match inner dimension of `b`. Then do
+// multiplication result. The bias size must match inner dimension of `b`. Then do
 // relu activation to get non-negative result.
 //
 // Arguments:
@@ -23321,7 +23321,7 @@ func QuantizedMatMulWithBiasInputQuantMode(value string) QuantizedMatMulWithBias
 // dimension of `a` (after being transposed if `transpose_a` is non-zero) must
 // match the outer dimension of `b` (after being transposed if `transposed_b` is
 // non-zero). Then do broadcast add operation with bias values on the matrix
-// mulplication result. The bias size must match inner dimension of `b`.
+// multiplication result. The bias size must match inner dimension of `b`.
 //
 // Arguments:
 //	a: A matrix to be multiplied. Must be a two-dimensional tensor of type `quint8`.
@@ -27053,7 +27053,7 @@ func ParseSequenceExampleV2FeatureListDenseShapes(value []tf.Shape) ParseSequenc
 //	feature_list_dense_keys: The keys expected in the SequenceExamples' feature_lists associated
 // with lists of dense values.
 //	feature_list_ragged_keys: The keys expected in the FeatureLists associated with ragged values.
-//	feature_list_dense_missing_assumed_empty: A vector corresponding 1:1 with featue_list_dense_keys, indicating which
+//	feature_list_dense_missing_assumed_empty: A vector corresponding 1:1 with feature_list_dense_keys, indicating which
 // features may be missing from the SequenceExamples.  If the associated
 // FeatureList is missing, it is treated as empty.
 //	context_dense_defaults: A list of Ncontext_dense Tensors (some may be empty).
@@ -36570,7 +36570,7 @@ func QueueDequeueUpToV2(scope *Scope, handle tf.Output, n tf.Output, component_t
 // Adjust the hue of one or more images.
 //
 // `images` is a tensor of at least 3 dimensions.  The last dimension is
-// interpretted as channels, and must be three.
+// interpreted as channels, and must be three.
 //
 // The input image is considered in the RGB colorspace. Conceptually, the RGB
 // colors are first mapped into HSV. A delta is then applied all the hue values,
@@ -37027,7 +37027,7 @@ func ResizeBicubic(scope *Scope, images tf.Output, size tf.Output, optional ...R
 // Computes the mean along sparse segments of a tensor.
 //
 // Like `SparseSegmentMean`, but allows missing ids in `segment_ids`. If an id is
-// misisng, the `output` tensor at that position will be zeroed.
+// missing, the `output` tensor at that position will be zeroed.
 //
 // Read
 // [the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
@@ -45761,7 +45761,7 @@ func SubstrUnit(value string) SubstrAttr {
 //
 //   * `ValueError`: If the first argument cannot be converted to a
 //      Tensor of `dtype string`.
-//   * `InvalidArgumentError`: If indicies are out of range.
+//   * `InvalidArgumentError`: If indices are out of range.
 //   * `ValueError`: If `pos` and `len` are not the same shape.
 //
 //
@@ -47238,7 +47238,7 @@ func GenerateBoundingBoxProposalsPostNmsTopn(value int64) GenerateBoundingBoxPro
 //       `nms_threshold` intersection-over-union (iou) value, discarding boxes where shorter
 //       side is less than `min_size`.
 //       Inputs:
-//       `scores`: A 4D tensor of shape [Batch, Height, Width, Num Anchors] containing the scores per anchor at given postion
+//       `scores`: A 4D tensor of shape [Batch, Height, Width, Num Anchors] containing the scores per anchor at given position
 //       `bbox_deltas`: is a tensor of shape [Batch, Height, Width, 4 x Num Anchors] boxes encoded to each anchor
 //       `anchors`: A 1D tensor of shape [4 x Num Anchors], representing the anchors.
 //       Outputs:
@@ -47999,7 +47999,7 @@ func CudnnRNNIsTraining(value bool) CudnnRNNAttr {
 //     dir * num_units].
 // output_h: The same shape has input_h.
 // output_c: The same shape as input_c for LSTM. An empty tensor for other models.
-// is_training: Indicates whether this operation is used for inferenece or
+// is_training: Indicates whether this operation is used for inference or
 //   training.
 // reserve_space: An opaque tensor that can be used in backprop calculation. It
 //   is only produced if is_training is false.
