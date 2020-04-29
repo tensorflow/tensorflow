@@ -138,7 +138,7 @@ class GpuExecutable : public Executable {
   // compute_capability_.
   //
   // May be empty, in which case we leave compilation up to the GPU driver.
-  const std::vector<uint8> binary_;
+  std::vector<uint8> binary_;
 
   // The GPU version for compute compatibility check.
   GpuVersion gpu_version_;
