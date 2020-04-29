@@ -158,7 +158,7 @@ TfLiteStatus EvalMliQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   mli_mov_cfg_for_copy(&copy_config);
   const int weight_out_dimension = 0;
   const int out_tensor_dimension = 1;
-  const int batch_dimension = 0;
+  const int input_size_dimension = 1;
   int slice_size = mli_weights.shape[weight_out_dimension];
 
   /* allocate the local buffers, and compute the slice size */
@@ -192,13 +192,14 @@ TfLiteStatus EvalMliQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
     mli_mov_tensor_sync(w_slice.Sub(), &copy_config, w_ptr);
     mli_mov_tensor_sync(b_slice.Sub(), &copy_config, b_ptr);
 
-    TensorSlicer in_slice(&mli_in, batch_dimension, 1);
+    // Slice the input over the batches (one at a time with the size of a complete input)
+    TensorSlicer in_slice(&mli_in, input_size_dimension, mli_in.shape[input_size_dimension]);
 
     /* output tensor is alreade sliced in the output size dimension.
     out_ch_slice.Sub() is the tensor for the amount of output size of this
     itteration of the weight slice loop. This tensor needs to be further
     sliced over the batch */
-    TensorSlicer out_slice(out_ch_slice.Sub(), batch_dimension, 1);
+    TensorSlicer out_slice(out_ch_slice.Sub(), out_tensor_dimension, slice_size);
 
     /* setup the pointers to the local or remote tensor to make the code
      * inside the loop easier. */
