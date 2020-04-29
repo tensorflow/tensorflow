@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cmath>
+#include <math.h>
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -75,27 +75,31 @@ inline TfLiteStatus EvalLogical(TfLiteContext* context, TfLiteNode* node,
 }
 
 TfLiteStatus AbsEval(TfLiteContext* context, TfLiteNode* node) {
-  return EvalNumeric(context, node, std::abs);
+  return EvalNumeric(context, node, fabsf);
 }
 
 TfLiteStatus SinEval(TfLiteContext* context, TfLiteNode* node) {
-  return EvalNumeric(context, node, std::sin);
+  return EvalNumeric(context, node, sinf);
+}
+
+TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
+  return EvalNumeric(context, node, tanhf);
 }
 
 TfLiteStatus CosEval(TfLiteContext* context, TfLiteNode* node) {
-  return EvalNumeric(context, node, std::cos);
+  return EvalNumeric(context, node, cosf);
 }
 
 TfLiteStatus LogEval(TfLiteContext* context, TfLiteNode* node) {
-  return EvalNumeric(context, node, std::log);
+  return EvalNumeric(context, node, logf);
 }
 
 TfLiteStatus SqrtEval(TfLiteContext* context, TfLiteNode* node) {
-  return EvalNumeric(context, node, std::sqrt);
+  return EvalNumeric(context, node, sqrtf);
 }
 
 TfLiteStatus RsqrtEval(TfLiteContext* context, TfLiteNode* node) {
-  return EvalNumeric(context, node, [](float f) { return 1.f / std::sqrt(f); });
+  return EvalNumeric(context, node, [](float f) { return 1.f / sqrtf(f); });
 }
 
 TfLiteStatus SquareEval(TfLiteContext* context, TfLiteNode* node) {
@@ -131,6 +135,20 @@ TfLiteRegistration* Register_SIN() {
       /*prepare=*/
       elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
       /*invoke=*/elementwise::SinEval,
+      /*profiling_string=*/nullptr,
+      /*builtin_code=*/0,
+      /*custom_name=*/nullptr,
+      /*version=*/0};
+  return &r;
+}
+
+TfLiteRegistration* Register_TANH() {
+  static TfLiteRegistration r = {
+      /*init=*/nullptr,
+      /*free=*/nullptr,
+      /*prepare=*/
+      elementwise::GenericPrepare<elementwise::IsNumericSupportedType>,
+      /*invoke=*/elementwise::TanhEval,
       /*profiling_string=*/nullptr,
       /*builtin_code=*/0,
       /*custom_name=*/nullptr,
