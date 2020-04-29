@@ -338,12 +338,11 @@ Py_hash_t PyBfloat16_Hash(PyObject* self) {
 
 // Python type for PyBfloat16 objects.
 PyTypeObject PyBfloat16_Type = {
-    PyVarObject_HEAD_INIT(nullptr, 0)
-    "bfloat16",            // tp_name
-    sizeof(PyBfloat16),    // tp_basicsize
-    0,                     // tp_itemsize
-    nullptr,               // tp_dealloc
-    0,                     // tp_print  NOLINT
+    PyVarObject_HEAD_INIT(nullptr, 0) "bfloat16",  // tp_name
+    sizeof(PyBfloat16),                            // tp_basicsize
+    0,                                             // tp_itemsize
+    nullptr,                                       // tp_dealloc
+    0,                     // tp_vectorcall_offset  NOLINT
     nullptr,               // tp_getattr
     nullptr,               // tp_setattr
     nullptr,               // tp_compare / tp_reserved
