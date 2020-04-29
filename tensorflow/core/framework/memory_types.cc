@@ -146,15 +146,17 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
       out_mtypes->resize(GetTotal(out_names), DEVICE_MEMORY);
     }
 
-    // Fills in host memory types based on the kernel def.
-    const auto& from_proto = kdef->host_memory_arg();
-    std::vector<string> host_memory_args(from_proto.begin(), from_proto.end());
-    MemoryTypesHelper(inp_names, &host_memory_args, inp_mtypes);
-    MemoryTypesHelper(out_names, &host_memory_args, out_mtypes);
-    if (!host_memory_args.empty()) {
-      return errors::InvalidArgument(
-          "HostMemory args '", absl::StrJoin(host_memory_args, "', '"),
-          "' not found in OpDef: ", SummarizeOpDef(*op_def));
+    // Fills in host memory types based on the kernel def
+    if(kdef != nullptr) {  // can this ever be false?
+      const auto& from_proto = kdef->host_memory_arg();
+      std::vector<string> host_memory_args(from_proto.begin(), from_proto.end());
+      MemoryTypesHelper(inp_names, &host_memory_args, inp_mtypes);
+      MemoryTypesHelper(out_names, &host_memory_args, out_mtypes);
+      if (!host_memory_args.empty()) {
+        return errors::InvalidArgument(
+            "HostMemory args '", absl::StrJoin(host_memory_args, "', '"),
+            "' not found in OpDef: ", SummarizeOpDef(*op_def));
+      }
     }
   } else {
     inp_mtypes->resize(inp_dtypes.size(), DEVICE_MEMORY);
