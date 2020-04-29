@@ -858,7 +858,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     # iterator ID.
     def flat_map_fn(dummy_arg):
       # The `get_iterator_id_fn` gets a unique ID for the current instance of
-      # of the generator.
+      # the generator.
       # The `generator_next_fn` gets the next element from the iterator with the
       # given ID, and raises StopIteration when that iterator contains no
       # more elements.
