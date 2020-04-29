@@ -34,8 +34,9 @@ target 'YourProjectName'
   pod 'TensorFlowLiteSwift', '~> 0.0.1-nightly'
 ```
 
-Note: After updating `Podfile`, you should run `pod cache clean` and `pod
-update` to reflect changes.
+Note: After updating `Podfile`, you should run `pod update` to reflect changes.
+If you can't see the latest `CoreMLDelegate.swift` file, try running `pod cache
+clean TensorFlowLiteSwift`.
 
 ### Swift
 
