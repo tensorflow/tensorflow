@@ -406,14 +406,17 @@ def _graph_mode_decorator(f, args, kwargs):
 
 def _eager_mode_decorator(f, args, kwargs):
   """Implement custom gradient decorator for eager mode."""
-  with tape_lib.VariableWatcher() as variable_watcher:
-    result, grad_fn = f(*args, **kwargs)
+
+  trainable_vars = []
+  if 'trainable_variables' in kwargs:
+    trainable_vars = kwargs.pop('trainable_variables')
+  result, grad_fn = f(*args, **kwargs)
   all_inputs = list(args) + list(kwargs.values())
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
   variables = [
       v.deref()  # pylint: disable=g-complex-comprehension
-      for v in set(v.ref() for v in variable_watcher.watched_variables())
+      for v in set(v.ref() for v in trainable_vars)
       if all(v.deref() is not i for i in all_inputs)
   ]
   grad_argspec = tf_inspect.getfullargspec(grad_fn)
@@ -483,7 +486,8 @@ def recompute_grad(f):
     """Inner function closure for calculating gradients."""
     current_var_scope = variable_scope.get_variable_scope()
 
-    result = f(*args, **kwargs)
+    with tape_lib.stop_recording():
+      result = f(*args, **kwargs)
 
     def grad(*dresult, **grad_kwargs):
       """Gradient function calculation for inner function."""
