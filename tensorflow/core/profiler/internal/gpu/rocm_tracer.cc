@@ -399,6 +399,24 @@ class RocmApiCallbackImpl {
         const hipFunction_t kernelFunc = data->args.hipHccModuleLaunchKernel.f;
         if (kernelFunc != nullptr) event.name = hipKernelNameRef(kernelFunc);
 
+#if TENSORFLOW_COMPILER_IS_HIP_CLANG
+        // hipHccModuleLaucnhKernel struct-members seem to be named differently
+        // in the hip headers from the hipclang build.
+        // this is probably a temporary discrepancy
+        event.kernel_info.dynamic_shared_memory_usage =
+            data->args.hipHccModuleLaunchKernel.sharedMemBytes;
+        event.kernel_info.block_x =
+            data->args.hipHccModuleLaunchKernel.blockDimX;
+        event.kernel_info.block_y =
+            data->args.hipHccModuleLaunchKernel.blockDimY;
+        event.kernel_info.block_z =
+            data->args.hipHccModuleLaunchKernel.blockDimZ;
+        event.kernel_info.grid_x = data->args.hipHccModuleLaunchKernel.gridDimX;
+        event.kernel_info.grid_y = data->args.hipHccModuleLaunchKernel.gridDimY;
+        event.kernel_info.grid_z = data->args.hipHccModuleLaunchKernel.gridDimZ;
+        event.kernel_info.dynamic_shared_memory_usage =
+            data->args.hipHccModuleLaunchKernel.sharedMemBytes;
+#else
         event.kernel_info.dynamic_shared_memory_usage =
             data->args.hipHccModuleLaunchKernel.sharedMemBytes;
         unsigned int blockDimX =
@@ -417,6 +435,7 @@ class RocmApiCallbackImpl {
             data->args.hipHccModuleLaunchKernel.globalWorkSizeY / blockDimY;
         event.kernel_info.grid_z =
             data->args.hipHccModuleLaunchKernel.globalWorkSizeZ / blockDimZ;
+#endif
       } break;
     }
     collector_->AddEvent(std::move(event));
