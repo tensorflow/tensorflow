@@ -4540,6 +4540,9 @@ tf_cuda_cc_test(
     name = "split_v_op_test",
     size = "small",
     srcs = ["split_v_op_test.cc"],
+    tags = [
+        "no_windows",  # split_v_op uses lrand48 which does not exist on Windows
+    ],
     deps = [
         ":ops_testutil",
         ":ops_util",
