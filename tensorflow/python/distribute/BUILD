@@ -1517,6 +1517,7 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
     ],
+    # b/155301154 broken with XLA:GPU
     xla_enable_strict_auto_jit = True,
     deps = [
         ":collective_all_reduce_strategy",
