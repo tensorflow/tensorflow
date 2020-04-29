@@ -32,7 +32,7 @@ py_test(
         "no_oss_py2",
         "no_oss_py35",
         "no_pip",
-        "no_rocm",
+        #"no_rocm", # may fail with Python 3.5
     ],
     deps = [
         "//tensorflow/python:client_testlib",

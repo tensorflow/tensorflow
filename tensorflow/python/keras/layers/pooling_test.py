@@ -194,8 +194,6 @@ class Pooling2DTest(test.TestCase, parameterized.TestCase):
 class Pooling3DTest(test.TestCase, parameterized.TestCase):
 
   def test_maxpooling_3d(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Pooling with 3D tensors is not supported in ROCm')
     pool_size = (3, 3, 3)
     testing_utils.layer_test(
         keras.layers.MaxPooling3D,
@@ -214,8 +212,6 @@ class Pooling3DTest(test.TestCase, parameterized.TestCase):
         input_shape=(3, 4, 11, 12, 10))
 
   def test_averagepooling_3d(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Pooling with 3D tensors is not supported in ROCm')
     pool_size = (3, 3, 3)
     testing_utils.layer_test(
         keras.layers.AveragePooling3D,

@@ -204,7 +204,7 @@ class ConvLSTMTest(keras_parameterized.TestCase):
 
   def test_conv_lstm_with_initial_state(self):
     if test.is_built_with_rocm():
-      return
+      return # OOM with 1 GB budget on ROCm platform
 
     num_samples = 32
     sequence_len = 5

@@ -176,7 +176,6 @@ py_test(
     srcs = ["distribute_lib_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = ["no_rocm"],
     deps = [
         ":combinations",
         ":distribute_lib",
@@ -1025,7 +1024,7 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
+        "no_rocm", # times out on CI
     ],
     tpu_tags = [
         "no_oss",  # Target too big to run serially reliably.
@@ -1439,7 +1438,6 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
     ],
     deps = [
         ":saved_model_test_base",
@@ -1472,7 +1470,6 @@ distribute_py_test(
     shard_count = 5,
     tags = [
         "multi_and_single_gpu",
-        "no_rocm",
     ],
     deps = [
         ":saved_model_test_base",

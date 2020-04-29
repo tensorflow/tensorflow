@@ -68,9 +68,7 @@ class DefFunctionTest(test.TestCase):
 
     inputs = constant_op.constant([1, 2, 2, 3, 3])
     self.assertAllClose([2, 3, 3, 4, 4], func(inputs, 1))
-    if not test.is_built_with_rocm():
-      # XLA support is not yet enabled for TF ROCm
-      self.assertAllClose([2, 3, 3, 4, 4], xla_func(inputs, 1))
+    self.assertAllClose([2, 3, 3, 4, 4], xla_func(inputs, 1))
 
   def testBasicInt32(self):
 
@@ -80,14 +78,9 @@ class DefFunctionTest(test.TestCase):
     xla_func = def_function.function(fn, experimental_compile=True)
 
     inputs = constant_op.constant([1, 2, 2, 3, 3], dtype=dtypes.int32)
-    if not test.is_built_with_rocm():
-      # XLA support is not yet enabled for TF ROCm
-      self.assertAllClose([2, 3, 3, 4, 4], xla_func(inputs, 1))
+    self.assertAllClose([2, 3, 3, 4, 4], xla_func(inputs, 1))
 
   def testDerivative(self):
-    if test.is_built_with_rocm():
-      return
-
     def fn(x, a):
       return 2 * x + a
 
@@ -124,9 +117,7 @@ class DefFunctionTest(test.TestCase):
     func = def_function.function(fn2, experimental_compile=False)
 
     inputs = constant_op.constant([1, 2, 2, 3, 3])
-    if not test.is_built_with_rocm():
-      # XLA support is not yet enabled for TF ROCm
-      self.assertAllClose([2, 3, 3, 4, 4], func(inputs, 1))
+    self.assertAllClose([2, 3, 3, 4, 4], func(inputs, 1))
 
   def testNestedCallUnsupportedOps(self):
 
@@ -140,8 +131,7 @@ class DefFunctionTest(test.TestCase):
 
     func = def_function.function(fn2, experimental_compile=False)
     inputs = constant_op.constant([1, 2, 2, 3, 3])
-    if not test.is_built_with_rocm():
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    'not compilable'):
         func(inputs)
 
@@ -177,9 +167,7 @@ class DefFunctionTest(test.TestCase):
       self.assertAllClose(3.0, dy)
 
     run_and_check(func)
-    if not test.is_built_with_rocm():
-      # XLA support is not yet enabled for TF ROCm
-      run_and_check(xla_func)
+    run_and_check(xla_func)
 
   def testControlFlow(self):
 
@@ -210,9 +198,6 @@ class DefFunctionTest(test.TestCase):
     self.assertAllClose([40.0, 28.0], g(2.0))
 
   def testMethodCompilation(self):
-    if test.is_built_with_rocm():
-      return
-
     class C(object):
 
       @def_function.function(experimental_compile=True)
@@ -224,9 +209,6 @@ class DefFunctionTest(test.TestCase):
     self.assertAllClose([2, 3, 3, 4, 4], c.f1(inputs, 1))
 
   def testMethodCompilationUnsupportedFunc(self):
-    if test.is_built_with_rocm():
-      return
-
     class C(object):
 
       @def_function.function(experimental_compile=True)
@@ -239,9 +221,6 @@ class DefFunctionTest(test.TestCase):
       c.f1(inputs)
 
   def testMustBeConstantPropagation(self):
-    if test.is_built_with_rocm():
-      return
-
     @def_function.function(experimental_compile=True)
     def f():
       return constant_op.constant([0, 2, 1], dtype=dtypes.int32)

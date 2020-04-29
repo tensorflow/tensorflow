@@ -159,7 +159,6 @@ tf_py_test(
     srcs = ["pooling_test.py"],
     main = "pooling_test.py",
     python_version = "PY3",
-    tags = ["no_rocm"],
     deps = [
         ":pooling",
         "//tensorflow/python:array_ops",

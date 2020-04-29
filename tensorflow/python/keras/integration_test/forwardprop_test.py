@@ -217,13 +217,6 @@ class ForwardpropTest(tf.test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters([("Function", tf.function),
                                    ("NoFunction", lambda f: f)])
   def testVariablesHVP(self, decorator):
-
-    if tf.test.is_built_with_rocm():
-      # TODO(rocm)
-      # This test was recently added and has never passed on the
-      # ROCm platform. Remove this skip once the test is passing again
-      self.skipTest("NoFunction decorator test fails on the ROCm platform")
-
     class _Model(tf.Module):
 
       def __init__(self):

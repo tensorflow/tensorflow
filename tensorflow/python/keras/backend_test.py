@@ -844,8 +844,6 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
       y = backend.pool2d(x, (2, 2), strides=(2, 2), pool_mode='other')
 
   def test_pool3d(self):
-    if test.is_built_with_rocm():
-      self.skipTest('Pooling with 3D tensors is not supported in ROCm')
     val = np.random.random((10, 3, 10, 10, 10))
     x = backend.variable(val)
     y = backend.pool3d(
@@ -1575,11 +1573,9 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(np.min(outputs_val), 0)
     self.assertAllClose(np.count_nonzero(outputs_val), 32000, atol=1000)
     # Test noise shape
-    # MIOpen do not support noise shape feature yet, skip on ROCm
-    if not test.is_built_with_rocm():
-      outputs = backend.dropout(inputs, 0.2, noise_shape=(200, 1))
-      outputs_val = backend.eval(outputs)
-      self.assertAllClose(outputs_val[2, :], outputs_val[3, :], atol=1e-5)
+    outputs = backend.dropout(inputs, 0.2, noise_shape=(200, 1))
+    outputs_val = backend.eval(outputs)
+    self.assertAllClose(outputs_val[2, :], outputs_val[3, :], atol=1e-5)
 
 
 class BackendCrossEntropyLossesTest(test.TestCase, parameterized.TestCase):
