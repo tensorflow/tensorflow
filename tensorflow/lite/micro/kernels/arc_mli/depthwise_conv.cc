@@ -69,8 +69,14 @@ bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
                      const TfLiteDepthwiseConvParams* params) {
   const auto* affine_quantization =
       reinterpret_cast<TfLiteAffineQuantization*>(filter->quantization.params);
+  const int in_ch = SizeOfDimension(input, 3);
+  const int filters_num = SizeOfDimension(filter, 3);
+
   // MLI optimized version only supports int8 dataype, dilation factor of 1 and
   // per-axis quantization of weights (no broadcasting/per-tensor)
+  // TODO: ((in_ch == filters_num) || (in_ch == 1)) is a forbidding of  
+  // channel multiplier logic for multichannel input.
+  // To be removed after it will be supported in MLI 
   bool ret_val = (filter->type == kTfLiteInt8) &&
                  (input->type == kTfLiteInt8) &&
                  (bias->type == kTfLiteInt32) &&
@@ -78,6 +84,7 @@ bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
                  (params->dilation_height_factor == 1) &&
                  (affine_quantization->scale->size ==
                   filter->dims->data[kDepthwiseConvQuantizedDimension]) &&
+                 ((in_ch == filters_num) || (in_ch == 1)) &&
                  affine_quantization->scale->size <= (kMaxChannels * 2);
   return ret_val;
 }
