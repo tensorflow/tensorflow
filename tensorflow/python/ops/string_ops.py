@@ -113,7 +113,6 @@ def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
 
 @tf_export("strings.format")
 def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
-  # pylint: disable=line-too-long
   r"""Formats a string template using a list of tensors.
 
   Formats a string template using a list of tensors, abbreviating tensors by
@@ -124,17 +123,16 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
   Example:
     Formatting a single-tensor template:
 
-    >>> tensor = tf.range(10)
+    >>> tensor = tf.range(5)
     >>> tf.strings.format("tensor: {}, suffix", tensor)
-    <tf.Tensor: shape=(), dtype=string, numpy=b'tensor: [0 1 2 ... 7 8 9], suffix'>
+    <tf.Tensor: shape=(), dtype=string, numpy=b'tensor: [0 1 2 3 4], suffix'>
 
     Formatting a multi-tensor template:
 
-    >>> tensor_one = tf.reshape(tf.range(100), [10, 10])
-    >>> tensor_two = tf.range(10)
-    >>> tf.strings.format("first: {}, second: {}, suffix",
-    ...                               (tensor_one, tensor_two))
-    <tf.Tensor: shape=(), dtype=string, numpy=b'first: [[0 1 2 ... 7 8 9]\n [10 11 12 ... 17 18 19]\n [20 21 22 ... 27 28 29]\n ...\n [70 71 72 ... 77 78 79]\n [80 81 82 ... 87 88 89]\n [90 91 92 ... 97 98 99]], second: [0 1 2 ... 7 8 9], suffix'>
+    >>> tensor_a = tf.range(2)
+    >>> tensor_b = tf.range(1, 4, 2)
+    >>> tf.strings.format("a: {}, b: {}, suffix", (tensor_a, tensor_b))
+    <tf.Tensor: shape=(), dtype=string, numpy=b'a: [0 1], b: [1 3], suffix'>
 
 
   Args:
