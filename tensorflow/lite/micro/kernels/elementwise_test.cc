@@ -262,5 +262,4 @@ TF_LITE_MICRO_TEST(TANH) {
 		output_data);
 }
 
-
 TF_LITE_MICRO_TESTS_END
