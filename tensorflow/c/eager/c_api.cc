@@ -500,6 +500,17 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       grpc_server->master_env()->worker_cache->GetEagerClientCache(
           &remote_eager_workers));
 
+  // For cluster update, use a status group to aggregate statuses from
+  //   * adding and removing remote devices
+  //   * creating remote contexts on newly added workers
+  //   * updating remote contexts on existing workers
+  //   * updating the master context
+  // Note that we should not return immediately on errors in the middle of these
+  // updates to prevent cluster from having inconsistent context views.
+  //
+  // Unused if `reset_context` is True.
+  tensorflow::StatusGroup sg;
+
   // When updating an existing context, populate the following lists with:
   // * added_workers: set(remote_workers) - set(curr_remote_workers)
   // * removed_workers: set(curr_remote_workers) - set(remote_workers)
@@ -535,7 +546,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     DifferentiateWorkerLists(&curr_remote_workers, &remote_workers,
                              &added_workers, &removed_workers,
                              &existing_workers);
-    LOG_AND_RETURN_IF_ERROR(GetReplacedFromExistingWorkers(
+    sg.Update(GetReplacedFromExistingWorkers(
         &existing_workers, context_id, context->GetContextViewId(), server_def,
         remote_eager_workers.get(), &replaced_workers));
     if (VLOG_IS_ON(1)) {
@@ -559,11 +570,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
             existing_workers.end());
       }
     }
-    LOG_AND_RETURN_IF_ERROR(
-        RemoveRemoteDevicesFromMgr(removed_workers, remote_device_mgr));
-    LOG_AND_RETURN_IF_ERROR(AddRemoteDevicesToMgr(
-        added_workers, grpc_server->master_env()->worker_cache,
-        remote_device_mgr));
+    sg.Update(RemoveRemoteDevicesFromMgr(removed_workers, remote_device_mgr));
+    sg.Update(AddRemoteDevicesToMgr(added_workers,
+                                    grpc_server->master_env()->worker_cache,
+                                    remote_device_mgr));
   }
 
   std::vector<tensorflow::DeviceAttributes> cluster_device_attributes;
@@ -584,7 +594,6 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   }
 
   // Initialize remote eager workers.
-  // TODO(b/138847548) Create remote eager contexts in async mode by default.
   if (reset_context) {
     LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
         ctx, remote_workers, context_id, context_view_id, keep_alive_secs,
@@ -596,7 +605,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     // existing workers to also have the updated context_view_id, so
     // we must set their context_view_id to the existing master's
     // context_view_id + 1.
-    LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
+    sg.Update(CreateRemoteContexts(
         ctx, added_workers, context_id, context_view_id + 1, keep_alive_secs,
         server_def, remote_eager_workers.get(), context->Executor().Async(),
         context->LazyCopyFunctionRemoteInputs(), base_request));
@@ -606,10 +615,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
           VLOG(1) << "Updating cluster with existing worker " << w;
         }
       }
-      LOG_AND_RETURN_IF_ERROR(UpdateRemoteContexts(
-          ctx, existing_workers, added_workers, removed_workers, context_id,
-          context_view_id + 1, server_def, remote_eager_workers.get(),
-          base_request));
+      sg.Update(UpdateRemoteContexts(ctx, existing_workers, added_workers,
+                                     removed_workers, context_id,
+                                     context_view_id + 1, server_def,
+                                     remote_eager_workers.get(), base_request));
     }
   }
 
@@ -645,13 +654,13 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     // GrpcServer cannot be destroyed after it is started.
     LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
   } else {
-    LOG_AND_RETURN_IF_ERROR(
-        grpc_server->worker_env()->session_mgr->UpdateSession(
-            session_name, server_def, base_request.cluster_device_attributes(),
-            /*isolate_session_state=*/true));
-    LOG_AND_RETURN_IF_ERROR(
-        context->UpdateRemoteMaster(context_id, std::move(remote_eager_workers),
-                                    added_workers, removed_workers));
+    sg.Update(grpc_server->worker_env()->session_mgr->UpdateSession(
+        session_name, server_def, base_request.cluster_device_attributes(),
+        /*isolate_session_state=*/true));
+    sg.Update(context->UpdateRemoteMaster(context_id,
+                                          std::move(remote_eager_workers),
+                                          added_workers, removed_workers));
+    LOG_AND_RETURN_IF_ERROR(sg.as_summary_status());
   }
 #undef LOG_AND_RETURN_IF_ERROR
 

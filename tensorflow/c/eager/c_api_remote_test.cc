@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/debugging/leak_check.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
@@ -21,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
@@ -525,6 +527,126 @@ TEST(CAPI, RemoteExecuteChangeServerDef) {
 }
 TEST(CAPI, RemoteExecuteChangeServerDefAsync) {
   TestRemoteExecuteChangeServerDef(true);
+}
+
+void TestRemoteExecuteUpdateServerDef(bool async) {
+  // TODO(b/136478427): Skip heap checker for leaked gRPC server instances.
+  absl::LeakCheckDisabler disabler;
+
+  tensorflow::ServerDef server_def = GetServerDef(2);
+  // This server def has the task index set to 0.
+  string serialized = server_def.SerializeAsString();
+
+  server_def.set_task_index(1);
+  std::unique_ptr<tensorflow::GrpcServer> worker_server;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(
+                  server_def, tensorflow::Env::Default(), &worker_server)
+                  .ok());
+  ASSERT_TRUE(worker_server->Start().ok());
+
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetDevicePlacementPolicy(opts, TFE_DEVICE_PLACEMENT_SILENT);
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  const char local_device_name[] =
+      "/job:localhost/replica:0/task:0/device:CPU:0";
+  const char remote_device_name[] =
+      "/job:localhost/replica:0/task:1/device:CPU:0";
+  CheckRemoteMatMulExecutesOK(ctx, remote_device_name, local_device_name);
+
+  TFE_ContextUpdateServerDef(ctx, 0, serialized.data(), serialized.size(),
+                             status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  CheckRemoteMatMulExecutesOK(ctx, remote_device_name, local_device_name);
+
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
+
+  // TODO(b/136478427): Figure out how to correctly shut the server down.
+  worker_server.release();
+}
+
+TEST(CAPI, RemoteExecuteUpdateServerDef) {
+  TestRemoteExecuteUpdateServerDef(false);
+}
+
+TEST(CAPI, RemoteExecuteUpdateServerDefAsync) {
+  TestRemoteExecuteUpdateServerDef(true);
+}
+
+void TestRemoteExecuteUpdateServerDefWithFailures(bool async) {
+  // TODO(b/136478427): Skip heap checker for leaked gRPC server instances.
+  absl::LeakCheckDisabler disabler;
+  // Fail fast on GetStatus requests so we can get errors instead of timeout
+  // when updating cluster with non-exsitent worker
+  setenv("GRPC_FAIL_FAST", "TRUE", 1);
+
+  tensorflow::ServerDef server_def = GetServerDef(2);
+  // This server def has the task index set to 0.
+  string serialized = server_def.SerializeAsString();
+
+  server_def.set_task_index(1);
+  std::unique_ptr<tensorflow::GrpcServer> worker_server;
+  ASSERT_TRUE(tensorflow::GrpcServer::Create(
+                  server_def, tensorflow::Env::Default(), &worker_server)
+                  .ok());
+  ASSERT_TRUE(worker_server->Start().ok());
+
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
+  TFE_ContextOptionsSetDevicePlacementPolicy(opts, TFE_DEVICE_PLACEMENT_SILENT);
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_ContextSetServerDef(ctx, 0, serialized.data(), serialized.size(), status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  const char local_device_name[] =
+      "/job:localhost/replica:0/task:0/device:CPU:0";
+  const char remote_device_name[] =
+      "/job:localhost/replica:0/task:1/device:CPU:0";
+  CheckRemoteMatMulExecutesOK(ctx, remote_device_name, local_device_name);
+
+  // Adding a non-existent remote worker to cluster def. This should cause the
+  // UpdateServerDef call to fail.
+  tensorflow::ClusterDef* cluster_def = server_def.mutable_cluster();
+  tensorflow::JobDef* job_def = cluster_def->mutable_job(0);
+  int port = tensorflow::testing::PickUnusedPortOrDie();
+  job_def->mutable_tasks()->insert(
+      {2, tensorflow::strings::StrCat("localhost:", port)});
+  string serialized_update = server_def.SerializeAsString();
+  TFE_ContextUpdateServerDef(ctx, 0, serialized_update.data(),
+                             serialized_update.size(), status);
+  EXPECT_NE(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  // Even after the prevoiusly failed cluster update, another update and op
+  // execution should work fine as long as the provided server_def is valid.
+  TFE_ContextUpdateServerDef(ctx, 0, serialized.data(), serialized.size(),
+                             status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  CheckRemoteMatMulExecutesOK(ctx, remote_device_name, local_device_name);
+
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
+
+  // TODO(b/136478427): Figure out how to correctly shut the server down.
+  worker_server.release();
+  unsetenv("GRPC_FAIL_FAST");
+}
+
+TEST(CAPI, RemoteExecuteUpdateServerDefWithFailures) {
+  TestRemoteExecuteUpdateServerDefWithFailures(false);
+}
+
+TEST(CAPI, RemoteExecuteUpdateServerDefWithFailuresAsync) {
+  TestRemoteExecuteUpdateServerDefWithFailures(true);
 }
 
 }  // namespace
