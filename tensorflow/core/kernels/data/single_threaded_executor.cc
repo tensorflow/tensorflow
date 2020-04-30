@@ -329,8 +329,13 @@ class SingleThreadedExecutorImpl : public Executor {
         TF_CHECK_OK(args.call_frame->GetArg(i, &arg));
         for (size_t j = 0; j < num_destinations; ++j) {
           Entry& input = inputs[arg_output_locations_[i][j]];
-          input.state = Entry::State::HAS_CONST_TENSOR;
-          input.const_tensor = arg;
+          // NOTE: We must make at least one shallow copy of the argument tensor
+          // that remains live until all consuming kernels have executed, to
+          // keep the reference count > 1, and inhibit buffer forwarding.
+          // For simplicity, we shallow copy into the input entry for each
+          // consuming kernel.
+          input.state = Entry::State::HAS_VALUE;
+          input.val.Init(*arg);
         }
       }
     }

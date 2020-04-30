@@ -155,6 +155,14 @@ TEST_F(ExecutorTest, SimpleAdd) {
   std::vector<Tensor> retvals;
   TF_ASSERT_OK(call_frame.ConsumeRetvals(&retvals, false));
   EXPECT_EQ(3.0, V(retvals[0]));  // out = 1.0 + 2.0 = 3.0
+
+  // Verify that the argument values are unchanged.
+  const Tensor* arg_0;
+  TF_ASSERT_OK(call_frame.GetArg(0, &arg_0));
+  EXPECT_EQ(1.0, V(*arg_0));
+  const Tensor* arg_1;
+  TF_ASSERT_OK(call_frame.GetArg(1, &arg_1));
+  EXPECT_EQ(2.0, V(*arg_1));
 }
 
 TEST_F(ExecutorTest, SelfAdd) {
