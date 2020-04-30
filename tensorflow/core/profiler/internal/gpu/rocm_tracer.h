@@ -30,8 +30,7 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-const int kRocmTracerVlog1 = 1;
-const int kRocmTracerVlog2 = 3;
+const int kRocmTracerVlog = 1;
 
 struct MemcpyDetails {
   // The amount of data copied for memcpy events.
@@ -40,6 +39,13 @@ struct MemcpyDetails {
   // device is implicit: its the current device.
   uint32 destination;
   // Whether or not the memcpy is asynchronous.
+  bool async;
+};
+
+struct MemsetDetails {
+  // The number of memory elements getting set
+  size_t num_elements;
+  // Whether or not the memset is asynchronous.
   bool async;
 };
 
@@ -78,6 +84,7 @@ enum class RocmTracerEventType {
   MemcpyP2P,
   MemcpyOther,
   MemoryAlloc,
+  Memset,
   StreamSynchronize,
   Generic,
 };
@@ -122,6 +129,7 @@ struct RocmTracerEvent {
   int64 stream_id = kInvalidStreamId;
   union {
     MemcpyDetails memcpy_info;      // If type == Memcpy*
+    MemsetDetails memset_info;      // If type == Memset*
     MemAllocDetails memalloc_info;  // If type == MemoryAlloc
     KernelDetails kernel_info;      // If type == Kernel
   };

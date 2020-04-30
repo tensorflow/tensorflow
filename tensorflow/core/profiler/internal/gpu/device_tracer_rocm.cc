@@ -182,15 +182,21 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   void Flush() override {
     mutex_lock lock(aggregated_events_mutex_);
 
-    VLOG(kRocmTracerVlog1) << "RocmTraceCollector collected "
-                           << num_callback_events_ << " callback events, "
-                           << num_activity_events_
-                           << " activity events, and aggregated them into "
-                           << aggregated_events_.size() << " events.";
+    VLOG(kRocmTracerVlog) << "RocmTraceCollector collected "
+                          << num_callback_events_ << " callback events, "
+                          << num_activity_events_
+                          << " activity events, and aggregated them into "
+                          << aggregated_events_.size() << " events.";
 
     for (auto& iter : aggregated_events_) {
       auto& event = iter.second;
       uint32 physical_id = event.device_id;
+
+      // sliently drop events that we capture via roctracer
+      // but do not yet know how to export to either stepstats or xplane
+      // sliently because we only want to use OnEventsDropped for cases
+      // when we drop events because they are somehow invalid
+      if (event.type == RocmTracerEventType::Memset) continue;
 
       // determine the logical device id
       uint32 logical_id = options_.num_gpus;
@@ -209,9 +215,9 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       // and num_gpus == 1, set the logical_id to 0
       if ((logical_id == RocmTracerEvent::kInvalidDeviceId) &&
           (options_.num_gpus == 1)) {
-        VLOG(kRocmTracerVlog2) << "Explicitly setting device_id to 0 for event "
-                                  "with correlation_id="
-                               << event.correlation_id;
+        VLOG(kRocmTracerVlog) << "Explicitly setting device_id to 0 for event "
+                                 "with correlation_id="
+                              << event.correlation_id;
         logical_id = 0;
       }
 
@@ -616,19 +622,34 @@ class GpuTracer : public profiler::ProfilerInterface {
 
 RocmTracerOptions GpuTracer::GetRocmTracerOptions() {
   RocmTracerOptions options;
+  std::vector<uint32_t> empty_vec;
 
+  // clang formatting does not preserve one entry per line
+  // clang-format off
   std::vector<uint32_t> hip_api_domain_ops{
-      HIP_API_ID_hipExtModuleLaunchKernel, HIP_API_ID_hipFree,
-      HIP_API_ID_hipHccModuleLaunchKernel, HIP_API_ID_hipMalloc,
-      HIP_API_ID_hipMemcpyAsync,           HIP_API_ID_hipMemcpyDtoD,
-      HIP_API_ID_hipMemcpyDtoDAsync,       HIP_API_ID_hipMemcpyDtoH,
-      HIP_API_ID_hipMemcpyDtoHAsync,       HIP_API_ID_hipMemcpyHtoD,
-      HIP_API_ID_hipMemcpyHtoDAsync,       HIP_API_ID_hipModuleLaunchKernel,
+      HIP_API_ID_hipExtModuleLaunchKernel,
+      HIP_API_ID_hipFree,
+      HIP_API_ID_hipHccModuleLaunchKernel,
+      HIP_API_ID_hipMalloc,
+      HIP_API_ID_hipMemcpyAsync,
+      HIP_API_ID_hipMemcpyDtoD,
+      HIP_API_ID_hipMemcpyDtoDAsync,
+      HIP_API_ID_hipMemcpyDtoH,
+      HIP_API_ID_hipMemcpyDtoHAsync,
+      HIP_API_ID_hipMemcpyHtoD,
+      HIP_API_ID_hipMemcpyHtoDAsync,
+      HIP_API_ID_hipMemsetD32,
+      HIP_API_ID_hipMemsetD32Async,
+      HIP_API_ID_hipMemsetD8,
+      HIP_API_ID_hipMemsetD8Async,
+      HIP_API_ID_hipModuleLaunchKernel,
       HIP_API_ID_hipStreamSynchronize,
   };
-  options.api_callbacks.emplace(ACTIVITY_DOMAIN_HIP_API, hip_api_domain_ops);
+  // clang-format on
 
-  std::vector<uint32_t> empty_vec;
+  options.api_callbacks.emplace(ACTIVITY_DOMAIN_HIP_API, hip_api_domain_ops);
+  // options.api_callbacks.emplace(ACTIVITY_DOMAIN_HIP_API, empty_vec);
+
   // options.activity_tracing.emplace(ACTIVITY_DOMAIN_HIP_API,
   // hip_api_domain_ops);
   options.activity_tracing.emplace(ACTIVITY_DOMAIN_HIP_API, empty_vec);
@@ -702,7 +723,7 @@ Status GpuTracer::DoCollectData(StepStats* step_stats) {
 Status GpuTracer::CollectData(RunMetadata* run_metadata) {
   switch (profiling_state_) {
     case State::kNotStarted:
-      VLOG(kRocmTracerVlog1)
+      VLOG(kRocmTracerVlog)
           << "No trace data collected, session wasn't started";
       return Status::OK();
     case State::kStartedOk:
@@ -711,7 +732,7 @@ Status GpuTracer::CollectData(RunMetadata* run_metadata) {
       LOG(ERROR) << "Cannot collect, roctracer failed to start";
       return Status::OK();
     case State::kStoppedError:
-      VLOG(kRocmTracerVlog1) << "No trace data collected";
+      VLOG(kRocmTracerVlog) << "No trace data collected";
       return Status::OK();
     case State::kStoppedOk: {
       // Input run_metadata is shared by profiler interfaces, we need append.
@@ -734,7 +755,7 @@ Status GpuTracer::DoCollectData(XSpace* space) {
 Status GpuTracer::CollectData(XSpace* space) {
   switch (profiling_state_) {
     case State::kNotStarted:
-      VLOG(kRocmTracerVlog1)
+      VLOG(kRocmTracerVlog)
           << "No trace data collected, session wasn't started";
       return Status::OK();
     case State::kStartedOk:
@@ -743,7 +764,7 @@ Status GpuTracer::CollectData(XSpace* space) {
       LOG(ERROR) << "Cannot collect, roctracer failed to start";
       return Status::OK();
     case State::kStoppedError:
-      VLOG(kRocmTracerVlog1) << "No trace data collected";
+      VLOG(kRocmTracerVlog) << "No trace data collected";
       return Status::OK();
     case State::kStoppedOk: {
       DoCollectData(space);

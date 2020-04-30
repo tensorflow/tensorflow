@@ -151,6 +151,22 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
       case HIP_API_ID_hipMemcpyAsync:
         oss << ", sizeBytes=" << data->args.hipMemcpyAsync.sizeBytes;
         break;
+      case HIP_API_ID_hipMemsetD32:
+        oss << ", value=" << data->args.hipMemsetD32.value;
+        oss << ", count=" << data->args.hipMemsetD32.count;
+        break;
+      case HIP_API_ID_hipMemsetD32Async:
+        oss << ", value=" << data->args.hipMemsetD32Async.value;
+        oss << ", count=" << data->args.hipMemsetD32Async.count;
+        break;
+      case HIP_API_ID_hipMemsetD8:
+        oss << ", value=" << data->args.hipMemsetD8.value;
+        oss << ", count=" << data->args.hipMemsetD8.count;
+        break;
+      case HIP_API_ID_hipMemsetD8Async:
+        oss << ", value=" << data->args.hipMemsetD8Async.value;
+        oss << ", count=" << data->args.hipMemsetD8Async.count;
+        break;
       case HIP_API_ID_hipMalloc:
         oss << ", size=" << data->args.hipMalloc.size;
         break;
@@ -166,7 +182,7 @@ inline void DumpApiCallbackData(uint32_t domain, uint32_t cbid,
   } else {
     oss << ": " << cbid;
   }
-  VLOG(kRocmTracerVlog2) << oss.str();
+  VLOG(kRocmTracerVlog) << oss.str();
 }
 
 void DumpActivityRecord(const roctracer_record_t* record) {
@@ -182,7 +198,7 @@ void DumpActivityRecord(const roctracer_record_t* record) {
   oss << ", thread_id=" << record->thread_id;
   oss << ", external_id=" << record->external_id;
   oss << ", bytes=" << record->bytes;
-  VLOG(kRocmTracerVlog2) << oss.str();
+  VLOG(kRocmTracerVlog) << oss.str();
 }
 
 }  // namespace
@@ -286,7 +302,7 @@ void DumpRocmTracerEvent(const RocmTracerEvent& event, uint64 start_walltime_ns,
       DCHECK(false);
       break;
   }
-  VLOG(kRocmTracerVlog2) << oss.str();
+  VLOG(kRocmTracerVlog) << oss.str();
 }
 
 class RocmApiCallbackImpl {
@@ -334,6 +350,12 @@ class RocmApiCallbackImpl {
         case HIP_API_ID_hipMemcpyDtoDAsync:
         case HIP_API_ID_hipMemcpyAsync:
           AddMemcpyEventUponApiExit(cbid, data);
+          break;
+        case HIP_API_ID_hipMemsetD32:
+        case HIP_API_ID_hipMemsetD32Async:
+        case HIP_API_ID_hipMemsetD8:
+        case HIP_API_ID_hipMemsetD8Async:
+          AddMemsetEventUponApiExit(cbid, data);
           break;
         case HIP_API_ID_hipMalloc:
         case HIP_API_ID_hipFree:
@@ -399,6 +421,24 @@ class RocmApiCallbackImpl {
         const hipFunction_t kernelFunc = data->args.hipHccModuleLaunchKernel.f;
         if (kernelFunc != nullptr) event.name = hipKernelNameRef(kernelFunc);
 
+#if TENSORFLOW_COMPILER_IS_HIP_CLANG
+        // hipHccModuleLaucnhKernel struct-members seem to be named differently
+        // in the hip headers from the hipclang build.
+        // this is probably a temporary discrepancy
+        event.kernel_info.dynamic_shared_memory_usage =
+            data->args.hipHccModuleLaunchKernel.sharedMemBytes;
+        event.kernel_info.block_x =
+            data->args.hipHccModuleLaunchKernel.blockDimX;
+        event.kernel_info.block_y =
+            data->args.hipHccModuleLaunchKernel.blockDimY;
+        event.kernel_info.block_z =
+            data->args.hipHccModuleLaunchKernel.blockDimZ;
+        event.kernel_info.grid_x = data->args.hipHccModuleLaunchKernel.gridDimX;
+        event.kernel_info.grid_y = data->args.hipHccModuleLaunchKernel.gridDimY;
+        event.kernel_info.grid_z = data->args.hipHccModuleLaunchKernel.gridDimZ;
+        event.kernel_info.dynamic_shared_memory_usage =
+            data->args.hipHccModuleLaunchKernel.sharedMemBytes;
+#else
         event.kernel_info.dynamic_shared_memory_usage =
             data->args.hipHccModuleLaunchKernel.sharedMemBytes;
         unsigned int blockDimX =
@@ -417,6 +457,7 @@ class RocmApiCallbackImpl {
             data->args.hipHccModuleLaunchKernel.globalWorkSizeY / blockDimY;
         event.kernel_info.grid_z =
             data->args.hipHccModuleLaunchKernel.globalWorkSizeZ / blockDimZ;
+#endif
       } break;
     }
     collector_->AddEvent(std::move(event));
@@ -470,6 +511,44 @@ class RocmApiCallbackImpl {
         break;
       default:
         LOG(ERROR) << "Unsupported memcpy activity observed: " << cbid;
+        break;
+    }
+    collector_->AddEvent(std::move(event));
+  }
+
+  void AddMemsetEventUponApiExit(uint32_t cbid, const hip_api_data_t* data) {
+    RocmTracerEvent event;
+    event.domain = RocmTracerEventDomain::HIP_API;
+    event.name = roctracer_op_string(ACTIVITY_DOMAIN_HIP_API, cbid, 0);
+    event.source = RocmTracerEventSource::ApiCallback;
+    event.thread_id = GetCachedTID();
+    event.correlation_id = data->correlation_id;
+
+    // ROCM TODO: figure out a way to properly populate this field.
+    event.memcpy_info.destination = 0;
+    switch (cbid) {
+      case HIP_API_ID_hipMemsetD8:
+        event.type = RocmTracerEventType::Memset;
+        event.memset_info.num_elements = data->args.hipMemsetD8.count;
+        event.memset_info.async = false;
+        break;
+      case HIP_API_ID_hipMemsetD8Async:
+        event.type = RocmTracerEventType::Memset;
+        event.memset_info.num_elements = data->args.hipMemsetD8Async.count;
+        event.memset_info.async = true;
+        break;
+      case HIP_API_ID_hipMemsetD32:
+        event.type = RocmTracerEventType::Memset;
+        event.memset_info.num_elements = data->args.hipMemsetD32.count;
+        event.memset_info.async = false;
+        break;
+      case HIP_API_ID_hipMemsetD32Async:
+        event.type = RocmTracerEventType::Memset;
+        event.memset_info.num_elements = data->args.hipMemsetD32Async.count;
+        event.memset_info.async = true;
+        break;
+      default:
+        LOG(ERROR) << "Unsupported memset activity observed: " << cbid;
         break;
     }
     collector_->AddEvent(std::move(event));
@@ -560,6 +639,14 @@ class RocmActivityCallbackImpl {
             case HIP_API_ID_hipMemcpyAsync:
               DumpActivityRecord(record);
               AddHipMemcpyActivityEvent(record);
+              break;
+
+            case HIP_API_ID_hipMemsetD32:
+            case HIP_API_ID_hipMemsetD32Async:
+            case HIP_API_ID_hipMemsetD8:
+            case HIP_API_ID_hipMemsetD8Async:
+              DumpActivityRecord(record);
+              AddHipMemsetActivityEvent(record);
               break;
 
             case HIP_API_ID_hipMalloc:
@@ -684,6 +771,42 @@ class RocmActivityCallbackImpl {
     collector_->AddEvent(std::move(event));
   }
 
+  void AddHipMemsetActivityEvent(const roctracer_record_t* record) {
+    RocmTracerEvent event;
+    event.domain = RocmTracerEventDomain::HIP_API;
+    event.source = RocmTracerEventSource::Activity;
+    event.name = roctracer_op_string(record->domain, record->op, record->kind);
+    event.correlation_id = record->correlation_id;
+    event.annotation =
+        collector_->annotation_map()->LookUp(event.correlation_id);
+
+    event.type = RocmTracerEventType::Memset;
+
+    switch (record->op) {
+      case HIP_API_ID_hipMemsetD8:
+        event.memset_info.num_elements = record->bytes;
+        event.memcpy_info.async = false;
+        break;
+      case HIP_API_ID_hipMemsetD8Async:
+        event.memset_info.num_elements = record->bytes;
+        event.memcpy_info.async = true;
+        break;
+      case HIP_API_ID_hipMemsetD32:
+        event.memset_info.num_elements = record->bytes / 4;
+        event.memcpy_info.async = false;
+        break;
+      case HIP_API_ID_hipMemsetD32Async:
+        event.memset_info.num_elements = record->bytes / 4;
+        event.memcpy_info.async = true;
+        break;
+    }
+
+    event.start_time_ns = record->begin_ns;
+    event.end_time_ns = record->end_ns;
+
+    collector_->AddEvent(std::move(event));
+  }
+
   void AddHipMallocEvent(const roctracer_record_t* record) {
     RocmTracerEvent event;
     event.domain = RocmTracerEventDomain::HIP_API;
@@ -761,9 +884,9 @@ class RocmActivityCallbackImpl {
 
 void AnnotationMap::Add(uint32 correlation_id, const std::string& annotation) {
   if (annotation.empty()) return;
-  VLOG(kRocmTracerVlog2) << "Add annotation: "
-                         << " correlation_id: " << correlation_id
-                         << " annotation: " << annotation;
+  VLOG(kRocmTracerVlog) << "Add annotation: "
+                        << " correlation_id: " << correlation_id
+                        << " annotation: " << annotation;
   absl::MutexLock lock(&map_.mutex);
   if (map_.annotations.size() < max_size_) {
     absl::string_view annotation_str =
@@ -843,17 +966,17 @@ Status RocmTracer::EnableApiTracing() {
     activity_domain_t domain = iter.first;
     std::vector<uint32_t>& ops = iter.second;
     if (ops.size() == 0) {
-      VLOG(kRocmTracerVlog1) << "Enabling API tracing for domain "
-                             << GetActivityDomainName(domain);
+      VLOG(kRocmTracerVlog) << "Enabling API tracing for domain "
+                            << GetActivityDomainName(domain);
       RETURN_IF_ROCTRACER_ERROR(
           roctracer_enable_domain_callback(domain, ApiCallback, this));
     } else {
-      VLOG(kRocmTracerVlog1)
-          << "Enabling API tracing for " << ops.size() << " ops in domain "
-          << GetActivityDomainName(domain);
+      VLOG(kRocmTracerVlog) << "Enabling API tracing for " << ops.size()
+                            << " ops in domain "
+                            << GetActivityDomainName(domain);
       for (auto& op : ops) {
-        VLOG(kRocmTracerVlog2) << "Enabling API tracing for "
-                               << GetActivityDomainOpName(domain, op);
+        VLOG(kRocmTracerVlog) << "Enabling API tracing for "
+                              << GetActivityDomainOpName(domain, op);
         RETURN_IF_ROCTRACER_ERROR(
             roctracer_enable_op_callback(domain, op, ApiCallback, this));
       }
@@ -870,16 +993,16 @@ Status RocmTracer::DisableApiTracing() {
     activity_domain_t domain = iter.first;
     std::vector<uint32_t>& ops = iter.second;
     if (ops.size() == 0) {
-      VLOG(kRocmTracerVlog1) << "Disabling API tracing for domain "
-                             << GetActivityDomainName(domain);
+      VLOG(kRocmTracerVlog) << "Disabling API tracing for domain "
+                            << GetActivityDomainName(domain);
       RETURN_IF_ROCTRACER_ERROR(roctracer_disable_domain_callback(domain));
     } else {
-      VLOG(kRocmTracerVlog1)
-          << "Disabling API tracing for " << ops.size() << " ops in domain "
-          << GetActivityDomainName(domain);
+      VLOG(kRocmTracerVlog) << "Disabling API tracing for " << ops.size()
+                            << " ops in domain "
+                            << GetActivityDomainName(domain);
       for (auto& op : ops) {
-        VLOG(kRocmTracerVlog2) << "Disabling API tracing for "
-                               << GetActivityDomainOpName(domain, op);
+        VLOG(kRocmTracerVlog) << "Disabling API tracing for "
+                              << GetActivityDomainOpName(domain, op);
         RETURN_IF_ROCTRACER_ERROR(roctracer_disable_op_callback(domain, op));
       }
     }
@@ -899,7 +1022,7 @@ void RocmTracer::ActivityCallbackHandler(const char* begin, const char* end) {
     LOG(WARNING) << "ActivityCallbackHandler called when "
                     "activity_tracing_enabled_ is false";
 
-    VLOG(kRocmTracerVlog1) << "Dropped Activity Records Start";
+    VLOG(kRocmTracerVlog) << "Dropped Activity Records Start";
     const roctracer_record_t* record =
         reinterpret_cast<const roctracer_record_t*>(begin);
     const roctracer_record_t* end_record =
@@ -908,7 +1031,7 @@ void RocmTracer::ActivityCallbackHandler(const char* begin, const char* end) {
       DumpActivityRecord(record);
       roctracer_next_record(record, &record);
     }
-    VLOG(kRocmTracerVlog1) << "Dropped Activity Records End";
+    VLOG(kRocmTracerVlog) << "Dropped Activity Records End";
   }
 }
 
@@ -923,7 +1046,7 @@ Status RocmTracer::EnableActivityTracing() {
       properties.buffer_size = 0x1000;
       properties.buffer_callback_fun = ActivityCallback;
       properties.buffer_callback_arg = this;
-      VLOG(kRocmTracerVlog1) << "Creating roctracer activity buffer";
+      VLOG(kRocmTracerVlog) << "Creating roctracer activity buffer";
       RETURN_IF_ROCTRACER_ERROR(roctracer_open_pool(&properties));
     }
   }
@@ -932,16 +1055,16 @@ Status RocmTracer::EnableActivityTracing() {
     activity_domain_t domain = iter.first;
     std::vector<uint32_t>& ops = iter.second;
     if (ops.size() == 0) {
-      VLOG(kRocmTracerVlog1) << "Enabling Activity tracing for domain "
-                             << GetActivityDomainName(domain);
+      VLOG(kRocmTracerVlog) << "Enabling Activity tracing for domain "
+                            << GetActivityDomainName(domain);
       RETURN_IF_ROCTRACER_ERROR(roctracer_enable_domain_activity(domain));
     } else {
-      VLOG(kRocmTracerVlog1)
-          << "Enabling Activity tracing for " << ops.size() << " ops in domain "
-          << GetActivityDomainName(domain);
+      VLOG(kRocmTracerVlog) << "Enabling Activity tracing for " << ops.size()
+                            << " ops in domain "
+                            << GetActivityDomainName(domain);
       for (auto& op : ops) {
-        VLOG(kRocmTracerVlog2) << "Enabling Activity tracing for "
-                               << GetActivityDomainOpName(domain, op);
+        VLOG(kRocmTracerVlog) << "Enabling Activity tracing for "
+                              << GetActivityDomainOpName(domain, op);
         RETURN_IF_ROCTRACER_ERROR(roctracer_enable_op_activity(domain, op));
       }
     }
@@ -957,16 +1080,16 @@ Status RocmTracer::DisableActivityTracing() {
     activity_domain_t domain = iter.first;
     std::vector<uint32_t>& ops = iter.second;
     if (ops.size() == 0) {
-      VLOG(kRocmTracerVlog1) << "Disabling Activity tracing for domain "
-                             << GetActivityDomainName(domain);
+      VLOG(kRocmTracerVlog) << "Disabling Activity tracing for domain "
+                            << GetActivityDomainName(domain);
       RETURN_IF_ROCTRACER_ERROR(roctracer_disable_domain_activity(domain));
     } else {
-      VLOG(kRocmTracerVlog1)
-          << "Disabling Activity tracing for " << ops.size()
-          << " ops in domain " << GetActivityDomainName(domain);
+      VLOG(kRocmTracerVlog) << "Disabling Activity tracing for " << ops.size()
+                            << " ops in domain "
+                            << GetActivityDomainName(domain);
       for (auto& op : ops) {
-        VLOG(kRocmTracerVlog2) << "Disabling Activity tracing for "
-                               << GetActivityDomainOpName(domain, op);
+        VLOG(kRocmTracerVlog) << "Disabling Activity tracing for "
+                              << GetActivityDomainOpName(domain, op);
         RETURN_IF_ROCTRACER_ERROR(roctracer_disable_op_activity(domain, op));
       }
     }
@@ -987,14 +1110,14 @@ Status RocmTracer::DisableActivityTracing() {
   int duration_ms = 100;
   size_t threshold = 1;
   for (int i = 0; i < 6; i++, duration_ms *= 2, threshold *= 2) {
-    VLOG(kRocmTracerVlog1) << "ROCTRACER_FLUSH_BUG_WORKAROUND :"
-                           << " Pending count = "
-                           << GetPendingActivityRecordsCount()
-                           << ", Threshold = " << threshold;
+    VLOG(kRocmTracerVlog) << "ROCTRACER_FLUSH_BUG_WORKAROUND :"
+                          << " Pending count = "
+                          << GetPendingActivityRecordsCount()
+                          << ", Threshold = " << threshold;
     if (GetPendingActivityRecordsCount() < threshold) break;
     std::this_thread::sleep_for(std::chrono::milliseconds(duration_ms));
-    VLOG(kRocmTracerVlog1) << "ROCTRACER_FLUSH_BUG_WORKAROUND : slept for "
-                           << duration_ms << " ms";
+    VLOG(kRocmTracerVlog) << "ROCTRACER_FLUSH_BUG_WORKAROUND : slept for "
+                          << duration_ms << " ms";
   }
   ClearPendingActivityRecordsCount();
 #endif
@@ -1002,7 +1125,7 @@ Status RocmTracer::DisableActivityTracing() {
   // Flush the activity buffer BEFORE setting the activity_tracing_enable_
   // flag to FALSE. This is because the activity record callback routine is
   // gated by the same flag
-  VLOG(kRocmTracerVlog1) << "Flushing roctracer activity buffer";
+  VLOG(kRocmTracerVlog) << "Flushing roctracer activity buffer";
   RETURN_IF_ROCTRACER_ERROR(roctracer_flush_activity());
 
   activity_tracing_enabled_ = false;
