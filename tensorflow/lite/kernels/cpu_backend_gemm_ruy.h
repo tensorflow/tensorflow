@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_RUY_H_
 #define TENSORFLOW_LITE_KERNELS_CPU_BACKEND_GEMM_RUY_H_
 
+#include "ruy/matrix.h"  // from @ruy
 #include "ruy/path.h"  // from @ruy
 #include "ruy/ruy.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
@@ -24,6 +25,20 @@ limitations under the License.
 namespace tflite {
 namespace cpu_backend_gemm {
 namespace detail {
+
+inline ruy::CachePolicy ToRuyCachePolicy(CachePolicy cache_policy) {
+  switch (cache_policy) {
+    case CachePolicy::kNeverCache:
+      return ruy::CachePolicy::kNeverCache;
+    case CachePolicy::kCacheIfLargeSpeedup:
+      return ruy::CachePolicy::kCacheIfLargeSpeedup;
+    case CachePolicy::kAlwaysCache:
+      return ruy::CachePolicy::kAlwaysCache;
+    default:
+      TFLITE_DCHECK(false);
+      return ruy::CachePolicy::kNeverCache;
+  }
+}
 
 template <typename Scalar, typename DataPointer>
 void MakeRuyMatrix(const MatrixParams<Scalar>& params, DataPointer data_ptr,
@@ -38,7 +53,7 @@ void MakeRuyMatrix(const MatrixParams<Scalar>& params, DataPointer data_ptr,
   dst->set_data(data_ptr);
   dst->set_zero_point(params.zero_point);
 #ifdef TFLITE_WITH_RUY_GEMV
-  dst->set_cacheable(params.cacheable);
+  dst->set_cache_policy(ToRuyCachePolicy(params.cache_policy));
 #endif
 }
 
