@@ -1028,6 +1028,7 @@ cc_library(
     hdrs = ["mkl_layout_pass.h"],
     copts = tf_copts(),
     deps = [
+        ":core_cpu",
         ":optimization_registry",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -1043,6 +1044,7 @@ cc_library(
     hdrs = ["mkl_tfconversion_pass.h"],
     copts = tf_copts(),
     deps = [
+        ":core_cpu",
         ":optimization_registry",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
