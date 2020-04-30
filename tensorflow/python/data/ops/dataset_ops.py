@@ -2080,6 +2080,36 @@ name=None))
     """
     return _OptionsDataset(self, options)
 
+  def cardinality(self):
+    """Returns the (statically known) cardinality of the dataset.
+
+    The returned cardinality may be infinite or unknown. the latter will be
+    returned if static analysis fails to determine the number of elements in
+    `dataset` (e.g. when the dataset source is a file).
+
+    Note: To provide an idiomatic representation for infinite and unknown
+    cardinality, this method returns a 64-bit floating point number. As a
+    consequence, the returned cardinality will be approximate for datasets
+    whose integer cardinality cannot be accurately represented by 64-bit
+    floating point number (i.e. cardinalities greater than 2^53).
+
+    >>> dataset = tf.data.Dataset.range(42)
+    >>> print(dataset.cardinality().numpy())
+    42.0
+    >>> dataset = dataset.repeat()
+    >>> print(dataset.cardinality().numpy() == np.inf)
+    True
+    >>> dataset = dataset.filter(lambda x: True)
+    >>> print(np.isnan(dataset.cardinality().numpy()))
+    True
+
+    Returns:
+      A scalar `tf.float64` `Tensor` representing the cardinality of the
+      dataset. If the cardinality is infinite or unknown, the operation returns
+      IEEE 754 representation of infinity and NaN respectively.
+    """
+    return ged_ops.dataset_cardinality_v2(self._variant_tensor)
+
 
 @tf_export(v1=["data.Dataset"])
 class DatasetV1(DatasetV2):
