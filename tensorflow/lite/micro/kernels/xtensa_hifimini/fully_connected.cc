@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/utils.h"
 
 namespace tflite {
 namespace ops {
@@ -107,9 +106,6 @@ inline void FullyConnected(
       // MultiplyByQuantizedMultiplier returns a 48bit aligned value
       sum_56 = MultiplyByQuantizedMultiplier(sum_24x2, output_multiplier,
                                              output_shift);
-
-      // Align from 48bit to 32bit on the QR register:
-      sum_56 = AE_Q56S_SLAI(sum_56, 16);
 
       // Add output_offset and cap min/max values:
       sum_56 = AE_ADDQ56(sum_56, output_offset_56);

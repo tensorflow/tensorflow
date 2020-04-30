@@ -69,7 +69,6 @@ cc_library(
             "xtensa_hifimini/quantize.cc",
             "xtensa_hifimini/softmax.cc",
             "xtensa_hifimini/svdf.cc",
-            "xtensa_hifimini/utils.h",
         ],
     }),
     hdrs = ["micro_ops.h"],
