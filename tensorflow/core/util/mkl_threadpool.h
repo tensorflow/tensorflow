@@ -86,7 +86,7 @@ struct MklDnnThreadPool : public dnnl::threadpool_iface {
 
     int nthr = get_num_threads();
     int njobs = std::min(n, nthr);
-    bool balance = (nthr > n);
+    bool balance = (nthr < n);
     for (int i = 0; i < njobs; i++) {
       eigen_interface_->ScheduleWithHint(
           [balance, i, n, njobs, fn]() {
