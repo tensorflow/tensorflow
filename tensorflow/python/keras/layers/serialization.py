@@ -33,6 +33,7 @@ from tensorflow.python.keras.layers import convolutional_recurrent
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.layers import cudnn_recurrent
 from tensorflow.python.keras.layers import dense_attention
+from tensorflow.python.keras.layers import einsum_dense
 from tensorflow.python.keras.layers import embeddings
 from tensorflow.python.keras.layers import local
 from tensorflow.python.keras.layers import merge
@@ -52,26 +53,11 @@ from tensorflow.python.util import tf_inspect as inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
-ALL_MODULES = (
-    base_layer,
-    input_layer,
-    advanced_activations,
-    convolutional,
-    convolutional_recurrent,
-    core,
-    cudnn_recurrent,
-    dense_attention,
-    embeddings,
-    local,
-    merge,
-    noise,
-    normalization,
-    pooling,
-    image_preprocessing,
-    preprocessing_normalization_v1,
-    recurrent,
-    wrappers
-)
+ALL_MODULES = (base_layer, input_layer, advanced_activations, convolutional,
+               convolutional_recurrent, core, cudnn_recurrent, dense_attention,
+               embeddings, einsum_dense, local, merge, noise, normalization,
+               pooling, image_preprocessing, preprocessing_normalization_v1,
+               recurrent, wrappers)
 ALL_V2_MODULES = (
     rnn_cell_wrapper_v2,
     normalization_v2,
