@@ -231,8 +231,19 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         OnEventsDropped("logical device id >= num gpus", event.correlation_id);
         DumpRocmTracerEvent(event, 0, 0);
       } else if (event.stream_id == RocmTracerEvent::kInvalidStreamId) {
-        OnEventsDropped("invalid stream id", event.correlation_id);
-        DumpRocmTracerEvent(event, 0, 0);
+        if (event.type == RocmTracerEventType::MemoryAlloc) {
+          // For hipMalloc/hipFree events, we never get a HCC activity record
+          // callback and hence we currently do not have a way of associating
+          // a valid stream_id with those events.
+          // set the stream_id to 0 for now
+          VLOG(kRocmTracerVlog) << "Explicitly setting stream_id to 0 for "
+                                   "MemoryAlloc event with correlation_id="
+                                << event.correlation_id;
+          event.stream_id = 0;
+        } else {
+          OnEventsDropped("invalid stream id", event.correlation_id);
+          DumpRocmTracerEvent(event, 0, 0);
+        }
       } else {
         event.device_id = logical_id;
         per_device_collector_[logical_id].AddEvent(event);
