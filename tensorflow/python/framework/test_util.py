@@ -1075,7 +1075,6 @@ def eager_lazy_remote_copy_on_and_off(f):
 def run_in_graph_and_eager_modes(func=None,
                                  config=None,
                                  use_gpu=True,
-                                 reset_test=True,
                                  assert_no_eager_garbage=False):
   """Execute the decorated test with and without enabling eager execution.
 
@@ -1117,8 +1116,6 @@ def run_in_graph_and_eager_modes(func=None,
     config: An optional config_pb2.ConfigProto to use to configure the session
       when executing graphs.
     use_gpu: If True, attempt to run as many operations as possible on GPU.
-    reset_test: If True, tearDown and SetUp the test case between the two
-      executions of the test (once with and once without eager execution).
     assert_no_eager_garbage: If True, sets DEBUG_SAVEALL on the garbage
       collector and asserts that no extra garbage has been created when running
       the test with eager execution enabled. This will fail if there are
@@ -1162,17 +1159,15 @@ def run_in_graph_and_eager_modes(func=None,
         run_eagerly = assert_no_new_tensors(
             assert_no_garbage_created(run_eagerly))
 
-      if reset_test:
-        # This decorator runs the wrapped test twice.
-        # Reset the test environment between runs.
-        self.tearDown()
-        self._tempdir = None
+      # This decorator runs the wrapped test twice.
+      # Reset the test environment between runs.
+      self.tearDown()
+      self._tempdir = None
       # Create a new graph for the eagerly executed version of this test for
       # better isolation.
       graph_for_eager_test = ops.Graph()
       with graph_for_eager_test.as_default(), context.eager_mode():
-        if reset_test:
-          self.setUp()
+        self.setUp()
         run_eagerly(self, **kwargs)
       ops.dismantle_graph(graph_for_eager_test)
 
