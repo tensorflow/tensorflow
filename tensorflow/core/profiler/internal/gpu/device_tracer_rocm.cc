@@ -108,14 +108,18 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
 
     if (event.source == RocmTracerEventSource::ApiCallback) {
       if (num_callback_events_ > options_.max_callback_api_events) {
-        OnEventsDropped("max callback event capacity reached", 1);
+        OnEventsDropped("max callback event capacity reached",
+                        event.correlation_id);
+        DumpRocmTracerEvent(event, 0, 0);
         return;
       }
       num_callback_events_++;
     }
     if (event.source == RocmTracerEventSource::Activity) {
       if (num_activity_events_ > options_.max_activity_api_events) {
-        OnEventsDropped("max activity event capacity reached", 1);
+        OnEventsDropped("max activity event capacity reached",
+                        event.correlation_id);
+        DumpRocmTracerEvent(event, 0, 0);
         return;
       }
       num_activity_events_++;
@@ -169,13 +173,15 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
           OnEventsDropped(
               "Activity event encountered before a corresponding API event",
               event.correlation_id);
+          DumpRocmTracerEvent(event, 0, 0);
           break;
       }
     }
   }
 
-  void OnEventsDropped(const std::string& reason, uint32 num_events) override {
-    LOG(INFO) << "RocmTracerEvent(s) dropped (" << num_events
+  void OnEventsDropped(const std::string& reason,
+                       uint32 correlation_id) override {
+    LOG(INFO) << "RocmTracerEvent dropped (correlation_id=" << correlation_id
               << ") : " << reason << ".";
   }
 
@@ -222,10 +228,10 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
       }
 
       if (logical_id >= options_.num_gpus) {
-        OnEventsDropped("logical device id >= num gpus", 1);
+        OnEventsDropped("logical device id >= num gpus", event.correlation_id);
         DumpRocmTracerEvent(event, 0, 0);
       } else if (event.stream_id == RocmTracerEvent::kInvalidStreamId) {
-        OnEventsDropped("invalid stream id", 1);
+        OnEventsDropped("invalid stream id", event.correlation_id);
         DumpRocmTracerEvent(event, 0, 0);
       } else {
         event.device_id = logical_id;
