@@ -1578,7 +1578,7 @@ name=None))
 
     Note that irrespective of the context in which `map_func` is defined (eager
     vs. graph), tf.data traces the function and executes it as a graph. To use
-    Python code inside of the function you have two options:
+    Python code inside of the function you have a few options:
 
     1) Rely on AutoGraph to convert Python code into an equivalent graph
     computation. The downside of this approach is that AutoGraph can convert
