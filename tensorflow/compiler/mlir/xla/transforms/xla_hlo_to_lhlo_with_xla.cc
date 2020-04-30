@@ -223,7 +223,7 @@ Status LhloDialectEmitter::Run() {
   // The function signature will be composed of:
   // - one memref for each of the parameters.
   // - one memref for each other buffer allocation.
-  llvm::SmallVector<NamedAttributeList, 8> args_attrs;
+  llvm::SmallVector<MutableDictionaryAttr, 8> args_attrs;
   for (const HloInstruction* param : computation->parameter_instructions()) {
     TF_ASSIGN_OR_RETURN(auto arg_type, ::xla::ConvertShapeToType<MemRefType>(
                                            param->shape(), builder_));
