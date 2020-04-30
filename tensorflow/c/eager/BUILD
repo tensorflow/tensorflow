@@ -16,6 +16,7 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
     licenses = ["notice"],  # Apache 2.0
